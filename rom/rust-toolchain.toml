@@ -1,0 +1,5 @@
+# Licensed under the Apache-2.0 license
+
+[toolchain]
+channel = "nightly-2024-08-01"
+targets = ["riscv32imc-unknown-none-elf"]

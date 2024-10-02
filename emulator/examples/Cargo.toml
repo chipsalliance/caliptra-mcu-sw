@@ -1,0 +1,14 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "emulator-examples"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "timer"
+path = "src/timer.rs"
+
+[[bin]]
+name = "hello"
+path = "src/hello.rs"

@@ -1,0 +1,16 @@
+# Licensed under the Apache-2.0 license
+
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+[target.riscv32imc-unknown-none-elf]
+rustflags = ["-C", "link-arg=-Temulator/examples/link.ld"]
+
+[profile.release]
+panic = "abort"
+opt-level = "z" # Optimize for size.
+lto = true
+
+[profile.dev]
+panic = "abort"
+lto = true

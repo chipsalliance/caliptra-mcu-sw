@@ -1,0 +1,11 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+semver = "1.0.23"
+walkdir = "2.5.0"
+clap.workspace = true
