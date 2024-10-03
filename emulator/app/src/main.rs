@@ -272,26 +272,3 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
     Ok(uart_output.map(|o| o.borrow().clone()).unwrap_or_default())
 }
-
-// TODO: add this to an xtask that also builds the ELF file
-// #[cfg(test)]
-// mod test {
-//     use super::*;
-
-//     #[test]
-//     fn test_hello_caliptra_rom() {
-//         let output = run(
-//             Emulator {
-//                 rom: PathBuf::from("test/hello.elf"),
-//                 gdb_port: None,
-//                 log_dir: None,
-//                 trace_instr: false,
-//                 otp: None,
-//                 stdin_uart: false,
-//             },
-//             true,
-//         );
-//         assert!(output.is_ok());
-//         assert_eq!(*b"Hello Caliptra", *output.unwrap());
-//     }
-// }

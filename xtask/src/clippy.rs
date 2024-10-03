@@ -5,7 +5,7 @@ use std::process::Command;
 use crate::{DynError, PROJECT_ROOT, TARGET};
 
 // These projects require nightly.
-const NIGHTLY_PROJECTS: &[&str] = &["emulator-examples", "runtime", "pldm-app"];
+const NIGHTLY_PROJECTS: &[&str] = &["test-hello", "runtime", "pldm-app"];
 
 pub(crate) fn clippy() -> Result<(), DynError> {
     clippy_all()?;

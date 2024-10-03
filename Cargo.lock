@@ -362,10 +362,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emulator-examples"
-version = "0.1.0"
-
-[[package]]
 name = "emulator-periph"
 version = "0.1.0"
 dependencies = [
@@ -966,6 +962,10 @@ dependencies = [
  "rustix",
  "windows-sys 0.59.0",
 ]
+
+[[package]]
+name = "test-hello"
+version = "0.1.0"
 
 [[package]]
 name = "tickv"

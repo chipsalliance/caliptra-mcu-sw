@@ -4,7 +4,6 @@
 members = [
     "emulator/app",
     "emulator/compliance-test",
-    "emulator/examples",
     "emulator/bus",
     "emulator/cpu",
     "emulator/derive",
@@ -12,6 +11,7 @@ members = [
     "emulator/types",
     "runtime",
     "runtime/apps/pldm",
+    "tests/hello",
     "xtask",
 ]
 resolver = "2"
