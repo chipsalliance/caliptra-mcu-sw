@@ -1,0 +1,5 @@
+addrmap clp2 {
+    el2_pic_ctrl el2_pic_ctrl @ 0x6000_0000;
+    I3CCSR i3c_ctrl @ 0xD000_0000;
+    mci_reg mci_ctrl @ 0x2005_0000;
+};

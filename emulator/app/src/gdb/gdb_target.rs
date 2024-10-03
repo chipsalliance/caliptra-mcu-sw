@@ -12,10 +12,10 @@ Abstract:
 
 --*/
 
+use emulator_bus::Bus;
 use emulator_cpu::xreg_file::XReg;
 use emulator_cpu::StepAction;
 use emulator_cpu::{Cpu, WatchPtrKind};
-use emulator_periph::CaliptraRootBus;
 use emulator_types::RvSize;
 use gdbstub::arch::SingleStepGdbBehavior;
 use gdbstub::common::Signal;
@@ -33,15 +33,15 @@ pub enum ExecMode {
     Continue,
 }
 
-pub struct GdbTarget {
-    cpu: Cpu<CaliptraRootBus>,
+pub struct GdbTarget<T: Bus> {
+    cpu: Cpu<T>,
     exec_mode: ExecMode,
     breakpoints: Vec<u32>,
 }
 
-impl GdbTarget {
+impl<T: Bus> GdbTarget<T> {
     // Create new instance of GdbTarget
-    pub fn new(cpu: Cpu<CaliptraRootBus>) -> Self {
+    pub fn new(cpu: Cpu<T>) -> Self {
         Self {
             cpu,
             exec_mode: ExecMode::Continue,
@@ -88,7 +88,7 @@ impl GdbTarget {
     }
 }
 
-impl Target for GdbTarget {
+impl<T: Bus> Target for GdbTarget<T> {
     type Arch = gdbstub_arch::riscv::Riscv32;
     type Error = &'static str;
 
@@ -111,7 +111,7 @@ impl Target for GdbTarget {
     }
 }
 
-impl SingleThreadBase for GdbTarget {
+impl<T: Bus> SingleThreadBase for GdbTarget<T> {
     fn read_registers(
         &mut self,
         regs: &mut gdbstub_arch::riscv::reg::RiscvCoreRegs<u32>,
@@ -165,7 +165,7 @@ impl SingleThreadBase for GdbTarget {
     }
 }
 
-impl target::ext::base::singlethread::SingleThreadSingleStep for GdbTarget {
+impl<T: Bus> target::ext::base::singlethread::SingleThreadSingleStep for GdbTarget<T> {
     fn step(&mut self, signal: Option<Signal>) -> Result<(), Self::Error> {
         if signal.is_some() {
             return Err("no support for stepping with signal");
@@ -177,7 +177,7 @@ impl target::ext::base::singlethread::SingleThreadSingleStep for GdbTarget {
     }
 }
 
-impl SingleThreadResume for GdbTarget {
+impl<T: Bus> SingleThreadResume for GdbTarget<T> {
     fn resume(&mut self, signal: Option<Signal>) -> Result<(), Self::Error> {
         if signal.is_some() {
             return Err("no support for continuing with signal");
@@ -196,7 +196,7 @@ impl SingleThreadResume for GdbTarget {
     }
 }
 
-impl target::ext::breakpoints::Breakpoints for GdbTarget {
+impl<T: Bus> target::ext::breakpoints::Breakpoints for GdbTarget<T> {
     #[inline(always)]
     fn support_sw_breakpoint(
         &mut self,
@@ -211,7 +211,7 @@ impl target::ext::breakpoints::Breakpoints for GdbTarget {
     }
 }
 
-impl target::ext::breakpoints::SwBreakpoint for GdbTarget {
+impl<T: Bus> target::ext::breakpoints::SwBreakpoint for GdbTarget<T> {
     fn add_sw_breakpoint(&mut self, addr: u32, _kind: usize) -> TargetResult<bool, Self> {
         self.breakpoints.push(addr);
         Ok(true)
@@ -227,7 +227,7 @@ impl target::ext::breakpoints::SwBreakpoint for GdbTarget {
     }
 }
 
-impl target::ext::breakpoints::HwWatchpoint for GdbTarget {
+impl<T: Bus> target::ext::breakpoints::HwWatchpoint for GdbTarget<T> {
     fn add_hw_watchpoint(
         &mut self,
         addr: u32,

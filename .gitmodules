@@ -1,0 +1,12 @@
+[submodule "hw/i3c-core"]
+	path = hw/i3c-core
+	url = https://github.com/chipsalliance/i3c-core.git
+	branch = main
+[submodule "hw/caliptra-rtl"]
+	path = hw/caliptra-rtl
+	url = https://github.com/chipsalliance/caliptra-rtl
+	branch = main
+[submodule "hw/caliptra-ss"]
+	path = hw/caliptra-ss
+	url = https://github.com/chipsalliance/caliptra-ss
+	branch = main

@@ -19,9 +19,10 @@ mod gdb;
 
 use clap::{Parser, Subcommand};
 use console::Term;
-use emulator_bus::{Clock, Timer};
+use emulator_bus::{Bus, Clock, Timer};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
 use emulator_periph::{CaliptraRootBus, CaliptraRootBusArgs};
+use emulator_registers_generated::root_bus::AutoRootBus;
 use gdb::gdb_state;
 use gdb::gdb_target::GdbTarget;
 use std::cell::RefCell;
@@ -112,9 +113,9 @@ fn read_console(running: Arc<AtomicBool>, stdin_uart: Option<Arc<Mutex<Option<u8
 }
 
 // CPU Main Loop (free_run no GDB)
-fn free_run(
+fn free_run<T: Bus>(
     running: Arc<AtomicBool>,
-    mut cpu: Cpu<CaliptraRootBus>,
+    mut cpu: Cpu<T>,
     trace_path: Option<PathBuf>,
     stdin_uart: Option<Arc<Mutex<Option<u8>>>>,
 ) {
@@ -247,7 +248,18 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         clock: clock.clone(),
     };
     let root_bus = CaliptraRootBus::new(bus_args).unwrap();
-    let cpu = Cpu::new(root_bus, clock, pic);
+    let auto_root_bus = AutoRootBus::new(
+        Some(Box::new(root_bus)),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+
+    let cpu = Cpu::new(auto_root_bus, clock, pic);
 
     // Check if Optional GDB Port is passed
     match cli.gdb_port {

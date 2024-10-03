@@ -14,12 +14,20 @@ const EXTENSIONS: &[&str] = &[
     "rs", "h", "c", "cpp", "cc", "toml", "sh", "py", "ld", "go", "yml", "yaml", "S", "s",
 ];
 const IGNORED_PATHS: &[&str] = &[".github/dependabot.yml", "emulator/app/src/dis.rs"];
-const IGNORED_DIRS: &[&str] = &[".git", "out", "target", "compliance-test"];
+const IGNORED_DIRS: &[&str] = &[
+    ".git",
+    "out",
+    "target",
+    "compliance-test",
+    "caliptra-ss",
+    "caliptra-rtl",
+    "i3c-core",
+];
 
 pub(crate) fn fix() -> Result<(), DynError> {
     println!("Running: license header fix");
 
-    let files = find_files(&PROJECT_ROOT).unwrap();
+    let files = find_files(&PROJECT_ROOT, EXTENSIONS, false).unwrap();
     let mut failed = false;
     for file in files.iter() {
         if check_file(file).is_err() {
@@ -39,7 +47,7 @@ pub(crate) fn fix() -> Result<(), DynError> {
 
 pub(crate) fn check() -> Result<(), DynError> {
     println!("Running: license header check");
-    let files = find_files(&PROJECT_ROOT).unwrap();
+    let files = find_files(&PROJECT_ROOT, EXTENSIONS, false).unwrap();
     let mut failed = false;
     for file in files.iter() {
         if let Err(e) = check_file(file) {
@@ -48,7 +56,7 @@ pub(crate) fn check() -> Result<(), DynError> {
         }
     }
     if failed {
-        Err("Some files failed to have the correct license header; to fix, run \"devcontainer exec --workspace-folder . cargo xtask header-fix\" from the repo root")?;
+        Err("Some files failed to have the correct license header; to fix, run \"cargo xtask header-fix\" from the repo root")?;
     }
     Ok(())
 }
@@ -120,7 +128,7 @@ fn fix_file(path: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-fn ignore(file: &DirEntry) -> bool {
+fn allow(file: &DirEntry) -> bool {
     let file_path = remove_root(file.path());
     if IGNORED_PATHS.contains(&file_path.as_str()) {
         return false;
@@ -136,16 +144,20 @@ fn ignore(file: &DirEntry) -> bool {
     true
 }
 
-fn find_files(dir: &Path) -> Result<Vec<PathBuf>, Error> {
+pub(crate) fn find_files(
+    dir: &Path,
+    extensions: &[&str],
+    ignore_none: bool,
+) -> Result<Vec<PathBuf>, Error> {
     let mut result = vec![];
     let wrap_err = add_path_walkdir_error(dir);
     let walker = walkdir::WalkDir::new(dir).into_iter();
-    for file in walker.filter_entry(ignore) {
+    for file in walker.filter_entry(|f| ignore_none || allow(f)) {
         let file = file.map_err(wrap_err)?;
         let file_path = &file.path();
         let file_type = file.file_type();
         if let Some(Some(extension)) = file.path().extension().map(|s| s.to_str()) {
-            if file_type.is_file() && EXTENSIONS.contains(&extension) {
+            if file_type.is_file() && extensions.contains(&extension) {
                 result.push(file_path.into());
             }
         }

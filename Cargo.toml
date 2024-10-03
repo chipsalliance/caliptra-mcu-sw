@@ -13,6 +13,11 @@ members = [
     "runtime/apps/pldm",
     "tests/hello",
     "xtask",
+    "registers/generated-emulator",
+    "registers/generated-firmware",
+    "registers/generator",
+    "registers/systemrdl",
+    "registers/ureg",
 ]
 resolver = "2"
 
@@ -40,6 +45,7 @@ emulator-bus = { path = "emulator/bus" }
 emulator-cpu = { path = "emulator/cpu" }
 emulator-derive = { path = "emulator/derive" }
 emulator-periph = { path = "emulator/periph" }
+emulator-registers-generated = { path = "registers/generated-emulator" }
 emulator-types = { path = "emulator/types" }
 getrandom = "0.2"
 gdbstub = "0.6.3"
@@ -48,12 +54,14 @@ hex = "0.4.3"
 lazy_static = "1.4.0"
 proc-macro2 = "1.0.66"
 quote = "1.0"
+registers-generator = { path = "registers/generator" }
+registers-systemrdl = { path = "registers/systemrdl" }
 syn = "1.0.107"
 tock-registers = { git = "https://github.com/tock/tock.git" }
 ctrlc = "3.4.5"
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
-
+ureg = { path = "registers/ureg" }
 
 # Always optimize the emulator during tests, as it is a major bottleneck for
 # test speed.
