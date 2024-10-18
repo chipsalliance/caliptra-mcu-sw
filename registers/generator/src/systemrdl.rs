@@ -387,14 +387,20 @@ fn translate_block(iref: InstanceRef) -> Result<RegisterBlock, Error> {
         } else if child.instance.scope.ty == ComponentType::RegFile.into() {
             let next_block = translate_block(child)?;
             let next_block_size = calculate_reg_size(&next_block);
-            let start_offset = child.instance.offset.or(next_offset.map(|o| {
-                if let Some(size) = next_block_size {
-                    // align according to RDL spec
-                    o.next_multiple_of(size.next_power_of_two())
-                } else {
-                    o
-                }
-            })).expect(format!("Offset not defined for register file {:?} and could not calculate automatically", child.instance.name).as_str());
+            let start_offset = child
+                .instance
+                .offset
+                .or(next_offset.map(|o| {
+                    if let Some(size) = next_block_size {
+                        // align according to RDL spec
+                        o.next_multiple_of(size.next_power_of_two())
+                    } else {
+                        o
+                    }
+                }))
+                .expect(
+                    "Offset not defined for register file and could not calculate automatically",
+                );
             next_offset = next_block_size.map(|size| start_offset + size);
             block.sub_blocks.push(RegisterSubBlock::Single {
                 block: next_block,

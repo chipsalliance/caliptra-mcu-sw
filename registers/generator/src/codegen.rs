@@ -88,6 +88,7 @@ pub fn snake_ident(name: &str) -> Ident {
         result.push(c.to_ascii_lowercase());
     }
 
+    result = result.replace("so_cmgmt", "soc_mgmt"); // hack for SoC
     result = result.replace("i3_c", "i3c_").replace("__", "_"); // hack for I3C
     format_ident!("{}", tweak_keywords(result.trim_end_matches('_')))
 }
@@ -137,6 +138,7 @@ pub fn camel_ident(name: &str) -> Ident {
             upper_next = false;
         }
     }
+    result = result.replace("Socmgmt", "SoCMgmt"); // hack for SoC
     format_ident!("{}", tweak_keywords(&result))
 }
 

@@ -117,8 +117,8 @@ impl<TMmio: ureg::Mmio> RegisterBlock<TMmio> {
         }
     }
     #[inline(always)]
-    pub fn so_cmgmt_if(&self) -> SocmgmtifBlock<&TMmio> {
-        SocmgmtifBlock {
+    pub fn soc_mgmt_if(&self) -> SoCMgmtifBlock<&TMmio> {
+        SoCMgmtifBlock {
             ptr: unsafe { self.ptr.add(0x100 / core::mem::size_of::<u32>()) },
             mmio: core::borrow::Borrow::borrow(&self.mmio),
         }
@@ -1304,16 +1304,16 @@ impl<TMmio: ureg::Mmio> TtiBlock<TMmio> {
     }
 }
 #[derive(Clone, Copy)]
-pub struct SocmgmtifBlock<TMmio: ureg::Mmio + core::borrow::Borrow<TMmio>> {
+pub struct SoCMgmtifBlock<TMmio: ureg::Mmio + core::borrow::Borrow<TMmio>> {
     ptr: *mut u32,
     mmio: TMmio,
 }
-impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
+impl<TMmio: ureg::Mmio> SoCMgmtifBlock<TMmio> {
     /// Read value: [`i3c_ctrl::regs::ExtcapHeaderAnon59ReadVal`]; Write value: [`i3c_ctrl::regs::ExtcapHeaderAnon59WriteVal`]
     #[inline(always)]
     pub fn extcap_header(
         &self,
-    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifExtcapHeader, &TMmio> {
+    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifExtcapHeader, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0 / core::mem::size_of::<u32>()),
@@ -1325,7 +1325,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     #[inline(always)]
     pub fn soc_mgmt_control(
         &self,
-    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifSocMgmtControl, &TMmio> {
+    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifSocMgmtControl, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(4 / core::mem::size_of::<u32>()),
@@ -1337,7 +1337,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     #[inline(always)]
     pub fn soc_mgmt_status(
         &self,
-    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifSocMgmtStatus, &TMmio> {
+    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifSocMgmtStatus, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(8 / core::mem::size_of::<u32>()),
@@ -1349,7 +1349,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     #[inline(always)]
     pub fn soc_mgmt_rsvd_0(
         &self,
-    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifSocMgmtRsvd0, &TMmio> {
+    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifSocMgmtRsvd0, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0xc / core::mem::size_of::<u32>()),
@@ -1361,7 +1361,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     #[inline(always)]
     pub fn soc_mgmt_rsvd_1(
         &self,
-    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifSocMgmtRsvd1, &TMmio> {
+    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifSocMgmtRsvd1, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x10 / core::mem::size_of::<u32>()),
@@ -1373,7 +1373,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     #[inline(always)]
     pub fn soc_mgmt_rsvd_2(
         &self,
-    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifSocMgmtRsvd2, &TMmio> {
+    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifSocMgmtRsvd2, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x14 / core::mem::size_of::<u32>()),
@@ -1385,7 +1385,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     #[inline(always)]
     pub fn soc_mgmt_rsvd_3(
         &self,
-    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifSocMgmtRsvd3, &TMmio> {
+    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifSocMgmtRsvd3, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x18 / core::mem::size_of::<u32>()),
@@ -1395,7 +1395,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`i3c_ctrl::regs::SocPadConfAnon66ReadVal`]; Write value: [`i3c_ctrl::regs::SocPadConfAnon66WriteVal`]
     #[inline(always)]
-    pub fn soc_pad_conf(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifSocPadConf, &TMmio> {
+    pub fn soc_pad_conf(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifSocPadConf, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x1c / core::mem::size_of::<u32>()),
@@ -1405,7 +1405,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`i3c_ctrl::regs::SocPadAttrAnon67ReadVal`]; Write value: [`i3c_ctrl::regs::SocPadAttrAnon67WriteVal`]
     #[inline(always)]
-    pub fn soc_pad_attr(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifSocPadAttr, &TMmio> {
+    pub fn soc_pad_attr(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifSocPadAttr, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x20 / core::mem::size_of::<u32>()),
@@ -1417,7 +1417,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     #[inline(always)]
     pub fn soc_mgmt_feature_2(
         &self,
-    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifSocMgmtFeature2, &TMmio> {
+    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifSocMgmtFeature2, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x24 / core::mem::size_of::<u32>()),
@@ -1429,7 +1429,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     #[inline(always)]
     pub fn soc_mgmt_feature_3(
         &self,
-    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifSocMgmtFeature3, &TMmio> {
+    ) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifSocMgmtFeature3, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x28 / core::mem::size_of::<u32>()),
@@ -1439,7 +1439,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`i3c_ctrl::regs::TRRegAnon70ReadVal`]; Write value: [`i3c_ctrl::regs::TRRegAnon70WriteVal`]
     #[inline(always)]
-    pub fn t_r_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifTRReg, &TMmio> {
+    pub fn t_r_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifTRReg, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x2c / core::mem::size_of::<u32>()),
@@ -1449,7 +1449,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`i3c_ctrl::regs::TFRegAnon71ReadVal`]; Write value: [`i3c_ctrl::regs::TFRegAnon71WriteVal`]
     #[inline(always)]
-    pub fn t_f_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifTFReg, &TMmio> {
+    pub fn t_f_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifTFReg, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x30 / core::mem::size_of::<u32>()),
@@ -1459,7 +1459,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`i3c_ctrl::regs::TSuDatRegAnon72ReadVal`]; Write value: [`i3c_ctrl::regs::TSuDatRegAnon72WriteVal`]
     #[inline(always)]
-    pub fn t_su_dat_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifTSuDatReg, &TMmio> {
+    pub fn t_su_dat_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifTSuDatReg, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x34 / core::mem::size_of::<u32>()),
@@ -1469,7 +1469,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`i3c_ctrl::regs::THdDatRegAnon73ReadVal`]; Write value: [`i3c_ctrl::regs::THdDatRegAnon73WriteVal`]
     #[inline(always)]
-    pub fn t_hd_dat_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifTHdDatReg, &TMmio> {
+    pub fn t_hd_dat_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifTHdDatReg, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x38 / core::mem::size_of::<u32>()),
@@ -1479,7 +1479,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`i3c_ctrl::regs::THighRegAnon74ReadVal`]; Write value: [`i3c_ctrl::regs::THighRegAnon74WriteVal`]
     #[inline(always)]
-    pub fn t_high_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifTHighReg, &TMmio> {
+    pub fn t_high_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifTHighReg, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x3c / core::mem::size_of::<u32>()),
@@ -1489,7 +1489,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`i3c_ctrl::regs::TLowRegAnon75ReadVal`]; Write value: [`i3c_ctrl::regs::TLowRegAnon75WriteVal`]
     #[inline(always)]
-    pub fn t_low_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifTLowReg, &TMmio> {
+    pub fn t_low_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifTLowReg, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x40 / core::mem::size_of::<u32>()),
@@ -1499,7 +1499,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`i3c_ctrl::regs::THdStaRegAnon76ReadVal`]; Write value: [`i3c_ctrl::regs::THdStaRegAnon76WriteVal`]
     #[inline(always)]
-    pub fn t_hd_sta_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifTHdStaReg, &TMmio> {
+    pub fn t_hd_sta_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifTHdStaReg, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x44 / core::mem::size_of::<u32>()),
@@ -1509,7 +1509,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`i3c_ctrl::regs::TSuStaRegAnon77ReadVal`]; Write value: [`i3c_ctrl::regs::TSuStaRegAnon77WriteVal`]
     #[inline(always)]
-    pub fn t_su_sta_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifTSuStaReg, &TMmio> {
+    pub fn t_su_sta_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifTSuStaReg, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x48 / core::mem::size_of::<u32>()),
@@ -1519,7 +1519,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`i3c_ctrl::regs::TSuStoRegAnon78ReadVal`]; Write value: [`i3c_ctrl::regs::TSuStoRegAnon78WriteVal`]
     #[inline(always)]
-    pub fn t_su_sto_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifTSuStoReg, &TMmio> {
+    pub fn t_su_sto_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifTSuStoReg, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x4c / core::mem::size_of::<u32>()),
@@ -1529,7 +1529,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`u32`]; Write value: [`u32`]
     #[inline(always)]
-    pub fn t_free_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifTFreeReg, &TMmio> {
+    pub fn t_free_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifTFreeReg, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x50 / core::mem::size_of::<u32>()),
@@ -1539,7 +1539,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`u32`]; Write value: [`u32`]
     #[inline(always)]
-    pub fn t_aval_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifTAvalReg, &TMmio> {
+    pub fn t_aval_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifTAvalReg, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x54 / core::mem::size_of::<u32>()),
@@ -1549,7 +1549,7 @@ impl<TMmio: ureg::Mmio> SocmgmtifBlock<TMmio> {
     }
     /// Read value: [`u32`]; Write value: [`u32`]
     #[inline(always)]
-    pub fn t_idle_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SocmgmtifTIdleReg, &TMmio> {
+    pub fn t_idle_reg(&self) -> ureg::RegRef<crate::i3c_ctrl::meta::SoCMgmtifTIdleReg, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x58 / core::mem::size_of::<u32>()),
@@ -6521,74 +6521,74 @@ pub mod meta {
         crate::i3c_ctrl::regs::DataBufferThldCtrlAnon58ReadVal,
         crate::i3c_ctrl::regs::DataBufferThldCtrlAnon58WriteVal,
     >;
-    pub type SocmgmtifExtcapHeader =
+    pub type SoCMgmtifExtcapHeader =
         ureg::ReadOnlyReg32<crate::i3c_ctrl::regs::ExtcapHeaderAnon59ReadVal>;
-    pub type SocmgmtifSocMgmtControl = ureg::ReadWriteReg32<0, u32, u32>;
-    pub type SocmgmtifSocMgmtStatus = ureg::ReadWriteReg32<0, u32, u32>;
-    pub type SocmgmtifSocMgmtRsvd0 = ureg::ReadWriteReg32<0, u32, u32>;
-    pub type SocmgmtifSocMgmtRsvd1 = ureg::ReadWriteReg32<0, u32, u32>;
-    pub type SocmgmtifSocMgmtRsvd2 = ureg::ReadWriteReg32<0, u32, u32>;
-    pub type SocmgmtifSocMgmtRsvd3 = ureg::ReadWriteReg32<0, u32, u32>;
-    pub type SocmgmtifSocPadConf = ureg::ReadWriteReg32<
+    pub type SoCMgmtifSocMgmtControl = ureg::ReadWriteReg32<0, u32, u32>;
+    pub type SoCMgmtifSocMgmtStatus = ureg::ReadWriteReg32<0, u32, u32>;
+    pub type SoCMgmtifSocMgmtRsvd0 = ureg::ReadWriteReg32<0, u32, u32>;
+    pub type SoCMgmtifSocMgmtRsvd1 = ureg::ReadWriteReg32<0, u32, u32>;
+    pub type SoCMgmtifSocMgmtRsvd2 = ureg::ReadWriteReg32<0, u32, u32>;
+    pub type SoCMgmtifSocMgmtRsvd3 = ureg::ReadWriteReg32<0, u32, u32>;
+    pub type SoCMgmtifSocPadConf = ureg::ReadWriteReg32<
         0,
         crate::i3c_ctrl::regs::SocPadConfAnon66ReadVal,
         crate::i3c_ctrl::regs::SocPadConfAnon66WriteVal,
     >;
-    pub type SocmgmtifSocPadAttr = ureg::ReadWriteReg32<
+    pub type SoCMgmtifSocPadAttr = ureg::ReadWriteReg32<
         0,
         crate::i3c_ctrl::regs::SocPadAttrAnon67ReadVal,
         crate::i3c_ctrl::regs::SocPadAttrAnon67WriteVal,
     >;
-    pub type SocmgmtifSocMgmtFeature2 = ureg::ReadWriteReg32<0, u32, u32>;
-    pub type SocmgmtifSocMgmtFeature3 = ureg::ReadWriteReg32<0, u32, u32>;
-    pub type SocmgmtifTRReg = ureg::ReadWriteReg32<
+    pub type SoCMgmtifSocMgmtFeature2 = ureg::ReadWriteReg32<0, u32, u32>;
+    pub type SoCMgmtifSocMgmtFeature3 = ureg::ReadWriteReg32<0, u32, u32>;
+    pub type SoCMgmtifTRReg = ureg::ReadWriteReg32<
         0,
         crate::i3c_ctrl::regs::TRRegAnon70ReadVal,
         crate::i3c_ctrl::regs::TRRegAnon70WriteVal,
     >;
-    pub type SocmgmtifTFReg = ureg::ReadWriteReg32<
+    pub type SoCMgmtifTFReg = ureg::ReadWriteReg32<
         0,
         crate::i3c_ctrl::regs::TFRegAnon71ReadVal,
         crate::i3c_ctrl::regs::TFRegAnon71WriteVal,
     >;
-    pub type SocmgmtifTSuDatReg = ureg::ReadWriteReg32<
+    pub type SoCMgmtifTSuDatReg = ureg::ReadWriteReg32<
         0,
         crate::i3c_ctrl::regs::TSuDatRegAnon72ReadVal,
         crate::i3c_ctrl::regs::TSuDatRegAnon72WriteVal,
     >;
-    pub type SocmgmtifTHdDatReg = ureg::ReadWriteReg32<
+    pub type SoCMgmtifTHdDatReg = ureg::ReadWriteReg32<
         0,
         crate::i3c_ctrl::regs::THdDatRegAnon73ReadVal,
         crate::i3c_ctrl::regs::THdDatRegAnon73WriteVal,
     >;
-    pub type SocmgmtifTHighReg = ureg::ReadWriteReg32<
+    pub type SoCMgmtifTHighReg = ureg::ReadWriteReg32<
         0,
         crate::i3c_ctrl::regs::THighRegAnon74ReadVal,
         crate::i3c_ctrl::regs::THighRegAnon74WriteVal,
     >;
-    pub type SocmgmtifTLowReg = ureg::ReadWriteReg32<
+    pub type SoCMgmtifTLowReg = ureg::ReadWriteReg32<
         0,
         crate::i3c_ctrl::regs::TLowRegAnon75ReadVal,
         crate::i3c_ctrl::regs::TLowRegAnon75WriteVal,
     >;
-    pub type SocmgmtifTHdStaReg = ureg::ReadWriteReg32<
+    pub type SoCMgmtifTHdStaReg = ureg::ReadWriteReg32<
         0,
         crate::i3c_ctrl::regs::THdStaRegAnon76ReadVal,
         crate::i3c_ctrl::regs::THdStaRegAnon76WriteVal,
     >;
-    pub type SocmgmtifTSuStaReg = ureg::ReadWriteReg32<
+    pub type SoCMgmtifTSuStaReg = ureg::ReadWriteReg32<
         0,
         crate::i3c_ctrl::regs::TSuStaRegAnon77ReadVal,
         crate::i3c_ctrl::regs::TSuStaRegAnon77WriteVal,
     >;
-    pub type SocmgmtifTSuStoReg = ureg::ReadWriteReg32<
+    pub type SoCMgmtifTSuStoReg = ureg::ReadWriteReg32<
         0,
         crate::i3c_ctrl::regs::TSuStoRegAnon78ReadVal,
         crate::i3c_ctrl::regs::TSuStoRegAnon78WriteVal,
     >;
-    pub type SocmgmtifTFreeReg = ureg::ReadWriteReg32<0, u32, u32>;
-    pub type SocmgmtifTAvalReg = ureg::ReadWriteReg32<0, u32, u32>;
-    pub type SocmgmtifTIdleReg = ureg::ReadWriteReg32<0, u32, u32>;
+    pub type SoCMgmtifTFreeReg = ureg::ReadWriteReg32<0, u32, u32>;
+    pub type SoCMgmtifTAvalReg = ureg::ReadWriteReg32<0, u32, u32>;
+    pub type SoCMgmtifTIdleReg = ureg::ReadWriteReg32<0, u32, u32>;
     pub type CtrlcfgExtcapHeader =
         ureg::ReadOnlyReg32<crate::i3c_ctrl::regs::ExtcapHeaderAnon82ReadVal>;
     pub type CtrlcfgControllerConfig =

@@ -5286,98 +5286,98 @@ pub trait I3cPeripheral {
         DataBufferThldCtrlO120WriteVal::default()
     }
     fn write_i3c_ec_tti_data_buffer_thld_ctrl(&mut self, _val: DataBufferThldCtrlO120ReadVal) {}
-    fn read_i3c_ec_so_cmgmt_if_extcap_header(&mut self) -> ExtcapHeaderO0WriteVal {
+    fn read_i3c_ec_soc_mgmt_if_extcap_header(&mut self) -> ExtcapHeaderO0WriteVal {
         ExtcapHeaderO0WriteVal::default()
     }
-    fn write_i3c_ec_so_cmgmt_if_extcap_header(&mut self, _val: ExtcapHeaderO0ReadVal) {}
-    fn read_i3c_ec_so_cmgmt_if_soc_mgmt_control(&mut self) -> u32 {
+    fn write_i3c_ec_soc_mgmt_if_extcap_header(&mut self, _val: ExtcapHeaderO0ReadVal) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self) -> u32 {
         0
     }
-    fn write_i3c_ec_so_cmgmt_if_soc_mgmt_control(&mut self, _val: u32) {}
-    fn read_i3c_ec_so_cmgmt_if_soc_mgmt_status(&mut self) -> u32 {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self, _val: u32) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self) -> u32 {
         0
     }
-    fn write_i3c_ec_so_cmgmt_if_soc_mgmt_status(&mut self, _val: u32) {}
-    fn read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_0(&mut self) -> u32 {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self, _val: u32) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_0(&mut self) -> u32 {
         0
     }
-    fn write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_0(&mut self, _val: u32) {}
-    fn read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_1(&mut self) -> u32 {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_0(&mut self, _val: u32) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_1(&mut self) -> u32 {
         0
     }
-    fn write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_1(&mut self, _val: u32) {}
-    fn read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_2(&mut self) -> u32 {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_1(&mut self, _val: u32) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self) -> u32 {
         0
     }
-    fn write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_2(&mut self, _val: u32) {}
-    fn read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_3(&mut self) -> u32 {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self, _val: u32) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self) -> u32 {
         0
     }
-    fn write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_3(&mut self, _val: u32) {}
-    fn read_i3c_ec_so_cmgmt_if_soc_pad_conf(&mut self) -> SocPadConfO56WriteVal {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self, _val: u32) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_pad_conf(&mut self) -> SocPadConfO56WriteVal {
         SocPadConfO56WriteVal::default()
     }
-    fn write_i3c_ec_so_cmgmt_if_soc_pad_conf(&mut self, _val: SocPadConfO56ReadVal) {}
-    fn read_i3c_ec_so_cmgmt_if_soc_pad_attr(&mut self) -> SocPadAttrO64WriteVal {
+    fn write_i3c_ec_soc_mgmt_if_soc_pad_conf(&mut self, _val: SocPadConfO56ReadVal) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_pad_attr(&mut self) -> SocPadAttrO64WriteVal {
         SocPadAttrO64WriteVal::default()
     }
-    fn write_i3c_ec_so_cmgmt_if_soc_pad_attr(&mut self, _val: SocPadAttrO64ReadVal) {}
-    fn read_i3c_ec_so_cmgmt_if_soc_mgmt_feature_2(&mut self) -> u32 {
+    fn write_i3c_ec_soc_mgmt_if_soc_pad_attr(&mut self, _val: SocPadAttrO64ReadVal) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self) -> u32 {
         0
     }
-    fn write_i3c_ec_so_cmgmt_if_soc_mgmt_feature_2(&mut self, _val: u32) {}
-    fn read_i3c_ec_so_cmgmt_if_soc_mgmt_feature_3(&mut self) -> u32 {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self, _val: u32) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self) -> u32 {
         0
     }
-    fn write_i3c_ec_so_cmgmt_if_soc_mgmt_feature_3(&mut self, _val: u32) {}
-    fn read_i3c_ec_so_cmgmt_if_t_r_reg(&mut self) -> TRRegO88WriteVal {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self, _val: u32) {}
+    fn read_i3c_ec_soc_mgmt_if_t_r_reg(&mut self) -> TRRegO88WriteVal {
         TRRegO88WriteVal::default()
     }
-    fn write_i3c_ec_so_cmgmt_if_t_r_reg(&mut self, _val: TRRegO88ReadVal) {}
-    fn read_i3c_ec_so_cmgmt_if_t_f_reg(&mut self) -> TFRegO96WriteVal {
+    fn write_i3c_ec_soc_mgmt_if_t_r_reg(&mut self, _val: TRRegO88ReadVal) {}
+    fn read_i3c_ec_soc_mgmt_if_t_f_reg(&mut self) -> TFRegO96WriteVal {
         TFRegO96WriteVal::default()
     }
-    fn write_i3c_ec_so_cmgmt_if_t_f_reg(&mut self, _val: TFRegO96ReadVal) {}
-    fn read_i3c_ec_so_cmgmt_if_t_su_dat_reg(&mut self) -> TSuDatRegO104WriteVal {
+    fn write_i3c_ec_soc_mgmt_if_t_f_reg(&mut self, _val: TFRegO96ReadVal) {}
+    fn read_i3c_ec_soc_mgmt_if_t_su_dat_reg(&mut self) -> TSuDatRegO104WriteVal {
         TSuDatRegO104WriteVal::default()
     }
-    fn write_i3c_ec_so_cmgmt_if_t_su_dat_reg(&mut self, _val: TSuDatRegO104ReadVal) {}
-    fn read_i3c_ec_so_cmgmt_if_t_hd_dat_reg(&mut self) -> THdDatRegO112WriteVal {
+    fn write_i3c_ec_soc_mgmt_if_t_su_dat_reg(&mut self, _val: TSuDatRegO104ReadVal) {}
+    fn read_i3c_ec_soc_mgmt_if_t_hd_dat_reg(&mut self) -> THdDatRegO112WriteVal {
         THdDatRegO112WriteVal::default()
     }
-    fn write_i3c_ec_so_cmgmt_if_t_hd_dat_reg(&mut self, _val: THdDatRegO112ReadVal) {}
-    fn read_i3c_ec_so_cmgmt_if_t_high_reg(&mut self) -> THighRegO120WriteVal {
+    fn write_i3c_ec_soc_mgmt_if_t_hd_dat_reg(&mut self, _val: THdDatRegO112ReadVal) {}
+    fn read_i3c_ec_soc_mgmt_if_t_high_reg(&mut self) -> THighRegO120WriteVal {
         THighRegO120WriteVal::default()
     }
-    fn write_i3c_ec_so_cmgmt_if_t_high_reg(&mut self, _val: THighRegO120ReadVal) {}
-    fn read_i3c_ec_so_cmgmt_if_t_low_reg(&mut self) -> TLowRegO128WriteVal {
+    fn write_i3c_ec_soc_mgmt_if_t_high_reg(&mut self, _val: THighRegO120ReadVal) {}
+    fn read_i3c_ec_soc_mgmt_if_t_low_reg(&mut self) -> TLowRegO128WriteVal {
         TLowRegO128WriteVal::default()
     }
-    fn write_i3c_ec_so_cmgmt_if_t_low_reg(&mut self, _val: TLowRegO128ReadVal) {}
-    fn read_i3c_ec_so_cmgmt_if_t_hd_sta_reg(&mut self) -> THdStaRegO136WriteVal {
+    fn write_i3c_ec_soc_mgmt_if_t_low_reg(&mut self, _val: TLowRegO128ReadVal) {}
+    fn read_i3c_ec_soc_mgmt_if_t_hd_sta_reg(&mut self) -> THdStaRegO136WriteVal {
         THdStaRegO136WriteVal::default()
     }
-    fn write_i3c_ec_so_cmgmt_if_t_hd_sta_reg(&mut self, _val: THdStaRegO136ReadVal) {}
-    fn read_i3c_ec_so_cmgmt_if_t_su_sta_reg(&mut self) -> TSuStaRegO144WriteVal {
+    fn write_i3c_ec_soc_mgmt_if_t_hd_sta_reg(&mut self, _val: THdStaRegO136ReadVal) {}
+    fn read_i3c_ec_soc_mgmt_if_t_su_sta_reg(&mut self) -> TSuStaRegO144WriteVal {
         TSuStaRegO144WriteVal::default()
     }
-    fn write_i3c_ec_so_cmgmt_if_t_su_sta_reg(&mut self, _val: TSuStaRegO144ReadVal) {}
-    fn read_i3c_ec_so_cmgmt_if_t_su_sto_reg(&mut self) -> TSuStoRegO152WriteVal {
+    fn write_i3c_ec_soc_mgmt_if_t_su_sta_reg(&mut self, _val: TSuStaRegO144ReadVal) {}
+    fn read_i3c_ec_soc_mgmt_if_t_su_sto_reg(&mut self) -> TSuStoRegO152WriteVal {
         TSuStoRegO152WriteVal::default()
     }
-    fn write_i3c_ec_so_cmgmt_if_t_su_sto_reg(&mut self, _val: TSuStoRegO152ReadVal) {}
-    fn read_i3c_ec_so_cmgmt_if_t_free_reg(&mut self) -> u32 {
+    fn write_i3c_ec_soc_mgmt_if_t_su_sto_reg(&mut self, _val: TSuStoRegO152ReadVal) {}
+    fn read_i3c_ec_soc_mgmt_if_t_free_reg(&mut self) -> u32 {
         0
     }
-    fn write_i3c_ec_so_cmgmt_if_t_free_reg(&mut self, _val: u32) {}
-    fn read_i3c_ec_so_cmgmt_if_t_aval_reg(&mut self) -> u32 {
+    fn write_i3c_ec_soc_mgmt_if_t_free_reg(&mut self, _val: u32) {}
+    fn read_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self) -> u32 {
         0
     }
-    fn write_i3c_ec_so_cmgmt_if_t_aval_reg(&mut self, _val: u32) {}
-    fn read_i3c_ec_so_cmgmt_if_t_idle_reg(&mut self) -> u32 {
+    fn write_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self, _val: u32) {}
+    fn read_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self) -> u32 {
         0
     }
-    fn write_i3c_ec_so_cmgmt_if_t_idle_reg(&mut self, _val: u32) {}
+    fn write_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self, _val: u32) {}
     fn read_i3c_ec_ctrl_cfg_extcap_header(&mut self) -> ExtcapHeaderO0WriteVal {
         ExtcapHeaderO0WriteVal::default()
     }
@@ -10743,139 +10743,139 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x200) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_extcap_header(),
+                self.periph.read_i3c_ec_soc_mgmt_if_extcap_header(),
             )),
             (emulator_types::RvSize::Word, 0x201..=0x203) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x204) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_control(),
+                self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_control(),
             )),
             (emulator_types::RvSize::Word, 0x205..=0x207) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x208) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_status(),
+                self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_status(),
             )),
             (emulator_types::RvSize::Word, 0x209..=0x20b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x20c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_0(),
+                self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_0(),
             )),
             (emulator_types::RvSize::Word, 0x20d..=0x20f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x210) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_1(),
+                self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_1(),
             )),
             (emulator_types::RvSize::Word, 0x211..=0x213) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x214) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_2(),
+                self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(),
             )),
             (emulator_types::RvSize::Word, 0x215..=0x217) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x218) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_3(),
+                self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(),
             )),
             (emulator_types::RvSize::Word, 0x219..=0x21b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x21c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_pad_conf(),
+                self.periph.read_i3c_ec_soc_mgmt_if_soc_pad_conf(),
             )),
             (emulator_types::RvSize::Word, 0x21d..=0x21f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x220) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_pad_attr(),
+                self.periph.read_i3c_ec_soc_mgmt_if_soc_pad_attr(),
             )),
             (emulator_types::RvSize::Word, 0x221..=0x223) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x224) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_feature_2(),
+                self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(),
             )),
             (emulator_types::RvSize::Word, 0x225..=0x227) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x228) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_feature_3(),
+                self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(),
             )),
             (emulator_types::RvSize::Word, 0x229..=0x22b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x22c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_r_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_r_reg(),
             )),
             (emulator_types::RvSize::Word, 0x22d..=0x22f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x230) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_f_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_f_reg(),
             )),
             (emulator_types::RvSize::Word, 0x231..=0x233) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x234) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_su_dat_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_su_dat_reg(),
             )),
             (emulator_types::RvSize::Word, 0x235..=0x237) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x238) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_hd_dat_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_hd_dat_reg(),
             )),
             (emulator_types::RvSize::Word, 0x239..=0x23b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x23c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_high_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_high_reg(),
             )),
             (emulator_types::RvSize::Word, 0x23d..=0x23f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x240) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_low_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_low_reg(),
             )),
             (emulator_types::RvSize::Word, 0x241..=0x243) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x244) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_hd_sta_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_hd_sta_reg(),
             )),
             (emulator_types::RvSize::Word, 0x245..=0x247) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x248) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_su_sta_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_su_sta_reg(),
             )),
             (emulator_types::RvSize::Word, 0x249..=0x24b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x24c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_su_sto_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_su_sto_reg(),
             )),
             (emulator_types::RvSize::Word, 0x24d..=0x24f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x250) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_free_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_free_reg(),
             )),
             (emulator_types::RvSize::Word, 0x251..=0x253) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x254) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_aval_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_aval_reg(),
             )),
             (emulator_types::RvSize::Word, 0x255..=0x257) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x258) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_idle_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_idle_reg(),
             )),
             (emulator_types::RvSize::Word, 0x259..=0x25b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -11612,49 +11612,49 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x200) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_extcap_header(ExtcapHeaderO0ReadVal::from(val));
+                    .write_i3c_ec_soc_mgmt_if_extcap_header(ExtcapHeaderO0ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x201..=0x203) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x204) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_control(val);
+                self.periph.write_i3c_ec_soc_mgmt_if_soc_mgmt_control(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x205..=0x207) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x208) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_status(val);
+                self.periph.write_i3c_ec_soc_mgmt_if_soc_mgmt_status(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x209..=0x20b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x20c) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_0(val);
+                self.periph.write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_0(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x20d..=0x20f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x210) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_1(val);
+                self.periph.write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_1(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x211..=0x213) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x214) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_2(val);
+                self.periph.write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x215..=0x217) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x218) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_3(val);
+                self.periph.write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x219..=0x21b) => {
@@ -11662,7 +11662,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x21c) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_soc_pad_conf(SocPadConfO56ReadVal::from(val));
+                    .write_i3c_ec_soc_mgmt_if_soc_pad_conf(SocPadConfO56ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x21d..=0x21f) => {
@@ -11670,21 +11670,21 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x220) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_soc_pad_attr(SocPadAttrO64ReadVal::from(val));
+                    .write_i3c_ec_soc_mgmt_if_soc_pad_attr(SocPadAttrO64ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x221..=0x223) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x224) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_feature_2(val);
+                self.periph.write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x225..=0x227) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x228) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_feature_3(val);
+                self.periph.write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x229..=0x22b) => {
@@ -11692,7 +11692,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x22c) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_r_reg(TRRegO88ReadVal::from(val));
+                    .write_i3c_ec_soc_mgmt_if_t_r_reg(TRRegO88ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x22d..=0x22f) => {
@@ -11700,7 +11700,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x230) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_f_reg(TFRegO96ReadVal::from(val));
+                    .write_i3c_ec_soc_mgmt_if_t_f_reg(TFRegO96ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x231..=0x233) => {
@@ -11708,7 +11708,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x234) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_su_dat_reg(TSuDatRegO104ReadVal::from(val));
+                    .write_i3c_ec_soc_mgmt_if_t_su_dat_reg(TSuDatRegO104ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x235..=0x237) => {
@@ -11716,7 +11716,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x238) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_hd_dat_reg(THdDatRegO112ReadVal::from(val));
+                    .write_i3c_ec_soc_mgmt_if_t_hd_dat_reg(THdDatRegO112ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x239..=0x23b) => {
@@ -11724,7 +11724,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x23c) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_high_reg(THighRegO120ReadVal::from(val));
+                    .write_i3c_ec_soc_mgmt_if_t_high_reg(THighRegO120ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x23d..=0x23f) => {
@@ -11732,7 +11732,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x240) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_low_reg(TLowRegO128ReadVal::from(val));
+                    .write_i3c_ec_soc_mgmt_if_t_low_reg(TLowRegO128ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x241..=0x243) => {
@@ -11740,7 +11740,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x244) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_hd_sta_reg(THdStaRegO136ReadVal::from(val));
+                    .write_i3c_ec_soc_mgmt_if_t_hd_sta_reg(THdStaRegO136ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x245..=0x247) => {
@@ -11748,7 +11748,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x248) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_su_sta_reg(TSuStaRegO144ReadVal::from(val));
+                    .write_i3c_ec_soc_mgmt_if_t_su_sta_reg(TSuStaRegO144ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x249..=0x24b) => {
@@ -11756,28 +11756,28 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x24c) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_su_sto_reg(TSuStoRegO152ReadVal::from(val));
+                    .write_i3c_ec_soc_mgmt_if_t_su_sto_reg(TSuStoRegO152ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x24d..=0x24f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x250) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_t_free_reg(val);
+                self.periph.write_i3c_ec_soc_mgmt_if_t_free_reg(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x251..=0x253) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x254) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_t_aval_reg(val);
+                self.periph.write_i3c_ec_soc_mgmt_if_t_aval_reg(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x255..=0x257) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x258) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_t_idle_reg(val);
+                self.periph.write_i3c_ec_soc_mgmt_if_t_idle_reg(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x259..=0x25b) => {
