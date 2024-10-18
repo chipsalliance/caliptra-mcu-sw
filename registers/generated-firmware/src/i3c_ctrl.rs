@@ -15,7 +15,7 @@ pub struct I3cCtrl {
     _priv: (),
 }
 impl I3cCtrl {
-    pub const PTR: *mut u32 = 0xd0000000 as *mut u32;
+    pub const PTR: *mut u32 = 0x10038100 as *mut u32;
     /// # Safety
     ///
     /// Caller must ensure that all concurrent use of this

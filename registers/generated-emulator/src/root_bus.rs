@@ -6,35 +6,35 @@
 //
 pub struct AutoRootBus {
     delegate: Option<Box<dyn emulator_bus::Bus>>,
+    pub i3c_periph: Option<crate::i3c::I3cBus>,
     pub spi_host_periph: Option<crate::spi_host::SpiHostBus>,
     pub uart_periph: Option<crate::uart::UartBus>,
     pub mci_periph: Option<crate::mci::MciBus>,
     pub mbox_periph: Option<crate::mbox::MboxBus>,
     pub soc_periph: Option<crate::soc::SocBus>,
     pub el2_pic_periph: Option<crate::el2_pic::El2PicBus>,
-    pub i3c_periph: Option<crate::i3c::I3cBus>,
 }
 impl AutoRootBus {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         delegate: Option<Box<dyn emulator_bus::Bus>>,
+        i3c_periph: Option<Box<dyn crate::i3c::I3cPeripheral>>,
         spi_host_periph: Option<Box<dyn crate::spi_host::SpiHostPeripheral>>,
         uart_periph: Option<Box<dyn crate::uart::UartPeripheral>>,
         mci_periph: Option<Box<dyn crate::mci::MciPeripheral>>,
         mbox_periph: Option<Box<dyn crate::mbox::MboxPeripheral>>,
         soc_periph: Option<Box<dyn crate::soc::SocPeripheral>>,
         el2_pic_periph: Option<Box<dyn crate::el2_pic::El2PicPeripheral>>,
-        i3c_periph: Option<Box<dyn crate::i3c::I3cPeripheral>>,
     ) -> Self {
         Self {
             delegate,
+            i3c_periph: i3c_periph.map(|p| crate::i3c::I3cBus { periph: p }),
             spi_host_periph: spi_host_periph.map(|p| crate::spi_host::SpiHostBus { periph: p }),
             uart_periph: uart_periph.map(|p| crate::uart::UartBus { periph: p }),
             mci_periph: mci_periph.map(|p| crate::mci::MciBus { periph: p }),
             mbox_periph: mbox_periph.map(|p| crate::mbox::MboxBus { periph: p }),
             soc_periph: soc_periph.map(|p| crate::soc::SocBus { periph: p }),
             el2_pic_periph: el2_pic_periph.map(|p| crate::el2_pic::El2PicBus { periph: p }),
-            i3c_periph: i3c_periph.map(|p| crate::i3c::I3cBus { periph: p }),
         }
     }
 }
@@ -45,6 +45,13 @@ impl emulator_bus::Bus for AutoRootBus {
         addr: emulator_types::RvAddr,
     ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
         let result = match addr {
+            0x10038100..=0x10039a88 => {
+                if let Some(periph) = self.i3c_periph.as_mut() {
+                    periph.read(size, addr)
+                } else {
+                    Err(emulator_bus::BusError::LoadAccessFault)
+                }
+            }
             0x20000000..=0x200001c0 => {
                 if let Some(periph) = self.spi_host_periph.as_mut() {
                     periph.read(size, addr)
@@ -82,13 +89,6 @@ impl emulator_bus::Bus for AutoRootBus {
             }
             0x60000000..=0x6000f018 => {
                 if let Some(periph) = self.el2_pic_periph.as_mut() {
-                    periph.read(size, addr)
-                } else {
-                    Err(emulator_bus::BusError::LoadAccessFault)
-                }
-            }
-            0xd0000000..=0xd0001988 => {
-                if let Some(periph) = self.i3c_periph.as_mut() {
                     periph.read(size, addr)
                 } else {
                     Err(emulator_bus::BusError::LoadAccessFault)
@@ -112,6 +112,13 @@ impl emulator_bus::Bus for AutoRootBus {
         val: emulator_types::RvData,
     ) -> Result<(), emulator_bus::BusError> {
         let result = match addr {
+            0x10038100..=0x10039a88 => {
+                if let Some(periph) = self.i3c_periph.as_mut() {
+                    periph.write(size, addr, val)
+                } else {
+                    Err(emulator_bus::BusError::StoreAccessFault)
+                }
+            }
             0x20000000..=0x200001c0 => {
                 if let Some(periph) = self.spi_host_periph.as_mut() {
                     periph.write(size, addr, val)
@@ -154,13 +161,6 @@ impl emulator_bus::Bus for AutoRootBus {
                     Err(emulator_bus::BusError::StoreAccessFault)
                 }
             }
-            0xd0000000..=0xd0001988 => {
-                if let Some(periph) = self.i3c_periph.as_mut() {
-                    periph.write(size, addr, val)
-                } else {
-                    Err(emulator_bus::BusError::StoreAccessFault)
-                }
-            }
             _ => Err(emulator_bus::BusError::StoreAccessFault),
         };
         if let Some(delegate) = self.delegate.as_mut() {
@@ -173,6 +173,9 @@ impl emulator_bus::Bus for AutoRootBus {
         }
     }
     fn poll(&mut self) {
+        if let Some(periph) = self.i3c_periph.as_mut() {
+            periph.poll();
+        }
         if let Some(periph) = self.spi_host_periph.as_mut() {
             periph.poll();
         }
@@ -189,9 +192,6 @@ impl emulator_bus::Bus for AutoRootBus {
             periph.poll();
         }
         if let Some(periph) = self.el2_pic_periph.as_mut() {
-            periph.poll();
-        }
-        if let Some(periph) = self.i3c_periph.as_mut() {
             periph.poll();
         }
         if let Some(delegate) = self.delegate.as_mut() {
@@ -199,6 +199,9 @@ impl emulator_bus::Bus for AutoRootBus {
         }
     }
     fn warm_reset(&mut self) {
+        if let Some(periph) = self.i3c_periph.as_mut() {
+            periph.warm_reset();
+        }
         if let Some(periph) = self.spi_host_periph.as_mut() {
             periph.warm_reset();
         }
@@ -215,9 +218,6 @@ impl emulator_bus::Bus for AutoRootBus {
             periph.warm_reset();
         }
         if let Some(periph) = self.el2_pic_periph.as_mut() {
-            periph.warm_reset();
-        }
-        if let Some(periph) = self.i3c_periph.as_mut() {
             periph.warm_reset();
         }
         if let Some(delegate) = self.delegate.as_mut() {
@@ -225,6 +225,9 @@ impl emulator_bus::Bus for AutoRootBus {
         }
     }
     fn update_reset(&mut self) {
+        if let Some(periph) = self.i3c_periph.as_mut() {
+            periph.update_reset();
+        }
         if let Some(periph) = self.spi_host_periph.as_mut() {
             periph.update_reset();
         }
@@ -241,9 +244,6 @@ impl emulator_bus::Bus for AutoRootBus {
             periph.update_reset();
         }
         if let Some(periph) = self.el2_pic_periph.as_mut() {
-            periph.update_reset();
-        }
-        if let Some(periph) = self.i3c_periph.as_mut() {
             periph.update_reset();
         }
         if let Some(delegate) = self.delegate.as_mut() {
