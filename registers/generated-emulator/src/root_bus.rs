@@ -87,7 +87,7 @@ impl emulator_bus::Bus for AutoRootBus {
                     Err(emulator_bus::BusError::LoadAccessFault)
                 }
             }
-            0xd0000000..=0xd0001934 => {
+            0xd0000000..=0xd0001988 => {
                 if let Some(periph) = self.i3c_periph.as_mut() {
                     periph.read(size, addr)
                 } else {
@@ -154,7 +154,7 @@ impl emulator_bus::Bus for AutoRootBus {
                     Err(emulator_bus::BusError::StoreAccessFault)
                 }
             }
-            0xd0000000..=0xd0001934 => {
+            0xd0000000..=0xd0001988 => {
                 if let Some(periph) = self.i3c_periph.as_mut() {
                     periph.write(size, addr, val)
                 } else {

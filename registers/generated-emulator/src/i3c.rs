@@ -10554,342 +10554,342 @@ impl emulator_bus::Bus for I3cBus {
             (emulator_types::RvSize::Word, 0x169..=0x16b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x16c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_stdby_ctrl_mode_extcap_header(),
-            )),
-            (emulator_types::RvSize::Word, 0x16d..=0x16f) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x170) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_stdby_ctrl_mode_stby_cr_control(),
-            )),
-            (emulator_types::RvSize::Word, 0x171..=0x173) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x174) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(),
-            )),
-            (emulator_types::RvSize::Word, 0x175..=0x177) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x178) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(),
-            )),
-            (emulator_types::RvSize::Word, 0x179..=0x17b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x17c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_stdby_ctrl_mode_rsvd_0(),
-            )),
-            (emulator_types::RvSize::Word, 0x17d..=0x17f) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
             (emulator_types::RvSize::Word, 0x180) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_stdby_ctrl_mode_stby_cr_status(),
+                self.periph.read_i3c_ec_stdby_ctrl_mode_extcap_header(),
             )),
             (emulator_types::RvSize::Word, 0x181..=0x183) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x184) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(),
+                self.periph.read_i3c_ec_stdby_ctrl_mode_stby_cr_control(),
             )),
             (emulator_types::RvSize::Word, 0x185..=0x187) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x188) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(),
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(),
             )),
             (emulator_types::RvSize::Word, 0x189..=0x18b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x18c) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(),
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(),
             )),
             (emulator_types::RvSize::Word, 0x18d..=0x18f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x190) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_stdby_ctrl_mode_rsvd_1(),
+                self.periph.read_i3c_ec_stdby_ctrl_mode_rsvd_0(),
             )),
             (emulator_types::RvSize::Word, 0x191..=0x193) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x194) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(),
+                self.periph.read_i3c_ec_stdby_ctrl_mode_stby_cr_status(),
             )),
             (emulator_types::RvSize::Word, 0x195..=0x197) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x198) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(),
+                self.periph
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(),
             )),
             (emulator_types::RvSize::Word, 0x199..=0x19b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x19c) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(),
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(),
             )),
             (emulator_types::RvSize::Word, 0x19d..=0x19f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1a0) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(),
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(),
             )),
             (emulator_types::RvSize::Word, 0x1a1..=0x1a3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1a4) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_stdby_ctrl_mode_rsvd_2(),
+                self.periph.read_i3c_ec_stdby_ctrl_mode_rsvd_1(),
             )),
             (emulator_types::RvSize::Word, 0x1a5..=0x1a7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1a8) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_stdby_ctrl_mode_rsvd_3(),
+                self.periph
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(),
             )),
             (emulator_types::RvSize::Word, 0x1a9..=0x1ab) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1ac) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_extcap_header(),
+                self.periph.read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(),
             )),
             (emulator_types::RvSize::Word, 0x1ad..=0x1af) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1b0) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_control(),
+                self.periph
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(),
             )),
             (emulator_types::RvSize::Word, 0x1b1..=0x1b3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1b4) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_status(),
+                self.periph
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(),
             )),
             (emulator_types::RvSize::Word, 0x1b5..=0x1b7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1b8) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_reset_control(),
+                self.periph.read_i3c_ec_stdby_ctrl_mode_rsvd_2(),
             )),
             (emulator_types::RvSize::Word, 0x1b9..=0x1bb) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1bc) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_interrupt_status(),
+                self.periph.read_i3c_ec_stdby_ctrl_mode_rsvd_3(),
             )),
             (emulator_types::RvSize::Word, 0x1bd..=0x1bf) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1c0) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_interrupt_enable(),
+                self.periph.read_i3c_ec_tti_extcap_header(),
             )),
             (emulator_types::RvSize::Word, 0x1c1..=0x1c3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1c4) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_interrupt_force(),
+                self.periph.read_i3c_ec_tti_control(),
             )),
             (emulator_types::RvSize::Word, 0x1c5..=0x1c7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
+            (emulator_types::RvSize::Word, 0x1c8) => Ok(emulator_types::RvData::from(
+                self.periph.read_i3c_ec_tti_status(),
+            )),
+            (emulator_types::RvSize::Word, 0x1c9..=0x1cb) => {
+                Err(emulator_bus::BusError::LoadAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x1cc) => Ok(emulator_types::RvData::from(
+                self.periph.read_i3c_ec_tti_reset_control(),
+            )),
+            (emulator_types::RvSize::Word, 0x1cd..=0x1cf) => {
+                Err(emulator_bus::BusError::LoadAddrMisaligned)
+            }
             (emulator_types::RvSize::Word, 0x1d0) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_tx_desc_queue_port(),
+                self.periph.read_i3c_ec_tti_interrupt_status(),
             )),
             (emulator_types::RvSize::Word, 0x1d1..=0x1d3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1d4) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_tx_data_port(),
+                self.periph.read_i3c_ec_tti_interrupt_enable(),
             )),
             (emulator_types::RvSize::Word, 0x1d5..=0x1d7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1d8) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_ibi_port(),
+                self.periph.read_i3c_ec_tti_interrupt_force(),
             )),
             (emulator_types::RvSize::Word, 0x1d9..=0x1db) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x1dc) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_queue_size(),
-            )),
-            (emulator_types::RvSize::Word, 0x1dd..=0x1df) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x1e0) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_ibi_queue_size(),
-            )),
-            (emulator_types::RvSize::Word, 0x1e1..=0x1e3) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
             (emulator_types::RvSize::Word, 0x1e4) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_queue_thld_ctrl(),
+                self.periph.read_i3c_ec_tti_tx_desc_queue_port(),
             )),
             (emulator_types::RvSize::Word, 0x1e5..=0x1e7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1e8) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_data_buffer_thld_ctrl(),
+                self.periph.read_i3c_ec_tti_tx_data_port(),
             )),
             (emulator_types::RvSize::Word, 0x1e9..=0x1eb) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1ec) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_extcap_header(),
+                self.periph.read_i3c_ec_tti_ibi_port(),
             )),
             (emulator_types::RvSize::Word, 0x1ed..=0x1ef) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1f0) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_control(),
+                self.periph.read_i3c_ec_tti_queue_size(),
             )),
             (emulator_types::RvSize::Word, 0x1f1..=0x1f3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1f4) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_status(),
+                self.periph.read_i3c_ec_tti_ibi_queue_size(),
             )),
             (emulator_types::RvSize::Word, 0x1f5..=0x1f7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1f8) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_0(),
+                self.periph.read_i3c_ec_tti_queue_thld_ctrl(),
             )),
             (emulator_types::RvSize::Word, 0x1f9..=0x1fb) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1fc) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_1(),
+                self.periph.read_i3c_ec_tti_data_buffer_thld_ctrl(),
             )),
             (emulator_types::RvSize::Word, 0x1fd..=0x1ff) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x200) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_2(),
+                self.periph.read_i3c_ec_so_cmgmt_if_extcap_header(),
             )),
             (emulator_types::RvSize::Word, 0x201..=0x203) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x204) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_3(),
+                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_control(),
             )),
             (emulator_types::RvSize::Word, 0x205..=0x207) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x208) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_pad_conf(),
+                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_status(),
             )),
             (emulator_types::RvSize::Word, 0x209..=0x20b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x20c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_pad_attr(),
+                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_0(),
             )),
             (emulator_types::RvSize::Word, 0x20d..=0x20f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x210) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_feature_2(),
+                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_1(),
             )),
             (emulator_types::RvSize::Word, 0x211..=0x213) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x214) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_feature_3(),
+                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_2(),
             )),
             (emulator_types::RvSize::Word, 0x215..=0x217) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x218) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_r_reg(),
+                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_3(),
             )),
             (emulator_types::RvSize::Word, 0x219..=0x21b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x21c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_f_reg(),
+                self.periph.read_i3c_ec_so_cmgmt_if_soc_pad_conf(),
             )),
             (emulator_types::RvSize::Word, 0x21d..=0x21f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x220) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_su_dat_reg(),
+                self.periph.read_i3c_ec_so_cmgmt_if_soc_pad_attr(),
             )),
             (emulator_types::RvSize::Word, 0x221..=0x223) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x224) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_hd_dat_reg(),
+                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_feature_2(),
             )),
             (emulator_types::RvSize::Word, 0x225..=0x227) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x228) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_high_reg(),
+                self.periph.read_i3c_ec_so_cmgmt_if_soc_mgmt_feature_3(),
             )),
             (emulator_types::RvSize::Word, 0x229..=0x22b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x22c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_low_reg(),
+                self.periph.read_i3c_ec_so_cmgmt_if_t_r_reg(),
             )),
             (emulator_types::RvSize::Word, 0x22d..=0x22f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x230) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_hd_sta_reg(),
+                self.periph.read_i3c_ec_so_cmgmt_if_t_f_reg(),
             )),
             (emulator_types::RvSize::Word, 0x231..=0x233) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x234) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_su_sta_reg(),
+                self.periph.read_i3c_ec_so_cmgmt_if_t_su_dat_reg(),
             )),
             (emulator_types::RvSize::Word, 0x235..=0x237) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x238) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_su_sto_reg(),
+                self.periph.read_i3c_ec_so_cmgmt_if_t_hd_dat_reg(),
             )),
             (emulator_types::RvSize::Word, 0x239..=0x23b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x23c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_free_reg(),
+                self.periph.read_i3c_ec_so_cmgmt_if_t_high_reg(),
             )),
             (emulator_types::RvSize::Word, 0x23d..=0x23f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x240) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_aval_reg(),
+                self.periph.read_i3c_ec_so_cmgmt_if_t_low_reg(),
             )),
             (emulator_types::RvSize::Word, 0x241..=0x243) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x244) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_so_cmgmt_if_t_idle_reg(),
+                self.periph.read_i3c_ec_so_cmgmt_if_t_hd_sta_reg(),
             )),
             (emulator_types::RvSize::Word, 0x245..=0x247) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x248) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_ctrl_cfg_extcap_header(),
+                self.periph.read_i3c_ec_so_cmgmt_if_t_su_sta_reg(),
             )),
             (emulator_types::RvSize::Word, 0x249..=0x24b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x24c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_ctrl_cfg_controller_config(),
+                self.periph.read_i3c_ec_so_cmgmt_if_t_su_sto_reg(),
             )),
             (emulator_types::RvSize::Word, 0x24d..=0x24f) => {
+                Err(emulator_bus::BusError::LoadAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x250) => Ok(emulator_types::RvData::from(
+                self.periph.read_i3c_ec_so_cmgmt_if_t_free_reg(),
+            )),
+            (emulator_types::RvSize::Word, 0x251..=0x253) => {
+                Err(emulator_bus::BusError::LoadAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x254) => Ok(emulator_types::RvData::from(
+                self.periph.read_i3c_ec_so_cmgmt_if_t_aval_reg(),
+            )),
+            (emulator_types::RvSize::Word, 0x255..=0x257) => {
+                Err(emulator_bus::BusError::LoadAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x258) => Ok(emulator_types::RvData::from(
+                self.periph.read_i3c_ec_so_cmgmt_if_t_idle_reg(),
+            )),
+            (emulator_types::RvSize::Word, 0x259..=0x25b) => {
+                Err(emulator_bus::BusError::LoadAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x260) => Ok(emulator_types::RvData::from(
+                self.periph.read_i3c_ec_ctrl_cfg_extcap_header(),
+            )),
+            (emulator_types::RvSize::Word, 0x261..=0x263) => {
+                Err(emulator_bus::BusError::LoadAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x264) => Ok(emulator_types::RvData::from(
+                self.periph.read_i3c_ec_ctrl_cfg_controller_config(),
+            )),
+            (emulator_types::RvSize::Word, 0x265..=0x267) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             _ => Err(emulator_bus::BusError::LoadAccessFault),
@@ -11369,63 +11369,18 @@ impl emulator_bus::Bus for I3cBus {
             (emulator_types::RvSize::Word, 0x169..=0x16b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x16c) => {
-                self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_extcap_header(ExtcapHeaderO0ReadVal::from(val));
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 0x16d..=0x16f) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x170) => {
-                self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_control(
-                    StbyCrControlO8ReadVal::from(val),
-                );
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 0x171..=0x173) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x174) => {
-                self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
-                        StbyCrDeviceAddrO16ReadVal::from(val),
-                    );
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 0x175..=0x177) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x178) => {
-                self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
-                        StbyCrCapabilitiesO24ReadVal::from(val),
-                    );
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 0x179..=0x17b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x17c) => {
-                self.periph.write_i3c_ec_stdby_ctrl_mode_rsvd_0(val);
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 0x17d..=0x17f) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
             (emulator_types::RvSize::Word, 0x180) => {
                 self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_status(StbyCrStatusO40ReadVal::from(val));
+                    .write_i3c_ec_stdby_ctrl_mode_extcap_header(ExtcapHeaderO0ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x181..=0x183) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x184) => {
-                self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(
-                        StbyCrDeviceCharO48ReadVal::from(val),
-                    );
+                self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_control(
+                    StbyCrControlO8ReadVal::from(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x185..=0x187) => {
@@ -11433,7 +11388,9 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x188) => {
                 self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(val);
+                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
+                        StbyCrDeviceAddrO16ReadVal::from(val),
+                    );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x189..=0x18b) => {
@@ -11441,8 +11398,8 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x18c) => {
                 self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
-                        StbyCrIntrStatusO64ReadVal::from(val),
+                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
+                        StbyCrCapabilitiesO24ReadVal::from(val),
                     );
                 Ok(())
             }
@@ -11450,7 +11407,7 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x190) => {
-                self.periph.write_i3c_ec_stdby_ctrl_mode_rsvd_1(val);
+                self.periph.write_i3c_ec_stdby_ctrl_mode_rsvd_0(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x191..=0x193) => {
@@ -11458,18 +11415,17 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x194) => {
                 self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
-                        StbyCrIntrSignalEnableO80ReadVal::from(val),
-                    );
+                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_status(StbyCrStatusO40ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x195..=0x197) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x198) => {
-                self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(
-                    StbyCrIntrForceO88ReadVal::from(val),
-                );
+                self.periph
+                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(
+                        StbyCrDeviceCharO48ReadVal::from(val),
+                    );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x199..=0x19b) => {
@@ -11477,9 +11433,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x19c) => {
                 self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(
-                        StbyCrCccConfigGetcapsO96ReadVal::from(val),
-                    );
+                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x19d..=0x19f) => {
@@ -11487,8 +11441,8 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x1a0) => {
                 self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(
-                        StbyCrCccConfigRstactParamsO104ReadVal::from(val),
+                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
+                        StbyCrIntrStatusO64ReadVal::from(val),
                     );
                 Ok(())
             }
@@ -11496,52 +11450,60 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1a4) => {
-                self.periph.write_i3c_ec_stdby_ctrl_mode_rsvd_2(val);
+                self.periph.write_i3c_ec_stdby_ctrl_mode_rsvd_1(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1a5..=0x1a7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1a8) => {
-                self.periph.write_i3c_ec_stdby_ctrl_mode_rsvd_3(val);
+                self.periph
+                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
+                        StbyCrIntrSignalEnableO80ReadVal::from(val),
+                    );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1a9..=0x1ab) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1ac) => {
-                self.periph
-                    .write_i3c_ec_tti_extcap_header(ExtcapHeaderO0ReadVal::from(val));
+                self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(
+                    StbyCrIntrForceO88ReadVal::from(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1ad..=0x1af) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1b0) => {
-                self.periph.write_i3c_ec_tti_control(val);
+                self.periph
+                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(
+                        StbyCrCccConfigGetcapsO96ReadVal::from(val),
+                    );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1b1..=0x1b3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1b4) => {
-                self.periph.write_i3c_ec_tti_status(val);
+                self.periph
+                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(
+                        StbyCrCccConfigRstactParamsO104ReadVal::from(val),
+                    );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1b5..=0x1b7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1b8) => {
-                self.periph
-                    .write_i3c_ec_tti_reset_control(ResetControlO24ReadVal::from(val));
+                self.periph.write_i3c_ec_stdby_ctrl_mode_rsvd_2(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1b9..=0x1bb) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1bc) => {
-                self.periph
-                    .write_i3c_ec_tti_interrupt_status(InterruptStatusO32ReadVal::from(val));
+                self.periph.write_i3c_ec_stdby_ctrl_mode_rsvd_3(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1bd..=0x1bf) => {
@@ -11549,150 +11511,150 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x1c0) => {
                 self.periph
-                    .write_i3c_ec_tti_interrupt_enable(InterruptEnableO40ReadVal::from(val));
+                    .write_i3c_ec_tti_extcap_header(ExtcapHeaderO0ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1c1..=0x1c3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1c4) => {
-                self.periph
-                    .write_i3c_ec_tti_interrupt_force(InterruptForceO48ReadVal::from(val));
+                self.periph.write_i3c_ec_tti_control(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1c5..=0x1c7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1c8) => {
-                self.periph.write_i3c_ec_tti_rx_desc_queue_port(val);
+                self.periph.write_i3c_ec_tti_status(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1c9..=0x1cb) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1cc) => {
-                self.periph.write_i3c_ec_tti_rx_data_port(val);
+                self.periph
+                    .write_i3c_ec_tti_reset_control(ResetControlO24ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1cd..=0x1cf) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x1dc) => {
+            (emulator_types::RvSize::Word, 0x1d0) => {
                 self.periph
-                    .write_i3c_ec_tti_queue_size(QueueSizeO96ReadVal::from(val));
+                    .write_i3c_ec_tti_interrupt_status(InterruptStatusO32ReadVal::from(val));
+                Ok(())
+            }
+            (emulator_types::RvSize::Word, 0x1d1..=0x1d3) => {
+                Err(emulator_bus::BusError::StoreAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x1d4) => {
+                self.periph
+                    .write_i3c_ec_tti_interrupt_enable(InterruptEnableO40ReadVal::from(val));
+                Ok(())
+            }
+            (emulator_types::RvSize::Word, 0x1d5..=0x1d7) => {
+                Err(emulator_bus::BusError::StoreAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x1d8) => {
+                self.periph
+                    .write_i3c_ec_tti_interrupt_force(InterruptForceO48ReadVal::from(val));
+                Ok(())
+            }
+            (emulator_types::RvSize::Word, 0x1d9..=0x1db) => {
+                Err(emulator_bus::BusError::StoreAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x1dc) => {
+                self.periph.write_i3c_ec_tti_rx_desc_queue_port(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1dd..=0x1df) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1e0) => {
-                self.periph
-                    .write_i3c_ec_tti_ibi_queue_size(IbiQueueSizeO104ReadVal::from(val));
+                self.periph.write_i3c_ec_tti_rx_data_port(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1e1..=0x1e3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x1e4) => {
-                self.periph
-                    .write_i3c_ec_tti_queue_thld_ctrl(QueueThldCtrlO112ReadVal::from(val));
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 0x1e5..=0x1e7) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x1e8) => {
-                self.periph.write_i3c_ec_tti_data_buffer_thld_ctrl(
-                    DataBufferThldCtrlO120ReadVal::from(val),
-                );
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 0x1e9..=0x1eb) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x1ec) => {
-                self.periph
-                    .write_i3c_ec_so_cmgmt_if_extcap_header(ExtcapHeaderO0ReadVal::from(val));
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 0x1ed..=0x1ef) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
             (emulator_types::RvSize::Word, 0x1f0) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_control(val);
+                self.periph
+                    .write_i3c_ec_tti_queue_size(QueueSizeO96ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1f1..=0x1f3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1f4) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_status(val);
+                self.periph
+                    .write_i3c_ec_tti_ibi_queue_size(IbiQueueSizeO104ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1f5..=0x1f7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1f8) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_0(val);
+                self.periph
+                    .write_i3c_ec_tti_queue_thld_ctrl(QueueThldCtrlO112ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1f9..=0x1fb) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1fc) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_1(val);
+                self.periph.write_i3c_ec_tti_data_buffer_thld_ctrl(
+                    DataBufferThldCtrlO120ReadVal::from(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1fd..=0x1ff) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x200) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_2(val);
+                self.periph
+                    .write_i3c_ec_so_cmgmt_if_extcap_header(ExtcapHeaderO0ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x201..=0x203) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x204) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_3(val);
+                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_control(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x205..=0x207) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x208) => {
-                self.periph
-                    .write_i3c_ec_so_cmgmt_if_soc_pad_conf(SocPadConfO56ReadVal::from(val));
+                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_status(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x209..=0x20b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x20c) => {
-                self.periph
-                    .write_i3c_ec_so_cmgmt_if_soc_pad_attr(SocPadAttrO64ReadVal::from(val));
+                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_0(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x20d..=0x20f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x210) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_feature_2(val);
+                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_1(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x211..=0x213) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x214) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_feature_3(val);
+                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_2(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x215..=0x217) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x218) => {
-                self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_r_reg(TRRegO88ReadVal::from(val));
+                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_rsvd_3(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x219..=0x21b) => {
@@ -11700,7 +11662,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x21c) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_f_reg(TFRegO96ReadVal::from(val));
+                    .write_i3c_ec_so_cmgmt_if_soc_pad_conf(SocPadConfO56ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x21d..=0x21f) => {
@@ -11708,23 +11670,21 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x220) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_su_dat_reg(TSuDatRegO104ReadVal::from(val));
+                    .write_i3c_ec_so_cmgmt_if_soc_pad_attr(SocPadAttrO64ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x221..=0x223) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x224) => {
-                self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_hd_dat_reg(THdDatRegO112ReadVal::from(val));
+                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_feature_2(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x225..=0x227) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x228) => {
-                self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_high_reg(THighRegO120ReadVal::from(val));
+                self.periph.write_i3c_ec_so_cmgmt_if_soc_mgmt_feature_3(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x229..=0x22b) => {
@@ -11732,7 +11692,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x22c) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_low_reg(TLowRegO128ReadVal::from(val));
+                    .write_i3c_ec_so_cmgmt_if_t_r_reg(TRRegO88ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x22d..=0x22f) => {
@@ -11740,7 +11700,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x230) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_hd_sta_reg(THdStaRegO136ReadVal::from(val));
+                    .write_i3c_ec_so_cmgmt_if_t_f_reg(TFRegO96ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x231..=0x233) => {
@@ -11748,7 +11708,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x234) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_su_sta_reg(TSuStaRegO144ReadVal::from(val));
+                    .write_i3c_ec_so_cmgmt_if_t_su_dat_reg(TSuDatRegO104ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x235..=0x237) => {
@@ -11756,28 +11716,31 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x238) => {
                 self.periph
-                    .write_i3c_ec_so_cmgmt_if_t_su_sto_reg(TSuStoRegO152ReadVal::from(val));
+                    .write_i3c_ec_so_cmgmt_if_t_hd_dat_reg(THdDatRegO112ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x239..=0x23b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x23c) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_t_free_reg(val);
+                self.periph
+                    .write_i3c_ec_so_cmgmt_if_t_high_reg(THighRegO120ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x23d..=0x23f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x240) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_t_aval_reg(val);
+                self.periph
+                    .write_i3c_ec_so_cmgmt_if_t_low_reg(TLowRegO128ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x241..=0x243) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x244) => {
-                self.periph.write_i3c_ec_so_cmgmt_if_t_idle_reg(val);
+                self.periph
+                    .write_i3c_ec_so_cmgmt_if_t_hd_sta_reg(THdStaRegO136ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x245..=0x247) => {
@@ -11785,7 +11748,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x248) => {
                 self.periph
-                    .write_i3c_ec_ctrl_cfg_extcap_header(ExtcapHeaderO0ReadVal::from(val));
+                    .write_i3c_ec_so_cmgmt_if_t_su_sta_reg(TSuStaRegO144ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x249..=0x24b) => {
@@ -11793,10 +11756,47 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x24c) => {
                 self.periph
-                    .write_i3c_ec_ctrl_cfg_controller_config(ControllerConfigO8ReadVal::from(val));
+                    .write_i3c_ec_so_cmgmt_if_t_su_sto_reg(TSuStoRegO152ReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x24d..=0x24f) => {
+                Err(emulator_bus::BusError::StoreAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x250) => {
+                self.periph.write_i3c_ec_so_cmgmt_if_t_free_reg(val);
+                Ok(())
+            }
+            (emulator_types::RvSize::Word, 0x251..=0x253) => {
+                Err(emulator_bus::BusError::StoreAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x254) => {
+                self.periph.write_i3c_ec_so_cmgmt_if_t_aval_reg(val);
+                Ok(())
+            }
+            (emulator_types::RvSize::Word, 0x255..=0x257) => {
+                Err(emulator_bus::BusError::StoreAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x258) => {
+                self.periph.write_i3c_ec_so_cmgmt_if_t_idle_reg(val);
+                Ok(())
+            }
+            (emulator_types::RvSize::Word, 0x259..=0x25b) => {
+                Err(emulator_bus::BusError::StoreAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x260) => {
+                self.periph
+                    .write_i3c_ec_ctrl_cfg_extcap_header(ExtcapHeaderO0ReadVal::from(val));
+                Ok(())
+            }
+            (emulator_types::RvSize::Word, 0x261..=0x263) => {
+                Err(emulator_bus::BusError::StoreAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x264) => {
+                self.periph
+                    .write_i3c_ec_ctrl_cfg_controller_config(ControllerConfigO8ReadVal::from(val));
+                Ok(())
+            }
+            (emulator_types::RvSize::Word, 0x265..=0x267) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             _ => Err(emulator_bus::BusError::StoreAccessFault),

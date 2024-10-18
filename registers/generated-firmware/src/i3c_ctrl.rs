@@ -105,28 +105,28 @@ impl<TMmio: ureg::Mmio> RegisterBlock<TMmio> {
     #[inline(always)]
     pub fn stdby_ctrl_mode(&self) -> StdbyctrlmodeBlock<&TMmio> {
         StdbyctrlmodeBlock {
-            ptr: unsafe { self.ptr.add(0x6c / core::mem::size_of::<u32>()) },
+            ptr: unsafe { self.ptr.add(0x80 / core::mem::size_of::<u32>()) },
             mmio: core::borrow::Borrow::borrow(&self.mmio),
         }
     }
     #[inline(always)]
     pub fn tti(&self) -> TtiBlock<&TMmio> {
         TtiBlock {
-            ptr: unsafe { self.ptr.add(0xac / core::mem::size_of::<u32>()) },
+            ptr: unsafe { self.ptr.add(0xc0 / core::mem::size_of::<u32>()) },
             mmio: core::borrow::Borrow::borrow(&self.mmio),
         }
     }
     #[inline(always)]
     pub fn so_cmgmt_if(&self) -> SocmgmtifBlock<&TMmio> {
         SocmgmtifBlock {
-            ptr: unsafe { self.ptr.add(0xec / core::mem::size_of::<u32>()) },
+            ptr: unsafe { self.ptr.add(0x100 / core::mem::size_of::<u32>()) },
             mmio: core::borrow::Borrow::borrow(&self.mmio),
         }
     }
     #[inline(always)]
     pub fn ctrl_cfg(&self) -> CtrlcfgBlock<&TMmio> {
         CtrlcfgBlock {
-            ptr: unsafe { self.ptr.add(0x148 / core::mem::size_of::<u32>()) },
+            ptr: unsafe { self.ptr.add(0x160 / core::mem::size_of::<u32>()) },
             mmio: core::borrow::Borrow::borrow(&self.mmio),
         }
     }
