@@ -1,27 +1,24 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "emulator"
+name = "emulator-caliptra"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-atty.workspace = true
+caliptra-api-types.workspace = true
+caliptra-emu-bus.workspace = true
 caliptra-emu-cpu.workspace = true
 caliptra-emu-periph.workspace = true
+caliptra-hw-model.workspace = true
+caliptra-registers.workspace = true
 clap.workspace = true
-console.workspace = true
-ctrlc.workspace = true
 elf.workspace = true
-emulator-bus.workspace = true
-emulator-caliptra.workspace = true
-emulator-cpu.workspace = true
-emulator-periph.workspace = true
-emulator-registers-generated.workspace = true
-emulator-types.workspace = true
 gdbstub_arch.workspace = true
 gdbstub.workspace = true
 hex.workspace = true
 tock-registers.workspace = true
+ctrlc.workspace = true
+console.workspace = true

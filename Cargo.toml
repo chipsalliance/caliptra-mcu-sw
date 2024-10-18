@@ -3,6 +3,7 @@
 [workspace]
 members = [
     "emulator/app",
+    "emulator/caliptra",
     "emulator/compliance-test",
     "emulator/bus",
     "emulator/cpu",
@@ -40,34 +41,41 @@ clap = { version = "4.5.11", features = [
     "unicode",
     "wrap_help",
 ] }
+caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
+caliptra-emu-bus = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
+caliptra-emu-cpu = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
+caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
+caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
+caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
 clap_derive = "4.5.11"
 console = "0.15.8"
+ctrlc = "3.4.5"
 elf = "0.7.4"
 emulator-bus = { path = "emulator/bus" }
+emulator-caliptra = { "path" = "emulator/caliptra" }
 emulator-cpu = { path = "emulator/cpu" }
 emulator-derive = { path = "emulator/derive" }
 emulator-periph = { path = "emulator/periph" }
 emulator-registers-generated = { path = "registers/generated-emulator" }
 emulator-types = { path = "emulator/types" }
-registers-generated = { path = "registers/generated-firmware" }
-getrandom = "0.2"
 gdbstub = "0.6.3"
 gdbstub_arch = "0.2.4"
+getrandom = "0.2"
 hex = "0.4.3"
 lazy_static = "1.4.0"
+num-derive = "0.4.2"
+num-traits = "0.2"
 proc-macro2 = "1.0.66"
 quote = "1.0"
+registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }
-syn = "1.0.107"
-tock-registers = { git = "https://github.com/tock/tock.git" }
-ctrlc = "3.4.5"
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
-num-traits = "0.2"
-num-derive = "0.4.2"
 num_enum = "0.7.2"
 zerocopy = "0.6.6"
+syn = "1.0.107"
+tock-registers = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
 
 # Always optimize the emulator during tests, as it is a major bottleneck for
 # test speed.

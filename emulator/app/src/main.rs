@@ -8,7 +8,7 @@ File Name:
 
 Abstract:
 
-    File contains main entrypoint for Caliptra Emulator.
+    File contains main entrypoint for Caliptra MCU Emulator.
 
 --*/
 
@@ -17,9 +17,12 @@ mod dis_test;
 mod elf;
 mod gdb;
 
-use clap::{Parser, Subcommand};
+use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAction};
+use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
+use clap::Parser;
 use console::{Key, Term};
-use emulator_bus::{Bus, Clock, Timer};
+use emulator_bus::{Clock, Timer};
+use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
 use emulator_periph::{CaliptraRootBus, CaliptraRootBusArgs};
 use emulator_registers_generated::root_bus::AutoRootBus;
@@ -60,29 +63,25 @@ struct Emulator {
     #[arg(short, long)]
     log_dir: Option<PathBuf>,
 
+    /// Trace instructions.
     #[arg(short, long, default_value_t = false)]
     trace_instr: bool,
 
+    /// Pass stdin to the MCU UART Rx.
     #[arg(short, long, default_value_t = true)]
     stdin_uart: bool,
-}
 
-#[derive(Subcommand)]
-enum Commands {
-    /// Build Tock image
-    Tock,
-    /// Run clippy on all targets
-    Clippy,
-    /// Check that all files are formatted
-    Format,
-    /// Run pre-check-in checks
-    Precheckin,
-    /// Check cargo lock
-    CargoLock,
-    /// Check files for Apache license header
-    HeaderCheck,
-    /// Add Apache license header to files where it is missing
-    HeaderFix,
+    /// Start a Caliptra CPU as well and connect to the MCU.
+    #[arg(short, long, default_value_t = false)]
+    caliptra: bool,
+
+    /// The ROM path for the Caliptra CPU.
+    #[arg(long)]
+    caliptra_rom: Option<PathBuf>,
+
+    /// The Firmware path for the Caliptra CPU.
+    #[arg(long)]
+    caliptra_firmware: Option<PathBuf>,
 }
 
 //const EXPECTED_CALIPTRA_BOOT_TIME_IN_CYCLES: u64 = 20_000_000; // 20 million cycles
@@ -128,9 +127,10 @@ fn read_console(running: Arc<AtomicBool>, stdin_uart: Option<Arc<Mutex<Option<u8
 }
 
 // CPU Main Loop (free_run no GDB)
-fn free_run<T: Bus>(
+fn free_run(
     running: Arc<AtomicBool>,
-    mut cpu: Cpu<T>,
+    mut mcu_cpu: Cpu<AutoRootBus>,
+    mut caliptra_cpu: Option<CaliptraMainCpu<CaliptraMainRootBus>>,
     trace_path: Option<PathBuf>,
     stdin_uart: Option<Arc<Mutex<Option<u8>>>>,
 ) {
@@ -139,7 +139,7 @@ fn free_run<T: Bus>(
     let stdin_uart_clone = stdin_uart.clone();
     std::thread::spawn(move || read_console(running_clone, stdin_uart_clone));
 
-    let timer = Timer::new(&cpu.clock.clone());
+    let timer = Timer::new(&mcu_cpu.clock.clone());
     if let Some(path) = trace_path {
         let mut f = File::create(path).unwrap();
         let trace_fn: &mut dyn FnMut(u32, RvInstr) = &mut |pc, instr| match instr {
@@ -160,9 +160,16 @@ fn free_run<T: Bus>(
                     timer.schedule_poll_in(1);
                 }
             }
-            let action = cpu.step(Some(trace_fn));
+            let action = mcu_cpu.step(Some(trace_fn));
             if action != StepAction::Continue {
                 break;
+            }
+            match caliptra_cpu.as_mut().map(|cpu| cpu.step(None)) {
+                Some(CaliptraMainStepAction::Continue) | None => {}
+                _ => {
+                    println!("Caliptra CPU Halted");
+                    caliptra_cpu = None;
+                }
             }
         }
     } else {
@@ -172,9 +179,16 @@ fn free_run<T: Bus>(
                     timer.schedule_poll_in(1);
                 }
             }
-            let action = cpu.step(None);
+            let action = mcu_cpu.step(None);
             if action != StepAction::Continue {
                 break;
+            }
+            match caliptra_cpu.as_mut().map(|cpu| cpu.step(None)) {
+                Some(CaliptraMainStepAction::Continue) | None => {}
+                _ => {
+                    println!("Caliptra CPU Halted");
+                    caliptra_cpu = None;
+                }
             }
         }
     };
@@ -237,6 +251,31 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         println!("ROM File {:?} does not exist", args_rom);
         exit(-1);
     }
+
+    let caliptra_cpu = if cli.caliptra {
+        if cli.gdb_port.is_some() {
+            println!("Caliptra CPU cannot be started with GDB enabled");
+            exit(-1);
+        }
+        if cli.caliptra_rom.is_none() {
+            println!("Caliptra ROM File is required if Caliptra is enabled");
+            exit(-1);
+        }
+        if cli.caliptra_firmware.is_none() {
+            println!("Caliptra ROM File is required if Caliptra is enabled");
+            exit(-1);
+        }
+        Some(
+            start_caliptra(&StartCaliptraArgs {
+                rom: cli.caliptra_rom.unwrap(),
+                firmware: cli.caliptra_firmware,
+                ..Default::default()
+            })
+            .expect("Failed to start Caliptra CPU"),
+        )
+    } else {
+        None
+    };
 
     let rom_buffer = read_binary(args_rom, 0)?;
     if rom_buffer.len() > CaliptraRootBus::ROM_SIZE {
@@ -306,7 +345,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             };
 
             // If no GDB Port is passed, Free Run
-            free_run(running.clone(), cpu, instr_trace, stdin_uart);
+            free_run(running.clone(), cpu, caliptra_cpu, instr_trace, stdin_uart);
         }
     }
 
