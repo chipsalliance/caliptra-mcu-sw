@@ -1,0 +1,91 @@
+[package_header_information]
+package_header_identifier="7B291C996DB64208801B02026E463C78"
+package_header_format_revision = 1
+package_release_date_time = "2023-05-17T05:09:22Z"
+package_version_string = "HGX-H100x8_0002_230517.3.0"
+package_version_string_type = "ASCII"
+package_sha256 = "8a1fd39afea9d6c722ea311678f153d0808512c1f094a8f52c78fd35cc6872b6"
+
+# FirmwareDeviceIdRecords
+[[firmware_device_id_records]]
+device_update_option_flags = 1
+component_image_set_version_string_type = "ASCII"
+applicable_components = [0, 1]
+component_image_set_version_string = "Firmware v1"
+firmware_device_package_data = [0xAA, 0xBB, 0xCC, 0xDD]
+reference_manifest_data = [0xEE, 0xFF]
+
+# Initial Descriptor for first FirmwareDeviceIdRecord
+[firmware_device_id_records.initial_descriptor]
+descriptor_type = "PCI_VENDOR_ID"
+descriptor_data = [0x01, 0x02, 0x03, 0x04]
+
+# Additional Descriptors for first FirmwareDeviceIdRecord
+[[firmware_device_id_records.additional_descriptors]]
+descriptor_type = "PCI_DEVICE_ID"
+descriptor_data = [0x10, 0x20]
+
+[[firmware_device_id_records.additional_descriptors]]
+descriptor_type = "PCI_SUBSYSTEM_ID"
+descriptor_data = [0x30, 0x40]
+
+# Second FirmwareDeviceIdRecord
+[[firmware_device_id_records]]
+device_update_option_flags = 0
+component_image_set_version_string_type = "ASCII"
+applicable_components = [1]
+component_image_set_version_string = "Firmware v2"
+firmware_device_package_data = [0x99, 0x88, 0x77, 0x66]
+reference_manifest_data = [0x55, 0x44]
+
+# Initial Descriptor for second FirmwareDeviceIdRecord
+[firmware_device_id_records.initial_descriptor]
+descriptor_type = "UUID"
+descriptor_data = [0x05, 0x06, 0x07, 0x08]
+
+# Additional Descriptor for second FirmwareDeviceIdRecord
+[[firmware_device_id_records.additional_descriptors]]
+descriptor_type = "ACPI_VENDOR_ID"
+descriptor_data = [0x15, 0x25, 0x35]
+
+# DownstreamDeviceIdRecords
+[[downstream_device_id_records]]
+update_option_flags = 1
+self_contained_activation_min_version_string_type = "ASCII"
+applicable_components = [1]
+self_contained_activation_min_version_string = "MinVersion 1.0"
+self_contained_activation_min_version_comparison_stamp = 12345678
+package_data = [0x88, 0x77, 0x66, 0x55]
+reference_manifest_data = [0x44, 0x33]
+
+# Descriptors for the Downstream Device
+[[downstream_device_id_records.record_descriptors]]
+descriptor_type = "UUID"
+descriptor_data = [0x05, 0x06, 0x07, 0x08]
+
+[[downstream_device_id_records.record_descriptors]]
+descriptor_type = "IANA_ENTERPRISE_ID"
+descriptor_data = [0x15, 0x25, 0x35]
+
+# ComponentImageInformation
+[[component_image_information]]
+image_location = "tests/manifests/img_128.bin"
+classification = 0x0001
+identifier = 0x0010
+comparison_stamp = 12345
+options = 0x0003
+requested_activation_method = 0x0007
+version_string_type = "ASCII"
+version_string = "v1.0.0"
+opaque_data = [0xAA, 0xBB, 0xCC, 0xDD]
+
+[[component_image_information]]
+image_location = "tests/manifests/img_512.bin"
+classification = 0xFFFF  # Downstream device
+identifier = 0x0020
+comparison_stamp = 54321
+options = 0x0001
+requested_activation_method = 0x0003
+version_string_type = "ASCII"
+version_string = "v2.3.4"
+opaque_data = [0x11, 0x22, 0x33, 0x44]

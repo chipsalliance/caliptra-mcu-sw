@@ -1,0 +1,32 @@
+[package_header_information]
+package_header_identifier="7B291C996DB64208801B02026E463C78"
+package_header_format_revision = 1
+package_release_date_time = "2023-05-17T05:09:22Z"
+package_version_string = "HGX-H100x8_0002_230517.3.0"
+package_version_string_type = "ASCII"
+package_sha256 = "8a1fd39afea9d6c722ea311678f153d0808512c1f094a8f52c78fd35cc6872b6"
+
+# FirmwareDeviceIdRecords
+[[firmware_device_id_records]]
+device_update_option_flags = 1
+component_image_set_version_string_type = "ASCII"
+applicable_components = [0]
+component_image_set_version_string = "Firmware v1"
+firmware_device_package_data = [0xAA, 0xBB, 0xCC, 0xDD]
+
+# Initial Descriptor for first FirmwareDeviceIdRecord
+[firmware_device_id_records.initial_descriptor]
+descriptor_type = "PCI_VENDOR_ID"
+descriptor_data = [0x01, 0x02, 0x03, 0x04]
+
+# ComponentImageInformation
+[[component_image_information]]
+image_location = "/a/b/c/d/e.txt"
+classification = 0x0001
+identifier = 0x0010
+comparison_stamp = 12345
+options = 0x0003
+requested_activation_method = 0x0007
+version_string_type = "ASCII"
+version_string = "v1.0.0"
+opaque_data = [0xAA, 0xBB, 0xCC, 0xDD]

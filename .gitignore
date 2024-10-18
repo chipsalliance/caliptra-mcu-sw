@@ -11,3 +11,4 @@
 
 riscv-arch-test
 *.pyc
+.vscode

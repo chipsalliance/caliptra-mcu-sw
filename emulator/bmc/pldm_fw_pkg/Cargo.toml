@@ -1,0 +1,17 @@
+[package]
+name = "pldm_fw_pkg"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "pldm_fw_pkg"
+path = "src/main.rs"
+
+[dependencies]
+chrono = {version = "0.4.38", features = ["serde"]}
+toml = "0.8.19"
+uuid = { version = "1.10.0", features = ["serde"]}
+serde = { version = "1.0", features = ["derive"] }
+crc = "3.2.1"
+clap.workspace = true
