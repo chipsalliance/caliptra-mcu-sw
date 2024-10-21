@@ -53,7 +53,7 @@ pub struct DownstreamDeviceIdRecord {
     pub self_contained_activation_min_version_string_type: StringType,
     pub applicable_components: Option<Vec<u8>>, // Variable bitfield
     pub self_contained_activation_min_version_string: Option<String>, // Up to 255 bytes
-    pub self_contained_activation_min_version_comparison_stamp: Option<u32>, // Optional uint32
+    pub self_contained_activation_min_version_comparison_stamp: Option<u32>,
     pub record_descriptors: Vec<Descriptor>,    // Reference to Descriptor struct
     pub package_data: Option<Vec<u8>>,          // Optional variable data field
     pub reference_manifest_data: Option<Vec<u8>>, // Optional reference manifest
