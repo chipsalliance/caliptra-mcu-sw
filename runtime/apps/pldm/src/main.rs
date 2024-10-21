@@ -1,8 +1,14 @@
 // Licensed under the Apache-2.0 license
 
-#![no_std]
+#![cfg_attr(target_arch = "riscv32", no_std)]
 #![no_main]
 #![allow(static_mut_refs)]
+
+#[macro_use]
+extern crate cfg_if;
+
+cfg_if! {
+    if #[cfg(target_arch = "riscv32")] {
 
 extern crate alloc;
 use alloc::boxed::Box;
@@ -246,6 +252,13 @@ impl Drop for TockSubscribe {
             )
             .unwrap();
             panic!("The TockSubscribe future was dropped before the upcall happened.");
+        }
+    }
+}
+    } else {
+        #[no_mangle]
+        pub extern "C" fn main() {
+            // no-op on x86 just to keep the build clean
         }
     }
 }

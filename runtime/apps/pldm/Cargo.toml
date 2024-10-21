@@ -7,6 +7,9 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+cfg-if.workspace = true
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
 critical-section = "1.1.2"
 embassy-executor = "0.5.0"
 embedded-alloc = "0.5.1"

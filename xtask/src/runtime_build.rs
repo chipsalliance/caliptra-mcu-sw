@@ -18,27 +18,13 @@ fn find_file(dir: &str, name: &str) -> Option<PathBuf> {
 
 pub(crate) fn runtime_build() -> Result<(), DynError> {
     let tock_dir = &PROJECT_ROOT.join("runtime");
-    let xtask_dir = &PROJECT_ROOT.join("xtask");
     // Based on the tock board Makefile.common.
     // Licensed under the Apache License, Version 2.0 or the MIT License.
     // SPDX-License-Identifier: Apache-2.0 OR MIT
     // Copyright Tock Contributors 2022.
-    let sysroot_stable = String::from_utf8(
-        StdCommand::new("cargo")
-            .args(["+stable", "rustc", "--", "--print", "sysroot"])
-            .current_dir(xtask_dir)
-            .output()?
-            .stdout,
-    )?
-    .trim()
-    .to_string();
-    if sysroot_stable.is_empty() {
-        Err("Failed to get stable sysroot")?;
-    }
-
     let sysroot = String::from_utf8(
         StdCommand::new("cargo")
-            .args(["+nightly", "rustc", "--", "--print", "sysroot"])
+            .args(["rustc", "--", "--print", "sysroot"])
             .current_dir(tock_dir)
             .output()?
             .stdout,
@@ -173,9 +159,8 @@ pub(crate) fn runtime_build() -> Result<(), DynError> {
     // Set variables of the key tools we need to compile a Tock kernel. Need to do
     // this after we handle if we are using the LLVM tools or not.
     let objcopy = std::env::var("OBJCOPY").map(Ok).unwrap_or_else(|_| {
-        // We need to get the full path to llvm, if it is installed.
-        // llvm is not installable on nightly though, so use the stable rust toolchain to find it
-        if let Some(llvm_size) = find_file(&sysroot_stable, "llvm-objcopy") {
+        // We need to get the full path to llvm-objcopy, if it is installed.
+        if let Some(llvm_size) = find_file(&sysroot, "llvm-objcopy") {
             Ok(llvm_size.to_str().unwrap().to_string())
         } else {
             Err("Could not find llvm-objcopy; perhaps you need to run `rustup component add llvm-tools` or set the OBJCOPY environment variable to where to find objcopy")
@@ -214,7 +199,6 @@ pub(crate) fn runtime_build() -> Result<(), DynError> {
 
     let mut cmd = StdCommand::new("cargo");
     let cmd = cmd
-        .arg("+nightly")
         .arg("rustc")
         .args(cargo_flags_tock.split(' '))
         .arg("--bin")

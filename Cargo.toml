@@ -33,6 +33,7 @@ clap = { version = "4.5.11", features = [
     "unicode",
     "wrap_help",
 ] }
+cfg-if = "1.0.0"
 clap_derive = "4.5.11"
 console = "0.15.8"
 elf = "0.7.4"

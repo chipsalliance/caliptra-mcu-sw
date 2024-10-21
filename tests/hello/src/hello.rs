@@ -12,8 +12,15 @@ Abstract:
 
 --*/
 
-#![no_std]
+#![cfg_attr(target_arch = "riscv32", no_std)]
 #![no_main]
+#![allow(static_mut_refs)]
+
+#[macro_use]
+extern crate cfg_if;
+
+cfg_if! {
+    if #[cfg(target_arch = "riscv32")] {
 
 use core::arch::global_asm;
 use core::ptr;
@@ -36,4 +43,12 @@ pub extern "C" fn main() {
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
+}
+
+    } else {
+        #[no_mangle]
+        pub extern "C" fn main() {
+
+        }
+    }
 }

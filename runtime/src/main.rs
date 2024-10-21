@@ -5,10 +5,20 @@
 
 //! Board file for VeeR EL2 emulation platform.
 
-#![no_std]
 // Disable this attribute when documenting, as a workaround for
 // https://github.com/rust-lang/rust/issues/62184.
-#![cfg_attr(not(doc), no_main)]
+//#![cfg_attr(not(doc), no_main)]
+
+#![cfg_attr(target_arch = "riscv32", no_std)]
+#![no_main]
+#![allow(static_mut_refs)]
+
+#[macro_use]
+extern crate cfg_if;
+
+cfg_if! {
+    if #[cfg(target_arch = "riscv32")] {
+
 
 mod chip;
 pub mod io;
@@ -42,8 +52,9 @@ pub type VeeRChip = crate::chip::VeeR<'static, VeeRDefaultPeripherals<'static>>;
 // Reference to the chip for panic dumps.
 static mut CHIP: Option<&'static VeeRChip> = None;
 // Static reference to process printer for panic dumps.
-static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
-    None;
+static mut PROCESS_PRINTER: Option<
+    &'static capsules_system::process_printer::ProcessPrinterText,
+> = None;
 
 // How should the kernel respond when a process faults.
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
@@ -81,7 +92,8 @@ impl KernelResources<VeeRChip> for VeeR {
     type SyscallFilter = ();
     type ProcessFault = ();
     type Scheduler = CooperativeSched<'static>;
-    type SchedulerTimer = VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>;
+    type SchedulerTimer =
+        VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>;
     type WatchDog = ();
     type ContextSwitchCallback = ();
 
@@ -203,9 +215,9 @@ pub unsafe fn main() {
     chip.enable_timer_interrupts();
 
     // enable interrupts globally
-    csr::CSR
-        .mie
-        .modify(csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::BIT29::SET);
+    csr::CSR.mie.modify(
+        csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::BIT29::SET,
+    );
     csr::CSR.mstatus.modify(csr::mstatus::mstatus::mie::SET);
 
     debug!("MCU initialization complete.");
@@ -259,4 +271,12 @@ pub unsafe fn main() {
     });
 
     board_kernel.kernel_loop(&veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
+}
+
+    } else {
+        #[no_mangle]
+        pub extern "C" fn main() {
+            // no-op on x86 just to keep the build clean
+        }
+    }
 }
