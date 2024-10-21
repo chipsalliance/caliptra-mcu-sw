@@ -12,6 +12,6 @@ path = "src/main.rs"
 chrono = {version = "0.4.38", features = ["serde"]}
 toml = "0.8.19"
 uuid = { version = "1.10.0", features = ["serde"]}
-serde = { version = "1.0", features = ["derive"] }
+serde.workspace = true
 crc = "3.2.1"
 clap.workspace = true
