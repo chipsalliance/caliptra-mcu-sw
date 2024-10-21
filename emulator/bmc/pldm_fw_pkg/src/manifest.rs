@@ -481,7 +481,7 @@ impl FirmwareManifest {
                     }
                 }
             }
-            // Verify component_image_set_version_string length is less than 255
+            // Verify component_image_set_version_string length is less than 256
             if let Some(ref version_string) = record.component_image_set_version_string {
                 if version_string.len() > 255 {
                     return Err(format!(
