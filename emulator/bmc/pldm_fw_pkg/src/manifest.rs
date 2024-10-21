@@ -560,7 +560,7 @@ impl FirmwareManifest {
 
         // Encode firmware_device_id_records
         let num_firmware_records = self.firmware_device_id_records.len() as u8;
-        buffer.write_all(&[num_firmware_records])?;
+        buffer.push(num_firmware_records);
         for record in &self.firmware_device_id_records {
             record.encode(&mut buffer, component_bitmap_bit_length)?;
         }
