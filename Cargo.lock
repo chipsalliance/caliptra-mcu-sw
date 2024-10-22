@@ -384,6 +384,8 @@ version = "0.1.0"
 dependencies = [
  "emulator-bus",
  "emulator-types",
+ "registers-generated",
+ "tock-registers 0.9.0 (git+https://github.com/tock/tock.git)",
 ]
 
 [[package]]
@@ -840,6 +842,7 @@ dependencies = [
 name = "registers-generated"
 version = "0.1.0"
 dependencies = [
+ "tock-registers 0.9.0 (git+https://github.com/tock/tock.git)",
  "ureg",
 ]
 

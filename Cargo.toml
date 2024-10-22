@@ -47,6 +47,7 @@ emulator-derive = { path = "emulator/derive" }
 emulator-periph = { path = "emulator/periph" }
 emulator-registers-generated = { path = "registers/generated-emulator" }
 emulator-types = { path = "emulator/types" }
+registers-generated = { path = "registers/generated-firmware" }
 getrandom = "0.2"
 gdbstub = "0.6.3"
 gdbstub_arch = "0.2.4"

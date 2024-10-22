@@ -119,6 +119,10 @@ mod snake_ident_tests {
 }
 
 pub fn camel_ident(name: &str) -> Ident {
+    format_ident!("{}", camel_case(name))
+}
+
+pub fn camel_case(name: &str) -> String {
     let mut result = String::new();
     if let Some(c) = name.chars().next() {
         if c.is_ascii_digit() {
@@ -139,7 +143,7 @@ pub fn camel_ident(name: &str) -> Ident {
         }
     }
     result = result.replace("Socmgmt", "SoCMgmt"); // hack for SoC
-    format_ident!("{}", tweak_keywords(&result))
+    String::from(tweak_keywords(&result))
 }
 
 #[cfg(test)]
@@ -251,7 +255,7 @@ fn generate_enum_selector(e: &Enum) -> TokenStream {
     }
 }
 
-pub fn generate_enums<'a>(enums: impl Iterator<Item = &'a Enum>) -> TokenStream {
+fn generate_enums<'a>(enums: impl Iterator<Item = &'a Enum>) -> TokenStream {
     let mut enum_tokens = TokenStream::new();
     let mut selector_tokens = TokenStream::new();
     let mut enums: Vec<_> = enums.collect();
@@ -356,20 +360,29 @@ pub fn hex_literal(val: u64) -> Literal {
     }
 }
 
-pub fn read_val_ident(base_name: &str, reg_type: &RegisterType) -> Ident {
+pub fn hex_const(val: u64) -> String {
+    if val > 9 {
+        format!("0x{val:x}")
+    } else {
+        format!("{val}")
+    }
+}
+
+fn read_val_ident(base_name: &str, reg_type: &RegisterType) -> Ident {
     format_ident!(
         "{}ReadVal",
         camel_ident((String::from(base_name) + reg_type.name.as_ref().unwrap()).as_str())
     )
 }
-pub fn write_val_ident(base_name: &str, reg_type: &RegisterType) -> Ident {
+
+fn write_val_ident(base_name: &str, reg_type: &RegisterType) -> Ident {
     format_ident!(
         "{}WriteVal",
         camel_ident((String::from(base_name) + reg_type.name.as_ref().unwrap()).as_str())
     )
 }
 
-pub fn generate_register(reg: &RegisterType, ignore_rw: bool, no_super: bool) -> TokenStream {
+fn generate_register(reg: &RegisterType, ignore_rw: bool, no_super: bool) -> TokenStream {
     let read_val_ident = read_val_ident("", reg);
     let write_val_ident = write_val_ident("", reg);
     let raw_type = format_ident!("{}", reg.width.rust_primitive_name());
@@ -563,7 +576,7 @@ pub fn generate_register(reg: &RegisterType, ignore_rw: bool, no_super: bool) ->
     result
 }
 
-pub fn generate_register_types<'a>(regs: impl Iterator<Item = &'a RegisterType>) -> TokenStream {
+fn generate_register_types<'a>(regs: impl Iterator<Item = &'a RegisterType>) -> TokenStream {
     let mut regs: Vec<_> = regs.collect();
     regs.sort_by_key(|e| &e.name);
     let mut tokens = TokenStream::new();
@@ -823,7 +836,173 @@ fn block_max_register_width(block: &RegisterBlock) -> RegisterWidth {
     }
 }
 
-pub fn generate_code(block: &ValidatedRegisterBlock, options: Options) -> TokenStream {
+fn indent(x: &str, num_spaces: usize) -> String {
+    let spaces = " ".repeat(num_spaces);
+    // preserve leading and trailing newlines
+    let start = if x.starts_with("\n") {
+        String::from("\n")
+    } else {
+        String::new()
+    };
+    start
+        + &x.lines()
+            .map(|line| format!("{}{}", spaces, line))
+            .collect::<Vec<_>>()
+            .join("\n")
+        + if x.ends_with("\n") { "\n" } else { "" }
+}
+
+pub fn generate_code(block: &ValidatedRegisterBlock, options: Options) -> String {
+    let options = options.compile();
+    let bit_tokens = generate_bitfields(block.register_types().values().map(|x| x.clone()));
+    let bit_tokens = indent(&bit_tokens, 4);
+
+    // let enum_tokens = generate_enums(block.enum_types().values().map(AsRef::as_ref));
+    // let mut reg_tokens = generate_register_types(
+    //     block
+    //         .register_types()
+    //         .values()
+    //         .filter(|t| !options.extern_types.contains_key(*t))
+    //         .map(AsRef::as_ref),
+    // );
+    // reg_tokens.extend(generate_register_types(
+    //     block
+    //         .block()
+    //         .declared_register_types
+    //         .iter()
+    //         .map(AsRef::as_ref),
+    // ));
+
+    // let mut subblock_type_tokens = TokenStream::new();
+    // let mut block_inner_tokens = TokenStream::new();
+    // let mut meta_tokens = TokenStream::new();
+    // let mut block_tokens = TokenStream::new();
+
+    // let mut instance_type_tokens = TokenStream::new();
+    // let mut subblock_instance_type_tokens = TokenStream::new();
+    let mut tokens = String::new();
+
+    // You can't set no_std in a module
+    if options.is_root_module {
+        tokens += "#![no_std]\n";
+    }
+
+    if !bit_tokens.trim().is_empty() {
+        tokens += &format!(
+            "pub mod bits {{
+    //! Types that represent individual registers (bitfields).
+    use tock_registers::register_bitfields;
+{bit_tokens}
+}}\n"
+        );
+    }
+    tokens
+}
+
+fn format_comment(comment: &str, indent: usize) -> String {
+    if comment.is_empty() {
+        return String::new();
+    }
+    let indent = " ".repeat(indent);
+    let mut result = String::new();
+    for line in comment.lines() {
+        result += &format!("{}/// {}\n", indent, line);
+    }
+    result
+}
+
+fn generate_bitfields(register_types: impl Iterator<Item = Rc<RegisterType>>) -> String {
+    let mut tokens8 = String::new();
+    let mut tokens16 = String::new();
+    let mut tokens32 = String::new();
+    let mut tokens64 = String::new();
+    let mut tokens128 = String::new();
+    for rt in register_types {
+        if has_single_32_bit_field(&rt) {
+            continue;
+        }
+        let name = camel_ident(rt.name.clone().unwrap().as_str());
+        let mut field_tokens = String::new();
+        field_tokens += &format!("{name} [\n");
+        for field in rt.fields.iter() {
+            let mut enum_tokens = String::new();
+            if let Some(enum_type) = field.enum_type.as_ref() {
+                for variant in enum_type.variants.iter() {
+                    let variant_ident = camel_case(&variant.name);
+                    let variant_value = hex_const(variant.value as u64);
+                    enum_tokens += &format!("{} = {},\n", variant_ident.to_string(), variant_value);
+                }
+            }
+            if !enum_tokens.is_empty() {
+                enum_tokens = format!("\n{}    ", indent(&enum_tokens, 8));
+            }
+            let comment = format_comment(&field.comment, 4);
+            let name = camel_ident(field.name.clone().as_ref());
+            let position = field.position;
+            let numbits = field.width;
+            field_tokens += &comment;
+            field_tokens +=
+                &format!("    {name} OFFSET({position}) NUMBITS({numbits}) [{enum_tokens}],\n");
+        }
+        field_tokens += "],\n";
+        field_tokens = indent(&field_tokens, 8);
+
+        match rt.width {
+            RegisterWidth::_8 => {
+                tokens8 += &field_tokens;
+            }
+            RegisterWidth::_16 => {
+                tokens16 += &field_tokens;
+            }
+            RegisterWidth::_32 => {
+                tokens32 += &field_tokens;
+            }
+            RegisterWidth::_64 => {
+                tokens64 += &field_tokens;
+            }
+            RegisterWidth::_128 => {
+                tokens128 += &field_tokens;
+            }
+        }
+    }
+
+    if tokens8.is_empty()
+        && tokens16.is_empty()
+        && tokens32.is_empty()
+        && tokens64.is_empty()
+        && tokens128.is_empty()
+    {
+        return String::new();
+    }
+
+    let mut tokens = String::new();
+    tokens += &format!("register_bitfields! {{\n    ");
+    if !tokens8.is_empty() {
+        tokens += "u8,\n";
+        tokens += &tokens8;
+    }
+    if !tokens16.is_empty() {
+        tokens += "u16,\n";
+        tokens += &tokens16;
+    }
+    if !tokens32.is_empty() {
+        tokens += "u32,\n";
+        tokens += &tokens32;
+    }
+    if !tokens64.is_empty() {
+        tokens += "u64,\n";
+        tokens += &tokens64;
+    }
+    if !tokens128.is_empty() {
+        tokens += "u128,\n";
+        tokens += &tokens128;
+    }
+    tokens += "}";
+
+    tokens
+}
+
+fn generate_code2(block: &ValidatedRegisterBlock, options: Options) -> TokenStream {
     let options = options.compile();
     let enum_tokens = generate_enums(block.enum_types().values().map(AsRef::as_ref));
     let mut reg_tokens = generate_register_types(

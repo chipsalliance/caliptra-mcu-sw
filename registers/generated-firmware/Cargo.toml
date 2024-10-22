@@ -7,4 +7,5 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
+tock-registers.workspace = true
 ureg.workspace = true
