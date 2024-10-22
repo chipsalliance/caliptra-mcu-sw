@@ -8,7 +8,7 @@ pub(crate) fn format() -> Result<(), DynError> {
     println!("Running: cargo fmt");
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .args(["+nightly", "fmt", "--check", "--all"])
+        .args(["fmt", "--check", "--all"])
         .env("RUSTFLAGS", "-Cpanic=abort -Zpanic_abort_tests")
         .status()?;
 

@@ -1,5 +1,29 @@
 # Caliptra MCU firmware and software
 
+## Building
+
+Install `rustup` to manage your Rust toolchain:
+
+```shell
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+(You may need to open a new shell or source `$HOME/.cargo/env`.)
+
+Do a full clone of the repository
+
+```shell
+git clone --recursive https://github.com/chipsalliance/caliptra-mcu-sw.git
+```
+
+Now you should be able to run all checks and builds:
+
+```sh
+cargo xtask precheckin
+```
+
+Commands such as `cargo b` and `cargo t` will also work, but won't execute the extra tests and RISC-V firmware builds.
+
 ## Documentation
 
 ## Directory structure
