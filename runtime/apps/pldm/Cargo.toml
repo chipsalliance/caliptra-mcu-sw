@@ -7,7 +7,6 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-cfg-if.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 critical-section = "1.1.2"

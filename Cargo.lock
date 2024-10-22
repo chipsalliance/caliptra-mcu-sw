@@ -791,7 +791,6 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 name = "pldm-app"
 version = "0.1.0"
 dependencies = [
- "cfg-if",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
@@ -853,7 +852,6 @@ dependencies = [
  "capsules-core",
  "capsules-extra",
  "capsules-system",
- "cfg-if",
  "components",
  "kernel",
  "riscv",
@@ -968,9 +966,6 @@ dependencies = [
 [[package]]
 name = "test-hello"
 version = "0.1.0"
-dependencies = [
- "cfg-if",
-]
 
 [[package]]
 name = "tickv"
