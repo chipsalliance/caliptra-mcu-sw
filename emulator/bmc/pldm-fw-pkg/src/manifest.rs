@@ -4,6 +4,9 @@ Licensed under the Apache-2.0 license.
 
 --*/
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Utc};
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::FromPrimitive;
+use num_traits::ToPrimitive;
 use serde::de::{self, Error as DeError};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
@@ -118,7 +121,7 @@ fn get_pldm_version(uuid: Uuid) -> PldmVersion {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, FromPrimitive, ToPrimitive)]
 pub enum DescriptorType {
     PciVendorId = 0x0000,
     IanaEnterpriseId = 0x0001,
@@ -144,74 +147,8 @@ pub enum DescriptorType {
 }
 
 impl DescriptorType {
-    fn as_u16(&self) -> u16 {
-        *self as u16
-    }
-    fn from_u16(val: u16) -> Self {
-        match val {
-            0x0000 => DescriptorType::PciVendorId,
-            0x0001 => DescriptorType::IanaEnterpriseId,
-            0x0002 => DescriptorType::Uuid,
-            0x0003 => DescriptorType::PnpVendorId,
-            0x0004 => DescriptorType::AcpiVendorId,
-            0x0005 => DescriptorType::IeeeAssignedCompanyId,
-            0x0006 => DescriptorType::ScsiVendorId,
-            0x0100 => DescriptorType::PciDeviceId,
-            0x0101 => DescriptorType::PciSubsystemVendorId,
-            0x0102 => DescriptorType::PciSubsystemId,
-            0x0103 => DescriptorType::PciRevisionId,
-            0x0104 => DescriptorType::PnpProductIdentifier,
-            0x0105 => DescriptorType::AcpiProductIdentifier,
-            0x0106 => DescriptorType::AsciiModelNumberLong,
-            0x0107 => DescriptorType::AsciiModelNumberShort,
-            0x0108 => DescriptorType::ScsiProductId,
-            0x0109 => DescriptorType::UbmControllerDeviceCode,
-            0x010A => DescriptorType::IeeeEui64Id,
-            0x010B => DescriptorType::PciRevisionIdRange,
-            0x8000 => DescriptorType::VendorDefined,
-            _ => DescriptorType::Unknown,
-        }
-    }
-}
-
-impl fmt::Display for DescriptorType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                DescriptorType::PciVendorId => "PCI_VENDOR_ID",
-                DescriptorType::IanaEnterpriseId => "IANA_ENTERPRISE_ID",
-                DescriptorType::Uuid => "UUID",
-                DescriptorType::PnpVendorId => "PNP_VENDOR_ID",
-                DescriptorType::AcpiVendorId => "ACPI_VENDOR_ID",
-                DescriptorType::IeeeAssignedCompanyId => "IEEE_ASSIGNED_COMPANY_ID",
-                DescriptorType::ScsiVendorId => "SCSI_VENDOR_ID",
-                DescriptorType::PciDeviceId => "PCI_DEVICE_ID",
-                DescriptorType::PciSubsystemVendorId => "PCI_SUBSYSTEM_VENDOR_ID",
-                DescriptorType::PciSubsystemId => "PCI_SUBSYSTEM_ID",
-                DescriptorType::PciRevisionId => "PCI_REVISION_ID",
-                DescriptorType::PnpProductIdentifier => "PNP_PRODUCT_IDENTIFIER",
-                DescriptorType::AcpiProductIdentifier => "ACPI_PRODUCT_IDENTIFIER",
-                DescriptorType::AsciiModelNumberLong => "ASCII_MODEL_NUMBER_LONG",
-                DescriptorType::AsciiModelNumberShort => "ASCII_MODEL_NUMBER_SHORT",
-                DescriptorType::ScsiProductId => "SCSI_PRODUCT_ID",
-                DescriptorType::UbmControllerDeviceCode => "UBM_CONTROLLER_DEVICE_CODE",
-                DescriptorType::IeeeEui64Id => "IEEE_EUI_64_ID",
-                DescriptorType::PciRevisionIdRange => "PCI_REVISION_ID_RANGE",
-                DescriptorType::VendorDefined => "VENDOR_DEFINED",
-                DescriptorType::Unknown => "UNKNOWN",
-            }
-        )
-    }
-}
-
-impl Serialize for DescriptorType {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let s = match *self {
+    fn as_string(&self) -> &str {
+        match *self {
             DescriptorType::PciVendorId => "PCI_VENDOR_ID",
             DescriptorType::IanaEnterpriseId => "IANA_ENTERPRISE_ID",
             DescriptorType::Uuid => "UUID",
@@ -232,8 +169,23 @@ impl Serialize for DescriptorType {
             DescriptorType::IeeeEui64Id => "IEEE_EUI_64_ID",
             DescriptorType::PciRevisionIdRange => "PCI_REVISION_ID_RANGE",
             DescriptorType::VendorDefined => "VENDOR_DEFINED",
-            DescriptorType::Unknown => "UNKNOWN",
-        };
+            _ => "UNKNOWN",
+        }
+    }
+}
+
+impl fmt::Display for DescriptorType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_string())
+    }
+}
+
+impl Serialize for DescriptorType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let s = self.as_string();
         serializer.serialize_str(s)
     }
 }
@@ -284,7 +236,7 @@ pub struct Descriptor {
     pub descriptor_data: Vec<u8>, // Variable length payload
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, FromPrimitive, ToPrimitive)]
 pub enum StringType {
     Unknown = 0,
     Ascii = 1,
@@ -295,35 +247,21 @@ pub enum StringType {
 }
 
 impl StringType {
-    fn as_byte(&self) -> u8 {
-        *self as u8
-    }
-    fn from_byte(byte: u8) -> Self {
-        match byte {
-            1 => StringType::Ascii,
-            2 => StringType::Utf8,
-            3 => StringType::Utf16,
-            4 => StringType::Utf16Le,
-            5 => StringType::Utf16Be,
-            _ => StringType::Unknown,
+    fn as_string(&self) -> &str {
+        match *self {
+            StringType::Ascii => "ASCII",
+            StringType::Utf8 => "UTF-8",
+            StringType::Utf16 => "UTF-16",
+            StringType::Utf16Le => "UTF-16LE",
+            StringType::Utf16Be => "UTF-16BE",
+            _ => "UNKNOWN",
         }
     }
 }
 
 impl fmt::Display for StringType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                StringType::Unknown => "UNKNOWN",
-                StringType::Ascii => "ASCII",
-                StringType::Utf8 => "UTF-8",
-                StringType::Utf16 => "UTF-16",
-                StringType::Utf16Le => "UTF-16LE",
-                StringType::Utf16Be => "UTF-16BE",
-            }
-        )
+        write!(f, "{}", self.as_string())
     }
 }
 
@@ -357,14 +295,7 @@ impl Serialize for StringType {
     where
         S: Serializer,
     {
-        let s = match *self {
-            StringType::Unknown => "UNKNOWN",
-            StringType::Ascii => "ASCII",
-            StringType::Utf8 => "UTF-8",
-            StringType::Utf16 => "UTF-16",
-            StringType::Utf16Le => "UTF-16LE",
-            StringType::Utf16Be => "UTF-16BE",
-        };
+        let s = self.as_string();
         serializer.serialize_str(s)
     }
 }
@@ -504,12 +435,12 @@ impl FirmwareManifest {
         // Encode downstream_device_id_records
         if let Some(downstream_device_id_records) = &self.downstream_device_id_records {
             let num_downstream_records = downstream_device_id_records.len() as u8;
-            buffer.write_all(&[num_downstream_records])?;
+            buffer.push(num_downstream_records);
             for record in downstream_device_id_records {
                 record.encode(&mut buffer, component_bitmap_bit_length)?;
             }
         } else {
-            buffer.write_all(&[0])?;
+            buffer.push(0);
         }
 
         // Encode component_image_information
@@ -737,37 +668,36 @@ impl PackageHeaderInformation {
         size
     }
 
-    fn encode<W: Write>(
+    fn encode(
         &self,
-        writer: &mut W,
+        buffer: &mut Vec<u8>,
         firmware_device_record: &[FirmwareDeviceIdRecord],
         downstream_device_record: &Option<Vec<DownstreamDeviceIdRecord>>,
         component_image_information: &[ComponentImageInformation],
     ) -> io::Result<()> {
         // Always encode as version 1.3
         let version13_uuid = PldmVersion::Version13.get_uuid().unwrap();
-        writer.write_all(version13_uuid.as_bytes())?;
-        writer.write_all(&self.package_header_format_revision.to_le_bytes())?;
+        buffer.write_all(version13_uuid.as_bytes())?;
+        buffer.write_all(&self.package_header_format_revision.to_le_bytes())?;
         let header_size = self.get_header_size(
             firmware_device_record,
             downstream_device_record,
             component_image_information,
         );
-        writer.write_all(&header_size.to_le_bytes())?; // TODO: add size for firmware_device_id_records, downstream_device_id_records, component_image_information
+        buffer.write_all(&header_size.to_le_bytes())?; // TODO: add size for firmware_device_id_records, downstream_device_id_records, component_image_information
 
         let timestamp: Timestamp104 = Timestamp104::from_datetime(self.package_release_date_time);
-        timestamp.encode(writer)?;
+        timestamp.encode(buffer)?;
 
         let component_bitmap_bit_length = component_image_information.len() as u16;
-        writer.write_all(&component_bitmap_bit_length.to_le_bytes())?;
-        writer.write_all(&[self.package_version_string_type.as_byte()])?;
+        buffer.write_all(&component_bitmap_bit_length.to_le_bytes())?;
+        buffer.push(self.package_version_string_type.to_u8().unwrap_or(0));
 
         if let Some(ref version_string) = self.package_version_string {
-            let byte_length = version_string.len() as u8;
-            writer.write_all(&byte_length.to_le_bytes())?;
-            writer.write_all(version_string.as_bytes())?;
+            buffer.push(version_string.len() as u8);
+            buffer.write_all(version_string.as_bytes())?;
         } else {
-            writer.write_all(&[0])?;
+            buffer.push(0);
         }
 
         Ok(())
@@ -791,7 +721,8 @@ impl PackageHeaderInformation {
         let component_bitmap_bit_length = u16::from_le_bytes(buffer2);
 
         reader.read_exact(&mut buffer1)?;
-        let package_version_string_type = StringType::from_byte(buffer1[0]);
+        let package_version_string_type =
+            StringType::from_u8(buffer1[0]).unwrap_or(StringType::Unknown);
 
         reader.read_exact(&mut buffer1)?;
         let package_version_string_length = buffer1[0];
@@ -838,23 +769,27 @@ impl PackageHeaderInformation {
 
 impl FirmwareDeviceIdRecord {
     // Encode the FirmwareDeviceIdRecord into a binary format
-    pub fn encode<W: Write>(&self, writer: &mut W, component_bitmap_length: u16) -> io::Result<()> {
+    pub fn encode(&self, buffer: &mut Vec<u8>, component_bitmap_length: u16) -> io::Result<()> {
         // Encode record_length (u16)
         let record_length = self.total_bytes(component_bitmap_length) as u16;
-        writer.write_all(&record_length.to_le_bytes())?;
+        buffer.write_all(&record_length.to_le_bytes())?;
 
         // Encode descriptor_count (u8), Add one for initial_descriptor
         if let Some(additional_descriptors) = &self.additional_descriptors {
-            writer.write_all(&[1 + additional_descriptors.len() as u8])?;
+            buffer.push(1u8 + additional_descriptors.len() as u8);
         } else {
-            writer.write_all(&[1])?;
+            buffer.push(1u8);
         }
 
         // Encode device_update_option_flags (u32)
-        writer.write_all(&self.device_update_option_flags.to_le_bytes())?;
+        buffer.write_all(&self.device_update_option_flags.to_le_bytes())?;
 
         // Encode component_image_set_version_string_type (u8)
-        writer.write_all(&[self.component_image_set_version_string_type.as_byte()])?;
+        buffer.push(
+            self.component_image_set_version_string_type
+                .to_u8()
+                .unwrap_or(0),
+        );
 
         // Encode component_image_set_version_string_length (u8)
         let version_string_length = self
@@ -862,22 +797,22 @@ impl FirmwareDeviceIdRecord {
             .as_ref()
             .unwrap()
             .len() as u8;
-        writer.write_all(&[version_string_length])?;
+        buffer.push(version_string_length);
 
         // Encode firmware_device_package_data_length (u16)
         if let Some(firmware_package_data_ref) = &self.firmware_device_package_data {
             let firmware_package_data_length = firmware_package_data_ref.len() as u16;
-            writer.write_all(&firmware_package_data_length.to_le_bytes())?;
+            buffer.write_all(&firmware_package_data_length.to_le_bytes())?;
         } else {
-            writer.write_all(&0u16.to_le_bytes())?; // No package data, write zero length
+            buffer.write_all(&0u16.to_le_bytes())?; // No package data, write zero length
         }
 
         // Encode reference_manifest_length (u32)
         if let Some(reference_manifest_data_ref) = &self.reference_manifest_data {
             let reference_manifest_length = reference_manifest_data_ref.len() as u32;
-            writer.write_all(&reference_manifest_length.to_le_bytes())?;
+            buffer.write_all(&reference_manifest_length.to_le_bytes())?;
         } else {
-            writer.write_all(&0u32.to_le_bytes())?; // No manifest data, write zero length
+            buffer.write_all(&0u32.to_le_bytes())?; // No manifest data, write zero length
         }
 
         // Encode applicable_components
@@ -892,32 +827,32 @@ impl FirmwareDeviceIdRecord {
                 }
             }
         }
-        writer.write_all(&bitmap)?;
+        buffer.write_all(&bitmap)?;
 
         // Encode component_image_set_version_string
         if let Some(version_string) = &self.component_image_set_version_string {
             let version_string_bytes = version_string.as_bytes();
-            writer.write_all(version_string_bytes)?;
+            buffer.write_all(version_string_bytes)?;
         }
 
         // Encode initial_descriptor
-        self.initial_descriptor.encode(writer)?;
+        self.initial_descriptor.encode(buffer)?;
 
         // Encode additional_descriptors length as u8, followed by each descriptor
         if let Some(additional_descriptors) = &self.additional_descriptors {
             for descriptor in additional_descriptors {
-                descriptor.encode(writer)?;
+                descriptor.encode(buffer)?;
             }
         }
 
         // Encode firmware_device_package_data
         if let Some(package_data) = &self.firmware_device_package_data {
-            writer.write_all(package_data)?;
+            buffer.write_all(package_data)?;
         }
 
         // Encode reference_manifest_data
         if let Some(manifest_data) = &self.reference_manifest_data {
-            writer.write_all(manifest_data)?;
+            buffer.write_all(manifest_data)?;
         }
 
         Ok(())
@@ -948,7 +883,8 @@ impl FirmwareDeviceIdRecord {
         // Decode component_image_set_version_string_type (u8)
         let mut string_type = [0u8; 1];
         reader.read_exact(&mut string_type)?;
-        let component_image_set_version_string_type = StringType::from_byte(string_type[0]);
+        let component_image_set_version_string_type =
+            StringType::from_u8(string_type[0]).unwrap_or(StringType::Unknown);
 
         // Decode component_image_set_version_string_length (u8)
         let mut version_string_length = [0u8; 1];
@@ -1116,7 +1052,7 @@ impl Descriptor {
     // Encode the Descriptor into a binary format
     pub fn encode<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         // Encode descriptor_type (u16)
-        writer.write_all(&self.descriptor_type.as_u16().to_le_bytes())?;
+        writer.write_all(&(self.descriptor_type.to_i32().unwrap_or(0) as u16).to_le_bytes())?;
         // Encode descriptor_length (u16)
         let descriptor_length = self.descriptor_data.len() as u16;
         writer.write_all(&descriptor_length.to_le_bytes())?;
@@ -1131,7 +1067,8 @@ impl Descriptor {
         // Decode descriptor_type (u16)
         let mut descriptor_type_bytes = [0u8; 2];
         reader.read_exact(&mut descriptor_type_bytes)?;
-        let descriptor_type = DescriptorType::from_u16(u16::from_le_bytes(descriptor_type_bytes));
+        let descriptor_type = DescriptorType::from_u16(u16::from_le_bytes(descriptor_type_bytes))
+            .unwrap_or(DescriptorType::Unknown);
 
         // Decode descriptor_length (u16)
         let mut descriptor_length_bytes = [0u8; 2];
@@ -1155,7 +1092,7 @@ impl Descriptor {
 
 impl DownstreamDeviceIdRecord {
     // Encode the DownstreamDeviceIdRecord into a binary format
-    pub fn encode<W: Write>(&self, writer: &mut W, component_bitmap_length: u16) -> io::Result<()> {
+    pub fn encode(&self, writer: &mut Vec<u8>, component_bitmap_length: u16) -> io::Result<()> {
         // Calculate the total bytes required for encoding and set it to record_length
         let record_length = self.total_bytes(component_bitmap_length) as u16;
 
@@ -1163,15 +1100,17 @@ impl DownstreamDeviceIdRecord {
         writer.write_all(&record_length.to_le_bytes())?;
 
         // Encode descriptor_count (u8)
-        writer.write_all(&[self.record_descriptors.len() as u8])?;
+        writer.push(self.record_descriptors.len() as u8);
 
         // Encode update_option_flags (u32)
         writer.write_all(&self.update_option_flags.to_le_bytes())?;
 
         // Encode self_contained_activation_min_version_string_type (u8)
-        writer.write_all(&[self
-            .self_contained_activation_min_version_string_type
-            .as_byte()])?;
+        writer.push(
+            self.self_contained_activation_min_version_string_type
+                .to_u8()
+                .unwrap_or(0),
+        );
 
         // Calculate and encode self_contained_activation_min_version_string_length
         let version_string_length = self
@@ -1179,7 +1118,7 @@ impl DownstreamDeviceIdRecord {
             .as_ref()
             .map(|s| s.len() as u8)
             .unwrap_or(0);
-        writer.write_all(&[version_string_length])?;
+        writer.push(version_string_length);
 
         // Encode package_data_length (u16)
         if let Some(package_data_ref) = &self.package_data {
@@ -1267,7 +1206,7 @@ impl DownstreamDeviceIdRecord {
         let mut string_type = [0u8; 1];
         reader.read_exact(&mut string_type)?;
         let self_contained_activation_min_version_string_type =
-            StringType::from_byte(string_type[0]);
+            StringType::from_u8(string_type[0]).unwrap_or(StringType::Unknown);
 
         // Decode self_contained_activation_min_version_string_length (u8)
         let mut string_length = [0u8; 1];
@@ -1430,7 +1369,7 @@ impl DownstreamDeviceIdRecord {
 
 impl ComponentImageInformation {
     // Encode the ComponentImageInformation into a binary format
-    pub fn encode<W: Write>(&self, writer: &mut W, offset: u32) -> io::Result<u32> {
+    pub fn encode(&self, writer: &mut Vec<u8>, offset: u32) -> io::Result<u32> {
         // Encode classification (u16)
         writer.write_all(&self.classification.to_le_bytes())?;
 
@@ -1460,7 +1399,7 @@ impl ComponentImageInformation {
         writer.write_all(&file_size.to_le_bytes())?;
 
         // Encode version_string_type (u8)
-        writer.write_all(&[self.version_string_type.as_byte()])?;
+        writer.push(self.version_string_type.to_u8().unwrap_or(0));
 
         // Calculate and encode version_string_length
         let version_string_length = self
@@ -1468,7 +1407,7 @@ impl ComponentImageInformation {
             .as_ref()
             .map(|s| s.len() as u8)
             .unwrap_or(0);
-        writer.write_all(&[version_string_length])?;
+        writer.push(version_string_length);
 
         // Encode version_string
         if let Some(version_string) = &self.version_string {
@@ -1530,7 +1469,8 @@ impl ComponentImageInformation {
         // Decode version_string_type (u8)
         let mut version_type = [0u8; 1];
         reader.read_exact(&mut version_type)?;
-        let version_string_type = StringType::from_byte(version_type[0]);
+        let version_string_type =
+            StringType::from_u8(version_type[0]).unwrap_or(StringType::Unknown);
 
         // Decode version_string_length (u8)
         let mut version_length = [0u8; 1];

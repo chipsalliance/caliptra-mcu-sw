@@ -54,7 +54,8 @@ tock-registers = { git = "https://github.com/tock/tock.git" }
 ctrlc = "3.4.5"
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
-
+num-traits = "0.2"
+num-derive = "0.4.2"
 
 # Always optimize the emulator during tests, as it is a major bottleneck for
 # test speed.
