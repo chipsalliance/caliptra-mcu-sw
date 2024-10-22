@@ -9,45 +9,23 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
-            IbiPort [
-                IbiData OFFSET(0) NUMBITS(1) [],
+            pub PioIntrStatus [
+                /// Transfer error
+                TransferErrStat OFFSET(9) NUMBITS(1) [],
+                /// Transfer aborted
+                TransferAbortStat OFFSET(5) NUMBITS(1) [],
+                /// Response queue fulfils RESP_BUF_THLD
+                RespReadyStat OFFSET(4) NUMBITS(1) [],
+                /// Command queue fulfils CMD_EMPTY_BUF_THLD
+                CmdQueueReadyStat OFFSET(3) NUMBITS(1) [],
+                /// IBI queue fulfils IBI_STATUS_THLD
+                IbiStatusThldStat OFFSET(2) NUMBITS(1) [],
+                /// RX queue fulfils RX_BUF_THLD
+                RxThldStat OFFSET(1) NUMBITS(1) [],
+                /// TX queue fulfils TX_BUF_THLD
+                TxThldStat OFFSET(0) NUMBITS(1) [],
             ],
-            PioIntrStatusEnable [
-                /// Enable transfer error monitoring
-                TransferErrStatEn OFFSET(9) NUMBITS(1) [],
-                /// Enable transfer abort monitoring
-                TransferAbortStatEn OFFSET(5) NUMBITS(1) [],
-                /// Enable response queue monitoring
-                RespReadyStatEn OFFSET(4) NUMBITS(1) [],
-                /// Enable command queue monitoring
-                CmdQueueReadyStatEn OFFSET(3) NUMBITS(1) [],
-                /// Enable IBI queue monitoring
-                IbiStatusThldStatEn OFFSET(2) NUMBITS(1) [],
-                /// Enable RX queue monitoring
-                RxThldStatEn OFFSET(1) NUMBITS(1) [],
-                /// Enable TX queue monitoring
-                TxThldStatEn OFFSET(0) NUMBITS(1) [],
-            ],
-            AltQueueSize [
-                /// 1 indicates that IBI queue size is equal to 8*IBI_STATUS_SIZE
-                ExtIbiQueueEn OFFSET(28) NUMBITS(1) [],
-                /// If set, response and command queues are not equal lengths, then
-                /// ALT_RESP_QUEUE_SIZE contains response queue size
-                AltRespQueueEn OFFSET(24) NUMBITS(1) [],
-                /// Valid only if ALT_RESP_QUEUE_EN is set. Contains response queue size
-                AltRespQueueSize OFFSET(0) NUMBITS(8) [],
-            ],
-            DataBufferThldCtrl [
-                /// Postpone read command until RX queue has 2^(N+1) free entries
-                RxStartThld OFFSET(24) NUMBITS(3) [],
-                /// Postpone write command until TX queue has 2^(N+1) entries
-                TxStartThld OFFSET(16) NUMBITS(3) [],
-                /// Trigger RX_THLD_STAT interrupt when RX queue has 2^(N+1) or more entries
-                RxBufThld OFFSET(8) NUMBITS(3) [],
-                /// Trigger TX_THLD_STAT interrupt when TX queue has 2^(N+1) or more free entries
-                TxBufThld OFFSET(0) NUMBITS(3) [],
-            ],
-            IbiDataAbortCtrl [
+            pub IbiDataAbortCtrl [
                 /// Enable/disable IBI monitoring logic.
                 IbiDataAbortMon OFFSET(31) NUMBITS(1) [],
                 /// Define which IBI should be aborted:
@@ -71,7 +49,123 @@ pub mod bits {
                 /// [8] - must always be set to 1'b1
                 MatchIbiId OFFSET(8) NUMBITS(8) [],
             ],
-            HcCapabilities [
+            pub DatSectionOffset [
+                /// Individual DAT entry size.
+                /// 0 - 2 DWRODs,
+                /// 1:15 - reserved.
+                EntrySize OFFSET(28) NUMBITS(4) [],
+                /// Max number of DAT entries.
+                TableSize OFFSET(12) NUMBITS(7) [],
+                /// DAT entry offset in respect to BASE address.
+                TableOffset OFFSET(0) NUMBITS(12) [],
+            ],
+            pub IbiPort [
+                IbiData OFFSET(0) NUMBITS(1) [],
+            ],
+            pub IntrSignalEnable [
+                /// Enable SCHED_CMD_MISSED_TICK_STAT interrupt.
+                SchedCmdMissedTickSignalEn OFFSET(14) NUMBITS(1) [],
+                /// Enable HC_ERR_CMD_SEQ_TIMEOUT_STAT interrupt.
+                HcErrCmdSeqTimeoutSignalEn OFFSET(13) NUMBITS(1) [],
+                /// Enable HC_WARN_CMD_SEQ_STALL_STAT interrupt.
+                HcWarnCmdSeqStallSignalEn OFFSET(12) NUMBITS(1) [],
+                /// Enable HC_SEQ_CANCEL_STAT interrupt.
+                HcSeqCancelSignalEn OFFSET(11) NUMBITS(1) [],
+                /// Enable HC_INTERNAL_ERR_STAT interrupt.
+                HcInternalErrSignalEn OFFSET(10) NUMBITS(1) [],
+            ],
+            pub ControllerDeviceAddr [
+                /// Dynamic Address is Valid:
+                ///
+                /// 0 - dynamic address is invalid
+                ///
+                /// 1 - dynamic address is valid
+                DynamicAddrValid OFFSET(31) NUMBITS(1) [],
+                /// Device Dynamic Address
+                DynamicAddr OFFSET(16) NUMBITS(7) [],
+            ],
+            pub IntrStatus [
+                /// Scheduled commands could be executed due to controller being busy.
+                SchedCmdMissedTickStat OFFSET(14) NUMBITS(1) [],
+                /// Command timeout after prolonged stall.
+                HcErrCmdSeqTimeoutStat OFFSET(13) NUMBITS(1) [],
+                /// Clock stalled due to lack of commands.
+                HcWarnCmdSeqStallStat OFFSET(12) NUMBITS(1) [],
+                /// Controller had to cancel command sequence.
+                HcSeqCancelStat OFFSET(11) NUMBITS(1) [],
+                /// Controller internal unrecoverable error.
+                HcInternalErrStat OFFSET(10) NUMBITS(1) [],
+            ],
+            pub PresentState [
+                /// Controller I3C state:
+                ///
+                /// 0 - not bus owner
+                ///
+                /// 1 - bus owner
+                AcCurrentOwn OFFSET(2) NUMBITS(1) [],
+            ],
+            pub HcControl [
+                /// Host Controller Bus Enable
+                BusEnable OFFSET(31) NUMBITS(1) [],
+                /// Host Controller Resume:
+                ///
+                /// 0 - Controller is running
+                ///
+                /// 1 - Controller is suspended
+                ///
+                /// Write 1 to resume Controller operations.
+                Resume OFFSET(30) NUMBITS(1) [],
+                /// Host Controller Abort when set to 1
+                Abort OFFSET(29) NUMBITS(1) [],
+                /// Halt on Command Sequence Timeout when set to 1
+                HaltOnCmdSeqTimeout OFFSET(12) NUMBITS(1) [],
+                /// Hot-Join ACK/NACK Control:
+                ///
+                /// 0 - ACK Hot-Join request
+                ///
+                /// 1 - NACK Hot-Join request and send Broadcast CCC to disable Hot-Join
+                HotJoinCtrl OFFSET(8) NUMBITS(1) [],
+                /// I2C Device Present on Bus:
+                ///
+                /// 0 - pure I3C bus
+                ///
+                /// 1 - legacy I2C devices on the bus
+                I2cDevPresent OFFSET(7) NUMBITS(1) [],
+                /// DMA/PIO Mode Selector:
+                ///
+                /// 0 - DMA
+                ///
+                /// 1 - PIO
+                ModeSelector OFFSET(6) NUMBITS(1) [],
+                /// Data Byte Ordering Mode:
+                ///
+                /// 0 - Little Endian
+                ///
+                /// 1 - Big Endian
+                DataByteOrderMode OFFSET(4) NUMBITS(1) [],
+                /// Auto-Command Data Report:
+                ///
+                /// 0 - coalesced reporting
+                ///
+                /// 1 - separated reporting
+                AutocmdDataRpt OFFSET(3) NUMBITS(1) [],
+                /// Include I3C Broadcast Address:
+                ///
+                /// 0 - skips I3C Broadcast Address for private transfers
+                ///
+                /// 1 - includes I3C Broadcast Address for private transfers
+                IbaInclude OFFSET(0) NUMBITS(1) [],
+            ],
+            pub AltQueueSize [
+                /// 1 indicates that IBI queue size is equal to 8*IBI_STATUS_SIZE
+                ExtIbiQueueEn OFFSET(28) NUMBITS(1) [],
+                /// If set, response and command queues are not equal lengths, then
+                /// ALT_RESP_QUEUE_SIZE contains response queue size
+                AltRespQueueEn OFFSET(24) NUMBITS(1) [],
+                /// Valid only if ALT_RESP_QUEUE_EN is set. Contains response queue size
+                AltRespQueueSize OFFSET(0) NUMBITS(8) [],
+            ],
+            pub HcCapabilities [
                 /// Device context memory:
                 ///
                 /// 0 - must be physically continuous
@@ -151,132 +245,42 @@ pub mod bits {
                 /// 1 - supported
                 ComboCommand OFFSET(2) NUMBITS(1) [],
             ],
-            RingHeadersSectionOffset [
+            pub RingHeadersSectionOffset [
                 /// DMA ring headers section offset. Invalid if 0.
                 SectionOffset OFFSET(0) NUMBITS(16) [],
             ],
-            DctSectionOffset [
-                /// Individual DCT entry size.
-                ///
-                /// 0 - 4 DWORDs,
-                ///
-                /// 1:15 - Reserved.
-                EntrySize OFFSET(28) NUMBITS(4) [],
-                /// Index to DCT used during ENTDAA.
-                TableIndex OFFSET(19) NUMBITS(5) [],
-                /// Max number of DCT entries.
-                TableSize OFFSET(12) NUMBITS(7) [],
-                /// DCT entry offset in respect to BASE address.
-                TableOffset OFFSET(0) NUMBITS(12) [],
+            pub PioIntrSignalEnable [
+                /// Enable transfer error interrupt
+                TransferErrSignalEn OFFSET(9) NUMBITS(1) [],
+                /// Enable transfer abort interrupt
+                TransferAbortSignalEn OFFSET(5) NUMBITS(1) [],
+                /// Enable response ready interrupt
+                RespReadySignalEn OFFSET(4) NUMBITS(1) [],
+                /// Enable command queue interrupt
+                CmdQueueReadySignalEn OFFSET(3) NUMBITS(1) [],
+                /// Enable IBI queue interrupt
+                IbiStatusThldSignalEn OFFSET(2) NUMBITS(1) [],
+                /// Enable RX queue interrupt
+                RxThldSignalEn OFFSET(1) NUMBITS(1) [],
+                /// Enable TX queue interrupt
+                TxThldSignalEn OFFSET(0) NUMBITS(1) [],
             ],
-            HcControl [
-                /// Host Controller Bus Enable
-                BusEnable OFFSET(31) NUMBITS(1) [],
-                /// Host Controller Resume:
-                ///
-                /// 0 - Controller is running
-                ///
-                /// 1 - Controller is suspended
-                ///
-                /// Write 1 to resume Controller operations.
-                Resume OFFSET(30) NUMBITS(1) [],
-                /// Host Controller Abort when set to 1
-                Abort OFFSET(29) NUMBITS(1) [],
-                /// Halt on Command Sequence Timeout when set to 1
-                HaltOnCmdSeqTimeout OFFSET(12) NUMBITS(1) [],
-                /// Hot-Join ACK/NACK Control:
-                ///
-                /// 0 - ACK Hot-Join request
-                ///
-                /// 1 - NACK Hot-Join request and send Broadcast CCC to disable Hot-Join
-                HotJoinCtrl OFFSET(8) NUMBITS(1) [],
-                /// I2C Device Present on Bus:
-                ///
-                /// 0 - pure I3C bus
-                ///
-                /// 1 - legacy I2C devices on the bus
-                I2cDevPresent OFFSET(7) NUMBITS(1) [],
-                /// DMA/PIO Mode Selector:
-                ///
-                /// 0 - DMA
-                ///
-                /// 1 - PIO
-                ModeSelector OFFSET(6) NUMBITS(1) [],
-                /// Data Byte Ordering Mode:
-                ///
-                /// 0 - Little Endian
-                ///
-                /// 1 - Big Endian
-                DataByteOrderMode OFFSET(4) NUMBITS(1) [],
-                /// Auto-Command Data Report:
-                ///
-                /// 0 - coalesced reporting
-                ///
-                /// 1 - separated reporting
-                AutocmdDataRpt OFFSET(3) NUMBITS(1) [],
-                /// Include I3C Broadcast Address:
-                ///
-                /// 0 - skips I3C Broadcast Address for private transfers
-                ///
-                /// 1 - includes I3C Broadcast Address for private transfers
-                IbaInclude OFFSET(0) NUMBITS(1) [],
+            pub IntrStatusEnable [
+                /// Enable SCHED_CMD_MISSED_TICK_STAT monitoring.
+                SchedCmdMissedTickStatEn OFFSET(14) NUMBITS(1) [],
+                /// Enable HC_ERR_CMD_SEQ_TIMEOUT_STAT monitoring.
+                HcErrCmdSeqTimeoutStatEn OFFSET(13) NUMBITS(1) [],
+                /// Enable HC_WARN_CMD_SEQ_STALL_STAT monitoring.
+                HcWarnCmdSeqStallStatEn OFFSET(12) NUMBITS(1) [],
+                /// Enable HC_SEQ_CANCEL_STAT monitoring.
+                HcSeqCancelStatEn OFFSET(11) NUMBITS(1) [],
+                /// Enable HC_INTERNAL_ERR_STAT monitoring.
+                HcInternalErrStatEn OFFSET(10) NUMBITS(1) [],
             ],
-            DatSectionOffset [
-                /// Individual DAT entry size.
-                /// 0 - 2 DWRODs,
-                /// 1:15 - reserved.
-                EntrySize OFFSET(28) NUMBITS(4) [],
-                /// Max number of DAT entries.
-                TableSize OFFSET(12) NUMBITS(7) [],
-                /// DAT entry offset in respect to BASE address.
-                TableOffset OFFSET(0) NUMBITS(12) [],
-            ],
-            PresentState [
-                /// Controller I3C state:
-                ///
-                /// 0 - not bus owner
-                ///
-                /// 1 - bus owner
-                AcCurrentOwn OFFSET(2) NUMBITS(1) [],
-            ],
-            IntrStatus [
-                /// Scheduled commands could be executed due to controller being busy.
-                SchedCmdMissedTickStat OFFSET(14) NUMBITS(1) [],
-                /// Command timeout after prolonged stall.
-                HcErrCmdSeqTimeoutStat OFFSET(13) NUMBITS(1) [],
-                /// Clock stalled due to lack of commands.
-                HcWarnCmdSeqStallStat OFFSET(12) NUMBITS(1) [],
-                /// Controller had to cancel command sequence.
-                HcSeqCancelStat OFFSET(11) NUMBITS(1) [],
-                /// Controller internal unrecoverable error.
-                HcInternalErrStat OFFSET(10) NUMBITS(1) [],
-            ],
-            PioSectionOffset [
-                /// PIO section offset. Invalid if 0.
-                SectionOffset OFFSET(0) NUMBITS(16) [],
-            ],
-            DevCtxBaseHi [
+            pub DevCtxBaseHi [
                 BaseHi OFFSET(0) NUMBITS(1) [],
             ],
-            TerminationExtcapHeader [
-                /// Capability Structure Length in DWORDs
-                CapLength OFFSET(8) NUMBITS(16) [],
-                /// Extended Capability ID
-                CapId OFFSET(0) NUMBITS(8) [],
-            ],
-            IntrForce [
-                /// Force SCHED_CMD_MISSED_TICK_STAT interrupt.
-                SchedCmdMissedTickForce OFFSET(14) NUMBITS(1) [],
-                /// Force HC_ERR_CMD_SEQ_TIMEOUT_STAT interrupt.
-                HcErrCmdSeqTimeoutForce OFFSET(13) NUMBITS(1) [],
-                /// Force HC_WARN_CMD_SEQ_STALL_STAT interrupt.
-                HcWarnCmdSeqStallForce OFFSET(12) NUMBITS(1) [],
-                /// Force HC_SEQ_CANCEL_STAT interrupt.
-                HcSeqCancelForce OFFSET(11) NUMBITS(1) [],
-                /// Force HC_INTERNAL_ERR_STAT interrupt.
-                HcInternalErrForce OFFSET(10) NUMBITS(1) [],
-            ],
-            IbiNotifyCtrl [
+            pub IbiNotifyCtrl [
                 /// Notify about rejected IBI:
                 ///
                 /// 0 - do not enqueue rejected IBI,
@@ -296,33 +300,45 @@ pub mod bits {
                 /// 1 = enqueue rejected HJ on IBI queue/ring.
                 NotifyHjRejected OFFSET(0) NUMBITS(1) [],
             ],
-            IntCtrlCmdsEn [
-                /// Bitmask of supported MIPI commands.
-                MipiCmdsSupported OFFSET(1) NUMBITS(15) [],
-                /// Internal Control Commands:
+            pub DevCtxSg [
+                /// Buffer vs list pointer in device context:
                 ///
-                /// 1 - some or all internals commands sub-commands are supported,
+                /// 0 - continuous physical memory region,
                 ///
-                /// 0 - illegal.
-                IccSupport OFFSET(0) NUMBITS(1) [],
+                /// 1 - pointer to SG descriptor list.
+                Blp OFFSET(31) NUMBITS(1) [],
+                /// Number of SG entries.
+                ListSize OFFSET(0) NUMBITS(16) [],
             ],
-            PioIntrStatus [
-                /// Transfer error
-                TransferErrStat OFFSET(9) NUMBITS(1) [],
-                /// Transfer aborted
-                TransferAbortStat OFFSET(5) NUMBITS(1) [],
-                /// Response queue fulfils RESP_BUF_THLD
-                RespReadyStat OFFSET(4) NUMBITS(1) [],
-                /// Command queue fulfils CMD_EMPTY_BUF_THLD
-                CmdQueueReadyStat OFFSET(3) NUMBITS(1) [],
-                /// IBI queue fulfils IBI_STATUS_THLD
-                IbiStatusThldStat OFFSET(2) NUMBITS(1) [],
-                /// RX queue fulfils RX_BUF_THLD
-                RxThldStat OFFSET(1) NUMBITS(1) [],
-                /// TX queue fulfils TX_BUF_THLD
-                TxThldStat OFFSET(0) NUMBITS(1) [],
+            pub DctSectionOffset [
+                /// Individual DCT entry size.
+                ///
+                /// 0 - 4 DWORDs,
+                ///
+                /// 1:15 - Reserved.
+                EntrySize OFFSET(28) NUMBITS(4) [],
+                /// Index to DCT used during ENTDAA.
+                TableIndex OFFSET(19) NUMBITS(5) [],
+                /// Max number of DCT entries.
+                TableSize OFFSET(12) NUMBITS(7) [],
+                /// DCT entry offset in respect to BASE address.
+                TableOffset OFFSET(0) NUMBITS(12) [],
             ],
-            QueueThldCtrl [
+            pub ResetControl [
+                /// Clear IBI queue from software. Valid only in PIO mode.
+                IbiQueueRst OFFSET(5) NUMBITS(1) [],
+                /// Clear RX FIFO from software. Valid only in PIO mode.
+                RxFifoRst OFFSET(4) NUMBITS(1) [],
+                /// Clear TX FIFO from software. Valid only in PIO mode.
+                TxFifoRst OFFSET(3) NUMBITS(1) [],
+                /// Clear response queue from software. Valid only in PIO mode.
+                RespQueueRst OFFSET(2) NUMBITS(1) [],
+                /// Clear command queue from software. Valid only in PIO mode.
+                CmdQueueRst OFFSET(1) NUMBITS(1) [],
+                /// Reset controller from software.
+                SoftRst OFFSET(0) NUMBITS(1) [],
+            ],
+            pub QueueThldCtrl [
                 /// Triggers IBI_STATUS_THLD_STAT interrupt when IBI queue has N or more entries. Accepted values are 1:255
                 IbiStatusThld OFFSET(24) NUMBITS(8) [],
                 /// IBI Queue data segment size. Valida values are 1:63
@@ -332,26 +348,47 @@ pub mod bits {
                 /// Triggers CMD_QUEUE_READY_STAT interrupt when CMD queue has N or more free entries. Accepted values are 1:255
                 CmdEmptyBufThld OFFSET(0) NUMBITS(8) [],
             ],
-            ExtCapsSectionOffset [
+            pub IntCtrlCmdsEn [
+                /// Bitmask of supported MIPI commands.
+                MipiCmdsSupported OFFSET(1) NUMBITS(15) [],
+                /// Internal Control Commands:
+                ///
+                /// 1 - some or all internals commands sub-commands are supported,
+                ///
+                /// 0 - illegal.
+                IccSupport OFFSET(0) NUMBITS(1) [],
+            ],
+            pub PioSectionOffset [
+                /// PIO section offset. Invalid if 0.
+                SectionOffset OFFSET(0) NUMBITS(16) [],
+            ],
+            pub PioIntrStatusEnable [
+                /// Enable transfer error monitoring
+                TransferErrStatEn OFFSET(9) NUMBITS(1) [],
+                /// Enable transfer abort monitoring
+                TransferAbortStatEn OFFSET(5) NUMBITS(1) [],
+                /// Enable response queue monitoring
+                RespReadyStatEn OFFSET(4) NUMBITS(1) [],
+                /// Enable command queue monitoring
+                CmdQueueReadyStatEn OFFSET(3) NUMBITS(1) [],
+                /// Enable IBI queue monitoring
+                IbiStatusThldStatEn OFFSET(2) NUMBITS(1) [],
+                /// Enable RX queue monitoring
+                RxThldStatEn OFFSET(1) NUMBITS(1) [],
+                /// Enable TX queue monitoring
+                TxThldStatEn OFFSET(0) NUMBITS(1) [],
+            ],
+            pub ExtCapsSectionOffset [
                 /// Extended Capabilities section offset. Invalid if 0.
                 SectionOffset OFFSET(0) NUMBITS(16) [],
             ],
-            DevCtxBaseLo [
-                BaseLo OFFSET(0) NUMBITS(1) [],
+            pub TerminationExtcapHeader [
+                /// Capability Structure Length in DWORDs
+                CapLength OFFSET(8) NUMBITS(16) [],
+                /// Extended Capability ID
+                CapId OFFSET(0) NUMBITS(8) [],
             ],
-            IntrStatusEnable [
-                /// Enable SCHED_CMD_MISSED_TICK_STAT monitoring.
-                SchedCmdMissedTickStatEn OFFSET(14) NUMBITS(1) [],
-                /// Enable HC_ERR_CMD_SEQ_TIMEOUT_STAT monitoring.
-                HcErrCmdSeqTimeoutStatEn OFFSET(13) NUMBITS(1) [],
-                /// Enable HC_WARN_CMD_SEQ_STALL_STAT monitoring.
-                HcWarnCmdSeqStallStatEn OFFSET(12) NUMBITS(1) [],
-                /// Enable HC_SEQ_CANCEL_STAT monitoring.
-                HcSeqCancelStatEn OFFSET(11) NUMBITS(1) [],
-                /// Enable HC_INTERNAL_ERR_STAT monitoring.
-                HcInternalErrStatEn OFFSET(10) NUMBITS(1) [],
-            ],
-            QueueSize [
+            pub QueueSize [
                 /// TX queue size is equal to 2^(N+1), where N is this field value
                 TxDataBufferSize OFFSET(24) NUMBITS(8) [],
                 /// RX queue size is equal to 2^(N+1), where N is this field value
@@ -361,7 +398,22 @@ pub mod bits {
                 /// Command/Response queue size is equal to N
                 CrQueueSize OFFSET(0) NUMBITS(8) [],
             ],
-            PioIntrForce [
+            pub PioControl [
+                /// Stop current command descriptor execution forcefully and hold remaining commands.
+                /// 1 - Request PIO Abort,
+                /// 0 - Resume PIO execution
+                Abort OFFSET(2) NUMBITS(1) [],
+                /// Run/Stop execution of enqueued commands.
+                /// When set to 0, it holds execution of enqueued commands and runs current command to completion.
+                /// 1 - PIO Queue start request,
+                /// 0 - PIO Queue stop request.
+                Rs OFFSET(1) NUMBITS(1) [],
+                /// Enables PIO queues. When disabled, SW may not read from/write to PIO queues.
+                /// 1 - PIO queue enable request,
+                /// 0 - PIO queue disable request
+                Enable OFFSET(0) NUMBITS(1) [],
+            ],
+            pub PioIntrForce [
                 /// Force transfer error
                 TransferErrForce OFFSET(9) NUMBITS(1) [],
                 /// Force transfer aborted
@@ -377,82 +429,30 @@ pub mod bits {
                 /// Force TX queue interrupt
                 TxThldForce OFFSET(0) NUMBITS(1) [],
             ],
-            IntrSignalEnable [
-                /// Enable SCHED_CMD_MISSED_TICK_STAT interrupt.
-                SchedCmdMissedTickSignalEn OFFSET(14) NUMBITS(1) [],
-                /// Enable HC_ERR_CMD_SEQ_TIMEOUT_STAT interrupt.
-                HcErrCmdSeqTimeoutSignalEn OFFSET(13) NUMBITS(1) [],
-                /// Enable HC_WARN_CMD_SEQ_STALL_STAT interrupt.
-                HcWarnCmdSeqStallSignalEn OFFSET(12) NUMBITS(1) [],
-                /// Enable HC_SEQ_CANCEL_STAT interrupt.
-                HcSeqCancelSignalEn OFFSET(11) NUMBITS(1) [],
-                /// Enable HC_INTERNAL_ERR_STAT interrupt.
-                HcInternalErrSignalEn OFFSET(10) NUMBITS(1) [],
+            pub DevCtxBaseLo [
+                BaseLo OFFSET(0) NUMBITS(1) [],
             ],
-            ControllerDeviceAddr [
-                /// Dynamic Address is Valid:
-                ///
-                /// 0 - dynamic address is invalid
-                ///
-                /// 1 - dynamic address is valid
-                DynamicAddrValid OFFSET(31) NUMBITS(1) [],
-                /// Device Dynamic Address
-                DynamicAddr OFFSET(16) NUMBITS(7) [],
+            pub IntrForce [
+                /// Force SCHED_CMD_MISSED_TICK_STAT interrupt.
+                SchedCmdMissedTickForce OFFSET(14) NUMBITS(1) [],
+                /// Force HC_ERR_CMD_SEQ_TIMEOUT_STAT interrupt.
+                HcErrCmdSeqTimeoutForce OFFSET(13) NUMBITS(1) [],
+                /// Force HC_WARN_CMD_SEQ_STALL_STAT interrupt.
+                HcWarnCmdSeqStallForce OFFSET(12) NUMBITS(1) [],
+                /// Force HC_SEQ_CANCEL_STAT interrupt.
+                HcSeqCancelForce OFFSET(11) NUMBITS(1) [],
+                /// Force HC_INTERNAL_ERR_STAT interrupt.
+                HcInternalErrForce OFFSET(10) NUMBITS(1) [],
             ],
-            ResetControl [
-                /// Clear IBI queue from software. Valid only in PIO mode.
-                IbiQueueRst OFFSET(5) NUMBITS(1) [],
-                /// Clear RX FIFO from software. Valid only in PIO mode.
-                RxFifoRst OFFSET(4) NUMBITS(1) [],
-                /// Clear TX FIFO from software. Valid only in PIO mode.
-                TxFifoRst OFFSET(3) NUMBITS(1) [],
-                /// Clear response queue from software. Valid only in PIO mode.
-                RespQueueRst OFFSET(2) NUMBITS(1) [],
-                /// Clear command queue from software. Valid only in PIO mode.
-                CmdQueueRst OFFSET(1) NUMBITS(1) [],
-                /// Reset controller from software.
-                SoftRst OFFSET(0) NUMBITS(1) [],
-            ],
-            PioControl [
-                /// Stop current command descriptor execution forcefully and hold remaining commands.
-                /// 1 - Request PIO Abort,
-                /// 0 - Resume PIO execution
-                Abort OFFSET(2) NUMBITS(1) [],
-                /// Run/Stop execution of enqueued commands.
-                /// When set to 0, it holds execution of enqueued commands and runs current command to completion.
-                /// 1 - PIO Queue start request,
-                /// 0 - PIO Queue stop request.
-                Rs OFFSET(1) NUMBITS(1) [],
-                /// Enables PIO queues. When disabled, SW may not read from/write to PIO queues.
-                /// 1 - PIO queue enable request,
-                /// 0 - PIO queue disable request
-                Enable OFFSET(0) NUMBITS(1) [],
-            ],
-            PioIntrSignalEnable [
-                /// Enable transfer error interrupt
-                TransferErrSignalEn OFFSET(9) NUMBITS(1) [],
-                /// Enable transfer abort interrupt
-                TransferAbortSignalEn OFFSET(5) NUMBITS(1) [],
-                /// Enable response ready interrupt
-                RespReadySignalEn OFFSET(4) NUMBITS(1) [],
-                /// Enable command queue interrupt
-                CmdQueueReadySignalEn OFFSET(3) NUMBITS(1) [],
-                /// Enable IBI queue interrupt
-                IbiStatusThldSignalEn OFFSET(2) NUMBITS(1) [],
-                /// Enable RX queue interrupt
-                RxThldSignalEn OFFSET(1) NUMBITS(1) [],
-                /// Enable TX queue interrupt
-                TxThldSignalEn OFFSET(0) NUMBITS(1) [],
-            ],
-            DevCtxSg [
-                /// Buffer vs list pointer in device context:
-                ///
-                /// 0 - continuous physical memory region,
-                ///
-                /// 1 - pointer to SG descriptor list.
-                Blp OFFSET(31) NUMBITS(1) [],
-                /// Number of SG entries.
-                ListSize OFFSET(0) NUMBITS(16) [],
+            pub DataBufferThldCtrl [
+                /// Postpone read command until RX queue has 2^(N+1) free entries
+                RxStartThld OFFSET(24) NUMBITS(3) [],
+                /// Postpone write command until TX queue has 2^(N+1) entries
+                TxStartThld OFFSET(16) NUMBITS(3) [],
+                /// Trigger RX_THLD_STAT interrupt when RX queue has 2^(N+1) or more entries
+                RxBufThld OFFSET(8) NUMBITS(3) [],
+                /// Trigger TX_THLD_STAT interrupt when TX queue has 2^(N+1) or more free entries
+                TxBufThld OFFSET(0) NUMBITS(3) [],
             ],
     }
 }

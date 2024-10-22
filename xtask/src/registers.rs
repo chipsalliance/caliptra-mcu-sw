@@ -779,6 +779,7 @@ fn generate_fw_registers(
         let dest_file = dest_dir.join(format!("{}.rs", block.block().name));
 
         let tokens = registers_generator::generate_code(
+            &format!("crate::{}::", block.block().name),
             &block,
             registers_generator::Options {
                 extern_types: extern_types.clone(),
@@ -792,6 +793,7 @@ fn generate_fw_registers(
         )?;
     }
     let root_type_tokens = registers_generator::generate_code(
+        "crate::",
         &root_block,
         registers_generator::Options {
             extern_types: extern_types.clone(),

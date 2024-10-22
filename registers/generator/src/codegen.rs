@@ -64,6 +64,10 @@ fn tweak_keywords(s: &str) -> &str {
 }
 
 pub fn snake_ident(name: &str) -> Ident {
+    format_ident!("{}", snake_case(name))
+}
+
+pub fn snake_case(name: &str) -> String {
     let mut result = String::new();
     if let Some(c) = name.chars().next() {
         if c.is_ascii_digit() {
@@ -90,7 +94,7 @@ pub fn snake_ident(name: &str) -> Ident {
 
     result = result.replace("so_cmgmt", "soc_mgmt"); // hack for SoC
     result = result.replace("i3_c", "i3c_").replace("__", "_"); // hack for I3C
-    format_ident!("{}", tweak_keywords(result.trim_end_matches('_')))
+    format!("{}", tweak_keywords(result.trim_end_matches('_')))
 }
 
 #[cfg(test)]
@@ -852,34 +856,28 @@ fn indent(x: &str, num_spaces: usize) -> String {
         + if x.ends_with("\n") { "\n" } else { "" }
 }
 
-pub fn generate_code(block: &ValidatedRegisterBlock, options: Options) -> String {
+pub fn generate_code(
+    crate_prefix: &str,
+    block: &ValidatedRegisterBlock,
+    options: Options,
+) -> String {
     let options = options.compile();
     let bit_tokens = generate_bitfields(block.register_types().values().map(|x| x.clone()));
     let bit_tokens = indent(&bit_tokens, 4);
 
-    // let enum_tokens = generate_enums(block.enum_types().values().map(AsRef::as_ref));
-    // let mut reg_tokens = generate_register_types(
-    //     block
-    //         .register_types()
-    //         .values()
-    //         .filter(|t| !options.extern_types.contains_key(*t))
-    //         .map(AsRef::as_ref),
-    // );
-    // reg_tokens.extend(generate_register_types(
-    //     block
-    //         .block()
-    //         .declared_register_types
-    //         .iter()
-    //         .map(AsRef::as_ref),
-    // ));
+    // TODO: instances
+    // TODO: subblocks
+    let reg_tokens = if block.block().name.trim().is_empty() || block.block().registers.is_empty() {
+        assert!(block.block().registers.is_empty());
+        String::new()
+    } else {
+        generate_reg_structs(
+            crate_prefix,
+            &block.block().name,
+            block.block().registers.iter().map(|x| x.clone()),
+        )
+    };
 
-    // let mut subblock_type_tokens = TokenStream::new();
-    // let mut block_inner_tokens = TokenStream::new();
-    // let mut meta_tokens = TokenStream::new();
-    // let mut block_tokens = TokenStream::new();
-
-    // let mut instance_type_tokens = TokenStream::new();
-    // let mut subblock_instance_type_tokens = TokenStream::new();
     let mut tokens = String::new();
 
     // You can't set no_std in a module
@@ -893,6 +891,16 @@ pub fn generate_code(block: &ValidatedRegisterBlock, options: Options) -> String
     //! Types that represent individual registers (bitfields).
     use tock_registers::register_bitfields;
 {bit_tokens}
+}}\n"
+        );
+    }
+
+    if !reg_tokens.trim().is_empty() {
+        tokens += &format!(
+            "pub mod regs {{
+    //! Types that represent registers.
+    use tock_registers::register_structs;
+{reg_tokens}
 }}\n"
         );
     }
@@ -911,6 +919,64 @@ fn format_comment(comment: &str, indent: usize) -> String {
     result
 }
 
+fn generate_reg_structs(
+    crate_prefix: &str,
+    name: &str,
+    registers: impl Iterator<Item = Rc<Register>>,
+) -> String {
+    let name = camel_case(name);
+    let mut tokens = format!("register_structs! {{\n    pub {name} {{\n");
+
+    let mut next_offset = 0;
+    let mut reserved = 0;
+    for reg in registers {
+        let name = snake_case(&reg.name);
+        let offset = reg.offset;
+        if offset != next_offset {
+            tokens += &format!("        (0x{next_offset:x} => _reserved{reserved}),\n");
+            reserved += 1;
+        }
+
+        let ty = match reg.ty.name {
+            Some(_) => reg.ty.as_ref().clone(),
+            _ => {
+                let mut new_ty = reg.ty.as_ref().clone();
+                // Safety: this is a single-threaded program.
+                new_ty.name = Some(format!("{}_anon_{}", name, unsafe { TYPE_NUM }));
+                // Safety: this is a single-threaded program.
+                unsafe { TYPE_NUM += 1 };
+                //let tokens = generate_register_types([new_ty.clone()].iter());
+                //anon_type_tokens.extend(tokens);
+                new_ty
+            }
+        };
+        let kind = if has_single_32_bit_field(&ty) {
+            "tock_registers::registers::ReadOnly<u32>".to_string() // TODO: check if writable
+        } else {
+            format!(
+                "tock_registers::registers::ReadOnly<{}, {crate_prefix}bits::{}::Register>",
+                ty.width.rust_primitive_name(),
+                camel_case(ty.name.as_ref().unwrap())
+            )
+        };
+        let array_prod = reg.array_dimensions.iter().product::<u64>();
+        let kind = if array_prod == 1 {
+            kind
+        } else {
+            assert_eq!(reg.array_dimensions.len(), 1);
+            format!("[{}; {}]", kind, array_prod)
+        };
+        let reg_tokens = format!("(0x{offset:x} => pub {name}: {kind}),\n");
+        tokens += &indent(&reg_tokens, 8);
+        next_offset =
+            offset + reg.ty.width.in_bytes() * reg.array_dimensions.iter().product::<u64>();
+    }
+    tokens += &format!("        (0x{next_offset:x} => @END),\n");
+    tokens += "    }\n";
+    tokens += "}\n";
+    tokens
+}
+
 fn generate_bitfields(register_types: impl Iterator<Item = Rc<RegisterType>>) -> String {
     let mut tokens8 = String::new();
     let mut tokens16 = String::new();
@@ -923,7 +989,7 @@ fn generate_bitfields(register_types: impl Iterator<Item = Rc<RegisterType>>) ->
         }
         let name = camel_ident(rt.name.clone().unwrap().as_str());
         let mut field_tokens = String::new();
-        field_tokens += &format!("{name} [\n");
+        field_tokens += &format!("pub {name} [\n");
         for field in rt.fields.iter() {
             let mut enum_tokens = String::new();
             if let Some(enum_type) = field.enum_type.as_ref() {

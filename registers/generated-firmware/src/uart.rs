@@ -9,31 +9,37 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
-            Ovrd [
-                /// Enable TX pin override control
-                Txen OFFSET(0) NUMBITS(1) [],
-                /// Write to set the value of the TX pin
-                Txval OFFSET(1) NUMBITS(1) [],
+            pub Status [
+                /// TX buffer is full
+                Txfull OFFSET(0) NUMBITS(1) [],
+                /// RX buffer is full
+                Rxfull OFFSET(1) NUMBITS(1) [],
+                /// TX FIFO is empty
+                Txempty OFFSET(2) NUMBITS(1) [],
+                /// TX FIFO is empty and all bits have been transmitted
+                Txidle OFFSET(3) NUMBITS(1) [],
+                /// RX is idle
+                Rxidle OFFSET(4) NUMBITS(1) [],
+                /// RX FIFO is empty
+                Rxempty OFFSET(5) NUMBITS(1) [],
             ],
-            InterruptEnable [
-                /// Enable interrupt when tx_watermark is set.
-                TxWatermark OFFSET(0) NUMBITS(1) [],
-                /// Enable interrupt when rx_watermark is set.
-                RxWatermark OFFSET(1) NUMBITS(1) [],
-                /// Enable interrupt when tx_empty is set.
-                TxEmpty OFFSET(2) NUMBITS(1) [],
-                /// Enable interrupt when rx_overflow is set.
-                RxOverflow OFFSET(3) NUMBITS(1) [],
-                /// Enable interrupt when rx_frame_err is set.
-                RxFrameErr OFFSET(4) NUMBITS(1) [],
-                /// Enable interrupt when rx_break_err is set.
-                RxBreakErr OFFSET(5) NUMBITS(1) [],
-                /// Enable interrupt when rx_timeout is set.
-                RxTimeout OFFSET(6) NUMBITS(1) [],
-                /// Enable interrupt when rx_parity_err is set.
-                RxParityErr OFFSET(7) NUMBITS(1) [],
+            pub TimeoutCtrl [
+                /// RX timeout value in UART bit times
+                Val OFFSET(0) NUMBITS(24) [],
+                /// Enable RX timeout feature
+                En OFFSET(31) NUMBITS(1) [],
             ],
-            InterruptTest [
+            pub Wdata [
+                /// UART write data
+                Wdata OFFSET(0) NUMBITS(8) [],
+            ],
+            pub FifoStatus [
+                /// Current fill level of TX fifo
+                Txlvl OFFSET(0) NUMBITS(6) [],
+                /// Current fill level of RX fifo
+                Rxlvl OFFSET(16) NUMBITS(6) [],
+            ],
+            pub InterruptTest [
                 /// Write 1 to force tx_watermark to 1.
                 TxWatermark OFFSET(0) NUMBITS(1) [],
                 /// Write 1 to force rx_watermark to 1.
@@ -51,7 +57,35 @@ pub mod bits {
                 /// Write 1 to force rx_parity_err to 1.
                 RxParityErr OFFSET(7) NUMBITS(1) [],
             ],
-            InterruptState [
+            pub InterruptEnable [
+                /// Enable interrupt when tx_watermark is set.
+                TxWatermark OFFSET(0) NUMBITS(1) [],
+                /// Enable interrupt when rx_watermark is set.
+                RxWatermark OFFSET(1) NUMBITS(1) [],
+                /// Enable interrupt when tx_empty is set.
+                TxEmpty OFFSET(2) NUMBITS(1) [],
+                /// Enable interrupt when rx_overflow is set.
+                RxOverflow OFFSET(3) NUMBITS(1) [],
+                /// Enable interrupt when rx_frame_err is set.
+                RxFrameErr OFFSET(4) NUMBITS(1) [],
+                /// Enable interrupt when rx_break_err is set.
+                RxBreakErr OFFSET(5) NUMBITS(1) [],
+                /// Enable interrupt when rx_timeout is set.
+                RxTimeout OFFSET(6) NUMBITS(1) [],
+                /// Enable interrupt when rx_parity_err is set.
+                RxParityErr OFFSET(7) NUMBITS(1) [],
+            ],
+            pub Rdata [
+                /// UART read data
+                Rdata OFFSET(0) NUMBITS(8) [],
+            ],
+            pub Ovrd [
+                /// Enable TX pin override control
+                Txen OFFSET(0) NUMBITS(1) [],
+                /// Write to set the value of the TX pin
+                Txval OFFSET(1) NUMBITS(1) [],
+            ],
+            pub InterruptState [
                 /// raised if the transmit FIFO is past the high-water mark.
                 TxWatermark OFFSET(0) NUMBITS(1) [],
                 /// raised if the receive FIFO is past the high-water mark.
@@ -70,51 +104,7 @@ pub mod bits {
                 /// raised if the receiver has detected a parity error.
                 RxParityErr OFFSET(7) NUMBITS(1) [],
             ],
-            FifoStatus [
-                /// Current fill level of TX fifo
-                Txlvl OFFSET(0) NUMBITS(6) [],
-                /// Current fill level of RX fifo
-                Rxlvl OFFSET(16) NUMBITS(6) [],
-            ],
-            Rdata [
-                /// UART read data
-                Rdata OFFSET(0) NUMBITS(8) [],
-            ],
-            Status [
-                /// TX buffer is full
-                Txfull OFFSET(0) NUMBITS(1) [],
-                /// RX buffer is full
-                Rxfull OFFSET(1) NUMBITS(1) [],
-                /// TX FIFO is empty
-                Txempty OFFSET(2) NUMBITS(1) [],
-                /// TX FIFO is empty and all bits have been transmitted
-                Txidle OFFSET(3) NUMBITS(1) [],
-                /// RX is idle
-                Rxidle OFFSET(4) NUMBITS(1) [],
-                /// RX FIFO is empty
-                Rxempty OFFSET(5) NUMBITS(1) [],
-            ],
-            Wdata [
-                /// UART write data
-                Wdata OFFSET(0) NUMBITS(8) [],
-            ],
-            Val [
-                /// Last 16 oversampled values of RX. Most recent bit is bit 0, oldest 15.
-                Rx OFFSET(0) NUMBITS(16) [],
-            ],
-            FifoCtrl [
-                /// RX fifo reset. Write 1 to the register resets RX_FIFO. Read returns 0
-                Rxrst OFFSET(0) NUMBITS(1) [],
-                /// TX fifo reset. Write 1 to the register resets TX_FIFO. Read returns 0
-                Txrst OFFSET(1) NUMBITS(1) [],
-                /// Trigger level for RX interrupts. If the FIFO depth is greater than or equal to
-                /// the setting, it raises rx_watermark interrupt.
-                Rxilvl OFFSET(2) NUMBITS(3) [],
-                /// Trigger level for TX interrupts. If the FIFO depth is less than the setting, it
-                /// raises tx_watermark interrupt.
-                Txilvl OFFSET(5) NUMBITS(2) [],
-            ],
-            Ctrl [
+            pub Ctrl [
                 /// TX enable
                 Tx OFFSET(0) NUMBITS(1) [],
                 /// RX enable
@@ -144,15 +134,47 @@ pub mod bits {
                 /// BAUD clock rate control.
                 Nco OFFSET(16) NUMBITS(16) [],
             ],
-            TimeoutCtrl [
-                /// RX timeout value in UART bit times
-                Val OFFSET(0) NUMBITS(24) [],
-                /// Enable RX timeout feature
-                En OFFSET(31) NUMBITS(1) [],
+            pub Val [
+                /// Last 16 oversampled values of RX. Most recent bit is bit 0, oldest 15.
+                Rx OFFSET(0) NUMBITS(16) [],
             ],
-            AlertTest [
+            pub AlertTest [
                 /// Write 1 to trigger one alert event of this kind.
                 FatalFault OFFSET(0) NUMBITS(1) [],
             ],
+            pub FifoCtrl [
+                /// RX fifo reset. Write 1 to the register resets RX_FIFO. Read returns 0
+                Rxrst OFFSET(0) NUMBITS(1) [],
+                /// TX fifo reset. Write 1 to the register resets TX_FIFO. Read returns 0
+                Txrst OFFSET(1) NUMBITS(1) [],
+                /// Trigger level for RX interrupts. If the FIFO depth is greater than or equal to
+                /// the setting, it raises rx_watermark interrupt.
+                Rxilvl OFFSET(2) NUMBITS(3) [],
+                /// Trigger level for TX interrupts. If the FIFO depth is less than the setting, it
+                /// raises tx_watermark interrupt.
+                Txilvl OFFSET(5) NUMBITS(2) [],
+            ],
+    }
+}
+pub mod regs {
+    //! Types that represent registers.
+    use tock_registers::register_structs;
+    register_structs! {
+        pub Uart {
+            (0x0 => pub interrupt_state: tock_registers::registers::ReadOnly<u32, crate::uart::bits::InterruptState::Register>),
+            (0x4 => pub interrupt_enable: tock_registers::registers::ReadOnly<u32, crate::uart::bits::InterruptEnable::Register>),
+            (0x8 => pub interrupt_test: tock_registers::registers::ReadOnly<u32, crate::uart::bits::InterruptTest::Register>),
+            (0xc => pub alert_test: tock_registers::registers::ReadOnly<u32, crate::uart::bits::AlertTest::Register>),
+            (0x10 => pub ctrl: tock_registers::registers::ReadOnly<u32, crate::uart::bits::Ctrl::Register>),
+            (0x14 => pub status: tock_registers::registers::ReadOnly<u32, crate::uart::bits::Status::Register>),
+            (0x18 => pub rdata: tock_registers::registers::ReadOnly<u32, crate::uart::bits::Rdata::Register>),
+            (0x1c => pub wdata: tock_registers::registers::ReadOnly<u32, crate::uart::bits::Wdata::Register>),
+            (0x20 => pub fifo_ctrl: tock_registers::registers::ReadOnly<u32, crate::uart::bits::FifoCtrl::Register>),
+            (0x24 => pub fifo_status: tock_registers::registers::ReadOnly<u32, crate::uart::bits::FifoStatus::Register>),
+            (0x28 => pub ovrd: tock_registers::registers::ReadOnly<u32, crate::uart::bits::Ovrd::Register>),
+            (0x2c => pub val: tock_registers::registers::ReadOnly<u32, crate::uart::bits::Val::Register>),
+            (0x30 => pub timeout_ctrl: tock_registers::registers::ReadOnly<u32, crate::uart::bits::TimeoutCtrl::Register>),
+            (0x34 => @END),
+        }
     }
 }

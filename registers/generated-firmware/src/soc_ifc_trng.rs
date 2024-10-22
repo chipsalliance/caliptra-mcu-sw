@@ -9,7 +9,7 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
-            CptraTrngStatus [
+            pub CptraTrngStatus [
                 /// Indicates that there is a request for TRNG Data.
                 /// [br]Caliptra Access: RW
                 /// [br]SOC Access:      RO
@@ -20,5 +20,18 @@ pub mod bits {
                 /// [br]When DATA_REQ is 0 DATA_WR_DONE will also be 0
                 DataWrDone OFFSET(1) NUMBITS(1) [],
             ],
+    }
+}
+pub mod regs {
+    //! Types that represent registers.
+    use tock_registers::register_structs;
+    register_structs! {
+        pub SocIfcTrng {
+            (0x0 => _reserved0),
+            (0x78 => pub cptra_trng_data: [tock_registers::registers::ReadOnly<u32>; 12]),
+            (0xa8 => _reserved1),
+            (0xac => pub cptra_trng_status: tock_registers::registers::ReadOnly<u32, crate::soc_ifc_trng::bits::CptraTrngStatus::Register>),
+            (0xb0 => @END),
+        }
     }
 }

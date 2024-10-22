@@ -9,11 +9,11 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
-            Meie [
-                /// External interrupt enable
-                Inten OFFSET(0) NUMBITS(1) [],
+            pub Meip [
+                /// External interrupt pending
+                Intpend OFFSET(0) NUMBITS(1) [],
             ],
-            Meigwctrl [
+            pub Meigwctrl [
                 /// External interrupt polarity
                 /// 0b0: Active-high interrupt
                 /// 0b1: Active-low interrupt
@@ -23,19 +23,39 @@ pub mod bits {
                 /// 0b1: Edge-triggered interrupt
                 Inttype OFFSET(1) NUMBITS(1) [],
             ],
-            Meipl [
+            pub Meipl [
                 /// External interrupt priority level
                 Priority OFFSET(0) NUMBITS(4) [],
             ],
-            Meip [
-                /// External interrupt pending
-                Intpend OFFSET(0) NUMBITS(1) [],
+            pub Meie [
+                /// External interrupt enable
+                Inten OFFSET(0) NUMBITS(1) [],
             ],
-            Mpiccfg [
+            pub Mpiccfg [
                 /// Interrupt priority order
                 /// 0b0: RISC-V standard compliant priority order (0=lowest to 15=highest)
                 /// 0b1: Reverse priority order (15=lowest to 0=highest)
                 Priord OFFSET(0) NUMBITS(1) [],
             ],
+    }
+}
+pub mod regs {
+    //! Types that represent registers.
+    use tock_registers::register_structs;
+    register_structs! {
+        pub El2PicCtrl {
+            (0x0 => pub meipl: [tock_registers::registers::ReadOnly<u32, crate::el2_pic_ctrl::bits::Meipl::Register>; 256]),
+            (0x400 => _reserved0),
+            (0x1000 => pub meip: [tock_registers::registers::ReadOnly<u32, crate::el2_pic_ctrl::bits::Meip::Register>; 256]),
+            (0x1400 => _reserved1),
+            (0x2000 => pub meie: [tock_registers::registers::ReadOnly<u32, crate::el2_pic_ctrl::bits::Meie::Register>; 256]),
+            (0x2400 => _reserved2),
+            (0x3000 => pub mpiccfg: tock_registers::registers::ReadOnly<u32, crate::el2_pic_ctrl::bits::Mpiccfg::Register>),
+            (0x3004 => _reserved3),
+            (0x4000 => pub meigwctrl: [tock_registers::registers::ReadOnly<u32, crate::el2_pic_ctrl::bits::Meigwctrl::Register>; 256]),
+            (0x4400 => _reserved4),
+            (0x5000 => pub meigwclr: [tock_registers::registers::ReadOnly<u32>; 256]),
+            (0x5400 => @END),
+        }
     }
 }

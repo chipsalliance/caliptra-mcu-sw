@@ -9,7 +9,16 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
-            Status [
+            pub Unlock [
+                Unlock OFFSET(0) NUMBITS(1) [],
+            ],
+            pub Execute [
+                Execute OFFSET(0) NUMBITS(1) [],
+            ],
+            pub Lock [
+                Lock OFFSET(0) NUMBITS(1) [],
+            ],
+            pub Status [
                 /// Indicates the status of mailbox command
                 /// [br]Caliptra Access: RW
                 /// [br]SOC Access:      RW
@@ -60,14 +69,23 @@ pub mod bits {
                 /// [br]TAP Access [in debug/manuf mode]: RO
                 MboxRdptr OFFSET(10) NUMBITS(15) [],
             ],
-            Execute [
-                Execute OFFSET(0) NUMBITS(1) [],
-            ],
-            Lock [
-                Lock OFFSET(0) NUMBITS(1) [],
-            ],
-            Unlock [
-                Unlock OFFSET(0) NUMBITS(1) [],
-            ],
+    }
+}
+pub mod regs {
+    //! Types that represent registers.
+    use tock_registers::register_structs;
+    register_structs! {
+        pub Mbox {
+            (0x0 => pub lock: tock_registers::registers::ReadOnly<u32, crate::mbox::bits::Lock::Register>),
+            (0x4 => pub user: tock_registers::registers::ReadOnly<u32>),
+            (0x8 => pub cmd: tock_registers::registers::ReadOnly<u32>),
+            (0xc => pub dlen: tock_registers::registers::ReadOnly<u32>),
+            (0x10 => pub datain: tock_registers::registers::ReadOnly<u32>),
+            (0x14 => pub dataout: tock_registers::registers::ReadOnly<u32>),
+            (0x18 => pub execute: tock_registers::registers::ReadOnly<u32, crate::mbox::bits::Execute::Register>),
+            (0x1c => pub status: tock_registers::registers::ReadOnly<u32, crate::mbox::bits::Status::Register>),
+            (0x20 => pub unlock: tock_registers::registers::ReadOnly<u32, crate::mbox::bits::Unlock::Register>),
+            (0x24 => @END),
+        }
     }
 }
