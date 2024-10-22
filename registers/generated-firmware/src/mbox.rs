@@ -88,13 +88,13 @@ impl<TMmio: ureg::Mmio> RegisterBlock<TMmio> {
             )
         }
     }
-    /// Stores the AXI ID that locked the mailbox
+    /// Stores the user that locked the mailbox
     /// [br]Caliptra Access: RO
     /// [br]SOC Access:      RO
     ///
     /// Read value: [`u32`]; Write value: [`u32`]
     #[inline(always)]
-    pub fn id(&self) -> ureg::RegRef<crate::mbox::meta::Id, &TMmio> {
+    pub fn user(&self) -> ureg::RegRef<crate::mbox::meta::User, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(4 / core::mem::size_of::<u32>()),
@@ -586,7 +586,7 @@ pub mod enums {
 pub mod meta {
     //! Additional metadata needed by ureg.
     pub type Lock = ureg::ReadOnlyReg32<crate::mbox::regs::LockReadVal>;
-    pub type Id = ureg::ReadOnlyReg32<u32>;
+    pub type User = ureg::ReadOnlyReg32<u32>;
     pub type Cmd = ureg::ReadWriteReg32<0, u32, u32>;
     pub type Dlen = ureg::ReadWriteReg32<0, u32, u32>;
     pub type Datain = ureg::ReadWriteReg32<0, u32, u32>;

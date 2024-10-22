@@ -288,16 +288,16 @@ impl<TMmio: ureg::Mmio> RegisterBlock<TMmio> {
             )
         }
     }
-    /// Valid AXI ID attributes for requests from SoC AXI Interface. Only valid once LOCK is set.
+    /// Valid PAUSER attributes for requests from SoC APB Interface. Only valid once LOCK is set.
     /// [br]Caliptra Access: RW
     /// [br]SOC Access:      RW
-    /// Read-Only once locked by AXI_ID_LOCK.
+    /// Read-Only once locked by PAUSER_LOCK.
     ///
     /// Read value: [`u32`]; Write value: [`u32`]
     #[inline(always)]
-    pub fn cptra_mbox_valid_axi_id(
+    pub fn cptra_mbox_valid_pauser(
         &self,
-    ) -> ureg::Array<5, ureg::RegRef<crate::soc_ifc::meta::CptraMboxValidAxiId, &TMmio>> {
+    ) -> ureg::Array<5, ureg::RegRef<crate::soc_ifc::meta::CptraMboxValidPauser, &TMmio>> {
         unsafe {
             ureg::Array::new_with_mmio(
                 self.ptr.wrapping_add(0x48 / core::mem::size_of::<u32>()),
@@ -305,18 +305,18 @@ impl<TMmio: ureg::Mmio> RegisterBlock<TMmio> {
             )
         }
     }
-    /// Valid AXI_ID attributes for requests from SoC AXI Interface.
-    /// [br]Each bit corresponds to locking the associated MBOX_VALID_AXI_ID register.
-    /// [br]Associated MBOX_VALID_AXI_ID register is only valid once locked by this bit.
+    /// Valid PAUSER attributes for requests from SoC APB Interface.
+    /// [br]Each bit corresponds to locking the associated MBOX_VALID_PAUSER register.
+    /// [br]Associated MBOX_VALID_PAUSER register is only valid once locked by this bit.
     /// [br]Caliptra Access: RW
     /// [br]SOC Access:      RW
     /// [br]Read-Only once locked.
     ///
-    /// Read value: [`soc_ifc::regs::CptraXxxxAxiIdLockReadVal`]; Write value: [`soc_ifc::regs::CptraXxxxAxiIdLockWriteVal`]
+    /// Read value: [`soc_ifc::regs::CptraXxxxPauserLockReadVal`]; Write value: [`soc_ifc::regs::CptraXxxxPauserLockWriteVal`]
     #[inline(always)]
-    pub fn cptra_mbox_axi_id_lock(
+    pub fn cptra_mbox_pauser_lock(
         &self,
-    ) -> ureg::Array<5, ureg::RegRef<crate::soc_ifc::meta::CptraMboxAxiIdLock, &TMmio>> {
+    ) -> ureg::Array<5, ureg::RegRef<crate::soc_ifc::meta::CptraMboxPauserLock, &TMmio>> {
         unsafe {
             ureg::Array::new_with_mmio(
                 self.ptr.wrapping_add(0x5c / core::mem::size_of::<u32>()),
@@ -324,16 +324,16 @@ impl<TMmio: ureg::Mmio> RegisterBlock<TMmio> {
             )
         }
     }
-    /// Valid AXI ID attributes for TRNG on SoC AXI Interface. Only valid once LOCK is set.
+    /// Valid PAUSER attributes for TRNG on SoC APB Interface. Only valid once LOCK is set.
     /// [br]Caliptra Access: RW
     /// [br]SOC Access:      RW
-    /// [br]Read-Only once locked by TRNG_AXI_ID_LOCK.
+    /// [br]Read-Only once locked by TRNG_PAUSER_LOCK.
     ///
     /// Read value: [`u32`]; Write value: [`u32`]
     #[inline(always)]
-    pub fn cptra_trng_valid_axi_id(
+    pub fn cptra_trng_valid_pauser(
         &self,
-    ) -> ureg::RegRef<crate::soc_ifc::meta::CptraTrngValidAxiId, &TMmio> {
+    ) -> ureg::RegRef<crate::soc_ifc::meta::CptraTrngValidPauser, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x70 / core::mem::size_of::<u32>()),
@@ -341,19 +341,19 @@ impl<TMmio: ureg::Mmio> RegisterBlock<TMmio> {
             )
         }
     }
-    /// Valid AXI ID attributes for requests from SoC AXI Interface.
-    /// [br]Each bit corresponds to locking the associated TRNG_VALID_AXI_ID register.
-    /// [br]Associated TRNG_VALID_AXI_ID register is only valid once locked by this bit.
+    /// Valid PAUSER attributes for requests from SoC APB Interface.
+    /// [br]Each bit corresponds to locking the associated TRNG_VALID_PAUSER register.
+    /// [br]Associated TRNG_VALID_PAUSER register is only valid once locked by this bit.
     /// [br]Caliptra FW RW access for survivability but cannot unlock once locked
     /// [br]Caliptra Access: RW
     /// [br]SOC Access:      RW
     /// [br]Read-Only once locked.
     ///
-    /// Read value: [`soc_ifc::regs::CptraXxxxAxiIdLockReadVal`]; Write value: [`soc_ifc::regs::CptraXxxxAxiIdLockWriteVal`]
+    /// Read value: [`soc_ifc::regs::CptraXxxxPauserLockReadVal`]; Write value: [`soc_ifc::regs::CptraXxxxPauserLockWriteVal`]
     #[inline(always)]
-    pub fn cptra_trng_axi_id_lock(
+    pub fn cptra_trng_pauser_lock(
         &self,
-    ) -> ureg::RegRef<crate::soc_ifc::meta::CptraTrngAxiIdLock, &TMmio> {
+    ) -> ureg::RegRef<crate::soc_ifc::meta::CptraTrngPauserLock, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x74 / core::mem::size_of::<u32>()),
@@ -653,16 +653,16 @@ impl<TMmio: ureg::Mmio> RegisterBlock<TMmio> {
             )
         }
     }
-    /// Valid AXI ID attributes for FUSE on SoC AXI Interface. Only valid once LOCK is set.
+    /// Valid PAUSER attributes for FUSE on SoC APB Interface. Only valid once LOCK is set.
     /// [br]Caliptra Access: RW
     /// [br]SOC Access:      RW
-    /// [br]Read-Only once locked by FUSE_AXI_ID_LOCK.
+    /// [br]Read-Only once locked by FUSE_PAUSER_LOCK.
     ///
     /// Read value: [`u32`]; Write value: [`u32`]
     #[inline(always)]
-    pub fn cptra_fuse_valid_axi_id(
+    pub fn cptra_fuse_valid_pauser(
         &self,
-    ) -> ureg::RegRef<crate::soc_ifc::meta::CptraFuseValidAxiId, &TMmio> {
+    ) -> ureg::RegRef<crate::soc_ifc::meta::CptraFuseValidPauser, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x108 / core::mem::size_of::<u32>()),
@@ -670,19 +670,19 @@ impl<TMmio: ureg::Mmio> RegisterBlock<TMmio> {
             )
         }
     }
-    /// Valid AXI_ID attributes for requests from SoC AXI Interface.
-    /// [br]Each bit corresponds to locking the associated FUSE_VALID_AXI_ID register.
-    /// [br]Associated FUSE_VALID_AXI_ID register is only valid once locked by this bit.
+    /// Valid PAUSER attributes for requests from SoC APB Interface.
+    /// [br]Each bit corresponds to locking the associated FUSE_VALID_PAUSER register.
+    /// [br]Associated FUSE_VALID_PAUSER register is only valid once locked by this bit.
     /// [br]Caliptra FW RW access for survivability but cannot unlock once locked
     /// [br]Caliptra Access: RW
     /// [br]SOC Access:      RW
     /// [br]Read-Only once locked.
     ///
-    /// Read value: [`soc_ifc::regs::CptraXxxxAxiIdLockReadVal`]; Write value: [`soc_ifc::regs::CptraXxxxAxiIdLockWriteVal`]
+    /// Read value: [`soc_ifc::regs::CptraXxxxPauserLockReadVal`]; Write value: [`soc_ifc::regs::CptraXxxxPauserLockWriteVal`]
     #[inline(always)]
-    pub fn cptra_fuse_axi_id_lock(
+    pub fn cptra_fuse_pauser_lock(
         &self,
-    ) -> ureg::RegRef<crate::soc_ifc::meta::CptraFuseAxiIdLock, &TMmio> {
+    ) -> ureg::RegRef<crate::soc_ifc::meta::CptraFusePauserLock, &TMmio> {
         unsafe {
             ureg::RegRef::new_with_mmio(
                 self.ptr.wrapping_add(0x10c / core::mem::size_of::<u32>()),
@@ -2771,47 +2771,47 @@ pub mod regs {
         }
     }
     #[derive(Clone, Copy, Default)]
-    pub struct CptraXxxxAxiIdLockReadVal(u32);
-    impl CptraXxxxAxiIdLockReadVal {
+    pub struct CptraXxxxPauserLockReadVal(u32);
+    impl CptraXxxxPauserLockReadVal {
         #[inline(always)]
         pub fn lock(&self) -> bool {
             (self.0 & 1) != 0
         }
         /// Construct a WriteVal that can be used to modify the contents of this register value.
         #[inline(always)]
-        pub fn modify(self) -> CptraXxxxAxiIdLockWriteVal {
-            CptraXxxxAxiIdLockWriteVal(self.0)
+        pub fn modify(self) -> CptraXxxxPauserLockWriteVal {
+            CptraXxxxPauserLockWriteVal(self.0)
         }
     }
-    impl From<u32> for CptraXxxxAxiIdLockReadVal {
+    impl From<u32> for CptraXxxxPauserLockReadVal {
         #[inline(always)]
         fn from(val: u32) -> Self {
             Self(val)
         }
     }
-    impl From<CptraXxxxAxiIdLockReadVal> for u32 {
+    impl From<CptraXxxxPauserLockReadVal> for u32 {
         #[inline(always)]
-        fn from(val: CptraXxxxAxiIdLockReadVal) -> u32 {
+        fn from(val: CptraXxxxPauserLockReadVal) -> u32 {
             val.0
         }
     }
     #[derive(Clone, Copy, Default)]
-    pub struct CptraXxxxAxiIdLockWriteVal(u32);
-    impl CptraXxxxAxiIdLockWriteVal {
+    pub struct CptraXxxxPauserLockWriteVal(u32);
+    impl CptraXxxxPauserLockWriteVal {
         #[inline(always)]
         pub fn lock(self, val: bool) -> Self {
             Self((self.0 & !(1)) | (u32::from(val)))
         }
     }
-    impl From<u32> for CptraXxxxAxiIdLockWriteVal {
+    impl From<u32> for CptraXxxxPauserLockWriteVal {
         #[inline(always)]
         fn from(val: u32) -> Self {
             Self(val)
         }
     }
-    impl From<CptraXxxxAxiIdLockWriteVal> for u32 {
+    impl From<CptraXxxxPauserLockWriteVal> for u32 {
         #[inline(always)]
-        fn from(val: CptraXxxxAxiIdLockWriteVal) -> u32 {
+        fn from(val: CptraXxxxPauserLockWriteVal) -> u32 {
             val.0
         }
     }
@@ -4239,17 +4239,17 @@ pub mod meta {
     pub type CptraResetReason = ureg::ReadOnlyReg32<crate::soc_ifc::regs::CptraResetReasonReadVal>;
     pub type CptraSecurityState =
         ureg::ReadOnlyReg32<crate::soc_ifc::regs::CptraSecurityStateReadVal>;
-    pub type CptraMboxValidAxiId = ureg::ReadWriteReg32<0xffffffff, u32, u32>;
-    pub type CptraMboxAxiIdLock = ureg::ReadWriteReg32<
+    pub type CptraMboxValidPauser = ureg::ReadWriteReg32<0xffffffff, u32, u32>;
+    pub type CptraMboxPauserLock = ureg::ReadWriteReg32<
         0,
-        crate::soc_ifc::regs::CptraXxxxAxiIdLockReadVal,
-        crate::soc_ifc::regs::CptraXxxxAxiIdLockWriteVal,
+        crate::soc_ifc::regs::CptraXxxxPauserLockReadVal,
+        crate::soc_ifc::regs::CptraXxxxPauserLockWriteVal,
     >;
-    pub type CptraTrngValidAxiId = ureg::ReadWriteReg32<0xffffffff, u32, u32>;
-    pub type CptraTrngAxiIdLock = ureg::ReadWriteReg32<
+    pub type CptraTrngValidPauser = ureg::ReadWriteReg32<0xffffffff, u32, u32>;
+    pub type CptraTrngPauserLock = ureg::ReadWriteReg32<
         0,
-        crate::soc_ifc::regs::CptraXxxxAxiIdLockReadVal,
-        crate::soc_ifc::regs::CptraXxxxAxiIdLockWriteVal,
+        crate::soc_ifc::regs::CptraXxxxPauserLockReadVal,
+        crate::soc_ifc::regs::CptraXxxxPauserLockWriteVal,
     >;
     pub type CptraTrngCtrl = ureg::ReadWriteReg32<
         0,
@@ -4305,11 +4305,11 @@ pub mod meta {
         crate::soc_ifc::regs::CptraWdtStatusReadVal,
         crate::soc_ifc::regs::CptraWdtStatusWriteVal,
     >;
-    pub type CptraFuseValidAxiId = ureg::ReadWriteReg32<0xffffffff, u32, u32>;
-    pub type CptraFuseAxiIdLock = ureg::ReadWriteReg32<
+    pub type CptraFuseValidPauser = ureg::ReadWriteReg32<0xffffffff, u32, u32>;
+    pub type CptraFusePauserLock = ureg::ReadWriteReg32<
         0,
-        crate::soc_ifc::regs::CptraXxxxAxiIdLockReadVal,
-        crate::soc_ifc::regs::CptraXxxxAxiIdLockWriteVal,
+        crate::soc_ifc::regs::CptraXxxxPauserLockReadVal,
+        crate::soc_ifc::regs::CptraXxxxPauserLockWriteVal,
     >;
     pub type CptraWdtCfg = ureg::ReadWriteReg32<0, u32, u32>;
     pub type CptraItrngEntropyConfig0 = ureg::ReadWriteReg32<

@@ -465,10 +465,10 @@ pub trait MboxPeripheral {
         LockWriteVal::default()
     }
     fn write_lock(&mut self, _val: LockReadVal) {}
-    fn read_id(&mut self) -> u32 {
+    fn read_user(&mut self) -> u32 {
         0
     }
-    fn write_id(&mut self, _val: u32) {}
+    fn write_user(&mut self, _val: u32) {}
     fn read_cmd(&mut self) -> u32 {
         0
     }
@@ -574,7 +574,7 @@ impl emulator_bus::Bus for MboxBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 4) => {
-                self.periph.write_id(val);
+                self.periph.write_user(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 5..=7) => {

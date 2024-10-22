@@ -381,47 +381,47 @@ impl From<CptraSecurityStateWriteVal> for u32 {
     }
 }
 #[derive(Clone, Copy, Default)]
-pub struct CptraXxxxAxiIdLockReadVal(u32);
-impl CptraXxxxAxiIdLockReadVal {
+pub struct CptraXxxxPauserLockReadVal(u32);
+impl CptraXxxxPauserLockReadVal {
     #[inline(always)]
     pub fn lock(&self) -> bool {
         (self.0 & 1) != 0
     }
     /// Construct a WriteVal that can be used to modify the contents of this register value.
     #[inline(always)]
-    pub fn modify(self) -> CptraXxxxAxiIdLockWriteVal {
-        CptraXxxxAxiIdLockWriteVal(self.0)
+    pub fn modify(self) -> CptraXxxxPauserLockWriteVal {
+        CptraXxxxPauserLockWriteVal(self.0)
     }
 }
-impl From<u32> for CptraXxxxAxiIdLockReadVal {
+impl From<u32> for CptraXxxxPauserLockReadVal {
     #[inline(always)]
     fn from(val: u32) -> Self {
         Self(val)
     }
 }
-impl From<CptraXxxxAxiIdLockReadVal> for u32 {
+impl From<CptraXxxxPauserLockReadVal> for u32 {
     #[inline(always)]
-    fn from(val: CptraXxxxAxiIdLockReadVal) -> u32 {
+    fn from(val: CptraXxxxPauserLockReadVal) -> u32 {
         val.0
     }
 }
 #[derive(Clone, Copy, Default)]
-pub struct CptraXxxxAxiIdLockWriteVal(u32);
-impl CptraXxxxAxiIdLockWriteVal {
+pub struct CptraXxxxPauserLockWriteVal(u32);
+impl CptraXxxxPauserLockWriteVal {
     #[inline(always)]
     pub fn lock(self, val: bool) -> Self {
         Self((self.0 & !(1)) | (u32::from(val)))
     }
 }
-impl From<u32> for CptraXxxxAxiIdLockWriteVal {
+impl From<u32> for CptraXxxxPauserLockWriteVal {
     #[inline(always)]
     fn from(val: u32) -> Self {
         Self(val)
     }
 }
-impl From<CptraXxxxAxiIdLockWriteVal> for u32 {
+impl From<CptraXxxxPauserLockWriteVal> for u32 {
     #[inline(always)]
-    fn from(val: CptraXxxxAxiIdLockWriteVal) -> u32 {
+    fn from(val: CptraXxxxPauserLockWriteVal) -> u32 {
         val.0
     }
 }
@@ -2564,22 +2564,22 @@ pub trait SocPeripheral {
         CptraSecurityStateWriteVal::default()
     }
     fn write_cptra_security_state(&mut self, _val: CptraSecurityStateReadVal) {}
-    fn read_cptra_mbox_valid_axi_id(&mut self) -> u32 {
+    fn read_cptra_mbox_valid_pauser(&mut self) -> u32 {
         0
     }
-    fn write_cptra_mbox_valid_axi_id(&mut self, _val: u32) {}
-    fn read_cptra_mbox_axi_id_lock(&mut self) -> CptraXxxxAxiIdLockWriteVal {
-        CptraXxxxAxiIdLockWriteVal::default()
+    fn write_cptra_mbox_valid_pauser(&mut self, _val: u32) {}
+    fn read_cptra_mbox_pauser_lock(&mut self) -> CptraXxxxPauserLockWriteVal {
+        CptraXxxxPauserLockWriteVal::default()
     }
-    fn write_cptra_mbox_axi_id_lock(&mut self, _val: CptraXxxxAxiIdLockReadVal) {}
-    fn read_cptra_trng_valid_axi_id(&mut self) -> u32 {
+    fn write_cptra_mbox_pauser_lock(&mut self, _val: CptraXxxxPauserLockReadVal) {}
+    fn read_cptra_trng_valid_pauser(&mut self) -> u32 {
         0
     }
-    fn write_cptra_trng_valid_axi_id(&mut self, _val: u32) {}
-    fn read_cptra_trng_axi_id_lock(&mut self) -> CptraXxxxAxiIdLockWriteVal {
-        CptraXxxxAxiIdLockWriteVal::default()
+    fn write_cptra_trng_valid_pauser(&mut self, _val: u32) {}
+    fn read_cptra_trng_pauser_lock(&mut self) -> CptraXxxxPauserLockWriteVal {
+        CptraXxxxPauserLockWriteVal::default()
     }
-    fn write_cptra_trng_axi_id_lock(&mut self, _val: CptraXxxxAxiIdLockReadVal) {}
+    fn write_cptra_trng_pauser_lock(&mut self, _val: CptraXxxxPauserLockReadVal) {}
     fn read_cptra_trng_data(&mut self) -> u32 {
         0
     }
@@ -2660,14 +2660,14 @@ pub trait SocPeripheral {
         CptraWdtStatusWriteVal::default()
     }
     fn write_cptra_wdt_status(&mut self, _val: CptraWdtStatusReadVal) {}
-    fn read_cptra_fuse_valid_axi_id(&mut self) -> u32 {
+    fn read_cptra_fuse_valid_pauser(&mut self) -> u32 {
         0
     }
-    fn write_cptra_fuse_valid_axi_id(&mut self, _val: u32) {}
-    fn read_cptra_fuse_axi_id_lock(&mut self) -> CptraXxxxAxiIdLockWriteVal {
-        CptraXxxxAxiIdLockWriteVal::default()
+    fn write_cptra_fuse_valid_pauser(&mut self, _val: u32) {}
+    fn read_cptra_fuse_pauser_lock(&mut self) -> CptraXxxxPauserLockWriteVal {
+        CptraXxxxPauserLockWriteVal::default()
     }
-    fn write_cptra_fuse_axi_id_lock(&mut self, _val: CptraXxxxAxiIdLockReadVal) {}
+    fn write_cptra_fuse_pauser_lock(&mut self, _val: CptraXxxxPauserLockReadVal) {}
     fn read_cptra_wdt_cfg(&mut self) -> u32 {
         0
     }
@@ -3094,25 +3094,25 @@ impl emulator_bus::Bus for SocBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x48) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_mbox_valid_axi_id(),
+                self.periph.read_cptra_mbox_valid_pauser(),
             )),
             (emulator_types::RvSize::Word, 0x49..=0x4b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x5c) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_mbox_axi_id_lock(),
+                self.periph.read_cptra_mbox_pauser_lock(),
             )),
             (emulator_types::RvSize::Word, 0x5d..=0x5f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x70) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_trng_valid_axi_id(),
+                self.periph.read_cptra_trng_valid_pauser(),
             )),
             (emulator_types::RvSize::Word, 0x71..=0x73) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x74) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_trng_axi_id_lock(),
+                self.periph.read_cptra_trng_pauser_lock(),
             )),
             (emulator_types::RvSize::Word, 0x75..=0x77) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -3232,13 +3232,13 @@ impl emulator_bus::Bus for SocBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x108) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_fuse_valid_axi_id(),
+                self.periph.read_cptra_fuse_valid_pauser(),
             )),
             (emulator_types::RvSize::Word, 0x109..=0x10b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x10c) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_fuse_axi_id_lock(),
+                self.periph.read_cptra_fuse_pauser_lock(),
             )),
             (emulator_types::RvSize::Word, 0x10d..=0x10f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -3768,7 +3768,7 @@ impl emulator_bus::Bus for SocBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x48) => {
-                self.periph.write_cptra_mbox_valid_axi_id(val);
+                self.periph.write_cptra_mbox_valid_pauser(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x49..=0x4b) => {
@@ -3776,14 +3776,14 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x5c) => {
                 self.periph
-                    .write_cptra_mbox_axi_id_lock(CptraXxxxAxiIdLockReadVal::from(val));
+                    .write_cptra_mbox_pauser_lock(CptraXxxxPauserLockReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x5d..=0x5f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x70) => {
-                self.periph.write_cptra_trng_valid_axi_id(val);
+                self.periph.write_cptra_trng_valid_pauser(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x71..=0x73) => {
@@ -3791,7 +3791,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x74) => {
                 self.periph
-                    .write_cptra_trng_axi_id_lock(CptraXxxxAxiIdLockReadVal::from(val));
+                    .write_cptra_trng_pauser_lock(CptraXxxxPauserLockReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x75..=0x77) => {
@@ -3950,7 +3950,7 @@ impl emulator_bus::Bus for SocBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x108) => {
-                self.periph.write_cptra_fuse_valid_axi_id(val);
+                self.periph.write_cptra_fuse_valid_pauser(val);
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x109..=0x10b) => {
@@ -3958,7 +3958,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x10c) => {
                 self.periph
-                    .write_cptra_fuse_axi_id_lock(CptraXxxxAxiIdLockReadVal::from(val));
+                    .write_cptra_fuse_pauser_lock(CptraXxxxPauserLockReadVal::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x10d..=0x10f) => {
