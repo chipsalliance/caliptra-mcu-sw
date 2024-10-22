@@ -38,7 +38,7 @@ static SKIP_TYPES: LazyLock<HashSet<&str>> = LazyLock::new(|| {
 
 pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
     let sub_dir = &PROJECT_ROOT.join("hw").join("caliptra-ss").to_path_buf();
-    let rtl_dir = &PROJECT_ROOT.join("hw").join("caliptra-rtl").to_path_buf();
+    let rtl_dir = &sub_dir.join("caliptra-rtl").to_path_buf();
     let i3c_dir = &PROJECT_ROOT.join("hw").join("i3c-core").to_path_buf();
     let registers_dest_dir = &PROJECT_ROOT
         .join("registers")
@@ -73,6 +73,12 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
     .iter()
     .map(|s| PROJECT_ROOT.join(s))
     .collect();
+
+    for rdl in rdl_files.iter() {
+        if !rdl.exists() {
+            return Err(format!("RDL file not found: {:?} -- ensure that you have run `git submodule init` and `git submodule update --recursive`", rdl).into());
+        }
+    }
 
     let sub_commit_id = run_cmd_stdout(
         Command::new("git")
