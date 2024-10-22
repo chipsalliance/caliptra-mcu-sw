@@ -13,7 +13,7 @@ members = [
     "runtime/apps/pldm",
     "tests/hello",
     "xtask",
-    "emulator/bmc/pldm_fw_pkg",
+    "emulator/bmc/pldm-fw-pkg",
 ]
 resolver = "2"
 

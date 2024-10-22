@@ -54,8 +54,8 @@ pub struct DownstreamDeviceIdRecord {
     pub applicable_components: Option<Vec<u8>>, // Variable bitfield
     pub self_contained_activation_min_version_string: Option<String>, // Up to 255 bytes
     pub self_contained_activation_min_version_comparison_stamp: Option<u32>,
-    pub record_descriptors: Vec<Descriptor>,    // Reference to Descriptor struct
-    pub package_data: Option<Vec<u8>>,          // Optional variable data field
+    pub record_descriptors: Vec<Descriptor>, // Reference to Descriptor struct
+    pub package_data: Option<Vec<u8>>,       // Optional variable data field
     pub reference_manifest_data: Option<Vec<u8>>, // Optional reference manifest
 }
 
@@ -71,9 +71,9 @@ pub struct ComponentImageInformation {
     pub version_string: Option<String>, // Variable length up to 255 bytes
     pub opaque_data: Option<Vec<u8>>,   // Variable length data
     #[serde(skip)]
-    pub offset: u32, // Offset to the start of the image
+    pub offset: u32,  // Offset to the start of the image
     #[serde(skip)]
-    pub size: u32,   // Size of the image
+    pub size: u32,    // Size of the image
 }
 
 #[derive(Debug, PartialEq)]
@@ -449,93 +449,29 @@ impl FirmwareManifest {
     pub fn verify(&self) -> Result<(), String> {
         let component_count = self.component_image_information.len();
 
-        // Verify UUID
-        let pldm_version =
-            get_pldm_version(self.package_header_information.package_header_identifier);
-        if pldm_version != PldmVersion::Version13 {
-            return Err(format!(
-                "Only v1.3 PLDM format is supported. UUID in manifest: {}",
-                self.package_header_information.package_header_identifier
-            ));
-        }
-
-        // Verify version string length is less than 255
-        if let Some(ref version_string) = self.package_header_information.package_version_string {
-            if version_string.len() > 255 {
-                return Err(format!(
-                    "Package version string length exceeds 255: {}",
-                    version_string.len()
-                ));
-            }
-        }
+        // Verify package_header_information
+        self.package_header_information.verify()?;
 
         // Verify firmware_device_id_records
         for (index, record) in self.firmware_device_id_records.iter().enumerate() {
-            if let Some(components) = &record.applicable_components {
-                for &comp_index in components {
-                    if comp_index as usize >= component_count {
-                        return Err(format!(
-                            "Invalid component index {} in firmware_device_id_records[{}]",
-                            comp_index, index
-                        ));
-                    }
-                }
-            }
-            // Verify component_image_set_version_string length is less than 256
-            if let Some(ref version_string) = record.component_image_set_version_string {
-                if version_string.len() > 255 {
-                    return Err(format!(
-                        "Component image set version string length exceeds 255: {}",
-                        version_string.len()
-                    ));
-                }
+            if let Err(e) = record.verify(component_count) {
+                return Err(format!("firmware_device_id_records[{}]: {}", index, e));
             }
         }
 
         // Verify downstream_device_id_records
         if let Some(downstream_device_id_records) = &self.downstream_device_id_records {
             for (index, record) in downstream_device_id_records.iter().enumerate() {
-                if let Some(components) = &record.applicable_components {
-                    for &comp_index in components {
-                        if comp_index as usize >= component_count {
-                            return Err(format!(
-                                "Invalid component index {} in downstream_device_id_records[{}]",
-                                comp_index, index
-                            ));
-                        }
-                    }
-                }
-                // Verify self_contained_activation_min_version_string length is less than 255
-                if let Some(ref version_string) =
-                    record.self_contained_activation_min_version_string
-                {
-                    if version_string.len() > 255 {
-                        return Err(format!(
-                            "Self contained activation min version string length exceeds 255: {}",
-                            version_string.len()
-                        ));
-                    }
+                if let Err(e) = record.verify(component_count) {
+                    return Err(format!("downstream_device_id_records[{}]: {}", index, e));
                 }
             }
         }
 
         // Verify component_image_information
-        for component in self.component_image_information.iter() {
-            // Verify image_location exists
-            if fs::metadata(&component.image_location).is_err() {
-                return Err(format!(
-                    "Component image file does not exist: {}",
-                    component.image_location
-                ));
-            }
-            // Verify version_string length is less than 255
-            if let Some(ref version_string) = component.version_string {
-                if version_string.len() > 255 {
-                    return Err(format!(
-                        "Component version string length exceeds 255: {}",
-                        version_string.len()
-                    ));
-                }
+        for (index, component) in self.component_image_information.iter().enumerate() {
+            if let Err(e) = component.verify() {
+                return Err(format!("component_image_information[{}]: {}", index, e));
             }
         }
 
@@ -761,9 +697,9 @@ impl FirmwareManifest {
 impl PackageHeaderInformation {
     fn get_header_size(
         &self,
-        firmware_device_records: &Vec<FirmwareDeviceIdRecord>,
+        firmware_device_records: &[FirmwareDeviceIdRecord],
         downstream_device_records: &Option<Vec<DownstreamDeviceIdRecord>>,
-        component_image_information: &Vec<ComponentImageInformation>,
+        component_image_information: &[ComponentImageInformation],
     ) -> u16 {
         // Calculate the size of the header
         let mut size = 0;
@@ -804,9 +740,9 @@ impl PackageHeaderInformation {
     fn encode<W: Write>(
         &self,
         writer: &mut W,
-        firmware_device_record: &Vec<FirmwareDeviceIdRecord>,
+        firmware_device_record: &[FirmwareDeviceIdRecord],
         downstream_device_record: &Option<Vec<DownstreamDeviceIdRecord>>,
-        component_image_information: &Vec<ComponentImageInformation>,
+        component_image_information: &[ComponentImageInformation],
     ) -> io::Result<()> {
         // Always encode as version 1.3
         let version13_uuid = PldmVersion::Version13.get_uuid().unwrap();
@@ -875,6 +811,28 @@ impl PackageHeaderInformation {
             },
             component_bitmap_bit_length,
         ))
+    }
+    pub fn verify(&self) -> Result<(), String> {
+        // Verify UUID
+        let pldm_version = get_pldm_version(self.package_header_identifier);
+        if pldm_version != PldmVersion::Version13 {
+            return Err(format!(
+                "Only v1.3 PLDM format is supported. UUID in manifest: {}",
+                self.package_header_identifier
+            ));
+        }
+
+        // Verify version string length is less than 255
+        if let Some(ref version_string) = self.package_version_string {
+            if version_string.len() > 255 {
+                return Err(format!(
+                    "Package version string length exceeds 255: {}",
+                    version_string.len()
+                ));
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -1129,6 +1087,28 @@ impl FirmwareDeviceIdRecord {
         }
 
         total_size
+    }
+
+    fn verify(&self, component_count: usize) -> Result<(), String> {
+        // Verify applicable_components
+        if let Some(components) = &self.applicable_components {
+            for &comp_index in components {
+                if comp_index as usize >= component_count {
+                    return Err(format!("Invalid applicable component index {}", comp_index));
+                }
+            }
+        }
+        // Verify component_image_set_version_string length is less than 255
+        if let Some(ref version_string) = self.component_image_set_version_string {
+            if version_string.len() > 255 {
+                return Err(format!(
+                    "Component image set version string length exceeds 255: {}",
+                    version_string.len()
+                ));
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -1425,6 +1405,27 @@ impl DownstreamDeviceIdRecord {
 
         total_size
     }
+
+    fn verify(&self, component_count: usize) -> Result<(), String> {
+        // Verify applicable_components
+        if let Some(components) = &self.applicable_components {
+            for &comp_index in components {
+                if comp_index as usize >= component_count {
+                    return Err(format!("Invalid applicable component index {}", comp_index));
+                }
+            }
+        }
+        // Verify self_contained_activation_min_version_string length is less than 255
+        if let Some(ref version_string) = self.self_contained_activation_min_version_string {
+            if version_string.len() > 255 {
+                return Err(format!(
+                    "Self contained activation min version string length exceeds 255: {}",
+                    version_string.len()
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 impl ComponentImageInformation {
@@ -1606,5 +1607,26 @@ impl ComponentImageInformation {
         }
 
         total_size
+    }
+
+    fn verify(&self) -> Result<(), String> {
+        // Verify image_location exists
+        if fs::metadata(&self.image_location).is_err() {
+            return Err(format!(
+                "Component image file does not exist: {}",
+                self.image_location
+            ));
+        }
+        // Verify version_string length is less than 255
+        if let Some(ref version_string) = self.version_string {
+            if version_string.len() > 255 {
+                return Err(format!(
+                    "Component version string length exceeds 255: {}",
+                    version_string.len()
+                ));
+            }
+        }
+
+        Ok(())
     }
 }

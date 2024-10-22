@@ -1,11 +1,11 @@
 [package]
-name = "pldm_fw_pkg"
+name = "pldm-fw-pkg"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 
 [[bin]]
-name = "pldm_fw_pkg"
+name = "pldm-fw-pkg"
 path = "src/main.rs"
 
 [dependencies]
