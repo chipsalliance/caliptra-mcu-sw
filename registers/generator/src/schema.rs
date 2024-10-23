@@ -987,6 +987,7 @@ fn all_regs_mut<'a>(
 ) -> Vec<&'a mut Rc<Register>> {
     let mut all_regs_vec: Vec<&'a mut Rc<Register>> = regs.iter_mut().collect();
     for sub in sub_blocks.iter_mut() {
+        //all_regs_vec.extend(sub.block_mut().registers.as_mut_slice());
         all_regs_vec.extend(all_regs_mut(
             &mut [],
             sub.block_mut().sub_blocks.as_mut_slice(),
@@ -1091,8 +1092,6 @@ impl RegisterBlock {
             }
         };
 
-        let mut regs_by_type = HashMap::<Rc<RegisterType>, Vec<Rc<Register>>>::new();
-
         let mut used_names = HashSet::new();
         let mut next_free_offset = 0;
         for reg in self.registers.iter() {
@@ -1111,16 +1110,17 @@ impl RegisterBlock {
                 });
             }
         }
+        let mut regs_by_type = HashMap::<RegisterType, Vec<Rc<Register>>>::new();
         for reg in all_regs(&self.registers, &self.sub_blocks) {
             regs_by_type
-                .entry(reg.ty.clone())
+                .entry(reg.ty.as_ref().clone())
                 .or_default()
                 .push(reg.clone());
         }
-        let mut new_types = HashMap::<Rc<RegisterType>, Rc<RegisterType>>::new();
+        let mut new_types = HashMap::<RegisterType, Rc<RegisterType>>::new();
 
         for (reg_type, regs) in regs_by_type.into_iter() {
-            let mut new_type = (*reg_type).clone();
+            let mut new_type = reg_type.clone();
             let reg_names: Vec<&str> = regs.iter().map(|r| r.name.as_str()).collect();
             if new_type.name.is_none() {
                 new_type.name = compute_common_name(&reg_names).map(Into::into);
@@ -1128,19 +1128,10 @@ impl RegisterBlock {
             if new_type.name.is_none() {
                 new_type.name = Some(format!("Field{:016x}", hash_u64(&new_type)));
             }
-            new_types.insert(reg_type, Rc::new(new_type));
+            new_types.insert(reg_type.clone(), Rc::new(new_type));
         }
         // Replace the old duplicate register types with the new shared types
-        for reg in all_regs_mut(&mut self.registers, &mut self.sub_blocks) {
-            if let Some(new_type) = new_types.get(&reg.ty) {
-                Rc::make_mut(reg).ty = new_type.clone();
-            }
-        }
-        for reg_type in self.declared_register_types.iter_mut() {
-            if let Some(new_type) = new_types.get(reg_type) {
-                *reg_type = new_type.clone();
-            }
-        }
+        self.replace_register_types(&new_types);
         let mut register_types: HashMap<String, Rc<RegisterType>> = HashMap::new();
         for reg_type in new_types.into_values() {
             let reg_type_name = reg_type.name.clone().unwrap();
@@ -1157,11 +1148,38 @@ impl RegisterBlock {
             }
             register_types.insert(reg_type_name, reg_type);
         }
+        assert!(register_types.values().all(|rt| rt.name.is_some()));
+        self.validate_register_type_names();
 
         Ok(ValidatedRegisterBlock {
             block: self,
             register_types,
             enum_types,
         })
+    }
+
+    fn replace_register_types(&mut self, new_types: &HashMap<RegisterType, Rc<RegisterType>>) {
+        for reg in self.registers.iter_mut() {
+            if let Some(new_type) = new_types.get(&reg.ty) {
+                Rc::make_mut(reg).ty = new_type.clone();
+            }
+        }
+        for reg_type in self.declared_register_types.iter_mut() {
+            if let Some(new_type) = new_types.get(reg_type) {
+                *reg_type = new_type.clone();
+            }
+        }
+        for block in self.sub_blocks.iter_mut() {
+            block.block_mut().replace_register_types(new_types);
+        }
+    }
+
+    fn validate_register_type_names(&self) {
+        for reg in self.registers.iter() {
+            assert!(reg.ty.name.is_some());
+        }
+        for sb in self.sub_blocks.iter() {
+            sb.block().validate_register_type_names();
+        }
     }
 }

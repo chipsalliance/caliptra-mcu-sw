@@ -810,6 +810,12 @@ fn generate_fw_registers(
         let module_ident = format_ident!("{}", block.block().name);
         let dest_file = dest_dir.join(format!("{}.rs", block.block().name));
 
+        println!(
+            "Block {} has {} declared {} plain types",
+            block.block().name,
+            block.block().declared_register_types.len(),
+            block.register_types().len()
+        );
         let tokens = registers_generator::generate_code(
             &format!("crate::{}::", block.block().name),
             &block,
@@ -832,11 +838,17 @@ fn generate_fw_registers(
             ..Default::default()
         },
     );
+    let recursion = "#![recursion_limit = \"256\"]\n";
     //let root_tokens = quote! { #root_type_tokens #root_submod_tokens };
     let root_tokens = root_type_tokens;
     file_action(
         &dest_dir.join("lib.rs"),
-        &rustfmt(&(header.clone() + &root_tokens.to_string() + &root_submod_tokens.to_string()))?,
+        &rustfmt(
+            &(header.clone()
+                + recursion
+                + &root_tokens.to_string()
+                + &root_submod_tokens.to_string()),
+        )?,
     )?;
     Ok(())
 }

@@ -4,6 +4,7 @@
 // , caliptra-ss repo at 9911c2b0e4bac9e4b48f6c2155c86cb116159734
 // , and i3c-core repo at d5c715103f529ade0e5d375a53c5692daaa9c54b
 //
+#![recursion_limit = "256"]
 #![no_std]
 pub mod el2_pic_ctrl;
 pub mod i3c_ctrl;

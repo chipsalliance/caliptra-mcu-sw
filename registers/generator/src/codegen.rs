@@ -867,6 +867,10 @@ fn indent(x: &str, num_spaces: usize) -> String {
         + if x.ends_with("\n") { "\n" } else { "" }
 }
 
+fn no_registers(block: &RegisterBlock) -> bool {
+    block.registers.is_empty() && block.sub_blocks.iter().all(|sb| no_registers(sb.block()))
+}
+
 pub fn generate_code(
     crate_prefix: &str,
     block: &ValidatedRegisterBlock,
@@ -876,16 +880,11 @@ pub fn generate_code(
     let bit_tokens = generate_bitfields(block.register_types().values().map(|x| x.clone()));
     let bit_tokens = indent(&bit_tokens, 4);
 
-    // TODO: subblocks
-    let reg_tokens = if block.block().name.trim().is_empty() || block.block().registers.is_empty() {
+    let reg_tokens = if block.block().name.trim().is_empty() || no_registers(block.block()) {
         assert!(block.block().registers.is_empty());
         String::new()
     } else {
-        generate_reg_structs(
-            crate_prefix,
-            &block.block().name,
-            block.block().registers.iter().map(|x| x.clone()),
-        )
+        generate_reg_structs(crate_prefix, block.block())
     };
 
     let address_tokens = generate_address_tokens(block.block());
@@ -946,11 +945,21 @@ fn format_comment(comment: &str, indent: usize) -> String {
     result
 }
 
-fn generate_reg_structs(
-    crate_prefix: &str,
-    name: &str,
-    registers: impl Iterator<Item = Rc<Register>>,
-) -> String {
+fn flatten_registers(block: &RegisterBlock) -> Vec<Rc<Register>> {
+    let mut registers = Vec::new();
+    for reg in block.registers.iter() {
+        assert!(reg.ty.name.is_some() || has_single_32_bit_field(&reg.ty));
+        registers.push(reg.clone());
+    }
+    for sub_block in block.sub_blocks.iter() {
+        registers.extend(flatten_registers(sub_block.block()));
+    }
+    registers
+}
+
+fn generate_reg_structs(crate_prefix: &str, block: &RegisterBlock) -> String {
+    let name = &block.name;
+    let registers = flatten_registers(block);
     let name = camel_case(name);
     let mut tokens = format!("register_structs! {{\n    pub {name} {{\n");
 
@@ -964,17 +973,6 @@ fn generate_reg_structs(
             reserved += 1;
         }
         assert!(reg.ty.name.is_some());
-        // let ty = match reg.ty.name {
-        //     Some(_) => reg.ty.as_ref().clone(),
-        //     _ => {
-        //         let mut new_ty = reg.ty.as_ref().clone();
-        //         let num = TYPE_NUM.fetch_add(1, Ordering::Relaxed);
-        //         new_ty.name = Some(format!("{}_anon_{}", name, num));
-        //         let tokens = generate_register_types([new_ty.clone()].iter());
-        //         anon_type_tokens.extend(tokens);
-        //         new_ty
-        //     }
-        // };
         let ty = reg.ty.as_ref().clone();
         let kind = if has_single_32_bit_field(&ty) {
             "tock_registers::registers::ReadOnly<u32>".to_string() // TODO: check if writable
