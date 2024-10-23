@@ -9,7 +9,7 @@ use crate::schema::{
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     rc::Rc,
     str::FromStr,
     sync::atomic::{AtomicUsize, Ordering},
@@ -945,38 +945,52 @@ fn format_comment(comment: &str, indent: usize) -> String {
     result
 }
 
-fn flatten_registers(block: &RegisterBlock) -> Vec<Rc<Register>> {
+fn flatten_registers(block: &RegisterBlock, offset: u64) -> Vec<Register> {
     let mut registers = Vec::new();
     for reg in block.registers.iter() {
         assert!(reg.ty.name.is_some() || has_single_32_bit_field(&reg.ty));
-        registers.push(reg.clone());
+        let mut r = reg.as_ref().clone();
+        r.offset += offset;
+        registers.push(r);
     }
     for sub_block in block.sub_blocks.iter() {
-        registers.extend(flatten_registers(sub_block.block()));
+        registers.extend(flatten_registers(
+            sub_block.block(),
+            offset + sub_block.start_offset(),
+        ));
     }
     registers
 }
 
 fn generate_reg_structs(crate_prefix: &str, block: &RegisterBlock) -> String {
     let name = &block.name;
-    let registers = flatten_registers(block);
+    let registers = flatten_registers(block, 0);
     let name = camel_case(name);
     let mut tokens = format!("register_structs! {{\n    pub {name} {{\n");
 
     let mut next_offset = 0;
     let mut reserved = 0;
+    let mut fields = HashSet::new();
     for reg in registers {
-        let name = snake_case(&reg.name);
+        let mut name = snake_case(&reg.name);
+        if fields.contains(&name) {
+            let mut i = 0;
+            while fields.contains(&format!("{}{}", name, i)) {
+                i += 1;
+            }
+            name = format!("{}{}", name, i);
+        }
+        fields.insert(name.clone());
         let offset = reg.offset;
         if offset != next_offset {
             tokens += &format!("        (0x{next_offset:x} => _reserved{reserved}),\n");
             reserved += 1;
         }
-        assert!(reg.ty.name.is_some());
         let ty = reg.ty.as_ref().clone();
         let kind = if has_single_32_bit_field(&ty) {
             "tock_registers::registers::ReadOnly<u32>".to_string() // TODO: check if writable
         } else {
+            assert!(reg.ty.name.is_some());
             format!(
                 "tock_registers::registers::ReadOnly<{}, {crate_prefix}bits::{}::Register>",
                 ty.width.rust_primitive_name(),
