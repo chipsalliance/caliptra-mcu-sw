@@ -877,8 +877,16 @@ pub fn generate_code(
     options: Options,
 ) -> String {
     let options = options.compile();
-    let bit_tokens = generate_bitfields(block.register_types().values().map(|x| x.clone()));
-    let bit_tokens = indent(&bit_tokens, 4);
+    let mut bit_tokens = generate_bitfields(block.register_types().values().map(|x| x.clone()));
+    bit_tokens += "\n";
+    bit_tokens += &generate_bitfields(
+        block
+            .block()
+            .declared_register_types
+            .iter()
+            .map(|x| x.clone()),
+    );
+    bit_tokens = indent(&bit_tokens, 4);
 
     let reg_tokens = if block.block().name.trim().is_empty() || no_registers(block.block()) {
         assert!(block.block().registers.is_empty());
