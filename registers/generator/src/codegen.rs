@@ -959,6 +959,7 @@ fn flatten_registers(block: &RegisterBlock, offset: u64) -> Vec<Register> {
             offset + sub_block.start_offset(),
         ));
     }
+    registers.sort_by_key(|r| r.offset);
     registers
 }
 
@@ -968,6 +969,7 @@ fn generate_reg_structs(crate_prefix: &str, block: &RegisterBlock) -> String {
     let name = camel_case(name);
     let mut tokens = format!("register_structs! {{\n    pub {name} {{\n");
 
+    let mut last_offset = 1;
     let mut next_offset = 0;
     let mut reserved = 0;
     let mut fields = HashSet::new();
@@ -982,6 +984,15 @@ fn generate_reg_structs(crate_prefix: &str, block: &RegisterBlock) -> String {
         }
         fields.insert(name.clone());
         let offset = reg.offset;
+        if offset == last_offset {
+            println!(
+                "Warning: Register {}.{} overlaps with previous register; ignoring it",
+                block.name, reg.name
+            );
+            continue;
+        }
+        last_offset = offset;
+        // TODO: check for R/W
         if offset != next_offset {
             tokens += &format!("        (0x{next_offset:x} => _reserved{reserved}),\n");
             reserved += 1;
