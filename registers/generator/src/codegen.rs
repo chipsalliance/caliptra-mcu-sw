@@ -888,69 +888,17 @@ pub fn generate_code(
         )
     };
 
-    let mut instance_type_tokens = String::new();
-    let max_reg_width = block_max_register_width(block.block());
-    let raw_ptr_type = format_ident!("{}", max_reg_width.rust_primitive_name());
-
-    for instance in block.block().instances.iter() {
-        let name_camel = camel_ident(&instance.name);
-        let addr = hex_const(instance.address.into());
-        // TODO: Should this be unsafe?
-        instance_type_tokens += &format!(
-            "
-/// A zero-sized type that represents ownership of this
-/// peripheral, used to get access to a Register lock. Most
-/// programs create one of these in unsafe code near the top of
-/// main(), and pass it to the driver responsible for managing
-/// all access to the hardware.
-pub struct {name_camel} {{
-    // Ensure the only way to create this is via Self::new()
-    _priv: (),
-}}
-impl {name_camel} {{
-    pub const PTR: *mut {raw_ptr_type} = {addr} as *mut {raw_ptr_type};
-
-    /// # Safety
-    ///
-    /// Caller must ensure that all concurrent use of this
-    /// peripheral in the firmware is done so in a compatible
-    /// way. The simplest way to enforce this is to only call
-    /// this function once.
-    #[inline(always)]
-    pub unsafe fn new() -> Self {{
-        Self {{
-            _priv: (),
-        }}
-    }}
-
-    /// Returns a register block that can be used to read
-    /// registers from this peripheral, but cannot write.
-    #[inline(always)]
-    pub fn regs(&self) -> RegisterBlock<ureg::RealMmio> {{
-        RegisterBlock {{
-            ptr: Self::PTR,
-            mmio: core::default::Default::default(),
-        }}
-    }}
-
-    /// Return a register block that can be used to read and
-    /// write this peripheral's registers.
-    #[inline(always)]
-    pub fn regs_mut(&mut self) -> RegisterBlock<ureg::RealMmioMut> {{
-        RegisterBlock {{
-            ptr: Self::PTR,
-            mmio: core::default::Default::default(),
-        }}
-    }}
-}}"
-        );
-    }
+    let address_tokens = generate_address_tokens(block.block());
 
     let mut tokens = String::new();
 
     // You can't set no_std in a module
     if options.is_root_module {
         tokens += "#![no_std]\n";
+    }
+
+    if !address_tokens.trim().is_empty() {
+        tokens += &address_tokens;
     }
 
     if !bit_tokens.trim().is_empty() {
@@ -972,16 +920,18 @@ impl {name_camel} {{
 }}\n"
         );
     }
-
-    if !instance_type_tokens.trim().is_empty() {
-        tokens += &format!(
-            "pub mod instances {{
-    //! Types that represent instances.
-{instance_type_tokens}
-}}\n"
-        );
-    }
     tokens
+}
+
+fn generate_address_tokens(block: &RegisterBlock) -> String {
+    let mut instance_type_tokens = String::new();
+
+    for instance in block.instances.iter() {
+        let name_camel = snake_case(&instance.name).to_uppercase();
+        let addr = hex_const(instance.address.into());
+        instance_type_tokens += &format!("pub const {name_camel}_ADDR: u32 = {addr};\n");
+    }
+    instance_type_tokens
 }
 
 fn format_comment(comment: &str, indent: usize) -> String {
