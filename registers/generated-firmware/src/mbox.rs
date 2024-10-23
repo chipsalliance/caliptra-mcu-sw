@@ -9,8 +9,14 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
+            pub Execute [
+                Execute OFFSET(0) NUMBITS(1) [],
+            ],
             pub Lock [
                 Lock OFFSET(0) NUMBITS(1) [],
+            ],
+            pub Unlock [
+                Unlock OFFSET(0) NUMBITS(1) [],
             ],
             pub Status [
                 /// Indicates the status of mailbox command
@@ -63,12 +69,6 @@ pub mod bits {
                 /// [br]TAP Access [in debug/manuf mode]: RO
                 MboxRdptr OFFSET(10) NUMBITS(15) [],
             ],
-            pub Execute [
-                Execute OFFSET(0) NUMBITS(1) [],
-            ],
-            pub Unlock [
-                Unlock OFFSET(0) NUMBITS(1) [],
-            ],
     }
 }
 pub mod regs {
@@ -86,6 +86,53 @@ pub mod regs {
             (0x1c => pub status: tock_registers::registers::ReadOnly<u32, crate::mbox::bits::Status::Register>),
             (0x20 => pub unlock: tock_registers::registers::ReadOnly<u32, crate::mbox::bits::Unlock::Register>),
             (0x24 => @END),
+        }
+    }
+}
+pub mod instances {
+    //! Types that represent instances.
+
+    /// A zero-sized type that represents ownership of this
+    /// peripheral, used to get access to a Register lock. Most
+    /// programs create one of these in unsafe code near the top of
+    /// main(), and pass it to the driver responsible for managing
+    /// all access to the hardware.
+    pub struct MboxCsr {
+        // Ensure the only way to create this is via Self::new()
+        _priv: (),
+    }
+    impl MboxCsr {
+        pub const PTR: *mut u32 = 0x30020000 as *mut u32;
+
+        /// # Safety
+        ///
+        /// Caller must ensure that all concurrent use of this
+        /// peripheral in the firmware is done so in a compatible
+        /// way. The simplest way to enforce this is to only call
+        /// this function once.
+        #[inline(always)]
+        pub unsafe fn new() -> Self {
+            Self { _priv: () }
+        }
+
+        /// Returns a register block that can be used to read
+        /// registers from this peripheral, but cannot write.
+        #[inline(always)]
+        pub fn regs(&self) -> RegisterBlock<ureg::RealMmio> {
+            RegisterBlock {
+                ptr: Self::PTR,
+                mmio: core::default::Default::default(),
+            }
+        }
+
+        /// Return a register block that can be used to read and
+        /// write this peripheral's registers.
+        #[inline(always)]
+        pub fn regs_mut(&mut self) -> RegisterBlock<ureg::RealMmioMut> {
+            RegisterBlock {
+                ptr: Self::PTR,
+                mmio: core::default::Default::default(),
+            }
         }
     }
 }

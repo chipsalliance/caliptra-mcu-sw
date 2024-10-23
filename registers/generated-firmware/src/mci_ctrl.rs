@@ -9,6 +9,49 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
+            pub WdtTimer1En [
+                /// WDT timer1 enable
+                Timer1En OFFSET(0) NUMBITS(1) [],
+            ],
+            pub HwError [
+                Rsvd OFFSET(0) NUMBITS(1) [],
+            ],
+            pub Capabilities [
+                /// Number of Mailboxes in MCI
+                NumMbox OFFSET(0) NUMBITS(4) [],
+            ],
+            pub CaliptraBootGo [
+                /// fixme
+                Go OFFSET(0) NUMBITS(1) [],
+            ],
+            pub FwSramExecRegionSize [
+                /// Size (in multiples of 4KiB)
+                Size OFFSET(0) NUMBITS(1) [],
+            ],
+            pub WdtTimer1Ctrl [
+                /// WDT timer1 restart
+                Timer1Restart OFFSET(0) NUMBITS(1) [],
+            ],
+            pub CptraWdtStatus [
+                /// Timer1 timed out, timer2 enabled
+                T1Timeout OFFSET(0) NUMBITS(1) [],
+                /// Timer2 timed out
+                T2Timeout OFFSET(1) NUMBITS(1) [],
+            ],
+            pub ResetAck [
+                /// Ack. Writable by MCU. Causes MCU reset to assert (if RESET_REQUEST.req is also set)
+                Ack OFFSET(0) NUMBITS(1) [],
+            ],
+            pub WdtTimer2En [
+                /// WDT timer2 enable
+                Timer2En OFFSET(0) NUMBITS(1) [],
+            ],
+            pub ResetRequest [
+                /// Request. Writable by Caliptra. Causes MCU interrupt to assert.
+                Req OFFSET(0) NUMBITS(1) [],
+                /// Clear. Writable by Caliptra. On set, this bit autoclears, RESET_REQUEST.req clears, and MCU reset deasserts.
+                Clr OFFSET(1) NUMBITS(1) [],
+            ],
             pub CaliptraAxiId [
                 Id OFFSET(0) NUMBITS(1) [],
             ],
@@ -26,17 +69,9 @@ pub mod bits {
                 /// Warm reset has been executed
                 WarmReset OFFSET(1) NUMBITS(1) [],
             ],
-            pub CaliptraBootGo [
-                /// fixme
-                Go OFFSET(0) NUMBITS(1) [],
-            ],
-            pub WdtTimer1En [
-                /// WDT timer1 enable
-                Timer1En OFFSET(0) NUMBITS(1) [],
-            ],
-            pub FwSramExecRegionSize [
-                /// Size (in multiples of 4KiB)
-                Size OFFSET(0) NUMBITS(1) [],
+            pub WdtTimer2Ctrl [
+                /// WDT timer2 restart
+                Timer2Restart OFFSET(0) NUMBITS(1) [],
             ],
             pub HwRevId [
                 /// Official release version. Bit field encoding is:
@@ -46,43 +81,8 @@ pub mod bits {
                 McGeneration OFFSET(0) NUMBITS(16) [],
                 SocSteppingId OFFSET(16) NUMBITS(16) [],
             ],
-            pub ResetRequest [
-                /// Request. Writable by Caliptra. Causes MCU interrupt to assert.
-                Req OFFSET(0) NUMBITS(1) [],
-                /// Clear. Writable by Caliptra. On set, this bit autoclears, RESET_REQUEST.req clears, and MCU reset deasserts.
-                Clr OFFSET(1) NUMBITS(1) [],
-            ],
-            pub HwError [
-                Rsvd OFFSET(0) NUMBITS(1) [],
-            ],
-            pub WdtTimer1Ctrl [
-                /// WDT timer1 restart
-                Timer1Restart OFFSET(0) NUMBITS(1) [],
-            ],
             pub Lock [
                 Lock OFFSET(0) NUMBITS(1) [],
-            ],
-            pub WdtTimer2Ctrl [
-                /// WDT timer2 restart
-                Timer2Restart OFFSET(0) NUMBITS(1) [],
-            ],
-            pub ResetAck [
-                /// Ack. Writable by MCU. Causes MCU reset to assert (if RESET_REQUEST.req is also set)
-                Ack OFFSET(0) NUMBITS(1) [],
-            ],
-            pub Capabilities [
-                /// Number of Mailboxes in MCI
-                NumMbox OFFSET(0) NUMBITS(4) [],
-            ],
-            pub WdtTimer2En [
-                /// WDT timer2 enable
-                Timer2En OFFSET(0) NUMBITS(1) [],
-            ],
-            pub CptraWdtStatus [
-                /// Timer1 timed out, timer2 enabled
-                T1Timeout OFFSET(0) NUMBITS(1) [],
-                /// Timer2 timed out
-                T2Timeout OFFSET(1) NUMBITS(1) [],
             ],
     }
 }
@@ -146,6 +146,53 @@ pub mod regs {
             (0x450 => pub rsvd_rw_l_s_reg: [tock_registers::registers::ReadOnly<u32>; 2]),
             (0x458 => pub rsvd_rw_l_s_reg_lock: [tock_registers::registers::ReadOnly<u32>; 2]),
             (0x460 => @END),
+        }
+    }
+}
+pub mod instances {
+    //! Types that represent instances.
+
+    /// A zero-sized type that represents ownership of this
+    /// peripheral, used to get access to a Register lock. Most
+    /// programs create one of these in unsafe code near the top of
+    /// main(), and pass it to the driver responsible for managing
+    /// all access to the hardware.
+    pub struct MciCtrl {
+        // Ensure the only way to create this is via Self::new()
+        _priv: (),
+    }
+    impl MciCtrl {
+        pub const PTR: *mut u32 = 0x20050000 as *mut u32;
+
+        /// # Safety
+        ///
+        /// Caller must ensure that all concurrent use of this
+        /// peripheral in the firmware is done so in a compatible
+        /// way. The simplest way to enforce this is to only call
+        /// this function once.
+        #[inline(always)]
+        pub unsafe fn new() -> Self {
+            Self { _priv: () }
+        }
+
+        /// Returns a register block that can be used to read
+        /// registers from this peripheral, but cannot write.
+        #[inline(always)]
+        pub fn regs(&self) -> RegisterBlock<ureg::RealMmio> {
+            RegisterBlock {
+                ptr: Self::PTR,
+                mmio: core::default::Default::default(),
+            }
+        }
+
+        /// Return a register block that can be used to read and
+        /// write this peripheral's registers.
+        #[inline(always)]
+        pub fn regs_mut(&mut self) -> RegisterBlock<ureg::RealMmioMut> {
+            RegisterBlock {
+                ptr: Self::PTR,
+                mmio: core::default::Default::default(),
+            }
         }
     }
 }

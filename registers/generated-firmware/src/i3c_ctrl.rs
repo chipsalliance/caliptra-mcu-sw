@@ -4,3 +4,50 @@
 // , caliptra-ss repo at 9911c2b0e4bac9e4b48f6c2155c86cb116159734
 // , and i3c-core repo at d5c715103f529ade0e5d375a53c5692daaa9c54b
 //
+pub mod instances {
+    //! Types that represent instances.
+
+    /// A zero-sized type that represents ownership of this
+    /// peripheral, used to get access to a Register lock. Most
+    /// programs create one of these in unsafe code near the top of
+    /// main(), and pass it to the driver responsible for managing
+    /// all access to the hardware.
+    pub struct I3cCtrl {
+        // Ensure the only way to create this is via Self::new()
+        _priv: (),
+    }
+    impl I3cCtrl {
+        pub const PTR: *mut u32 = 0x10038100 as *mut u32;
+
+        /// # Safety
+        ///
+        /// Caller must ensure that all concurrent use of this
+        /// peripheral in the firmware is done so in a compatible
+        /// way. The simplest way to enforce this is to only call
+        /// this function once.
+        #[inline(always)]
+        pub unsafe fn new() -> Self {
+            Self { _priv: () }
+        }
+
+        /// Returns a register block that can be used to read
+        /// registers from this peripheral, but cannot write.
+        #[inline(always)]
+        pub fn regs(&self) -> RegisterBlock<ureg::RealMmio> {
+            RegisterBlock {
+                ptr: Self::PTR,
+                mmio: core::default::Default::default(),
+            }
+        }
+
+        /// Return a register block that can be used to read and
+        /// write this peripheral's registers.
+        #[inline(always)]
+        pub fn regs_mut(&mut self) -> RegisterBlock<ureg::RealMmioMut> {
+            RegisterBlock {
+                ptr: Self::PTR,
+                mmio: core::default::Default::default(),
+            }
+        }
+    }
+}

@@ -373,7 +373,14 @@ pub fn hex_literal(val: u64) -> Literal {
 
 pub fn hex_const(val: u64) -> String {
     if val > 9 {
-        format!("0x{val:x}")
+        let mut x = "0x".to_owned();
+        for (i, c) in format!("{val:x}").chars().enumerate() {
+            if i % 4 == 0 && i != 0 {
+                x.push('_');
+            }
+            x.push(c);
+        }
+        x
     } else {
         format!("{val}")
     }
@@ -869,7 +876,6 @@ pub fn generate_code(
     let bit_tokens = generate_bitfields(block.register_types().values().map(|x| x.clone()));
     let bit_tokens = indent(&bit_tokens, 4);
 
-    // TODO: instances
     // TODO: subblocks
     let reg_tokens = if block.block().name.trim().is_empty() || block.block().registers.is_empty() {
         assert!(block.block().registers.is_empty());
@@ -881,6 +887,64 @@ pub fn generate_code(
             block.block().registers.iter().map(|x| x.clone()),
         )
     };
+
+    let mut instance_type_tokens = String::new();
+    let max_reg_width = block_max_register_width(block.block());
+    let raw_ptr_type = format_ident!("{}", max_reg_width.rust_primitive_name());
+
+    for instance in block.block().instances.iter() {
+        let name_camel = camel_ident(&instance.name);
+        let addr = hex_literal(instance.address.into());
+        // TODO: Should this be unsafe?
+        instance_type_tokens += &format!(
+            "
+/// A zero-sized type that represents ownership of this
+/// peripheral, used to get access to a Register lock. Most
+/// programs create one of these in unsafe code near the top of
+/// main(), and pass it to the driver responsible for managing
+/// all access to the hardware.
+pub struct {name_camel} {{
+    // Ensure the only way to create this is via Self::new()
+    _priv: (),
+}}
+impl {name_camel} {{
+    pub const PTR: *mut {raw_ptr_type} = {addr} as *mut {raw_ptr_type};
+
+    /// # Safety
+    ///
+    /// Caller must ensure that all concurrent use of this
+    /// peripheral in the firmware is done so in a compatible
+    /// way. The simplest way to enforce this is to only call
+    /// this function once.
+    #[inline(always)]
+    pub unsafe fn new() -> Self {{
+        Self {{
+            _priv: (),
+        }}
+    }}
+
+    /// Returns a register block that can be used to read
+    /// registers from this peripheral, but cannot write.
+    #[inline(always)]
+    pub fn regs(&self) -> RegisterBlock<ureg::RealMmio> {{
+        RegisterBlock {{
+            ptr: Self::PTR,
+            mmio: core::default::Default::default(),
+        }}
+    }}
+
+    /// Return a register block that can be used to read and
+    /// write this peripheral's registers.
+    #[inline(always)]
+    pub fn regs_mut(&mut self) -> RegisterBlock<ureg::RealMmioMut> {{
+        RegisterBlock {{
+            ptr: Self::PTR,
+            mmio: core::default::Default::default(),
+        }}
+    }}
+}}"
+        );
+    }
 
     let mut tokens = String::new();
 
@@ -905,6 +969,15 @@ pub fn generate_code(
     //! Types that represent registers.
     use tock_registers::register_structs;
 {reg_tokens}
+}}\n"
+        );
+    }
+
+    if !instance_type_tokens.trim().is_empty() {
+        tokens += &format!(
+            "pub mod instances {{
+    //! Types that represent instances.
+{instance_type_tokens}
 }}\n"
         );
     }
