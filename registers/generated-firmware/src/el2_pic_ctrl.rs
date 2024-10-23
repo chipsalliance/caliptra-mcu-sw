@@ -45,17 +45,17 @@ pub mod regs {
     use tock_registers::register_structs;
     register_structs! {
         pub El2PicCtrl {
-            (0x0 => pub meipl: [tock_registers::registers::ReadOnly<u32, crate::el2_pic_ctrl::bits::Meipl::Register>; 256]),
+            (0x0 => pub meipl: [tock_registers::registers::ReadWrite<u32, crate::el2_pic_ctrl::bits::Meipl::Register>; 256]),
             (0x400 => _reserved0),
             (0x1000 => pub meip: [tock_registers::registers::ReadOnly<u32, crate::el2_pic_ctrl::bits::Meip::Register>; 256]),
             (0x1400 => _reserved1),
-            (0x2000 => pub meie: [tock_registers::registers::ReadOnly<u32, crate::el2_pic_ctrl::bits::Meie::Register>; 256]),
+            (0x2000 => pub meie: [tock_registers::registers::ReadWrite<u32, crate::el2_pic_ctrl::bits::Meie::Register>; 256]),
             (0x2400 => _reserved2),
-            (0x3000 => pub mpiccfg: tock_registers::registers::ReadOnly<u32, crate::el2_pic_ctrl::bits::Mpiccfg::Register>),
+            (0x3000 => pub mpiccfg: tock_registers::registers::ReadWrite<u32, crate::el2_pic_ctrl::bits::Mpiccfg::Register>),
             (0x3004 => _reserved3),
-            (0x4000 => pub meigwctrl: [tock_registers::registers::ReadOnly<u32, crate::el2_pic_ctrl::bits::Meigwctrl::Register>; 256]),
+            (0x4000 => pub meigwctrl: [tock_registers::registers::ReadWrite<u32, crate::el2_pic_ctrl::bits::Meigwctrl::Register>; 256]),
             (0x4400 => _reserved4),
-            (0x5000 => pub meigwclr: [tock_registers::registers::ReadOnly<u32>; 256]),
+            (0x5000 => pub meigwclr: [tock_registers::registers::ReadWrite<u32>; 256]),
             (0x5400 => @END),
         }
     }

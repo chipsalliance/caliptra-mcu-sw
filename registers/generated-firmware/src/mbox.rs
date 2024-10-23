@@ -79,13 +79,13 @@ pub mod regs {
         pub Mbox {
             (0x0 => pub lock: tock_registers::registers::ReadOnly<u32, crate::mbox::bits::Lock::Register>),
             (0x4 => pub user: tock_registers::registers::ReadOnly<u32>),
-            (0x8 => pub cmd: tock_registers::registers::ReadOnly<u32>),
-            (0xc => pub dlen: tock_registers::registers::ReadOnly<u32>),
-            (0x10 => pub datain: tock_registers::registers::ReadOnly<u32>),
-            (0x14 => pub dataout: tock_registers::registers::ReadOnly<u32>),
-            (0x18 => pub execute: tock_registers::registers::ReadOnly<u32, crate::mbox::bits::Execute::Register>),
-            (0x1c => pub status: tock_registers::registers::ReadOnly<u32, crate::mbox::bits::Status::Register>),
-            (0x20 => pub unlock: tock_registers::registers::ReadOnly<u32, crate::mbox::bits::Unlock::Register>),
+            (0x8 => pub cmd: tock_registers::registers::ReadWrite<u32>),
+            (0xc => pub dlen: tock_registers::registers::ReadWrite<u32>),
+            (0x10 => pub datain: tock_registers::registers::ReadWrite<u32>),
+            (0x14 => pub dataout: tock_registers::registers::ReadWrite<u32>),
+            (0x18 => pub execute: tock_registers::registers::ReadWrite<u32, crate::mbox::bits::Execute::Register>),
+            (0x1c => pub status: tock_registers::registers::ReadWrite<u32, crate::mbox::bits::Status::Register>),
+            (0x20 => pub unlock: tock_registers::registers::ReadWrite<u32, crate::mbox::bits::Unlock::Register>),
             (0x24 => @END),
         }
     }

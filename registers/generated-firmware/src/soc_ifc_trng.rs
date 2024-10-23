@@ -29,9 +29,9 @@ pub mod regs {
     register_structs! {
         pub SocIfcTrng {
             (0x0 => _reserved0),
-            (0x78 => pub cptra_trng_data: [tock_registers::registers::ReadOnly<u32>; 12]),
+            (0x78 => pub cptra_trng_data: [tock_registers::registers::ReadWrite<u32>; 12]),
             (0xa8 => _reserved1),
-            (0xac => pub cptra_trng_status: tock_registers::registers::ReadOnly<u32, crate::soc_ifc_trng::bits::CptraTrngStatus::Register>),
+            (0xac => pub cptra_trng_status: tock_registers::registers::ReadWrite<u32, crate::soc_ifc_trng::bits::CptraTrngStatus::Register>),
             (0xb0 => @END),
         }
     }

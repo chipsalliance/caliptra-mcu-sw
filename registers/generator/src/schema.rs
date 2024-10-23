@@ -127,6 +127,19 @@ pub struct Register {
     pub ty: Rc<RegisterType>,
 }
 
+impl Register {
+    pub fn can_read(&self) -> bool {
+        self.ty.fields.is_empty() || self.ty.fields.iter().any(|f| f.ty.can_read())
+    }
+
+    pub fn can_write(&self) -> bool {
+        let can_write = self.ty.fields.iter().any(|f| f.ty.can_write());
+        let can_clear = self.ty.fields.iter().any(|f| f.ty.can_clear());
+        let can_set = self.ty.fields.iter().any(|f| f.ty.can_set());
+        self.ty.fields.is_empty() || can_write || can_clear || can_set
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct RegisterType {
     /// The optional name of the register type

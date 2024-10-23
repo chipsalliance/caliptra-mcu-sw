@@ -246,20 +246,20 @@ pub mod regs {
     use tock_registers::register_structs;
     register_structs! {
         pub SpiHost {
-            (0x0 => pub interrupt_state: tock_registers::registers::ReadOnly<u32, crate::spi_host::bits::InterruptState::Register>),
-            (0x4 => pub interrupt_enable: tock_registers::registers::ReadOnly<u32, crate::spi_host::bits::InterruptEnable::Register>),
-            (0x8 => pub interrupt_test: tock_registers::registers::ReadOnly<u32, crate::spi_host::bits::InterruptTest::Register>),
-            (0xc => pub alert_test: tock_registers::registers::ReadOnly<u32, crate::spi_host::bits::AlertTest::Register>),
-            (0x10 => pub control: tock_registers::registers::ReadOnly<u32, crate::spi_host::bits::Control::Register>),
+            (0x0 => pub interrupt_state: tock_registers::registers::ReadWrite<u32, crate::spi_host::bits::InterruptState::Register>),
+            (0x4 => pub interrupt_enable: tock_registers::registers::ReadWrite<u32, crate::spi_host::bits::InterruptEnable::Register>),
+            (0x8 => pub interrupt_test: tock_registers::registers::WriteOnly<u32, crate::spi_host::bits::InterruptTest::Register>),
+            (0xc => pub alert_test: tock_registers::registers::WriteOnly<u32, crate::spi_host::bits::AlertTest::Register>),
+            (0x10 => pub control: tock_registers::registers::ReadWrite<u32, crate::spi_host::bits::Control::Register>),
             (0x14 => pub status: tock_registers::registers::ReadOnly<u32, crate::spi_host::bits::Status::Register>),
-            (0x18 => pub configopts: [tock_registers::registers::ReadOnly<u32, crate::spi_host::bits::Configopts::Register>; 2]),
-            (0x20 => pub csid: tock_registers::registers::ReadOnly<u32>),
-            (0x24 => pub command: tock_registers::registers::ReadOnly<u32, crate::spi_host::bits::Command::Register>),
+            (0x18 => pub configopts: [tock_registers::registers::ReadWrite<u32, crate::spi_host::bits::Configopts::Register>; 2]),
+            (0x20 => pub csid: tock_registers::registers::ReadWrite<u32>),
+            (0x24 => pub command: tock_registers::registers::WriteOnly<u32, crate::spi_host::bits::Command::Register>),
             (0x28 => pub rxdata: tock_registers::registers::ReadOnly<u32>),
-            (0x2c => pub txdata: tock_registers::registers::ReadOnly<u32>),
-            (0x30 => pub error_enable: tock_registers::registers::ReadOnly<u32, crate::spi_host::bits::ErrorEnable::Register>),
-            (0x34 => pub error_status: tock_registers::registers::ReadOnly<u32, crate::spi_host::bits::ErrorStatus::Register>),
-            (0x38 => pub event_enable: tock_registers::registers::ReadOnly<u32, crate::spi_host::bits::EventEnable::Register>),
+            (0x2c => pub txdata: tock_registers::registers::WriteOnly<u32>),
+            (0x30 => pub error_enable: tock_registers::registers::ReadWrite<u32, crate::spi_host::bits::ErrorEnable::Register>),
+            (0x34 => pub error_status: tock_registers::registers::ReadWrite<u32, crate::spi_host::bits::ErrorStatus::Register>),
+            (0x38 => pub event_enable: tock_registers::registers::ReadWrite<u32, crate::spi_host::bits::EventEnable::Register>),
             (0x3c => @END),
         }
     }

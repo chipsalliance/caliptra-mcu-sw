@@ -992,18 +992,28 @@ fn generate_reg_structs(crate_prefix: &str, block: &RegisterBlock) -> String {
             continue;
         }
         last_offset = offset;
-        // TODO: check for R/W
+        let row = if reg.can_read() && reg.can_write() {
+            "ReadWrite"
+        } else if reg.can_read() {
+            "ReadOnly"
+        } else if reg.can_write() {
+            "WriteOnly"
+        } else {
+            panic!("Should be able to read or write");
+        };
+
         if offset != next_offset {
             tokens += &format!("        (0x{next_offset:x} => _reserved{reserved}),\n");
             reserved += 1;
         }
         let ty = reg.ty.as_ref().clone();
         let kind = if has_single_32_bit_field(&ty) {
-            "tock_registers::registers::ReadOnly<u32>".to_string()
+            format!("tock_registers::registers::{row}<u32>")
         } else {
             assert!(reg.ty.name.is_some());
             format!(
-                "tock_registers::registers::ReadOnly<{}, {crate_prefix}bits::{}::Register>",
+                "tock_registers::registers::{}<{}, {crate_prefix}bits::{}::Register>",
+                row,
                 ty.width.rust_primitive_name(),
                 camel_case(ty.name.as_ref().unwrap())
             )

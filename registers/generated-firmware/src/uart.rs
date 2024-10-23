@@ -162,19 +162,19 @@ pub mod regs {
     use tock_registers::register_structs;
     register_structs! {
         pub Uart {
-            (0x0 => pub interrupt_state: tock_registers::registers::ReadOnly<u32, crate::uart::bits::InterruptState::Register>),
-            (0x4 => pub interrupt_enable: tock_registers::registers::ReadOnly<u32, crate::uart::bits::InterruptEnable::Register>),
-            (0x8 => pub interrupt_test: tock_registers::registers::ReadOnly<u32, crate::uart::bits::InterruptTest::Register>),
-            (0xc => pub alert_test: tock_registers::registers::ReadOnly<u32, crate::uart::bits::AlertTest::Register>),
-            (0x10 => pub ctrl: tock_registers::registers::ReadOnly<u32, crate::uart::bits::Ctrl::Register>),
+            (0x0 => pub interrupt_state: tock_registers::registers::ReadWrite<u32, crate::uart::bits::InterruptState::Register>),
+            (0x4 => pub interrupt_enable: tock_registers::registers::ReadWrite<u32, crate::uart::bits::InterruptEnable::Register>),
+            (0x8 => pub interrupt_test: tock_registers::registers::WriteOnly<u32, crate::uart::bits::InterruptTest::Register>),
+            (0xc => pub alert_test: tock_registers::registers::WriteOnly<u32, crate::uart::bits::AlertTest::Register>),
+            (0x10 => pub ctrl: tock_registers::registers::ReadWrite<u32, crate::uart::bits::Ctrl::Register>),
             (0x14 => pub status: tock_registers::registers::ReadOnly<u32, crate::uart::bits::Status::Register>),
             (0x18 => pub rdata: tock_registers::registers::ReadOnly<u32, crate::uart::bits::Rdata::Register>),
-            (0x1c => pub wdata: tock_registers::registers::ReadOnly<u32, crate::uart::bits::Wdata::Register>),
-            (0x20 => pub fifo_ctrl: tock_registers::registers::ReadOnly<u32, crate::uart::bits::FifoCtrl::Register>),
+            (0x1c => pub wdata: tock_registers::registers::WriteOnly<u32, crate::uart::bits::Wdata::Register>),
+            (0x20 => pub fifo_ctrl: tock_registers::registers::ReadWrite<u32, crate::uart::bits::FifoCtrl::Register>),
             (0x24 => pub fifo_status: tock_registers::registers::ReadOnly<u32, crate::uart::bits::FifoStatus::Register>),
-            (0x28 => pub ovrd: tock_registers::registers::ReadOnly<u32, crate::uart::bits::Ovrd::Register>),
+            (0x28 => pub ovrd: tock_registers::registers::ReadWrite<u32, crate::uart::bits::Ovrd::Register>),
             (0x2c => pub val: tock_registers::registers::ReadOnly<u32, crate::uart::bits::Val::Register>),
-            (0x30 => pub timeout_ctrl: tock_registers::registers::ReadOnly<u32, crate::uart::bits::TimeoutCtrl::Register>),
+            (0x30 => pub timeout_ctrl: tock_registers::registers::ReadWrite<u32, crate::uart::bits::TimeoutCtrl::Register>),
             (0x34 => @END),
         }
     }
