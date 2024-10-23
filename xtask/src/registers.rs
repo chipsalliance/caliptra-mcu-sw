@@ -809,13 +809,6 @@ fn generate_fw_registers(
     for block in validated_blocks {
         let module_ident = format_ident!("{}", block.block().name);
         let dest_file = dest_dir.join(format!("{}.rs", block.block().name));
-
-        println!(
-            "Block {} has {} declared {} plain types",
-            block.block().name,
-            block.block().declared_register_types.len(),
-            block.register_types().len()
-        );
         let tokens = registers_generator::generate_code(
             &format!("crate::{}::", block.block().name),
             &block,

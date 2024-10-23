@@ -999,7 +999,7 @@ fn generate_reg_structs(crate_prefix: &str, block: &RegisterBlock) -> String {
         }
         let ty = reg.ty.as_ref().clone();
         let kind = if has_single_32_bit_field(&ty) {
-            "tock_registers::registers::ReadOnly<u32>".to_string() // TODO: check if writable
+            "tock_registers::registers::ReadOnly<u32>".to_string()
         } else {
             assert!(reg.ty.name.is_some());
             format!(

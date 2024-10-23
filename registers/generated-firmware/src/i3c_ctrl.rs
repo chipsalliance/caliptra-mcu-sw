@@ -19,6 +19,9 @@ pub mod bits {
                 /// Valid only if ALT_RESP_QUEUE_EN is set. Contains response queue size
                 AltRespQueueSize OFFSET(0) NUMBITS(8) [],
             ],
+            pub ControllerConfig [
+                OperationMode OFFSET(4) NUMBITS(2) [],
+            ],
             pub ControllerDeviceAddr [
                 /// Dynamic Address is Valid:
                 ///
@@ -268,6 +271,58 @@ pub mod bits {
             pub IbiPort [
                 IbiData OFFSET(0) NUMBITS(1) [],
             ],
+            pub IbiTtiQueueSize [
+                /// IBI Queue Size in DWORDs calculated as `2^(N+1)`
+                IbiTtiQueueSize OFFSET(0) NUMBITS(8) [],
+            ],
+            pub InterruptEnable [
+                /// Enables the corresponding interrupt bit `TTI_IBI_THLD_STAT`
+                IbiThldStatEn OFFSET(4) NUMBITS(1) [],
+                /// Enables the corresponding interrupt bit `TTI_RX_DESC_THLD_STAT`
+                RxDescThldStatEn OFFSET(3) NUMBITS(1) [],
+                /// Enables the corresponding interrupt bit `TTI_TX_DESC_THLD_STAT`
+                TxDescThldStatEn OFFSET(2) NUMBITS(1) [],
+                /// Enables the corresponding interrupt bit `TTI_RX_DATA_THLD_STAT`
+                RxDataThldStatEn OFFSET(1) NUMBITS(1) [],
+                /// Enables the corresponding interrupt bit `TTI_TX_DATA_THLD_STAT`
+                TxDataThldStatEn OFFSET(0) NUMBITS(1) [],
+            ],
+            pub InterruptForce [
+                /// Forces the corresponding interrupt bit `TTI_IBI_THLD_STAT` to be set to 1
+                IbiThldForce OFFSET(4) NUMBITS(1) [],
+                /// Forces the corresponding interrupt bit `TTI_RX_DESC_THLD_STAT` to be set to `1`
+                RxDescThldForce OFFSET(3) NUMBITS(1) [],
+                /// Forces the corresponding interrupt bit `TTI_TX_DESC_THLD_STAT` to be set to `1`
+                TxDescThldForce OFFSET(2) NUMBITS(1) [],
+                /// Forces the corresponding interrupt bit `TTI_RX_DATA_THLD_STAT` to be set to `1`
+                RxDataThldForce OFFSET(1) NUMBITS(1) [],
+                /// Forces the corresponding interrupt bit `TTI_TX_DATA_THLD_STAT` to be set to `1`
+                TxDataThldForce OFFSET(0) NUMBITS(1) [],
+            ],
+            pub InterruptStatus [
+                /// Bus error occurred
+                TransferErrStat OFFSET(31) NUMBITS(1) [],
+                /// Bus aborted transaction
+                TransferAbortStat OFFSET(25) NUMBITS(1) [],
+                /// TTI IBI Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI IBI Queue is >= the value defined in `TTI_IBI_THLD`
+                IbiThldStat OFFSET(12) NUMBITS(1) [],
+                /// TTI RX Descriptor Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI RX Descriptor Queue is >= the value defined in `TTI_RX_DESC_THLD`
+                RxDescThldStat OFFSET(11) NUMBITS(1) [],
+                /// TTI TX Descriptor Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI TX Descriptor Queue is >= the value defined in `TTI_TX_DESC_THLD`
+                TxDescThldStat OFFSET(10) NUMBITS(1) [],
+                /// TTI RX Data Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of entries in the TTI RX Data Queue is >= the value defined in `TTI_RX_DATA_THLD`
+                RxDataThldStat OFFSET(9) NUMBITS(1) [],
+                /// TTI TX Data Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI TX Data Queue is >= the value defined in `TTI_TX_DATA_THLD`
+                TxDataThldStat OFFSET(8) NUMBITS(1) [],
+                /// Pending Write was NACK’ed, because the `TX_DESC_STAT` event was not handled in time
+                TxDescTimeout OFFSET(3) NUMBITS(1) [],
+                /// Pending Read was NACK’ed, because the `RX_DESC_STAT` event was not handled in time
+                RxDescTimeout OFFSET(2) NUMBITS(1) [],
+                /// There is a pending Write Transaction on the I3C Bus. Software should write data to the TX Descriptor Queue and the TX Data Queue
+                TxDescStat OFFSET(1) NUMBITS(1) [],
+                /// There is a pending Read Transaction. Software should read data from the RX Descriptor Queue and the RX Data Queue
+                RxDescStat OFFSET(0) NUMBITS(1) [],
+            ],
             pub IntrForce [
                 /// Force SCHED_CMD_MISSED_TICK_STAT interrupt.
                 SchedCmdMissedTickForce OFFSET(14) NUMBITS(1) [],
@@ -454,6 +509,328 @@ pub mod bits {
             pub RingHeadersSectionOffset [
                 /// DMA ring headers section offset. Invalid if 0.
                 SectionOffset OFFSET(0) NUMBITS(16) [],
+            ],
+            pub SocPadAttr [
+                /// Select driver strength
+                ///
+                /// '0 - lowest
+                ///
+                /// '1 - highest
+                DriveStrength OFFSET(24) NUMBITS(8) [],
+                /// Select driver slew rate
+                ///
+                /// '0 - lowest
+                ///
+                /// '1 - highest
+                DriveSlewRate OFFSET(8) NUMBITS(8) [],
+            ],
+            pub SocPadConf [
+                /// Select pad type
+                ///
+                /// 0 - Bidirectional
+                ///
+                /// 1 - Open-drain
+                ///
+                /// 2 - Input-only
+                ///
+                /// 3 - Analog input
+                PadType OFFSET(24) NUMBITS(8) [],
+                /// Enable virtual open drain:
+                ///
+                /// 0 - disabled
+                ///
+                /// 1 - enabled
+                VirtualOdEn OFFSET(7) NUMBITS(1) [],
+                /// Enable Open-Drain:
+                ///
+                /// 0 - disabled
+                ///
+                /// 1 - enabled
+                OdEn OFFSET(6) NUMBITS(1) [],
+                /// Invert I/O signal:
+                ///
+                /// 0 - signals pass-through
+                ///
+                /// 1 - signals are inverted
+                IoInversion OFFSET(5) NUMBITS(1) [],
+                /// Enable Pull:
+                ///
+                /// 0 - disabled
+                ///
+                /// 1 - enabled
+                PullEn OFFSET(4) NUMBITS(1) [],
+                /// Direction of the pull:
+                ///
+                /// 0 - Pull down
+                ///
+                /// 1 - Pull up
+                PullDir OFFSET(3) NUMBITS(1) [],
+                /// Enable the High-Keeper:
+                ///
+                /// 0 - disabled
+                ///
+                /// 1 - enabled
+                KeeperEn OFFSET(2) NUMBITS(1) [],
+                /// Enable the Schmitt Trigger:
+                ///
+                /// 0 - disabled
+                ///
+                /// 1 - enabled
+                SchmittEn OFFSET(1) NUMBITS(1) [],
+                /// Enable input:
+                ///
+                /// 0 - enabled
+                ///
+                /// 1 - disabled
+                InputEnable OFFSET(0) NUMBITS(1) [],
+            ],
+            pub StbyCrCapabilities [
+                /// Defines whether Dynamic Address Assignment with ENTDAA CCC is supported.
+                ///
+                /// 1'b0: DISABLED: Not supported
+                ///
+                /// 1'b1: ENABLED: Supported
+                DaaEntdaaSupport OFFSET(15) NUMBITS(1) [],
+                /// Defines whether Dynamic Address Assignment with SETDASA CCC (using Static Address) is supported.
+                ///
+                /// 1'b0: DISABLED: Not supported
+                ///
+                /// 1'b1: ENABLED: Supported
+                DaaSetdasaSupport OFFSET(14) NUMBITS(1) [],
+                /// Defines whether Dynamic Address Assignment with SETAASA CCC (using Static Address) is supported.
+                ///
+                /// 1'b0: DISABLED: Not supported
+                ///
+                /// 1'b1: ENABLED: Supported
+                DaaSetaasaSupport OFFSET(13) NUMBITS(1) [],
+                /// Defines whether an I3C Target Transaction Interface is supported.
+                ///
+                /// 1'b0: DISABLED: Not supported
+                ///
+                /// 1'b1: ENABLED: Supported via vendor-defined Extended Capability structure
+                TargetXactSupport OFFSET(12) NUMBITS(1) [],
+                SimpleCrrSupport OFFSET(5) NUMBITS(1) [],
+            ],
+            pub StbyCrCccConfigGetcaps [
+                F2Crcap2DevInteract OFFSET(8) NUMBITS(4) [],
+                F2Crcap1BusConfig OFFSET(0) NUMBITS(3) [],
+            ],
+            pub StbyCrCccConfigRstactParams [
+                ResetDynamicAddr OFFSET(31) NUMBITS(1) [],
+                ResetTimeTarget OFFSET(16) NUMBITS(8) [],
+                ResetTimePeripheral OFFSET(8) NUMBITS(8) [],
+                RstAction OFFSET(0) NUMBITS(8) [],
+            ],
+            pub StbyCrControl [
+                /// Enables or disables the Secondary Controller:
+                ///
+                /// 2'b00 - DISABLED: Secondary Controller is disabled.
+                ///
+                /// 2'b01 - ACM_INIT: Secondary Controller is enabled,
+                /// but Host Controller initializes in Active Controller mode.
+                ///
+                /// 2'b10 - SCM_RUNNING: Secondary Controller operation is enabled,
+                /// Host Controller initializes in Standby Controller mode.
+                ///
+                /// 2'b11 - SCM_HOT_JOIN: Secondary Controller operation is enabled,
+                /// Host Controller conditionally becomes a Hot-Joining Device
+                /// to receive its Dynamic Address before operating in Standby Controller mode.
+                StbyCrEnableInit OFFSET(30) NUMBITS(2) [],
+                /// Controls whether I3C Secondary Controller Logic supports RSTACT CCC with
+                /// Defining Byte 0x02.
+                ///
+                /// 1'b0: NOT_SUPPORTED: Do not ACK Defining Byte 0x02
+                ///
+                /// 1'b1: HANDLE_INTR: Support Defining Byte 0x02
+                RstactDefbyte02 OFFSET(20) NUMBITS(1) [],
+                ///
+                /// Indicates ENTDAA method is enabled.
+                ///
+                /// 1'b0: DISABLED: will not respond
+                ///
+                /// 1'b1: ENABLED: will respond
+                DaaEntdaaEnable OFFSET(15) NUMBITS(1) [],
+                ///
+                /// Indicates SETDASA method is enabled.
+                ///
+                /// 1'b0: DISABLED: will not respond
+                ///
+                /// 1'b1: ENABLED: will respond
+                DaaSetdasaEnable OFFSET(14) NUMBITS(1) [],
+                ///
+                /// Indicates SETAASA method is enabled.
+                ///
+                /// 1'b0: DISABLED: will not respond
+                ///
+                /// 1'b1: ENABLED: will respond
+                DaaSetaasaEnable OFFSET(13) NUMBITS(1) [],
+                /// Indicates whether Read-Type/Write-Type transaction servicing is enabled, via
+                /// an I3C Target Transaction Interface to software (Section 6.17.3).
+                ///
+                /// 1'b0: DISABLED: not available
+                ///
+                /// 1'b1: ENABLED: available for software
+                TargetXactEnable OFFSET(12) NUMBITS(1) [],
+                /// Indicates which Ring Bundle will be used to capture Broadcast CCC data sent by the Active Controller.
+                /// The Ring Bundle must be configured and enabled, and its IBI Ring Pair must also be initialized and ready to receive data.
+                BastCccIbiRing OFFSET(8) NUMBITS(3) [],
+                /// Write of 1'b1 to this field shall instruct the Secondary Controller Logic
+                /// to attempt to send a Controller Role Request to the I3C Bus.
+                CrRequestSend OFFSET(5) NUMBITS(1) [],
+                /// If this field has a value of 1'b1, then the Secondary Controller Logic shall
+                /// report a return from Deep Sleep state to the Active Controller.
+                /// Writing 1'b1 to this bit is sticky. This field shall automatically clear to 1'b0
+                /// after accepting the Controller Role and transitioning to Active Controller mode.
+                HandoffDeepSleep OFFSET(4) NUMBITS(1) [],
+                PrimeAcceptGetacccr OFFSET(3) NUMBITS(1) [],
+                AcrFsmOpSelect OFFSET(2) NUMBITS(1) [],
+                HandoffDelayNack OFFSET(1) NUMBITS(1) [],
+                PendingRxNack OFFSET(0) NUMBITS(1) [],
+            ],
+            pub StbyCrDeviceAddr [
+                /// Indicates whether or not the value in the DYNAMIC_ADDR field is valid.
+                /// 1'b0: DYNAMIC_ADDR field is not valid
+                /// 1'b1: DYNAMIC_ADDR field is valid
+                DynamicAddrValid OFFSET(31) NUMBITS(1) [],
+                /// Contains the Host Controller Device’s Dynamic Address.
+                DynamicAddr OFFSET(16) NUMBITS(7) [],
+                /// Indicates whether or not the value in the STATIC_ADDR field is valid.
+                ///
+                /// 1'b0: The Static Address field is not valid
+                ///
+                /// 1'b1: The Static Address field is valid
+                StaticAddrValid OFFSET(15) NUMBITS(1) [],
+                /// This field contains the Host Controller Device’s Static Address.
+                StaticAddr OFFSET(0) NUMBITS(7) [],
+            ],
+            pub StbyCrDeviceChar [
+                BcrFixed OFFSET(29) NUMBITS(3) [],
+                BcrVar OFFSET(24) NUMBITS(5) [],
+                Dcr OFFSET(16) NUMBITS(8) [],
+                PidHi OFFSET(1) NUMBITS(15) [],
+            ],
+            pub StbyCrIntrForce [
+                CccFatalRstdaaErrForce OFFSET(19) NUMBITS(1) [],
+                CccUnhandledNackForce OFFSET(18) NUMBITS(1) [],
+                CccParamModifiedForce OFFSET(17) NUMBITS(1) [],
+                StbyCrOpRstactForce OFFSET(16) NUMBITS(1) [],
+                StbyCrAcceptErrForce OFFSET(14) NUMBITS(1) [],
+                StbyCrAcceptOkForce OFFSET(13) NUMBITS(1) [],
+                StbyCrAcceptNackedForce OFFSET(12) NUMBITS(1) [],
+                StbyCrDynAddrForce OFFSET(11) NUMBITS(1) [],
+                CrrResponseForce OFFSET(10) NUMBITS(1) [],
+            ],
+            pub StbyCrIntrSignalEnable [
+                CccFatalRstdaaErrSignalEn OFFSET(19) NUMBITS(1) [],
+                CccUnhandledNackSignalEn OFFSET(18) NUMBITS(1) [],
+                CccParamModifiedSignalEn OFFSET(17) NUMBITS(1) [],
+                StbyCrOpRstactSignalEn OFFSET(16) NUMBITS(1) [],
+                StbyCrAcceptErrSignalEn OFFSET(14) NUMBITS(1) [],
+                StbyCrAcceptOkSignalEn OFFSET(13) NUMBITS(1) [],
+                StbyCrAcceptNackedSignalEn OFFSET(12) NUMBITS(1) [],
+                StbyCrDynAddrSignalEn OFFSET(11) NUMBITS(1) [],
+                CrrResponseSignalEn OFFSET(10) NUMBITS(1) [],
+                AcrHandoffErrM3SignalEn OFFSET(3) NUMBITS(1) [],
+                AcrHandoffErrFailSignalEn OFFSET(2) NUMBITS(1) [],
+                AcrHandoffOkPrimedSignalEn OFFSET(1) NUMBITS(1) [],
+                AcrHandoffOkRemainSignalEn OFFSET(0) NUMBITS(1) [],
+            ],
+            pub StbyCrIntrStatus [
+                CccFatalRstdaaErrStat OFFSET(19) NUMBITS(1) [],
+                CccUnhandledNackStat OFFSET(18) NUMBITS(1) [],
+                CccParamModifiedStat OFFSET(17) NUMBITS(1) [],
+                StbyCrOpRstactStat OFFSET(16) NUMBITS(1) [],
+                StbyCrAcceptErrStat OFFSET(14) NUMBITS(1) [],
+                StbyCrAcceptOkStat OFFSET(13) NUMBITS(1) [],
+                StbyCrAcceptNackedStat OFFSET(12) NUMBITS(1) [],
+                StbyCrDynAddrStat OFFSET(11) NUMBITS(1) [],
+                CrrResponseStat OFFSET(10) NUMBITS(1) [],
+                AcrHandoffErrM3Stat OFFSET(3) NUMBITS(1) [],
+                AcrHandoffErrFailStat OFFSET(2) NUMBITS(1) [],
+                AcrHandoffOkPrimedStat OFFSET(1) NUMBITS(1) [],
+                AcrHandoffOkRemainStat OFFSET(0) NUMBITS(1) [],
+            ],
+            pub StbyCrStatus [
+                HjReqStatus OFFSET(8) NUMBITS(1) [],
+                SimpleCrrStatus OFFSET(5) NUMBITS(3) [],
+                AcCurrentOwn OFFSET(2) NUMBITS(1) [],
+            ],
+            pub TtiDataBufferThldCtrl [
+                /// Minimum number of TTI RX Data queue entries of data received, in DWORDs, that will trigger the TTI RX Data interrupt. Interrupt triggers when `2^(N+1)` RX Buffer DWORD entries are received during the Read transfer.
+                RxStartThld OFFSET(24) NUMBITS(3) [],
+                /// Minimum number of available TTI TX Data queue entries, in DWORDs, that will trigger the TTI TX Data interrupt. Interrupt triggers when `2^(N+1)` TX Buffer DWORD entries are available.
+                TxStartThld OFFSET(16) NUMBITS(3) [],
+                /// Minimum number of TTI RX Data queue entries of data received, in DWORDs, that will trigger the TTI RX Data interrupt. Interrupt triggers when `2^(N+1)` RX Buffer DWORD entries are received during the Read transfer.
+                RxDataThld OFFSET(8) NUMBITS(3) [],
+                /// Minimum number of available TTI TX Data queue entries, in DWORDs, that will trigger the TTI TX Data interrupt. Interrupt triggers when `2^(N+1)` TX Buffer DWORD entries are available.
+                TxDataThld OFFSET(0) NUMBITS(3) [],
+            ],
+            pub TtiQueueSize [
+                /// Transmit Data Buffer Size in DWORDs calculated as `2^(N+1)`
+                TxDataBufferSize OFFSET(24) NUMBITS(8) [],
+                /// Receive Data Buffer Size in DWORDs calculated as `2^(N+1)`
+                RxDataBufferSize OFFSET(16) NUMBITS(8) [],
+                /// TX Descriptor Buffer Size in DWORDs calculated as `2^(N+1)`
+                TxDescBufferSize OFFSET(8) NUMBITS(8) [],
+                /// RX Descriptor Buffer Size in DWORDs calculated as `2^(N+1)`
+                RxDescBufferSize OFFSET(0) NUMBITS(8) [],
+            ],
+            pub TtiQueueThldCtrl [
+                /// Controls the minimum number of IBI Queue entries needed to trigger the IBI threshold interrupt.
+                IbiThld OFFSET(24) NUMBITS(8) [],
+                /// Controls the minimum number of TTI RX Descriptor Queue entries needed to trigger the TTI RX Descriptor interrupt.
+                RxDescThld OFFSET(8) NUMBITS(8) [],
+                /// Controls the minimum number of empty TTI TX Descriptor Queue entries needed to trigger the TTI TX Descriptor interrupt.
+                TxDescThld OFFSET(0) NUMBITS(8) [],
+            ],
+            pub TtiResetControl [
+                /// TTI IBI Queue Buffer Software Reset
+                IbiQueueRst OFFSET(5) NUMBITS(1) [],
+                /// TTI RX Data Queue Buffer Software Reset
+                RxDataRst OFFSET(4) NUMBITS(1) [],
+                /// TTI TX Data Queue Buffer Software Reset
+                TxDataRst OFFSET(3) NUMBITS(1) [],
+                /// TTI RX Descriptor Queue Buffer Software Reset
+                RxDescRst OFFSET(2) NUMBITS(1) [],
+                /// TTI TX Descriptor Queue Buffer Software Reset
+                TxDescRst OFFSET(1) NUMBITS(1) [],
+                /// Target Core Software Reset
+                SoftRst OFFSET(0) NUMBITS(1) [],
+            ],
+            pub TFReg [
+                /// Fall time of both SDA and SCL in clock units
+                TF OFFSET(0) NUMBITS(20) [],
+            ],
+            pub THdDatReg [
+                /// Data hold time in clock units
+                THdDat OFFSET(0) NUMBITS(20) [],
+            ],
+            pub THdStaReg [
+                /// Hold time for (repeated) START in clock units
+                THdSta OFFSET(0) NUMBITS(20) [],
+            ],
+            pub THighReg [
+                THigh OFFSET(0) NUMBITS(20) [],
+            ],
+            pub TLowReg [
+                /// Low period of the SCL in clock units
+                TLow OFFSET(0) NUMBITS(20) [],
+            ],
+            pub TRReg [
+                /// Rise time of both SDA and SCL in clock units
+                TR OFFSET(0) NUMBITS(20) [],
+            ],
+            pub TSuDatReg [
+                /// Data setup time in clock units
+                TSuDat OFFSET(0) NUMBITS(20) [],
+            ],
+            pub TSuStaReg [
+                /// Setup time for repeated START in clock units
+                TSuSta OFFSET(0) NUMBITS(20) [],
+            ],
+            pub TSuStoReg [
+                /// Setup time for STOP in clock units
+                TSuSto OFFSET(0) NUMBITS(20) [],
             ],
     }
 }
