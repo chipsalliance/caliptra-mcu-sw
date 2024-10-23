@@ -9,39 +9,8 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
-            pub ResetAck [
-                /// Ack. Writable by MCU. Causes MCU reset to assert (if RESET_REQUEST.req is also set)
-                Ack OFFSET(0) NUMBITS(1) [],
-            ],
-            pub FwSramExecRegionSize [
-                /// Size (in multiples of 4KiB)
-                Size OFFSET(0) NUMBITS(1) [],
-            ],
-            pub Capabilities [
-                /// Number of Mailboxes in MCI
-                NumMbox OFFSET(0) NUMBITS(4) [],
-            ],
-            pub WdtTimer1Ctrl [
-                /// WDT timer1 restart
-                Timer1Restart OFFSET(0) NUMBITS(1) [],
-            ],
-            pub WdtTimer2En [
-                /// WDT timer2 enable
-                Timer2En OFFSET(0) NUMBITS(1) [],
-            ],
-            pub ResetReason [
-                /// FW update reset has been executed
-                FwUpdReset OFFSET(0) NUMBITS(1) [],
-                /// Warm reset has been executed
-                WarmReset OFFSET(1) NUMBITS(1) [],
-            ],
-            pub HwRevId [
-                /// Official release version. Bit field encoding is:
-                /// [br][lb]15:12[rb] Major version
-                /// [br][lb]11: 8[rb] Minor version
-                /// [br][lb] 7: 0[rb] Patch version
-                McGeneration OFFSET(0) NUMBITS(16) [],
-                SocSteppingId OFFSET(16) NUMBITS(16) [],
+            pub CaliptraAxiId [
+                Id OFFSET(0) NUMBITS(1) [],
             ],
             pub FlowStatus [
                 /// Generic Status
@@ -51,19 +20,31 @@ pub mod bits {
                 /// Boot FSM State
                 BootFsmPs OFFSET(27) NUMBITS(5) [],
             ],
+            pub ResetReason [
+                /// FW update reset has been executed
+                FwUpdReset OFFSET(0) NUMBITS(1) [],
+                /// Warm reset has been executed
+                WarmReset OFFSET(1) NUMBITS(1) [],
+            ],
             pub CaliptraBootGo [
                 /// fixme
                 Go OFFSET(0) NUMBITS(1) [],
             ],
-            pub CaliptraAxiId [
-                Id OFFSET(0) NUMBITS(1) [],
-            ],
-            pub Lock [
-                Lock OFFSET(0) NUMBITS(1) [],
-            ],
             pub WdtTimer1En [
                 /// WDT timer1 enable
                 Timer1En OFFSET(0) NUMBITS(1) [],
+            ],
+            pub FwSramExecRegionSize [
+                /// Size (in multiples of 4KiB)
+                Size OFFSET(0) NUMBITS(1) [],
+            ],
+            pub HwRevId [
+                /// Official release version. Bit field encoding is:
+                /// [br][lb]15:12[rb] Major version
+                /// [br][lb]11: 8[rb] Minor version
+                /// [br][lb] 7: 0[rb] Patch version
+                McGeneration OFFSET(0) NUMBITS(16) [],
+                SocSteppingId OFFSET(16) NUMBITS(16) [],
             ],
             pub ResetRequest [
                 /// Request. Writable by Caliptra. Causes MCU interrupt to assert.
@@ -71,18 +52,37 @@ pub mod bits {
                 /// Clear. Writable by Caliptra. On set, this bit autoclears, RESET_REQUEST.req clears, and MCU reset deasserts.
                 Clr OFFSET(1) NUMBITS(1) [],
             ],
+            pub HwError [
+                Rsvd OFFSET(0) NUMBITS(1) [],
+            ],
+            pub WdtTimer1Ctrl [
+                /// WDT timer1 restart
+                Timer1Restart OFFSET(0) NUMBITS(1) [],
+            ],
+            pub Lock [
+                Lock OFFSET(0) NUMBITS(1) [],
+            ],
+            pub WdtTimer2Ctrl [
+                /// WDT timer2 restart
+                Timer2Restart OFFSET(0) NUMBITS(1) [],
+            ],
+            pub ResetAck [
+                /// Ack. Writable by MCU. Causes MCU reset to assert (if RESET_REQUEST.req is also set)
+                Ack OFFSET(0) NUMBITS(1) [],
+            ],
+            pub Capabilities [
+                /// Number of Mailboxes in MCI
+                NumMbox OFFSET(0) NUMBITS(4) [],
+            ],
+            pub WdtTimer2En [
+                /// WDT timer2 enable
+                Timer2En OFFSET(0) NUMBITS(1) [],
+            ],
             pub CptraWdtStatus [
                 /// Timer1 timed out, timer2 enabled
                 T1Timeout OFFSET(0) NUMBITS(1) [],
                 /// Timer2 timed out
                 T2Timeout OFFSET(1) NUMBITS(1) [],
-            ],
-            pub HwError [
-                Rsvd OFFSET(0) NUMBITS(1) [],
-            ],
-            pub WdtTimer2Ctrl [
-                /// WDT timer2 restart
-                Timer2Restart OFFSET(0) NUMBITS(1) [],
             ],
     }
 }
@@ -116,7 +116,7 @@ pub mod regs {
             (0xb0 => pub wdt_cfg: [tock_registers::registers::ReadOnly<u32>; 2]),
             (0xb8 => _reserved4),
             (0xc0 => pub mcu_timer_config: tock_registers::registers::ReadOnly<u32>),
-            (0xc4 => pub mcu_clk_gating_en: tock_registers::registers::ReadOnly<u32, crate::mci_ctrl::bits::McuClkGatingEnAnon0::Register>),
+            (0xc4 => pub mcu_clk_gating_en: tock_registers::registers::ReadOnly<u32>),
             (0xc8 => _reserved5),
             (0x100 => pub reset_request: tock_registers::registers::ReadOnly<u32, crate::mci_ctrl::bits::ResetRequest::Register>),
             (0x104 => pub reset_ack: tock_registers::registers::ReadOnly<u32, crate::mci_ctrl::bits::ResetAck::Register>),

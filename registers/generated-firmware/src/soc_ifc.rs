@@ -9,46 +9,12 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
-            pub NotifIntrT [
-                /// Command Available status bit
-                NotifCmdAvailSts OFFSET(0) NUMBITS(1) [],
-                /// Mailbox ECC Single-bit Error (correctable) status bit
-                NotifMboxEccCorSts OFFSET(1) NUMBITS(1) [],
-                /// Security State, Debug Locked transition status bit
-                NotifDebugLockedSts OFFSET(2) NUMBITS(1) [],
-                /// Scan mode status bit
-                NotifScanModeSts OFFSET(3) NUMBITS(1) [],
-                /// SoC requested the mailbox while locked status bit
-                NotifSocReqLockSts OFFSET(4) NUMBITS(1) [],
-                /// Generic Input Wires Toggle status bit
-                NotifGenInToggleSts OFFSET(5) NUMBITS(1) [],
+            pub InternalFwUpdateResetWaitCycles [
+                /// FW Update reset wait cycles
+                WaitCycles OFFSET(0) NUMBITS(8) [],
             ],
-            pub CptraItrngEntropyConfig1 [
-                RepetitionCount OFFSET(0) NUMBITS(16) [],
-                Rsvd OFFSET(16) NUMBITS(16) [],
-            ],
-            pub CptraSecurityState [
-                /// Device Lifecycle
-                DeviceLifecycle OFFSET(0) NUMBITS(2) [
-                    Unprovisioned = 0,
-                    Manufacturing = 1,
-                    Production = 3,
-                ],
-                /// Debug Locked
-                DebugLocked OFFSET(2) NUMBITS(1) [],
-                /// scan mode signal observed at caliptra interface - only for debug mode as its used to flush assets -
-                /// when truly in scan mode, everything will be BROKEN for functional reads!
-                ScanMode OFFSET(3) NUMBITS(1) [],
-                /// Reserved field
-                Rsvd OFFSET(4) NUMBITS(28) [],
-            ],
-            pub InternalHwErrorNonFatalMask [
-                MaskMboxProtNoLock OFFSET(0) NUMBITS(1) [],
-                MaskMboxProtOoo OFFSET(1) NUMBITS(1) [],
-                MaskMboxEccUnc OFFSET(2) NUMBITS(1) [],
-            ],
-            pub FuseSocSteppingId [
-                SocSteppingId OFFSET(0) NUMBITS(16) [],
+            pub FuseAntiRollbackDisable [
+                Dis OFFSET(0) NUMBITS(1) [],
             ],
             pub CptraHwRevId [
                 /// Caliptra official release version. Bit field encoding is:
@@ -58,11 +24,11 @@ pub mod bits {
                 CptraGeneration OFFSET(0) NUMBITS(16) [],
                 SocSteppingId OFFSET(16) NUMBITS(16) [],
             ],
-            pub CptraResetReason [
-                /// FW update reset has been executed
-                FwUpdReset OFFSET(0) NUMBITS(1) [],
-                /// warm reset has been executed
-                WarmReset OFFSET(1) NUMBITS(1) [],
+            pub CptraTrngCtrl [
+                /// Indicates that TRNG Data can be cleared
+                /// [br]Caliptra Access: RW
+                /// [br]SOC Access:      RO
+                Clear OFFSET(0) NUMBITS(1) [],
             ],
             pub ErrorIntrT [
                 /// Internal Errors status bit
@@ -82,9 +48,125 @@ pub mod bits {
                 /// WDT Timer2 timeout status bit
                 ErrorWdtTimer2TimeoutSts OFFSET(7) NUMBITS(1) [],
             ],
+            pub CptraHwErrorNonFatal [
+                MboxProtNoLock OFFSET(0) NUMBITS(1) [],
+                MboxProtOoo OFFSET(1) NUMBITS(1) [],
+                MboxEccUnc OFFSET(2) NUMBITS(1) [],
+            ],
+            pub InternalHwErrorNonFatalMask [
+                MaskMboxProtNoLock OFFSET(0) NUMBITS(1) [],
+                MaskMboxProtOoo OFFSET(1) NUMBITS(1) [],
+                MaskMboxEccUnc OFFSET(2) NUMBITS(1) [],
+            ],
+            pub CptraXxxxPauserLock [
+                Lock OFFSET(0) NUMBITS(1) [],
+            ],
+            pub FuseKeyManifestPkHashMask [
+                Mask OFFSET(0) NUMBITS(4) [],
+            ],
+            pub FuseLmsVerify [
+                LmsVerify OFFSET(0) NUMBITS(1) [],
+            ],
+            pub CptraBootfsmGo [
+                Go OFFSET(0) NUMBITS(1) [],
+            ],
+            pub CptraWdtTimer1En [
+                /// WDT timer1 enable
+                Timer1En OFFSET(0) NUMBITS(1) [],
+            ],
+            pub CptraWdtTimer2Ctrl [
+                /// WDT timer2 restart
+                Timer2Restart OFFSET(0) NUMBITS(1) [],
+            ],
+            pub IntrCountIncrT [
+                /// Pulse mirrors interrupt event occurrence
+                Pulse OFFSET(0) NUMBITS(1) [],
+            ],
             pub InternalFwUpdateReset [
                 /// FW Update reset to reset core
                 CoreRst OFFSET(0) NUMBITS(1) [],
+            ],
+            pub CptraHwConfig [
+                ItrngEn OFFSET(0) NUMBITS(1) [],
+                QspiEn OFFSET(1) NUMBITS(1) [],
+                I3cEn OFFSET(2) NUMBITS(1) [],
+                UartEn OFFSET(3) NUMBITS(1) [],
+                LmsAccEn OFFSET(4) NUMBITS(1) [],
+            ],
+            pub GlobalIntrEnT [
+                /// Global enable bit for all events of type 'Error'
+                ErrorEn OFFSET(0) NUMBITS(1) [],
+                /// Global enable bit for all events of type 'Notification'
+                NotifEn OFFSET(1) NUMBITS(1) [],
+            ],
+            pub CptraWdtStatus [
+                /// Timer1 timed out, timer2 enabled
+                T1Timeout OFFSET(0) NUMBITS(1) [],
+                /// Timer2 timed out
+                T2Timeout OFFSET(1) NUMBITS(1) [],
+            ],
+            pub CptraFuseWrDone [
+                Done OFFSET(0) NUMBITS(1) [],
+            ],
+            pub FuseLifeCycle [
+                LifeCycle OFFSET(0) NUMBITS(2) [],
+            ],
+            pub CptraItrngEntropyConfig1 [
+                RepetitionCount OFFSET(0) NUMBITS(16) [],
+                Rsvd OFFSET(16) NUMBITS(16) [],
+            ],
+            pub InternalHwErrorFatalMask [
+                MaskIccmEccUnc OFFSET(0) NUMBITS(1) [],
+                MaskDccmEccUnc OFFSET(1) NUMBITS(1) [],
+                MaskNmiPin OFFSET(2) NUMBITS(1) [],
+                MaskCryptoErr OFFSET(3) NUMBITS(1) [],
+            ],
+            pub CptraFlowStatus [
+                Status OFFSET(0) NUMBITS(24) [],
+                /// DEV ID CSR ready
+                IdevidCsrReady OFFSET(24) NUMBITS(1) [],
+                /// Boot FSM State
+                BootFsmPs OFFSET(25) NUMBITS(3) [],
+                /// Indicates Caliptra is ready for Firmware Download
+                ReadyForFw OFFSET(28) NUMBITS(1) [],
+                /// Indicates Caliptra is ready for RT flows
+                ReadyForRuntime OFFSET(29) NUMBITS(1) [],
+                /// Indicates Caliptra is ready for Fuses to be programmed.
+                /// Read-only to both Caliptra and SOC.
+                ReadyForFuses OFFSET(30) NUMBITS(1) [],
+                /// Indicates Caliptra is has completed Mailbox Flow.
+                MailboxFlowDone OFFSET(31) NUMBITS(1) [],
+            ],
+            pub CptraItrngEntropyConfig0 [
+                LowThreshold OFFSET(0) NUMBITS(16) [],
+                HighThreshold OFFSET(16) NUMBITS(16) [],
+            ],
+            pub FuseSocSteppingId [
+                SocSteppingId OFFSET(0) NUMBITS(16) [],
+            ],
+            pub CptraHwErrorFatal [
+                IccmEccUnc OFFSET(0) NUMBITS(1) [],
+                DccmEccUnc OFFSET(1) NUMBITS(1) [],
+                NmiPin OFFSET(2) NUMBITS(1) [],
+                CryptoErr OFFSET(3) NUMBITS(1) [],
+            ],
+            pub NotifIntrT [
+                /// Command Available status bit
+                NotifCmdAvailSts OFFSET(0) NUMBITS(1) [],
+                /// Mailbox ECC Single-bit Error (correctable) status bit
+                NotifMboxEccCorSts OFFSET(1) NUMBITS(1) [],
+                /// Security State, Debug Locked transition status bit
+                NotifDebugLockedSts OFFSET(2) NUMBITS(1) [],
+                /// Scan mode status bit
+                NotifScanModeSts OFFSET(3) NUMBITS(1) [],
+                /// SoC requested the mailbox while locked status bit
+                NotifSocReqLockSts OFFSET(4) NUMBITS(1) [],
+                /// Generic Input Wires Toggle status bit
+                NotifGenInToggleSts OFFSET(5) NUMBITS(1) [],
+            ],
+            pub CptraWdtTimer2En [
+                /// WDT timer2 enable
+                Timer2En OFFSET(0) NUMBITS(1) [],
             ],
             pub NotifIntrEnT [
                 /// Enable bit for Command Available
@@ -100,41 +182,46 @@ pub mod bits {
                 /// Enable bit for Generic Input Wires Toggle
                 NotifGenInToggleEn OFFSET(5) NUMBITS(1) [],
             ],
-            pub ErrorIntrTrigT [
-                /// Internal Errors trigger bit
-                ErrorInternalTrig OFFSET(0) NUMBITS(1) [],
-                /// Invalid Device in Pauser field trigger bit
-                ErrorInvDevTrig OFFSET(1) NUMBITS(1) [],
-                /// Failed Commands trigger bit
-                ErrorCmdFailTrig OFFSET(2) NUMBITS(1) [],
-                /// Bad Fuse received from SoC trigger bit
-                ErrorBadFuseTrig OFFSET(3) NUMBITS(1) [],
-                /// ICCM access blocked by lock trigger bit
-                ErrorIccmBlockedTrig OFFSET(4) NUMBITS(1) [],
-                /// Mailbox ECC Double-bit Error (uncorrectable) trigger bit
-                ErrorMboxEccUncTrig OFFSET(5) NUMBITS(1) [],
-                /// WDT Timer1 timeout trigger bit
-                ErrorWdtTimer1TimeoutTrig OFFSET(6) NUMBITS(1) [],
-                /// WDT Timer2 timeout trigger bit
-                ErrorWdtTimer2TimeoutTrig OFFSET(7) NUMBITS(1) [],
+            pub CptraSecurityState [
+                /// Device Lifecycle
+                DeviceLifecycle OFFSET(0) NUMBITS(2) [
+                    Unprovisioned = 0,
+                    Manufacturing = 1,
+                    Production = 3,
+                ],
+                /// Debug Locked
+                DebugLocked OFFSET(2) NUMBITS(1) [],
+                /// scan mode signal observed at caliptra interface - only for debug mode as its used to flush assets -
+                /// when truly in scan mode, everything will be BROKEN for functional reads!
+                ScanMode OFFSET(3) NUMBITS(1) [],
+                /// Reserved field
+                Rsvd OFFSET(4) NUMBITS(28) [],
             ],
-            pub CptraWdtTimer2En [
-                /// WDT timer2 enable
-                Timer2En OFFSET(0) NUMBITS(1) [],
-            ],
-            pub FuseLifeCycle [
-                LifeCycle OFFSET(0) NUMBITS(2) [],
-            ],
-            pub FuseKeyManifestPkHashMask [
-                Mask OFFSET(0) NUMBITS(4) [],
+            pub GlobalIntrT [
+                /// Interrupt Event Aggregation status bit
+                AggSts OFFSET(0) NUMBITS(1) [],
             ],
             pub CptraWdtTimer1Ctrl [
                 /// WDT timer1 restart
                 Timer1Restart OFFSET(0) NUMBITS(1) [],
             ],
-            pub GlobalIntrT [
-                /// Interrupt Event Aggregation status bit
-                AggSts OFFSET(0) NUMBITS(1) [],
+            pub InternalIccmLock [
+                /// Lock bit gates writes to ICCM. Write 1 to set - cannot be cleared by SW.
+                Lock OFFSET(0) NUMBITS(1) [],
+            ],
+            pub NotifIntrTrigT [
+                /// Command Available trigger bit
+                NotifCmdAvailTrig OFFSET(0) NUMBITS(1) [],
+                /// Mailbox ECC Single-bit Error (correctable) trigger bit
+                NotifMboxEccCorTrig OFFSET(1) NUMBITS(1) [],
+                /// Security State, Debug Locked transition trigger bit
+                NotifDebugLockedTrig OFFSET(2) NUMBITS(1) [],
+                /// Scan mode trigger bit
+                NotifScanModeTrig OFFSET(3) NUMBITS(1) [],
+                /// SoC requested the mailbox while locked trigger bit
+                NotifSocReqLockTrig OFFSET(4) NUMBITS(1) [],
+                /// Generic Input Wires Toggle trigger bit
+                NotifGenInToggleTrig OFFSET(5) NUMBITS(1) [],
             ],
             pub ErrorIntrEnT [
                 /// Enable bit for Internal Errors
@@ -154,120 +241,33 @@ pub mod bits {
                 /// Enable bit for WDT Timer2 timeout, applicable if timer2 is enabled as an independent timer
                 ErrorWdtTimer2TimeoutEn OFFSET(7) NUMBITS(1) [],
             ],
+            pub CptraResetReason [
+                /// FW update reset has been executed
+                FwUpdReset OFFSET(0) NUMBITS(1) [],
+                /// warm reset has been executed
+                WarmReset OFFSET(1) NUMBITS(1) [],
+            ],
             pub CptraClkGatingEn [
                 /// Clk gating enable
                 ClkGatingEn OFFSET(0) NUMBITS(1) [],
             ],
-            pub InternalHwErrorFatalMask [
-                MaskIccmEccUnc OFFSET(0) NUMBITS(1) [],
-                MaskDccmEccUnc OFFSET(1) NUMBITS(1) [],
-                MaskNmiPin OFFSET(2) NUMBITS(1) [],
-                MaskCryptoErr OFFSET(3) NUMBITS(1) [],
-            ],
-            pub CptraHwConfig [
-                ItrngEn OFFSET(0) NUMBITS(1) [],
-                QspiEn OFFSET(1) NUMBITS(1) [],
-                I3cEn OFFSET(2) NUMBITS(1) [],
-                UartEn OFFSET(3) NUMBITS(1) [],
-                LmsAccEn OFFSET(4) NUMBITS(1) [],
-            ],
-            pub InternalIccmLock [
-                /// Lock bit gates writes to ICCM. Write 1 to set - cannot be cleared by SW.
-                Lock OFFSET(0) NUMBITS(1) [],
-            ],
-            pub IntrCountIncrT [
-                /// Pulse mirrors interrupt event occurrence
-                Pulse OFFSET(0) NUMBITS(1) [],
-            ],
-            pub InternalFwUpdateResetWaitCycles [
-                /// FW Update reset wait cycles
-                WaitCycles OFFSET(0) NUMBITS(8) [],
-            ],
-            pub CptraItrngEntropyConfig0 [
-                LowThreshold OFFSET(0) NUMBITS(16) [],
-                HighThreshold OFFSET(16) NUMBITS(16) [],
-            ],
-            pub CptraWdtStatus [
-                /// Timer1 timed out, timer2 enabled
-                T1Timeout OFFSET(0) NUMBITS(1) [],
-                /// Timer2 timed out
-                T2Timeout OFFSET(1) NUMBITS(1) [],
-            ],
-            pub CptraFlowStatus [
-                Status OFFSET(0) NUMBITS(24) [],
-                /// DEV ID CSR ready
-                IdevidCsrReady OFFSET(24) NUMBITS(1) [],
-                /// Boot FSM State
-                BootFsmPs OFFSET(25) NUMBITS(3) [],
-                /// Indicates Caliptra is ready for Firmware Download
-                ReadyForFw OFFSET(28) NUMBITS(1) [],
-                /// Indicates Caliptra is ready for RT flows
-                ReadyForRuntime OFFSET(29) NUMBITS(1) [],
-                /// Indicates Caliptra is ready for Fuses to be programmed.
-                /// Read-only to both Caliptra and SOC.
-                ReadyForFuses OFFSET(30) NUMBITS(1) [],
-                /// Indicates Caliptra is has completed Mailbox Flow.
-                MailboxFlowDone OFFSET(31) NUMBITS(1) [],
-            ],
-            pub CptraHwErrorNonFatal [
-                MboxProtNoLock OFFSET(0) NUMBITS(1) [],
-                MboxProtOoo OFFSET(1) NUMBITS(1) [],
-                MboxEccUnc OFFSET(2) NUMBITS(1) [],
-            ],
-            pub CptraXxxxPauserLock [
-                Lock OFFSET(0) NUMBITS(1) [],
-            ],
-            pub GlobalIntrEnT [
-                /// Global enable bit for all events of type 'Error'
-                ErrorEn OFFSET(0) NUMBITS(1) [],
-                /// Global enable bit for all events of type 'Notification'
-                NotifEn OFFSET(1) NUMBITS(1) [],
-            ],
-            pub CptraWdtTimer1En [
-                /// WDT timer1 enable
-                Timer1En OFFSET(0) NUMBITS(1) [],
-            ],
-            pub FuseAntiRollbackDisable [
-                Dis OFFSET(0) NUMBITS(1) [],
-            ],
-            pub CptraFuseWrDone [
-                Done OFFSET(0) NUMBITS(1) [],
-            ],
-            pub CptraHwErrorFatal [
-                IccmEccUnc OFFSET(0) NUMBITS(1) [],
-                DccmEccUnc OFFSET(1) NUMBITS(1) [],
-                NmiPin OFFSET(2) NUMBITS(1) [],
-                CryptoErr OFFSET(3) NUMBITS(1) [],
-            ],
-            pub CptraTrngCtrl [
-                /// Indicates that TRNG Data can be cleared
-                /// [br]Caliptra Access: RW
-                /// [br]SOC Access:      RO
-                Clear OFFSET(0) NUMBITS(1) [],
-            ],
-            pub FuseLmsVerify [
-                LmsVerify OFFSET(0) NUMBITS(1) [],
-            ],
-            pub CptraBootfsmGo [
-                Go OFFSET(0) NUMBITS(1) [],
-            ],
-            pub CptraWdtTimer2Ctrl [
-                /// WDT timer2 restart
-                Timer2Restart OFFSET(0) NUMBITS(1) [],
-            ],
-            pub NotifIntrTrigT [
-                /// Command Available trigger bit
-                NotifCmdAvailTrig OFFSET(0) NUMBITS(1) [],
-                /// Mailbox ECC Single-bit Error (correctable) trigger bit
-                NotifMboxEccCorTrig OFFSET(1) NUMBITS(1) [],
-                /// Security State, Debug Locked transition trigger bit
-                NotifDebugLockedTrig OFFSET(2) NUMBITS(1) [],
-                /// Scan mode trigger bit
-                NotifScanModeTrig OFFSET(3) NUMBITS(1) [],
-                /// SoC requested the mailbox while locked trigger bit
-                NotifSocReqLockTrig OFFSET(4) NUMBITS(1) [],
-                /// Generic Input Wires Toggle trigger bit
-                NotifGenInToggleTrig OFFSET(5) NUMBITS(1) [],
+            pub ErrorIntrTrigT [
+                /// Internal Errors trigger bit
+                ErrorInternalTrig OFFSET(0) NUMBITS(1) [],
+                /// Invalid Device in Pauser field trigger bit
+                ErrorInvDevTrig OFFSET(1) NUMBITS(1) [],
+                /// Failed Commands trigger bit
+                ErrorCmdFailTrig OFFSET(2) NUMBITS(1) [],
+                /// Bad Fuse received from SoC trigger bit
+                ErrorBadFuseTrig OFFSET(3) NUMBITS(1) [],
+                /// ICCM access blocked by lock trigger bit
+                ErrorIccmBlockedTrig OFFSET(4) NUMBITS(1) [],
+                /// Mailbox ECC Double-bit Error (uncorrectable) trigger bit
+                ErrorMboxEccUncTrig OFFSET(5) NUMBITS(1) [],
+                /// WDT Timer1 timeout trigger bit
+                ErrorWdtTimer1TimeoutTrig OFFSET(6) NUMBITS(1) [],
+                /// WDT Timer2 timeout trigger bit
+                ErrorWdtTimer2TimeoutTrig OFFSET(7) NUMBITS(1) [],
             ],
     }
 }

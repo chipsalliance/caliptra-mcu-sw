@@ -8,7 +8,14 @@ use crate::schema::{
 };
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
-use std::{collections::HashMap, rc::Rc, str::FromStr};
+use std::{
+    collections::HashMap,
+    rc::Rc,
+    str::FromStr,
+    sync::atomic::{AtomicUsize, Ordering},
+};
+
+pub static TYPE_NUM: AtomicUsize = AtomicUsize::new(0);
 
 fn tweak_keywords(s: &str) -> &str {
     match s {
@@ -593,10 +600,11 @@ fn generate_register_types<'a>(regs: impl Iterator<Item = &'a RegisterType>) -> 
 }
 
 pub fn has_single_32_bit_field(t: &RegisterType) -> bool {
-    t.fields.len() == 1
-        && t.fields[0].enum_type.is_none()
-        && t.fields[0].position == 0
-        && t.fields[0].width == 32
+    t.fields.is_empty()
+        || (t.fields.len() == 1
+            && t.fields[0].enum_type.is_none()
+            && t.fields[0].position == 0
+            && t.fields[0].width == 32)
 }
 
 fn read_write_types(
@@ -638,8 +646,6 @@ fn generate_array_type(
     }
 }
 
-static mut TYPE_NUM: usize = 0;
-
 fn generate_block_registers(
     registers: &[Rc<Register>],
     raw_ptr_type: &Ident,
@@ -660,10 +666,8 @@ fn generate_block_registers(
             Some(_) => reg.ty.as_ref().clone(),
             _ => {
                 let mut new_ty = reg.ty.as_ref().clone();
-                // Safety: this is a single-threaded program.
-                new_ty.name = Some(format!("{}_anon_{}", reg_name, unsafe { TYPE_NUM }));
-                // Safety: this is a single-threaded program.
-                unsafe { TYPE_NUM += 1 };
+                let num = TYPE_NUM.fetch_add(1, Ordering::Relaxed);
+                new_ty.name = Some(format!("{}_anon_{}", reg_name, num));
                 let tokens = generate_register_types([new_ty.clone()].iter());
                 anon_type_tokens.extend(tokens);
                 new_ty
@@ -936,20 +940,19 @@ fn generate_reg_structs(
             tokens += &format!("        (0x{next_offset:x} => _reserved{reserved}),\n");
             reserved += 1;
         }
-
-        let ty = match reg.ty.name {
-            Some(_) => reg.ty.as_ref().clone(),
-            _ => {
-                let mut new_ty = reg.ty.as_ref().clone();
-                // Safety: this is a single-threaded program.
-                new_ty.name = Some(format!("{}_anon_{}", name, unsafe { TYPE_NUM }));
-                // Safety: this is a single-threaded program.
-                unsafe { TYPE_NUM += 1 };
-                //let tokens = generate_register_types([new_ty.clone()].iter());
-                //anon_type_tokens.extend(tokens);
-                new_ty
-            }
-        };
+        assert!(reg.ty.name.is_some());
+        // let ty = match reg.ty.name {
+        //     Some(_) => reg.ty.as_ref().clone(),
+        //     _ => {
+        //         let mut new_ty = reg.ty.as_ref().clone();
+        //         let num = TYPE_NUM.fetch_add(1, Ordering::Relaxed);
+        //         new_ty.name = Some(format!("{}_anon_{}", name, num));
+        //         let tokens = generate_register_types([new_ty.clone()].iter());
+        //         anon_type_tokens.extend(tokens);
+        //         new_ty
+        //     }
+        // };
+        let ty = reg.ty.as_ref().clone();
         let kind = if has_single_32_bit_field(&ty) {
             "tock_registers::registers::ReadOnly<u32>".to_string() // TODO: check if writable
         } else {

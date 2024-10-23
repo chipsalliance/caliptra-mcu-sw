@@ -73,6 +73,35 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
     .map(|s| PROJECT_ROOT.join(s))
     .collect();
 
+    // eliminate duplicate type names
+    let patches = vec![
+        (
+            PROJECT_ROOT.join("hw/i3c-core/src/rdl/target_transaction_interface.rdl"),
+            "QUEUE_THLD_CTRL",
+            "TTI_QUEUE_THLD_CTRL",
+        ),
+        (
+            PROJECT_ROOT.join("hw/i3c-core/src/rdl/target_transaction_interface.rdl"),
+            "QUEUE_SIZE",
+            "TTI_QUEUE_SIZE",
+        ),
+        (
+            PROJECT_ROOT.join("hw/i3c-core/src/rdl/target_transaction_interface.rdl"),
+            "IBI_PORT",
+            "TTI_IBI_PORT",
+        ),
+        (
+            PROJECT_ROOT.join("hw/i3c-core/src/rdl/target_transaction_interface.rdl"),
+            "DATA_BUFFER_THLD_CTRL",
+            "TTI_DATA_BUFFER_THLD_CTRL",
+        ),
+        (
+            PROJECT_ROOT.join("hw/i3c-core/src/rdl/target_transaction_interface.rdl"),
+            "RESET_CONTROL",
+            "TTI_RESET_CONTROL",
+        ),
+    ];
+
     for rdl in rdl_files.iter() {
         if !rdl.exists() {
             return Err(format!("RDL file not found: {:?} -- ensure that you have run `git submodule init` and `git submodule update --recursive`", rdl).into());
@@ -149,6 +178,9 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
     header.push_str(HEADER_SUFFIX);
 
     let file_source = registers_systemrdl::FsFileSource::new();
+    for patch in patches {
+        file_source.add_patch(&patch.0, patch.1, patch.2);
+    }
     let scope = registers_systemrdl::Scope::parse_root(&file_source, &rdl_files)
         .map_err(|s| s.to_string())?;
     let scope = scope.as_parent();

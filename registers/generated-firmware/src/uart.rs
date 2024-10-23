@@ -9,100 +9,9 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
-            pub Status [
-                /// TX buffer is full
-                Txfull OFFSET(0) NUMBITS(1) [],
-                /// RX buffer is full
-                Rxfull OFFSET(1) NUMBITS(1) [],
-                /// TX FIFO is empty
-                Txempty OFFSET(2) NUMBITS(1) [],
-                /// TX FIFO is empty and all bits have been transmitted
-                Txidle OFFSET(3) NUMBITS(1) [],
-                /// RX is idle
-                Rxidle OFFSET(4) NUMBITS(1) [],
-                /// RX FIFO is empty
-                Rxempty OFFSET(5) NUMBITS(1) [],
-            ],
-            pub TimeoutCtrl [
-                /// RX timeout value in UART bit times
-                Val OFFSET(0) NUMBITS(24) [],
-                /// Enable RX timeout feature
-                En OFFSET(31) NUMBITS(1) [],
-            ],
-            pub Wdata [
-                /// UART write data
-                Wdata OFFSET(0) NUMBITS(8) [],
-            ],
-            pub FifoStatus [
-                /// Current fill level of TX fifo
-                Txlvl OFFSET(0) NUMBITS(6) [],
-                /// Current fill level of RX fifo
-                Rxlvl OFFSET(16) NUMBITS(6) [],
-            ],
-            pub InterruptTest [
-                /// Write 1 to force tx_watermark to 1.
-                TxWatermark OFFSET(0) NUMBITS(1) [],
-                /// Write 1 to force rx_watermark to 1.
-                RxWatermark OFFSET(1) NUMBITS(1) [],
-                /// Write 1 to force tx_empty to 1.
-                TxEmpty OFFSET(2) NUMBITS(1) [],
-                /// Write 1 to force rx_overflow to 1.
-                RxOverflow OFFSET(3) NUMBITS(1) [],
-                /// Write 1 to force rx_frame_err to 1.
-                RxFrameErr OFFSET(4) NUMBITS(1) [],
-                /// Write 1 to force rx_break_err to 1.
-                RxBreakErr OFFSET(5) NUMBITS(1) [],
-                /// Write 1 to force rx_timeout to 1.
-                RxTimeout OFFSET(6) NUMBITS(1) [],
-                /// Write 1 to force rx_parity_err to 1.
-                RxParityErr OFFSET(7) NUMBITS(1) [],
-            ],
-            pub InterruptEnable [
-                /// Enable interrupt when tx_watermark is set.
-                TxWatermark OFFSET(0) NUMBITS(1) [],
-                /// Enable interrupt when rx_watermark is set.
-                RxWatermark OFFSET(1) NUMBITS(1) [],
-                /// Enable interrupt when tx_empty is set.
-                TxEmpty OFFSET(2) NUMBITS(1) [],
-                /// Enable interrupt when rx_overflow is set.
-                RxOverflow OFFSET(3) NUMBITS(1) [],
-                /// Enable interrupt when rx_frame_err is set.
-                RxFrameErr OFFSET(4) NUMBITS(1) [],
-                /// Enable interrupt when rx_break_err is set.
-                RxBreakErr OFFSET(5) NUMBITS(1) [],
-                /// Enable interrupt when rx_timeout is set.
-                RxTimeout OFFSET(6) NUMBITS(1) [],
-                /// Enable interrupt when rx_parity_err is set.
-                RxParityErr OFFSET(7) NUMBITS(1) [],
-            ],
-            pub Rdata [
-                /// UART read data
-                Rdata OFFSET(0) NUMBITS(8) [],
-            ],
-            pub Ovrd [
-                /// Enable TX pin override control
-                Txen OFFSET(0) NUMBITS(1) [],
-                /// Write to set the value of the TX pin
-                Txval OFFSET(1) NUMBITS(1) [],
-            ],
-            pub InterruptState [
-                /// raised if the transmit FIFO is past the high-water mark.
-                TxWatermark OFFSET(0) NUMBITS(1) [],
-                /// raised if the receive FIFO is past the high-water mark.
-                RxWatermark OFFSET(1) NUMBITS(1) [],
-                /// raised if the transmit FIFO has emptied and no transmit is ongoing.
-                TxEmpty OFFSET(2) NUMBITS(1) [],
-                /// raised if the receive FIFO has overflowed.
-                RxOverflow OFFSET(3) NUMBITS(1) [],
-                /// raised if a framing error has been detected on receive.
-                RxFrameErr OFFSET(4) NUMBITS(1) [],
-                /// raised if break condition has been detected on receive.
-                RxBreakErr OFFSET(5) NUMBITS(1) [],
-                /// raised if RX FIFO has characters remaining in the FIFO without being
-                /// retrieved for the programmed time period.
-                RxTimeout OFFSET(6) NUMBITS(1) [],
-                /// raised if the receiver has detected a parity error.
-                RxParityErr OFFSET(7) NUMBITS(1) [],
+            pub AlertTest [
+                /// Write 1 to trigger one alert event of this kind.
+                FatalFault OFFSET(0) NUMBITS(1) [],
             ],
             pub Ctrl [
                 /// TX enable
@@ -134,14 +43,6 @@ pub mod bits {
                 /// BAUD clock rate control.
                 Nco OFFSET(16) NUMBITS(16) [],
             ],
-            pub Val [
-                /// Last 16 oversampled values of RX. Most recent bit is bit 0, oldest 15.
-                Rx OFFSET(0) NUMBITS(16) [],
-            ],
-            pub AlertTest [
-                /// Write 1 to trigger one alert event of this kind.
-                FatalFault OFFSET(0) NUMBITS(1) [],
-            ],
             pub FifoCtrl [
                 /// RX fifo reset. Write 1 to the register resets RX_FIFO. Read returns 0
                 Rxrst OFFSET(0) NUMBITS(1) [],
@@ -153,6 +54,105 @@ pub mod bits {
                 /// Trigger level for TX interrupts. If the FIFO depth is less than the setting, it
                 /// raises tx_watermark interrupt.
                 Txilvl OFFSET(5) NUMBITS(2) [],
+            ],
+            pub FifoStatus [
+                /// Current fill level of TX fifo
+                Txlvl OFFSET(0) NUMBITS(6) [],
+                /// Current fill level of RX fifo
+                Rxlvl OFFSET(16) NUMBITS(6) [],
+            ],
+            pub Rdata [
+                /// UART read data
+                Rdata OFFSET(0) NUMBITS(8) [],
+            ],
+            pub InterruptState [
+                /// raised if the transmit FIFO is past the high-water mark.
+                TxWatermark OFFSET(0) NUMBITS(1) [],
+                /// raised if the receive FIFO is past the high-water mark.
+                RxWatermark OFFSET(1) NUMBITS(1) [],
+                /// raised if the transmit FIFO has emptied and no transmit is ongoing.
+                TxEmpty OFFSET(2) NUMBITS(1) [],
+                /// raised if the receive FIFO has overflowed.
+                RxOverflow OFFSET(3) NUMBITS(1) [],
+                /// raised if a framing error has been detected on receive.
+                RxFrameErr OFFSET(4) NUMBITS(1) [],
+                /// raised if break condition has been detected on receive.
+                RxBreakErr OFFSET(5) NUMBITS(1) [],
+                /// raised if RX FIFO has characters remaining in the FIFO without being
+                /// retrieved for the programmed time period.
+                RxTimeout OFFSET(6) NUMBITS(1) [],
+                /// raised if the receiver has detected a parity error.
+                RxParityErr OFFSET(7) NUMBITS(1) [],
+            ],
+            pub Ovrd [
+                /// Enable TX pin override control
+                Txen OFFSET(0) NUMBITS(1) [],
+                /// Write to set the value of the TX pin
+                Txval OFFSET(1) NUMBITS(1) [],
+            ],
+            pub Val [
+                /// Last 16 oversampled values of RX. Most recent bit is bit 0, oldest 15.
+                Rx OFFSET(0) NUMBITS(16) [],
+            ],
+            pub InterruptEnable [
+                /// Enable interrupt when tx_watermark is set.
+                TxWatermark OFFSET(0) NUMBITS(1) [],
+                /// Enable interrupt when rx_watermark is set.
+                RxWatermark OFFSET(1) NUMBITS(1) [],
+                /// Enable interrupt when tx_empty is set.
+                TxEmpty OFFSET(2) NUMBITS(1) [],
+                /// Enable interrupt when rx_overflow is set.
+                RxOverflow OFFSET(3) NUMBITS(1) [],
+                /// Enable interrupt when rx_frame_err is set.
+                RxFrameErr OFFSET(4) NUMBITS(1) [],
+                /// Enable interrupt when rx_break_err is set.
+                RxBreakErr OFFSET(5) NUMBITS(1) [],
+                /// Enable interrupt when rx_timeout is set.
+                RxTimeout OFFSET(6) NUMBITS(1) [],
+                /// Enable interrupt when rx_parity_err is set.
+                RxParityErr OFFSET(7) NUMBITS(1) [],
+            ],
+            pub Wdata [
+                /// UART write data
+                Wdata OFFSET(0) NUMBITS(8) [],
+            ],
+            pub Status [
+                /// TX buffer is full
+                Txfull OFFSET(0) NUMBITS(1) [],
+                /// RX buffer is full
+                Rxfull OFFSET(1) NUMBITS(1) [],
+                /// TX FIFO is empty
+                Txempty OFFSET(2) NUMBITS(1) [],
+                /// TX FIFO is empty and all bits have been transmitted
+                Txidle OFFSET(3) NUMBITS(1) [],
+                /// RX is idle
+                Rxidle OFFSET(4) NUMBITS(1) [],
+                /// RX FIFO is empty
+                Rxempty OFFSET(5) NUMBITS(1) [],
+            ],
+            pub TimeoutCtrl [
+                /// RX timeout value in UART bit times
+                Val OFFSET(0) NUMBITS(24) [],
+                /// Enable RX timeout feature
+                En OFFSET(31) NUMBITS(1) [],
+            ],
+            pub InterruptTest [
+                /// Write 1 to force tx_watermark to 1.
+                TxWatermark OFFSET(0) NUMBITS(1) [],
+                /// Write 1 to force rx_watermark to 1.
+                RxWatermark OFFSET(1) NUMBITS(1) [],
+                /// Write 1 to force tx_empty to 1.
+                TxEmpty OFFSET(2) NUMBITS(1) [],
+                /// Write 1 to force rx_overflow to 1.
+                RxOverflow OFFSET(3) NUMBITS(1) [],
+                /// Write 1 to force rx_frame_err to 1.
+                RxFrameErr OFFSET(4) NUMBITS(1) [],
+                /// Write 1 to force rx_break_err to 1.
+                RxBreakErr OFFSET(5) NUMBITS(1) [],
+                /// Write 1 to force rx_timeout to 1.
+                RxTimeout OFFSET(6) NUMBITS(1) [],
+                /// Write 1 to force rx_parity_err to 1.
+                RxParityErr OFFSET(7) NUMBITS(1) [],
             ],
     }
 }

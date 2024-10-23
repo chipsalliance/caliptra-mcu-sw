@@ -9,9 +9,19 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
+            pub Meie [
+                /// External interrupt enable
+                Inten OFFSET(0) NUMBITS(1) [],
+            ],
             pub Meip [
                 /// External interrupt pending
                 Intpend OFFSET(0) NUMBITS(1) [],
+            ],
+            pub Mpiccfg [
+                /// Interrupt priority order
+                /// 0b0: RISC-V standard compliant priority order (0=lowest to 15=highest)
+                /// 0b1: Reverse priority order (15=lowest to 0=highest)
+                Priord OFFSET(0) NUMBITS(1) [],
             ],
             pub Meigwctrl [
                 /// External interrupt polarity
@@ -26,16 +36,6 @@ pub mod bits {
             pub Meipl [
                 /// External interrupt priority level
                 Priority OFFSET(0) NUMBITS(4) [],
-            ],
-            pub Meie [
-                /// External interrupt enable
-                Inten OFFSET(0) NUMBITS(1) [],
-            ],
-            pub Mpiccfg [
-                /// Interrupt priority order
-                /// 0b0: RISC-V standard compliant priority order (0=lowest to 15=highest)
-                /// 0b1: Reverse priority order (15=lowest to 0=highest)
-                Priord OFFSET(0) NUMBITS(1) [],
             ],
     }
 }

@@ -9,12 +9,6 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
-            pub Unlock [
-                Unlock OFFSET(0) NUMBITS(1) [],
-            ],
-            pub Execute [
-                Execute OFFSET(0) NUMBITS(1) [],
-            ],
             pub Lock [
                 Lock OFFSET(0) NUMBITS(1) [],
             ],
@@ -68,6 +62,12 @@ pub mod bits {
                 /// [br]SOC Access:      RO
                 /// [br]TAP Access [in debug/manuf mode]: RO
                 MboxRdptr OFFSET(10) NUMBITS(15) [],
+            ],
+            pub Execute [
+                Execute OFFSET(0) NUMBITS(1) [],
+            ],
+            pub Unlock [
+                Unlock OFFSET(0) NUMBITS(1) [],
             ],
     }
 }
