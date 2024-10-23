@@ -894,7 +894,7 @@ pub fn generate_code(
 
     for instance in block.block().instances.iter() {
         let name_camel = camel_ident(&instance.name);
-        let addr = hex_literal(instance.address.into());
+        let addr = hex_const(instance.address.into());
         // TODO: Should this be unsafe?
         instance_type_tokens += &format!(
             "
@@ -1059,6 +1059,9 @@ fn generate_bitfields(register_types: impl Iterator<Item = Rc<RegisterType>>) ->
     let mut tokens32 = String::new();
     let mut tokens64 = String::new();
     let mut tokens128 = String::new();
+
+    let mut register_types = register_types.collect::<Vec<_>>();
+    register_types.sort_by_key(|rt| rt.name.clone().unwrap());
     for rt in register_types {
         if has_single_32_bit_field(&rt) {
             continue;

@@ -17,7 +17,7 @@ pub mod instances {
         _priv: (),
     }
     impl I3cCtrl {
-        pub const PTR: *mut u32 = 0x10038100 as *mut u32;
+        pub const PTR: *mut u32 = 0x1003_8100 as *mut u32;
 
         /// # Safety
         ///

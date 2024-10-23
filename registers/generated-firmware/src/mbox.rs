@@ -15,9 +15,6 @@ pub mod bits {
             pub Lock [
                 Lock OFFSET(0) NUMBITS(1) [],
             ],
-            pub Unlock [
-                Unlock OFFSET(0) NUMBITS(1) [],
-            ],
             pub Status [
                 /// Indicates the status of mailbox command
                 /// [br]Caliptra Access: RW
@@ -69,6 +66,9 @@ pub mod bits {
                 /// [br]TAP Access [in debug/manuf mode]: RO
                 MboxRdptr OFFSET(10) NUMBITS(15) [],
             ],
+            pub Unlock [
+                Unlock OFFSET(0) NUMBITS(1) [],
+            ],
     }
 }
 pub mod regs {
@@ -102,7 +102,7 @@ pub mod instances {
         _priv: (),
     }
     impl MboxCsr {
-        pub const PTR: *mut u32 = 0x30020000 as *mut u32;
+        pub const PTR: *mut u32 = 0x3002_0000 as *mut u32;
 
         /// # Safety
         ///

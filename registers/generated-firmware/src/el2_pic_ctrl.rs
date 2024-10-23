@@ -9,9 +9,9 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
-            pub Meip [
-                /// External interrupt pending
-                Intpend OFFSET(0) NUMBITS(1) [],
+            pub Meie [
+                /// External interrupt enable
+                Inten OFFSET(0) NUMBITS(1) [],
             ],
             pub Meigwctrl [
                 /// External interrupt polarity
@@ -23,9 +23,9 @@ pub mod bits {
                 /// 0b1: Edge-triggered interrupt
                 Inttype OFFSET(1) NUMBITS(1) [],
             ],
-            pub Meie [
-                /// External interrupt enable
-                Inten OFFSET(0) NUMBITS(1) [],
+            pub Meip [
+                /// External interrupt pending
+                Intpend OFFSET(0) NUMBITS(1) [],
             ],
             pub Meipl [
                 /// External interrupt priority level
@@ -72,7 +72,7 @@ pub mod instances {
         _priv: (),
     }
     impl El2PicCtrl {
-        pub const PTR: *mut u32 = 0x60000000 as *mut u32;
+        pub const PTR: *mut u32 = 0x6000_0000 as *mut u32;
 
         /// # Safety
         ///

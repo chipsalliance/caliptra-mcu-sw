@@ -9,6 +9,10 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
+            pub AlertTest [
+                /// Write 1 to trigger one alert event of this kind.
+                FatalFault OFFSET(0) NUMBITS(1) [],
+            ],
             pub Command [
                 /// Segment Length.
                 ///
@@ -37,14 +41,6 @@ pub mod bits {
                 /// (no TX/RX). "1" = Rx only, "2" = Tx only, "3" = Bidirectional
                 /// Tx/Rx (Standard SPI mode only).
                 Direction OFFSET(12) NUMBITS(2) [],
-            ],
-            pub InterruptState [
-                /// Error-related interrupts, see !!ERROR_ENABLE register for more
-                /// information.
-                Error OFFSET(0) NUMBITS(1) [],
-                /// Event-related interrupts, see !!EVENT_ENABLE register for more
-                /// information.
-                SpiEvent OFFSET(1) NUMBITS(1) [],
             ],
             pub Configopts [
                 /// Core clock divider.  Slows down subsequent SPI transactions by a
@@ -90,10 +86,109 @@ pub mod bits {
                 /// pulses.
                 Cpol OFFSET(31) NUMBITS(1) [],
             ],
+            pub Control [
+                /// If !!EVENT_ENABLE.RXWM is set, the IP will send
+                /// an interrupt when the depth of the RX FIFO reaches
+                /// RX_WATERMARK words (32b each).
+                RxWatermark OFFSET(0) NUMBITS(8) [],
+                /// If !!EVENT_ENABLE.TXWM is set, the IP will send
+                /// an interrupt when the depth of the TX FIFO drops below
+                /// TX_WATERMARK words (32b each).
+                TxWatermark OFFSET(8) NUMBITS(8) [],
+                /// Enable the SPI host output buffers for the sck, csb, and sd lines.  This allows
+                /// the SPI_HOST IP to connect to the same bus as other SPI controllers without
+                /// interference.
+                OutputEn OFFSET(29) NUMBITS(1) [],
+                /// Clears the entire IP to the reset state when set to 1, including
+                /// the FIFOs, the CDC's, the core state machine and the shift register.
+                /// In the current implementation, the CDC FIFOs are drained not reset.
+                /// Therefore software must confirm that both FIFO's empty before releasing
+                /// the IP from reset.
+                SwRst OFFSET(30) NUMBITS(1) [],
+                /// Enables the SPI host.  On reset, this field is 0, meaning
+                /// that no transactions can proceed.
+                Spien OFFSET(31) NUMBITS(1) [],
+            ],
+            pub ErrorEnable [
+                /// Command Error: If this bit is set, the block sends an error
+                /// interrupt whenever a command is issued while busy (i.e. a 1 is
+                /// when !!STATUS.READY is not asserted.)
+                Cmdbusy OFFSET(0) NUMBITS(1) [],
+                /// Overflow Errors: If this bit is set, the block sends an
+                /// error interrupt whenever the TX FIFO overflows.
+                Overflow OFFSET(1) NUMBITS(1) [],
+                /// Underflow Errors: If this bit is set, the block sends an
+                /// error interrupt whenever there is a read from !!RXDATA
+                /// but the RX FIFO is empty.
+                Underflow OFFSET(2) NUMBITS(1) [],
+                /// Invalid Command Errors: If this bit is set, the block sends an
+                /// error interrupt whenever a command is sent with invalid values for
+                /// !!COMMAND.SPEED or !!COMMAND.DIRECTION.
+                Cmdinval OFFSET(3) NUMBITS(1) [],
+                /// Invalid CSID: If this bit is set, the block sends an error interrupt whenever
+                /// a command is submitted, but CSID exceeds NumCS.
+                Csidinval OFFSET(4) NUMBITS(1) [],
+            ],
+            pub ErrorStatus [
+                /// Indicates a write to !!COMMAND when !!STATUS.READY = 0.
+                Cmdbusy OFFSET(0) NUMBITS(1) [],
+                /// Indicates that firmware has overflowed the TX FIFO
+                Overflow OFFSET(1) NUMBITS(1) [],
+                /// Indicates that firmware has attempted to read from
+                /// !!RXDATA when the RX FIFO is empty.
+                Underflow OFFSET(2) NUMBITS(1) [],
+                /// Indicates an invalid command segment, meaning either an invalid value of
+                /// !!COMMAND.SPEED or a request for bidirectional data transfer at dual or quad
+                /// speed
+                Cmdinval OFFSET(3) NUMBITS(1) [],
+                /// Indicates a command was attempted with an invalid value for !!CSID.
+                Csidinval OFFSET(4) NUMBITS(1) [],
+                /// Indicates that TLUL attempted to write to TXDATA with no bytes enabled. Such
+                /// 'zero byte' writes are not supported.
+                Accessinval OFFSET(5) NUMBITS(1) [],
+            ],
+            pub EventEnable [
+                /// Assert to send a spi_event interrupt whenever !!STATUS.RXFULL
+                /// goes high
+                Rxfull OFFSET(0) NUMBITS(1) [],
+                /// Assert to send a spi_event interrupt whenever !!STATUS.TXEMPTY
+                /// goes high
+                Txempty OFFSET(1) NUMBITS(1) [],
+                /// Assert to send a spi_event interrupt whenever the number of 32-bit words in
+                /// the RX FIFO is greater than !!CONTROL.RX_WATERMARK. To prevent the
+                /// reassertion of this interrupt, read more data from the RX FIFO, or
+                /// increase !!CONTROL.RX_WATERMARK.
+                Rxwm OFFSET(2) NUMBITS(1) [],
+                /// Assert to send a spi_event interrupt whenever the number of 32-bit words in
+                /// the TX FIFO is less than !!CONTROL.TX_WATERMARK.  To prevent the
+                /// reassertion of this interrupt add more data to the TX FIFO, or
+                /// reduce !!CONTROL.TX_WATERMARK.
+                Txwm OFFSET(3) NUMBITS(1) [],
+                /// Assert to send a spi_event interrupt whenever !!STATUS.READY
+                /// goes high
+                Ready OFFSET(4) NUMBITS(1) [],
+                /// Assert to send a spi_event interrupt whenever !!STATUS.ACTIVE
+                /// goes low
+                Idle OFFSET(5) NUMBITS(1) [],
+            ],
             pub InterruptEnable [
                 /// Enable interrupt when error is set.
                 Error OFFSET(0) NUMBITS(1) [],
                 /// Enable interrupt when spi_event is set.
+                SpiEvent OFFSET(1) NUMBITS(1) [],
+            ],
+            pub InterruptState [
+                /// Error-related interrupts, see !!ERROR_ENABLE register for more
+                /// information.
+                Error OFFSET(0) NUMBITS(1) [],
+                /// Event-related interrupts, see !!EVENT_ENABLE register for more
+                /// information.
+                SpiEvent OFFSET(1) NUMBITS(1) [],
+            ],
+            pub InterruptTest [
+                /// Write 1 to force error to 1.
+                Error OFFSET(0) NUMBITS(1) [],
+                /// Write 1 to force spi_event to 1.
                 SpiEvent OFFSET(1) NUMBITS(1) [],
             ],
             pub Status [
@@ -143,101 +238,6 @@ pub mod bits {
                 /// an error, and will trigger an interrupt.
                 Ready OFFSET(31) NUMBITS(1) [],
             ],
-            pub Control [
-                /// If !!EVENT_ENABLE.RXWM is set, the IP will send
-                /// an interrupt when the depth of the RX FIFO reaches
-                /// RX_WATERMARK words (32b each).
-                RxWatermark OFFSET(0) NUMBITS(8) [],
-                /// If !!EVENT_ENABLE.TXWM is set, the IP will send
-                /// an interrupt when the depth of the TX FIFO drops below
-                /// TX_WATERMARK words (32b each).
-                TxWatermark OFFSET(8) NUMBITS(8) [],
-                /// Enable the SPI host output buffers for the sck, csb, and sd lines.  This allows
-                /// the SPI_HOST IP to connect to the same bus as other SPI controllers without
-                /// interference.
-                OutputEn OFFSET(29) NUMBITS(1) [],
-                /// Clears the entire IP to the reset state when set to 1, including
-                /// the FIFOs, the CDC's, the core state machine and the shift register.
-                /// In the current implementation, the CDC FIFOs are drained not reset.
-                /// Therefore software must confirm that both FIFO's empty before releasing
-                /// the IP from reset.
-                SwRst OFFSET(30) NUMBITS(1) [],
-                /// Enables the SPI host.  On reset, this field is 0, meaning
-                /// that no transactions can proceed.
-                Spien OFFSET(31) NUMBITS(1) [],
-            ],
-            pub AlertTest [
-                /// Write 1 to trigger one alert event of this kind.
-                FatalFault OFFSET(0) NUMBITS(1) [],
-            ],
-            pub ErrorEnable [
-                /// Command Error: If this bit is set, the block sends an error
-                /// interrupt whenever a command is issued while busy (i.e. a 1 is
-                /// when !!STATUS.READY is not asserted.)
-                Cmdbusy OFFSET(0) NUMBITS(1) [],
-                /// Overflow Errors: If this bit is set, the block sends an
-                /// error interrupt whenever the TX FIFO overflows.
-                Overflow OFFSET(1) NUMBITS(1) [],
-                /// Underflow Errors: If this bit is set, the block sends an
-                /// error interrupt whenever there is a read from !!RXDATA
-                /// but the RX FIFO is empty.
-                Underflow OFFSET(2) NUMBITS(1) [],
-                /// Invalid Command Errors: If this bit is set, the block sends an
-                /// error interrupt whenever a command is sent with invalid values for
-                /// !!COMMAND.SPEED or !!COMMAND.DIRECTION.
-                Cmdinval OFFSET(3) NUMBITS(1) [],
-                /// Invalid CSID: If this bit is set, the block sends an error interrupt whenever
-                /// a command is submitted, but CSID exceeds NumCS.
-                Csidinval OFFSET(4) NUMBITS(1) [],
-            ],
-            pub EventEnable [
-                /// Assert to send a spi_event interrupt whenever !!STATUS.RXFULL
-                /// goes high
-                Rxfull OFFSET(0) NUMBITS(1) [],
-                /// Assert to send a spi_event interrupt whenever !!STATUS.TXEMPTY
-                /// goes high
-                Txempty OFFSET(1) NUMBITS(1) [],
-                /// Assert to send a spi_event interrupt whenever the number of 32-bit words in
-                /// the RX FIFO is greater than !!CONTROL.RX_WATERMARK. To prevent the
-                /// reassertion of this interrupt, read more data from the RX FIFO, or
-                /// increase !!CONTROL.RX_WATERMARK.
-                Rxwm OFFSET(2) NUMBITS(1) [],
-                /// Assert to send a spi_event interrupt whenever the number of 32-bit words in
-                /// the TX FIFO is less than !!CONTROL.TX_WATERMARK.  To prevent the
-                /// reassertion of this interrupt add more data to the TX FIFO, or
-                /// reduce !!CONTROL.TX_WATERMARK.
-                Txwm OFFSET(3) NUMBITS(1) [],
-                /// Assert to send a spi_event interrupt whenever !!STATUS.READY
-                /// goes high
-                Ready OFFSET(4) NUMBITS(1) [],
-                /// Assert to send a spi_event interrupt whenever !!STATUS.ACTIVE
-                /// goes low
-                Idle OFFSET(5) NUMBITS(1) [],
-            ],
-            pub InterruptTest [
-                /// Write 1 to force error to 1.
-                Error OFFSET(0) NUMBITS(1) [],
-                /// Write 1 to force spi_event to 1.
-                SpiEvent OFFSET(1) NUMBITS(1) [],
-            ],
-            pub ErrorStatus [
-                /// Indicates a write to !!COMMAND when !!STATUS.READY = 0.
-                Cmdbusy OFFSET(0) NUMBITS(1) [],
-                /// Indicates that firmware has overflowed the TX FIFO
-                Overflow OFFSET(1) NUMBITS(1) [],
-                /// Indicates that firmware has attempted to read from
-                /// !!RXDATA when the RX FIFO is empty.
-                Underflow OFFSET(2) NUMBITS(1) [],
-                /// Indicates an invalid command segment, meaning either an invalid value of
-                /// !!COMMAND.SPEED or a request for bidirectional data transfer at dual or quad
-                /// speed
-                Cmdinval OFFSET(3) NUMBITS(1) [],
-                /// Indicates a command was attempted with an invalid value for !!CSID.
-                Csidinval OFFSET(4) NUMBITS(1) [],
-                /// Indicates that TLUL attempted to write to TXDATA with no bytes enabled. Such
-                /// 'zero byte' writes are not supported.
-                Accessinval OFFSET(5) NUMBITS(1) [],
-            ],
     }
 }
 pub mod regs {
@@ -276,7 +276,7 @@ pub mod instances {
         _priv: (),
     }
     impl SpiHostReg {
-        pub const PTR: *mut u32 = 0x20000000 as *mut u32;
+        pub const PTR: *mut u32 = 0x2000_0000 as *mut u32;
 
         /// # Safety
         ///

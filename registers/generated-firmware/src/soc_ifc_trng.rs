@@ -48,7 +48,7 @@ pub mod instances {
         _priv: (),
     }
     impl SocIfcTrngReg {
-        pub const PTR: *mut u32 = 0x30030000 as *mut u32;
+        pub const PTR: *mut u32 = 0x3003_0000 as *mut u32;
 
         /// # Safety
         ///
