@@ -524,7 +524,7 @@ impl<'a> ParentScope<'a> {
             },
         })
     }
-    pub fn type_iter(&'a self) -> impl Iterator<Item = (&str, ParentScope<'a>)> {
+    pub fn type_iter(&'a self) -> impl Iterator<Item = (&'a str, ParentScope<'a>)> {
         self.scope.types.iter().map(|(name, scope)| {
             (
                 name.as_str(),
@@ -587,7 +587,7 @@ pub fn lookup_parameter<'a, 'b>(
         }
         return lookup_parameter(p.parent, name);
     }
-    return Err(RdlError::UnknownIdentifier(name));
+    Err(RdlError::UnknownIdentifier(name))
 }
 
 pub fn lookup_parameter_of_type<'a, 'b>(
