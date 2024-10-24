@@ -198,14 +198,23 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
     };
     let root_block = root_block.validate_and_dedup()?;
 
+    let mut register_types_to_crates = HashMap::new();
+
     generate_fw_registers(
         root_block.clone(),
         &scopes.clone(),
         header.clone(),
         registers_dest_dir,
         check,
+        &mut register_types_to_crates,
     )?;
-    generate_emulator_types(root_block, &scopes, bus_dest_dir, header.clone())
+    generate_emulator_types(
+        root_block,
+        &scopes,
+        bus_dest_dir,
+        header.clone(),
+        &register_types_to_crates,
+    )
 }
 
 /// Generate types used by the emulator.
@@ -214,6 +223,7 @@ fn generate_emulator_types(
     scopes: &[ParentScope],
     dest_dir: &Path,
     header: String,
+    register_types_to_crates: &HashMap<String, String>,
 ) -> Result<(), DynError> {
     let mut lib_code = TokenStream::new();
     let mut blocks = vec![];
@@ -248,12 +258,20 @@ fn generate_emulator_types(
     for block in validated_blocks.iter() {
         let rblock = block.block();
         let mut code = TokenStream::new();
+        code.extend(quote! {
+            #[allow(unused_imports)]
+            use tock_registers::interfaces::{Readable, Writeable};
+        });
         //code.extend(emu_make_data_types(block)?);
         code.extend(emu_make_peripheral_trait(
             rblock.clone(),
             &mut generated_types,
+            register_types_to_crates,
         )?);
-        code.extend(emu_make_peripheral_bus_impl(rblock.clone())?);
+        code.extend(emu_make_peripheral_bus_impl(
+            rblock.clone(),
+            &register_types_to_crates,
+        )?);
 
         let dest_file = dest_dir.join(format!("{}.rs", rblock.name));
         write_file(&dest_file, &rustfmt(&(header.clone() + &code.to_string()))?)?;
@@ -362,6 +380,7 @@ fn make_anon_type(offset: u64, reg: Rc<Register>) -> RegisterType {
 fn emu_make_peripheral_trait(
     block: RegisterBlock,
     generated: &mut HashSet<String>,
+    register_types_to_crates: &HashMap<String, String>,
 ) -> Result<TokenStream, DynError> {
     let base = camel_ident(block.name.as_str());
     let periph = format_ident!("{}Peripheral", base);
@@ -399,12 +418,21 @@ fn emu_make_peripheral_trait(
                 fn #write_name(&mut self, _val: u32) {}
             });
         } else {
-            // TODO: refer to bits
-            let read_val = format_ident!("{}", ty.name.as_ref().unwrap());
-            let write_val = format_ident!("{}", ty.name.as_ref().unwrap());
+            let rcrate = format_ident!(
+                "{}",
+                register_types_to_crates
+                    .get(ty.name.as_ref().unwrap())
+                    .unwrap()
+            );
+            let tyn = camel_ident(ty.name.as_ref().unwrap());
+            let read_val = quote! { registers_generated :: #rcrate :: bits :: #tyn :: Register };
+            let prim = format_ident!("{}", ty.width.rust_primitive_name());
+            let fulltyn = quote! { emulator_bus::ReadWriteRegister::<#prim, #read_val> };
             fn_tokens.extend(quote! {
-                fn #read_name(&mut self) -> #write_val { #write_val::default() }
-                fn #write_name(&mut self, _val: #read_val) {}
+                fn #read_name(&mut self) -> #fulltyn {
+                    emulator_bus::ReadWriteRegister :: new(0)
+                }
+                fn #write_name(&mut self, _val: #fulltyn) {}
             });
         }
     });
@@ -430,7 +458,10 @@ fn snake_ident(s: &str) -> Ident {
 }
 
 /// Make a peripheral Bus implementation that can be hooked up to a root bus.
-fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, DynError> {
+fn emu_make_peripheral_bus_impl(
+    block: RegisterBlock,
+    register_types_to_crates: &HashMap<String, String>,
+) -> Result<TokenStream, DynError> {
     let base = camel_ident(block.name.as_str());
     let periph = format_ident!("{}Peripheral", base);
     let bus = format_ident!("{}Bus", base);
@@ -485,28 +516,31 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, Dyn
                 });
             }
         } else {
-            // TODO: refer to bits
-            let read_val = format_ident!("{}", ty.name.as_ref().unwrap());
-            match r.ty.width {
+            let rcrate = format_ident!("{}", register_types_to_crates.get(ty.name.as_ref().unwrap()).unwrap());
+            let tyn = camel_ident(ty.name.as_ref().unwrap());
+            let read_val = quote! { registers_generated :: #rcrate :: bits :: #tyn :: Register };
+            let prim = format_ident!("{}", ty.width.rust_primitive_name());
+            let fulltyn = quote! { emulator_bus::ReadWriteRegister::<#prim, #read_val> };
+                match r.ty.width {
                 RegisterWidth::_8 => {
                     read_tokens.extend(quote! {
-                        (emulator_types::RvSize::Byte, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name())),
+                        (emulator_types::RvSize::Byte, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name().reg.get())),
                     });
                     write_tokens.extend(quote! {
                         (emulator_types::RvSize::Byte, #a) => {
-                            self.periph.#write_name(#read_val::from(val));
+                            self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val));
                             Ok(())
                         }
                     });
                 }
                 RegisterWidth::_16 => {
                     read_tokens.extend(quote! {
-                        (emulator_types::RvSize::HalfWord, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name())),
+                        (emulator_types::RvSize::HalfWord, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name().reg.get())),
                         (emulator_types::RvSize::HalfWord, #a1) => Err(emulator_bus::BusError::LoadAddrMisaligned),
                     });
                     write_tokens.extend(quote! {
                         (emulator_types::RvSize::HalfWord, #a) => {
-                            self.periph.#write_name(#read_val::from(val));
+                            self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val));
                             Ok(())
                         }
                         (emulator_types::RvSize::HalfWord, #a1) => Err(emulator_bus::BusError::StoreAddrMisaligned),
@@ -515,12 +549,12 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, Dyn
                 },
                 RegisterWidth::_32 => {
                     read_tokens.extend(quote! {
-                        (emulator_types::RvSize::Word, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name())),
+                        (emulator_types::RvSize::Word, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name().reg.get())),
                         (emulator_types::RvSize::Word, #a1 ..= #a3) => Err(emulator_bus::BusError::LoadAddrMisaligned),
                     });
                     write_tokens.extend(quote! {
                         (emulator_types::RvSize::Word, #a) => {
-                            self.periph.#write_name(#read_val::from(val));
+                            self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val));
                             Ok(())
                         }
                         (emulator_types::RvSize::Word, #a1 ..= #a3) => Err(emulator_bus::BusError::StoreAddrMisaligned),
@@ -733,6 +767,7 @@ fn generate_fw_registers(
     header: String,
     dest_dir: &Path,
     check: bool,
+    register_types_to_crates: &mut HashMap<String, String>,
 ) -> Result<(), DynError> {
     let file_action = if check {
         file_check_contents
@@ -802,6 +837,7 @@ fn generate_fw_registers(
             &format!("crate::{}::", block.block().name),
             &block,
             false,
+            register_types_to_crates,
         );
         root_submod_tokens += &format!("pub mod {module_ident};\n");
         file_action(
@@ -809,7 +845,8 @@ fn generate_fw_registers(
             &rustfmt(&(header.clone() + &tokens.to_string()))?,
         )?;
     }
-    let root_type_tokens = registers_generator::generate_code("crate::", &root_block, true);
+    let root_type_tokens =
+        registers_generator::generate_code("crate::", &root_block, true, register_types_to_crates);
     let recursion = "#![recursion_limit = \"256\"]\n";
     let root_tokens = root_type_tokens;
     file_action(

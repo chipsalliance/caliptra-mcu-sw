@@ -4,6 +4,8 @@
 // , caliptra-ss repo at 9911c2b0e4bac9e4b48f6c2155c86cb116159734
 // , and i3c-core repo at d5c715103f529ade0e5d375a53c5692daaa9c54b
 //
+#[allow(unused_imports)]
+use tock_registers::interfaces::{Readable, Writeable};
 pub trait I3cPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
@@ -12,86 +14,324 @@ pub trait I3cPeripheral {
         0
     }
     fn write_i3c_base_hci_version(&mut self, _val: u32) {}
-    fn read_i3c_base_hc_control(&mut self) -> HC_CONTROL {
-        HC_CONTROL::default()
+    fn read_i3c_base_hc_control(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::HcControl::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_base_hc_control(&mut self, _val: HC_CONTROL) {}
-    fn read_i3c_base_controller_device_addr(&mut self) -> CONTROLLER_DEVICE_ADDR {
-        CONTROLLER_DEVICE_ADDR::default()
+    fn write_i3c_base_hc_control(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::HcControl::Register,
+        >,
+    ) {
     }
-    fn write_i3c_base_controller_device_addr(&mut self, _val: CONTROLLER_DEVICE_ADDR) {}
-    fn read_i3c_base_hc_capabilities(&mut self) -> HC_CAPABILITIES {
-        HC_CAPABILITIES::default()
+    fn read_i3c_base_controller_device_addr(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::ControllerDeviceAddr::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_base_hc_capabilities(&mut self, _val: HC_CAPABILITIES) {}
-    fn read_i3c_base_reset_control(&mut self) -> RESET_CONTROL {
-        RESET_CONTROL::default()
+    fn write_i3c_base_controller_device_addr(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::ControllerDeviceAddr::Register,
+        >,
+    ) {
     }
-    fn write_i3c_base_reset_control(&mut self, _val: RESET_CONTROL) {}
-    fn read_i3c_base_present_state(&mut self) -> PRESENT_STATE {
-        PRESENT_STATE::default()
+    fn read_i3c_base_hc_capabilities(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::HcCapabilities::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_base_present_state(&mut self, _val: PRESENT_STATE) {}
-    fn read_i3c_base_intr_status(&mut self) -> INTR_STATUS {
-        INTR_STATUS::default()
+    fn write_i3c_base_hc_capabilities(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::HcCapabilities::Register,
+        >,
+    ) {
     }
-    fn write_i3c_base_intr_status(&mut self, _val: INTR_STATUS) {}
-    fn read_i3c_base_intr_status_enable(&mut self) -> INTR_STATUS_ENABLE {
-        INTR_STATUS_ENABLE::default()
+    fn read_i3c_base_reset_control(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::ResetControl::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_base_intr_status_enable(&mut self, _val: INTR_STATUS_ENABLE) {}
-    fn read_i3c_base_intr_signal_enable(&mut self) -> INTR_SIGNAL_ENABLE {
-        INTR_SIGNAL_ENABLE::default()
+    fn write_i3c_base_reset_control(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::ResetControl::Register,
+        >,
+    ) {
     }
-    fn write_i3c_base_intr_signal_enable(&mut self, _val: INTR_SIGNAL_ENABLE) {}
-    fn read_i3c_base_intr_force(&mut self) -> INTR_FORCE {
-        INTR_FORCE::default()
+    fn read_i3c_base_present_state(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::PresentState::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_base_intr_force(&mut self, _val: INTR_FORCE) {}
-    fn read_i3c_base_dat_section_offset(&mut self) -> DAT_SECTION_OFFSET {
-        DAT_SECTION_OFFSET::default()
+    fn write_i3c_base_present_state(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::PresentState::Register,
+        >,
+    ) {
     }
-    fn write_i3c_base_dat_section_offset(&mut self, _val: DAT_SECTION_OFFSET) {}
-    fn read_i3c_base_dct_section_offset(&mut self) -> DCT_SECTION_OFFSET {
-        DCT_SECTION_OFFSET::default()
+    fn read_i3c_base_intr_status(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::IntrStatus::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_base_dct_section_offset(&mut self, _val: DCT_SECTION_OFFSET) {}
-    fn read_i3c_base_ring_headers_section_offset(&mut self) -> RING_HEADERS_SECTION_OFFSET {
-        RING_HEADERS_SECTION_OFFSET::default()
+    fn write_i3c_base_intr_status(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::IntrStatus::Register,
+        >,
+    ) {
     }
-    fn write_i3c_base_ring_headers_section_offset(&mut self, _val: RING_HEADERS_SECTION_OFFSET) {}
-    fn read_i3c_base_pio_section_offset(&mut self) -> PIO_SECTION_OFFSET {
-        PIO_SECTION_OFFSET::default()
+    fn read_i3c_base_intr_status_enable(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::IntrStatusEnable::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_base_pio_section_offset(&mut self, _val: PIO_SECTION_OFFSET) {}
-    fn read_i3c_base_ext_caps_section_offset(&mut self) -> EXT_CAPS_SECTION_OFFSET {
-        EXT_CAPS_SECTION_OFFSET::default()
+    fn write_i3c_base_intr_status_enable(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::IntrStatusEnable::Register,
+        >,
+    ) {
     }
-    fn write_i3c_base_ext_caps_section_offset(&mut self, _val: EXT_CAPS_SECTION_OFFSET) {}
-    fn read_i3c_base_int_ctrl_cmds_en(&mut self) -> INT_CTRL_CMDS_EN {
-        INT_CTRL_CMDS_EN::default()
+    fn read_i3c_base_intr_signal_enable(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::IntrSignalEnable::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_base_int_ctrl_cmds_en(&mut self, _val: INT_CTRL_CMDS_EN) {}
-    fn read_i3c_base_ibi_notify_ctrl(&mut self) -> IBI_NOTIFY_CTRL {
-        IBI_NOTIFY_CTRL::default()
+    fn write_i3c_base_intr_signal_enable(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::IntrSignalEnable::Register,
+        >,
+    ) {
     }
-    fn write_i3c_base_ibi_notify_ctrl(&mut self, _val: IBI_NOTIFY_CTRL) {}
-    fn read_i3c_base_ibi_data_abort_ctrl(&mut self) -> IBI_DATA_ABORT_CTRL {
-        IBI_DATA_ABORT_CTRL::default()
+    fn read_i3c_base_intr_force(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::IntrForce::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_base_ibi_data_abort_ctrl(&mut self, _val: IBI_DATA_ABORT_CTRL) {}
-    fn read_i3c_base_dev_ctx_base_lo(&mut self) -> DEV_CTX_BASE_LO {
-        DEV_CTX_BASE_LO::default()
+    fn write_i3c_base_intr_force(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::IntrForce::Register,
+        >,
+    ) {
     }
-    fn write_i3c_base_dev_ctx_base_lo(&mut self, _val: DEV_CTX_BASE_LO) {}
-    fn read_i3c_base_dev_ctx_base_hi(&mut self) -> DEV_CTX_BASE_HI {
-        DEV_CTX_BASE_HI::default()
+    fn read_i3c_base_dat_section_offset(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::DatSectionOffset::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_base_dev_ctx_base_hi(&mut self, _val: DEV_CTX_BASE_HI) {}
-    fn read_i3c_base_dev_ctx_sg(&mut self) -> DEV_CTX_SG {
-        DEV_CTX_SG::default()
+    fn write_i3c_base_dat_section_offset(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::DatSectionOffset::Register,
+        >,
+    ) {
     }
-    fn write_i3c_base_dev_ctx_sg(&mut self, _val: DEV_CTX_SG) {}
+    fn read_i3c_base_dct_section_offset(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::DctSectionOffset::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_base_dct_section_offset(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::DctSectionOffset::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_base_ring_headers_section_offset(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::RingHeadersSectionOffset::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_base_ring_headers_section_offset(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::RingHeadersSectionOffset::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_base_pio_section_offset(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::PioSectionOffset::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_base_pio_section_offset(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::PioSectionOffset::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_base_ext_caps_section_offset(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::ExtCapsSectionOffset::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_base_ext_caps_section_offset(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::ExtCapsSectionOffset::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_base_int_ctrl_cmds_en(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::IntCtrlCmdsEn::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_base_int_ctrl_cmds_en(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::IntCtrlCmdsEn::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_base_ibi_notify_ctrl(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::IbiNotifyCtrl::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_base_ibi_notify_ctrl(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::IbiNotifyCtrl::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_base_ibi_data_abort_ctrl(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::IbiDataAbortCtrl::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_base_ibi_data_abort_ctrl(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::IbiDataAbortCtrl::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_base_dev_ctx_base_lo(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::DevCtxBaseLo::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_base_dev_ctx_base_lo(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::DevCtxBaseLo::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_base_dev_ctx_base_hi(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::DevCtxBaseHi::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_base_dev_ctx_base_hi(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::DevCtxBaseHi::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_base_dev_ctx_sg(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c_ctrl::bits::DevCtxSg::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_base_dev_ctx_sg(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::DevCtxSg::Register,
+        >,
+    ) {
+    }
     fn read_piocontrol_command_port(&mut self) -> u32 {
         0
     }
@@ -108,50 +348,180 @@ pub trait I3cPeripheral {
         0
     }
     fn write_piocontrol_rx_data_port(&mut self, _val: u32) {}
-    fn read_piocontrol_ibi_port(&mut self) -> IBI_PORT {
-        IBI_PORT::default()
+    fn read_piocontrol_ibi_port(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c_ctrl::bits::IbiPort::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_piocontrol_ibi_port(&mut self, _val: IBI_PORT) {}
-    fn read_piocontrol_queue_thld_ctrl(&mut self) -> QUEUE_THLD_CTRL {
-        QUEUE_THLD_CTRL::default()
+    fn write_piocontrol_ibi_port(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::IbiPort::Register,
+        >,
+    ) {
     }
-    fn write_piocontrol_queue_thld_ctrl(&mut self, _val: QUEUE_THLD_CTRL) {}
-    fn read_piocontrol_data_buffer_thld_ctrl(&mut self) -> DATA_BUFFER_THLD_CTRL {
-        DATA_BUFFER_THLD_CTRL::default()
+    fn read_piocontrol_queue_thld_ctrl(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::QueueThldCtrl::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_piocontrol_data_buffer_thld_ctrl(&mut self, _val: DATA_BUFFER_THLD_CTRL) {}
-    fn read_piocontrol_queue_size(&mut self) -> QUEUE_SIZE {
-        QUEUE_SIZE::default()
+    fn write_piocontrol_queue_thld_ctrl(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::QueueThldCtrl::Register,
+        >,
+    ) {
     }
-    fn write_piocontrol_queue_size(&mut self, _val: QUEUE_SIZE) {}
-    fn read_piocontrol_alt_queue_size(&mut self) -> ALT_QUEUE_SIZE {
-        ALT_QUEUE_SIZE::default()
+    fn read_piocontrol_data_buffer_thld_ctrl(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::DataBufferThldCtrl::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_piocontrol_alt_queue_size(&mut self, _val: ALT_QUEUE_SIZE) {}
-    fn read_piocontrol_pio_intr_status(&mut self) -> PIO_INTR_STATUS {
-        PIO_INTR_STATUS::default()
+    fn write_piocontrol_data_buffer_thld_ctrl(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::DataBufferThldCtrl::Register,
+        >,
+    ) {
     }
-    fn write_piocontrol_pio_intr_status(&mut self, _val: PIO_INTR_STATUS) {}
-    fn read_piocontrol_pio_intr_status_enable(&mut self) -> PIO_INTR_STATUS_ENABLE {
-        PIO_INTR_STATUS_ENABLE::default()
+    fn read_piocontrol_queue_size(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::QueueSize::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_piocontrol_pio_intr_status_enable(&mut self, _val: PIO_INTR_STATUS_ENABLE) {}
-    fn read_piocontrol_pio_intr_signal_enable(&mut self) -> PIO_INTR_SIGNAL_ENABLE {
-        PIO_INTR_SIGNAL_ENABLE::default()
+    fn write_piocontrol_queue_size(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::QueueSize::Register,
+        >,
+    ) {
     }
-    fn write_piocontrol_pio_intr_signal_enable(&mut self, _val: PIO_INTR_SIGNAL_ENABLE) {}
-    fn read_piocontrol_pio_intr_force(&mut self) -> PIO_INTR_FORCE {
-        PIO_INTR_FORCE::default()
+    fn read_piocontrol_alt_queue_size(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::AltQueueSize::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_piocontrol_pio_intr_force(&mut self, _val: PIO_INTR_FORCE) {}
-    fn read_piocontrol_pio_control(&mut self) -> PIO_CONTROL {
-        PIO_CONTROL::default()
+    fn write_piocontrol_alt_queue_size(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::AltQueueSize::Register,
+        >,
+    ) {
     }
-    fn write_piocontrol_pio_control(&mut self, _val: PIO_CONTROL) {}
-    fn read_i3c_ec_sec_fw_recovery_if_extcap_header(&mut self) -> EXTCAP_HEADER {
-        EXTCAP_HEADER::default()
+    fn read_piocontrol_pio_intr_status(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::PioIntrStatus::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_sec_fw_recovery_if_extcap_header(&mut self, _val: EXTCAP_HEADER) {}
+    fn write_piocontrol_pio_intr_status(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::PioIntrStatus::Register,
+        >,
+    ) {
+    }
+    fn read_piocontrol_pio_intr_status_enable(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::PioIntrStatusEnable::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_piocontrol_pio_intr_status_enable(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::PioIntrStatusEnable::Register,
+        >,
+    ) {
+    }
+    fn read_piocontrol_pio_intr_signal_enable(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::PioIntrSignalEnable::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_piocontrol_pio_intr_signal_enable(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::PioIntrSignalEnable::Register,
+        >,
+    ) {
+    }
+    fn read_piocontrol_pio_intr_force(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::PioIntrForce::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_piocontrol_pio_intr_force(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::PioIntrForce::Register,
+        >,
+    ) {
+    }
+    fn read_piocontrol_pio_control(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::PioControl::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_piocontrol_pio_control(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::PioControl::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_ec_sec_fw_recovery_if_extcap_header(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::ExtcapHeader::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_sec_fw_recovery_if_extcap_header(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::ExtcapHeader::Register,
+        >,
+    ) {
+    }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_0(&mut self) -> u32 {
         0
     }
@@ -256,78 +626,192 @@ pub trait I3cPeripheral {
         0
     }
     fn write_i3c_ec_sec_fw_recovery_if_indirect_fifo_data(&mut self, _val: u32) {}
-    fn read_i3c_ec_stdby_ctrl_mode_extcap_header(&mut self) -> EXTCAP_HEADER {
-        EXTCAP_HEADER::default()
+    fn read_i3c_ec_stdby_ctrl_mode_extcap_header(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::ExtcapHeader::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_stdby_ctrl_mode_extcap_header(&mut self, _val: EXTCAP_HEADER) {}
-    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_control(&mut self) -> STBY_CR_CONTROL {
-        STBY_CR_CONTROL::default()
+    fn write_i3c_ec_stdby_ctrl_mode_extcap_header(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::ExtcapHeader::Register,
+        >,
+    ) {
     }
-    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_control(&mut self, _val: STBY_CR_CONTROL) {}
-    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(&mut self) -> STBY_CR_DEVICE_ADDR {
-        STBY_CR_DEVICE_ADDR::default()
+    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_control(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::StbyCrControl::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(&mut self, _val: STBY_CR_DEVICE_ADDR) {}
-    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(&mut self) -> STBY_CR_CAPABILITIES {
-        STBY_CR_CAPABILITIES::default()
+    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_control(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::StbyCrControl::Register,
+        >,
+    ) {
     }
-    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(&mut self, _val: STBY_CR_CAPABILITIES) {}
+    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::StbyCrDeviceAddr::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::StbyCrDeviceAddr::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::StbyCrCapabilities::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::StbyCrCapabilities::Register,
+        >,
+    ) {
+    }
     fn read_i3c_ec_stdby_ctrl_mode_rsvd_0(&mut self) -> u32 {
         0
     }
     fn write_i3c_ec_stdby_ctrl_mode_rsvd_0(&mut self, _val: u32) {}
-    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_status(&mut self) -> STBY_CR_STATUS {
-        STBY_CR_STATUS::default()
+    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_status(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::StbyCrStatus::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_status(&mut self, _val: STBY_CR_STATUS) {}
-    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(&mut self) -> STBY_CR_DEVICE_CHAR {
-        STBY_CR_DEVICE_CHAR::default()
+    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_status(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::StbyCrStatus::Register,
+        >,
+    ) {
     }
-    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(&mut self, _val: STBY_CR_DEVICE_CHAR) {}
+    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::StbyCrDeviceChar::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::StbyCrDeviceChar::Register,
+        >,
+    ) {
+    }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(&mut self) -> u32 {
         0
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(&mut self, _val: u32) {}
-    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(&mut self) -> STBY_CR_INTR_STATUS {
-        STBY_CR_INTR_STATUS::default()
+    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::StbyCrIntrStatus::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(&mut self, _val: STBY_CR_INTR_STATUS) {}
+    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::StbyCrIntrStatus::Register,
+        >,
+    ) {
+    }
     fn read_i3c_ec_stdby_ctrl_mode_rsvd_1(&mut self) -> u32 {
         0
     }
     fn write_i3c_ec_stdby_ctrl_mode_rsvd_1(&mut self, _val: u32) {}
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
         &mut self,
-    ) -> STBY_CR_INTR_SIGNAL_ENABLE {
-        STBY_CR_INTR_SIGNAL_ENABLE::default()
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::StbyCrIntrSignalEnable::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
         &mut self,
-        _val: STBY_CR_INTR_SIGNAL_ENABLE,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::StbyCrIntrSignalEnable::Register,
+        >,
     ) {
     }
-    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(&mut self) -> STBY_CR_INTR_FORCE {
-        STBY_CR_INTR_FORCE::default()
+    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::StbyCrIntrForce::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(&mut self, _val: STBY_CR_INTR_FORCE) {}
+    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::StbyCrIntrForce::Register,
+        >,
+    ) {
+    }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(
         &mut self,
-    ) -> STBY_CR_CCC_CONFIG_GETCAPS {
-        STBY_CR_CCC_CONFIG_GETCAPS::default()
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::StbyCrCccConfigGetcaps::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(
         &mut self,
-        _val: STBY_CR_CCC_CONFIG_GETCAPS,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::StbyCrCccConfigGetcaps::Register,
+        >,
     ) {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(
         &mut self,
-    ) -> STBY_CR_CCC_CONFIG_RSTACT_PARAMS {
-        STBY_CR_CCC_CONFIG_RSTACT_PARAMS::default()
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::StbyCrCccConfigRstactParams::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(
         &mut self,
-        _val: STBY_CR_CCC_CONFIG_RSTACT_PARAMS,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::StbyCrCccConfigRstactParams::Register,
+        >,
     ) {
     }
     fn read_i3c_ec_stdby_ctrl_mode_rsvd_2(&mut self) -> u32 {
@@ -338,10 +822,22 @@ pub trait I3cPeripheral {
         0
     }
     fn write_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self, _val: u32) {}
-    fn read_i3c_ec_tti_extcap_header(&mut self) -> EXTCAP_HEADER {
-        EXTCAP_HEADER::default()
+    fn read_i3c_ec_tti_extcap_header(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::ExtcapHeader::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_tti_extcap_header(&mut self, _val: EXTCAP_HEADER) {}
+    fn write_i3c_ec_tti_extcap_header(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::ExtcapHeader::Register,
+        >,
+    ) {
+    }
     fn read_i3c_ec_tti_control(&mut self) -> u32 {
         0
     }
@@ -350,22 +846,70 @@ pub trait I3cPeripheral {
         0
     }
     fn write_i3c_ec_tti_status(&mut self, _val: u32) {}
-    fn read_i3c_ec_tti_tti_reset_control(&mut self) -> TTI_RESET_CONTROL {
-        TTI_RESET_CONTROL::default()
+    fn read_i3c_ec_tti_tti_reset_control(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::TtiResetControl::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_tti_tti_reset_control(&mut self, _val: TTI_RESET_CONTROL) {}
-    fn read_i3c_ec_tti_interrupt_status(&mut self) -> INTERRUPT_STATUS {
-        INTERRUPT_STATUS::default()
+    fn write_i3c_ec_tti_tti_reset_control(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::TtiResetControl::Register,
+        >,
+    ) {
     }
-    fn write_i3c_ec_tti_interrupt_status(&mut self, _val: INTERRUPT_STATUS) {}
-    fn read_i3c_ec_tti_interrupt_enable(&mut self) -> INTERRUPT_ENABLE {
-        INTERRUPT_ENABLE::default()
+    fn read_i3c_ec_tti_interrupt_status(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::InterruptStatus::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_tti_interrupt_enable(&mut self, _val: INTERRUPT_ENABLE) {}
-    fn read_i3c_ec_tti_interrupt_force(&mut self) -> INTERRUPT_FORCE {
-        INTERRUPT_FORCE::default()
+    fn write_i3c_ec_tti_interrupt_status(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::InterruptStatus::Register,
+        >,
+    ) {
     }
-    fn write_i3c_ec_tti_interrupt_force(&mut self, _val: INTERRUPT_FORCE) {}
+    fn read_i3c_ec_tti_interrupt_enable(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::InterruptEnable::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_tti_interrupt_enable(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::InterruptEnable::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_ec_tti_interrupt_force(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::InterruptForce::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_tti_interrupt_force(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::InterruptForce::Register,
+        >,
+    ) {
+    }
     fn read_i3c_ec_tti_rx_desc_queue_port(&mut self) -> u32 {
         0
     }
@@ -386,26 +930,86 @@ pub trait I3cPeripheral {
         0
     }
     fn write_i3c_ec_tti_tti_ibi_port(&mut self, _val: u32) {}
-    fn read_i3c_ec_tti_tti_queue_size(&mut self) -> TTI_QUEUE_SIZE {
-        TTI_QUEUE_SIZE::default()
+    fn read_i3c_ec_tti_tti_queue_size(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::TtiQueueSize::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_tti_tti_queue_size(&mut self, _val: TTI_QUEUE_SIZE) {}
-    fn read_i3c_ec_tti_ibi_tti_queue_size(&mut self) -> IBI_TTI_QUEUE_SIZE {
-        IBI_TTI_QUEUE_SIZE::default()
+    fn write_i3c_ec_tti_tti_queue_size(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::TtiQueueSize::Register,
+        >,
+    ) {
     }
-    fn write_i3c_ec_tti_ibi_tti_queue_size(&mut self, _val: IBI_TTI_QUEUE_SIZE) {}
-    fn read_i3c_ec_tti_tti_queue_thld_ctrl(&mut self) -> TTI_QUEUE_THLD_CTRL {
-        TTI_QUEUE_THLD_CTRL::default()
+    fn read_i3c_ec_tti_ibi_tti_queue_size(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::IbiTtiQueueSize::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_tti_tti_queue_thld_ctrl(&mut self, _val: TTI_QUEUE_THLD_CTRL) {}
-    fn read_i3c_ec_tti_tti_data_buffer_thld_ctrl(&mut self) -> TTI_DATA_BUFFER_THLD_CTRL {
-        TTI_DATA_BUFFER_THLD_CTRL::default()
+    fn write_i3c_ec_tti_ibi_tti_queue_size(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::IbiTtiQueueSize::Register,
+        >,
+    ) {
     }
-    fn write_i3c_ec_tti_tti_data_buffer_thld_ctrl(&mut self, _val: TTI_DATA_BUFFER_THLD_CTRL) {}
-    fn read_i3c_ec_soc_mgmt_if_extcap_header(&mut self) -> EXTCAP_HEADER {
-        EXTCAP_HEADER::default()
+    fn read_i3c_ec_tti_tti_queue_thld_ctrl(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::TtiQueueThldCtrl::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_soc_mgmt_if_extcap_header(&mut self, _val: EXTCAP_HEADER) {}
+    fn write_i3c_ec_tti_tti_queue_thld_ctrl(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::TtiQueueThldCtrl::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_ec_tti_tti_data_buffer_thld_ctrl(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::TtiDataBufferThldCtrl::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_tti_tti_data_buffer_thld_ctrl(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::TtiDataBufferThldCtrl::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_ec_soc_mgmt_if_extcap_header(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::ExtcapHeader::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_soc_mgmt_if_extcap_header(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::ExtcapHeader::Register,
+        >,
+    ) {
+    }
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self) -> u32 {
         0
     }
@@ -430,14 +1034,38 @@ pub trait I3cPeripheral {
         0
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self, _val: u32) {}
-    fn read_i3c_ec_soc_mgmt_if_soc_pad_conf(&mut self) -> SOC_PAD_CONF {
-        SOC_PAD_CONF::default()
+    fn read_i3c_ec_soc_mgmt_if_soc_pad_conf(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::SocPadConf::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_pad_conf(&mut self, _val: SOC_PAD_CONF) {}
-    fn read_i3c_ec_soc_mgmt_if_soc_pad_attr(&mut self) -> SOC_PAD_ATTR {
-        SOC_PAD_ATTR::default()
+    fn write_i3c_ec_soc_mgmt_if_soc_pad_conf(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::SocPadConf::Register,
+        >,
+    ) {
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_pad_attr(&mut self, _val: SOC_PAD_ATTR) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_pad_attr(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::SocPadAttr::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_soc_mgmt_if_soc_pad_attr(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::SocPadAttr::Register,
+        >,
+    ) {
+    }
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self) -> u32 {
         0
     }
@@ -446,42 +1074,142 @@ pub trait I3cPeripheral {
         0
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self, _val: u32) {}
-    fn read_i3c_ec_soc_mgmt_if_t_r_reg(&mut self) -> T_R_REG {
-        T_R_REG::default()
+    fn read_i3c_ec_soc_mgmt_if_t_r_reg(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c_ctrl::bits::TRReg::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_soc_mgmt_if_t_r_reg(&mut self, _val: T_R_REG) {}
-    fn read_i3c_ec_soc_mgmt_if_t_f_reg(&mut self) -> T_F_REG {
-        T_F_REG::default()
+    fn write_i3c_ec_soc_mgmt_if_t_r_reg(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::TRReg::Register,
+        >,
+    ) {
     }
-    fn write_i3c_ec_soc_mgmt_if_t_f_reg(&mut self, _val: T_F_REG) {}
-    fn read_i3c_ec_soc_mgmt_if_t_su_dat_reg(&mut self) -> T_SU_DAT_REG {
-        T_SU_DAT_REG::default()
+    fn read_i3c_ec_soc_mgmt_if_t_f_reg(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c_ctrl::bits::TFReg::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_soc_mgmt_if_t_su_dat_reg(&mut self, _val: T_SU_DAT_REG) {}
-    fn read_i3c_ec_soc_mgmt_if_t_hd_dat_reg(&mut self) -> T_HD_DAT_REG {
-        T_HD_DAT_REG::default()
+    fn write_i3c_ec_soc_mgmt_if_t_f_reg(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::TFReg::Register,
+        >,
+    ) {
     }
-    fn write_i3c_ec_soc_mgmt_if_t_hd_dat_reg(&mut self, _val: T_HD_DAT_REG) {}
-    fn read_i3c_ec_soc_mgmt_if_t_high_reg(&mut self) -> T_HIGH_REG {
-        T_HIGH_REG::default()
+    fn read_i3c_ec_soc_mgmt_if_t_su_dat_reg(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::TSuDatReg::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_soc_mgmt_if_t_high_reg(&mut self, _val: T_HIGH_REG) {}
-    fn read_i3c_ec_soc_mgmt_if_t_low_reg(&mut self) -> T_LOW_REG {
-        T_LOW_REG::default()
+    fn write_i3c_ec_soc_mgmt_if_t_su_dat_reg(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::TSuDatReg::Register,
+        >,
+    ) {
     }
-    fn write_i3c_ec_soc_mgmt_if_t_low_reg(&mut self, _val: T_LOW_REG) {}
-    fn read_i3c_ec_soc_mgmt_if_t_hd_sta_reg(&mut self) -> T_HD_STA_REG {
-        T_HD_STA_REG::default()
+    fn read_i3c_ec_soc_mgmt_if_t_hd_dat_reg(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::THdDatReg::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_soc_mgmt_if_t_hd_sta_reg(&mut self, _val: T_HD_STA_REG) {}
-    fn read_i3c_ec_soc_mgmt_if_t_su_sta_reg(&mut self) -> T_SU_STA_REG {
-        T_SU_STA_REG::default()
+    fn write_i3c_ec_soc_mgmt_if_t_hd_dat_reg(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::THdDatReg::Register,
+        >,
+    ) {
     }
-    fn write_i3c_ec_soc_mgmt_if_t_su_sta_reg(&mut self, _val: T_SU_STA_REG) {}
-    fn read_i3c_ec_soc_mgmt_if_t_su_sto_reg(&mut self) -> T_SU_STO_REG {
-        T_SU_STO_REG::default()
+    fn read_i3c_ec_soc_mgmt_if_t_high_reg(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c_ctrl::bits::THighReg::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_soc_mgmt_if_t_su_sto_reg(&mut self, _val: T_SU_STO_REG) {}
+    fn write_i3c_ec_soc_mgmt_if_t_high_reg(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::THighReg::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_ec_soc_mgmt_if_t_low_reg(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c_ctrl::bits::TLowReg::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_soc_mgmt_if_t_low_reg(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::TLowReg::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_ec_soc_mgmt_if_t_hd_sta_reg(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::THdStaReg::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_soc_mgmt_if_t_hd_sta_reg(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::THdStaReg::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_ec_soc_mgmt_if_t_su_sta_reg(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::TSuStaReg::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_soc_mgmt_if_t_su_sta_reg(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::TSuStaReg::Register,
+        >,
+    ) {
+    }
+    fn read_i3c_ec_soc_mgmt_if_t_su_sto_reg(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::TSuStoReg::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_soc_mgmt_if_t_su_sto_reg(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::TSuStoReg::Register,
+        >,
+    ) {
+    }
     fn read_i3c_ec_soc_mgmt_if_t_free_reg(&mut self) -> u32 {
         0
     }
@@ -494,14 +1222,38 @@ pub trait I3cPeripheral {
         0
     }
     fn write_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self, _val: u32) {}
-    fn read_i3c_ec_ctrl_cfg_extcap_header(&mut self) -> EXTCAP_HEADER {
-        EXTCAP_HEADER::default()
+    fn read_i3c_ec_ctrl_cfg_extcap_header(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::ExtcapHeader::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_i3c_ec_ctrl_cfg_extcap_header(&mut self, _val: EXTCAP_HEADER) {}
-    fn read_i3c_ec_ctrl_cfg_controller_config(&mut self) -> CONTROLLER_CONFIG {
-        CONTROLLER_CONFIG::default()
+    fn write_i3c_ec_ctrl_cfg_extcap_header(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::ExtcapHeader::Register,
+        >,
+    ) {
     }
-    fn write_i3c_ec_ctrl_cfg_controller_config(&mut self, _val: CONTROLLER_CONFIG) {}
+    fn read_i3c_ec_ctrl_cfg_controller_config(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::ControllerConfig::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_i3c_ec_ctrl_cfg_controller_config(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::ControllerConfig::Register,
+        >,
+    ) {
+    }
 }
 pub struct I3cBus {
     pub periph: Box<dyn I3cPeripheral>,
@@ -514,121 +1266,127 @@ impl emulator_bus::Bus for I3cBus {
     ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
         match (size, addr) {
             (emulator_types::RvSize::Word, 4) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_hc_control(),
+                self.periph.read_i3c_base_hc_control().reg.get(),
             )),
             (emulator_types::RvSize::Word, 5..=7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 8) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_controller_device_addr(),
+                self.periph.read_i3c_base_controller_device_addr().reg.get(),
             )),
             (emulator_types::RvSize::Word, 9..=0xb) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xc) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_hc_capabilities(),
+                self.periph.read_i3c_base_hc_capabilities().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0xd..=0xf) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x10) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_reset_control(),
+                self.periph.read_i3c_base_reset_control().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x11..=0x13) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x14) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_present_state(),
+                self.periph.read_i3c_base_present_state().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x15..=0x17) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x20) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_intr_status(),
+                self.periph.read_i3c_base_intr_status().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x21..=0x23) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x24) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_intr_status_enable(),
+                self.periph.read_i3c_base_intr_status_enable().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x25..=0x27) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x28) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_intr_signal_enable(),
+                self.periph.read_i3c_base_intr_signal_enable().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x29..=0x2b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x2c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_intr_force(),
+                self.periph.read_i3c_base_intr_force().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x2d..=0x2f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x30) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_dat_section_offset(),
+                self.periph.read_i3c_base_dat_section_offset().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x31..=0x33) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x34) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_dct_section_offset(),
+                self.periph.read_i3c_base_dct_section_offset().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x35..=0x37) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x38) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_ring_headers_section_offset(),
+                self.periph
+                    .read_i3c_base_ring_headers_section_offset()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x39..=0x3b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x3c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_pio_section_offset(),
+                self.periph.read_i3c_base_pio_section_offset().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x3d..=0x3f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x40) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_ext_caps_section_offset(),
+                self.periph
+                    .read_i3c_base_ext_caps_section_offset()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x41..=0x43) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x4c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_int_ctrl_cmds_en(),
+                self.periph.read_i3c_base_int_ctrl_cmds_en().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x4d..=0x4f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x58) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_ibi_notify_ctrl(),
+                self.periph.read_i3c_base_ibi_notify_ctrl().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x59..=0x5b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x5c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_ibi_data_abort_ctrl(),
+                self.periph.read_i3c_base_ibi_data_abort_ctrl().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x5d..=0x5f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x60) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_dev_ctx_base_lo(),
+                self.periph.read_i3c_base_dev_ctx_base_lo().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x61..=0x63) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x64) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_dev_ctx_base_hi(),
+                self.periph.read_i3c_base_dev_ctx_base_hi().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x65..=0x67) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x68) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_base_dev_ctx_sg(),
+                self.periph.read_i3c_base_dev_ctx_sg().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x69..=0x6b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -646,67 +1404,79 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x8c) => Ok(emulator_types::RvData::from(
-                self.periph.read_piocontrol_ibi_port(),
+                self.periph.read_piocontrol_ibi_port().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x8d..=0x8f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x90) => Ok(emulator_types::RvData::from(
-                self.periph.read_piocontrol_queue_thld_ctrl(),
+                self.periph.read_piocontrol_queue_thld_ctrl().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x91..=0x93) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x94) => Ok(emulator_types::RvData::from(
-                self.periph.read_piocontrol_data_buffer_thld_ctrl(),
+                self.periph
+                    .read_piocontrol_data_buffer_thld_ctrl()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x95..=0x97) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x98) => Ok(emulator_types::RvData::from(
-                self.periph.read_piocontrol_queue_size(),
+                self.periph.read_piocontrol_queue_size().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x99..=0x9b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x9c) => Ok(emulator_types::RvData::from(
-                self.periph.read_piocontrol_alt_queue_size(),
+                self.periph.read_piocontrol_alt_queue_size().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x9d..=0x9f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xa0) => Ok(emulator_types::RvData::from(
-                self.periph.read_piocontrol_pio_intr_status(),
+                self.periph.read_piocontrol_pio_intr_status().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0xa1..=0xa3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xa4) => Ok(emulator_types::RvData::from(
-                self.periph.read_piocontrol_pio_intr_status_enable(),
+                self.periph
+                    .read_piocontrol_pio_intr_status_enable()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0xa5..=0xa7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xa8) => Ok(emulator_types::RvData::from(
-                self.periph.read_piocontrol_pio_intr_signal_enable(),
+                self.periph
+                    .read_piocontrol_pio_intr_signal_enable()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0xa9..=0xab) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xac) => Ok(emulator_types::RvData::from(
-                self.periph.read_piocontrol_pio_intr_force(),
+                self.periph.read_piocontrol_pio_intr_force().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0xad..=0xaf) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xb0) => Ok(emulator_types::RvData::from(
-                self.periph.read_piocontrol_pio_control(),
+                self.periph.read_piocontrol_pio_control().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0xb1..=0xb3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x100) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_sec_fw_recovery_if_extcap_header(),
+                self.periph
+                    .read_i3c_ec_sec_fw_recovery_if_extcap_header()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x101..=0x103) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -877,27 +1647,37 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x180) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_stdby_ctrl_mode_extcap_header(),
+                self.periph
+                    .read_i3c_ec_stdby_ctrl_mode_extcap_header()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x181..=0x183) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x184) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_stdby_ctrl_mode_stby_cr_control(),
+                self.periph
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_control()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x185..=0x187) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x188) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(),
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x189..=0x18b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x18c) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(),
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x18d..=0x18f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -909,14 +1689,19 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x194) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_stdby_ctrl_mode_stby_cr_status(),
+                self.periph
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_status()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x195..=0x197) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x198) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(),
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_char()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x199..=0x19b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -930,7 +1715,9 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x1a0) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(),
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x1a1..=0x1a3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -943,27 +1730,36 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x1a8) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(),
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x1a9..=0x1ab) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1ac) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(),
+                self.periph
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x1ad..=0x1af) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1b0) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(),
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x1b1..=0x1b3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1b4) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(),
+                    .read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x1b5..=0x1b7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -981,7 +1777,7 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1c0) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_extcap_header(),
+                self.periph.read_i3c_ec_tti_extcap_header().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x1c1..=0x1c3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -999,25 +1795,25 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1cc) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_tti_reset_control(),
+                self.periph.read_i3c_ec_tti_tti_reset_control().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x1cd..=0x1cf) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1d0) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_interrupt_status(),
+                self.periph.read_i3c_ec_tti_interrupt_status().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x1d1..=0x1d3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1d4) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_interrupt_enable(),
+                self.periph.read_i3c_ec_tti_interrupt_enable().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x1d5..=0x1d7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1d8) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_interrupt_force(),
+                self.periph.read_i3c_ec_tti_interrupt_force().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x1d9..=0x1db) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -1041,31 +1837,37 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1f0) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_tti_queue_size(),
+                self.periph.read_i3c_ec_tti_tti_queue_size().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x1f1..=0x1f3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1f4) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_ibi_tti_queue_size(),
+                self.periph.read_i3c_ec_tti_ibi_tti_queue_size().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x1f5..=0x1f7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1f8) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_tti_queue_thld_ctrl(),
+                self.periph.read_i3c_ec_tti_tti_queue_thld_ctrl().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x1f9..=0x1fb) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1fc) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_tti_tti_data_buffer_thld_ctrl(),
+                self.periph
+                    .read_i3c_ec_tti_tti_data_buffer_thld_ctrl()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x1fd..=0x1ff) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x200) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_soc_mgmt_if_extcap_header(),
+                self.periph
+                    .read_i3c_ec_soc_mgmt_if_extcap_header()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x201..=0x203) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -1107,13 +1909,13 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x21c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_soc_mgmt_if_soc_pad_conf(),
+                self.periph.read_i3c_ec_soc_mgmt_if_soc_pad_conf().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x21d..=0x21f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x220) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_soc_mgmt_if_soc_pad_attr(),
+                self.periph.read_i3c_ec_soc_mgmt_if_soc_pad_attr().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x221..=0x223) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -1131,55 +1933,55 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x22c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_soc_mgmt_if_t_r_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_r_reg().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x22d..=0x22f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x230) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_soc_mgmt_if_t_f_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_f_reg().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x231..=0x233) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x234) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_soc_mgmt_if_t_su_dat_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_su_dat_reg().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x235..=0x237) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x238) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_soc_mgmt_if_t_hd_dat_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_hd_dat_reg().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x239..=0x23b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x23c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_soc_mgmt_if_t_high_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_high_reg().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x23d..=0x23f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x240) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_soc_mgmt_if_t_low_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_low_reg().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x241..=0x243) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x244) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_soc_mgmt_if_t_hd_sta_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_hd_sta_reg().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x245..=0x247) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x248) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_soc_mgmt_if_t_su_sta_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_su_sta_reg().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x249..=0x24b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x24c) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_soc_mgmt_if_t_su_sto_reg(),
+                self.periph.read_i3c_ec_soc_mgmt_if_t_su_sto_reg().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x24d..=0x24f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -1203,13 +2005,16 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x260) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_ctrl_cfg_extcap_header(),
+                self.periph.read_i3c_ec_ctrl_cfg_extcap_header().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x261..=0x263) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x264) => Ok(emulator_types::RvData::from(
-                self.periph.read_i3c_ec_ctrl_cfg_controller_config(),
+                self.periph
+                    .read_i3c_ec_ctrl_cfg_controller_config()
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x265..=0x267) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -1232,15 +2037,17 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 4) => {
-                self.periph.write_i3c_base_hc_control(HC_CONTROL::from(val));
+                self.periph
+                    .write_i3c_base_hc_control(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 5..=7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 8) => {
-                self.periph
-                    .write_i3c_base_controller_device_addr(CONTROLLER_DEVICE_ADDR::from(val));
+                self.periph.write_i3c_base_controller_device_addr(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 9..=0xb) => {
@@ -1248,7 +2055,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0xc) => {
                 self.periph
-                    .write_i3c_base_hc_capabilities(HC_CAPABILITIES::from(val));
+                    .write_i3c_base_hc_capabilities(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xd..=0xf) => {
@@ -1256,7 +2063,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x10) => {
                 self.periph
-                    .write_i3c_base_reset_control(RESET_CONTROL::from(val));
+                    .write_i3c_base_reset_control(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x11..=0x13) => {
@@ -1264,7 +2071,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x14) => {
                 self.periph
-                    .write_i3c_base_present_state(PRESENT_STATE::from(val));
+                    .write_i3c_base_present_state(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x15..=0x17) => {
@@ -1272,7 +2079,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x20) => {
                 self.periph
-                    .write_i3c_base_intr_status(INTR_STATUS::from(val));
+                    .write_i3c_base_intr_status(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x21..=0x23) => {
@@ -1280,7 +2087,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x24) => {
                 self.periph
-                    .write_i3c_base_intr_status_enable(INTR_STATUS_ENABLE::from(val));
+                    .write_i3c_base_intr_status_enable(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x25..=0x27) => {
@@ -1288,14 +2095,15 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x28) => {
                 self.periph
-                    .write_i3c_base_intr_signal_enable(INTR_SIGNAL_ENABLE::from(val));
+                    .write_i3c_base_intr_signal_enable(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x29..=0x2b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x2c) => {
-                self.periph.write_i3c_base_intr_force(INTR_FORCE::from(val));
+                self.periph
+                    .write_i3c_base_intr_force(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x2d..=0x2f) => {
@@ -1303,7 +2111,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x30) => {
                 self.periph
-                    .write_i3c_base_dat_section_offset(DAT_SECTION_OFFSET::from(val));
+                    .write_i3c_base_dat_section_offset(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x31..=0x33) => {
@@ -1311,7 +2119,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x34) => {
                 self.periph
-                    .write_i3c_base_dct_section_offset(DCT_SECTION_OFFSET::from(val));
+                    .write_i3c_base_dct_section_offset(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x35..=0x37) => {
@@ -1319,7 +2127,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x38) => {
                 self.periph.write_i3c_base_ring_headers_section_offset(
-                    RING_HEADERS_SECTION_OFFSET::from(val),
+                    emulator_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -1328,15 +2136,16 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x3c) => {
                 self.periph
-                    .write_i3c_base_pio_section_offset(PIO_SECTION_OFFSET::from(val));
+                    .write_i3c_base_pio_section_offset(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x3d..=0x3f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x40) => {
-                self.periph
-                    .write_i3c_base_ext_caps_section_offset(EXT_CAPS_SECTION_OFFSET::from(val));
+                self.periph.write_i3c_base_ext_caps_section_offset(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x41..=0x43) => {
@@ -1344,7 +2153,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x4c) => {
                 self.periph
-                    .write_i3c_base_int_ctrl_cmds_en(INT_CTRL_CMDS_EN::from(val));
+                    .write_i3c_base_int_ctrl_cmds_en(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x4d..=0x4f) => {
@@ -1352,7 +2161,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x58) => {
                 self.periph
-                    .write_i3c_base_ibi_notify_ctrl(IBI_NOTIFY_CTRL::from(val));
+                    .write_i3c_base_ibi_notify_ctrl(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x59..=0x5b) => {
@@ -1360,7 +2169,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x5c) => {
                 self.periph
-                    .write_i3c_base_ibi_data_abort_ctrl(IBI_DATA_ABORT_CTRL::from(val));
+                    .write_i3c_base_ibi_data_abort_ctrl(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x5d..=0x5f) => {
@@ -1368,7 +2177,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x60) => {
                 self.periph
-                    .write_i3c_base_dev_ctx_base_lo(DEV_CTX_BASE_LO::from(val));
+                    .write_i3c_base_dev_ctx_base_lo(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x61..=0x63) => {
@@ -1376,14 +2185,15 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x64) => {
                 self.periph
-                    .write_i3c_base_dev_ctx_base_hi(DEV_CTX_BASE_HI::from(val));
+                    .write_i3c_base_dev_ctx_base_hi(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x65..=0x67) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x68) => {
-                self.periph.write_i3c_base_dev_ctx_sg(DEV_CTX_SG::from(val));
+                self.periph
+                    .write_i3c_base_dev_ctx_sg(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x69..=0x6b) => {
@@ -1404,7 +2214,8 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x8c) => {
-                self.periph.write_piocontrol_ibi_port(IBI_PORT::from(val));
+                self.periph
+                    .write_piocontrol_ibi_port(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x8d..=0x8f) => {
@@ -1412,15 +2223,16 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x90) => {
                 self.periph
-                    .write_piocontrol_queue_thld_ctrl(QUEUE_THLD_CTRL::from(val));
+                    .write_piocontrol_queue_thld_ctrl(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x91..=0x93) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x94) => {
-                self.periph
-                    .write_piocontrol_data_buffer_thld_ctrl(DATA_BUFFER_THLD_CTRL::from(val));
+                self.periph.write_piocontrol_data_buffer_thld_ctrl(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x95..=0x97) => {
@@ -1428,7 +2240,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x98) => {
                 self.periph
-                    .write_piocontrol_queue_size(QUEUE_SIZE::from(val));
+                    .write_piocontrol_queue_size(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x99..=0x9b) => {
@@ -1436,7 +2248,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x9c) => {
                 self.periph
-                    .write_piocontrol_alt_queue_size(ALT_QUEUE_SIZE::from(val));
+                    .write_piocontrol_alt_queue_size(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x9d..=0x9f) => {
@@ -1444,23 +2256,25 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0xa0) => {
                 self.periph
-                    .write_piocontrol_pio_intr_status(PIO_INTR_STATUS::from(val));
+                    .write_piocontrol_pio_intr_status(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xa1..=0xa3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xa4) => {
-                self.periph
-                    .write_piocontrol_pio_intr_status_enable(PIO_INTR_STATUS_ENABLE::from(val));
+                self.periph.write_piocontrol_pio_intr_status_enable(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xa5..=0xa7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xa8) => {
-                self.periph
-                    .write_piocontrol_pio_intr_signal_enable(PIO_INTR_SIGNAL_ENABLE::from(val));
+                self.periph.write_piocontrol_pio_intr_signal_enable(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xa9..=0xab) => {
@@ -1468,7 +2282,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0xac) => {
                 self.periph
-                    .write_piocontrol_pio_intr_force(PIO_INTR_FORCE::from(val));
+                    .write_piocontrol_pio_intr_force(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xad..=0xaf) => {
@@ -1476,15 +2290,16 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0xb0) => {
                 self.periph
-                    .write_piocontrol_pio_control(PIO_CONTROL::from(val));
+                    .write_piocontrol_pio_control(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xb1..=0xb3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x100) => {
-                self.periph
-                    .write_i3c_ec_sec_fw_recovery_if_extcap_header(EXTCAP_HEADER::from(val));
+                self.periph.write_i3c_ec_sec_fw_recovery_if_extcap_header(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x101..=0x103) => {
@@ -1687,16 +2502,18 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x180) => {
-                self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_extcap_header(EXTCAP_HEADER::from(val));
+                self.periph.write_i3c_ec_stdby_ctrl_mode_extcap_header(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x181..=0x183) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x184) => {
-                self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_control(STBY_CR_CONTROL::from(val));
+                self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_control(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x185..=0x187) => {
@@ -1704,9 +2521,9 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x188) => {
                 self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(STBY_CR_DEVICE_ADDR::from(
-                        val,
-                    ));
+                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
+                        emulator_bus::ReadWriteRegister::new(val),
+                    );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x189..=0x18b) => {
@@ -1714,9 +2531,9 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x18c) => {
                 self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(STBY_CR_CAPABILITIES::from(
-                        val,
-                    ));
+                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
+                        emulator_bus::ReadWriteRegister::new(val),
+                    );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x18d..=0x18f) => {
@@ -1730,8 +2547,9 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x194) => {
-                self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_status(STBY_CR_STATUS::from(val));
+                self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_status(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x195..=0x197) => {
@@ -1739,9 +2557,9 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x198) => {
                 self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(STBY_CR_DEVICE_CHAR::from(
-                        val,
-                    ));
+                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(
+                        emulator_bus::ReadWriteRegister::new(val),
+                    );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x199..=0x19b) => {
@@ -1757,9 +2575,9 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x1a0) => {
                 self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(STBY_CR_INTR_STATUS::from(
-                        val,
-                    ));
+                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
+                        emulator_bus::ReadWriteRegister::new(val),
+                    );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1a1..=0x1a3) => {
@@ -1775,7 +2593,7 @@ impl emulator_bus::Bus for I3cBus {
             (emulator_types::RvSize::Word, 0x1a8) => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
-                        STBY_CR_INTR_SIGNAL_ENABLE::from(val),
+                        emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -1783,8 +2601,9 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1ac) => {
-                self.periph
-                    .write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(STBY_CR_INTR_FORCE::from(val));
+                self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1ad..=0x1af) => {
@@ -1793,7 +2612,7 @@ impl emulator_bus::Bus for I3cBus {
             (emulator_types::RvSize::Word, 0x1b0) => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(
-                        STBY_CR_CCC_CONFIG_GETCAPS::from(val),
+                        emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -1803,7 +2622,7 @@ impl emulator_bus::Bus for I3cBus {
             (emulator_types::RvSize::Word, 0x1b4) => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(
-                        STBY_CR_CCC_CONFIG_RSTACT_PARAMS::from(val),
+                        emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -1826,7 +2645,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x1c0) => {
                 self.periph
-                    .write_i3c_ec_tti_extcap_header(EXTCAP_HEADER::from(val));
+                    .write_i3c_ec_tti_extcap_header(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1c1..=0x1c3) => {
@@ -1848,7 +2667,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x1cc) => {
                 self.periph
-                    .write_i3c_ec_tti_tti_reset_control(TTI_RESET_CONTROL::from(val));
+                    .write_i3c_ec_tti_tti_reset_control(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1cd..=0x1cf) => {
@@ -1856,7 +2675,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x1d0) => {
                 self.periph
-                    .write_i3c_ec_tti_interrupt_status(INTERRUPT_STATUS::from(val));
+                    .write_i3c_ec_tti_interrupt_status(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1d1..=0x1d3) => {
@@ -1864,7 +2683,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x1d4) => {
                 self.periph
-                    .write_i3c_ec_tti_interrupt_enable(INTERRUPT_ENABLE::from(val));
+                    .write_i3c_ec_tti_interrupt_enable(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1d5..=0x1d7) => {
@@ -1872,7 +2691,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x1d8) => {
                 self.periph
-                    .write_i3c_ec_tti_interrupt_force(INTERRUPT_FORCE::from(val));
+                    .write_i3c_ec_tti_interrupt_force(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1d9..=0x1db) => {
@@ -1894,7 +2713,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x1f0) => {
                 self.periph
-                    .write_i3c_ec_tti_tti_queue_size(TTI_QUEUE_SIZE::from(val));
+                    .write_i3c_ec_tti_tti_queue_size(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1f1..=0x1f3) => {
@@ -1902,15 +2721,16 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x1f4) => {
                 self.periph
-                    .write_i3c_ec_tti_ibi_tti_queue_size(IBI_TTI_QUEUE_SIZE::from(val));
+                    .write_i3c_ec_tti_ibi_tti_queue_size(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1f5..=0x1f7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1f8) => {
-                self.periph
-                    .write_i3c_ec_tti_tti_queue_thld_ctrl(TTI_QUEUE_THLD_CTRL::from(val));
+                self.periph.write_i3c_ec_tti_tti_queue_thld_ctrl(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1f9..=0x1fb) => {
@@ -1918,7 +2738,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x1fc) => {
                 self.periph.write_i3c_ec_tti_tti_data_buffer_thld_ctrl(
-                    TTI_DATA_BUFFER_THLD_CTRL::from(val),
+                    emulator_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -1926,8 +2746,9 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x200) => {
-                self.periph
-                    .write_i3c_ec_soc_mgmt_if_extcap_header(EXTCAP_HEADER::from(val));
+                self.periph.write_i3c_ec_soc_mgmt_if_extcap_header(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x201..=0x203) => {
@@ -1976,16 +2797,18 @@ impl emulator_bus::Bus for I3cBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x21c) => {
-                self.periph
-                    .write_i3c_ec_soc_mgmt_if_soc_pad_conf(SOC_PAD_CONF::from(val));
+                self.periph.write_i3c_ec_soc_mgmt_if_soc_pad_conf(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x21d..=0x21f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x220) => {
-                self.periph
-                    .write_i3c_ec_soc_mgmt_if_soc_pad_attr(SOC_PAD_ATTR::from(val));
+                self.periph.write_i3c_ec_soc_mgmt_if_soc_pad_attr(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x221..=0x223) => {
@@ -2007,7 +2830,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x22c) => {
                 self.periph
-                    .write_i3c_ec_soc_mgmt_if_t_r_reg(T_R_REG::from(val));
+                    .write_i3c_ec_soc_mgmt_if_t_r_reg(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x22d..=0x22f) => {
@@ -2015,23 +2838,25 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x230) => {
                 self.periph
-                    .write_i3c_ec_soc_mgmt_if_t_f_reg(T_F_REG::from(val));
+                    .write_i3c_ec_soc_mgmt_if_t_f_reg(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x231..=0x233) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x234) => {
-                self.periph
-                    .write_i3c_ec_soc_mgmt_if_t_su_dat_reg(T_SU_DAT_REG::from(val));
+                self.periph.write_i3c_ec_soc_mgmt_if_t_su_dat_reg(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x235..=0x237) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x238) => {
-                self.periph
-                    .write_i3c_ec_soc_mgmt_if_t_hd_dat_reg(T_HD_DAT_REG::from(val));
+                self.periph.write_i3c_ec_soc_mgmt_if_t_hd_dat_reg(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x239..=0x23b) => {
@@ -2039,7 +2864,7 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x23c) => {
                 self.periph
-                    .write_i3c_ec_soc_mgmt_if_t_high_reg(T_HIGH_REG::from(val));
+                    .write_i3c_ec_soc_mgmt_if_t_high_reg(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x23d..=0x23f) => {
@@ -2047,31 +2872,34 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x240) => {
                 self.periph
-                    .write_i3c_ec_soc_mgmt_if_t_low_reg(T_LOW_REG::from(val));
+                    .write_i3c_ec_soc_mgmt_if_t_low_reg(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x241..=0x243) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x244) => {
-                self.periph
-                    .write_i3c_ec_soc_mgmt_if_t_hd_sta_reg(T_HD_STA_REG::from(val));
+                self.periph.write_i3c_ec_soc_mgmt_if_t_hd_sta_reg(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x245..=0x247) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x248) => {
-                self.periph
-                    .write_i3c_ec_soc_mgmt_if_t_su_sta_reg(T_SU_STA_REG::from(val));
+                self.periph.write_i3c_ec_soc_mgmt_if_t_su_sta_reg(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x249..=0x24b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x24c) => {
-                self.periph
-                    .write_i3c_ec_soc_mgmt_if_t_su_sto_reg(T_SU_STO_REG::from(val));
+                self.periph.write_i3c_ec_soc_mgmt_if_t_su_sto_reg(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x24d..=0x24f) => {
@@ -2100,15 +2928,16 @@ impl emulator_bus::Bus for I3cBus {
             }
             (emulator_types::RvSize::Word, 0x260) => {
                 self.periph
-                    .write_i3c_ec_ctrl_cfg_extcap_header(EXTCAP_HEADER::from(val));
+                    .write_i3c_ec_ctrl_cfg_extcap_header(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x261..=0x263) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x264) => {
-                self.periph
-                    .write_i3c_ec_ctrl_cfg_controller_config(CONTROLLER_CONFIG::from(val));
+                self.periph.write_i3c_ec_ctrl_cfg_controller_config(
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x265..=0x267) => {

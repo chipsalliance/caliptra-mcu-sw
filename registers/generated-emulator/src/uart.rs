@@ -4,62 +4,188 @@
 // , caliptra-ss repo at 9911c2b0e4bac9e4b48f6c2155c86cb116159734
 // , and i3c-core repo at d5c715103f529ade0e5d375a53c5692daaa9c54b
 //
+#[allow(unused_imports)]
+use tock_registers::interfaces::{Readable, Writeable};
 pub trait UartPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
-    fn read_interrupt_state(&mut self) -> INTERRUPT_STATE {
-        INTERRUPT_STATE::default()
+    fn read_interrupt_state(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::uart::bits::InterruptState::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_interrupt_state(&mut self, _val: INTERRUPT_STATE) {}
-    fn read_interrupt_enable(&mut self) -> INTERRUPT_ENABLE {
-        INTERRUPT_ENABLE::default()
+    fn write_interrupt_state(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::uart::bits::InterruptState::Register,
+        >,
+    ) {
     }
-    fn write_interrupt_enable(&mut self, _val: INTERRUPT_ENABLE) {}
-    fn read_interrupt_test(&mut self) -> INTERRUPT_TEST {
-        INTERRUPT_TEST::default()
+    fn read_interrupt_enable(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::InterruptEnable::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_interrupt_test(&mut self, _val: INTERRUPT_TEST) {}
-    fn read_alert_test(&mut self) -> ALERT_TEST {
-        ALERT_TEST::default()
+    fn write_interrupt_enable(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::InterruptEnable::Register,
+        >,
+    ) {
     }
-    fn write_alert_test(&mut self, _val: ALERT_TEST) {}
-    fn read_ctrl(&mut self) -> CTRL {
-        CTRL::default()
+    fn read_interrupt_test(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::uart::bits::InterruptTest::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_ctrl(&mut self, _val: CTRL) {}
-    fn read_status(&mut self) -> STATUS {
-        STATUS::default()
+    fn write_interrupt_test(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::uart::bits::InterruptTest::Register,
+        >,
+    ) {
     }
-    fn write_status(&mut self, _val: STATUS) {}
-    fn read_rdata(&mut self) -> RDATA {
-        RDATA::default()
+    fn read_alert_test(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::AlertTest::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_rdata(&mut self, _val: RDATA) {}
-    fn read_wdata(&mut self) -> WDATA {
-        WDATA::default()
+    fn write_alert_test(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::uart::bits::AlertTest::Register,
+        >,
+    ) {
     }
-    fn write_wdata(&mut self, _val: WDATA) {}
-    fn read_fifo_ctrl(&mut self) -> FIFO_CTRL {
-        FIFO_CTRL::default()
+    fn read_ctrl(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::Ctrl::Register> {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_fifo_ctrl(&mut self, _val: FIFO_CTRL) {}
-    fn read_fifo_status(&mut self) -> FIFO_STATUS {
-        FIFO_STATUS::default()
+    fn write_ctrl(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::Ctrl::Register>,
+    ) {
     }
-    fn write_fifo_status(&mut self, _val: FIFO_STATUS) {}
-    fn read_ovrd(&mut self) -> OVRD {
-        OVRD::default()
+    fn read_status(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::Status::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_ovrd(&mut self, _val: OVRD) {}
-    fn read_val(&mut self) -> VAL {
-        VAL::default()
+    fn write_status(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::uart::bits::Status::Register,
+        >,
+    ) {
     }
-    fn write_val(&mut self, _val: VAL) {}
-    fn read_timeout_ctrl(&mut self) -> TIMEOUT_CTRL {
-        TIMEOUT_CTRL::default()
+    fn read_rdata(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::Rdata::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_timeout_ctrl(&mut self, _val: TIMEOUT_CTRL) {}
+    fn write_rdata(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::uart::bits::Rdata::Register,
+        >,
+    ) {
+    }
+    fn read_wdata(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::Wdata::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_wdata(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::uart::bits::Wdata::Register,
+        >,
+    ) {
+    }
+    fn read_fifo_ctrl(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::FifoCtrl::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_fifo_ctrl(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::uart::bits::FifoCtrl::Register,
+        >,
+    ) {
+    }
+    fn read_fifo_status(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::FifoStatus::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_fifo_status(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::uart::bits::FifoStatus::Register,
+        >,
+    ) {
+    }
+    fn read_ovrd(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::Ovrd::Register> {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_ovrd(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::Ovrd::Register>,
+    ) {
+    }
+    fn read_val(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::Val::Register> {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_val(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::Val::Register>,
+    ) {
+    }
+    fn read_timeout_ctrl(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::TimeoutCtrl::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_timeout_ctrl(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::uart::bits::TimeoutCtrl::Register,
+        >,
+    ) {
+    }
 }
 pub struct UartBus {
     pub periph: Box<dyn UartPeripheral>,
@@ -72,79 +198,79 @@ impl emulator_bus::Bus for UartBus {
     ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => Ok(emulator_types::RvData::from(
-                self.periph.read_interrupt_state(),
+                self.periph.read_interrupt_state().reg.get(),
             )),
             (emulator_types::RvSize::Word, 1..=3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 4) => Ok(emulator_types::RvData::from(
-                self.periph.read_interrupt_enable(),
+                self.periph.read_interrupt_enable().reg.get(),
             )),
             (emulator_types::RvSize::Word, 5..=7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 8) => Ok(emulator_types::RvData::from(
-                self.periph.read_interrupt_test(),
+                self.periph.read_interrupt_test().reg.get(),
             )),
             (emulator_types::RvSize::Word, 9..=0xb) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xc) => {
-                Ok(emulator_types::RvData::from(self.periph.read_alert_test()))
-            }
+            (emulator_types::RvSize::Word, 0xc) => Ok(emulator_types::RvData::from(
+                self.periph.read_alert_test().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0xd..=0xf) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x10) => {
-                Ok(emulator_types::RvData::from(self.periph.read_ctrl()))
-            }
+            (emulator_types::RvSize::Word, 0x10) => Ok(emulator_types::RvData::from(
+                self.periph.read_ctrl().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x11..=0x13) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x14) => {
-                Ok(emulator_types::RvData::from(self.periph.read_status()))
-            }
+            (emulator_types::RvSize::Word, 0x14) => Ok(emulator_types::RvData::from(
+                self.periph.read_status().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x15..=0x17) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x18) => {
-                Ok(emulator_types::RvData::from(self.periph.read_rdata()))
-            }
+            (emulator_types::RvSize::Word, 0x18) => Ok(emulator_types::RvData::from(
+                self.periph.read_rdata().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x19..=0x1b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x1c) => {
-                Ok(emulator_types::RvData::from(self.periph.read_wdata()))
-            }
+            (emulator_types::RvSize::Word, 0x1c) => Ok(emulator_types::RvData::from(
+                self.periph.read_wdata().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x1d..=0x1f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x20) => {
-                Ok(emulator_types::RvData::from(self.periph.read_fifo_ctrl()))
-            }
+            (emulator_types::RvSize::Word, 0x20) => Ok(emulator_types::RvData::from(
+                self.periph.read_fifo_ctrl().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x21..=0x23) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x24) => {
-                Ok(emulator_types::RvData::from(self.periph.read_fifo_status()))
-            }
+            (emulator_types::RvSize::Word, 0x24) => Ok(emulator_types::RvData::from(
+                self.periph.read_fifo_status().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x25..=0x27) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x28) => {
-                Ok(emulator_types::RvData::from(self.periph.read_ovrd()))
-            }
+            (emulator_types::RvSize::Word, 0x28) => Ok(emulator_types::RvData::from(
+                self.periph.read_ovrd().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x29..=0x2b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x2c) => {
-                Ok(emulator_types::RvData::from(self.periph.read_val()))
-            }
+            (emulator_types::RvSize::Word, 0x2c) => Ok(emulator_types::RvData::from(
+                self.periph.read_val().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x2d..=0x2f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x30) => Ok(emulator_types::RvData::from(
-                self.periph.read_timeout_ctrl(),
+                self.periph.read_timeout_ctrl().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x31..=0x33) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -161,7 +287,7 @@ impl emulator_bus::Bus for UartBus {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => {
                 self.periph
-                    .write_interrupt_state(INTERRUPT_STATE::from(val));
+                    .write_interrupt_state(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 1..=3) => {
@@ -169,84 +295,95 @@ impl emulator_bus::Bus for UartBus {
             }
             (emulator_types::RvSize::Word, 4) => {
                 self.periph
-                    .write_interrupt_enable(INTERRUPT_ENABLE::from(val));
+                    .write_interrupt_enable(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 5..=7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 8) => {
-                self.periph.write_interrupt_test(INTERRUPT_TEST::from(val));
+                self.periph
+                    .write_interrupt_test(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 9..=0xb) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xc) => {
-                self.periph.write_alert_test(ALERT_TEST::from(val));
+                self.periph
+                    .write_alert_test(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xd..=0xf) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x10) => {
-                self.periph.write_ctrl(CTRL::from(val));
+                self.periph
+                    .write_ctrl(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x11..=0x13) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x14) => {
-                self.periph.write_status(STATUS::from(val));
+                self.periph
+                    .write_status(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x15..=0x17) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x18) => {
-                self.periph.write_rdata(RDATA::from(val));
+                self.periph
+                    .write_rdata(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x19..=0x1b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1c) => {
-                self.periph.write_wdata(WDATA::from(val));
+                self.periph
+                    .write_wdata(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1d..=0x1f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x20) => {
-                self.periph.write_fifo_ctrl(FIFO_CTRL::from(val));
+                self.periph
+                    .write_fifo_ctrl(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x21..=0x23) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x24) => {
-                self.periph.write_fifo_status(FIFO_STATUS::from(val));
+                self.periph
+                    .write_fifo_status(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x25..=0x27) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x28) => {
-                self.periph.write_ovrd(OVRD::from(val));
+                self.periph
+                    .write_ovrd(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x29..=0x2b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x2c) => {
-                self.periph.write_val(VAL::from(val));
+                self.periph
+                    .write_val(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x2d..=0x2f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x30) => {
-                self.periph.write_timeout_ctrl(TIMEOUT_CTRL::from(val));
+                self.periph
+                    .write_timeout_ctrl(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x31..=0x33) => {

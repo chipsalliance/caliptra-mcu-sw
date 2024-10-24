@@ -4,18 +4,42 @@
 // , caliptra-ss repo at 9911c2b0e4bac9e4b48f6c2155c86cb116159734
 // , and i3c-core repo at d5c715103f529ade0e5d375a53c5692daaa9c54b
 //
+#[allow(unused_imports)]
+use tock_registers::interfaces::{Readable, Writeable};
 pub trait MciPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
-    fn read_capabilities(&mut self) -> CAPABILITIES {
-        CAPABILITIES::default()
+    fn read_capabilities(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci_ctrl::bits::Capabilities::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_capabilities(&mut self, _val: CAPABILITIES) {}
-    fn read_hw_rev_id(&mut self) -> HW_REV_ID {
-        HW_REV_ID::default()
+    fn write_capabilities(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::Capabilities::Register,
+        >,
+    ) {
     }
-    fn write_hw_rev_id(&mut self, _val: HW_REV_ID) {}
+    fn read_hw_rev_id(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci_ctrl::bits::HwRevId::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_hw_rev_id(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::HwRevId::Register,
+        >,
+    ) {
+    }
     fn read_rom_rev_id(&mut self) -> u32 {
         0
     }
@@ -28,22 +52,66 @@ pub trait MciPeripheral {
         0
     }
     fn write_boot_status(&mut self, _val: u32) {}
-    fn read_flow_status(&mut self) -> FLOW_STATUS {
-        FLOW_STATUS::default()
+    fn read_flow_status(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci_ctrl::bits::FlowStatus::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_flow_status(&mut self, _val: FLOW_STATUS) {}
-    fn read_reset_reason(&mut self) -> RESET_REASON {
-        RESET_REASON::default()
+    fn write_flow_status(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::FlowStatus::Register,
+        >,
+    ) {
     }
-    fn write_reset_reason(&mut self, _val: RESET_REASON) {}
-    fn read_hw_error_fatal(&mut self) -> HW_ERROR_ {
-        HW_ERROR_::default()
+    fn read_reset_reason(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci_ctrl::bits::ResetReason::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_hw_error_fatal(&mut self, _val: HW_ERROR_) {}
-    fn read_hw_error_non_fatal(&mut self) -> HW_ERROR_ {
-        HW_ERROR_::default()
+    fn write_reset_reason(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::ResetReason::Register,
+        >,
+    ) {
     }
-    fn write_hw_error_non_fatal(&mut self, _val: HW_ERROR_) {}
+    fn read_hw_error_fatal(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci_ctrl::bits::HwError::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_hw_error_fatal(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::HwError::Register,
+        >,
+    ) {
+    }
+    fn read_hw_error_non_fatal(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci_ctrl::bits::HwError::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_hw_error_non_fatal(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::HwError::Register,
+        >,
+    ) {
+    }
     fn read_fw_error_fatal(&mut self) -> u32 {
         0
     }
@@ -52,34 +120,94 @@ pub trait MciPeripheral {
         0
     }
     fn write_fw_error_non_fatal(&mut self, _val: u32) {}
-    fn read_wdt_timer1_en(&mut self) -> WDT_TIMER1_EN {
-        WDT_TIMER1_EN::default()
+    fn read_wdt_timer1_en(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci_ctrl::bits::WdtTimer1En::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_wdt_timer1_en(&mut self, _val: WDT_TIMER1_EN) {}
-    fn read_wdt_timer1_ctrl(&mut self) -> WDT_TIMER1_CTRL {
-        WDT_TIMER1_CTRL::default()
+    fn write_wdt_timer1_en(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::WdtTimer1En::Register,
+        >,
+    ) {
     }
-    fn write_wdt_timer1_ctrl(&mut self, _val: WDT_TIMER1_CTRL) {}
+    fn read_wdt_timer1_ctrl(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci_ctrl::bits::WdtTimer1Ctrl::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_wdt_timer1_ctrl(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::WdtTimer1Ctrl::Register,
+        >,
+    ) {
+    }
     fn read_wdt_timer1_timeout_period(&mut self) -> u32 {
         0
     }
     fn write_wdt_timer1_timeout_period(&mut self, _val: u32) {}
-    fn read_wdt_timer2_en(&mut self) -> WDT_TIMER2_EN {
-        WDT_TIMER2_EN::default()
+    fn read_wdt_timer2_en(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci_ctrl::bits::WdtTimer2En::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_wdt_timer2_en(&mut self, _val: WDT_TIMER2_EN) {}
-    fn read_wdt_timer2_ctrl(&mut self) -> WDT_TIMER2_CTRL {
-        WDT_TIMER2_CTRL::default()
+    fn write_wdt_timer2_en(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::WdtTimer2En::Register,
+        >,
+    ) {
     }
-    fn write_wdt_timer2_ctrl(&mut self, _val: WDT_TIMER2_CTRL) {}
+    fn read_wdt_timer2_ctrl(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci_ctrl::bits::WdtTimer2Ctrl::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_wdt_timer2_ctrl(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::WdtTimer2Ctrl::Register,
+        >,
+    ) {
+    }
     fn read_wdt_timer2_timeout_period(&mut self) -> u32 {
         0
     }
     fn write_wdt_timer2_timeout_period(&mut self, _val: u32) {}
-    fn read_cptra_wdt_status(&mut self) -> CPTRA_WDT_STATUS {
-        CPTRA_WDT_STATUS::default()
+    fn read_cptra_wdt_status(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci_ctrl::bits::CptraWdtStatus::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_cptra_wdt_status(&mut self, _val: CPTRA_WDT_STATUS) {}
+    fn write_cptra_wdt_status(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::CptraWdtStatus::Register,
+        >,
+    ) {
+    }
     fn read_wdt_cfg(&mut self) -> u32 {
         0
     }
@@ -88,46 +216,134 @@ pub trait MciPeripheral {
         0
     }
     fn write_mcu_timer_config(&mut self, _val: u32) {}
-    fn read_reset_request(&mut self) -> RESET_REQUEST {
-        RESET_REQUEST::default()
+    fn read_reset_request(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci_ctrl::bits::ResetRequest::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_reset_request(&mut self, _val: RESET_REQUEST) {}
-    fn read_reset_ack(&mut self) -> RESET_ACK {
-        RESET_ACK::default()
+    fn write_reset_request(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::ResetRequest::Register,
+        >,
+    ) {
     }
-    fn write_reset_ack(&mut self, _val: RESET_ACK) {}
-    fn read_caliptra_boot_go(&mut self) -> CALIPTRA_BOOT_GO {
-        CALIPTRA_BOOT_GO::default()
+    fn read_reset_ack(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci_ctrl::bits::ResetAck::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_caliptra_boot_go(&mut self, _val: CALIPTRA_BOOT_GO) {}
-    fn read_caliptra_axi_id(&mut self) -> CALIPTRA_AXI_ID {
-        CALIPTRA_AXI_ID::default()
+    fn write_reset_ack(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::ResetAck::Register,
+        >,
+    ) {
     }
-    fn write_caliptra_axi_id(&mut self, _val: CALIPTRA_AXI_ID) {}
-    fn read_fw_sram_exec_region_size(&mut self) -> FW_SRAM_EXEC_REGION_SIZE {
-        FW_SRAM_EXEC_REGION_SIZE::default()
+    fn read_caliptra_boot_go(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci_ctrl::bits::CaliptraBootGo::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_fw_sram_exec_region_size(&mut self, _val: FW_SRAM_EXEC_REGION_SIZE) {}
-    fn read_runtime_lock(&mut self) -> _LOCK {
-        _LOCK::default()
+    fn write_caliptra_boot_go(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::CaliptraBootGo::Register,
+        >,
+    ) {
     }
-    fn write_runtime_lock(&mut self, _val: _LOCK) {}
+    fn read_caliptra_axi_id(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci_ctrl::bits::CaliptraAxiId::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_caliptra_axi_id(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::CaliptraAxiId::Register,
+        >,
+    ) {
+    }
+    fn read_fw_sram_exec_region_size(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci_ctrl::bits::FwSramExecRegionSize::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_fw_sram_exec_region_size(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::FwSramExecRegionSize::Register,
+        >,
+    ) {
+    }
+    fn read_runtime_lock(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci_ctrl::bits::Lock::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_runtime_lock(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::Lock::Register,
+        >,
+    ) {
+    }
     fn read_mbox0_valid_axi_id(&mut self) -> u32 {
         0
     }
     fn write_mbox0_valid_axi_id(&mut self, _val: u32) {}
-    fn read_mbox0_valid_axi_id_lock(&mut self) -> _LOCK {
-        _LOCK::default()
+    fn read_mbox0_valid_axi_id_lock(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci_ctrl::bits::Lock::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_mbox0_valid_axi_id_lock(&mut self, _val: _LOCK) {}
+    fn write_mbox0_valid_axi_id_lock(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::Lock::Register,
+        >,
+    ) {
+    }
     fn read_mbox1_valid_axi_id(&mut self) -> u32 {
         0
     }
     fn write_mbox1_valid_axi_id(&mut self, _val: u32) {}
-    fn read_mbox1_valid_axi_id_lock(&mut self) -> _LOCK {
-        _LOCK::default()
+    fn read_mbox1_valid_axi_id_lock(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci_ctrl::bits::Lock::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_mbox1_valid_axi_id_lock(&mut self, _val: _LOCK) {}
+    fn write_mbox1_valid_axi_id_lock(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci_ctrl::bits::Lock::Register,
+        >,
+    ) {
+    }
     fn read_generic_input_wires(&mut self) -> u32 {
         0
     }
@@ -188,14 +404,14 @@ impl emulator_bus::Bus for MciBus {
     ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => Ok(emulator_types::RvData::from(
-                self.periph.read_capabilities(),
+                self.periph.read_capabilities().reg.get(),
             )),
             (emulator_types::RvSize::Word, 1..=3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 4) => {
-                Ok(emulator_types::RvData::from(self.periph.read_hw_rev_id()))
-            }
+            (emulator_types::RvSize::Word, 4) => Ok(emulator_types::RvData::from(
+                self.periph.read_hw_rev_id().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 5..=7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
@@ -217,26 +433,26 @@ impl emulator_bus::Bus for MciBus {
             (emulator_types::RvSize::Word, 0x21..=0x23) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x24) => {
-                Ok(emulator_types::RvData::from(self.periph.read_flow_status()))
-            }
+            (emulator_types::RvSize::Word, 0x24) => Ok(emulator_types::RvData::from(
+                self.periph.read_flow_status().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x25..=0x27) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x28) => Ok(emulator_types::RvData::from(
-                self.periph.read_reset_reason(),
+                self.periph.read_reset_reason().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x29..=0x2b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x40) => Ok(emulator_types::RvData::from(
-                self.periph.read_hw_error_fatal(),
+                self.periph.read_hw_error_fatal().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x41..=0x43) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x44) => Ok(emulator_types::RvData::from(
-                self.periph.read_hw_error_non_fatal(),
+                self.periph.read_hw_error_non_fatal().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x45..=0x47) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -254,13 +470,13 @@ impl emulator_bus::Bus for MciBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x80) => Ok(emulator_types::RvData::from(
-                self.periph.read_wdt_timer1_en(),
+                self.periph.read_wdt_timer1_en().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x81..=0x83) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x84) => Ok(emulator_types::RvData::from(
-                self.periph.read_wdt_timer1_ctrl(),
+                self.periph.read_wdt_timer1_ctrl().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x85..=0x87) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -272,13 +488,13 @@ impl emulator_bus::Bus for MciBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x90) => Ok(emulator_types::RvData::from(
-                self.periph.read_wdt_timer2_en(),
+                self.periph.read_wdt_timer2_en().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x91..=0x93) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x94) => Ok(emulator_types::RvData::from(
-                self.periph.read_wdt_timer2_ctrl(),
+                self.periph.read_wdt_timer2_ctrl().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x95..=0x97) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -290,7 +506,7 @@ impl emulator_bus::Bus for MciBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xa0) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_wdt_status(),
+                self.periph.read_cptra_wdt_status().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0xa1..=0xa3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -308,37 +524,37 @@ impl emulator_bus::Bus for MciBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x100) => Ok(emulator_types::RvData::from(
-                self.periph.read_reset_request(),
+                self.periph.read_reset_request().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x101..=0x103) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x104) => {
-                Ok(emulator_types::RvData::from(self.periph.read_reset_ack()))
-            }
+            (emulator_types::RvSize::Word, 0x104) => Ok(emulator_types::RvData::from(
+                self.periph.read_reset_ack().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x105..=0x107) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x108) => Ok(emulator_types::RvData::from(
-                self.periph.read_caliptra_boot_go(),
+                self.periph.read_caliptra_boot_go().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x109..=0x10b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x10c) => Ok(emulator_types::RvData::from(
-                self.periph.read_caliptra_axi_id(),
+                self.periph.read_caliptra_axi_id().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x10d..=0x10f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x110) => Ok(emulator_types::RvData::from(
-                self.periph.read_fw_sram_exec_region_size(),
+                self.periph.read_fw_sram_exec_region_size().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x111..=0x113) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x114) => Ok(emulator_types::RvData::from(
-                self.periph.read_runtime_lock(),
+                self.periph.read_runtime_lock().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x115..=0x117) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -350,7 +566,7 @@ impl emulator_bus::Bus for MciBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1a0) => Ok(emulator_types::RvData::from(
-                self.periph.read_mbox0_valid_axi_id_lock(),
+                self.periph.read_mbox0_valid_axi_id_lock().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x1a1..=0x1a3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -362,7 +578,7 @@ impl emulator_bus::Bus for MciBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1e0) => Ok(emulator_types::RvData::from(
-                self.periph.read_mbox1_valid_axi_id_lock(),
+                self.periph.read_mbox1_valid_axi_id_lock().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x1e1..=0x1e3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -444,14 +660,16 @@ impl emulator_bus::Bus for MciBus {
     ) -> Result<(), emulator_bus::BusError> {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => {
-                self.periph.write_capabilities(CAPABILITIES::from(val));
+                self.periph
+                    .write_capabilities(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 1..=3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 4) => {
-                self.periph.write_hw_rev_id(HW_REV_ID::from(val));
+                self.periph
+                    .write_hw_rev_id(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 5..=7) => {
@@ -479,28 +697,32 @@ impl emulator_bus::Bus for MciBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x24) => {
-                self.periph.write_flow_status(FLOW_STATUS::from(val));
+                self.periph
+                    .write_flow_status(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x25..=0x27) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x28) => {
-                self.periph.write_reset_reason(RESET_REASON::from(val));
+                self.periph
+                    .write_reset_reason(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x29..=0x2b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x40) => {
-                self.periph.write_hw_error_fatal(HW_ERROR_::from(val));
+                self.periph
+                    .write_hw_error_fatal(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x41..=0x43) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x44) => {
-                self.periph.write_hw_error_non_fatal(HW_ERROR_::from(val));
+                self.periph
+                    .write_hw_error_non_fatal(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x45..=0x47) => {
@@ -521,7 +743,8 @@ impl emulator_bus::Bus for MciBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x80) => {
-                self.periph.write_wdt_timer1_en(WDT_TIMER1_EN::from(val));
+                self.periph
+                    .write_wdt_timer1_en(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x81..=0x83) => {
@@ -529,7 +752,7 @@ impl emulator_bus::Bus for MciBus {
             }
             (emulator_types::RvSize::Word, 0x84) => {
                 self.periph
-                    .write_wdt_timer1_ctrl(WDT_TIMER1_CTRL::from(val));
+                    .write_wdt_timer1_ctrl(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x85..=0x87) => {
@@ -543,7 +766,8 @@ impl emulator_bus::Bus for MciBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x90) => {
-                self.periph.write_wdt_timer2_en(WDT_TIMER2_EN::from(val));
+                self.periph
+                    .write_wdt_timer2_en(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x91..=0x93) => {
@@ -551,7 +775,7 @@ impl emulator_bus::Bus for MciBus {
             }
             (emulator_types::RvSize::Word, 0x94) => {
                 self.periph
-                    .write_wdt_timer2_ctrl(WDT_TIMER2_CTRL::from(val));
+                    .write_wdt_timer2_ctrl(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x95..=0x97) => {
@@ -566,7 +790,7 @@ impl emulator_bus::Bus for MciBus {
             }
             (emulator_types::RvSize::Word, 0xa0) => {
                 self.periph
-                    .write_cptra_wdt_status(CPTRA_WDT_STATUS::from(val));
+                    .write_cptra_wdt_status(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xa1..=0xa3) => {
@@ -587,14 +811,16 @@ impl emulator_bus::Bus for MciBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x100) => {
-                self.periph.write_reset_request(RESET_REQUEST::from(val));
+                self.periph
+                    .write_reset_request(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x101..=0x103) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x104) => {
-                self.periph.write_reset_ack(RESET_ACK::from(val));
+                self.periph
+                    .write_reset_ack(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x105..=0x107) => {
@@ -602,7 +828,7 @@ impl emulator_bus::Bus for MciBus {
             }
             (emulator_types::RvSize::Word, 0x108) => {
                 self.periph
-                    .write_caliptra_boot_go(CALIPTRA_BOOT_GO::from(val));
+                    .write_caliptra_boot_go(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x109..=0x10b) => {
@@ -610,7 +836,7 @@ impl emulator_bus::Bus for MciBus {
             }
             (emulator_types::RvSize::Word, 0x10c) => {
                 self.periph
-                    .write_caliptra_axi_id(CALIPTRA_AXI_ID::from(val));
+                    .write_caliptra_axi_id(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x10d..=0x10f) => {
@@ -618,14 +844,15 @@ impl emulator_bus::Bus for MciBus {
             }
             (emulator_types::RvSize::Word, 0x110) => {
                 self.periph
-                    .write_fw_sram_exec_region_size(FW_SRAM_EXEC_REGION_SIZE::from(val));
+                    .write_fw_sram_exec_region_size(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x111..=0x113) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x114) => {
-                self.periph.write_runtime_lock(_LOCK::from(val));
+                self.periph
+                    .write_runtime_lock(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x115..=0x117) => {
@@ -639,7 +866,8 @@ impl emulator_bus::Bus for MciBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1a0) => {
-                self.periph.write_mbox0_valid_axi_id_lock(_LOCK::from(val));
+                self.periph
+                    .write_mbox0_valid_axi_id_lock(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1a1..=0x1a3) => {
@@ -653,7 +881,8 @@ impl emulator_bus::Bus for MciBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1e0) => {
-                self.periph.write_mbox1_valid_axi_id_lock(_LOCK::from(val));
+                self.periph
+                    .write_mbox1_valid_axi_id_lock(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1e1..=0x1e3) => {

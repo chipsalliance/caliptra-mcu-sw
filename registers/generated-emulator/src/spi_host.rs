@@ -4,46 +4,136 @@
 // , caliptra-ss repo at 9911c2b0e4bac9e4b48f6c2155c86cb116159734
 // , and i3c-core repo at d5c715103f529ade0e5d375a53c5692daaa9c54b
 //
+#[allow(unused_imports)]
+use tock_registers::interfaces::{Readable, Writeable};
 pub trait SpiHostPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
-    fn read_interrupt_state(&mut self) -> INTERRUPT_STATE {
-        INTERRUPT_STATE::default()
+    fn read_interrupt_state(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::uart::bits::InterruptState::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_interrupt_state(&mut self, _val: INTERRUPT_STATE) {}
-    fn read_interrupt_enable(&mut self) -> INTERRUPT_ENABLE {
-        INTERRUPT_ENABLE::default()
+    fn write_interrupt_state(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::uart::bits::InterruptState::Register,
+        >,
+    ) {
     }
-    fn write_interrupt_enable(&mut self, _val: INTERRUPT_ENABLE) {}
-    fn read_interrupt_test(&mut self) -> INTERRUPT_TEST {
-        INTERRUPT_TEST::default()
+    fn read_interrupt_enable(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c_ctrl::bits::InterruptEnable::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_interrupt_test(&mut self, _val: INTERRUPT_TEST) {}
-    fn read_alert_test(&mut self) -> ALERT_TEST {
-        ALERT_TEST::default()
+    fn write_interrupt_enable(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c_ctrl::bits::InterruptEnable::Register,
+        >,
+    ) {
     }
-    fn write_alert_test(&mut self, _val: ALERT_TEST) {}
-    fn read_control(&mut self) -> CONTROL {
-        CONTROL::default()
+    fn read_interrupt_test(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::uart::bits::InterruptTest::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_control(&mut self, _val: CONTROL) {}
-    fn read_status(&mut self) -> STATUS {
-        STATUS::default()
+    fn write_interrupt_test(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::uart::bits::InterruptTest::Register,
+        >,
+    ) {
     }
-    fn write_status(&mut self, _val: STATUS) {}
-    fn read_configopts(&mut self) -> CONFIGOPTS {
-        CONFIGOPTS::default()
+    fn read_alert_test(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::AlertTest::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_configopts(&mut self, _val: CONFIGOPTS) {}
+    fn write_alert_test(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::uart::bits::AlertTest::Register,
+        >,
+    ) {
+    }
+    fn read_control(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::spi_host::bits::Control::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_control(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::spi_host::bits::Control::Register,
+        >,
+    ) {
+    }
+    fn read_status(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::uart::bits::Status::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_status(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::uart::bits::Status::Register,
+        >,
+    ) {
+    }
+    fn read_configopts(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::spi_host::bits::Configopts::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_configopts(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::spi_host::bits::Configopts::Register,
+        >,
+    ) {
+    }
     fn read_csid(&mut self) -> u32 {
         0
     }
     fn write_csid(&mut self, _val: u32) {}
-    fn read_command(&mut self) -> COMMAND {
-        COMMAND::default()
+    fn read_command(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::spi_host::bits::Command::Register>
+    {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_command(&mut self, _val: COMMAND) {}
+    fn write_command(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::spi_host::bits::Command::Register,
+        >,
+    ) {
+    }
     fn read_rxdata(&mut self) -> u32 {
         0
     }
@@ -52,18 +142,54 @@ pub trait SpiHostPeripheral {
         0
     }
     fn write_txdata(&mut self, _val: u32) {}
-    fn read_error_enable(&mut self) -> ERROR_ENABLE {
-        ERROR_ENABLE::default()
+    fn read_error_enable(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::spi_host::bits::ErrorEnable::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_error_enable(&mut self, _val: ERROR_ENABLE) {}
-    fn read_error_status(&mut self) -> ERROR_STATUS {
-        ERROR_STATUS::default()
+    fn write_error_enable(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::spi_host::bits::ErrorEnable::Register,
+        >,
+    ) {
     }
-    fn write_error_status(&mut self, _val: ERROR_STATUS) {}
-    fn read_event_enable(&mut self) -> EVENT_ENABLE {
-        EVENT_ENABLE::default()
+    fn read_error_status(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::spi_host::bits::ErrorStatus::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_event_enable(&mut self, _val: EVENT_ENABLE) {}
+    fn write_error_status(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::spi_host::bits::ErrorStatus::Register,
+        >,
+    ) {
+    }
+    fn read_event_enable(
+        &mut self,
+    ) -> emulator_bus::ReadWriteRegister<
+        u32,
+        registers_generated::spi_host::bits::EventEnable::Register,
+    > {
+        emulator_bus::ReadWriteRegister::new(0)
+    }
+    fn write_event_enable(
+        &mut self,
+        _val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::spi_host::bits::EventEnable::Register,
+        >,
+    ) {
+    }
 }
 pub struct SpiHostBus {
     pub periph: Box<dyn SpiHostPeripheral>,
@@ -76,44 +202,44 @@ impl emulator_bus::Bus for SpiHostBus {
     ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => Ok(emulator_types::RvData::from(
-                self.periph.read_interrupt_state(),
+                self.periph.read_interrupt_state().reg.get(),
             )),
             (emulator_types::RvSize::Word, 1..=3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 4) => Ok(emulator_types::RvData::from(
-                self.periph.read_interrupt_enable(),
+                self.periph.read_interrupt_enable().reg.get(),
             )),
             (emulator_types::RvSize::Word, 5..=7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 8) => Ok(emulator_types::RvData::from(
-                self.periph.read_interrupt_test(),
+                self.periph.read_interrupt_test().reg.get(),
             )),
             (emulator_types::RvSize::Word, 9..=0xb) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xc) => {
-                Ok(emulator_types::RvData::from(self.periph.read_alert_test()))
-            }
+            (emulator_types::RvSize::Word, 0xc) => Ok(emulator_types::RvData::from(
+                self.periph.read_alert_test().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0xd..=0xf) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x10) => {
-                Ok(emulator_types::RvData::from(self.periph.read_control()))
-            }
+            (emulator_types::RvSize::Word, 0x10) => Ok(emulator_types::RvData::from(
+                self.periph.read_control().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x11..=0x13) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x14) => {
-                Ok(emulator_types::RvData::from(self.periph.read_status()))
-            }
+            (emulator_types::RvSize::Word, 0x14) => Ok(emulator_types::RvData::from(
+                self.periph.read_status().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x15..=0x17) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x18) => {
-                Ok(emulator_types::RvData::from(self.periph.read_configopts()))
-            }
+            (emulator_types::RvSize::Word, 0x18) => Ok(emulator_types::RvData::from(
+                self.periph.read_configopts().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x19..=0x1b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
@@ -123,9 +249,9 @@ impl emulator_bus::Bus for SpiHostBus {
             (emulator_types::RvSize::Word, 0x21..=0x23) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x24) => {
-                Ok(emulator_types::RvData::from(self.periph.read_command()))
-            }
+            (emulator_types::RvSize::Word, 0x24) => Ok(emulator_types::RvData::from(
+                self.periph.read_command().reg.get(),
+            )),
             (emulator_types::RvSize::Word, 0x25..=0x27) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
@@ -136,19 +262,19 @@ impl emulator_bus::Bus for SpiHostBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x30) => Ok(emulator_types::RvData::from(
-                self.periph.read_error_enable(),
+                self.periph.read_error_enable().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x31..=0x33) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x34) => Ok(emulator_types::RvData::from(
-                self.periph.read_error_status(),
+                self.periph.read_error_status().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x35..=0x37) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x38) => Ok(emulator_types::RvData::from(
-                self.periph.read_event_enable(),
+                self.periph.read_event_enable().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x39..=0x3b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
@@ -165,7 +291,7 @@ impl emulator_bus::Bus for SpiHostBus {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => {
                 self.periph
-                    .write_interrupt_state(INTERRUPT_STATE::from(val));
+                    .write_interrupt_state(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 1..=3) => {
@@ -173,42 +299,47 @@ impl emulator_bus::Bus for SpiHostBus {
             }
             (emulator_types::RvSize::Word, 4) => {
                 self.periph
-                    .write_interrupt_enable(INTERRUPT_ENABLE::from(val));
+                    .write_interrupt_enable(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 5..=7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 8) => {
-                self.periph.write_interrupt_test(INTERRUPT_TEST::from(val));
+                self.periph
+                    .write_interrupt_test(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 9..=0xb) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xc) => {
-                self.periph.write_alert_test(ALERT_TEST::from(val));
+                self.periph
+                    .write_alert_test(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xd..=0xf) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x10) => {
-                self.periph.write_control(CONTROL::from(val));
+                self.periph
+                    .write_control(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x11..=0x13) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x14) => {
-                self.periph.write_status(STATUS::from(val));
+                self.periph
+                    .write_status(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x15..=0x17) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x18) => {
-                self.periph.write_configopts(CONFIGOPTS::from(val));
+                self.periph
+                    .write_configopts(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x19..=0x1b) => {
@@ -222,7 +353,8 @@ impl emulator_bus::Bus for SpiHostBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x24) => {
-                self.periph.write_command(COMMAND::from(val));
+                self.periph
+                    .write_command(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x25..=0x27) => {
@@ -236,21 +368,24 @@ impl emulator_bus::Bus for SpiHostBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x30) => {
-                self.periph.write_error_enable(ERROR_ENABLE::from(val));
+                self.periph
+                    .write_error_enable(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x31..=0x33) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x34) => {
-                self.periph.write_error_status(ERROR_STATUS::from(val));
+                self.periph
+                    .write_error_status(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x35..=0x37) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x38) => {
-                self.periph.write_event_enable(EVENT_ENABLE::from(val));
+                self.periph
+                    .write_event_enable(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x39..=0x3b) => {

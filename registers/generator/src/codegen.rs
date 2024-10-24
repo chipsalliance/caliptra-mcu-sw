@@ -3,7 +3,11 @@ Licensed under the Apache-2.0 license.
 --*/
 
 use crate::schema::{Register, RegisterBlock, RegisterType, RegisterWidth, ValidatedRegisterBlock};
-use std::{collections::HashSet, rc::Rc, sync::atomic::AtomicUsize};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+    sync::atomic::AtomicUsize,
+};
 
 pub static TYPE_NUM: AtomicUsize = AtomicUsize::new(0);
 
@@ -204,8 +208,13 @@ pub fn generate_code(
     crate_prefix: &str,
     block: &ValidatedRegisterBlock,
     is_root_module: bool,
+    register_types_to_crates: &mut HashMap<String, String>,
 ) -> String {
-    let mut bit_tokens = generate_bitfields(block.register_types().values().map(|x| x.clone()));
+    let mut bit_tokens = generate_bitfields(
+        block.register_types().values().map(|x| x.clone()),
+        block.block().name.clone(),
+        register_types_to_crates,
+    );
     bit_tokens += "\n";
     bit_tokens += &generate_bitfields(
         block
@@ -213,6 +222,8 @@ pub fn generate_code(
             .declared_register_types
             .iter()
             .map(|x| x.clone()),
+        block.block().name.clone(),
+        register_types_to_crates,
     );
     bit_tokens = indent(&bit_tokens, 4);
 
@@ -372,7 +383,11 @@ fn generate_reg_structs(crate_prefix: &str, block: &RegisterBlock) -> String {
     tokens
 }
 
-fn generate_bitfields(register_types: impl Iterator<Item = Rc<RegisterType>>) -> String {
+fn generate_bitfields(
+    register_types: impl Iterator<Item = Rc<RegisterType>>,
+    reg_crate: String,
+    register_types_to_crates: &mut HashMap<String, String>,
+) -> String {
     let mut tokens8 = String::new();
     let mut tokens16 = String::new();
     let mut tokens32 = String::new();
@@ -386,6 +401,7 @@ fn generate_bitfields(register_types: impl Iterator<Item = Rc<RegisterType>>) ->
             continue;
         }
         let name = camel_case(rt.name.clone().unwrap().as_str());
+        register_types_to_crates.insert(rt.name.clone().unwrap(), reg_crate.clone());
         let mut field_tokens = String::new();
         field_tokens += &format!("pub {name} [\n");
         for field in rt.fields.iter() {
