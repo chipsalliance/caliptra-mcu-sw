@@ -620,71 +620,71 @@ fn emu_make_root_bus<'a>(
     }
     let mut tokens = TokenStream::new();
     tokens.extend(quote! {
-            pub struct AutoRootBus {
+        pub struct AutoRootBus {
+            delegate: Option<Box<dyn emulator_bus::Bus>>,
+            #field_tokens
+        }
+        impl AutoRootBus {
+            #[allow(clippy::too_many_arguments)]
+            pub fn new(
                 delegate: Option<Box<dyn emulator_bus::Bus>>,
-                #field_tokens
-            }
-            impl AutoRootBus {
-                #[allow(clippy::too_many_arguments)]
-                pub fn new(
-                    delegate: Option<Box<dyn emulator_bus::Bus>>,
-                    #constructor_params_tokens
-                ) -> Self {
-                    Self {
-                        delegate,
-                        #constructor_tokens
-                    }
+                #constructor_params_tokens
+            ) -> Self {
+                Self {
+                    delegate,
+                    #constructor_tokens
                 }
             }
-            impl emulator_bus::Bus for AutoRootBus {
-                fn read(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr) -> Result<emulator_types::RvData, emulator_bus::BusError> {
-                    let result = match addr {
-                        #read_tokens
-                        _ => Err(emulator_bus::BusError::LoadAccessFault),
-                    };
-                    if let Some(delegate) = self.delegate.as_mut() {
-                        match result {
-                            Err(emulator_bus::BusError::LoadAccessFault) => delegate.read(size, addr),
-                            _ => result,
-                        }
-                    } else {
-                        result
+        }
+        impl emulator_bus::Bus for AutoRootBus {
+            fn read(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr) -> Result<emulator_types::RvData, emulator_bus::BusError> {
+                let result = match addr {
+                    #read_tokens
+                    _ => Err(emulator_bus::BusError::LoadAccessFault),
+                };
+                if let Some(delegate) = self.delegate.as_mut() {
+                    match result {
+                        Err(emulator_bus::BusError::LoadAccessFault) => delegate.read(size, addr),
+                        _ => result,
                     }
-                }
-                fn write(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr, val: emulator_types::RvData) -> Result<(), emulator_bus::BusError> {
-                    let result = match addr {
-                        #write_tokens
-                        _ => Err(emulator_bus::BusError::StoreAccessFault),
-                    };
-                    if let Some(delegate) = self.delegate.as_mut() {
-                        match result {
-                            Err(emulator_bus::BusError::StoreAccessFault) => delegate.write(size, addr, val),
-                            _ => result,
-                        }
-                    } else {
-                        result
-                    }
-                }
-                fn poll(&mut self) {
-                    #poll_tokens
-                    if let Some(delegate) = self.delegate.as_mut() {
-                        delegate.poll();
-                    }
-                }
-                fn warm_reset(&mut self) {
-                    #warm_reset_tokens
-                    if let Some(delegate) = self.delegate.as_mut() {
-                        delegate.warm_reset();
-                    }
-                }
-                fn update_reset(&mut self) {
-                    #update_reset_tokens
-                    if let Some(delegate) = self.delegate.as_mut() {
-                        delegate.update_reset();
-                    }
+                } else {
+                    result
                 }
             }
-        });
+            fn write(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr, val: emulator_types::RvData) -> Result<(), emulator_bus::BusError> {
+                let result = match addr {
+                    #write_tokens
+                    _ => Err(emulator_bus::BusError::StoreAccessFault),
+                };
+                if let Some(delegate) = self.delegate.as_mut() {
+                    match result {
+                        Err(emulator_bus::BusError::StoreAccessFault) => delegate.write(size, addr, val),
+                        _ => result,
+                    }
+                } else {
+                    result
+                }
+            }
+            fn poll(&mut self) {
+                #poll_tokens
+                if let Some(delegate) = self.delegate.as_mut() {
+                    delegate.poll();
+                }
+            }
+            fn warm_reset(&mut self) {
+                #warm_reset_tokens
+                if let Some(delegate) = self.delegate.as_mut() {
+                    delegate.warm_reset();
+                }
+            }
+            fn update_reset(&mut self) {
+                #update_reset_tokens
+                if let Some(delegate) = self.delegate.as_mut() {
+                    delegate.update_reset();
+                }
+            }
+        }
+    });
     Ok(tokens)
 }
 
