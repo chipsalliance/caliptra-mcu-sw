@@ -4,1103 +4,62 @@
 // , caliptra-ss repo at 9911c2b0e4bac9e4b48f6c2155c86cb116159734
 // , and i3c-core repo at d5c715103f529ade0e5d375a53c5692daaa9c54b
 //
-#[derive(Clone, Copy, Default)]
-pub struct InterruptStateReadVal(u32);
-impl InterruptStateReadVal {
-    /// raised if the transmit FIFO is past the high-water mark.
-    #[inline(always)]
-    pub fn tx_watermark(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// raised if the receive FIFO is past the high-water mark.
-    #[inline(always)]
-    pub fn rx_watermark(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// raised if the transmit FIFO has emptied and no transmit is ongoing.
-    #[inline(always)]
-    pub fn tx_empty(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// raised if the receive FIFO has overflowed.
-    #[inline(always)]
-    pub fn rx_overflow(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    /// raised if a framing error has been detected on receive.
-    #[inline(always)]
-    pub fn rx_frame_err(&self) -> bool {
-        ((self.0 >> 4) & 1) != 0
-    }
-    /// raised if break condition has been detected on receive.
-    #[inline(always)]
-    pub fn rx_break_err(&self) -> bool {
-        ((self.0 >> 5) & 1) != 0
-    }
-    /// raised if RX FIFO has characters remaining in the FIFO without being
-    /// retrieved for the programmed time period.
-    #[inline(always)]
-    pub fn rx_timeout(&self) -> bool {
-        ((self.0 >> 6) & 1) != 0
-    }
-    /// raised if the receiver has detected a parity error.
-    #[inline(always)]
-    pub fn rx_parity_err(&self) -> bool {
-        ((self.0 >> 7) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> InterruptStateWriteVal {
-        InterruptStateWriteVal(self.0)
-    }
-}
-impl From<u32> for InterruptStateReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InterruptStateReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: InterruptStateReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InterruptStateWriteVal(u32);
-impl InterruptStateWriteVal {
-    /// raised if the transmit FIFO is past the high-water mark.
-    #[inline(always)]
-    pub fn tx_watermark(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// raised if the receive FIFO is past the high-water mark.
-    #[inline(always)]
-    pub fn rx_watermark(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    /// raised if the transmit FIFO has emptied and no transmit is ongoing.
-    #[inline(always)]
-    pub fn tx_empty(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    /// raised if the receive FIFO has overflowed.
-    #[inline(always)]
-    pub fn rx_overflow(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-    /// raised if a framing error has been detected on receive.
-    #[inline(always)]
-    pub fn rx_frame_err(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 4)) | (u32::from(val) << 4))
-    }
-    /// raised if break condition has been detected on receive.
-    #[inline(always)]
-    pub fn rx_break_err(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 5)) | (u32::from(val) << 5))
-    }
-    /// raised if RX FIFO has characters remaining in the FIFO without being
-    /// retrieved for the programmed time period.
-    #[inline(always)]
-    pub fn rx_timeout(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 6)) | (u32::from(val) << 6))
-    }
-    /// raised if the receiver has detected a parity error.
-    #[inline(always)]
-    pub fn rx_parity_err(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 7)) | (u32::from(val) << 7))
-    }
-}
-impl From<u32> for InterruptStateWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InterruptStateWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: InterruptStateWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InterruptEnableReadVal(u32);
-impl InterruptEnableReadVal {
-    /// Enable interrupt when tx_watermark is set.
-    #[inline(always)]
-    pub fn tx_watermark(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Enable interrupt when rx_watermark is set.
-    #[inline(always)]
-    pub fn rx_watermark(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Enable interrupt when tx_empty is set.
-    #[inline(always)]
-    pub fn tx_empty(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// Enable interrupt when rx_overflow is set.
-    #[inline(always)]
-    pub fn rx_overflow(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    /// Enable interrupt when rx_frame_err is set.
-    #[inline(always)]
-    pub fn rx_frame_err(&self) -> bool {
-        ((self.0 >> 4) & 1) != 0
-    }
-    /// Enable interrupt when rx_break_err is set.
-    #[inline(always)]
-    pub fn rx_break_err(&self) -> bool {
-        ((self.0 >> 5) & 1) != 0
-    }
-    /// Enable interrupt when rx_timeout is set.
-    #[inline(always)]
-    pub fn rx_timeout(&self) -> bool {
-        ((self.0 >> 6) & 1) != 0
-    }
-    /// Enable interrupt when rx_parity_err is set.
-    #[inline(always)]
-    pub fn rx_parity_err(&self) -> bool {
-        ((self.0 >> 7) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> InterruptEnableWriteVal {
-        InterruptEnableWriteVal(self.0)
-    }
-}
-impl From<u32> for InterruptEnableReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InterruptEnableReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: InterruptEnableReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InterruptEnableWriteVal(u32);
-impl InterruptEnableWriteVal {
-    /// Enable interrupt when tx_watermark is set.
-    #[inline(always)]
-    pub fn tx_watermark(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// Enable interrupt when rx_watermark is set.
-    #[inline(always)]
-    pub fn rx_watermark(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    /// Enable interrupt when tx_empty is set.
-    #[inline(always)]
-    pub fn tx_empty(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    /// Enable interrupt when rx_overflow is set.
-    #[inline(always)]
-    pub fn rx_overflow(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-    /// Enable interrupt when rx_frame_err is set.
-    #[inline(always)]
-    pub fn rx_frame_err(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 4)) | (u32::from(val) << 4))
-    }
-    /// Enable interrupt when rx_break_err is set.
-    #[inline(always)]
-    pub fn rx_break_err(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 5)) | (u32::from(val) << 5))
-    }
-    /// Enable interrupt when rx_timeout is set.
-    #[inline(always)]
-    pub fn rx_timeout(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 6)) | (u32::from(val) << 6))
-    }
-    /// Enable interrupt when rx_parity_err is set.
-    #[inline(always)]
-    pub fn rx_parity_err(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 7)) | (u32::from(val) << 7))
-    }
-}
-impl From<u32> for InterruptEnableWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InterruptEnableWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: InterruptEnableWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InterruptTestReadVal(u32);
-impl InterruptTestReadVal {
-    /// Write 1 to force tx_watermark to 1.
-    #[inline(always)]
-    pub fn tx_watermark(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Write 1 to force rx_watermark to 1.
-    #[inline(always)]
-    pub fn rx_watermark(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Write 1 to force tx_empty to 1.
-    #[inline(always)]
-    pub fn tx_empty(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// Write 1 to force rx_overflow to 1.
-    #[inline(always)]
-    pub fn rx_overflow(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    /// Write 1 to force rx_frame_err to 1.
-    #[inline(always)]
-    pub fn rx_frame_err(&self) -> bool {
-        ((self.0 >> 4) & 1) != 0
-    }
-    /// Write 1 to force rx_break_err to 1.
-    #[inline(always)]
-    pub fn rx_break_err(&self) -> bool {
-        ((self.0 >> 5) & 1) != 0
-    }
-    /// Write 1 to force rx_timeout to 1.
-    #[inline(always)]
-    pub fn rx_timeout(&self) -> bool {
-        ((self.0 >> 6) & 1) != 0
-    }
-    /// Write 1 to force rx_parity_err to 1.
-    #[inline(always)]
-    pub fn rx_parity_err(&self) -> bool {
-        ((self.0 >> 7) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> InterruptTestWriteVal {
-        InterruptTestWriteVal(self.0)
-    }
-}
-impl From<u32> for InterruptTestReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InterruptTestReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: InterruptTestReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InterruptTestWriteVal(u32);
-impl InterruptTestWriteVal {
-    /// Write 1 to force tx_watermark to 1.
-    #[inline(always)]
-    pub fn tx_watermark(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// Write 1 to force rx_watermark to 1.
-    #[inline(always)]
-    pub fn rx_watermark(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    /// Write 1 to force tx_empty to 1.
-    #[inline(always)]
-    pub fn tx_empty(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    /// Write 1 to force rx_overflow to 1.
-    #[inline(always)]
-    pub fn rx_overflow(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-    /// Write 1 to force rx_frame_err to 1.
-    #[inline(always)]
-    pub fn rx_frame_err(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 4)) | (u32::from(val) << 4))
-    }
-    /// Write 1 to force rx_break_err to 1.
-    #[inline(always)]
-    pub fn rx_break_err(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 5)) | (u32::from(val) << 5))
-    }
-    /// Write 1 to force rx_timeout to 1.
-    #[inline(always)]
-    pub fn rx_timeout(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 6)) | (u32::from(val) << 6))
-    }
-    /// Write 1 to force rx_parity_err to 1.
-    #[inline(always)]
-    pub fn rx_parity_err(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 7)) | (u32::from(val) << 7))
-    }
-}
-impl From<u32> for InterruptTestWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InterruptTestWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: InterruptTestWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct AlertTestReadVal(u32);
-impl AlertTestReadVal {
-    /// Write 1 to trigger one alert event of this kind.
-    #[inline(always)]
-    pub fn fatal_fault(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> AlertTestWriteVal {
-        AlertTestWriteVal(self.0)
-    }
-}
-impl From<u32> for AlertTestReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<AlertTestReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: AlertTestReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct AlertTestWriteVal(u32);
-impl AlertTestWriteVal {
-    /// Write 1 to trigger one alert event of this kind.
-    #[inline(always)]
-    pub fn fatal_fault(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for AlertTestWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<AlertTestWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: AlertTestWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CtrlReadVal(u32);
-impl CtrlReadVal {
-    /// TX enable
-    #[inline(always)]
-    pub fn tx(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// RX enable
-    #[inline(always)]
-    pub fn rx(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// RX noise filter enable.
-    /// If the noise filter is enabled, RX line goes through the 3-tap
-    /// repetition code. It ignores single IP clock period noise.
-    #[inline(always)]
-    pub fn nf(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// System loopback enable.
-    ///
-    /// If this bit is turned on, any outgoing bits to TX are received through RX.
-    /// See Block Diagram. Note that the TX line goes 1 if System loopback is enabled.
-    #[inline(always)]
-    pub fn slpbk(&self) -> bool {
-        ((self.0 >> 4) & 1) != 0
-    }
-    /// Line loopback enable.
-    ///
-    /// If this bit is turned on, incoming bits are forwarded to TX for testing purpose.
-    /// See Block Diagram. Note that the internal design sees RX value as 1 always if line
-    /// loopback is enabled.
-    #[inline(always)]
-    pub fn llpbk(&self) -> bool {
-        ((self.0 >> 5) & 1) != 0
-    }
-    /// If true, parity is enabled in both RX and TX directions.
-    #[inline(always)]
-    pub fn parity_en(&self) -> bool {
-        ((self.0 >> 6) & 1) != 0
-    }
-    /// If PARITY_EN is true, this determines the type, 1 for odd parity, 0 for even.
-    #[inline(always)]
-    pub fn parity_odd(&self) -> bool {
-        ((self.0 >> 7) & 1) != 0
-    }
-    /// Trigger level for RX break detection. Sets the number of character
-    /// times the line must be low to detect a break.
-    #[inline(always)]
-    pub fn rxblvl(&self) -> u32 {
-        (self.0 >> 8) & 3
-    }
-    /// BAUD clock rate control.
-    #[inline(always)]
-    pub fn nco(&self) -> u32 {
-        (self.0 >> 16) & 0xffff
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CtrlWriteVal {
-        CtrlWriteVal(self.0)
-    }
-}
-impl From<u32> for CtrlReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CtrlReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CtrlReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CtrlWriteVal(u32);
-impl CtrlWriteVal {
-    /// TX enable
-    #[inline(always)]
-    pub fn tx(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// RX enable
-    #[inline(always)]
-    pub fn rx(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    /// RX noise filter enable.
-    /// If the noise filter is enabled, RX line goes through the 3-tap
-    /// repetition code. It ignores single IP clock period noise.
-    #[inline(always)]
-    pub fn nf(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    /// System loopback enable.
-    ///
-    /// If this bit is turned on, any outgoing bits to TX are received through RX.
-    /// See Block Diagram. Note that the TX line goes 1 if System loopback is enabled.
-    #[inline(always)]
-    pub fn slpbk(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 4)) | (u32::from(val) << 4))
-    }
-    /// Line loopback enable.
-    ///
-    /// If this bit is turned on, incoming bits are forwarded to TX for testing purpose.
-    /// See Block Diagram. Note that the internal design sees RX value as 1 always if line
-    /// loopback is enabled.
-    #[inline(always)]
-    pub fn llpbk(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 5)) | (u32::from(val) << 5))
-    }
-    /// If true, parity is enabled in both RX and TX directions.
-    #[inline(always)]
-    pub fn parity_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 6)) | (u32::from(val) << 6))
-    }
-    /// If PARITY_EN is true, this determines the type, 1 for odd parity, 0 for even.
-    #[inline(always)]
-    pub fn parity_odd(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 7)) | (u32::from(val) << 7))
-    }
-    /// Trigger level for RX break detection. Sets the number of character
-    /// times the line must be low to detect a break.
-    #[inline(always)]
-    pub fn rxblvl(self, val: u32) -> Self {
-        Self((self.0 & !(3 << 8)) | ((val & 3) << 8))
-    }
-    /// BAUD clock rate control.
-    #[inline(always)]
-    pub fn nco(self, val: u32) -> Self {
-        Self((self.0 & !(0xffff << 16)) | ((val & 0xffff) << 16))
-    }
-}
-impl From<u32> for CtrlWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CtrlWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CtrlWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct StatusReadVal(u32);
-impl StatusReadVal {
-    /// TX buffer is full
-    #[inline(always)]
-    pub fn txfull(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// RX buffer is full
-    #[inline(always)]
-    pub fn rxfull(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// TX FIFO is empty
-    #[inline(always)]
-    pub fn txempty(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// TX FIFO is empty and all bits have been transmitted
-    #[inline(always)]
-    pub fn txidle(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    /// RX is idle
-    #[inline(always)]
-    pub fn rxidle(&self) -> bool {
-        ((self.0 >> 4) & 1) != 0
-    }
-    /// RX FIFO is empty
-    #[inline(always)]
-    pub fn rxempty(&self) -> bool {
-        ((self.0 >> 5) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> StatusWriteVal {
-        StatusWriteVal(self.0)
-    }
-}
-impl From<u32> for StatusReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<StatusReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: StatusReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct StatusWriteVal(u32);
-impl StatusWriteVal {
-    /// TX buffer is full
-    #[inline(always)]
-    pub fn txfull(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// RX buffer is full
-    #[inline(always)]
-    pub fn rxfull(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    /// TX FIFO is empty
-    #[inline(always)]
-    pub fn txempty(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    /// TX FIFO is empty and all bits have been transmitted
-    #[inline(always)]
-    pub fn txidle(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-    /// RX is idle
-    #[inline(always)]
-    pub fn rxidle(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 4)) | (u32::from(val) << 4))
-    }
-    /// RX FIFO is empty
-    #[inline(always)]
-    pub fn rxempty(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 5)) | (u32::from(val) << 5))
-    }
-}
-impl From<u32> for StatusWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<StatusWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: StatusWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct RdataReadVal(u32);
-impl RdataReadVal {
-    /// UART read data
-    #[inline(always)]
-    pub fn rdata(&self) -> u32 {
-        self.0 & 0xff
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> RdataWriteVal {
-        RdataWriteVal(self.0)
-    }
-}
-impl From<u32> for RdataReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<RdataReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: RdataReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct RdataWriteVal(u32);
-impl RdataWriteVal {
-    /// UART read data
-    #[inline(always)]
-    pub fn rdata(self, val: u32) -> Self {
-        Self((self.0 & !(0xff)) | (val & 0xff))
-    }
-}
-impl From<u32> for RdataWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<RdataWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: RdataWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct WdataReadVal(u32);
-impl WdataReadVal {
-    /// UART write data
-    #[inline(always)]
-    pub fn wdata(&self) -> u32 {
-        self.0 & 0xff
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> WdataWriteVal {
-        WdataWriteVal(self.0)
-    }
-}
-impl From<u32> for WdataReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<WdataReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: WdataReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct WdataWriteVal(u32);
-impl WdataWriteVal {
-    /// UART write data
-    #[inline(always)]
-    pub fn wdata(self, val: u32) -> Self {
-        Self((self.0 & !(0xff)) | (val & 0xff))
-    }
-}
-impl From<u32> for WdataWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<WdataWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: WdataWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FifoCtrlReadVal(u32);
-impl FifoCtrlReadVal {
-    /// RX fifo reset. Write 1 to the register resets RX_FIFO. Read returns 0
-    #[inline(always)]
-    pub fn rxrst(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// TX fifo reset. Write 1 to the register resets TX_FIFO. Read returns 0
-    #[inline(always)]
-    pub fn txrst(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Trigger level for RX interrupts. If the FIFO depth is greater than or equal to
-    /// the setting, it raises rx_watermark interrupt.
-    #[inline(always)]
-    pub fn rxilvl(&self) -> u32 {
-        (self.0 >> 2) & 7
-    }
-    /// Trigger level for TX interrupts. If the FIFO depth is less than the setting, it
-    /// raises tx_watermark interrupt.
-    #[inline(always)]
-    pub fn txilvl(&self) -> u32 {
-        (self.0 >> 5) & 3
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> FifoCtrlWriteVal {
-        FifoCtrlWriteVal(self.0)
-    }
-}
-impl From<u32> for FifoCtrlReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FifoCtrlReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: FifoCtrlReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FifoCtrlWriteVal(u32);
-impl FifoCtrlWriteVal {
-    /// RX fifo reset. Write 1 to the register resets RX_FIFO. Read returns 0
-    #[inline(always)]
-    pub fn rxrst(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// TX fifo reset. Write 1 to the register resets TX_FIFO. Read returns 0
-    #[inline(always)]
-    pub fn txrst(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    /// Trigger level for RX interrupts. If the FIFO depth is greater than or equal to
-    /// the setting, it raises rx_watermark interrupt.
-    #[inline(always)]
-    pub fn rxilvl(self, val: u32) -> Self {
-        Self((self.0 & !(7 << 2)) | ((val & 7) << 2))
-    }
-    /// Trigger level for TX interrupts. If the FIFO depth is less than the setting, it
-    /// raises tx_watermark interrupt.
-    #[inline(always)]
-    pub fn txilvl(self, val: u32) -> Self {
-        Self((self.0 & !(3 << 5)) | ((val & 3) << 5))
-    }
-}
-impl From<u32> for FifoCtrlWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FifoCtrlWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: FifoCtrlWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FifoStatusReadVal(u32);
-impl FifoStatusReadVal {
-    /// Current fill level of TX fifo
-    #[inline(always)]
-    pub fn txlvl(&self) -> u32 {
-        self.0 & 0x3f
-    }
-    /// Current fill level of RX fifo
-    #[inline(always)]
-    pub fn rxlvl(&self) -> u32 {
-        (self.0 >> 16) & 0x3f
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> FifoStatusWriteVal {
-        FifoStatusWriteVal(self.0)
-    }
-}
-impl From<u32> for FifoStatusReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FifoStatusReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: FifoStatusReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FifoStatusWriteVal(u32);
-impl FifoStatusWriteVal {
-    /// Current fill level of TX fifo
-    #[inline(always)]
-    pub fn txlvl(self, val: u32) -> Self {
-        Self((self.0 & !(0x3f)) | (val & 0x3f))
-    }
-    /// Current fill level of RX fifo
-    #[inline(always)]
-    pub fn rxlvl(self, val: u32) -> Self {
-        Self((self.0 & !(0x3f << 16)) | ((val & 0x3f) << 16))
-    }
-}
-impl From<u32> for FifoStatusWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FifoStatusWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: FifoStatusWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct OvrdReadVal(u32);
-impl OvrdReadVal {
-    /// Enable TX pin override control
-    #[inline(always)]
-    pub fn txen(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Write to set the value of the TX pin
-    #[inline(always)]
-    pub fn txval(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> OvrdWriteVal {
-        OvrdWriteVal(self.0)
-    }
-}
-impl From<u32> for OvrdReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<OvrdReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: OvrdReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct OvrdWriteVal(u32);
-impl OvrdWriteVal {
-    /// Enable TX pin override control
-    #[inline(always)]
-    pub fn txen(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// Write to set the value of the TX pin
-    #[inline(always)]
-    pub fn txval(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-}
-impl From<u32> for OvrdWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<OvrdWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: OvrdWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct ValReadVal(u32);
-impl ValReadVal {
-    /// Last 16 oversampled values of RX. Most recent bit is bit 0, oldest 15.
-    #[inline(always)]
-    pub fn rx(&self) -> u32 {
-        self.0 & 0xffff
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> ValWriteVal {
-        ValWriteVal(self.0)
-    }
-}
-impl From<u32> for ValReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<ValReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: ValReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct ValWriteVal(u32);
-impl ValWriteVal {
-    /// Last 16 oversampled values of RX. Most recent bit is bit 0, oldest 15.
-    #[inline(always)]
-    pub fn rx(self, val: u32) -> Self {
-        Self((self.0 & !(0xffff)) | (val & 0xffff))
-    }
-}
-impl From<u32> for ValWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<ValWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: ValWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct TimeoutCtrlReadVal(u32);
-impl TimeoutCtrlReadVal {
-    /// RX timeout value in UART bit times
-    #[inline(always)]
-    pub fn val(&self) -> u32 {
-        self.0 & 0xffffff
-    }
-    /// Enable RX timeout feature
-    #[inline(always)]
-    pub fn en(&self) -> bool {
-        ((self.0 >> 31) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> TimeoutCtrlWriteVal {
-        TimeoutCtrlWriteVal(self.0)
-    }
-}
-impl From<u32> for TimeoutCtrlReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<TimeoutCtrlReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: TimeoutCtrlReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct TimeoutCtrlWriteVal(u32);
-impl TimeoutCtrlWriteVal {
-    /// RX timeout value in UART bit times
-    #[inline(always)]
-    pub fn val(self, val: u32) -> Self {
-        Self((self.0 & !(0xffffff)) | (val & 0xffffff))
-    }
-    /// Enable RX timeout feature
-    #[inline(always)]
-    pub fn en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 31)) | (u32::from(val) << 31))
-    }
-}
-impl From<u32> for TimeoutCtrlWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<TimeoutCtrlWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: TimeoutCtrlWriteVal) -> u32 {
-        val.0
-    }
-}
-pub mod enums {
-    //! Enumerations used by some register fields.
-    pub mod selector {}
-}
 pub trait UartPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
-    fn read_interrupt_state(&mut self) -> InterruptStateWriteVal {
-        InterruptStateWriteVal::default()
+    fn read_interrupt_state(&mut self) -> INTERRUPT_STATE {
+        INTERRUPT_STATE::default()
     }
-    fn write_interrupt_state(&mut self, _val: InterruptStateReadVal) {}
-    fn read_interrupt_enable(&mut self) -> InterruptEnableWriteVal {
-        InterruptEnableWriteVal::default()
+    fn write_interrupt_state(&mut self, _val: INTERRUPT_STATE) {}
+    fn read_interrupt_enable(&mut self) -> INTERRUPT_ENABLE {
+        INTERRUPT_ENABLE::default()
     }
-    fn write_interrupt_enable(&mut self, _val: InterruptEnableReadVal) {}
-    fn read_interrupt_test(&mut self) -> InterruptTestWriteVal {
-        InterruptTestWriteVal::default()
+    fn write_interrupt_enable(&mut self, _val: INTERRUPT_ENABLE) {}
+    fn read_interrupt_test(&mut self) -> INTERRUPT_TEST {
+        INTERRUPT_TEST::default()
     }
-    fn write_interrupt_test(&mut self, _val: InterruptTestReadVal) {}
-    fn read_alert_test(&mut self) -> AlertTestWriteVal {
-        AlertTestWriteVal::default()
+    fn write_interrupt_test(&mut self, _val: INTERRUPT_TEST) {}
+    fn read_alert_test(&mut self) -> ALERT_TEST {
+        ALERT_TEST::default()
     }
-    fn write_alert_test(&mut self, _val: AlertTestReadVal) {}
-    fn read_ctrl(&mut self) -> CtrlWriteVal {
-        CtrlWriteVal::default()
+    fn write_alert_test(&mut self, _val: ALERT_TEST) {}
+    fn read_ctrl(&mut self) -> CTRL {
+        CTRL::default()
     }
-    fn write_ctrl(&mut self, _val: CtrlReadVal) {}
-    fn read_status(&mut self) -> StatusWriteVal {
-        StatusWriteVal::default()
+    fn write_ctrl(&mut self, _val: CTRL) {}
+    fn read_status(&mut self) -> STATUS {
+        STATUS::default()
     }
-    fn write_status(&mut self, _val: StatusReadVal) {}
-    fn read_rdata(&mut self) -> RdataWriteVal {
-        RdataWriteVal::default()
+    fn write_status(&mut self, _val: STATUS) {}
+    fn read_rdata(&mut self) -> RDATA {
+        RDATA::default()
     }
-    fn write_rdata(&mut self, _val: RdataReadVal) {}
-    fn read_wdata(&mut self) -> WdataWriteVal {
-        WdataWriteVal::default()
+    fn write_rdata(&mut self, _val: RDATA) {}
+    fn read_wdata(&mut self) -> WDATA {
+        WDATA::default()
     }
-    fn write_wdata(&mut self, _val: WdataReadVal) {}
-    fn read_fifo_ctrl(&mut self) -> FifoCtrlWriteVal {
-        FifoCtrlWriteVal::default()
+    fn write_wdata(&mut self, _val: WDATA) {}
+    fn read_fifo_ctrl(&mut self) -> FIFO_CTRL {
+        FIFO_CTRL::default()
     }
-    fn write_fifo_ctrl(&mut self, _val: FifoCtrlReadVal) {}
-    fn read_fifo_status(&mut self) -> FifoStatusWriteVal {
-        FifoStatusWriteVal::default()
+    fn write_fifo_ctrl(&mut self, _val: FIFO_CTRL) {}
+    fn read_fifo_status(&mut self) -> FIFO_STATUS {
+        FIFO_STATUS::default()
     }
-    fn write_fifo_status(&mut self, _val: FifoStatusReadVal) {}
-    fn read_ovrd(&mut self) -> OvrdWriteVal {
-        OvrdWriteVal::default()
+    fn write_fifo_status(&mut self, _val: FIFO_STATUS) {}
+    fn read_ovrd(&mut self) -> OVRD {
+        OVRD::default()
     }
-    fn write_ovrd(&mut self, _val: OvrdReadVal) {}
-    fn read_val(&mut self) -> ValWriteVal {
-        ValWriteVal::default()
+    fn write_ovrd(&mut self, _val: OVRD) {}
+    fn read_val(&mut self) -> VAL {
+        VAL::default()
     }
-    fn write_val(&mut self, _val: ValReadVal) {}
-    fn read_timeout_ctrl(&mut self) -> TimeoutCtrlWriteVal {
-        TimeoutCtrlWriteVal::default()
+    fn write_val(&mut self, _val: VAL) {}
+    fn read_timeout_ctrl(&mut self) -> TIMEOUT_CTRL {
+        TIMEOUT_CTRL::default()
     }
-    fn write_timeout_ctrl(&mut self, _val: TimeoutCtrlReadVal) {}
+    fn write_timeout_ctrl(&mut self, _val: TIMEOUT_CTRL) {}
 }
 pub struct UartBus {
     pub periph: Box<dyn UartPeripheral>,
@@ -1202,7 +161,7 @@ impl emulator_bus::Bus for UartBus {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => {
                 self.periph
-                    .write_interrupt_state(InterruptStateReadVal::from(val));
+                    .write_interrupt_state(INTERRUPT_STATE::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 1..=3) => {
@@ -1210,86 +169,84 @@ impl emulator_bus::Bus for UartBus {
             }
             (emulator_types::RvSize::Word, 4) => {
                 self.periph
-                    .write_interrupt_enable(InterruptEnableReadVal::from(val));
+                    .write_interrupt_enable(INTERRUPT_ENABLE::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 5..=7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 8) => {
-                self.periph
-                    .write_interrupt_test(InterruptTestReadVal::from(val));
+                self.periph.write_interrupt_test(INTERRUPT_TEST::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 9..=0xb) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xc) => {
-                self.periph.write_alert_test(AlertTestReadVal::from(val));
+                self.periph.write_alert_test(ALERT_TEST::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xd..=0xf) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x10) => {
-                self.periph.write_ctrl(CtrlReadVal::from(val));
+                self.periph.write_ctrl(CTRL::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x11..=0x13) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x14) => {
-                self.periph.write_status(StatusReadVal::from(val));
+                self.periph.write_status(STATUS::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x15..=0x17) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x18) => {
-                self.periph.write_rdata(RdataReadVal::from(val));
+                self.periph.write_rdata(RDATA::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x19..=0x1b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1c) => {
-                self.periph.write_wdata(WdataReadVal::from(val));
+                self.periph.write_wdata(WDATA::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1d..=0x1f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x20) => {
-                self.periph.write_fifo_ctrl(FifoCtrlReadVal::from(val));
+                self.periph.write_fifo_ctrl(FIFO_CTRL::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x21..=0x23) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x24) => {
-                self.periph.write_fifo_status(FifoStatusReadVal::from(val));
+                self.periph.write_fifo_status(FIFO_STATUS::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x25..=0x27) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x28) => {
-                self.periph.write_ovrd(OvrdReadVal::from(val));
+                self.periph.write_ovrd(OVRD::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x29..=0x2b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x2c) => {
-                self.periph.write_val(ValReadVal::from(val));
+                self.periph.write_val(VAL::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x2d..=0x2f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x30) => {
-                self.periph
-                    .write_timeout_ctrl(TimeoutCtrlReadVal::from(val));
+                self.periph.write_timeout_ctrl(TIMEOUT_CTRL::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x31..=0x33) => {

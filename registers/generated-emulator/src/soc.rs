@@ -4,2530 +4,18 @@
 // , caliptra-ss repo at 9911c2b0e4bac9e4b48f6c2155c86cb116159734
 // , and i3c-core repo at d5c715103f529ade0e5d375a53c5692daaa9c54b
 //
-#[derive(Clone, Copy, Default)]
-pub struct CptraHwErrorFatalReadVal(u32);
-impl CptraHwErrorFatalReadVal {
-    #[inline(always)]
-    pub fn iccm_ecc_unc(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    #[inline(always)]
-    pub fn dccm_ecc_unc(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    #[inline(always)]
-    pub fn nmi_pin(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    #[inline(always)]
-    pub fn crypto_err(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraHwErrorFatalWriteVal {
-        CptraHwErrorFatalWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraHwErrorFatalReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraHwErrorFatalReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraHwErrorFatalReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraHwErrorFatalWriteVal(u32);
-impl CptraHwErrorFatalWriteVal {
-    #[inline(always)]
-    pub fn iccm_ecc_unc(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    #[inline(always)]
-    pub fn dccm_ecc_unc(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    #[inline(always)]
-    pub fn nmi_pin(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    #[inline(always)]
-    pub fn crypto_err(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-}
-impl From<u32> for CptraHwErrorFatalWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraHwErrorFatalWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraHwErrorFatalWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraHwErrorNonFatalReadVal(u32);
-impl CptraHwErrorNonFatalReadVal {
-    #[inline(always)]
-    pub fn mbox_prot_no_lock(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    #[inline(always)]
-    pub fn mbox_prot_ooo(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    #[inline(always)]
-    pub fn mbox_ecc_unc(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraHwErrorNonFatalWriteVal {
-        CptraHwErrorNonFatalWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraHwErrorNonFatalReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraHwErrorNonFatalReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraHwErrorNonFatalReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraHwErrorNonFatalWriteVal(u32);
-impl CptraHwErrorNonFatalWriteVal {
-    #[inline(always)]
-    pub fn mbox_prot_no_lock(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    #[inline(always)]
-    pub fn mbox_prot_ooo(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    #[inline(always)]
-    pub fn mbox_ecc_unc(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-}
-impl From<u32> for CptraHwErrorNonFatalWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraHwErrorNonFatalWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraHwErrorNonFatalWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraFlowStatusReadVal(u32);
-impl CptraFlowStatusReadVal {
-    #[inline(always)]
-    pub fn status(&self) -> u32 {
-        self.0 & 0xffffff
-    }
-    /// DEV ID CSR ready
-    #[inline(always)]
-    pub fn idevid_csr_ready(&self) -> bool {
-        ((self.0 >> 24) & 1) != 0
-    }
-    /// Boot FSM State
-    #[inline(always)]
-    pub fn boot_fsm_ps(&self) -> u32 {
-        (self.0 >> 25) & 7
-    }
-    /// Indicates Caliptra is ready for Firmware Download
-    #[inline(always)]
-    pub fn ready_for_fw(&self) -> bool {
-        ((self.0 >> 28) & 1) != 0
-    }
-    /// Indicates Caliptra is ready for RT flows
-    #[inline(always)]
-    pub fn ready_for_runtime(&self) -> bool {
-        ((self.0 >> 29) & 1) != 0
-    }
-    /// Indicates Caliptra is ready for Fuses to be programmed.
-    /// Read-only to both Caliptra and SOC.
-    #[inline(always)]
-    pub fn ready_for_fuses(&self) -> bool {
-        ((self.0 >> 30) & 1) != 0
-    }
-    /// Indicates Caliptra is has completed Mailbox Flow.
-    #[inline(always)]
-    pub fn mailbox_flow_done(&self) -> bool {
-        ((self.0 >> 31) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraFlowStatusWriteVal {
-        CptraFlowStatusWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraFlowStatusReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraFlowStatusReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraFlowStatusReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraFlowStatusWriteVal(u32);
-impl CptraFlowStatusWriteVal {
-    #[inline(always)]
-    pub fn status(self, val: u32) -> Self {
-        Self((self.0 & !(0xffffff)) | (val & 0xffffff))
-    }
-    /// DEV ID CSR ready
-    #[inline(always)]
-    pub fn idevid_csr_ready(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 24)) | (u32::from(val) << 24))
-    }
-    /// Boot FSM State
-    #[inline(always)]
-    pub fn boot_fsm_ps(self, val: u32) -> Self {
-        Self((self.0 & !(7 << 25)) | ((val & 7) << 25))
-    }
-    /// Indicates Caliptra is ready for Firmware Download
-    #[inline(always)]
-    pub fn ready_for_fw(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 28)) | (u32::from(val) << 28))
-    }
-    /// Indicates Caliptra is ready for RT flows
-    #[inline(always)]
-    pub fn ready_for_runtime(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 29)) | (u32::from(val) << 29))
-    }
-    /// Indicates Caliptra is ready for Fuses to be programmed.
-    /// Read-only to both Caliptra and SOC.
-    #[inline(always)]
-    pub fn ready_for_fuses(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 30)) | (u32::from(val) << 30))
-    }
-    /// Indicates Caliptra is has completed Mailbox Flow.
-    #[inline(always)]
-    pub fn mailbox_flow_done(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 31)) | (u32::from(val) << 31))
-    }
-}
-impl From<u32> for CptraFlowStatusWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraFlowStatusWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraFlowStatusWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraResetReasonReadVal(u32);
-impl CptraResetReasonReadVal {
-    /// FW update reset has been executed
-    #[inline(always)]
-    pub fn fw_upd_reset(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// warm reset has been executed
-    #[inline(always)]
-    pub fn warm_reset(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraResetReasonWriteVal {
-        CptraResetReasonWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraResetReasonReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraResetReasonReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraResetReasonReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraResetReasonWriteVal(u32);
-impl CptraResetReasonWriteVal {
-    /// FW update reset has been executed
-    #[inline(always)]
-    pub fn fw_upd_reset(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// warm reset has been executed
-    #[inline(always)]
-    pub fn warm_reset(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-}
-impl From<u32> for CptraResetReasonWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraResetReasonWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraResetReasonWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraSecurityStateReadVal(u32);
-impl CptraSecurityStateReadVal {
-    /// Device Lifecycle
-    #[inline(always)]
-    pub fn device_lifecycle(&self) -> enums::DeviceLifecycleE {
-        enums::DeviceLifecycleE::try_from(self.0 & 3).unwrap()
-    }
-    /// Debug Locked
-    #[inline(always)]
-    pub fn debug_locked(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// scan mode signal observed at caliptra interface - only for debug mode as its used to flush assets -
-    /// when truly in scan mode, everything will be BROKEN for functional reads!
-    #[inline(always)]
-    pub fn scan_mode(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    /// Reserved field
-    #[inline(always)]
-    pub fn rsvd(&self) -> u32 {
-        (self.0 >> 4) & 0xfffffff
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraSecurityStateWriteVal {
-        CptraSecurityStateWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraSecurityStateReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraSecurityStateReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraSecurityStateReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraSecurityStateWriteVal(u32);
-impl CptraSecurityStateWriteVal {
-    /// Device Lifecycle
-    #[inline(always)]
-    pub fn device_lifecycle(
-        self,
-        f: impl FnOnce(enums::selector::DeviceLifecycleESelector) -> enums::DeviceLifecycleE,
-    ) -> Self {
-        Self((self.0 & !(3)) | (u32::from(f(enums::selector::DeviceLifecycleESelector()))))
-    }
-    /// Debug Locked
-    #[inline(always)]
-    pub fn debug_locked(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    /// scan mode signal observed at caliptra interface - only for debug mode as its used to flush assets -
-    /// when truly in scan mode, everything will be BROKEN for functional reads!
-    #[inline(always)]
-    pub fn scan_mode(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-    /// Reserved field
-    #[inline(always)]
-    pub fn rsvd(self, val: u32) -> Self {
-        Self((self.0 & !(0xfffffff << 4)) | ((val & 0xfffffff) << 4))
-    }
-}
-impl From<u32> for CptraSecurityStateWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraSecurityStateWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraSecurityStateWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraXxxxPauserLockReadVal(u32);
-impl CptraXxxxPauserLockReadVal {
-    #[inline(always)]
-    pub fn lock(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraXxxxPauserLockWriteVal {
-        CptraXxxxPauserLockWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraXxxxPauserLockReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraXxxxPauserLockReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraXxxxPauserLockReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraXxxxPauserLockWriteVal(u32);
-impl CptraXxxxPauserLockWriteVal {
-    #[inline(always)]
-    pub fn lock(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for CptraXxxxPauserLockWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraXxxxPauserLockWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraXxxxPauserLockWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraTrngCtrlReadVal(u32);
-impl CptraTrngCtrlReadVal {
-    /// Indicates that TRNG Data can be cleared
-    /// [br]Caliptra Access: RW
-    /// [br]SOC Access:      RO
-    #[inline(always)]
-    pub fn clear(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraTrngCtrlWriteVal {
-        CptraTrngCtrlWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraTrngCtrlReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraTrngCtrlReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraTrngCtrlReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraTrngCtrlWriteVal(u32);
-impl CptraTrngCtrlWriteVal {
-    /// Indicates that TRNG Data can be cleared
-    /// [br]Caliptra Access: RW
-    /// [br]SOC Access:      RO
-    #[inline(always)]
-    pub fn clear(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for CptraTrngCtrlWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraTrngCtrlWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraTrngCtrlWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraTrngStatusReadVal(u32);
-impl CptraTrngStatusReadVal {
-    /// Indicates that there is a request for TRNG Data.
-    /// [br]Caliptra Access: RW
-    /// [br]SOC Access:      RO
-    #[inline(always)]
-    pub fn data_req(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Indicates that the requests TRNG Data is done and stored in the TRNG Data register.
-    /// [br]Caliptra Access: RO
-    /// [br]SOC Access:      RW
-    /// [br]When DATA_REQ is 0 DATA_WR_DONE will also be 0
-    #[inline(always)]
-    pub fn data_wr_done(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraTrngStatusWriteVal {
-        CptraTrngStatusWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraTrngStatusReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraTrngStatusReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraTrngStatusReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraTrngStatusWriteVal(u32);
-impl CptraTrngStatusWriteVal {
-    /// Indicates that there is a request for TRNG Data.
-    /// [br]Caliptra Access: RW
-    /// [br]SOC Access:      RO
-    #[inline(always)]
-    pub fn data_req(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// Indicates that the requests TRNG Data is done and stored in the TRNG Data register.
-    /// [br]Caliptra Access: RO
-    /// [br]SOC Access:      RW
-    /// [br]When DATA_REQ is 0 DATA_WR_DONE will also be 0
-    #[inline(always)]
-    pub fn data_wr_done(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-}
-impl From<u32> for CptraTrngStatusWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraTrngStatusWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraTrngStatusWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraFuseWrDoneReadVal(u32);
-impl CptraFuseWrDoneReadVal {
-    #[inline(always)]
-    pub fn done(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraFuseWrDoneWriteVal {
-        CptraFuseWrDoneWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraFuseWrDoneReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraFuseWrDoneReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraFuseWrDoneReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraFuseWrDoneWriteVal(u32);
-impl CptraFuseWrDoneWriteVal {
-    #[inline(always)]
-    pub fn done(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for CptraFuseWrDoneWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraFuseWrDoneWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraFuseWrDoneWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraBootfsmGoReadVal(u32);
-impl CptraBootfsmGoReadVal {
-    #[inline(always)]
-    pub fn go(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraBootfsmGoWriteVal {
-        CptraBootfsmGoWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraBootfsmGoReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraBootfsmGoReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraBootfsmGoReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraBootfsmGoWriteVal(u32);
-impl CptraBootfsmGoWriteVal {
-    #[inline(always)]
-    pub fn go(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for CptraBootfsmGoWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraBootfsmGoWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraBootfsmGoWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraClkGatingEnReadVal(u32);
-impl CptraClkGatingEnReadVal {
-    /// Clk gating enable
-    #[inline(always)]
-    pub fn clk_gating_en(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraClkGatingEnWriteVal {
-        CptraClkGatingEnWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraClkGatingEnReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraClkGatingEnReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraClkGatingEnReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraClkGatingEnWriteVal(u32);
-impl CptraClkGatingEnWriteVal {
-    /// Clk gating enable
-    #[inline(always)]
-    pub fn clk_gating_en(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for CptraClkGatingEnWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraClkGatingEnWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraClkGatingEnWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraHwRevIdReadVal(u32);
-impl CptraHwRevIdReadVal {
-    /// Caliptra official release version. Bit field encoding is:
-    /// [br][lb]15:8[rb] Patch version
-    /// [br][lb] 7:4[rb] Minor version
-    /// [br][lb] 3:0[rb] Major version
-    #[inline(always)]
-    pub fn cptra_generation(&self) -> u32 {
-        self.0 & 0xffff
-    }
-    #[inline(always)]
-    pub fn soc_stepping_id(&self) -> u32 {
-        (self.0 >> 16) & 0xffff
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraHwRevIdWriteVal {
-        CptraHwRevIdWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraHwRevIdReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraHwRevIdReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraHwRevIdReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraHwRevIdWriteVal(u32);
-impl CptraHwRevIdWriteVal {
-    /// Caliptra official release version. Bit field encoding is:
-    /// [br][lb]15:8[rb] Patch version
-    /// [br][lb] 7:4[rb] Minor version
-    /// [br][lb] 3:0[rb] Major version
-    #[inline(always)]
-    pub fn cptra_generation(self, val: u32) -> Self {
-        Self((self.0 & !(0xffff)) | (val & 0xffff))
-    }
-    #[inline(always)]
-    pub fn soc_stepping_id(self, val: u32) -> Self {
-        Self((self.0 & !(0xffff << 16)) | ((val & 0xffff) << 16))
-    }
-}
-impl From<u32> for CptraHwRevIdWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraHwRevIdWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraHwRevIdWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraHwConfigReadVal(u32);
-impl CptraHwConfigReadVal {
-    #[inline(always)]
-    pub fn i_trng_en(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    #[inline(always)]
-    pub fn qspi_en(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    #[inline(always)]
-    pub fn i3c_en(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    #[inline(always)]
-    pub fn uart_en(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    #[inline(always)]
-    pub fn lms_acc_en(&self) -> bool {
-        ((self.0 >> 4) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraHwConfigWriteVal {
-        CptraHwConfigWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraHwConfigReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraHwConfigReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraHwConfigReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraHwConfigWriteVal(u32);
-impl CptraHwConfigWriteVal {
-    #[inline(always)]
-    pub fn i_trng_en(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    #[inline(always)]
-    pub fn qspi_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    #[inline(always)]
-    pub fn i3c_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    #[inline(always)]
-    pub fn uart_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-    #[inline(always)]
-    pub fn lms_acc_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 4)) | (u32::from(val) << 4))
-    }
-}
-impl From<u32> for CptraHwConfigWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraHwConfigWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraHwConfigWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraWdtTimer1EnReadVal(u32);
-impl CptraWdtTimer1EnReadVal {
-    /// WDT timer1 enable
-    #[inline(always)]
-    pub fn timer1_en(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraWdtTimer1EnWriteVal {
-        CptraWdtTimer1EnWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraWdtTimer1EnReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraWdtTimer1EnReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraWdtTimer1EnReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraWdtTimer1EnWriteVal(u32);
-impl CptraWdtTimer1EnWriteVal {
-    /// WDT timer1 enable
-    #[inline(always)]
-    pub fn timer1_en(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for CptraWdtTimer1EnWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraWdtTimer1EnWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraWdtTimer1EnWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraWdtTimer1CtrlReadVal(u32);
-impl CptraWdtTimer1CtrlReadVal {
-    /// WDT timer1 restart
-    #[inline(always)]
-    pub fn timer1_restart(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraWdtTimer1CtrlWriteVal {
-        CptraWdtTimer1CtrlWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraWdtTimer1CtrlReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraWdtTimer1CtrlReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraWdtTimer1CtrlReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraWdtTimer1CtrlWriteVal(u32);
-impl CptraWdtTimer1CtrlWriteVal {
-    /// WDT timer1 restart
-    #[inline(always)]
-    pub fn timer1_restart(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for CptraWdtTimer1CtrlWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraWdtTimer1CtrlWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraWdtTimer1CtrlWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraWdtTimer2EnReadVal(u32);
-impl CptraWdtTimer2EnReadVal {
-    /// WDT timer2 enable
-    #[inline(always)]
-    pub fn timer2_en(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraWdtTimer2EnWriteVal {
-        CptraWdtTimer2EnWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraWdtTimer2EnReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraWdtTimer2EnReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraWdtTimer2EnReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraWdtTimer2EnWriteVal(u32);
-impl CptraWdtTimer2EnWriteVal {
-    /// WDT timer2 enable
-    #[inline(always)]
-    pub fn timer2_en(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for CptraWdtTimer2EnWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraWdtTimer2EnWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraWdtTimer2EnWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraWdtTimer2CtrlReadVal(u32);
-impl CptraWdtTimer2CtrlReadVal {
-    /// WDT timer2 restart
-    #[inline(always)]
-    pub fn timer2_restart(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraWdtTimer2CtrlWriteVal {
-        CptraWdtTimer2CtrlWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraWdtTimer2CtrlReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraWdtTimer2CtrlReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraWdtTimer2CtrlReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraWdtTimer2CtrlWriteVal(u32);
-impl CptraWdtTimer2CtrlWriteVal {
-    /// WDT timer2 restart
-    #[inline(always)]
-    pub fn timer2_restart(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for CptraWdtTimer2CtrlWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraWdtTimer2CtrlWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraWdtTimer2CtrlWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraWdtStatusReadVal(u32);
-impl CptraWdtStatusReadVal {
-    /// Timer1 timed out, timer2 enabled
-    #[inline(always)]
-    pub fn t1_timeout(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Timer2 timed out
-    #[inline(always)]
-    pub fn t2_timeout(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraWdtStatusWriteVal {
-        CptraWdtStatusWriteVal(self.0)
-    }
-}
-impl From<u32> for CptraWdtStatusReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraWdtStatusReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraWdtStatusReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraWdtStatusWriteVal(u32);
-impl CptraWdtStatusWriteVal {
-    /// Timer1 timed out, timer2 enabled
-    #[inline(always)]
-    pub fn t1_timeout(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// Timer2 timed out
-    #[inline(always)]
-    pub fn t2_timeout(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-}
-impl From<u32> for CptraWdtStatusWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraWdtStatusWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraWdtStatusWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraItrngEntropyConfig0ReadVal(u32);
-impl CptraItrngEntropyConfig0ReadVal {
-    #[inline(always)]
-    pub fn low_threshold(&self) -> u32 {
-        self.0 & 0xffff
-    }
-    #[inline(always)]
-    pub fn high_threshold(&self) -> u32 {
-        (self.0 >> 16) & 0xffff
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraItrngEntropyConfig0WriteVal {
-        CptraItrngEntropyConfig0WriteVal(self.0)
-    }
-}
-impl From<u32> for CptraItrngEntropyConfig0ReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraItrngEntropyConfig0ReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraItrngEntropyConfig0ReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraItrngEntropyConfig0WriteVal(u32);
-impl CptraItrngEntropyConfig0WriteVal {
-    #[inline(always)]
-    pub fn low_threshold(self, val: u32) -> Self {
-        Self((self.0 & !(0xffff)) | (val & 0xffff))
-    }
-    #[inline(always)]
-    pub fn high_threshold(self, val: u32) -> Self {
-        Self((self.0 & !(0xffff << 16)) | ((val & 0xffff) << 16))
-    }
-}
-impl From<u32> for CptraItrngEntropyConfig0WriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraItrngEntropyConfig0WriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraItrngEntropyConfig0WriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraItrngEntropyConfig1ReadVal(u32);
-impl CptraItrngEntropyConfig1ReadVal {
-    #[inline(always)]
-    pub fn repetition_count(&self) -> u32 {
-        self.0 & 0xffff
-    }
-    #[inline(always)]
-    pub fn rsvd(&self) -> u32 {
-        (self.0 >> 16) & 0xffff
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> CptraItrngEntropyConfig1WriteVal {
-        CptraItrngEntropyConfig1WriteVal(self.0)
-    }
-}
-impl From<u32> for CptraItrngEntropyConfig1ReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraItrngEntropyConfig1ReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraItrngEntropyConfig1ReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct CptraItrngEntropyConfig1WriteVal(u32);
-impl CptraItrngEntropyConfig1WriteVal {
-    #[inline(always)]
-    pub fn repetition_count(self, val: u32) -> Self {
-        Self((self.0 & !(0xffff)) | (val & 0xffff))
-    }
-    #[inline(always)]
-    pub fn rsvd(self, val: u32) -> Self {
-        Self((self.0 & !(0xffff << 16)) | ((val & 0xffff) << 16))
-    }
-}
-impl From<u32> for CptraItrngEntropyConfig1WriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<CptraItrngEntropyConfig1WriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: CptraItrngEntropyConfig1WriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FuseKeyManifestPkHashMaskReadVal(u32);
-impl FuseKeyManifestPkHashMaskReadVal {
-    #[inline(always)]
-    pub fn mask(&self) -> u32 {
-        self.0 & 0xf
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> FuseKeyManifestPkHashMaskWriteVal {
-        FuseKeyManifestPkHashMaskWriteVal(self.0)
-    }
-}
-impl From<u32> for FuseKeyManifestPkHashMaskReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FuseKeyManifestPkHashMaskReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: FuseKeyManifestPkHashMaskReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FuseKeyManifestPkHashMaskWriteVal(u32);
-impl FuseKeyManifestPkHashMaskWriteVal {
-    #[inline(always)]
-    pub fn mask(self, val: u32) -> Self {
-        Self((self.0 & !(0xf)) | (val & 0xf))
-    }
-}
-impl From<u32> for FuseKeyManifestPkHashMaskWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FuseKeyManifestPkHashMaskWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: FuseKeyManifestPkHashMaskWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FuseAntiRollbackDisableReadVal(u32);
-impl FuseAntiRollbackDisableReadVal {
-    #[inline(always)]
-    pub fn dis(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> FuseAntiRollbackDisableWriteVal {
-        FuseAntiRollbackDisableWriteVal(self.0)
-    }
-}
-impl From<u32> for FuseAntiRollbackDisableReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FuseAntiRollbackDisableReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: FuseAntiRollbackDisableReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FuseAntiRollbackDisableWriteVal(u32);
-impl FuseAntiRollbackDisableWriteVal {
-    #[inline(always)]
-    pub fn dis(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for FuseAntiRollbackDisableWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FuseAntiRollbackDisableWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: FuseAntiRollbackDisableWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FuseLifeCycleReadVal(u32);
-impl FuseLifeCycleReadVal {
-    #[inline(always)]
-    pub fn life_cycle(&self) -> u32 {
-        self.0 & 3
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> FuseLifeCycleWriteVal {
-        FuseLifeCycleWriteVal(self.0)
-    }
-}
-impl From<u32> for FuseLifeCycleReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FuseLifeCycleReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: FuseLifeCycleReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FuseLifeCycleWriteVal(u32);
-impl FuseLifeCycleWriteVal {
-    #[inline(always)]
-    pub fn life_cycle(self, val: u32) -> Self {
-        Self((self.0 & !(3)) | (val & 3))
-    }
-}
-impl From<u32> for FuseLifeCycleWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FuseLifeCycleWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: FuseLifeCycleWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FuseLmsVerifyReadVal(u32);
-impl FuseLmsVerifyReadVal {
-    #[inline(always)]
-    pub fn lms_verify(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> FuseLmsVerifyWriteVal {
-        FuseLmsVerifyWriteVal(self.0)
-    }
-}
-impl From<u32> for FuseLmsVerifyReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FuseLmsVerifyReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: FuseLmsVerifyReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FuseLmsVerifyWriteVal(u32);
-impl FuseLmsVerifyWriteVal {
-    #[inline(always)]
-    pub fn lms_verify(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for FuseLmsVerifyWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FuseLmsVerifyWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: FuseLmsVerifyWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FuseSocSteppingIdReadVal(u32);
-impl FuseSocSteppingIdReadVal {
-    #[inline(always)]
-    pub fn soc_stepping_id(&self) -> u32 {
-        self.0 & 0xffff
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> FuseSocSteppingIdWriteVal {
-        FuseSocSteppingIdWriteVal(self.0)
-    }
-}
-impl From<u32> for FuseSocSteppingIdReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FuseSocSteppingIdReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: FuseSocSteppingIdReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct FuseSocSteppingIdWriteVal(u32);
-impl FuseSocSteppingIdWriteVal {
-    #[inline(always)]
-    pub fn soc_stepping_id(self, val: u32) -> Self {
-        Self((self.0 & !(0xffff)) | (val & 0xffff))
-    }
-}
-impl From<u32> for FuseSocSteppingIdWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<FuseSocSteppingIdWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: FuseSocSteppingIdWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InternalIccmLockReadVal(u32);
-impl InternalIccmLockReadVal {
-    /// Lock bit gates writes to ICCM. Write 1 to set - cannot be cleared by SW.
-    #[inline(always)]
-    pub fn lock(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> InternalIccmLockWriteVal {
-        InternalIccmLockWriteVal(self.0)
-    }
-}
-impl From<u32> for InternalIccmLockReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InternalIccmLockReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: InternalIccmLockReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InternalIccmLockWriteVal(u32);
-impl InternalIccmLockWriteVal {
-    /// Lock bit gates writes to ICCM. Write 1 to set - cannot be cleared by SW.
-    #[inline(always)]
-    pub fn lock(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for InternalIccmLockWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InternalIccmLockWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: InternalIccmLockWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InternalFwUpdateResetReadVal(u32);
-impl InternalFwUpdateResetReadVal {
-    /// FW Update reset to reset core
-    #[inline(always)]
-    pub fn core_rst(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> InternalFwUpdateResetWriteVal {
-        InternalFwUpdateResetWriteVal(self.0)
-    }
-}
-impl From<u32> for InternalFwUpdateResetReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InternalFwUpdateResetReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: InternalFwUpdateResetReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InternalFwUpdateResetWriteVal(u32);
-impl InternalFwUpdateResetWriteVal {
-    /// FW Update reset to reset core
-    #[inline(always)]
-    pub fn core_rst(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for InternalFwUpdateResetWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InternalFwUpdateResetWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: InternalFwUpdateResetWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InternalFwUpdateResetWaitCyclesReadVal(u32);
-impl InternalFwUpdateResetWaitCyclesReadVal {
-    /// FW Update reset wait cycles
-    #[inline(always)]
-    pub fn wait_cycles(&self) -> u32 {
-        self.0 & 0xff
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> InternalFwUpdateResetWaitCyclesWriteVal {
-        InternalFwUpdateResetWaitCyclesWriteVal(self.0)
-    }
-}
-impl From<u32> for InternalFwUpdateResetWaitCyclesReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InternalFwUpdateResetWaitCyclesReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: InternalFwUpdateResetWaitCyclesReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InternalFwUpdateResetWaitCyclesWriteVal(u32);
-impl InternalFwUpdateResetWaitCyclesWriteVal {
-    /// FW Update reset wait cycles
-    #[inline(always)]
-    pub fn wait_cycles(self, val: u32) -> Self {
-        Self((self.0 & !(0xff)) | (val & 0xff))
-    }
-}
-impl From<u32> for InternalFwUpdateResetWaitCyclesWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InternalFwUpdateResetWaitCyclesWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: InternalFwUpdateResetWaitCyclesWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InternalHwErrorFatalMaskReadVal(u32);
-impl InternalHwErrorFatalMaskReadVal {
-    #[inline(always)]
-    pub fn mask_iccm_ecc_unc(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    #[inline(always)]
-    pub fn mask_dccm_ecc_unc(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    #[inline(always)]
-    pub fn mask_nmi_pin(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    #[inline(always)]
-    pub fn mask_crypto_err(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> InternalHwErrorFatalMaskWriteVal {
-        InternalHwErrorFatalMaskWriteVal(self.0)
-    }
-}
-impl From<u32> for InternalHwErrorFatalMaskReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InternalHwErrorFatalMaskReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: InternalHwErrorFatalMaskReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InternalHwErrorFatalMaskWriteVal(u32);
-impl InternalHwErrorFatalMaskWriteVal {
-    #[inline(always)]
-    pub fn mask_iccm_ecc_unc(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    #[inline(always)]
-    pub fn mask_dccm_ecc_unc(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    #[inline(always)]
-    pub fn mask_nmi_pin(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    #[inline(always)]
-    pub fn mask_crypto_err(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-}
-impl From<u32> for InternalHwErrorFatalMaskWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InternalHwErrorFatalMaskWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: InternalHwErrorFatalMaskWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InternalHwErrorNonFatalMaskReadVal(u32);
-impl InternalHwErrorNonFatalMaskReadVal {
-    #[inline(always)]
-    pub fn mask_mbox_prot_no_lock(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    #[inline(always)]
-    pub fn mask_mbox_prot_ooo(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    #[inline(always)]
-    pub fn mask_mbox_ecc_unc(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> InternalHwErrorNonFatalMaskWriteVal {
-        InternalHwErrorNonFatalMaskWriteVal(self.0)
-    }
-}
-impl From<u32> for InternalHwErrorNonFatalMaskReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InternalHwErrorNonFatalMaskReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: InternalHwErrorNonFatalMaskReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct InternalHwErrorNonFatalMaskWriteVal(u32);
-impl InternalHwErrorNonFatalMaskWriteVal {
-    #[inline(always)]
-    pub fn mask_mbox_prot_no_lock(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    #[inline(always)]
-    pub fn mask_mbox_prot_ooo(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    #[inline(always)]
-    pub fn mask_mbox_ecc_unc(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-}
-impl From<u32> for InternalHwErrorNonFatalMaskWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<InternalHwErrorNonFatalMaskWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: InternalHwErrorNonFatalMaskWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct GlobalIntrEnTReadVal(u32);
-impl GlobalIntrEnTReadVal {
-    /// Global enable bit for all events of type 'Error'
-    #[inline(always)]
-    pub fn error_en(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Global enable bit for all events of type 'Notification'
-    #[inline(always)]
-    pub fn notif_en(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> GlobalIntrEnTWriteVal {
-        GlobalIntrEnTWriteVal(self.0)
-    }
-}
-impl From<u32> for GlobalIntrEnTReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<GlobalIntrEnTReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: GlobalIntrEnTReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct GlobalIntrEnTWriteVal(u32);
-impl GlobalIntrEnTWriteVal {
-    /// Global enable bit for all events of type 'Error'
-    #[inline(always)]
-    pub fn error_en(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// Global enable bit for all events of type 'Notification'
-    #[inline(always)]
-    pub fn notif_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-}
-impl From<u32> for GlobalIntrEnTWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<GlobalIntrEnTWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: GlobalIntrEnTWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct ErrorIntrEnTReadVal(u32);
-impl ErrorIntrEnTReadVal {
-    /// Enable bit for Internal Errors
-    #[inline(always)]
-    pub fn error_internal_en(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Enable bit for Invalid Device in Pauser field
-    #[inline(always)]
-    pub fn error_inv_dev_en(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Enable bit for Failed Commands (invalid protocol or FW Fail Status)
-    #[inline(always)]
-    pub fn error_cmd_fail_en(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// Enable bit for Bad Fuse received from SoC
-    #[inline(always)]
-    pub fn error_bad_fuse_en(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    /// Enable bit for ICCM access blocked by lock
-    #[inline(always)]
-    pub fn error_iccm_blocked_en(&self) -> bool {
-        ((self.0 >> 4) & 1) != 0
-    }
-    /// Enable bit for Mailbox ECC Double-bit Error (uncorrectable)
-    #[inline(always)]
-    pub fn error_mbox_ecc_unc_en(&self) -> bool {
-        ((self.0 >> 5) & 1) != 0
-    }
-    /// Enable bit for WDT Timer1 timeout
-    #[inline(always)]
-    pub fn error_wdt_timer1_timeout_en(&self) -> bool {
-        ((self.0 >> 6) & 1) != 0
-    }
-    /// Enable bit for WDT Timer2 timeout, applicable if timer2 is enabled as an independent timer
-    #[inline(always)]
-    pub fn error_wdt_timer2_timeout_en(&self) -> bool {
-        ((self.0 >> 7) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> ErrorIntrEnTWriteVal {
-        ErrorIntrEnTWriteVal(self.0)
-    }
-}
-impl From<u32> for ErrorIntrEnTReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<ErrorIntrEnTReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: ErrorIntrEnTReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct ErrorIntrEnTWriteVal(u32);
-impl ErrorIntrEnTWriteVal {
-    /// Enable bit for Internal Errors
-    #[inline(always)]
-    pub fn error_internal_en(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// Enable bit for Invalid Device in Pauser field
-    #[inline(always)]
-    pub fn error_inv_dev_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    /// Enable bit for Failed Commands (invalid protocol or FW Fail Status)
-    #[inline(always)]
-    pub fn error_cmd_fail_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    /// Enable bit for Bad Fuse received from SoC
-    #[inline(always)]
-    pub fn error_bad_fuse_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-    /// Enable bit for ICCM access blocked by lock
-    #[inline(always)]
-    pub fn error_iccm_blocked_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 4)) | (u32::from(val) << 4))
-    }
-    /// Enable bit for Mailbox ECC Double-bit Error (uncorrectable)
-    #[inline(always)]
-    pub fn error_mbox_ecc_unc_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 5)) | (u32::from(val) << 5))
-    }
-    /// Enable bit for WDT Timer1 timeout
-    #[inline(always)]
-    pub fn error_wdt_timer1_timeout_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 6)) | (u32::from(val) << 6))
-    }
-    /// Enable bit for WDT Timer2 timeout, applicable if timer2 is enabled as an independent timer
-    #[inline(always)]
-    pub fn error_wdt_timer2_timeout_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 7)) | (u32::from(val) << 7))
-    }
-}
-impl From<u32> for ErrorIntrEnTWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<ErrorIntrEnTWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: ErrorIntrEnTWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct NotifIntrEnTReadVal(u32);
-impl NotifIntrEnTReadVal {
-    /// Enable bit for Command Available
-    #[inline(always)]
-    pub fn notif_cmd_avail_en(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Enable bit for Mailbox ECC Single-bit Error (correctable)
-    #[inline(always)]
-    pub fn notif_mbox_ecc_cor_en(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Enable bit for Security State, Debug Locked transition
-    #[inline(always)]
-    pub fn notif_debug_locked_en(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// Enable bit for Scan mode
-    #[inline(always)]
-    pub fn notif_scan_mode_en(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    /// Enable bit for SoC requested the mailbox while locked
-    #[inline(always)]
-    pub fn notif_soc_req_lock_en(&self) -> bool {
-        ((self.0 >> 4) & 1) != 0
-    }
-    /// Enable bit for Generic Input Wires Toggle
-    #[inline(always)]
-    pub fn notif_gen_in_toggle_en(&self) -> bool {
-        ((self.0 >> 5) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> NotifIntrEnTWriteVal {
-        NotifIntrEnTWriteVal(self.0)
-    }
-}
-impl From<u32> for NotifIntrEnTReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<NotifIntrEnTReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: NotifIntrEnTReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct NotifIntrEnTWriteVal(u32);
-impl NotifIntrEnTWriteVal {
-    /// Enable bit for Command Available
-    #[inline(always)]
-    pub fn notif_cmd_avail_en(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// Enable bit for Mailbox ECC Single-bit Error (correctable)
-    #[inline(always)]
-    pub fn notif_mbox_ecc_cor_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    /// Enable bit for Security State, Debug Locked transition
-    #[inline(always)]
-    pub fn notif_debug_locked_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    /// Enable bit for Scan mode
-    #[inline(always)]
-    pub fn notif_scan_mode_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-    /// Enable bit for SoC requested the mailbox while locked
-    #[inline(always)]
-    pub fn notif_soc_req_lock_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 4)) | (u32::from(val) << 4))
-    }
-    /// Enable bit for Generic Input Wires Toggle
-    #[inline(always)]
-    pub fn notif_gen_in_toggle_en(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 5)) | (u32::from(val) << 5))
-    }
-}
-impl From<u32> for NotifIntrEnTWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<NotifIntrEnTWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: NotifIntrEnTWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct GlobalIntrTReadVal(u32);
-impl GlobalIntrTReadVal {
-    /// Interrupt Event Aggregation status bit
-    #[inline(always)]
-    pub fn agg_sts(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> GlobalIntrTWriteVal {
-        GlobalIntrTWriteVal(self.0)
-    }
-}
-impl From<u32> for GlobalIntrTReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<GlobalIntrTReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: GlobalIntrTReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct GlobalIntrTWriteVal(u32);
-impl GlobalIntrTWriteVal {
-    /// Interrupt Event Aggregation status bit
-    #[inline(always)]
-    pub fn agg_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for GlobalIntrTWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<GlobalIntrTWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: GlobalIntrTWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct ErrorIntrTReadVal(u32);
-impl ErrorIntrTReadVal {
-    /// Internal Errors status bit
-    #[inline(always)]
-    pub fn error_internal_sts(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Invalid Device in Pauser field status bit
-    #[inline(always)]
-    pub fn error_inv_dev_sts(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Failed Commands status bit (invalid protocol or FW Fail Status)
-    #[inline(always)]
-    pub fn error_cmd_fail_sts(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// Bad Fuse received from SoC status bit
-    #[inline(always)]
-    pub fn error_bad_fuse_sts(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    /// ICCM access blocked by lock status bit
-    #[inline(always)]
-    pub fn error_iccm_blocked_sts(&self) -> bool {
-        ((self.0 >> 4) & 1) != 0
-    }
-    /// Mailbox ECC Double-bit Error (uncorrectable) status bit
-    #[inline(always)]
-    pub fn error_mbox_ecc_unc_sts(&self) -> bool {
-        ((self.0 >> 5) & 1) != 0
-    }
-    /// WDT Timer1 timeout status bit
-    #[inline(always)]
-    pub fn error_wdt_timer1_timeout_sts(&self) -> bool {
-        ((self.0 >> 6) & 1) != 0
-    }
-    /// WDT Timer2 timeout status bit
-    #[inline(always)]
-    pub fn error_wdt_timer2_timeout_sts(&self) -> bool {
-        ((self.0 >> 7) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> ErrorIntrTWriteVal {
-        ErrorIntrTWriteVal(self.0)
-    }
-}
-impl From<u32> for ErrorIntrTReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<ErrorIntrTReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: ErrorIntrTReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct ErrorIntrTWriteVal(u32);
-impl ErrorIntrTWriteVal {
-    /// Internal Errors status bit
-    #[inline(always)]
-    pub fn error_internal_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// Invalid Device in Pauser field status bit
-    #[inline(always)]
-    pub fn error_inv_dev_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    /// Failed Commands status bit (invalid protocol or FW Fail Status)
-    #[inline(always)]
-    pub fn error_cmd_fail_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    /// Bad Fuse received from SoC status bit
-    #[inline(always)]
-    pub fn error_bad_fuse_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-    /// ICCM access blocked by lock status bit
-    #[inline(always)]
-    pub fn error_iccm_blocked_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 4)) | (u32::from(val) << 4))
-    }
-    /// Mailbox ECC Double-bit Error (uncorrectable) status bit
-    #[inline(always)]
-    pub fn error_mbox_ecc_unc_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 5)) | (u32::from(val) << 5))
-    }
-    /// WDT Timer1 timeout status bit
-    #[inline(always)]
-    pub fn error_wdt_timer1_timeout_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 6)) | (u32::from(val) << 6))
-    }
-    /// WDT Timer2 timeout status bit
-    #[inline(always)]
-    pub fn error_wdt_timer2_timeout_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 7)) | (u32::from(val) << 7))
-    }
-}
-impl From<u32> for ErrorIntrTWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<ErrorIntrTWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: ErrorIntrTWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct NotifIntrTReadVal(u32);
-impl NotifIntrTReadVal {
-    /// Command Available status bit
-    #[inline(always)]
-    pub fn notif_cmd_avail_sts(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Mailbox ECC Single-bit Error (correctable) status bit
-    #[inline(always)]
-    pub fn notif_mbox_ecc_cor_sts(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Security State, Debug Locked transition status bit
-    #[inline(always)]
-    pub fn notif_debug_locked_sts(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// Scan mode status bit
-    #[inline(always)]
-    pub fn notif_scan_mode_sts(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    /// SoC requested the mailbox while locked status bit
-    #[inline(always)]
-    pub fn notif_soc_req_lock_sts(&self) -> bool {
-        ((self.0 >> 4) & 1) != 0
-    }
-    /// Generic Input Wires Toggle status bit
-    #[inline(always)]
-    pub fn notif_gen_in_toggle_sts(&self) -> bool {
-        ((self.0 >> 5) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> NotifIntrTWriteVal {
-        NotifIntrTWriteVal(self.0)
-    }
-}
-impl From<u32> for NotifIntrTReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<NotifIntrTReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: NotifIntrTReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct NotifIntrTWriteVal(u32);
-impl NotifIntrTWriteVal {
-    /// Command Available status bit
-    #[inline(always)]
-    pub fn notif_cmd_avail_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// Mailbox ECC Single-bit Error (correctable) status bit
-    #[inline(always)]
-    pub fn notif_mbox_ecc_cor_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    /// Security State, Debug Locked transition status bit
-    #[inline(always)]
-    pub fn notif_debug_locked_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    /// Scan mode status bit
-    #[inline(always)]
-    pub fn notif_scan_mode_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-    /// SoC requested the mailbox while locked status bit
-    #[inline(always)]
-    pub fn notif_soc_req_lock_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 4)) | (u32::from(val) << 4))
-    }
-    /// Generic Input Wires Toggle status bit
-    #[inline(always)]
-    pub fn notif_gen_in_toggle_sts(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 5)) | (u32::from(val) << 5))
-    }
-}
-impl From<u32> for NotifIntrTWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<NotifIntrTWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: NotifIntrTWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct ErrorIntrTrigTReadVal(u32);
-impl ErrorIntrTrigTReadVal {
-    /// Internal Errors trigger bit
-    #[inline(always)]
-    pub fn error_internal_trig(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Invalid Device in Pauser field trigger bit
-    #[inline(always)]
-    pub fn error_inv_dev_trig(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Failed Commands trigger bit
-    #[inline(always)]
-    pub fn error_cmd_fail_trig(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// Bad Fuse received from SoC trigger bit
-    #[inline(always)]
-    pub fn error_bad_fuse_trig(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    /// ICCM access blocked by lock trigger bit
-    #[inline(always)]
-    pub fn error_iccm_blocked_trig(&self) -> bool {
-        ((self.0 >> 4) & 1) != 0
-    }
-    /// Mailbox ECC Double-bit Error (uncorrectable) trigger bit
-    #[inline(always)]
-    pub fn error_mbox_ecc_unc_trig(&self) -> bool {
-        ((self.0 >> 5) & 1) != 0
-    }
-    /// WDT Timer1 timeout trigger bit
-    #[inline(always)]
-    pub fn error_wdt_timer1_timeout_trig(&self) -> bool {
-        ((self.0 >> 6) & 1) != 0
-    }
-    /// WDT Timer2 timeout trigger bit
-    #[inline(always)]
-    pub fn error_wdt_timer2_timeout_trig(&self) -> bool {
-        ((self.0 >> 7) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> ErrorIntrTrigTWriteVal {
-        ErrorIntrTrigTWriteVal(self.0)
-    }
-}
-impl From<u32> for ErrorIntrTrigTReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<ErrorIntrTrigTReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: ErrorIntrTrigTReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct ErrorIntrTrigTWriteVal(u32);
-impl ErrorIntrTrigTWriteVal {
-    /// Internal Errors trigger bit
-    #[inline(always)]
-    pub fn error_internal_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// Invalid Device in Pauser field trigger bit
-    #[inline(always)]
-    pub fn error_inv_dev_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    /// Failed Commands trigger bit
-    #[inline(always)]
-    pub fn error_cmd_fail_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    /// Bad Fuse received from SoC trigger bit
-    #[inline(always)]
-    pub fn error_bad_fuse_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-    /// ICCM access blocked by lock trigger bit
-    #[inline(always)]
-    pub fn error_iccm_blocked_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 4)) | (u32::from(val) << 4))
-    }
-    /// Mailbox ECC Double-bit Error (uncorrectable) trigger bit
-    #[inline(always)]
-    pub fn error_mbox_ecc_unc_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 5)) | (u32::from(val) << 5))
-    }
-    /// WDT Timer1 timeout trigger bit
-    #[inline(always)]
-    pub fn error_wdt_timer1_timeout_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 6)) | (u32::from(val) << 6))
-    }
-    /// WDT Timer2 timeout trigger bit
-    #[inline(always)]
-    pub fn error_wdt_timer2_timeout_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 7)) | (u32::from(val) << 7))
-    }
-}
-impl From<u32> for ErrorIntrTrigTWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<ErrorIntrTrigTWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: ErrorIntrTrigTWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct NotifIntrTrigTReadVal(u32);
-impl NotifIntrTrigTReadVal {
-    /// Command Available trigger bit
-    #[inline(always)]
-    pub fn notif_cmd_avail_trig(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Mailbox ECC Single-bit Error (correctable) trigger bit
-    #[inline(always)]
-    pub fn notif_mbox_ecc_cor_trig(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Security State, Debug Locked transition trigger bit
-    #[inline(always)]
-    pub fn notif_debug_locked_trig(&self) -> bool {
-        ((self.0 >> 2) & 1) != 0
-    }
-    /// Scan mode trigger bit
-    #[inline(always)]
-    pub fn notif_scan_mode_trig(&self) -> bool {
-        ((self.0 >> 3) & 1) != 0
-    }
-    /// SoC requested the mailbox while locked trigger bit
-    #[inline(always)]
-    pub fn notif_soc_req_lock_trig(&self) -> bool {
-        ((self.0 >> 4) & 1) != 0
-    }
-    /// Generic Input Wires Toggle trigger bit
-    #[inline(always)]
-    pub fn notif_gen_in_toggle_trig(&self) -> bool {
-        ((self.0 >> 5) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> NotifIntrTrigTWriteVal {
-        NotifIntrTrigTWriteVal(self.0)
-    }
-}
-impl From<u32> for NotifIntrTrigTReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<NotifIntrTrigTReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: NotifIntrTrigTReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct NotifIntrTrigTWriteVal(u32);
-impl NotifIntrTrigTWriteVal {
-    /// Command Available trigger bit
-    #[inline(always)]
-    pub fn notif_cmd_avail_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// Mailbox ECC Single-bit Error (correctable) trigger bit
-    #[inline(always)]
-    pub fn notif_mbox_ecc_cor_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-    /// Security State, Debug Locked transition trigger bit
-    #[inline(always)]
-    pub fn notif_debug_locked_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 2)) | (u32::from(val) << 2))
-    }
-    /// Scan mode trigger bit
-    #[inline(always)]
-    pub fn notif_scan_mode_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 3)) | (u32::from(val) << 3))
-    }
-    /// SoC requested the mailbox while locked trigger bit
-    #[inline(always)]
-    pub fn notif_soc_req_lock_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 4)) | (u32::from(val) << 4))
-    }
-    /// Generic Input Wires Toggle trigger bit
-    #[inline(always)]
-    pub fn notif_gen_in_toggle_trig(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 5)) | (u32::from(val) << 5))
-    }
-}
-impl From<u32> for NotifIntrTrigTWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<NotifIntrTrigTWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: NotifIntrTrigTWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct IntrCountIncrTReadVal(u32);
-impl IntrCountIncrTReadVal {
-    /// Pulse mirrors interrupt event occurrence
-    #[inline(always)]
-    pub fn pulse(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal(self.0)
-    }
-}
-impl From<u32> for IntrCountIncrTReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<IntrCountIncrTReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: IntrCountIncrTReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct IntrCountIncrTWriteVal(u32);
-impl IntrCountIncrTWriteVal {
-    /// Pulse mirrors interrupt event occurrence
-    #[inline(always)]
-    pub fn pulse(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for IntrCountIncrTWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<IntrCountIncrTWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: IntrCountIncrTWriteVal) -> u32 {
-        val.0
-    }
-}
-pub mod enums {
-    //! Enumerations used by some register fields.
-    #[derive(Clone, Copy, Eq, PartialEq)]
-    #[repr(u32)]
-    pub enum DeviceLifecycleE {
-        DeviceUnprovisioned = 0,
-        DeviceManufacturing = 1,
-        Reserved2 = 2,
-        DeviceProduction = 3,
-    }
-    impl DeviceLifecycleE {
-        #[inline(always)]
-        pub fn device_unprovisioned(&self) -> bool {
-            *self == Self::DeviceUnprovisioned
-        }
-        #[inline(always)]
-        pub fn device_manufacturing(&self) -> bool {
-            *self == Self::DeviceManufacturing
-        }
-        #[inline(always)]
-        pub fn device_production(&self) -> bool {
-            *self == Self::DeviceProduction
-        }
-    }
-    impl TryFrom<u32> for DeviceLifecycleE {
-        type Error = ();
-        #[inline(always)]
-        fn try_from(val: u32) -> Result<DeviceLifecycleE, ()> {
-            if val < 4 {
-                Ok(unsafe { core::mem::transmute::<u32, DeviceLifecycleE>(val) })
-            } else {
-                Err(())
-            }
-        }
-    }
-    impl From<DeviceLifecycleE> for u32 {
-        fn from(val: DeviceLifecycleE) -> Self {
-            val as u32
-        }
-    }
-    pub mod selector {
-        pub struct DeviceLifecycleESelector();
-        impl DeviceLifecycleESelector {
-            #[inline(always)]
-            pub fn device_unprovisioned(&self) -> super::DeviceLifecycleE {
-                super::DeviceLifecycleE::DeviceUnprovisioned
-            }
-            #[inline(always)]
-            pub fn device_manufacturing(&self) -> super::DeviceLifecycleE {
-                super::DeviceLifecycleE::DeviceManufacturing
-            }
-            #[inline(always)]
-            pub fn device_production(&self) -> super::DeviceLifecycleE {
-                super::DeviceLifecycleE::DeviceProduction
-            }
-        }
-    }
-}
 pub trait SocPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
-    fn read_cptra_hw_error_fatal(&mut self) -> CptraHwErrorFatalWriteVal {
-        CptraHwErrorFatalWriteVal::default()
+    fn read_cptra_hw_error_fatal(&mut self) -> CPTRA_HW_ERROR_FATAL {
+        CPTRA_HW_ERROR_FATAL::default()
     }
-    fn write_cptra_hw_error_fatal(&mut self, _val: CptraHwErrorFatalReadVal) {}
-    fn read_cptra_hw_error_non_fatal(&mut self) -> CptraHwErrorNonFatalWriteVal {
-        CptraHwErrorNonFatalWriteVal::default()
+    fn write_cptra_hw_error_fatal(&mut self, _val: CPTRA_HW_ERROR_FATAL) {}
+    fn read_cptra_hw_error_non_fatal(&mut self) -> CPTRA_HW_ERROR_NON_FATAL {
+        CPTRA_HW_ERROR_NON_FATAL::default()
     }
-    fn write_cptra_hw_error_non_fatal(&mut self, _val: CptraHwErrorNonFatalReadVal) {}
+    fn write_cptra_hw_error_non_fatal(&mut self, _val: CPTRA_HW_ERROR_NON_FATAL) {}
     fn read_cptra_fw_error_fatal(&mut self) -> u32 {
         0
     }
@@ -2552,66 +40,66 @@ pub trait SocPeripheral {
         0
     }
     fn write_cptra_boot_status(&mut self, _val: u32) {}
-    fn read_cptra_flow_status(&mut self) -> CptraFlowStatusWriteVal {
-        CptraFlowStatusWriteVal::default()
+    fn read_cptra_flow_status(&mut self) -> CPTRA_FLOW_STATUS {
+        CPTRA_FLOW_STATUS::default()
     }
-    fn write_cptra_flow_status(&mut self, _val: CptraFlowStatusReadVal) {}
-    fn read_cptra_reset_reason(&mut self) -> CptraResetReasonWriteVal {
-        CptraResetReasonWriteVal::default()
+    fn write_cptra_flow_status(&mut self, _val: CPTRA_FLOW_STATUS) {}
+    fn read_cptra_reset_reason(&mut self) -> CPTRA_RESET_REASON {
+        CPTRA_RESET_REASON::default()
     }
-    fn write_cptra_reset_reason(&mut self, _val: CptraResetReasonReadVal) {}
-    fn read_cptra_security_state(&mut self) -> CptraSecurityStateWriteVal {
-        CptraSecurityStateWriteVal::default()
+    fn write_cptra_reset_reason(&mut self, _val: CPTRA_RESET_REASON) {}
+    fn read_cptra_security_state(&mut self) -> CPTRA_SECURITY_STATE {
+        CPTRA_SECURITY_STATE::default()
     }
-    fn write_cptra_security_state(&mut self, _val: CptraSecurityStateReadVal) {}
+    fn write_cptra_security_state(&mut self, _val: CPTRA_SECURITY_STATE) {}
     fn read_cptra_mbox_valid_pauser(&mut self) -> u32 {
         0
     }
     fn write_cptra_mbox_valid_pauser(&mut self, _val: u32) {}
-    fn read_cptra_mbox_pauser_lock(&mut self) -> CptraXxxxPauserLockWriteVal {
-        CptraXxxxPauserLockWriteVal::default()
+    fn read_cptra_mbox_pauser_lock(&mut self) -> CPTRA_XXXX_PAUSER_LOCK {
+        CPTRA_XXXX_PAUSER_LOCK::default()
     }
-    fn write_cptra_mbox_pauser_lock(&mut self, _val: CptraXxxxPauserLockReadVal) {}
+    fn write_cptra_mbox_pauser_lock(&mut self, _val: CPTRA_XXXX_PAUSER_LOCK) {}
     fn read_cptra_trng_valid_pauser(&mut self) -> u32 {
         0
     }
     fn write_cptra_trng_valid_pauser(&mut self, _val: u32) {}
-    fn read_cptra_trng_pauser_lock(&mut self) -> CptraXxxxPauserLockWriteVal {
-        CptraXxxxPauserLockWriteVal::default()
+    fn read_cptra_trng_pauser_lock(&mut self) -> CPTRA_XXXX_PAUSER_LOCK {
+        CPTRA_XXXX_PAUSER_LOCK::default()
     }
-    fn write_cptra_trng_pauser_lock(&mut self, _val: CptraXxxxPauserLockReadVal) {}
+    fn write_cptra_trng_pauser_lock(&mut self, _val: CPTRA_XXXX_PAUSER_LOCK) {}
     fn read_cptra_trng_data(&mut self) -> u32 {
         0
     }
     fn write_cptra_trng_data(&mut self, _val: u32) {}
-    fn read_cptra_trng_ctrl(&mut self) -> CptraTrngCtrlWriteVal {
-        CptraTrngCtrlWriteVal::default()
+    fn read_cptra_trng_ctrl(&mut self) -> CPTRA_TRNG_CTRL {
+        CPTRA_TRNG_CTRL::default()
     }
-    fn write_cptra_trng_ctrl(&mut self, _val: CptraTrngCtrlReadVal) {}
-    fn read_cptra_trng_status(&mut self) -> CptraTrngStatusWriteVal {
-        CptraTrngStatusWriteVal::default()
+    fn write_cptra_trng_ctrl(&mut self, _val: CPTRA_TRNG_CTRL) {}
+    fn read_cptra_trng_status(&mut self) -> CPTRA_TRNG_STATUS {
+        CPTRA_TRNG_STATUS::default()
     }
-    fn write_cptra_trng_status(&mut self, _val: CptraTrngStatusReadVal) {}
-    fn read_cptra_fuse_wr_done(&mut self) -> CptraFuseWrDoneWriteVal {
-        CptraFuseWrDoneWriteVal::default()
+    fn write_cptra_trng_status(&mut self, _val: CPTRA_TRNG_STATUS) {}
+    fn read_cptra_fuse_wr_done(&mut self) -> CPTRA_FUSE_WR_DONE {
+        CPTRA_FUSE_WR_DONE::default()
     }
-    fn write_cptra_fuse_wr_done(&mut self, _val: CptraFuseWrDoneReadVal) {}
+    fn write_cptra_fuse_wr_done(&mut self, _val: CPTRA_FUSE_WR_DONE) {}
     fn read_cptra_timer_config(&mut self) -> u32 {
         0
     }
     fn write_cptra_timer_config(&mut self, _val: u32) {}
-    fn read_cptra_bootfsm_go(&mut self) -> CptraBootfsmGoWriteVal {
-        CptraBootfsmGoWriteVal::default()
+    fn read_cptra_bootfsm_go(&mut self) -> CPTRA_BOOTFSM_GO {
+        CPTRA_BOOTFSM_GO::default()
     }
-    fn write_cptra_bootfsm_go(&mut self, _val: CptraBootfsmGoReadVal) {}
+    fn write_cptra_bootfsm_go(&mut self, _val: CPTRA_BOOTFSM_GO) {}
     fn read_cptra_dbg_manuf_service_reg(&mut self) -> u32 {
         0
     }
     fn write_cptra_dbg_manuf_service_reg(&mut self, _val: u32) {}
-    fn read_cptra_clk_gating_en(&mut self) -> CptraClkGatingEnWriteVal {
-        CptraClkGatingEnWriteVal::default()
+    fn read_cptra_clk_gating_en(&mut self) -> CPTRA_CLK_GATING_EN {
+        CPTRA_CLK_GATING_EN::default()
     }
-    fn write_cptra_clk_gating_en(&mut self, _val: CptraClkGatingEnReadVal) {}
+    fn write_cptra_clk_gating_en(&mut self, _val: CPTRA_CLK_GATING_EN) {}
     fn read_cptra_generic_input_wires(&mut self) -> u32 {
         0
     }
@@ -2620,66 +108,66 @@ pub trait SocPeripheral {
         0
     }
     fn write_cptra_generic_output_wires(&mut self, _val: u32) {}
-    fn read_cptra_hw_rev_id(&mut self) -> CptraHwRevIdWriteVal {
-        CptraHwRevIdWriteVal::default()
+    fn read_cptra_hw_rev_id(&mut self) -> CPTRA_HW_REV_ID {
+        CPTRA_HW_REV_ID::default()
     }
-    fn write_cptra_hw_rev_id(&mut self, _val: CptraHwRevIdReadVal) {}
+    fn write_cptra_hw_rev_id(&mut self, _val: CPTRA_HW_REV_ID) {}
     fn read_cptra_fw_rev_id(&mut self) -> u32 {
         0
     }
     fn write_cptra_fw_rev_id(&mut self, _val: u32) {}
-    fn read_cptra_hw_config(&mut self) -> CptraHwConfigWriteVal {
-        CptraHwConfigWriteVal::default()
+    fn read_cptra_hw_config(&mut self) -> CPTRA_HW_CONFIG {
+        CPTRA_HW_CONFIG::default()
     }
-    fn write_cptra_hw_config(&mut self, _val: CptraHwConfigReadVal) {}
-    fn read_cptra_wdt_timer1_en(&mut self) -> CptraWdtTimer1EnWriteVal {
-        CptraWdtTimer1EnWriteVal::default()
+    fn write_cptra_hw_config(&mut self, _val: CPTRA_HW_CONFIG) {}
+    fn read_cptra_wdt_timer1_en(&mut self) -> CPTRA_WDT_TIMER1_EN {
+        CPTRA_WDT_TIMER1_EN::default()
     }
-    fn write_cptra_wdt_timer1_en(&mut self, _val: CptraWdtTimer1EnReadVal) {}
-    fn read_cptra_wdt_timer1_ctrl(&mut self) -> CptraWdtTimer1CtrlWriteVal {
-        CptraWdtTimer1CtrlWriteVal::default()
+    fn write_cptra_wdt_timer1_en(&mut self, _val: CPTRA_WDT_TIMER1_EN) {}
+    fn read_cptra_wdt_timer1_ctrl(&mut self) -> CPTRA_WDT_TIMER1_CTRL {
+        CPTRA_WDT_TIMER1_CTRL::default()
     }
-    fn write_cptra_wdt_timer1_ctrl(&mut self, _val: CptraWdtTimer1CtrlReadVal) {}
+    fn write_cptra_wdt_timer1_ctrl(&mut self, _val: CPTRA_WDT_TIMER1_CTRL) {}
     fn read_cptra_wdt_timer1_timeout_period(&mut self) -> u32 {
         0
     }
     fn write_cptra_wdt_timer1_timeout_period(&mut self, _val: u32) {}
-    fn read_cptra_wdt_timer2_en(&mut self) -> CptraWdtTimer2EnWriteVal {
-        CptraWdtTimer2EnWriteVal::default()
+    fn read_cptra_wdt_timer2_en(&mut self) -> CPTRA_WDT_TIMER2_EN {
+        CPTRA_WDT_TIMER2_EN::default()
     }
-    fn write_cptra_wdt_timer2_en(&mut self, _val: CptraWdtTimer2EnReadVal) {}
-    fn read_cptra_wdt_timer2_ctrl(&mut self) -> CptraWdtTimer2CtrlWriteVal {
-        CptraWdtTimer2CtrlWriteVal::default()
+    fn write_cptra_wdt_timer2_en(&mut self, _val: CPTRA_WDT_TIMER2_EN) {}
+    fn read_cptra_wdt_timer2_ctrl(&mut self) -> CPTRA_WDT_TIMER2_CTRL {
+        CPTRA_WDT_TIMER2_CTRL::default()
     }
-    fn write_cptra_wdt_timer2_ctrl(&mut self, _val: CptraWdtTimer2CtrlReadVal) {}
+    fn write_cptra_wdt_timer2_ctrl(&mut self, _val: CPTRA_WDT_TIMER2_CTRL) {}
     fn read_cptra_wdt_timer2_timeout_period(&mut self) -> u32 {
         0
     }
     fn write_cptra_wdt_timer2_timeout_period(&mut self, _val: u32) {}
-    fn read_cptra_wdt_status(&mut self) -> CptraWdtStatusWriteVal {
-        CptraWdtStatusWriteVal::default()
+    fn read_cptra_wdt_status(&mut self) -> CPTRA_WDT_STATUS {
+        CPTRA_WDT_STATUS::default()
     }
-    fn write_cptra_wdt_status(&mut self, _val: CptraWdtStatusReadVal) {}
+    fn write_cptra_wdt_status(&mut self, _val: CPTRA_WDT_STATUS) {}
     fn read_cptra_fuse_valid_pauser(&mut self) -> u32 {
         0
     }
     fn write_cptra_fuse_valid_pauser(&mut self, _val: u32) {}
-    fn read_cptra_fuse_pauser_lock(&mut self) -> CptraXxxxPauserLockWriteVal {
-        CptraXxxxPauserLockWriteVal::default()
+    fn read_cptra_fuse_pauser_lock(&mut self) -> CPTRA_XXXX_PAUSER_LOCK {
+        CPTRA_XXXX_PAUSER_LOCK::default()
     }
-    fn write_cptra_fuse_pauser_lock(&mut self, _val: CptraXxxxPauserLockReadVal) {}
+    fn write_cptra_fuse_pauser_lock(&mut self, _val: CPTRA_XXXX_PAUSER_LOCK) {}
     fn read_cptra_wdt_cfg(&mut self) -> u32 {
         0
     }
     fn write_cptra_wdt_cfg(&mut self, _val: u32) {}
-    fn read_cptra_i_trng_entropy_config_0(&mut self) -> CptraItrngEntropyConfig0WriteVal {
-        CptraItrngEntropyConfig0WriteVal::default()
+    fn read_cptra_i_trng_entropy_config_0(&mut self) -> CPTRA_iTRNG_ENTROPY_CONFIG_0 {
+        CPTRA_iTRNG_ENTROPY_CONFIG_0::default()
     }
-    fn write_cptra_i_trng_entropy_config_0(&mut self, _val: CptraItrngEntropyConfig0ReadVal) {}
-    fn read_cptra_i_trng_entropy_config_1(&mut self) -> CptraItrngEntropyConfig1WriteVal {
-        CptraItrngEntropyConfig1WriteVal::default()
+    fn write_cptra_i_trng_entropy_config_0(&mut self, _val: CPTRA_iTRNG_ENTROPY_CONFIG_0) {}
+    fn read_cptra_i_trng_entropy_config_1(&mut self) -> CPTRA_iTRNG_ENTROPY_CONFIG_1 {
+        CPTRA_iTRNG_ENTROPY_CONFIG_1::default()
     }
-    fn write_cptra_i_trng_entropy_config_1(&mut self, _val: CptraItrngEntropyConfig1ReadVal) {}
+    fn write_cptra_i_trng_entropy_config_1(&mut self, _val: CPTRA_iTRNG_ENTROPY_CONFIG_1) {}
     fn read_cptra_rsvd_reg(&mut self) -> u32 {
         0
     }
@@ -2696,10 +184,10 @@ pub trait SocPeripheral {
         0
     }
     fn write_fuse_key_manifest_pk_hash(&mut self, _val: u32) {}
-    fn read_fuse_key_manifest_pk_hash_mask(&mut self) -> FuseKeyManifestPkHashMaskWriteVal {
-        FuseKeyManifestPkHashMaskWriteVal::default()
+    fn read_fuse_key_manifest_pk_hash_mask(&mut self) -> fuse_key_manifest_pk_hash_mask {
+        fuse_key_manifest_pk_hash_mask::default()
     }
-    fn write_fuse_key_manifest_pk_hash_mask(&mut self, _val: FuseKeyManifestPkHashMaskReadVal) {}
+    fn write_fuse_key_manifest_pk_hash_mask(&mut self, _val: fuse_key_manifest_pk_hash_mask) {}
     fn read_fuse_owner_pk_hash(&mut self) -> u32 {
         0
     }
@@ -2712,10 +200,10 @@ pub trait SocPeripheral {
         0
     }
     fn write_fuse_runtime_svn(&mut self, _val: u32) {}
-    fn read_fuse_anti_rollback_disable(&mut self) -> FuseAntiRollbackDisableWriteVal {
-        FuseAntiRollbackDisableWriteVal::default()
+    fn read_fuse_anti_rollback_disable(&mut self) -> fuse_anti_rollback_disable {
+        fuse_anti_rollback_disable::default()
     }
-    fn write_fuse_anti_rollback_disable(&mut self, _val: FuseAntiRollbackDisableReadVal) {}
+    fn write_fuse_anti_rollback_disable(&mut self, _val: fuse_anti_rollback_disable) {}
     fn read_fuse_idevid_cert_attr(&mut self) -> u32 {
         0
     }
@@ -2724,57 +212,56 @@ pub trait SocPeripheral {
         0
     }
     fn write_fuse_idevid_manuf_hsm_id(&mut self, _val: u32) {}
-    fn read_fuse_life_cycle(&mut self) -> FuseLifeCycleWriteVal {
-        FuseLifeCycleWriteVal::default()
+    fn read_fuse_life_cycle(&mut self) -> fuse_life_cycle {
+        fuse_life_cycle::default()
     }
-    fn write_fuse_life_cycle(&mut self, _val: FuseLifeCycleReadVal) {}
-    fn read_fuse_lms_verify(&mut self) -> FuseLmsVerifyWriteVal {
-        FuseLmsVerifyWriteVal::default()
+    fn write_fuse_life_cycle(&mut self, _val: fuse_life_cycle) {}
+    fn read_fuse_lms_verify(&mut self) -> fuse_lms_verify {
+        fuse_lms_verify::default()
     }
-    fn write_fuse_lms_verify(&mut self, _val: FuseLmsVerifyReadVal) {}
+    fn write_fuse_lms_verify(&mut self, _val: fuse_lms_verify) {}
     fn read_fuse_lms_revocation(&mut self) -> u32 {
         0
     }
     fn write_fuse_lms_revocation(&mut self, _val: u32) {}
-    fn read_fuse_soc_stepping_id(&mut self) -> FuseSocSteppingIdWriteVal {
-        FuseSocSteppingIdWriteVal::default()
+    fn read_fuse_soc_stepping_id(&mut self) -> fuse_soc_stepping_id {
+        fuse_soc_stepping_id::default()
     }
-    fn write_fuse_soc_stepping_id(&mut self, _val: FuseSocSteppingIdReadVal) {}
+    fn write_fuse_soc_stepping_id(&mut self, _val: fuse_soc_stepping_id) {}
     fn read_internal_obf_key(&mut self) -> u32 {
         0
     }
     fn write_internal_obf_key(&mut self, _val: u32) {}
-    fn read_internal_iccm_lock(&mut self) -> InternalIccmLockWriteVal {
-        InternalIccmLockWriteVal::default()
+    fn read_internal_iccm_lock(&mut self) -> internal_iccm_lock {
+        internal_iccm_lock::default()
     }
-    fn write_internal_iccm_lock(&mut self, _val: InternalIccmLockReadVal) {}
-    fn read_internal_fw_update_reset(&mut self) -> InternalFwUpdateResetWriteVal {
-        InternalFwUpdateResetWriteVal::default()
+    fn write_internal_iccm_lock(&mut self, _val: internal_iccm_lock) {}
+    fn read_internal_fw_update_reset(&mut self) -> internal_fw_update_reset {
+        internal_fw_update_reset::default()
     }
-    fn write_internal_fw_update_reset(&mut self, _val: InternalFwUpdateResetReadVal) {}
+    fn write_internal_fw_update_reset(&mut self, _val: internal_fw_update_reset) {}
     fn read_internal_fw_update_reset_wait_cycles(
         &mut self,
-    ) -> InternalFwUpdateResetWaitCyclesWriteVal {
-        InternalFwUpdateResetWaitCyclesWriteVal::default()
+    ) -> internal_fw_update_reset_wait_cycles {
+        internal_fw_update_reset_wait_cycles::default()
     }
     fn write_internal_fw_update_reset_wait_cycles(
         &mut self,
-        _val: InternalFwUpdateResetWaitCyclesReadVal,
+        _val: internal_fw_update_reset_wait_cycles,
     ) {
     }
     fn read_internal_nmi_vector(&mut self) -> u32 {
         0
     }
     fn write_internal_nmi_vector(&mut self, _val: u32) {}
-    fn read_internal_hw_error_fatal_mask(&mut self) -> InternalHwErrorFatalMaskWriteVal {
-        InternalHwErrorFatalMaskWriteVal::default()
+    fn read_internal_hw_error_fatal_mask(&mut self) -> internal_hw_error_fatal_mask {
+        internal_hw_error_fatal_mask::default()
     }
-    fn write_internal_hw_error_fatal_mask(&mut self, _val: InternalHwErrorFatalMaskReadVal) {}
-    fn read_internal_hw_error_non_fatal_mask(&mut self) -> InternalHwErrorNonFatalMaskWriteVal {
-        InternalHwErrorNonFatalMaskWriteVal::default()
+    fn write_internal_hw_error_fatal_mask(&mut self, _val: internal_hw_error_fatal_mask) {}
+    fn read_internal_hw_error_non_fatal_mask(&mut self) -> internal_hw_error_non_fatal_mask {
+        internal_hw_error_non_fatal_mask::default()
     }
-    fn write_internal_hw_error_non_fatal_mask(&mut self, _val: InternalHwErrorNonFatalMaskReadVal) {
-    }
+    fn write_internal_hw_error_non_fatal_mask(&mut self, _val: internal_hw_error_non_fatal_mask) {}
     fn read_internal_fw_error_fatal_mask(&mut self) -> u32 {
         0
     }
@@ -2799,42 +286,42 @@ pub trait SocPeripheral {
         0
     }
     fn write_internal_rv_mtimecmp_h(&mut self, _val: u32) {}
-    fn read_intr_block_rf_global_intr_en_r(&mut self) -> GlobalIntrEnTWriteVal {
-        GlobalIntrEnTWriteVal::default()
+    fn read_intr_block_rf_global_intr_en_r(&mut self) -> global_intr_en_t {
+        global_intr_en_t::default()
     }
-    fn write_intr_block_rf_global_intr_en_r(&mut self, _val: GlobalIntrEnTReadVal) {}
-    fn read_intr_block_rf_error_intr_en_r(&mut self) -> ErrorIntrEnTWriteVal {
-        ErrorIntrEnTWriteVal::default()
+    fn write_intr_block_rf_global_intr_en_r(&mut self, _val: global_intr_en_t) {}
+    fn read_intr_block_rf_error_intr_en_r(&mut self) -> error_intr_en_t {
+        error_intr_en_t::default()
     }
-    fn write_intr_block_rf_error_intr_en_r(&mut self, _val: ErrorIntrEnTReadVal) {}
-    fn read_intr_block_rf_notif_intr_en_r(&mut self) -> NotifIntrEnTWriteVal {
-        NotifIntrEnTWriteVal::default()
+    fn write_intr_block_rf_error_intr_en_r(&mut self, _val: error_intr_en_t) {}
+    fn read_intr_block_rf_notif_intr_en_r(&mut self) -> notif_intr_en_t {
+        notif_intr_en_t::default()
     }
-    fn write_intr_block_rf_notif_intr_en_r(&mut self, _val: NotifIntrEnTReadVal) {}
-    fn read_intr_block_rf_error_global_intr_r(&mut self) -> GlobalIntrTWriteVal {
-        GlobalIntrTWriteVal::default()
+    fn write_intr_block_rf_notif_intr_en_r(&mut self, _val: notif_intr_en_t) {}
+    fn read_intr_block_rf_error_global_intr_r(&mut self) -> global_intr_t {
+        global_intr_t::default()
     }
-    fn write_intr_block_rf_error_global_intr_r(&mut self, _val: GlobalIntrTReadVal) {}
-    fn read_intr_block_rf_notif_global_intr_r(&mut self) -> GlobalIntrTWriteVal {
-        GlobalIntrTWriteVal::default()
+    fn write_intr_block_rf_error_global_intr_r(&mut self, _val: global_intr_t) {}
+    fn read_intr_block_rf_notif_global_intr_r(&mut self) -> global_intr_t {
+        global_intr_t::default()
     }
-    fn write_intr_block_rf_notif_global_intr_r(&mut self, _val: GlobalIntrTReadVal) {}
-    fn read_intr_block_rf_error_internal_intr_r(&mut self) -> ErrorIntrTWriteVal {
-        ErrorIntrTWriteVal::default()
+    fn write_intr_block_rf_notif_global_intr_r(&mut self, _val: global_intr_t) {}
+    fn read_intr_block_rf_error_internal_intr_r(&mut self) -> error_intr_t {
+        error_intr_t::default()
     }
-    fn write_intr_block_rf_error_internal_intr_r(&mut self, _val: ErrorIntrTReadVal) {}
-    fn read_intr_block_rf_notif_internal_intr_r(&mut self) -> NotifIntrTWriteVal {
-        NotifIntrTWriteVal::default()
+    fn write_intr_block_rf_error_internal_intr_r(&mut self, _val: error_intr_t) {}
+    fn read_intr_block_rf_notif_internal_intr_r(&mut self) -> notif_intr_t {
+        notif_intr_t::default()
     }
-    fn write_intr_block_rf_notif_internal_intr_r(&mut self, _val: NotifIntrTReadVal) {}
-    fn read_intr_block_rf_error_intr_trig_r(&mut self) -> ErrorIntrTrigTWriteVal {
-        ErrorIntrTrigTWriteVal::default()
+    fn write_intr_block_rf_notif_internal_intr_r(&mut self, _val: notif_intr_t) {}
+    fn read_intr_block_rf_error_intr_trig_r(&mut self) -> error_intr_trig_t {
+        error_intr_trig_t::default()
     }
-    fn write_intr_block_rf_error_intr_trig_r(&mut self, _val: ErrorIntrTrigTReadVal) {}
-    fn read_intr_block_rf_notif_intr_trig_r(&mut self) -> NotifIntrTrigTWriteVal {
-        NotifIntrTrigTWriteVal::default()
+    fn write_intr_block_rf_error_intr_trig_r(&mut self, _val: error_intr_trig_t) {}
+    fn read_intr_block_rf_notif_intr_trig_r(&mut self) -> notif_intr_trig_t {
+        notif_intr_trig_t::default()
     }
-    fn write_intr_block_rf_notif_intr_trig_r(&mut self, _val: NotifIntrTrigTReadVal) {}
+    fn write_intr_block_rf_notif_intr_trig_r(&mut self, _val: notif_intr_trig_t) {}
     fn read_intr_block_rf_error_internal_intr_count_r(&mut self) -> u32 {
         0
     }
@@ -2891,129 +378,96 @@ pub trait SocPeripheral {
         0
     }
     fn write_intr_block_rf_notif_gen_in_toggle_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_error_internal_intr_count_incr_r(&mut self) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
+    fn read_intr_block_rf_error_internal_intr_count_incr_r(&mut self) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
-    fn write_intr_block_rf_error_internal_intr_count_incr_r(
-        &mut self,
-        _val: IntrCountIncrTReadVal,
-    ) {
+    fn write_intr_block_rf_error_internal_intr_count_incr_r(&mut self, _val: intr_count_incr_t) {}
+    fn read_intr_block_rf_error_inv_dev_intr_count_incr_r(&mut self) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
-    fn read_intr_block_rf_error_inv_dev_intr_count_incr_r(&mut self) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
+    fn write_intr_block_rf_error_inv_dev_intr_count_incr_r(&mut self, _val: intr_count_incr_t) {}
+    fn read_intr_block_rf_error_cmd_fail_intr_count_incr_r(&mut self) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
-    fn write_intr_block_rf_error_inv_dev_intr_count_incr_r(&mut self, _val: IntrCountIncrTReadVal) {
+    fn write_intr_block_rf_error_cmd_fail_intr_count_incr_r(&mut self, _val: intr_count_incr_t) {}
+    fn read_intr_block_rf_error_bad_fuse_intr_count_incr_r(&mut self) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
-    fn read_intr_block_rf_error_cmd_fail_intr_count_incr_r(&mut self) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
-    }
-    fn write_intr_block_rf_error_cmd_fail_intr_count_incr_r(
-        &mut self,
-        _val: IntrCountIncrTReadVal,
-    ) {
-    }
-    fn read_intr_block_rf_error_bad_fuse_intr_count_incr_r(&mut self) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
-    }
-    fn write_intr_block_rf_error_bad_fuse_intr_count_incr_r(
-        &mut self,
-        _val: IntrCountIncrTReadVal,
-    ) {
-    }
-    fn read_intr_block_rf_error_iccm_blocked_intr_count_incr_r(
-        &mut self,
-    ) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
+    fn write_intr_block_rf_error_bad_fuse_intr_count_incr_r(&mut self, _val: intr_count_incr_t) {}
+    fn read_intr_block_rf_error_iccm_blocked_intr_count_incr_r(&mut self) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
     fn write_intr_block_rf_error_iccm_blocked_intr_count_incr_r(
         &mut self,
-        _val: IntrCountIncrTReadVal,
+        _val: intr_count_incr_t,
     ) {
     }
-    fn read_intr_block_rf_error_mbox_ecc_unc_intr_count_incr_r(
-        &mut self,
-    ) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
+    fn read_intr_block_rf_error_mbox_ecc_unc_intr_count_incr_r(&mut self) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
     fn write_intr_block_rf_error_mbox_ecc_unc_intr_count_incr_r(
         &mut self,
-        _val: IntrCountIncrTReadVal,
+        _val: intr_count_incr_t,
     ) {
     }
     fn read_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r(
         &mut self,
-    ) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
+    ) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
     fn write_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r(
         &mut self,
-        _val: IntrCountIncrTReadVal,
+        _val: intr_count_incr_t,
     ) {
     }
     fn read_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r(
         &mut self,
-    ) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
+    ) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
     fn write_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r(
         &mut self,
-        _val: IntrCountIncrTReadVal,
+        _val: intr_count_incr_t,
     ) {
     }
-    fn read_intr_block_rf_notif_cmd_avail_intr_count_incr_r(&mut self) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
+    fn read_intr_block_rf_notif_cmd_avail_intr_count_incr_r(&mut self) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
-    fn write_intr_block_rf_notif_cmd_avail_intr_count_incr_r(
-        &mut self,
-        _val: IntrCountIncrTReadVal,
-    ) {
-    }
-    fn read_intr_block_rf_notif_mbox_ecc_cor_intr_count_incr_r(
-        &mut self,
-    ) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
+    fn write_intr_block_rf_notif_cmd_avail_intr_count_incr_r(&mut self, _val: intr_count_incr_t) {}
+    fn read_intr_block_rf_notif_mbox_ecc_cor_intr_count_incr_r(&mut self) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
     fn write_intr_block_rf_notif_mbox_ecc_cor_intr_count_incr_r(
         &mut self,
-        _val: IntrCountIncrTReadVal,
+        _val: intr_count_incr_t,
     ) {
     }
-    fn read_intr_block_rf_notif_debug_locked_intr_count_incr_r(
-        &mut self,
-    ) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
+    fn read_intr_block_rf_notif_debug_locked_intr_count_incr_r(&mut self) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
     fn write_intr_block_rf_notif_debug_locked_intr_count_incr_r(
         &mut self,
-        _val: IntrCountIncrTReadVal,
+        _val: intr_count_incr_t,
     ) {
     }
-    fn read_intr_block_rf_notif_scan_mode_intr_count_incr_r(&mut self) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
+    fn read_intr_block_rf_notif_scan_mode_intr_count_incr_r(&mut self) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
-    fn write_intr_block_rf_notif_scan_mode_intr_count_incr_r(
-        &mut self,
-        _val: IntrCountIncrTReadVal,
-    ) {
-    }
-    fn read_intr_block_rf_notif_soc_req_lock_intr_count_incr_r(
-        &mut self,
-    ) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
+    fn write_intr_block_rf_notif_scan_mode_intr_count_incr_r(&mut self, _val: intr_count_incr_t) {}
+    fn read_intr_block_rf_notif_soc_req_lock_intr_count_incr_r(&mut self) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
     fn write_intr_block_rf_notif_soc_req_lock_intr_count_incr_r(
         &mut self,
-        _val: IntrCountIncrTReadVal,
+        _val: intr_count_incr_t,
     ) {
     }
-    fn read_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r(
-        &mut self,
-    ) -> IntrCountIncrTWriteVal {
-        IntrCountIncrTWriteVal::default()
+    fn read_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r(&mut self) -> intr_count_incr_t {
+        intr_count_incr_t::default()
     }
     fn write_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r(
         &mut self,
-        _val: IntrCountIncrTReadVal,
+        _val: intr_count_incr_t,
     ) {
     }
 }
@@ -3687,7 +1141,7 @@ impl emulator_bus::Bus for SocBus {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => {
                 self.periph
-                    .write_cptra_hw_error_fatal(CptraHwErrorFatalReadVal::from(val));
+                    .write_cptra_hw_error_fatal(CPTRA_HW_ERROR_FATAL::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 1..=3) => {
@@ -3695,7 +1149,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 4) => {
                 self.periph
-                    .write_cptra_hw_error_non_fatal(CptraHwErrorNonFatalReadVal::from(val));
+                    .write_cptra_hw_error_non_fatal(CPTRA_HW_ERROR_NON_FATAL::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 5..=7) => {
@@ -3745,7 +1199,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x3c) => {
                 self.periph
-                    .write_cptra_flow_status(CptraFlowStatusReadVal::from(val));
+                    .write_cptra_flow_status(CPTRA_FLOW_STATUS::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x3d..=0x3f) => {
@@ -3753,7 +1207,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x40) => {
                 self.periph
-                    .write_cptra_reset_reason(CptraResetReasonReadVal::from(val));
+                    .write_cptra_reset_reason(CPTRA_RESET_REASON::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x41..=0x43) => {
@@ -3761,7 +1215,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x44) => {
                 self.periph
-                    .write_cptra_security_state(CptraSecurityStateReadVal::from(val));
+                    .write_cptra_security_state(CPTRA_SECURITY_STATE::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x45..=0x47) => {
@@ -3776,7 +1230,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x5c) => {
                 self.periph
-                    .write_cptra_mbox_pauser_lock(CptraXxxxPauserLockReadVal::from(val));
+                    .write_cptra_mbox_pauser_lock(CPTRA_XXXX_PAUSER_LOCK::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x5d..=0x5f) => {
@@ -3791,7 +1245,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x74) => {
                 self.periph
-                    .write_cptra_trng_pauser_lock(CptraXxxxPauserLockReadVal::from(val));
+                    .write_cptra_trng_pauser_lock(CPTRA_XXXX_PAUSER_LOCK::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x75..=0x77) => {
@@ -3806,7 +1260,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa8) => {
                 self.periph
-                    .write_cptra_trng_ctrl(CptraTrngCtrlReadVal::from(val));
+                    .write_cptra_trng_ctrl(CPTRA_TRNG_CTRL::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xa9..=0xab) => {
@@ -3814,7 +1268,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xac) => {
                 self.periph
-                    .write_cptra_trng_status(CptraTrngStatusReadVal::from(val));
+                    .write_cptra_trng_status(CPTRA_TRNG_STATUS::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xad..=0xaf) => {
@@ -3822,7 +1276,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xb0) => {
                 self.periph
-                    .write_cptra_fuse_wr_done(CptraFuseWrDoneReadVal::from(val));
+                    .write_cptra_fuse_wr_done(CPTRA_FUSE_WR_DONE::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xb1..=0xb3) => {
@@ -3837,7 +1291,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xb8) => {
                 self.periph
-                    .write_cptra_bootfsm_go(CptraBootfsmGoReadVal::from(val));
+                    .write_cptra_bootfsm_go(CPTRA_BOOTFSM_GO::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xb9..=0xbb) => {
@@ -3852,7 +1306,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xc0) => {
                 self.periph
-                    .write_cptra_clk_gating_en(CptraClkGatingEnReadVal::from(val));
+                    .write_cptra_clk_gating_en(CPTRA_CLK_GATING_EN::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xc1..=0xc3) => {
@@ -3874,7 +1328,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xd4) => {
                 self.periph
-                    .write_cptra_hw_rev_id(CptraHwRevIdReadVal::from(val));
+                    .write_cptra_hw_rev_id(CPTRA_HW_REV_ID::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xd5..=0xd7) => {
@@ -3889,7 +1343,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xe0) => {
                 self.periph
-                    .write_cptra_hw_config(CptraHwConfigReadVal::from(val));
+                    .write_cptra_hw_config(CPTRA_HW_CONFIG::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xe1..=0xe3) => {
@@ -3897,7 +1351,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xe4) => {
                 self.periph
-                    .write_cptra_wdt_timer1_en(CptraWdtTimer1EnReadVal::from(val));
+                    .write_cptra_wdt_timer1_en(CPTRA_WDT_TIMER1_EN::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xe5..=0xe7) => {
@@ -3905,7 +1359,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xe8) => {
                 self.periph
-                    .write_cptra_wdt_timer1_ctrl(CptraWdtTimer1CtrlReadVal::from(val));
+                    .write_cptra_wdt_timer1_ctrl(CPTRA_WDT_TIMER1_CTRL::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xe9..=0xeb) => {
@@ -3920,7 +1374,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xf4) => {
                 self.periph
-                    .write_cptra_wdt_timer2_en(CptraWdtTimer2EnReadVal::from(val));
+                    .write_cptra_wdt_timer2_en(CPTRA_WDT_TIMER2_EN::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xf5..=0xf7) => {
@@ -3928,7 +1382,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xf8) => {
                 self.periph
-                    .write_cptra_wdt_timer2_ctrl(CptraWdtTimer2CtrlReadVal::from(val));
+                    .write_cptra_wdt_timer2_ctrl(CPTRA_WDT_TIMER2_CTRL::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xf9..=0xfb) => {
@@ -3943,7 +1397,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x104) => {
                 self.periph
-                    .write_cptra_wdt_status(CptraWdtStatusReadVal::from(val));
+                    .write_cptra_wdt_status(CPTRA_WDT_STATUS::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x105..=0x107) => {
@@ -3958,7 +1412,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x10c) => {
                 self.periph
-                    .write_cptra_fuse_pauser_lock(CptraXxxxPauserLockReadVal::from(val));
+                    .write_cptra_fuse_pauser_lock(CPTRA_XXXX_PAUSER_LOCK::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x10d..=0x10f) => {
@@ -3972,18 +1426,16 @@ impl emulator_bus::Bus for SocBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x118) => {
-                self.periph.write_cptra_i_trng_entropy_config_0(
-                    CptraItrngEntropyConfig0ReadVal::from(val),
-                );
+                self.periph
+                    .write_cptra_i_trng_entropy_config_0(CPTRA_iTRNG_ENTROPY_CONFIG_0::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x119..=0x11b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x11c) => {
-                self.periph.write_cptra_i_trng_entropy_config_1(
-                    CptraItrngEntropyConfig1ReadVal::from(val),
-                );
+                self.periph
+                    .write_cptra_i_trng_entropy_config_1(CPTRA_iTRNG_ENTROPY_CONFIG_1::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x11d..=0x11f) => {
@@ -4005,7 +1457,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x280) => {
                 self.periph.write_fuse_key_manifest_pk_hash_mask(
-                    FuseKeyManifestPkHashMaskReadVal::from(val),
+                    fuse_key_manifest_pk_hash_mask::from(val),
                 );
                 Ok(())
             }
@@ -4035,7 +1487,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x2c8) => {
                 self.periph
-                    .write_fuse_anti_rollback_disable(FuseAntiRollbackDisableReadVal::from(val));
+                    .write_fuse_anti_rollback_disable(fuse_anti_rollback_disable::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x2c9..=0x2cb) => {
@@ -4057,7 +1509,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x33c) => {
                 self.periph
-                    .write_fuse_life_cycle(FuseLifeCycleReadVal::from(val));
+                    .write_fuse_life_cycle(fuse_life_cycle::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x33d..=0x33f) => {
@@ -4065,7 +1517,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x340) => {
                 self.periph
-                    .write_fuse_lms_verify(FuseLmsVerifyReadVal::from(val));
+                    .write_fuse_lms_verify(fuse_lms_verify::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x341..=0x343) => {
@@ -4080,7 +1532,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x348) => {
                 self.periph
-                    .write_fuse_soc_stepping_id(FuseSocSteppingIdReadVal::from(val));
+                    .write_fuse_soc_stepping_id(fuse_soc_stepping_id::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x349..=0x34b) => {
@@ -4088,7 +1540,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x620) => {
                 self.periph
-                    .write_internal_iccm_lock(InternalIccmLockReadVal::from(val));
+                    .write_internal_iccm_lock(internal_iccm_lock::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x621..=0x623) => {
@@ -4096,7 +1548,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x624) => {
                 self.periph
-                    .write_internal_fw_update_reset(InternalFwUpdateResetReadVal::from(val));
+                    .write_internal_fw_update_reset(internal_fw_update_reset::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x625..=0x627) => {
@@ -4104,7 +1556,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x628) => {
                 self.periph.write_internal_fw_update_reset_wait_cycles(
-                    InternalFwUpdateResetWaitCyclesReadVal::from(val),
+                    internal_fw_update_reset_wait_cycles::from(val),
                 );
                 Ok(())
             }
@@ -4120,7 +1572,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x630) => {
                 self.periph
-                    .write_internal_hw_error_fatal_mask(InternalHwErrorFatalMaskReadVal::from(val));
+                    .write_internal_hw_error_fatal_mask(internal_hw_error_fatal_mask::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x631..=0x633) => {
@@ -4128,7 +1580,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x634) => {
                 self.periph.write_internal_hw_error_non_fatal_mask(
-                    InternalHwErrorNonFatalMaskReadVal::from(val),
+                    internal_hw_error_non_fatal_mask::from(val),
                 );
                 Ok(())
             }
@@ -4179,7 +1631,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x800) => {
                 self.periph
-                    .write_intr_block_rf_global_intr_en_r(GlobalIntrEnTReadVal::from(val));
+                    .write_intr_block_rf_global_intr_en_r(global_intr_en_t::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x801..=0x803) => {
@@ -4187,7 +1639,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x804) => {
                 self.periph
-                    .write_intr_block_rf_error_intr_en_r(ErrorIntrEnTReadVal::from(val));
+                    .write_intr_block_rf_error_intr_en_r(error_intr_en_t::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x805..=0x807) => {
@@ -4195,7 +1647,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x808) => {
                 self.periph
-                    .write_intr_block_rf_notif_intr_en_r(NotifIntrEnTReadVal::from(val));
+                    .write_intr_block_rf_notif_intr_en_r(notif_intr_en_t::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x809..=0x80b) => {
@@ -4203,7 +1655,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x80c) => {
                 self.periph
-                    .write_intr_block_rf_error_global_intr_r(GlobalIntrTReadVal::from(val));
+                    .write_intr_block_rf_error_global_intr_r(global_intr_t::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x80d..=0x80f) => {
@@ -4211,7 +1663,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x810) => {
                 self.periph
-                    .write_intr_block_rf_notif_global_intr_r(GlobalIntrTReadVal::from(val));
+                    .write_intr_block_rf_notif_global_intr_r(global_intr_t::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x811..=0x813) => {
@@ -4219,7 +1671,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x814) => {
                 self.periph
-                    .write_intr_block_rf_error_internal_intr_r(ErrorIntrTReadVal::from(val));
+                    .write_intr_block_rf_error_internal_intr_r(error_intr_t::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x815..=0x817) => {
@@ -4227,7 +1679,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x818) => {
                 self.periph
-                    .write_intr_block_rf_notif_internal_intr_r(NotifIntrTReadVal::from(val));
+                    .write_intr_block_rf_notif_internal_intr_r(notif_intr_t::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x819..=0x81b) => {
@@ -4235,7 +1687,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x81c) => {
                 self.periph
-                    .write_intr_block_rf_error_intr_trig_r(ErrorIntrTrigTReadVal::from(val));
+                    .write_intr_block_rf_error_intr_trig_r(error_intr_trig_t::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x81d..=0x81f) => {
@@ -4243,7 +1695,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x820) => {
                 self.periph
-                    .write_intr_block_rf_notif_intr_trig_r(NotifIntrTrigTReadVal::from(val));
+                    .write_intr_block_rf_notif_intr_trig_r(notif_intr_trig_t::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x821..=0x823) => {
@@ -4363,9 +1815,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa00) => {
                 self.periph
-                    .write_intr_block_rf_error_internal_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
-                    );
+                    .write_intr_block_rf_error_internal_intr_count_incr_r(intr_count_incr_t::from(
+                        val,
+                    ));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xa01..=0xa03) => {
@@ -4373,9 +1825,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa04) => {
                 self.periph
-                    .write_intr_block_rf_error_inv_dev_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
-                    );
+                    .write_intr_block_rf_error_inv_dev_intr_count_incr_r(intr_count_incr_t::from(
+                        val,
+                    ));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xa05..=0xa07) => {
@@ -4383,9 +1835,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa08) => {
                 self.periph
-                    .write_intr_block_rf_error_cmd_fail_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
-                    );
+                    .write_intr_block_rf_error_cmd_fail_intr_count_incr_r(intr_count_incr_t::from(
+                        val,
+                    ));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xa09..=0xa0b) => {
@@ -4393,9 +1845,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa0c) => {
                 self.periph
-                    .write_intr_block_rf_error_bad_fuse_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
-                    );
+                    .write_intr_block_rf_error_bad_fuse_intr_count_incr_r(intr_count_incr_t::from(
+                        val,
+                    ));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xa0d..=0xa0f) => {
@@ -4404,7 +1856,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa10) => {
                 self.periph
                     .write_intr_block_rf_error_iccm_blocked_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
+                        intr_count_incr_t::from(val),
                     );
                 Ok(())
             }
@@ -4414,7 +1866,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa14) => {
                 self.periph
                     .write_intr_block_rf_error_mbox_ecc_unc_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
+                        intr_count_incr_t::from(val),
                     );
                 Ok(())
             }
@@ -4424,7 +1876,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa18) => {
                 self.periph
                     .write_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
+                        intr_count_incr_t::from(val),
                     );
                 Ok(())
             }
@@ -4434,7 +1886,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa1c) => {
                 self.periph
                     .write_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
+                        intr_count_incr_t::from(val),
                     );
                 Ok(())
             }
@@ -4444,7 +1896,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa20) => {
                 self.periph
                     .write_intr_block_rf_notif_cmd_avail_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
+                        intr_count_incr_t::from(val),
                     );
                 Ok(())
             }
@@ -4454,7 +1906,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa24) => {
                 self.periph
                     .write_intr_block_rf_notif_mbox_ecc_cor_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
+                        intr_count_incr_t::from(val),
                     );
                 Ok(())
             }
@@ -4464,7 +1916,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa28) => {
                 self.periph
                     .write_intr_block_rf_notif_debug_locked_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
+                        intr_count_incr_t::from(val),
                     );
                 Ok(())
             }
@@ -4474,7 +1926,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa2c) => {
                 self.periph
                     .write_intr_block_rf_notif_scan_mode_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
+                        intr_count_incr_t::from(val),
                     );
                 Ok(())
             }
@@ -4484,7 +1936,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa30) => {
                 self.periph
                     .write_intr_block_rf_notif_soc_req_lock_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
+                        intr_count_incr_t::from(val),
                     );
                 Ok(())
             }
@@ -4494,7 +1946,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa34) => {
                 self.periph
                     .write_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r(
-                        IntrCountIncrTReadVal::from(val),
+                        intr_count_incr_t::from(val),
                     );
                 Ok(())
             }

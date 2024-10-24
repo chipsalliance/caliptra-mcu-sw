@@ -4,291 +4,30 @@
 // , caliptra-ss repo at 9911c2b0e4bac9e4b48f6c2155c86cb116159734
 // , and i3c-core repo at d5c715103f529ade0e5d375a53c5692daaa9c54b
 //
-#[derive(Clone, Copy, Default)]
-pub struct MeiplReadVal(u32);
-impl MeiplReadVal {
-    /// External interrupt priority level
-    #[inline(always)]
-    pub fn priority(&self) -> u32 {
-        self.0 & 0xf
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> MeiplWriteVal {
-        MeiplWriteVal(self.0)
-    }
-}
-impl From<u32> for MeiplReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<MeiplReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: MeiplReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct MeiplWriteVal(u32);
-impl MeiplWriteVal {
-    /// External interrupt priority level
-    #[inline(always)]
-    pub fn priority(self, val: u32) -> Self {
-        Self((self.0 & !(0xf)) | (val & 0xf))
-    }
-}
-impl From<u32> for MeiplWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<MeiplWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: MeiplWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct MeipReadVal(u32);
-impl MeipReadVal {
-    /// External interrupt pending
-    #[inline(always)]
-    pub fn intpend(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> MeipWriteVal {
-        MeipWriteVal(self.0)
-    }
-}
-impl From<u32> for MeipReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<MeipReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: MeipReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct MeipWriteVal(u32);
-impl MeipWriteVal {
-    /// External interrupt pending
-    #[inline(always)]
-    pub fn intpend(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for MeipWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<MeipWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: MeipWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct MeieReadVal(u32);
-impl MeieReadVal {
-    /// External interrupt enable
-    #[inline(always)]
-    pub fn inten(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> MeieWriteVal {
-        MeieWriteVal(self.0)
-    }
-}
-impl From<u32> for MeieReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<MeieReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: MeieReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct MeieWriteVal(u32);
-impl MeieWriteVal {
-    /// External interrupt enable
-    #[inline(always)]
-    pub fn inten(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for MeieWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<MeieWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: MeieWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct MpiccfgReadVal(u32);
-impl MpiccfgReadVal {
-    /// Interrupt priority order
-    /// 0b0: RISC-V standard compliant priority order (0=lowest to 15=highest)
-    /// 0b1: Reverse priority order (15=lowest to 0=highest)
-    #[inline(always)]
-    pub fn priord(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> MpiccfgWriteVal {
-        MpiccfgWriteVal(self.0)
-    }
-}
-impl From<u32> for MpiccfgReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<MpiccfgReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: MpiccfgReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct MpiccfgWriteVal(u32);
-impl MpiccfgWriteVal {
-    /// Interrupt priority order
-    /// 0b0: RISC-V standard compliant priority order (0=lowest to 15=highest)
-    /// 0b1: Reverse priority order (15=lowest to 0=highest)
-    #[inline(always)]
-    pub fn priord(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for MpiccfgWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<MpiccfgWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: MpiccfgWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct MeigwctrlReadVal(u32);
-impl MeigwctrlReadVal {
-    /// External interrupt polarity
-    /// 0b0: Active-high interrupt
-    /// 0b1: Active-low interrupt
-    #[inline(always)]
-    pub fn polarity(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// External interrupt type
-    /// 0b0: Level-triggered interrupt
-    /// 0b1: Edge-triggered interrupt
-    #[inline(always)]
-    pub fn inttype(&self) -> bool {
-        ((self.0 >> 1) & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> MeigwctrlWriteVal {
-        MeigwctrlWriteVal(self.0)
-    }
-}
-impl From<u32> for MeigwctrlReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<MeigwctrlReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: MeigwctrlReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct MeigwctrlWriteVal(u32);
-impl MeigwctrlWriteVal {
-    /// External interrupt polarity
-    /// 0b0: Active-high interrupt
-    /// 0b1: Active-low interrupt
-    #[inline(always)]
-    pub fn polarity(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-    /// External interrupt type
-    /// 0b0: Level-triggered interrupt
-    /// 0b1: Edge-triggered interrupt
-    #[inline(always)]
-    pub fn inttype(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 1)) | (u32::from(val) << 1))
-    }
-}
-impl From<u32> for MeigwctrlWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<MeigwctrlWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: MeigwctrlWriteVal) -> u32 {
-        val.0
-    }
-}
-pub mod enums {
-    //! Enumerations used by some register fields.
-    pub mod selector {}
-}
 pub trait El2PicPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
-    fn read_meipl(&mut self) -> MeiplWriteVal {
-        MeiplWriteVal::default()
+    fn read_meipl(&mut self) -> meipl {
+        meipl::default()
     }
-    fn write_meipl(&mut self, _val: MeiplReadVal) {}
-    fn read_meip(&mut self) -> MeipWriteVal {
-        MeipWriteVal::default()
+    fn write_meipl(&mut self, _val: meipl) {}
+    fn read_meip(&mut self) -> meip {
+        meip::default()
     }
-    fn write_meip(&mut self, _val: MeipReadVal) {}
-    fn read_meie(&mut self) -> MeieWriteVal {
-        MeieWriteVal::default()
+    fn write_meip(&mut self, _val: meip) {}
+    fn read_meie(&mut self) -> meie {
+        meie::default()
     }
-    fn write_meie(&mut self, _val: MeieReadVal) {}
-    fn read_mpiccfg(&mut self) -> MpiccfgWriteVal {
-        MpiccfgWriteVal::default()
+    fn write_meie(&mut self, _val: meie) {}
+    fn read_mpiccfg(&mut self) -> mpiccfg {
+        mpiccfg::default()
     }
-    fn write_mpiccfg(&mut self, _val: MpiccfgReadVal) {}
-    fn read_meigwctrl(&mut self) -> MeigwctrlWriteVal {
-        MeigwctrlWriteVal::default()
+    fn write_mpiccfg(&mut self, _val: mpiccfg) {}
+    fn read_meigwctrl(&mut self) -> meigwctrl {
+        meigwctrl::default()
     }
-    fn write_meigwctrl(&mut self, _val: MeigwctrlReadVal) {}
+    fn write_meigwctrl(&mut self, _val: meigwctrl) {}
     fn read_meigwclr(&mut self) -> u32 {
         0
     }
@@ -351,35 +90,35 @@ impl emulator_bus::Bus for El2PicBus {
     ) -> Result<(), emulator_bus::BusError> {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => {
-                self.periph.write_meipl(MeiplReadVal::from(val));
+                self.periph.write_meipl(meipl::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 1..=3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1000) => {
-                self.periph.write_meip(MeipReadVal::from(val));
+                self.periph.write_meip(meip::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1001..=0x1003) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x2000) => {
-                self.periph.write_meie(MeieReadVal::from(val));
+                self.periph.write_meie(meie::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x2001..=0x2003) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x3000) => {
-                self.periph.write_mpiccfg(MpiccfgReadVal::from(val));
+                self.periph.write_mpiccfg(mpiccfg::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x3001..=0x3003) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x4000) => {
-                self.periph.write_meigwctrl(MeigwctrlReadVal::from(val));
+                self.periph.write_meigwctrl(meigwctrl::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x4001..=0x4003) => {

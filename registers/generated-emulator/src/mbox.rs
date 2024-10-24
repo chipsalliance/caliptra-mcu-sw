@@ -4,467 +4,14 @@
 // , caliptra-ss repo at 9911c2b0e4bac9e4b48f6c2155c86cb116159734
 // , and i3c-core repo at d5c715103f529ade0e5d375a53c5692daaa9c54b
 //
-#[derive(Clone, Copy, Default)]
-pub struct LockReadVal(u32);
-impl LockReadVal {
-    #[inline(always)]
-    pub fn lock(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> LockWriteVal {
-        LockWriteVal(self.0)
-    }
-}
-impl From<u32> for LockReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<LockReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: LockReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct LockWriteVal(u32);
-impl LockWriteVal {
-    #[inline(always)]
-    pub fn lock(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for LockWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<LockWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: LockWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct ExecuteReadVal(u32);
-impl ExecuteReadVal {
-    #[inline(always)]
-    pub fn execute(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> ExecuteWriteVal {
-        ExecuteWriteVal(self.0)
-    }
-}
-impl From<u32> for ExecuteReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<ExecuteReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: ExecuteReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct ExecuteWriteVal(u32);
-impl ExecuteWriteVal {
-    #[inline(always)]
-    pub fn execute(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for ExecuteWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<ExecuteWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: ExecuteWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct StatusReadVal(u32);
-impl StatusReadVal {
-    /// Indicates the status of mailbox command
-    /// [br]Caliptra Access: RW
-    /// [br]SOC Access:      RW
-    /// [br]TAP Access [in debug/manuf mode]: RO
-    #[inline(always)]
-    pub fn status(&self) -> enums::MboxStatusE {
-        enums::MboxStatusE::try_from(self.0 & 0xf).unwrap()
-    }
-    /// Indicates a correctable ECC single-bit error was
-    /// detected and corrected while reading dataout.
-    /// Auto-clears when mbox_execute field is cleared.
-    /// [br]Caliptra Access: RO
-    /// [br]SOC Access:      RO
-    /// [br]TAP Access [in debug/manuf mode]: RO
-    #[inline(always)]
-    pub fn ecc_single_error(&self) -> bool {
-        ((self.0 >> 4) & 1) != 0
-    }
-    /// Indicates an uncorrectable ECC double-bit error
-    /// was detected while reading dataout.
-    /// Firmware developers are advised to set the command
-    /// status to CMD_FAILURE in response.
-    /// Auto-clears when mbox_execute field is cleared.
-    /// [br]Caliptra Access: RO
-    /// [br]SOC Access:      RO
-    /// [br]TAP Access [in debug/manuf mode]: RO
-    #[inline(always)]
-    pub fn ecc_double_error(&self) -> bool {
-        ((self.0 >> 5) & 1) != 0
-    }
-    /// Indicates the present state of the mailbox FSM
-    /// [br]Caliptra Access: RO
-    /// [br]SOC Access:      RO
-    /// [br]TAP Access [in debug/manuf mode]: RO
-    #[inline(always)]
-    pub fn mbox_fsm_ps(&self) -> enums::MboxFsmE {
-        enums::MboxFsmE::try_from((self.0 >> 6) & 7).unwrap()
-    }
-    /// Indicates that the current lock was acquired by the SoC
-    /// [br]Caliptra Access: RO
-    /// [br]SOC Access:      RO
-    /// [br]TAP Access [in debug/manuf mode]: RO
-    #[inline(always)]
-    pub fn soc_has_lock(&self) -> bool {
-        ((self.0 >> 9) & 1) != 0
-    }
-    /// Returns the current read pointer for the mailbox
-    /// [br]Caliptra Access: RO
-    /// [br]SOC Access:      RO
-    /// [br]TAP Access [in debug/manuf mode]: RO
-    #[inline(always)]
-    pub fn mbox_rdptr(&self) -> u32 {
-        (self.0 >> 10) & 0x7fff
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> StatusWriteVal {
-        StatusWriteVal(self.0)
-    }
-}
-impl From<u32> for StatusReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<StatusReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: StatusReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct StatusWriteVal(u32);
-impl StatusWriteVal {
-    /// Indicates the status of mailbox command
-    /// [br]Caliptra Access: RW
-    /// [br]SOC Access:      RW
-    /// [br]TAP Access [in debug/manuf mode]: RO
-    #[inline(always)]
-    pub fn status(
-        self,
-        f: impl FnOnce(enums::selector::MboxStatusESelector) -> enums::MboxStatusE,
-    ) -> Self {
-        Self((self.0 & !(0xf)) | (u32::from(f(enums::selector::MboxStatusESelector()))))
-    }
-    /// Indicates a correctable ECC single-bit error was
-    /// detected and corrected while reading dataout.
-    /// Auto-clears when mbox_execute field is cleared.
-    /// [br]Caliptra Access: RO
-    /// [br]SOC Access:      RO
-    /// [br]TAP Access [in debug/manuf mode]: RO
-    #[inline(always)]
-    pub fn ecc_single_error(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 4)) | (u32::from(val) << 4))
-    }
-    /// Indicates an uncorrectable ECC double-bit error
-    /// was detected while reading dataout.
-    /// Firmware developers are advised to set the command
-    /// status to CMD_FAILURE in response.
-    /// Auto-clears when mbox_execute field is cleared.
-    /// [br]Caliptra Access: RO
-    /// [br]SOC Access:      RO
-    /// [br]TAP Access [in debug/manuf mode]: RO
-    #[inline(always)]
-    pub fn ecc_double_error(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 5)) | (u32::from(val) << 5))
-    }
-    /// Indicates the present state of the mailbox FSM
-    /// [br]Caliptra Access: RO
-    /// [br]SOC Access:      RO
-    /// [br]TAP Access [in debug/manuf mode]: RO
-    #[inline(always)]
-    pub fn mbox_fsm_ps(
-        self,
-        f: impl FnOnce(enums::selector::MboxFsmESelector) -> enums::MboxFsmE,
-    ) -> Self {
-        Self((self.0 & !(7 << 6)) | (u32::from(f(enums::selector::MboxFsmESelector())) << 6))
-    }
-    /// Indicates that the current lock was acquired by the SoC
-    /// [br]Caliptra Access: RO
-    /// [br]SOC Access:      RO
-    /// [br]TAP Access [in debug/manuf mode]: RO
-    #[inline(always)]
-    pub fn soc_has_lock(self, val: bool) -> Self {
-        Self((self.0 & !(1 << 9)) | (u32::from(val) << 9))
-    }
-    /// Returns the current read pointer for the mailbox
-    /// [br]Caliptra Access: RO
-    /// [br]SOC Access:      RO
-    /// [br]TAP Access [in debug/manuf mode]: RO
-    #[inline(always)]
-    pub fn mbox_rdptr(self, val: u32) -> Self {
-        Self((self.0 & !(0x7fff << 10)) | ((val & 0x7fff) << 10))
-    }
-}
-impl From<u32> for StatusWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<StatusWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: StatusWriteVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct UnlockReadVal(u32);
-impl UnlockReadVal {
-    #[inline(always)]
-    pub fn unlock(&self) -> bool {
-        (self.0 & 1) != 0
-    }
-    /// Construct a WriteVal that can be used to modify the contents of this register value.
-    #[inline(always)]
-    pub fn modify(self) -> UnlockWriteVal {
-        UnlockWriteVal(self.0)
-    }
-}
-impl From<u32> for UnlockReadVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<UnlockReadVal> for u32 {
-    #[inline(always)]
-    fn from(val: UnlockReadVal) -> u32 {
-        val.0
-    }
-}
-#[derive(Clone, Copy, Default)]
-pub struct UnlockWriteVal(u32);
-impl UnlockWriteVal {
-    #[inline(always)]
-    pub fn unlock(self, val: bool) -> Self {
-        Self((self.0 & !(1)) | (u32::from(val)))
-    }
-}
-impl From<u32> for UnlockWriteVal {
-    #[inline(always)]
-    fn from(val: u32) -> Self {
-        Self(val)
-    }
-}
-impl From<UnlockWriteVal> for u32 {
-    #[inline(always)]
-    fn from(val: UnlockWriteVal) -> u32 {
-        val.0
-    }
-}
-pub mod enums {
-    //! Enumerations used by some register fields.
-    #[derive(Clone, Copy, Eq, PartialEq)]
-    #[repr(u32)]
-    pub enum MboxFsmE {
-        MboxIdle = 0,
-        MboxRdyForCmd = 1,
-        MboxRdyForData = 2,
-        MboxRdyForDlen = 3,
-        MboxExecuteSoc = 4,
-        Reserved5 = 5,
-        MboxExecuteUc = 6,
-        MboxError = 7,
-    }
-    impl MboxFsmE {
-        #[inline(always)]
-        pub fn mbox_idle(&self) -> bool {
-            *self == Self::MboxIdle
-        }
-        #[inline(always)]
-        pub fn mbox_rdy_for_cmd(&self) -> bool {
-            *self == Self::MboxRdyForCmd
-        }
-        #[inline(always)]
-        pub fn mbox_rdy_for_data(&self) -> bool {
-            *self == Self::MboxRdyForData
-        }
-        #[inline(always)]
-        pub fn mbox_rdy_for_dlen(&self) -> bool {
-            *self == Self::MboxRdyForDlen
-        }
-        #[inline(always)]
-        pub fn mbox_execute_soc(&self) -> bool {
-            *self == Self::MboxExecuteSoc
-        }
-        #[inline(always)]
-        pub fn mbox_execute_uc(&self) -> bool {
-            *self == Self::MboxExecuteUc
-        }
-        #[inline(always)]
-        pub fn mbox_error(&self) -> bool {
-            *self == Self::MboxError
-        }
-    }
-    impl TryFrom<u32> for MboxFsmE {
-        type Error = ();
-        #[inline(always)]
-        fn try_from(val: u32) -> Result<MboxFsmE, ()> {
-            if val < 8 {
-                Ok(unsafe { core::mem::transmute::<u32, MboxFsmE>(val) })
-            } else {
-                Err(())
-            }
-        }
-    }
-    impl From<MboxFsmE> for u32 {
-        fn from(val: MboxFsmE) -> Self {
-            val as u32
-        }
-    }
-    #[derive(Clone, Copy, Eq, PartialEq)]
-    #[repr(u32)]
-    pub enum MboxStatusE {
-        CmdBusy = 0,
-        DataReady = 1,
-        CmdComplete = 2,
-        CmdFailure = 3,
-        Reserved4 = 4,
-        Reserved5 = 5,
-        Reserved6 = 6,
-        Reserved7 = 7,
-        Reserved8 = 8,
-        Reserved9 = 9,
-        Reserved10 = 10,
-        Reserved11 = 11,
-        Reserved12 = 12,
-        Reserved13 = 13,
-        Reserved14 = 14,
-        Reserved15 = 15,
-    }
-    impl MboxStatusE {
-        #[inline(always)]
-        pub fn cmd_busy(&self) -> bool {
-            *self == Self::CmdBusy
-        }
-        #[inline(always)]
-        pub fn data_ready(&self) -> bool {
-            *self == Self::DataReady
-        }
-        #[inline(always)]
-        pub fn cmd_complete(&self) -> bool {
-            *self == Self::CmdComplete
-        }
-        #[inline(always)]
-        pub fn cmd_failure(&self) -> bool {
-            *self == Self::CmdFailure
-        }
-    }
-    impl TryFrom<u32> for MboxStatusE {
-        type Error = ();
-        #[inline(always)]
-        fn try_from(val: u32) -> Result<MboxStatusE, ()> {
-            if val < 0x10 {
-                Ok(unsafe { core::mem::transmute::<u32, MboxStatusE>(val) })
-            } else {
-                Err(())
-            }
-        }
-    }
-    impl From<MboxStatusE> for u32 {
-        fn from(val: MboxStatusE) -> Self {
-            val as u32
-        }
-    }
-    pub mod selector {
-        pub struct MboxFsmESelector();
-        impl MboxFsmESelector {
-            #[inline(always)]
-            pub fn mbox_idle(&self) -> super::MboxFsmE {
-                super::MboxFsmE::MboxIdle
-            }
-            #[inline(always)]
-            pub fn mbox_rdy_for_cmd(&self) -> super::MboxFsmE {
-                super::MboxFsmE::MboxRdyForCmd
-            }
-            #[inline(always)]
-            pub fn mbox_rdy_for_dlen(&self) -> super::MboxFsmE {
-                super::MboxFsmE::MboxRdyForDlen
-            }
-            #[inline(always)]
-            pub fn mbox_rdy_for_data(&self) -> super::MboxFsmE {
-                super::MboxFsmE::MboxRdyForData
-            }
-            #[inline(always)]
-            pub fn mbox_execute_uc(&self) -> super::MboxFsmE {
-                super::MboxFsmE::MboxExecuteUc
-            }
-            #[inline(always)]
-            pub fn mbox_execute_soc(&self) -> super::MboxFsmE {
-                super::MboxFsmE::MboxExecuteSoc
-            }
-            #[inline(always)]
-            pub fn mbox_error(&self) -> super::MboxFsmE {
-                super::MboxFsmE::MboxError
-            }
-        }
-        pub struct MboxStatusESelector();
-        impl MboxStatusESelector {
-            #[inline(always)]
-            pub fn cmd_busy(&self) -> super::MboxStatusE {
-                super::MboxStatusE::CmdBusy
-            }
-            #[inline(always)]
-            pub fn data_ready(&self) -> super::MboxStatusE {
-                super::MboxStatusE::DataReady
-            }
-            #[inline(always)]
-            pub fn cmd_complete(&self) -> super::MboxStatusE {
-                super::MboxStatusE::CmdComplete
-            }
-            #[inline(always)]
-            pub fn cmd_failure(&self) -> super::MboxStatusE {
-                super::MboxStatusE::CmdFailure
-            }
-        }
-    }
-}
 pub trait MboxPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
-    fn read_lock(&mut self) -> LockWriteVal {
-        LockWriteVal::default()
+    fn read_lock(&mut self) -> lock {
+        lock::default()
     }
-    fn write_lock(&mut self, _val: LockReadVal) {}
+    fn write_lock(&mut self, _val: lock) {}
     fn read_user(&mut self) -> u32 {
         0
     }
@@ -485,18 +32,18 @@ pub trait MboxPeripheral {
         0
     }
     fn write_dataout(&mut self, _val: u32) {}
-    fn read_execute(&mut self) -> ExecuteWriteVal {
-        ExecuteWriteVal::default()
+    fn read_execute(&mut self) -> execute {
+        execute::default()
     }
-    fn write_execute(&mut self, _val: ExecuteReadVal) {}
-    fn read_status(&mut self) -> StatusWriteVal {
-        StatusWriteVal::default()
+    fn write_execute(&mut self, _val: execute) {}
+    fn read_status(&mut self) -> status {
+        status::default()
     }
-    fn write_status(&mut self, _val: StatusReadVal) {}
-    fn read_unlock(&mut self) -> UnlockWriteVal {
-        UnlockWriteVal::default()
+    fn write_status(&mut self, _val: status) {}
+    fn read_unlock(&mut self) -> unlock {
+        unlock::default()
     }
-    fn write_unlock(&mut self, _val: UnlockReadVal) {}
+    fn write_unlock(&mut self, _val: unlock) {}
 }
 pub struct MboxBus {
     pub periph: Box<dyn MboxPeripheral>,
@@ -567,7 +114,7 @@ impl emulator_bus::Bus for MboxBus {
     ) -> Result<(), emulator_bus::BusError> {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => {
-                self.periph.write_lock(LockReadVal::from(val));
+                self.periph.write_lock(lock::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 1..=3) => {
@@ -609,21 +156,21 @@ impl emulator_bus::Bus for MboxBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x18) => {
-                self.periph.write_execute(ExecuteReadVal::from(val));
+                self.periph.write_execute(execute::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x19..=0x1b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1c) => {
-                self.periph.write_status(StatusReadVal::from(val));
+                self.periph.write_status(status::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1d..=0x1f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x20) => {
-                self.periph.write_unlock(UnlockReadVal::from(val));
+                self.periph.write_unlock(unlock::from(val));
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x21..=0x23) => {
