@@ -1,14 +1,13 @@
 /*++
 Licensed under the Apache-2.0 license.
 --*/
-use crate::schema as ureg;
-use crate::schema::{RegisterBlock, RegisterBlockInstance};
+use crate::schema::{RegisterBlock, RegisterBlockInstance, RegisterSubBlock, RegisterType};
+use crate::{Enum, EnumVariant, FieldType, Register, RegisterField};
 use registers_systemrdl as systemrdl;
 use registers_systemrdl::{ComponentType, ScopeType};
 use std::fmt::Display;
 use std::rc::Rc;
 use systemrdl::{AccessType, InstanceRef, ParentScope, RdlError};
-use ureg::{RegisterSubBlock, RegisterType};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -143,13 +142,13 @@ fn expect_instance_type(scope: systemrdl::ParentScope, ty: ScopeType) -> Result<
     }
 }
 
-fn translate_access_type(ty: systemrdl::AccessType) -> Result<ureg::FieldType, Error> {
+fn translate_access_type(ty: systemrdl::AccessType) -> Result<FieldType, Error> {
     match ty {
-        systemrdl::AccessType::Rw => Ok(ureg::FieldType::RW),
-        systemrdl::AccessType::R => Ok(ureg::FieldType::RO),
-        systemrdl::AccessType::W => Ok(ureg::FieldType::WO),
-        systemrdl::AccessType::Rw1 => Ok(ureg::FieldType::RW),
-        systemrdl::AccessType::W1 => Ok(ureg::FieldType::WO),
+        systemrdl::AccessType::Rw => Ok(FieldType::RW),
+        systemrdl::AccessType::R => Ok(FieldType::RO),
+        systemrdl::AccessType::W => Ok(FieldType::WO),
+        systemrdl::AccessType::Rw1 => Ok(FieldType::RW),
+        systemrdl::AccessType::W1 => Ok(FieldType::WO),
         systemrdl::AccessType::Na => Err(Error::AccessTypeNaUnsupported),
     }
 }
@@ -169,7 +168,7 @@ fn field_width(field: &systemrdl::Instance) -> Result<u64, Error> {
     Ok(field.dimension_sizes[0])
 }
 
-fn translate_enum(name: &str, enm: systemrdl::ParentScope) -> Result<ureg::Enum, Error> {
+fn translate_enum(name: &str, enm: systemrdl::ParentScope) -> Result<Enum, Error> {
     let wrap_err = |err: Error| Error::EnumError {
         enum_name: name.into(),
         err: Box::new(err),
@@ -191,19 +190,19 @@ fn translate_enum(name: &str, enm: systemrdl::ParentScope) -> Result<ureg::Enum,
             return Err(wrap_err(Error::ValueNotDefined));
         };
         width = u64::max(width, reset.w());
-        variants.push(ureg::EnumVariant {
+        variants.push(EnumVariant {
             name: variant.name.clone(),
             value: reset.val() as u32,
         })
     }
-    Ok(ureg::Enum {
+    Ok(Enum {
         name: Some(name.to_string()),
         variants,
         bit_width: width as u8,
     })
 }
 
-fn translate_field(iref: systemrdl::InstanceRef) -> Result<ureg::RegisterField, Error> {
+fn translate_field(iref: systemrdl::InstanceRef) -> Result<RegisterField, Error> {
     let wrap_err = |err: Error| Error::FieldError {
         field_name: iref.instance.name.clone(),
         err: Box::new(err),
@@ -229,7 +228,7 @@ fn translate_field(iref: systemrdl::InstanceRef) -> Result<ureg::RegisterField, 
         .property_val_opt("desc")
         .unwrap()
         .unwrap_or_default();
-    let result = ureg::RegisterField {
+    let result = RegisterField {
         name: inst.name.clone(),
         ty: translate_access_type(access_ty).map_err(wrap_err)?,
         default_val: inst.reset.map(|b| b.val()).unwrap_or_default(),
@@ -245,7 +244,7 @@ fn translate_field(iref: systemrdl::InstanceRef) -> Result<ureg::RegisterField, 
     Ok(result)
 }
 
-fn translate_register(iref: systemrdl::InstanceRef) -> Result<ureg::Register, Error> {
+fn translate_register(iref: systemrdl::InstanceRef) -> Result<Register, Error> {
     let wrap_err = |err: Error| Error::RegisterError {
         register_name: iref.instance.name.clone(),
         err: Box::new(err),

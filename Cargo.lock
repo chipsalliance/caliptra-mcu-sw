@@ -843,7 +843,6 @@ name = "registers-generated"
 version = "0.1.0"
 dependencies = [
  "tock-registers 0.9.0 (git+https://github.com/tock/tock.git)",
- "ureg",
 ]
 
 [[package]]
@@ -1050,10 +1049,6 @@ name = "unicode-width"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
-
-[[package]]
-name = "ureg"
-version = "0.1.0"
 
 [[package]]
 name = "utf8parse"
