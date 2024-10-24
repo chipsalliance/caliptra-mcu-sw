@@ -4,7 +4,7 @@ use crate::{DynError, PROJECT_ROOT};
 use quote::__private::TokenStream;
 use quote::{format_ident, quote};
 use registers_generator::{
-    camel_ident, has_single_32_bit_field, hex_literal, snake_ident, Register, RegisterBlock,
+    camel_case, has_single_32_bit_field, snake_case, Register, RegisterBlock,
     RegisterBlockInstance, RegisterType, RegisterWidth, ValidatedRegisterBlock,
 };
 use registers_systemrdl::ParentScope;
@@ -359,7 +359,7 @@ fn flatten_registers(
 }
 
 fn make_anon_type(offset: u64, reg: Rc<Register>) -> RegisterType {
-    let reg_name = snake_ident(&reg.name);
+    let reg_name = snake_case(&reg.name);
     let mut new_ty = reg.ty.as_ref().clone();
     new_ty.name = Some(format!("{}_o{}", reg_name, offset + reg.offset));
     new_ty
@@ -586,147 +586,147 @@ fn whole_width(block: &RegisterBlock) -> u64 {
 }
 
 /// Make the root bus that can be used by the emulator.
-fn emu_make_root_bus<'a>(
-    blocks: impl Iterator<Item = &'a ValidatedRegisterBlock>,
-) -> Result<TokenStream, DynError> {
-    let mut read_tokens = TokenStream::new();
-    let mut write_tokens = TokenStream::new();
-    let mut poll_tokens = TokenStream::new();
-    let mut warm_reset_tokens = TokenStream::new();
-    let mut update_reset_tokens = TokenStream::new();
-    let mut field_tokens = TokenStream::new();
-    let mut constructor_tokens = TokenStream::new();
-    let mut constructor_params_tokens = TokenStream::new();
+// fn emu_make_root_bus<'a>(
+//     blocks: impl Iterator<Item = &'a ValidatedRegisterBlock>,
+// ) -> Result<TokenStream, DynError> {
+//     let mut read_tokens = TokenStream::new();
+//     let mut write_tokens = TokenStream::new();
+//     let mut poll_tokens = TokenStream::new();
+//     let mut warm_reset_tokens = TokenStream::new();
+//     let mut update_reset_tokens = TokenStream::new();
+//     let mut field_tokens = TokenStream::new();
+//     let mut constructor_tokens = TokenStream::new();
+//     let mut constructor_params_tokens = TokenStream::new();
 
-    let mut blocks_sorted = blocks.collect::<Vec<_>>();
-    blocks_sorted.sort_by_key(|b| b.block().instances[0].address);
+//     let mut blocks_sorted = blocks.collect::<Vec<_>>();
+//     blocks_sorted.sort_by_key(|b| b.block().instances[0].address);
 
-    for block in blocks_sorted {
-        let rblock = block.block();
-        if SKIP_TYPES.contains(rblock.name.as_str()) {
-            continue;
-        }
-        assert_eq!(rblock.instances.len(), 1);
-        let snake_base = snake_ident(rblock.name.as_str());
-        let periph_field = format_ident!("{}_periph", snake_base);
-        let camel_base = camel_ident(rblock.name.as_str());
-        let crate_name = format_ident!("{}", rblock.name);
-        let periph = format_ident!("{}Peripheral", camel_base);
-        let bus = format_ident!("{}Bus", camel_base);
-        constructor_params_tokens.extend(quote! {
-            #periph_field: Option<Box<dyn crate::#crate_name::#periph>>,
-        });
-        constructor_tokens.extend(quote! {
-            #periph_field: #periph_field.map(|p| crate::#crate_name::#bus { periph: p }),
-        });
-        field_tokens.extend(quote! {
-            pub #periph_field: Option<crate::#crate_name::#bus>,
-        });
-        let a = hex_literal(rblock.instances[0].address as u64);
-        let b = hex_literal(rblock.instances[0].address as u64 + whole_width(rblock));
-        read_tokens.extend(quote! {
-            #a..=#b => {
-                if let Some(periph) = self.#periph_field.as_mut() {
-                    periph.read(size, addr)
-                } else {
-                    Err(emulator_bus::BusError::LoadAccessFault)
-                }
-            }
-        });
-        write_tokens.extend(quote! {
-            #a..=#b => {
-                if let Some(periph) = self.#periph_field.as_mut() {
-                    periph.write(size, addr, val)
-                } else {
-                    Err(emulator_bus::BusError::StoreAccessFault)
-                }
-            }
-        });
-        poll_tokens.extend(quote! {
-            if let Some(periph) = self.#periph_field.as_mut() {
-                periph.poll();
-            }
-        });
-        warm_reset_tokens.extend(quote! {
-            if let Some(periph) = self.#periph_field.as_mut() {
-                periph.warm_reset();
-            }
-        });
-        update_reset_tokens.extend(quote! {
-            if let Some(periph) = self.#periph_field.as_mut() {
-                periph.update_reset();
-            }
-        });
-    }
-    let mut tokens = TokenStream::new();
-    tokens.extend(quote! {
-            pub struct AutoRootBus {
-                delegate: Option<Box<dyn emulator_bus::Bus>>,
-                #field_tokens
-            }
-            impl AutoRootBus {
-                #[allow(clippy::too_many_arguments)]
-                pub fn new(
-                    delegate: Option<Box<dyn emulator_bus::Bus>>,
-                    #constructor_params_tokens
-                ) -> Self {
-                    Self {
-                        delegate,
-                        #constructor_tokens
-                    }
-                }
-            }
-            impl emulator_bus::Bus for AutoRootBus {
-                fn read(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr) -> Result<emulator_types::RvData, emulator_bus::BusError> {
-                    let result = match addr {
-                        #read_tokens
-                        _ => Err(emulator_bus::BusError::LoadAccessFault),
-                    };
-                    if let Some(delegate) = self.delegate.as_mut() {
-                        match result {
-                            Err(emulator_bus::BusError::LoadAccessFault) => delegate.read(size, addr),
-                            _ => result,
-                        }
-                    } else {
-                        result
-                    }
-                }
-                fn write(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr, val: emulator_types::RvData) -> Result<(), emulator_bus::BusError> {
-                    let result = match addr {
-                        #write_tokens
-                        _ => Err(emulator_bus::BusError::StoreAccessFault),
-                    };
-                    if let Some(delegate) = self.delegate.as_mut() {
-                        match result {
-                            Err(emulator_bus::BusError::StoreAccessFault) => delegate.write(size, addr, val),
-                            _ => result,
-                        }
-                    } else {
-                        result
-                    }
-                }
-                fn poll(&mut self) {
-                    #poll_tokens
-                    if let Some(delegate) = self.delegate.as_mut() {
-                        delegate.poll();
-                    }
-                }
-                fn warm_reset(&mut self) {
-                    #warm_reset_tokens
-                    if let Some(delegate) = self.delegate.as_mut() {
-                        delegate.warm_reset();
-                    }
-                }
-                fn update_reset(&mut self) {
-                    #update_reset_tokens
-                    if let Some(delegate) = self.delegate.as_mut() {
-                        delegate.update_reset();
-                    }
-                }
-            }
-        });
-    Ok(tokens)
-}
+//     for block in blocks_sorted {
+//         let rblock = block.block();
+//         if SKIP_TYPES.contains(rblock.name.as_str()) {
+//             continue;
+//         }
+//         assert_eq!(rblock.instances.len(), 1);
+//         let snake_base = snake_ident(rblock.name.as_str());
+//         let periph_field = format_ident!("{}_periph", snake_base);
+//         let camel_base = camel_ident(rblock.name.as_str());
+//         let crate_name = format_ident!("{}", rblock.name);
+//         let periph = format_ident!("{}Peripheral", camel_base);
+//         let bus = format_ident!("{}Bus", camel_base);
+//         constructor_params_tokens.extend(quote! {
+//             #periph_field: Option<Box<dyn crate::#crate_name::#periph>>,
+//         });
+//         constructor_tokens.extend(quote! {
+//             #periph_field: #periph_field.map(|p| crate::#crate_name::#bus { periph: p }),
+//         });
+//         field_tokens.extend(quote! {
+//             pub #periph_field: Option<crate::#crate_name::#bus>,
+//         });
+//         let a = hex_literal(rblock.instances[0].address as u64);
+//         let b = hex_literal(rblock.instances[0].address as u64 + whole_width(rblock));
+//         read_tokens.extend(quote! {
+//             #a..=#b => {
+//                 if let Some(periph) = self.#periph_field.as_mut() {
+//                     periph.read(size, addr)
+//                 } else {
+//                     Err(emulator_bus::BusError::LoadAccessFault)
+//                 }
+//             }
+//         });
+//         write_tokens.extend(quote! {
+//             #a..=#b => {
+//                 if let Some(periph) = self.#periph_field.as_mut() {
+//                     periph.write(size, addr, val)
+//                 } else {
+//                     Err(emulator_bus::BusError::StoreAccessFault)
+//                 }
+//             }
+//         });
+//         poll_tokens.extend(quote! {
+//             if let Some(periph) = self.#periph_field.as_mut() {
+//                 periph.poll();
+//             }
+//         });
+//         warm_reset_tokens.extend(quote! {
+//             if let Some(periph) = self.#periph_field.as_mut() {
+//                 periph.warm_reset();
+//             }
+//         });
+//         update_reset_tokens.extend(quote! {
+//             if let Some(periph) = self.#periph_field.as_mut() {
+//                 periph.update_reset();
+//             }
+//         });
+//     }
+//     let mut tokens = TokenStream::new();
+//     tokens.extend(quote! {
+//             pub struct AutoRootBus {
+//                 delegate: Option<Box<dyn emulator_bus::Bus>>,
+//                 #field_tokens
+//             }
+//             impl AutoRootBus {
+//                 #[allow(clippy::too_many_arguments)]
+//                 pub fn new(
+//                     delegate: Option<Box<dyn emulator_bus::Bus>>,
+//                     #constructor_params_tokens
+//                 ) -> Self {
+//                     Self {
+//                         delegate,
+//                         #constructor_tokens
+//                     }
+//                 }
+//             }
+//             impl emulator_bus::Bus for AutoRootBus {
+//                 fn read(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr) -> Result<emulator_types::RvData, emulator_bus::BusError> {
+//                     let result = match addr {
+//                         #read_tokens
+//                         _ => Err(emulator_bus::BusError::LoadAccessFault),
+//                     };
+//                     if let Some(delegate) = self.delegate.as_mut() {
+//                         match result {
+//                             Err(emulator_bus::BusError::LoadAccessFault) => delegate.read(size, addr),
+//                             _ => result,
+//                         }
+//                     } else {
+//                         result
+//                     }
+//                 }
+//                 fn write(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr, val: emulator_types::RvData) -> Result<(), emulator_bus::BusError> {
+//                     let result = match addr {
+//                         #write_tokens
+//                         _ => Err(emulator_bus::BusError::StoreAccessFault),
+//                     };
+//                     if let Some(delegate) = self.delegate.as_mut() {
+//                         match result {
+//                             Err(emulator_bus::BusError::StoreAccessFault) => delegate.write(size, addr, val),
+//                             _ => result,
+//                         }
+//                     } else {
+//                         result
+//                     }
+//                 }
+//                 fn poll(&mut self) {
+//                     #poll_tokens
+//                     if let Some(delegate) = self.delegate.as_mut() {
+//                         delegate.poll();
+//                     }
+//                 }
+//                 fn warm_reset(&mut self) {
+//                     #warm_reset_tokens
+//                     if let Some(delegate) = self.delegate.as_mut() {
+//                         delegate.warm_reset();
+//                     }
+//                 }
+//                 fn update_reset(&mut self) {
+//                     #update_reset_tokens
+//                     if let Some(delegate) = self.delegate.as_mut() {
+//                         delegate.update_reset();
+//                     }
+//                 }
+//             }
+//         });
+//     Ok(tokens)
+// }
 
 /// Generate read/write registers used by the firmware.
 fn generate_fw_registers(
@@ -741,9 +741,6 @@ fn generate_fw_registers(
     } else {
         write_file
     };
-
-    let mut extern_types = HashMap::new();
-    registers_generator::build_extern_types(&root_block, quote! { crate }, &mut extern_types);
 
     let mut blocks = vec![];
     for scope in scopes.iter() {
@@ -791,15 +788,9 @@ fn generate_fw_registers(
         }
 
         let block = block.validate_and_dedup()?;
-        let module_ident = format_ident!("{}", block.block().name);
-        registers_generator::build_extern_types(
-            &block,
-            quote! { crate::#module_ident },
-            &mut extern_types,
-        );
         validated_blocks.push(block);
     }
-    let mut root_submod_tokens = TokenStream::new();
+    let mut root_submod_tokens = String::new();
 
     let mut all_blocks: Vec<_> = std::iter::once(&mut root_block)
         .chain(validated_blocks.iter_mut())
@@ -807,41 +798,26 @@ fn generate_fw_registers(
     registers_generator::filter_unused_types(&mut all_blocks);
 
     for block in validated_blocks {
-        let module_ident = format_ident!("{}", block.block().name);
+        let module_ident = block.block().name.clone();
         let dest_file = dest_dir.join(format!("{}.rs", block.block().name));
         let tokens = registers_generator::generate_code(
             &format!("crate::{}::", block.block().name),
             &block,
-            registers_generator::Options {
-                extern_types: extern_types.clone(),
-                module: quote! { #module_ident },
-            },
+            false,
         );
-        root_submod_tokens.extend(quote! { pub mod #module_ident; });
+        root_submod_tokens += &format!("pub mod {module_ident};\n");
         file_action(
             &dest_file,
             &rustfmt(&(header.clone() + &tokens.to_string()))?,
         )?;
     }
-    let root_type_tokens = registers_generator::generate_code(
-        "crate::",
-        &root_block,
-        registers_generator::Options {
-            extern_types: extern_types.clone(),
-            ..Default::default()
-        },
-    );
+    let root_type_tokens = registers_generator::generate_code("crate::", &root_block, true);
     let recursion = "#![recursion_limit = \"256\"]\n";
     //let root_tokens = quote! { #root_type_tokens #root_submod_tokens };
     let root_tokens = root_type_tokens;
     file_action(
         &dest_dir.join("lib.rs"),
-        &rustfmt(
-            &(header.clone()
-                + recursion
-                + &root_tokens.to_string()
-                + &root_submod_tokens.to_string()),
-        )?,
+        &rustfmt(&(header.clone() + recursion + &root_tokens.to_string() + &root_submod_tokens))?,
     )?;
     Ok(())
 }
