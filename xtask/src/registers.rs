@@ -1,12 +1,11 @@
 // Licensed under the Apache-2.0 license
 
 use crate::{DynError, PROJECT_ROOT};
-use proc_macro2::{Ident, Literal};
-use quote::__private::TokenStream;
+use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use registers_generator::{
     camel_case, has_single_32_bit_field, hex_const, snake_case, Register, RegisterBlock,
-    RegisterBlockInstance, RegisterType, RegisterWidth, ValidatedRegisterBlock,
+    RegisterBlockInstance, RegisterWidth, ValidatedRegisterBlock,
 };
 use registers_systemrdl::ParentScope;
 use std::collections::{HashMap, HashSet};
@@ -209,7 +208,6 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
         &mut register_types_to_crates,
     )?;
     generate_emulator_types(
-        root_block,
         &scopes,
         bus_dest_dir,
         header.clone(),
@@ -219,7 +217,6 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
 
 /// Generate types used by the emulator.
 fn generate_emulator_types(
-    root_block: ValidatedRegisterBlock,
     scopes: &[ParentScope],
     dest_dir: &Path,
     header: String,
@@ -253,8 +250,6 @@ fn generate_emulator_types(
         validated_blocks.push(block);
     }
 
-    let mut generated_types = HashSet::new();
-
     for block in validated_blocks.iter() {
         let rblock = block.block();
         let mut code = TokenStream::new();
@@ -265,13 +260,9 @@ fn generate_emulator_types(
         //code.extend(emu_make_data_types(block)?);
         code.extend(emu_make_peripheral_trait(
             rblock.clone(),
-            &mut generated_types,
             register_types_to_crates,
         )?);
-        code.extend(emu_make_peripheral_bus_impl(
-            rblock.clone(),
-            &register_types_to_crates,
-        )?);
+        code.extend(emu_make_peripheral_bus_impl(rblock.clone())?);
 
         let dest_file = dest_dir.join(format!("{}.rs", rblock.name));
         write_file(&dest_file, &rustfmt(&(header.clone() + &code.to_string()))?)?;
@@ -301,46 +292,6 @@ fn generate_emulator_types(
     Ok(())
 }
 
-// /// Make data accessors types for the emulator peripheral.
-// fn emu_make_data_types(block: &ValidatedRegisterBlock) -> Result<TokenStream, DynError> {
-//     let mut tokens = TokenStream::new();
-//     let mut generated = HashSet::new();
-
-//     let registers = flatten_registers(0, String::new(), block.block());
-//     registers.iter().for_each(|(_, _, r)| {
-//         // skip as this register is not defined yet
-//         if r.name == "MCU_CLK_GATING_EN" {
-//             return;
-//         }
-//         // skip these are they are just for discovery
-//         if r.name == "TERMINATION_EXTCAP_HEADER" {
-//             return;
-//         }
-//         let ty = if r.ty.name.is_none() {
-//             let mut ty = r.ty.as_ref().clone();
-//             ty.name = Some(r.name.clone());
-//             ty
-//         } else {
-//             r.ty.as_ref().clone()
-//         };
-//         if !has_single_32_bit_field(&r.ty) {
-//             let name = ty.name.as_ref().unwrap().clone();
-//             if !generated.contains(&name) {
-//                 generated.insert(name);
-//                 tokens.extend(generate_register(&ty, true, true));
-//             }
-//         }
-//     });
-//     let enum_tokens = generate_enums(block.enum_types().values().map(AsRef::as_ref));
-//     tokens.extend(quote! {
-//         pub mod enums {
-//             //! Enumerations used by some register fields.
-//             #enum_tokens
-//         }
-//     });
-//     Ok(tokens)
-// }
-
 /// Collect all registers from the block and all subblocks, also returning the subblock name
 /// and starting offset for the subblock that contains the register.
 fn flatten_registers(
@@ -369,23 +320,14 @@ fn flatten_registers(
     registers
 }
 
-fn make_anon_type(offset: u64, reg: Rc<Register>) -> RegisterType {
-    let reg_name = snake_case(&reg.name);
-    let mut new_ty = reg.ty.as_ref().clone();
-    new_ty.name = Some(format!("{}_o{}", reg_name, offset + reg.offset));
-    new_ty
-}
-
 /// Make a peripheral trait that the emulator code can implement.
 fn emu_make_peripheral_trait(
     block: RegisterBlock,
-    generated: &mut HashSet<String>,
     register_types_to_crates: &HashMap<String, String>,
 ) -> Result<TokenStream, DynError> {
     let base = camel_ident(block.name.as_str());
     let periph = format_ident!("{}Peripheral", base);
     let mut fn_tokens = TokenStream::new();
-    let mut anon_type_tokens = TokenStream::new();
 
     let registers = flatten_registers(0, String::new(), &block);
     registers.iter().for_each(|(_, base_name, r)| {
@@ -444,7 +386,6 @@ fn emu_make_peripheral_trait(
             fn update_reset(&mut self) {}
             #fn_tokens
         }
-        #anon_type_tokens
     });
     Ok(tokens)
 }
@@ -458,10 +399,7 @@ fn snake_ident(s: &str) -> Ident {
 }
 
 /// Make a peripheral Bus implementation that can be hooked up to a root bus.
-fn emu_make_peripheral_bus_impl(
-    block: RegisterBlock,
-    register_types_to_crates: &HashMap<String, String>,
-) -> Result<TokenStream, DynError> {
+fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, DynError> {
     let base = camel_ident(block.name.as_str());
     let periph = format_ident!("{}Peripheral", base);
     let bus = format_ident!("{}Bus", base);
@@ -477,11 +415,6 @@ fn emu_make_peripheral_bus_impl(
         if r.name == "TERMINATION_EXTCAP_HEADER" {
             return;
         }
-        let ty = if r.ty.name.is_none() {
-            make_anon_type(r.offset, r.clone())
-        } else {
-            r.ty.as_ref().clone()
-        };
         let base_field = snake_ident(r.name.as_str());
         let base_name = if base_name.is_empty() {
             base_name.clone()
@@ -516,12 +449,7 @@ fn emu_make_peripheral_bus_impl(
                 });
             }
         } else {
-            let rcrate = format_ident!("{}", register_types_to_crates.get(ty.name.as_ref().unwrap()).unwrap());
-            let tyn = camel_ident(ty.name.as_ref().unwrap());
-            let read_val = quote! { registers_generated :: #rcrate :: bits :: #tyn :: Register };
-            let prim = format_ident!("{}", ty.width.rust_primitive_name());
-            let fulltyn = quote! { emulator_bus::ReadWriteRegister::<#prim, #read_val> };
-                match r.ty.width {
+            match r.ty.width {
                 RegisterWidth::_8 => {
                     read_tokens.extend(quote! {
                         (emulator_types::RvSize::Byte, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name().reg.get())),

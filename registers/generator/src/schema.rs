@@ -982,7 +982,7 @@ fn determine_enum_name_from_reg_ty(reg_ty: &RegisterType, field: &RegisterField)
 }
 
 fn all_regs(regs: &[Rc<Register>], sub_blocks: &[RegisterSubBlock]) -> Vec<Rc<Register>> {
-    let mut all_regs_vec: Vec<Rc<Register>> = regs.iter().map(|r| r.clone()).collect();
+    let mut all_regs_vec: Vec<Rc<Register>> = regs.to_vec();
     for sub in sub_blocks.iter() {
         all_regs_vec.extend(all_regs(
             sub.block().registers.as_slice(),

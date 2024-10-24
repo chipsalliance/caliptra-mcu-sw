@@ -6,10 +6,7 @@ use crate::schema::{Register, RegisterBlock, RegisterType, RegisterWidth, Valida
 use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
-    sync::atomic::AtomicUsize,
 };
-
-pub static TYPE_NUM: AtomicUsize = AtomicUsize::new(0);
 
 fn tweak_keywords(s: &str) -> &str {
     match s {
@@ -91,7 +88,7 @@ pub fn snake_case(name: &str) -> String {
 
     result = result.replace("so_cmgmt", "soc_mgmt"); // hack for SoC
     result = result.replace("i3_c", "i3c_").replace("__", "_"); // hack for I3C
-    format!("{}", tweak_keywords(result.trim_end_matches('_')))
+    tweak_keywords(result.trim_end_matches('_')).to_string()
 }
 
 #[cfg(test)]
@@ -211,17 +208,13 @@ pub fn generate_code(
     register_types_to_crates: &mut HashMap<String, String>,
 ) -> String {
     let mut bit_tokens = generate_bitfields(
-        block.register_types().values().map(|x| x.clone()),
+        block.register_types().values().cloned(),
         block.block().name.clone(),
         register_types_to_crates,
     );
     bit_tokens += "\n";
     bit_tokens += &generate_bitfields(
-        block
-            .block()
-            .declared_register_types
-            .iter()
-            .map(|x| x.clone()),
+        block.block().declared_register_types.iter().cloned(),
         block.block().name.clone(),
         register_types_to_crates,
     );
@@ -410,7 +403,7 @@ fn generate_bitfields(
                 for variant in enum_type.variants.iter() {
                     let variant_ident = camel_case(&variant.name);
                     let variant_value = hex_const(variant.value as u64);
-                    enum_tokens += &format!("{} = {},\n", variant_ident.to_string(), variant_value);
+                    enum_tokens += &format!("{} = {},\n", variant_ident, variant_value);
                 }
             }
             if !enum_tokens.is_empty() {
@@ -456,7 +449,7 @@ fn generate_bitfields(
     }
 
     let mut tokens = String::new();
-    tokens += &format!("register_bitfields! {{\n    ");
+    tokens += "register_bitfields! {\n    ";
     if !tokens8.is_empty() {
         tokens += "u8,\n";
         tokens += &tokens8;
