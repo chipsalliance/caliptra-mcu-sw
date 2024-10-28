@@ -3,7 +3,6 @@
 // Based almost entirely on the Embassy RISC-V executor (which is also licensed Apache 2.0).
 
 use core::marker::PhantomData;
-
 use embassy_executor::{raw, Spawner};
 use portable_atomic::{AtomicBool, Ordering};
 

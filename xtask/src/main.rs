@@ -12,6 +12,7 @@ mod clippy;
 mod format;
 mod header;
 mod precheckin;
+mod registers;
 mod runtime;
 mod runtime_build;
 mod test;
@@ -47,6 +48,12 @@ enum Commands {
     HeaderFix,
     /// Run tests
     Test,
+    /// Autogenerate register files and emulator bus from RDL
+    RegistersAutogen {
+        /// Check output only
+        #[arg(short, long, default_value_t = false)]
+        check: bool,
+    },
 }
 
 pub type DynError = Box<dyn std::error::Error>;
@@ -71,6 +78,7 @@ fn main() {
         Commands::HeaderFix => header::fix(),
         Commands::HeaderCheck => header::check(),
         Commands::Test => test::test(),
+        Commands::RegistersAutogen { check } => registers::autogen(*check),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {}", e);

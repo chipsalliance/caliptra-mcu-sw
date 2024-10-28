@@ -8,7 +8,7 @@ pub(crate) fn cargo_lock() -> Result<(), DynError> {
     println!("Checking Cargo lock");
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .args(["+nightly", "tree", "--locked"])
+        .args(["tree", "--locked"])
         .env("RUSTFLAGS", "-Cpanic=abort -Zpanic_abort_tests")
         .stdout(std::process::Stdio::null())
         .status()?;

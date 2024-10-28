@@ -3,21 +3,6 @@
 version = 4
 
 [[package]]
-name = "android-tzdata"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e999941b234f3131b00bc13c22d06e8c5ff726d1b6318ac7eb276997bbb4fef0"
-
-[[package]]
-name = "android_system_properties"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "anstream"
 version = "0.6.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -389,6 +374,7 @@ dependencies = [
  "emulator-bus",
  "emulator-cpu",
  "emulator-periph",
+ "emulator-registers-generated",
  "emulator-types",
  "gdbstub",
  "gdbstub_arch",
@@ -440,6 +426,16 @@ dependencies = [
  "lazy_static",
  "serde",
  "serde_json",
+ "tock-registers 0.9.0 (git+https://github.com/tock/tock.git)",
+]
+
+[[package]]
+name = "emulator-registers-generated"
+version = "0.1.0"
+dependencies = [
+ "emulator-bus",
+ "emulator-types",
+ "registers-generated",
  "tock-registers 0.9.0 (git+https://github.com/tock/tock.git)",
 ]
 
@@ -979,6 +975,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "registers-generated"
+version = "0.1.0"
+dependencies = [
+ "tock-registers 0.9.0 (git+https://github.com/tock/tock.git)",
+]
+
+[[package]]
+name = "registers-generator"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "registers-systemrdl",
+]
+
+[[package]]
+name = "registers-systemrdl"
+version = "0.1.0"
+
+[[package]]
 name = "riscv"
 version = "0.1.0"
 source = "git+https://github.com/tock/tock.git?rev=b128ae817b86706c8c4e39d27fae5c54b98659f1#b128ae817b86706c8c4e39d27fae5c54b98659f1"
@@ -1416,6 +1432,10 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "proc-macro2",
+ "quote",
+ "registers-generator",
+ "registers-systemrdl",
  "semver",
  "walkdir",
 ]

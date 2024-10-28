@@ -13,19 +13,23 @@ Abstract:
 --*/
 
 use super::gdb_target::GdbTarget;
+use emulator_bus::Bus;
 use gdbstub::common::Signal;
 use gdbstub::conn::{Connection, ConnectionExt};
 use gdbstub::stub::SingleThreadStopReason;
 use gdbstub::stub::{run_blocking, DisconnectReason, GdbStub, GdbStubError};
 use gdbstub::target::Target;
+use std::marker::PhantomData;
 use std::net::TcpListener;
 
-enum GdbEventLoop {}
+struct GdbEventLoop<T: Bus> {
+    _phantom: PhantomData<T>,
+}
 
 // The `run_blocking::BlockingEventLoop` groups together various callbacks
 // the `GdbStub::run_blocking` event loop requires you to implement.
-impl run_blocking::BlockingEventLoop for GdbEventLoop {
-    type Target = GdbTarget;
+impl<T: Bus> run_blocking::BlockingEventLoop for GdbEventLoop<T> {
+    type Target = GdbTarget<T>;
     type Connection = Box<dyn ConnectionExt<Error = std::io::Error>>;
 
     // or MultiThreadStopReason on multi threaded targets
@@ -35,7 +39,7 @@ impl run_blocking::BlockingEventLoop for GdbEventLoop {
     // called. The implementation should block until either the target
     // reports a stop reason, or if new data was sent over the connection.
     fn wait_for_stop_reason(
-        target: &mut GdbTarget,
+        target: &mut GdbTarget<T>,
         _conn: &mut Self::Connection,
     ) -> Result<
         run_blocking::Event<SingleThreadStopReason<u32>>,
@@ -53,8 +57,8 @@ impl run_blocking::BlockingEventLoop for GdbEventLoop {
 
     // Invoked when the GDB client sends a Ctrl-C interrupt.
     fn on_interrupt(
-        _target: &mut GdbTarget,
-    ) -> Result<Option<SingleThreadStopReason<u32>>, <GdbTarget as Target>::Error> {
+        _target: &mut GdbTarget<T>,
+    ) -> Result<Option<SingleThreadStopReason<u32>>, <GdbTarget<T> as Target>::Error> {
         // a pretty typical stop reason in response to a Ctrl-C interrupt is to
         // report a "Signal::SIGINT".
         Ok(Some(SingleThreadStopReason::Signal(Signal::SIGINT)))
@@ -62,7 +66,7 @@ impl run_blocking::BlockingEventLoop for GdbEventLoop {
 }
 
 // Routine which creates TCP Socket for GDB and execute State Machine
-pub fn wait_for_gdb_run(cpu: &mut GdbTarget, port: u16) {
+pub fn wait_for_gdb_run<T: Bus>(cpu: &mut GdbTarget<T>, port: u16) {
     // Create Socket
     let sockaddr = format!("localhost:{}", port);
     eprintln!("Waiting for a GDB connection on {:?}...", sockaddr);
@@ -77,7 +81,7 @@ pub fn wait_for_gdb_run(cpu: &mut GdbTarget, port: u16) {
     let gdb = GdbStub::new(connection);
 
     // Execute GDB until a disconnect event
-    match gdb.run_blocking::<GdbEventLoop>(cpu) {
+    match gdb.run_blocking::<GdbEventLoop<T>>(cpu) {
         Ok(disconnect_reason) => match disconnect_reason {
             DisconnectReason::Disconnect => {
                 println!("Client disconnected")

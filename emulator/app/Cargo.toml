@@ -12,6 +12,7 @@ emulator-bus.workspace = true
 emulator-cpu.workspace = true
 emulator-periph.workspace = true
 emulator-types.workspace = true
+emulator-registers-generated.workspace = true
 clap.workspace = true
 elf.workspace = true
 gdbstub_arch.workspace = true
