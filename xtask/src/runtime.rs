@@ -13,7 +13,6 @@ pub(crate) fn runtime_run(trace: bool) -> Result<(), DynError> {
         .join("release")
         .join("runtime");
     let mut cargo_run_args = vec![
-        "+stable",
         "run",
         "-p",
         "emulator",

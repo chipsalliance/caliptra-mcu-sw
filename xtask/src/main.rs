@@ -9,6 +9,7 @@ use clap::{Parser, Subcommand};
 
 mod cargo_lock;
 mod clippy;
+mod docs;
 mod format;
 mod header;
 mod precheckin;
@@ -36,6 +37,8 @@ enum Commands {
     RuntimeBuild,
     /// Run clippy on all targets
     Clippy,
+    /// Build docs
+    Docs,
     /// Check that all files are formatted
     Format,
     /// Run pre-check-in checks
@@ -72,6 +75,7 @@ fn main() {
         Commands::Runtime { trace } => runtime::runtime_run(*trace),
         Commands::RuntimeBuild => runtime_build::runtime_build(),
         Commands::Clippy => clippy::clippy(),
+        Commands::Docs => docs::docs(),
         Commands::Precheckin => precheckin::precheckin(),
         Commands::Format => format::format(),
         Commands::CargoLock => cargo_lock::cargo_lock(),

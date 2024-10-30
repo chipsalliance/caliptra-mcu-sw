@@ -12,3 +12,6 @@
 riscv-arch-test
 *.pyc
 .vscode
+
+# mdbook
+book

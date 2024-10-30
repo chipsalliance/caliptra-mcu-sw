@@ -1,0 +1,8 @@
+# Licensed under the Apache-2.0 license
+
+[book]
+authors = ["Caliptra Authors"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Caliptra MCU Firmware Documentation"
