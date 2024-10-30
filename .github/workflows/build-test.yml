@@ -39,7 +39,9 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install build-essential curl gcc-multilib gcc-riscv64-unknown-elf git
+          sudo apt-get install build-essential curl gcc-multilib gcc-riscv64-unknown-elf git \
+          curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf -y | sh
+          rustup update
 
       - name: Restore sccache binary
         uses: actions/cache/restore@v3
@@ -86,13 +88,6 @@ jobs:
             git diff Cargo.lock
             exit 1
           )
-      - name: Run cargo build
-        run: |
-          cargo --config "$EXTRA_CARGO_CONFIG" build --locked
-          sccache --show-stats
-
-      - name: Install llvm-tools
-        run: rustup component add llvm-tools --toolchain nightly
 
       - name: Run precheckin
         run: |
