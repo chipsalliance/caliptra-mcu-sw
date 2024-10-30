@@ -15,7 +15,7 @@ jobs:
 
     env:
       CARGO_INCREMENTAL: 0
-      SCCACHE_VERSION: 0.3.3
+      SCCACHE_VERSION: 0.8.2
       SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
       SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
       # CPTRA_COVERAGE_PATH: /tmp
@@ -87,10 +87,8 @@ jobs:
             exit 1
           )
 
-      - name: Install toolchains
-        run: rustup update && \
-             rustup target add --toolchain nightly riscv32imc-unknown-none-elf && \
-             rustup component add llvm-tools --toolchain nightly
+      - name: Install llvm-tools
+        run: rustup component add llvm-tools --toolchain nightly
 
       - name: Run precheckin
         run: |
