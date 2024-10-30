@@ -6,3 +6,13 @@ language = "en"
 multilingual = false
 src = "src"
 title = "Caliptra MCU Firmware Documentation"
+
+[preprocessor]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output]
+
+[output.html]
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
