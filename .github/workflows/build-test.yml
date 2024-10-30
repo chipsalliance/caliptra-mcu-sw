@@ -92,7 +92,7 @@ jobs:
           sccache --show-stats
 
       - name: Install llvm-tools
-        run: rustup toolchain install rustup component add llvm-tools --toolchain nightly
+        run: rustup component add llvm-tools --toolchain nightly
 
       - name: Run precheckin
         run: |
