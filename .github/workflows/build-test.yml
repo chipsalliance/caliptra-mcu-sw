@@ -86,10 +86,15 @@ jobs:
             git diff Cargo.lock
             exit 1
           )
+      - name: Run cargo build
+        run: |
+          cargo --config "$EXTRA_CARGO_CONFIG" build --locked
+          sccache --show-stats
 
       - name: Install llvm-tools
-        run: rustup component add llvm-tools --toolchain nightly
+        run: rustup toolchain install rustup component add llvm-tools --toolchain nightly
 
       - name: Run precheckin
         run: |
-          cargo xtask precheckin
+          cargo --config "$EXTRA_CARGO_CONFIG" xtask precheckin
+          sccache --show-stats
