@@ -9,6 +9,7 @@ members = [
     "emulator/derive",
     "emulator/periph",
     "emulator/types",
+    "rom",
     "runtime",
     "runtime/apps/pldm",
     "tests/hello",

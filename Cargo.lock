@@ -1028,6 +1028,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rom"
+version = "0.1.0"
+dependencies = [
+ "riscv-csr",
+ "rv32i",
+]
+
+[[package]]
 name = "runtime"
 version = "0.1.0"
 dependencies = [

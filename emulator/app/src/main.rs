@@ -42,6 +42,12 @@ struct Emulator {
     #[arg(short, long)]
     rom: PathBuf,
 
+    #[arg(short, long)]
+    firmware: Option<PathBuf>,
+
+    #[arg(short, long)]
+    apps: Option<Vec<PathBuf>>,
+
     /// Optional file to store OTP / fuses between runs.
     #[arg(short, long)]
     otp: Option<PathBuf>,
@@ -170,6 +176,33 @@ fn main() -> io::Result<()> {
     run(cli, false).map(|_| ())
 }
 
+fn read_binary(path: &PathBuf, expect_load_addr: u32) -> io::Result<Vec<u8>> {
+    let mut file = File::open(path)?;
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)?;
+
+    // Check if this is an ELF
+    if buffer.starts_with(&[0x7f, 0x45, 0x4c, 0x46]) {
+        println!("Loading ELF executable {}", path.display());
+        let elf = elf::ElfExecutable::new(&buffer).unwrap();
+        if elf.load_addr() != expect_load_addr {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "ELF executable has non-zero load address, which is not supported",
+            ))?;
+        }
+        if elf.entry_point() != expect_load_addr {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "ELF executable has non-zero entry point, which is not supported",
+            ))?;
+        }
+        buffer = elf.content().clone();
+    }
+
+    Ok(buffer)
+}
+
 fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     // exit cleanly on Ctrl-C so that we save any state.
     let running = Arc::new(AtomicBool::new(true));
@@ -187,29 +220,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         exit(-1);
     }
 
-    let mut rom = File::open(args_rom)?;
-    let mut rom_buffer = Vec::new();
-    rom.read_to_end(&mut rom_buffer)?;
-
-    // Check if this is an ELF
-    if rom_buffer.starts_with(&[0x7f, 0x45, 0x4c, 0x46]) {
-        println!("Loading ELF executable {}", args_rom.display());
-        let elf = elf::ElfExecutable::new(&rom_buffer).unwrap();
-        if elf.load_addr() != 0 {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "ELF executable has non-zero load address, which is not supported",
-            ))?;
-        }
-        if elf.entry_point() != 0 {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "ELF executable has non-zero entry point, which is not supported",
-            ))?;
-        }
-        rom_buffer = elf.content().clone();
-    }
-
+    let rom_buffer = read_binary(args_rom, 0)?;
     if rom_buffer.len() > CaliptraRootBus::ROM_SIZE {
         println!(
             "ROM File Size must not exceed {} bytes",
@@ -222,6 +233,13 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         args_rom,
         rom_buffer.len(),
     );
+
+    let firmware_buffer = if let Some(firmware_path) = cli.firmware {
+        read_binary(&firmware_path, 0x4000_0080)?
+    } else {
+        // this just immediately exits
+        vec![0xb7, 0xf6, 0x00, 0x20, 0x94, 0xc2]
+    };
 
     let clock = Rc::new(Clock::new());
 
@@ -240,6 +258,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
     let bus_args = CaliptraRootBusArgs {
         rom: rom_buffer,
+        firmware: firmware_buffer,
         log_dir: args_log_dir.clone(),
         uart_output: uart_output.clone(),
         otp_file: cli.otp,

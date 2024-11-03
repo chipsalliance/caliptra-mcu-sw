@@ -7,10 +7,10 @@
 
 MEMORY
 {
-  rom (rx)  : ORIGIN = 0x00000000, LENGTH = 0x20000
   /* 128 bytes reserved for external interrupt table */
-  ram (rwx) : ORIGIN = 0x50000080, LENGTH = 0x2ff80
-  prog (rx) : ORIGIN = 0x00020000, LENGTH = 0x20000
+  rom (rx)  : ORIGIN = 0x40000080, LENGTH = 0x1ff80 /* 128 kB - 80 bytes */
+  prog (rx) : ORIGIN = 0x40020000, LENGTH = 0x20000 /* 128 kB*/
+  ram (rwx) : ORIGIN = 0x50000000, LENGTH = 0x20000 /* 128 kB */
 }
 
 INCLUDE runtime/kernel_layout.ld
