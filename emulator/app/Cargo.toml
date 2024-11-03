@@ -8,16 +8,17 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+atty.workspace = true
+clap.workspace = true
+console.workspace = true
+ctrlc.workspace = true
+elf.workspace = true
 emulator-bus.workspace = true
 emulator-cpu.workspace = true
 emulator-periph.workspace = true
-emulator-types.workspace = true
 emulator-registers-generated.workspace = true
-clap.workspace = true
-elf.workspace = true
+emulator-types.workspace = true
 gdbstub_arch.workspace = true
 gdbstub.workspace = true
 hex.workspace = true
 tock-registers.workspace = true
-ctrlc.workspace = true
-console.workspace = true

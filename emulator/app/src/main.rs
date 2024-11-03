@@ -18,7 +18,7 @@ mod elf;
 mod gdb;
 
 use clap::{Parser, Subcommand};
-use console::Term;
+use console::{Key, Term};
 use emulator_bus::{Bus, Clock, Timer};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
 use emulator_periph::{CaliptraRootBus, CaliptraRootBusArgs};
@@ -90,24 +90,33 @@ fn disassemble(pc: u32, instr: u32) -> String {
     String::from_utf8(out).unwrap()
 }
 
-// TODO: this isn't super reliable for some reason, and characters are dropped often.
 fn read_console(running: Arc<AtomicBool>, stdin_uart: Option<Arc<Mutex<Option<u8>>>>) {
     let term = Term::stdout();
     let mut buffer = vec![];
     if let Some(ref stdin_uart) = stdin_uart {
         while running.load(std::sync::atomic::Ordering::Relaxed) {
             if buffer.is_empty() {
-                if let Ok(ch) = term.read_char() {
-                    buffer.extend_from_slice(ch.to_string().as_bytes());
+                match term.read_key() {
+                    Ok(Key::Char(ch)) => buffer.extend_from_slice(ch.to_string().as_bytes()),
+                    Ok(Key::Enter) => {
+                        buffer.push(b'\n');
+                    }
+                    Ok(Key::Backspace) => {
+                        if !buffer.is_empty() {
+                            buffer.pop();
+                        } else {
+                            buffer.push(8);
+                        }
+                    }
+                    _ => {} // ignore other keys
                 }
             } else {
                 let mut stdin_uart = stdin_uart.lock().unwrap();
                 if stdin_uart.is_none() {
                     *stdin_uart = Some(buffer.remove(0));
-                } else {
-                    std::thread::yield_now();
                 }
             }
+            std::thread::yield_now();
         }
     }
 }
@@ -174,10 +183,15 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     // exit cleanly on Ctrl-C so that we save any state.
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = running.clone();
-    ctrlc::set_handler(move || {
-        running_clone.store(false, std::sync::atomic::Ordering::Relaxed);
-    })
-    .unwrap();
+    if atty::is(atty::Stream::Stdout) {
+        ctrlc::set_handler(move || {
+            running_clone.store(false, std::sync::atomic::Ordering::Relaxed);
+            Term::stdout().clear_line().unwrap();
+            Term::stdout().show_cursor().unwrap();
+            println!("Terminal might be in a bad state. Run \"stty sane && reset\" to fix it.");
+        })
+        .unwrap();
+    }
 
     let args_rom = &cli.rom;
     let args_log_dir = &cli.log_dir.unwrap_or_else(|| PathBuf::from("/tmp"));
@@ -231,7 +245,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         None
     };
 
-    let stdin_uart = if cli.stdin_uart {
+    let stdin_uart = if cli.stdin_uart && atty::is(atty::Stream::Stdin) {
         Some(Arc::new(Mutex::new(None)))
     } else {
         None

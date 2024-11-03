@@ -44,9 +44,8 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         &*addr_of!(PROCESS_PRINTER),
     );
 
-    // By writing 0xff to this address we can exit the simulation.
-    // So instead of blinking in a loop let's exit the simulation.
-    write_volatile(0xd0580000 as *mut u8, 0xff);
+    // By writing to this address we can exit the emulator.
+    write_volatile(0x2000_f000 as *mut u32, 0);
 
     unreachable!()
 }
@@ -103,34 +102,26 @@ impl<'a> SemihostUart<'a> {
     }
 
     pub fn handle_interrupt(&self) {
-        let b = read_byte();
-        if b == 0 {
-            // No data available
-            return;
-        }
-        debug!("Got UART RX Interrupt with data {}", b);
-        if let Some(rx_buffer) = self.rx_buffer.take() {
-            debug!(
-                "RX buffer = {} {} {}",
-                rx_buffer.len(),
-                self.rx_len.get(),
-                self.rx_index.get()
-            );
-            let len = self.rx_len.get();
-            let mut index = self.rx_index.get();
-            if index < len {
-                rx_buffer[index] = b;
-                index += 1;
+        let mut b = read_byte();
+        while b != 0 {
+            if let Some(rx_buffer) = self.rx_buffer.take() {
+                let len = self.rx_len.get();
+                let mut index = self.rx_index.get();
+                if index < len {
+                    rx_buffer[index] = b;
+                    index += 1;
+                }
+                if index == len {
+                    // send to the client
+                    self.rx_client.map(move |client| {
+                        client.received_buffer(rx_buffer, len, Ok(()), hil::uart::Error::None)
+                    });
+                } else {
+                    self.rx_index.set(index);
+                    self.rx_buffer.replace(rx_buffer);
+                }
             }
-            if index == len {
-                // send to the client
-                self.rx_client.map(move |client| {
-                    client.received_buffer(rx_buffer, len, Ok(()), hil::uart::Error::None)
-                });
-            } else {
-                self.rx_index.set(index);
-                self.rx_buffer.replace(rx_buffer);
-            }
+            b = read_byte();
         }
     }
 }

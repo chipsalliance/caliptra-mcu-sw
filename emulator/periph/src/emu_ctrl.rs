@@ -73,9 +73,9 @@ impl Bus for EmuCtrl {
     ///
     /// * `RvException` - Exception with cause `RvExceptionCause::StoreAccessFault`
     ///                   or `RvExceptionCause::StoreAddrMisaligned`
-    fn write(&mut self, size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
-        match (size, addr) {
-            (RvSize::Word, EmuCtrl::ADDR_EXIT) => {
+    fn write(&mut self, _size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
+        match addr {
+            EmuCtrl::ADDR_EXIT => {
                 exit(val as i32);
             }
             _ => Err(BusError::StoreAccessFault)?,

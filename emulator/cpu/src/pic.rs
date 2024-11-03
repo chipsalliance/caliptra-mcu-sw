@@ -169,9 +169,6 @@ impl Bus for PicMmioRegisters {
     fn poll(&mut self) {
         const EXT_INT_DELAY: u64 = 2;
         if let Some(irq) = self.pic.highest_priority_irq(MAX_PRIORITY - 1) {
-            if self.pic.triggered.get(irq) {
-                return;
-            }
             self.timer.schedule_action_in(
                 EXT_INT_DELAY,
                 TimerAction::ExtInt {
@@ -179,11 +176,7 @@ impl Bus for PicMmioRegisters {
                     can_wake: true,
                 },
             );
-            self.pic.triggered.set(irq, true);
         } else if let Some(irq) = self.pic.highest_priority_irq(0) {
-            if self.pic.triggered.get(irq) {
-                return;
-            }
             self.timer.schedule_action_in(
                 EXT_INT_DELAY,
                 TimerAction::ExtInt {
@@ -191,7 +184,6 @@ impl Bus for PicMmioRegisters {
                     can_wake: true,
                 },
             );
-            self.pic.triggered.set(irq, true);
         }
     }
 }
@@ -359,9 +351,6 @@ struct PicImpl {
     // The value to xor a priority threshold with before comparing it with
     // IrqPriority::priority_xored
     priority_xor: Cell<u8>,
-
-    // Indicates if this IRQ has triggered an interrupt since it was last set.
-    triggered: Bits32,
 }
 impl PicImpl {
     fn new() -> Self {
@@ -375,7 +364,6 @@ impl PicImpl {
             id_to_order: Cell::new([0u8; 32]),
             ordered_irq_pending: Bits32::new(),
             priority_xor: Cell::new(0),
-            triggered: Bits32::new(),
         };
         result.refresh_order();
         result
@@ -409,9 +397,6 @@ impl PicImpl {
         }
         regs.meip.set(id, is_high);
         self.set_ordered_irq_pending(&regs, id, is_high);
-        if !is_high {
-            self.triggered.set(id, false);
-        }
     }
     fn set_ordered_irq_pending(&self, regs: &PicImplRegs, id: u8, is_pending: bool) {
         let enabled = regs.meie[usize::from(id)].is_set(Meie::INTEN);
