@@ -7,6 +7,7 @@ use std::{
 
 use clap::{Parser, Subcommand};
 
+mod apps_build;
 mod cargo_lock;
 mod clippy;
 mod docs;

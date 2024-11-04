@@ -16,6 +16,7 @@ mod dis;
 mod dis_test;
 mod elf;
 mod gdb;
+mod tbf;
 
 use clap::{Parser, Subcommand};
 use console::Term;
@@ -188,13 +189,17 @@ fn read_binary(path: &PathBuf, expect_load_addr: u32) -> io::Result<Vec<u8>> {
         if elf.load_addr() != expect_load_addr {
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "ELF executable has non-zero load address, which is not supported",
+                format!(
+                    "ELF executable has non-0x{:x} load address, which is not supported (got 0x{:x})",
+                    expect_load_addr, elf.load_addr()
+                ),
             ))?;
         }
-        if elf.entry_point() != expect_load_addr {
+        // TBF files have an entry point offset by 0x20
+        if elf.entry_point() != expect_load_addr && elf.entry_point() != elf.load_addr() + 0x20 {
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "ELF executable has non-zero entry point, which is not supported",
+                format!("ELF executable has non-0x{:x} entry point, which is not supported (got 0x{:x})", expect_load_addr, elf.entry_point()),
             ))?;
         }
         buffer = elf.content().clone();
@@ -241,6 +246,18 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         vec![0xb7, 0xf6, 0x00, 0x20, 0x94, 0xc2]
     };
 
+    let apps = cli.apps.unwrap_or_default();
+    let apps_binary = if !apps.is_empty() {
+        if apps.len() > 1 {
+            println!("Only one app is supported right now");
+            exit(-1);
+        }
+        let app_raw_binary = read_binary(&apps[0], 0x4002_0000 + 0x60)?;
+        tbf::make_tbf(app_raw_binary)
+    } else {
+        vec![]
+    };
+
     let clock = Rc::new(Clock::new());
 
     let uart_output = if capture_uart_output {
@@ -259,6 +276,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     let bus_args = CaliptraRootBusArgs {
         rom: rom_buffer,
         firmware: firmware_buffer,
+        apps: apps_binary,
         log_dir: args_log_dir.clone(),
         uart_output: uart_output.clone(),
         otp_file: cli.otp,

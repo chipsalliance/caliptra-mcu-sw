@@ -13,3 +13,4 @@ clap.workspace = true
 registers-generator.workspace = true
 registers-systemrdl.workspace = true
 quote.workspace = true
+tempfile = "3.13.0"
