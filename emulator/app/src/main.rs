@@ -299,16 +299,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         clock: clock.clone(),
     };
     let root_bus = CaliptraRootBus::new(bus_args).unwrap();
-    let auto_root_bus = AutoRootBus::new(
-        Some(Box::new(root_bus)),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    );
+    let auto_root_bus = AutoRootBus::new(Some(Box::new(root_bus)), None, None, None, None, None);
 
     let cpu = Cpu::new(auto_root_bus, clock, pic);
 

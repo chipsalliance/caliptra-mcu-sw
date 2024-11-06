@@ -2,8 +2,8 @@
 Licensed under the Apache-2.0 license.
 --*/
 use crate::schema::{RegisterBlock, RegisterBlockInstance, RegisterSubBlock, RegisterType};
-use crate::{Enum, EnumVariant, FieldType, Register, RegisterField};
-use registers_systemrdl as systemrdl;
+use crate::{Enum, EnumVariant, FieldType, Register, RegisterField, RegisterWidth};
+use registers_systemrdl::{self as systemrdl, Value};
 use registers_systemrdl::{ComponentType, ScopeType};
 use std::fmt::Display;
 use std::rc::Rc;
@@ -282,6 +282,88 @@ fn translate_register(iref: systemrdl::InstanceRef) -> Result<Register, Error> {
 
     Ok(result)
 }
+
+// Translates a memory into a register array
+fn translate_mem(iref: systemrdl::InstanceRef, start_offset: u64) -> Result<Register, Error> {
+    let wrap_err = |err: Error| Error::RegisterError {
+        register_name: iref.instance.name.clone(),
+        err: Box::new(err),
+    };
+
+    expect_instance_type(iref.scope, ComponentType::Mem.into()).map_err(wrap_err)?;
+    let inst = iref.instance;
+
+    let description: String = inst
+        .scope
+        .property_val_opt("desc")
+        .unwrap()
+        .unwrap_or_default();
+
+    if inst.reset.is_some() {
+        return Err(wrap_err(Error::ResetValueOnRegisterUnsupported));
+    }
+
+    let mut ty = RegisterType {
+        name: inst.type_name.clone(),
+        fields: vec![],
+        width: RegisterWidth::_32,
+    };
+
+    if let Some(Value::U64(memwidth)) = iref.instance.scope.properties.get("memwidth") {
+        ty.width = match *memwidth {
+            8 => RegisterWidth::_8,
+            16 => RegisterWidth::_16,
+            32 => RegisterWidth::_32,
+            64 => RegisterWidth::_64,
+            128 => RegisterWidth::_128,
+            _ => return Err(wrap_err(Error::UnsupportedRegWidth(*memwidth))),
+        }
+    };
+    let mut double = 1;
+    if ty.width == RegisterWidth::_128 {
+        // hack: convert to four u32s
+        ty.width = RegisterWidth::_32;
+        double = 4;
+    } else if ty.width == RegisterWidth::_64 {
+        // hack: convert to two u32s
+        ty.width = RegisterWidth::_32;
+        double = 2;
+    }
+    let entries = match iref.instance.scope.properties.get("mementries") {
+        Some(Value::U64(mementries)) => *mementries * double,
+        _ => return Err(wrap_err(Error::ValueNotDefined)),
+    };
+    let access_type = match iref.instance.scope.properties.get("sw") {
+        Some(Value::AccessType(AccessType::Rw)) => FieldType::RW,
+        Some(Value::AccessType(AccessType::Rw1)) => FieldType::RW,
+        Some(Value::AccessType(AccessType::R)) => FieldType::RO,
+        Some(Value::AccessType(AccessType::W)) => FieldType::WO,
+        Some(Value::AccessType(AccessType::W1)) => FieldType::WO,
+        _ => FieldType::RW,
+    };
+
+    ty.fields.push(RegisterField {
+        name: "single".to_string(),
+        ty: access_type,
+        default_val: 0,
+        comment: "".to_string(),
+        enum_type: None,
+        position: 0,
+        width: (ty.width.in_bytes() * 8) as u8,
+    });
+
+    let result = Register {
+        name: inst.name.clone(),
+        offset: inst.offset.unwrap_or(start_offset),
+        default_val: 0,
+        comment: unpad_description(&description),
+        array_dimensions: vec![entries],
+        ty: Rc::new(ty),
+    };
+
+    Ok(result)
+}
+
 fn translate_register_ty(
     type_name: Option<String>,
     scope: ParentScope,
@@ -354,6 +436,18 @@ fn calculate_reg_size(block: &RegisterBlock) -> Option<u64> {
         .max()
 }
 
+fn calculate_mem_size(iref: systemrdl::InstanceRef) -> u64 {
+    let bits = match iref.instance.scope.properties.get("memwidth") {
+        Some(Value::U64(memwidth)) => *memwidth,
+        _ => 32,
+    };
+    let entries = match iref.instance.scope.properties.get("mementries") {
+        Some(Value::U64(mementries)) => *mementries,
+        _ => panic!("No mementries found for memory"),
+    };
+    bits / 8 * entries
+}
+
 fn translate_block(iref: InstanceRef) -> Result<RegisterBlock, Error> {
     let wrap_err = |err: Error| Error::BlockError {
         block_name: iref.instance.name.clone(),
@@ -383,6 +477,20 @@ fn translate_block(iref: InstanceRef) -> Result<RegisterBlock, Error> {
             block
                 .registers
                 .push(Rc::new(translate_register(child).map_err(wrap_err)?));
+        } else if child.instance.scope.ty == ComponentType::Mem.into() {
+            let mem_size = calculate_mem_size(child);
+            let start_offset = child
+                .instance
+                .offset
+                .or(next_offset.map(|o| {
+                    // align according to RDL spec
+                    o.next_multiple_of(mem_size.next_power_of_two())
+                }))
+                .expect("Offset not defined for memory and could not calculate automatically");
+            next_offset = Some(start_offset + calculate_mem_size(child));
+            block.registers.push(Rc::new(
+                translate_mem(child, start_offset).map_err(wrap_err)?,
+            ));
         } else if child.instance.scope.ty == ComponentType::RegFile.into() {
             let next_block = translate_block(child)?;
             let next_block_size = calculate_reg_size(&next_block);

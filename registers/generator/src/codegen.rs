@@ -207,16 +207,19 @@ pub fn generate_code(
     is_root_module: bool,
     register_types_to_crates: &mut HashMap<String, String>,
 ) -> String {
+    let mut defined_bits = HashSet::new();
     let mut bit_tokens = generate_bitfields(
         block.register_types().values().cloned(),
         block.block().name.clone(),
         register_types_to_crates,
+        &mut defined_bits,
     );
     bit_tokens += "\n";
     bit_tokens += &generate_bitfields(
         block.block().declared_register_types.iter().cloned(),
         block.block().name.clone(),
         register_types_to_crates,
+        &mut defined_bits,
     );
     bit_tokens = indent(&bit_tokens, 4);
 
@@ -380,6 +383,7 @@ fn generate_bitfields(
     register_types: impl Iterator<Item = Rc<RegisterType>>,
     reg_crate: String,
     register_types_to_crates: &mut HashMap<String, String>,
+    defined_bits: &mut HashSet<String>,
 ) -> String {
     let mut tokens8 = String::new();
     let mut tokens16 = String::new();
@@ -393,9 +397,14 @@ fn generate_bitfields(
         if has_single_32_bit_field(&rt) {
             continue;
         }
-        let name = camel_case(rt.name.clone().unwrap().as_str());
-        register_types_to_crates.insert(rt.name.clone().unwrap(), reg_crate.clone());
+        let raw_name = rt.name.clone().unwrap();
+        if defined_bits.contains(&raw_name) {
+            continue;
+        }
+        defined_bits.insert(raw_name.clone());
+        register_types_to_crates.insert(raw_name.clone(), reg_crate.clone());
         let mut field_tokens = String::new();
+        let name = camel_case(&raw_name);
         field_tokens += &format!("pub {name} [\n");
         for field in rt.fields.iter() {
             let mut enum_tokens = String::new();

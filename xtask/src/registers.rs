@@ -25,21 +25,10 @@ static HEADER_SUFFIX: &str = r"
 */
 ";
 
-static SKIP_TYPES: LazyLock<HashSet<&str>> = LazyLock::new(|| {
-    HashSet::from([
-        "hmac",
-        "sha512",
-        "sha256",
-        "csrng",
-        "entropy_src",
-        "sha512_acc",
-    ])
-});
+static SKIP_TYPES: LazyLock<HashSet<&str>> = LazyLock::new(|| HashSet::from([]));
 
 pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
     let sub_dir = &PROJECT_ROOT.join("hw").join("caliptra-ss").to_path_buf();
-    let rtl_dir = &sub_dir.join("caliptra-rtl").to_path_buf();
-    let i3c_dir = &PROJECT_ROOT.join("hw").join("i3c-core").to_path_buf();
     let registers_dest_dir = &PROJECT_ROOT
         .join("registers")
         .join("generated-firmware")
@@ -51,24 +40,13 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
         .join("src")
         .to_path_buf();
     // TODO: the parsing is too fragile and requires the files to be passed in in a specific order
-    // TODO: these don't seem right. We shouldn't have these crypto accelerators in the MCU.
     let rdl_files: Vec<PathBuf> = [
-        "hw/caliptra-ss/src/mci/rtl/mci_reg.rdl",
-        "hw/caliptra-ss/caliptra-rtl/src/csrng/data/csrng.rdl",
-        "hw/caliptra-ss/caliptra-rtl/src/keyvault/rtl/kv_def.rdl",
-        "hw/caliptra-ss/caliptra-rtl/src/entropy_src/data/entropy_src.rdl",
-        "hw/caliptra-ss/caliptra-rtl/src/hmac/rtl/hmac_reg.rdl",
-        "hw/caliptra-ss/caliptra-rtl/src/sha256/rtl/sha256_reg.rdl",
-        "hw/caliptra-ss/caliptra-rtl/src/sha512/rtl/sha512_reg.rdl",
-        "hw/caliptra-ss/caliptra-rtl/src/soc_ifc/rtl/mbox_csr.rdl",
-        "hw/caliptra-ss/caliptra-rtl/src/soc_ifc/rtl/sha512_acc_csr.rdl",
-        "hw/caliptra-ss/caliptra-rtl/src/soc_ifc/rtl/soc_ifc_reg.rdl",
-        "hw/caliptra-ss/caliptra-rtl/src/spi_host/data/spi_host.rdl",
-        "hw/caliptra-ss/caliptra-rtl/src/uart/data/uart.rdl",
-        "hw/i3c-core/src/rdl/registers.rdl",
-        "hw/caliptra-ss/src/mcu/rtl/caliptra_mcu_reg.rdl",
+        "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/mbox_csr.rdl",
+        "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/sha512_acc_csr.rdl",
+        "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/soc_ifc_reg.rdl",
+        "hw/caliptra-ss/third_party/i3c-core/src/rdl/registers.rdl",
+        "hw/caliptra-ss/src/integration/rtl/soc_address_map.rdl",
         "hw/el2_pic_ctrl.rdl",
-        "hw/clp2.rdl",
     ]
     .iter()
     .map(|s| PROJECT_ROOT.join(s))
@@ -77,27 +55,37 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
     // eliminate duplicate type names
     let patches = vec![
         (
-            PROJECT_ROOT.join("hw/i3c-core/src/rdl/target_transaction_interface.rdl"),
+            PROJECT_ROOT.join(
+                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
+            ),
             "QUEUE_THLD_CTRL",
             "TTI_QUEUE_THLD_CTRL",
         ),
         (
-            PROJECT_ROOT.join("hw/i3c-core/src/rdl/target_transaction_interface.rdl"),
+            PROJECT_ROOT.join(
+                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
+            ),
             "QUEUE_SIZE",
             "TTI_QUEUE_SIZE",
         ),
         (
-            PROJECT_ROOT.join("hw/i3c-core/src/rdl/target_transaction_interface.rdl"),
+            PROJECT_ROOT.join(
+                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
+            ),
             "IBI_PORT",
             "TTI_IBI_PORT",
         ),
         (
-            PROJECT_ROOT.join("hw/i3c-core/src/rdl/target_transaction_interface.rdl"),
+            PROJECT_ROOT.join(
+                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
+            ),
             "DATA_BUFFER_THLD_CTRL",
             "TTI_DATA_BUFFER_THLD_CTRL",
         ),
         (
-            PROJECT_ROOT.join("hw/i3c-core/src/rdl/target_transaction_interface.rdl"),
+            PROJECT_ROOT.join(
+                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
+            ),
             "RESET_CONTROL",
             "TTI_RESET_CONTROL",
         ),
@@ -124,56 +112,15 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
         None,
     )?;
 
-    let i3c_commit_id = run_cmd_stdout(
-        Command::new("git")
-            .current_dir(i3c_dir)
-            .arg("rev-parse")
-            .arg("HEAD"),
-        None,
-    )?;
-    let i3c_git_status = run_cmd_stdout(
-        Command::new("git")
-            .current_dir(i3c_dir)
-            .arg("status")
-            .arg("--porcelain"),
-        None,
-    )?;
-
-    let rtl_commit_id = run_cmd_stdout(
-        Command::new("git")
-            .current_dir(rtl_dir)
-            .arg("rev-parse")
-            .arg("HEAD"),
-        None,
-    )?;
-    let rtl_git_status = run_cmd_stdout(
-        Command::new("git")
-            .current_dir(rtl_dir)
-            .arg("status")
-            .arg("--porcelain"),
-        None,
-    )?;
     let mut header = HEADER_PREFIX.to_string();
     write!(
         &mut header,
-        "\n generated by registers_generator with caliptra-rtl repo at {rtl_commit_id}, caliptra-ss repo at {sub_commit_id}, and i3c-core repo at {i3c_commit_id}",
+        "\n generated by registers_generator with caliptra-ss repo at {sub_commit_id}",
     )?;
-    if !i3c_git_status.is_empty() {
-        write!(
-            &mut header,
-            "\n\nWarning: i3c-core was dirty:{i3c_git_status}"
-        )?;
-    }
     if !sub_git_status.is_empty() {
         write!(
             &mut header,
             "\n\nWarning: caliptra-ss was dirty:{sub_git_status}"
-        )?;
-    }
-    if !rtl_git_status.is_empty() {
-        write!(
-            &mut header,
-            "\n\nWarning: caliptra-rtl was dirty:{rtl_git_status}"
         )?;
     }
     header.push_str(HEADER_SUFFIX);
@@ -186,8 +133,8 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
         .map_err(|s| s.to_string())?;
     let scope = scope.as_parent();
 
-    let addrmap = scope.lookup_typedef("clp").unwrap();
-    let addrmap2 = scope.lookup_typedef("clp2").unwrap();
+    let addrmap = scope.lookup_typedef("soc").unwrap();
+    let addrmap2 = scope.lookup_typedef("el2_pic").unwrap();
     let scopes = vec![addrmap, addrmap2];
 
     // These are types like kv_read_ctrl_reg that are used by multiple crates
@@ -268,6 +215,7 @@ fn generate_emulator_types(
         write_file(&dest_file, &rustfmt(&(header.clone() + &code.to_string()))?)?;
         let block_name = format_ident!("{}", rblock.name);
         lib_code.extend(quote! {
+            #[allow(non_snake_case)]
             pub mod #block_name;
         });
     }
@@ -767,7 +715,7 @@ fn generate_fw_registers(
             false,
             register_types_to_crates,
         );
-        root_submod_tokens += &format!("pub mod {module_ident};\n");
+        root_submod_tokens += &format!("#[allow(non_snake_case)]\npub mod {module_ident};\n");
         file_action(
             &dest_file,
             &rustfmt(&(header.clone() + &tokens.to_string()))?,
