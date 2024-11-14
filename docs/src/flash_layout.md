@@ -1,12 +1,12 @@
 ## SPI Flash Layout
 
-The following layout describes the structure of the SPI Flash, with specific memory regions allocated for different firmware packages and manifest files.
+The following figure describes the structure of the SPI Flash, with specific regions allocated for different firmware packages and manifest files.
 
-![SPI Flash Layout](images/flash_layout.png)f
+![SPI Flash Layout](images/flash_layout.png)
 
 ### Preamble
 
-The Preamble section contains the authorization manifest ECC and LMS public keys of the vendor and the owner. These public keys correspond to the private keys that sign the Header section of the Manifest
+The Preamble section (offset 0x0000_0000) contains the authorization manifest ECC and LMS public keys of the vendor and the owner. These public keys correspond to the private keys that sign the Header section of the Manifest
 
  *Note: All fields are little endian unless specified*
 
@@ -31,7 +31,7 @@ The Preamble section contains the authorization manifest ECC and LMS public keys
 | Owner LMS or MLDSA Signature             | 4628         | Owner LMS signature (1620 bytes + 3008 unused bytes) of the Flash Manifest header hashed using SHA2-384.<br /> **q:** Leaf of the Merkle tree where the OTS public key appears (4 bytes) <br /> **ots:** Lmots Signature (1252 bytes) <br /> **tree_type:** Lms Algorithm Type (4 bytes) <br /> **tree_path:** Path through the tree from the leaf associated with the LM-OTS signature to the root. (360 bytes) <br /><br />**OR** <br /><br /> Owner MLDSA-87 signature of the Flash Manifest header hashed using SHA2-512 (4627 bytes + 1 Reserved byte)         |
 | Reserved                                 | 8            | Reserved 8 bytes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
-### Public Key Descriptor
+#### Public Key Descriptor
 
 | Field                  | Size (bytes) | Description                                                                                            |
 | ---------------------- | ------------ | ------------------------------------------------------------------------------------------------------ |
@@ -51,7 +51,7 @@ The header contains the security version and SHA2-384 hash of the table of conte
 | Vendor ECC public key hash index          | 4            | The hint to ROM to indicate which ECC public key hash it should use to validate the active ECC public key.                                                                                                                                                                                                                    |
 | Vendor LMS or MLDSA public key hash index | 4            | The hint to ROM to indicate which LMS or MLDSA public key hash it should use to validate the active public key.                                                                                                                                                                                                               |
 | Flags                                     | 4            | Feature flags.<br />**Bit0:** - Interpret the pl0_pauser field. If not set, all PAUSERs are PL1<br />**Bit1-Bit31:** Reserved                                                                                                                                                                                     |
-| TOC Entry Count                           | 4            | Number of entries in TOC. Maximum count is 128                                                                                                                                                                                                                                                                                |
+| TOC Entry Count                           | 4            | Number of entries in TOC.                                                                                                                                                                                                                                                                                                     |
 | PL0 PAUSER                                | 4            | The PAUSER with PL0 privileges.                                                                                                                                                                                                                                                                                               |
 | TOC Digest                                | 48           | SHA2-384 Digest of table of contents.                                                                                                                                                                                                                                                                                         |
 | Vendor Data                               | 40           | Vendor Data.<br />**Not Before:** Vendor Start Date [ASN1 Time Format] For LDEV-Id certificate (15 bytes) <br />**Not After:** Vendor End Date [ASN1 Time Format] For LDEV-Id certificate (15 bytes) `<br>` **Reserved:** (10 bytes)                                                                      |
@@ -68,19 +68,20 @@ There is one TOC entry for the following images:
 3. MCU RT
 4. Other SOC images (if any)
 
-| Field              | Size (bytes) | Description                                                                                                                                                                      |
-| ------------------ | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TOC Entry Id       | 4            | TOC Entry Id.<br />**0x0000_0001:** Caliptra FMC and RT<br />**0x0000_0002:** SOC Manifest<br />**0x0000_0003:** MCU RT<br />**0x0000_0004:** SOC Image |
-| Image Type         | 4            | Image Type that defines format of the image section<br />**0x0000_0001:** Executable<br />**0x0000_0002:** Non-Executable (e.g. manifest)                           |
-| Image Revision     | 20           | Git Commit hash of the build                                                                                                                                                     |
-| Image Version      | 4            | Firmware release number                                                                                                                                                          |
-| Image SVN          | 4            | Security Version Number for the Image. This is used in anti-rollback support.                                                                                                    |
-| Reserved           | 4            | Reserved field                                                                                                                                                                   |
-| Image Load Address | 4            | Load address. Valid for executable images only.                                                                                                                                  |
-| Image Entry Point  | 4            | Entry point to start the execution from. Valid for executable images only.                                                                                                      |
-| Image Offset       | 4            | Offset from beginning of the image. Valid for executable images only.                                                                                                           |
-| Image Size         | 4            | Image Size (bytes)                                                                                                                                                               |
-| Image Hash         | 48           | SHA2-384 hash of image                                                                                                                                                           |
+| Field              | Size (bytes) | Description                                                                                                                                                                                                        |
+| ------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| TOC Entry Id       | 4            | TOC Entry Id.<br />**0x0000_0001:** Caliptra FMC and RT<br />**0x0000_0002:** SOC Manifest<br />**0x0000_0003:** MCU RT<br />**0xf000_0000-0xffff_ffff:** Reserved for vendor SOC Images |
+| Image Type         | 4            | Image Type that defines format of the image section<br />**0x0000_0001:** Executable<br />**0x0000_0002:** Non-Executable (e.g. manifest)                                                             |
+| Image Revision     | 20           | Git Commit hash of the build                                                                                                                                                                                       |
+| Image Version      | 4            | Firmware release number                                                                                                                                                                                            |
+| Image SVN          | 4            | Security Version Number for the Image. This is used for anti-rollback support.                                                                                                                                     |
+| Reserved           | 4            | Reserved field                                                                                                                                                                                                     |
+| Image Load Address | 4            | Load address. Valid for executable images only.                                                                                                                                                                    |
+| Image Entry Point  | 4            | Entry point to start the execution from. Valid for executable images only.                                                                                                                                        |
+| Image Offset       | 4            | Offset from beginning of the image. Valid for executable images only.                                                                                                                                             |
+| Image Size         | 4            | Image Size (bytes)                                                                                                                                                                                                 |
+| Opaque Data        | 32           | An optional field that can be used for any additional information to be associated with the image.<br />If no data is provided, then this should be set to all zeroes.                                             |
+| Image Hash         | 48           | SHA2-384 hash of image                                                                                                                                                                                             |
 
 ### Image
 
