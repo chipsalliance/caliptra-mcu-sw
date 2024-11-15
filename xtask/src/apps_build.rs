@@ -5,9 +5,10 @@ use std::io::Write;
 use std::process::Command;
 use tempfile::NamedTempFile;
 
-pub fn apps_build() -> Result<(), DynError> {
-    let _ = app_build("pldm-app", 0x4002_0000)?;
-    Ok(())
+pub fn apps_build() -> Result<(usize, Vec<String>), DynError> {
+    let start = 0x4002_0000;
+    let _ = app_build("pldm-app", start)?;
+    Ok((start, vec!["pldm-app".to_string()]))
 }
 
 fn app_build(app_name: &str, offset: usize) -> Result<usize, DynError> {

@@ -1,10 +1,15 @@
 // Licensed under the Apache-2.0 license
 
-/// Build the Runtime Tock kernel image for VeeR RISC-V.
+//! Build the Runtime Tock kernel image for VeeR RISC-V.
+
+// Based on the tock board Makefile.common.
+// Licensed under the Apache License, Version 2.0 or the MIT License.
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// Copyright Tock Contributors 2022.
+
+use crate::{apps_build::apps_build, DynError, PROJECT_ROOT, TARGET};
 use std::path::PathBuf;
 use std::process::Command as StdCommand;
-
-use crate::{DynError, PROJECT_ROOT, TARGET};
 
 fn find_file(dir: &str, name: &str) -> Option<PathBuf> {
     for entry in walkdir::WalkDir::new(dir) {
@@ -16,12 +21,21 @@ fn find_file(dir: &str, name: &str) -> Option<PathBuf> {
     None
 }
 
-pub(crate) fn runtime_build() -> Result<(), DynError> {
+pub(crate) fn objcopy() -> Result<String, DynError> {
+    // Set variables of the key tools we need to compile a Tock kernel. Need to do
+    // this after we handle if we are using the LLVM tools or not.
+    std::env::var("OBJCOPY").map(Ok).unwrap_or_else(|_| {
+        // We need to get the full path to llvm-objcopy, if it is installed.
+        if let Some(llvm_size) = find_file(&sysroot()?, "llvm-objcopy") {
+            Ok(llvm_size.to_str().unwrap().to_string())
+        } else {
+            Err("Could not find llvm-objcopy; perhaps you need to run `rustup component add llvm-tools` or set the OBJCOPY environment variable to where to find objcopy".into())
+        }
+    })
+}
+
+fn sysroot() -> Result<String, DynError> {
     let tock_dir = &PROJECT_ROOT.join("runtime");
-    // Based on the tock board Makefile.common.
-    // Licensed under the Apache License, Version 2.0 or the MIT License.
-    // SPDX-License-Identifier: Apache-2.0 OR MIT
-    // Copyright Tock Contributors 2022.
     let sysroot = String::from_utf8(
         StdCommand::new("cargo")
             .args(["rustc", "--", "--print", "sysroot"])
@@ -34,6 +48,13 @@ pub(crate) fn runtime_build() -> Result<(), DynError> {
     if sysroot.is_empty() {
         Err("Failed to get sysroot")?;
     }
+    Ok(sysroot)
+}
+
+pub(crate) fn runtime_build() -> Result<(), DynError> {
+    let tock_dir = &PROJECT_ROOT.join("runtime");
+    let sysroot = sysroot()?;
+    let (apps_start, apps) = apps_build()?;
 
     // RUSTC_FLAGS allows boards to define board-specific options.
     // This will hopefully move into Cargo.toml (or Cargo.toml.local) eventually.
@@ -156,27 +177,18 @@ pub(crate) fn runtime_build() -> Result<(), DynError> {
         }
     }
 
-    // Set variables of the key tools we need to compile a Tock kernel. Need to do
-    // this after we handle if we are using the LLVM tools or not.
-    let objcopy = std::env::var("OBJCOPY").map(Ok).unwrap_or_else(|_| {
-        // We need to get the full path to llvm-objcopy, if it is installed.
-        if let Some(llvm_size) = find_file(&sysroot, "llvm-objcopy") {
-            Ok(llvm_size.to_str().unwrap().to_string())
-        } else {
-            Err("Could not find llvm-objcopy; perhaps you need to run `rustup component add llvm-tools` or set the OBJCOPY environment variable to where to find objcopy")
-        }
-    })?;
-
     // Set additional flags to produce binary from .elf.
     //
     // - `--strip-sections`: Prevents enormous binaries when SRAM is below flash.
     // - `--strip-all`: Remove non-allocated sections outside segments.
     //   `.gnu.warning*` and `.ARM.attribute` sections are not removed.
     // - `--remove-section .apps`: Prevents the .apps section from being included in
-    //   the kernel binary file. This section is a placeholder for optionally
+    //   the base kernel binary file. This section is a placeholder for optionally
     //   including application binaries, and only needs to exist in the .elf. By
     //   removing it, we prevent the kernel binary from overwriting applications.
-    let objcopy_flags = "--strip-sections --strip-all --remove-section .apps".to_string();
+    let objcopy = objcopy()?;
+    let objcopy_flags = "--strip-sections --strip-all".to_string();
+    let objcopy_flags_kernel = objcopy_flags.clone() + " --remove-section .apps";
 
     // Add flags since we are compiling on nightly.
     //
@@ -214,10 +226,17 @@ pub(crate) fn runtime_build() -> Result<(), DynError> {
         Err("cargo rustc failed to build runtime")?;
     }
 
-    let mut cmd = StdCommand::new(objcopy);
+    let runtime_bin = PROJECT_ROOT
+        .join("target")
+        .join(TARGET)
+        .join("release")
+        .join("runtime.bin");
+
+    let mut cmd = StdCommand::new(&objcopy);
     let cmd = cmd
         .arg("--output-target=binary")
-        .args(objcopy_flags.split(' '))
+        .args(objcopy_flags_kernel.split(' '))
+        .args(["--pad-to", &format!("{}", apps_start)])
         .arg(
             PROJECT_ROOT
                 .join("target")
@@ -225,17 +244,55 @@ pub(crate) fn runtime_build() -> Result<(), DynError> {
                 .join("release")
                 .join("runtime"),
         )
-        .arg(
-            PROJECT_ROOT
-                .join("target")
-                .join(TARGET)
-                .join("release")
-                .join("runtime.bin"),
-        );
+        .arg(&runtime_bin);
 
     println!("Executing {:?}", cmd);
     if !cmd.status()?.success() {
         Err("objcopy failed to build runtime")?;
     }
+
+    let mut files = vec![runtime_bin.clone()];
+
+    for app in apps {
+        let app_bin = PROJECT_ROOT
+            .join("target")
+            .join(TARGET)
+            .join("release")
+            .join(format!("{}.bin", app));
+
+        let mut app_cmd = StdCommand::new(&objcopy);
+        let app_cmd = app_cmd
+            .arg("--output-target=binary")
+            .args(objcopy_flags.split(' '))
+            .arg(
+                PROJECT_ROOT
+                    .join("target")
+                    .join(TARGET)
+                    .join("release")
+                    .join("runtime"),
+            )
+            .arg(&app_bin);
+        println!("Executing {:?}", &app_cmd);
+        if !app_cmd.status()?.success() {
+            Err("objcopy failed to build app")?;
+        }
+        files.push(app_bin.clone());
+    }
+
+    let mut bin = vec![];
+
+    for f in files {
+        let b = std::fs::read(f)?;
+        bin.extend_from_slice(&b);
+    }
+
+    std::fs::write(&runtime_bin, &bin)?;
+
+    println!(
+        "\nRuntime binary is built at {:?} ({} bytes)",
+        &runtime_bin,
+        bin.len()
+    );
+
     Ok(())
 }
