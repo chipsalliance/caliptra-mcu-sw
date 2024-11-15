@@ -4,7 +4,15 @@ This section describes the PLDM Update Package used for Caliptra streaming boot 
 
 The update package follows the [DMTF Firmware Update Specification v.1.3.0](https://www.dmtf.org/sites/default/files/standards/documents/DSP0267_1.3.0.pdf).
 
-![General SPI Flash Layout](images/pldm_update_package.png)
+![General SPI Flash Layout](images/pldm_update_package.svg)
+
+The PLDM FW Update Package contains:
+
+1. Caliptra FMC (First Mutable Code) and RT (Runtime) Image Bundle
+2. The SOC Manifest for the MCU RT image and other SOC Images
+3. The MCU RT image
+4. Other SOC Images, if any
+5. A full image of the flash containing all images (see [SPI Flash Layout Documentation](https://github.com/chipsalliance/caliptra-mcu-sw/blob/main/docs/src/flash_layout.md))
 
 *Note: All fields are little endian unless specified*
 
@@ -27,7 +35,7 @@ The update package follows the [DMTF Firmware Update Specification v.1.3.0](http
 | ------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | RecordLength                         | 2        | The total length in bytes for this record.<br />The length includes the RecordLength, DescriptorCount, DeviceUpdateOptionFlags, <br />ComponentImageSetVersionStringType, ComponentSetVersionStringLength, <br />FirmwareDevicePackageDataLength, ApplicableComponents, <br />ComponentImageSetVersionString, RecordDescriptors, <br />and FirmwareDevicePackageData fields.            |
 | DescriptorCount                      | 1        | The number of descriptors included within the RecordDescriptors field for this record.                                                                                                                                                                                                                                                                                                  |
-| DeviceUpdateOptionFlags              | 4        | 32-bit field where each bit represents an update option.<br />Refer to DeviceUpdateOptionFlags description in [DMTF Firmware Update Specification v.1.3.0](https://www.dmtf.org/sites/default/files/standards/documents/DSP0267_1.3.0.pdf).                                                                                                                                              |
+| DeviceUpdateOptionFlags              | 4        | 32-bit field where each bit represents an update option.<br /><br />bit1 is set to 1 (Support Flashless/Streaming Boot)<br /><br />For other options, refer to DeviceUpdateOptionFlags description in [DMTF Firmware Update Specification v.1.3.0](https://www.dmtf.org/sites/default/files/standards/documents/DSP0267_1.3.0.pdf).                                                      |
 | ComponentImageSetVersionStringType   | 1        | The type of string used in the ComponentImageSetVersionString field.<br />Refer to [DMTF Firmware Update Specification v.1.3.0](https://www.dmtf.org/sites/default/files/standards/documents/DSP0267_1.3.0.pdf) Table 33 for values.                                                                                                                                                      |
 | ComponentImageSetVersionStringLength | 1        | Length, in bytes, of the ComponentImageSetVersionString.                                                                                                                                                                                                                                                                                                                                |
 | FirmwareDevicePackageDataLength      | 2        | Length in bytes of the FirmwareDevicePackageData field.<br />If no data is provided, set to 0x0000.                                                                                                                                                                                                                                                                                     |
@@ -73,10 +81,10 @@ There are no Downstream Device ID records for this package
 
 ## Checksum
 
-| Field                        | Size | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ---------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PackageHeaderChecksum        | 4    | The integrity checksum of the PLDM Package Header. It is calculated starting at the first byte of the PLDM Firmware Update Header and includes all bytes of the package header structure except for the bytes in this field and the PLDMFWPackagePayloadChecksum field. The CRC-32 algorithm with polynomial x32 + x26 + x23 + x22 + x16 + x12 + x11 + x10 + x8 + x7 + x5 + x4 + x2 + x + 1 (as used by IEEE 802.3) is used for checksum computation, processing one byte at a time with the least significant bit first. |
-| PLDMFWPackagePayloadChecksum | 4    | The integrity checksum of the PLDM Package Payload. It is calculated starting at the first byte immediately following this field and includes all bytes of the firmware package payload structure, including any padding between component images. The CRC-32 algorithm with polynomial x32 + x26 + x23 + x22 + x16 + x12 + x11 + x10 + x8 + x7 + x5 + x4 + x2 + x + 1 (same as IEEE 802.3) is used for checksum computation, processing one byte at a time with the least significant bit first.                         |
+| Field                  | Size | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PackageHeaderChecksum  | 4    | The integrity checksum of the PLDM Package Header. It is calculated starting at the first byte of the PLDM Firmware Update Header and includes all bytes of the package header structure except for the bytes in this field and the PackagePayloadChecksum field. The CRC-32 algorithm with polynomial x32 + x26 + x23 + x22 + x16 + x12 + x11 + x10 + x8 + x7 + x5 + x4 + x2 + x + 1 (as used by IEEE 802.3) is used for checksum computation, processing one byte at a time with the least significant bit first. |
+| PackagePayloadChecksum | 4    | The integrity checksum of the PLDM Package Payload. It is calculated starting at the first byte immediately following this field and includes all bytes of the firmware package payload structure, including any padding between component images. The CRC-32 algorithm with polynomial x32 + x26 + x23 + x22 + x16 + x12 + x11 + x10 + x8 + x7 + x5 + x4 + x2 + x + 1 (same as IEEE 802.3) is used for checksum computation, processing one byte at a time with the least significant bit first.                   |
 
 ## Component 1 - Caliptra FMC + RT
 
@@ -96,6 +104,6 @@ This is the Image binary of the MCU Realtime firmware.
 
 These are reserved for vendor SOC images, if any.
 
-## Component n + 1 - Streaming Boot (Full SPI Flash) image
+## Component n + 1 - Full SPI Flash image
 
-This component contains the full flash image as defined in the [SPI Flash Layout Documentation](https://github.com/chipsalliance/caliptra-mcu-sw/blob/main/docs/src/flash_layout.md) from the Header section until the end of the images section. This is used for streaming boot.
+This component contains the full flash image as defined in the [SPI Flash Layout Documentation](https://github.com/chipsalliance/caliptra-mcu-sw/blob/main/docs/src/flash_layout.md) from the Header section until the end of the images section. This is can be used for loading all the images at once for streaming boot.
