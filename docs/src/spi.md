@@ -10,7 +10,8 @@ The SPI flash stack in the Caliptra MCU is designed to provide efficient and rel
 
 The SPI flash stack design leverages TockOS's support on SPI controller and flash device in the kernel space.
 As illustrated in the diagram, it consists of the following layers.
-![alt text](images/spi_stack_arch.png)
+
+![alt text](images/flash_stack.png)
 
 - Kernel HIL (Hardware Interface Layer) for SPI host and flash device
   - `kernel::hil::spi` module, defines the hardware interface layer (HIL) traits for interacting with SPI (Serial Peripheral Interface) devices. These traits provide a standardized interface for configuring SPI settings, and performing read, write, and transfer operations over the SPI bus.
@@ -21,7 +22,7 @@ As illustrated in the diagram, it consists of the following layers.
   - Provides the functionality needed to control an SPI bus as a master device. It defines the memory-mapped registers for the SPI hardware, provides methods to configure the SPI bus settings, such as clock polarity and phase and to initiate read, write, and transfer operations. It implements the `SpiMaster` trait, providing methods for reading from, writing to, and transferring data over the SPI bus. It handles the completion of SPI operations by invoking client callbacks, allowing higher-level components to be notified when an SPI operation completes.
   - SPI host driver implementation is specific to SPI host controller IP.
 
-- Physical SPI Flash Device Driver
+- SPI Flash Device Driver (capsule)
   - Provides the functionality required to interact with flash memory hardware.It implements the `kernel::hil::flash::Flash` trait, which defines the standard interface (read, write, erase) page-based operations.
     Additional methods could be provided in the driver:
     - Initialize the SPI flash device and configure settings such as clock speed, mode, and other parameters.
@@ -30,14 +31,8 @@ As illustrated in the diagram, it consists of the following layers.
     - Read the device ID, manufacturer ID, or other identifying information from the flash device.
     - Retrieve information about the flash memory layout, such as the size of pages, sectors, and blocks from SFDP.
     - Advance read/write operations by performing fast read or write operations using specific commands supported by the flash device.
-  - SPI flash device river implementation is specific to flash chip.
-
-- Partition Management Layer
-  - Flash Partition Capsule
-    - This module defines the flash partition, manage access to each partition, and provide methods for reading, writing, and erasing arbitary length of data within the partitions. Each partition is represented by a FlashUser, which can leverage the exisiting flash virtualizer layer to ensure flash operations are serialized and managed correctly.
-  - Flash Syscall Driver
-     - This module implements the syscall driver trait to expose the flash partitions to userspace applications.
-
+- Flash Partition Capsule
+    - This module defines the flash partition, manage access to each partition, and provide methods for reading, writing, and erasing arbitary length of data within the partitions. Each partition is represented by a FlashUser, which can leverage the exisiting flash virtualizer layer to ensure flash operations are serialized and managed correctly. This module implements the syscall driver trait to expose the flash partitions to userspace applications.
 
 - Userland APIs (TBD)
 
