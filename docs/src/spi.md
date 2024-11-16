@@ -1,327 +1,409 @@
-# SPI Support
+# SPI Flash Stack
 
-## SPI Flash Stack
+## Overview
 
-### Overview
+The SPI flash stack in the Caliptra MCU firmware is designed to provide efficient and reliable communication with flash devices, which is the foundation to enable flash-based boot flow. This document outlines the different SPI flash configurations being supported, the stack architecture, component interface and userspace API to interact with the SPI flash stack.
 
-The SPI flash stack in the Caliptra MCU is designed to provide efficient and reliable communication with SPI flash memory devices. This document outlines the architecture, components, and data flow within the SPI flash stack.
+## SPI Flash Configurations
 
-### Architecture
+The SPI flash stack supports various configurations to cater to different use cases and hardware setups. The diagram below shows the flash configurations supported.
+![flash_config](images/flash_config.svg)
+**1. Single-Flash Configuration**
+In this setup, a single SPI flash device is connected to the flash controller. Typically, the flash device is divided into two halves: the first half serves as the primary flash, storing the active running firmware image, while the second half is designated as the recovery flash, containing the recovery image. Additional partitions, such as a staging area for firmware updates, flash storage for certificates and debug logging, can also be incorporated into the primary flash.
 
-The SPI flash stack design leverages TockOS's support on SPI controller and flash device in the kernel space.
-As illustrated in the diagram, it consists of the following layers.
+**2. Dual-Flash Configuration**
+In this setup, two SPI flash devices are connected to the same flash controller using different chip selects. This configuration provides increased storage capacity and redundancy. Typically, flash device 0 serves as the primary flash, storing the active running firmware image and additional partitions such as a staging area for firmware updates, flash store for certificates and debug logging. Flash device 1 is designated as the recovery flash, containing the recovery image.
+
+**3. Multiple Flash Configuration**
+In more complex systems, multiple flash controllers may be used, each with one or more SPI flash devices. This configuration provides flexibility and scalability. For example, a backup flash can be added to recover the SoC and provide more resiliency for the system.
+
+## Architecture
+
+The SPI flash stack design leverages TockOS's kernel space support for the SPI host, SPI flash device, and associated virtualizer layers. Our reference implementation employs the OpenTitan SPI host controller IP as the peripheral hardware. The stack, from top to bottom, comprises the flash userland API, flash partition capsule, SPI flash driver capsule, flash virtualizer, SPI Master virtualizer, and OpenTitan SPI host driver. This architecture can be extended to accommodate vendor-specific flash controller hardware. The SPI flash driver capsule and SPI host driver will be replaced by flash controller driver and associated virtualizer layer.
 
 ![alt text](images/flash_stack.png)
 
-- Kernel HIL (Hardware Interface Layer) for SPI host and flash device
-  - `kernel::hil::spi` module, defines the hardware interface layer (HIL) traits for interacting with SPI (Serial Peripheral Interface) devices. These traits provide a standardized interface for configuring SPI settings, and performing read, write, and transfer operations over the SPI bus.
-  - `kernel::hil::flash` module, defines the hardware interface layer (HIL) traits for interacting with flash memory.
-   These traits provide a standardized interface for reading, writing, and erasing flash storage pages. By implementing these traits, different flash memory drivers can expose a consistent API to the rest of the kernel.
+- Flash Userland API
+  - Provides syscall library for userspace applications to issue IO requests (read, write, erase) to flash devices. Userspace application will instantiate the syscall library with unique driver number for individual flash partition.
 
-- SPI Host Driver
-  - Provides the functionality needed to control an SPI bus as a master device. It defines the memory-mapped registers for the SPI hardware, provides methods to configure the SPI bus settings, such as clock polarity and phase and to initiate read, write, and transfer operations. It implements the `SpiMaster` trait, providing methods for reading from, writing to, and transferring data over the SPI bus. It handles the completion of SPI operations by invoking client callbacks, allowing higher-level components to be notified when an SPI operation completes.
-  - SPI host driver implementation is specific to SPI host controller IP.
+- Flash Partition Capsule
+  - Defines the flash partition structure with offset and size, providing methods for reading, writing, and erasing arbitrary lengths of data within the partitions. Each partition is logically represented by a `FlashUser`, which leverages the existing flash virtualizer layer to ensure flash operations are serialized and managed correctly. It also implements `SyscallDriver` trait to interact with the userland API.
 
-- SPI Flash Device Driver (capsule)
-  - Provides the functionality required to interact with flash memory hardware.It implements the `kernel::hil::flash::Flash` trait, which defines the standard interface (read, write, erase) page-based operations.
-    Additional methods could be provided in the driver:
-    - Initialize the SPI flash device and configure settings such as clock speed, mode, and other parameters.
+- SPI Flash Device Driver Capsule
+  - Provides the functionality required to send common flash commands to flash device via `VirtualSpiMaster`. It implements the `kernel::hil::flash::Flash` trait, which defines the standard interface (read, write, erase) page-based operations. Additional methods could be provided in the driver:
+    - Initialize the SPI flash device and configure settings such as clock speed, address mode and other parameters.
     - Check the status of the flash device, such as whether it is busy or ready for a new operation.
-	- Erase larger regions of flash memory, such as sectors or blocks, in addition to individual pages.
-    - Read the device ID, manufacturer ID, or other identifying information from the flash device.
+    - Erase larger regions of flash memory, such as sectors or blocks, in addition to individual pages.
+    - Read the device ID, manufacturer ID or other identifying information from the flash device.
     - Retrieve information about the flash memory layout, such as the size of pages, sectors, and blocks from SFDP.
     - Advance read/write operations by performing fast read or write operations using specific commands supported by the flash device.
-- Flash Partition Capsule
-    - This module defines the flash partition, manage access to each partition, and provide methods for reading, writing, and erasing arbitary length of data within the partitions. Each partition is represented by a FlashUser, which can leverage the exisiting flash virtualizer layer to ensure flash operations are serialized and managed correctly. This module implements the syscall driver trait to expose the flash partitions to userspace applications.
 
-- Userland APIs (TBD)
+- SPI Host Driver (Vendor-specific)
+  - Provides the functionality needed to control an SPI bus as a master device. It defines the memory-mapped registers for the SPI hardware, provides methods to configure the SPI bus settings, such as clock polarity and phase and to initiate read, write, and transfer operations. It implements the `SpiMaster` trait, providing methods for reading from, writing to, and transferring data over the SPI bus. It handles the completion of SPI operations by invoking client callbacks, allowing higher-level components to be notified when an SPI operation completes.
 
-### Components and Interfaces
+## Common Interfaces
 
-- **Flash partition capsule interface**:
+### Flash Userland API
 
-```
+It is defined in SPI flash syscall library to provide async interface (read, write, erase) to underlying flash devices.
 
-enum AccessPermission {
-    ReadOnly,
-    ReadWrite,
+```Rust
+///spi_flash/src/lib.rs
+///
+/// A structure representing an asynchronous SPI flash memory interface.
+///
+/// This structure is generic over two types:
+/// - `S`: A type that implements the `Syscalls` trait, representing the system calls interface.
+/// - `C`: A type that implements the `Config` trait, representing the configuration for the SPI flash.
+///   By default, this is set to `DefaultConfig`.
+///
+/// # Fields
+///
+/// - `syscall`: A marker for the `Syscalls` type, used to indicate that this type is used without storing it.
+/// - `config`: A marker for the `Config` type, used to indicate that this type is used without storing it.
+/// - `driver_num`: The driver number associated with this SPI flash interface.
+pub struct AsyncSpiFlash<S:Syscalls, C:Config = DefaultConfig > {
+    syscall: PhantomData<S>,
+    config: PhantomData<C>,
+    driver_num: u32,
 }
 
+/// Represents an asynchronous SPI flash memory interface.
+///
+/// This struct provides methods to interact with SPI flash memory in an asynchronous manner,
+/// allowing for non-blocking read, write, and erase operations.
+///
+/// # Type Parameters
+///
+/// * `S`: A type that implements the `Syscalls` trait, representing the system calls interface.
+/// * `C`: A type that implements the `Config` trait, representing the configuration interface.
+impl<S:Syscalls, C:Config> AsyncSpiFlash<S, C> {
+    /// Creates a new instance of `AsyncSpiFlash`.
+    ///
+    /// # Arguments
+    ///
+    /// * `driver_num` - The driver number associated with the SPI flash.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of `AsyncSpiFlash`.
+    pub fn new(driver_num: u32) -> Self {};
+
+    /// Checks if the SPI flash exists.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the SPI flash exists.
+    /// * `Err(ErrorCode)` if there is an error.
+    pub fn exists() -> Result<(), ErrorCode> {};
+
+    /// Reads an arbitrary number of bytes from the flash memory.
+    ///
+    /// This method reads `len` bytes from the flash memory starting at the specified `address`
+    /// and stores them in the provided `buf`.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - The starting address to read from.
+    /// * `len` - The number of bytes to read.
+    /// * `buf` - The buffer to store the read bytes.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the read operation is successful.
+    /// * `Err(ErrorCode)` if there is an error.
+    pub async fn read(&self, address: usize, len: usize, buf: &mut [u8]) -> Result<(), ErrorCode> {};
+
+    /// Writes an arbitrary number of bytes to the flash memory.
+    ///
+    /// This method writes the bytes from the provided `buf` to the flash memory starting at the
+    /// specified `address`.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - The starting address to write to.
+    /// * `buf` - The buffer containing the bytes to write.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the write operation is successful.
+    /// * `Err(ErrorCode)` if there is an error.
+    pub async fn write(&self, address: usize, buf: &[u8]) -> Result<(), ErrorCode> {};
+
+    /// Erases an arbitrary number of bytes from the flash memory.
+    ///
+    /// This method erases `len` bytes from the flash memory starting at the specified `address`.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - The starting address to erase from.
+    /// * `len` - The number of bytes to erase.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the erase operation is successful.
+    /// * `Err(ErrorCode)` if there is an error.
+    pub async fn erase(&self, address: usize, len: usize) -> Result<(), ErrorCode> {};
+}
+```
+
+### Flash partition capsule
+
+```Rust
+/// A structure representing a partition of a flash memory.
+///
+/// This structure allows for operations on a specific partition of the flash memory,
+/// defined by a start address and a size.
+///
+/// # Type Parameters
+/// - `'a`: The lifetime of the flash memory and client references.
+/// - `F`: The type of the flash memory, which must implement the `Flash` trait.
+///
+/// # Fields
+/// - `flash_user`: A reference to the `FlashUser` that provides access to the flash memory.
+/// - `start_address`: The starting address of the flash partition.
+/// - `size`: The size of the flash partition.
+/// - `client`: An optional reference to a client that implements the `FlashPartitionClient` trait.
 pub struct FlashPartition<'a, F: Flash + 'a> {
     flash_user: &'a FlashUser<'a, F>,
     start_address: usize,
     size: usize,
-    permission: AccessPermission,
     client: OptionalCell<&'a dyn FlashPartitionClient>,
 }
 
-/// Client interface for flash partition.
-pub trait FlashPartitionClient {
-    ///`read_done` is called when the implementor is finished reading in to the
-    /// buffer. The callback returns the buffer and the number of bytes that
-    /// were actually read.
-    fn read_done(&self, buffer: &'static mut [u8], length: usize);
-
-    /// `write_done` is called when the implementor is finished writing from the
-    /// buffer. The callback returns the buffer and the number of bytes that
-    /// were actually written.
-    fn write_done(&self, buffer: &'static mut [u8], length: usize);
-
-    /// `erase_done` is called when the implementor is finished erasing the
-    /// specified region. The callback returns the number of bytes
-    /// that were actually erased.
-    fn erase_done(&self, length: usize);
-}
-
-/// Driver for read, write and erase operations on the flash partition
+/// A partition of a flash memory device.
+///
+/// This struct represents a partition of a flash memory device, allowing
+/// operations such as reading, writing, and erasing within the partition.
+///
+/// # Type Parameters
+///
+/// - `F`: A type that implements the `Flash` trait.
+///
+/// # Lifetimes
+///
+/// - `'a`: The lifetime of the flash memory device and its user.
 impl<'a, F: Flash + 'a> FlashPartition<'a, F> {
-    /// Create a new flash partition.
-    pub fn new(flash_user: &'a FlashUser<'a, F>, start_address: usize, size: usize, permission: AccessPermission) -> FlashPartition<'a, F> {
-    }
+    /// Creates a new `FlashPartition`.
+    ///
+    /// # Arguments
+    ///
+    /// - `flash_user`: A reference to the `FlashUser` that owns the flash memory device.
+    /// - `start_address`: The starting address of the partition within the flash memory device.
+    /// - `size`: The size of the partition in bytes.
+    ///
+    /// # Returns
+    ///
+    /// A new `FlashPartition` instance.
+    pub fn new(
+        flash_user: &'a FlashUser<'a, F>,
+        start_address: usize,
+        size: usize,
+    ) -> FlashPartition<'a, F> {}
 
-    /// Set the client for flash partition operations.
-    pub fn set_client(&self, client: &'a dyn FlashPartitionClient) {
-    }
+    /// Sets the client for the flash partition.
+    ///
+    /// # Arguments
+    ///
+    /// - `client`: A reference to an object that implements the `FlashPartitionClient` trait.
+    pub fn set_client(&self, client: &'a dyn FlashPartitionClient) {}
 
-    /// Read `length` bytes starting at address `offset` in to the provided
-    /// buffer. The buffer must be at least `length` bytes long. The address
-    /// must be in the address space of the physical storage.
-    pub fn read(&self, buffer: &'static mut [u8], offset: usize, length: usize) -> Result<(), ErrorCode> {
-    }
+    /// Reads data from the flash partition.
+    ///
+    /// # Arguments
+    ///
+    /// - `buffer`: A mutable reference to a buffer where the read data will be stored.
+    /// - `offset`: The offset within the partition from which to start reading.
+    /// - `length`: The number of bytes to read.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or an error code.
+    pub fn read(
+        &self,
+        buffer: &'static mut [u8],
+        offset: usize,
+        length: usize,
+    ) -> Result<(), ErrorCode> {}
 
-    /// Write `length` bytes starting at address `offset` from the provided
-    /// buffer. The buffer must be at least `length` bytes long.
-    fn write(&self, buffer: &'static mut [u8], offset: usize, length: usize) -> Result<(), ErrorCode> {
-    }
+    /// Writes data to the flash partition.
+    ///
+    /// # Arguments
+    ///
+    /// - `buffer`: A mutable reference to a buffer containing the data to be written.
+    /// - `offset`: The offset within the partition at which to start writing.
+    /// - `length`: The number of bytes to write.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or an error code.
+    pub fn write(
+        &self,
+        buffer: &'static mut [u8],
+        offset: usize,
+        length: usize,
+    ) -> Result<(), ErrorCode> {}
 
-    /// Erase `length` bytes starting at address `offset.
-    pub fn erase(&self, offset: usize, length: usize) -> Result<(), ErrorCode> {
-    }
+    /// Erases data from the flash partition.
+    ///
+    /// # Arguments
+    ///
+    /// - `offset`: The offset within the partition at which to start erasing.
+    /// - `length`: The number of bytes to erase.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or an error code.
+    pub fn erase(&self, offset: usize, length: usize) -> Result<(), ErrorCode> {}
 }
 
-/// Client for flash partition operations
-impl<'a, F: Flash + 'a> FlashPartitionClient for FlashPartition<'a, F> {
-    fn read_done(&self, buffer: &'static mut [u8], length: usize) {
-    }
+/// Implementation of the `SyscallDriver` trait for the `FlashPartition` struct.
+/// This implementation provides support for reading, writing, and erasing flash memory,
+/// as well as allowing read/write and read-only buffers, and subscribing to callbacks.
+impl<'a, F: Flash + 'a> SyscallDriver for FlashPartition<'a, F> {
+    ///
+    /// Handles commands from userspace.
+    ///
+    /// # Arguments
+    ///
+    /// * `command_number` - The command number to execute.
+    /// * `arg1` - The first argument for the command.
+    /// * `arg2` - The second argument for the command.
+    /// * `process_id` - The ID of the process making the command.
+    ///
+    /// # Returns
+    ///
+    /// A `CommandReturn` indicating the result of the command.
+    ///
+    /// Commands:
+    /// - `0`: Success (no operation).
+    /// - `1`: Read operation. Reads `arg2` bytes from offset `arg1`.
+    /// - `2`: Write operation. Writes `arg2` bytes to offset `arg1`.
+    /// - `3`: Erase operation. Erases `arg2` bytes from offset `arg1`.
+    /// - Any other command: Not supported.
+    fn command(
+        &self,
+        command_number: usize,
+        arg1: usize,
+        arg2: usize,
+        process_id: ProcessId,
+    ) -> CommandReturn {};
 
-    fn write_done(&self, buffer: &'static mut [u8], length: usize) {
-    }
-
-    fn erase_complete(&self, result: Result<(), ErrorCode>) {
-    }
-}
-```
-- **Flash Syscall Driver interface**
-
-
-```
-
-/// Syscall driver number.
-use capsules_core::driver;
-pub const DRIVER_NUM: usize = driver::NUM::FlashPartition as usize;
-
-pub struct AppFlashPartition<'a, F: Flash + 'a> {
-    partitions: [&'a FlashPartition<'a, F>; N],
-     // Per-app state.
-    apps: Grant<FlashGrant>,
-    current_app: OptionalCell<ProcessId>,
-    // other fields ...
-}
-
-pub struct FlashGrant {
-    read_buffer: ReadableProcessBuffer,
-    write_buffer: WriteableProcessBuffer,
-    callback: OptionalCell<Callback>,
-}
-
-impl<'a, F: Flash + 'a> SyscallDriver for AppFlashPartition<'a, F> {
-    fn command(&self, command_number: usize, arg1: usize, arg2: usize, process_id: ProcessId) -> CommandReturn {
-        match command_number {
-            0 => CommandReturn::success(),
-            1 => {
-                // Read operation
-
-            }
-            2 => {
-                // Write operation
-
-            }
-            3 => {
-                // Erase operation
-            }
-            _ => CommandReturn::failure(ErrorCode::NOSUPPORT.into()),
-        }
-    }
-
+    ///
+    /// Allows a process to provide a read/write buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `process_id` - The ID of the process providing the buffer.
+    /// * `readwrite_number` - The identifier for the buffer.
+    /// * `buffer` - The buffer to be used for read/write operations.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure.
+    ///
+    /// Buffers:
+    /// - `0`: Write buffer.
+    /// - Any other buffer: Not supported.
     fn allow_readwrite(
         &self,
         process_id: ProcessId,
         readwrite_number: usize,
         buffer: Option<WriteableProcessBuffer>,
-    ) -> Result<(), ErrorCode> {
-    }
+    ) -> Result<(), ErrorCode>;
 
+    ///
+    /// Allows a process to provide a read-only buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `process_id` - The ID of the process providing the buffer.
+    /// * `readonly_number` - The identifier for the buffer.
+    /// * `buffer` - The buffer to be used for read-only operations.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure.
+    ///
+    /// Buffers:
+    /// - `0`: Read buffer.
+    /// - Any other buffer: Not supported.
     fn allow_readonly(
         &self,
         process_id: ProcessId,
         readonly_number: usize,
         buffer: Option<ReadableProcessBuffer>,
-    ) -> Result<(), ErrorCode> {
-    }
+    ) -> Result<(), ErrorCode>{}
 
+    ///
+    /// Subscribes a process to a callback.
+    ///
+    /// # Arguments
+    ///
+    /// * `subscribe_number` - The identifier for the callback.
+    /// * `callback` - The callback to be subscribed.
+    /// * `process_id` - The ID of the process subscribing to the callback.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the previous callback if successful, or an error code if not.
+    ///
+    /// Callbacks:
+    /// - `0`: General callback.
+    /// - Any other callback: Not supported.
     fn subscribe(
         &self,
         subscribe_number: usize,
         callback: Option<Callback>,
         process_id: ProcessId,
-    ) -> Result<Callback, (Option<Callback>, ErrorCode)> {
-    }
-
+    ) -> Result<Callback, (Option<Callback>, ErrorCode)>;
 }
 ```
 
-- **SPI Flash Device Driver Interface**
+### SPI Flash Device Driver Capsule
 
-```
-// Define the flash command opcode
-pub enum FlashCommand {
-    NoOp = 0x00,                // No-op
-    WriteStatusRegister = 0x01, // Write status register
-    PageProgram = 0x02,         // Page program
-    Read = 0x03,                // Normal read
-    WriteDisable = 0x04,        // Write disable
-    ReadStatusRegister = 0x05,  // Read status register
-    WriteEnable = 0x06,         // Write enable
-    FastRead = 0x0b,            // Fast read
-    FourByteFastRead = 0x0c,    // Fast read with 4 byte address
-    FourBytePageProgram = 0x12, // Page program with 4 byte address
-    FourByteRead = 0x13,        // Normal read with 4 byte address
-    SectorErase4K = 0x20,       // Sector erase 4kB
-    FourByteSectorErase4K = 0x21, // Sector erase 4kB with 4 byte address
-    DualRead = 0x3b,            // Dual output read
-    FourByteDualRead = 0x3c,    // Dual output read with 4 byte address
-    ReadSFDP = 0x5a,            // Read SFDP registers
-    ResetEnable = 0x66,         // Reset enable
-    QuadRead = 0x6b,            // Quad output read
-    FourByteQuadRead = 0x6c,    // Quad output read with 4 byte address
-    ReadFlagStatusRegister = 0x70, // Read flag status register
-    Reset = 0x99,               // Reset device
-    ReadIdentification = 0x9f,  // Read identification
-    Enter4ByteMode = 0xb7,      // Enter 4-byte mode
-    DeepPowerDown = 0xb9,       // Deep power down the device
-    ChipErase = 0xc7,           // Chip erase
-    BlockErase64K = 0xd8,       // Block erase 64kB
-    Exit4ByteMode = 0xe9,       // Exit 4-byte mode
-    QuadIORead = 0xeb,          // Quad I/O read
-    FourByteQuadIORead = 0xec,  // Quad I/O read with 4 byte address
-}
+Below is a sample interface for the SPI flash device driver under the reference architecture, where flash devices connect to the OpenTitan SPI host controller. This layer can be customized to support vendor-specific flash controller drivers.
 
-pub struct SpiFlash<'a, S: SpiMasterDevice + 'a> {
-    spi: &'a S,
-    state: SpiFlashState,
-    client: OptionalCell<&'a dyn FlashClient<S>>,
-    buffer: OptionalCell<&'static mut [u8]>,
-    // Other fields
-}
-
-pub struct SpiFlashState {
-    pub addr_mode: u16,                // The current address mode of the SPI flash device.
-    pub device_id: [u8; 3],            // Device identification data.
-    pub device_size: u32,              // The total capacity of the flash device.
-    pub command: SpiFlashCommands,     // Commands to use with the flash device.
-    pub capabilities: u32,             // Capabilities of the flash device.
-    pub use_fast_read: bool,           // Flag to use fast read for SPI reads.
-    pub use_busy_flag: bool,           // Flag to use the busy status instead of WIP.
-    pub switch_4byte: u8,              // Method for switching address mode.
-    pub reset_3byte: bool,             // Flag to switch to 3-byte mode on reset.
-    pub quad_enable: u8,               // Method to enable QSPI.
-
-   // Other fields ..
-}
-
-/// Implement SFDP
-
-
-impl<'a, S: SpiMasterDevice + 'a> SpiFlashDevice<'a, S> {
-
-    ///	Completely initialize a SPI flash interface and device so it is ready for use. It includes:
-    /// - Initializing the SPI flash interface.
-    /// - Configuring the interface and device based on discovered properties.
-    ///	- Detecting the address mode of the device.
-    pub fn initialize_device(&self, fast_read: bool, wake_device: bool, reset_device: u8, drive_strength: bool) -> Result<(), FlashError> {
-        // Implement the logic to initialize the SPI flash device
-        Ok(())
-    }
-
-    pub fn device_properties_discovery(&self) -> Result<(), FlashError> {
-        // Implement the logic to discover device properties from SFDP
-        Ok(())
-    }
-
-    pub fn get_device_id(&self) -> Result<[u8; 3], FlashError> {
-        // Implement the logic to get the device ID
-        Ok(self.state.device_id)
-    }
-
-    pub fn get_device_size(&self) -> Result<u32, FlashError> {
-        // Implement the logic to get the device size
-        Ok(self.state.device_size)
-    }
-
-    pub fn process_cmd(&self, cmd: &[u8], response: &mut [u8]) -> Result<(), FlashError> {
-        // Implement the logic to process a command
-        Ok(())
-    }
+```Rust
+/// Represents a SPI flash device.
+///
+/// # Type Parameters
+/// - `'a`: Lifetime of the SPI flash device.
+/// - `S`: A type that implements the `VirtualSpiMasterDevice` trait.
+///
+/// # Sample Methods
+/// - `new(spi: &'a S) -> Self`: Creates a new instance of `SpiFlashDevice`.
+///
+/// - `initialize_device(&self, config: DeviceConfig) -> Result<(), FlashError>`:
+///   Initializes the SPI flash device with the given configuration.
+///
+/// - `device_properties_discovery(&self) -> Result<(), FlashError>`:
+///   Discovers the properties of the SPI flash device from the Serial Flash Discoverable Parameters (SFDP).
+///
+/// - `get_device_id(&self) -> Result<[u8; 3], FlashError>`:
+///   Retrieves the device ID of the SPI flash device.
+///
+/// - `get_device_size(&self) -> Result<u32, FlashError>`:
+///   Retrieves the size of the SPI flash device.
+///
+/// - `process_cmds(&self, cmd: &[u8], response: &mut [u8]) -> Result<(), FlashError>`:
+///   Processes the given command and writes the response to the provided buffer.
+///
+impl<'a, S: VirtualSpiMasterDevice + 'a> SpiFlashDevice<'a, S> {
+    pub fn new(spi: &'a S) -> Self {}
+    pub fn initialize_device(&self, config: DeviceConfig) -> Result<(), FlashError> {}
+    fn device_properties_discovery(&self) -> Result<(), FlashError> {}
+    pub fn get_device_id(&self) -> Result<[u8; 3], FlashError> {}
+    pub fn get_device_size(&self) -> Result<u32, FlashError> {}
+    pub fn process_cmds(&self, cmd: &[u8], response: &mut [u8]) -> Result<(), FlashError> {};
     ....
-
 }
-
-impl<'a, F: hil::flash::Flash> hil::flash::Client<F> for SpiFlash<'a, S> {
-    fn set_client(&self, client: &'a dyn FlashClient<S>) {
-        self.client.set(client);
-    }
-
-    fn read_page(&self, address: usize, buffer: &'static mut S::Page) -> Result<(), (ErrorCode, &'static mut S::Page)> {
-        // Implement read logic
-
-    }
-
-    fn write_page(&self, address: usize, buffer: &'static mut S::Page) -> Result<(), (ErrorCode, &'static mut S::Page)> {
-        // Implement write logic
-        Ok(())
-    }
-
-    fn erase_page(&self, address: usize) -> Result<(), ErrorCode> {
-        // Implement erase logic
-        Ok(())
-    }
-}
-
 ```
 
-### SPI flash configuration within kernel space
+## Flash-based KV store
 
-![Flash config](images/flash_config.png)
-
-- **Single-flash configuration**
-   - Instantiate SPI host interface
-   - Instantiate SPI flash device interface
-   - Initialize SPI flash device
-   - Initialize MuxFlash
-   - Initialize SPI flash partition capsule and register with kernel
-
-
-- **Dual-flash configuration** (under same SPI controller)
-
-- **Multiple SPI host/flash configuration**
-
-
-
-
-
-### Flash-based logging
 TBD
 
+## Flash-based logging
 
-### Flash-based KV store
 TBD
