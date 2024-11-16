@@ -294,7 +294,7 @@ pub struct App {
 }
 
 /// Implements userspace driver for a particular message_type.
-pub struct VirtualMCTPDriver<M: MCTPTransportBinding> {
+pub struct VirtualMCTPDriver {
     mctp_sender: &dyn MCTPSender,
     apps : Grant<App, 2 /*upcalls*/, 1 /*allowro*/, 1/*allow_rw*/>,
     app_id: Cell<Option<ProcessID>>,
@@ -351,7 +351,7 @@ pub struct MCTPRxState {
     /// static Message buffer
     msg_payload: MapCell<'static, [u8]>,
     /// next MCTPRxState node
-    next: ListLink<'a, MCTPRxState>,
+    next: ListLink<MCTPRxState>,
 }
 
 ```
@@ -399,16 +399,16 @@ Implementer of this trait will add physical medium specific header/trailer to th
 /// This trait contains the interface definition 
 /// for sending the MCTP packet through MCTP transport binding layer. 
 pub trait MCTPTransportBinding {
-    /// Set the client that will be called when the packet is transmitted.
+	/// Set the client that will be called when the packet is transmitted.
 	fn set_tx_client(&self, client: &TxClient);
 
-    /// Set the client that will be called when the packet is received.
+	/// Set the client that will be called when the packet is received.
 	fn set_rx_client(&self, client: &RxClient);
 
-    /// Set the buffer that will be used for receiving packets.
+	/// Set the buffer that will be used for receiving packets.
 	fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
 
-    fn transmit(&self, tx_buffer: &'static mut [u8]);
+	fn transmit(&self, tx_buffer: &'static mut [u8]);
 
 	/// Enable/Disable the I3C target device
 	fn enable();
@@ -425,11 +425,11 @@ This layer is also a sole Rx and Tx client for the I3C Target device driver.
 
 ```Rust
 pub struct MCTPI3CBinding {
-    /// Reference to the I3C Target device driver.
+	/// Reference to the I3C Target device driver.
 	mctp_i3c : &dyn I3CTarget,
 	rx_client: OptionCell<&dyn RxClient>,
 	tx_client: OptionCell<&dyn TxClient>,
-    /// I3C Target device address needed for PEC calculation.
+	/// I3C Target device address needed for PEC calculation.
 	device_address: u8,
 }
 ```
@@ -446,7 +446,7 @@ pub trait TxClient {
 	fn send_done(&self, 
 		  tx_buffer: &'static mut [u8],  
 		  acked: bool,
-          result : Result<(), ErrorCode>);
+		  result : Result<(), ErrorCode>);
 }
 
 pub trait RxClient {
@@ -460,17 +460,17 @@ pub trait RxClient {
 }
 
 
-pub trait I3CTarget <'a> {
-    /// Set the client that will be called when the packet is transmitted.
+pub trait I3CTarget {
+	/// Set the client that will be called when the packet is transmitted.
 	fn set_tx_client(&self, client: &TxClient);
 
-    /// Set the client that will be called when the packet is received.
+	/// Set the client that will be called when the packet is received.
 	fn set_rx_client(&self, client: &RxClient);
 
-    /// Set the buffer that will be used for receiving packets.
+	/// Set the buffer that will be used for receiving packets.
 	fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
 I
-    /// Transmit a packet.
+	/// Transmit a packet.
 	fn transmit(&self, tx_buf: &'static mut[u8], len : usize) -> Result<(), (ErrorCode, &'static mut [u8])>;
 
 	/// Enable/disable the I3C target device
