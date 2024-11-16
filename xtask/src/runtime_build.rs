@@ -87,22 +87,23 @@ fn runtime_build_no_apps(apps_offset: usize) -> Result<(), DynError> {
     std::fs::write(
         &ld_file_path,
         format!(
-            "/* Licensed under the Apache-2.0 license. */
+            "
+/* Licensed under the Apache-2.0 license. */
 
-        /* Based on the Tock board layouts, which are: */
-        /* Licensed under the Apache License, Version 2.0 or the MIT License. */
-        /* SPDX-License-Identifier: Apache-2.0 OR MIT                         */
-        /* Copyright Tock Contributors 2023.                                  */
+/* Based on the Tock board layouts, which are: */
+/* Licensed under the Apache License, Version 2.0 or the MIT License. */
+/* SPDX-License-Identifier: Apache-2.0 OR MIT                         */
+/* Copyright Tock Contributors 2023.                                  */
 
-        MEMORY
-        {{
-          rom (rx)  : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
-          prog (rx) : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
-          ram (rwx) : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
-        }}
+MEMORY
+{{
+    rom (rx)  : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
+    prog (rx) : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
+    ram (rwx) : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
+}}
 
-        INCLUDE runtime/kernel_layout.ld
-        ",
+INCLUDE runtime/kernel_layout.ld
+",
             RUNTIME_START + INTERRUPT_TABLE_SIZE,
             runtime_size,
             apps_offset,

@@ -150,12 +150,14 @@ struct TbfHeaderKernelVersion {
 
 #[repr(C)]
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct TbfFooterCredentials {
     pub base: TbfHeaderTlv,
     pub format: TbfFooterCredentialsType,
     pub data: Vec<u8>,
 }
 
+#[allow(dead_code)]
 impl TbfFooterCredentials {
     pub fn generate(&self) -> io::Result<io::Cursor<vec::Vec<u8>>> {
         let mut header_buf = io::Cursor::new(Vec::new());
@@ -315,6 +317,7 @@ pub struct TbfHeader {
     package_name_pad: usize,
 }
 
+#[allow(dead_code)]
 impl TbfHeader {
     pub fn new() -> Self {
         Self {
@@ -354,6 +357,7 @@ impl TbfHeader {
     ///
     /// Returns: The length of the header in bytes. The length is guaranteed
     ///          to be a multiple of 4.
+    #[allow(clippy::too_many_arguments)]
     pub fn create(
         &mut self,
         minimum_ram_size: u32,
@@ -780,6 +784,7 @@ pub fn align_to(value: u32, box_size: u32) -> u32 {
 }
 
 /// Takes a value and rounds it down to be aligned % box_size
+#[allow(dead_code)]
 pub fn align_down(value: u32, box_size: u32) -> u32 {
     value - (value % box_size)
 }

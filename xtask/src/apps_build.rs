@@ -90,7 +90,6 @@ fn app_build_tbf(app: &App, start: usize) -> Result<Vec<u8>, DynError> {
     // concatenate the TBF header and the binary
     let mut bin = vec![];
     bin.extend_from_slice(&tbf.into_inner());
-    println!("TBF header: {:?}", bin);
     bin.extend_from_slice(&b);
     Ok(bin)
 }
@@ -104,6 +103,7 @@ fn app_build(app_name: &str, offset: usize, tbf_header_size: usize) -> Result<()
         layout_ld,
         format!(
             "
+/* Licensed under the Apache-2.0 license */
 TBF_HEADER_SIZE = 0x{:x};
 FLASH_START = 0x{:x};
 FLASH_LENGTH = 0x10000;
