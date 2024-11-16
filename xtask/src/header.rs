@@ -13,7 +13,11 @@ const REQUIRED_TEXT: &str = "Licensed under the Apache-2.0 license";
 const EXTENSIONS: &[&str] = &[
     "rs", "h", "c", "cpp", "cc", "toml", "sh", "py", "ld", "go", "yml", "yaml", "S", "s",
 ];
-const IGNORED_PATHS: &[&str] = &[".github/dependabot.yml", "emulator/app/src/dis.rs"];
+const IGNORED_PATHS: &[&str] = &[
+    ".github/dependabot.yml",
+    "emulator/app/src/dis.rs",
+    "xtask/src/tbf.rs",
+];
 const IGNORED_DIRS: &[&str] = &[
     ".git",
     "out",

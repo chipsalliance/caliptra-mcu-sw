@@ -13,5 +13,9 @@ riscv-arch-test
 *.pyc
 .vscode
 
+# dynamically calculated
+runtime/layout.ld
+runtime/apps/layout.ld
+
 # mdbook
 book

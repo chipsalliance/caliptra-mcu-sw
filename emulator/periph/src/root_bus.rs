@@ -30,7 +30,6 @@ pub struct CaliptraRootBusArgs {
     pub clock: Rc<Clock>,
     pub rom: Vec<u8>,
     pub firmware: Vec<u8>,
-    pub apps: Vec<u8>,
     pub log_dir: PathBuf,
     pub uart_output: Option<Rc<RefCell<Vec<u8>>>>,
     pub otp_file: Option<PathBuf>,
@@ -74,8 +73,6 @@ impl CaliptraRootBus {
         let mut iccm = Ram::new(vec![0; Self::RAM_SIZE]);
         // copy runtime firmware into ICCM
         iccm.data_mut()[0x80..0x80 + args.firmware.len()].copy_from_slice(&args.firmware);
-        // copy applications firmware into ICCM
-        iccm.data_mut()[0x2_0000..0x2_0000 + args.apps.len()].copy_from_slice(&args.apps);
 
         Ok(Self {
             rom,

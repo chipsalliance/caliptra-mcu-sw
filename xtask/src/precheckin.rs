@@ -5,6 +5,6 @@ pub(crate) fn precheckin() -> Result<(), crate::DynError> {
     crate::format::format()?;
     crate::clippy::clippy()?;
     crate::header::check()?;
-    crate::runtime_build::runtime_build()?;
+    crate::runtime_build::runtime_build_with_apps()?;
     crate::test::test()
 }

@@ -352,40 +352,40 @@ SECTIONS
      * The TLV `Length` specifies the size of the TLV value (i.e. not including
      * the TLV header).
      */
-    .attributes : AT (ORIGIN(rom) + LENGTH(rom) - SIZEOF(.attributes))
-    {
+    /*.attributes : AT (ORIGIN(rom) + LENGTH(rom) - SIZEOF(.attributes))*/
+    /*{*/
         /* TLV: Kernel Flash
          * This indicates the start address of the kernel flash and the size of
          * the kernel binary.
          */
-        LONG(ORIGIN(rom)) /* Address of start of kernel binary. */
-        LONG((LOADADDR(.relocate) + (_erelocate - _srelocate)) - ORIGIN(rom)) /* Length of kernel binary. */
-        SHORT(0x0102) /* Type = Kernel Flash = 0x0102 */
-        SHORT(8)      /* Length = 8 bytes */
+        /*LONG(ORIGIN(rom))*/ /* Address of start of kernel binary. */
+        /*LONG((LOADADDR(.relocate) + (_erelocate - _srelocate)) - ORIGIN(rom))*/ /* Length of kernel binary. */
+        /*SHORT(0x0102)*/ /* Type = Kernel Flash = 0x0102 */
+        /*SHORT(8)*/      /* Length = 8 bytes */
 
         /* TLV: App Memory
          * This indicates the start address and size of RAM available for
          * userspace apps.
          */
-        LONG(_sappmem) /* Address of start of app memory. */
-        LONG(_eappmem - _sappmem) /* Length of app memory. */
-        SHORT(0x0101) /* Type = App RAM Region = 0x0101 */
-        SHORT(8)      /* Length = 8 bytes */
+        /*LONG(_sappmem)*/ /* Address of start of app memory. */
+        /*LONG(_eappmem - _sappmem)*/ /* Length of app memory. */
+        /*SHORT(0x0101)*/ /* Type = App RAM Region = 0x0101 */
+        /*SHORT(8)*/      /* Length = 8 bytes */
 
         /* Version and Reserved. Current version is 0x01.
          */
-        BYTE(0) /* Reserved */
-        BYTE(0) /* Reserved */
-        BYTE(0) /* Reserved */
-        BYTE(1) /* Version = 0x01 */
+        /*BYTE(0)*/ /* Reserved */
+        /*BYTE(0)*/ /* Reserved */
+        /*BYTE(0)*/ /* Reserved */
+        /*BYTE(1)*/ /* Version = 0x01 */
 
         /* Sentinel.
          */
-        BYTE(84) /* T */
-        BYTE(79) /* O */
-        BYTE(67) /* C */
-        BYTE(75) /* K */
-    }  > rom
+        /*BYTE(84)*/ /* T */
+        /*BYTE(79)*/ /* O */
+        /*BYTE(67)*/ /* C */
+        /*BYTE(75)*/ /* K */
+    /*}  > rom*/
 
 
     /* Discard RISC-V relevant .eh_frame, we are not doing unwind on panic
@@ -399,8 +399,10 @@ SECTIONS
 /* LOADADDR: Return the absolute load address of the named section. This is
  * normally the same as ADDR, but it may be different if the AT keyword is used
  * in the section definition. */
-_sattributes = LOADADDR(.attributes);
-_eattributes = LOADADDR(.attributes) + SIZEOF(.attributes);
+/*_sattributes = LOADADDR(.attributes);
+_eattributes = LOADADDR(.attributes) + SIZEOF(.attributes);*/
+_sattributes = 0;
+_eattributes = 0;
 _erom = ORIGIN(rom) + LENGTH(rom);
 
 /* This.. this is a dirty, not-fully-understood, hack. In some way, linking is
@@ -417,7 +419,7 @@ _erom = ORIGIN(rom) + LENGTH(rom);
  * or similar and verify they're equal, but that would be yet-one-more-tool.
  * Maybe something we can do in CI at some point, and remove this assert.
  */
-ASSERT((_eattributes == _erom) || (_eattributes == _erom + SIZEOF(.attributes)), "Kernel attributes are not at the end of ROM.")
+/*ASSERT((_eattributes == _erom) || (_eattributes == _erom + SIZEOF(.attributes)), "Kernel attributes are not at the end of ROM.")*/
 
 /* This assert works out because even though some of the relative positions are
  * off, the sizes are sane in each pass. */

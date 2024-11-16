@@ -7,9 +7,36 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-use crate::{apps_build::apps_build, DynError, PROJECT_ROOT, TARGET};
+use crate::apps_build::apps_build_flat_tbf;
+use crate::{DynError, PROJECT_ROOT, TARGET};
 use std::path::PathBuf;
-use std::process::Command as StdCommand;
+use std::process::Command;
+
+const RUNTIME_START: usize = 0x4000_0000;
+const INTERRUPT_TABLE_SIZE: usize = 128;
+const ICCM_SIZE: usize = 256 * 1024;
+const RAM_START: usize = 0x5000_0000;
+const RAM_SIZE: usize = 128 * 1024;
+const BSS_SIZE: usize = 5000; // this is approximate. Increase it is there are "sram" errors when linking
+
+pub fn target_binary(name: &str) -> PathBuf {
+    PROJECT_ROOT
+        .join("target")
+        .join(TARGET)
+        .join("release")
+        .join(name)
+}
+
+// Set additional flags to produce binary from .elf.
+//
+// - `--strip-sections`: Prevents enormous binaries when SRAM is below flash.
+// - `--strip-all`: Remove non-allocated sections outside segments.
+//   `.gnu.warning*` and `.ARM.attribute` sections are not removed.
+// - `--remove-section .apps`: Prevents the .apps section from being included in
+//   the base kernel binary file. This section is a placeholder for optionally
+//   including application binaries, and only needs to exist in the .elf. By
+//   removing it, we prevent the kernel binary from overwriting applications.
+pub const OBJCOPY_FLAGS: &str = "--strip-sections --strip-all";
 
 fn find_file(dir: &str, name: &str) -> Option<PathBuf> {
     for entry in walkdir::WalkDir::new(dir) {
@@ -21,9 +48,7 @@ fn find_file(dir: &str, name: &str) -> Option<PathBuf> {
     None
 }
 
-pub(crate) fn objcopy() -> Result<String, DynError> {
-    // Set variables of the key tools we need to compile a Tock kernel. Need to do
-    // this after we handle if we are using the LLVM tools or not.
+pub fn objcopy() -> Result<String, DynError> {
     std::env::var("OBJCOPY").map(Ok).unwrap_or_else(|_| {
         // We need to get the full path to llvm-objcopy, if it is installed.
         if let Some(llvm_size) = find_file(&sysroot()?, "llvm-objcopy") {
@@ -37,7 +62,7 @@ pub(crate) fn objcopy() -> Result<String, DynError> {
 fn sysroot() -> Result<String, DynError> {
     let tock_dir = &PROJECT_ROOT.join("runtime");
     let sysroot = String::from_utf8(
-        StdCommand::new("cargo")
+        Command::new("cargo")
             .args(["rustc", "--", "--print", "sysroot"])
             .current_dir(tock_dir)
             .output()?
@@ -51,10 +76,41 @@ fn sysroot() -> Result<String, DynError> {
     Ok(sysroot)
 }
 
-pub(crate) fn runtime_build() -> Result<(), DynError> {
+fn runtime_build_no_apps(apps_offset: usize) -> Result<(), DynError> {
     let tock_dir = &PROJECT_ROOT.join("runtime");
     let sysroot = sysroot()?;
-    let (apps_start, apps) = apps_build()?;
+    let ld_file_path = tock_dir.join("layout.ld");
+
+    let runtime_size = apps_offset - RUNTIME_START - INTERRUPT_TABLE_SIZE;
+    let apps_size = ICCM_SIZE - runtime_size - INTERRUPT_TABLE_SIZE;
+
+    std::fs::write(
+        &ld_file_path,
+        format!(
+            "/* Licensed under the Apache-2.0 license. */
+
+        /* Based on the Tock board layouts, which are: */
+        /* Licensed under the Apache License, Version 2.0 or the MIT License. */
+        /* SPDX-License-Identifier: Apache-2.0 OR MIT                         */
+        /* Copyright Tock Contributors 2023.                                  */
+
+        MEMORY
+        {{
+          rom (rx)  : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
+          prog (rx) : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
+          ram (rwx) : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
+        }}
+
+        INCLUDE runtime/kernel_layout.ld
+        ",
+            RUNTIME_START + INTERRUPT_TABLE_SIZE,
+            runtime_size,
+            apps_offset,
+            apps_size,
+            RAM_START,
+            RAM_SIZE,
+        ),
+    )?;
 
     // RUSTC_FLAGS allows boards to define board-specific options.
     // This will hopefully move into Cargo.toml (or Cargo.toml.local) eventually.
@@ -77,11 +133,7 @@ pub(crate) fn runtime_build() -> Result<(), DynError> {
     //   See https://github.com/rust-lang/rust/issues/60705 and
     //   https://github.com/tock/tock/issues/3529.
     let rustc_flags = [
-        format!(
-            "-C link-arg=-T{}/runtime/layout.ld",
-            PROJECT_ROOT.to_str().unwrap()
-        )
-        .as_str(),
+        format!("-C link-arg=-T{}", ld_file_path.display()).as_str(),
         "-C linker=rust-lld",
         "-C linker-flavor=ld.lld",
         "-C relocation-model=static",
@@ -140,14 +192,14 @@ pub(crate) fn runtime_build() -> Result<(), DynError> {
     // Validate that rustup is new enough.
     let minimum_rustup_version = semver::Version::parse("1.23.0").unwrap();
     let rustup_version = semver::Version::parse(
-        String::from_utf8(StdCommand::new("rustup").arg("--version").output()?.stdout)?
+        String::from_utf8(Command::new("rustup").arg("--version").output()?.stdout)?
             .split(" ")
             .nth(1)
             .unwrap_or(""),
     )?;
     if rustup_version < minimum_rustup_version {
         println!("WARNING: Required tool `rustup` is out-of-date. Attempting to update.");
-        if !StdCommand::new("rustup").arg("update").status()?.success() {
+        if !Command::new("rustup").arg("update").status()?.success() {
             Err("Failed to update rustup. Please update manually with `rustup update`.")?;
         }
     }
@@ -156,7 +208,7 @@ pub(crate) fn runtime_build() -> Result<(), DynError> {
     // only have to be done once per Rust version, but will take some time when
     // compiling for the first time.
     if !String::from_utf8(
-        StdCommand::new("rustup")
+        Command::new("rustup")
             .args(["target", "list", "--installed"])
             .output()?
             .stdout,
@@ -166,7 +218,7 @@ pub(crate) fn runtime_build() -> Result<(), DynError> {
     {
         println!("WARNING: Request to compile for a missing TARGET, will install in 5s");
         std::thread::sleep(std::time::Duration::from_secs(5));
-        if !StdCommand::new("rustup")
+        if !Command::new("rustup")
             .arg("target")
             .arg("add")
             .arg(TARGET)
@@ -177,18 +229,12 @@ pub(crate) fn runtime_build() -> Result<(), DynError> {
         }
     }
 
-    // Set additional flags to produce binary from .elf.
-    //
-    // - `--strip-sections`: Prevents enormous binaries when SRAM is below flash.
-    // - `--strip-all`: Remove non-allocated sections outside segments.
-    //   `.gnu.warning*` and `.ARM.attribute` sections are not removed.
-    // - `--remove-section .apps`: Prevents the .apps section from being included in
-    //   the base kernel binary file. This section is a placeholder for optionally
-    //   including application binaries, and only needs to exist in the .elf. By
-    //   removing it, we prevent the kernel binary from overwriting applications.
     let objcopy = objcopy()?;
-    let objcopy_flags = "--strip-sections --strip-all".to_string();
-    let objcopy_flags_kernel = objcopy_flags.clone() + " --remove-section .apps";
+    // we delete the .attributes because we don't use host tools for development, and it causes padding
+    let objcopy_flags_kernel = format!(
+        "{} --remove-section .apps --remove-section .attributes",
+        OBJCOPY_FLAGS
+    );
 
     // Add flags since we are compiling on nightly.
     //
@@ -209,7 +255,7 @@ pub(crate) fn runtime_build() -> Result<(), DynError> {
     ]
     .join(" ");
 
-    let mut cmd = StdCommand::new("cargo");
+    let mut cmd = Command::new("cargo");
     let cmd = cmd
         .arg("rustc")
         .args(cargo_flags_tock.split(' '))
@@ -226,73 +272,48 @@ pub(crate) fn runtime_build() -> Result<(), DynError> {
         Err("cargo rustc failed to build runtime")?;
     }
 
-    let runtime_bin = PROJECT_ROOT
-        .join("target")
-        .join(TARGET)
-        .join("release")
-        .join("runtime.bin");
-
-    let mut cmd = StdCommand::new(&objcopy);
+    let mut cmd = Command::new(&objcopy);
     let cmd = cmd
         .arg("--output-target=binary")
         .args(objcopy_flags_kernel.split(' '))
-        .args(["--pad-to", &format!("{}", apps_start)])
-        .arg(
-            PROJECT_ROOT
-                .join("target")
-                .join(TARGET)
-                .join("release")
-                .join("runtime"),
-        )
-        .arg(&runtime_bin);
+        .arg(target_binary("runtime"))
+        .arg(target_binary("runtime.bin"));
 
     println!("Executing {:?}", cmd);
     if !cmd.status()?.success() {
         Err("objcopy failed to build runtime")?;
     }
 
-    let mut files = vec![runtime_bin.clone()];
+    Ok(())
+}
 
-    for app in apps {
-        let app_bin = PROJECT_ROOT
-            .join("target")
-            .join(TARGET)
-            .join("release")
-            .join(format!("{}.bin", app));
+pub fn runtime_build_with_apps() -> Result<(), DynError> {
+    let mut app_offset = RUNTIME_START;
+    let runtime_bin = target_binary("runtime.bin");
 
-        let mut app_cmd = StdCommand::new(&objcopy);
-        let app_cmd = app_cmd
-            .arg("--output-target=binary")
-            .args(objcopy_flags.split(' '))
-            .arg(
-                PROJECT_ROOT
-                    .join("target")
-                    .join(TARGET)
-                    .join("release")
-                    .join("runtime"),
-            )
-            .arg(&app_bin);
-        println!("Executing {:?}", &app_cmd);
-        if !app_cmd.status()?.success() {
-            Err("objcopy failed to build app")?;
-        }
-        files.push(app_bin.clone());
-    }
+    // build once to get the size of the runtime binary without apps
+    runtime_build_no_apps(app_offset + 0x2_0000)?;
 
-    let mut bin = vec![];
+    app_offset += std::fs::metadata(&runtime_bin)?.len() as usize;
+    app_offset += BSS_SIZE; // it's not clear why this is necessary as the BSS should be part of .sram, but the linker fails without this
+    app_offset = app_offset.next_multiple_of(4096); // align to 4096 bytes. Needed for rust-lld
 
-    for f in files {
-        let b = std::fs::read(f)?;
-        bin.extend_from_slice(&b);
-    }
+    // now re-link and place the apps after the runtime binary
+    runtime_build_no_apps(app_offset)?;
 
+    let mut bin = std::fs::read(&runtime_bin)?;
+    let kernel_size = bin.len();
+    println!("Kernel binary built: {} bytes", kernel_size);
+
+    // now build the apps starting at the correct offset
+    let apps_bin = apps_build_flat_tbf(app_offset)?;
+    println!("Apps built: {} bytes", apps_bin.len());
+    bin.extend_from_slice(&apps_bin);
     std::fs::write(&runtime_bin, &bin)?;
 
-    println!(
-        "\nRuntime binary is built at {:?} ({} bytes)",
-        &runtime_bin,
-        bin.len()
-    );
+    println!("Kernel binary size: {} bytes", kernel_size);
+    println!("Total runtime binary: {} bytes", bin.len());
+    println!("Runtime binary is available at {:?}", &runtime_bin);
 
     Ok(())
 }

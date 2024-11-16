@@ -1,12 +1,14 @@
 // Licensed under the Apache-2.0 license
 
-use crate::{rom::rom_build, runtime_build::runtime_build, DynError, PROJECT_ROOT, TARGET};
+use crate::{
+    rom::rom_build, runtime_build::runtime_build_with_apps, DynError, PROJECT_ROOT, TARGET,
+};
 use std::process::Command as StdCommand;
 
 /// Run the Runtime Tock kernel image for RISC-V in the emulator.
 pub(crate) fn runtime_run(trace: bool) -> Result<(), DynError> {
     rom_build()?;
-    runtime_build()?;
+    runtime_build_with_apps()?;
     let rom_binary = PROJECT_ROOT
         .join("target")
         .join(TARGET)
