@@ -13,6 +13,7 @@ use core::ptr::{addr_of, addr_of_mut};
 use core::ptr::{read_volatile, write_volatile};
 use kernel::debug;
 use kernel::debug::IoWrite;
+use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::hil;
 use kernel::hil::time::{Alarm, AlarmClient, Ticks, Ticks64, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
@@ -81,6 +82,10 @@ pub struct SemihostUart<'a> {
     rx_index: Cell<usize>,
     rx_len: Cell<usize>,
     alarm: VirtualMuxAlarm<'a, InternalTimers<'a>>,
+    tx_client: OptionalCell<&'a dyn hil::uart::TransmitClient>,
+    tx_buffer: TakeCell<'static, [u8]>,
+    tx_len: Cell<usize>,
+    deferred_call: DeferredCall,
 }
 
 impl<'a> SemihostUart<'a> {
@@ -91,6 +96,10 @@ impl<'a> SemihostUart<'a> {
             rx_len: Cell::new(0),
             rx_index: Cell::new(0),
             alarm: VirtualMuxAlarm::new(alarm),
+            tx_client: OptionalCell::empty(),
+            tx_buffer: TakeCell::empty(),
+            tx_len: Cell::new(0),
+            deferred_call: DeferredCall::new(),
         }
     }
 
@@ -133,21 +142,31 @@ impl<'a> hil::uart::Configure for SemihostUart<'a> {
 }
 
 impl<'a> hil::uart::Transmit<'a> for SemihostUart<'a> {
-    fn set_transmit_client(&self, _client: &'a dyn hil::uart::TransmitClient) {}
+    fn set_transmit_client(&self, client: &'a dyn hil::uart::TransmitClient) {
+        self.tx_client.set(client);
+    }
 
     fn transmit_buffer(
         &self,
         tx_buffer: &'static mut [u8],
         tx_len: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
-        unsafe {
-            WRITER.write(&tx_buffer[..tx_len]);
+        if tx_len == 0 || tx_len > tx_buffer.len() {
+            Err((ErrorCode::SIZE, tx_buffer))
+        } else if self.tx_buffer.is_some() {
+            Err((ErrorCode::BUSY, tx_buffer))
+        } else {
+            unsafe {
+                WRITER.write(&tx_buffer[..tx_len]);
+            }
+            self.tx_len.set(tx_len);
+            self.tx_buffer.replace(tx_buffer);
+            // The whole buffer was transmitted immediately
+            self.deferred_call.set();
+            Ok(())
         }
-        // Returning Ok(()) requires an async confirmation of the transfer which is supposed to happen later on.
-        // We have no interrupts here and nothing happens asynchronously so just write all the bytes immediately
-        // and pretend it failed.
-        Err((ErrorCode::FAIL, tx_buffer))
     }
+
     fn transmit_word(&self, _word: u32) -> Result<(), ErrorCode> {
         Err(ErrorCode::FAIL)
     }
@@ -202,5 +221,19 @@ impl<'a> AlarmClient for SemihostUart<'a> {
                 );
             });
         }
+    }
+}
+
+impl<'a> DeferredCallClient for SemihostUart<'a> {
+    fn register(&'static self) {
+        self.deferred_call.register(self);
+    }
+
+    fn handle_deferred_call(&self) {
+        self.tx_client.map(|client| {
+            self.tx_buffer.take().map(|tx_buf| {
+                client.transmitted_buffer(tx_buf, self.tx_len.get(), Ok(()));
+            });
+        });
     }
 }

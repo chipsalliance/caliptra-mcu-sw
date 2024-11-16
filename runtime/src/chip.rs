@@ -50,7 +50,9 @@ impl<'a> VeeRDefaultPeripherals<'a> {
         }
     }
 
-    pub fn init(&self) {}
+    pub fn init(&'static self) {
+        kernel::deferred_call::DeferredCallClient::register(&self.uart);
+    }
 }
 
 impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
