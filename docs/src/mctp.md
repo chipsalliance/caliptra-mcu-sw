@@ -23,8 +23,8 @@ sequenceDiagram
         I3CController--)I3CTarget: I3C Private Write transfer
         I3CTarget->>I3CMCTPDevice: if no rx buffer, call write_expected() callback
         I3CMCTPDevice->> MuxMCTPDriver: write_expected() callback
-        MuxMCTPDriver->>I3CMCTPDevice: set_rx_buffer() with buffer to receive data
-        I3CMCTPDevice->> I3CTarget: set_rx_buffer() with buffer to receive the data
+        MuxMCTPDriver->>I3CMCTPDevice: set_rx_buffer() with buffer to receive packet
+        I3CMCTPDevice->> I3CTarget: set_rx_buffer() with buffer to receive the packet
         I3CTarget--) I3CController : Send ACK
         I3CController--)I3CTarget: MCTP packet
         Note over I3CController, I3CTarget: Receive entire MCTP packet <br/>including the PEC until Sr/P.
@@ -39,7 +39,7 @@ sequenceDiagram
 
 The Receive stack is as shown in the picture below:
 
-![The MCTP Receive stack](images/mctp_rx_stack.jpeg)
+![The MCTP Receive stack](images/MCTP_rx_stack.svg)
 
 ## MCTP Send Sequence
 
@@ -84,7 +84,7 @@ sequenceDiagram
 
 The send stack is as shown in the picture below:
 
-![The MCTP Send stack](images/mctp_tx_stack.jpeg)
+![The MCTP Send stack](images/MCTP_tx_stack.svg)
 
 
 
@@ -109,27 +109,29 @@ Each user space application will instantiate the `AsyncMctp` module with appropr
 //!     /// Initialize the MCTP driver with the driver number
 //!     let mctp = AsyncMctp::<TockSyscalls>::new(MCTP_SPDM_DRIVER_NUM);
 //!
-//!     /// Receive the MCTP request
-//!     let mut rx_buf = [0; 1024];
-//!     let res = mctp.receive_request(0x0, SPDM_MESSAGE_TYPE, &mut rx_buf).await;
-//!     match res {
-//!         Ok(msg_info) => {
-//!             /// Process the received message
-//!             /// ........
-//!             /// Send the response message
-//!             let mut tx_buf = [0; 1024];
-//!             let result = mctp.send_response(msg_info.eid, msg_info.msg_tag, &tx_buf).await;
-//!             match result {
-//!                 Ok(_) => {
-//!                     /// Handle the send response success
-//!                 }
-//!                 Err(e) => {
-//!                     /// Handle the send response error
+//!     loop {
+//!         /// Receive the MCTP request
+//!         let mut rx_buf = [0; 1024];
+//!         let res = mctp.receive_request(0x0, SPDM_MESSAGE_TYPE, &mut rx_buf).await;
+//!         match res {
+//!             Ok(msg_info) => {
+//!                 /// Process the received message
+//!                 /// ........
+//!                 /// Send the response message
+//!                 let mut tx_buf = [0; 1024];
+//!                 let result = mctp.send_response(msg_info.eid, msg_info.msg_tag, &tx_buf).await;
+//!                 match result {
+//!                     Ok(_) => {
+//!                         /// Handle the send response success
+//!                     }
+//!                     Err(e) => {
+//!                         /// Handle the send response error
+//!                     }
 //!                 }
 //!             }
-//!         }
-//!         Err(e) => {
-//!             /// Handle the receive request error
+//!             Err(e) => {
+//!                 /// Handle the receive request error
+//!             }
 //!         }
 //!     }
 //! }
@@ -139,7 +141,7 @@ Each user space application will instantiate the `AsyncMctp` module with appropr
 pub struct AsyncMctp<S:Syscalls, C:Config = DefaultConfig > {
     syscall: PhantomData<S>,
     config: PhantomData<C>,
-    driver_num: u32,
+    driver_num: usize,
 }
 
 pub struct MessageInfo {
@@ -156,13 +158,13 @@ impl<S:Syscalls, C:Config> Mctp<S,C> {
     /// 
     /// # Arguments
     /// * `source_eid` - The source EID from which the request is to be received. 
-    /// * `message_type` - The message type to receive. This is needed for SPDM to differentiate between SPDM(0x5) and secured SPDM(0x6) messages
+    /// * `message_types` - The message types to receive. This is needed for SPDM to receive both SPDM(0x5) and secured SPDM(0x6) messages
     /// * `msg_payload` - The buffer to store the received message payload
     /// 
     /// # Returns
     /// * `MessageInfo` - The message information containing the EID, message tag, message type, and payload length on success
     /// * `ErrorCode` - The error code on failure
-    pub async fn receive_request(&self, source_eid: u8, message_type: u8,  msg_payload: &mut [u8]) -> Result<MessageInfo, ErrorCode>;
+    pub async fn receive_request(&self, source_eid: u8, message_types: [u8],  msg_payload: &mut [u8]) -> Result<MessageInfo, ErrorCode>;
     /// Send the MCTP response to the destination EID
     ///
     /// # Arguments
@@ -218,9 +220,9 @@ pub enum NUM {
 
 
 /// mctp/driver.rs
-pub const MCTP_SPDM_DRIVER_NUM : usize = driver:NUM:MctpSpdm;
-pub const MCTP_PLDM_DRIVER_NUM : usize = driver:NUM:MctpPldm;
-pub const MCTP_VENDEF_DRIVER_NUM : usize = driver:NUM:MctpVenDef;
+pub const MCTP_SPDM_DRIVER_NUM: usize = driver::NUM::MctpSpdm;
+pub const MCTP_PLDM_DRIVER_NUM: usize = driver::NUM::MctpPldm;
+pub const MCTP_VENDEF_DRIVER_NUM: usize = driver::NUM::MctpVenDef;
 ```
 
 ### Syscalls provided
@@ -292,11 +294,11 @@ pub struct App {
 }
 
 /// Implements userspace driver for a particular message_type.
-pub struct VirtualMCTPDriver<'a, M: MCTPDevice> {
-    mctp_sender: &'a dyn MCTPSender<'a>,
+pub struct VirtualMCTPDriver<M: MCTPDevice> {
+    mctp_sender: &dyn MCTPSender,
     apps : Grant<App, 2 /*upcalls*/, 1 /*allowro*/, 1/*allow_rw*/>,
     app_id: Cell<Option<ProcessID>>,
-    msg_type: u8,
+    msg_types: [u8],
     kernel_msg_buffer: MapCell<SubSliceMut<'static, u8>>,
 }
 ```
@@ -307,10 +309,10 @@ pub struct VirtualMCTPDriver<'a, M: MCTPDevice> {
 pub trait MCTPSender {
     /// Sets the client for the `MCTPSender` instance. 
     /// In this case it is MCTPTxState which is instantiated at the time of 
-    fn set_client(&self, client: &'a dyn MCTPSendClient);
+    fn set_client(&self, client: &dyn MCTPSendClient);
 
-    /// 
-    fn send_msg(&'a self, dest_eid: u8, msg_tag: u8, msg_payload: SubSliceMut<'static, u8>);
+    /// Sends the message to the MCTP kernel stack.
+    fn send_msg(&self, dest_eid: u8, msg_tag: u8, msg_payload: SubSliceMut<'static, u8>);
 }
 
 /// This is the trait implemented by VirtualMCTPDriver instance to get notified after 
@@ -321,26 +323,15 @@ pub trait MCTPSendClient {
     fn send_done(&self, msg_tag: Option<u8>, result: Result<(), ErrorCode>, msg_payload: SubSliceMut<'static, u8> )
 }
 
-pub struct MCTPTxState<'a, M:MCTPDevice> {
-    mctp_mux_sender: &'a MuxMCTPDriver<'a, M>,
-    /// Destination EID
-    dest_eid: Cell<u8>,
-    /// Message type
-    msg_type: Cell<u8>,
-    /// msg_tag for the message being packetized
-    msg_tag: Cell<u8>,
-    /// Current packet sequence
-    pkt_seq: Cell<u8>,
-    /// Offset into the message buffer
-    offset: Cell<usize>,
-    /// Client to invoke when send done. This is set to the corresponding Virtual MCTP driver
-    client: OptionalCell<&'a dyn MCTPSendClient>,
-    /// next node in the list
-    next: ListLink<'a, MCTPTxState<'a, M: MCTPDevice>>,
+pub struct MCTPTxState<M:MCTPDevice> {
+    /// MCTP Mux driver reference
+    mctp_mux_sender: &MuxMCTPDriver<M>,
+    /// Client to invoke when send done. This is set to the corresponding VirtualMCTPDriver instance.
+    client: OptionalCell<&dyn MCTPSendClient>,
+    /// next MCTPTxState node in the list
+    next: ListLink<MCTPTxState<M: MCTPDevice>>,
     /// The message buffer is set by the virtual MCTP driver when it issues the Tx request.
     msg_payload: MapCell<SubSliceMut<'static, u8>>,
-    /// Last packet send time
-    msg_tx_time: Cell<Ticks>,
 }
 ```
 
@@ -355,24 +346,10 @@ pub trait MCTPRxClient {
 
 /// Receive state
 pub struct MCTPRxState {
-    /// Source EID
-    source_eid: Cell<u8>,
-    /// message type
-    msg_type: Cell<u8>,
-    /// msg_tag for the message being assembled
-    msg_tag: Cell<u8>,
-    /// Current packet sequence
-    pkt_seq: Cell<u8>,
-    /// Offset into the message buffer
-    offset : Cell<usize>,
-    /// Start packet len
-    start_pkt_len: Cell<usize>,
     /// Client (implements the MCTPRxClient trait)
-    client: OptionalCell<&'a dyn MCTPRxClient>,
-    /// Message buffer
+    client: OptionalCell<&dyn MCTPRxClient>,
+    /// static Message buffer
     msg_payload: MapCell<'static, [u8]>,
-    /// Last packet receive time
-    msg_rx_time: Cell<Ticks>,
     /// next MCTPRxState node
     next: ListLink<'a, MCTPRxState>,
 }
@@ -389,67 +366,44 @@ For response messages, where `msg_tag` values range between 0 and 7, the same va
 MCTP Mux layer is the single receive client for the MCTP Device Layer. This layer is instantiated with a single contiguous buffer for Rx packet of size `kernel::hil:i3c::MAX_TRANSMISSION_UNIT`.
 The Rx buffer is provided to the I3C targer driver layer to receive the packets when the I3C controller initiates a private write transfer to the I3C Target. 
 
+The vitualized upper layer ensures that only one message is transmitted per driver instance at a time. Receive is event based. The received packet in the rx buffer is matched against the pending receive requests by the use
+
 ```Rust
 /// The MUX struct manages multiple MCTP driver users (clients).
-/// This struct implements the FIFO queue for the
-/// transmitted and received request states.
-/// The vitualized upper layer ensures that only
-/// one message is transmitted per driver instance at a time.
-/// Receive is event based. The received packet in the rx buffer is 
-/// matched against the pending receive requests by the use
-pub struct MuxMCTPDriver<'a, M: MCTPDevide> {
-    mctp_device: &'a dyn M,
-    next_msg_tag : u8, //global msg tag. increment by 1 for next tag upto 7 and wrap around.
+pub struct MuxMCTPDriver<M: MCTPDevice> {
+    /// Reference to the MCTP transport binding layer that implements the MCTPDevice trait.
+    mctp_device: &dyn M,
+    /// Global message tag. Increment by 1 for next tag up to 7 and wrap around.
+    next_msg_tag: u8,
+    /// Local EID assigned to the MCTP endpoint.
     local_eid: u8,
+    /// Maximum transmission unit (MTU) size.
     mtu: u8,
-    // List of outstanding send requests
-    sender_list: List<'a, MCTPTxState<'a, M>>,
-    receiver_list: List<'a, MCTPRxState>,
-    tx_pkt_buffer: MapCell<SubSliceMut<'static, u8>>, // Static buffer for tx packet. (may not be needed)
-    rx_pkt_buffer: MapCell<SubSliceMut<'static, u8>>, //Static buffer for rx packet 
+    /// List of outstanding send requests
+    sender_list: List<MCTPTxState<M>>,
+    /// List of outstanding receive requests
+    receiver_list: List<MCTPRxState>,
+    /// Static buffer for tx packet. (may not be needed)
+    tx_pkt_buffer: MapCell<SubSliceMut<'static, u8>>,
+    /// Static buffer for rx packet
+    rx_pkt_buffer: MapCell<SubSliceMut<'static, u8>>,
 }
-
-
-impl <'a, M: MCTPDevice<'a>> MuxMCTPDriver<'a, M> {
-    /// Instantiate MuxMCTPDriver with the MCTPDevice static reference.
-    /// Once the MuxMCTPDriver packetizes the message buffer, it will use
-    /// MCTPDevice implemetor to transfer the packets to the transport binding layer.
-    pub fn new(mctp_device: &'a dyn MCTPDevice<'a>) -> MuxMCTPDriver<'a,T>;
-    /// Virtualized MCTP driver sets the configuration in the MCTPTxState and calls 'send` to
-    /// the MuxMCTPDriver.
-    /// If the `sender_list` is empty, the message is sent immediately.
-    /// Otherwise it'll be added to the tail of the queue.
-    pub fn send(&self, sender: &'a MCTPTxState<'a, M>);
-    /// Virtualized MCTP driver sets the configuration in MCTPRxState and calls 'receive` to
-    /// the MuxMCTPDriver.
-    pub fn receive(&self, receiver: &'a MCTPRxState);
-    /// Adds the MCTPTxState to the tail of the `sender_list`. 
-    /// So, sender_list at most has 3 clients in it. (PLDM, SPDM and Vendor def instances of the userspace drivers)
-    fn add_sender(&self, sender: &'a MCTPTxState<'a, M>);
-    /// Add the MCTPRxState to the tail of the `receiver_list`.
-    /// receiver_list has at most 3 clients in it (PLDM, SPDM, and Vendor def message type instances of the userspace drivers)
-    fn add_receiver(&self, receiver: &'a MCTPRxState);
-}
-
-impl TxClient for  MuxMCTPDriver {}
-impl RxClient for  MuxMCTPDriver {}
 
 ```
 
 ## MCTP Transport binding layer
-The following is the generic interface for the MCTP physical transport binding layer.
+The following is the generic interface for the MCTP physical transport binding layer. 
+Implementer of this trait will add physical medium specific header/trailer to the MCTP packet.
 
 ```Rust
 /// This trait contains the interface definition 
 /// for sending the MCTP packet through MCTP transport binding layer. 
-/// Implementer of this trait will add physical medium specific header/trailer
-/// to the MCTP packet.
 pub trait MCTPDevice {
     /// Set the client that will be called when the packet is transmitted.
-	fn set_tx_client(&self, client: &'a TxClient);
+	fn set_tx_client(&self, client: &TxClient);
 
     /// Set the client that will be called when the packet is received.
-	fn set_rx_client(&self, client: &'a RxClient);
+	fn set_rx_client(&self, client: &RxClient);
 
     /// Set the buffer that will be used for receiving packets.
 	fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
@@ -457,87 +411,32 @@ pub trait MCTPDevice {
     fn transmit(&self, tx_buffer: &'static mut [u8]);
 
 	/// Enable/Disable the I3C target device
-	// fn enable();
-	// fn disable();
+	fn enable();
+	fn disable();
 
 	/// Get the maximum transmission unit (MTU) size. 
 	fn get_mtu_size() -> usize;
 }
 ```
-This layer is responsible for checking the PEC for received packets and adding the PEC for transmitted packets.
-
+MCTP I3C Transport binding layer is responsible for checking the PEC for received packets and adding the PEC for transmitted packets over the I3C medium.
 It is mostly a passthrough for the MCTP Base layer except, it will need the I3C target device address for PEC calculation. 
+
+This layer is also a sole Rx and Tx client for the I3C Target device driver. 
 
 ```Rust
 pub struct MCTPI3CDevice {
-	mctp_i3c : &'a dyn I3CTarget,
-	rx_client: OptionCell<&'a dyn RxClient>,
-	tx_client: OptionCell<&'a dyn TxClient>,
+    /// Reference to the I3C Target device driver.
+	mctp_i3c : &dyn I3CTarget,
+	rx_client: OptionCell<&dyn RxClient>,
+	tx_client: OptionCell<&dyn TxClient>,
+    /// I3C Target device address needed for PEC calculation.
 	device_address: u8,
 }
-
-impl MCTPI3CDevice {
-	pub fn new(mctp_i3c: &'a dyn I3CTarget) -> MCTPDevice;
-	pub fn set_rx_client(&self, client: &'a dyn RxClient) {
-		self.rx_client.set(client);
-	}
-
-	pub fn set_rx_buffer(&self, rx_buffer: &'static mut [u8]) {
-		self.mctp_i3c.set_rx_buffer(rx_buffer);
-	}
-
-	pub fn transmit(&self, tx_buffer: &'static mut [u8], len: usize) -> Result<(), (ErrorCode, &'static mut [u8])> {
-		/// Ensure there's enough space for the PEC byte in the buffer or call send_done() early with error
-		/// Compute PEC and add it to the packet
-		/// let pec = compute_pec(device_addr, tx_buffer, len);
-		/// tx_buffer[len] = pec;
-		/// len = len + 1; // add the PEC byte.
-		self.mctp_i3c.transmit(tx_buffer,len)
-	}
-
-	pub fn enable(&self) {
-		self.mctp_i3c.enable();
-	}
-
-	pub fn disable(&self) {
-		self.mctp_i3c.disable();
-	}
-
-	pub fn get_mtu_size(&self) -> usize {
-		self.mctp_i3c.get_mtu_size()
-	}
-}
-
-
-impl RxClient for MCTPI3CDevice {
-	fn receive(&self, rx_buffer: &'static mut [u8]) {
-		/// TODO: Check PEC and pass the result and pass packet to MCTP Base protocol layer
-		/// let len = len - 1; // remove the PEC byte.
-		/// let result = check_pec(device_addr, rx_buffer, len);
-		self.rx_client->map(|client| client.receive(rx_buffer, len, result));
-	}
-
-	fn write_expected(&self) {
-		// call read_expected to the RxClient
-		self.rx_client->map(|client| client.write_expected());
-	}
-}
-
-impl TxClient for MCTPI3CDevice {
-	fn send_done(&self, tx_buffer: &'static mut [u8], acked: bool, result: Result<(), ErrorCode>) {
-		self.tx_client->map(|client| client.send_done(tx_buffer, acked, result));
-	}
-
-	fn read_expected(&self) {
-		tx_client->map(|client| client.read_expected());
-	}
-}
-
 ```
 
 ## HIL for I3C Target Device
 
-Generic interface for I3C Target hardware driver. (a reference to I2C slave exists. Need to see if we can adapt that)
+The following trait defined standard and shared interface for I3C Target hardware driver.
 
 ```Rust
 /// hil/i3c.rs
@@ -547,11 +446,7 @@ pub trait TxClient {
 	fn send_done(&self, 
 		  tx_buffer: &'static mut [u8],  
 		  acked: bool,
-		 result : Result<(), ErrorCode>);
-
-	/// Called only in polling mode when the I3C Controller has requested a private Read by addressing the target
-	/// and the driver needs buffer to transmit the data. (not sure if this is needed)
-	fn read_expected(&self);
+          result : Result<(), ErrorCode>);
 }
 
 pub trait RxClient {
@@ -567,10 +462,10 @@ pub trait RxClient {
 
 pub trait I3CTarget <'a> {
     /// Set the client that will be called when the packet is transmitted.
-	fn set_tx_client(&self, client: &'a TxClient);
+	fn set_tx_client(&self, client: &TxClient);
 
     /// Set the client that will be called when the packet is received.
-	fn set_rx_client(&self, client: &'a RxClient);
+	fn set_rx_client(&self, client: &RxClient);
 
     /// Set the buffer that will be used for receiving packets.
 	fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
@@ -587,12 +482,6 @@ I
 
 	/// Get the address of the I3C target device. Needed for PEC calculation.
 	fn get_address() -> u8;
-
-	/// (not sure if this is needed)
-	/// Get the IBI status of the target device.
-	// fn is_ibi_enabled() -> bool;
-	// fn set_tx_pending(&self, pending: bool);
-
 }
 ```
 
