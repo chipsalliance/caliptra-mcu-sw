@@ -15,22 +15,22 @@ managed by an external I3C controller. Minimum transmission size is based on the
 sequenceDiagram
     participant I3CController
     participant I3CTarget
-    participant I3CMCTPDevice
+    participant MCTPI3CBinding
     participant MuxMCTPDriver
     participant VirtualMCTPDriver
     participant Application
     loop Assemble packets until eom
         I3CController--)I3CTarget: I3C Private Write transfer
-        I3CTarget->>I3CMCTPDevice: if no rx buffer, call write_expected() callback
-        I3CMCTPDevice->> MuxMCTPDriver: write_expected() callback
-        MuxMCTPDriver->>I3CMCTPDevice: set_rx_buffer() with buffer to receive packet
-        I3CMCTPDevice->> I3CTarget: set_rx_buffer() with buffer to receive the packet
+        I3CTarget->>MCTPI3CBinding: if no rx buffer, call write_expected() callback
+        MCTPI3CBinding->> MuxMCTPDriver: write_expected() callback
+        MuxMCTPDriver->>MCTPI3CBinding: set_rx_buffer() with buffer to receive packet
+        MCTPI3CBinding->> I3CTarget: set_rx_buffer() with buffer to receive the packet
         I3CTarget--) I3CController : Send ACK
         I3CController--)I3CTarget: MCTP packet
         Note over I3CController, I3CTarget: Receive entire MCTP packet <br/>including the PEC until Sr/P.
-        I3CTarget->> I3CMCTPDevice: receive() to receive the packet
-        I3CMCTPDevice ->> I3CMCTPDevice: Check the PEC, and pass the packet <br/>with MCTPHeader to Mux MCTP layer
-        I3CMCTPDevice->>MuxMCTPDriver: receive() to receive the packet
+        I3CTarget->> MCTPI3CBinding: receive() to receive the packet
+        MCTPI3CBinding ->> MCTPI3CBinding: Check the PEC, and pass the packet <br/>with MCTPHeader to Mux MCTP layer
+        MCTPI3CBinding->>MuxMCTPDriver: receive() to receive the packet
         MuxMCTPDriver->>MuxMCTPDriver: Process MCTP transport header on packet, <br/> and assemble if matches any pending Rx states<br/>or handle MCTP control msg.
     end
     MuxMCTPDriver->>VirtualMCTPDriver: receive() call to receive the assembled message.
@@ -48,7 +48,7 @@ sequenceDiagram
     participant Application
     participant VirtualMCTPDriver
     participant MuxMCTPDriver
-    participant I3CMCTPDevice
+    participant MCTPI3CBinding
     participant I3CTarget
     participant I3CController
     Application--)VirtualMCTPDriver: Send request/response <br/>message to a destination EID
@@ -56,9 +56,9 @@ sequenceDiagram
     VirtualMCTPDriver->> MuxMCTPDriver: mctp_mux_sender.send() <br/> Adds mctp_sender to the tail of sender_list.
     loop Packetize the entire message payload
         MuxMCTPDriver->>MuxMCTPDriver: Add MCTP Transport header.
-        MuxMCTPDriver->>I3CMCTPDevice: transmit() MCTP packet
-        I3CMCTPDevice->>I3CMCTPDevice: Compute PEC and add <br/>to the end of the packet.
-        I3CMCTPDevice->>I3CTarget: transmit() MCTP packet with PEC
+        MuxMCTPDriver->>MCTPI3CBinding: transmit() MCTP packet
+        MCTPI3CBinding->>MCTPI3CBinding: Compute PEC and add <br/>to the end of the packet.
+        MCTPI3CBinding->>I3CTarget: transmit() MCTP packet with PEC
         alt IBI mode enabled
             I3CTarget->>I3CController: IBI with MDB
             I3CController--)I3CTarget: Private Read Request
@@ -75,8 +75,8 @@ sequenceDiagram
                 I3CTarget->>I3CTarget: set result = TIMEOUT
             end
         end
-        I3CTarget->>I3CMCTPDevice: send_done() with result. <br/>Return packet buffer.
-        I3CMCTPDevice->>MuxMCTPDriver: send_done() with result.<br/> Return packet buffer.
+        I3CTarget->>MCTPI3CBinding: send_done() with result. <br/>Return packet buffer.
+        MCTPI3CBinding->>MuxMCTPDriver: send_done() with result.<br/> Return packet buffer.
     end
 
 ```
@@ -294,7 +294,7 @@ pub struct App {
 }
 
 /// Implements userspace driver for a particular message_type.
-pub struct VirtualMCTPDriver<M: MCTPDevice> {
+pub struct VirtualMCTPDriver<M: MCTPTransportBinding> {
     mctp_sender: &dyn MCTPSender,
     apps : Grant<App, 2 /*upcalls*/, 1 /*allowro*/, 1/*allow_rw*/>,
     app_id: Cell<Option<ProcessID>>,
@@ -323,13 +323,13 @@ pub trait MCTPSendClient {
     fn send_done(&self, msg_tag: Option<u8>, result: Result<(), ErrorCode>, msg_payload: SubSliceMut<'static, u8> )
 }
 
-pub struct MCTPTxState<M:MCTPDevice> {
+pub struct MCTPTxState<M:MCTPTransportBinding> {
     /// MCTP Mux driver reference
     mctp_mux_sender: &MuxMCTPDriver<M>,
     /// Client to invoke when send done. This is set to the corresponding VirtualMCTPDriver instance.
     client: OptionalCell<&dyn MCTPSendClient>,
     /// next MCTPTxState node in the list
-    next: ListLink<MCTPTxState<M: MCTPDevice>>,
+    next: ListLink<MCTPTxState<M: MCTPTransportBinding>>,
     /// The message buffer is set by the virtual MCTP driver when it issues the Tx request.
     msg_payload: MapCell<SubSliceMut<'static, u8>>,
 }
@@ -370,8 +370,8 @@ The vitualized upper layer ensures that only one message is transmitted per driv
 
 ```Rust
 /// The MUX struct manages multiple MCTP driver users (clients).
-pub struct MuxMCTPDriver<M: MCTPDevice> {
-    /// Reference to the MCTP transport binding layer that implements the MCTPDevice trait.
+pub struct MuxMCTPDriver<M: MCTPTransportBinding> {
+    /// Reference to the MCTP transport binding layer that implements the MCTPTransportBinding trait.
     mctp_device: &dyn M,
     /// Global message tag. Increment by 1 for next tag up to 7 and wrap around.
     next_msg_tag: u8,
@@ -398,7 +398,7 @@ Implementer of this trait will add physical medium specific header/trailer to th
 ```Rust
 /// This trait contains the interface definition 
 /// for sending the MCTP packet through MCTP transport binding layer. 
-pub trait MCTPDevice {
+pub trait MCTPTransportBinding {
     /// Set the client that will be called when the packet is transmitted.
 	fn set_tx_client(&self, client: &TxClient);
 
@@ -424,7 +424,7 @@ It is mostly a passthrough for the MCTP Base layer except, it will need the I3C 
 This layer is also a sole Rx and Tx client for the I3C Target device driver. 
 
 ```Rust
-pub struct MCTPI3CDevice {
+pub struct MCTPI3CBinding {
     /// Reference to the I3C Target device driver.
 	mctp_i3c : &dyn I3CTarget,
 	rx_client: OptionCell<&dyn RxClient>,

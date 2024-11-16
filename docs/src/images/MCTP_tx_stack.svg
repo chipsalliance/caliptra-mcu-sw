@@ -410,11 +410,11 @@
 			<text x="9.66" y="734.52" class="st16" v:langID="1033"><v:paragraph v:horizAlign="1"/><v:tabList/>tx pkt_buf </text>		</g>
 		<g id="shape60-134" v:mID="60" v:groupContext="shape" transform="translate(423.668,-163.102)">
 			<title>Sheet.60</title>
-			<desc> I3CMCTPDevice</desc>
+			<desc>MCTPI3CBinding</desc>
 			<v:textBlock v:margins="rect(4,4,4,4)"/>
 			<v:textRect cx="68.7744" cy="729.832" width="137.55" height="21.6"/>
 			<rect x="0" y="719.032" width="137.549" height="21.6" class="st10"/>
-			<text x="19.4" y="734.63" class="st22" v:langID="1033"><v:paragraph v:horizAlign="1"/><v:tabList/> I3CMCTPDevice</text>		</g>
+			<text x="19.4" y="734.63" class="st22" v:langID="1033"><v:paragraph v:horizAlign="1"/><v:tabList/>MCTPI3CBinding</text>		</g>
 		<g id="shape61-137" v:mID="61" v:groupContext="shape" v:layerMember="0"
 				transform="translate(924.898,388.6) rotate(82.5117)">
 			<title>Line-curve connector.61</title>

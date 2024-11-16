@@ -394,11 +394,11 @@
 		</g>
 		<g id="shape39-129" v:mID="39" v:groupContext="shape" transform="translate(423.669,-164.297)">
 			<title>Sheet.39</title>
-			<desc> I3CMCTPDevice</desc>
+			<desc>MCTPI3CBinding</desc>
 			<v:textBlock v:margins="rect(4,4,4,4)"/>
 			<v:textRect cx="70.704" cy="731.034" width="141.41" height="21.6"/>
 			<rect x="0" y="720.234" width="141.408" height="21.6" class="st8"/>
-			<text x="21.33" y="735.83" class="st19" v:langID="1033"><v:paragraph v:horizAlign="1"/><v:tabList/> I3CMCTPDevice</text>		</g>
+			<text x="21.33" y="735.83" class="st19" v:langID="1033"><v:paragraph v:horizAlign="1"/><v:tabList/>MCTPI3CBinding</text>		</g>
 		<g id="shape40-132" v:mID="40" v:groupContext="shape" transform="translate(83.7415,-83.4196)">
 			<title>Rectangle.132</title>
 			<v:userDefs>
