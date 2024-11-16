@@ -292,11 +292,14 @@ pub fn runtime_build_with_apps() -> Result<(), DynError> {
     let runtime_bin = target_binary("runtime.bin");
 
     // build once to get the size of the runtime binary without apps
-    runtime_build_no_apps(app_offset + 0x2_0000)?;
+    runtime_build_no_apps(RUNTIME_START + 0x2_0000)?;
 
-    app_offset += std::fs::metadata(&runtime_bin)?.len() as usize;
+    let runtime_bin_size = std::fs::metadata(&runtime_bin)?.len() as usize;
+    app_offset += runtime_bin_size;
+    let runtime_end_offset = app_offset;
     app_offset += BSS_SIZE; // it's not clear why this is necessary as the BSS should be part of .sram, but the linker fails without this
     app_offset = app_offset.next_multiple_of(4096); // align to 4096 bytes. Needed for rust-lld
+    let padding = app_offset - runtime_end_offset - INTERRUPT_TABLE_SIZE;
 
     // now re-link and place the apps after the runtime binary
     runtime_build_no_apps(app_offset)?;
@@ -308,6 +311,7 @@ pub fn runtime_build_with_apps() -> Result<(), DynError> {
     // now build the apps starting at the correct offset
     let apps_bin = apps_build_flat_tbf(app_offset)?;
     println!("Apps built: {} bytes", apps_bin.len());
+    bin.extend_from_slice(vec![0; padding].as_slice());
     bin.extend_from_slice(&apps_bin);
     std::fs::write(&runtime_bin, &bin)?;
 

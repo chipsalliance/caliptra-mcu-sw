@@ -90,6 +90,7 @@ fn app_build_tbf(app: &App, start: usize) -> Result<Vec<u8>, DynError> {
     // concatenate the TBF header and the binary
     let mut bin = vec![];
     bin.extend_from_slice(&tbf.into_inner());
+    println!("TBF header: {:?}", bin);
     bin.extend_from_slice(&b);
     Ok(bin)
 }

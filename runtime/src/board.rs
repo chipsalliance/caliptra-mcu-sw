@@ -38,11 +38,15 @@ const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
 /// Dummy buffer that causes the linker to reserve enough space for the stack.
 #[no_mangle]
 #[link_section = ".stack_buffer"]
-pub static mut STACK_MEMORY: [u8; 0x900] = [0; 0x900];
+pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
 
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
 struct VeeR {
+    alarm: &'static capsules_core::alarm::AlarmDriver<
+        'static,
+        VirtualMuxAlarm<'static, InternalTimers<'static>>,
+    >,
     console: &'static capsules_core::console::Console<'static>,
     scheduler: &'static CooperativeSched<'static>,
     scheduler_timer:
@@ -56,6 +60,7 @@ impl SyscallDriverLookup for VeeR {
         F: FnOnce(Option<&dyn kernel::syscall::SyscallDriver>) -> R,
     {
         match driver_num {
+            capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
             _ => f(None),
         }
@@ -218,6 +223,7 @@ pub unsafe fn main() {
     );
 
     let veer = VeeR {
+        alarm,
         console,
         scheduler,
         scheduler_timer,
