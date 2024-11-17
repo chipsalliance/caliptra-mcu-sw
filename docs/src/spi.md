@@ -7,21 +7,27 @@ The SPI flash stack in the Caliptra MCU firmware is designed to provide efficien
 ## SPI Flash Configurations
 
 The SPI flash stack supports various configurations to cater to different use cases and hardware setups. The diagram below shows the flash configurations supported.
-![flash_config](images/flash_config.svg)
+
+<p align="center">
+    <img src="images/flash_config.svg" alt="flash_config">
+</p>
+
 **1. Single-Flash Configuration**
 In this setup, a single SPI flash device is connected to the flash controller. Typically, the flash device is divided into two halves: the first half serves as the primary flash, storing the active running firmware image, while the second half is designated as the recovery flash, containing the recovery image. Additional partitions, such as a staging area for firmware updates, flash storage for certificates and debug logging, can also be incorporated into the primary flash.
 
 **2. Dual-Flash Configuration**
 In this setup, two SPI flash devices are connected to the same flash controller using different chip selects. This configuration provides increased storage capacity and redundancy. Typically, flash device 0 serves as the primary flash, storing the active running firmware image and additional partitions such as a staging area for firmware updates, flash store for certificates and debug logging. Flash device 1 is designated as the recovery flash, containing the recovery image.
 
-**3. Multiple Flash Configuration**
+**3. Multi-Flash Configuration**
 In more complex systems, multiple flash controllers may be used, each with one or more SPI flash devices. This configuration provides flexibility and scalability. For example, a backup flash can be added to recover the SoC and provide more resiliency for the system.
 
 ## Architecture
 
-The SPI flash stack design leverages TockOS's kernel space support for the SPI host, SPI flash device, and associated virtualizer layers. Our reference implementation employs the OpenTitan SPI host controller IP as the peripheral hardware. The stack, from top to bottom, comprises the flash userland API, flash partition capsule, SPI flash driver capsule, flash virtualizer, SPI Master virtualizer, and OpenTitan SPI host driver. This architecture can be extended to accommodate vendor-specific flash controller hardware. The SPI flash driver capsule and SPI host driver will be replaced by flash controller driver and associated virtualizer layer.
+The SPI flash stack design leverages TockOS's kernel space support for the SPI host, SPI flash device and associated virtualizer layers. Our reference implementation employs the OpenTitan SPI host controller IP as the peripheral hardware. The stack, from top to bottom, comprises the flash userland API, flash partition capsule, SPI flash driver capsule, flash virtualizer, SPI virtualizer, and OpenTitan SPI host driver. SPI flash stack architecture with dual-flash configuration is shown in the diagram below.
 
-![alt text](images/flash_stack.png)
+<p align="center">
+    <img src="images/spi_flash_stack.svg" alt="SPI flash stack architecture diagram">
+</p>
 
 - Flash Userland API
   - Provides syscall library for userspace applications to issue IO requests (read, write, erase) to flash devices. Userspace application will instantiate the syscall library with unique driver number for individual flash partition.
@@ -40,6 +46,8 @@ The SPI flash stack design leverages TockOS's kernel space support for the SPI h
 
 - SPI Host Driver (Vendor-specific)
   - Provides the functionality needed to control an SPI bus as a master device. It defines the memory-mapped registers for the SPI hardware, provides methods to configure the SPI bus settings, such as clock polarity and phase and to initiate read, write, and transfer operations. It implements the `SpiMaster` trait, providing methods for reading from, writing to, and transferring data over the SPI bus. It handles the completion of SPI operations by invoking client callbacks, allowing higher-level components to be notified when an SPI operation completes.
+
+This architecture can be extended to accommodate vendor-specific flash controller hardware. The SPI flash driver capsule and SPI host driver will be replaced by flash controller driver capsule and associated virtualizer layer.
 
 ## Common Interfaces
 
