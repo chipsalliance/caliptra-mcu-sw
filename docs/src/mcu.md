@@ -27,9 +27,9 @@ The overall architecture for the MCU firmware stack is thought of in layers.
 ```mermaid
 block-beta
   columns 3
-  pldm&nbsp;app
-  spdm&nbsp;app
-  other&nbsp;apps...
+  mcu&nbsp;app&nbsp;1
+  mcu&nbsp;app&nbsp;2
+  ...
   mctp&nbsp;api:2
   space:1
   tock&nbsp;kernel:3
