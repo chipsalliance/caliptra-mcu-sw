@@ -92,7 +92,7 @@ This is the package bundle for the Caliptra FMC + RT defined in [Caliptra Firmwa
 
 ## Component 2 - SOC Manifest
 
-This is the SOC Manifest defined in [SOC Manifest](https://github.com/chipsalliance/caliptra-sw/blob/main-2.x/auth-manifest/README.md)).
+This is the SOC Manifest defined in [SOC Manifest](https://github.com/chipsalliance/caliptra-sw/blob/main-2.x/auth-manifest/README.md).
 
 It provides the signature verification and specific data needed to decode the image.
 
