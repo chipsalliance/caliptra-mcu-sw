@@ -381,13 +381,13 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, Dyn
         let a1 = hex_literal(offset + r.offset + 1);
         let a3 = hex_literal(offset + r.offset + 3);
         if has_single_32_bit_field(&r.ty) {
-            if r.ty.fields[0].ty.can_write() {
+            if r.ty.fields[0].ty.can_read() {
                 read_tokens.extend(quote! {
                     (emulator_types::RvSize::Word, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name())),
                     (emulator_types::RvSize::Word, #a1 ..= #a3) => Err(emulator_bus::BusError::LoadAddrMisaligned),
                 });
             }
-            if r.ty.fields[0].ty.can_read() {
+            if r.ty.fields[0].ty.can_write() {
                 write_tokens.extend(quote! {
                     (emulator_types::RvSize::Word, #a) => {
                         self.periph.#write_name(val);
@@ -535,7 +535,7 @@ fn emu_make_root_bus<'a>(
         read_tokens.extend(quote! {
             #a..=#b => {
                 if let Some(periph) = self.#periph_field.as_mut() {
-                    periph.read(size, addr)
+                    periph.read(size, addr - #a)
                 } else {
                     Err(emulator_bus::BusError::LoadAccessFault)
                 }
@@ -544,7 +544,7 @@ fn emu_make_root_bus<'a>(
         write_tokens.extend(quote! {
             #a..=#b => {
                 if let Some(periph) = self.#periph_field.as_mut() {
-                    periph.write(size, addr, val)
+                    periph.write(size, addr - #a, val)
                 } else {
                     Err(emulator_bus::BusError::StoreAccessFault)
                 }

@@ -363,6 +363,12 @@ impl emulator_bus::Bus for Sha512AccBus {
             (emulator_types::RvSize::Word, 1..=3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
+            (emulator_types::RvSize::Word, 4) => {
+                Ok(emulator_types::RvData::from(self.periph.read_id()))
+            }
+            (emulator_types::RvSize::Word, 5..=7) => {
+                Err(emulator_bus::BusError::LoadAddrMisaligned)
+            }
             (emulator_types::RvSize::Word, 8) => Ok(emulator_types::RvData::from(
                 self.periph.read_mode().reg.get(),
             )),
@@ -397,6 +403,12 @@ impl emulator_bus::Bus for Sha512AccBus {
                 self.periph.read_status().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x1d..=0x1f) => {
+                Err(emulator_bus::BusError::LoadAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x20) => {
+                Ok(emulator_types::RvData::from(self.periph.read_digest()))
+            }
+            (emulator_types::RvSize::Word, 0x21..=0x23) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x60) => Ok(emulator_types::RvData::from(
@@ -564,13 +576,6 @@ impl emulator_bus::Bus for Sha512AccBus {
             (emulator_types::RvSize::Word, 1..=3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 4) => {
-                self.periph.write_id(val);
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 5..=7) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
             (emulator_types::RvSize::Word, 8) => {
                 self.periph
                     .write_mode(emulator_bus::ReadWriteRegister::new(val));
@@ -614,13 +619,6 @@ impl emulator_bus::Bus for Sha512AccBus {
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1d..=0x1f) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x20) => {
-                self.periph.write_digest(val);
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 0x21..=0x23) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x60) => {

@@ -97,6 +97,12 @@ impl emulator_bus::Bus for MboxBus {
             (emulator_types::RvSize::Word, 1..=3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
+            (emulator_types::RvSize::Word, 4) => {
+                Ok(emulator_types::RvData::from(self.periph.read_id()))
+            }
+            (emulator_types::RvSize::Word, 5..=7) => {
+                Err(emulator_bus::BusError::LoadAddrMisaligned)
+            }
             (emulator_types::RvSize::Word, 8) => {
                 Ok(emulator_types::RvData::from(self.periph.read_cmd()))
             }
@@ -155,13 +161,6 @@ impl emulator_bus::Bus for MboxBus {
                 Ok(())
             }
             (emulator_types::RvSize::Word, 1..=3) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 4) => {
-                self.periph.write_id(val);
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 5..=7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 8) => {

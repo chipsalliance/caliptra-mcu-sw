@@ -1237,6 +1237,12 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xc1..=0xc3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
+            (emulator_types::RvSize::Word, 0xc4) => Ok(emulator_types::RvData::from(
+                self.periph.read_cptra_generic_input_wires(),
+            )),
+            (emulator_types::RvSize::Word, 0xc5..=0xc7) => {
+                Err(emulator_bus::BusError::LoadAddrMisaligned)
+            }
             (emulator_types::RvSize::Word, 0xcc) => Ok(emulator_types::RvData::from(
                 self.periph.read_cptra_generic_output_wires(),
             )),
@@ -1339,18 +1345,6 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0x121..=0x123) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x200) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_uds_seed(),
-            )),
-            (emulator_types::RvSize::Word, 0x201..=0x203) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x230) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_field_entropy(),
-            )),
-            (emulator_types::RvSize::Word, 0x231..=0x233) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
             (emulator_types::RvSize::Word, 0x250) => Ok(emulator_types::RvData::from(
                 self.periph.read_fuse_key_manifest_pk_hash(),
             )),
@@ -1421,12 +1415,6 @@ impl emulator_bus::Bus for SocBus {
                 self.periph.read_fuse_soc_stepping_id().reg.get(),
             )),
             (emulator_types::RvSize::Word, 0x349..=0x34b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x600) => Ok(emulator_types::RvData::from(
-                self.periph.read_internal_obf_key(),
-            )),
-            (emulator_types::RvSize::Word, 0x601..=0x603) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x620) => Ok(emulator_types::RvData::from(
@@ -1976,13 +1964,6 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xc1..=0xc3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xc4) => {
-                self.periph.write_cptra_generic_input_wires(val);
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 0xc5..=0xc7) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
             (emulator_types::RvSize::Word, 0xcc) => {
                 self.periph.write_cptra_generic_output_wires(val);
                 Ok(())
@@ -2112,6 +2093,20 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0x121..=0x123) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
+            (emulator_types::RvSize::Word, 0x200) => {
+                self.periph.write_fuse_uds_seed(val);
+                Ok(())
+            }
+            (emulator_types::RvSize::Word, 0x201..=0x203) => {
+                Err(emulator_bus::BusError::StoreAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x230) => {
+                self.periph.write_fuse_field_entropy(val);
+                Ok(())
+            }
+            (emulator_types::RvSize::Word, 0x231..=0x233) => {
+                Err(emulator_bus::BusError::StoreAddrMisaligned)
+            }
             (emulator_types::RvSize::Word, 0x250) => {
                 self.periph.write_fuse_key_manifest_pk_hash(val);
                 Ok(())
@@ -2200,6 +2195,13 @@ impl emulator_bus::Bus for SocBus {
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x349..=0x34b) => {
+                Err(emulator_bus::BusError::StoreAddrMisaligned)
+            }
+            (emulator_types::RvSize::Word, 0x600) => {
+                self.periph.write_internal_obf_key(val);
+                Ok(())
+            }
+            (emulator_types::RvSize::Word, 0x601..=0x603) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x620) => {
