@@ -240,7 +240,7 @@ The following are the list of system calls provided by the MCTP Capsule.
         - Description: Used to set up the Tx buffer for sending the MCTP Request/Response message payload.
         - Argument: Slice containing the MCTP message payload to be transmitted.
 
-3. Subsribe
+3. Subscribe
     - Subscribe number 0: 
         - Description: Callback when message is received.
         - Argument 1: The callback
@@ -252,7 +252,7 @@ The following are the list of system calls provided by the MCTP Capsule.
 
 4. Command
     - Command number 0:
-        - Description: Existance check
+        - Description: Existence check
         - Arguments: 
     - Command number 1:
         - Description: Receive Request
@@ -364,9 +364,9 @@ If the message originates from the device (with `msg_tag` = 0x8), a new msg_tag 
 For response messages, where `msg_tag` values range between 0 and 7, the same value is used to encapsulate the MCTP transport header on each packet.
 
 MCTP Mux layer is the single receive client for the MCTP Device Layer. This layer is instantiated with a single contiguous buffer for Rx packet of size `kernel::hil:i3c::MAX_TRANSMISSION_UNIT`.
-The Rx buffer is provided to the I3C targer driver layer to receive the packets when the I3C controller initiates a private write transfer to the I3C Target. 
+The Rx buffer is provided to the I3C target driver layer to receive the packets when the I3C controller initiates a private write transfer to the I3C Target. 
 
-The vitualized upper layer ensures that only one message is transmitted per driver instance at a time. Receive is event based. The received packet in the rx buffer is matched against the pending receive requests by the use
+The virtualized upper layer ensures that only one message is transmitted per driver instance at a time. Receive is event based. The received packet in the Rx buffer is matched against the pending receive requests by the use
 
 ```Rust
 /// The MUX struct manages multiple MCTP driver users (clients).
