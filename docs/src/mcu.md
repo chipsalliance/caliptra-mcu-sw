@@ -1,53 +1,96 @@
-# MCU General Overview
+# Caliptra Manufacturer Control Unit (MCU) Firmware and SDK
 
-The Caliptra Manufacturer Control Unit (MCU) is the microcontroller and related hardware that work with the Caliptra core to provide the Caliptra Subsystem set of services to the encompassing system.
+The Caliptra MCU firmware is be provided as a reference software development kit (SDK) with a consistent foundation for building a quantum-resilient and standards-compliant Root of Trust (RoT) for SoC implementers. It extends the Caliptra core system to provide the Caliptra Subsystem set of services to the encompassing system.
 
-The main responsibilities of the MCU are:
+While Caliptra Core provides support for Identity, Secure Boot, Measured Boot, and Attestation, the Caliptra MCU firmware will be responsible for enabling Recovery, RoT Services, and Platform integration support. All SoC RoTs have specific initialization sequences and scenarios that need to be supported beyond standard RoT features. Hence, the MCU firmware will be distributed as Rust SDK with batteries included to build RoT Applications.
 
-* Loading firmware that is authenticated by Caliptra
-* Providing SPDM attestation services
-* Programming and reading of fuses (OTP)
-* Enabling Device Ownership Transfer services
-* Supporting anti-rollback mechanisms
+The Caliptra MCU SDK is composed of two major parts:
 
-## ROM
+**ROM**:  When the MCU first boots, it executes a small, bare metal ROM. The ROM is responsible for sending non-secret fuses to Caliptra core so that it can complete booting. The MCU ROM will be silicon-integrator-specific. However, the MCU SDK will provide a ROM framework that binds the MCU and Caliptra. The ROM will also be used with the software emulator, RTL Simulator, and FPGA stacks. For more details, see the [ROM specification](rom.md).
 
-When the MCU first boots, it executes a small, bare metal ROM.
-The ROM is responsible for sending non-secret fuses to Caliptra core so that it can complete booting and performing some additional hardware initialization.
+**Runtime**: The majority of the MCU firmware SDK is the runtime firmware, which provides the majority of the services after booting. Most of the documentation here consists of the documentation for the runtime.
 
-For more details, see the [ROM specification](rom.md).
+## Principles
 
-## Runtime Firmware Architecture Overview
+Caliptra 2.x firmware aspires to be the foundation for the RoT used in SoCs integrating Caliptra. Hence architecture, design and implementation must abide by certain guiding principles. Many of these principles are the founding principles for the Caliptra Project.
 
-The MCU firmware is based on the [Tock](https://tockos.org/) real-time, embedded operation system. Tock provides the ability for us to run multiple high-level applications concurrently and securely.
-For more specific information on how Tock internals work, please see the [Tock kernel documentation](https://book.tockos.org/doc/overview).
+The MCU firmware SDK will follow the same principles as the Caliptra core's firmware.
 
-The overall architecture for the MCU firmware stack is thought of in layers.
+* **Open and Extensible**: The MCU SDK is published as open source and available via GitHub, and uses a build toolchain for repeatable builds. The MCU SDK provided is a reference implementation, and is intended to be extended and adaptable by integrators.
 
-```mermaid
-block-beta
-  columns 3
-  mcu&nbsp;app&nbsp;1
-  mcu&nbsp;app&nbsp;2
-  ...
-  mctp&nbsp;api:2
-  space:1
-  tock&nbsp;kernel:3
-  caliptra&nbsp;mailbox&nbsp;capsule
-  mctp&nbsp;capsule
-  space:1
-  mailbox&nbsp;driver
-  i3c&nbsp;driver
-  VeeR&nbsp;chip
-  mcu&nbsp;board:3
-```
+* **Consistent**: Vendors require features like Identity, Secure Boot, Measured Boot, Attestation, Recovery, Update, Anti-Rollback, and ownership transfer. There are standards defined by various organizations around these feature areas. The MCU SDK will follow TCG, DMTF, OCP, PCIe and other standards to guarantee consistency on RoT features and behavior.
 
-* At the highest layer are the user-mode **applications** that run specific flows that are relevant for vendors. These run more complex, dynamic protocols, like PLDM and SPDM.
-* These interact with common **user-mode APIs** for protocols like MCTP. These handle the details of converting low-level system calls to the Tock kernel and capsules into synchronous and asynchronous APIs.
-  * Neither the applications nor the user-mode APIs have the ability to access hardware directly.
-* The Tock **kernel** is responsible for scheduling the applications and routing system calls to the appropriate capsules. Everything at the Tock kernel level and below execute in machine mode with full privileges.
-* The **capsules** are Tock kernel modules that implement specific specific workflows and capabilities, like using the MCTP stack or accessing the Caliptra mailbox.
-  * Everything at the capsule layer and above should be independent of the hardware specifics. Everything below the capsule layer is specific to the hardware implementations.
-* The capsules in turn talk to specific **drivers**. These are generally implementations of specific Rust traits, like Tock HILs, that provide access to hardware.
-* Two of the most fundamental pieces of Rust code sit at the bottom: the chip and board files. The **chip file** contains microcontroller-specific code, such as dealing with interrupts, can should be able to be reused on different boards that use the same microcontroller.
-* The **board file** is the heart of Tock: it is the `main()` function, and is responsible for creating and initializing all of the hardware drivers, the chip file, creating the Tock kernel, loading and configuring the capsules, and starting the main execution loop.
+* **Compliant**: The MCU SDK must be compliant with security standards and audits. Security audits will be performed and audit reports will be published on GitHub. In addition, the SDK will also be audited for OCP SAFE and short form reports will be published to GitHub.
+
+* **Secure and Safe Code**: The MCU SDK will follow the standards in Caliptra Core for security and memory safety as first principle and will be implemented in Rust.
+
+## SDK Features
+
+The following sections give a short overview of the features and goals of the MCU SDK.
+
+### Development
+
+Software emulators for Caliptra, MCU, and a reference SoC will be provided as part of the MCU SDK. Software emulators will be an integrated part of CI/CD pipelines. In addition, Caliptra also has RTL Simulators based on Verilator that can be used for regression testing. The Caliptra hardware team also has reference hardware running on FPGA platforms.
+
+### RTOS
+
+MCU provides various simultaneous, complex RoT services. Hence an RTOS is needed. As the MCU SDK is implemented in Rust, we need Rust-based RTOS. MCU will leverage the Tock Embedded Operating System, an RTOS designed for secure embedded systems. MCU uses the Tock Kernel while providing a Caliptra async user mode API surface area. Tock provides a good security and isolation model to build an ROT stack.
+
+### Drivers
+
+Tock has a clean user and kernel mode separation. Components that directly access hardware and provide abstractions to user mode are implemented as Tock drivers and capsules (kernel modules). The MCU SDK will provide the following drivers:
+
+* UART Driver
+* I3C Driver
+* Fuse Controller Driver
+* Caliptra Mailbox Driver
+* MCI Mailbox Driver
+* SPI Flash Driver (may be replaced by a silicon-specific flash driver)
+
+Silicon integrators may provide their own drivers to implement SoC-specific features that are not provided by the MCU SDK. For example, if an SoC implements TEE-IO, the silicon vendor will be responsible for providing PCIe IDE and TDISP drivers.
+
+### Stacks
+
+As the Caliptra RoT is built on the foundation of industry standard protocols, the MCU SDK will provide the following stacks:
+
+* MCTP
+* PLDM
+* PLDM Firmware Update
+* OCP Streaming Boot
+* SPDM based Attestation
+* PCIe IDE
+* TDISP
+* SPI Flash Boot
+
+### APIs and Services
+
+Caliptra RoT will provide common foundational services and APIs required to be implemented by all RoT. The following are the APIs and services provided by MCU SDK:
+
+* Image Loading
+* Attestation
+* Signing Key management and revocation
+* Anti-Rollback protection
+* Firmware Update
+* Life Cycle Management
+* Secure Debug Unlock
+* Ownership Transfer
+* Cryptographic API
+* Certificate Store
+* Key-Value Store
+* Logging and Tracing API
+
+### Applications
+
+Each SoC has unique features and may need a subset of security services. Hence silicon integrators will be responsible for authoring ROT applications leveraging MCU SDK. MCU SDK will ship with a set of applications that will demonstrate the features of the MCU SDK.
+
+### Tooling and Documentation
+
+The MCU SDK will feature
+
+* Repeatable build environments to build RoT Applications
+* Image generation, verification, and signing tools
+* Libraries for interacting with Caliptra ROT to perform various functions like attestation, firmware updates, log retrieval, etc.
+* An MCU SDK Architecture and Design Specifications
+* An MCU SDK Developers' Guide
+* An MCU SDK Integrators' Guide
+* The MCU SDK API
