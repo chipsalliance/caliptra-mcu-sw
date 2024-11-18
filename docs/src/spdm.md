@@ -9,7 +9,46 @@ The Security Protocol and Data Model (SPDM) is a protocol designed to ensure sec
 | SPDM over MCTP Binding Specification            | [DSP0275](https://www.dmtf.org/sites/default/files/standards/documents/DSP0275_1.0.2.pdf)  |
 | Secured Messages using SPDM over MCTP Binding   | [DSP0276](https://www.dmtf.org/sites/default/files/standards/documents/DSP0276_1.2.0.pdf)  |
 
-## SPDM Protocol Sequence ![SPDM Protocl Sequence](images/spdm_protocol_sequence.png)
+## SPDM Protocol Sequence
+```mermaid
+sequenceDiagram
+    participant Requester
+    participant Responder
+
+    Requester->>Responder: GetVersion
+    Responder-->>Requester: Version
+    Requester->>Responder: GetCapabilities
+    Responder-->>Requester: Capabilities
+    Requester->>Responder: NegotiateAlgorithms
+    Responder-->>Requester: Algorithms
+    opt If supported
+        Requester->>Responder: GetDigests
+        Responder-->>Requester: Digests
+    end
+    opt If needed
+        Requester->>Responder: GetCertificate
+        Responder-->>Requester: Certificate
+    end
+    opt If supported
+        Requester->>Responder: Challenge
+        Responder-->>Requester: ChallengeAuth
+    end
+    opt If supported
+        Requester->>Responder: GetMeasurements
+        Responder-->>Requester: Measurements
+    end
+    opt If supported
+        Requester->>Responder: KeyExchange
+        Responder-->>Requester: KeyExchangeRsp
+    end
+    rect rgb(255, 255, 204)
+        note right of Requester: Secure Session
+        opt If supported
+            Requester->>Responder: Finish
+            Responder-->>Requester: FinishRsp
+        end
+    end
+```
 
 ## Class Diagram
 
