@@ -12,7 +12,7 @@ Abstract:
 
 --*/
 
-use crate::{EmuCtrl, Otp, Uart};
+use crate::{spi_host::SpiHost, EmuCtrl, Otp, Uart};
 use emulator_bus::{Clock, Ram, Rom};
 use emulator_cpu::{Pic, PicMmioRegisters};
 use emulator_derive::Bus;
@@ -30,7 +30,6 @@ pub struct CaliptraRootBusArgs {
     pub clock: Rc<Clock>,
     pub rom: Vec<u8>,
     pub firmware: Vec<u8>,
-    pub apps: Vec<u8>,
     pub log_dir: PathBuf,
     pub uart_output: Option<Rc<RefCell<Vec<u8>>>>,
     pub otp_file: Option<PathBuf>,
@@ -41,6 +40,9 @@ pub struct CaliptraRootBusArgs {
 pub struct CaliptraRootBus {
     #[peripheral(offset = 0x0000_0000, len = 0xc000)]
     pub rom: Rom,
+
+    #[peripheral(offset = 0x2000_0000, len = 0x40)]
+    pub spi: SpiHost,
 
     #[peripheral(offset = 0x2000_1000, len = 0x100)]
     pub uart: Uart,
@@ -74,13 +76,12 @@ impl CaliptraRootBus {
         let mut iccm = Ram::new(vec![0; Self::RAM_SIZE]);
         // copy runtime firmware into ICCM
         iccm.data_mut()[0x80..0x80 + args.firmware.len()].copy_from_slice(&args.firmware);
-        // copy applications firmware into ICCM
-        iccm.data_mut()[0x2_0000..0x2_0000 + args.apps.len()].copy_from_slice(&args.apps);
 
         Ok(Self {
             rom,
             iccm,
             dccm: Ram::new(vec![0; Self::RAM_SIZE]),
+            spi: SpiHost::new(&clock.clone()),
             uart: Uart::new(args.uart_output, args.uart_rx, uart_irq, &clock.clone()),
             ctrl: EmuCtrl::new(),
             otp: Otp::new(&clock.clone(), args.otp_file)?,

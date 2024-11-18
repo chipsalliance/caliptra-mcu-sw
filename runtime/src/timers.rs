@@ -188,7 +188,7 @@ impl kernel::platform::scheduler_timer::SchedulerTimer for InternalTimers<'_> {
     }
 
     fn get_remaining_us(&self) -> Option<u32> {
-        // We need to convert from native tics to us, multiplication could overflow in 32-bit
+        // We need to convert from native ticks to us, multiplication could overflow in 32-bit
         // arithmetic. So we convert to 64-bit.
         let diff = self.get_alarm().wrapping_sub(self.now()).into_u64();
 

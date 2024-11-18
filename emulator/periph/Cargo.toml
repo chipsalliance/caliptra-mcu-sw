@@ -18,3 +18,5 @@ lazy_static.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tock-registers.workspace = true
+zerocopy.workspace = true
+num_enum.workspace = true

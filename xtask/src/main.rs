@@ -18,6 +18,7 @@ mod registers;
 mod rom;
 mod runtime;
 mod runtime_build;
+mod tbf;
 mod test;
 
 #[derive(Parser)]
@@ -83,7 +84,7 @@ fn main() {
     let cli = Xtask::parse();
     let result = match &cli.xtask {
         Commands::Runtime { trace } => runtime::runtime_run(*trace),
-        Commands::RuntimeBuild => runtime_build::runtime_build(),
+        Commands::RuntimeBuild => runtime_build::runtime_build_with_apps(),
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild => rom::rom_build(),
         Commands::Clippy => clippy::clippy(),

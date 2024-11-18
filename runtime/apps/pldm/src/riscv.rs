@@ -27,7 +27,7 @@ const HEAP_SIZE: usize = 0x40;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-stack_size! {0x1000}
+stack_size! {0x900}
 set_main! {main}
 
 // copied from libtock-rs/demos/st7789-slint/src/main.rs
@@ -54,7 +54,8 @@ fn main() {
     unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
 
     let mut console_writer = Console::writer();
-    writeln!(console_writer, "Hello world! from main\r").unwrap();
+    writeln!(console_writer, "Hello world! from main").unwrap();
+
     // Safety: we are upgrading the lifetime of this executor. This is safe because main() lives forever
     // and never returns, so the executor is never dropped.
     let mut executor = TockExecutor::new();
@@ -69,13 +70,27 @@ fn init(spawner: Spawner) {
 #[embassy_executor::task]
 async fn async_main() {
     let mut console_writer = Console::writer();
-    writeln!(console_writer, "Hello async world!\r").unwrap();
+    writeln!(console_writer, "Hello async world!").unwrap();
 
-    for _ in 0..20 {
-        writeln!(console_writer, "Sleeping for 10 millisecond\r").unwrap();
+    match AsyncAlarm::<TockSyscalls>::exists() {
+        Ok(()) => {}
+        Err(e) => {
+            writeln!(
+                console_writer,
+                "Alarm capsule not available, so skipping sleep loop: {:?}",
+                e
+            )
+            .unwrap();
+            return;
+        }
+    };
+
+    for _ in 0..5 {
+        writeln!(console_writer, "Sleeping for 10 millisecond").unwrap();
         sleep(Milliseconds(10)).await;
-        writeln!(console_writer, "async sleeper woke\r").unwrap();
+        writeln!(console_writer, "async sleeper woke").unwrap();
     }
+    writeln!(console_writer, "app finished").unwrap();
 }
 
 // -----------------------------------------------------------------------------
@@ -103,7 +118,7 @@ mod subscribe {
 
 async fn sleep(time: Milliseconds) {
     let x = AsyncAlarm::<TockSyscalls>::sleep_for(time).await;
-    writeln!(Console::writer(), "Async sleep done {:?}\r", x).unwrap();
+    writeln!(Console::writer(), "Async sleep done {:?}", x).unwrap();
 }
 
 pub struct AsyncAlarm<S: Syscalls, C: platform::subscribe::Config = DefaultConfig>(S, C);
@@ -135,11 +150,12 @@ impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
         Ok(ticks.saturating_div(freq / 1000))
     }
 
-    pub async fn sleep_for<T: Convert>(time: T) -> Result<(), ErrorCode> {
-        let freq = Self::get_frequency()?;
-        let ticks = time.to_ticks(freq);
+    pub async fn sleep_for<T: Convert>(_time: T) -> Result<(), ErrorCode> {
+        // TODO: this seems to never return, so we just sleep for 1 tick
+        // let freq = Self::get_frequency()?;
+        // let ticks = time.to_ticks(freq);
         let sub = TockSubscribe::subscribe::<S>(DRIVER_NUM, 0);
-        S::command(DRIVER_NUM, command::SET_RELATIVE, ticks.0, 0)
+        S::command(DRIVER_NUM, command::SET_RELATIVE, 1, 0)
             .to_result()
             .map(|_when: u32| ())?;
         sub.await.map(|_| ())
@@ -241,7 +257,7 @@ impl Drop for TockSubscribe {
         if self.result.get().is_none() && self.error.is_none() {
             writeln!(
                 Console::writer(),
-                "PANIC: The TockSubscribe future was dropped before the upcall happened.\r"
+                "PANIC: The TockSubscribe future was dropped before the upcall happened."
             )
             .unwrap();
             panic!("The TockSubscribe future was dropped before the upcall happened.");

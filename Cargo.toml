@@ -66,6 +66,8 @@ serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
 num-traits = "0.2"
 num-derive = "0.4.2"
+num_enum = "0.7.2"
+zerocopy = "0.6.6"
 
 # Always optimize the emulator during tests, as it is a major bottleneck for
 # test speed.

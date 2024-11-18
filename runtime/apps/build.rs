@@ -13,7 +13,6 @@ Abstract:
 --*/
 
 fn main() {
+    println!("cargo:rerun-if-changed=app_layout.ld");
     println!("cargo:rerun-if-changed=layout.ld");
-    println!("cargo:rerun-if-changed=kernel_layout.ld");
-    println!("cargo:rerun-if-changed=src/start.S");
 }
