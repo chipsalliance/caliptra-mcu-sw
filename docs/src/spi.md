@@ -23,7 +23,7 @@ In more complex systems, multiple flash controllers may be used, each with one o
 
 ## Architecture
 
-The SPI flash stack design leverages TockOS's kernel space support for the SPI host, SPI flash device and associated virtualizer layers. Our reference implementation employs the OpenTitan SPI host controller IP as the peripheral hardware. The stack, from top to bottom, comprises the flash userland API, flash partition capsule, SPI flash driver capsule, flash virtualizer, SPI virtualizer, and OpenTitan SPI host driver. SPI flash stack architecture with dual-flash configuration is shown in the diagram below.
+The SPI flash stack design leverages TockOS's kernel space support for the SPI host, SPI flash device and associated virtualizer layers. One possible reference implementation is to employ OpenTitan SPI host controller IP as the peripheral hardware. The stack, from top to bottom, comprises the flash userland API, flash partition capsule, SPI flash driver capsule, flash virtualizer, SPI virtualizer, and OpenTitan SPI host driver. SPI flash stack architecture with dual-flash configuration is shown in the diagram below.
 
 <p align="center">
     <img src="images/spi_flash_stack.svg" alt="SPI flash stack architecture diagram">
@@ -47,7 +47,11 @@ The SPI flash stack design leverages TockOS's kernel space support for the SPI h
 - SPI Host Driver (Vendor-specific)
   - Provides the functionality needed to control an SPI bus as a master device. It defines the memory-mapped registers for the SPI hardware, provides methods to configure the SPI bus settings, such as clock polarity and phase and to initiate read, write, and transfer operations. It implements the `SpiMaster` trait, providing methods for reading from, writing to, and transferring data over the SPI bus. It handles the completion of SPI operations by invoking client callbacks, allowing higher-level components to be notified when an SPI operation completes.
 
-This architecture can be extended to accommodate vendor-specific flash controller hardware. The SPI flash driver capsule and SPI host driver will be replaced by flash controller driver capsule and associated virtualizer layer.
+This architecture can be extended to accommodate vendor-specific flash controller hardware. The SPI flash driver capsule and SPI host driver will be replaced by flash controller driver capsule and associated virtualizer layer as shown in diagram below.
+
+<p align="center">
+    <img src="images/spi_flash_stack_v2.svg" alt="SPI flash stack architecture 2 diagram">
+</p>
 
 ## Common Interfaces
 
