@@ -13,7 +13,7 @@ The SPI flash stack supports various configurations to cater to different use ca
 </p>
 
 **1. Single-Flash Configuration**
-In this setup, a single SPI flash device is connected to the flash controller. Typically, the flash device is divided into two halves: the first half serves as the primary flash, storing the active running firmware image, while the second half is designated as the recovery flash, containing the recovery image. Additional partitions, such as a staging area for firmware updates, flash storage for certificates and debug logging, can also be incorporated into the primary flash.
+In this setup, a single SPI flash device is connected to the flash controller. Typically, the flash device is divided into two halves: the first half serves as the primary flash, storing the active running firmware image, while the second half is designated as the recovery flash, containing the recovery image. Additional partitions, such as a staging area for firmware updates, flash store for certificates and debug logging can also be incorporated into the primary flash.
 
 **2. Dual-Flash Configuration**
 In this setup, two SPI flash devices are connected to the same flash controller using different chip selects. This configuration provides increased storage capacity and redundancy. Typically, flash device 0 serves as the primary flash, storing the active running firmware image and additional partitions such as a staging area for firmware updates, flash store for certificates and debug logging. Flash device 1 is designated as the recovery flash, containing the recovery image.
@@ -23,7 +23,7 @@ In more complex systems, multiple flash controllers may be used, each with one o
 
 ## Architecture
 
-The SPI flash stack design leverages TockOS's kernel space support for the SPI host, SPI flash device and associated virtualizer layers. One possible reference implementation is to employ OpenTitan SPI host controller IP as the peripheral hardware. The stack, from top to bottom, comprises the flash userland API, flash partition capsule, SPI flash driver capsule, flash virtualizer, SPI virtualizer, and OpenTitan SPI host driver. SPI flash stack architecture with dual-flash configuration is shown in the diagram below.
+The SPI flash stack design leverages TockOS's kernel space support for flash and associated virtualizer layers. The stack, from top to bottom, comprises the flash userland API, flash partition capsule, flash virtualizer and vendor-specific flash controller layer. SPI flash stack architecture with simplified flash controller layer is shown in the diagram below.
 
 <p align="center">
     <img src="images/spi_flash_stack.svg" alt="SPI flash stack architecture diagram">
@@ -35,22 +35,19 @@ The SPI flash stack design leverages TockOS's kernel space support for the SPI h
 - Flash Partition Capsule
   - Defines the flash partition structure with offset and size, providing methods for reading, writing, and erasing arbitrary lengths of data within the partitions. Each partition is logically represented by a `FlashUser`, which leverages the existing flash virtualizer layer to ensure flash operations are serialized and managed correctly. It also implements `SyscallDriver` trait to interact with the userland API.
 
-- SPI Flash Device Driver Capsule
-  - Provides the functionality required to send common flash commands to flash device via `VirtualSpiMaster`. It implements the `kernel::hil::flash::Flash` trait, which defines the standard interface (read, write, erase) page-based operations. Additional methods could be provided in the driver:
-    - Initialize the SPI flash device and configure settings such as clock speed, address mode and other parameters.
-    - Check the status of the flash device, such as whether it is busy or ready for a new operation.
-    - Erase larger regions of flash memory, such as sectors or blocks, in addition to individual pages.
-    - Read the device ID, manufacturer ID or other identifying information from the flash device.
-    - Retrieve information about the flash memory layout, such as the size of pages, sectors, and blocks from SFDP.
-    - Advance read/write operations by performing fast read or write operations using specific commands supported by the flash device.
-
-- SPI Host Driver (Vendor-specific)
-  - Provides the functionality needed to control an SPI bus as a master device. It defines the memory-mapped registers for the SPI hardware, provides methods to configure the SPI bus settings, such as clock polarity and phase and to initiate read, write, and transfer operations. It implements the `SpiMaster` trait, providing methods for reading from, writing to, and transferring data over the SPI bus. It handles the completion of SPI operations by invoking client callbacks, allowing higher-level components to be notified when an SPI operation completes.
-
-This architecture can be extended to accommodate vendor-specific flash controller hardware. The SPI flash driver capsule and SPI host driver will be replaced by flash controller driver capsule and associated virtualizer layer as shown in diagram below.
+- Vendor-specific Flash controller Layer
+  - Flash controller driver implements the `kernel::hil::flash::Flash` trait, which defines the standard interface (read, write, erase) for flash page-based operations.
+    - Additional methods provided in the flash controller driver include:
+      - Initializing the SPI flash device and configuring settings such as clock speed, address mode, and other parameters.
+      - Checking the status of the flash device, such as whether it is busy or ready for a new operation.
+      - Erasing larger regions of flash memory, such as sectors or blocks, in addition to individual pages.
+      - Reading the device ID, manufacturer ID, or other identifying information from the flash device.
+      - Retrieving information about the flash memory layout, such as the size of pages, sectors, and blocks from SFDP.
+      - Performing advanced read/write operations using specific commands supported by the flash device.
+  - A flash controller virtualizer `VirtualFlashCtrl` should be implemented to support the configuration of multiple flash devices connected to the same flash controller via different chip selects. The diagram below shows the stack to enable this scenario.
 
 <p align="center">
-    <img src="images/spi_flash_stack_v2.svg" alt="SPI flash stack architecture 2 diagram">
+    <img src="images/flashctrl_with_virtualizer.svg" alt="flash controller layer with virtualizer">
 </p>
 
 ## Common Interfaces
@@ -372,45 +369,9 @@ impl<'a, F: Flash + 'a> SyscallDriver for FlashPartition<'a, F> {
 }
 ```
 
-### SPI Flash Device Driver Capsule
+### Flash Controller Driver Capsule
 
-Below is a sample interface for the SPI flash device driver under the reference architecture, where flash devices connect to the OpenTitan SPI host controller. This layer can be customized to support vendor-specific flash controller drivers.
-
-```Rust
-/// Represents a SPI flash device.
-///
-/// # Type Parameters
-/// - `'a`: Lifetime of the SPI flash device.
-/// - `S`: A type that implements the `VirtualSpiMasterDevice` trait.
-///
-/// # Sample Methods
-/// - `new(spi: &'a S) -> Self`: Creates a new instance of `SpiFlashDevice`.
-///
-/// - `initialize_device(&self, config: DeviceConfig) -> Result<(), FlashError>`:
-///   Initializes the SPI flash device with the given configuration.
-///
-/// - `device_properties_discovery(&self) -> Result<(), FlashError>`:
-///   Discovers the properties of the SPI flash device from the Serial Flash Discoverable Parameters (SFDP).
-///
-/// - `get_device_id(&self) -> Result<[u8; 3], FlashError>`:
-///   Retrieves the device ID of the SPI flash device.
-///
-/// - `get_device_size(&self) -> Result<u32, FlashError>`:
-///   Retrieves the size of the SPI flash device.
-///
-/// - `process_cmds(&self, cmd: &[u8], response: &mut [u8]) -> Result<(), FlashError>`:
-///   Processes the given command and writes the response to the provided buffer.
-///
-impl<'a, S: VirtualSpiMasterDevice + 'a> SpiFlashDevice<'a, S> {
-    pub fn new(spi: &'a S) -> Self {}
-    pub fn initialize_device(&self, config: DeviceConfig) -> Result<(), FlashError> {}
-    fn device_properties_discovery(&self) -> Result<(), FlashError> {}
-    pub fn get_device_id(&self) -> Result<[u8; 3], FlashError> {}
-    pub fn get_device_size(&self) -> Result<u32, FlashError> {}
-    pub fn process_cmds(&self, cmd: &[u8], response: &mut [u8]) -> Result<(), FlashError> {};
-    ....
-}
-```
+This module is vendor-specific. The common trait to be implemented is within `kernel::hil::flash::Flash`.
 
 ## Flash-based KV store
 
