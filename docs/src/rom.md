@@ -29,11 +29,48 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
 1. Anything SoC-specific can happen here
     1. Stash to Caliptra if required (i.e., if any security-sensitive code is loaded, such as PLL programming or configuration loading)
 1. Read Caliptra SoC `FLOW_STATUS` register to wait for Caliptra Ready for Fuses state
-1. Read non-secret fuse registers from creator SW OTP partition in OpenTitan OTP controller.
+1. Read non-secret fuse registers from creator SW OTP partition in OpenTitan OTP controller. The list of fuses and their sizes are reproduced here, but the authoritative fuse map is contained in [the main Caliptra specification](https://github.com/chipsalliance/Caliptra/blob/main/doc/Caliptra.md#fuse-map).
+    * `KEY MANIFEST PK HASH`: 384 bits
+    * `ECC REVOCATION (KEY MANIFEST PK HASH MASK)`: 4 bits
+    * `OWNER PK HASH`: 384 bits
+    * `FMC KEY MANIFEST SVN`: 32 bits
+    * `RUNTIME SVN`: 128 bits
+    * `ANTI-ROLLBACK DISABLE`: 1 bits
+    * `IDEVID CERT IDEVID ATTR`: 768 bits
+    * `IDEVID MANUF HSM IDENTIFIER`: 128 bits
+    * `LIFE CYCLE`: 2 bits
+    * `LMS REVOCATION`: 32 bits
+    * `MLDSA REVOCATION`: 4 bits
+    * `SOC STEPPING ID`: 16 bits
+    * `MANUF_DEBUG_UNLOCK_TOKEN`: 128 bits
 1. Write fuse data to Caliptra SoC interface fuse registers.
 1. Poll on Caliptra `FLOW_STATUS` registers for Caliptra to deassert the Ready for Fuses state.
 1. Clear the watchdog timer
 1. Wait for reset to trigger firmware update flow.
+
+```mermaid
+sequenceDiagram
+    note right of mcu: check reset reason
+    note right of mcu: program and lock PMP
+    note right of mcu: initialize I3C
+    note right of mcu: initialize recovery interface
+    note right of mcu: SoC-specific init
+    opt if required
+        mcu->>caliptra: stash
+    end
+    loop wait for ready for fuses
+    mcu->>caliptra: read flow status
+    end
+    mcu->>otp: read non-secret fuses
+    otp->>mcu: non-secret fuses
+    mcu->>caliptra: set non-secret fuses
+    loop wait for NOT ready for fuses
+    mcu->>caliptra: read flow status
+    end
+    note right of mcu: clear watchdog
+    note right of mcu: wait for reset
+```
+
 
 The main Caliptra ROM and runtime will continue executing and push the MCU runtime firmware to its SRAM, set the MCI register stating that the firmware is ready, and reset the MCU.
 
