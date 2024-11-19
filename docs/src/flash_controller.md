@@ -1,8 +1,12 @@
-# SPI Flash Stack
+# Flash Controller
 
 ## Overview
 
-The SPI flash stack in the Caliptra MCU firmware is designed to provide efficient and reliable communication with flash devices, which is the foundation to enable flash-based boot flow. This document outlines the different SPI flash configurations being supported, the stack architecture, component interface and userspace API to interact with the SPI flash stack.
+The Flash Controller stack in the Caliptra MCU firmware is designed to provide efficient and reliable communication with flash devices, which is the foundation to enable flash-based boot flow.
+
+We will primarily be targetting SPI flash controllers, so we will use that as our primary example throughout.
+
+This document outlines the different SPI flash configurations being supported, the stack architecture, component interface and userspace API to interact with the SPI flash stack.
 
 ## SPI Flash Configurations
 
@@ -57,23 +61,11 @@ The SPI flash stack design leverages TockOS's kernel space support for flash and
 It is defined in SPI flash syscall library to provide async interface (read, write, erase) to underlying flash devices.
 
 ```Rust
-///spi_flash/src/lib.rs
+/// spi_flash/src/lib.rs
 ///
 /// A structure representing an asynchronous SPI flash memory interface.
-///
-/// This structure is generic over two types:
-/// - `S`: A type that implements the `Syscalls` trait, representing the system calls interface.
-/// - `C`: A type that implements the `Config` trait, representing the configuration for the SPI flash.
-///   By default, this is set to `DefaultConfig`.
-///
-/// # Fields
-///
-/// - `syscall`: A marker for the `Syscalls` type, used to indicate that this type is used without storing it.
-/// - `config`: A marker for the `Config` type, used to indicate that this type is used without storing it.
-/// - `driver_num`: The driver number associated with this SPI flash interface.
-pub struct AsyncSpiFlash<S:Syscalls, C:Config = DefaultConfig > {
-    syscall: PhantomData<S>,
-    config: PhantomData<C>,
+struct AsyncSpiFlash {
+    // The driver number associated with this SPI flash interface.
     driver_num: u32,
 }
 
@@ -81,22 +73,13 @@ pub struct AsyncSpiFlash<S:Syscalls, C:Config = DefaultConfig > {
 ///
 /// This struct provides methods to interact with SPI flash memory in an asynchronous manner,
 /// allowing for non-blocking read, write, and erase operations.
-///
-/// # Type Parameters
-///
-/// * `S`: A type that implements the `Syscalls` trait, representing the system calls interface.
-/// * `C`: A type that implements the `Config` trait, representing the configuration interface.
-impl<S:Syscalls, C:Config> AsyncSpiFlash<S, C> {
+impl AsyncSpiFlash {
     /// Creates a new instance of `AsyncSpiFlash`.
     ///
     /// # Arguments
     ///
     /// * `driver_num` - The driver number associated with the SPI flash.
-    ///
-    /// # Returns
-    ///
-    /// A new instance of `AsyncSpiFlash`.
-    pub fn new(driver_num: u32) -> Self {};
+    fn new(driver_num: u32) -> Self {};
 
     /// Checks if the SPI flash exists.
     ///
@@ -104,7 +87,7 @@ impl<S:Syscalls, C:Config> AsyncSpiFlash<S, C> {
     ///
     /// * `Ok(())` if the SPI flash exists.
     /// * `Err(ErrorCode)` if there is an error.
-    pub fn exists() -> Result<(), ErrorCode> {};
+    fn exists() -> Result<(), ErrorCode> {};
 
     /// Reads an arbitrary number of bytes from the flash memory.
     ///
@@ -121,7 +104,7 @@ impl<S:Syscalls, C:Config> AsyncSpiFlash<S, C> {
     ///
     /// * `Ok(())` if the read operation is successful.
     /// * `Err(ErrorCode)` if there is an error.
-    pub async fn read(&self, address: usize, len: usize, buf: &mut [u8]) -> Result<(), ErrorCode> {};
+    async fn read(&self, address: usize, len: usize, buf: &mut [u8]) -> Result<(), ErrorCode>;
 
     /// Writes an arbitrary number of bytes to the flash memory.
     ///
@@ -137,7 +120,7 @@ impl<S:Syscalls, C:Config> AsyncSpiFlash<S, C> {
     ///
     /// * `Ok(())` if the write operation is successful.
     /// * `Err(ErrorCode)` if there is an error.
-    pub async fn write(&self, address: usize, buf: &[u8]) -> Result<(), ErrorCode> {};
+    async fn write(&self, address: usize, buf: &[u8]) -> Result<(), ErrorCode>;
 
     /// Erases an arbitrary number of bytes from the flash memory.
     ///
@@ -152,7 +135,7 @@ impl<S:Syscalls, C:Config> AsyncSpiFlash<S, C> {
     ///
     /// * `Ok(())` if the erase operation is successful.
     /// * `Err(ErrorCode)` if there is an error.
-    pub async fn erase(&self, address: usize, len: usize) -> Result<(), ErrorCode> {};
+    async fn erase(&self, address: usize, len: usize) -> Result<(), ErrorCode>;
 }
 ```
 
@@ -165,7 +148,6 @@ impl<S:Syscalls, C:Config> AsyncSpiFlash<S, C> {
 /// defined by a start address and a size.
 ///
 /// # Type Parameters
-/// - `'a`: The lifetime of the flash memory and client references.
 /// - `F`: The type of the flash memory, which must implement the `Flash` trait.
 ///
 /// # Fields
@@ -173,11 +155,11 @@ impl<S:Syscalls, C:Config> AsyncSpiFlash<S, C> {
 /// - `start_address`: The starting address of the flash partition.
 /// - `size`: The size of the flash partition.
 /// - `client`: An optional reference to a client that implements the `FlashPartitionClient` trait.
-pub struct FlashPartition<'a, F: Flash + 'a> {
-    flash_user: &'a FlashUser<'a, F>,
+struct FlashPartition<F: Flash> {
+    flash_user: &FlashUser<F>,
     start_address: usize,
     size: usize,
-    client: OptionalCell<&'a dyn FlashPartitionClient>,
+    client: OptionalCell<&dyn FlashPartitionClient>,
 }
 
 /// A partition of a flash memory device.
@@ -188,11 +170,7 @@ pub struct FlashPartition<'a, F: Flash + 'a> {
 /// # Type Parameters
 ///
 /// - `F`: A type that implements the `Flash` trait.
-///
-/// # Lifetimes
-///
-/// - `'a`: The lifetime of the flash memory device and its user.
-impl<'a, F: Flash + 'a> FlashPartition<'a, F> {
+impl<F: Flash> FlashPartition<F> {
     /// Creates a new `FlashPartition`.
     ///
     /// # Arguments
@@ -204,18 +182,18 @@ impl<'a, F: Flash + 'a> FlashPartition<'a, F> {
     /// # Returns
     ///
     /// A new `FlashPartition` instance.
-    pub fn new(
-        flash_user: &'a FlashUser<'a, F>,
+    fn new(
+        flash_user: &FlashUser<, F>,
         start_address: usize,
         size: usize,
-    ) -> FlashPartition<'a, F> {}
+    ) -> FlashPartition<F> {}
 
     /// Sets the client for the flash partition.
     ///
     /// # Arguments
     ///
     /// - `client`: A reference to an object that implements the `FlashPartitionClient` trait.
-    pub fn set_client(&self, client: &'a dyn FlashPartitionClient) {}
+    fn set_client(&self, client: &dyn FlashPartitionClient) {}
 
     /// Reads data from the flash partition.
     ///
@@ -228,7 +206,7 @@ impl<'a, F: Flash + 'a> FlashPartition<'a, F> {
     /// # Returns
     ///
     /// A `Result` indicating success or an error code.
-    pub fn read(
+    fn read(
         &self,
         buffer: &'static mut [u8],
         offset: usize,
@@ -246,7 +224,7 @@ impl<'a, F: Flash + 'a> FlashPartition<'a, F> {
     /// # Returns
     ///
     /// A `Result` indicating success or an error code.
-    pub fn write(
+    fn write(
         &self,
         buffer: &'static mut [u8],
         offset: usize,
@@ -263,13 +241,13 @@ impl<'a, F: Flash + 'a> FlashPartition<'a, F> {
     /// # Returns
     ///
     /// A `Result` indicating success or an error code.
-    pub fn erase(&self, offset: usize, length: usize) -> Result<(), ErrorCode> {}
+    fn erase(&self, offset: usize, length: usize) -> Result<(), ErrorCode> {}
 }
 
 /// Implementation of the `SyscallDriver` trait for the `FlashPartition` struct.
 /// This implementation provides support for reading, writing, and erasing flash memory,
 /// as well as allowing read/write and read-only buffers, and subscribing to callbacks.
-impl<'a, F: Flash + 'a> SyscallDriver for FlashPartition<'a, F> {
+impl<F: Flash> SyscallDriver for FlashPartition< F> {
     ///
     /// Handles commands from userspace.
     ///
@@ -372,11 +350,3 @@ impl<'a, F: Flash + 'a> SyscallDriver for FlashPartition<'a, F> {
 ### Flash Controller Driver Capsule
 
 This module is vendor-specific. The common trait to be implemented is within `kernel::hil::flash::Flash`.
-
-## Flash-based KV store
-
-TBD
-
-## Flash-based logging
-
-TBD

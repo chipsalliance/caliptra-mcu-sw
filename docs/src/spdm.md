@@ -1,13 +1,13 @@
 # SPDM
 The Security Protocol and Data Model (SPDM) is a protocol designed to ensure secure communication between hardware components by focusing on mutual authentication and the establishment of secure channels over potentially insecure media. SPDM enables devices to verify each other's identities and configurations, leveraging X.509v3 certificates to ensure cryptographic security. Designed for interoperability, it can work across various transport and physical media, often utilizing the Management Component Transport Protocol (MCTP). This protocol is especially valuable in environments where secure hardware communication is crucial, such as data centers and enterprise systems.
 
-## Specifications:
-| Specification                                   | Document Link |
-|-------------------------------------------------|---------------|
-| Security Protocol and Data Model                | [DSP0274](https://www.dmtf.org/sites/default/files/standards/documents/DSP0274_1.3.2.pdf)  |
-| Secured Messages using SPDM                     | [DSP0277](https://www.dmtf.org/sites/default/files/standards/documents/DSP0277_1.2.0.pdf)  |
-| SPDM over MCTP Binding Specification            | [DSP0275](https://www.dmtf.org/sites/default/files/standards/documents/DSP0275_1.0.2.pdf)  |
-| Secured Messages using SPDM over MCTP Binding   | [DSP0276](https://www.dmtf.org/sites/default/files/standards/documents/DSP0276_1.2.0.pdf)  |
+## Specifications
+| Specification                                 | Document Link                                                                             |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Security Protocol and Data Model              | [DSP0274](https://www.dmtf.org/sites/default/files/standards/documents/DSP0274_1.3.2.pdf) |
+| Secured Messages using SPDM                   | [DSP0277](https://www.dmtf.org/sites/default/files/standards/documents/DSP0277_1.2.0.pdf) |
+| SPDM over MCTP Binding Specification          | [DSP0275](https://www.dmtf.org/sites/default/files/standards/documents/DSP0275_1.0.2.pdf) |
+| Secured Messages using SPDM over MCTP Binding | [DSP0276](https://www.dmtf.org/sites/default/files/standards/documents/DSP0276_1.2.0.pdf) |
 
 ## SPDM Protocol Sequence
 ```mermaid
@@ -52,31 +52,26 @@ sequenceDiagram
 
 ## Class Diagram
 
-```plaintext
-                   +----------------+
-                   | MCTP Transport |
-                   +--------+-------+
-                            ^
-                          processRequest() / sendResponse()
-                            |
-+--------------------+      |
-| SPDM Responder     |<-----+
-+--------------------+
-| - transcriptMgr    |  processSecureMessage()
-| - sessionMgr       |------------------------+
-+--------------------+                        |
-| + processRequest() |                        |
-| + sendResponse()   |                        |
-+--------------------+                        |
-           |                                  |
-           |                                  |
-           v                                  v
-+--------------------+                +--------------------+
-| Transcript Manager |<---------------| Secure Session Mgr |
-+--------------------+                +--------------------+
-| + Trait Methods    |                | + TraitMethods     |
-+--------------------+                | - transcriptMgr    |
-                                      +--------------------+
+```mermaid
+classDiagram
+    direction RL
+    MCTP Transport <|--|> SPDMResponder: processRequest() / sendResponse()
+    SecureSessionMgr <|-- SPDMResponder: processSecureMessage()
+    TranscriptMgr <|-- SPDMResponder
+    TranscriptMgr <|-- SecureSessionMgr
+    class SPDMResponder{
+      - transcriptMgr
+      - sessionMgr
+      + processRequest()
+      + sendResponse()
+    }
+    class SecureSessionMgr {
+      -transcriptMgr
+      +TraitMethods
+    }
+    class TranscriptMgr{
+      +TraitMethods
+    }
 ```
 
 ## SPDM Responder
@@ -85,18 +80,18 @@ The Responder is responsible for receiving and processing requests from the Requ
 ### Responder supported messages
 The SPDM Responder supports the following messages:
 
-| Message                | Description                                                                     |
-|------------------------|---------------------------------------------------------------------------------|
-| VERSION                | Retrieves version information                                                   |
-| CAPABILITIES           | Retrieves SPDM capabilities                                                     |
-| ALGORITHMS             | Retrieves the negotiated algorithms                                             |
-| DIGESTS                | Retrieves digest of the certificate chains                                      |
-| CERTIFICATE            | Retrieves certificate chains                                                    |
-| MEASUREMENTS           | Retrieves measurements of elements such as intenral state                       |
-| KEY_EXCHANGE_RSP       | Retrieves the responder's public key information                                |
-| FINISH_RSP             | Provide key confirmation, bind the identity of each party to the exchanged keys |
-| END_SESSION_ACK        | End session acknowledgment                                                      |
-| ERROR                  | Error message                                                                   |
+| Message            | Description                                                                     |
+| ------------------ | ------------------------------------------------------------------------------- |
+| `VERSION`          | Retrieves version information                                                   |
+| `CAPABILITIES`     | Retrieves SPDM capabilities                                                     |
+| `ALGORITHMS`       | Retrieves the negotiated algorithms                                             |
+| `DIGESTS`          | Retrieves digest of the certificate chains                                      |
+| `CERTIFICATE`      | Retrieves certificate chains                                                    |
+| `MEASUREMENTS`     | Retrieves measurements of elements such as intenral state                       |
+| `KEY_EXCHANGE_RSP` | Retrieves the responder's public key information                                |
+| `FINISH_RSP`       | Provide key confirmation, bind the identity of each party to the exchanged keys |
+| `END_SESSION_ACK`  | End session acknowledgment                                                      |
+| `ERROR`            | Error message                                                                   |
 
 
 ### Responder Interface
@@ -155,7 +150,7 @@ pub trait SpdmTranscriptManager {
     /// - `session_idx`:         SPDM session index.
     ///
     /// # Returns
-    /// - `Result<(), SpdmError>`: 
+    /// - `Result<(), SpdmError>`:
     /// Returns `Ok(())` if the message was added to the transcript successfully, or an error code.
     async fn update(
         &self,
@@ -217,7 +212,7 @@ pub trait SpdmSecureSessionManager {
     /// - `connection_info`: SPDM connection info.
     ///
     /// # Returns
-    /// - `Option<&SpdmSecureSession>`: 
+    /// - `Option<&SpdmSecureSession>`:
     ///    A pointer to the created SPDM secure session or `None` if the session could not be created.
     fn create_session(
         &self,

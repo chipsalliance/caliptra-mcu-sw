@@ -1,12 +1,12 @@
 # MCTP Stack
-The Caliptra subsystem supports SPDM, PLDM, and Caliptra Vendor-defined message protocols over MCTP.
+The Caliptra subsystem supports SPDM, PLDM, and Caliptra vendor-defined message protocols over MCTP.
 
-The MCTP base protocol is implemented as a Tock Capsule driver, which also handles the essential MCTP Control messages. 
+The MCTP base protocol is implemented as a Tock Capsule, which also handles the essential MCTP Control messages.
 Additionally, it offers a syscall interface to userspace, enabling the sending and receiving of MCTP messages for other supported protocols.
 Caliptra MCTP endpoint has only one EID and supports dynamic assignment by the MCTP bus owner.
 
 MCTP Packets are delivered over physical I3C medium using I3C transfers. Caliptra MCTP endpoint always plays the role of I3C Target and is
-managed by an external I3C controller. Minimum transmission size is based on the MCTP baseline MTU (for I3C it is 69 bytes : 64 bytes MCTP payload + 4 bytes MCTP header + 1 byte PEC). Larger than the baseline transfer may be possible after discovery and negotiation with the I3C controller. The negotiated MTU size will be queried from the I3C Target peripheral driver by MCTP capsule. 
+managed by an external I3C controller. Minimum transmission size is based on the MCTP baseline MTU (for I3C it is 69 bytes: 64 bytes MCTP payload + 4 bytes MCTP header + 1 byte PEC). Larger than the baseline transfer may be possible after discovery and negotiation with the I3C controller. The negotiated MTU size will be queried from the I3C Target peripheral driver by MCTP capsule.
 
 
 ## MCTP Receive sequence
@@ -81,11 +81,9 @@ sequenceDiagram
 
 ```
 
-
 The send stack is as shown in the picture below:
 
 ![The MCTP Send stack](images/MCTP_tx_stack.svg)
-
 
 
 ## Syscall Library in userspace
@@ -95,7 +93,7 @@ Each user space application will instantiate the `AsyncMctp` module with appropr
 ```Rust
 //! The MCTP library provides the interface to send and receive MCTP messages.
 //! The MCTP library is implemented as an async library to allow the userspace application to send and receive MCTP messages asynchronously.
-//! 
+//!
 //! Usage
 //! -----
 //!```Rust
@@ -103,7 +101,7 @@ Each user space application will instantiate the `AsyncMctp` module with appropr
 //!
 //! const SPDM_MESSAGE_TYPE: u8 = 0x5;
 //! const SECURE_SPDM_MESSAGE_TYPE: u8 = 0x6;
-//! 
+//!
 //! #[embassy_executor::task]
 //! async fn async_main() {
 //!     /// Initialize the MCTP driver with the driver number
@@ -155,12 +153,12 @@ impl<S:Syscalls, C:Config> Mctp<S,C> {
     pub fn new(drv_num: u32) -> Self;
     pub fn exists() -> Result<(), ErrorCode>;
     /// Receive the MCTP request from the source EID
-    /// 
+    ///
     /// # Arguments
-    /// * `source_eid` - The source EID from which the request is to be received. 
+    /// * `source_eid` - The source EID from which the request is to be received.
     /// * `message_types` - The message types to receive. This is needed for SPDM to receive both SPDM(0x5) and secured SPDM(0x6) messages
     /// * `msg_payload` - The buffer to store the received message payload
-    /// 
+    ///
     /// # Returns
     /// * `MessageInfo` - The message information containing the EID, message tag, message type, and payload length on success
     /// * `ErrorCode` - The error code on failure
@@ -188,7 +186,7 @@ impl<S:Syscalls, C:Config> Mctp<S,C> {
     /// * `u8` - The message tag assigned to the request
     /// * `ErrorCode` - The error code on failure
     pub async fn send_request(&self, dest_eid: u8, msg_payload: &[u8]) -> Result<u8, ErrorCode>;
-    
+
     /// Receive the MCTP response from the source EID
     ///
     /// # Arguments
@@ -214,10 +212,8 @@ pub enum NUM {
     MctpSpdm                  = 0xA0000,
     MctpPldm                  = 0xA0001,
     MctpVenDef                = 0xA0002,
-
     ...
 }
-
 
 /// mctp/driver.rs
 pub const MCTP_SPDM_DRIVER_NUM: usize = driver::NUM::MctpSpdm;
@@ -241,7 +237,7 @@ The following are the list of system calls provided by the MCTP Capsule.
         - Argument: Slice containing the MCTP message payload to be transmitted.
 
 3. Subscribe
-    - Subscribe number 0: 
+    - Subscribe number 0:
         - Description: Callback when message is received.
         - Argument 1: The callback
         - Argument 2: App specific data
@@ -253,7 +249,6 @@ The following are the list of system calls provided by the MCTP Capsule.
 4. Command
     - Command number 0:
         - Description: Existence check
-        - Arguments: 
     - Command number 1:
         - Description: Receive Request
         - Argument1 : Source EID
@@ -266,7 +261,7 @@ The following are the list of system calls provided by the MCTP Capsule.
         - Description: Send Request
         - Argument1 : Destination EID
         - Argument2 : Message Tag
-    - Command number 4: 
+    - Command number 4:
         - Description: Send Response
         - Argument1 : Destination EID
         - Argument2 : Message Tag
@@ -284,12 +279,12 @@ struct OperationCtx {
     msg_tag : u8,
     peer_eid : u8,
     is_busy: bool,
-    op_type:OperationType, 
+    op_type:OperationType,
 }
 
 #[derive(default)]
 pub struct App {
-    pending_op_ctx: OperationCtx, 
+    pending_op_ctx: OperationCtx,
     bound_msg_type : u8,
 }
 
@@ -307,16 +302,16 @@ pub struct VirtualMCTPDriver {
 ```Rust
 /// The trait that provides an interface to send the MCTP messages to MCTP kernel stack.
 pub trait MCTPSender {
-    /// Sets the client for the `MCTPSender` instance. 
-    /// In this case it is MCTPTxState which is instantiated at the time of 
+    /// Sets the client for the `MCTPSender` instance.
+    /// In this case it is MCTPTxState which is instantiated at the time of
     fn set_client(&self, client: &dyn MCTPSendClient);
 
     /// Sends the message to the MCTP kernel stack.
     fn send_msg(&self, dest_eid: u8, msg_tag: u8, msg_payload: SubSliceMut<'static, u8>);
 }
 
-/// This is the trait implemented by VirtualMCTPDriver instance to get notified after 
-/// message is sent. 
+/// This is the trait implemented by VirtualMCTPDriver instance to get notified after
+/// message is sent.
 /// The 'send_done' function in this trait is invoked after the MCTPSender
 /// has completed sending the requested message.
 pub trait MCTPSendClient {
@@ -338,7 +333,7 @@ pub struct MCTPTxState<M:MCTPTransportBinding> {
 ### MCTP Receive state
 
 ```Rust
-/// This is the trait implemented by VirtualMCTPDriver instance to get notified of 
+/// This is the trait implemented by VirtualMCTPDriver instance to get notified of
 /// the messages received on corresponding message_type.
 pub trait MCTPRxClient {
     fn receive(&self, dst_eid: u8, msg_type: u8, msg_Tag: u8, msg_payload: &[u8]);
@@ -353,7 +348,6 @@ pub struct MCTPRxState {
     /// next MCTPRxState node
     next: ListLink<MCTPRxState>,
 }
-
 ```
 
 ## MCTP Mux Layer
@@ -364,7 +358,7 @@ If the message originates from the device (with `msg_tag` = 0x8), a new msg_tag 
 For response messages, where `msg_tag` values range between 0 and 7, the same value is used to encapsulate the MCTP transport header on each packet.
 
 MCTP Mux layer is the single receive client for the MCTP Device Layer. This layer is instantiated with a single contiguous buffer for Rx packet of size `kernel::hil:i3c::MAX_TRANSMISSION_UNIT`.
-The Rx buffer is provided to the I3C target driver layer to receive the packets when the I3C controller initiates a private write transfer to the I3C Target. 
+The Rx buffer is provided to the I3C target driver layer to receive the packets when the I3C controller initiates a private write transfer to the I3C Target.
 
 The virtualized upper layer ensures that only one message is transmitted per driver instance at a time. Receive is event based. The received packet in the Rx buffer is matched against the pending receive requests by the use
 
@@ -392,12 +386,12 @@ pub struct MuxMCTPDriver<M: MCTPTransportBinding> {
 ```
 
 ## MCTP Transport binding layer
-The following is the generic interface for the MCTP physical transport binding layer. 
+The following is the generic interface for the MCTP physical transport binding layer.
 Implementer of this trait will add physical medium specific header/trailer to the MCTP packet.
 
 ```Rust
-/// This trait contains the interface definition 
-/// for sending the MCTP packet through MCTP transport binding layer. 
+/// This trait contains the interface definition
+/// for sending the MCTP packet through MCTP transport binding layer.
 pub trait MCTPTransportBinding {
 	/// Set the client that will be called when the packet is transmitted.
 	fn set_tx_client(&self, client: &TxClient);
@@ -414,14 +408,14 @@ pub trait MCTPTransportBinding {
 	fn enable();
 	fn disable();
 
-	/// Get the maximum transmission unit (MTU) size. 
+	/// Get the maximum transmission unit (MTU) size.
 	fn get_mtu_size() -> usize;
 }
 ```
 MCTP I3C Transport binding layer is responsible for checking the PEC for received packets and adding the PEC for transmitted packets over the I3C medium.
-It is mostly a passthrough for the MCTP Base layer except, it will need the I3C target device address for PEC calculation. 
+It is mostly a passthrough for the MCTP Base layer except, it will need the I3C target device address for PEC calculation.
 
-This layer is also a sole Rx and Tx client for the I3C Target device driver. 
+This layer is also a sole Rx and Tx client for the I3C Target device driver.
 
 ```Rust
 pub struct MCTPI3CBinding {
@@ -443,8 +437,8 @@ The following trait defined standard and shared interface for I3C Target hardwar
 
 pub trait TxClient {
 	/// Called when the packet has been transmitted. (Calls this after the ACK is received from Controller)
-	fn send_done(&self, 
-		  tx_buffer: &'static mut [u8],  
+	fn send_done(&self,
+		  tx_buffer: &'static mut [u8],
 		  acked: bool,
 		  result : Result<(), ErrorCode>);
 }
@@ -484,4 +478,3 @@ I
 	fn get_address() -> u8;
 }
 ```
-
