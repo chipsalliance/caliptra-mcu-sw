@@ -10,6 +10,7 @@ pub trait El2PicPeripheral {
     fn update_reset(&mut self) {}
     fn read_meipl(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meipl::Register,
@@ -18,6 +19,7 @@ pub trait El2PicPeripheral {
     }
     fn write_meipl(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Meipl::Register,
@@ -26,12 +28,14 @@ pub trait El2PicPeripheral {
     }
     fn read_meip(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::el2_pic_ctrl::bits::Meip::Register>
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_meip(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Meip::Register,
@@ -40,12 +44,14 @@ pub trait El2PicPeripheral {
     }
     fn read_meie(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::el2_pic_ctrl::bits::Meie::Register>
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_meie(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Meie::Register,
@@ -54,6 +60,7 @@ pub trait El2PicPeripheral {
     }
     fn read_mpiccfg(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
@@ -62,6 +69,7 @@ pub trait El2PicPeripheral {
     }
     fn write_mpiccfg(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
@@ -70,6 +78,7 @@ pub trait El2PicPeripheral {
     }
     fn read_meigwctrl(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
@@ -78,16 +87,17 @@ pub trait El2PicPeripheral {
     }
     fn write_meigwctrl(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
         >,
     ) {
     }
-    fn read_meigwclr(&mut self) -> u32 {
+    fn read_meigwclr(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_meigwclr(&mut self, _val: u32) {}
+    fn write_meigwclr(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {}
 }
 pub struct El2PicBus {
     pub periph: Box<dyn El2PicPeripheral>,
@@ -100,41 +110,52 @@ impl emulator_bus::Bus for El2PicBus {
     ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => Ok(emulator_types::RvData::from(
-                self.periph.read_meipl().reg.get(),
+                self.periph
+                    .read_meipl(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 1..=3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1000) => Ok(emulator_types::RvData::from(
-                self.periph.read_meip().reg.get(),
+                self.periph
+                    .read_meip(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x1001..=0x1003) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x2000) => Ok(emulator_types::RvData::from(
-                self.periph.read_meie().reg.get(),
+                self.periph
+                    .read_meie(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x2001..=0x2003) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x3000) => Ok(emulator_types::RvData::from(
-                self.periph.read_mpiccfg().reg.get(),
+                self.periph
+                    .read_mpiccfg(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x3001..=0x3003) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x4000) => Ok(emulator_types::RvData::from(
-                self.periph.read_meigwctrl().reg.get(),
+                self.periph
+                    .read_meigwctrl(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x4001..=0x4003) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x5000) => {
-                Ok(emulator_types::RvData::from(self.periph.read_meigwclr()))
-            }
-            (emulator_types::RvSize::Word, 0x5001..=0x5003) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0x5000) => Ok(self.periph.read_meigwclr(size)),
+            (_, 0x5001..=0x5003) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             _ => Err(emulator_bus::BusError::LoadAccessFault),
         }
     }
@@ -146,52 +167,60 @@ impl emulator_bus::Bus for El2PicBus {
     ) -> Result<(), emulator_bus::BusError> {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => {
-                self.periph
-                    .write_meipl(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_meipl(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 1..=3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x1000) => {
-                self.periph
-                    .write_meip(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_meip(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x1001..=0x1003) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x2000) => {
-                self.periph
-                    .write_meie(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_meie(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x2001..=0x2003) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x3000) => {
-                self.periph
-                    .write_mpiccfg(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_mpiccfg(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x3001..=0x3003) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x4000) => {
-                self.periph
-                    .write_meigwctrl(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_meigwctrl(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x4001..=0x4003) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x5000) => {
-                self.periph.write_meigwclr(val);
+            (size, 0x5000) => {
+                self.periph.write_meigwclr(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x5001..=0x5003) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x5001..=0x5003) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             _ => Err(emulator_bus::BusError::StoreAccessFault),
         }
     }

@@ -67,6 +67,15 @@ enum Commands {
         /// Check output only
         #[arg(short, long, default_value_t = false)]
         check: bool,
+
+        /// Extra RDL files to parse
+        #[arg(short, long)]
+        files: Vec<PathBuf>,
+
+        /// Extra addrmap entries to add
+        /// Must be in the format of "type@addr"
+        #[arg(short, long)]
+        addrmap: Vec<String>,
     },
 }
 
@@ -95,7 +104,11 @@ fn main() {
         Commands::HeaderFix => header::fix(),
         Commands::HeaderCheck => header::check(),
         Commands::Test => test::test(),
-        Commands::RegistersAutogen { check } => registers::autogen(*check),
+        Commands::RegistersAutogen {
+            check,
+            files,
+            addrmap,
+        } => registers::autogen(*check, files, addrmap),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {}", e);

@@ -10,6 +10,7 @@ pub trait SocPeripheral {
     fn update_reset(&mut self) {}
     fn read_cptra_hw_error_fatal(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraHwErrorFatal::Register,
@@ -18,6 +19,7 @@ pub trait SocPeripheral {
     }
     fn write_cptra_hw_error_fatal(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraHwErrorFatal::Register,
@@ -26,6 +28,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_hw_error_non_fatal(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraHwErrorNonFatal::Register,
@@ -34,38 +37,79 @@ pub trait SocPeripheral {
     }
     fn write_cptra_hw_error_non_fatal(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraHwErrorNonFatal::Register,
         >,
     ) {
     }
-    fn read_cptra_fw_error_fatal(&mut self) -> u32 {
+    fn read_cptra_fw_error_fatal(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_fw_error_fatal(&mut self, _val: u32) {}
-    fn read_cptra_fw_error_non_fatal(&mut self) -> u32 {
+    fn write_cptra_fw_error_fatal(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_cptra_fw_error_non_fatal(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_fw_error_non_fatal(&mut self, _val: u32) {}
-    fn read_cptra_hw_error_enc(&mut self) -> u32 {
+    fn write_cptra_fw_error_non_fatal(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_cptra_hw_error_enc(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_hw_error_enc(&mut self, _val: u32) {}
-    fn read_cptra_fw_error_enc(&mut self) -> u32 {
+    fn write_cptra_hw_error_enc(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_cptra_fw_error_enc(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_fw_error_enc(&mut self, _val: u32) {}
-    fn read_cptra_fw_extended_error_info(&mut self) -> u32 {
+    fn write_cptra_fw_error_enc(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_cptra_fw_extended_error_info(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_fw_extended_error_info(&mut self, _val: u32) {}
-    fn read_cptra_boot_status(&mut self) -> u32 {
+    fn write_cptra_fw_extended_error_info(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_cptra_boot_status(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_boot_status(&mut self, _val: u32) {}
+    fn write_cptra_boot_status(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_cptra_flow_status(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraFlowStatus::Register,
@@ -74,6 +118,7 @@ pub trait SocPeripheral {
     }
     fn write_cptra_flow_status(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraFlowStatus::Register,
@@ -82,6 +127,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_reset_reason(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraResetReason::Register,
@@ -90,6 +136,7 @@ pub trait SocPeripheral {
     }
     fn write_cptra_reset_reason(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraResetReason::Register,
@@ -98,6 +145,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_security_state(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraSecurityState::Register,
@@ -106,18 +154,28 @@ pub trait SocPeripheral {
     }
     fn write_cptra_security_state(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraSecurityState::Register,
         >,
     ) {
     }
-    fn read_cptra_mbox_valid_axi_id(&mut self) -> u32 {
+    fn read_cptra_mbox_valid_axi_id(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_mbox_valid_axi_id(&mut self, _val: u32) {}
+    fn write_cptra_mbox_valid_axi_id(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_cptra_mbox_axi_id_lock(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraXxxxAxiIdLock::Register,
@@ -126,18 +184,28 @@ pub trait SocPeripheral {
     }
     fn write_cptra_mbox_axi_id_lock(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraXxxxAxiIdLock::Register,
         >,
     ) {
     }
-    fn read_cptra_trng_valid_axi_id(&mut self) -> u32 {
+    fn read_cptra_trng_valid_axi_id(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_trng_valid_axi_id(&mut self, _val: u32) {}
+    fn write_cptra_trng_valid_axi_id(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_cptra_trng_axi_id_lock(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraXxxxAxiIdLock::Register,
@@ -146,18 +214,25 @@ pub trait SocPeripheral {
     }
     fn write_cptra_trng_axi_id_lock(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraXxxxAxiIdLock::Register,
         >,
     ) {
     }
-    fn read_cptra_trng_data(&mut self) -> u32 {
+    fn read_cptra_trng_data(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_trng_data(&mut self, _val: u32) {}
+    fn write_cptra_trng_data(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_cptra_trng_ctrl(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraTrngCtrl::Register,
@@ -166,6 +241,7 @@ pub trait SocPeripheral {
     }
     fn write_cptra_trng_ctrl(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraTrngCtrl::Register,
@@ -174,6 +250,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_trng_status(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc_trng::bits::CptraTrngStatus::Register,
@@ -182,6 +259,7 @@ pub trait SocPeripheral {
     }
     fn write_cptra_trng_status(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc_trng::bits::CptraTrngStatus::Register,
@@ -190,6 +268,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_fuse_wr_done(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraFuseWrDone::Register,
@@ -198,18 +277,25 @@ pub trait SocPeripheral {
     }
     fn write_cptra_fuse_wr_done(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraFuseWrDone::Register,
         >,
     ) {
     }
-    fn read_cptra_timer_config(&mut self) -> u32 {
+    fn read_cptra_timer_config(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_timer_config(&mut self, _val: u32) {}
+    fn write_cptra_timer_config(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_cptra_bootfsm_go(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraBootfsmGo::Register,
@@ -218,18 +304,28 @@ pub trait SocPeripheral {
     }
     fn write_cptra_bootfsm_go(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraBootfsmGo::Register,
         >,
     ) {
     }
-    fn read_cptra_dbg_manuf_service_reg(&mut self) -> u32 {
+    fn read_cptra_dbg_manuf_service_reg(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_dbg_manuf_service_reg(&mut self, _val: u32) {}
+    fn write_cptra_dbg_manuf_service_reg(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_cptra_clk_gating_en(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraClkGatingEn::Register,
@@ -238,22 +334,40 @@ pub trait SocPeripheral {
     }
     fn write_cptra_clk_gating_en(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraClkGatingEn::Register,
         >,
     ) {
     }
-    fn read_cptra_generic_input_wires(&mut self) -> u32 {
+    fn read_cptra_generic_input_wires(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_generic_input_wires(&mut self, _val: u32) {}
-    fn read_cptra_generic_output_wires(&mut self) -> u32 {
+    fn write_cptra_generic_input_wires(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_cptra_generic_output_wires(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_generic_output_wires(&mut self, _val: u32) {}
+    fn write_cptra_generic_output_wires(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_cptra_hw_rev_id(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraHwRevId::Register,
@@ -262,18 +376,25 @@ pub trait SocPeripheral {
     }
     fn write_cptra_hw_rev_id(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraHwRevId::Register,
         >,
     ) {
     }
-    fn read_cptra_fw_rev_id(&mut self) -> u32 {
+    fn read_cptra_fw_rev_id(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_fw_rev_id(&mut self, _val: u32) {}
+    fn write_cptra_fw_rev_id(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_cptra_hw_config(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraHwConfig::Register,
@@ -282,6 +403,7 @@ pub trait SocPeripheral {
     }
     fn write_cptra_hw_config(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraHwConfig::Register,
@@ -290,6 +412,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_wdt_timer1_en(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraWdtTimer1En::Register,
@@ -298,6 +421,7 @@ pub trait SocPeripheral {
     }
     fn write_cptra_wdt_timer1_en(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraWdtTimer1En::Register,
@@ -306,6 +430,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_wdt_timer1_ctrl(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraWdtTimer1Ctrl::Register,
@@ -314,18 +439,28 @@ pub trait SocPeripheral {
     }
     fn write_cptra_wdt_timer1_ctrl(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraWdtTimer1Ctrl::Register,
         >,
     ) {
     }
-    fn read_cptra_wdt_timer1_timeout_period(&mut self) -> u32 {
+    fn read_cptra_wdt_timer1_timeout_period(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_wdt_timer1_timeout_period(&mut self, _val: u32) {}
+    fn write_cptra_wdt_timer1_timeout_period(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_cptra_wdt_timer2_en(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraWdtTimer2En::Register,
@@ -334,6 +469,7 @@ pub trait SocPeripheral {
     }
     fn write_cptra_wdt_timer2_en(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraWdtTimer2En::Register,
@@ -342,6 +478,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_wdt_timer2_ctrl(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraWdtTimer2Ctrl::Register,
@@ -350,18 +487,28 @@ pub trait SocPeripheral {
     }
     fn write_cptra_wdt_timer2_ctrl(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraWdtTimer2Ctrl::Register,
         >,
     ) {
     }
-    fn read_cptra_wdt_timer2_timeout_period(&mut self) -> u32 {
+    fn read_cptra_wdt_timer2_timeout_period(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_wdt_timer2_timeout_period(&mut self, _val: u32) {}
+    fn write_cptra_wdt_timer2_timeout_period(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_cptra_wdt_status(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraWdtStatus::Register,
@@ -370,18 +517,28 @@ pub trait SocPeripheral {
     }
     fn write_cptra_wdt_status(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraWdtStatus::Register,
         >,
     ) {
     }
-    fn read_cptra_fuse_valid_axi_id(&mut self) -> u32 {
+    fn read_cptra_fuse_valid_axi_id(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_fuse_valid_axi_id(&mut self, _val: u32) {}
+    fn write_cptra_fuse_valid_axi_id(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_cptra_fuse_axi_id_lock(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraXxxxAxiIdLock::Register,
@@ -390,18 +547,21 @@ pub trait SocPeripheral {
     }
     fn write_cptra_fuse_axi_id_lock(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraXxxxAxiIdLock::Register,
         >,
     ) {
     }
-    fn read_cptra_wdt_cfg(&mut self) -> u32 {
+    fn read_cptra_wdt_cfg(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_wdt_cfg(&mut self, _val: u32) {}
+    fn write_cptra_wdt_cfg(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {
+    }
     fn read_cptra_i_trng_entropy_config_0(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraItrngEntropyConfig0::Register,
@@ -410,6 +570,7 @@ pub trait SocPeripheral {
     }
     fn write_cptra_i_trng_entropy_config_0(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraItrngEntropyConfig0::Register,
@@ -418,6 +579,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_i_trng_entropy_config_1(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::CptraItrngEntropyConfig1::Register,
@@ -426,30 +588,51 @@ pub trait SocPeripheral {
     }
     fn write_cptra_i_trng_entropy_config_1(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::CptraItrngEntropyConfig1::Register,
         >,
     ) {
     }
-    fn read_cptra_rsvd_reg(&mut self) -> u32 {
+    fn read_cptra_rsvd_reg(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_cptra_rsvd_reg(&mut self, _val: u32) {}
-    fn read_fuse_uds_seed(&mut self) -> u32 {
+    fn write_cptra_rsvd_reg(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_fuse_uds_seed(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_fuse_uds_seed(&mut self, _val: u32) {}
-    fn read_fuse_field_entropy(&mut self) -> u32 {
+    fn write_fuse_uds_seed(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {
+    }
+    fn read_fuse_field_entropy(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_fuse_field_entropy(&mut self, _val: u32) {}
-    fn read_fuse_key_manifest_pk_hash(&mut self) -> u32 {
+    fn write_fuse_field_entropy(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_fuse_key_manifest_pk_hash(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_fuse_key_manifest_pk_hash(&mut self, _val: u32) {}
+    fn write_fuse_key_manifest_pk_hash(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_fuse_key_manifest_pk_hash_mask(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::FuseKeyManifestPkHashMask::Register,
@@ -458,26 +641,46 @@ pub trait SocPeripheral {
     }
     fn write_fuse_key_manifest_pk_hash_mask(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::FuseKeyManifestPkHashMask::Register,
         >,
     ) {
     }
-    fn read_fuse_owner_pk_hash(&mut self) -> u32 {
+    fn read_fuse_owner_pk_hash(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_fuse_owner_pk_hash(&mut self, _val: u32) {}
-    fn read_fuse_fmc_key_manifest_svn(&mut self) -> u32 {
+    fn write_fuse_owner_pk_hash(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_fuse_fmc_key_manifest_svn(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_fuse_fmc_key_manifest_svn(&mut self, _val: u32) {}
-    fn read_fuse_runtime_svn(&mut self) -> u32 {
+    fn write_fuse_fmc_key_manifest_svn(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_fuse_runtime_svn(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_fuse_runtime_svn(&mut self, _val: u32) {}
+    fn write_fuse_runtime_svn(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_fuse_anti_rollback_disable(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::FuseAntiRollbackDisable::Register,
@@ -486,22 +689,40 @@ pub trait SocPeripheral {
     }
     fn write_fuse_anti_rollback_disable(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::FuseAntiRollbackDisable::Register,
         >,
     ) {
     }
-    fn read_fuse_idevid_cert_attr(&mut self) -> u32 {
+    fn read_fuse_idevid_cert_attr(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_fuse_idevid_cert_attr(&mut self, _val: u32) {}
-    fn read_fuse_idevid_manuf_hsm_id(&mut self) -> u32 {
+    fn write_fuse_idevid_cert_attr(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_fuse_idevid_manuf_hsm_id(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_fuse_idevid_manuf_hsm_id(&mut self, _val: u32) {}
+    fn write_fuse_idevid_manuf_hsm_id(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_fuse_life_cycle(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::FuseLifeCycle::Register,
@@ -510,6 +731,7 @@ pub trait SocPeripheral {
     }
     fn write_fuse_life_cycle(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::FuseLifeCycle::Register,
@@ -518,6 +740,7 @@ pub trait SocPeripheral {
     }
     fn read_fuse_lms_verify(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::FuseLmsVerify::Register,
@@ -526,18 +749,28 @@ pub trait SocPeripheral {
     }
     fn write_fuse_lms_verify(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::FuseLmsVerify::Register,
         >,
     ) {
     }
-    fn read_fuse_lms_revocation(&mut self) -> u32 {
+    fn read_fuse_lms_revocation(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_fuse_lms_revocation(&mut self, _val: u32) {}
+    fn write_fuse_lms_revocation(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_fuse_soc_stepping_id(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::FuseSocSteppingId::Register,
@@ -546,18 +779,25 @@ pub trait SocPeripheral {
     }
     fn write_fuse_soc_stepping_id(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::FuseSocSteppingId::Register,
         >,
     ) {
     }
-    fn read_internal_obf_key(&mut self) -> u32 {
+    fn read_internal_obf_key(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_internal_obf_key(&mut self, _val: u32) {}
+    fn write_internal_obf_key(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_internal_iccm_lock(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::InternalIccmLock::Register,
@@ -566,6 +806,7 @@ pub trait SocPeripheral {
     }
     fn write_internal_iccm_lock(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::InternalIccmLock::Register,
@@ -574,6 +815,7 @@ pub trait SocPeripheral {
     }
     fn read_internal_fw_update_reset(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::InternalFwUpdateReset::Register,
@@ -582,6 +824,7 @@ pub trait SocPeripheral {
     }
     fn write_internal_fw_update_reset(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::InternalFwUpdateReset::Register,
@@ -590,6 +833,7 @@ pub trait SocPeripheral {
     }
     fn read_internal_fw_update_reset_wait_cycles(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::InternalFwUpdateResetWaitCycles::Register,
@@ -598,18 +842,28 @@ pub trait SocPeripheral {
     }
     fn write_internal_fw_update_reset_wait_cycles(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::InternalFwUpdateResetWaitCycles::Register,
         >,
     ) {
     }
-    fn read_internal_nmi_vector(&mut self) -> u32 {
+    fn read_internal_nmi_vector(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_internal_nmi_vector(&mut self, _val: u32) {}
+    fn write_internal_nmi_vector(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_internal_hw_error_fatal_mask(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::InternalHwErrorFatalMask::Register,
@@ -618,6 +872,7 @@ pub trait SocPeripheral {
     }
     fn write_internal_hw_error_fatal_mask(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::InternalHwErrorFatalMask::Register,
@@ -626,6 +881,7 @@ pub trait SocPeripheral {
     }
     fn read_internal_hw_error_non_fatal_mask(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::InternalHwErrorNonFatalMask::Register,
@@ -634,38 +890,88 @@ pub trait SocPeripheral {
     }
     fn write_internal_hw_error_non_fatal_mask(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::InternalHwErrorNonFatalMask::Register,
         >,
     ) {
     }
-    fn read_internal_fw_error_fatal_mask(&mut self) -> u32 {
+    fn read_internal_fw_error_fatal_mask(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_internal_fw_error_fatal_mask(&mut self, _val: u32) {}
-    fn read_internal_fw_error_non_fatal_mask(&mut self) -> u32 {
+    fn write_internal_fw_error_fatal_mask(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_internal_fw_error_non_fatal_mask(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_internal_fw_error_non_fatal_mask(&mut self, _val: u32) {}
-    fn read_internal_rv_mtime_l(&mut self) -> u32 {
+    fn write_internal_fw_error_non_fatal_mask(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_internal_rv_mtime_l(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_internal_rv_mtime_l(&mut self, _val: u32) {}
-    fn read_internal_rv_mtime_h(&mut self) -> u32 {
+    fn write_internal_rv_mtime_l(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_internal_rv_mtime_h(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_internal_rv_mtime_h(&mut self, _val: u32) {}
-    fn read_internal_rv_mtimecmp_l(&mut self) -> u32 {
+    fn write_internal_rv_mtime_h(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_internal_rv_mtimecmp_l(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_internal_rv_mtimecmp_l(&mut self, _val: u32) {}
-    fn read_internal_rv_mtimecmp_h(&mut self) -> u32 {
+    fn write_internal_rv_mtimecmp_l(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_internal_rv_mtimecmp_h(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_internal_rv_mtimecmp_h(&mut self, _val: u32) {}
+    fn write_internal_rv_mtimecmp_h(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_intr_block_rf_global_intr_en_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::GlobalIntrEnT::Register,
@@ -674,6 +980,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_global_intr_en_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::GlobalIntrEnT::Register,
@@ -682,6 +989,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_error_intr_en_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::ErrorIntrEnT::Register,
@@ -690,6 +998,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_error_intr_en_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::ErrorIntrEnT::Register,
@@ -698,6 +1007,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_notif_intr_en_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::NotifIntrEnT::Register,
@@ -706,6 +1016,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_notif_intr_en_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::NotifIntrEnT::Register,
@@ -714,6 +1025,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_error_global_intr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::GlobalIntrT::Register,
@@ -722,6 +1034,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_error_global_intr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::GlobalIntrT::Register,
@@ -730,6 +1043,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_notif_global_intr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::GlobalIntrT::Register,
@@ -738,6 +1052,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_notif_global_intr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::GlobalIntrT::Register,
@@ -746,6 +1061,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_error_internal_intr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::ErrorIntrT::Register,
@@ -754,6 +1070,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_error_internal_intr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::ErrorIntrT::Register,
@@ -762,6 +1079,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_notif_internal_intr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::NotifIntrT::Register,
@@ -770,6 +1088,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_notif_internal_intr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::NotifIntrT::Register,
@@ -778,6 +1097,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_error_intr_trig_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::ErrorIntrTrigT::Register,
@@ -786,6 +1106,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_error_intr_trig_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::ErrorIntrTrigT::Register,
@@ -794,6 +1115,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_notif_intr_trig_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::NotifIntrTrigT::Register,
@@ -802,70 +1124,184 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_notif_intr_trig_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::NotifIntrTrigT::Register,
         >,
     ) {
     }
-    fn read_intr_block_rf_error_internal_intr_count_r(&mut self) -> u32 {
+    fn read_intr_block_rf_error_internal_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_error_internal_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_error_inv_dev_intr_count_r(&mut self) -> u32 {
+    fn write_intr_block_rf_error_internal_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_intr_block_rf_error_inv_dev_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_error_inv_dev_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_error_cmd_fail_intr_count_r(&mut self) -> u32 {
+    fn write_intr_block_rf_error_inv_dev_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_intr_block_rf_error_cmd_fail_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_error_cmd_fail_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_error_bad_fuse_intr_count_r(&mut self) -> u32 {
+    fn write_intr_block_rf_error_cmd_fail_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_intr_block_rf_error_bad_fuse_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_error_bad_fuse_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_error_iccm_blocked_intr_count_r(&mut self) -> u32 {
+    fn write_intr_block_rf_error_bad_fuse_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_intr_block_rf_error_iccm_blocked_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_error_iccm_blocked_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_error_mbox_ecc_unc_intr_count_r(&mut self) -> u32 {
+    fn write_intr_block_rf_error_iccm_blocked_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_intr_block_rf_error_mbox_ecc_unc_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_error_mbox_ecc_unc_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(&mut self) -> u32 {
+    fn write_intr_block_rf_error_mbox_ecc_unc_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(&mut self) -> u32 {
+    fn write_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_notif_cmd_avail_intr_count_r(&mut self) -> u32 {
+    fn write_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_intr_block_rf_notif_cmd_avail_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_notif_cmd_avail_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_notif_mbox_ecc_cor_intr_count_r(&mut self) -> u32 {
+    fn write_intr_block_rf_notif_cmd_avail_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_intr_block_rf_notif_mbox_ecc_cor_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_notif_mbox_ecc_cor_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_notif_debug_locked_intr_count_r(&mut self) -> u32 {
+    fn write_intr_block_rf_notif_mbox_ecc_cor_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_intr_block_rf_notif_debug_locked_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_notif_debug_locked_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_notif_scan_mode_intr_count_r(&mut self) -> u32 {
+    fn write_intr_block_rf_notif_debug_locked_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_intr_block_rf_notif_scan_mode_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_notif_scan_mode_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_notif_soc_req_lock_intr_count_r(&mut self) -> u32 {
+    fn write_intr_block_rf_notif_scan_mode_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_intr_block_rf_notif_soc_req_lock_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_notif_soc_req_lock_intr_count_r(&mut self, _val: u32) {}
-    fn read_intr_block_rf_notif_gen_in_toggle_intr_count_r(&mut self) -> u32 {
+    fn write_intr_block_rf_notif_soc_req_lock_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
+    fn read_intr_block_rf_notif_gen_in_toggle_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_types::RvData {
         0
     }
-    fn write_intr_block_rf_notif_gen_in_toggle_intr_count_r(&mut self, _val: u32) {}
+    fn write_intr_block_rf_notif_gen_in_toggle_intr_count_r(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_intr_block_rf_error_internal_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -874,6 +1310,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_error_internal_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -882,6 +1319,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_error_inv_dev_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -890,6 +1328,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_error_inv_dev_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -898,6 +1337,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_error_cmd_fail_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -906,6 +1346,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_error_cmd_fail_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -914,6 +1355,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_error_bad_fuse_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -922,6 +1364,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_error_bad_fuse_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -930,6 +1373,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_error_iccm_blocked_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -938,6 +1382,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_error_iccm_blocked_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -946,6 +1391,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_error_mbox_ecc_unc_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -954,6 +1400,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_error_mbox_ecc_unc_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -962,6 +1409,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -970,6 +1418,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -978,6 +1427,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -986,6 +1436,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -994,6 +1445,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_notif_cmd_avail_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -1002,6 +1454,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_notif_cmd_avail_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -1010,6 +1463,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_notif_mbox_ecc_cor_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -1018,6 +1472,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_notif_mbox_ecc_cor_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -1026,6 +1481,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_notif_debug_locked_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -1034,6 +1490,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_notif_debug_locked_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -1042,6 +1499,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_notif_scan_mode_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -1050,6 +1508,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_notif_scan_mode_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -1058,6 +1517,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_notif_soc_req_lock_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -1066,6 +1526,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_notif_soc_req_lock_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -1074,6 +1535,7 @@ pub trait SocPeripheral {
     }
     fn read_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -1082,6 +1544,7 @@ pub trait SocPeripheral {
     }
     fn write_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r(
         &mut self,
+        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
@@ -1100,422 +1563,389 @@ impl emulator_bus::Bus for SocBus {
     ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_hw_error_fatal().reg.get(),
+                self.periph
+                    .read_cptra_hw_error_fatal(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 1..=3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 4) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_hw_error_non_fatal().reg.get(),
+                self.periph
+                    .read_cptra_hw_error_non_fatal(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 5..=7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 8) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_fw_error_fatal(),
-            )),
-            (emulator_types::RvSize::Word, 9..=0xb) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0xc) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_fw_error_non_fatal(),
-            )),
-            (emulator_types::RvSize::Word, 0xd..=0xf) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x10) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_hw_error_enc(),
-            )),
-            (emulator_types::RvSize::Word, 0x11..=0x13) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x14) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_fw_error_enc(),
-            )),
-            (emulator_types::RvSize::Word, 0x15..=0x17) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x18) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_fw_extended_error_info(),
-            )),
-            (emulator_types::RvSize::Word, 0x19..=0x1b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x38) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_boot_status(),
-            )),
-            (emulator_types::RvSize::Word, 0x39..=0x3b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 8) => Ok(self.periph.read_cptra_fw_error_fatal(size)),
+            (_, 9..=0xb) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0xc) => Ok(self.periph.read_cptra_fw_error_non_fatal(size)),
+            (_, 0xd..=0xf) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x10) => Ok(self.periph.read_cptra_hw_error_enc(size)),
+            (_, 0x11..=0x13) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x14) => Ok(self.periph.read_cptra_fw_error_enc(size)),
+            (_, 0x15..=0x17) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x18) => Ok(self.periph.read_cptra_fw_extended_error_info(size)),
+            (_, 0x19..=0x1b) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x38) => Ok(self.periph.read_cptra_boot_status(size)),
+            (_, 0x39..=0x3b) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0x3c) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_flow_status().reg.get(),
+                self.periph
+                    .read_cptra_flow_status(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x3d..=0x3f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x40) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_reset_reason().reg.get(),
+                self.periph
+                    .read_cptra_reset_reason(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x41..=0x43) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x44) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_security_state().reg.get(),
+                self.periph
+                    .read_cptra_security_state(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x45..=0x47) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x48) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_mbox_valid_axi_id(),
-            )),
-            (emulator_types::RvSize::Word, 0x49..=0x4b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0x48) => Ok(self.periph.read_cptra_mbox_valid_axi_id(size)),
+            (_, 0x49..=0x4b) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0x5c) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_mbox_axi_id_lock().reg.get(),
+                self.periph
+                    .read_cptra_mbox_axi_id_lock(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x5d..=0x5f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x70) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_trng_valid_axi_id(),
-            )),
-            (emulator_types::RvSize::Word, 0x71..=0x73) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0x70) => Ok(self.periph.read_cptra_trng_valid_axi_id(size)),
+            (_, 0x71..=0x73) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0x74) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_trng_axi_id_lock().reg.get(),
+                self.periph
+                    .read_cptra_trng_axi_id_lock(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x75..=0x77) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x78) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_trng_data(),
-            )),
-            (emulator_types::RvSize::Word, 0x79..=0x7b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0x78) => Ok(self.periph.read_cptra_trng_data(size)),
+            (_, 0x79..=0x7b) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0xa8) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_trng_ctrl().reg.get(),
+                self.periph
+                    .read_cptra_trng_ctrl(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0xa9..=0xab) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xac) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_trng_status().reg.get(),
+                self.periph
+                    .read_cptra_trng_status(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0xad..=0xaf) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xb0) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_fuse_wr_done().reg.get(),
+                self.periph
+                    .read_cptra_fuse_wr_done(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0xb1..=0xb3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xb4) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_timer_config(),
-            )),
-            (emulator_types::RvSize::Word, 0xb5..=0xb7) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0xb4) => Ok(self.periph.read_cptra_timer_config(size)),
+            (_, 0xb5..=0xb7) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0xb8) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_bootfsm_go().reg.get(),
+                self.periph
+                    .read_cptra_bootfsm_go(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0xb9..=0xbb) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xbc) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_dbg_manuf_service_reg(),
-            )),
-            (emulator_types::RvSize::Word, 0xbd..=0xbf) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0xbc) => Ok(self.periph.read_cptra_dbg_manuf_service_reg(size)),
+            (_, 0xbd..=0xbf) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0xc0) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_clk_gating_en().reg.get(),
+                self.periph
+                    .read_cptra_clk_gating_en(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0xc1..=0xc3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xc4) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_generic_input_wires(),
-            )),
-            (emulator_types::RvSize::Word, 0xc5..=0xc7) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0xcc) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_generic_output_wires(),
-            )),
-            (emulator_types::RvSize::Word, 0xcd..=0xcf) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0xc4) => Ok(self.periph.read_cptra_generic_input_wires(size)),
+            (_, 0xc5..=0xc7) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0xcc) => Ok(self.periph.read_cptra_generic_output_wires(size)),
+            (_, 0xcd..=0xcf) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0xd4) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_hw_rev_id().reg.get(),
+                self.periph
+                    .read_cptra_hw_rev_id(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0xd5..=0xd7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xd8) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_fw_rev_id(),
-            )),
-            (emulator_types::RvSize::Word, 0xd9..=0xdb) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0xd8) => Ok(self.periph.read_cptra_fw_rev_id(size)),
+            (_, 0xd9..=0xdb) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0xe0) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_hw_config().reg.get(),
+                self.periph
+                    .read_cptra_hw_config(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0xe1..=0xe3) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xe4) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_wdt_timer1_en().reg.get(),
+                self.periph
+                    .read_cptra_wdt_timer1_en(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0xe5..=0xe7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xe8) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_wdt_timer1_ctrl().reg.get(),
+                self.periph
+                    .read_cptra_wdt_timer1_ctrl(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0xe9..=0xeb) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xec) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_wdt_timer1_timeout_period(),
-            )),
-            (emulator_types::RvSize::Word, 0xed..=0xef) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0xec) => Ok(self.periph.read_cptra_wdt_timer1_timeout_period(size)),
+            (_, 0xed..=0xef) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0xf4) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_wdt_timer2_en().reg.get(),
+                self.periph
+                    .read_cptra_wdt_timer2_en(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0xf5..=0xf7) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xf8) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_wdt_timer2_ctrl().reg.get(),
+                self.periph
+                    .read_cptra_wdt_timer2_ctrl(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0xf9..=0xfb) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xfc) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_wdt_timer2_timeout_period(),
-            )),
-            (emulator_types::RvSize::Word, 0xfd..=0xff) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0xfc) => Ok(self.periph.read_cptra_wdt_timer2_timeout_period(size)),
+            (_, 0xfd..=0xff) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0x104) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_wdt_status().reg.get(),
+                self.periph
+                    .read_cptra_wdt_status(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x105..=0x107) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x108) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_fuse_valid_axi_id(),
-            )),
-            (emulator_types::RvSize::Word, 0x109..=0x10b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0x108) => Ok(self.periph.read_cptra_fuse_valid_axi_id(size)),
+            (_, 0x109..=0x10b) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0x10c) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_fuse_axi_id_lock().reg.get(),
+                self.periph
+                    .read_cptra_fuse_axi_id_lock(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x10d..=0x10f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x110) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_wdt_cfg(),
-            )),
-            (emulator_types::RvSize::Word, 0x111..=0x113) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0x110) => Ok(self.periph.read_cptra_wdt_cfg(size)),
+            (_, 0x111..=0x113) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0x118) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_i_trng_entropy_config_0().reg.get(),
+                self.periph
+                    .read_cptra_i_trng_entropy_config_0(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x119..=0x11b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x11c) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_i_trng_entropy_config_1().reg.get(),
+                self.periph
+                    .read_cptra_i_trng_entropy_config_1(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x11d..=0x11f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x120) => Ok(emulator_types::RvData::from(
-                self.periph.read_cptra_rsvd_reg(),
-            )),
-            (emulator_types::RvSize::Word, 0x121..=0x123) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x250) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_key_manifest_pk_hash(),
-            )),
-            (emulator_types::RvSize::Word, 0x251..=0x253) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0x120) => Ok(self.periph.read_cptra_rsvd_reg(size)),
+            (_, 0x121..=0x123) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x250) => Ok(self.periph.read_fuse_key_manifest_pk_hash(size)),
+            (_, 0x251..=0x253) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0x280) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_key_manifest_pk_hash_mask().reg.get(),
+                self.periph
+                    .read_fuse_key_manifest_pk_hash_mask(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x281..=0x283) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x284) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_owner_pk_hash(),
-            )),
-            (emulator_types::RvSize::Word, 0x285..=0x287) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x2b4) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_fmc_key_manifest_svn(),
-            )),
-            (emulator_types::RvSize::Word, 0x2b5..=0x2b7) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x2b8) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_runtime_svn(),
-            )),
-            (emulator_types::RvSize::Word, 0x2b9..=0x2bb) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0x284) => Ok(self.periph.read_fuse_owner_pk_hash(size)),
+            (_, 0x285..=0x287) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x2b4) => Ok(self.periph.read_fuse_fmc_key_manifest_svn(size)),
+            (_, 0x2b5..=0x2b7) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x2b8) => Ok(self.periph.read_fuse_runtime_svn(size)),
+            (_, 0x2b9..=0x2bb) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0x2c8) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_anti_rollback_disable().reg.get(),
+                self.periph
+                    .read_fuse_anti_rollback_disable(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x2c9..=0x2cb) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x2cc) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_idevid_cert_attr(),
-            )),
-            (emulator_types::RvSize::Word, 0x2cd..=0x2cf) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x32c) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_idevid_manuf_hsm_id(),
-            )),
-            (emulator_types::RvSize::Word, 0x32d..=0x32f) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0x2cc) => Ok(self.periph.read_fuse_idevid_cert_attr(size)),
+            (_, 0x2cd..=0x2cf) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x32c) => Ok(self.periph.read_fuse_idevid_manuf_hsm_id(size)),
+            (_, 0x32d..=0x32f) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0x33c) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_life_cycle().reg.get(),
+                self.periph
+                    .read_fuse_life_cycle(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x33d..=0x33f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x340) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_lms_verify().reg.get(),
+                self.periph
+                    .read_fuse_lms_verify(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x341..=0x343) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x344) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_lms_revocation(),
-            )),
-            (emulator_types::RvSize::Word, 0x345..=0x347) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0x344) => Ok(self.periph.read_fuse_lms_revocation(size)),
+            (_, 0x345..=0x347) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0x348) => Ok(emulator_types::RvData::from(
-                self.periph.read_fuse_soc_stepping_id().reg.get(),
+                self.periph
+                    .read_fuse_soc_stepping_id(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x349..=0x34b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x620) => Ok(emulator_types::RvData::from(
-                self.periph.read_internal_iccm_lock().reg.get(),
+                self.periph
+                    .read_internal_iccm_lock(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x621..=0x623) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x624) => Ok(emulator_types::RvData::from(
-                self.periph.read_internal_fw_update_reset().reg.get(),
+                self.periph
+                    .read_internal_fw_update_reset(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x625..=0x627) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x628) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_internal_fw_update_reset_wait_cycles()
+                    .read_internal_fw_update_reset_wait_cycles(emulator_types::RvSize::Word)
                     .reg
                     .get(),
             )),
             (emulator_types::RvSize::Word, 0x629..=0x62b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x62c) => Ok(emulator_types::RvData::from(
-                self.periph.read_internal_nmi_vector(),
-            )),
-            (emulator_types::RvSize::Word, 0x62d..=0x62f) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0x62c) => Ok(self.periph.read_internal_nmi_vector(size)),
+            (_, 0x62d..=0x62f) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0x630) => Ok(emulator_types::RvData::from(
-                self.periph.read_internal_hw_error_fatal_mask().reg.get(),
+                self.periph
+                    .read_internal_hw_error_fatal_mask(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x631..=0x633) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x634) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_internal_hw_error_non_fatal_mask()
+                    .read_internal_hw_error_non_fatal_mask(emulator_types::RvSize::Word)
                     .reg
                     .get(),
             )),
             (emulator_types::RvSize::Word, 0x635..=0x637) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x638) => Ok(emulator_types::RvData::from(
-                self.periph.read_internal_fw_error_fatal_mask(),
-            )),
-            (emulator_types::RvSize::Word, 0x639..=0x63b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x63c) => Ok(emulator_types::RvData::from(
-                self.periph.read_internal_fw_error_non_fatal_mask(),
-            )),
-            (emulator_types::RvSize::Word, 0x63d..=0x63f) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x640) => Ok(emulator_types::RvData::from(
-                self.periph.read_internal_rv_mtime_l(),
-            )),
-            (emulator_types::RvSize::Word, 0x641..=0x643) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x644) => Ok(emulator_types::RvData::from(
-                self.periph.read_internal_rv_mtime_h(),
-            )),
-            (emulator_types::RvSize::Word, 0x645..=0x647) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x648) => Ok(emulator_types::RvData::from(
-                self.periph.read_internal_rv_mtimecmp_l(),
-            )),
-            (emulator_types::RvSize::Word, 0x649..=0x64b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x64c) => Ok(emulator_types::RvData::from(
-                self.periph.read_internal_rv_mtimecmp_h(),
-            )),
-            (emulator_types::RvSize::Word, 0x64d..=0x64f) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0x638) => Ok(self.periph.read_internal_fw_error_fatal_mask(size)),
+            (_, 0x639..=0x63b) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x63c) => Ok(self.periph.read_internal_fw_error_non_fatal_mask(size)),
+            (_, 0x63d..=0x63f) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x640) => Ok(self.periph.read_internal_rv_mtime_l(size)),
+            (_, 0x641..=0x643) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x644) => Ok(self.periph.read_internal_rv_mtime_h(size)),
+            (_, 0x645..=0x647) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x648) => Ok(self.periph.read_internal_rv_mtimecmp_l(size)),
+            (_, 0x649..=0x64b) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x64c) => Ok(self.periph.read_internal_rv_mtimecmp_h(size)),
+            (_, 0x64d..=0x64f) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0x800) => Ok(emulator_types::RvData::from(
-                self.periph.read_intr_block_rf_global_intr_en_r().reg.get(),
+                self.periph
+                    .read_intr_block_rf_global_intr_en_r(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x801..=0x803) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x804) => Ok(emulator_types::RvData::from(
-                self.periph.read_intr_block_rf_error_intr_en_r().reg.get(),
+                self.periph
+                    .read_intr_block_rf_error_intr_en_r(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x805..=0x807) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x808) => Ok(emulator_types::RvData::from(
-                self.periph.read_intr_block_rf_notif_intr_en_r().reg.get(),
+                self.periph
+                    .read_intr_block_rf_notif_intr_en_r(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x809..=0x80b) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x80c) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_error_global_intr_r()
+                    .read_intr_block_rf_error_global_intr_r(emulator_types::RvSize::Word)
                     .reg
                     .get(),
             )),
@@ -1524,7 +1954,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x810) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_notif_global_intr_r()
+                    .read_intr_block_rf_notif_global_intr_r(emulator_types::RvSize::Word)
                     .reg
                     .get(),
             )),
@@ -1533,7 +1963,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x814) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_error_internal_intr_r()
+                    .read_intr_block_rf_error_internal_intr_r(emulator_types::RvSize::Word)
                     .reg
                     .get(),
             )),
@@ -1542,7 +1972,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x818) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_notif_internal_intr_r()
+                    .read_intr_block_rf_notif_internal_intr_r(emulator_types::RvSize::Word)
                     .reg
                     .get(),
             )),
@@ -1550,114 +1980,84 @@ impl emulator_bus::Bus for SocBus {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x81c) => Ok(emulator_types::RvData::from(
-                self.periph.read_intr_block_rf_error_intr_trig_r().reg.get(),
+                self.periph
+                    .read_intr_block_rf_error_intr_trig_r(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x81d..=0x81f) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x820) => Ok(emulator_types::RvData::from(
-                self.periph.read_intr_block_rf_notif_intr_trig_r().reg.get(),
+                self.periph
+                    .read_intr_block_rf_notif_intr_trig_r(emulator_types::RvSize::Word)
+                    .reg
+                    .get(),
             )),
             (emulator_types::RvSize::Word, 0x821..=0x823) => {
                 Err(emulator_bus::BusError::LoadAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x900) => Ok(emulator_types::RvData::from(
-                self.periph.read_intr_block_rf_error_internal_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x901..=0x903) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x904) => Ok(emulator_types::RvData::from(
-                self.periph.read_intr_block_rf_error_inv_dev_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x905..=0x907) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x908) => Ok(emulator_types::RvData::from(
-                self.periph.read_intr_block_rf_error_cmd_fail_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x909..=0x90b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x90c) => Ok(emulator_types::RvData::from(
-                self.periph.read_intr_block_rf_error_bad_fuse_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x90d..=0x90f) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x910) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_intr_block_rf_error_iccm_blocked_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x911..=0x913) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x914) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_intr_block_rf_error_mbox_ecc_unc_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x915..=0x917) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x918) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x919..=0x91b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x91c) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x91d..=0x91f) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x980) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_intr_block_rf_notif_cmd_avail_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x981..=0x983) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x984) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_intr_block_rf_notif_mbox_ecc_cor_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x985..=0x987) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x988) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_intr_block_rf_notif_debug_locked_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x989..=0x98b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x98c) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_intr_block_rf_notif_scan_mode_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x98d..=0x98f) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x990) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_intr_block_rf_notif_soc_req_lock_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x991..=0x993) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x994) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_intr_block_rf_notif_gen_in_toggle_intr_count_r(),
-            )),
-            (emulator_types::RvSize::Word, 0x995..=0x997) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
+            (size, 0x900) => Ok(self
+                .periph
+                .read_intr_block_rf_error_internal_intr_count_r(size)),
+            (_, 0x901..=0x903) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x904) => Ok(self
+                .periph
+                .read_intr_block_rf_error_inv_dev_intr_count_r(size)),
+            (_, 0x905..=0x907) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x908) => Ok(self
+                .periph
+                .read_intr_block_rf_error_cmd_fail_intr_count_r(size)),
+            (_, 0x909..=0x90b) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x90c) => Ok(self
+                .periph
+                .read_intr_block_rf_error_bad_fuse_intr_count_r(size)),
+            (_, 0x90d..=0x90f) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x910) => Ok(self
+                .periph
+                .read_intr_block_rf_error_iccm_blocked_intr_count_r(size)),
+            (_, 0x911..=0x913) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x914) => Ok(self
+                .periph
+                .read_intr_block_rf_error_mbox_ecc_unc_intr_count_r(size)),
+            (_, 0x915..=0x917) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x918) => Ok(self
+                .periph
+                .read_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(size)),
+            (_, 0x919..=0x91b) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x91c) => Ok(self
+                .periph
+                .read_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(size)),
+            (_, 0x91d..=0x91f) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x980) => Ok(self
+                .periph
+                .read_intr_block_rf_notif_cmd_avail_intr_count_r(size)),
+            (_, 0x981..=0x983) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x984) => Ok(self
+                .periph
+                .read_intr_block_rf_notif_mbox_ecc_cor_intr_count_r(size)),
+            (_, 0x985..=0x987) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x988) => Ok(self
+                .periph
+                .read_intr_block_rf_notif_debug_locked_intr_count_r(size)),
+            (_, 0x989..=0x98b) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x98c) => Ok(self
+                .periph
+                .read_intr_block_rf_notif_scan_mode_intr_count_r(size)),
+            (_, 0x98d..=0x98f) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x990) => Ok(self
+                .periph
+                .read_intr_block_rf_notif_soc_req_lock_intr_count_r(size)),
+            (_, 0x991..=0x993) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+            (size, 0x994) => Ok(self
+                .periph
+                .read_intr_block_rf_notif_gen_in_toggle_intr_count_r(size)),
+            (_, 0x995..=0x997) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0xa00) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_error_internal_intr_count_incr_r()
+                    .read_intr_block_rf_error_internal_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1666,7 +2066,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa04) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_error_inv_dev_intr_count_incr_r()
+                    .read_intr_block_rf_error_inv_dev_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1675,7 +2077,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa08) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_error_cmd_fail_intr_count_incr_r()
+                    .read_intr_block_rf_error_cmd_fail_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1684,7 +2088,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa0c) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_error_bad_fuse_intr_count_incr_r()
+                    .read_intr_block_rf_error_bad_fuse_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1693,7 +2099,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa10) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_error_iccm_blocked_intr_count_incr_r()
+                    .read_intr_block_rf_error_iccm_blocked_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1702,7 +2110,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa14) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_error_mbox_ecc_unc_intr_count_incr_r()
+                    .read_intr_block_rf_error_mbox_ecc_unc_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1711,7 +2121,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa18) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r()
+                    .read_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1720,7 +2132,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa1c) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r()
+                    .read_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1729,7 +2143,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa20) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_notif_cmd_avail_intr_count_incr_r()
+                    .read_intr_block_rf_notif_cmd_avail_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1738,7 +2154,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa24) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_notif_mbox_ecc_cor_intr_count_incr_r()
+                    .read_intr_block_rf_notif_mbox_ecc_cor_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1747,7 +2165,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa28) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_notif_debug_locked_intr_count_incr_r()
+                    .read_intr_block_rf_notif_debug_locked_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1756,7 +2176,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa2c) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_notif_scan_mode_intr_count_incr_r()
+                    .read_intr_block_rf_notif_scan_mode_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1765,7 +2187,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa30) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_notif_soc_req_lock_intr_count_incr_r()
+                    .read_intr_block_rf_notif_soc_req_lock_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1774,7 +2198,9 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0xa34) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r()
+                    .read_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
+                    )
                     .reg
                     .get(),
             )),
@@ -1792,330 +2218,333 @@ impl emulator_bus::Bus for SocBus {
     ) -> Result<(), emulator_bus::BusError> {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => {
-                self.periph
-                    .write_cptra_hw_error_fatal(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_hw_error_fatal(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 1..=3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 4) => {
-                self.periph
-                    .write_cptra_hw_error_non_fatal(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_hw_error_non_fatal(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 5..=7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 8) => {
-                self.periph.write_cptra_fw_error_fatal(val);
+            (size, 8) => {
+                self.periph.write_cptra_fw_error_fatal(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 9..=0xb) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0xc) => {
-                self.periph.write_cptra_fw_error_non_fatal(val);
+            (_, 9..=0xb) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0xc) => {
+                self.periph.write_cptra_fw_error_non_fatal(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0xd..=0xf) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x10) => {
-                self.periph.write_cptra_hw_error_enc(val);
+            (_, 0xd..=0xf) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x10) => {
+                self.periph.write_cptra_hw_error_enc(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x11..=0x13) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x14) => {
-                self.periph.write_cptra_fw_error_enc(val);
+            (_, 0x11..=0x13) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x14) => {
+                self.periph.write_cptra_fw_error_enc(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x15..=0x17) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x18) => {
-                self.periph.write_cptra_fw_extended_error_info(val);
+            (_, 0x15..=0x17) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x18) => {
+                self.periph.write_cptra_fw_extended_error_info(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x19..=0x1b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x38) => {
-                self.periph.write_cptra_boot_status(val);
+            (_, 0x19..=0x1b) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x38) => {
+                self.periph.write_cptra_boot_status(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x39..=0x3b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x39..=0x3b) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x3c) => {
-                self.periph
-                    .write_cptra_flow_status(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_flow_status(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x3d..=0x3f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x40) => {
-                self.periph
-                    .write_cptra_reset_reason(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_reset_reason(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x41..=0x43) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x44) => {
-                self.periph
-                    .write_cptra_security_state(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_security_state(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x45..=0x47) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x48) => {
-                self.periph.write_cptra_mbox_valid_axi_id(val);
+            (size, 0x48) => {
+                self.periph.write_cptra_mbox_valid_axi_id(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x49..=0x4b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x49..=0x4b) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x5c) => {
-                self.periph
-                    .write_cptra_mbox_axi_id_lock(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_mbox_axi_id_lock(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x5d..=0x5f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x70) => {
-                self.periph.write_cptra_trng_valid_axi_id(val);
+            (size, 0x70) => {
+                self.periph.write_cptra_trng_valid_axi_id(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x71..=0x73) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x71..=0x73) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x74) => {
-                self.periph
-                    .write_cptra_trng_axi_id_lock(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_trng_axi_id_lock(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x75..=0x77) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x78) => {
-                self.periph.write_cptra_trng_data(val);
+            (size, 0x78) => {
+                self.periph.write_cptra_trng_data(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x79..=0x7b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x79..=0x7b) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0xa8) => {
-                self.periph
-                    .write_cptra_trng_ctrl(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_trng_ctrl(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xa9..=0xab) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xac) => {
-                self.periph
-                    .write_cptra_trng_status(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_trng_status(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xad..=0xaf) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xb0) => {
-                self.periph
-                    .write_cptra_fuse_wr_done(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_fuse_wr_done(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xb1..=0xb3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xb4) => {
-                self.periph.write_cptra_timer_config(val);
+            (size, 0xb4) => {
+                self.periph.write_cptra_timer_config(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0xb5..=0xb7) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0xb5..=0xb7) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0xb8) => {
-                self.periph
-                    .write_cptra_bootfsm_go(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_bootfsm_go(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xb9..=0xbb) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xbc) => {
-                self.periph.write_cptra_dbg_manuf_service_reg(val);
+            (size, 0xbc) => {
+                self.periph.write_cptra_dbg_manuf_service_reg(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0xbd..=0xbf) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0xbd..=0xbf) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0xc0) => {
-                self.periph
-                    .write_cptra_clk_gating_en(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_clk_gating_en(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xc1..=0xc3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xcc) => {
-                self.periph.write_cptra_generic_output_wires(val);
+            (size, 0xcc) => {
+                self.periph.write_cptra_generic_output_wires(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0xcd..=0xcf) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0xcd..=0xcf) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0xd4) => {
-                self.periph
-                    .write_cptra_hw_rev_id(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_hw_rev_id(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xd5..=0xd7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xd8) => {
-                self.periph.write_cptra_fw_rev_id(val);
+            (size, 0xd8) => {
+                self.periph.write_cptra_fw_rev_id(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0xd9..=0xdb) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0xd9..=0xdb) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0xe0) => {
-                self.periph
-                    .write_cptra_hw_config(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_hw_config(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xe1..=0xe3) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xe4) => {
-                self.periph
-                    .write_cptra_wdt_timer1_en(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_wdt_timer1_en(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xe5..=0xe7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xe8) => {
-                self.periph
-                    .write_cptra_wdt_timer1_ctrl(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_wdt_timer1_ctrl(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xe9..=0xeb) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xec) => {
-                self.periph.write_cptra_wdt_timer1_timeout_period(val);
+            (size, 0xec) => {
+                self.periph.write_cptra_wdt_timer1_timeout_period(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0xed..=0xef) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0xed..=0xef) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0xf4) => {
-                self.periph
-                    .write_cptra_wdt_timer2_en(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_wdt_timer2_en(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xf5..=0xf7) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0xf8) => {
-                self.periph
-                    .write_cptra_wdt_timer2_ctrl(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_wdt_timer2_ctrl(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0xf9..=0xfb) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0xfc) => {
-                self.periph.write_cptra_wdt_timer2_timeout_period(val);
+            (size, 0xfc) => {
+                self.periph.write_cptra_wdt_timer2_timeout_period(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0xfd..=0xff) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0xfd..=0xff) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x104) => {
-                self.periph
-                    .write_cptra_wdt_status(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_wdt_status(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x105..=0x107) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x108) => {
-                self.periph.write_cptra_fuse_valid_axi_id(val);
+            (size, 0x108) => {
+                self.periph.write_cptra_fuse_valid_axi_id(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x109..=0x10b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x109..=0x10b) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x10c) => {
-                self.periph
-                    .write_cptra_fuse_axi_id_lock(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_fuse_axi_id_lock(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x10d..=0x10f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x110) => {
-                self.periph.write_cptra_wdt_cfg(val);
+            (size, 0x110) => {
+                self.periph.write_cptra_wdt_cfg(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x111..=0x113) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x111..=0x113) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x118) => {
-                self.periph
-                    .write_cptra_i_trng_entropy_config_0(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_i_trng_entropy_config_0(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x119..=0x11b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x11c) => {
-                self.periph
-                    .write_cptra_i_trng_entropy_config_1(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_i_trng_entropy_config_1(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x11d..=0x11f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x120) => {
-                self.periph.write_cptra_rsvd_reg(val);
+            (size, 0x120) => {
+                self.periph.write_cptra_rsvd_reg(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x121..=0x123) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x200) => {
-                self.periph.write_fuse_uds_seed(val);
+            (_, 0x121..=0x123) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x200) => {
+                self.periph.write_fuse_uds_seed(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x201..=0x203) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x230) => {
-                self.periph.write_fuse_field_entropy(val);
+            (_, 0x201..=0x203) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x230) => {
+                self.periph.write_fuse_field_entropy(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x231..=0x233) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x250) => {
-                self.periph.write_fuse_key_manifest_pk_hash(val);
+            (_, 0x231..=0x233) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x250) => {
+                self.periph.write_fuse_key_manifest_pk_hash(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x251..=0x253) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x251..=0x253) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x280) => {
                 self.periph.write_fuse_key_manifest_pk_hash_mask(
+                    emulator_types::RvSize::Word,
                     emulator_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
@@ -2123,98 +2552,96 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0x281..=0x283) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x284) => {
-                self.periph.write_fuse_owner_pk_hash(val);
+            (size, 0x284) => {
+                self.periph.write_fuse_owner_pk_hash(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x285..=0x287) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x2b4) => {
-                self.periph.write_fuse_fmc_key_manifest_svn(val);
+            (_, 0x285..=0x287) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x2b4) => {
+                self.periph.write_fuse_fmc_key_manifest_svn(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x2b5..=0x2b7) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x2b8) => {
-                self.periph.write_fuse_runtime_svn(val);
+            (_, 0x2b5..=0x2b7) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x2b8) => {
+                self.periph.write_fuse_runtime_svn(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x2b9..=0x2bb) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x2b9..=0x2bb) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x2c8) => {
-                self.periph
-                    .write_fuse_anti_rollback_disable(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_fuse_anti_rollback_disable(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x2c9..=0x2cb) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x2cc) => {
-                self.periph.write_fuse_idevid_cert_attr(val);
+            (size, 0x2cc) => {
+                self.periph.write_fuse_idevid_cert_attr(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x2cd..=0x2cf) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x32c) => {
-                self.periph.write_fuse_idevid_manuf_hsm_id(val);
+            (_, 0x2cd..=0x2cf) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x32c) => {
+                self.periph.write_fuse_idevid_manuf_hsm_id(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x32d..=0x32f) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x32d..=0x32f) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x33c) => {
-                self.periph
-                    .write_fuse_life_cycle(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_fuse_life_cycle(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x33d..=0x33f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x340) => {
-                self.periph
-                    .write_fuse_lms_verify(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_fuse_lms_verify(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x341..=0x343) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x344) => {
-                self.periph.write_fuse_lms_revocation(val);
+            (size, 0x344) => {
+                self.periph.write_fuse_lms_revocation(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x345..=0x347) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x345..=0x347) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x348) => {
-                self.periph
-                    .write_fuse_soc_stepping_id(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_fuse_soc_stepping_id(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x349..=0x34b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x600) => {
-                self.periph.write_internal_obf_key(val);
+            (size, 0x600) => {
+                self.periph.write_internal_obf_key(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x601..=0x603) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x601..=0x603) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x620) => {
-                self.periph
-                    .write_internal_iccm_lock(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_internal_iccm_lock(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x621..=0x623) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x624) => {
-                self.periph
-                    .write_internal_fw_update_reset(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_internal_fw_update_reset(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x625..=0x627) => {
@@ -2222,6 +2649,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x628) => {
                 self.periph.write_internal_fw_update_reset_wait_cycles(
+                    emulator_types::RvSize::Word,
                     emulator_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
@@ -2229,16 +2657,16 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0x629..=0x62b) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x62c) => {
-                self.periph.write_internal_nmi_vector(val);
+            (size, 0x62c) => {
+                self.periph.write_internal_nmi_vector(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x62d..=0x62f) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x62d..=0x62f) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x630) => {
-                self.periph
-                    .write_internal_hw_error_fatal_mask(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_internal_hw_error_fatal_mask(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x631..=0x633) => {
@@ -2246,6 +2674,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x634) => {
                 self.periph.write_internal_hw_error_non_fatal_mask(
+                    emulator_types::RvSize::Word,
                     emulator_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
@@ -2253,50 +2682,40 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0x635..=0x637) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x638) => {
-                self.periph.write_internal_fw_error_fatal_mask(val);
+            (size, 0x638) => {
+                self.periph.write_internal_fw_error_fatal_mask(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x639..=0x63b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x63c) => {
-                self.periph.write_internal_fw_error_non_fatal_mask(val);
+            (_, 0x639..=0x63b) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x63c) => {
+                self.periph
+                    .write_internal_fw_error_non_fatal_mask(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x63d..=0x63f) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x640) => {
-                self.periph.write_internal_rv_mtime_l(val);
+            (_, 0x63d..=0x63f) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x640) => {
+                self.periph.write_internal_rv_mtime_l(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x641..=0x643) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x644) => {
-                self.periph.write_internal_rv_mtime_h(val);
+            (_, 0x641..=0x643) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x644) => {
+                self.periph.write_internal_rv_mtime_h(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x645..=0x647) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x648) => {
-                self.periph.write_internal_rv_mtimecmp_l(val);
+            (_, 0x645..=0x647) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x648) => {
+                self.periph.write_internal_rv_mtimecmp_l(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x649..=0x64b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x64c) => {
-                self.periph.write_internal_rv_mtimecmp_h(val);
+            (_, 0x649..=0x64b) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x64c) => {
+                self.periph.write_internal_rv_mtimecmp_h(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x64d..=0x64f) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x64d..=0x64f) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x800) => {
                 self.periph.write_intr_block_rf_global_intr_en_r(
+                    emulator_types::RvSize::Word,
                     emulator_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
@@ -2305,16 +2724,20 @@ impl emulator_bus::Bus for SocBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x804) => {
-                self.periph
-                    .write_intr_block_rf_error_intr_en_r(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_intr_block_rf_error_intr_en_r(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x805..=0x807) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x808) => {
-                self.periph
-                    .write_intr_block_rf_notif_intr_en_r(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_intr_block_rf_notif_intr_en_r(
+                    emulator_types::RvSize::Word,
+                    emulator_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x809..=0x80b) => {
@@ -2322,6 +2745,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x80c) => {
                 self.periph.write_intr_block_rf_error_global_intr_r(
+                    emulator_types::RvSize::Word,
                     emulator_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
@@ -2331,6 +2755,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x810) => {
                 self.periph.write_intr_block_rf_notif_global_intr_r(
+                    emulator_types::RvSize::Word,
                     emulator_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
@@ -2340,6 +2765,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x814) => {
                 self.periph.write_intr_block_rf_error_internal_intr_r(
+                    emulator_types::RvSize::Word,
                     emulator_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
@@ -2349,6 +2775,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x818) => {
                 self.periph.write_intr_block_rf_notif_internal_intr_r(
+                    emulator_types::RvSize::Word,
                     emulator_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
@@ -2358,6 +2785,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x81c) => {
                 self.periph.write_intr_block_rf_error_intr_trig_r(
+                    emulator_types::RvSize::Word,
                     emulator_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
@@ -2367,6 +2795,7 @@ impl emulator_bus::Bus for SocBus {
             }
             (emulator_types::RvSize::Word, 0x820) => {
                 self.periph.write_intr_block_rf_notif_intr_trig_r(
+                    emulator_types::RvSize::Word,
                     emulator_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
@@ -2374,121 +2803,94 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0x821..=0x823) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
-            (emulator_types::RvSize::Word, 0x900) => {
+            (size, 0x900) => {
                 self.periph
-                    .write_intr_block_rf_error_internal_intr_count_r(val);
+                    .write_intr_block_rf_error_internal_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x901..=0x903) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x904) => {
+            (_, 0x901..=0x903) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x904) => {
                 self.periph
-                    .write_intr_block_rf_error_inv_dev_intr_count_r(val);
+                    .write_intr_block_rf_error_inv_dev_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x905..=0x907) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x908) => {
+            (_, 0x905..=0x907) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x908) => {
                 self.periph
-                    .write_intr_block_rf_error_cmd_fail_intr_count_r(val);
+                    .write_intr_block_rf_error_cmd_fail_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x909..=0x90b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x90c) => {
+            (_, 0x909..=0x90b) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x90c) => {
                 self.periph
-                    .write_intr_block_rf_error_bad_fuse_intr_count_r(val);
+                    .write_intr_block_rf_error_bad_fuse_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x90d..=0x90f) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x910) => {
+            (_, 0x90d..=0x90f) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x910) => {
                 self.periph
-                    .write_intr_block_rf_error_iccm_blocked_intr_count_r(val);
+                    .write_intr_block_rf_error_iccm_blocked_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x911..=0x913) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x914) => {
+            (_, 0x911..=0x913) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x914) => {
                 self.periph
-                    .write_intr_block_rf_error_mbox_ecc_unc_intr_count_r(val);
+                    .write_intr_block_rf_error_mbox_ecc_unc_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x915..=0x917) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x918) => {
+            (_, 0x915..=0x917) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x918) => {
                 self.periph
-                    .write_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(val);
+                    .write_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x919..=0x91b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x91c) => {
+            (_, 0x919..=0x91b) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x91c) => {
                 self.periph
-                    .write_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(val);
+                    .write_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x91d..=0x91f) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x980) => {
+            (_, 0x91d..=0x91f) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x980) => {
                 self.periph
-                    .write_intr_block_rf_notif_cmd_avail_intr_count_r(val);
+                    .write_intr_block_rf_notif_cmd_avail_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x981..=0x983) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x984) => {
+            (_, 0x981..=0x983) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x984) => {
                 self.periph
-                    .write_intr_block_rf_notif_mbox_ecc_cor_intr_count_r(val);
+                    .write_intr_block_rf_notif_mbox_ecc_cor_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x985..=0x987) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x988) => {
+            (_, 0x985..=0x987) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x988) => {
                 self.periph
-                    .write_intr_block_rf_notif_debug_locked_intr_count_r(val);
+                    .write_intr_block_rf_notif_debug_locked_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x989..=0x98b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x98c) => {
+            (_, 0x989..=0x98b) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x98c) => {
                 self.periph
-                    .write_intr_block_rf_notif_scan_mode_intr_count_r(val);
+                    .write_intr_block_rf_notif_scan_mode_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x98d..=0x98f) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x990) => {
+            (_, 0x98d..=0x98f) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x990) => {
                 self.periph
-                    .write_intr_block_rf_notif_soc_req_lock_intr_count_r(val);
+                    .write_intr_block_rf_notif_soc_req_lock_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x991..=0x993) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x994) => {
+            (_, 0x991..=0x993) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x994) => {
                 self.periph
-                    .write_intr_block_rf_notif_gen_in_toggle_intr_count_r(val);
+                    .write_intr_block_rf_notif_gen_in_toggle_intr_count_r(size, val);
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x995..=0x997) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
+            (_, 0x995..=0x997) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0xa00) => {
                 self.periph
                     .write_intr_block_rf_error_internal_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
@@ -2499,6 +2901,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa04) => {
                 self.periph
                     .write_intr_block_rf_error_inv_dev_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
@@ -2509,6 +2912,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa08) => {
                 self.periph
                     .write_intr_block_rf_error_cmd_fail_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
@@ -2519,6 +2923,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa0c) => {
                 self.periph
                     .write_intr_block_rf_error_bad_fuse_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
@@ -2529,6 +2934,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa10) => {
                 self.periph
                     .write_intr_block_rf_error_iccm_blocked_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
@@ -2539,6 +2945,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa14) => {
                 self.periph
                     .write_intr_block_rf_error_mbox_ecc_unc_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
@@ -2549,6 +2956,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa18) => {
                 self.periph
                     .write_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
@@ -2559,6 +2967,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa1c) => {
                 self.periph
                     .write_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
@@ -2569,6 +2978,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa20) => {
                 self.periph
                     .write_intr_block_rf_notif_cmd_avail_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
@@ -2579,6 +2989,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa24) => {
                 self.periph
                     .write_intr_block_rf_notif_mbox_ecc_cor_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
@@ -2589,6 +3000,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa28) => {
                 self.periph
                     .write_intr_block_rf_notif_debug_locked_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
@@ -2599,6 +3011,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa2c) => {
                 self.periph
                     .write_intr_block_rf_notif_scan_mode_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
@@ -2609,6 +3022,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa30) => {
                 self.periph
                     .write_intr_block_rf_notif_soc_req_lock_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
@@ -2619,6 +3033,7 @@ impl emulator_bus::Bus for SocBus {
             (emulator_types::RvSize::Word, 0xa34) => {
                 self.periph
                     .write_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r(
+                        emulator_types::RvSize::Word,
                         emulator_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())

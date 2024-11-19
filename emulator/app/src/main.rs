@@ -24,7 +24,7 @@ use console::{Key, Term};
 use emulator_bus::{Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
-use emulator_periph::{CaliptraRootBus, CaliptraRootBusArgs};
+use emulator_periph::{CaliptraRootBus, CaliptraRootBusArgs, I3c, I3cController};
 use emulator_registers_generated::root_bus::AutoRootBus;
 use gdb::gdb_state;
 use gdb::gdb_target::GdbTarget;
@@ -324,7 +324,24 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         clock: clock.clone(),
     };
     let root_bus = CaliptraRootBus::new(bus_args).unwrap();
-    let auto_root_bus = AutoRootBus::new(Some(Box::new(root_bus)), None, None, None, None, None);
+    let i3c_error_irq = pic.register_irq(CaliptraRootBus::I3C_ERROR_IRQ);
+    let i3c_notif_irq = pic.register_irq(CaliptraRootBus::I3C_NOTIF_IRQ);
+
+    let mut i3c_controller = I3cController::default();
+    let i3c = I3c::new(
+        &clock.clone(),
+        &mut i3c_controller,
+        i3c_error_irq,
+        i3c_notif_irq,
+    );
+    let auto_root_bus = AutoRootBus::new(
+        Some(Box::new(root_bus)),
+        Some(Box::new(i3c)),
+        None,
+        None,
+        None,
+        None,
+    );
 
     let cpu = Cpu::new(auto_root_bus, clock, pic);
 

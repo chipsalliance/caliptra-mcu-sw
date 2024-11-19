@@ -14,6 +14,8 @@ Abstract:
 extern crate arrayref;
 
 mod emu_ctrl;
+mod i3c;
+pub(crate) mod i3c_protocol;
 mod otp;
 mod otp_digest;
 mod root_bus;
@@ -22,6 +24,8 @@ mod spi_host;
 mod uart;
 
 pub use emu_ctrl::EmuCtrl;
+pub use i3c::I3c;
+pub use i3c_protocol::*;
 pub use otp::Otp;
 pub use root_bus::{CaliptraRootBus, CaliptraRootBusArgs};
 pub use spi_flash::IoMode;

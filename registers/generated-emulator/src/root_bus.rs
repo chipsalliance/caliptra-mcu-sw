@@ -4,7 +4,7 @@
 //
 pub struct AutoRootBus {
     delegate: Option<Box<dyn emulator_bus::Bus>>,
-    pub i3c_csr_periph: Option<crate::I3CCSR::I3ccsrBus>,
+    pub i3c_periph: Option<crate::i3c::I3cBus>,
     pub mbox_periph: Option<crate::mbox::MboxBus>,
     pub sha512_acc_periph: Option<crate::sha512_acc::Sha512AccBus>,
     pub soc_periph: Option<crate::soc::SocBus>,
@@ -14,7 +14,7 @@ impl AutoRootBus {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         delegate: Option<Box<dyn emulator_bus::Bus>>,
-        i3c_csr_periph: Option<Box<dyn crate::I3CCSR::I3ccsrPeripheral>>,
+        i3c_periph: Option<Box<dyn crate::i3c::I3cPeripheral>>,
         mbox_periph: Option<Box<dyn crate::mbox::MboxPeripheral>>,
         sha512_acc_periph: Option<Box<dyn crate::sha512_acc::Sha512AccPeripheral>>,
         soc_periph: Option<Box<dyn crate::soc::SocPeripheral>>,
@@ -22,7 +22,7 @@ impl AutoRootBus {
     ) -> Self {
         Self {
             delegate,
-            i3c_csr_periph: i3c_csr_periph.map(|p| crate::I3CCSR::I3ccsrBus { periph: p }),
+            i3c_periph: i3c_periph.map(|p| crate::i3c::I3cBus { periph: p }),
             mbox_periph: mbox_periph.map(|p| crate::mbox::MboxBus { periph: p }),
             sha512_acc_periph: sha512_acc_periph
                 .map(|p| crate::sha512_acc::Sha512AccBus { periph: p }),
@@ -39,7 +39,7 @@ impl emulator_bus::Bus for AutoRootBus {
     ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
         let result = match addr {
             0x2000_4000..=0x2000_5988 => {
-                if let Some(periph) = self.i3c_csr_periph.as_mut() {
+                if let Some(periph) = self.i3c_periph.as_mut() {
                     periph.read(size, addr - 0x2000_4000)
                 } else {
                     Err(emulator_bus::BusError::LoadAccessFault)
@@ -92,7 +92,7 @@ impl emulator_bus::Bus for AutoRootBus {
     ) -> Result<(), emulator_bus::BusError> {
         let result = match addr {
             0x2000_4000..=0x2000_5988 => {
-                if let Some(periph) = self.i3c_csr_periph.as_mut() {
+                if let Some(periph) = self.i3c_periph.as_mut() {
                     periph.write(size, addr - 0x2000_4000, val)
                 } else {
                     Err(emulator_bus::BusError::StoreAccessFault)
@@ -138,7 +138,7 @@ impl emulator_bus::Bus for AutoRootBus {
         }
     }
     fn poll(&mut self) {
-        if let Some(periph) = self.i3c_csr_periph.as_mut() {
+        if let Some(periph) = self.i3c_periph.as_mut() {
             periph.poll();
         }
         if let Some(periph) = self.mbox_periph.as_mut() {
@@ -158,7 +158,7 @@ impl emulator_bus::Bus for AutoRootBus {
         }
     }
     fn warm_reset(&mut self) {
-        if let Some(periph) = self.i3c_csr_periph.as_mut() {
+        if let Some(periph) = self.i3c_periph.as_mut() {
             periph.warm_reset();
         }
         if let Some(periph) = self.mbox_periph.as_mut() {
@@ -178,7 +178,7 @@ impl emulator_bus::Bus for AutoRootBus {
         }
     }
     fn update_reset(&mut self) {
-        if let Some(periph) = self.i3c_csr_periph.as_mut() {
+        if let Some(periph) = self.i3c_periph.as_mut() {
             periph.update_reset();
         }
         if let Some(periph) = self.mbox_periph.as_mut() {
