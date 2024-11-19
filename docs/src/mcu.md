@@ -1,5 +1,7 @@
 # Caliptra Manufacturer Control Unit (MCU) Firmware and SDK
 
+*Spec revision: 0.3*
+
 The Caliptra MCU firmware is be provided as a reference software development kit (SDK) with a consistent foundation for building a quantum-resilient and standards-compliant Root of Trust (RoT) for SoC implementers. It extends the Caliptra core system to provide the Caliptra Subsystem set of services to the encompassing system.
 
 While Caliptra Core provides support for Identity, Secure Boot, Measured Boot, and Attestation, the Caliptra MCU firmware will be responsible for enabling Recovery, RoT Services, and Platform integration support. All SoC RoTs have specific initialization sequences and scenarios that need to be supported beyond standard RoT features. Hence, the MCU firmware will be distributed as Rust SDK with batteries included to build RoT Applications.
@@ -9,6 +11,8 @@ The Caliptra MCU SDK is composed of two major parts:
 **ROM**:  When the MCU first boots, it executes a small, bare metal ROM. The ROM is responsible for sending non-secret fuses to Caliptra core so that it can complete booting. The MCU ROM will be silicon-integrator-specific. However, the MCU SDK will provide a ROM framework that binds the MCU and Caliptra. The ROM will also be used with the software emulator, RTL Simulator, and FPGA stacks. For more details, see the [ROM specification](rom.md).
 
 **Runtime**: The majority of the MCU firmware SDK is the runtime firmware, which provides the majority of the services after booting. Most of the documentation here consists of the documentation for the runtime.
+
+![MCU Diagram](images/mcu_stack.svg)
 
 ## Principles
 

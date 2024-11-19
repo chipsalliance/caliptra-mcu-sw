@@ -9,38 +9,6 @@ MCTP Packets are delivered over physical I3C medium using I3C transfers. Caliptr
 managed by an external I3C controller. Minimum transmission size is based on the MCTP baseline MTU (for I3C it is 69 bytes: 64 bytes MCTP payload + 4 bytes MCTP header + 1 byte PEC). Larger than the baseline transfer may be possible after discovery and negotiation with the I3C controller. The negotiated MTU size will be queried from the I3C Target peripheral driver by MCTP capsule.
 
 
-## MCTP Receive sequence
-
-```mermaid
-sequenceDiagram
-    participant I3CController
-    participant I3CTarget
-    participant MCTPI3CBinding
-    participant MuxMCTPDriver
-    participant VirtualMCTPDriver
-    participant Application
-    loop Assemble packets until eom
-        I3CController--)I3CTarget: I3C Private Write transfer
-        I3CTarget->>MCTPI3CBinding: if no rx buffer, call write_expected() callback
-        MCTPI3CBinding->> MuxMCTPDriver: write_expected() callback
-        MuxMCTPDriver->>MCTPI3CBinding: set_rx_buffer() with buffer to receive packet
-        MCTPI3CBinding->> I3CTarget: set_rx_buffer() with buffer to receive the packet
-        I3CTarget--) I3CController : Send ACK
-        I3CController--)I3CTarget: MCTP packet
-        Note over I3CController, I3CTarget: Receive entire MCTP packet <br/>including the PEC until Sr/P.
-        I3CTarget->> MCTPI3CBinding: receive() to receive the packet
-        MCTPI3CBinding ->> MCTPI3CBinding: Check the PEC, and pass the packet <br/>with MCTPHeader to Mux MCTP layer
-        MCTPI3CBinding->>MuxMCTPDriver: receive() to receive the packet
-        MuxMCTPDriver->>MuxMCTPDriver: Process MCTP transport header on packet, <br/> and assemble if matches any pending Rx states<br/>or handle MCTP control msg.
-    end
-    MuxMCTPDriver->>VirtualMCTPDriver: receive() call to receive the assembled message.
-    VirtualMCTPDriver--)Application: Schedule upcall to receive the request/response.
-```
-
-The Receive stack is as shown in the picture below:
-
-![The MCTP Receive stack](images/MCTP_rx_stack.svg)
-
 ## MCTP Send Sequence
 
 ```mermaid
@@ -83,7 +51,38 @@ sequenceDiagram
 
 The send stack is as shown in the picture below:
 
-![The MCTP Send stack](images/MCTP_tx_stack.svg)
+![The MCTP Send stack](images/mctp_stack.svg)
+
+
+## MCTP Receive sequence
+
+```mermaid
+sequenceDiagram
+    participant I3CController
+    participant I3CTarget
+    participant MCTPI3CBinding
+    participant MuxMCTPDriver
+    participant VirtualMCTPDriver
+    participant Application
+    loop Assemble packets until eom
+        I3CController--)I3CTarget: I3C Private Write transfer
+        I3CTarget->>MCTPI3CBinding: if no rx buffer, call write_expected() callback
+        MCTPI3CBinding->> MuxMCTPDriver: write_expected() callback
+        MuxMCTPDriver->>MCTPI3CBinding: set_rx_buffer() with buffer to receive packet
+        MCTPI3CBinding->> I3CTarget: set_rx_buffer() with buffer to receive the packet
+        I3CTarget--) I3CController : Send ACK
+        I3CController--)I3CTarget: MCTP packet
+        Note over I3CController, I3CTarget: Receive entire MCTP packet <br/>including the PEC until Sr/P.
+        I3CTarget->> MCTPI3CBinding: receive() to receive the packet
+        MCTPI3CBinding ->> MCTPI3CBinding: Check the PEC, and pass the packet <br/>with MCTPHeader to Mux MCTP layer
+        MCTPI3CBinding->>MuxMCTPDriver: receive() to receive the packet
+        MuxMCTPDriver->>MuxMCTPDriver: Process MCTP transport header on packet, <br/> and assemble if matches any pending Rx states<br/>or handle MCTP control msg.
+    end
+    MuxMCTPDriver->>VirtualMCTPDriver: receive() call to receive the assembled message.
+    VirtualMCTPDriver--)Application: Schedule upcall to receive the request/response.
+```
+
+(The receive stack picture is nearly identical to the send stack above.)picture below:
 
 
 ## Syscall Library in userspace

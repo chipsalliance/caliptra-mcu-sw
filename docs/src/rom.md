@@ -1,6 +1,6 @@
-# ROM Specification
+# Reference ROM Specification
 
-The ROM is executed when the MCU starts.
+The reference ROM is executed when the MCU starts.
 
 The ROM's main responsibilities to the overall Caliptra subsystem are to:
 
