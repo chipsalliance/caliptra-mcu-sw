@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::runtime_build::{objcopy, target_binary, OBJCOPY_FLAGS};
+use crate::runtime_build::{objcopy, target_binary, OBJCOPY_FLAGS, RUSTFLAGS_COMMON};
 use crate::tbf::TbfHeader;
 use crate::{DynError, PROJECT_ROOT, TARGET};
 use std::process::Command;
@@ -114,12 +114,14 @@ INCLUDE runtime/apps/app_layout.ld",
         ),
     )?;
 
+    let ld_flag = format!("-C link-arg=-T{}", layout_ld.display());
+    let mut rustc_flags = Vec::from(RUSTFLAGS_COMMON);
+    rustc_flags.push(ld_flag.as_str());
+    let rustc_flags = rustc_flags.join(" ");
+
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .env(
-            "RUSTFLAGS",
-            format!("-C link-arg=-T{}", layout_ld.display()),
-        )
+        .env("RUSTFLAGS", rustc_flags)
         .env("LIBTOCK_LINKER_FLASH", format!("0x{:x}", offset))
         .env("LIBTOCK_LINKER_FLASH_LENGTH", "128K")
         .env("LIBTOCK_LINKER_RAM", "0x50000000")
