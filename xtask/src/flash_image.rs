@@ -414,7 +414,7 @@ mod tests {
         let image_path = PROJECT_ROOT
             .join("target")
             .join("tmp")
-            .join("flash_image.bin");
+            .join("flash_image_happy_path.bin");
         let image_path = image_path.to_str().unwrap();
 
         // Create a valid firmware image
@@ -462,7 +462,7 @@ mod tests {
         let image_path = PROJECT_ROOT
             .join("target")
             .join("tmp")
-            .join("flash_image.bin");
+            .join("flash_image_corrupted.bin");
         let image_path = image_path.to_str().unwrap();
 
         // Create a corrupted firmware image (tamper with the header or data)
