@@ -13,3 +13,4 @@ clap.workspace = true
 registers-generator.workspace = true
 registers-systemrdl.workspace = true
 quote.workspace = true
+crc32fast = "1.4.2"

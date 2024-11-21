@@ -11,6 +11,7 @@ mod apps_build;
 mod cargo_lock;
 mod clippy;
 mod docs;
+mod flash_image;
 mod format;
 mod header;
 mod precheckin;
@@ -46,6 +47,11 @@ enum Commands {
         #[arg(short, long, default_value_t = false)]
         trace: bool,
     },
+    /// Commands related to flash images
+    FlashImage {
+        #[command(subcommand)]
+        subcommand: FlashImageCommands,
+    },
     /// Run clippy on all targets
     Clippy,
     /// Build docs
@@ -70,6 +76,38 @@ enum Commands {
     },
 }
 
+#[derive(Subcommand)]
+enum FlashImageCommands {
+    /// Create a new flash image
+    Create {
+        /// Path to the Caliptra firmware file
+        #[arg(long, value_name = "CALIPTRA_FW", required = true)]
+        caliptra_fw: String,
+
+        /// Path to the SoC manifest file
+        #[arg(long, value_name = "SOC_MANIFEST", required = true)]
+        soc_manifest: String,
+
+        /// Path to the MCU runtime file
+        #[arg(long, value_name = "MCU_RUNTIME", required = true)]
+        mcu_runtime: String,
+
+        /// Paths to optional SoC images
+        #[arg(long, value_name = "SOC_IMAGE", num_args=1.., required = false)]
+        soc_images: Option<Vec<String>>,
+
+        /// Paths to the output image file
+        #[arg(long, value_name = "OUTPUT", required = true)]
+        output: String,
+    },
+    /// Verify an existing flash image
+    Verify {
+        /// Path to the flash image file
+        #[arg(value_name = "FILE")]
+        file: String,
+    },
+}
+
 pub type DynError = Box<dyn std::error::Error>;
 pub const TARGET: &str = "riscv32imc-unknown-none-elf";
 
@@ -87,6 +125,22 @@ fn main() {
         Commands::RuntimeBuild => runtime_build::runtime_build_with_apps(),
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild => rom::rom_build(),
+        Commands::FlashImage { subcommand } => match subcommand {
+            FlashImageCommands::Create {
+                caliptra_fw,
+                soc_manifest,
+                mcu_runtime,
+                soc_images,
+                output,
+            } => flash_image::flash_image_create(
+                caliptra_fw,
+                soc_manifest,
+                mcu_runtime,
+                soc_images,
+                output,
+            ),
+            FlashImageCommands::Verify { file } => flash_image::flash_image_verify(file),
+        },
         Commands::Clippy => clippy::clippy(),
         Commands::Docs => docs::docs(),
         Commands::Precheckin => precheckin::precheckin(),
