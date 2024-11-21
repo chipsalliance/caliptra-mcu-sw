@@ -31,7 +31,7 @@ use gdb::gdb_target::GdbTarget;
 use std::cell::RefCell;
 use std::fs::File;
 use std::io;
-use std::io::{Read, Write};
+use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::rc::Rc;
@@ -234,7 +234,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     // exit cleanly on Ctrl-C so that we save any state.
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = running.clone();
-    if atty::is(atty::Stream::Stdout) {
+    if std::io::stdout().is_terminal() {
         ctrlc::set_handler(move || {
             running_clone.store(false, std::sync::atomic::Ordering::Relaxed);
             Term::stdout().clear_line().unwrap();
@@ -306,7 +306,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         None
     };
 
-    let stdin_uart = if cli.stdin_uart && atty::is(atty::Stream::Stdin) {
+    let stdin_uart = if cli.stdin_uart && std::io::stdin().is_terminal() {
         Some(Arc::new(Mutex::new(None)))
     } else {
         None
