@@ -448,7 +448,10 @@ mod tests {
 
         // Verify the firmware image
         let result = flash_image_verify(image_path);
-        assert!(result.is_ok(), "Expected verification to succeed");
+        result.unwrap_or_else(|e| {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        });
 
         // Cleanup
         fs::remove_file(image_path).expect("Failed to clean up test file");
