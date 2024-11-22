@@ -3,23 +3,24 @@
 [workspace]
 members = [
     "emulator/app",
+    "emulator/bmc/pldm-fw-pkg",
+    "emulator/bus",
     "emulator/caliptra",
     "emulator/compliance-test",
-    "emulator/bus",
     "emulator/cpu",
     "emulator/derive",
     "emulator/periph",
     "emulator/types",
-    "rom",
-    "runtime",
-    "runtime/apps/pldm",
-    "tests/hello",
-    "xtask",
     "registers/generated-emulator",
     "registers/generated-firmware",
     "registers/generator",
     "registers/systemrdl",
-    "emulator/bmc/pldm-fw-pkg",
+    "rom",
+    "runtime",
+    "runtime/apps/pldm",
+    "runtime/i3c",
+    "tests/hello",
+    "xtask",
 ]
 resolver = "2"
 
@@ -61,6 +62,7 @@ gdbstub = "0.6.3"
 gdbstub_arch = "0.2.4"
 getrandom = "0.2"
 hex = "0.4.3"
+i3c-driver = { path = "runtime/i3c" }
 lazy_static = "1.4.0"
 num-derive = "0.4.2"
 num_enum = "0.7.2"

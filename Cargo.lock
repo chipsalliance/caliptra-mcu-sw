@@ -1175,6 +1175,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "i3c-driver"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "kernel",
+ "registers-generated",
+ "tock-registers",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1947,10 +1957,13 @@ dependencies = [
  "capsules-extra",
  "capsules-system",
  "components",
+ "i3c-driver",
  "kernel",
+ "registers-generated",
  "riscv",
  "riscv-csr",
  "rv32i",
+ "tock-registers",
 ]
 
 [[package]]

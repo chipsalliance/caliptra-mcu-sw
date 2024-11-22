@@ -11,7 +11,7 @@ use emulator_bus::{Clock, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::i3c::I3cPeripheral;
 use emulator_types::{RvData, RvSize};
-use registers_generated::i3c::bits::{ExtcapHeader, TtiQueueSize};
+use registers_generated::i3c::bits::{ExtcapHeader, StbyCrCapabilities, TtiQueueSize};
 use std::collections::VecDeque;
 use zerocopy::FromBytes;
 
@@ -95,6 +95,13 @@ impl I3c {
 impl I3cPeripheral for I3c {
     fn read_i3c_base_hci_version(&mut self, _size: RvSize) -> RvData {
         RvData::from(Self::HCI_VERSION)
+    }
+
+    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
+        &mut self,
+        _size: emulator_types::RvSize,
+    ) -> emulator_bus::ReadWriteRegister<u32, StbyCrCapabilities::Register> {
+        emulator_bus::ReadWriteRegister::new(StbyCrCapabilities::TargetXactSupport.val(1).value)
     }
 
     fn read_i3c_ec_tti_extcap_header(
