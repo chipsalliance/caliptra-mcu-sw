@@ -98,7 +98,7 @@ impl FlashImage {
     }
 
     fn align_to_4_bytes(data: &mut Vec<u8>) {
-        let padding = (4 - (data.len() % 4)) % 4;
+        let padding = data.len().next_multiple_of(4) - data.len();
         data.extend(vec![0; padding]);
     }
 
