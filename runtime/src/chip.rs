@@ -30,6 +30,8 @@ pub const PIC_BASE: StaticRef<PicRegisters> =
 pub static mut PIC: Pic = Pic::new(PIC_BASE);
 pub static mut TIMERS: InternalTimers<'static> = InternalTimers::new();
 pub const UART_IRQ: u8 = 0x10;
+pub const I3C_ERROR_IRQ: u8 = 0x11;
+pub const I3C_NOTIF_IRQ: u8 = 0x12;
 
 pub struct VeeR<'a, I: InterruptService + 'a> {
     userspace_kernel_boundary: SysCall,
@@ -41,17 +43,20 @@ pub struct VeeR<'a, I: InterruptService + 'a> {
 
 pub struct VeeRDefaultPeripherals<'a> {
     pub uart: SemihostUart<'a>,
+    pub i3c: i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
 }
 
 impl<'a> VeeRDefaultPeripherals<'a> {
     pub fn new(alarm: &'a MuxAlarm<'a, InternalTimers<'a>>) -> Self {
         Self {
             uart: SemihostUart::new(alarm),
+            i3c: i3c_driver::core::I3CCore::new(i3c_driver::core::I3C_BASE, alarm),
         }
     }
 
     pub fn init(&'static self) {
         kernel::deferred_call::DeferredCallClient::register(&self.uart);
+        self.i3c.init();
     }
 }
 
@@ -59,6 +64,12 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
     unsafe fn service_interrupt(&self, interrupt: u32) -> bool {
         if interrupt == UART_IRQ as u32 {
             self.uart.handle_interrupt();
+            return true;
+        } else if interrupt == I3C_ERROR_IRQ as u32 {
+            self.i3c.handle_error_interrupt();
+            return true;
+        } else if interrupt == I3C_NOTIF_IRQ as u32 {
+            self.i3c.handle_notification_interrupt();
             return true;
         }
         debug!("Unhandled interrupt {}", interrupt);
@@ -223,8 +234,11 @@ unsafe fn handle_interrupt(intr: mcause::Interrupt, mcause: u32) {
 
                 match interrupt {
                     Some(irq) => {
-                        // this one is level-triggered and can't be cleared without handling it
-                        if irq == UART_IRQ as u32 {
+                        // these can't be cleared without handling them
+                        if irq == UART_IRQ as u32
+                            || irq == I3C_ERROR_IRQ as u32
+                            || irq == I3C_NOTIF_IRQ as u32
+                        {
                             CHIP.unwrap().pic_interrupt_service.service_interrupt(irq);
                         }
                         PIC.save_interrupt(irq);

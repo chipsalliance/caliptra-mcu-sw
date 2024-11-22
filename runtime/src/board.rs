@@ -150,7 +150,6 @@ pub unsafe fn main() {
         VeeRDefaultPeripherals,
         VeeRDefaultPeripherals::new(&*mux_alarm)
     );
-    peripherals.init();
 
     let chip = static_init!(VeeRChip, crate::chip::VeeR::new(peripherals));
     CHIP = Some(chip);
@@ -187,6 +186,8 @@ pub unsafe fn main() {
         InternalTimers
     ));
     let _ = process_console.start();
+
+    peripherals.init();
 
     // Need to enable all interrupts for Tock Kernel
     chip.enable_pic_interrupts();
