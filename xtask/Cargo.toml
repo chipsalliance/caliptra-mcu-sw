@@ -14,3 +14,5 @@ registers-generator.workspace = true
 registers-systemrdl.workspace = true
 quote.workspace = true
 crc32fast = "1.4.2"
+zerocopy.workspace = true
+tempfile = "3.14.0"
