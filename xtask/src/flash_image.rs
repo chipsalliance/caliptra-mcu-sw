@@ -4,7 +4,8 @@ use crate::DynError;
 use crc32fast::Hasher;
 use std::fs::File;
 use std::io::{self, Error, ErrorKind, Read, Write};
-use zerocopy::{byteorder::U32, AsBytes, FromBytes};
+use zerocopy::Immutable;
+use zerocopy::{byteorder::U32, FromBytes, IntoBytes};
 
 const FLASH_IMAGE_MAGIC_NUMBER: u32 = u32::from_be_bytes([b'F', b'L', b'S', b'H']);
 const HEADER_VERSION: u16 = 0x0001;
@@ -20,7 +21,7 @@ pub struct FlashImage<'a> {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes)]
+#[derive(IntoBytes, FromBytes, Immutable)]
 pub struct FlashImageHeader {
     magic_number: U32<zerocopy::byteorder::BigEndian>,
     header_version: u16,
@@ -28,7 +29,7 @@ pub struct FlashImageHeader {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes)]
+#[derive(IntoBytes, FromBytes, Immutable)]
 pub struct FlashImageChecksum {
     header: u32,
     payload: u32,
@@ -40,7 +41,7 @@ pub struct FlashImagePayload<'a> {
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes)]
+#[derive(IntoBytes, FromBytes, Immutable)]
 pub struct FlashImageInfo {
     identifier: u32,
     image_offset: u32, // Location of the image in the flash as an offset from the header

@@ -2529,7 +2529,7 @@ dependencies = [
  "semver",
  "tempfile",
  "walkdir",
- "zerocopy 0.6.6",
+ "zerocopy 0.8.10",
 ]
 
 [[package]]
