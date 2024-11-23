@@ -19,6 +19,13 @@ const RAM_START: usize = 0x5000_0000;
 const RAM_SIZE: usize = 128 * 1024;
 const BSS_SIZE: usize = 5000; // this is approximate. Increase it is there are "sram" errors when linking
 
+// TODO: Add +b/+zb* features when the emulator supports the extra bit manipulation instructions
+// This saves several hundred bytes of instruction space, and the VeeR core supports them.
+pub const RUSTFLAGS_COMMON: [&str; 2] = [
+    "-C target-feature=+relax,+unaligned-scalar-mem",
+    "-C force-frame-pointers=no",
+];
+
 pub fn target_binary(name: &str) -> PathBuf {
     PROJECT_ROOT
         .join("target")
@@ -133,21 +140,18 @@ INCLUDE runtime/kernel_layout.ld
     // - `-C symbol-mangling-version=v0`: Opt-in to Rust v0 symbol mangling scheme.
     //   See https://github.com/rust-lang/rust/issues/60705 and
     //   https://github.com/tock/tock/issues/3529.
-    let rustc_flags = [
-        format!("-C link-arg=-T{}", ld_file_path.display()).as_str(),
+    let ld_arg = format!("-C link-arg=-T{}", ld_file_path.display());
+    let mut rustc_flags = Vec::from(RUSTFLAGS_COMMON);
+    rustc_flags.extend_from_slice(&[
+        ld_arg.as_str(),
         "-C linker=rust-lld",
         "-C linker-flavor=ld.lld",
         "-C relocation-model=static",
         "-C link-arg=-nmagic", // don't page align sections, link against static libs
         "-C link-arg=-icf=all", // identical code folding
         "-C symbol-mangling-version=v0",
-        // RISC-V-specific flags.
-        "-C force-frame-pointers=no",
-        //   Ensure relocations generated is eligible for linker relaxation.
-        //   This provide huge space savings.
-        "-C target-feature=+relax",
-    ]
-    .join(" ");
+    ]);
+    let rustc_flags = rustc_flags.join(" ");
 
     // RUSTC_FLAGS_TOCK by default extends RUSTC_FLAGS with options that are global
     // to all Tock boards.

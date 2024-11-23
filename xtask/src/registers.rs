@@ -10,6 +10,7 @@ use registers_generator::{
 use registers_systemrdl::ParentScope;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::process::Stdio;
@@ -27,7 +28,11 @@ static HEADER_SUFFIX: &str = r"
 
 static SKIP_TYPES: LazyLock<HashSet<&str>> = LazyLock::new(|| HashSet::from([]));
 
-pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
+pub(crate) fn autogen(
+    check: bool,
+    extra_files: &[PathBuf],
+    extra_addrmap: &[String],
+) -> Result<(), DynError> {
     let sub_dir = &PROJECT_ROOT.join("hw").join("caliptra-ss").to_path_buf();
     let registers_dest_dir = &PROJECT_ROOT
         .join("registers")
@@ -39,18 +44,41 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
         .join("generated-emulator")
         .join("src")
         .to_path_buf();
+
     // TODO: the parsing is too fragile and requires the files to be passed in in a specific order
-    let rdl_files: Vec<PathBuf> = [
+    let rdl_files = [
         "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/mbox_csr.rdl",
         "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/sha512_acc_csr.rdl",
         "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/soc_ifc_reg.rdl",
         "hw/caliptra-ss/third_party/i3c-core/src/rdl/registers.rdl",
         "hw/caliptra-ss/src/integration/rtl/soc_address_map.rdl",
         "hw/el2_pic_ctrl.rdl",
-    ]
-    .iter()
-    .map(|s| PROJECT_ROOT.join(s))
-    .collect();
+    ];
+    let mut rdl_files: Vec<PathBuf> = rdl_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
+    rdl_files.extend_from_slice(extra_files);
+
+    let mut temp_rdl = tempfile::NamedTempFile::new()?;
+    if !extra_addrmap.is_empty() {
+        let mut map = String::new();
+        map += "addrmap extra {\n";
+        for s in extra_addrmap.iter() {
+            if let Some(eq) = s.find("@") {
+                let typ = s[..eq].trim();
+                let addr = s[eq + 1..].trim();
+                map += &format!("{} {} @ {};\n", typ, typ, addr);
+            } else {
+                return Err(format!(
+                    "Invalid addrmap entry: {} (should be in the form type@address)",
+                    s
+                )
+                .into());
+            };
+        }
+        map += "};\n";
+        write!(temp_rdl, "{}", map)?;
+        temp_rdl.flush()?;
+        rdl_files.push(temp_rdl.path().to_path_buf());
+    }
 
     // eliminate duplicate type names
     let patches = vec![
@@ -123,6 +151,13 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
             "\n\nWarning: caliptra-ss was dirty:{sub_git_status}"
         )?;
     }
+    if (!extra_addrmap.is_empty()) || (!extra_files.is_empty()) {
+        write!(
+            &mut header,
+            "\n\nWarning: processed using extra RDL files and addrmap entries: {:?}, {:?}\n",
+            extra_files, extra_addrmap
+        )?;
+    }
     header.push_str(HEADER_SUFFIX);
 
     let file_source = registers_systemrdl::FsFileSource::new();
@@ -135,7 +170,11 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
 
     let addrmap = scope.lookup_typedef("soc").unwrap();
     let addrmap2 = scope.lookup_typedef("el2_pic").unwrap();
-    let scopes = vec![addrmap, addrmap2];
+    let mut scopes = vec![addrmap, addrmap2];
+    if !extra_addrmap.is_empty() {
+        let addrmap3 = scope.lookup_typedef("extra").unwrap();
+        scopes.push(addrmap3);
+    }
 
     // These are types like kv_read_ctrl_reg that are used by multiple crates
     let root_block = RegisterBlock {
@@ -147,14 +186,15 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
     let mut register_types_to_crates = HashMap::new();
 
     generate_fw_registers(
+        check,
         root_block.clone(),
         &scopes.clone(),
         header.clone(),
         registers_dest_dir,
-        check,
         &mut register_types_to_crates,
     )?;
     generate_emulator_types(
+        check,
         &scopes,
         bus_dest_dir,
         header.clone(),
@@ -164,11 +204,18 @@ pub(crate) fn autogen(check: bool) -> Result<(), DynError> {
 
 /// Generate types used by the emulator.
 fn generate_emulator_types(
+    check: bool,
     scopes: &[ParentScope],
     dest_dir: &Path,
     header: String,
     register_types_to_crates: &HashMap<String, String>,
 ) -> Result<(), DynError> {
+    let file_action = if check {
+        file_check_contents
+    } else {
+        delete_rust_files(dest_dir)?;
+        write_file
+    };
     let mut lib_code = TokenStream::new();
     let mut blocks = vec![];
     for scope in scopes.iter() {
@@ -185,6 +232,9 @@ fn generate_emulator_types(
         }
         if block.name.ends_with("_ifc") {
             block.name = block.name[0..block.name.len() - 4].to_string();
+        }
+        if block.name == "I3CCSR" {
+            block.name = "i3c".to_string();
         }
         if SKIP_TYPES.contains(block.name.as_str()) {
             continue;
@@ -212,10 +262,9 @@ fn generate_emulator_types(
         code.extend(emu_make_peripheral_bus_impl(rblock.clone())?);
 
         let dest_file = dest_dir.join(format!("{}.rs", rblock.name));
-        write_file(&dest_file, &rustfmt(&(header.clone() + &code.to_string()))?)?;
+        file_action(&dest_file, &rustfmt(&(header.clone() + &code.to_string()))?)?;
         let block_name = format_ident!("{}", rblock.name);
         lib_code.extend(quote! {
-            #[allow(non_snake_case)]
             pub mod #block_name;
         });
     }
@@ -225,7 +274,7 @@ fn generate_emulator_types(
             .filter(|b| !SKIP_TYPES.contains(b.block().name.as_str())),
     )?;
     let root_bus_file = dest_dir.join("root_bus.rs");
-    write_file(
+    file_action(
         &root_bus_file,
         &rustfmt(&(header.clone() + &root_bus_code.to_string()))?,
     )?;
@@ -233,7 +282,7 @@ fn generate_emulator_types(
     lib_code.extend(quote! { pub mod root_bus; });
 
     let lib_file = dest_dir.join("lib.rs");
-    write_file(
+    file_action(
         &lib_file,
         &rustfmt(&(header.clone() + &lib_code.to_string()))?,
     )?;
@@ -304,8 +353,8 @@ fn emu_make_peripheral_trait(
         );
         if has_single_32_bit_field(&r.ty) {
             fn_tokens.extend(quote! {
-                fn #read_name(&mut self) -> u32 { 0 }
-                fn #write_name(&mut self, _val: u32) {}
+                fn #read_name(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData { 0 }
+                fn #write_name(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {}
             });
         } else {
             let rcrate = format_ident!(
@@ -319,10 +368,10 @@ fn emu_make_peripheral_trait(
             let prim = format_ident!("{}", ty.width.rust_primitive_name());
             let fulltyn = quote! { emulator_bus::ReadWriteRegister::<#prim, #read_val> };
             fn_tokens.extend(quote! {
-                fn #read_name(&mut self) -> #fulltyn {
+                fn #read_name(&mut self, _size: emulator_types::RvSize) -> #fulltyn {
                     emulator_bus::ReadWriteRegister :: new(0)
                 }
-                fn #write_name(&mut self, _val: #fulltyn) {}
+                fn #write_name(&mut self, _size: emulator_types::RvSize, _val: #fulltyn) {}
             });
         }
     });
@@ -383,40 +432,40 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, Dyn
         if has_single_32_bit_field(&r.ty) {
             if r.ty.fields[0].ty.can_read() {
                 read_tokens.extend(quote! {
-                    (emulator_types::RvSize::Word, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name())),
-                    (emulator_types::RvSize::Word, #a1 ..= #a3) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+                    (size, #a) => Ok(self.periph.#read_name(size)),
+                    (_, #a1 ..= #a3) => Err(emulator_bus::BusError::LoadAddrMisaligned),
                 });
             }
             if r.ty.fields[0].ty.can_write() {
                 write_tokens.extend(quote! {
-                    (emulator_types::RvSize::Word, #a) => {
-                        self.periph.#write_name(val);
+                    (size, #a) => {
+                        self.periph.#write_name(size, val);
                         Ok(())
                     }
-                    (emulator_types::RvSize::Word, #a1 ..= #a3) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+                    (_, #a1 ..= #a3) => Err(emulator_bus::BusError::StoreAddrMisaligned),
                 });
             }
         } else {
             match r.ty.width {
                 RegisterWidth::_8 => {
                     read_tokens.extend(quote! {
-                        (emulator_types::RvSize::Byte, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name().reg.get())),
+                        (emulator_types::RvSize::Byte, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name(emulator_types::RvSize::Byte).reg.get())),
                     });
                     write_tokens.extend(quote! {
                         (emulator_types::RvSize::Byte, #a) => {
-                            self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val));
+                            self.periph.#write_name(emulator_types::RvSize::Byte, emulator_bus::ReadWriteRegister::new(val));
                             Ok(())
                         }
                     });
                 }
                 RegisterWidth::_16 => {
                     read_tokens.extend(quote! {
-                        (emulator_types::RvSize::HalfWord, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name().reg.get())),
+                        (emulator_types::RvSize::HalfWord, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name(emulator_types::RvSize::HalfWord).reg.get())),
                         (emulator_types::RvSize::HalfWord, #a1) => Err(emulator_bus::BusError::LoadAddrMisaligned),
                     });
                     write_tokens.extend(quote! {
                         (emulator_types::RvSize::HalfWord, #a) => {
-                            self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val));
+                            self.periph.#write_name(emulator_types::RvSize::HalfWord, emulator_bus::ReadWriteRegister::new(val));
                             Ok(())
                         }
                         (emulator_types::RvSize::HalfWord, #a1) => Err(emulator_bus::BusError::StoreAddrMisaligned),
@@ -425,12 +474,12 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, Dyn
                 },
                 RegisterWidth::_32 => {
                     read_tokens.extend(quote! {
-                        (emulator_types::RvSize::Word, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name().reg.get())),
+                        (emulator_types::RvSize::Word, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name(emulator_types::RvSize::Word).reg.get())),
                         (emulator_types::RvSize::Word, #a1 ..= #a3) => Err(emulator_bus::BusError::LoadAddrMisaligned),
                     });
                     write_tokens.extend(quote! {
                         (emulator_types::RvSize::Word, #a) => {
-                            self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val));
+                            self.periph.#write_name(emulator_types::RvSize::Word, emulator_bus::ReadWriteRegister::new(val));
                             Ok(())
                         }
                         (emulator_types::RvSize::Word, #a1 ..= #a3) => Err(emulator_bus::BusError::StoreAddrMisaligned),
@@ -458,7 +507,6 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, Dyn
                     #write_tokens
                     _ => Err(emulator_bus::BusError::StoreAccessFault),
                 }
-
             }
             fn poll(&mut self) {
                 self.periph.poll();
@@ -636,18 +684,36 @@ fn emu_make_root_bus<'a>(
     Ok(tokens)
 }
 
+fn delete_rust_files(dir: &Path) -> Result<(), DynError> {
+    for entry in walkdir::WalkDir::new(dir) {
+        let entry = entry?;
+        if entry.file_type().is_file()
+            && entry
+                .path()
+                .extension()
+                .map(|ext| ext == "rs")
+                .unwrap_or_default()
+        {
+            println!("Deleting existing file {}", entry.path().display());
+            std::fs::remove_file(entry.path())?;
+        }
+    }
+    Ok(())
+}
+
 /// Generate read/write registers used by the firmware.
 fn generate_fw_registers(
+    check: bool,
     mut root_block: ValidatedRegisterBlock,
     scopes: &[ParentScope],
     header: String,
     dest_dir: &Path,
-    check: bool,
     register_types_to_crates: &mut HashMap<String, String>,
 ) -> Result<(), DynError> {
     let file_action = if check {
         file_check_contents
     } else {
+        delete_rust_files(dest_dir)?;
         write_file
     };
 
@@ -659,6 +725,9 @@ fn generate_fw_registers(
     for mut block in blocks {
         if block.name.ends_with("_reg") || block.name.ends_with("_csr") {
             block.name = block.name[0..block.name.len() - 4].to_string();
+        }
+        if block.name == "I3CCSR" {
+            block.name = "i3c".to_string();
         }
         if SKIP_TYPES.contains(block.name.as_str()) {
             continue;
@@ -715,7 +784,7 @@ fn generate_fw_registers(
             false,
             register_types_to_crates,
         );
-        root_submod_tokens += &format!("#[allow(non_snake_case)]\npub mod {module_ident};\n");
+        root_submod_tokens += &format!("pub mod {module_ident};\n");
         file_action(
             &dest_file,
             &rustfmt(&(header.clone() + &tokens.to_string()))?,

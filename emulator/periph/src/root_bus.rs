@@ -65,6 +65,8 @@ pub struct CaliptraRootBus {
 
 impl CaliptraRootBus {
     pub const UART_NOTIF_IRQ: u8 = 16;
+    pub const I3C_ERROR_IRQ: u8 = 17;
+    pub const I3C_NOTIF_IRQ: u8 = 18;
     pub const ROM_SIZE: usize = 48 * 1024;
     pub const RAM_SIZE: usize = 256 * 1024;
 
