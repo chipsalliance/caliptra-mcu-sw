@@ -9,6 +9,254 @@ mod test {
         let dis = disasm_inst(RvIsa::Rv32, 4, 0x10018193);
         assert_eq!(dis, "10018193          addi          gp,gp,256");
     }
+    #[test]
+    fn test_adduw() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x0911003b);
+        assert_eq!(dis, "0911003b          illegal");
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x0911003b);
+        assert_eq!(dis, "0911003b          add.uw        zero,sp,a7");
+    }
+    #[test]
+    fn test_zextw() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x0800003b);
+        assert_eq!(dis, "0800003b          zext.w        zero,zero");
+    }
+    #[test]
+    fn test_andn() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x40007033);
+        assert_eq!(dis, "40007033          andn          zero,zero,zero");
+    }
+    #[test]
+    fn test_bclr() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x488595b3);
+        assert_eq!(dis, "488595b3          bclr          a1,a1,s0");
+    }
+    #[test]
+    fn test_bclri() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x49d51513);
+        assert_eq!(dis, "49d51513          bclri         a0,a0,29");
+    }
+    #[test]
+    fn test_bclri64() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x49d51513);
+        assert_eq!(dis, "49d51513          bclri         a0,a0,29");
+    }
+    #[test]
+    fn test_bext() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x48855533);
+        assert_eq!(dis, "48855533          bext          a0,a0,s0");
+    }
+    #[test]
+    fn test_bexti() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x48265613);
+        assert_eq!(dis, "48265613          bexti         a2,a2,2");
+    }
+    #[test]
+    fn test_bexti64() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x48265613);
+        assert_eq!(dis, "48265613          bexti         a2,a2,2");
+    }
+    #[test]
+    fn test_binv() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x68261633);
+        assert_eq!(dis, "68261633          binv          a2,a2,sp");
+    }
+    #[test]
+    fn test_binvi() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x68261613);
+        assert_eq!(dis, "68261613          binvi         a2,a2,2");
+    }
+    #[test]
+    fn test_binvi64() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x68261613);
+        assert_eq!(dis, "68261613          binvi         a2,a2,2");
+    }
+    #[test]
+    fn test_bset() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x28c69633);
+        assert_eq!(dis, "28c69633          bset          a2,a3,a2");
+    }
+    #[test]
+    fn test_bseti() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x28b01a93);
+        assert_eq!(dis, "28b01a93          bseti         s5,zero,11");
+    }
+    #[test]
+    fn test_bseti64() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x28b01a93);
+        assert_eq!(dis, "28b01a93          bseti         s5,zero,11");
+    }
+    #[test]
+    fn test_clmul() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x0ac69633);
+        assert_eq!(dis, "0ac69633          clmul         a2,a3,a2");
+    }
+    #[test]
+    fn test_clmulh() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x0ac63633);
+        assert_eq!(dis, "0ac63633          clmulh        a2,a2,a2");
+    }
+    #[test]
+    fn test_clmulr() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x0ac62633);
+        assert_eq!(dis, "0ac62633          clmulr        a2,a2,a2");
+    }
+    #[test]
+    fn test_clz() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x60001613);
+        assert_eq!(dis, "60001613          clz           a2,zero");
+    }
+    #[test]
+    fn test_clzw() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x6000161b);
+        assert_eq!(dis, "6000161b          clzw          a2,zero");
+    }
+    #[test]
+    fn test_cpop() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x60201613);
+        assert_eq!(dis, "60201613          cpop          a2,zero");
+    }
+    #[test]
+    fn test_cpopw() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x6020161b);
+        assert_eq!(dis, "6020161b          cpopw         a2,zero");
+    }
+    #[test]
+    fn test_ctz() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x60101613);
+        assert_eq!(dis, "60101613          ctz           a2,zero");
+    }
+    #[test]
+    fn test_ctzw() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x6010161b);
+        assert_eq!(dis, "6010161b          ctzw          a2,zero");
+    }
+    #[test]
+    fn test_max() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x0a106633);
+        assert_eq!(dis, "0a106633          max           a2,zero,ra");
+    }
+    #[test]
+    fn test_maxu() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x0a107633);
+        assert_eq!(dis, "0a107633          maxu          a2,zero,ra");
+    }
+    #[test]
+    fn test_min() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x0a104633);
+        assert_eq!(dis, "0a104633          min           a2,zero,ra");
+    }
+    #[test]
+    fn test_minu() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x0a105633);
+        assert_eq!(dis, "0a105633          minu          a2,zero,ra");
+    }
+    #[test]
+    fn test_orcb() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x28755613);
+        assert_eq!(dis, "28755613          orc.b         a2,a0");
+    }
+    #[test]
+    fn test_orn() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x40006033);
+        assert_eq!(dis, "40006033          orn           zero,zero,zero");
+    }
+    #[test]
+    fn test_rev8() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x69855613);
+        assert_eq!(dis, "69855613          rev8          a2,a0");
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x6b855613);
+        assert_eq!(dis, "6b855613          rev8          a2,a0");
+    }
+    #[test]
+    fn test_rol() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x60851633);
+        assert_eq!(dis, "60851633          rol           a2,a0,s0");
+    }
+    #[test]
+    fn test_rolw() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x6085163b);
+        assert_eq!(dis, "6085163b          rolw          a2,a0,s0");
+    }
+    #[test]
+    fn test_ror() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x60005633);
+        assert_eq!(dis, "60005633          ror           a2,zero,zero");
+    }
+    #[test]
+    fn test_rori() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x61115613);
+        assert_eq!(dis, "61115613          rori          a2,sp,17");
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x63115613);
+        assert_eq!(dis, "63115613          rori          a2,sp,49");
+    }
+    #[test]
+    fn test_roriw() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x6011561b);
+        assert_eq!(dis, "6011561b          roriw         a2,sp,1");
+    }
+    #[test]
+    fn test_rorw() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x6085563b);
+        assert_eq!(dis, "6085563b          rorw          a2,a0,s0");
+    }
+    #[test]
+    fn test_sext_b() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x60411613);
+        assert_eq!(dis, "60411613          sext.b        a2,sp");
+    }
+    #[test]
+    fn test_sext_h() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x60511613);
+        assert_eq!(dis, "60511613          sext.h        a2,sp");
+    }
+    #[test]
+    fn test_sh1add() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x216b25b3);
+        assert_eq!(dis, "216b25b3          sh1add        a1,s6,s6");
+    }
+    #[test]
+    fn test_sh1add_uw() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x216a25bb);
+        assert_eq!(dis, "216a25bb          sh1add.uw     a1,s4,s6");
+    }
+    #[test]
+    fn test_sh2add() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x20a5c533);
+        assert_eq!(dis, "20a5c533          sh2add        a0,a1,a0");
+    }
+    #[test]
+    fn test_sh2add_uw() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x216445bb);
+        assert_eq!(dis, "216445bb          sh2add.uw     a1,s0,s6");
+    }
+    #[test]
+    fn test_sh3add() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x20d56533);
+        assert_eq!(dis, "20d56533          sh3add        a0,a0,a3");
+    }
+    #[test]
+    fn test_sh3add_uw() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x20d5653b);
+        assert_eq!(dis, "20d5653b          sh3add.uw     a0,a0,a3");
+    }
+    #[test]
+    fn test_slli_uw() {
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x0bd5151b);
+        assert_eq!(dis, "0bd5151b          slli.uw       a0,a0,61");
+    }
+    #[test]
+    fn test_xnor() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x40004033);
+        assert_eq!(dis, "40004033          xnor          zero,zero,zero");
+    }
+    #[test]
+    fn test_zext_h() {
+        let dis = disasm_inst(RvIsa::Rv32, 4, 0x08004033);
+        assert_eq!(dis, "08004033          zext.h        zero,zero");
+        let dis = disasm_inst(RvIsa::Rv64, 4, 0x0800403b);
+        assert_eq!(dis, "0800403b          zext.h        zero,zero");
+    }
 
     #[test]
     fn test_rand() {
