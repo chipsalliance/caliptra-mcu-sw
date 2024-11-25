@@ -4,11 +4,14 @@ use crate::DynError;
 use crc32fast::Hasher;
 use std::fs::File;
 use std::io::{self, Error, ErrorKind, Read, Write};
-use zerocopy::Immutable;
 use zerocopy::{byteorder::U32, FromBytes, IntoBytes};
+use zerocopy::{Immutable, KnownLayout};
 
-const FLASH_IMAGE_MAGIC_NUMBER: u32 = u32::from_be_bytes([b'F', b'L', b'S', b'H']);
+const FLASH_IMAGE_MAGIC_NUMBER: u32 = u32::from_be_bytes(*b"FLSH");
 const HEADER_VERSION: u16 = 0x0001;
+const HEADER_SIZE: usize = std::mem::size_of::<FlashImageHeader>();
+const CHECKSUM_SIZE: usize = std::mem::size_of::<FlashImageChecksum>();
+const IMAGE_INFO_SIZE: usize = std::mem::size_of::<FlashImageInfo>();
 const CALIPTRA_FMC_RT_IDENTIFIER: u32 = 0x00000001;
 const SOC_MANIFEST_IDENTIFIER: u32 = 0x00000002;
 const MCU_RT_IDENTIFIER: u32 = 0x00000002;
@@ -20,16 +23,16 @@ pub struct FlashImage<'a> {
     payload: FlashImagePayload<'a>,
 }
 
-#[repr(C)]
-#[derive(IntoBytes, FromBytes, Immutable)]
+#[repr(C, packed)]
+#[derive(IntoBytes, FromBytes, Immutable, KnownLayout)]
 pub struct FlashImageHeader {
     magic_number: U32<zerocopy::byteorder::BigEndian>,
     header_version: u16,
     image_count: u16,
 }
 
-#[repr(C)]
-#[derive(IntoBytes, FromBytes, Immutable)]
+#[repr(C, packed)]
+#[derive(IntoBytes, FromBytes, Immutable, KnownLayout)]
 pub struct FlashImageChecksum {
     header: u32,
     payload: u32,
@@ -40,7 +43,7 @@ pub struct FlashImagePayload<'a> {
     images: &'a [FirmwareImage<'a>],
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(IntoBytes, FromBytes, Immutable)]
 pub struct FlashImageInfo {
     identifier: u32,
@@ -99,60 +102,61 @@ impl<'a> FlashImage<'a> {
 
     pub fn verify_flash_image(image: &[u8]) -> Result<(), DynError> {
         // Parse and verify header
-        let magic_number = u32::from_be_bytes(image[0..4].try_into().unwrap());
-        let header_version = u16::from_le_bytes(image[4..6].try_into().unwrap());
-        let image_count = u16::from_le_bytes(image[6..8].try_into().unwrap());
-
-        if magic_number != FLASH_IMAGE_MAGIC_NUMBER {
+        if image.len() < HEADER_SIZE {
+            return Err("Image too small to contain the header.".into());
+        }
+        let header = FlashImageHeader::read_from_bytes(&image[..HEADER_SIZE])
+            .map_err(|_| "Failed to parse header: invalid format or size")?;
+        if header.magic_number != FLASH_IMAGE_MAGIC_NUMBER {
             return Err("Invalid header: incorrect magic number or header version.")?;
         }
 
-        if header_version != HEADER_VERSION {
+        if header.header_version != HEADER_VERSION {
             return Err("Unsupported header version")?;
         }
 
-        if image_count < 3 {
+        if header.image_count < 3 {
             return Err("Expected at least 3 images")?;
         }
 
         // Parse and verify checksums
-        let header_checksum = u32::from_le_bytes(image[8..12].try_into().unwrap());
-        let payload_checksum = u32::from_le_bytes(image[12..16].try_into().unwrap());
-        let calculated_header_checksum = calculate_checksum(&image[0..8]);
+        let checksum =
+            FlashImageChecksum::read_from_bytes(&image[HEADER_SIZE..(HEADER_SIZE + CHECKSUM_SIZE)])
+                .map_err(|_| "Failed to parse checksum field")?;
+        let calculated_header_checksum = calculate_checksum(header.as_bytes());
         let calculated_payload_checksum = calculate_checksum(&image[16..]);
 
-        if header_checksum != calculated_header_checksum {
+        if checksum.header != calculated_header_checksum {
             return Err("Header checksum mismatch.")?;
         }
 
-        if payload_checksum != calculated_payload_checksum {
+        if checksum.payload != calculated_payload_checksum {
             return Err("Payload checksum mismatch.")?;
         }
 
         // Parse and verify image info and data
-        for i in 0..image_count as usize {
-            let offset = std::mem::size_of::<FlashImageHeader>()
-                + std::mem::size_of::<FlashImageChecksum>()
-                + (std::mem::size_of::<FlashImageInfo>() * i);
-            let identifier = u32::from_le_bytes(image[offset..offset + 4].try_into().unwrap());
+        for i in 0..header.image_count as usize {
+            let offset = HEADER_SIZE + CHECKSUM_SIZE + (IMAGE_INFO_SIZE * i);
+            let info = FlashImageInfo::read_from_bytes(&image[offset..offset + IMAGE_INFO_SIZE])
+                .map_err(|_| "Failed to read image info")?;
             match i {
                 0 => {
-                    if identifier != CALIPTRA_FMC_RT_IDENTIFIER {
+                    if info.identifier != CALIPTRA_FMC_RT_IDENTIFIER {
                         return Err("Image 0 is not Caliptra Identifier")?;
                     }
                 }
                 1 => {
-                    if identifier != SOC_MANIFEST_IDENTIFIER {
+                    if info.identifier != SOC_MANIFEST_IDENTIFIER {
                         return Err("Image 0 is not SOC Manifest Identifier")?;
                     }
                 }
                 2 => {
-                    if identifier != MCU_RT_IDENTIFIER {
+                    if info.identifier != MCU_RT_IDENTIFIER {
                         return Err("Image 0 is not MCU RT Identifier")?;
                     }
                 }
                 3..255 => {
-                    if identifier != (SOC_IMAGES_BASE_IDENTIFIER + (i as u32) - 3) {
+                    if info.identifier != (SOC_IMAGES_BASE_IDENTIFIER + (i as u32) - 3) {
                         return Err("Invalid SOC image identifier")?;
                     }
                 }
@@ -214,7 +218,7 @@ pub(crate) fn flash_image_create(
     caliptra_fw_path: &str,
     soc_manifest_path: &str,
     mcu_runtime_path: &str,
-    soc_image_paths: &Option<Vec<&str>>,
+    soc_image_paths: &Option<Vec<String>>,
     output_path: &str,
 ) -> Result<(), DynError> {
     let mut images: Vec<FirmwareImage> = Vec::new();
@@ -326,8 +330,8 @@ mod tests {
 
         // Collect SoC image paths
         let soc_image_paths = Some(vec![
-            soc_image1.path().to_str().unwrap(),
-            soc_image2.path().to_str().unwrap(),
+            soc_image1.path().to_str().unwrap().to_string(),
+            soc_image2.path().to_str().unwrap().to_string(),
         ]);
 
         // Specify the output file path

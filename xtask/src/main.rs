@@ -127,13 +127,6 @@ static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
         .to_path_buf()
 });
 
-fn convert_option_vec(input: &Option<Vec<String>>) -> Option<Vec<&str>> {
-    // Convert a series of String arguments into &str
-    input
-        .as_ref()
-        .map(|vec| vec.iter().map(|s| s.as_str()).collect())
-}
-
 fn main() {
     let cli = Xtask::parse();
     let result = match &cli.xtask {
@@ -152,7 +145,7 @@ fn main() {
                 caliptra_fw,
                 soc_manifest,
                 mcu_runtime,
-                &convert_option_vec(soc_images),
+                soc_images,
                 output,
             ),
             FlashImageCommands::Verify { file } => flash_image::flash_image_verify(file),
