@@ -22,7 +22,7 @@ const BSS_SIZE: usize = 5000; // this is approximate. Increase it is there are "
 // TODO: Add +b/+zb* features when the emulator supports the extra bit manipulation instructions
 // This saves several hundred bytes of instruction space, and the VeeR core supports them.
 pub const RUSTFLAGS_COMMON: [&str; 2] = [
-    "-C target-feature=+relax,+unaligned-scalar-mem",
+    "-C target-feature=+relax,+unaligned-scalar-mem,+b",
     "-C force-frame-pointers=no",
 ];
 
