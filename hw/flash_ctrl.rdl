@@ -1,0 +1,83 @@
+addrmap flash_ctrl {
+      reg {
+        field {
+            sw = rw;
+            onwrite = woclr;
+            desc = "Error-related interrupts";
+        } ERROR[0:0];
+        field {
+            sw = rw;
+            onwrite = woclr;
+            desc = "Event-related interrupts";
+        } EVENT[1:1];
+    } INTERRUPT_STATE @ 0x00;
+    reg {
+        field {
+            sw = rw;
+            desc = "Enable error interrupt";
+        } ERROR[0:0];
+        field {
+            sw = rw;
+            desc = "Enable event interrupt";
+        } EVENT[1:1];
+    } INTERRUPT_ENABLE @ 0x04;
+
+    reg {
+        field {
+            sw = rw;
+            desc = "Page size";
+        } PAGE_SIZE[31:0];
+    } PAGE_SIZE @ 0x08;
+
+    reg {
+        field {
+            sw = rw;
+            desc = "The page number for read, write, erase operations";
+        } PAGE_NUM[31:0];
+    } PAGE_NUM @ 0x0C;
+
+    reg {
+        field {
+            sw = rw;
+            desc = "The page buffer address for read/write operations";
+        } PAGE_ADDR[31: 0];
+    } PAGE_ADDR @ 0x10;
+
+    reg {
+        field {
+            sw = rw;
+            desc = "\"0\" = Read page , \"1\" = Write Page, \"2\" Erase Page";
+        } OP[2:1];
+        field {
+            sw = rw;
+            desc = "Start the operation";
+        } START[0:0];
+    } CONTROL @ 0x14;
+
+    reg {
+        field {
+            sw = rw;
+            // TODO: May extend the status
+            desc = "Flash operation error. Set by HW, cleared by SW .
+                    \"0\" = Read Error , \"1\" = Write Error, \"2\" Erase Error";
+        } ERR[3:1];
+        field {
+            sw = rw;
+            desc = "Flash operation done. Set by HW, cleared by SW";
+        } DONE[0:0];
+    } OP_STATUS @ 0x18;
+
+    reg {
+        field {
+            sw = r;
+            desc = "This register ensures the contents of CONTROL cannot be changed by software once a flash operation has begun. \
+                    This bit defaults to 1 and is set to 0 by hardware when flash operation is initiated. When the controller completes the flash operation, \
+                    It unlocks whenever the existing flash operation completes, regardless of success or error.";
+
+        } EN[0:0];
+    } CTRL_REGWEN @ 0x1C;
+};
+
+addrmap flashctrl_dummy {
+    flash_ctrl flash_ctrl @ 0x7000_0000;
+};
