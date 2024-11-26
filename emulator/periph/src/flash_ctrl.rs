@@ -13,12 +13,11 @@ Abstract:
 --*/
 
 use core::convert::TryInto;
-use emulator_bus::{Clock, ReadOnlyRegister, ReadWriteRegister, Timer};
+use emulator_bus::{ActionHandle, Clock, ReadOnlyRegister, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
-use emulator_derive::Bus;
 use emulator_registers_generated::flash::FlashPeripheral;
 use registers_generated::flash_ctrl::bits::{
-    Control, CtrlRegwen, InterruptEnable, InterruptState, OpStatus,
+    CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
 };
 use std::fs::File;
 use std::io::{Read, Seek, Write};
@@ -58,50 +57,21 @@ pub enum FlashOpError {
     InvalidOp = 3,
 }
 
-// Define a struct to represent the flash controller peripheral emulation.
-// Includes IRQs, timers, and peripheral registers, backend storage and a buffer page_size for the flash controller.
-#[derive(Bus)]
+// Define a dummy flash controller peripheral.
 pub struct DummyFlashCtrl {
-    #[register(offset = 0x00)]
-    interrupt_state: ReadWriteRegister<u32, InterruptState::Register>,
-
-    #[register(offset = 0x04)]
-    interrupt_enable: ReadWriteRegister<u32, InterruptEnable::Register>,
-
-    #[register(offset = 0x08)]
+    interrupt_state: ReadWriteRegister<u32, FlInterruptState::Register>,
+    interrupt_enable: ReadWriteRegister<u32, FlInterruptEnable::Register>,
     page_size: ReadWriteRegister<u32>,
-
-    #[register(offset = 0x0c)]
     page_num: ReadWriteRegister<u32>,
-
-    #[register(offset = 0x10)]
     page_addr: ReadWriteRegister<u32>,
-
-    #[register(offset = 0x14)]
-    control: ReadWriteRegister<u32, Control::Register>,
-
-    #[register(offset = 0x18)]
+    control: ReadWriteRegister<u32, FlControl::Register>,
     op_status: ReadWriteRegister<u32, OpStatus::Register>,
-
-    #[register(offset = 0x1c)]
     ctrl_regwen: ReadOnlyRegister<u32, CtrlRegwen::Register>,
-
-    /// Timer
     timer: Timer,
-
-    /// Backend flash storage file
     file: Option<File>,
-
-    /// Internal buffer for read, write operations
     buffer: Vec<u8>,
-
-    /// Operation pending flag
-    operation_pending: bool,
-
-    /// Error interrupt
+    operation_start: Option<ActionHandle>,
     _error_irq: Irq,
-
-    /// Event interrupt
     _event_irq: Irq,
 }
 
@@ -112,6 +82,9 @@ impl DummyFlashCtrl {
     /// Maximum number of pages in the flash storage connected to the controller.
     /// This is a dummy value, the actual value should be set based on the flash storage size.
     pub const MAX_PAGES: u32 = 64 * 1024;
+
+    /// I/O processing delay in ticks
+    pub const IO_START_DELAY: u64 = 200;
 
     pub fn new(
         clock: &Clock,
@@ -145,7 +118,7 @@ impl DummyFlashCtrl {
             timer,
             file,
             buffer: vec![0; Self::PAGE_SIZE],
-            operation_pending: false,
+            operation_start: None,
             _error_irq: error_irq,
             _event_irq: event_irq,
         })
@@ -154,16 +127,46 @@ impl DummyFlashCtrl {
     fn raise_interrupt(&mut self, interrupt_type: FlashCtrlIntType) {
         match interrupt_type {
             FlashCtrlIntType::Error => {
-                self.interrupt_state.reg.modify(InterruptState::Error::SET);
-                self._error_irq.set_level(true);
-                self.timer.schedule_poll_in(1);
+                self.interrupt_state
+                    .reg
+                    .modify(FlInterruptState::Error::SET);
+                // Check if interrupt is enabled before raising it
+                if self.interrupt_enable.reg.is_set(FlInterruptEnable::Error) {
+                    self._error_irq.set_level(true);
+                    self.timer.schedule_poll_in(1);
+                }
             }
             FlashCtrlIntType::Event => {
-                self.interrupt_state.reg.modify(InterruptState::Event::SET);
-                self._event_irq.set_level(true);
-                self.timer.schedule_poll_in(1);
+                self.interrupt_state
+                    .reg
+                    .modify(FlInterruptState::Event::SET);
+                // Check if interrupt is enabled before raising it
+                if self.interrupt_enable.reg.is_set(FlInterruptEnable::Event) {
+                    self._event_irq.set_level(true);
+                    self.timer.schedule_poll_in(1);
+                }
             }
         }
+    }
+
+    fn clear_interrupt(&mut self, interrupt_type: FlashCtrlIntType) {
+        match interrupt_type {
+            FlashCtrlIntType::Error => {
+                self.interrupt_state
+                    .reg
+                    .modify(FlInterruptState::Error::CLEAR);
+                self._error_irq.set_level(false);
+            }
+            FlashCtrlIntType::Event => {
+                self.interrupt_state
+                    .reg
+                    .modify(FlInterruptState::Event::CLEAR);
+                self._event_irq.set_level(false);
+            }
+        }
+
+        // Current IO operation is fully completed. Enable ctrl_regwen bit to allow SW to write to the control register for the next operation.
+        self.ctrl_regwen.reg.modify(CtrlRegwen::En::SET);
     }
 
     fn handle_io_completion(&mut self, io_compl: Result<(), FlashOpError>) {
@@ -190,7 +193,6 @@ impl DummyFlashCtrl {
             || self.page_size.reg.get() < Self::PAGE_SIZE as u32
             || self.file.is_none()
         {
-            print!("Read page failed sanity check");
             return Err(FlashOpError::ReadError);
         }
 
@@ -201,7 +203,6 @@ impl DummyFlashCtrl {
             if file.seek(std::io::SeekFrom::Start(offset)).is_err()
                 || file.read_exact(&mut self.buffer).is_err()
             {
-                print!("Read page failed: seek or read error");
                 return Err(FlashOpError::ReadError);
             }
         }
@@ -227,7 +228,6 @@ impl DummyFlashCtrl {
             || self.page_size.reg.get() < Self::PAGE_SIZE as u32
             || self.file.is_none()
         {
-            println!("Write page failed sanity check");
             return Err(FlashOpError::WriteError);
         }
 
@@ -247,7 +247,6 @@ impl DummyFlashCtrl {
             if file.seek(std::io::SeekFrom::Start(offset)).is_err()
                 || file.write_all(&self.buffer).is_err()
             {
-                println!("Write page failed: seek or write error");
                 return Err(FlashOpError::WriteError);
             }
         }
@@ -264,7 +263,6 @@ impl DummyFlashCtrl {
             || self.page_size.reg.get() < Self::PAGE_SIZE as u32
             || self.file.is_none()
         {
-            println!("Erase page failed sanity check");
             return Err(FlashOpError::EraseError);
         }
 
@@ -275,7 +273,6 @@ impl DummyFlashCtrl {
             if file.seek(std::io::SeekFrom::Start(offset)).is_err()
                 || file.write_all(&vec![0xFF; Self::PAGE_SIZE]).is_err()
             {
-                println!("Erase page failed: seek or write error");
                 return Err(FlashOpError::EraseError);
             }
         }
@@ -284,15 +281,11 @@ impl DummyFlashCtrl {
     }
 
     fn process_io(&mut self) {
-        // Check if the start bit is set
-        if !self.control.reg.is_set(Control::Start) {
+        if !self.control.reg.is_set(FlControl::Start) {
             return;
         }
 
-        // Clear ctrl_regwen bit to prevent SW from writing to the control register while the operation is in progress.
-        self.ctrl_regwen.reg.modify(CtrlRegwen::En::CLEAR);
-
-        match self.control.reg.read(Control::Op).try_into() {
+        match self.control.reg.read(FlControl::Op).try_into() {
             Ok(op) => {
                 let io_compl = match op {
                     FlashOperation::ReadPage => self.read_page(),
@@ -306,74 +299,78 @@ impl DummyFlashCtrl {
                 self.handle_io_completion(Err(FlashOpError::InvalidOp));
             }
         };
-
-        // Enable ctrl_regwen bit to allow SW to write to the control register for the next operation.
-        self.ctrl_regwen.reg.modify(CtrlRegwen::En::SET);
     }
 }
 
 impl FlashPeripheral for DummyFlashCtrl {
-    // Poll the flash controller to process the operation
     fn poll(&mut self) {
-        // Check if the operation is pending
-        if self.operation_pending {
+        if self.timer.fired(&mut self.operation_start) {
             self.process_io();
-            self.operation_pending = false;
         }
     }
 
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
 
-    fn read_interrupt_state(
+    fn read_fl_interrupt_state(
         &mut self,
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::flash_ctrl::bits::InterruptState::Register,
+        registers_generated::flash_ctrl::bits::FlInterruptState::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.interrupt_state.reg.get())
     }
 
-    fn write_interrupt_state(
+    fn write_fl_interrupt_state(
         &mut self,
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::flash_ctrl::bits::InterruptState::Register,
+            registers_generated::flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
-        // Interrupt state register: write 1 to clear
-        if _val.reg.is_set(InterruptState::Error) {
-            self.interrupt_state
-                .reg
-                .modify(InterruptState::Error::CLEAR);
+        // Interrupt state register: SW write 1 to clear
+        if _val.reg.is_set(FlInterruptState::Error) {
+            self.clear_interrupt(FlashCtrlIntType::Error);
         }
-        if _val.reg.is_set(InterruptState::Event) {
-            self.interrupt_state
-                .reg
-                .modify(InterruptState::Event::CLEAR);
+        if _val.reg.is_set(FlInterruptState::Event) {
+            self.clear_interrupt(FlashCtrlIntType::Event);
         }
     }
 
-    fn read_interrupt_enable(
+    fn read_fl_interrupt_enable(
         &mut self,
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::flash_ctrl::bits::InterruptEnable::Register,
+        registers_generated::flash_ctrl::bits::FlInterruptEnable::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
     }
 
-    fn write_interrupt_enable(
+    fn write_fl_interrupt_enable(
         &mut self,
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::flash_ctrl::bits::InterruptEnable::Register,
+            registers_generated::flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
+        if self.interrupt_state.reg.is_set(FlInterruptState::Error)
+            && _val.reg.is_set(FlInterruptEnable::Error)
+        {
+            self._error_irq.set_level(true);
+            self.timer.schedule_poll_in(1);
+        }
+
+        if self.interrupt_state.reg.is_set(FlInterruptState::Event)
+            && _val.reg.is_set(FlInterruptEnable::Event)
+        {
+            self._event_irq.set_level(true);
+            self.timer.schedule_poll_in(1);
+        }
+
         self.interrupt_enable.reg.set(_val.reg.get());
     }
 
@@ -402,29 +399,37 @@ impl FlashPeripheral for DummyFlashCtrl {
         self.page_addr.reg.set(_val);
     }
 
-    fn read_control(
+    fn read_fl_control(
         &mut self,
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::flash_ctrl::bits::Control::Register,
+        registers_generated::flash_ctrl::bits::FlControl::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.control.reg.get())
     }
 
-    // Write to the control register to start the flash operation. The operation is processed in the next cycle.
-    fn write_control(
+    fn write_fl_control(
         &mut self,
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::flash_ctrl::bits::Control::Register,
+            registers_generated::flash_ctrl::bits::FlControl::Register,
         >,
     ) {
+        if !self.ctrl_regwen.reg.is_set(CtrlRegwen::En) {
+            return;
+        }
+
         self.control.reg.set(_val.reg.get());
 
-        // Set the operation_pending flag to true
-        self.operation_pending = true;
+        if self.control.reg.is_set(FlControl::Start) {
+            // Clear ctrl_regwen bit to prevent SW from writing to the control register while the operation is pending.
+            self.ctrl_regwen.reg.modify(CtrlRegwen::En::CLEAR);
+
+            // Schedule the timer to start the operation after the delay
+            self.operation_start = Some(self.timer.schedule_poll_in(Self::IO_START_DELAY));
+        }
     }
 
     fn read_op_status(
@@ -466,7 +471,7 @@ impl FlashPeripheral for DummyFlashCtrl {
             registers_generated::flash_ctrl::bits::CtrlRegwen::Register,
         >,
     ) {
-        // Unreacheable
+        // Unreachable
         panic!("Write to read-only ctrl_regwen register");
     }
 }
@@ -482,7 +487,7 @@ mod test {
     use emulator_types::RvSize;
     use libc::{mmap, munmap, MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE};
     use registers_generated::flash_ctrl::bits::{
-        Control, InterruptEnable, InterruptState, OpStatus,
+        FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
     };
     use registers_generated::flash_ctrl::FLASH_CTRL_ADDR;
     use std::path::PathBuf;
@@ -495,21 +500,19 @@ mod test {
     pub const CONTROL_OFFSET: u32 = 0x14;
     pub const OP_STATUS_OFFSET: u32 = 0x18;
 
-    fn test_helper_setup_autobus(file_path: Option<PathBuf>) -> AutoRootBus {
-        let clock = Clock::new();
+    fn test_helper_setup_autobus(file_path: Option<PathBuf>, clock: &Clock) -> AutoRootBus {
         let pic = Pic::new();
         let flash_ctrl_error_irq = pic.register_irq(19);
         let flash_ctrl_event_irq = pic.register_irq(20);
         let file = file_path;
 
         let flash_controller = Box::new(
-            DummyFlashCtrl::new(&clock, file, flash_ctrl_error_irq, flash_ctrl_event_irq).unwrap(),
+            DummyFlashCtrl::new(clock, file, flash_ctrl_error_irq, flash_ctrl_event_irq).unwrap(),
         );
 
-        AutoRootBus::new(None, None, None, None, None, None, Some(flash_controller))
+        AutoRootBus::new(None, None, Some(flash_controller), None, None, None, None)
     }
 
-    // helper function to prepare the page buffer for read or write operations
     fn test_helper_prepare_io_page_buffer(
         ref_addr: u32,
         size: usize,
@@ -588,71 +591,72 @@ mod test {
 
     #[test]
     fn test_flash_ctrl_regs_access() {
+        let dummy_clock = Clock::new();
         // Create a auto root bus
-        let mut bus = test_helper_setup_autobus(None);
+        let mut bus = test_helper_setup_autobus(None, &dummy_clock);
 
         // Write to the interrupt enable register and read it back
         bus.write(
             RvSize::Word,
             FLASH_CTRL_ADDR + INT_ENABLE_OFFSET,
-            InterruptEnable::Error::SET.value,
+            FlInterruptEnable::Error::SET.value,
         )
         .unwrap();
         assert_eq!(
             bus.read(RvSize::Word, FLASH_CTRL_ADDR + INT_ENABLE_OFFSET)
                 .unwrap(),
-            InterruptEnable::Error::SET.value
+            FlInterruptEnable::Error::SET.value
         );
 
         bus.write(
             RvSize::Word,
             FLASH_CTRL_ADDR + INT_ENABLE_OFFSET,
-            InterruptEnable::Event::SET.value,
+            FlInterruptEnable::Event::SET.value,
         )
         .unwrap();
         assert_eq!(
             bus.read(RvSize::Word, FLASH_CTRL_ADDR + INT_ENABLE_OFFSET)
                 .unwrap(),
-            InterruptEnable::Event::SET.value
+            FlInterruptEnable::Event::SET.value
         );
 
         // Clear the interrupt enable register and read it back
         bus.write(
             RvSize::Word,
             FLASH_CTRL_ADDR + INT_ENABLE_OFFSET,
-            InterruptEnable::Error::CLEAR.value,
+            FlInterruptEnable::Error::CLEAR.value,
         )
         .unwrap();
         assert_eq!(
             bus.read(RvSize::Word, FLASH_CTRL_ADDR + INT_ENABLE_OFFSET)
                 .unwrap(),
-            InterruptEnable::Error::CLEAR.value
+            FlInterruptEnable::Error::CLEAR.value
         );
 
         // Write to the interrupt state register and read it back
         bus.write(
             RvSize::Word,
             FLASH_CTRL_ADDR + INT_STATE_OFFSET,
-            InterruptState::Error::SET.value,
+            FlInterruptState::Error::SET.value,
         )
         .unwrap();
         assert_eq!(
             bus.read(RvSize::Word, FLASH_CTRL_ADDR + INT_STATE_OFFSET)
                 .unwrap(),
-            InterruptState::Error::CLEAR.value
+            FlInterruptState::Error::CLEAR.value
         );
 
         bus.write(
             RvSize::Word,
             FLASH_CTRL_ADDR + INT_STATE_OFFSET,
-            InterruptState::Event::SET.value,
+            FlInterruptState::Event::SET.value,
         )
         .unwrap();
 
         assert_eq!(
             bus.read(RvSize::Word, FLASH_CTRL_ADDR + INT_STATE_OFFSET)
                 .unwrap(),
-            InterruptState::Event::CLEAR.value
+            FlInterruptState::Event::CLEAR.value
         );
 
         // Write to the page size register and read it back
@@ -704,8 +708,9 @@ mod test {
         let test_data = [0xaau8; DummyFlashCtrl::PAGE_SIZE];
         let test_page_num: u32 = 100;
 
+        let dummy_clock = Clock::new();
         // Create a auto root bus
-        let mut bus = test_helper_setup_autobus(Some(test_file.clone()));
+        let mut bus = test_helper_setup_autobus(Some(test_file.clone()), &dummy_clock);
 
         // Prepare the page buffer for write operation
         let w_page_buf_addr = test_helper_prepare_io_page_buffer(
@@ -716,6 +721,13 @@ mod test {
         if w_page_buf_addr.is_none() {
             panic!("Error: failed to prepare the page buffer for write operation");
         }
+
+        //  read the op_status register to make sure it is clean
+        assert_eq!(
+            bus.read(RvSize::Word, FLASH_CTRL_ADDR + OP_STATUS_OFFSET)
+                .unwrap(),
+            0
+        );
 
         // Write to the page address register
         bus.write(
@@ -744,9 +756,14 @@ mod test {
         bus.write(
             RvSize::Word,
             FLASH_CTRL_ADDR + CONTROL_OFFSET,
-            (Control::Start::SET + Control::Op.val(FlashOperation::WritePage as u32)).value,
+            (FlControl::Start::SET + FlControl::Op.val(FlashOperation::WritePage as u32)).value,
         )
         .unwrap();
+
+        // Increase the timer to kick off the operation
+        for _ in 0..1000 {
+            dummy_clock.increment_and_process_timer_actions(1, &mut bus);
+        }
 
         bus.poll();
 
@@ -761,7 +778,7 @@ mod test {
         assert_eq!(
             bus.read(RvSize::Word, FLASH_CTRL_ADDR + INT_STATE_OFFSET)
                 .unwrap(),
-            InterruptState::Event::SET.value
+            FlInterruptState::Event::SET.value
         );
 
         assert!(test_helper_verify_file_data(
@@ -779,8 +796,9 @@ mod test {
         let test_data = [0xaau8; DummyFlashCtrl::PAGE_SIZE];
         let test_page_num: u32 = DummyFlashCtrl::MAX_PAGES;
 
+        let dummy_clock = Clock::new();
         // Create a auto root bus
-        let mut bus = test_helper_setup_autobus(Some(test_file.clone()));
+        let mut bus = test_helper_setup_autobus(Some(test_file.clone()), &dummy_clock);
 
         // Prepare the page buffer for write operation
         let w_page_buf_addr = test_helper_prepare_io_page_buffer(
@@ -820,9 +838,14 @@ mod test {
         bus.write(
             RvSize::Word,
             FLASH_CTRL_ADDR + CONTROL_OFFSET,
-            (Control::Start::SET + Control::Op.val(FlashOperation::ReadPage as u32)).value,
+            (FlControl::Start::SET + FlControl::Op.val(FlashOperation::ReadPage as u32)).value,
         )
         .unwrap();
+
+        // Increase the timer to kick off the operation
+        for _ in 0..1000 {
+            dummy_clock.increment_and_process_timer_actions(1, &mut bus);
+        }
 
         bus.poll();
 
@@ -837,7 +860,7 @@ mod test {
         assert_eq!(
             bus.read(RvSize::Word, FLASH_CTRL_ADDR + INT_STATE_OFFSET)
                 .unwrap(),
-            InterruptState::Error::SET.value
+            FlInterruptState::Error::SET.value
         );
 
         test_helper_release_io_page_buffer(w_page_buf_addr.unwrap(), DummyFlashCtrl::PAGE_SIZE);
@@ -849,8 +872,9 @@ mod test {
         let test_data = [0xbbu8; DummyFlashCtrl::PAGE_SIZE];
         let test_page_num: u32 = 50;
 
+        let dummy_clock = Clock::new();
         // Create a auto root bus
-        let mut bus = test_helper_setup_autobus(Some(test_file.clone()));
+        let mut bus = test_helper_setup_autobus(Some(test_file.clone()), &dummy_clock);
 
         // Fill the test page with test data
         test_helper_fill_file_with_data(&test_file, test_page_num, &test_data);
@@ -890,9 +914,13 @@ mod test {
         bus.write(
             RvSize::Word,
             FLASH_CTRL_ADDR + CONTROL_OFFSET,
-            (Control::Start::SET + Control::Op.val(FlashOperation::ReadPage as u32)).value,
+            (FlControl::Start::SET + FlControl::Op.val(FlashOperation::ReadPage as u32)).value,
         )
         .unwrap();
+
+        for _ in 0..1000 {
+            dummy_clock.increment_and_process_timer_actions(1, &mut bus);
+        }
 
         bus.poll();
 
@@ -907,7 +935,7 @@ mod test {
         assert_eq!(
             bus.read(RvSize::Word, FLASH_CTRL_ADDR + INT_STATE_OFFSET)
                 .unwrap(),
-            InterruptState::Event::SET.value
+            FlInterruptState::Event::SET.value
         );
 
         // Read the data stored in r_page_buf_addr and compare with the test data
@@ -930,8 +958,9 @@ mod test {
         let test_file = PathBuf::from("dummy_flash.bin");
         let test_page_num: u32 = DummyFlashCtrl::MAX_PAGES;
 
+        let dummy_clock = Clock::new();
         // Create a auto root bus
-        let mut bus = test_helper_setup_autobus(Some(test_file.clone()));
+        let mut bus = test_helper_setup_autobus(Some(test_file.clone()), &dummy_clock);
 
         // Prepare the page buffer for read operation
         let r_page_buf_addr =
@@ -968,9 +997,13 @@ mod test {
         bus.write(
             RvSize::Word,
             FLASH_CTRL_ADDR + CONTROL_OFFSET,
-            (Control::Start::SET + Control::Op.val(FlashOperation::ReadPage as u32)).value,
+            (FlControl::Start::SET + FlControl::Op.val(FlashOperation::ReadPage as u32)).value,
         )
         .unwrap();
+
+        for _ in 0..1000 {
+            dummy_clock.increment_and_process_timer_actions(1, &mut bus);
+        }
 
         bus.poll();
 
@@ -985,7 +1018,7 @@ mod test {
         assert_eq!(
             bus.read(RvSize::Word, FLASH_CTRL_ADDR + INT_STATE_OFFSET)
                 .unwrap(),
-            InterruptState::Error::SET.value
+            FlInterruptState::Error::SET.value
         );
 
         test_helper_release_io_page_buffer(r_page_buf_addr.unwrap(), DummyFlashCtrl::PAGE_SIZE);
@@ -996,8 +1029,9 @@ mod test {
         let test_file = PathBuf::from("dummy_flash.bin");
         let test_page_num: u32 = 300;
 
+        let dummy_clock = Clock::new();
         // Create a auto root bus
-        let mut bus = test_helper_setup_autobus(Some(test_file.clone()));
+        let mut bus = test_helper_setup_autobus(Some(test_file.clone()), &dummy_clock);
 
         // write to the page number register
         bus.write(
@@ -1019,9 +1053,13 @@ mod test {
         bus.write(
             RvSize::Word,
             FLASH_CTRL_ADDR + CONTROL_OFFSET,
-            (Control::Start::SET + Control::Op.val(FlashOperation::ErasePage as u32)).value,
+            (FlControl::Start::SET + FlControl::Op.val(FlashOperation::ErasePage as u32)).value,
         )
         .unwrap();
+
+        for _ in 0..1000 {
+            dummy_clock.increment_and_process_timer_actions(1, &mut bus);
+        }
 
         bus.poll();
 
@@ -1034,7 +1072,7 @@ mod test {
         assert_eq!(
             bus.read(RvSize::Word, FLASH_CTRL_ADDR + INT_STATE_OFFSET)
                 .unwrap(),
-            InterruptState::Event::SET.value
+            FlInterruptState::Event::SET.value
         );
 
         // Verify the data in the file. After erasing the page, the data should be all 0xFF
@@ -1050,8 +1088,9 @@ mod test {
         let test_file = PathBuf::from("dummy_flash.bin");
         let test_page_num: u32 = DummyFlashCtrl::MAX_PAGES;
 
+        let dummy_clock = Clock::new();
         // Create a auto root bus
-        let mut bus = test_helper_setup_autobus(Some(test_file.clone()));
+        let mut bus = test_helper_setup_autobus(Some(test_file.clone()), &dummy_clock);
 
         // write to the page number register
         bus.write(
@@ -1073,9 +1112,13 @@ mod test {
         bus.write(
             RvSize::Word,
             FLASH_CTRL_ADDR + CONTROL_OFFSET,
-            (Control::Start::SET + Control::Op.val(FlashOperation::ErasePage as u32)).value,
+            (FlControl::Start::SET + FlControl::Op.val(FlashOperation::ErasePage as u32)).value,
         )
         .unwrap();
+
+        for _ in 0..1000 {
+            dummy_clock.increment_and_process_timer_actions(1, &mut bus);
+        }
 
         bus.poll();
 
@@ -1090,7 +1133,7 @@ mod test {
         assert_eq!(
             bus.read(RvSize::Word, FLASH_CTRL_ADDR + INT_STATE_OFFSET)
                 .unwrap(),
-            InterruptState::Error::SET.value
+            FlInterruptState::Error::SET.value
         );
     }
 }

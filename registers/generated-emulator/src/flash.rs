@@ -8,39 +8,39 @@ pub trait FlashPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
-    fn read_interrupt_state(
+    fn read_fl_interrupt_state(
         &mut self,
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::flash_ctrl::bits::InterruptState::Register,
+        registers_generated::flash_ctrl::bits::FlInterruptState::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_interrupt_state(
+    fn write_fl_interrupt_state(
         &mut self,
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::flash_ctrl::bits::InterruptState::Register,
+            registers_generated::flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
     }
-    fn read_interrupt_enable(
+    fn read_fl_interrupt_enable(
         &mut self,
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::flash_ctrl::bits::InterruptEnable::Register,
+        registers_generated::flash_ctrl::bits::FlInterruptEnable::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_interrupt_enable(
+    fn write_fl_interrupt_enable(
         &mut self,
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::flash_ctrl::bits::InterruptEnable::Register,
+            registers_generated::flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
     }
@@ -56,21 +56,21 @@ pub trait FlashPeripheral {
         0
     }
     fn write_page_addr(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {}
-    fn read_control(
+    fn read_fl_control(
         &mut self,
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::flash_ctrl::bits::Control::Register,
+        registers_generated::flash_ctrl::bits::FlControl::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_control(
+    fn write_fl_control(
         &mut self,
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::flash_ctrl::bits::Control::Register,
+            registers_generated::flash_ctrl::bits::FlControl::Register,
         >,
     ) {
     }
@@ -123,7 +123,7 @@ impl emulator_bus::Bus for FlashBus {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_interrupt_state(emulator_types::RvSize::Word)
+                    .read_fl_interrupt_state(emulator_types::RvSize::Word)
                     .reg
                     .get(),
             )),
@@ -132,7 +132,7 @@ impl emulator_bus::Bus for FlashBus {
             }
             (emulator_types::RvSize::Word, 4) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_interrupt_enable(emulator_types::RvSize::Word)
+                    .read_fl_interrupt_enable(emulator_types::RvSize::Word)
                     .reg
                     .get(),
             )),
@@ -147,7 +147,7 @@ impl emulator_bus::Bus for FlashBus {
             (_, 0x11..=0x13) => Err(emulator_bus::BusError::LoadAddrMisaligned),
             (emulator_types::RvSize::Word, 0x14) => Ok(emulator_types::RvData::from(
                 self.periph
-                    .read_control(emulator_types::RvSize::Word)
+                    .read_fl_control(emulator_types::RvSize::Word)
                     .reg
                     .get(),
             )),
@@ -183,7 +183,7 @@ impl emulator_bus::Bus for FlashBus {
     ) -> Result<(), emulator_bus::BusError> {
         match (size, addr) {
             (emulator_types::RvSize::Word, 0) => {
-                self.periph.write_interrupt_state(
+                self.periph.write_fl_interrupt_state(
                     emulator_types::RvSize::Word,
                     emulator_bus::ReadWriteRegister::new(val),
                 );
@@ -193,7 +193,7 @@ impl emulator_bus::Bus for FlashBus {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 4) => {
-                self.periph.write_interrupt_enable(
+                self.periph.write_fl_interrupt_enable(
                     emulator_types::RvSize::Word,
                     emulator_bus::ReadWriteRegister::new(val),
                 );
@@ -218,7 +218,7 @@ impl emulator_bus::Bus for FlashBus {
             }
             (_, 0x11..=0x13) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             (emulator_types::RvSize::Word, 0x14) => {
-                self.periph.write_control(
+                self.periph.write_fl_control(
                     emulator_types::RvSize::Word,
                     emulator_bus::ReadWriteRegister::new(val),
                 );

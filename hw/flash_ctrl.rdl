@@ -10,7 +10,7 @@ addrmap flash_ctrl {
             onwrite = woclr;
             desc = "Event-related interrupts";
         } EVENT[1:1];
-    } INTERRUPT_STATE @ 0x00;
+    } FL_INTERRUPT_STATE @ 0x00;
     reg {
         field {
             sw = rw;
@@ -20,7 +20,7 @@ addrmap flash_ctrl {
             sw = rw;
             desc = "Enable event interrupt";
         } EVENT[1:1];
-    } INTERRUPT_ENABLE @ 0x04;
+    } FL_INTERRUPT_ENABLE @ 0x04;
 
     reg {
         field {
@@ -52,7 +52,7 @@ addrmap flash_ctrl {
             sw = rw;
             desc = "Start the operation";
         } START[0:0];
-    } CONTROL @ 0x14;
+    } FL_CONTROL @ 0x14;
 
     reg {
         field {
@@ -70,7 +70,7 @@ addrmap flash_ctrl {
     reg {
         field {
             sw = r;
-            desc = "This register ensures the contents of CONTROL cannot be changed by software once a flash operation has begun. \
+            desc = "This register ensures the contents of OP_CONTROL cannot be changed by software once a flash operation has begun. \
                     This bit defaults to 1 and is set to 0 by hardware when flash operation is initiated. When the controller completes the flash operation, \
                     It unlocks whenever the existing flash operation completes, regardless of success or error.";
 
@@ -79,5 +79,5 @@ addrmap flash_ctrl {
 };
 
 addrmap flashctrl_dummy {
-    flash_ctrl flash_ctrl @ 0x7000_0000;
+    flash_ctrl flash_ctrl @ 0x2000_8000;
 };
