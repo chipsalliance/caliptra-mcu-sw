@@ -126,7 +126,6 @@ static TESTS_TO_RUN: &[TestInfo] = &[
     TestInfo { extension: "privilege", name: "misalign2-jalr-01", },
     TestInfo { extension: "Zifencei", name: "Fencei", },
     TestInfo { extension: "B", name: "andn-01", },
-    // TODO: add these back in when Zba,Zbc,Zbs are implemented in the emulator
     TestInfo { extension: "B", name: "bclr-01", },
     TestInfo { extension: "B", name: "bclri-01", },
     TestInfo { extension: "B", name: "bext-01", },
