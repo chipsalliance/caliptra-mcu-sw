@@ -2,6 +2,7 @@
 
 // I2C / I3C driver for the https://github.com/chipsalliance/i3c-core chip.
 
+use crate::hil::I3CTargetInfo;
 use crate::hil::{RxClient, TxClient};
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
@@ -444,6 +445,8 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
 }
 
 impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
+    const MAX_READ_WRITE_SIZE: usize = 250;
+
     fn set_tx_client(&self, client: &'a dyn TxClient) {
         self.tx_client.set(client)
     }
@@ -479,14 +482,18 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         self.disable_interrupts()
     }
 
-    fn get_mtu_size(&self) -> usize {
-        250
-    }
-
-    fn get_address(&self) -> u8 {
-        self.registers
+    fn get_device_info(&self) -> I3CTargetInfo {
+        let dynamic_addr = self
+            .registers
             .controller_device_addr
-            .read(ControllerDeviceAddr::DynamicAddr) as u8
+            .read(ControllerDeviceAddr::DynamicAddr) as u8;
+
+        I3CTargetInfo {
+            static_addr: None,
+            dynamic_addr: Some(dynamic_addr),
+            max_read_len: Self::MAX_READ_WRITE_SIZE,
+            max_write_len: Self::MAX_READ_WRITE_SIZE,
+        }
     }
 }
 
