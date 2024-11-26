@@ -5,6 +5,8 @@ name: RISC-V Compliance tests
 on:
   schedule:
     - cron: '0 0 * * *'
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
 
 jobs:
   compliance:
@@ -28,13 +30,14 @@ jobs:
     - name: Install riscv-isa-sim
       run: |
         git clone https://github.com/riscv-software-src/riscv-isa-sim.git && \
-        cd riscv-isa-sim && \
+        pushd riscv-isa-sim && \
         mkdir build && \
-        cd build && \
+        pushd build && \
         ../configure --prefix=/usr && \
         make -j$(nproc) && \
         sudo make install && \
-        cd ../..
+        popd && \
+        popd
     - name: Install Sail
       run: |
         opam init -a -y && \
@@ -43,10 +46,10 @@ jobs:
     - name: Install Sail RISC-V
       run: |
         git clone https://github.com/riscv/sail-riscv.git && \
-        cd sail-riscv && \
+        pushd sail-riscv && \
         make c_emulator/riscv_sim_RV32 ARCH=32 -j$(nproc) && \
         sudo cp -r c_emulator/riscv_sim_RV32 /usr/bin && \
-        cd ..
+        popd
     - name: Install Rust tools
       run: rustup update
     - name: Checkout RISC-V tests
