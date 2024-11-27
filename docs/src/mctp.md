@@ -303,7 +303,7 @@ pub struct VirtualMCTPDriver {
 pub trait MCTPSender {
     /// Sets the client for the `MCTPSender` instance.
     /// In this case it is MCTPTxState which is instantiated at the time of
-    fn set_client(&self, client: &dyn MCTPSendClient);
+    fn set_client(&self, client: &dyn MCTPTxClient);
 
     /// Sends the message to the MCTP kernel stack.
     fn send_msg(&self, dest_eid: u8, msg_tag: u8, msg_payload: SubSliceMut<'static, u8>);
@@ -313,7 +313,7 @@ pub trait MCTPSender {
 /// message is sent.
 /// The 'send_done' function in this trait is invoked after the MCTPSender
 /// has completed sending the requested message.
-pub trait MCTPSendClient {
+pub trait MCTPTxClient {
     fn send_done(&self, msg_tag: Option<u8>, result: Result<(), ErrorCode>, msg_payload: SubSliceMut<'static, u8> )
 }
 
@@ -321,7 +321,7 @@ pub struct MCTPTxState<M:MCTPTransportBinding> {
     /// MCTP Mux driver reference
     mctp_mux_sender: &MuxMCTPDriver<M>,
     /// Client to invoke when send done. This is set to the corresponding VirtualMCTPDriver instance.
-    client: OptionalCell<&dyn MCTPSendClient>,
+    client: OptionalCell<&dyn MCTPTxClient>,
     /// next MCTPTxState node in the list
     next: ListLink<MCTPTxState<M: MCTPTransportBinding>>,
     /// The message buffer is set by the virtual MCTP driver when it issues the Tx request.
@@ -335,7 +335,7 @@ pub struct MCTPTxState<M:MCTPTransportBinding> {
 /// This is the trait implemented by VirtualMCTPDriver instance to get notified of
 /// the messages received on corresponding message_type.
 pub trait MCTPRxClient {
-    fn receive(&self, dst_eid: u8, msg_type: u8, msg_Tag: u8, msg_payload: &[u8]);
+    fn receive(&self, dst_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8]);
 }
 
 /// Receive state

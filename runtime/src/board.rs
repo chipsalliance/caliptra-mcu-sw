@@ -4,6 +4,7 @@ use crate::chip::VeeRDefaultPeripherals;
 use crate::chip::TIMERS;
 use crate::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use capsules_runtime::mctp::mctp_binding::MCTPI3CBinding;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
 use kernel::component::Component;

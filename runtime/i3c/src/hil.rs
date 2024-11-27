@@ -32,9 +32,6 @@ pub trait RxClient {
 }
 
 pub trait I3CTarget<'a> {
-    /// Get the maximum size for reads and writes.
-    const MAX_READ_WRITE_SIZE: usize;
-
     /// Set the client that will be called when the packet is transmitted.
     fn set_tx_client(&self, client: &'a dyn TxClient);
 
@@ -45,7 +42,11 @@ pub trait I3CTarget<'a> {
     fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
 
     /// Queue a packet in response to a private Read.
-    fn transmit_read(&self, tx_buf: &'static mut [u8], len: usize) -> Result<(), ErrorCode>;
+    fn transmit_read(
+        &self,
+        tx_buf: &'static mut [u8],
+        len: usize,
+    ) -> Result<(), (ErrorCode, &'static mut [u8])>;
 
     /// Enable the I3C target device
     fn enable(&self);
