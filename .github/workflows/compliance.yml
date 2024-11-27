@@ -1,0 +1,58 @@
+# Licensed under the Apache-2.0 license
+
+name: RISC-V Compliance tests
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  compliance:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt update && \
+        sudo apt upgrade -y && \
+        sudo apt install -y \
+          device-tree-compiler \
+          gcc-multilib \
+          gcc-riscv64-unknown-elf \
+          opam \
+          z3
+    - name: Install RISC-V Python tools
+      run: |
+        pip install git+https://github.com/riscv/riscv-isac.git@dev && \
+        pip install git+https://github.com/riscv/riscof.git
+    - name: Install riscv-isa-sim
+      run: |
+        git clone https://github.com/riscv-software-src/riscv-isa-sim.git && \
+        pushd riscv-isa-sim && \
+        mkdir build && \
+        pushd build && \
+        ../configure --prefix=/usr && \
+        make -j$(nproc) && \
+        sudo make install && \
+        popd && \
+        popd
+    - name: Install Sail
+      run: |
+        opam init -a -y && \
+        opam install -y sail && \
+        echo "$HOME/.opam/default/bin" >> "$GITHUB_PATH"
+    - name: Install Sail RISC-V
+      run: |
+        git clone https://github.com/riscv/sail-riscv.git && \
+        pushd sail-riscv && \
+        make c_emulator/riscv_sim_RV32 ARCH=32 -j$(nproc) && \
+        sudo cp -r c_emulator/riscv_sim_RV32 /usr/bin && \
+        popd
+    - name: Install Rust tools
+      run: rustup update
+    - name: Checkout RISC-V tests
+      run: git clone https://github.com/riscv-non-isa/riscv-arch-test.git emulator/compliance-test/riscv-arch-test
+    - name: Run compliance tests
+      run: cargo run -p compliance-test -- --test_root_path emulator/compliance-test/riscv-arch-test
