@@ -6,9 +6,14 @@ use crate::{
 use std::process::Command as StdCommand;
 
 /// Run the Runtime Tock kernel image for RISC-V in the emulator.
-pub(crate) fn runtime_run(trace: bool) -> Result<(), DynError> {
+pub(crate) fn runtime_run(
+    trace: bool,
+    i3c_port: Option<u16>,
+    features: &[&str],
+    no_stdin: bool,
+) -> Result<(), DynError> {
     rom_build()?;
-    runtime_build_with_apps()?;
+    runtime_build_with_apps(features, None)?;
     let rom_binary = PROJECT_ROOT
         .join("target")
         .join(TARGET)
@@ -30,6 +35,13 @@ pub(crate) fn runtime_run(trace: bool) -> Result<(), DynError> {
         "--firmware",
         tock_binary.to_str().unwrap(),
     ];
+    if no_stdin {
+        cargo_run_args.push("--no-stdin-uart");
+    }
+    let port = format!("{}", i3c_port.unwrap_or(0));
+    if i3c_port.is_some() {
+        cargo_run_args.extend(["--i3c-port", &port]);
+    }
     if trace {
         cargo_run_args.extend(["-t", "-l", PROJECT_ROOT.to_str().unwrap()]);
     }

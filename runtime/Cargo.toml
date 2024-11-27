@@ -21,3 +21,8 @@ riscv-csr = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8
 rv32i = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
 tock-registers.workspace = true
 capsules-runtime.workspace = true
+
+[features]
+default = []
+test-i3c-simple = []
+test-i3c-constant-writes = []

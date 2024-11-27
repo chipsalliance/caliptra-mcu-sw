@@ -21,6 +21,8 @@ pub mod io;
 #[cfg(target_arch = "riscv32")]
 mod pic;
 #[cfg(target_arch = "riscv32")]
+mod tests;
+#[cfg(target_arch = "riscv32")]
 mod timers;
 #[cfg(target_arch = "riscv32")]
 pub use board::*;

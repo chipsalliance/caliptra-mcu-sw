@@ -16,10 +16,12 @@ mod dis;
 mod dis_test;
 mod elf;
 mod gdb;
+mod i3c_socket;
 
+use crate::i3c_socket::start_i3c_socket;
 use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_bus::{Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
@@ -48,9 +50,6 @@ struct Emulator {
     #[arg(short, long)]
     firmware: Option<PathBuf>,
 
-    #[arg(short, long)]
-    apps: Option<Vec<PathBuf>>,
-
     /// Optional file to store OTP / fuses between runs.
     #[arg(short, long)]
     otp: Option<PathBuf>,
@@ -67,9 +66,14 @@ struct Emulator {
     #[arg(short, long, default_value_t = false)]
     trace_instr: bool,
 
+    // These look backwards, but this is necessary so that the default is to capture stdin.
     /// Pass stdin to the MCU UART Rx.
-    #[arg(short, long, default_value_t = true)]
+    #[arg(long = "no-stdin-uart", action = ArgAction::SetFalse)]
     stdin_uart: bool,
+
+    // this is used only to set stdin_uart to false
+    #[arg(long = "stdin-uart", overrides_with = "stdin_uart")]
+    _no_stdin_uart: bool,
 
     /// Start a Caliptra CPU as well and connect to the MCU.
     #[arg(short, long, default_value_t = false)]
@@ -82,6 +86,9 @@ struct Emulator {
     /// The Firmware path for the Caliptra CPU.
     #[arg(long)]
     caliptra_firmware: Option<PathBuf>,
+
+    #[arg(long)]
+    i3c_port: Option<u16>,
 }
 
 //const EXPECTED_CALIPTRA_BOOT_TIME_IN_CYCLES: u64 = 20_000_000; // 20 million cycles
@@ -244,7 +251,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     // exit cleanly on Ctrl-C so that we save any state.
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = running.clone();
-    if std::io::stdout().is_terminal() {
+    if io::stdout().is_terminal() {
         ctrlc::set_handler(move || {
             running_clone.store(false, std::sync::atomic::Ordering::Relaxed);
         })
@@ -334,7 +341,12 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     let i3c_error_irq = pic.register_irq(CaliptraRootBus::I3C_ERROR_IRQ);
     let i3c_notif_irq = pic.register_irq(CaliptraRootBus::I3C_NOTIF_IRQ);
 
-    let mut i3c_controller = I3cController::default();
+    let mut i3c_controller = if let Some(i3c_port) = cli.i3c_port {
+        let (rx, tx) = start_i3c_socket(running.clone(), i3c_port);
+        I3cController::new(rx, tx)
+    } else {
+        I3cController::default()
+    };
     let i3c = I3c::new(
         &clock.clone(),
         &mut i3c_controller,

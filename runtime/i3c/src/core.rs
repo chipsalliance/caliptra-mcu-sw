@@ -274,18 +274,10 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             }
             // There is a pending Read Transaction on the I3C Bus. Software should write data to the TX Descriptor Queue and the TX Data Queue
             if tti_interrupts.read(InterruptStatus::TxDescStat) != 0 {
-                // disable this interrupt
-                self.registers
-                    .interrupt_enable
-                    .modify(InterruptEnable::TxDescThldStatEn::CLEAR);
                 self.handle_outgoing_read();
             }
             // There is a pending Write Transaction. Software should read data from the RX Descriptor Queue and the RX Data Queue
             if tti_interrupts.read(InterruptStatus::RxDescStat) != 0 {
-                // disable this interrupt
-                self.registers
-                    .interrupt_enable
-                    .modify(InterruptEnable::RxDescThldStatEn::CLEAR);
                 self.handle_incoming_write();
             }
         }
@@ -305,7 +297,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     // called when TTI has a private Write with data for us to grab
-    fn handle_incoming_write(&self) {
+    pub fn handle_incoming_write(&self) {
         self.retry_incoming_write.set(false);
         if self.rx_buffer.is_none() {
             self.rx_client.map(|client| {
@@ -372,14 +364,10 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 self.rx_buffer.replace(rx_buffer);
             }
         }
-        // re-enable this interrupt
-        self.registers
-            .interrupt_enable
-            .modify(InterruptEnable::RxDescThldStatEn::SET);
     }
 
     // called when TTI wants us to send data for a private Read
-    fn handle_outgoing_read(&self) {
+    pub fn handle_outgoing_read(&self) {
         self.retry_outgoing_read.set(false);
 
         if self.tx_buffer.is_none() {
@@ -410,10 +398,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             client.send_done(buf, Ok(()));
         });
         // TODO: if no tx_client then we just drop the buffer?
-        // re-enable the interrupt
-        self.registers
-            .interrupt_enable
-            .modify(InterruptEnable::TxDescThldStatEn::SET);
     }
 
     fn transfer_error(&self) {

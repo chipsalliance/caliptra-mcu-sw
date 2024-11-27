@@ -36,9 +36,27 @@ enum Commands {
         /// Run with tracing options
         #[arg(short, long, default_value_t = false)]
         trace: bool,
+
+        /// TCP port to listen on for communication I3C socket
+        #[arg(long)]
+        i3c_port: Option<u16>,
+
+        /// Features to build runtime with
+        #[arg(long)]
+        features: Vec<String>,
+
+        #[arg(long, default_value_t = false)]
+        no_stdin: bool,
     },
     /// Build Runtime image
-    RuntimeBuild,
+    RuntimeBuild {
+        /// Features to build runtime with
+        #[arg(long)]
+        features: Vec<String>,
+
+        #[arg(long)]
+        output: Option<String>,
+    },
     /// Build ROM
     RomBuild,
     /// Build and Run ROM image
@@ -130,8 +148,19 @@ static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
 fn main() {
     let cli = Xtask::parse();
     let result = match &cli.xtask {
-        Commands::Runtime { trace } => runtime::runtime_run(*trace),
-        Commands::RuntimeBuild => runtime_build::runtime_build_with_apps(),
+        Commands::Runtime {
+            trace,
+            i3c_port,
+            features,
+            no_stdin,
+        } => {
+            let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
+            runtime::runtime_run(*trace, *i3c_port, &features, *no_stdin)
+        }
+        Commands::RuntimeBuild { features, output } => {
+            let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
+            runtime_build::runtime_build_with_apps(&features, output.as_deref())
+        }
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild => rom::rom_build(),
         Commands::FlashImage { subcommand } => match subcommand {

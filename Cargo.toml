@@ -21,6 +21,7 @@ members = [
     "runtime/apps/pldm",
     "runtime/i3c",
     "tests/hello",
+    "tests/integration",
     "xtask",
 ]
 resolver = "2"

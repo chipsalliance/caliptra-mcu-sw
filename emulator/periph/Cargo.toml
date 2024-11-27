@@ -25,3 +25,7 @@ zerocopy.workspace = true
 
 [dev-dependencies]
 libc = "0.2"
+
+[features]
+default = []
+test-i3c-constant-writes = []

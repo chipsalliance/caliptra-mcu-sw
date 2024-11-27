@@ -12,12 +12,13 @@ use crate::{DynError, PROJECT_ROOT, TARGET};
 use std::path::PathBuf;
 use std::process::Command;
 
+const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
 const RUNTIME_START: usize = 0x4000_0000;
 const INTERRUPT_TABLE_SIZE: usize = 128;
 const ICCM_SIZE: usize = 256 * 1024;
 const RAM_START: usize = 0x5000_0000;
 const RAM_SIZE: usize = 128 * 1024;
-const BSS_SIZE: usize = 5000; // this is approximate. Increase it is there are "sram" errors when linking
+const BSS_SIZE: usize = 5000; // this is approximate. Increase it if there are "sram" errors when linking
 
 pub const RUSTFLAGS_COMMON: [&str; 2] = [
     "-C target-feature=+relax,+unaligned-scalar-mem,+b",
@@ -81,7 +82,11 @@ fn sysroot() -> Result<String, DynError> {
     Ok(sysroot)
 }
 
-fn runtime_build_no_apps(apps_offset: usize) -> Result<(), DynError> {
+fn runtime_build_no_apps(
+    apps_offset: usize,
+    features: &[&str],
+    output_name: &str,
+) -> Result<(), DynError> {
     let tock_dir = &PROJECT_ROOT.join("runtime");
     let sysroot = sysroot()?;
     let ld_file_path = tock_dir.join("layout.ld");
@@ -258,6 +263,13 @@ INCLUDE runtime/kernel_layout.ld
     ]
     .join(" ");
 
+    let features_str = features.join(",");
+    let features = if features.is_empty() {
+        vec![]
+    } else {
+        vec!["--features", features_str.as_str()]
+    };
+
     let mut cmd = Command::new("cargo");
     let cmd = cmd
         .arg("rustc")
@@ -265,6 +277,7 @@ INCLUDE runtime/kernel_layout.ld
         .arg("--bin")
         .arg("runtime")
         .arg("--release")
+        .args(features)
         .arg("--")
         .args(rustc_flags_for_bin.split(' '))
         .env("RUSTFLAGS", rustc_flags_tock)
@@ -280,8 +293,7 @@ INCLUDE runtime/kernel_layout.ld
         .arg("--output-target=binary")
         .args(objcopy_flags_kernel.split(' '))
         .arg(target_binary("runtime"))
-        .arg(target_binary("runtime.bin"));
-
+        .arg(target_binary(output_name));
     println!("Executing {:?}", cmd);
     if !cmd.status()?.success() {
         Err("objcopy failed to build runtime")?;
@@ -290,12 +302,16 @@ INCLUDE runtime/kernel_layout.ld
     Ok(())
 }
 
-pub fn runtime_build_with_apps() -> Result<(), DynError> {
+pub fn runtime_build_with_apps(
+    features: &[&str],
+    output_name: Option<&str>,
+) -> Result<(), DynError> {
     let mut app_offset = RUNTIME_START;
-    let runtime_bin = target_binary("runtime.bin");
+    let output_name = output_name.unwrap_or(DEFAULT_RUNTIME_NAME);
+    let runtime_bin = target_binary(output_name);
 
     // build once to get the size of the runtime binary without apps
-    runtime_build_no_apps(RUNTIME_START + 0x2_0000)?;
+    runtime_build_no_apps(RUNTIME_START + 0x2_0000, features, output_name)?;
 
     let runtime_bin_size = std::fs::metadata(&runtime_bin)?.len() as usize;
     app_offset += runtime_bin_size;
@@ -305,7 +321,7 @@ pub fn runtime_build_with_apps() -> Result<(), DynError> {
     let padding = app_offset - runtime_end_offset - INTERRUPT_TABLE_SIZE;
 
     // now re-link and place the apps after the runtime binary
-    runtime_build_no_apps(app_offset)?;
+    runtime_build_no_apps(app_offset, features, output_name)?;
 
     let mut bin = std::fs::read(&runtime_bin)?;
     let kernel_size = bin.len();

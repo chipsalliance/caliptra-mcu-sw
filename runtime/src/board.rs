@@ -252,5 +252,18 @@ pub unsafe fn main() {
         debug!("{:?}", err);
     });
 
+    // Run any requested test
+    let exit = if cfg!(feature = "test-i3c-simple") {
+        debug!("Executing test-i3c-simple");
+        crate::tests::test_i3c_simple()
+    } else if cfg!(feature = "test-i3c-constant-writes") {
+        debug!("Executing test-i3c-constant-writes");
+        crate::tests::test_i3c_constant_writes()
+    } else {
+        None
+    };
+    if let Some(exit) = exit {
+        crate::io::exit_emulator(exit);
+    }
     board_kernel.kernel_loop(&veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
 }
