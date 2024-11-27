@@ -24,7 +24,7 @@ use console::{Key, Term};
 use emulator_bus::{Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
-use emulator_periph::{CaliptraRootBus, CaliptraRootBusArgs, I3c, I3cController};
+use emulator_periph::{CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, I3c, I3cController};
 use emulator_registers_generated::root_bus::AutoRootBus;
 use gdb::gdb_state;
 use gdb::gdb_target::GdbTarget;
@@ -334,9 +334,21 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         i3c_error_irq,
         i3c_notif_irq,
     );
+
+    let flash_ctrl_error_irq = pic.register_irq(CaliptraRootBus::FLASH_CTRL_ERROR_IRQ);
+    let flash_ctrl_event_irq = pic.register_irq(CaliptraRootBus::FLASH_CTRL_EVENT_IRQ);
+    let flash_controller = DummyFlashCtrl::new(
+        &clock.clone(),
+        None,
+        flash_ctrl_error_irq,
+        flash_ctrl_event_irq,
+    )
+    .unwrap();
+
     let auto_root_bus = AutoRootBus::new(
         Some(Box::new(root_bus)),
         Some(Box::new(i3c)),
+        Some(Box::new(flash_controller)),
         None,
         None,
         None,

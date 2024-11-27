@@ -14,6 +14,7 @@ Abstract:
 extern crate arrayref;
 
 mod emu_ctrl;
+mod flash_ctrl;
 mod i3c;
 pub(crate) mod i3c_protocol;
 mod otp;
@@ -24,6 +25,7 @@ mod spi_host;
 mod uart;
 
 pub use emu_ctrl::EmuCtrl;
+pub use flash_ctrl::DummyFlashCtrl;
 pub use i3c::I3c;
 pub use i3c_protocol::*;
 pub use otp::Otp;

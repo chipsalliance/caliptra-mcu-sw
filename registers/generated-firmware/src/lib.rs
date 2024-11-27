@@ -5,6 +5,7 @@
 #![recursion_limit = "256"]
 #![no_std]
 pub mod el2_pic_ctrl;
+pub mod flash_ctrl;
 pub mod i3c;
 pub mod mbox;
 pub mod sha512_acc;
