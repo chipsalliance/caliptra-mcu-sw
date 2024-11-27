@@ -29,6 +29,7 @@ use tock_registers::LocalRegisterCopy;
 
 pub const I3C_BASE: StaticRef<I3c> = unsafe { StaticRef::new(I3C_CSR_ADDR as *const I3c) };
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
+pub const MAX_READ_WRITE_SIZE: usize = 250;
 
 register_bitfields! {
     u32,
@@ -445,8 +446,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
 }
 
 impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
-    const MAX_READ_WRITE_SIZE: usize = 250;
-
     fn set_tx_client(&self, client: &'a dyn TxClient) {
         self.tx_client.set(client)
     }
@@ -462,9 +461,13 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         self.rx_buffer_size.replace(len);
     }
 
-    fn transmit_read(&self, tx_buf: &'static mut [u8], len: usize) -> Result<(), ErrorCode> {
+    fn transmit_read(
+        &self,
+        tx_buf: &'static mut [u8],
+        len: usize,
+    ) -> Result<(), (ErrorCode, &'static mut [u8])> {
         if self.tx_buffer.is_some() {
-            return Err(ErrorCode::BUSY);
+            return Err((ErrorCode::BUSY, tx_buf));
         }
         self.tx_buffer.replace(tx_buf);
         self.tx_buffer_idx.set(0);
@@ -491,8 +494,8 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         I3CTargetInfo {
             static_addr: None,
             dynamic_addr: Some(dynamic_addr),
-            max_read_len: Self::MAX_READ_WRITE_SIZE,
-            max_write_len: Self::MAX_READ_WRITE_SIZE,
+            max_read_len: MAX_READ_WRITE_SIZE,
+            max_write_len: MAX_READ_WRITE_SIZE,
         }
     }
 }

@@ -509,6 +509,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "capsules-runtime"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "capsules-extra",
+ "i3c-driver",
+ "kernel",
+ "zerocopy 0.8.10",
+]
+
+[[package]]
 name = "capsules-system"
 version = "0.1.0"
 source = "git+https://github.com/tock/tock.git?rev=b128ae817b86706c8c4e39d27fae5c54b98659f1#b128ae817b86706c8c4e39d27fae5c54b98659f1"
@@ -1964,6 +1975,7 @@ version = "0.1.0"
 dependencies = [
  "capsules-core",
  "capsules-extra",
+ "capsules-runtime",
  "capsules-system",
  "components",
  "i3c-driver",
