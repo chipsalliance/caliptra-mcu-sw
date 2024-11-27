@@ -9,7 +9,6 @@
 
 use crate::io::SemihostUart;
 use crate::timers::{InternalTimers, TimerInterrupts};
-use crate::CHIP;
 use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
 use core::fmt::Write;
 use core::ptr::addr_of;
@@ -37,7 +36,7 @@ pub struct VeeR<'a, I: InterruptService + 'a> {
     userspace_kernel_boundary: SysCall,
     pic: &'a Pic,
     timers: &'static InternalTimers<'static>,
-    pic_interrupt_service: &'a I,
+    pub peripherals: &'a I,
     pmp: PMPUserMPU<4, SimplePMP<8>>,
 }
 
@@ -85,7 +84,7 @@ impl<'a, I: InterruptService + 'a> VeeR<'a, I> {
             userspace_kernel_boundary: SysCall::new(),
             pic: &*addr_of!(PIC),
             timers: &*addr_of!(TIMERS),
-            pic_interrupt_service,
+            peripherals: pic_interrupt_service,
             pmp: PMPUserMPU::new(SimplePMP::new().unwrap()),
         }
     }
@@ -104,7 +103,7 @@ impl<'a, I: InterruptService + 'a> VeeR<'a, I> {
 
     unsafe fn handle_pic_interrupts(&self) {
         while let Some(interrupt) = self.pic.get_saved_interrupts() {
-            if !self.pic_interrupt_service.service_interrupt(interrupt) {
+            if !self.peripherals.service_interrupt(interrupt) {
                 panic!("Unhandled interrupt {}", interrupt);
             }
             self.atomic(|| {
@@ -234,13 +233,6 @@ unsafe fn handle_interrupt(intr: mcause::Interrupt, mcause: u32) {
 
                 match interrupt {
                     Some(irq) => {
-                        // these can't be cleared without handling them
-                        if irq == UART_IRQ as u32
-                            || irq == I3C_ERROR_IRQ as u32
-                            || irq == I3C_NOTIF_IRQ as u32
-                        {
-                            CHIP.unwrap().pic_interrupt_service.service_interrupt(irq);
-                        }
                         PIC.save_interrupt(irq);
                     }
                     None => {
@@ -258,6 +250,32 @@ unsafe fn handle_interrupt(intr: mcause::Interrupt, mcause: u32) {
     }
 }
 
+// these are useful when debugging interrupts
+
+#[allow(dead_code)]
+fn print_to_console(buf: &[u8]) {
+    for b in buf {
+        // Print to this address for emulator output
+        unsafe {
+            core::ptr::write_volatile(0x2000_1041 as *mut u8, *b);
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn print_hex(x: u32) {
+    let mut buf = [0u8; 8];
+    for i in 0..8 {
+        let nibble = (x >> (4 * (7 - i))) & 0xF;
+        buf[i] = if nibble < 10 {
+            b'0' + nibble as u8
+        } else {
+            b'A' + (nibble - 10) as u8
+        };
+    }
+    print_to_console(&buf);
+}
+
 /// Trap handler for board/chip specific code.
 ///
 /// This gets called when an interrupt occurs while the chip is
@@ -268,9 +286,6 @@ unsafe fn handle_interrupt(intr: mcause::Interrupt, mcause: u32) {
 #[export_name = "_start_trap_rust_from_kernel"]
 pub unsafe extern "C" fn start_trap_rust() {
     let mcause = CSR.mcause.extract();
-    // print_to_console(b"Tock handling trap, mcause: ");
-    // print_hex(mcause.get() as u32);
-    // print_to_console(b"\n");
     match mcause::Trap::from(mcause) {
         mcause::Trap::Interrupt(interrupt) => {
             handle_interrupt(interrupt, mcause.get() as u32);
