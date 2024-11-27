@@ -9,6 +9,7 @@ use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::cells::TakeCell;
 use kernel::ErrorCode;
 
+// TODO: Set the correct value for MCTP_I3C_MAXBUF.
 pub const MCTP_I3C_MAXBUF: usize = 69; // 4 MCTP header + 64 baseline payload + 1 (PEC)
 
 pub const MCTP_I3C_MAXMTU: usize = MCTP_I3C_MAXBUF - 1; // 64 bytes

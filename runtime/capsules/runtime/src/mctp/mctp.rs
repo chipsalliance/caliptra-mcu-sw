@@ -29,7 +29,7 @@ bitfield! {
 
 impl MCTPHeader<[u8; MCTP_HDR_SIZE]> {
     pub fn new() -> Self {
-        MCTPHeader([0; 4])
+        MCTPHeader([0; MCTP_HDR_SIZE])
     }
 
     pub fn prepare_header(

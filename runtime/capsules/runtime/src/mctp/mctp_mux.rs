@@ -90,8 +90,6 @@ pub struct MCTPRxState<'a> {
     client: OptionalCell<&'a dyn MCTPRxClient>,
     /// Message buffer
     msg_payload: MapCell<SubSliceMut<'static, u8>>,
-    /// Last packet receive time
-    // msg_rx_time: Cell<Ticks>,
     /// next MCTPRxState node
     next: ListLink<'a, MCTPRxState<'a>>,
 }
