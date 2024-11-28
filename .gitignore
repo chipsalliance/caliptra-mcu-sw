@@ -19,3 +19,6 @@ runtime/apps/layout.ld
 
 # mdbook
 book
+
+# flash file
+dummy_flash.bin
