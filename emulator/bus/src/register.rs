@@ -197,6 +197,12 @@ pub struct ReadWriteRegister<T: UIntLike, R: RegisterLongName = ()> {
     pub reg: InMemoryRegister<T, R>,
 }
 
+impl<T: UIntLike, R: RegisterLongName> Clone for ReadWriteRegister<T, R> {
+    fn clone(&self) -> Self {
+        ReadWriteRegister::new(self.reg.get())
+    }
+}
+
 impl<T: UIntLike, R: RegisterLongName> ReadWriteRegister<T, R> {
     /// Create an instance of Read Write Register
     pub fn new(val: T) -> Self {
