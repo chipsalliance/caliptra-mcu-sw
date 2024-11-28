@@ -21,4 +21,3 @@ gdbstub.workspace = true
 hex.workspace = true
 tock-registers.workspace = true
 ctrlc.workspace = true
-console.workspace = true

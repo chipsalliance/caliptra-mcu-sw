@@ -48,7 +48,7 @@ caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw.git"
 caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
 caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
 clap_derive = "4.5.11"
-console = "0.15.8"
+crossterm = "0.28.1"
 ctrlc = "3.4.5"
 elf = "0.7.4"
 emulator-bus = { path = "emulator/bus" }

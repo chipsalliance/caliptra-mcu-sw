@@ -20,7 +20,7 @@ mod gdb;
 use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use clap::Parser;
-use console::{Key, Term};
+use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_bus::{Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
@@ -96,17 +96,27 @@ fn disassemble(pc: u32, instr: u32) -> String {
 }
 
 fn read_console(running: Arc<AtomicBool>, stdin_uart: Option<Arc<Mutex<Option<u8>>>>) {
-    let term = Term::stdout();
     let mut buffer = vec![];
     if let Some(ref stdin_uart) = stdin_uart {
         while running.load(std::sync::atomic::Ordering::Relaxed) {
             if buffer.is_empty() {
-                match term.read_key() {
-                    Ok(Key::Char(ch)) => buffer.extend_from_slice(ch.to_string().as_bytes()),
-                    Ok(Key::Enter) => {
+                match crossterm::event::read() {
+                    Ok(Event::Key(KeyEvent {
+                        code: KeyCode::Char(ch),
+                        ..
+                    })) => {
+                        buffer.extend_from_slice(ch.to_string().as_bytes());
+                    }
+                    Ok(Event::Key(KeyEvent {
+                        code: KeyCode::Enter,
+                        ..
+                    })) => {
                         buffer.push(b'\n');
                     }
-                    Ok(Key::Backspace) => {
+                    Ok(Event::Key(KeyEvent {
+                        code: KeyCode::Backspace,
+                        ..
+                    })) => {
                         if !buffer.is_empty() {
                             buffer.pop();
                         } else {
@@ -237,9 +247,6 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     if std::io::stdout().is_terminal() {
         ctrlc::set_handler(move || {
             running_clone.store(false, std::sync::atomic::Ordering::Relaxed);
-            Term::stdout().clear_line().unwrap();
-            Term::stdout().show_cursor().unwrap();
-            println!("Terminal might be in a bad state. Run \"stty sane && reset\" to fix it.");
         })
         .unwrap();
     }
