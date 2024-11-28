@@ -71,8 +71,8 @@ pub struct DummyFlashCtrl {
     file: Option<File>,
     buffer: Vec<u8>,
     operation_start: Option<ActionHandle>,
-    _error_irq: Irq,
-    _event_irq: Irq,
+    error_irq: Irq,
+    event_irq: Irq,
 }
 
 impl DummyFlashCtrl {
@@ -119,8 +119,8 @@ impl DummyFlashCtrl {
             file,
             buffer: vec![0; Self::PAGE_SIZE],
             operation_start: None,
-            _error_irq: error_irq,
-            _event_irq: event_irq,
+            error_irq,
+            event_irq,
         })
     }
 
@@ -132,7 +132,7 @@ impl DummyFlashCtrl {
                     .modify(FlInterruptState::Error::SET);
                 // Check if interrupt is enabled before raising it
                 if self.interrupt_enable.reg.is_set(FlInterruptEnable::Error) {
-                    self._error_irq.set_level(true);
+                    self.error_irq.set_level(true);
                     self.timer.schedule_poll_in(1);
                 }
             }
@@ -142,7 +142,7 @@ impl DummyFlashCtrl {
                     .modify(FlInterruptState::Event::SET);
                 // Check if interrupt is enabled before raising it
                 if self.interrupt_enable.reg.is_set(FlInterruptEnable::Event) {
-                    self._event_irq.set_level(true);
+                    self.event_irq.set_level(true);
                     self.timer.schedule_poll_in(1);
                 }
             }
@@ -155,13 +155,13 @@ impl DummyFlashCtrl {
                 self.interrupt_state
                     .reg
                     .modify(FlInterruptState::Error::CLEAR);
-                self._error_irq.set_level(false);
+                self.error_irq.set_level(false);
             }
             FlashCtrlIntType::Event => {
                 self.interrupt_state
                     .reg
                     .modify(FlInterruptState::Event::CLEAR);
-                self._event_irq.set_level(false);
+                self.event_irq.set_level(false);
             }
         }
 
@@ -325,16 +325,16 @@ impl FlashPeripheral for DummyFlashCtrl {
     fn write_fl_interrupt_state(
         &mut self,
         _size: emulator_types::RvSize,
-        _val: emulator_bus::ReadWriteRegister<
+        val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
         // Interrupt state register: SW write 1 to clear
-        if _val.reg.is_set(FlInterruptState::Error) {
+        if val.reg.is_set(FlInterruptState::Error) {
             self.clear_interrupt(FlashCtrlIntType::Error);
         }
-        if _val.reg.is_set(FlInterruptState::Event) {
+        if val.reg.is_set(FlInterruptState::Event) {
             self.clear_interrupt(FlashCtrlIntType::Event);
         }
     }
@@ -352,30 +352,30 @@ impl FlashPeripheral for DummyFlashCtrl {
     fn write_fl_interrupt_enable(
         &mut self,
         _size: emulator_types::RvSize,
-        _val: emulator_bus::ReadWriteRegister<
+        val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
         if self.interrupt_state.reg.is_set(FlInterruptState::Error)
-            && _val.reg.is_set(FlInterruptEnable::Error)
+            && val.reg.is_set(FlInterruptEnable::Error)
         {
-            self._error_irq.set_level(true);
+            self.error_irq.set_level(true);
             self.timer.schedule_poll_in(1);
         }
 
         if self.interrupt_state.reg.is_set(FlInterruptState::Event)
-            && _val.reg.is_set(FlInterruptEnable::Event)
+            && val.reg.is_set(FlInterruptEnable::Event)
         {
-            self._event_irq.set_level(true);
+            self.event_irq.set_level(true);
             self.timer.schedule_poll_in(1);
         }
 
-        self.interrupt_enable.reg.set(_val.reg.get());
+        self.interrupt_enable.reg.set(val.reg.get());
     }
 
-    fn write_page_size(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {
-        self.page_size.reg.set(_val);
+    fn write_page_size(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
+        self.page_size.reg.set(val);
     }
 
     // Return the page size of the flash storage connected to the controller
@@ -387,16 +387,16 @@ impl FlashPeripheral for DummyFlashCtrl {
         self.page_num.reg.get()
     }
 
-    fn write_page_num(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {
-        self.page_num.reg.set(_val);
+    fn write_page_num(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
+        self.page_num.reg.set(val);
     }
 
     fn read_page_addr(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         self.page_addr.reg.get()
     }
 
-    fn write_page_addr(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {
-        self.page_addr.reg.set(_val);
+    fn write_page_addr(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
+        self.page_addr.reg.set(val);
     }
 
     fn read_fl_control(
@@ -412,7 +412,7 @@ impl FlashPeripheral for DummyFlashCtrl {
     fn write_fl_control(
         &mut self,
         _size: emulator_types::RvSize,
-        _val: emulator_bus::ReadWriteRegister<
+        val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::flash_ctrl::bits::FlControl::Register,
         >,
@@ -421,7 +421,7 @@ impl FlashPeripheral for DummyFlashCtrl {
             return;
         }
 
-        self.control.reg.set(_val.reg.get());
+        self.control.reg.set(val.reg.get());
 
         if self.control.reg.is_set(FlControl::Start) {
             // Clear ctrl_regwen bit to prevent SW from writing to the control register while the operation is pending.
@@ -445,12 +445,12 @@ impl FlashPeripheral for DummyFlashCtrl {
     fn write_op_status(
         &mut self,
         _size: emulator_types::RvSize,
-        _val: emulator_bus::ReadWriteRegister<
+        val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::flash_ctrl::bits::OpStatus::Register,
         >,
     ) {
-        self.op_status.reg.set(_val.reg.get());
+        self.op_status.reg.set(val.reg.get());
     }
 
     fn read_ctrl_regwen(
