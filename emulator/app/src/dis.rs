@@ -339,6 +339,10 @@ static RVCP_SUBW: [RvCompData; 1] = [RvCompData {
     op: &RV_OPCODE_DATA_negw,
     constraints: &RVCC_RS1_EQ_X0,
 }];
+static RVCP_ADDUW: [RvCompData; 1] = [RvCompData {
+    op: &RV_OPCODE_DATA_zextw,
+    constraints: &RVCC_RS2_EQ_X0,
+}];
 static RVCP_CSRRW: [RvCompData; 3] = [
     RvCompData {
         op: &RV_OPCODE_DATA_FSCSR,
@@ -3645,6 +3649,486 @@ static RV_OPCODE_DATA_LI: RvOpcodeData = RvOpcodeData {
     decomp_rv128: None,
     check_imm_nz: false,
 };
+static RV_OPCODE_DATA_andn: RvOpcodeData = RvOpcodeData {
+    name: "andn",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_adduw: RvOpcodeData = RvOpcodeData {
+    name: "add.uw",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: Some(&RVCP_ADDUW),
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_bset: RvOpcodeData = RvOpcodeData {
+    name: "bset",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_bseti: RvOpcodeData = RvOpcodeData {
+    name: "bseti",
+    codec: RvCodec::ISh5,
+    format: RV_FMT_RD_RS1_IMM,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_bseti64: RvOpcodeData = RvOpcodeData {
+    name: "bset",
+    codec: RvCodec::ISh6,
+    format: RV_FMT_RD_RS1_IMM,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_bclr: RvOpcodeData = RvOpcodeData {
+    name: "bclr",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_bclri: RvOpcodeData = RvOpcodeData {
+    name: "bclri",
+    codec: RvCodec::ISh5,
+    format: RV_FMT_RD_RS1_IMM,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_bclri64: RvOpcodeData = RvOpcodeData {
+    name: "bclri",
+    codec: RvCodec::ISh6,
+    format: RV_FMT_RD_RS1_IMM,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_bext: RvOpcodeData = RvOpcodeData {
+    name: "bext",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_bexti: RvOpcodeData = RvOpcodeData {
+    name: "bexti",
+    codec: RvCodec::ISh5,
+    format: RV_FMT_RD_RS1_IMM,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_binv: RvOpcodeData = RvOpcodeData {
+    name: "binv",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_binvi: RvOpcodeData = RvOpcodeData {
+    name: "binvi",
+    codec: RvCodec::ISh5,
+    format: RV_FMT_RD_RS1_IMM,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_binvi64: RvOpcodeData = RvOpcodeData {
+    name: "binvi",
+    codec: RvCodec::ISh6,
+    format: RV_FMT_RD_RS1_IMM,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_clmul: RvOpcodeData = RvOpcodeData {
+    name: "clmul",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_clmulh: RvOpcodeData = RvOpcodeData {
+    name: "clmulh",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_clmulr: RvOpcodeData = RvOpcodeData {
+    name: "clmulr",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_clz: RvOpcodeData = RvOpcodeData {
+    name: "clz",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_clzw: RvOpcodeData = RvOpcodeData {
+    name: "clzw",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_cpop: RvOpcodeData = RvOpcodeData {
+    name: "cpop",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_cpopw: RvOpcodeData = RvOpcodeData {
+    name: "cpopw",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_ctz: RvOpcodeData = RvOpcodeData {
+    name: "ctz",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_ctzw: RvOpcodeData = RvOpcodeData {
+    name: "ctzw",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_max: RvOpcodeData = RvOpcodeData {
+    name: "max",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_maxu: RvOpcodeData = RvOpcodeData {
+    name: "maxu",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_min: RvOpcodeData = RvOpcodeData {
+    name: "min",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_minu: RvOpcodeData = RvOpcodeData {
+    name: "minu",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_orcb: RvOpcodeData = RvOpcodeData {
+    name: "orc.b",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_orn: RvOpcodeData = RvOpcodeData {
+    name: "orn",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_rev8: RvOpcodeData = RvOpcodeData {
+    name: "rev8",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_rol: RvOpcodeData = RvOpcodeData {
+    name: "rol",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_rolw: RvOpcodeData = RvOpcodeData {
+    name: "rolw",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_ror: RvOpcodeData = RvOpcodeData {
+    name: "ror",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_rori: RvOpcodeData = RvOpcodeData {
+    name: "rori",
+    codec: RvCodec::ISh5,
+    format: RV_FMT_RD_RS1_IMM,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_rori64: RvOpcodeData = RvOpcodeData {
+    name: "rori",
+    codec: RvCodec::ISh6,
+    format: RV_FMT_RD_RS1_IMM,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_roriw: RvOpcodeData = RvOpcodeData {
+    name: "roriw",
+    codec: RvCodec::ISh5,
+    format: RV_FMT_RD_RS1_IMM,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_rorw: RvOpcodeData = RvOpcodeData {
+    name: "rorw",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_sext_b: RvOpcodeData = RvOpcodeData {
+    name: "sext.b",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_sext_h: RvOpcodeData = RvOpcodeData {
+    name: "sext.h",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_sh1add: RvOpcodeData = RvOpcodeData {
+    name: "sh1add",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_sh1adduw: RvOpcodeData = RvOpcodeData {
+    name: "sh1add.uw",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_sh2add: RvOpcodeData = RvOpcodeData {
+    name: "sh2add",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_sh2adduw: RvOpcodeData = RvOpcodeData {
+    name: "sh2add.uw",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_sh3add: RvOpcodeData = RvOpcodeData {
+    name: "sh3add",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_sh3adduw: RvOpcodeData = RvOpcodeData {
+    name: "sh3add.uw",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_slliuw: RvOpcodeData = RvOpcodeData {
+    name: "slli.uw",
+    codec: RvCodec::ISh6,
+    format: RV_FMT_RD_RS1_IMM,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_xnor: RvOpcodeData = RvOpcodeData {
+    name: "xnor",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1_RS2,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_zexth: RvOpcodeData = RvOpcodeData {
+    name: "zext.h",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
+static RV_OPCODE_DATA_zextw: RvOpcodeData = RvOpcodeData {
+    name: "zext.w",
+    codec: RvCodec::R,
+    format: RV_FMT_RD_RS1,
+    pseudo: None,
+    decomp_rv32: None,
+    decomp_rv64: None,
+    decomp_rv128: None,
+    check_imm_nz: false,
+};
 
 pub(crate) fn csr_name(csrno: i32) -> &'static str {
     match csrno {
@@ -4221,24 +4705,63 @@ fn decode_inst_opcode_misc_mem(inst: u64) -> Option<&'static RvOpcodeData> {
     }
 }
 
-fn decode_inst_opcode_op_imm(inst: u64) -> Option<&'static RvOpcodeData> {
+fn decode_inst_opcode_op_imm(isa: RvIsa, inst: u64) -> Option<&'static RvOpcodeData> {
     match inst >> 12 & 7 {
         0 => Some(&RV_OPCODE_DATA_addi),
         1 => {
             if inst >> 27 & 0x1f == 0 {
                 Some(&RV_OPCODE_DATA_slli)
+            } else if inst >> 20 == 0x600 {
+                Some(&RV_OPCODE_DATA_clz)
+            } else if inst >> 20 == 0x601 {
+                Some(&RV_OPCODE_DATA_ctz)
+            } else if inst >> 20 == 0x602 {
+                Some(&RV_OPCODE_DATA_cpop)
+            } else if inst >> 20 == 0x604 {
+                Some(&RV_OPCODE_DATA_sext_b)
+            } else if inst >> 20 == 0x605 {
+                Some(&RV_OPCODE_DATA_sext_h)
             } else {
-                None
+                match isa {
+                    RvIsa::Rv32 => match (inst >> 25) & 0x7f {
+                        0x14 => Some(&RV_OPCODE_DATA_bseti),
+                        0x24 => Some(&RV_OPCODE_DATA_bclri),
+                        0x34 => Some(&RV_OPCODE_DATA_binvi),
+                        _ => None,
+                    },
+                    RvIsa::Rv64 => match (inst >> 26) & 0x3f {
+                        0xa => Some(&RV_OPCODE_DATA_bseti64),
+                        0x12 => Some(&RV_OPCODE_DATA_bclri64),
+                        0x1a => Some(&RV_OPCODE_DATA_binvi64),
+                        _ => None,
+                    },
+                    _ => None,
+                }
             }
         }
         2 => Some(&RV_OPCODE_DATA_slti),
         3 => Some(&RV_OPCODE_DATA_sltiu),
         4 => Some(&RV_OPCODE_DATA_xori),
-        5 => match inst >> 27 & 0x1f {
-            0 => Some(&RV_OPCODE_DATA_srli),
-            8 => Some(&RV_OPCODE_DATA_srai),
-            _ => None,
-        },
+        5 => {
+            if inst >> 20 == 0x287 {
+                Some(&RV_OPCODE_DATA_orcb)
+            } else if (isa == RvIsa::Rv32 && inst >> 20 == 0x698)
+                || (isa == RvIsa::Rv64 && inst >> 20 == 0x6b8)
+            {
+                Some(&RV_OPCODE_DATA_rev8)
+            } else if isa == RvIsa::Rv32 && inst >> 25 == 0x30 {
+                Some(&RV_OPCODE_DATA_rori)
+            } else if isa == RvIsa::Rv64 && inst >> 26 == 0x18 {
+                Some(&RV_OPCODE_DATA_rori64)
+            } else {
+                match inst >> 27 & 0x1f {
+                    0 => Some(&RV_OPCODE_DATA_srli),
+                    8 => Some(&RV_OPCODE_DATA_srai),
+                    9 => Some(&RV_OPCODE_DATA_bexti),
+                    _ => None,
+                }
+            }
+        }
         6 => Some(&RV_OPCODE_DATA_ori),
         7 => Some(&RV_OPCODE_DATA_andi),
         _ => None,
@@ -4249,8 +4772,16 @@ fn decode_inst_opcode_op_imm_32(inst: u64) -> Option<&'static RvOpcodeData> {
     match inst >> 12 & 7 {
         0 => Some(&RV_OPCODE_DATA_addiw),
         1 => {
-            if inst >> 25 & 0x7f == 0 {
+            if inst >> 26 & 0x3f == 2 {
+                Some(&RV_OPCODE_DATA_slliuw)
+            } else if inst >> 25 & 0x7f == 0 {
                 Some(&RV_OPCODE_DATA_slliw)
+            } else if inst >> 20 == 0x600 {
+                Some(&RV_OPCODE_DATA_clzw)
+            } else if inst >> 20 == 0x601 {
+                Some(&RV_OPCODE_DATA_ctzw)
+            } else if inst >> 20 == 0x602 {
+                Some(&RV_OPCODE_DATA_cpopw)
             } else {
                 None
             }
@@ -4258,6 +4789,7 @@ fn decode_inst_opcode_op_imm_32(inst: u64) -> Option<&'static RvOpcodeData> {
         5 => match inst >> 25 & 0x7f {
             0 => Some(&RV_OPCODE_DATA_srliw),
             32 => Some(&RV_OPCODE_DATA_sraiw),
+            48 => Some(&RV_OPCODE_DATA_roriw),
             _ => None,
         },
         _ => None,
@@ -4341,7 +4873,7 @@ fn decode_inst_opcode_amo(inst: u64) -> Option<&'static RvOpcodeData> {
     }
 }
 
-fn decode_inst_opcode_op(inst: u64) -> Option<&'static RvOpcodeData> {
+fn decode_inst_opcode_op(isa: RvIsa, inst: u64) -> Option<&'static RvOpcodeData> {
     match inst >> 22 & 0x3f8 | inst >> 12 & 7 {
         0 => Some(&RV_OPCODE_DATA_add),
         1 => Some(&RV_OPCODE_DATA_sll),
@@ -4359,13 +4891,33 @@ fn decode_inst_opcode_op(inst: u64) -> Option<&'static RvOpcodeData> {
         13 => Some(&RV_OPCODE_DATA_divu),
         14 => Some(&RV_OPCODE_DATA_rem),
         15 => Some(&RV_OPCODE_DATA_remu),
+        36 if isa == RvIsa::Rv32 && inst >> 20 == 0x080 => Some(&RV_OPCODE_DATA_zexth),
+        41 => Some(&RV_OPCODE_DATA_clmul),
+        42 => Some(&RV_OPCODE_DATA_clmulr),
+        43 => Some(&RV_OPCODE_DATA_clmulh),
+        44 => Some(&RV_OPCODE_DATA_min),
+        45 => Some(&RV_OPCODE_DATA_minu),
+        46 => Some(&RV_OPCODE_DATA_max),
+        47 => Some(&RV_OPCODE_DATA_maxu),
+        130 => Some(&RV_OPCODE_DATA_sh1add),
+        132 => Some(&RV_OPCODE_DATA_sh2add),
+        134 => Some(&RV_OPCODE_DATA_sh3add),
+        161 => Some(&RV_OPCODE_DATA_bset),
         256 => Some(&RV_OPCODE_DATA_sub),
+        260 => Some(&RV_OPCODE_DATA_xnor),
         261 => Some(&RV_OPCODE_DATA_sra),
+        262 => Some(&RV_OPCODE_DATA_orn),
+        263 => Some(&RV_OPCODE_DATA_andn),
+        289 => Some(&RV_OPCODE_DATA_bclr),
+        293 => Some(&RV_OPCODE_DATA_bext),
+        385 => Some(&RV_OPCODE_DATA_rol),
+        389 => Some(&RV_OPCODE_DATA_ror),
+        417 => Some(&RV_OPCODE_DATA_binv),
         _ => None,
     }
 }
 
-fn decode_inst_opcode_op_32(inst: u64) -> Option<&'static RvOpcodeData> {
+fn decode_inst_opcode_op_32_14(inst: u64) -> Option<&'static RvOpcodeData> {
     match inst >> 22 & 0x3f8 | inst >> 12 & 7 {
         0 => Some(&RV_OPCODE_DATA_addw),
         1 => Some(&RV_OPCODE_DATA_sllw),
@@ -4375,8 +4927,15 @@ fn decode_inst_opcode_op_32(inst: u64) -> Option<&'static RvOpcodeData> {
         13 => Some(&RV_OPCODE_DATA_divuw),
         14 => Some(&RV_OPCODE_DATA_remw),
         15 => Some(&RV_OPCODE_DATA_remuw),
+        32 => Some(&RV_OPCODE_DATA_adduw),
+        36 => Some(&RV_OPCODE_DATA_zexth),
+        130 => Some(&RV_OPCODE_DATA_sh1adduw),
+        132 => Some(&RV_OPCODE_DATA_sh2adduw),
+        134 => Some(&RV_OPCODE_DATA_sh3adduw),
         256 => Some(&RV_OPCODE_DATA_subw),
         261 => Some(&RV_OPCODE_DATA_sraw),
+        385 => Some(&RV_OPCODE_DATA_rolw),
+        389 => Some(&RV_OPCODE_DATA_rorw),
         _ => None,
     }
 }
@@ -4644,20 +5203,32 @@ fn decode_inst_opcode_custom3_rv128(inst: u64) -> Option<&'static RvOpcodeData> 
     }
 }
 
-fn decode_inst_opcode_uncompressed(inst: u64) -> Option<&'static RvOpcodeData> {
+fn decode_inst_opcode_uncompressed(isa: RvIsa, inst: u64) -> Option<&'static RvOpcodeData> {
     match inst >> 2 & 0x1f {
         0 => decode_inst_opcode_load(inst),
         1 => decode_inst_opcode_load_fp(inst),
         3 => decode_inst_opcode_misc_mem(inst),
-        4 => decode_inst_opcode_op_imm(inst),
+        4 => decode_inst_opcode_op_imm(isa, inst),
         5 => Some(&RV_OPCODE_DATA_auipc),
-        6 => decode_inst_opcode_op_imm_32(inst),
+        6 => {
+            if isa == RvIsa::Rv64 {
+                decode_inst_opcode_op_imm_32(inst)
+            } else {
+                None
+            }
+        }
         8 => decode_inst_opcode_store(inst),
         9 => decode_inst_opcode_store_fp(inst),
         11 => decode_inst_opcode_amo(inst),
-        12 => decode_inst_opcode_op(inst),
+        12 => decode_inst_opcode_op(isa, inst),
         13 => Some(&RV_OPCODE_DATA_lui),
-        14 => decode_inst_opcode_op_32(inst),
+        14 => {
+            if isa == RvIsa::Rv64 {
+                decode_inst_opcode_op_32_14(inst)
+            } else {
+                None
+            }
+        }
         16 => decode_inst_opcode_madd(inst),
         17 => decode_inst_opcode_msub(inst),
         18 => decode_inst_opcode_nmsub(inst),
@@ -4679,7 +5250,7 @@ fn decode_inst_opcode(dec: &mut RvDecode, isa: RvIsa) {
         0 => decode_inst_opcode_compressed_0(isa, inst),
         1 => decode_inst_opcode_compressed_1(isa, inst),
         2 => decode_inst_opcode_compressed_2(isa, inst),
-        3 => decode_inst_opcode_uncompressed(inst),
+        3 => decode_inst_opcode_uncompressed(isa, inst),
         _ => unreachable!(),
     }
 }

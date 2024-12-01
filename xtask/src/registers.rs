@@ -53,6 +53,7 @@ pub(crate) fn autogen(
         "hw/caliptra-ss/third_party/i3c-core/src/rdl/registers.rdl",
         "hw/caliptra-ss/src/integration/rtl/soc_address_map.rdl",
         "hw/el2_pic_ctrl.rdl",
+        "hw/flash_ctrl.rdl",
     ];
     let mut rdl_files: Vec<PathBuf> = rdl_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
     rdl_files.extend_from_slice(extra_files);
@@ -170,7 +171,8 @@ pub(crate) fn autogen(
 
     let addrmap = scope.lookup_typedef("soc").unwrap();
     let addrmap2 = scope.lookup_typedef("el2_pic").unwrap();
-    let mut scopes = vec![addrmap, addrmap2];
+    let addrmap3 = scope.lookup_typedef("flashctrl_dummy").unwrap();
+    let mut scopes = vec![addrmap, addrmap2, addrmap3];
     if !extra_addrmap.is_empty() {
         let addrmap3 = scope.lookup_typedef("extra").unwrap();
         scopes.push(addrmap3);

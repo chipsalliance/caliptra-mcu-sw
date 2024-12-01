@@ -22,3 +22,6 @@ serde_json.workspace = true
 serde.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
+
+[dev-dependencies]
+libc = "0.2"

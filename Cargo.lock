@@ -997,6 +997,7 @@ dependencies = [
  "emulator-registers-generated",
  "emulator-types",
  "lazy_static",
+ "libc",
  "num_enum",
  "registers-generated",
  "serde",

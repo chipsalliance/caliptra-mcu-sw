@@ -142,8 +142,14 @@ class spike(pluginTemplate):
             self.isa += '_zicsr'
         if 'Zifencei' in ispec['ISA']:
             self.isa += '_zifencei'
+        if 'Zba' in ispec['ISA']:
+            self.isa += '_zba'
         if 'Zbb' in ispec['ISA']:
             self.isa += '_zbb'
+        if 'Zbc' in ispec['ISA']:
+            self.isa += '_zbc'
+        if 'Zbs' in ispec['ISA']:
+            self.isa += '_zbs'
 
         self.compile_cmd = self.compile_cmd + \
             ' -mabi=' + \

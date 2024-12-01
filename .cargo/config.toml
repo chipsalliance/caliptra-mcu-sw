@@ -8,7 +8,7 @@ rustflags = [
     "-C",
     "panic=abort",
     "-C",
-    "target-feature=+relax,+unaligned-scalar-mem",
+    "target-feature=+relax,+unaligned-scalar-mem,+b",
     "-C",
     "force-frame-pointers=no",
 ]

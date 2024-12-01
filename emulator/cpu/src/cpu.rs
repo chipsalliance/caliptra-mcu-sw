@@ -19,7 +19,7 @@ use crate::xreg_file::{XReg, XRegFile};
 use crate::Pic;
 use bit_vec::BitVec;
 use emulator_bus::{Bus, BusError, Clock, TimerAction};
-use emulator_types::{RvAddr, RvData, RvException, RvSize};
+use emulator_types::{RvAddr, RvData, RvException, RvExceptionCause, RvSize};
 use std::rc::Rc;
 
 pub type InstrTracer<'a> = dyn FnMut(u32, RvInstr) + 'a;
@@ -627,7 +627,12 @@ impl<TBus: Bus> Cpu<TBus> {
 
         match self.exec_instr(instr_tracer) {
             Ok(result) => result,
-            Err(exception) => self.handle_exception(exception),
+            Err(exception) => match exception.cause() {
+                RvExceptionCause::IllegalInstr => {
+                    panic!("Illegal instruction");
+                }
+                _ => self.handle_exception(exception),
+            },
         }
     }
 
