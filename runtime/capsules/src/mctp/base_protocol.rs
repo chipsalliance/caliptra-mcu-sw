@@ -27,11 +27,18 @@ bitfield! {
     pub msg_tag, set_msg_tag: 31, 29;
 }
 
+impl Default for MCTPHeader<[u8; MCTP_HDR_SIZE]> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MCTPHeader<[u8; MCTP_HDR_SIZE]> {
     pub fn new() -> Self {
         MCTPHeader([0; MCTP_HDR_SIZE])
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn prepare_header(
         &mut self,
         dest_eid: u8,
@@ -73,5 +80,24 @@ impl From<u8> for MessageType {
             0x7E => MessageType::VendorDefinedPCI,
             _ => MessageType::Invalid,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mctp_header() {
+        let mut header = MCTPHeader::new();
+        header.prepare_header(0x10, 0x08, 1, 1, 0, 0, 0);
+        assert_eq!(header.hdr_version(), 1);
+        assert_eq!(header.dest_eid(), 0x10);
+        assert_eq!(header.src_eid(), 0x08);
+        assert_eq!(header.som(), 1);
+        assert_eq!(header.eom(), 1);
+        assert_eq!(header.pkt_seq(), 0);
+        assert_eq!(header.tag_owner(), 0);
+        assert_eq!(header.msg_tag(), 0);
     }
 }

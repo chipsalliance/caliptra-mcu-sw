@@ -19,10 +19,10 @@ pub const MCTP_I3C_MINMTU: usize = 4 + 64; // 4 MCPT header + 64 baseline payloa
 /// for sending the MCTP packet through MCTP transport binding layer.
 pub trait MCTPTransportBinding<'a> {
     /// Set the client that will be called when the packet is transmitted.
-    fn set_tx_client(&self, client: &'a dyn TxClient);
+    fn set_tx_client(&self, client: &'a dyn TransportTxClient);
 
     /// Set the client that will be called when the packet is received.
-    fn set_rx_client(&self, client: &'a dyn RxClient);
+    fn set_rx_client(&self, client: &'a dyn TransportRxClient);
 
     /// Set the buffer that will be used for receiving packets.
     fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
@@ -40,11 +40,25 @@ pub trait MCTPTransportBinding<'a> {
     fn get_hdr_size(&self) -> usize;
 }
 
+pub trait TransportTxClient {
+    /// Called when the packet has been transmitted.
+    fn send_done(&self, tx_buffer: &'static mut [u8], result: Result<(), ErrorCode>);
+}
+
+pub trait TransportRxClient {
+    /// Called when a complete MCTP packet is received and ready to be processed by the client.
+    fn receive(&self, rx_buffer: &'static mut [u8], len: usize);
+
+    /// Called when the I3C Controller has requested a private Write by addressing the target
+    /// and the driver needs buffer to receive the data.
+    fn write_expected(&self);
+}
+
 pub struct MCTPI3CBinding<'a> {
     /// Reference to the I3C Target device driver.
     i3c_target: &'a dyn I3CTarget<'a>,
-    rx_client: OptionalCell<&'a dyn RxClient>,
-    tx_client: OptionalCell<&'a dyn TxClient>,
+    rx_client: OptionalCell<&'a dyn TransportRxClient>,
+    tx_client: OptionalCell<&'a dyn TransportTxClient>,
     /// I3C Target device address needed for PEC calculation.
     device_address: Cell<u8>,
     /// Max Read length supported by the I3C target device.
@@ -107,11 +121,11 @@ impl<'a> MCTPI3CBinding<'a> {
 }
 
 impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
-    fn set_tx_client(&self, tx_client: &'a dyn TxClient) {
+    fn set_tx_client(&self, tx_client: &'a dyn TransportTxClient) {
         self.tx_client.set(tx_client);
     }
 
-    fn set_rx_client(&self, rx_client: &'a dyn RxClient) {
+    fn set_rx_client(&self, rx_client: &'a dyn TransportRxClient) {
         self.rx_client.set(rx_client);
     }
 
@@ -125,7 +139,7 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
         self.tx_buffer.replace(tx_buffer);
 
         // Make sure there's enough space for the PEC byte
-        if len == 0 || len > self.max_write_len.get() - 1 as usize {
+        if len == 0 || len > self.max_write_len.get() - 1 {
             Err((ErrorCode::SIZE, self.tx_buffer.take().unwrap()))?;
         }
 
@@ -179,7 +193,7 @@ impl<'a> RxClient for MCTPI3CBinding<'a> {
         // if yes, compute PEC and check if it matches with the last byte of the buffer
         // if yes, call the client's receive_write function
         // if no, drop the packet and set_rx_buffer on i3c_target to receive the next packet
-        if len == 0 || len > self.max_write_len.get() as usize {
+        if len == 0 || len > self.max_write_len.get() {
             debug!("MCTPI3CBinding: Invalid packet length. Dropping packet.");
             self.i3c_target.set_rx_buffer(rx_buffer);
             return;
@@ -188,7 +202,7 @@ impl<'a> RxClient for MCTPI3CBinding<'a> {
         let pec = MCTPI3CBinding::compute_pec(addr, rx_buffer, len - 1);
         if pec == rx_buffer[len - 1] {
             self.rx_client.map(|client| {
-                client.receive_write(rx_buffer, len - 1);
+                client.receive(rx_buffer, len - 1);
             });
         } else {
             debug!("MCTPI3CBinding: Invalid PEC. Dropping packet.");

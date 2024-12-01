@@ -24,6 +24,12 @@ bitfield! {
     pub cmd, set_cmd: 23, 15;
 }
 
+impl Default for MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]> {
     pub fn new() -> Self {
         MCTPCtrlMsgHdr([0; MCTP_CTRL_MSG_HEADER_LEN])
@@ -38,8 +44,8 @@ impl MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]> {
 }
 
 pub enum MCTPCtrlCmd {
-    SetEid,
-    GetEid,
+    SetEID,
+    GetEID,
     GetMsgTypeSupport,
     Unsupported,
 }
@@ -47,8 +53,8 @@ pub enum MCTPCtrlCmd {
 impl From<u8> for MCTPCtrlCmd {
     fn from(val: u8) -> MCTPCtrlCmd {
         match val {
-            1 => MCTPCtrlCmd::SetEid,
-            2 => MCTPCtrlCmd::GetEid,
+            1 => MCTPCtrlCmd::SetEID,
+            2 => MCTPCtrlCmd::GetEID,
             5 => MCTPCtrlCmd::GetMsgTypeSupport,
             _ => MCTPCtrlCmd::Unsupported,
         }
@@ -58,8 +64,8 @@ impl From<u8> for MCTPCtrlCmd {
 impl MCTPCtrlCmd {
     pub fn to_u8(&self) -> u8 {
         match self {
-            MCTPCtrlCmd::SetEid => 2,
-            MCTPCtrlCmd::GetEid => 0,
+            MCTPCtrlCmd::SetEID => 2,
+            MCTPCtrlCmd::GetEID => 0,
             MCTPCtrlCmd::GetMsgTypeSupport => 0,
             MCTPCtrlCmd::Unsupported => 0xFF,
         }
@@ -67,8 +73,8 @@ impl MCTPCtrlCmd {
 
     pub fn req_data_len(&self) -> usize {
         match self {
-            MCTPCtrlCmd::SetEid => 2,
-            MCTPCtrlCmd::GetEid => 0,
+            MCTPCtrlCmd::SetEID => 2,
+            MCTPCtrlCmd::GetEID => 0,
             MCTPCtrlCmd::GetMsgTypeSupport => 5,
             MCTPCtrlCmd::Unsupported => 0,
         }
@@ -76,8 +82,8 @@ impl MCTPCtrlCmd {
 
     pub fn resp_data_len(&self) -> usize {
         match self {
-            MCTPCtrlCmd::SetEid => 4,
-            MCTPCtrlCmd::GetEid => 4,
+            MCTPCtrlCmd::SetEID => 4,
+            MCTPCtrlCmd::GetEID => 4,
             MCTPCtrlCmd::GetMsgTypeSupport => 1,
             MCTPCtrlCmd::Unsupported => 0,
         }
@@ -88,26 +94,26 @@ impl MCTPCtrlCmd {
             return Err(ErrorCode::NOMEM);
         }
 
-        let req: SetEidReq<[u8; 2]> =
-            SetEidReq::read_from_bytes(&req[..self.req_data_len()]).unwrap();
+        let req: SetEIDReq<[u8; 2]> =
+            SetEIDReq::read_from_bytes(&req[..self.req_data_len()]).unwrap();
         let op = req.op().into();
         let eid = req.eid();
-        let mut resp = SetEidResp::new();
+        let mut resp = SetEIDResp::new();
         let mut completion_code = CmdCompletionCode::Success;
 
         match op {
-            SetEidOp::SetEid | SetEidOp::ForceEid => {
+            SetEIDOp::SetEID | SetEIDOp::ForceEID => {
                 if eid == MCTP_NULL_EID || eid == MCTP_BROADCAST_EID {
                     completion_code = CmdCompletionCode::ErrorInvalidData;
                 } else {
                     // TODO: Check if rejected case needs to be handled
-                    resp.set_eid_assign_status(SetEidStatus::Accepted as u8);
-                    resp.set_eid_alloc_status(SetEidAllocStatus::NoEidPool as u8);
+                    resp.set_eid_assign_status(SetEIDStatus::Accepted as u8);
+                    resp.set_eid_alloc_status(SetEIDAllocStatus::NoEIDPool as u8);
                     resp.set_assigned_eid(eid);
                     resp.set_eid_pool_size(0);
                 }
             }
-            SetEidOp::ResetEid | SetEidOp::SetDiscoveredFlag => {
+            SetEIDOp::ResetEID | SetEIDOp::SetDiscoveredFlag => {
                 completion_code = CmdCompletionCode::ErrorInvalidData;
             }
         }
@@ -123,11 +129,11 @@ impl MCTPCtrlCmd {
         if rsp_buf.len() < self.resp_data_len() {
             return Err(ErrorCode::NOMEM);
         }
-        let mut resp = GetEidResp::new();
+        let mut resp = GetEIDResp::new();
 
         resp.set_completion_code(CmdCompletionCode::Success as u8);
         resp.set_eid(local_eid);
-        resp.set_eid_type(EidType::DynamicOnly as u8);
+        resp.set_eid_type(EIDType::DynamicOnly as u8);
 
         resp.write_to(&mut rsp_buf[..self.resp_data_len()])
             .map_err(|_| ErrorCode::FAIL)
@@ -160,7 +166,7 @@ impl From<u8> for CmdCompletionCode {
 // Set EID Request
 bitfield! {
     #[derive(Clone, FromBytes)]
-    pub struct SetEidReq([u8]);
+    pub struct SetEIDReq([u8]);
     impl Debug;
     u8;
     rsvd, _: 5, 0;
@@ -168,20 +174,20 @@ bitfield! {
     pub eid, _: 15, 8;
 }
 
-pub enum SetEidOp {
-    SetEid,
-    ForceEid,
-    ResetEid,
+pub enum SetEIDOp {
+    SetEID,
+    ForceEID,
+    ResetEID,
     SetDiscoveredFlag,
 }
 
-impl From<u8> for SetEidOp {
-    fn from(val: u8) -> SetEidOp {
+impl From<u8> for SetEIDOp {
+    fn from(val: u8) -> SetEIDOp {
         match val {
-            0 => SetEidOp::SetEid,
-            1 => SetEidOp::ForceEid,
-            2 => SetEidOp::ResetEid,
-            3 => SetEidOp::SetDiscoveredFlag,
+            0 => SetEIDOp::SetEID,
+            1 => SetEIDOp::ForceEID,
+            2 => SetEIDOp::ResetEID,
+            3 => SetEIDOp::SetDiscoveredFlag,
             _ => unreachable!("value should be 0, 1, 2, or 3"),
         }
     }
@@ -191,7 +197,7 @@ impl From<u8> for SetEidOp {
 bitfield! {
     #[repr(C)]
     #[derive(Clone, IntoBytes, Immutable)]
-    pub struct SetEidResp([u8]);
+    pub struct SetEIDResp([u8]);
     impl Debug;
     u8;
     pub completion_code, set_completion_code: 7, 0;
@@ -203,19 +209,25 @@ bitfield! {
     pub eid_pool_size, set_eid_pool_size: 31, 24;
 }
 
-impl SetEidResp<[u8; 4]> {
-    pub fn new() -> Self {
-        SetEidResp([0; 4])
+impl Default for SetEIDResp<[u8; 4]> {
+    fn default() -> Self {
+        SetEIDResp::new()
     }
 }
 
-pub enum SetEidStatus {
+impl SetEIDResp<[u8; 4]> {
+    pub fn new() -> Self {
+        SetEIDResp([0; 4])
+    }
+}
+
+pub enum SetEIDStatus {
     Accepted = 0,
     Rejected = 1,
 }
 
-pub enum SetEidAllocStatus {
-    NoEidPool,
+pub enum SetEIDAllocStatus {
+    NoEIDPool,
 }
 
 // Get EID Request has no fields
@@ -223,7 +235,7 @@ pub enum SetEidAllocStatus {
 bitfield! {
     #[repr(C)]
     #[derive(Clone, IntoBytes, Immutable)]
-    pub struct GetEidResp([u8]);
+    pub struct GetEIDResp([u8]);
     impl Debug;
     u8;
     pub completion_code, set_completion_code: 7, 0;
@@ -235,9 +247,15 @@ bitfield! {
     pub medium_spec_info, _: 31, 24;
 }
 
-impl GetEidResp<[u8; 4]> {
+impl Default for GetEIDResp<[u8; 4]> {
+    fn default() -> Self {
+        GetEIDResp::new()
+    }
+}
+
+impl GetEIDResp<[u8; 4]> {
     pub fn new() -> Self {
-        GetEidResp([0; 4])
+        GetEIDResp([0; 4])
     }
 }
 
@@ -256,20 +274,20 @@ impl From<u8> for EndpointType {
     }
 }
 
-pub enum EidType {
+pub enum EIDType {
     DynamicOnly,
     Static,
     StaticMatching,
     StaticNonMatching,
 }
 
-impl From<u8> for EidType {
-    fn from(val: u8) -> EidType {
+impl From<u8> for EIDType {
+    fn from(val: u8) -> EIDType {
         match val {
-            0 => EidType::DynamicOnly,
-            1 => EidType::Static,
-            2 => EidType::StaticMatching,
-            3 => EidType::StaticNonMatching,
+            0 => EIDType::DynamicOnly,
+            1 => EIDType::Static,
+            2 => EIDType::StaticMatching,
+            3 => EIDType::StaticNonMatching,
             _ => unreachable!("value should be 0, 1, 2, or 3"),
         }
     }

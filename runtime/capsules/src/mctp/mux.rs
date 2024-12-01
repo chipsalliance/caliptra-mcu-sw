@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use crate::mctp::mctp::{MCTPHeader, MessageType, MCTP_HDR_SIZE};
-use crate::mctp::mctp_binding::MCTPTransportBinding;
-use crate::mctp::mctp_control::{MCTPCtrlCmd, MCTPCtrlMsgHdr, MCTP_CTRL_MSG_HEADER_LEN};
+use crate::mctp::base_protocol::{MCTPHeader, MessageType, MCTP_HDR_SIZE};
+use crate::mctp::control_msg::{MCTPCtrlCmd, MCTPCtrlMsgHdr, MCTP_CTRL_MSG_HEADER_LEN};
+use crate::mctp::transport_binding::MCTPTransportBinding;
 
 use core::cell::Cell;
 
@@ -17,17 +17,13 @@ use zerocopy::{FromBytes, IntoBytes};
 /// The trait that provides an interface to send the MCTP messages to MCTP kernel stack.
 pub trait MCTPSender {
     /// Sets the client for the `MCTPSender` instance.
-    /// In this case it is MCTPTxState which is instantiated at the time of
     fn set_client(&self, client: &dyn MCTPTxClient);
 
     /// Sends the message to the MCTP kernel stack.
     fn send_msg(&self, dest_eid: u8, msg_tag: u8, msg_payload: SubSliceMut<'static, u8>);
 }
 
-/// This is the trait implemented by VirtualMCTPDriver instance to get notified after
-/// message is sent.
-/// The 'send_done' function in this trait is invoked after the MCTPSender
-/// has completed sending the requested message.
+/// This trait is implemented by client to get notified after message is sent.
 pub trait MCTPTxClient {
     fn send_done(
         &self,
@@ -37,8 +33,8 @@ pub trait MCTPTxClient {
     );
 }
 
-/// This is the trait implemented by VirtualMCTPDriver instance to get notified of
-/// the messages received on corresponding message_type.
+/// This trait is implemented to get notified of the messages received
+/// on corresponding message_type.
 pub trait MCTPRxClient {
     fn receive(&self, dst_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8]);
 }
@@ -100,13 +96,14 @@ impl<'a> ListNode<'a, MCTPRxState<'a>> for MCTPRxState<'a> {
     }
 }
 
-/// The MUX struct manages multiple MCTP driver users (clients).
-/// This struct implements the FIFO queue for the
+/// MUX struct that manages multiple MCTP driver users (clients).
+///
+/// This struct implements a FIFO queue for the
 /// transmitted and received request states.
 /// The virtualized upper layer ensures that only
 /// one message is transmitted per driver instance at a time.
 /// Receive is event based. The received packet in the rx buffer is
-/// matched against the pending receive requests by the use
+/// matched against the pending receive requests.
 pub struct MuxMCTPDriver<'a, M: MCTPTransportBinding<'a>> {
     mctp_device: &'a dyn MCTPTransportBinding<'a>,
     next_msg_tag: Cell<u8>, //global msg tag. increment by 1 for next tag upto 7 and wrap around.
@@ -278,14 +275,13 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             .take()
             .map_or(Err(ErrorCode::NOMEM), |resp_buf| {
                 let result = match mctp_ctrl_cmd {
-                    MCTPCtrlCmd::SetEid => mctp_ctrl_cmd
-                        .process_set_eid(&req_buf, &mut resp_buf[msg_payload_offset..])
-                        .and_then(|eid| {
+                    MCTPCtrlCmd::SetEID => mctp_ctrl_cmd
+                        .process_set_eid(req_buf, &mut resp_buf[msg_payload_offset..])
+                        .map(|eid| {
                             self.set_local_eid(eid);
-                            Ok(())
                         }),
 
-                    MCTPCtrlCmd::GetEid => mctp_ctrl_cmd
+                    MCTPCtrlCmd::GetEID => mctp_ctrl_cmd
                         .process_get_eid(self.get_local_eid(), &mut resp_buf[msg_payload_offset..]),
 
                     MCTPCtrlCmd::GetMsgTypeSupport => return Err(ErrorCode::NOSUPPORT),
@@ -367,8 +363,8 @@ impl<'a, M: MCTPTransportBinding<'a>> RxClient for MuxMCTPDriver<'a, M> {
     }
 
     fn write_expected(&self) {
-        self.rx_pkt_buffer.take().map(|rx_buf| {
+        if let Some(rx_buf) = self.rx_pkt_buffer.take() {
             self.mctp_device.set_rx_buffer(rx_buf);
-        });
+        };
     }
 }

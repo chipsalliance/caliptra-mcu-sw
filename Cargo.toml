@@ -17,6 +17,7 @@ members = [
     "registers/systemrdl",
     "rom",
     "runtime",
+    "runtime/capsules",
     "runtime/apps/pldm",
     "runtime/i3c",
     "tests/hello",
@@ -63,7 +64,7 @@ gdbstub_arch = "0.2.4"
 getrandom = "0.2"
 hex = "0.4.3"
 i3c-driver = { path = "runtime/i3c" }
-capsules-runtime = { path = "runtime/capsules/runtime" }
+capsules-runtime = { path = "runtime/capsules" }
 lazy_static = "1.4.0"
 num-derive = "0.4.2"
 num_enum = "0.7.2"

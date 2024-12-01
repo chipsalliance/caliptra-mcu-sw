@@ -3,4 +3,5 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![forbid(unsafe_code)]
 
+#[cfg(target_arch = "riscv32")]
 pub mod mctp;
