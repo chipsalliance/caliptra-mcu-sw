@@ -8,7 +8,7 @@ File Name:
 
 Abstract:
 
-    File contains I3C driver for the the Caliptra Emulator Library.
+    File contains I3C driver for the Caliptra Emulator Library.
 
 --*/
 
@@ -19,7 +19,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use zerocopy::FromBytes;
+use zerocopy::{FromBytes, IntoBytes};
 
 #[derive(Default)]
 pub struct I3cController {
@@ -191,6 +191,7 @@ impl I3cController {
             .iter_mut()
             .filter_map(|target| {
                 target.get_response().map(|resp| I3cBusResponse {
+                    ibi: None,
                     addr: target.get_address().unwrap(),
                     resp,
                 })
@@ -211,6 +212,38 @@ impl DynamicI3cAddress {
             0x08..=0x3d | 0x3f..=0x6d | 0x6f..=0x75 => Ok(Self { address: value }),
             _ => Err(I3cError::InvalidAddress),
         }
+    }
+}
+
+impl From<DynamicI3cAddress> for u32 {
+    fn from(value: DynamicI3cAddress) -> Self {
+        value.address as u32
+    }
+}
+
+impl From<DynamicI3cAddress> for u8 {
+    fn from(value: DynamicI3cAddress) -> Self {
+        value.address
+    }
+}
+
+impl TryFrom<u32> for DynamicI3cAddress {
+    type Error = String;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        if value <= 256 {
+            Ok(Self {
+                address: value as u8,
+            })
+        } else {
+            Err(format!("Address must be less than 256: {}", value))
+        }
+    }
+}
+
+impl From<u8> for DynamicI3cAddress {
+    fn from(value: u8) -> Self {
+        DynamicI3cAddress { address: value }
     }
 }
 
@@ -268,7 +301,7 @@ pub struct I3cTargetDevice {
 }
 
 bitfield! {
-    #[derive(Clone, FromBytes)]
+    #[derive(Clone, FromBytes, IntoBytes)]
     pub struct ImmediateDataTransferCommand(u64);
     impl Debug;
     u8, cmd_attr, set_cmd_attr: 2, 0;
@@ -288,7 +321,7 @@ bitfield! {
 }
 
 bitfield! {
-    #[derive(Clone, FromBytes)]
+    #[derive(Clone, FromBytes, IntoBytes)]
     pub struct ReguDataTransferCommand(u64);
     impl Debug;
     u8, cmd_attr, set_cmd_attr: 2, 0;
@@ -307,7 +340,7 @@ bitfield! {
 }
 
 bitfield! {
-    #[derive(Clone, FromBytes)]
+    #[derive(Clone, FromBytes, IntoBytes)]
     pub struct ComboTransferCommand(u64);
     impl Debug;
     u8, cmd_attr, set_cmd_attr: 2, 0;
@@ -327,7 +360,7 @@ bitfield! {
 }
 
 bitfield! {
-    #[derive(Clone, FromBytes)]
+    #[derive(Clone, FromBytes, IntoBytes)]
     pub struct ResponseDescriptor(u32);
     impl Debug;
 
@@ -395,6 +428,7 @@ pub struct I3cBusCommand {
 
 #[derive(Clone, Debug)]
 pub struct I3cBusResponse {
+    pub ibi: Option<u8>,
     pub addr: DynamicI3cAddress,
     pub resp: I3cTcriResponseXfer,
 }

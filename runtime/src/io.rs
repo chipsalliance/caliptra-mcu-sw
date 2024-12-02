@@ -35,7 +35,6 @@ pub(crate) static mut WRITER: Writer = Writer {};
 #[panic_handler]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     let writer = &mut *addr_of_mut!(WRITER);
-
     debug::panic_print(
         writer,
         pi,
@@ -44,10 +43,16 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         &*addr_of!(CHIP),
         &*addr_of!(PROCESS_PRINTER),
     );
+    exit_emulator(1);
+}
 
-    // By writing to this address we can exit the emulator.
-    write_volatile(0x2000_f000 as *mut u32, 0);
-
+/// Exit the emulator
+pub fn exit_emulator(exit_code: u32) -> ! {
+    // Safety: This is a safe memory address to write to for exiting the emulator.
+    unsafe {
+        // By writing to this address we can exit the emulator.
+        write_volatile(0x2000_f000 as *mut u32, exit_code);
+    }
     unreachable!()
 }
 

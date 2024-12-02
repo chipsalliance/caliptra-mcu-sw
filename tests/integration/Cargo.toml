@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "emulator"
+name = "tests-integration"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,7 +11,6 @@ edition = "2021"
 caliptra-emu-cpu.workspace = true
 caliptra-emu-periph.workspace = true
 clap.workspace = true
-crossterm.workspace = true
 ctrlc.workspace = true
 elf.workspace = true
 emulator-bus.workspace = true
@@ -25,8 +24,3 @@ gdbstub.workspace = true
 hex.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
-
-[features]
-default = []
-test-i3c-simple = []
-test-i3c-constant-writes = ["emulator-periph/test-i3c-constant-writes"]

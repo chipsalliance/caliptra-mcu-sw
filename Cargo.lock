@@ -944,6 +944,7 @@ dependencies = [
  "gdbstub_arch",
  "hex",
  "tock-registers",
+ "zerocopy 0.8.10",
 ]
 
 [[package]]
@@ -2323,6 +2324,28 @@ dependencies = [
 [[package]]
 name = "test-hello"
 version = "0.1.0"
+
+[[package]]
+name = "tests-integration"
+version = "0.1.0"
+dependencies = [
+ "caliptra-emu-cpu",
+ "caliptra-emu-periph",
+ "clap 4.5.21",
+ "ctrlc",
+ "elf",
+ "emulator-bus",
+ "emulator-caliptra",
+ "emulator-cpu",
+ "emulator-periph",
+ "emulator-registers-generated",
+ "emulator-types",
+ "gdbstub",
+ "gdbstub_arch",
+ "hex",
+ "tock-registers",
+ "zerocopy 0.8.10",
+]
 
 [[package]]
 name = "textwrap"

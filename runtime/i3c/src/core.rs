@@ -211,7 +211,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 // clear the interrupt
                 self.registers
                     .interrupt_status
-                    .modify(InterruptStatus::TransferErrStat::CLEAR);
+                    .write(InterruptStatus::TransferErrStat::SET);
             }
             // Bus aborted transaction
             if tti_interrupts.read(InterruptStatus::TransferAbortStat) != 0 {
@@ -219,7 +219,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 // clear the interrupt
                 self.registers
                     .interrupt_status
-                    .modify(InterruptStatus::TransferAbortStat::CLEAR);
+                    .write(InterruptStatus::TransferAbortStat::SET);
             }
             // TTI IBI Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI IBI Queue is >= the value defined in `TTI_IBI_THLD`
             if tti_interrupts.read(InterruptStatus::IbiThldStat) != 0 {
@@ -262,7 +262,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 // clear the interrupt
                 self.registers
                     .interrupt_status
-                    .modify(InterruptStatus::TxDescTimeout::CLEAR);
+                    .write(InterruptStatus::TxDescTimeout::SET);
             }
             // Pending Read was NACK’ed because the `RX_DESC_STAT` event was not handled in time
             if tti_interrupts.read(InterruptStatus::RxDescTimeout) != 0 {
@@ -270,22 +270,14 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 // clear the interrupt
                 self.registers
                     .interrupt_status
-                    .modify(InterruptStatus::TxDescTimeout::CLEAR);
+                    .write(InterruptStatus::TxDescTimeout::SET);
             }
             // There is a pending Read Transaction on the I3C Bus. Software should write data to the TX Descriptor Queue and the TX Data Queue
             if tti_interrupts.read(InterruptStatus::TxDescStat) != 0 {
-                // disable this interrupt
-                self.registers
-                    .interrupt_enable
-                    .modify(InterruptEnable::TxDescThldStatEn::CLEAR);
                 self.handle_outgoing_read();
             }
             // There is a pending Write Transaction. Software should read data from the RX Descriptor Queue and the RX Data Queue
             if tti_interrupts.read(InterruptStatus::RxDescStat) != 0 {
-                // disable this interrupt
-                self.registers
-                    .interrupt_enable
-                    .modify(InterruptEnable::RxDescThldStatEn::CLEAR);
                 self.handle_incoming_write();
             }
         }
@@ -305,7 +297,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     // called when TTI has a private Write with data for us to grab
-    fn handle_incoming_write(&self) {
+    pub fn handle_incoming_write(&self) {
         self.retry_incoming_write.set(false);
         if self.rx_buffer.is_none() {
             self.rx_client.map(|client| {
@@ -372,14 +364,10 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 self.rx_buffer.replace(rx_buffer);
             }
         }
-        // re-enable this interrupt
-        self.registers
-            .interrupt_enable
-            .modify(InterruptEnable::RxDescThldStatEn::SET);
     }
 
     // called when TTI wants us to send data for a private Read
-    fn handle_outgoing_read(&self) {
+    pub fn handle_outgoing_read(&self) {
         self.retry_outgoing_read.set(false);
 
         if self.tx_buffer.is_none() {
@@ -410,10 +398,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             client.send_done(buf, Ok(()));
         });
         // TODO: if no tx_client then we just drop the buffer?
-        // re-enable the interrupt
-        self.registers
-            .interrupt_enable
-            .modify(InterruptEnable::TxDescThldStatEn::SET);
     }
 
     fn transfer_error(&self) {
