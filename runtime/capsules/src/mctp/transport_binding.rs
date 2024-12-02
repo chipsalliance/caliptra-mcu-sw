@@ -107,11 +107,13 @@ impl<'a> MCTPI3CBinding<'a> {
     }
 
     fn crc8(crc: u8, data: u8) -> u8 {
+        // CRC-8 with last 8 bits of polynomial x^8 + x^2 + x^1 + 1.
+        let polynomial = 0x07;
         let mut crc = crc;
         crc ^= data;
         for _ in 0..8 {
             if crc & 0x80 != 0 {
-                crc = (crc << 1) ^ 0x07;
+                crc = (crc << 1) ^ polynomial;
             } else {
                 crc <<= 1;
             }
@@ -143,7 +145,8 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
             Err((ErrorCode::SIZE, self.tx_buffer.take().unwrap()))?;
         }
 
-        let addr = self.device_address.get() << 1;
+        // Tx is a read operation from the I3C controller. Set the R/W bit at LSB to 1.
+        let addr = self.device_address.get() << 1 | 0x01;
         match self.tx_buffer.take() {
             Some(tx_buffer) => {
                 let pec = MCTPI3CBinding::compute_pec(addr, tx_buffer, len);
@@ -198,7 +201,9 @@ impl<'a> RxClient for MCTPI3CBinding<'a> {
             self.i3c_target.set_rx_buffer(rx_buffer);
             return;
         }
-        let addr = self.device_address.get() << 1 | 0x01;
+
+        // Rx is a write operation from the I3C controller. Set the R/W bit at LSB to 0.
+        let addr = self.device_address.get() << 1;
         let pec = MCTPI3CBinding::compute_pec(addr, rx_buffer, len - 1);
         if pec == rx_buffer[len - 1] {
             self.rx_client.map(|client| {
@@ -214,5 +219,76 @@ impl<'a> RxClient for MCTPI3CBinding<'a> {
         self.rx_client.map(|client| {
             client.write_expected();
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    fn calculate_crc8(data: &[u8]) -> u8 {
+        let polynomial = 0x07;
+        let mut crc = 0u8;
+
+        for &byte in data {
+            crc ^= byte;
+            for _ in 0..8 {
+                if crc & 0x80 != 0 {
+                    crc = (crc << 1) ^ polynomial;
+                } else {
+                    crc <<= 1;
+                }
+            }
+        }
+        crc
+    }
+
+    #[test]
+    fn test_pec_for_req() {
+        // Write to device address 0x10
+        let dev_addr = 0x10 << 1;
+        // header version 0x01, src EID 0x00, dest EID 0x08, som = 1, eom = 1, pkt_seq = 0, tag_owner = 1, msg_tag = 1
+        let mctp_hdr = [0x01, 0x00, 0x08, 0xC9];
+        // (IC, control message type) = 0x00, Request packet (0x80), set EID command = 0x01
+        let msg_hdr = [0x00, 0x80, 0x1];
+        // msg payload: op = 0x00, EID = 0x0A
+        let msg = [0x00, 0x0A];
+
+        let pkt_buf_len = 1 + mctp_hdr.len() + msg_hdr.len() + msg.len();
+
+        let pkt: &mut [u8] = &mut [0; MCTP_I3C_MAXBUF];
+        pkt[0] = dev_addr;
+        pkt[1..1 + mctp_hdr.len()].copy_from_slice(&mctp_hdr);
+        pkt[1 + mctp_hdr.len()..1 + mctp_hdr.len() + msg_hdr.len()].copy_from_slice(&msg_hdr);
+        pkt[1 + mctp_hdr.len() + msg_hdr.len()..pkt_buf_len].copy_from_slice(&msg);
+
+        let computed_pec =
+            MCTPI3CBinding::compute_pec(dev_addr, &pkt[1..pkt_buf_len], pkt_buf_len - 1);
+        let exp_pec = calculate_crc8(&pkt[..pkt_buf_len]);
+        assert_eq!(exp_pec, computed_pec);
+    }
+
+    #[test]
+    fn test_pec_for_resp() {
+        let dev_addr = 0x10 << 1 | 0x01;
+        // header version 0x01, src EID 0x00, dest EID 0x08, som = 1, eom = 1, pkt_seq = 0, tag_owner = 0, msg_tag = 1
+        let mctp_hdr = [0x01, 0x00, 0x08, 0xC1];
+        // (IC, control message type) = 0x00, Response packet (0x00), set EID command = 0x01
+        let msg_hdr = [0x00, 0x00, 0x01];
+        // msg payload: completion code = 0x00, byte 2 : (0x00), EID = 0x0A, byte 4: (0x00)
+        let msg = [0x00, 0x00, 0x0A, 0x00];
+
+        let pkt_buf_len = 1 + mctp_hdr.len() + msg_hdr.len() + msg.len();
+        let pkt: &mut [u8] = &mut [0; MCTP_I3C_MAXBUF];
+        pkt[0] = dev_addr;
+        pkt[1..1 + mctp_hdr.len()].copy_from_slice(&mctp_hdr);
+        pkt[1 + mctp_hdr.len()..1 + mctp_hdr.len() + msg_hdr.len()].copy_from_slice(&msg_hdr);
+        pkt[1 + mctp_hdr.len() + msg_hdr.len()..pkt_buf_len].copy_from_slice(&msg);
+
+        let computed_pec =
+            MCTPI3CBinding::compute_pec(dev_addr, &pkt[1..pkt_buf_len], pkt_buf_len - 1);
+        let exp_pec = calculate_crc8(&pkt[..pkt_buf_len]);
+        assert_eq!(exp_pec, computed_pec);
     }
 }

@@ -276,13 +276,15 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             .map_or(Err(ErrorCode::NOMEM), |resp_buf| {
                 let result = match mctp_ctrl_cmd {
                     MCTPCtrlCmd::SetEID => mctp_ctrl_cmd
-                        .process_set_eid(req_buf, &mut resp_buf[msg_payload_offset..])
+                        .process_set_endpoint_id(req_buf, &mut resp_buf[msg_payload_offset..])
                         .map(|eid| {
                             self.set_local_eid(eid);
                         }),
 
-                    MCTPCtrlCmd::GetEID => mctp_ctrl_cmd
-                        .process_get_eid(self.get_local_eid(), &mut resp_buf[msg_payload_offset..]),
+                    MCTPCtrlCmd::GetEID => mctp_ctrl_cmd.process_get_endpoint_id(
+                        self.get_local_eid(),
+                        &mut resp_buf[msg_payload_offset..],
+                    ),
 
                     MCTPCtrlCmd::GetMsgTypeSupport => return Err(ErrorCode::NOSUPPORT),
                     _ => return Err(ErrorCode::NOSUPPORT),

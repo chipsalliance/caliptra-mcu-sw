@@ -9,7 +9,6 @@ edition.workspace = true
 [dependencies]
 kernel = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
 
-[target.'cfg(target_arch = "riscv32")'.dependencies]
 capsules-extra = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
 i3c-driver.workspace = true
 zerocopy.workspace = true

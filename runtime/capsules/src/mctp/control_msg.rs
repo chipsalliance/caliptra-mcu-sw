@@ -21,7 +21,7 @@ bitfield! {
     pub datagram, set_datagram: 9, 9;
     rsvd, _: 10, 10;
     pub instance_id, set_instance_id: 15, 11;
-    pub cmd, set_cmd: 23, 15;
+    pub cmd, set_cmd: 23, 16;
 }
 
 impl Default for MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]> {
@@ -89,7 +89,7 @@ impl MCTPCtrlCmd {
         }
     }
 
-    pub fn process_set_eid(&self, req: &[u8], rsp_buf: &mut [u8]) -> Result<u8, ErrorCode> {
+    pub fn process_set_endpoint_id(&self, req: &[u8], rsp_buf: &mut [u8]) -> Result<u8, ErrorCode> {
         if req.len() < self.req_data_len() || rsp_buf.len() < self.resp_data_len() {
             return Err(ErrorCode::NOMEM);
         }
@@ -125,7 +125,11 @@ impl MCTPCtrlCmd {
         Ok(eid)
     }
 
-    pub fn process_get_eid(&self, local_eid: u8, rsp_buf: &mut [u8]) -> Result<(), ErrorCode> {
+    pub fn process_get_endpoint_id(
+        &self,
+        local_eid: u8,
+        rsp_buf: &mut [u8],
+    ) -> Result<(), ErrorCode> {
         if rsp_buf.len() < self.resp_data_len() {
             return Err(ErrorCode::NOMEM);
         }
@@ -196,7 +200,7 @@ impl From<u8> for SetEIDOp {
 // Set EID Response
 bitfield! {
     #[repr(C)]
-    #[derive(Clone, IntoBytes, Immutable)]
+    #[derive(Clone, FromBytes, IntoBytes, Immutable)]
     pub struct SetEIDResp([u8]);
     impl Debug;
     u8;
@@ -234,7 +238,7 @@ pub enum SetEIDAllocStatus {
 // Get EID Response
 bitfield! {
     #[repr(C)]
-    #[derive(Clone, IntoBytes, Immutable)]
+    #[derive(Clone, FromBytes, IntoBytes, Immutable)]
     pub struct GetEIDResp([u8]);
     impl Debug;
     u8;
@@ -290,5 +294,91 @@ impl From<u8> for EIDType {
             3 => EIDType::StaticNonMatching,
             _ => unreachable!("value should be 0, 1, 2, or 3"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mctp::base_protocol::MessageType;
+
+    #[test]
+    fn test_ctrl_msg_hdr() {
+        let mut msg_hdr = MCTPCtrlMsgHdr::new();
+        msg_hdr.prepare_header(0, 0, 0, MCTPCtrlCmd::SetEID.to_u8());
+        assert_eq!(msg_hdr.ic(), 0);
+        assert_eq!(msg_hdr.msg_type(), MessageType::MCTPControl as u8);
+        assert_eq!(msg_hdr.rq(), 0);
+        assert_eq!(msg_hdr.datagram(), 0);
+        assert_eq!(msg_hdr.instance_id(), 0);
+        assert_eq!(msg_hdr.cmd(), MCTPCtrlCmd::SetEID.to_u8());
+    }
+
+    #[test]
+    fn test_set_endpoint_id() {
+        let msg_req = [0x00, 0x0A];
+
+        let rsp_buf = &mut [0; 4];
+        let eid = MCTPCtrlCmd::SetEID
+            .process_set_endpoint_id(&msg_req, rsp_buf)
+            .unwrap();
+
+        assert_eq!(eid, 0x0A);
+
+        let rsp: SetEIDResp<[u8; 4]> = SetEIDResp::read_from_bytes(rsp_buf).unwrap();
+        assert_eq!(rsp.completion_code(), CmdCompletionCode::Success as u8);
+        assert_eq!(rsp.eid_assign_status(), SetEIDStatus::Accepted as u8);
+        assert_eq!(rsp.eid_alloc_status(), SetEIDAllocStatus::NoEIDPool as u8);
+        assert_eq!(rsp.assigned_eid(), 0x0A);
+        assert_eq!(rsp.eid_pool_size(), 0);
+    }
+
+    #[test]
+    fn test_set_null_endpoint_id() {
+        let msg_req = [0x00, 0x00];
+
+        let rsp_buf = &mut [0; 4];
+        let eid = MCTPCtrlCmd::SetEID
+            .process_set_endpoint_id(&msg_req, rsp_buf)
+            .unwrap();
+
+        assert_eq!(eid, 0x00);
+
+        let rsp: SetEIDResp<[u8; 4]> = SetEIDResp::read_from_bytes(rsp_buf).unwrap();
+        assert_eq!(
+            rsp.completion_code(),
+            CmdCompletionCode::ErrorInvalidData as u8
+        );
+    }
+
+    #[test]
+    fn test_set_broadcast_endpoint_id() {
+        let msg_req = [0x00, 0xFF];
+
+        let rsp_buf = &mut [0; 4];
+        let eid = MCTPCtrlCmd::SetEID
+            .process_set_endpoint_id(&msg_req, rsp_buf)
+            .unwrap();
+
+        assert_eq!(eid, 0xFF);
+
+        let rsp: SetEIDResp<[u8; 4]> = SetEIDResp::read_from_bytes(rsp_buf).unwrap();
+        assert_eq!(
+            rsp.completion_code(),
+            CmdCompletionCode::ErrorInvalidData as u8
+        );
+    }
+
+    #[test]
+    fn test_get_endpoint_id() {
+        let rsp_buf = &mut [0; 4];
+        MCTPCtrlCmd::GetEID
+            .process_get_endpoint_id(0x0A, rsp_buf)
+            .unwrap();
+
+        let rsp: GetEIDResp<[u8; 4]> = GetEIDResp::read_from_bytes(rsp_buf).unwrap();
+        assert_eq!(rsp.completion_code(), CmdCompletionCode::Success as u8);
+        assert_eq!(rsp.eid(), 0x0A);
+        assert_eq!(rsp.eid_type(), EIDType::DynamicOnly as u8);
     }
 }
