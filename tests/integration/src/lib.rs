@@ -31,12 +31,12 @@ mod test {
             .join(name)
     }
 
+    // only build the ROM once
+    static ROM: LazyLock<PathBuf> = LazyLock::new(|| compile_rom());
+
     static BUILD_LOCK: LazyLock<Mutex<AtomicU32>> = LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
 
     fn compile_rom() -> PathBuf {
-        let lock = BUILD_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
         let output = target_binary("rom.bin");
         let mut cmd = Command::new("cargo");
         let cmd = cmd
@@ -49,15 +49,12 @@ mod test {
             panic!("failed to compile ROM");
         }
         assert!(output.exists());
-        // force the compiler to keep the lock
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         output
     }
 
     fn compile_runtime(feature: &str) -> PathBuf {
         let lock = BUILD_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
         let output = target_binary(&format!("runtime-{}.bin", feature));
         let mut cmd = Command::new("cargo");
         let cmd = cmd
@@ -77,7 +74,6 @@ mod test {
             panic!("failed to compile runtime");
         }
         assert!(output.exists());
-
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         output
@@ -109,11 +105,10 @@ mod test {
             #[test]
             fn $test() {
                 println!("Compiling test firmware {}", stringify!($test));
-                let test_rom = compile_rom();
                 let feature = stringify!($test).replace("_", "-");
                 let test_runtime = compile_runtime(&feature);
-                let test = run_runtime(&feature, test_rom, test_runtime);
-                assert_eq!(0, test.code().unwrap_or_default())
+                let test = run_runtime(&feature, ROM.to_path_buf(), test_runtime);
+                assert_eq!(0, test.code().unwrap_or_default());
             }
         };
     }
