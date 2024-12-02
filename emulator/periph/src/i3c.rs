@@ -152,6 +152,21 @@ impl I3cPeripheral for I3c {
         self.interrupt_status.clone()
     }
 
+    fn write_i3c_ec_tti_interrupt_status(
+        &mut self,
+        _size: emulator_types::RvSize,
+        val: emulator_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c::bits::InterruptStatus::Register,
+        >,
+    ) {
+        let current = self.interrupt_status.reg.get();
+        let new = val.reg.get();
+        // clear the interrupts that are set
+        self.interrupt_status.reg.set(current & !new);
+        self.check_interrupts();
+    }
+
     fn write_i3c_ec_tti_interrupt_enable(
         &mut self,
         _size: emulator_types::RvSize,

@@ -211,7 +211,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 // clear the interrupt
                 self.registers
                     .interrupt_status
-                    .modify(InterruptStatus::TransferErrStat::CLEAR);
+                    .write(InterruptStatus::TransferErrStat::SET);
             }
             // Bus aborted transaction
             if tti_interrupts.read(InterruptStatus::TransferAbortStat) != 0 {
@@ -219,7 +219,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 // clear the interrupt
                 self.registers
                     .interrupt_status
-                    .modify(InterruptStatus::TransferAbortStat::CLEAR);
+                    .write(InterruptStatus::TransferAbortStat::SET);
             }
             // TTI IBI Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI IBI Queue is >= the value defined in `TTI_IBI_THLD`
             if tti_interrupts.read(InterruptStatus::IbiThldStat) != 0 {
@@ -262,7 +262,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 // clear the interrupt
                 self.registers
                     .interrupt_status
-                    .modify(InterruptStatus::TxDescTimeout::CLEAR);
+                    .write(InterruptStatus::TxDescTimeout::SET);
             }
             // Pending Read was NACK’ed because the `RX_DESC_STAT` event was not handled in time
             if tti_interrupts.read(InterruptStatus::RxDescTimeout) != 0 {
@@ -270,7 +270,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 // clear the interrupt
                 self.registers
                     .interrupt_status
-                    .modify(InterruptStatus::TxDescTimeout::CLEAR);
+                    .write(InterruptStatus::TxDescTimeout::SET);
             }
             // There is a pending Read Transaction on the I3C Bus. Software should write data to the TX Descriptor Queue and the TX Data Queue
             if tti_interrupts.read(InterruptStatus::TxDescStat) != 0 {
