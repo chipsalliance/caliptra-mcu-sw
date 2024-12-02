@@ -33,15 +33,6 @@ pub trait El2PicPeripheral {
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_meip(
-        &mut self,
-        _size: emulator_types::RvSize,
-        _val: emulator_bus::ReadWriteRegister<
-            u32,
-            registers_generated::el2_pic_ctrl::bits::Meip::Register,
-        >,
-    ) {
-    }
     fn read_meie(
         &mut self,
         _size: emulator_types::RvSize,
@@ -174,16 +165,6 @@ impl emulator_bus::Bus for El2PicBus {
                 Ok(())
             }
             (emulator_types::RvSize::Word, 1..=3) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x1000) => {
-                self.periph.write_meip(
-                    emulator_types::RvSize::Word,
-                    emulator_bus::ReadWriteRegister::new(val),
-                );
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 0x1001..=0x1003) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             (emulator_types::RvSize::Word, 0x2000) => {

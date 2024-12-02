@@ -462,18 +462,6 @@ impl FlashPeripheral for DummyFlashCtrl {
     > {
         emulator_bus::ReadWriteRegister::new(self.ctrl_regwen.reg.get())
     }
-
-    fn write_ctrl_regwen(
-        &mut self,
-        _size: emulator_types::RvSize,
-        _val: emulator_bus::ReadWriteRegister<
-            u32,
-            registers_generated::flash_ctrl::bits::CtrlRegwen::Register,
-        >,
-    ) {
-        // Unreachable
-        panic!("Write to read-only ctrl_regwen register");
-    }
 }
 
 #[cfg(test)]

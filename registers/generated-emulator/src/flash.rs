@@ -101,15 +101,6 @@ pub trait FlashPeripheral {
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_ctrl_regwen(
-        &mut self,
-        _size: emulator_types::RvSize,
-        _val: emulator_bus::ReadWriteRegister<
-            u32,
-            registers_generated::flash_ctrl::bits::CtrlRegwen::Register,
-        >,
-    ) {
-    }
 }
 pub struct FlashBus {
     pub periph: Box<dyn FlashPeripheral>,
@@ -235,16 +226,6 @@ impl emulator_bus::Bus for FlashBus {
                 Ok(())
             }
             (emulator_types::RvSize::Word, 0x19..=0x1b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x1c) => {
-                self.periph.write_ctrl_regwen(
-                    emulator_types::RvSize::Word,
-                    emulator_bus::ReadWriteRegister::new(val),
-                );
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 0x1d..=0x1f) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             _ => Err(emulator_bus::BusError::StoreAccessFault),

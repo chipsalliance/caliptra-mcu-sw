@@ -14,16 +14,9 @@ pub trait MboxPeripheral {
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::Lock::Register> {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_lock(
-        &mut self,
-        _size: emulator_types::RvSize,
-        _val: emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::Lock::Register>,
-    ) {
-    }
     fn read_id(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
-    fn write_id(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {}
     fn read_cmd(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
         0
     }
@@ -155,16 +148,6 @@ impl emulator_bus::Bus for MboxBus {
         val: emulator_types::RvData,
     ) -> Result<(), emulator_bus::BusError> {
         match (size, addr) {
-            (emulator_types::RvSize::Word, 0) => {
-                self.periph.write_lock(
-                    emulator_types::RvSize::Word,
-                    emulator_bus::ReadWriteRegister::new(val),
-                );
-                Ok(())
-            }
-            (emulator_types::RvSize::Word, 1..=3) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
             (size, 8) => {
                 self.periph.write_cmd(size, val);
                 Ok(())
