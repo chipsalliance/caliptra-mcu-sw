@@ -9,19 +9,11 @@ pub(crate) fn test() -> Result<(), DynError> {
     e2e_tests()
 }
 
-// These projects only build for RISC-V.
-const SKIP_PROJECTS: &[&str] = &["test-hello", "runtime", "pldm-app"];
-
 fn cargo_test() -> Result<(), DynError> {
     println!("Running: cargo test");
-    let mut args = vec!["test", "--workspace"];
-    SKIP_PROJECTS.iter().for_each(|p| {
-        args.push("--exclude");
-        args.push(*p);
-    });
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .args(args)
+        .args(["test", "--workspace"])
         .status()?;
 
     if !status.success() {
