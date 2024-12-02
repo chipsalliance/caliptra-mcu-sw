@@ -12,10 +12,10 @@ use emulator_bus::{Clock, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::i3c::I3cPeripheral;
 use emulator_types::{RvData, RvSize};
-use registers_generated::i3c::bits::InterruptEnable;
-use registers_generated::i3c::bits::InterruptStatus;
-use registers_generated::i3c::bits::StbyCrDeviceAddr;
-use registers_generated::i3c::bits::{ExtcapHeader, StbyCrCapabilities, TtiQueueSize};
+use registers_generated::i3c::bits::{
+    ExtcapHeader, InterruptEnable, InterruptStatus, StbyCrCapabilities, StbyCrDeviceAddr,
+    TtiQueueSize,
+};
 use std::collections::VecDeque;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::FromBytes;
@@ -33,7 +33,7 @@ pub struct I3c {
     tti_rx_current: Vec<u8>,
     /// TX Command in u32
     tti_tx_desc_queue_raw: VecDeque<u32>,
-    /// TX DATA in u32
+    /// TX DATA in u8
     tti_tx_data_raw: VecDeque<Vec<u8>>,
     /// Error interrupt
     _error_irq: Irq,
