@@ -11,6 +11,7 @@ use crate::apps_build::apps_build_flat_tbf;
 use crate::{DynError, PROJECT_ROOT, TARGET};
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::LazyLock;
 
 const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
 const RUNTIME_START: usize = 0x4000_0000;
@@ -20,10 +21,35 @@ const RAM_START: usize = 0x5000_0000;
 const RAM_SIZE: usize = 128 * 1024;
 const BSS_SIZE: usize = 5000; // this is approximate. Increase it if there are "sram" errors when linking
 
-pub const RUSTFLAGS_COMMON: [&str; 2] = [
-    "-C target-feature=+relax,+unaligned-scalar-mem,+b",
-    "-C force-frame-pointers=no",
-];
+static SYSROOT: LazyLock<String> = LazyLock::new(|| {
+    // cache this in the target directory as it seems to be very slow to call rustc
+    let sysroot_file = PROJECT_ROOT.join("target").join("sysroot.txt");
+    if sysroot_file.exists() {
+        let root = std::fs::read_to_string(&sysroot_file).unwrap();
+        if PathBuf::from(&root).exists() {
+            return root;
+        }
+    }
+    // slow path
+    let tock_dir = &PROJECT_ROOT.join("runtime");
+    let root = String::from_utf8(
+        Command::new("cargo")
+            .args(["rustc", "--", "--print", "sysroot"])
+            .current_dir(tock_dir)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap()
+    .trim()
+    .to_string();
+    if root.is_empty() {
+        panic!("Failed to get sysroot");
+    }
+    // write to target directory as a cache
+    std::fs::write(sysroot_file, root.as_bytes()).unwrap();
+    root
+});
 
 pub fn target_binary(name: &str) -> PathBuf {
     PROJECT_ROOT
@@ -57,29 +83,12 @@ fn find_file(dir: &str, name: &str) -> Option<PathBuf> {
 pub fn objcopy() -> Result<String, DynError> {
     std::env::var("OBJCOPY").map(Ok).unwrap_or_else(|_| {
         // We need to get the full path to llvm-objcopy, if it is installed.
-        if let Some(llvm_size) = find_file(&sysroot()?, "llvm-objcopy") {
+        if let Some(llvm_size) = find_file(&SYSROOT, "llvm-objcopy") {
             Ok(llvm_size.to_str().unwrap().to_string())
         } else {
             Err("Could not find llvm-objcopy; perhaps you need to run `rustup component add llvm-tools` or set the OBJCOPY environment variable to where to find objcopy".into())
         }
     })
-}
-
-fn sysroot() -> Result<String, DynError> {
-    let tock_dir = &PROJECT_ROOT.join("runtime");
-    let sysroot = String::from_utf8(
-        Command::new("cargo")
-            .args(["rustc", "--", "--print", "sysroot"])
-            .current_dir(tock_dir)
-            .output()?
-            .stdout,
-    )?
-    .trim()
-    .to_string();
-    if sysroot.is_empty() {
-        Err("Failed to get sysroot")?;
-    }
-    Ok(sysroot)
 }
 
 fn runtime_build_no_apps(
@@ -88,7 +97,7 @@ fn runtime_build_no_apps(
     output_name: &str,
 ) -> Result<(), DynError> {
     let tock_dir = &PROJECT_ROOT.join("runtime");
-    let sysroot = sysroot()?;
+    let sysr = SYSROOT.clone();
     let ld_file_path = tock_dir.join("layout.ld");
 
     let runtime_size = apps_offset - RUNTIME_START - INTERRUPT_TABLE_SIZE;
@@ -123,60 +132,6 @@ INCLUDE runtime/kernel_layout.ld
         ),
     )?;
 
-    // RUSTC_FLAGS allows boards to define board-specific options.
-    // This will hopefully move into Cargo.toml (or Cargo.toml.local) eventually.
-    //
-    // - `-Tlayout.ld`: Use the linker script `layout.ld` all boards must provide.
-    // - `linker=rust-lld`: Tell rustc to use the LLVM linker. This avoids needing
-    //   GCC as a dependency to build the kernel.
-    // - `linker-flavor=ld.lld`: Use the LLVM lld executable with the `-flavor gnu`
-    //   flag.
-    // - `relocation-model=static`: See https://github.com/tock/tock/pull/2853
-    // - `-nmagic`: lld by default uses a default page size to align program
-    //   sections. Tock expects that program sections are set back-to-back. `-nmagic`
-    //   instructs the linker to not page-align sections.
-    // - `-icf=all`: Identical Code Folding (ICF) set to all. This tells the linker
-    //   to be more aggressive about removing duplicate code. The default is `safe`,
-    //   and the downside to `all` is that different functions in the code can end up
-    //   with the same address in the binary. However, it can save a fair bit of code
-    //   size.
-    // - `-C symbol-mangling-version=v0`: Opt-in to Rust v0 symbol mangling scheme.
-    //   See https://github.com/rust-lang/rust/issues/60705 and
-    //   https://github.com/tock/tock/issues/3529.
-    let ld_arg = format!("-C link-arg=-T{}", ld_file_path.display());
-    let mut rustc_flags = Vec::from(RUSTFLAGS_COMMON);
-    rustc_flags.extend_from_slice(&[
-        ld_arg.as_str(),
-        "-C linker=rust-lld",
-        "-C linker-flavor=ld.lld",
-        "-C relocation-model=static",
-        "-C link-arg=-nmagic", // don't page align sections, link against static libs
-        "-C link-arg=-icf=all", // identical code folding
-        "-C symbol-mangling-version=v0",
-    ]);
-    let rustc_flags = rustc_flags.join(" ");
-
-    // RUSTC_FLAGS_TOCK by default extends RUSTC_FLAGS with options that are global
-    // to all Tock boards.
-    //
-    // We use `remap-path-prefix` to remove user-specific filepath strings for error
-    // reporting from appearing in the generated binary. The first line is used for
-    // remapping the tock directory, and the second line is for remapping paths to
-    // the source code of the core library, which end up in the binary as a result of
-    // our use of `-Zbuild-std=core`.
-    let rustc_flags_tock = [
-        rustc_flags,
-        format!(
-            "--remap-path-prefix={}/runtime=",
-            PROJECT_ROOT.to_str().unwrap()
-        ),
-        format!(
-            "--remap-path-prefix={}/lib/rustlib/src/rust/library/core=/core/",
-            sysroot
-        ),
-    ]
-    .join(" ");
-
     // The following flags should only be passed to the board's binary crate, but
     // not to any of its dependencies (the kernel, capsules, chips, etc.). The
     // dependencies wouldn't use it, but because the link path is different for each
@@ -187,15 +142,11 @@ INCLUDE runtime/kernel_layout.ld
     // `-C link-arg=-L/tock/boards/hail`, so Cargo would have to rebuild the kernel
     // for each board instead of caching it per board (even if in reality the same
     // kernel is built because the link-arg isn't used by the kernel).
-    //
-    // Ultimately, this should move to the Cargo.toml, for example when
-    // https://github.com/rust-lang/cargo/pull/7811 is merged into Cargo.
-    //
-    // The difference between `RUSTC_FLAGS_TOCK` and `RUSTC_FLAGS_FOR_BIN` is that
-    // the former is forwarded to all the dependencies (being passed to cargo via
-    // the `RUSTFLAGS` environment variable), whereas the latter is only applied to
-    // the final binary crate (being passed as parameter to `cargo rustc`).
-    let rustc_flags_for_bin = format!("-C link-arg=-L{}/runtime", sysroot);
+    let rustc_flags_for_bin = format!(
+        "-C link-arg=-T{} -C link-arg=-L{}/runtime",
+        ld_file_path.display(),
+        sysr
+    );
 
     // Validate that rustup is new enough.
     let minimum_rustup_version = semver::Version::parse("1.23.0").unwrap();
@@ -280,7 +231,6 @@ INCLUDE runtime/kernel_layout.ld
         .args(features)
         .arg("--")
         .args(rustc_flags_for_bin.split(' '))
-        .env("RUSTFLAGS", rustc_flags_tock)
         .current_dir(tock_dir);
 
     println!("Executing {:?}", cmd);
@@ -320,14 +270,14 @@ pub fn runtime_build_with_apps(
     app_offset = app_offset.next_multiple_of(4096); // align to 4096 bytes. Needed for rust-lld
     let padding = app_offset - runtime_end_offset - INTERRUPT_TABLE_SIZE;
 
-    // now re-link and place the apps after the runtime binary
+    // re-link and place the apps after the runtime binary
     runtime_build_no_apps(app_offset, features, output_name)?;
 
     let mut bin = std::fs::read(&runtime_bin)?;
     let kernel_size = bin.len();
     println!("Kernel binary built: {} bytes", kernel_size);
 
-    // now build the apps starting at the correct offset
+    // build the apps starting at the correct offset
     let apps_bin = apps_build_flat_tbf(app_offset)?;
     println!("Apps built: {} bytes", apps_bin.len());
     bin.extend_from_slice(vec![0; padding].as_slice());
