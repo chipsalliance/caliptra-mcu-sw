@@ -270,6 +270,9 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-i3c-constant-writes") {
         debug!("Executing test-i3c-constant-writes");
         crate::tests::test_i3c_constant_writes()
+    } else if cfg!(feature = "test-flash-ctrl-init") {
+        debug!("Executing test-flash-ctrl-init");
+        crate::flash_ctrl_test::test_flash_ctrl_init()
     } else {
         None
     };
