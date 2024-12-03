@@ -1,18 +1,23 @@
 // Licensed under the Apache-2.0 license
 
-use crate::runtime_build::RUSTFLAGS_COMMON;
-use crate::{runtime_build::objcopy, DynError, PROJECT_ROOT, TARGET};
+use crate::runtime_build::objcopy;
+use crate::{DynError, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
 pub fn rom_build() -> Result<(), DynError> {
-    let mut rustc_flags = Vec::from(RUSTFLAGS_COMMON);
-    rustc_flags.push("-C link-arg=-Trom/layout.ld");
-    let rustc_flags = rustc_flags.join(" ");
-
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .env("RUSTFLAGS", rustc_flags)
-        .args(["b", "-p", "rom", "--release", "--target", TARGET])
+        .args([
+            "rustc",
+            "-p",
+            "rom",
+            "--release",
+            "--target",
+            TARGET,
+            "--",
+            "-C",
+            "link-arg=-Trom/layout.ld",
+        ])
         .status()?;
     if !status.success() {
         Err("build ROM binary failed")?;
