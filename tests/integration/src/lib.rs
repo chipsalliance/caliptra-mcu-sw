@@ -120,4 +120,7 @@ mod test {
     // These use underscores but will be converted to dashes in the feature flags
     run_test!(test_i3c_simple);
     run_test!(test_i3c_constant_writes);
+
+    // Add flash controller tests
+    run_test!(test_flash_ctrl_init);
 }

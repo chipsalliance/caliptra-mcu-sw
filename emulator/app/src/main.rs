@@ -358,7 +358,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     let flash_ctrl_event_irq = pic.register_irq(CaliptraRootBus::FLASH_CTRL_EVENT_IRQ);
     let flash_controller = DummyFlashCtrl::new(
         &clock.clone(),
-        None,
+        //TODO: pass command line argument for flash file
+        Some(PathBuf::from("primary_flash.bin")),
         flash_ctrl_error_irq,
         flash_ctrl_event_irq,
     )
