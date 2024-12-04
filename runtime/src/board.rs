@@ -2,8 +2,11 @@
 
 use crate::chip::VeeRDefaultPeripherals;
 use crate::chip::TIMERS;
+use crate::components as runtime_components;
 use crate::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use capsules_runtime::mctp::mux::MuxMCTPDriver;
+use capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
 use kernel::component::Component;
@@ -51,6 +54,8 @@ struct VeeR {
     scheduler: &'static CooperativeSched<'static>,
     scheduler_timer:
         &'static VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>,
+    // Temporarily add MCTP mux to the platform struct until driver is ready
+    mctp_mux: &'static MuxMCTPDriver<'static, MCTPI3CBinding<'static>>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -187,6 +192,9 @@ pub unsafe fn main() {
     ));
     let _ = process_console.start();
 
+    let mctp_mux = runtime_components::mctp_mux::MCTPMuxComponent::new(&peripherals.i3c)
+        .finalize(crate::mctp_mux_component_static!(MCTPI3CBinding));
+
     peripherals.init();
 
     // Need to enable all interrupts for Tock Kernel
@@ -228,6 +236,7 @@ pub unsafe fn main() {
         console,
         scheduler,
         scheduler_timer,
+        mctp_mux,
     };
 
     kernel::process::load_processes(

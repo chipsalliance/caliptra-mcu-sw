@@ -82,7 +82,7 @@ impl<'a> MCTPI3CBinding<'a> {
         }
     }
 
-    pub fn mctp_i3c_setup(&self) {
+    pub fn setup_mctp_i3c(&self) {
         let device_info = self.i3c_target.get_device_info();
         self.max_read_len.set(device_info.max_read_len);
         self.max_write_len.set(device_info.max_write_len);
@@ -242,6 +242,11 @@ mod tests {
             }
         }
         crc
+    }
+
+    #[test]
+    fn test_crc8() {
+        assert_eq!(0xf4, calculate_crc8(b"123456789"));
     }
 
     #[test]

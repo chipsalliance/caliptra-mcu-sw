@@ -108,7 +108,7 @@ pub struct MuxMCTPDriver<'a, M: MCTPTransportBinding<'a>> {
     mctp_device: &'a dyn MCTPTransportBinding<'a>,
     next_msg_tag: Cell<u8>, //global msg tag. increment by 1 for next tag upto 7 and wrap around.
     local_eid: Cell<u8>,
-    mtu: Cell<u8>,
+    mtu: Cell<usize>,
     // List of outstanding send requests
     sender_list: List<'a, MCTPTxState<'a, M>>,
     receiver_list: List<'a, MCTPRxState<'a>>,
@@ -120,7 +120,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
     pub fn new(
         mctp_device: &'a dyn MCTPTransportBinding<'a>,
         local_eid: u8,
-        mtu: u8,
+        mtu: usize,
         tx_pkt_buf: &'static mut [u8],
         rx_pkt_buf: &'static mut [u8],
     ) -> MuxMCTPDriver<'a, M> {
@@ -148,7 +148,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
         self.local_eid.set(local_eid);
     }
 
-    pub fn set_mtu(&self, mtu: u8) {
+    pub fn set_mtu(&self, mtu: usize) {
         self.mtu.set(mtu);
     }
 
@@ -156,7 +156,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
         self.local_eid.get()
     }
 
-    pub fn get_mtu(&self) -> u8 {
+    pub fn get_mtu(&self) -> usize {
         self.mtu.get()
     }
 
