@@ -9,6 +9,8 @@
 
 use crate::apps_build::apps_build_flat_tbf;
 use crate::{DynError, PROJECT_ROOT, TARGET};
+use elf::endian::AnyEndian;
+use elf::ElfBytes;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::LazyLock;
@@ -19,7 +21,6 @@ const INTERRUPT_TABLE_SIZE: usize = 128;
 const ICCM_SIZE: usize = 256 * 1024;
 const RAM_START: usize = 0x5000_0000;
 const RAM_SIZE: usize = 128 * 1024;
-const BSS_SIZE: usize = 5000; // this is approximate. Increase it if there are "sram" errors when linking
 
 static SYSROOT: LazyLock<String> = LazyLock::new(|| {
     // cache this in the target directory as it seems to be very slow to call rustc
@@ -91,11 +92,27 @@ pub fn objcopy() -> Result<String, DynError> {
     })
 }
 
+fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize, DynError> {
+    let elf_bytes = std::fs::read(&elf_file)?;
+    let elf_file = ElfBytes::<AnyEndian>::minimal_parse(&elf_bytes)?;
+    let x = elf_file
+        .symbol_table()
+        .unwrap()
+        .iter()
+        .find_map(|(parse_table, string_table)| {
+            parse_table
+                .iter()
+                .find(|p| string_table.get(p.st_name as usize).unwrap_or_default() == "_sappmem")
+                .map(|symbol| symbol.st_value as usize)
+        });
+    x.ok_or("error finding _sappmem symbol".into())
+}
+
 fn runtime_build_no_apps(
     apps_offset: usize,
     features: &[&str],
     output_name: &str,
-) -> Result<(), DynError> {
+) -> Result<usize, DynError> {
     let tock_dir = &PROJECT_ROOT.join("runtime");
     let sysr = SYSROOT.clone();
     let ld_file_path = tock_dir.join("layout.ld");
@@ -249,7 +266,7 @@ INCLUDE runtime/kernel_layout.ld
         Err("objcopy failed to build runtime")?;
     }
 
-    Ok(())
+    get_apps_memory_offset(target_binary("runtime"))
 }
 
 pub fn runtime_build_with_apps(
@@ -261,13 +278,15 @@ pub fn runtime_build_with_apps(
     let runtime_bin = target_binary(output_name);
 
     // build once to get the size of the runtime binary without apps
-    runtime_build_no_apps(RUNTIME_START + 0x2_0000, features, output_name)?;
+    let apps_memory_offset =
+        runtime_build_no_apps(RUNTIME_START + 0x2_0000, features, output_name)?;
 
     let runtime_bin_size = std::fs::metadata(&runtime_bin)?.len() as usize;
     app_offset += runtime_bin_size;
     let runtime_end_offset = app_offset;
-    app_offset += BSS_SIZE; // it's not clear why this is necessary as the BSS should be part of .sram, but the linker fails without this
-    app_offset = app_offset.next_multiple_of(4096); // align to 4096 bytes. Needed for rust-lld
+    // ensure that we leave space for the interrupt table
+    // and align to 4096 bytes (needed for rust-lld)
+    let app_offset = (runtime_end_offset + INTERRUPT_TABLE_SIZE).next_multiple_of(4096);
     let padding = app_offset - runtime_end_offset - INTERRUPT_TABLE_SIZE;
 
     // re-link and place the apps after the runtime binary
@@ -278,7 +297,7 @@ pub fn runtime_build_with_apps(
     println!("Kernel binary built: {} bytes", kernel_size);
 
     // build the apps starting at the correct offset
-    let apps_bin = apps_build_flat_tbf(app_offset)?;
+    let apps_bin = apps_build_flat_tbf(app_offset, apps_memory_offset)?;
     println!("Apps built: {} bytes", apps_bin.len());
     bin.extend_from_slice(vec![0; padding].as_slice());
     bin.extend_from_slice(&apps_bin);

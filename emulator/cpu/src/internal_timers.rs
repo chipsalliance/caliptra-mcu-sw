@@ -96,8 +96,8 @@ impl InternalTimer {
         self.read_time(now) >= self.bound
     }
 
-    fn ticks_to_interrupt(&self, now: u64) -> u32 {
-        self.bound.wrapping_sub(self.read_time(now))
+    pub(crate) fn ticks_to_interrupt(&self, now: u64) -> u32 {
+        self.bound.saturating_sub(self.read_time(now)).max(1)
     }
 
     fn arm(&mut self, timer: &Timer, now: u64) {
@@ -193,5 +193,31 @@ impl InternalTimers {
             self.timer0.interrupt_pending(self.clock.now()),
             self.timer1.interrupt_pending(self.clock.now()),
         )
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::rc::Rc;
+
+    use super::InternalTimer;
+    use emulator_bus::Clock;
+
+    #[test]
+    fn test_ticks_to_interrupt() {
+        let clock = Rc::new(Clock::new());
+        let t = clock.timer();
+        let mut itimer = InternalTimer::new(0);
+        itimer.write_bound(300, &t, 100);
+        assert_eq!(200, itimer.ticks_to_interrupt(100));
+    }
+
+    #[test]
+    fn test_ticks_to_interrupt_underflow() {
+        let clock = Rc::new(Clock::new());
+        let t = clock.timer();
+        let mut itimer = InternalTimer::new(0);
+        itimer.write_bound(300, &t, 100);
+        assert_eq!(1, itimer.ticks_to_interrupt(400));
     }
 }

@@ -71,6 +71,12 @@ fn init(spawner: Spawner) {
 async fn async_main() {
     let mut console_writer = Console::writer();
     writeln!(console_writer, "Hello async world!").unwrap();
+    writeln!(
+        console_writer,
+        "Timer frequency: {}",
+        AsyncAlarm::<TockSyscalls>::get_frequency().unwrap().0
+    )
+    .unwrap();
 
     match AsyncAlarm::<TockSyscalls>::exists() {
         Ok(()) => {}
@@ -86,8 +92,8 @@ async fn async_main() {
     };
 
     for _ in 0..5 {
-        writeln!(console_writer, "Sleeping for 10 millisecond").unwrap();
-        sleep(Milliseconds(10)).await;
+        writeln!(console_writer, "Sleeping for 1 millisecond").unwrap();
+        sleep(Milliseconds(1)).await;
         writeln!(console_writer, "async sleeper woke").unwrap();
     }
     writeln!(console_writer, "app finished").unwrap();
@@ -150,12 +156,12 @@ impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
         Ok(ticks.saturating_div(freq / 1000))
     }
 
-    pub async fn sleep_for<T: Convert>(_time: T) -> Result<(), ErrorCode> {
-        // TODO: this seems to never return, so we just sleep for 1 tick
-        // let freq = Self::get_frequency()?;
-        // let ticks = time.to_ticks(freq);
+    pub async fn sleep_for<T: Convert>(time: T) -> Result<(), ErrorCode> {
+        let freq = Self::get_frequency()?;
+        let ticks = time.to_ticks(freq).0;
+        writeln!(Console::writer(), "Sleeping for {} ticks", ticks).unwrap();
         let sub = TockSubscribe::subscribe::<S>(DRIVER_NUM, 0);
-        S::command(DRIVER_NUM, command::SET_RELATIVE, 1, 0)
+        S::command(DRIVER_NUM, command::SET_RELATIVE, ticks, 0)
             .to_result()
             .map(|_when: u32| ())?;
         sub.await.map(|_| ())

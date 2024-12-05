@@ -29,22 +29,29 @@ pub const BASE_PERMISSIONS: &[(u32, u32)] = &[
     (1, 1),
     (1, 2),
     (1, 3),
+    (8, 0), // Low-level debug
+    (8, 1), // Low-level debug
+    (8, 2), // Low-level debug
+    (8, 3), // Low-level debug
 ];
 
 // creates a single flat binary with all the apps built with TBF headers
-pub fn apps_build_flat_tbf(start: usize) -> Result<Vec<u8>, DynError> {
+pub fn apps_build_flat_tbf(start: usize, ram_start: usize) -> Result<Vec<u8>, DynError> {
     let mut bin = vec![];
     let mut offset = start;
+    let mut ram_start = ram_start;
     for app in APPS.iter() {
-        let app_bin = app_build_tbf(app, offset)?;
+        let app_bin = app_build_tbf(app, offset, ram_start)?;
         bin.extend_from_slice(&app_bin);
         offset += app_bin.len();
+        // TODO: support different amount of RAM per app
+        ram_start += 0x4000;
     }
     Ok(bin)
 }
 
 // creates a flat binary of the app with the TBF header
-fn app_build_tbf(app: &App, start: usize) -> Result<Vec<u8>, DynError> {
+fn app_build_tbf(app: &App, start: usize, ram_start: usize) -> Result<Vec<u8>, DynError> {
     // start the TBF header
     let mut tbf = TbfHeader::new();
     let mut permissions = BASE_PERMISSIONS.to_vec();
@@ -63,7 +70,7 @@ fn app_build_tbf(app: &App, start: usize) -> Result<Vec<u8>, DynError> {
     tbf.set_binary_end_offset(0); // temporary just to get the size of the header
     let tbf_header_size = tbf.generate()?.get_ref().len();
 
-    app_build(app.name, start, tbf_header_size)?;
+    app_build(app.name, start, ram_start, tbf_header_size)?;
     let objcopy = objcopy()?;
 
     let app_bin = target_binary(&format!("{}.bin", app.name));
@@ -95,7 +102,12 @@ fn app_build_tbf(app: &App, start: usize) -> Result<Vec<u8>, DynError> {
 }
 
 // creates an ELF of the app
-fn app_build(app_name: &str, offset: usize, tbf_header_size: usize) -> Result<(), DynError> {
+fn app_build(
+    app_name: &str,
+    offset: usize,
+    ram_start: usize,
+    tbf_header_size: usize,
+) -> Result<(), DynError> {
     let layout_ld = &PROJECT_ROOT.join("runtime").join("apps").join("layout.ld");
 
     // TODO: do we need to fix the RAM start and length?
@@ -107,10 +119,10 @@ fn app_build(app_name: &str, offset: usize, tbf_header_size: usize) -> Result<()
 TBF_HEADER_SIZE = 0x{:x};
 FLASH_START = 0x{:x};
 FLASH_LENGTH = 0x10000;
-RAM_START = 0x50000000;
-RAM_LENGTH = 0x10000;
+RAM_START = 0x{:x};
+RAM_LENGTH = 0x4000;
 INCLUDE runtime/apps/app_layout.ld",
-            tbf_header_size, offset,
+            tbf_header_size, offset, ram_start
         ),
     )?;
 
@@ -120,7 +132,7 @@ INCLUDE runtime/apps/app_layout.ld",
         .current_dir(&*PROJECT_ROOT)
         .env("LIBTOCK_LINKER_FLASH", format!("0x{:x}", offset))
         .env("LIBTOCK_LINKER_FLASH_LENGTH", "128K")
-        .env("LIBTOCK_LINKER_RAM", "0x50000000")
+        .env("LIBTOCK_LINKER_RAM", format!("0x{:x}", ram_start))
         .env("LIBTOCK_LINKER_RAM_LENGTH", "128K")
         .args([
             "rustc",
