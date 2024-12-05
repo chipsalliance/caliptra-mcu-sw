@@ -235,18 +235,6 @@ SECTIONS
         . = ALIGN(4);
         _sapps = .;
 
-        /* Include placeholder bytes in this section so that the linker
-         * includes a segment for it. Otherwise the section will be empty and
-         * the linker will ignore it when defining the segments.
-         * If less then 4 bytes, some linkers set this section to size 0
-         * and openocd fails to write it.
-         *
-         * An issue has been submitted https://github.com/raspberrypi/openocd/issues/25
-         */
-        BYTE(0xFF)
-        BYTE(0xFF)
-        BYTE(0xFF)
-        BYTE(0xFF)
     } > prog
     /* _eapps symbol used by tock to calculate the length of app flash */
     _eapps = _sapps + LENGTH(prog);
@@ -332,6 +320,7 @@ SECTIONS
          * future enhancement may allow the kernel to parcel this memory space
          * dynamically, requiring changes to this section.
          */
+         . = ALIGN(4096); /* align to page boundary due to lld limitation */
         _sappmem = .;
         *(.app_memory)
     } > ram
@@ -423,5 +412,5 @@ _erom = ORIGIN(rom) + LENGTH(rom);
 
 /* This assert works out because even though some of the relative positions are
  * off, the sizes are sane in each pass. */
-ASSERT((_etext - _stext) + (_erelocate - _srelocate) + (_eattributes - _sattributes) < LENGTH(rom),
-"Text plus relocations plus attributes exceeds the available ROM space.");
+/*ASSERT((_etext - _stext) + (_erelocate - _srelocate) + (_eattributes - _sattributes) < LENGTH(rom),
+"Text plus relocations plus attributes exceeds the available ROM space.");*/

@@ -11,6 +11,7 @@ tempfile = "3.14.0"
 walkdir = "2.5.0"
 proc-macro2.workspace = true
 clap.workspace = true
+elf.workspace = true
 registers-generator.workspace = true
 registers-systemrdl.workspace = true
 quote.workspace = true

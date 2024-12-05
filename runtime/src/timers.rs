@@ -6,7 +6,7 @@
 //! Create a timer using the VeeR EL2 Internal Timer registers.
 
 use core::cell::Cell;
-use kernel::hil::time::{self, Alarm, ConvertTicks, Freq32KHz, Frequency, Ticks, Ticks64, Time};
+use kernel::hil::time::{self, Alarm, ConvertTicks, Freq1MHz, Frequency, Ticks, Ticks64, Time};
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::registers::register_bitfields;
@@ -134,7 +134,8 @@ impl<'a> InternalTimers<'a> {
 
 impl Time for InternalTimers<'_> {
     // TODO: replace with real VeeR frequency
-    type Frequency = Freq32KHz;
+    // This is roughly okay for the emulator though.
+    type Frequency = Freq1MHz;
     type Ticks = Ticks64;
 
     fn now(&self) -> Ticks64 {

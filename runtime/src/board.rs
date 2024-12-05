@@ -48,6 +48,10 @@ struct VeeR {
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
     console: &'static capsules_core::console::Console<'static>,
+    lldb: &'static capsules_core::low_level_debug::LowLevelDebug<
+        'static,
+        capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
+    >,
     scheduler: &'static CooperativeSched<'static>,
     scheduler_timer:
         &'static VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>,
@@ -62,6 +66,7 @@ impl SyscallDriverLookup for VeeR {
         match driver_num {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
+            capsules_core::low_level_debug::DRIVER_NUM => f(Some(self.lldb)),
             _ => f(None),
         }
     }
@@ -162,6 +167,13 @@ pub unsafe fn main() {
     components::debug_writer::DebugWriterComponent::new(uart_mux)
         .finalize(components::debug_writer_component_static!());
 
+    let lldb = components::lldb::LowLevelDebugComponent::new(
+        board_kernel,
+        capsules_core::low_level_debug::DRIVER_NUM,
+        uart_mux,
+    )
+    .finalize(components::low_level_debug_component_static!());
+
     // Setup the console.
     let console = components::console::ConsoleComponent::new(
         board_kernel,
@@ -226,6 +238,7 @@ pub unsafe fn main() {
     let veer = VeeR {
         alarm,
         console,
+        lldb,
         scheduler,
         scheduler_timer,
     };
