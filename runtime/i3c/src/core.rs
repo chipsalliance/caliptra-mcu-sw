@@ -325,11 +325,10 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let rx_buffer = self.rx_buffer.take().unwrap();
         let mut buf_idx = self.rx_buffer_idx.get();
         let buf_size = self.rx_buffer_size.get();
-        // TODO: verify which order we get the descriptor in, big or little word first
         let desc0 = self.registers.rx_desc_queue_port.get();
         let desc1 = self.registers.rx_desc_queue_port.get();
         let desc = LocalRegisterCopy::<u64, I3CCommandDescriptor::Register>::new(
-            ((desc0 as u64) << 32) | (desc1 as u64),
+            ((desc1 as u64) << 32) | (desc0 as u64),
         );
         let len = desc.read(I3CCommandDescriptor::DataLength) as usize;
         // read everything
