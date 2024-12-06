@@ -4,12 +4,12 @@
 // This driver will implment kernel::hil::flash::Flash trait and will be used by the kernel
 
 use core::ops::{Index, IndexMut};
-use kernel::debug;
 use kernel::hil;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
+use kernel::{debug, debug_flush_queue};
 
 use registers_generated::flash_ctrl::{
     bits::{CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus},
@@ -129,6 +129,8 @@ impl<'a> EmulatedFlashCtrl<'a> {
     }
 
     pub fn handle_interrupt(&self) {
+        debug!("FlashCtrl interrupt handler");
+
         // Extract the interrupt state and save it
         let flashctrl_intr = self.registers.fl_interrupt_state.extract();
 
@@ -295,6 +297,8 @@ impl hil::flash::Flash for EmulatedFlashCtrl<'_> {
         page_number: usize,
         buf: &'static mut Self::Page,
     ) -> Result<(), (ErrorCode, &'static mut Self::Page)> {
+        debug!("[xs debug]flash_ctrl driver: write_page start");
+
         // Check if the page number is valid
         if page_number >= FLASH_MAX_PAGES {
             return Err((ErrorCode::INVAL, buf));
@@ -310,13 +314,21 @@ impl hil::flash::Flash for EmulatedFlashCtrl<'_> {
             .fl_control
             .modify(FlControl::Op::CLEAR + FlControl::Start::CLEAR);
 
+        // panic if buf address is above 32-bit address space
+        if buf.as_mut().as_ptr() as usize > u32::MAX as usize {
+            panic!(
+                "[xs debug]flash_ctrl driver: Buffer address {:p} is above 32-bit address space",
+                buf.as_mut().as_ptr()
+            );
+        }
+
         // Extract necessary information from buf before replacing it
         let page_buf_addr = buf.as_mut().as_ptr() as u32;
         let page_buf_len = buf.as_mut().len() as u32;
 
         // debug print the page number, page address and page size
         debug!(
-            "Page Number: {}, Page Address: {}, Page Size: {}",
+            "[xs debug]flash_ctrl driver: Page Number: {}, Page Address: {}, Page Size: {}",
             page_number, page_buf_addr, page_buf_len
         );
 

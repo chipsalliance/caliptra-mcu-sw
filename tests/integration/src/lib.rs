@@ -123,4 +123,6 @@ mod test {
 
     // Add flash controller tests
     run_test!(test_flash_ctrl_init);
+
+    run_test!(test_flash_ctrl_read_write_page);
 }

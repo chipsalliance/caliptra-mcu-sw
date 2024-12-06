@@ -12,7 +12,7 @@ use kernel::platform::scheduler_timer::VirtualSchedulerTimer;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::scheduler::cooperative::CooperativeSched;
 use kernel::utilities::registers::interfaces::ReadWriteable;
-use kernel::{create_capability, debug, static_init};
+use kernel::{create_capability, debug, debug_flush_queue, static_init};
 use rv32i::csr;
 
 pub const NUM_PROCS: usize = 4;
@@ -30,6 +30,15 @@ pub static mut CHIP: Option<&'static VeeRChip> = None;
 pub static mut PROCESS_PRINTER: Option<
     &'static capsules_system::process_printer::ProcessPrinterText,
 > = None;
+
+// Test access to board
+pub static mut BOARD: Option<&'static kernel::Kernel> = None;
+
+// Test access to platform
+pub static mut PLATFORM: Option<&'static VeeR> = None;
+
+// Test access to main loop capability
+pub static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = None;
 
 // How should the kernel respond when a process faults.
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
@@ -101,6 +110,20 @@ impl KernelResources<VeeRChip> for VeeR {
     }
     fn context_switch_callback(&self) -> &Self::ContextSwitchCallback {
         &()
+    }
+}
+
+pub fn run_kernel_op(loops: usize) {
+    unsafe {
+        for _i in 0..loops {
+            BOARD.unwrap().kernel_loop_operation(
+                PLATFORM.unwrap(),
+                CHIP.unwrap(),
+                None::<&kernel::ipc::IPC<0>>,
+                true,
+                MAIN_CAP.unwrap(),
+            );
+        }
     }
 }
 
@@ -263,6 +286,23 @@ pub unsafe fn main() {
         debug!("{:?}", err);
     });
 
+
+    // For testing purposes, we need to keep a reference to the kernel and the main loop capability
+    {
+        PLATFORM = Some(static_init!(
+            VeeR,
+            VeeR {
+                alarm,
+                console,
+                lldb,
+                scheduler,
+                scheduler_timer,
+            }
+        ));
+        MAIN_CAP = Some(&create_capability!(capabilities::MainLoopCapability));
+        BOARD = Some(board_kernel);
+    }
+
     // Run any requested test
     let exit = if cfg!(feature = "test-i3c-simple") {
         debug!("Executing test-i3c-simple");
@@ -273,6 +313,9 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-flash-ctrl-init") {
         debug!("Executing test-flash-ctrl-init");
         crate::flash_ctrl_test::test_flash_ctrl_init()
+    } else if cfg!(feature = "test-flash-ctrl-read-write-page") {
+        debug!("Executing test-flash-ctrl-read-write-page");
+        crate::flash_ctrl_test::test_flash_ctrl_read_write_page()
     } else {
         None
     };

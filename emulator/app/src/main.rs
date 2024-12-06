@@ -359,7 +359,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     let flash_controller = DummyFlashCtrl::new(
         &clock.clone(),
         //TODO: pass command line argument for flash file
-        Some(PathBuf::from("primary_flash.bin")),
+        Some(PathBuf::from("primary_flash")),
         flash_ctrl_error_irq,
         flash_ctrl_event_irq,
     )
