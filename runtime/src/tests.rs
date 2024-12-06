@@ -2,16 +2,18 @@
 
 use crate::timers::InternalTimers;
 use core::cell::Cell;
+use core::fmt::Write;
 use i3c_driver::{
     core::I3CCore,
     hil::{I3CTarget, RxClient},
 };
 use kernel::{
-    debug, debug_flush_queue,
+    debug_flush_queue,
     deferred_call::{DeferredCall, DeferredCallClient},
     static_buf, static_init,
     utilities::cells::{OptionalCell, TakeCell},
 };
+use romtime::println;
 
 fn success() -> ! {
     debug_flush_queue!();
@@ -35,7 +37,7 @@ pub(crate) fn test_i3c_simple() -> Option<u32> {
 
 /// Tests that writes are handled properly
 pub(crate) fn test_i3c_constant_writes() -> Option<u32> {
-    debug!("initializing test");
+    println!("initializing test");
     // Safety: this is run after the board has initialized the chip.
     let chip = unsafe { crate::CHIP.unwrap() };
     let i3c = &chip.peripherals.i3c;
@@ -74,25 +76,20 @@ impl<'a> I3CConstantWritesTest<'a> {
 
 impl<'a> DeferredCallClient for I3CConstantWritesTest<'a> {
     fn handle_deferred_call(&self) {
-        if self.count.get() > 10 {
-            debug!("Passed");
+        if self.count.get() >= 10 {
+            println!("Passed");
             success();
         }
         let iter = self.deferred_calls.get();
         self.deferred_calls.set(iter + 1);
         if iter > 10000 {
-            debug!(
+            println!(
                 "Too many deferred calls; failing test; only got {}",
                 self.count.get()
             );
             // TODO: this test is actually failing, but we succeed for now while we debug it
             fail();
         }
-        // HACK: manually call the handlers every iteration since interrupts are not handled correctly
-        // TODO: remove these hacks when interrupts are handled correctly
-        self.i3c.get().unwrap().handle_outgoing_read();
-        self.i3c.get().unwrap().handle_incoming_write();
-
         // try again in the next kernel loop
         self.deferred_call.set();
     }

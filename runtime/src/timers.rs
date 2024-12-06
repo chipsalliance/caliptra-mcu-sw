@@ -111,8 +111,10 @@ impl<'a> InternalTimers<'a> {
         self.saved.set(match (self.saved.get(), i) {
             (TimerInterrupts::None, 0) => TimerInterrupts::Timer0,
             (TimerInterrupts::None, 1) => TimerInterrupts::Timer1,
+            (TimerInterrupts::Timer0, 0) => TimerInterrupts::Timer0,
             (TimerInterrupts::Timer0, 1) => TimerInterrupts::Timer0AndTimer1,
             (TimerInterrupts::Timer1, 0) => TimerInterrupts::Timer0AndTimer1,
+            (TimerInterrupts::Timer1, 1) => TimerInterrupts::Timer1,
             (TimerInterrupts::Timer0AndTimer1, _) => TimerInterrupts::Timer0AndTimer1,
             _ => unreachable!(),
         });

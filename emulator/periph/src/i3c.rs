@@ -7,7 +7,7 @@ Abstract:
 --*/
 
 use crate::i3c_protocol::{I3cController, I3cTarget, I3cTcriResponseXfer, ResponseDescriptor};
-use crate::DynamicI3cAddress;
+use crate::{DynamicI3cAddress, I3cTcriCommand};
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::i3c::I3cPeripheral;
@@ -38,7 +38,7 @@ pub struct I3c {
     /// Error interrupt
     _error_irq: Irq,
     /// Notification interrupt
-    _notif_irq: Irq,
+    notif_irq: Irq,
 
     interrupt_status: ReadWriteRegister<u32, InterruptStatus::Register>,
     interrupt_enable: ReadWriteRegister<u32, InterruptEnable::Register>,
@@ -69,7 +69,7 @@ impl I3c {
             tti_tx_desc_queue_raw: VecDeque::new(),
             tti_tx_data_raw: VecDeque::new(),
             _error_irq: error_irq,
-            _notif_irq: notif_irq,
+            notif_irq,
             interrupt_status: ReadWriteRegister::new(0),
             interrupt_enable: ReadWriteRegister::new(0),
         }
@@ -106,7 +106,28 @@ impl I3c {
     }
 
     fn check_interrupts(&mut self) {
-        // TODO: implement the rest of the interrupts
+        // TODO: implement the timeout interrupts
+
+        // Set TxDescStat interrupt if there is a pending Read transaction (i.e., data needs to be written to the tx registers)
+        let pending_read = self
+            .i3c_target
+            .peek_command()
+            .map(|xfer| {
+                match &xfer.cmd {
+                    I3cTcriCommand::Regular(reg_xfer) => {
+                        reg_xfer.rnw() == 1 // there is Read transaction pending
+                    }
+                    _ => false, // we only support regular transfers
+                }
+            })
+            .unwrap_or(false);
+        self.interrupt_status.reg.modify(if pending_read {
+            InterruptStatus::TxDescStat::SET
+        } else {
+            InterruptStatus::TxDescStat::CLEAR
+        });
+
+        // Set RxDescStat interrupt if there is a pending write (i.e., data to read from rx registers)
         self.interrupt_status
             .reg
             .modify(if self.tti_rx_desc_queue_raw.is_empty() {
@@ -115,14 +136,13 @@ impl I3c {
                 InterruptStatus::RxDescStat::SET
             });
 
-        // disabled for now as these aren't quite working yet
-        // self.notif_irq
-        //     .set_level(self.interrupt_status.reg.any_matching_bits_set(
-        //         InterruptStatus::RxDescStat::SET
-        //             + InterruptStatus::TxDescStat::SET
-        //             + InterruptStatus::RxDescTimeout::SET
-        //             + InterruptStatus::TxDescTimeout::SET,
-        //     ));
+        self.notif_irq
+            .set_level(self.interrupt_status.reg.any_matching_bits_set(
+                InterruptStatus::RxDescStat::SET
+                    + InterruptStatus::TxDescStat::SET
+                    + InterruptStatus::RxDescTimeout::SET
+                    + InterruptStatus::TxDescTimeout::SET,
+            ));
     }
 }
 
@@ -268,9 +288,14 @@ impl I3cPeripheral for I3c {
         self.timer.schedule_poll_in(Self::HCI_TICKS);
 
         if cfg!(feature = "test-i3c-constant-writes") {
-            // ensure there is always a write queued
-            if self.tti_rx_desc_queue_raw.is_empty() {
-                self.tti_rx_desc_queue_raw.push_back(100);
+            static mut COUNTER: u32 = 0;
+            // ensure there are 10 writes queued
+            if self.tti_rx_desc_queue_raw.is_empty() && unsafe { COUNTER } < 10 {
+                unsafe {
+                    COUNTER += 1;
+                }
+                self.tti_rx_desc_queue_raw.push_back(100 << 16);
+                self.tti_rx_desc_queue_raw.push_back(unsafe { COUNTER });
                 self.tti_rx_data_raw.push_back(vec![0xff; 100]);
             }
         }

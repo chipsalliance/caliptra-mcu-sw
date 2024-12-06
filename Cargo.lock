@@ -1214,6 +1214,7 @@ dependencies = [
  "capsules-core",
  "kernel",
  "registers-generated",
+ "romtime",
  "tock-registers",
 ]
 
@@ -2039,6 +2040,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "romtime"
+version = "0.1.0"
+
+[[package]]
 name = "runtime"
 version = "0.1.0"
 dependencies = [
@@ -2052,6 +2057,7 @@ dependencies = [
  "registers-generated",
  "riscv",
  "riscv-csr",
+ "romtime",
  "rv32i",
  "tock-registers",
 ]

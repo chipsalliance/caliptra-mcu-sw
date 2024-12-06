@@ -252,30 +252,6 @@ unsafe fn handle_interrupt(intr: mcause::Interrupt, mcause: u32) {
 
 // these are useful when debugging interrupts
 
-#[allow(dead_code)]
-fn print_to_console(buf: &[u8]) {
-    for b in buf {
-        // Print to this address for emulator output
-        unsafe {
-            core::ptr::write_volatile(0x2000_1041 as *mut u8, *b);
-        }
-    }
-}
-
-#[allow(dead_code)]
-fn print_hex(x: u32) {
-    let mut buf = [0u8; 8];
-    for i in 0..8 {
-        let nibble = (x >> (4 * (7 - i))) & 0xF;
-        buf[i] = if nibble < 10 {
-            b'0' + nibble as u8
-        } else {
-            b'A' + (nibble - 10) as u8
-        };
-    }
-    print_to_console(&buf);
-}
-
 /// Trap handler for board/chip specific code.
 ///
 /// This gets called when an interrupt occurs while the chip is
