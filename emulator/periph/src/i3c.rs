@@ -163,7 +163,7 @@ impl I3c {
             }
             // we only need the first byte, which is the MDB.
             // TODO: handle more than the MDB?
-            self.i3c_target.send_ibi(self.tti_ibi_buffer[5]);
+            self.i3c_target.send_ibi(self.tti_ibi_buffer[4]);
             self.tti_ibi_buffer.drain(0..len + 4);
         }
     }
