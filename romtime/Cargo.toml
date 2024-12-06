@@ -1,0 +1,11 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "romtime"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]

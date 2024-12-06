@@ -288,6 +288,10 @@ impl I3cTarget {
         self.target.lock().unwrap().rx_buffer.pop_front()
     }
 
+    pub fn peek_command(&mut self) -> Option<I3cTcriCommandXfer> {
+        self.target.lock().unwrap().rx_buffer.front().cloned()
+    }
+
     pub fn set_response(&mut self, resp: I3cTcriResponseXfer) {
         self.target.lock().unwrap().tx_buffer.push_back(resp)
     }
@@ -332,11 +336,11 @@ bitfield! {
     u8, short_read_err, set_short_read_err: 24, 24;
     u8, dbp, set_dbp: 25, 25;
     u8, mode, set_mode: 28, 26;
-    u8, rnw, set_rnw: 29, 29;
+    pub u8, rnw, set_rnw: 29, 29;
     u8, wroc, set_wroc: 30, 30;
     u8, toc, set_toc: 31, 31;
     u8, def_byte, set_def_byte: 39, 32;
-    u16, data_length, set_data_length: 63, 48;
+    pub u16, data_length, set_data_length: 63, 48;
 }
 
 bitfield! {

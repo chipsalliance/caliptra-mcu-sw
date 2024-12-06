@@ -73,6 +73,17 @@ register_bitfields! {
     ]
 }
 
+register_bitfields! {
+    u64,
+    I3CCommandDescriptor [
+        RNW OFFSET(29) NUMBITS(1) [
+            Write = 0,
+            Read = 1,
+        ],
+        DataLength OFFSET(48) NUMBITS(16) [],
+    ],
+}
+
 pub struct I3CCore<'a, A: Alarm<'a>> {
     registers: StaticRef<I3c>,
     tx_client: OptionalCell<&'a dyn TxClient>,
@@ -314,56 +325,43 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let rx_buffer = self.rx_buffer.take().unwrap();
         let mut buf_idx = self.rx_buffer_idx.get();
         let buf_size = self.rx_buffer_size.get();
-        let desc = LocalRegisterCopy::<u32, I3CResponseDescriptor::Register>::new(
-            self.registers.rx_desc_queue_port.get(),
+        // TODO: verify which order we get the descriptor in, big or little word first
+        let desc0 = self.registers.rx_desc_queue_port.get();
+        let desc1 = self.registers.rx_desc_queue_port.get();
+        let desc = LocalRegisterCopy::<u64, I3CCommandDescriptor::Register>::new(
+            ((desc0 as u64) << 32) | (desc1 as u64),
         );
-        match desc.read_as_enum::<I3CResponseDescriptor::ErrStatus::Value>(
-            I3CResponseDescriptor::ErrStatus,
-        ) {
-            Some(I3CResponseDescriptor::ErrStatus::Value::Success) => {
-                let len = desc.read(I3CResponseDescriptor::DataLength) as usize;
-                // read everything
-                let mut full = false;
-                for i in (0..len.next_multiple_of(4)).step_by(4) {
-                    let data = self.registers.rx_data_port0.get().to_le_bytes();
-                    for j in 0..4 {
-                        if buf_idx >= buf_size {
-                            full = true;
-                            break;
-                        }
-                        if let Some(x) = rx_buffer.get_mut(buf_idx) {
-                            *x = data[j];
-                        } else {
-                            // check if we ran out of space or if this is just the padding
-                            if i + j < len {
-                                full = true;
-                            }
-                        }
-                        buf_idx += 1;
+        let len = desc.read(I3CCommandDescriptor::DataLength) as usize;
+        // read everything
+        let mut full = false;
+        for i in (0..len.next_multiple_of(4)).step_by(4) {
+            let data = self.registers.rx_data_port0.get().to_le_bytes();
+            for j in 0..4 {
+                if buf_idx >= buf_size {
+                    full = true;
+                    break;
+                }
+                if let Some(x) = rx_buffer.get_mut(buf_idx) {
+                    *x = data[j];
+                } else {
+                    // check if we ran out of space or if this is just the padding
+                    if i + j < len {
+                        full = true;
                     }
                 }
-                if full {
-                    // TODO: we need a way to say that the buffer was not big enough
-                }
-                self.rx_client.map(|client| {
-                    client.receive_write(rx_buffer, len.min(buf_size));
-                });
-                // reset
-                self.rx_buffer_idx.set(0);
-                self.rx_buffer_size.set(0);
-            }
-            _err => {
-                debug!("Error receiving I3C write from controller");
-                // TODO: do we still need to read this?
-                let len = desc.read(I3CResponseDescriptor::DataLength) as usize;
-                for _ in (0..len.next_multiple_of(4)).step_by(4) {
-                    let _ = self.registers.rx_data_port0.get();
-                }
-                // TODO: should we let the client know somehow?
-                // put the buffer back
-                self.rx_buffer.replace(rx_buffer);
+                buf_idx += 1;
             }
         }
+
+        if full {
+            // TODO: we need a way to say that the buffer was not big enough
+        }
+        self.rx_client.map(|client| {
+            client.receive_write(rx_buffer, len.min(buf_size));
+        });
+        // reset
+        self.rx_buffer_idx.set(0);
+        self.rx_buffer_size.set(0);
     }
 
     // called when TTI wants us to send data for a private Read

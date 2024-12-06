@@ -31,6 +31,7 @@ Commands such as `cargo b` and `cargo t` will also work, but won't execute the e
 * `emulator/`: Emulator to run the ROM and RT firmware
 * `rom/`: ROM code
 * `runtime/`: runtime firmware
+* `romtime/`: Shared code between ROM and runtime
 * `tests/`: firmware and end-to-end tests
 * `xtask/`: all of the tooling for building, checking, and running everything.
 
