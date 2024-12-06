@@ -145,15 +145,26 @@ impl<T: Bus> SingleThreadBase for GdbTarget<T> {
     }
 
     fn read_addrs(&mut self, start_addr: u32, data: &mut [u8]) -> TargetResult<(), Self> {
-        for (addr, val) in (start_addr..).zip(data.iter_mut()) {
-            *val = self.cpu.read_bus(RvSize::Byte, addr).unwrap() as u8;
+        #[allow(clippy::needless_range_loop)] // this is needed because we wraparound
+        for i in 0..data.len() {
+            data[i] = self
+                .cpu
+                .read_bus(RvSize::Byte, start_addr.wrapping_add(i as u32))
+                .unwrap_or_default() as u8;
         }
         Ok(())
     }
 
     fn write_addrs(&mut self, start_addr: u32, data: &[u8]) -> TargetResult<(), Self> {
-        for (addr, val) in (start_addr..).zip(data.iter().copied()) {
-            self.cpu.write_bus(RvSize::Byte, addr, val as u32).unwrap();
+        #[allow(clippy::needless_range_loop)] // this is needed because we wraparound
+        for i in 0..data.len() {
+            self.cpu
+                .write_bus(
+                    RvSize::Byte,
+                    start_addr.wrapping_add(i as u32),
+                    data[i] as u32,
+                )
+                .unwrap_or_default();
         }
         Ok(())
     }
