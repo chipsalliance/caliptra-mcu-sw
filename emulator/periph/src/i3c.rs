@@ -30,7 +30,7 @@ pub struct I3c {
     /// RX DATA in u8
     tti_rx_data_raw: VecDeque<Vec<u8>>,
     /// RX DATA currently being read from driver
-    tti_rx_current: Vec<u8>,
+    tti_rx_current: VecDeque<u8>,
     /// TX Command in u32
     tti_tx_desc_queue_raw: VecDeque<u32>,
     /// TX DATA in u8
@@ -65,7 +65,7 @@ impl I3c {
             timer,
             tti_rx_desc_queue_raw: VecDeque::new(),
             tti_rx_data_raw: VecDeque::new(),
-            tti_rx_current: vec![],
+            tti_rx_current: VecDeque::new(),
             tti_tx_desc_queue_raw: VecDeque::new(),
             tti_tx_data_raw: VecDeque::new(),
             _error_irq: error_irq,
@@ -227,24 +227,24 @@ impl I3cPeripheral for I3c {
     fn read_i3c_ec_tti_rx_desc_queue_port(&mut self, _size: RvSize) -> u32 {
         if self.tti_rx_desc_queue_raw.len() & 1 == 0 {
             // only replace the data every other read since the descriptor is 64 bits
-            self.tti_rx_current = self.tti_tx_data_raw.pop_front().unwrap_or_default();
+            self.tti_rx_current = self.tti_rx_data_raw.pop_front().unwrap_or_default().into();
         }
         self.tti_rx_desc_queue_raw.pop_front().unwrap_or(0)
     }
 
     fn read_i3c_ec_tti_rx_data_port(&mut self, size: RvSize) -> u32 {
         match size {
-            RvSize::Byte => self.tti_rx_current.pop().unwrap_or(0) as u32,
+            RvSize::Byte => self.tti_rx_current.pop_front().unwrap_or(0) as u32,
             RvSize::HalfWord => {
-                let mut data = (self.tti_rx_current.pop().unwrap_or(0) as u32) << 8;
-                data |= self.tti_rx_current.pop().unwrap_or(0) as u32;
+                let mut data = (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 8;
+                data |= self.tti_rx_current.pop_front().unwrap_or(0) as u32;
                 data
             }
             RvSize::Word => {
-                let mut data = (self.tti_rx_current.pop().unwrap_or(0) as u32) << 24;
-                data |= (self.tti_rx_current.pop().unwrap_or(0) as u32) << 16;
-                data |= (self.tti_rx_current.pop().unwrap_or(0) as u32) << 8;
-                data |= self.tti_rx_current.pop().unwrap_or(0) as u32;
+                let mut data = self.tti_rx_current.pop_front().unwrap_or(0) as u32;
+                data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 16;
+                data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 16;
+                data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 24;
                 data
             }
             RvSize::Invalid => {
