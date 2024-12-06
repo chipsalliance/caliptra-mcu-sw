@@ -189,12 +189,19 @@ impl I3cController {
             .lock()
             .unwrap()
             .iter_mut()
-            .filter_map(|target| {
+            .flat_map(|target| {
+                let mut v = vec![];
+                v.extend(target.get_ibis().iter().map(|mdb| I3cBusResponse {
+                    ibi: Some(*mdb),
+                    addr: target.get_address().unwrap(),
+                    resp: I3cTcriResponseXfer::default(), // empty descriptor for the IBI
+                }));
                 target.get_response().map(|resp| I3cBusResponse {
                     ibi: None,
                     addr: target.get_address().unwrap(),
                     resp,
-                })
+                });
+                v
             })
             .collect()
     }
@@ -295,6 +302,14 @@ impl I3cTarget {
     pub fn set_response(&mut self, resp: I3cTcriResponseXfer) {
         self.target.lock().unwrap().tx_buffer.push_back(resp)
     }
+
+    pub fn get_ibis(&mut self) -> Vec<u8> {
+        self.target.lock().unwrap().ibi_buffer.drain(..).collect()
+    }
+
+    pub fn send_ibi(&mut self, mdb: u8) {
+        self.target.lock().unwrap().ibi_buffer.push_back(mdb)
+    }
 }
 
 #[derive(Clone, Default)]
@@ -302,6 +317,26 @@ pub struct I3cTargetDevice {
     dynamic_address: Option<DynamicI3cAddress>,
     rx_buffer: VecDeque<I3cTcriCommandXfer>,
     tx_buffer: VecDeque<I3cTcriResponseXfer>,
+    ibi_buffer: VecDeque<u8>,
+}
+
+bitfield! {
+    #[derive(Clone, FromBytes, IntoBytes)]
+    pub struct IbiDescriptor(u32);
+    impl Debug;
+    pub u8, received_status, set_received_status: 31, 31;
+    pub u8, error, set_error: 30, 30;
+    // Regular = 0
+    // CreditAck = 1
+    // ScheduledCmd = 2
+    // AutocmdRead = 4
+    // StbyCrBcastCcc = 7
+    pub u8, status_type, set_status_type: 29, 27;
+    pub u8, timestamp_preset, set_timestamp_preset: 25, 25;
+    pub u8, last_status, set_last_status: 24, 24;
+    pub u8, chunks, set_chunks: 23, 16;
+    pub u8, id, set_id: 15, 8;
+    pub u8, data_length, set_data_length: 7, 0;
 }
 
 bitfield! {
@@ -364,7 +399,7 @@ bitfield! {
 }
 
 bitfield! {
-    #[derive(Clone, FromBytes, IntoBytes)]
+    #[derive(Clone, Default, FromBytes, IntoBytes)]
     pub struct ResponseDescriptor(u32);
     impl Debug;
 
@@ -443,7 +478,7 @@ pub struct I3cTcriCommandXfer {
     pub data: Vec<u8>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct I3cTcriResponseXfer {
     pub resp: ResponseDescriptor,
     pub data: Vec<u8>,

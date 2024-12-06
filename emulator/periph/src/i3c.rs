@@ -7,7 +7,7 @@ Abstract:
 --*/
 
 use crate::i3c_protocol::{I3cController, I3cTarget, I3cTcriResponseXfer, ResponseDescriptor};
-use crate::{DynamicI3cAddress, I3cTcriCommand};
+use crate::{DynamicI3cAddress, I3cTcriCommand, IbiDescriptor};
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::i3c::I3cPeripheral;
@@ -35,6 +35,8 @@ pub struct I3c {
     tti_tx_desc_queue_raw: VecDeque<u32>,
     /// TX DATA in u8
     tti_tx_data_raw: VecDeque<Vec<u8>>,
+    /// IBI buffer
+    tti_ibi_buffer: Vec<u8>,
     /// Error interrupt
     _error_irq: Irq,
     /// Notification interrupt
@@ -68,6 +70,7 @@ impl I3c {
             tti_rx_current: VecDeque::new(),
             tti_tx_desc_queue_raw: VecDeque::new(),
             tti_tx_data_raw: VecDeque::new(),
+            tti_ibi_buffer: vec![],
             _error_irq: error_irq,
             notif_irq,
             interrupt_status: ReadWriteRegister::new(0),
@@ -144,10 +147,29 @@ impl I3c {
                     + InterruptStatus::TxDescTimeout::SET,
             ));
     }
+
+    // check if there area valid IBI descriptors and messages
+    fn check_ibi_buffer(&mut self) {
+        loop {
+            if self.tti_ibi_buffer.len() <= 4 {
+                return;
+            }
+
+            let desc = IbiDescriptor::read_from_bytes(&self.tti_ibi_buffer[0..4]).unwrap();
+            let len = desc.data_length() as usize;
+            if self.tti_ibi_buffer.len() < len + 4 {
+                // wait for more data
+                return;
+            }
+            // we only need the first byte, which is the MDB.
+            // TODO: handle more than the MDB?
+            self.i3c_target.send_ibi(self.tti_ibi_buffer[5]);
+            self.tti_ibi_buffer.drain(0..len + 4);
+        }
+    }
 }
 
 impl I3cPeripheral for I3c {
-    // TODO: route IBI to controller to let them know we're ready for a read
     fn read_i3c_base_hci_version(&mut self, _size: RvSize) -> RvData {
         RvData::from(Self::HCI_VERSION)
     }
@@ -196,6 +218,31 @@ impl I3cPeripheral for I3c {
         >,
     ) {
         self.interrupt_enable.reg.set(val.reg.get());
+    }
+
+    fn write_i3c_ec_tti_tti_ibi_port(
+        &mut self,
+        size: emulator_types::RvSize,
+        val: emulator_types::RvData,
+    ) {
+        match size {
+            RvSize::Byte => {
+                self.tti_ibi_buffer.push(val as u8);
+            }
+            RvSize::HalfWord => {
+                let val = val as u16;
+                self.tti_ibi_buffer.push(val as u8);
+                self.tti_ibi_buffer.push((val >> 8) as u8);
+            }
+            RvSize::Word => {
+                self.tti_ibi_buffer
+                    .extend_from_slice(val.to_le_bytes().as_ref());
+            }
+            RvSize::Invalid => {
+                panic!("Invalid size")
+            }
+        }
+        self.check_ibi_buffer();
     }
 
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
