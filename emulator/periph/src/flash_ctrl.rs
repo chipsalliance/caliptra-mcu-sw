@@ -133,6 +133,10 @@ impl DummyFlashCtrl {
                 // Check if interrupt is enabled before raising it
                 if self.interrupt_enable.reg.is_set(FlInterruptEnable::Error) {
                     self.error_irq.set_level(true);
+                    println!(
+                        "[xs debug]emulator: raise_interrupt: error: {:x}",
+                        self.interrupt_state.reg.get()
+                    );
                     self.timer.schedule_poll_in(1);
                 }
             }
@@ -143,7 +147,11 @@ impl DummyFlashCtrl {
                 // Check if interrupt is enabled before raising it
                 if self.interrupt_enable.reg.is_set(FlInterruptEnable::Event) {
                     self.event_irq.set_level(true);
-                    self.timer.schedule_poll_in(1);
+                    println!(
+                        "[xs debug]emulator: raise_interrupt: event: {:x}",
+                        self.interrupt_state.reg.get()
+                    );
+                    self.timer.schedule_poll_in(10);
                 }
             }
         }
@@ -156,12 +164,20 @@ impl DummyFlashCtrl {
                     .reg
                     .modify(FlInterruptState::Error::CLEAR);
                 self.error_irq.set_level(false);
+                println!(
+                    "[xs debug]emulator: clear_interrupt: error: {:x}",
+                    self.interrupt_state.reg.get()
+                );
             }
             FlashCtrlIntType::Event => {
                 self.interrupt_state
                     .reg
                     .modify(FlInterruptState::Event::CLEAR);
                 self.event_irq.set_level(false);
+                println!(
+                    "[xs debug]emulator: clear_interrupt: event: {:x}",
+                    self.interrupt_state.reg.get()
+                );
             }
         }
 
@@ -170,12 +186,16 @@ impl DummyFlashCtrl {
     }
 
     fn handle_io_completion(&mut self, io_compl: Result<(), FlashOpError>) {
+        println!("[xs debug]emulator: handle_io_completion");
+
         match io_compl {
             Ok(_) => {
+                println!("[xs debug]emulator: handle_io_completion: start");
                 self.op_status.reg.modify(OpStatus::Done::SET);
                 self.raise_interrupt(FlashCtrlIntType::Event);
             }
             Err(error_type) => {
+                println!("[xs debug]emulator: handle_io_completion: error");
                 self.op_status
                     .reg
                     .modify(OpStatus::Err.val(error_type as u32));
@@ -185,6 +205,12 @@ impl DummyFlashCtrl {
     }
 
     fn read_page(&mut self) -> Result<(), FlashOpError> {
+        println!(
+            "[xs debug]emulator: read_page: page_num: {}, page_size: {}",
+            self.page_num.reg.get(),
+            self.page_size.reg.get()
+        );
+
         // Get the page number from the register
         let page_num = self.page_num.reg.get();
 
@@ -223,14 +249,49 @@ impl DummyFlashCtrl {
         // Get the page number from the register
         let page_num = self.page_num.reg.get();
 
+        // Ensure the file is not None
+        assert!(self.file.is_some());
+
+        println!(
+            "[xs debug]emulator: write_page: page_num: {}, page_addr: {}, page_size: {}",
+            page_num,
+            self.page_addr.reg.get() as usize,
+            self.page_size.reg.get()
+        );
+
         // Sanity check for the page number, page size and file
         if page_num >= Self::MAX_PAGES
             || self.page_size.reg.get() < Self::PAGE_SIZE as u32
             || self.file.is_none()
         {
+            println!(
+                "[xs debug]emulator: Error: write_page: page_num: {}",
+                page_num
+            );
             return Err(FlashOpError::WriteError);
         }
 
+        println!("[xs debug]emulator: data transfer start");
+
+        unsafe {
+            let src_ptr = (self.page_addr.reg.get() as usize) as *const u8;
+            let dst_ptr = self.buffer.as_mut_ptr();
+
+            // Print source buffer contents
+            for i in 0..Self::PAGE_SIZE {
+                println!("[xs debug]emulator: Source buffer[{}]: {:x}", i, *src_ptr.add(i));
+            }
+
+            std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, Self::PAGE_SIZE);
+
+            // Print destination buffer contents
+            for i in 0..Self::PAGE_SIZE {
+                println!("[xs debug]emulator: Destination buffer[{}]: {:x}", i, *dst_ptr.add(i));
+            }
+
+        }
+
+        /*
         // Copy the data from the 'PAGE_ADDR' buffer to the internal buffer
         unsafe {
             std::ptr::copy_nonoverlapping(
@@ -238,7 +299,7 @@ impl DummyFlashCtrl {
                 self.buffer.as_mut_ptr(),
                 Self::PAGE_SIZE,
             );
-        }
+        }  */
 
         // Write the entire page from the buffer to the backend file
         if let Some(file) = &mut self.file {
@@ -251,6 +312,7 @@ impl DummyFlashCtrl {
             }
         }
 
+        println!("[xs debug]emulator: write_page: page_num: {} success", page_num);
         Ok(())
     }
 
@@ -265,6 +327,12 @@ impl DummyFlashCtrl {
         {
             return Err(FlashOpError::EraseError);
         }
+
+        println!(
+            "[xs debug]emulator: erase_page: page_num: {}, page_size: {}",
+            page_num,
+            self.page_size.reg.get()
+        );
 
         // Erase the entire page in the backend file by writing 0xFF.
         if let Some(file) = &mut self.file {
@@ -330,6 +398,11 @@ impl FlashPeripheral for DummyFlashCtrl {
             registers_generated::flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
+        println!(
+            "[xs debug]emulator: write_fl_interrupt_state: {}",
+            val.reg.get()
+        );
+
         // Interrupt state register: SW write 1 to clear
         if val.reg.is_set(FlInterruptState::Error) {
             self.clear_interrupt(FlashCtrlIntType::Error);
@@ -357,6 +430,11 @@ impl FlashPeripheral for DummyFlashCtrl {
             registers_generated::flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
+        println!(
+            "[xs debug]emulator: write_fl_interrupt_enable: {}",
+            val.reg.get()
+        );
+
         if self.interrupt_state.reg.is_set(FlInterruptState::Error)
             && val.reg.is_set(FlInterruptEnable::Error)
         {
@@ -376,6 +454,7 @@ impl FlashPeripheral for DummyFlashCtrl {
 
     fn write_page_size(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
         self.page_size.reg.set(val);
+        println!("[xs debug]emulator: write_page_size: {}", val);
     }
 
     // Return the page size of the flash storage connected to the controller
@@ -388,6 +467,7 @@ impl FlashPeripheral for DummyFlashCtrl {
     }
 
     fn write_page_num(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
+        println!("[xs debug]emulator: write_page_num: {}", val);
         self.page_num.reg.set(val);
     }
 
@@ -396,6 +476,7 @@ impl FlashPeripheral for DummyFlashCtrl {
     }
 
     fn write_page_addr(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
+        println!("[xs debug]emulator: write_page_addr: {}", val);
         self.page_addr.reg.set(val);
     }
 
@@ -417,6 +498,7 @@ impl FlashPeripheral for DummyFlashCtrl {
             registers_generated::flash_ctrl::bits::FlControl::Register,
         >,
     ) {
+        println!("[xs debug]emulator: write_fl_control: {}", val.reg.get());
         if !self.ctrl_regwen.reg.is_set(CtrlRegwen::En) {
             return;
         }
@@ -460,6 +542,10 @@ impl FlashPeripheral for DummyFlashCtrl {
         u32,
         registers_generated::flash_ctrl::bits::CtrlRegwen::Register,
     > {
+        println!(
+            "[xs debug]emulator: read_ctrl_regwen: {}",
+            self.ctrl_regwen.reg.get()
+        );
         emulator_bus::ReadWriteRegister::new(self.ctrl_regwen.reg.get())
     }
 }
