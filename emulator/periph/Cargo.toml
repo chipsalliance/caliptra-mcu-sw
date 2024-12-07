@@ -29,4 +29,5 @@ libc = "0.2"
 [features]
 default = []
 test-i3c-constant-writes = []
-test-flash-ctrl-read-write-page = []
+test-flash-ctrl-write-page = []
+test-flash-ctrl-erase-page = []

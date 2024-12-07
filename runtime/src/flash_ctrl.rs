@@ -11,6 +11,10 @@ use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
 use kernel::{debug, debug_flush_queue};
 
+// XS: adding for debug print
+use core::fmt::Write;
+use romtime::println;
+
 use registers_generated::flash_ctrl::{
     bits::{CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus},
     regs::FlashCtrl,
@@ -129,7 +133,7 @@ impl<'a> EmulatedFlashCtrl<'a> {
     }
 
     pub fn handle_interrupt(&self) {
-        debug!("FlashCtrl interrupt handler");
+        println!("[xs debug]driver:FlashCtrl interrupt handler");
 
         // Extract the interrupt state and save it
         let flashctrl_intr = self.registers.fl_interrupt_state.extract();
@@ -265,7 +269,7 @@ impl hil::flash::Flash for EmulatedFlashCtrl<'_> {
 
         // debug print the page number, page address and page size
         debug!(
-            "Page Number: {}, Page Address: {}, Page Size: {}",
+            "Page Number: {}, Page Address: {:#010x}, Page Size: {}",
             page_number, page_buf_addr, page_buf_len
         );
 
@@ -297,7 +301,7 @@ impl hil::flash::Flash for EmulatedFlashCtrl<'_> {
         page_number: usize,
         buf: &'static mut Self::Page,
     ) -> Result<(), (ErrorCode, &'static mut Self::Page)> {
-        debug!("[xs debug]flash_ctrl driver: write_page start");
+        println!("[xs debug]flash driver: write_page start");
 
         // Check if the page number is valid
         if page_number >= FLASH_MAX_PAGES {
@@ -317,7 +321,7 @@ impl hil::flash::Flash for EmulatedFlashCtrl<'_> {
         // panic if buf address is above 32-bit address space
         if buf.as_mut().as_ptr() as usize > u32::MAX as usize {
             panic!(
-                "[xs debug]flash_ctrl driver: Buffer address {:p} is above 32-bit address space",
+                "Buffer address {:p} is above 32-bit address space",
                 buf.as_mut().as_ptr()
             );
         }
@@ -327,8 +331,8 @@ impl hil::flash::Flash for EmulatedFlashCtrl<'_> {
         let page_buf_len = buf.as_mut().len() as u32;
 
         // debug print the page number, page address and page size
-        debug!(
-            "[xs debug]flash_ctrl driver: Page Number: {}, Page Address: {}, Page Size: {}",
+        println!(
+            "[xs debug]flash driver: Page Number: {}, Page Address: {:#010x}, Page Size: {}",
             page_number, page_buf_addr, page_buf_len
         );
 
@@ -352,6 +356,8 @@ impl hil::flash::Flash for EmulatedFlashCtrl<'_> {
     }
 
     fn erase_page(&self, page_number: usize) -> Result<(), ErrorCode> {
+        println!("[xs debug]flash driver: erase_page start\n");
+
         if page_number >= FLASH_MAX_PAGES {
             return Err(ErrorCode::INVAL);
         }
@@ -368,6 +374,9 @@ impl hil::flash::Flash for EmulatedFlashCtrl<'_> {
 
         // Program page_num register
         self.registers.page_num.set(page_number as u32);
+
+        // Program page_size register
+        self.registers.page_size.set(PAGE_SIZE as u32);
 
         // Enable interrupts
         self.enable_interrupts();

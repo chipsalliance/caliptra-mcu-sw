@@ -286,7 +286,6 @@ pub unsafe fn main() {
         debug!("{:?}", err);
     });
 
-
     // For testing purposes, we need to keep a reference to the kernel and the main loop capability
     {
         PLATFORM = Some(static_init!(
@@ -313,9 +312,12 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-flash-ctrl-init") {
         debug!("Executing test-flash-ctrl-init");
         crate::flash_ctrl_test::test_flash_ctrl_init()
-    } else if cfg!(feature = "test-flash-ctrl-read-write-page") {
-        debug!("Executing test-flash-ctrl-read-write-page");
-        crate::flash_ctrl_test::test_flash_ctrl_read_write_page()
+    } else if cfg!(feature = "test-flash-ctrl-write-page") {
+        debug!("Executing test-flash-ctrl-write-page");
+        crate::flash_ctrl_test::test_flash_ctrl_write_page()
+    } else if cfg!(feature = "test-flash-ctrl-erase-page") {
+        debug!("Executing test-flash-ctrl-erase-page");
+        crate::flash_ctrl_test::test_flash_ctrl_erase_page()
     } else {
         None
     };

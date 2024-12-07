@@ -24,6 +24,8 @@ use rv32i::syscall::SysCall;
 use crate::pic::Pic;
 use crate::pic::PicRegisters;
 
+use romtime::println;
+
 pub const PIC_BASE: StaticRef<PicRegisters> =
     unsafe { StaticRef::new(0x6000_0000 as *const PicRegisters) };
 
@@ -79,6 +81,7 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
         } else if interrupt == FLASH_CTRL_ERROR_IRQ as u32
             || interrupt == FLASH_CTRL_EVENT_IRQ as u32
         {
+            println!("[xs debug]serivce_interrupt: handling flash ctrl interrupt");
             self.flash_ctrl.handle_interrupt();
             return true;
         }

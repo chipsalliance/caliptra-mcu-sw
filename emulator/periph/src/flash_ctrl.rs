@@ -253,7 +253,7 @@ impl DummyFlashCtrl {
         assert!(self.file.is_some());
 
         println!(
-            "[xs debug]emulator: write_page: page_num: {}, page_addr: {}, page_size: {}",
+            "[xs debug]emulator: write_page: page_num: {}, page_addr: {:#010x}, page_size: {}",
             page_num,
             self.page_addr.reg.get() as usize,
             self.page_size.reg.get()
@@ -273,25 +273,23 @@ impl DummyFlashCtrl {
 
         println!("[xs debug]emulator: data transfer start");
 
-        unsafe {
-            let src_ptr = (self.page_addr.reg.get() as usize) as *const u8;
-            let dst_ptr = self.buffer.as_mut_ptr();
+        // Debugging code: will be removed later
+        {
+            // Copy the data from the 'PAGE_ADDR' buffer to the internal buffer
+            let src_ptr = self.page_addr.reg.get() as *const u8;
 
-            // Print source buffer contents
+            println!("[xs debug]emulator: src_ptr: {:#010x}", src_ptr as usize);
+
             for i in 0..Self::PAGE_SIZE {
-                println!("[xs debug]emulator: Source buffer[{}]: {:x}", i, *src_ptr.add(i));
+                unsafe {
+                    let data = *src_ptr.add(i);
+
+                    // !!! Weird behavior: this print never shows up in the UART. It seems when accessing the raw buffer something is wrong !!!
+                    println!("[xs debug]emulator: data: {:#02x}", data);
+                }
             }
-
-            std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, Self::PAGE_SIZE);
-
-            // Print destination buffer contents
-            for i in 0..Self::PAGE_SIZE {
-                println!("[xs debug]emulator: Destination buffer[{}]: {:x}", i, *dst_ptr.add(i));
-            }
-
         }
 
-        /*
         // Copy the data from the 'PAGE_ADDR' buffer to the internal buffer
         unsafe {
             std::ptr::copy_nonoverlapping(
@@ -299,7 +297,10 @@ impl DummyFlashCtrl {
                 self.buffer.as_mut_ptr(),
                 Self::PAGE_SIZE,
             );
-        }  */
+        }
+
+        // !!! Weird behavior: this prints never shows up in the UART. The data is not written to the file. !!!
+        println!("[xs debug]emulator: data transfer end");
 
         // Write the entire page from the buffer to the backend file
         if let Some(file) = &mut self.file {
@@ -312,7 +313,6 @@ impl DummyFlashCtrl {
             }
         }
 
-        println!("[xs debug]emulator: write_page: page_num: {} success", page_num);
         Ok(())
     }
 
@@ -325,14 +325,12 @@ impl DummyFlashCtrl {
             || self.page_size.reg.get() < Self::PAGE_SIZE as u32
             || self.file.is_none()
         {
+            println!(
+                "[xs debug]emulator: Error: erase_page: page_num: {}",
+                page_num
+            );
             return Err(FlashOpError::EraseError);
         }
-
-        println!(
-            "[xs debug]emulator: erase_page: page_num: {}, page_size: {}",
-            page_num,
-            self.page_size.reg.get()
-        );
 
         // Erase the entire page in the backend file by writing 0xFF.
         if let Some(file) = &mut self.file {
@@ -341,10 +339,18 @@ impl DummyFlashCtrl {
             if file.seek(std::io::SeekFrom::Start(offset)).is_err()
                 || file.write_all(&vec![0xFF; Self::PAGE_SIZE]).is_err()
             {
+                println!(
+                    "[xs debug]emulator: Error: erase_page: page_num: {}",
+                    page_num
+                );
                 return Err(FlashOpError::EraseError);
             }
         }
 
+        println!(
+            "[xs debug]emulator: erase_page: page_num: {} success",
+            page_num
+        );
         Ok(())
     }
 
@@ -476,7 +482,7 @@ impl FlashPeripheral for DummyFlashCtrl {
     }
 
     fn write_page_addr(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
-        println!("[xs debug]emulator: write_page_addr: {}", val);
+        println!("[xs debug]emulator: write_page_addr: {:#010x}", val);
         self.page_addr.reg.set(val);
     }
 
