@@ -1,4 +1,0 @@
-# This is the nightly Rust toolchain used by `make test`.
-[toolchain]
-channel = "nightly-2024-11-11"
-components = ["miri", "rust-src"]

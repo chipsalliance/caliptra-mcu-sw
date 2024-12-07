@@ -4,7 +4,8 @@ use libtock_low_level_debug::{AlertCode, LowLevelDebug};
 use libtock_platform::{ErrorCode, Syscalls};
 use libtock_runtime::TockSyscalls;
 
-#[panic_handler]
+#[allow(dead_code)]
+#[cfg_attr(target_arch = "riscv32", panic_handler)]
 fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
     // Signal a panic using the LowLevelDebug capsule (if available).
     LowLevelDebug::<TockSyscalls>::print_alert_code(AlertCode::Panic);

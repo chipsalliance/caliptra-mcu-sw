@@ -25,8 +25,6 @@ extern "C" fn start_prototype(
 
     let pc: usize;
     unsafe {
-        #[cfg(target_arch = "arm")]
-        asm!("mov {}, pc", lateout(reg) pc, options(nomem, nostack, preserves_flags));
         #[cfg(target_arch = "riscv32")]
         asm!("auipc {}, 0", lateout(reg) pc, options(nomem, nostack, preserves_flags));
     }

@@ -1,7 +1,6 @@
 [package]
 edition = "2021"
 name = "syscalls_tests"
-rust-version.workspace = true
 version = "0.1.0"
 
 [dependencies]
