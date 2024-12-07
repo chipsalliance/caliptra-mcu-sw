@@ -6,6 +6,7 @@ use crate::hil::I3CTargetInfo;
 use crate::hil::{RxClient, TxClient};
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
+use core::fmt::Write;
 use kernel::hil::time::Alarm;
 use kernel::hil::time::AlarmClient;
 use kernel::hil::time::Time;
@@ -26,6 +27,8 @@ use registers_generated::i3c::regs::I3c;
 use registers_generated::i3c::I3C_CSR_ADDR;
 use tock_registers::register_bitfields;
 use tock_registers::LocalRegisterCopy;
+
+use romtime::println;
 
 pub const I3C_BASE: StaticRef<I3c> = unsafe { StaticRef::new(I3C_CSR_ADDR as *const I3c) };
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
@@ -285,10 +288,12 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             }
             // There is a pending Read Transaction on the I3C Bus. Software should write data to the TX Descriptor Queue and the TX Data Queue
             if tti_interrupts.read(InterruptStatus::TxDescStat) != 0 {
+                println!("TxDescStat interrupt");
                 self.handle_outgoing_read();
             }
             // There is a pending Write Transaction. Software should read data from the RX Descriptor Queue and the RX Data Queue
             if tti_interrupts.read(InterruptStatus::RxDescStat) != 0 {
+                println!("RxDescStat interrupt");
                 self.handle_incoming_write();
             }
         }
@@ -309,9 +314,11 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
 
     // called when TTI has a private Write with data for us to grab
     pub fn handle_incoming_write(&self) {
+        println!("Handling incoming write");
         self.retry_incoming_write.set(false);
         if self.rx_buffer.is_none() {
             self.rx_client.map(|client| {
+                // debug!("No buffer to receive I3C write");
                 client.write_expected();
             });
         }
@@ -331,6 +338,8 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             ((desc1 as u64) << 32) | (desc0 as u64),
         );
         let len = desc.read(I3CCommandDescriptor::DataLength) as usize;
+
+        // debug!("Received data descriptor: {:?} len {}", desc, len);
         // read everything
         let mut full = false;
         for i in (0..len.next_multiple_of(4)).step_by(4) {
@@ -341,6 +350,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                     break;
                 }
                 if let Some(x) = rx_buffer.get_mut(buf_idx) {
+                    // debug!("Received data: {:X} at {}", data[j], buf_idx);
                     *x = data[j];
                 } else {
                     // check if we ran out of space or if this is just the padding
@@ -355,6 +365,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         if full {
             // TODO: we need a way to say that the buffer was not big enough
         }
+        // debug!("Received data: {:?}", rx_buffer);
         self.rx_client.map(|client| {
             client.receive_write(rx_buffer, len.min(buf_size));
         });
@@ -365,6 +376,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
 
     // called when TTI wants us to send data for a private Read
     pub fn handle_outgoing_read(&self) {
+        println!("Handling outgoing read");
         self.retry_outgoing_read.set(false);
 
         if self.tx_buffer.is_none() {
@@ -418,6 +430,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     fn send_ibi(&self, mdb: u8) {
+        println!("Sending IBI from target mdb {}", mdb);
         // TODO: it is unclear if we need to set anything else in the descriptor
         self.registers
             .tti_ibi_port
@@ -450,6 +463,7 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         if self.tx_buffer.is_some() {
             return Err((ErrorCode::BUSY, tx_buf));
         }
+        println!("Transmitting read buf {:x?}", &tx_buf[..len]);
         self.tx_buffer.replace(tx_buf);
         self.tx_buffer_idx.set(0);
         self.tx_buffer_size.set(len);

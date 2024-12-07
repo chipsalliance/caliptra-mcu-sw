@@ -72,11 +72,13 @@ impl I3cController {
         let running = self.running.clone();
         let targets = self.targets.clone();
         let counter = self.incoming_counter.clone();
+        println!("Starting I3C controller thread");
         thread::spawn(move || {
             while running.load(Ordering::Relaxed) {
                 I3cController::tcri_receive_all(targets.clone())
                     .iter()
                     .for_each(|resp| {
+                        println!("I3C Controller thread: Sending response: {:?}", resp);
                         tx.send(resp.clone()).unwrap();
                     });
                 if let Ok(cmd) = rx.recv_timeout(Duration::from_millis(5)) {
@@ -114,6 +116,10 @@ impl I3cController {
         targets.lock().unwrap().iter_mut().for_each(|target| {
             if let Some(target_address) = target.get_address() {
                 if target_address == addr {
+                    println!(
+                        "incoming: Sending command to target addr: {:?} {:?}",
+                        addr, cmd
+                    );
                     target.send_command(cmd.cmd.clone());
                 }
             }
@@ -191,10 +197,13 @@ impl I3cController {
             .iter_mut()
             .flat_map(|target| {
                 let mut v = vec![];
-                v.extend(target.get_ibis().iter().map(|mdb| I3cBusResponse {
-                    ibi: Some(*mdb),
-                    addr: target.get_address().unwrap(),
-                    resp: I3cTcriResponseXfer::default(), // empty descriptor for the IBI
+                v.extend(target.get_ibis().iter().map(|mdb| {
+                    println!("tcri_receive_all: IBI: {:?}", mdb);
+                    I3cBusResponse {
+                        ibi: Some(*mdb),
+                        addr: target.get_address().unwrap(),
+                        resp: I3cTcriResponseXfer::default(), // empty descriptor for the IBI
+                    }
                 }));
                 target.get_response().map(|resp| I3cBusResponse {
                     ibi: None,
@@ -306,6 +315,7 @@ impl I3cTarget {
     }
 
     pub fn get_response(&mut self) -> Option<I3cTcriResponseXfer> {
+        // println!("get_response: tx_buf que len {:?}", self.target.lock().unwrap().tx_buffer.len());
         self.target.lock().unwrap().tx_buffer.pop_front()
     }
 
@@ -326,6 +336,7 @@ impl I3cTarget {
     }
 
     pub fn send_ibi(&mut self, mdb: u8) {
+        println!("send_ibi: {:?}", mdb);
         self.target.lock().unwrap().ibi_buffer.push_back(mdb)
     }
 }

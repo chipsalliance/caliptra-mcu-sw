@@ -1,10 +1,11 @@
 // Licensed under the Apache-2.0 license
 
+use core::fmt::Write;
 use i3c_driver::hil::{I3CTarget, RxClient, TxClient};
+use romtime::println;
 
 use core::cell::Cell;
 
-use kernel::debug;
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::cells::TakeCell;
 use kernel::ErrorCode;
@@ -27,7 +28,11 @@ pub trait MCTPTransportBinding<'a> {
     /// Set the buffer that will be used for receiving packets.
     fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
 
-    fn transmit(&self, tx_buffer: &'static mut [u8]) -> Result<(), (ErrorCode, &'static mut [u8])>;
+    fn transmit(
+        &self,
+        tx_buffer: &'static mut [u8],
+        len: usize,
+    ) -> Result<(), (ErrorCode, &'static mut [u8])>;
 
     /// Enable/Disable the I3C target device
     fn enable(&self);
@@ -91,7 +96,11 @@ impl<'a> MCTPI3CBinding<'a> {
                 .dynamic_addr
                 .unwrap_or(device_info.static_addr.unwrap_or(0)),
         );
-        self.i3c_target.enable();
+        println!(
+            "MCTPI3CBinding: Device address: 0x{:02X}",
+            self.device_address.get()
+        );
+        // self.i3c_target.enable();
     }
 
     /// SMBus CRC8 calculation.
@@ -132,12 +141,15 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
     }
 
     fn set_rx_buffer(&self, rx_buf: &'static mut [u8]) {
+        println!("MCTPI3CBinding: Setting RX buffer");
         self.i3c_target.set_rx_buffer(rx_buf);
     }
 
-    fn transmit(&self, tx_buffer: &'static mut [u8]) -> Result<(), (ErrorCode, &'static mut [u8])> {
-        let len = tx_buffer.len();
-
+    fn transmit(
+        &self,
+        tx_buffer: &'static mut [u8],
+        len: usize,
+    ) -> Result<(), (ErrorCode, &'static mut [u8])> {
         self.tx_buffer.replace(tx_buffer);
 
         // Make sure there's enough space for the PEC byte
@@ -149,13 +161,19 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
         let addr = self.device_address.get() << 1 | 0x01;
         match self.tx_buffer.take() {
             Some(tx_buffer) => {
-                let pec = MCTPI3CBinding::compute_pec(addr, tx_buffer, len);
-                tx_buffer[len] = pec;
-                match self.i3c_target.transmit_read(tx_buffer, len + 1) {
-                    Ok(_) => {}
-                    Err((e, tx_buffer)) => {
-                        Err((e, tx_buffer))?;
+                if tx_buffer.len() > len + 1 {
+                    let pec = MCTPI3CBinding::compute_pec(addr, tx_buffer, len);
+                    tx_buffer[len] = pec;
+
+                    println!("MCTPI3CBinding: Transmitting write len {}", len + 1);
+                    match self.i3c_target.transmit_read(tx_buffer, len + 1) {
+                        Ok(_) => {}
+                        Err((e, tx_buffer)) => {
+                            Err((e, tx_buffer))?;
+                        }
                     }
+                } else {
+                    Err((ErrorCode::SIZE, tx_buffer))?;
                 }
             }
             None => {
@@ -192,31 +210,44 @@ impl<'a> TxClient for MCTPI3CBinding<'a> {
 
 impl<'a> RxClient for MCTPI3CBinding<'a> {
     fn receive_write(&self, rx_buffer: &'static mut [u8], len: usize) {
+        // println!("MCTPI3CBinding: Received write len {}", len);
         // check if len is > 0 and <= max_write_len
         // if yes, compute PEC and check if it matches with the last byte of the buffer
         // if yes, call the client's receive_write function
         // if no, drop the packet and set_rx_buffer on i3c_target to receive the next packet
         if len == 0 || len > self.max_write_len.get() {
-            debug!("MCTPI3CBinding: Invalid packet length. Dropping packet.");
+            // println!("MCTPI3CBinding: Invalid packet length. Dropping packet.");
             self.i3c_target.set_rx_buffer(rx_buffer);
             return;
         }
 
+        println!("MCTPI3CBinding: Going to compute pec for received packet received len {} rx_buffer {:?}", len, rx_buffer);
+
         // Rx is a write operation from the I3C controller. Set the R/W bit at LSB to 0.
-        let addr = self.device_address.get() << 1;
+        // let addr = self.device_address.get() << 1;
+        let addr = 0x8 << 1;
         let pec = MCTPI3CBinding::compute_pec(addr, rx_buffer, len - 1);
+        println!(
+            "MCTPI3CBinding: PEC calculated {} received {} dev addr {} ",
+            pec,
+            rx_buffer[len - 1],
+            addr
+        );
         if pec == rx_buffer[len - 1] {
+            println!("MCTPI3CBinding: PEC matched received {} calculated {}. Calling client's receive function", rx_buffer[len - 1], pec);
             self.rx_client.map(|client| {
                 client.receive(rx_buffer, len - 1);
             });
         } else {
-            debug!("MCTPI3CBinding: Invalid PEC. Dropping packet.");
+            println!("MCTPI3CBinding: Invalid PEC. Dropping packet.");
             self.i3c_target.set_rx_buffer(rx_buffer);
         }
     }
 
     fn write_expected(&self) {
+        // println!("MCTPI3CBinding: Write expected");
         self.rx_client.map(|client| {
+            // println!("MCTPI3CBinding: Calling client's write expected");
             client.write_expected();
         });
     }

@@ -13,3 +13,4 @@ capsules-extra = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86
 i3c-driver.workspace = true
 zerocopy.workspace = true
 bitfield.workspace = true
+romtime.workspace = true

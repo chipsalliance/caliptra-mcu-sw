@@ -12,8 +12,8 @@ pub const MCTP_HDR_SIZE: usize = 4;
 
 bitfield! {
     #[repr(C)]
-    #[derive(Clone, FromBytes, IntoBytes, Immutable)]
-    pub struct MCTPHeader([u8]);
+    #[derive(Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
+    pub struct MCTPHeader(MSB0 [u8]);
     impl Debug;
     u8;
     rsvd, _: 4, 0;

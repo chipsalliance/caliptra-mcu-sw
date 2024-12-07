@@ -25,3 +25,4 @@ tock-registers.workspace = true
 default = []
 test-i3c-simple = []
 test-i3c-constant-writes = []
+test-mctp-ctrl-cmds = []

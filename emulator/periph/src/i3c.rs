@@ -94,8 +94,13 @@ impl I3c {
         }
     }
 
+    pub fn get_dynamic_address(&self) -> Option<DynamicI3cAddress> {
+        self.i3c_target.get_address()
+    }
+
     fn write_tx_data_into_target(&mut self) {
         if !self.tti_tx_desc_queue_raw.is_empty() {
+            println!("TX: {:?}", self.tti_tx_desc_queue_raw);
             let resp_desc = ResponseDescriptor::read_from_bytes(
                 &self.tti_tx_desc_queue_raw[0].to_le_bytes()[..],
             )
@@ -134,6 +139,7 @@ impl I3c {
             .map(|xfer| {
                 match &xfer.cmd {
                     I3cTcriCommand::Regular(reg_xfer) => {
+                        println!("reg_xfer.rnw(): {}", reg_xfer.rnw());
                         reg_xfer.rnw() == 1 // there is Read transaction pending
                     }
                     _ => false, // we only support regular transfers
@@ -141,6 +147,7 @@ impl I3c {
             })
             .unwrap_or(false);
         self.interrupt_status.reg.modify(if pending_read {
+            println!("pending read. setting TxDescStat");
             InterruptStatus::TxDescStat::SET
         } else {
             InterruptStatus::TxDescStat::CLEAR
@@ -241,6 +248,7 @@ impl I3cPeripheral for I3c {
         size: emulator_types::RvSize,
         val: emulator_types::RvData,
     ) {
+        println!("write_i3c_ec_tti_tti_ibi_port: size {:?} {:x}", size, val);
         match size {
             RvSize::Byte => {
                 self.tti_ibi_buffer.push(val as u8);
@@ -305,9 +313,10 @@ impl I3cPeripheral for I3c {
             }
             RvSize::Word => {
                 let mut data = self.tti_rx_current.pop_front().unwrap_or(0) as u32;
-                data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 16;
+                data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 8;
                 data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 16;
                 data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 24;
+                println!("read_i3c_ec_tti_rx_data_port: {:x}", data);
                 data
             }
             RvSize::Invalid => {
@@ -317,12 +326,14 @@ impl I3cPeripheral for I3c {
     }
 
     fn write_i3c_ec_tti_tx_desc_queue_port(&mut self, _size: RvSize, val: u32) {
+        println!("write_i3c_ec_tti_tx_desc_queue_port: {:x}", val);
         self.tti_tx_desc_queue_raw.push_back(val);
         self.tti_tx_data_raw.push_back(vec![]);
         self.write_tx_data_into_target();
     }
 
     fn write_i3c_ec_tti_tx_data_port(&mut self, size: RvSize, val: u32) {
+        println!("write_i3c_ec_tti_tx_data_port: {:x}", val);
         let to_append = val.to_le_bytes();
         let idx = self.tti_tx_data_raw.len() - 1;
         for byte in &to_append[..size.into()] {

@@ -341,6 +341,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     let i3c_error_irq = pic.register_irq(CaliptraRootBus::I3C_ERROR_IRQ);
     let i3c_notif_irq = pic.register_irq(CaliptraRootBus::I3C_NOTIF_IRQ);
 
+    println!("Starting I3C Socket, port {}", cli.i3c_port.unwrap_or(0));
+
     let mut i3c_controller = if let Some(i3c_port) = cli.i3c_port {
         let (rx, tx) = start_i3c_socket(running.clone(), i3c_port);
         I3cController::new(rx, tx)
@@ -353,6 +355,22 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         i3c_error_irq,
         i3c_notif_irq,
     );
+
+    println!("Starting I3C Controller thread");
+    i3c_controller.start();
+
+    if cfg!(feature = "test-mctp-ctrl-cmds") {
+        println!(
+            "Starting client test thread for target tests {:?}",
+            i3c.get_dynamic_address()
+        );
+
+        i3c_socket::run_tests(
+            running.clone(),
+            cli.i3c_port.unwrap(),
+            i3c.get_dynamic_address().unwrap(),
+        );
+    }
 
     let flash_ctrl_error_irq = pic.register_irq(CaliptraRootBus::FLASH_CTRL_ERROR_IRQ);
     let flash_ctrl_event_irq = pic.register_irq(CaliptraRootBus::FLASH_CTRL_EVENT_IRQ);

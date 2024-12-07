@@ -77,6 +77,10 @@ impl Component for MCTPMuxComponent {
             tx_pkt_buffer,
             rx_pkt_buffer,
         ));
+
+        mctp_device.set_tx_client(mctp_mux_driver);
+        mctp_device.set_rx_client(mctp_mux_driver);
+
         mctp_mux_driver
     }
 }
