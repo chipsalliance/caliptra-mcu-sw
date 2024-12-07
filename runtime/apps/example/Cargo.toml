@@ -1,0 +1,21 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "example-app"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+critical-section = "1.1.2"
+embassy-executor = "0.5.0"
+embedded-alloc = "0.5.1"
+libtock = { path = "../libtock" }
+libtock_alarm = { path = "../libtock/apis/peripherals/alarm" }
+libtock_console = { path = "../libtock/apis/interface/console" }
+libtock_debug_panic = { path = "../libtock/panic_handlers/debug_panic" }
+libtock_platform = { path = "../libtock/platform" }
+libtock_runtime = { path = "../libtock/runtime" }
+portable-atomic = "1.7.0"
