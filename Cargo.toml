@@ -17,7 +17,7 @@ members = [
     "registers/systemrdl",
     "rom",
     "runtime",
-    "runtime/apps/pldm",
+    "runtime/apps/example",
     "runtime/apps/libtock/apis/interface/buttons",
     "runtime/apps/libtock/apis/interface/buzzer",
     "runtime/apps/libtock/apis/interface/console",

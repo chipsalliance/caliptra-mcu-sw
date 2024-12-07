@@ -6,7 +6,7 @@ use crate::{DynError, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
 pub const APPS: &[App] = &[App {
-    name: "pldm-app",
+    name: "example-app",
     permissions: vec![],
     minimum_ram: 16384,
 }];
