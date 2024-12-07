@@ -1,0 +1,23 @@
+[package]
+authors = ["Tock Project Developers <tock-dev@googlegroups.com>"]
+categories = ["embedded", "no-std", "os"]
+description = """libtock-rs runtime. Provides raw system call implementations \
+                 and language items necessary for Tock apps."""
+edition = "2021"
+license = "Apache-2.0 OR MIT"
+name = "libtock_runtime"
+repository = "https://www.github.com/tock/libtock-rs"
+rust-version.workspace = true
+version = "0.1.0"
+
+[dependencies]
+libtock_platform = { path = "../platform" }
+
+[features]
+
+# By default, libtock_runtime calls Memop to tell the Tock kernel where the
+# stack and heap begin. The kernel uses those addresses to specify the stack and
+# heap address ranges if the process faults. Those calls cost 22 bytes on ARM
+# and 28 bytes on RISC-V. To remove them (for the purpose of minimizing code
+# size), enable the no_debug_memop feature.
+no_debug_memop = []
