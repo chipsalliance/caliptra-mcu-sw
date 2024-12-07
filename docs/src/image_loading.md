@@ -51,6 +51,7 @@ The APIs are presented as methods of the ImageLoader trait.
 
 ```rust
 
+
 /// Trait defining the Image Loading module
 pub trait ImageLoader {
     /// Retrieves the SOC manifest from flash memory asynchronously.
@@ -74,6 +75,7 @@ pub trait ImageLoader {
     async fn read_image_chunk(
         &self,
         firmware_id: id,
+        offset: u32,
         buffer: &mut [u8],
         size_to_read: usize,
     ) -> Result<usize, DynError>;
