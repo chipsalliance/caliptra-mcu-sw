@@ -1,11 +1,12 @@
 use core::mem::transmute;
 
+/// `Register` wraps a raw pointer type that keeps that tags around.
+///
 /// In order to work with Miri's `-Zmiri-track-raw-pointers` flag, we cannot
 /// pass pointers to the kernel through `usize` values (as casting to and from
 /// `usize` drops the pointer`s tag). Instead, `RawSyscalls` uses the `Register`
-/// type. `Register` wraps a raw pointer type that keeps that tags around. User
-/// code should not depend on the particular type of pointer that `Register`
-/// wraps, but instead use the conversion functions in this module.
+/// type. User code should not depend on the particular type of pointer that
+/// `Register` wraps, but instead use the conversion functions in this module.
 // Register is repr(transparent) so that an upcall's application data can be
 // soundly passed as a Register.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

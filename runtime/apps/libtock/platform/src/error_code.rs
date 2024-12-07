@@ -4,7 +4,7 @@ use core::{convert::TryFrom, fmt, mem::transmute};
 /// An error code that libtock-rs APIs may return, as specified in
 /// [TRD 104][error-codes]. Note that while `BADRVAL` can never be produced by
 /// the kernel, it can be produced by userspace APIs.
-/// 
+///
 /// [error-codes]: https://github.com/tock/tock/blob/master/doc/reference/trd104-syscalls.md#33-error-codes
 #[derive(Clone, Copy, PartialEq, Eq)]
 // Explicit repr to use `transmute`. A word-sized error code results in
@@ -277,7 +277,7 @@ impl TryFrom<u32> for ErrorCode {
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         if (1..=1024).contains(&value) {
-            Ok(unsafe { transmute(value) })
+            Ok(unsafe { transmute::<u32, ErrorCode>(value) })
         } else {
             Err(NotAnErrorCode)
         }

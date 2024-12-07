@@ -130,10 +130,6 @@ INCLUDE runtime/apps/app_layout.ld",
 
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .env("LIBTOCK_LINKER_FLASH", format!("0x{:x}", offset))
-        .env("LIBTOCK_LINKER_FLASH_LENGTH", "128K")
-        .env("LIBTOCK_LINKER_RAM", format!("0x{:x}", ram_start))
-        .env("LIBTOCK_LINKER_RAM_LENGTH", "128K")
         .args([
             "rustc",
             "-p",

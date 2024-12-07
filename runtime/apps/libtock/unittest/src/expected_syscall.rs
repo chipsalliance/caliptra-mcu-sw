@@ -1,9 +1,11 @@
 use libtock_platform::Register;
 
 /// Unit tests can use `ExpectedSyscall` to alter `fake::Kernel`'s behavior for
-/// a particular system call. An example use case is error injection: unit tests
-/// can add a `ExpectedSyscall` to the fake kernel's queue to insert errors in
-/// order to test error handling code.
+/// a particular system call.
+///
+/// An example use case is error injection: unit tests can add a
+/// `ExpectedSyscall` to the fake kernel's queue to insert errors in order to
+/// test error handling code.
 #[derive(Clone, Copy, Debug)]
 pub enum ExpectedSyscall {
     // -------------------------------------------------------------------------

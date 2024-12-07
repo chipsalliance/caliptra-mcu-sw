@@ -7,9 +7,11 @@ use crate::Syscalls;
 // -----------------------------------------------------------------------------
 
 /// A `Subscribe` instance allows safe code to call Tock's Subscribe system
-/// call, by guaranteeing the upcall will be cleaned up before 'share ends. It
-/// is generally used with the `share::scope` function, which offers a safe
-/// interface for constructing `Subscribe` instances.
+/// call.
+///
+/// It does this by guaranteeing the upcall will be cleaned up before 'share
+/// ends. It is generally used with the `share::scope` function, which offers a
+/// safe interface for constructing `Subscribe` instances.
 pub struct Subscribe<'share, S: Syscalls, const DRIVER_NUM: u32, const SUBSCRIBE_NUM: u32> {
     _syscalls: core::marker::PhantomData<S>,
 

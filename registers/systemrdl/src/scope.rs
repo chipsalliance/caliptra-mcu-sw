@@ -775,6 +775,75 @@ impl Instance {
     }
 }
 
+fn is_intr_modifier(token: &Token) -> bool {
+    matches!(
+        *token,
+        Token::Identifier("posedge" | "negedge" | "bothedge" | "level" | "nonsticky" | "sticky")
+    )
+}
+
+struct PropertyAssignment<'a> {
+    prop_name: &'a str,
+    value: Value,
+}
+
+static INTR_BOOL_PROPERTY: PropertyMeta = PropertyMeta {
+    name: "intr",
+    ty: PropertyType::Boolean,
+    is_dynamic: true,
+};
+fn intr_bool_property<'a>(_name: &str) -> Result<'a, &'static PropertyMeta> {
+    Ok(&INTR_BOOL_PROPERTY)
+}
+
+impl<'a> PropertyAssignment<'a> {
+    fn parse(
+        tokens: &mut TokenIter<'a>,
+        parameters: Option<&ParameterScope<'_>>,
+        meta_lookup_fn: impl Fn(&'a str) -> Result<'a, &'static PropertyMeta>,
+    ) -> Result<'a, Self> {
+        if is_intr_modifier(tokens.peek(0)) && *tokens.peek(1) == Token::Identifier("intr") {
+            let intr_modifier = tokens.expect_identifier()?;
+            // skip the bool tokens...
+            PropertyAssignment::parse(tokens, parameters, intr_bool_property)?;
+            return Ok(Self {
+                prop_name: "intr",
+                value: match intr_modifier {
+                    "posedge" => InterruptType::PosEdge.into(),
+                    "negedge" => InterruptType::NegEdge.into(),
+                    "bothedge" => InterruptType::BothEdge.into(),
+                    "level" => InterruptType::Level.into(),
+                    "nonsticky" => InterruptType::NonSticky.into(),
+                    "sticky" => InterruptType::Sticky.into(),
+                    _ => InterruptType::Level.into(),
+                },
+            });
+        }
+
+        let prop_name = tokens.expect_identifier()?;
+        let prop_meta = meta_lookup_fn(prop_name)?;
+
+        let value = if *tokens.peek(0) == Token::Semicolon {
+            // This must be a boolean property set to true or an intr
+            if prop_meta.ty != PropertyType::Boolean
+                && prop_meta.ty != PropertyType::BooleanOrReference
+                && prop_meta.ty != PropertyType::FieldInterrupt
+            {
+                return Err(RdlError::UnexpectedPropertyType {
+                    expected_type: prop_meta.ty,
+                    value: true.into(),
+                });
+            }
+            true.into()
+        } else {
+            tokens.expect(Token::Equals)?;
+            prop_meta.ty.eval(tokens, parameters)?
+        };
+        tokens.expect(Token::Semicolon)?;
+        Ok(Self { prop_name, value })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{file_source::MemFileSource, value::AccessType, EnumReference};
@@ -1032,74 +1101,5 @@ mod tests {
             },
             root_scope
         );
-    }
-}
-
-fn is_intr_modifier(token: &Token) -> bool {
-    matches!(
-        *token,
-        Token::Identifier("posedge" | "negedge" | "bothedge" | "level" | "nonsticky" | "sticky")
-    )
-}
-
-struct PropertyAssignment<'a> {
-    prop_name: &'a str,
-    value: Value,
-}
-
-static INTR_BOOL_PROPERTY: PropertyMeta = PropertyMeta {
-    name: "intr",
-    ty: PropertyType::Boolean,
-    is_dynamic: true,
-};
-fn intr_bool_property<'a>(_name: &str) -> Result<'a, &'static PropertyMeta> {
-    Ok(&INTR_BOOL_PROPERTY)
-}
-
-impl<'a> PropertyAssignment<'a> {
-    fn parse(
-        tokens: &mut TokenIter<'a>,
-        parameters: Option<&ParameterScope<'_>>,
-        meta_lookup_fn: impl Fn(&'a str) -> Result<'a, &'static PropertyMeta>,
-    ) -> Result<'a, Self> {
-        if is_intr_modifier(tokens.peek(0)) && *tokens.peek(1) == Token::Identifier("intr") {
-            let intr_modifier = tokens.expect_identifier()?;
-            // skip the bool tokens...
-            PropertyAssignment::parse(tokens, parameters, intr_bool_property)?;
-            return Ok(Self {
-                prop_name: "intr",
-                value: match intr_modifier {
-                    "posedge" => InterruptType::PosEdge.into(),
-                    "negedge" => InterruptType::NegEdge.into(),
-                    "bothedge" => InterruptType::BothEdge.into(),
-                    "level" => InterruptType::Level.into(),
-                    "nonsticky" => InterruptType::NonSticky.into(),
-                    "sticky" => InterruptType::Sticky.into(),
-                    _ => InterruptType::Level.into(),
-                },
-            });
-        }
-
-        let prop_name = tokens.expect_identifier()?;
-        let prop_meta = meta_lookup_fn(prop_name)?;
-
-        let value = if *tokens.peek(0) == Token::Semicolon {
-            // This must be a boolean property set to true or an intr
-            if prop_meta.ty != PropertyType::Boolean
-                && prop_meta.ty != PropertyType::BooleanOrReference
-                && prop_meta.ty != PropertyType::FieldInterrupt
-            {
-                return Err(RdlError::UnexpectedPropertyType {
-                    expected_type: prop_meta.ty,
-                    value: true.into(),
-                });
-            }
-            true.into()
-        } else {
-            tokens.expect(Token::Equals)?;
-            prop_meta.ty.eval(tokens, parameters)?
-        };
-        tokens.expect(Token::Semicolon)?;
-        Ok(Self { prop_name, value })
     }
 }

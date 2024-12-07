@@ -1,7 +1,9 @@
 use crate::Register;
 
 /// `RawSyscalls` allows a fake Tock kernel to be injected into components for
-/// unit testing. It is implemented by `libtock_runtime::TockSyscalls` and
+/// unit testing.
+///
+/// It is implemented by `libtock_runtime::TockSyscalls` and
 /// `libtock_unittest::fake::Kernel`. **Components should not use `RawSyscalls`
 /// directly; instead, use the `Syscalls` trait, which provides higher-level
 /// interfaces to the system calls.**
@@ -9,7 +11,7 @@ use crate::Register;
 /// # Safety
 /// `RawSyscalls` is unsafe because `unsafe` code depends on its methods to
 /// return the correct register values.
-
+//
 // The RawSyscalls trait is designed to minimize the complexity and size of its
 // implementation, as its implementation is difficult to test (it cannot be used
 // in unit tests, with sanitizers, or in Miri). It is also designed to minimize
