@@ -5,6 +5,7 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait SocPeripheral {
+    fn set_bus(&mut self, _bus: std::rc::Rc<std::cell::RefCell<dyn emulator_bus::Bus>>) {}
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}

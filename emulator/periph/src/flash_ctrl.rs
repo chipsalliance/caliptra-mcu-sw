@@ -13,15 +13,18 @@ Abstract:
 --*/
 
 use core::convert::TryInto;
-use emulator_bus::{ActionHandle, Clock, ReadOnlyRegister, ReadWriteRegister, Timer};
+use emulator_bus::{ActionHandle, Bus, Clock, ReadOnlyRegister, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::flash::FlashPeripheral;
+use emulator_types::RvSize;
 use registers_generated::flash_ctrl::bits::{
     CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
 };
+use std::cell::RefCell;
 use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::path::PathBuf;
+use std::rc::Rc;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 #[derive(Debug, PartialEq)]
@@ -59,6 +62,7 @@ pub enum FlashOpError {
 
 // Define a dummy flash controller peripheral.
 pub struct DummyFlashCtrl {
+    bus: Option<Rc<RefCell<dyn Bus>>>,
     interrupt_state: ReadWriteRegister<u32, FlInterruptState::Register>,
     interrupt_enable: ReadWriteRegister<u32, FlInterruptEnable::Register>,
     page_size: ReadWriteRegister<u32>,
@@ -107,6 +111,7 @@ impl DummyFlashCtrl {
         };
 
         Ok(Self {
+            bus: None,
             interrupt_state: ReadWriteRegister::new(0x0000_0000),
             interrupt_enable: ReadWriteRegister::new(0x0000_0000),
             page_size: ReadWriteRegister::new(0x0000_0000),
@@ -246,6 +251,9 @@ impl DummyFlashCtrl {
     }
 
     fn write_page(&mut self) -> Result<(), FlashOpError> {
+        if self.bus.is_none() {
+            panic!("Bus must have been set before calling write_page");
+        }
         // Get the page number from the register
         let page_num = self.page_num.reg.get();
 
@@ -276,16 +284,28 @@ impl DummyFlashCtrl {
         // Debugging code: will be removed later
         {
             // Copy the data from the 'PAGE_ADDR' buffer to the internal buffer
-            let src_ptr = self.page_addr.reg.get() as *const u8;
+            let src_ptr = self.page_addr.reg.get() as u32;
 
             println!("[xs debug]emulator: src_ptr: {:#010x}", src_ptr as usize);
 
             for i in 0..Self::PAGE_SIZE {
-                unsafe {
-                    let data = *src_ptr.add(i);
-
-                    // !!! Weird behavior: this print never shows up in the UART. It seems when accessing the raw buffer something is wrong !!!
-                    println!("[xs debug]emulator: data: {:#02x}", data);
+                match self
+                    .bus
+                    .clone()
+                    .unwrap()
+                    .borrow_mut()
+                    .read(RvSize::Byte, src_ptr + i as u32)
+                {
+                    Ok(data) => {
+                        println!("[xs debug]emulator: data: {:#02x}", data);
+                    }
+                    Err(err) => {
+                        println!(
+                            "[xs debug]emulator: Error: read_page: read error: {:?}",
+                            err
+                        );
+                        return Err(FlashOpError::ReadError);
+                    }
                 }
             }
         }
@@ -377,6 +397,10 @@ impl DummyFlashCtrl {
 }
 
 impl FlashPeripheral for DummyFlashCtrl {
+    fn set_bus(&mut self, bus: Rc<RefCell<dyn Bus>>) {
+        self.bus = Some(bus);
+    }
+
     fn poll(&mut self) {
         if self.timer.fired(&mut self.operation_start) {
             self.process_io();
