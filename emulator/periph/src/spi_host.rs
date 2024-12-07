@@ -715,7 +715,7 @@ mod tests {
                 .for_each(|_| spi_host.write(RvSize::Byte, TX_FIFO_OFFSET, 0xff).unwrap());
 
             let cs_high = xfer.dummy_clocks == 0 && xfer.receive_len == 0;
-            let spi_len: u32 = (xfer.mode_clocks / divisor - 1).try_into().unwrap();
+            let spi_len: u32 = (xfer.mode_clocks / divisor - 1).into();
             spi_host
                 .write(
                     RvSize::Word,
@@ -732,7 +732,7 @@ mod tests {
         // DummyCycles
         if xfer.dummy_clocks != 0 {
             let cs_high = xfer.receive_len == 0;
-            let spi_len: u32 = (xfer.dummy_clocks - 1).try_into().unwrap();
+            let spi_len: u32 = (xfer.dummy_clocks - 1).into();
             spi_host
                 .write(
                     RvSize::Word,

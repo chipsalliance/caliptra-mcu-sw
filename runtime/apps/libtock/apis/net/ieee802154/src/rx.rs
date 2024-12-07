@@ -23,7 +23,7 @@ const EMPTY_FRAME: Frame = Frame {
 
 /// The ring buffer that is shared with kernel using allow-rw syscall, with kernel acting
 /// as a producer of frames and we acting a consumer.
-
+///
 /// The `N` parameter specifies the capacity of the buffer in number of frames.
 /// Unfortunately, due to a design flaw of the ring buffer, it can never be fully utilised,
 /// as it's impossible to distinguish an empty buffer from a full one. The kernel code
@@ -50,6 +50,12 @@ pub struct RxRingBuffer<const N: usize> {
     write_index: u8,
     /// Slots for received frames.
     frames: [Frame; N],
+}
+
+impl<const N: usize> Default for RxRingBuffer<N> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<const N: usize> RxRingBuffer<N> {

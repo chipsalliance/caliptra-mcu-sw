@@ -6,7 +6,6 @@ use libtock_platform::{ErrorCode, Syscalls};
 use libtock_runtime::TockSyscalls;
 
 /// This handler requires some 0x400 bytes of stack
-
 #[allow(dead_code)]
 #[cfg_attr(target_arch = "riscv32", panic_handler)]
 fn panic_handler(info: &core::panic::PanicInfo) -> ! {

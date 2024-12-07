@@ -20,12 +20,13 @@ const IGNORED_PATHS: &[&str] = &[
 ];
 const IGNORED_DIRS: &[&str] = &[
     ".git",
+    "caliptra-rtl",
+    "caliptra-ss",
+    "compliance-test",
+    "i3c-core",
+    "libtock",
     "out",
     "target",
-    "compliance-test",
-    "caliptra-ss",
-    "caliptra-rtl",
-    "i3c-core",
 ];
 
 pub(crate) fn fix() -> Result<(), DynError> {

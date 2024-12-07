@@ -32,16 +32,14 @@ mod test {
     }
 
     // only build the ROM once
-    static ROM: LazyLock<PathBuf> = LazyLock::new(|| compile_rom());
+    static ROM: LazyLock<PathBuf> = LazyLock::new(compile_rom);
 
     static BUILD_LOCK: LazyLock<Mutex<AtomicU32>> = LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
 
     fn compile_rom() -> PathBuf {
         let output = target_binary("rom.bin");
         let mut cmd = Command::new("cargo");
-        let cmd = cmd
-            .args(&["xtask", "rom-build"])
-            .current_dir(&*PROJECT_ROOT);
+        let cmd = cmd.args(["xtask", "rom-build"]).current_dir(&*PROJECT_ROOT);
         let cmd_output = cmd.output().unwrap();
         if !cmd.status().unwrap().success() {
             std::io::stdout().write_all(&cmd_output.stdout).unwrap();
@@ -58,7 +56,7 @@ mod test {
         let output = target_binary(&format!("runtime-{}.bin", feature));
         let mut cmd = Command::new("cargo");
         let cmd = cmd
-            .args(&[
+            .args([
                 "xtask",
                 "runtime-build",
                 "--features",

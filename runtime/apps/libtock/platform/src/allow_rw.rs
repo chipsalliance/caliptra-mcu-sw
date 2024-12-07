@@ -7,10 +7,11 @@ use core::marker::PhantomData;
 // -----------------------------------------------------------------------------
 
 /// A `share::Handle<AllowRw>` instance allows safe code to call Tock's
-/// Read-Write Allow system call, by guaranteeing the buffer will be revoked
-/// before 'share ends. It is intended for use with the `share::scope` function,
-/// which offers a safe interface for constructing `share::Handle<AllowRw>`
-/// instances.
+/// Read-Write Allow system call.
+///
+/// It does this by guaranteeing the buffer will be revoked before 'share ends.
+/// It is intended for use with the `share::scope` function, which offers a
+/// safe interface for constructing `share::Handle<AllowRw>` instances.
 pub struct AllowRw<'share, S: Syscalls, const DRIVER_NUM: u32, const BUFFER_NUM: u32> {
     _syscalls: PhantomData<S>,
 

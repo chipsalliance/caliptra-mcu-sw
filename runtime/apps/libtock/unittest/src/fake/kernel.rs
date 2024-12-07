@@ -2,10 +2,12 @@ use crate::kernel_data::{with_kernel_data, DriverData, KernelData, KERNEL_DATA};
 use crate::{DriverShareRef, ExpectedSyscall, SyscallLogEntry};
 use std::cell::Cell;
 
-/// A fake implementation of the Tock kernel. Used with `fake::Syscalls`, which
-/// provides system calls that are routed to this kernel. `fake::SyscallDriver`s
-/// may be attached to a `fake::Kernel`, and the `fake::Kernel` will route
-/// system calls to the correct fake driver.
+/// A fake implementation of the Tock kernel.
+///
+/// Used with `fake::Syscalls`, which provides system calls that are routed
+/// to this kernel. `fake::SyscallDriver`s may be attached to a
+/// `fake::Kernel`, and the `fake::Kernel` will route system calls to the
+/// correct fake driver.
 ///
 /// Note that there can only be one `fake::Kernel` instance per thread, as
 /// `fake::Syscalls` uses a thread-local variable to locate the `fake::Kernel`.
