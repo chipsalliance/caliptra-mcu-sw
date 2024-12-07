@@ -72,6 +72,7 @@ impl I3cController {
         let running = self.running.clone();
         let targets = self.targets.clone();
         let counter = self.incoming_counter.clone();
+        println!("Starting I3C controller thread");
         thread::spawn(move || {
             while running.load(Ordering::Relaxed) {
                 I3cController::tcri_receive_all(targets.clone())
@@ -191,16 +192,18 @@ impl I3cController {
             .iter_mut()
             .flat_map(|target| {
                 let mut v = vec![];
-                v.extend(target.get_ibis().iter().map(|mdb| I3cBusResponse {
-                    ibi: Some(*mdb),
-                    addr: target.get_address().unwrap(),
-                    resp: I3cTcriResponseXfer::default(), // empty descriptor for the IBI
+                v.extend(target.get_ibis().iter().map(|mdb| {
+                    I3cBusResponse {
+                        ibi: Some(*mdb),
+                        addr: target.get_address().unwrap(),
+                        resp: I3cTcriResponseXfer::default(), // empty descriptor for the IBI
+                    }
                 }));
-                target.get_response().map(|resp| I3cBusResponse {
+                v.extend(target.get_response().map(|resp| I3cBusResponse {
                     ibi: None,
                     addr: target.get_address().unwrap(),
                     resp,
-                });
+                }));
                 v
             })
             .collect()
@@ -306,6 +309,7 @@ impl I3cTarget {
     }
 
     pub fn get_response(&mut self) -> Option<I3cTcriResponseXfer> {
+        // println!("get_response: tx_buf que len {:?}", self.target.lock().unwrap().tx_buffer.len());
         self.target.lock().unwrap().tx_buffer.pop_front()
     }
 

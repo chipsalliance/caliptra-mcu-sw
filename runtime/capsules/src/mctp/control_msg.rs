@@ -12,7 +12,7 @@ const MCTP_BROADCAST_EID: u8 = 0xFF;
 bitfield! {
     #[repr(C)]
     #[derive(Clone, FromBytes, IntoBytes, Immutable)]
-    pub struct MCTPCtrlMsgHdr([u8]);
+    pub struct MCTPCtrlMsgHdr(MSB0 [u8]);
     impl Debug;
     u8;
     pub ic, _: 0, 0;
@@ -43,6 +43,7 @@ impl MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]> {
     }
 }
 
+#[derive(Debug)]
 pub enum MCTPCtrlCmd {
     SetEID,
     GetEID,
@@ -170,7 +171,7 @@ impl From<u8> for CmdCompletionCode {
 // Set EID Request
 bitfield! {
     #[derive(Clone, FromBytes)]
-    pub struct SetEIDReq([u8]);
+    pub struct SetEIDReq(MSB0 [u8]);
     impl Debug;
     u8;
     rsvd, _: 5, 0;

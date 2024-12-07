@@ -29,3 +29,4 @@ libc = "0.2"
 [features]
 default = []
 test-i3c-constant-writes = []
+test-mctp-ctrl-cmds = []
