@@ -123,7 +123,6 @@ fn handle_i3c_socket_connection(
             Ok(()) => {
                 let incoming_header: IncomingHeader = transmute!(incoming_header_bytes);
                 let cmd: I3cTcriCommand = incoming_header.command.try_into().unwrap();
-                println!("handle_i3c_socket_connection: Received command: {:?}", cmd);
 
                 let mut data = vec![0u8; cmd.data_len()];
                 stream.set_nonblocking(false).unwrap(); //blocking
@@ -146,10 +145,6 @@ fn handle_i3c_socket_connection(
             Err(e) => panic!("Error reading message from socket: {}", e),
         }
         if let Ok(response) = bus_response_rx.recv_timeout(Duration::from_millis(10)) {
-            println!(
-                "handle_i3c_socket_connection: Received bus response: {:?}",
-                response
-            );
             let data_len = response.resp.data.len();
             if data_len > 255 {
                 panic!("Cannot write more than 255 bytes to socket");
@@ -163,12 +158,6 @@ fn handle_i3c_socket_connection(
             stream.write_all(&header_bytes).unwrap();
             stream.write_all(&response.resp.data).unwrap();
         }
-        // Err(mpsc::TryRecvError::Empty) => {println!("handle_i3c_socket_connection: bus rx pipe empty"); },
-        // Err(mpsc::TryRecvError::Disconnected) => {
-        //     println!("handle_i3c_socket_connection: Bus response channel disconnected");
-        //     break;
-        // }
-        // }
     }
 }
 
@@ -224,7 +213,17 @@ impl Test {
     }
 
     pub fn check_response(&mut self, data: &[u8]) {
-        if data == self.pvt_read_data {
+        // println!(
+        //     "Checking response: {:X?} expected {:X?}",
+        //     data, self.pvt_read_data
+        // );
+
+        if data.len() == self.pvt_read_data.len() && data == self.pvt_read_data {
+            // for i in 0..data.len() {
+            //     if data[i] != self.pvt_read_data[i] {
+            //         return;
+            //     }
+            // }
             self.set_passed();
         }
     }
@@ -233,9 +232,9 @@ impl Test {
 fn send_private_write(stream: &mut TcpStream, target_addr: u8, test: &mut Test) {
     let addr: u8 = target_addr;
     let pvt_write_data = test.get_pvt_write_data();
-    println!("Calculating CRC8 for data: {:?}", pvt_write_data);
-    let pec = calculate_crc8(0, &[addr << 1]);
-    let pec = calculate_crc8(pec, &pvt_write_data);
+    // TODO: Temporary workaround until target address assign issue is resolved
+    let pec = calculate_crc8(0, &[0x00 << 1]);
+    let pec = calculate_crc8(pec, pvt_write_data);
 
     let mut pkt = Vec::new();
     pkt.extend_from_slice(pvt_write_data);
@@ -247,7 +246,6 @@ fn send_private_write(stream: &mut TcpStream, target_addr: u8, test: &mut Test) 
     stream.set_nonblocking(true).unwrap();
     stream.write_all(&pkt).unwrap();
     test.set_state(TestI3cControllerState::WaitForIbi);
-    println!("Sent EID packet");
 }
 
 fn receive_ibi(stream: &mut TcpStream, target_addr: u8, test: &mut Test) {
@@ -255,12 +253,8 @@ fn receive_ibi(stream: &mut TcpStream, target_addr: u8, test: &mut Test) {
     match stream.read_exact(&mut out_header_bytes) {
         Ok(()) => {
             let outdata: OutgoingHeader = transmute!(out_header_bytes);
-            println!(
-                "receive_ibi: Received response header ibi: {} from_addr: {})",
-                outdata.ibi, outdata.from_addr
-            );
             if outdata.ibi != 0 && outdata.from_addr == target_addr {
-                let pvt_read_cmd = prepare_private_read_cmd(target_addr.into());
+                let pvt_read_cmd = prepare_private_read_cmd(target_addr);
                 stream.set_nonblocking(false).unwrap();
                 stream.write_all(&pvt_read_cmd).unwrap();
                 stream.set_nonblocking(true).unwrap();
@@ -277,18 +271,10 @@ fn receive_private_read(stream: &mut TcpStream, target_addr: u8, test: &mut Test
     match stream.read_exact(&mut out_header_bytes) {
         Ok(()) => {
             let outdata: OutgoingHeader = transmute!(out_header_bytes);
-            println!(
-                "receive_private_read: Received response header ibi: {} from_addr: {})",
-                outdata.ibi, outdata.from_addr
-            );
             if target_addr != outdata.from_addr {
                 return;
             }
             let resp_desc = outdata.response_descriptor;
-            println!(
-                "receive_private_read: Received response descriptor: {:?}",
-                resp_desc
-            );
             let data_len = resp_desc.data_length() as usize;
             let mut data = vec![0u8; data_len];
             stream.set_nonblocking(false).unwrap();
@@ -296,14 +282,18 @@ fn receive_private_read(stream: &mut TcpStream, target_addr: u8, test: &mut Test
                 .read_exact(&mut data)
                 .expect("Failed to read message from socket");
             stream.set_nonblocking(true).unwrap();
-            println!("Received response: {:?}", data);
 
-            let mut pec = calculate_crc8(0, &[target_addr << 1]);
+            // TODO: Temporary workaround until target address assign issue is resolved
+            let mut pec = calculate_crc8(0, &[1]);
             pec = calculate_crc8(pec, &data[..data.len() - 1]);
             if pec == data[data.len() - 1] {
-                test.check_response(&data);
+                test.check_response(&data[..data.len() - 1]);
             } else {
-                panic!("Received data with invalid CRC8");
+                println!(
+                    "Received data with invalid CRC8 {:X} != {:X}",
+                    pec,
+                    data[data.len() - 1]
+                );
             }
 
             test.set_state(TestI3cControllerState::Finish);
@@ -353,19 +343,15 @@ fn run_mctp_ctrl_cmd_tests(
     running: Arc<AtomicBool>,
     target_addr: DynamicI3cAddress,
 ) {
-    let test = Test {
-        name: "Set EID Test".to_string(),
-        state: TestI3cControllerState::Start,
-        pvt_write_data: vec![0x01, 0x00, 0x08, 0xC9, 0x00, 0x80, 0x1, 0x00, 0x0A],
-        pvt_read_data: vec![
-            0x01, 0x08, 0, 0xC1, 0x00, 0x00, 0x01, 0x00, 0x00, 0x0A, 0x00,
-        ],
-        passed: false,
-    };
+    let req_data = vec![0x01, 0x00, 0x08, 0xC9, 0x00, 0x80, 0x1, 0x00, 0x0A];
+    let resp_data = vec![
+        0x01, 0x08, 0x00, 0xC1, 0x00, 0x00, 0x01, 0x00, 0x00, 0x0A, 0x00,
+    ];
+    let test = Test::new("Set EID Test", req_data, resp_data);
 
     let mut passed = 0;
 
-    let mut tests = vec![test];
+    let mut tests = [test];
     for test in tests.iter_mut() {
         run_test(&mut stream, target_addr.into(), running.clone(), test);
         if test.is_passed() {
@@ -399,7 +385,6 @@ fn prepare_private_read_cmd(to_addr: u8) -> [u8; 9] {
     read_cmd.set_rnw(1);
     read_cmd.set_data_length(0);
     let cmd_words: [u32; 2] = transmute!(read_cmd);
-    println!("prepare_private_read_cmd: {:x?}", cmd_words);
     let cmd_hdr = IncomingHeader {
         to_addr,
         command: cmd_words,

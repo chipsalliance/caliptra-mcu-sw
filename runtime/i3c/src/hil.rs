@@ -4,6 +4,7 @@ use core::result::Result;
 use kernel::ErrorCode;
 
 /// Provides information about an I3C target device.
+#[derive(Debug)]
 pub struct I3CTargetInfo {
     /// Could be assigned by the hardware or absent.
     pub static_addr: Option<u8>,

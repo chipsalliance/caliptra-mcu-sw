@@ -288,12 +288,10 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             }
             // There is a pending Read Transaction on the I3C Bus. Software should write data to the TX Descriptor Queue and the TX Data Queue
             if tti_interrupts.read(InterruptStatus::TxDescStat) != 0 {
-                println!("TxDescStat interrupt");
                 self.handle_outgoing_read();
             }
             // There is a pending Write Transaction. Software should read data from the RX Descriptor Queue and the RX Data Queue
             if tti_interrupts.read(InterruptStatus::RxDescStat) != 0 {
-                println!("RxDescStat interrupt");
                 self.handle_incoming_write();
             }
         }
@@ -314,7 +312,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
 
     // called when TTI has a private Write with data for us to grab
     pub fn handle_incoming_write(&self) {
-        println!("Handling incoming write");
         self.retry_incoming_write.set(false);
         if self.rx_buffer.is_none() {
             self.rx_client.map(|client| {
@@ -391,11 +388,17 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let size = self.tx_buffer_size.replace(0);
         if idx < size {
             // TODO: get the correct structure of this descriptor
+            println!(
+                "Sending data descriptor queue port for {} bytes size {} idx {}",
+                size - idx,
+                size,
+                idx
+            );
             self.registers.tx_desc_queue_port.set((size - idx) as u32);
             while idx < size {
                 let mut bytes = [0; 4];
-                for i in idx..(idx + 4).min(size) {
-                    bytes[i - idx] = buf[i];
+                for i in 0..4.min(size - idx) {
+                    bytes[i] = buf[idx];
                     idx += 1;
                 }
                 let word = u32::from_le_bytes(bytes);
@@ -430,7 +433,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     fn send_ibi(&self, mdb: u8) {
-        println!("Sending IBI from target mdb {}", mdb);
         // TODO: it is unclear if we need to set anything else in the descriptor
         self.registers
             .tti_ibi_port
@@ -463,7 +465,6 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         if self.tx_buffer.is_some() {
             return Err((ErrorCode::BUSY, tx_buf));
         }
-        println!("Transmitting read buf {:x?}", &tx_buf[..len]);
         self.tx_buffer.replace(tx_buf);
         self.tx_buffer_idx.set(0);
         self.tx_buffer_size.set(len);

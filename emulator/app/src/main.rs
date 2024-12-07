@@ -356,13 +356,12 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         i3c_notif_irq,
     );
 
-    println!("Starting I3C Controller thread");
     i3c_controller.start();
 
     if cfg!(feature = "test-mctp-ctrl-cmds") {
         println!(
-            "Starting client test thread for target tests {:?}",
-            i3c.get_dynamic_address()
+            "Starting test thread for testing target {:?}",
+            i3c.get_dynamic_address().unwrap()
         );
 
         i3c_socket::run_tests(

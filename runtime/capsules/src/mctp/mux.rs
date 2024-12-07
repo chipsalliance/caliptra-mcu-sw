@@ -12,7 +12,7 @@ use core::cell::Cell;
 use kernel::collections::list::{List, ListLink, ListNode};
 use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;
-use kernel::{debug, ErrorCode};
+use kernel::ErrorCode;
 
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -239,10 +239,6 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
 
         let mctp_ctrl_msg_hdr: MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]> =
             MCTPCtrlMsgHdr::read_from_bytes(&msg_buf[0..MCTP_CTRL_MSG_HEADER_LEN]).unwrap();
-        println!(
-            "MuxMCTPDriver: Received MCTP Control message {:?}",
-            mctp_ctrl_msg_hdr
-        );
         if mctp_ctrl_msg_hdr.rq() != 1 || mctp_ctrl_msg_hdr.datagram() != 0 {
             // Only Command/Request messages are handled
             return Err(ErrorCode::INVAL);
@@ -354,10 +350,6 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M>
         }
 
         let (mctp_header, msg_type, payload_offset) = self.interpret_packet(&rx_buffer[0..len]);
-        println!(
-            "MuxMCTPDriver: Received packet with len: {}, mctp_header: {:?}, msg_type: {:?}, payload_offset {}",
-            len, mctp_header, msg_type, payload_offset
-        );
         if let Some(msg_type) = msg_type {
             match msg_type {
                 MessageType::MCTPControl => {
