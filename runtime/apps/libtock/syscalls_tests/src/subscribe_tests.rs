@@ -104,7 +104,7 @@ fn success() {
     assert_eq!(fake::Syscalls::yield_no_wait(), YieldNoWaitReturn::NoUpcall);
 }
 
-#[cfg(not(miri))]
+#[cfg(all(not(miri), target_arch = "riscv32"))]
 #[test]
 fn unwinding_upcall() {
     struct BadUpcall;

@@ -7,13 +7,7 @@ edition = "2021"
 license = "Apache-2.0 OR MIT"
 name = "libtock"
 repository = "https://www.github.com/tock/libtock-rs"
-rust-version.workspace = true
 version = "0.1.0"
-
-[workspace.package]
-# This must be kept in sync with rust-toolchain.toml; please see that file for
-# more information.
-rust-version = "1.77"
 
 [features]
 rust_embedded = [
@@ -49,51 +43,3 @@ libtock_spi_controller = { path = "apis/peripherals/spi_controller" }
 libtock_temperature = { path = "apis/sensors/temperature" }
 
 embedded-hal = { version = "1.0", optional = true }
-
-[build-dependencies]
-libtock_build_scripts = { path = "build_scripts" }
-
-[profile.dev]
-debug = true
-lto = true
-panic = "abort"
-
-[profile.release]
-debug = true
-lto = true
-panic = "abort"
-opt-level = "z"
-codegen-units = 1
-
-[workspace]
-exclude = ["tock"]
-members = [
-    "apis/interface/buttons",
-    "apis/interface/buzzer",
-    "apis/interface/console",
-    "apis/interface/leds",
-    "apis/kernel/low_level_debug",
-    "apis/peripherals/adc",
-    "apis/peripherals/alarm",
-    "apis/peripherals/gpio",
-    "apis/peripherals/i2c_master",
-    "apis/peripherals/i2c_master_slave",
-    "apis/peripherals/rng",
-    "apis/sensors/air_quality",
-    "apis/sensors/ambient_light",
-    "apis/sensors/ninedof",
-    "apis/sensors/proximity",
-    "apis/sensors/temperature",
-    "apis/storage/key_value",
-    "demos/st7789",
-    "demos/st7789-slint",
-    "panic_handlers/debug_panic",
-    "panic_handlers/small_panic",
-    "platform",
-    "runner",
-    "runtime",
-    "syscalls_tests",
-    "tools/print_sizes",
-    "ufmt",
-    "unittest",
-]

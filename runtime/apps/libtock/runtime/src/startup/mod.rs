@@ -5,8 +5,6 @@ use libtock_platform::{Syscalls, Termination};
 
 // Include the correct `start` symbol (the program entry point) for the
 // architecture.
-#[cfg(target_arch = "arm")]
-core::arch::global_asm!(include_str!("asm_arm.s"));
 #[cfg(target_arch = "riscv32")]
 core::arch::global_asm!(include_str!("asm_riscv32.s"));
 
@@ -17,7 +15,7 @@ core::arch::global_asm!(include_str!("asm_riscv32.s"));
 ///
 /// # Example
 /// ```
-/// libtock_runtime::set_main!{main};
+/// libtock_runtime::set_main!{main}
 ///
 /// fn main() -> () { /* Omitted */ }
 /// ```
@@ -41,7 +39,7 @@ macro_rules! set_main {
 /// Executables must specify their stack size by using the `stack_size!` macro.
 /// It takes a single argument, the desired stack size in bytes. Example:
 /// ```
-/// stack_size!{0x400}
+/// libtock_runtime::stack_size!{0x400}
 /// ```
 // stack_size works by putting a symbol equal to the size of the stack in the
 // .stack_buffer section. The linker script uses the .stack_buffer section to

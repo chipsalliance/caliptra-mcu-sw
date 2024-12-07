@@ -7,7 +7,8 @@ use libtock_runtime::TockSyscalls;
 
 /// This handler requires some 0x400 bytes of stack
 
-#[panic_handler]
+#[allow(dead_code)]
+#[cfg_attr(target_arch = "riscv32", panic_handler)]
 fn panic_handler(info: &core::panic::PanicInfo) -> ! {
     // Signal a panic using the LowLevelDebug capsule (if available).
     LowLevelDebug::<TockSyscalls>::print_alert_code(AlertCode::Panic);
