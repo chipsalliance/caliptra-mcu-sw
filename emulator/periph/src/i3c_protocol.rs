@@ -17,7 +17,7 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -65,7 +65,7 @@ impl I3cController {
 
     /// Spawns a thread that processes incoming commands and sends outgoing responses as
     /// long as this I3cController is in scope.
-    pub fn start(&mut self) {
+    pub fn start(&mut self) -> JoinHandle<()> {
         let rx = self.rx.take().unwrap();
         let tx = self.tx.take().unwrap();
         self.running.store(true, Ordering::Relaxed);
@@ -83,7 +83,7 @@ impl I3cController {
                     I3cController::incoming(targets.clone(), counter.clone(), cmd);
                 }
             }
-        });
+        })
     }
 
     /// Run the one round of the incoming loop (without blocking or sleeping).
@@ -269,12 +269,26 @@ impl Iterator for DynamicI3cAddress {
     }
 }
 
+pub trait I3cIncomingCommandClient {
+    // Callback to be notified when a command is received.
+    fn incoming(&self);
+}
+
 #[derive(Clone, Default)]
 pub struct I3cTarget {
     target: Arc<Mutex<I3cTargetDevice>>,
+    // double Arc is necessary to allow for the client to be shared with the command thread
+    incoming_command_client: Arc<Mutex<Option<Arc<dyn I3cIncomingCommandClient + Send + Sync>>>>,
 }
 
 impl I3cTarget {
+    pub fn set_incoming_command_client(
+        &mut self,
+        client: Arc<dyn I3cIncomingCommandClient + Send + Sync>,
+    ) {
+        *self.incoming_command_client.lock().unwrap() = Some(client);
+    }
+
     pub fn set_address(&mut self, address: DynamicI3cAddress) {
         self.target.lock().unwrap().dynamic_address = Some(address)
     }
@@ -284,7 +298,11 @@ impl I3cTarget {
     }
 
     pub fn send_command(&mut self, cmd: I3cTcriCommandXfer) {
-        self.target.lock().unwrap().rx_buffer.push_back(cmd);
+        let mut target = self.target.lock().unwrap();
+        target.rx_buffer.push_back(cmd);
+        if let Some(client) = self.incoming_command_client.lock().unwrap().clone() {
+            client.incoming();
+        }
     }
 
     pub fn get_response(&mut self) -> Option<I3cTcriResponseXfer> {

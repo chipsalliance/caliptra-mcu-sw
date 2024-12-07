@@ -7,7 +7,7 @@ Abstract:
 --*/
 
 use crate::i3c_protocol::{I3cController, I3cTarget, I3cTcriResponseXfer, ResponseDescriptor};
-use crate::{DynamicI3cAddress, I3cTcriCommand, IbiDescriptor};
+use crate::{DynamicI3cAddress, I3cIncomingCommandClient, I3cTcriCommand, IbiDescriptor};
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::i3c::I3cPeripheral;
@@ -17,8 +17,20 @@ use registers_generated::i3c::bits::{
     TtiQueueSize,
 };
 use std::collections::VecDeque;
+use std::sync::Arc;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::FromBytes;
+
+struct PollScheduler {
+    timer: Timer,
+}
+
+impl I3cIncomingCommandClient for PollScheduler {
+    fn incoming(&self) {
+        // trigger interrupt check next tick
+        self.timer.schedule_poll_in(1);
+    }
+}
 
 pub struct I3c {
     /// Timer
@@ -56,11 +68,15 @@ impl I3c {
         error_irq: Irq,
         notif_irq: Irq,
     ) -> Self {
-        let i3c_target = I3cTarget::default();
+        let mut i3c_target = I3cTarget::default();
 
         controller.attach_target(i3c_target.clone()).unwrap();
         let timer = Timer::new(clock);
         timer.schedule_poll_in(Self::HCI_TICKS);
+        let poll_scheduler = PollScheduler {
+            timer: timer.clone(),
+        };
+        i3c_target.set_incoming_command_client(Arc::new(poll_scheduler));
 
         Self {
             i3c_target,
