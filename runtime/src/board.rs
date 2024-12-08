@@ -12,7 +12,7 @@ use kernel::platform::scheduler_timer::VirtualSchedulerTimer;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::scheduler::cooperative::CooperativeSched;
 use kernel::utilities::registers::interfaces::ReadWriteable;
-use kernel::{create_capability, debug, debug_flush_queue, static_init};
+use kernel::{create_capability, debug, static_init};
 use rv32i::csr;
 
 pub const NUM_PROCS: usize = 4;
@@ -31,14 +31,23 @@ pub static mut PROCESS_PRINTER: Option<
     &'static capsules_system::process_printer::ProcessPrinterText,
 > = None;
 
-// Test access to board
-pub static mut BOARD: Option<&'static kernel::Kernel> = None;
+#[cfg(any(
+    feature = "test-flash-ctrl-write-page",
+    feature = "test-flash-ctrl-erase-page"
+))]
+static mut BOARD: Option<&'static kernel::Kernel> = None;
 
-// Test access to platform
-pub static mut PLATFORM: Option<&'static VeeR> = None;
+#[cfg(any(
+    feature = "test-flash-ctrl-write-page",
+    feature = "test-flash-ctrl-erase-page"
+))]
+static mut PLATFORM: Option<&'static VeeR> = None;
 
-// Test access to main loop capability
-pub static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = None;
+#[cfg(any(
+    feature = "test-flash-ctrl-write-page",
+    feature = "test-flash-ctrl-erase-page"
+))]
+static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = None;
 
 // How should the kernel respond when a process faults.
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
@@ -110,20 +119,6 @@ impl KernelResources<VeeRChip> for VeeR {
     }
     fn context_switch_callback(&self) -> &Self::ContextSwitchCallback {
         &()
-    }
-}
-
-pub fn run_kernel_op(loops: usize) {
-    unsafe {
-        for _i in 0..loops {
-            BOARD.unwrap().kernel_loop_operation(
-                PLATFORM.unwrap(),
-                CHIP.unwrap(),
-                None::<&kernel::ipc::IPC<0>>,
-                true,
-                MAIN_CAP.unwrap(),
-            );
-        }
     }
 }
 
@@ -286,7 +281,10 @@ pub unsafe fn main() {
         debug!("{:?}", err);
     });
 
-    // For testing purposes, we need to keep a reference to the kernel and the main loop capability
+    #[cfg(any(
+        feature = "test-flash-ctrl-write-page",
+        feature = "test-flash-ctrl-erase-page"
+    ))]
     {
         PLATFORM = Some(static_init!(
             VeeR,
@@ -325,4 +323,22 @@ pub unsafe fn main() {
         crate::io::exit_emulator(exit);
     }
     board_kernel.kernel_loop(&veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
+}
+
+#[cfg(any(
+    feature = "test-flash-ctrl-write-page",
+    feature = "test-flash-ctrl-erase-page"
+))]
+pub fn run_kernel_op(loops: usize) {
+    unsafe {
+        for _i in 0..loops {
+            BOARD.unwrap().kernel_loop_operation(
+                PLATFORM.unwrap(),
+                CHIP.unwrap(),
+                None::<&kernel::ipc::IPC<0>>,
+                true,
+                MAIN_CAP.unwrap(),
+            );
+        }
+    }
 }

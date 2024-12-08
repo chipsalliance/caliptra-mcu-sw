@@ -1,14 +1,19 @@
+// Licensed under the Apache-2.0 license
+
 // Test flash controller driver read, write, erage page
 
 use crate::flash_ctrl;
 use core::cell::Cell;
 use kernel::hil;
-use kernel::hil::flash::Flash;
-use kernel::hil::flash::HasClient;
+use kernel::hil::flash::{Flash, HasClient};
 use kernel::static_init;
 use kernel::utilities::cells::TakeCell;
 use kernel::{debug, debug_flush_queue};
 
+#[cfg(any(
+    feature = "test-flash-ctrl-erase-page",
+    feature = "test-flash-ctrl-write-page"
+))]
 use crate::board::run_kernel_op;
 
 use core::fmt::Write;
@@ -97,6 +102,7 @@ pub fn test_flash_ctrl_erase_page() -> Option<u32> {
     assert!(flash_ctrl.erase_page(page_num).is_ok());
     test_cb.erase_pending.set(true);
 
+    #[cfg(feature = "test-flash-ctrl-erase-page")]
     run_kernel_op(100);
 
     assert!(!test_cb.write_pending.get());
@@ -144,6 +150,7 @@ pub(crate) fn test_flash_ctrl_write_page() -> Option<u32> {
     test_cb.write_pending.set(true);
 
     // Run the kernel operation and wait for interrupt handler to be called
+    #[cfg(feature = "test-flash-ctrl-write-page")]
     run_kernel_op(500000);
 
     // Check if the write operation is completed

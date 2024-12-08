@@ -4,12 +4,12 @@
 // This driver will implment kernel::hil::flash::Flash trait and will be used by the kernel
 
 use core::ops::{Index, IndexMut};
+use kernel::debug;
 use kernel::hil;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
-use kernel::{debug, debug_flush_queue};
 
 // XS: adding for debug print
 use core::fmt::Write;
