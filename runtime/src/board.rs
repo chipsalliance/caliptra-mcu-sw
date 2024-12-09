@@ -31,6 +31,24 @@ pub static mut PROCESS_PRINTER: Option<
     &'static capsules_system::process_printer::ProcessPrinterText,
 > = None;
 
+#[cfg(any(
+    feature = "test-flash-ctrl-read-write-page",
+    feature = "test-flash-ctrl-erase-page"
+))]
+static mut BOARD: Option<&'static kernel::Kernel> = None;
+
+#[cfg(any(
+    feature = "test-flash-ctrl-read-write-page",
+    feature = "test-flash-ctrl-erase-page"
+))]
+static mut PLATFORM: Option<&'static VeeR> = None;
+
+#[cfg(any(
+    feature = "test-flash-ctrl-read-write-page",
+    feature = "test-flash-ctrl-erase-page"
+))]
+static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = None;
+
 // How should the kernel respond when a process faults.
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
     capsules_system::process_policies::PanicFaultPolicy {};
@@ -263,6 +281,25 @@ pub unsafe fn main() {
         debug!("{:?}", err);
     });
 
+    #[cfg(any(
+        feature = "test-flash-ctrl-read-write-page",
+        feature = "test-flash-ctrl-erase-page"
+    ))]
+    {
+        PLATFORM = Some(static_init!(
+            VeeR,
+            VeeR {
+                alarm,
+                console,
+                lldb,
+                scheduler,
+                scheduler_timer,
+            }
+        ));
+        MAIN_CAP = Some(&create_capability!(capabilities::MainLoopCapability));
+        BOARD = Some(board_kernel);
+    }
+
     // Run any requested test
     let exit = if cfg!(feature = "test-i3c-simple") {
         debug!("Executing test-i3c-simple");
@@ -270,6 +307,15 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-i3c-constant-writes") {
         debug!("Executing test-i3c-constant-writes");
         crate::tests::test_i3c_constant_writes()
+    } else if cfg!(feature = "test-flash-ctrl-init") {
+        debug!("Executing test-flash-ctrl-init");
+        crate::flash_ctrl_test::test_flash_ctrl_init()
+    } else if cfg!(feature = "test-flash-ctrl-read-write-page") {
+        debug!("Executing test-flash-ctrl-read-write-page");
+        crate::flash_ctrl_test::test_flash_ctrl_read_write_page()
+    } else if cfg!(feature = "test-flash-ctrl-erase-page") {
+        debug!("Executing test-flash-ctrl-erase-page");
+        crate::flash_ctrl_test::test_flash_ctrl_erase_page()
     } else {
         None
     };
@@ -277,4 +323,22 @@ pub unsafe fn main() {
         crate::io::exit_emulator(exit);
     }
     board_kernel.kernel_loop(&veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
+}
+
+#[cfg(any(
+    feature = "test-flash-ctrl-read-write-page",
+    feature = "test-flash-ctrl-erase-page"
+))]
+pub fn run_kernel_op(loops: usize) {
+    unsafe {
+        for _i in 0..loops {
+            BOARD.unwrap().kernel_loop_operation(
+                PLATFORM.unwrap(),
+                CHIP.unwrap(),
+                None::<&kernel::ipc::IPC<0>>,
+                true,
+                MAIN_CAP.unwrap(),
+            );
+        }
+    }
 }

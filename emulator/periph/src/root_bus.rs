@@ -22,6 +22,8 @@ use std::{
     rc::Rc,
     sync::{Arc, Mutex},
 };
+pub const DCCM_OFFSET: u32 = 0x5000_0000;
+pub const DCCM_LENGTH: usize = 0x20000;
 
 /// Caliptra Root Bus Arguments
 #[derive(Default)]
@@ -57,7 +59,7 @@ pub struct CaliptraRootBus {
     pub iccm: Ram,
 
     #[peripheral(offset = 0x5000_0000, len = 0x20000)]
-    pub dccm: Ram,
+    pub dccm: Rc<RefCell<Ram>>,
 
     #[peripheral(offset = 0x6000_0000, len = 0x507d)]
     pub pic_regs: PicMmioRegisters,
@@ -84,7 +86,7 @@ impl CaliptraRootBus {
         Ok(Self {
             rom,
             iccm,
-            dccm: Ram::new(vec![0; Self::RAM_SIZE]),
+            dccm: Rc::new(RefCell::new(Ram::new(vec![0; Self::RAM_SIZE]))),
             spi: SpiHost::new(&clock.clone()),
             uart: Uart::new(args.uart_output, args.uart_rx, uart_irq, &clock.clone()),
             ctrl: EmuCtrl::new(),
