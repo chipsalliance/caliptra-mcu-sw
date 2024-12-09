@@ -64,9 +64,6 @@ pub enum FlashOpError {
 
 // Define a dummy flash controller peripheral.
 pub struct DummyFlashCtrl {
-    // carry the refernece to Ram
-    dma_ram: Option<Rc<RefCell<Ram>>>,
-
     interrupt_state: ReadWriteRegister<u32, FlInterruptState::Register>,
     interrupt_enable: ReadWriteRegister<u32, FlInterruptEnable::Register>,
     page_size: ReadWriteRegister<u32>,
@@ -75,6 +72,7 @@ pub struct DummyFlashCtrl {
     control: ReadWriteRegister<u32, FlControl::Register>,
     op_status: ReadWriteRegister<u32, OpStatus::Register>,
     ctrl_regwen: ReadOnlyRegister<u32, CtrlRegwen::Register>,
+    dma_ram: Option<Rc<RefCell<Ram>>>,
     timer: Timer,
     file: Option<File>,
     buffer: Vec<u8>,
@@ -142,10 +140,6 @@ impl DummyFlashCtrl {
                 // Check if interrupt is enabled before raising it
                 if self.interrupt_enable.reg.is_set(FlInterruptEnable::Error) {
                     self.error_irq.set_level(true);
-                    println!(
-                        "[xs debug]emulator: raise_interrupt: error: {:x}",
-                        self.interrupt_state.reg.get()
-                    );
                     self.timer.schedule_poll_in(1);
                 }
             }
@@ -156,10 +150,6 @@ impl DummyFlashCtrl {
                 // Check if interrupt is enabled before raising it
                 if self.interrupt_enable.reg.is_set(FlInterruptEnable::Event) {
                     self.event_irq.set_level(true);
-                    println!(
-                        "[xs debug]emulator: raise_interrupt: event: {:x}",
-                        self.interrupt_state.reg.get()
-                    );
                     self.timer.schedule_poll_in(10);
                 }
             }
@@ -173,20 +163,12 @@ impl DummyFlashCtrl {
                     .reg
                     .modify(FlInterruptState::Error::CLEAR);
                 self.error_irq.set_level(false);
-                println!(
-                    "[xs debug]emulator: clear_interrupt: error: {:x}",
-                    self.interrupt_state.reg.get()
-                );
             }
             FlashCtrlIntType::Event => {
                 self.interrupt_state
                     .reg
                     .modify(FlInterruptState::Event::CLEAR);
                 self.event_irq.set_level(false);
-                println!(
-                    "[xs debug]emulator: clear_interrupt: event: {:x}",
-                    self.interrupt_state.reg.get()
-                );
             }
         }
 
@@ -195,16 +177,12 @@ impl DummyFlashCtrl {
     }
 
     fn handle_io_completion(&mut self, io_compl: Result<(), FlashOpError>) {
-        println!("[xs debug]emulator: handle_io_completion");
-
         match io_compl {
             Ok(_) => {
-                println!("[xs debug]emulator: handle_io_completion: start");
                 self.op_status.reg.modify(OpStatus::Done::SET);
                 self.raise_interrupt(FlashCtrlIntType::Event);
             }
             Err(error_type) => {
-                println!("[xs debug]emulator: handle_io_completion: error");
                 self.op_status
                     .reg
                     .modify(OpStatus::Err.val(error_type as u32));
@@ -219,14 +197,8 @@ impl DummyFlashCtrl {
 
     fn read_page(&mut self) -> Result<(), FlashOpError> {
         if self.dma_ram.is_none() {
-            panic!("DMA Ram must have been set before calling read_page ")
+            panic!("DMA Ram must have been set before calling read_page")
         }
-
-        println!(
-            "[xs debug]emulator: read_page: page_num: {}, page_size: {}",
-            self.page_num.reg.get(),
-            self.page_size.reg.get()
-        );
 
         // Get the page number from the register
         let page_num = self.page_num.reg.get();
@@ -259,10 +231,7 @@ impl DummyFlashCtrl {
                 dma_start_addr + i as u32,
                 self.buffer[i] as u32,
             ) {
-                println!(
-                    "[xs debug]emulator: Error: read_page: write error: {:?}",
-                    err
-                );
+                println!("DMA ram write error: {:?}", err);
                 return Err(FlashOpError::DmaRamAccessError);
             }
         }
@@ -272,17 +241,10 @@ impl DummyFlashCtrl {
 
     fn write_page(&mut self) -> Result<(), FlashOpError> {
         if self.dma_ram.is_none() {
-            panic!("DMA ram must have been set before calling write_page ")
+            panic!("DMA ram must have been set before calling write_page")
         }
         // Get the page number from the register
         let page_num = self.page_num.reg.get();
-
-        println!(
-            "[xs debug]emulator: write_page: page_num: {}, page_addr: {:#010x}, page_size: {}",
-            page_num,
-            self.page_addr.reg.get() as usize,
-            self.page_size.reg.get()
-        );
 
         // Sanity check for the page number, page size and file
         if page_num >= Self::MAX_PAGES
@@ -290,17 +252,10 @@ impl DummyFlashCtrl {
             || self.file.is_none()
             || !self.dma_ram_access_check(self.page_addr.reg.get())
         {
-            println!(
-                "[xs debug]emulator: Error: write_page: page_num: {}",
-                page_num
-            );
             return Err(FlashOpError::WriteError);
         }
 
-        println!("[xs debug]emulator: data transfer start");
-
         let dma_start_addr = self.page_addr.reg.get() - DCCM_OFFSET;
-
         for i in 0..Self::PAGE_SIZE {
             self.buffer[i] = match self
                 .dma_ram
@@ -311,20 +266,11 @@ impl DummyFlashCtrl {
             {
                 Ok(data) => data as u8,
                 Err(err) => {
-                    println!(
-                        "[xs debug]emulator: Error: read_page: read error: {:?}",
-                        err
-                    );
+                    println!("DMA ram read error: {:?}", err);
                     return Err(FlashOpError::DmaRamAccessError);
                 }
             };
         }
-
-        // Check print self.buf contents
-        println!("[xs debug]emulator: buffer contents: {:?}", self.buffer);
-
-        // !!! Weird behavior: this prints never shows up in the UART. The data is not written to the file. !!!
-        println!("[xs debug]emulator: data transfer end");
 
         // Write the entire page from the buffer to the backend file
         if let Some(file) = &mut self.file {
@@ -349,10 +295,6 @@ impl DummyFlashCtrl {
             || self.page_size.reg.get() < Self::PAGE_SIZE as u32
             || self.file.is_none()
         {
-            println!(
-                "[xs debug]emulator: Error: erase_page: page_num: {}",
-                page_num
-            );
             return Err(FlashOpError::EraseError);
         }
 
@@ -363,18 +305,10 @@ impl DummyFlashCtrl {
             if file.seek(std::io::SeekFrom::Start(offset)).is_err()
                 || file.write_all(&vec![0xFF; Self::PAGE_SIZE]).is_err()
             {
-                println!(
-                    "[xs debug]emulator: Error: erase_page: page_num: {}",
-                    page_num
-                );
                 return Err(FlashOpError::EraseError);
             }
         }
 
-        println!(
-            "[xs debug]emulator: erase_page: page_num: {} success",
-            page_num
-        );
         Ok(())
     }
 
@@ -432,11 +366,6 @@ impl FlashPeripheral for DummyFlashCtrl {
             registers_generated::flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
-        println!(
-            "[xs debug]emulator: write_fl_interrupt_state: {}",
-            val.reg.get()
-        );
-
         // Interrupt state register: SW write 1 to clear
         if val.reg.is_set(FlInterruptState::Error) {
             self.clear_interrupt(FlashCtrlIntType::Error);
@@ -464,11 +393,6 @@ impl FlashPeripheral for DummyFlashCtrl {
             registers_generated::flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
-        println!(
-            "[xs debug]emulator: write_fl_interrupt_enable: {}",
-            val.reg.get()
-        );
-
         if self.interrupt_state.reg.is_set(FlInterruptState::Error)
             && val.reg.is_set(FlInterruptEnable::Error)
         {
@@ -488,7 +412,6 @@ impl FlashPeripheral for DummyFlashCtrl {
 
     fn write_page_size(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
         self.page_size.reg.set(val);
-        println!("[xs debug]emulator: write_page_size: {}", val);
     }
 
     // Return the page size of the flash storage connected to the controller
@@ -501,7 +424,6 @@ impl FlashPeripheral for DummyFlashCtrl {
     }
 
     fn write_page_num(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
-        println!("[xs debug]emulator: write_page_num: {}", val);
         self.page_num.reg.set(val);
     }
 
@@ -510,7 +432,6 @@ impl FlashPeripheral for DummyFlashCtrl {
     }
 
     fn write_page_addr(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
-        println!("[xs debug]emulator: write_page_addr: {:#010x}", val);
         self.page_addr.reg.set(val);
     }
 
@@ -532,7 +453,6 @@ impl FlashPeripheral for DummyFlashCtrl {
             registers_generated::flash_ctrl::bits::FlControl::Register,
         >,
     ) {
-        println!("[xs debug]emulator: write_fl_control: {}", val.reg.get());
         if !self.ctrl_regwen.reg.is_set(CtrlRegwen::En) {
             return;
         }
@@ -576,10 +496,6 @@ impl FlashPeripheral for DummyFlashCtrl {
         u32,
         registers_generated::flash_ctrl::bits::CtrlRegwen::Register,
     > {
-        println!(
-            "[xs debug]emulator: read_ctrl_regwen: {}",
-            self.ctrl_regwen.reg.get()
-        );
         emulator_bus::ReadWriteRegister::new(self.ctrl_regwen.reg.get())
     }
 }
@@ -643,7 +559,6 @@ mod test {
     ) -> Option<u32> {
         // Check if ref_addr is within the range of DCCM
         if ref_addr < DCCM_OFFSET || ref_addr + size as u32 > DCCM_OFFSET + DCCM_LENGTH as u32 {
-            println!("Error: ref_addr {:02x} is out of DMA_RAM range", ref_addr);
             return None;
         }
 
@@ -657,10 +572,6 @@ mod test {
             page_buf.copy_from_slice(data);
         }
 
-        println!(
-            "test_helper_prepare_io_page_buffer: ref_addr: {:02x}",
-            ref_addr
-        );
         Some(ref_addr)
     }
 

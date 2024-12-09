@@ -1,20 +1,13 @@
 // Licensed under the Apache-2.0 license
 
-// Flash controller driver for the dummy flash controller in the emulator
-// This driver will implment kernel::hil::flash::Flash trait and will be used by the kernel
+// Flash controller driver for the dummy flash controller in the emulator.
 
 use core::ops::{Index, IndexMut};
-use kernel::debug;
 use kernel::hil;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
-
-// XS: adding for debug print
-use core::fmt::Write;
-use romtime::println;
-
 use registers_generated::flash_ctrl::{
     bits::{CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus},
     regs::FlashCtrl,
@@ -48,7 +41,6 @@ impl TryInto<FlashOperation> for u32 {
     }
 }
 
-// Define Emulated Flash Page Size Struct
 pub struct EmulatedFlashPage(pub [u8; PAGE_SIZE]);
 
 impl Default for EmulatedFlashPage {
@@ -77,7 +69,6 @@ impl AsMut<[u8]> for EmulatedFlashPage {
     }
 }
 
-// Define the interface for the flash controller driver
 pub struct EmulatedFlashCtrl<'a> {
     registers: StaticRef<FlashCtrl>,
     flash_client: OptionalCell<&'a dyn hil::flash::Client<EmulatedFlashCtrl<'a>>>,
@@ -96,19 +87,15 @@ impl<'a> EmulatedFlashCtrl<'a> {
     }
 
     pub fn init(&self) {
-        // Clear op status register
         self.registers
             .op_status
             .modify(OpStatus::Err::CLEAR + OpStatus::Done::CLEAR);
 
-        // Clear interrupt state register
-        self.registers
-            .fl_interrupt_state
-            .modify(FlInterruptState::Error::SET + FlInterruptState::Event::SET);
+        self.clear_error_interrupt();
+        self.clear_event_interrupt();
     }
 
     fn enable_interrupts(&self) {
-        // Enable relevent interrupts
         self.registers
             .fl_interrupt_enable
             .modify(FlInterruptEnable::Error::SET + FlInterruptEnable::Event::SET);
@@ -121,32 +108,30 @@ impl<'a> EmulatedFlashCtrl<'a> {
     }
 
     fn clear_error_interrupt(&self) {
+        // Clear the error interrupt. Write 1 to clear
         self.registers
             .fl_interrupt_state
             .modify(FlInterruptState::Error::SET);
     }
 
     fn clear_event_interrupt(&self) {
+        // Clear the event interrupt. Write 1 to clear
         self.registers
             .fl_interrupt_state
             .modify(FlInterruptState::Event::SET);
     }
 
     pub fn handle_interrupt(&self) {
-        println!("[xs debug]driver:FlashCtrl interrupt handler");
-
-        // Extract the interrupt state and save it
         let flashctrl_intr = self.registers.fl_interrupt_state.extract();
 
         self.disable_interrupts();
 
-        // If it's error interrupt, call the client's error handler
+        // Handling error interrupt
         if flashctrl_intr.is_set(FlInterruptState::Error) {
             // Clear the op_status register
             self.registers.op_status.modify(OpStatus::Err::CLEAR);
 
             let read_buf = self.read_buf.take();
-            // Check if this is read error
             if let Some(buf) = read_buf {
                 // We were doing a read
                 self.flash_client.map(move |client| {
@@ -155,7 +140,6 @@ impl<'a> EmulatedFlashCtrl<'a> {
             }
 
             let write_buf = self.write_buf.take();
-            // Check if this is write error
             if let Some(buf) = write_buf {
                 // We were doing a write
                 self.flash_client.map(move |client| {
@@ -163,7 +147,6 @@ impl<'a> EmulatedFlashCtrl<'a> {
                 });
             }
 
-            // Check if this is an erase operation
             if self
                 .registers
                 .fl_control
@@ -178,7 +161,7 @@ impl<'a> EmulatedFlashCtrl<'a> {
             self.clear_error_interrupt();
         }
 
-        // If it's event interrupt, call the client's event handler
+        // Handling event interrupt (normal completion)
         if flashctrl_intr.is_set(FlInterruptState::Event) {
             // Clear the op_status register
             self.registers.op_status.modify(OpStatus::Done::CLEAR);
@@ -189,7 +172,6 @@ impl<'a> EmulatedFlashCtrl<'a> {
                 .matches_all(FlControl::Op.val(FlashOperation::ReadPage as u32))
             {
                 let read_buf = self.read_buf.take();
-                // Check if this is read event
                 if let Some(buf) = read_buf {
                     // We were doing a read
                     self.flash_client.map(move |client| {
@@ -202,7 +184,6 @@ impl<'a> EmulatedFlashCtrl<'a> {
                 .matches_all(FlControl::Op.val(FlashOperation::WritePage as u32))
             {
                 let write_buf = self.write_buf.take();
-                // Check if this is write event
                 if let Some(buf) = write_buf {
                     // We were doing a write
                     self.flash_client.map(move |client| {
@@ -220,7 +201,6 @@ impl<'a> EmulatedFlashCtrl<'a> {
                 });
             }
 
-            // Clear the interrupt state register event bit. Write 1 to clear
             self.clear_event_interrupt();
         }
     }
@@ -255,23 +235,8 @@ impl hil::flash::Flash for EmulatedFlashCtrl<'_> {
             .fl_control
             .modify(FlControl::Op::CLEAR + FlControl::Start::CLEAR);
 
-        // panic if buf address is above 32-bit address space
-        if buf.as_mut().as_ptr() as usize > u32::MAX as usize {
-            panic!(
-                "Buffer address {:p} is above 32-bit address space",
-                buf.as_mut().as_ptr()
-            );
-        }
-
-        // Extract necessary information from buf before replacing it
         let page_buf_addr = buf.as_mut().as_ptr() as u32;
         let page_buf_len = buf.as_mut().len() as u32;
-
-        // debug print the page number, page address and page size
-        debug!(
-            "Page Number: {}, Page Address: {:#010x}, Page Size: {}",
-            page_number, page_buf_addr, page_buf_len
-        );
 
         // Save the buffer
         self.read_buf.replace(buf);
@@ -301,8 +266,6 @@ impl hil::flash::Flash for EmulatedFlashCtrl<'_> {
         page_number: usize,
         buf: &'static mut Self::Page,
     ) -> Result<(), (ErrorCode, &'static mut Self::Page)> {
-        println!("[xs debug]flash driver: write_page start");
-
         // Check if the page number is valid
         if page_number >= FLASH_MAX_PAGES {
             return Err((ErrorCode::INVAL, buf));
@@ -318,23 +281,9 @@ impl hil::flash::Flash for EmulatedFlashCtrl<'_> {
             .fl_control
             .modify(FlControl::Op::CLEAR + FlControl::Start::CLEAR);
 
-        // panic if buf address is above 32-bit address space
-        if buf.as_mut().as_ptr() as usize > u32::MAX as usize {
-            panic!(
-                "Buffer address {:p} is above 32-bit address space",
-                buf.as_mut().as_ptr()
-            );
-        }
-
         // Extract necessary information from buf before replacing it
         let page_buf_addr = buf.as_mut().as_ptr() as u32;
         let page_buf_len = buf.as_mut().len() as u32;
-
-        // debug print the page number, page address and page size
-        println!(
-            "[xs debug]flash driver: Page Number: {}, Page Address: {:#010x}, Page Size: {}",
-            page_number, page_buf_addr, page_buf_len
-        );
 
         // Save the buffer
         self.write_buf.replace(buf);
@@ -356,8 +305,6 @@ impl hil::flash::Flash for EmulatedFlashCtrl<'_> {
     }
 
     fn erase_page(&self, page_number: usize) -> Result<(), ErrorCode> {
-        println!("[xs debug]flash driver: erase_page start\n");
-
         if page_number >= FLASH_MAX_PAGES {
             return Err(ErrorCode::INVAL);
         }

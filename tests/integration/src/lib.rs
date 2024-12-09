@@ -121,10 +121,7 @@ mod test {
     run_test!(test_i3c_simple);
     run_test!(test_i3c_constant_writes);
 
-    // Add flash controller tests
     run_test!(test_flash_ctrl_init);
-
     run_test!(test_flash_ctrl_read_write_page);
-
     run_test!(test_flash_ctrl_erase_page);
 }

@@ -66,7 +66,6 @@ impl<'a> FlashCtrlTestCallBack {
 impl<'a, F: hil::flash::Flash> hil::flash::Client<F> for FlashCtrlTestCallBack {
     fn read_complete(&self, page: &'static mut F::Page, error: Result<(), hil::flash::Error>) {
         if self.read_pending.get() {
-            // Check if it is error result. If yes, it must be a flash read error
             if let Err(_) = error {
                 self.op_error.set(true);
             } else {
@@ -84,19 +83,15 @@ impl<'a, F: hil::flash::Flash> hil::flash::Client<F> for FlashCtrlTestCallBack {
                 self.write_out_buf.replace(page.as_mut());
             }
             self.write_pending.set(false);
-            println!("[xs debug]callback: write_complete");
         }
     }
 
     fn erase_complete(&self, error: Result<(), hil::flash::Error>) {
-        // Caller may check by a successive page read to assert the erased
-        // page is composed of 0xFF (all erased bits should be 1)
         if self.erase_pending.get() {
             if let Err(_) = error {
                 self.op_error.set(true);
             }
             self.erase_pending.set(false);
-            println!("[xs debug]callback: erase_complete");
         }
     }
 }
@@ -127,8 +122,7 @@ macro_rules! static_init_test {
 }
 
 pub fn test_flash_ctrl_erase_page() -> Option<u32> {
-    println!("[xs debug]test: Starting flash controller erase page test");
-
+    println!("Starting flash controller erase page test");
     let chip = unsafe { crate::CHIP.unwrap() };
     let flash_ctrl = &chip.peripherals.flash_ctrl;
     let test_cb = unsafe { static_init_test!() };
@@ -137,9 +131,9 @@ pub fn test_flash_ctrl_erase_page() -> Option<u32> {
     flash_ctrl.set_client(test_cb);
     test_cb.reset();
 
-    // Test erase page
     let page_num: usize = 15;
 
+    // Test erase page
     assert!(flash_ctrl.erase_page(page_num).is_ok());
     test_cb.erase_pending.set(true);
 
@@ -151,8 +145,8 @@ pub fn test_flash_ctrl_erase_page() -> Option<u32> {
 
     test_cb.reset();
 
-    let read_in_page = test_cb.read_in_page.take().unwrap();
     // Read the erased page to verify the erase operation
+    let read_in_page = test_cb.read_in_page.take().unwrap();
     assert!(flash_ctrl.read_page(page_num, read_in_page).is_ok());
     test_cb.read_pending.set(true);
 
@@ -171,8 +165,7 @@ pub fn test_flash_ctrl_erase_page() -> Option<u32> {
 
 // Set up the test for write page operation
 pub(crate) fn test_flash_ctrl_read_write_page() -> Option<u32> {
-    println!("[xs debug]test: Starting flash controller read write page test");
-
+    println!("Starting flash controller read write page test");
     let chip = unsafe { crate::CHIP.unwrap() };
     let flash_ctrl = &chip.peripherals.flash_ctrl;
     let test_cb = unsafe { static_init_test!() };
@@ -181,7 +174,6 @@ pub(crate) fn test_flash_ctrl_read_write_page() -> Option<u32> {
     flash_ctrl.set_client(test_cb);
     test_cb.reset();
 
-    // Test write page
     let page_num: usize = 20;
 
     let write_in_page = test_cb.write_in_page.take().unwrap();

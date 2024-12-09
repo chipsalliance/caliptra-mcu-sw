@@ -360,8 +360,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     let flash_ctrl_event_irq = pic.register_irq(CaliptraRootBus::FLASH_CTRL_EVENT_IRQ);
     let flash_controller = DummyFlashCtrl::new(
         &clock.clone(),
-        //TODO: pass command line argument for flash file
-        Some(PathBuf::from("primary_flash")),
+        Some(PathBuf::from("primary_flash")), // TODO: make this configurable
         flash_ctrl_error_irq,
         flash_ctrl_event_irq,
     )
@@ -377,6 +376,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         None,
     )));
 
+    // Set the DMA RAM for the Flash Controller
     auto_root_bus
         .borrow_mut()
         .flash_periph
