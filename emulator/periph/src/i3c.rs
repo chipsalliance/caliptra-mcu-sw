@@ -7,7 +7,7 @@ Abstract:
 --*/
 
 use crate::i3c_protocol::{I3cController, I3cTarget, I3cTcriResponseXfer, ResponseDescriptor};
-use crate::{DynamicI3cAddress, I3cTcriCommand};
+use crate::{DynamicI3cAddress, I3cIncomingCommandClient, I3cTcriCommand, IbiDescriptor};
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::i3c::I3cPeripheral;
@@ -17,8 +17,20 @@ use registers_generated::i3c::bits::{
     TtiQueueSize,
 };
 use std::collections::VecDeque;
+use std::sync::Arc;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::FromBytes;
+
+struct PollScheduler {
+    timer: Timer,
+}
+
+impl I3cIncomingCommandClient for PollScheduler {
+    fn incoming(&self) {
+        // trigger interrupt check next tick
+        self.timer.schedule_poll_in(1);
+    }
+}
 
 pub struct I3c {
     /// Timer
@@ -30,11 +42,13 @@ pub struct I3c {
     /// RX DATA in u8
     tti_rx_data_raw: VecDeque<Vec<u8>>,
     /// RX DATA currently being read from driver
-    tti_rx_current: Vec<u8>,
+    tti_rx_current: VecDeque<u8>,
     /// TX Command in u32
     tti_tx_desc_queue_raw: VecDeque<u32>,
     /// TX DATA in u8
     tti_tx_data_raw: VecDeque<Vec<u8>>,
+    /// IBI buffer
+    tti_ibi_buffer: Vec<u8>,
     /// Error interrupt
     _error_irq: Irq,
     /// Notification interrupt
@@ -54,20 +68,25 @@ impl I3c {
         error_irq: Irq,
         notif_irq: Irq,
     ) -> Self {
-        let i3c_target = I3cTarget::default();
+        let mut i3c_target = I3cTarget::default();
 
         controller.attach_target(i3c_target.clone()).unwrap();
         let timer = Timer::new(clock);
         timer.schedule_poll_in(Self::HCI_TICKS);
+        let poll_scheduler = PollScheduler {
+            timer: timer.clone(),
+        };
+        i3c_target.set_incoming_command_client(Arc::new(poll_scheduler));
 
         Self {
             i3c_target,
             timer,
             tti_rx_desc_queue_raw: VecDeque::new(),
             tti_rx_data_raw: VecDeque::new(),
-            tti_rx_current: vec![],
+            tti_rx_current: VecDeque::new(),
             tti_tx_desc_queue_raw: VecDeque::new(),
             tti_tx_data_raw: VecDeque::new(),
+            tti_ibi_buffer: vec![],
             _error_irq: error_irq,
             notif_irq,
             interrupt_status: ReadWriteRegister::new(0),
@@ -144,10 +163,29 @@ impl I3c {
                     + InterruptStatus::TxDescTimeout::SET,
             ));
     }
+
+    // check if there area valid IBI descriptors and messages
+    fn check_ibi_buffer(&mut self) {
+        loop {
+            if self.tti_ibi_buffer.len() <= 4 {
+                return;
+            }
+
+            let desc = IbiDescriptor::read_from_bytes(&self.tti_ibi_buffer[0..4]).unwrap();
+            let len = desc.data_length() as usize;
+            if self.tti_ibi_buffer.len() < len + 4 {
+                // wait for more data
+                return;
+            }
+            // we only need the first byte, which is the MDB.
+            // TODO: handle more than the MDB?
+            self.i3c_target.send_ibi(self.tti_ibi_buffer[4]);
+            self.tti_ibi_buffer.drain(0..len + 4);
+        }
+    }
 }
 
 impl I3cPeripheral for I3c {
-    // TODO: route IBI to controller to let them know we're ready for a read
     fn read_i3c_base_hci_version(&mut self, _size: RvSize) -> RvData {
         RvData::from(Self::HCI_VERSION)
     }
@@ -198,6 +236,31 @@ impl I3cPeripheral for I3c {
         self.interrupt_enable.reg.set(val.reg.get());
     }
 
+    fn write_i3c_ec_tti_tti_ibi_port(
+        &mut self,
+        size: emulator_types::RvSize,
+        val: emulator_types::RvData,
+    ) {
+        match size {
+            RvSize::Byte => {
+                self.tti_ibi_buffer.push(val as u8);
+            }
+            RvSize::HalfWord => {
+                let val = val as u16;
+                self.tti_ibi_buffer.push(val as u8);
+                self.tti_ibi_buffer.push((val >> 8) as u8);
+            }
+            RvSize::Word => {
+                self.tti_ibi_buffer
+                    .extend_from_slice(val.to_le_bytes().as_ref());
+            }
+            RvSize::Invalid => {
+                panic!("Invalid size")
+            }
+        }
+        self.check_ibi_buffer();
+    }
+
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
         &mut self,
         _size: RvSize,
@@ -227,24 +290,24 @@ impl I3cPeripheral for I3c {
     fn read_i3c_ec_tti_rx_desc_queue_port(&mut self, _size: RvSize) -> u32 {
         if self.tti_rx_desc_queue_raw.len() & 1 == 0 {
             // only replace the data every other read since the descriptor is 64 bits
-            self.tti_rx_current = self.tti_tx_data_raw.pop_front().unwrap_or_default();
+            self.tti_rx_current = self.tti_rx_data_raw.pop_front().unwrap_or_default().into();
         }
         self.tti_rx_desc_queue_raw.pop_front().unwrap_or(0)
     }
 
     fn read_i3c_ec_tti_rx_data_port(&mut self, size: RvSize) -> u32 {
         match size {
-            RvSize::Byte => self.tti_rx_current.pop().unwrap_or(0) as u32,
+            RvSize::Byte => self.tti_rx_current.pop_front().unwrap_or(0) as u32,
             RvSize::HalfWord => {
-                let mut data = (self.tti_rx_current.pop().unwrap_or(0) as u32) << 8;
-                data |= self.tti_rx_current.pop().unwrap_or(0) as u32;
+                let mut data = (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 8;
+                data |= self.tti_rx_current.pop_front().unwrap_or(0) as u32;
                 data
             }
             RvSize::Word => {
-                let mut data = (self.tti_rx_current.pop().unwrap_or(0) as u32) << 24;
-                data |= (self.tti_rx_current.pop().unwrap_or(0) as u32) << 16;
-                data |= (self.tti_rx_current.pop().unwrap_or(0) as u32) << 8;
-                data |= self.tti_rx_current.pop().unwrap_or(0) as u32;
+                let mut data = self.tti_rx_current.pop_front().unwrap_or(0) as u32;
+                data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 16;
+                data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 16;
+                data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 24;
                 data
             }
             RvSize::Invalid => {
