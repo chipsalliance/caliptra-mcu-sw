@@ -31,8 +31,23 @@ pub(crate) fn test_i3c_simple() -> Option<u32> {
     // Safety: this is run after the board has initialized the chip.
     let chip = unsafe { crate::CHIP.unwrap() };
     chip.peripherals.i3c.enable();
+    // check that we have a dynamic address from the driver
+    if chip
+        .peripherals
+        .i3c
+        .get_device_info()
+        .dynamic_addr
+        .is_none()
+    {
+        println!(
+            "Failed to get address: dynamic {:?} static {:?}",
+            chip.peripherals.i3c.get_device_info().dynamic_addr,
+            chip.peripherals.i3c.get_device_info().static_addr,
+        );
+        fail();
+    }
     chip.peripherals.i3c.disable();
-    Some(0)
+    success();
 }
 
 /// Tests that writes are handled properly

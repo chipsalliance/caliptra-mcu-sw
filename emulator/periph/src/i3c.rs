@@ -7,7 +7,7 @@ Abstract:
 --*/
 
 use crate::i3c_protocol::{I3cController, I3cTarget, I3cTcriResponseXfer, ResponseDescriptor};
-use crate::{DynamicI3cAddress, I3cIncomingCommandClient, IbiDescriptor, ReguDataTransferCommand};
+use crate::{I3cIncomingCommandClient, I3cTcriCommand, IbiDescriptor};
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::i3c::I3cPeripheral;
@@ -279,12 +279,14 @@ impl I3cPeripheral for I3c {
         &mut self,
         _size: RvSize,
     ) -> ReadWriteRegister<u32, StbyCrDeviceAddr::Register> {
-        ReadWriteRegister::new(
-            self.i3c_target
-                .get_address()
-                .unwrap_or(DynamicI3cAddress::new(0x3d).unwrap())
-                .into(),
-        )
+        let val = match self.i3c_target.get_address() {
+            Some(addr) => {
+                StbyCrDeviceAddr::DynamicAddr.val(addr.into())
+                    + StbyCrDeviceAddr::DynamicAddrValid::SET
+            }
+            None => StbyCrDeviceAddr::StaticAddr.val(0x3d) + StbyCrDeviceAddr::StaticAddrValid::SET,
+        };
+        ReadWriteRegister::new(val.value)
     }
 
     fn read_i3c_ec_tti_extcap_header(
