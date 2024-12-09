@@ -31,7 +31,7 @@ pub(crate) fn test_i3c_simple() -> Option<u32> {
     // Safety: this is run after the board has initialized the chip.
     let chip = unsafe { crate::CHIP.unwrap() };
     chip.peripherals.i3c.enable();
-    // check that we have a static address from the driver
+    // check that we have a dynamic address from the driver
     if chip
         .peripherals
         .i3c
