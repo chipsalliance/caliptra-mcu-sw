@@ -6,22 +6,16 @@ use crate::hil::I3CTargetInfo;
 use crate::hil::{RxClient, TxClient};
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
-use kernel::hil::time::Alarm;
-use kernel::hil::time::AlarmClient;
-use kernel::hil::time::Time;
+use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::{debug, ErrorCode};
 use registers_generated::i3c::bits::HcControl::{BusEnable, ModeSelector};
-use registers_generated::i3c::bits::InterruptStatus;
-use registers_generated::i3c::bits::QueueThldCtrl;
-use registers_generated::i3c::bits::RingHeadersSectionOffset;
-use registers_generated::i3c::bits::StbyCrCapabilities;
-use registers_generated::i3c::bits::StbyCrControl;
-use registers_generated::i3c::bits::StbyCrDeviceChar;
-use registers_generated::i3c::bits::TtiQueueThldCtrl;
-use registers_generated::i3c::bits::{ControllerDeviceAddr, InterruptEnable};
+use registers_generated::i3c::bits::{
+    InterruptEnable, InterruptStatus, QueueThldCtrl, RingHeadersSectionOffset, StbyCrCapabilities,
+    StbyCrControl, StbyCrDeviceAddr, StbyCrDeviceChar, TtiQueueThldCtrl,
+};
 use registers_generated::i3c::regs::I3c;
 use registers_generated::i3c::I3C_CSR_ADDR;
 use tock_registers::register_bitfields;
@@ -163,6 +157,11 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         if rhso != 0 {
             panic!("RING_HEADERS_SECTION_OFFSET is not 0");
         }
+
+        // initialize timing registers
+        self.registers.t_r_reg.set(0x2);
+        self.registers.t_hd_dat_reg.set(0xa);
+        self.registers.t_su_dat_reg.set(0xa);
 
         // Setup the threshold for the HCI queues (in the internal/private software data structures):
         self.registers.queue_thld_ctrl.modify(
@@ -467,14 +466,37 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
     }
 
     fn get_device_info(&self) -> I3CTargetInfo {
-        let dynamic_addr = self
+        let dynamic_addr = if self
             .registers
-            .controller_device_addr
-            .read(ControllerDeviceAddr::DynamicAddr) as u8;
-
+            .stby_cr_device_addr
+            .read(StbyCrDeviceAddr::DynamicAddrValid)
+            == 1
+        {
+            Some(
+                self.registers
+                    .stby_cr_device_addr
+                    .read(StbyCrDeviceAddr::DynamicAddr) as u8,
+            )
+        } else {
+            None
+        };
+        let static_addr = if self
+            .registers
+            .stby_cr_device_addr
+            .read(StbyCrDeviceAddr::StaticAddrValid)
+            == 1
+        {
+            Some(
+                self.registers
+                    .stby_cr_device_addr
+                    .read(StbyCrDeviceAddr::StaticAddr) as u8,
+            )
+        } else {
+            None
+        };
         I3CTargetInfo {
-            static_addr: None,
-            dynamic_addr: Some(dynamic_addr),
+            static_addr,
+            dynamic_addr,
             max_read_len: MAX_READ_WRITE_SIZE,
             max_write_len: MAX_READ_WRITE_SIZE,
         }
