@@ -79,7 +79,12 @@ mod test {
         output
     }
 
-    fn run_runtime(feature: &str, rom_path: PathBuf, runtime_path: PathBuf, i3c_port: String) -> ExitStatus {
+    fn run_runtime(
+        feature: &str,
+        rom_path: PathBuf,
+        runtime_path: PathBuf,
+        i3c_port: String,
+    ) -> ExitStatus {
         let cargo_run_args = vec![
             "run",
             "-p",
@@ -94,7 +99,6 @@ mod test {
             runtime_path.to_str().unwrap(),
             "--i3c-port",
             i3c_port.as_str(),
-
         ];
         println!("Running test firmware {}", feature.replace("_", "-"));
         let mut cmd = Command::new("cargo");

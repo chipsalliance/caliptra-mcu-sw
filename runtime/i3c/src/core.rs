@@ -388,12 +388,12 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let size = self.tx_buffer_size.replace(0);
         if idx < size {
             // TODO: get the correct structure of this descriptor
-            println!(
-                "Sending data descriptor queue port for {} bytes size {} idx {}",
-                size - idx,
-                size,
-                idx
-            );
+            // println!(
+            //     "Sending data descriptor queue port for {} bytes size {} idx {}",
+            //     size - idx,
+            //     size,
+            //     idx
+            // );
             self.registers.tx_desc_queue_port.set((size - idx) as u32);
             while idx < size {
                 let mut bytes = [0; 4];

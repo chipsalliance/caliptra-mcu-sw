@@ -364,6 +364,7 @@ fn run_mctp_ctrl_cmd_tests(
         passed,
         tests.len()
     );
+    running.store(false, Ordering::Relaxed);
 }
 
 fn prepare_private_write_cmd(to_addr: u8, data_len: u16) -> [u8; 9] {
