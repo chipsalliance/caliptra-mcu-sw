@@ -1693,7 +1693,7 @@ mod tests {
     #[test]
     fn test_coverage() {
         // represent program as an array of 16-bit and 32-bit instructions
-        let instructions = vec![
+        let instructions = [
             Instr::Compressed(0x1234),
             Instr::Compressed(0xABCD),
             Instr::General(0xDEADBEEF),
