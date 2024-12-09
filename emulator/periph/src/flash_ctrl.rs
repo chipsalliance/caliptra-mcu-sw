@@ -12,16 +12,20 @@ Abstract:
 
 --*/
 
+use crate::root_bus::{DCCM_LENGTH, DCCM_OFFSET};
 use core::convert::TryInto;
-use emulator_bus::{ActionHandle, Clock, ReadOnlyRegister, ReadWriteRegister, Timer};
+use emulator_bus::{ActionHandle, Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::flash::FlashPeripheral;
+use emulator_types::RvSize;
 use registers_generated::flash_ctrl::bits::{
     CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
 };
+use std::cell::RefCell;
 use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::path::PathBuf;
+use std::rc::Rc;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 #[derive(Debug, PartialEq)]
@@ -55,10 +59,14 @@ pub enum FlashOpError {
     WriteError = 1,
     EraseError = 2,
     InvalidOp = 3,
+    DmaRamAccessError = 4,
 }
 
 // Define a dummy flash controller peripheral.
 pub struct DummyFlashCtrl {
+    // carry the refernece to Ram
+    dma_ram: Option<Rc<RefCell<Ram>>>,
+
     interrupt_state: ReadWriteRegister<u32, FlInterruptState::Register>,
     interrupt_enable: ReadWriteRegister<u32, FlInterruptEnable::Register>,
     page_size: ReadWriteRegister<u32>,
@@ -107,6 +115,7 @@ impl DummyFlashCtrl {
         };
 
         Ok(Self {
+            dma_ram: None,
             interrupt_state: ReadWriteRegister::new(0x0000_0000),
             interrupt_enable: ReadWriteRegister::new(0x0000_0000),
             page_size: ReadWriteRegister::new(0x0000_0000),
@@ -204,7 +213,15 @@ impl DummyFlashCtrl {
         }
     }
 
+    fn dma_ram_access_check(&self, addr: u32) -> bool {
+        addr >= DCCM_OFFSET && addr + Self::PAGE_SIZE as u32 <= DCCM_OFFSET + DCCM_LENGTH as u32
+    }
+
     fn read_page(&mut self) -> Result<(), FlashOpError> {
+        if self.dma_ram.is_none() {
+            panic!("DMA Ram must have been set before calling read_page ")
+        }
+
         println!(
             "[xs debug]emulator: read_page: page_num: {}, page_size: {}",
             self.page_num.reg.get(),
@@ -218,6 +235,7 @@ impl DummyFlashCtrl {
         if page_num >= Self::MAX_PAGES
             || self.page_size.reg.get() < Self::PAGE_SIZE as u32
             || self.file.is_none()
+            || !self.dma_ram_access_check(self.page_addr.reg.get())
         {
             return Err(FlashOpError::ReadError);
         }
@@ -233,24 +251,31 @@ impl DummyFlashCtrl {
             }
         }
 
-        // Copy the data from the internal buffer to the 'PAGE_ADDR' buffer that  will be used by the SW.
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                self.buffer.as_ptr(),
-                (self.page_addr.reg.get() as usize) as *mut u8,
-                Self::PAGE_SIZE,
-            );
+        // Write the entire page from the buffer to the DMA ram
+        let dma_start_addr = self.page_addr.reg.get() - DCCM_OFFSET;
+        for i in 0..Self::PAGE_SIZE {
+            if let Err(err) = self.dma_ram.clone().unwrap().borrow_mut().write(
+                RvSize::Byte,
+                dma_start_addr + i as u32,
+                self.buffer[i] as u32,
+            ) {
+                println!(
+                    "[xs debug]emulator: Error: read_page: write error: {:?}",
+                    err
+                );
+                return Err(FlashOpError::DmaRamAccessError);
+            }
         }
 
         Ok(())
     }
 
     fn write_page(&mut self) -> Result<(), FlashOpError> {
+        if self.dma_ram.is_none() {
+            panic!("DMA ram must have been set before calling write_page ")
+        }
         // Get the page number from the register
         let page_num = self.page_num.reg.get();
-
-        // Ensure the file is not None
-        assert!(self.file.is_some());
 
         println!(
             "[xs debug]emulator: write_page: page_num: {}, page_addr: {:#010x}, page_size: {}",
@@ -263,6 +288,7 @@ impl DummyFlashCtrl {
         if page_num >= Self::MAX_PAGES
             || self.page_size.reg.get() < Self::PAGE_SIZE as u32
             || self.file.is_none()
+            || !self.dma_ram_access_check(self.page_addr.reg.get())
         {
             println!(
                 "[xs debug]emulator: Error: write_page: page_num: {}",
@@ -273,31 +299,29 @@ impl DummyFlashCtrl {
 
         println!("[xs debug]emulator: data transfer start");
 
-        // Debugging code: will be removed later
-        {
-            // Copy the data from the 'PAGE_ADDR' buffer to the internal buffer
-            let src_ptr = self.page_addr.reg.get() as *const u8;
+        let dma_start_addr = self.page_addr.reg.get() - DCCM_OFFSET;
 
-            println!("[xs debug]emulator: src_ptr: {:#010x}", src_ptr as usize);
-
-            for i in 0..Self::PAGE_SIZE {
-                unsafe {
-                    let data = *src_ptr.add(i);
-
-                    // !!! Weird behavior: this print never shows up in the UART. It seems when accessing the raw buffer something is wrong !!!
-                    println!("[xs debug]emulator: data: {:#02x}", data);
+        for i in 0..Self::PAGE_SIZE {
+            self.buffer[i] = match self
+                .dma_ram
+                .clone()
+                .unwrap()
+                .borrow_mut()
+                .read(RvSize::Byte, dma_start_addr + i as u32)
+            {
+                Ok(data) => data as u8,
+                Err(err) => {
+                    println!(
+                        "[xs debug]emulator: Error: read_page: read error: {:?}",
+                        err
+                    );
+                    return Err(FlashOpError::DmaRamAccessError);
                 }
-            }
+            };
         }
 
-        // Copy the data from the 'PAGE_ADDR' buffer to the internal buffer
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                (self.page_addr.reg.get() as usize) as *const u8,
-                self.buffer.as_mut_ptr(),
-                Self::PAGE_SIZE,
-            );
-        }
+        // Check print self.buf contents
+        println!("[xs debug]emulator: buffer contents: {:?}", self.buffer);
 
         // !!! Weird behavior: this prints never shows up in the UART. The data is not written to the file. !!!
         println!("[xs debug]emulator: data transfer end");
@@ -377,6 +401,10 @@ impl DummyFlashCtrl {
 }
 
 impl FlashPeripheral for DummyFlashCtrl {
+    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {
+        self.dma_ram = Some(_ram);
+    }
+
     fn poll(&mut self) {
         if self.timer.fired(&mut self.operation_start) {
             self.process_io();

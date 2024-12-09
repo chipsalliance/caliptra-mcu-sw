@@ -392,6 +392,7 @@ fn emu_make_peripheral_trait(
     let mut tokens = TokenStream::new();
     tokens.extend(quote! {
         pub trait #periph {
+            fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {}
             fn poll(&mut self) {}
             fn warm_reset(&mut self) {}
             fn update_reset(&mut self) {}

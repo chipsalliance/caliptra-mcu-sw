@@ -146,7 +146,7 @@ fn read_console(running: Arc<AtomicBool>, stdin_uart: Option<Arc<Mutex<Option<u8
 // CPU Main Loop (free_run no GDB)
 fn free_run(
     running: Arc<AtomicBool>,
-    mut mcu_cpu: Cpu<AutoRootBus>,
+    mut mcu_cpu: Cpu<Rc<RefCell<AutoRootBus>>>,
     mut caliptra_cpu: Option<CaliptraMainCpu<CaliptraMainRootBus>>,
     trace_path: Option<PathBuf>,
     stdin_uart: Option<Arc<Mutex<Option<u8>>>>,
@@ -337,7 +337,9 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         pic: pic.clone(),
         clock: clock.clone(),
     };
-    let root_bus = CaliptraRootBus::new(bus_args).unwrap();
+    let root_bus = Rc::new(RefCell::new(CaliptraRootBus::new(bus_args).unwrap()));
+    let dma_ram = root_bus.borrow_mut().dccm.clone();
+
     let i3c_error_irq = pic.register_irq(CaliptraRootBus::I3C_ERROR_IRQ);
     let i3c_notif_irq = pic.register_irq(CaliptraRootBus::I3C_NOTIF_IRQ);
 
@@ -365,7 +367,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     )
     .unwrap();
 
-    let auto_root_bus = AutoRootBus::new(
+    let auto_root_bus = Rc::new(RefCell::new(AutoRootBus::new(
         Some(Box::new(root_bus)),
         Some(Box::new(i3c)),
         Some(Box::new(flash_controller)),
@@ -373,7 +375,15 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         None,
         None,
         None,
-    );
+    )));
+
+    auto_root_bus
+        .borrow_mut()
+        .flash_periph
+        .as_mut()
+        .unwrap()
+        .periph
+        .set_dma_ram(dma_ram);
 
     let cpu = Cpu::new(auto_root_bus, clock, pic);
 

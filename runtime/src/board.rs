@@ -32,19 +32,19 @@ pub static mut PROCESS_PRINTER: Option<
 > = None;
 
 #[cfg(any(
-    feature = "test-flash-ctrl-write-page",
+    feature = "test-flash-ctrl-read-write-page",
     feature = "test-flash-ctrl-erase-page"
 ))]
 static mut BOARD: Option<&'static kernel::Kernel> = None;
 
 #[cfg(any(
-    feature = "test-flash-ctrl-write-page",
+    feature = "test-flash-ctrl-read-write-page",
     feature = "test-flash-ctrl-erase-page"
 ))]
 static mut PLATFORM: Option<&'static VeeR> = None;
 
 #[cfg(any(
-    feature = "test-flash-ctrl-write-page",
+    feature = "test-flash-ctrl-read-write-page",
     feature = "test-flash-ctrl-erase-page"
 ))]
 static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = None;
@@ -282,7 +282,7 @@ pub unsafe fn main() {
     });
 
     #[cfg(any(
-        feature = "test-flash-ctrl-write-page",
+        feature = "test-flash-ctrl-read-write-page",
         feature = "test-flash-ctrl-erase-page"
     ))]
     {
@@ -310,9 +310,9 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-flash-ctrl-init") {
         debug!("Executing test-flash-ctrl-init");
         crate::flash_ctrl_test::test_flash_ctrl_init()
-    } else if cfg!(feature = "test-flash-ctrl-write-page") {
-        debug!("Executing test-flash-ctrl-write-page");
-        crate::flash_ctrl_test::test_flash_ctrl_write_page()
+    } else if cfg!(feature = "test-flash-ctrl-read-write-page") {
+        debug!("Executing test-flash-ctrl-read-write-page");
+        crate::flash_ctrl_test::test_flash_ctrl_read_write_page()
     } else if cfg!(feature = "test-flash-ctrl-erase-page") {
         debug!("Executing test-flash-ctrl-erase-page");
         crate::flash_ctrl_test::test_flash_ctrl_erase_page()
@@ -326,7 +326,7 @@ pub unsafe fn main() {
 }
 
 #[cfg(any(
-    feature = "test-flash-ctrl-write-page",
+    feature = "test-flash-ctrl-read-write-page",
     feature = "test-flash-ctrl-erase-page"
 ))]
 pub fn run_kernel_op(loops: usize) {
