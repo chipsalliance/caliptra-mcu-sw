@@ -372,6 +372,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         None,
         None,
         None,
+        None,
+        None,
     );
 
     let cpu = Cpu::new(auto_root_bus, clock, pic);

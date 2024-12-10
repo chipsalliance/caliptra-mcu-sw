@@ -288,11 +288,20 @@ fn format_comment(comment: &str, indent: usize) -> String {
     result
 }
 
-fn flatten_registers(block: &RegisterBlock, offset: u64) -> Vec<Register> {
+fn flatten_registers(
+    block: &RegisterBlock,
+    offset: u64,
+    prefix_name: &str,
+    level: usize,
+) -> Vec<Register> {
     let mut registers = Vec::new();
     for reg in block.registers.iter() {
         assert!(reg.ty.name.is_some() || has_single_32_bit_field(&reg.ty));
         let mut r = reg.as_ref().clone();
+        // don't add a prefix to the top level as that would be redundant
+        if level > 0 && !prefix_name.is_empty() {
+            r.name = format!("{}_{}", prefix_name, r.name);
+        }
         r.offset += offset;
         registers.push(r);
     }
@@ -300,6 +309,8 @@ fn flatten_registers(block: &RegisterBlock, offset: u64) -> Vec<Register> {
         registers.extend(flatten_registers(
             sub_block.block(),
             offset + sub_block.start_offset(),
+            &sub_block.block().name,
+            level + 1,
         ));
     }
     registers.sort_by_key(|r| r.offset);
@@ -308,7 +319,7 @@ fn flatten_registers(block: &RegisterBlock, offset: u64) -> Vec<Register> {
 
 fn generate_reg_structs(crate_prefix: &str, block: &RegisterBlock) -> String {
     let name = &block.name;
-    let registers = flatten_registers(block, 0);
+    let registers = flatten_registers(block, 0, "", 0);
     let name = camel_case(name);
     let mut tokens = format!("register_structs! {{\n    pub {name} {{\n");
 
