@@ -156,7 +156,7 @@ impl SetEIDResp<[u8; 4]> {
 
 pub enum SetEIDStatus {
     Accepted = 0,
-    // Rejected = 1,
+    Rejected = 1,
 }
 
 pub enum SetEIDAllocStatus {

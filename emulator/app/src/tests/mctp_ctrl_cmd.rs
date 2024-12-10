@@ -123,16 +123,16 @@ impl MCTPCtrlCmdTests {
                 )
             }
             MCTPCtrlCmdTests::SetEIDNullFail => {
-                set_eid_resp!(CmdCompletionCode::ErrorInvalidData, 0, 0, 0)
+                set_eid_resp!(CmdCompletionCode::ErrorInvalidData, SetEIDStatus::Rejected, 0, 0)
             }
             MCTPCtrlCmdTests::SetEIDBroadcastFail => {
-                set_eid_resp!(CmdCompletionCode::ErrorInvalidData, 0, 0, 0)
+                set_eid_resp!(CmdCompletionCode::ErrorInvalidData, SetEIDStatus::Rejected, 0, 0)
             }
             MCTPCtrlCmdTests::SetEIDInvalidFail => {
-                set_eid_resp!(CmdCompletionCode::ErrorInvalidData, 0, 0, 0)
+                set_eid_resp!(CmdCompletionCode::ErrorInvalidData, SetEIDStatus::Rejected, 0, 0)
             }
             MCTPCtrlCmdTests::GetEID => {
-                get_eid_resp!(CmdCompletionCode::Success, 0)
+                get_eid_resp!(CmdCompletionCode::Success, TEST_TARGET_EID + 1)
             }
         };
 
@@ -146,10 +146,6 @@ impl MCTPCtrlCmdTests {
 
     fn generate_packet(mctp_packet: MCTPCtrlPacket) -> Vec<u8> {
         let mut pkt: Vec<u8> = Vec::with_capacity(MCTP_CTRL_PAYLOAD_OFFSET + mctp_packet.3.len());
-        // println!("mctp_packet.3.len() = {}", mctp_packet.3.len());
-        // println!("pkt.capacity() = {}", pkt.capacity());
-        // println!("MCTP_CTRL_PAYLOAD_OFFSET = {}", MCTP_CTRL_PAYLOAD_OFFSET);
-        // println!("MCTP hdr bytes {:?}", mctp_packet.0.as_bytes());
 
         pkt.resize(MCTP_CTRL_PAYLOAD_OFFSET + mctp_packet.3.len(), 0);
         mctp_packet

@@ -315,10 +315,11 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         self.retry_incoming_write.set(false);
         if self.rx_buffer.is_none() {
             self.rx_client.map(|client| {
-                // debug!("No buffer to receive I3C write");
+                debug!("No buffer to receive I3C write");
                 client.write_expected();
             });
         }
+
         if self.rx_buffer.is_none() {
             // try again later
             self.retry_incoming_write.set(true);
@@ -329,6 +330,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let rx_buffer = self.rx_buffer.take().unwrap();
         let mut buf_idx = self.rx_buffer_idx.get();
         let buf_size = self.rx_buffer_size.get();
+        println!("Handling incoming write with buffer of size {}", buf_size);
         let desc0 = self.registers.rx_desc_queue_port.get();
         let desc1 = self.registers.rx_desc_queue_port.get();
         let desc = LocalRegisterCopy::<u64, I3CCommandDescriptor::Register>::new(
@@ -362,13 +364,14 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         if full {
             // TODO: we need a way to say that the buffer was not big enough
         }
+        // reset
+        self.rx_buffer_idx.set(0);
+        self.rx_buffer_size.set(0);
+
         self.rx_client.map(|client| {
             println!("handling_incoming_write: Received data of length {}. Calling clien's receive_write", len.min(buf_size));
             client.receive_write(rx_buffer, len.min(buf_size));
         });
-        // reset
-        self.rx_buffer_idx.set(0);
-        self.rx_buffer_size.set(0);
     }
 
     // called when TTI wants us to send data for a private Read
@@ -434,6 +437,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
 
     fn send_ibi(&self, mdb: u8) {
         // TODO: it is unclear if we need to set anything else in the descriptor
+        println!("Sending IBI with MDB {}", mdb);
         self.registers
             .tti_ibi_port
             .set(IbiDescriptor::DataLength.val(1).value);
@@ -451,6 +455,7 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
     }
 
     fn set_rx_buffer(&self, rx_buf: &'static mut [u8]) {
+        println!("Setting rx buffer to len {:?}", rx_buf.len());
         let len = rx_buf.len();
         self.rx_buffer.replace(rx_buf);
         self.rx_buffer_idx.replace(0);

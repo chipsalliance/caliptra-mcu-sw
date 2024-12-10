@@ -151,6 +151,10 @@ fn handle_i3c_socket_connection(
             if data_len > 255 {
                 panic!("Cannot write more than 255 bytes to socket");
             }
+            println!(
+                "handle_i3c_socket_connection: Received response: {:x?}",
+                response
+            );
             let outgoing_header = OutgoingHeader {
                 ibi: response.ibi.unwrap_or_default(),
                 from_addr: response.addr.into(),
@@ -197,6 +201,9 @@ impl Test {
     }
 
     pub fn check_response(&mut self, data: &[u8]) {
+        println!("check_response: Received data: {:x?}", data);
+        println!("check_response: Expected data: {:x?}", self.pvt_read_data);
+
         if data.len() == self.pvt_read_data.len() && data == self.pvt_read_data {
             self.passed = true;
         }

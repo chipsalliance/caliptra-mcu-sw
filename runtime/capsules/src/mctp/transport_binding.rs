@@ -161,6 +161,7 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
                     let pec = MCTPI3CBinding::compute_pec(addr, tx_buffer, len);
                     tx_buffer[len] = pec;
 
+                    println!("MCTPI3CBinding: Transmitting packet of length {}", len + 1);
                     match self.i3c_target.transmit_read(tx_buffer, len + 1) {
                         Ok(_) => {}
                         Err((e, tx_buffer)) => {
@@ -211,8 +212,8 @@ impl<'a> RxClient for MCTPI3CBinding<'a> {
         // if no, drop the packet and set_rx_buffer on i3c_target to receive the next packet
         println!("MCTPI3CBinding: Received packet of length {}", len);
         if len == 0 || len > self.max_write_len.get() {
-            // println!("MCTPI3CBinding: Invalid packet length. Dropping packet.");
-            println!("MCTPI3CBinding: Received packet of length {}", len);
+            println!("MCTPI3CBinding: Invalid packet length. Dropping packet.");
+            // println!("MCTPI3CBinding: Received packet of length {} Dropping", len);
             self.i3c_target.set_rx_buffer(rx_buffer);
             return;
         }

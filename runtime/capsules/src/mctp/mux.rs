@@ -282,7 +282,11 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
         );
 
         if req_buf.len() < mctp_ctrl_cmd.req_data_len() {
-            println!("MuxMCTPDriver: Invalid buffer len Dropping packet. {:?} ctrl_cmd_len {:?}", req_buf.len(), mctp_ctrl_cmd.req_data_len());
+            println!(
+                "MuxMCTPDriver: Invalid buffer len Dropping packet. {:?} ctrl_cmd_len {:?}",
+                req_buf.len(),
+                mctp_ctrl_cmd.req_data_len()
+            );
             Err(ErrorCode::INVAL)?;
         }
 
@@ -293,7 +297,10 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
                     MCTPCtrlCmd::SetEID => mctp_ctrl_cmd
                         .process_set_endpoint_id(req_buf, &mut resp_buf[msg_payload_offset..])
                         .map(|eid| {
-                            self.set_local_eid(eid);
+                            println!("MCTPMuxDriver: Setting local EID to {:?}", eid);
+                            if let Some(eid) = eid {
+                                self.set_local_eid(eid);
+                            }
                         }),
 
                     MCTPCtrlCmd::GetEID => mctp_ctrl_cmd.process_get_endpoint_id(
