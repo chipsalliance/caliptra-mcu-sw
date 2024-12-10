@@ -5,9 +5,11 @@
 #![recursion_limit = "256"]
 #![no_std]
 pub mod el2_pic_ctrl;
+pub mod entropy_src;
 pub mod flash_ctrl;
 pub mod i3c;
 pub mod mbox;
+pub mod otp_ctrl;
 pub mod sha512_acc;
 pub mod soc_ifc;
 pub mod soc_ifc_trng;

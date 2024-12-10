@@ -127,7 +127,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     pub fn configure(&self, device_characteristic: u8) {
-        self.registers.stby_cr_device_char.modify(
+        self.registers.stdby_ctrl_mode_stby_cr_device_char.modify(
             StbyCrDeviceChar::Dcr.val(device_characteristic as u32)
                 + StbyCrDeviceChar::BcrVar.val(Self::BCR),
         );
@@ -138,12 +138,12 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // https://chipsalliance.github.io/i3c-core/initialization.html
 
         // Verify the value of the HCI_VERSION register at the I3CBase address. The controller is compliant with MIPI HCI v1.2 and therefore the HCI_VERSION should read 0x120
-        if self.registers.hci_version.get() != 0x120 {
+        if self.registers.i3c_base_hci_version.get() != 0x120 {
             panic!("HCI version is not 0x120");
         }
         if !self
             .registers
-            .stby_cr_capabilities
+            .stdby_ctrl_mode_stby_cr_capabilities
             .is_set(StbyCrCapabilities::TargetXactSupport)
         {
             panic!("I3C target transaction support is not enabled");
@@ -152,25 +152,25 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // Evaluate RING_HEADERS_SECTION_OFFSET, the SECTION_OFFSET should read 0x0 as this controller doesn’t support the DMA mode
         let rhso = self
             .registers
-            .ring_headers_section_offset
+            .i3c_base_ring_headers_section_offset
             .read(RingHeadersSectionOffset::SectionOffset);
         if rhso != 0 {
             panic!("RING_HEADERS_SECTION_OFFSET is not 0");
         }
 
         // initialize timing registers
-        self.registers.t_r_reg.set(0x2);
-        self.registers.t_hd_dat_reg.set(0xa);
-        self.registers.t_su_dat_reg.set(0xa);
+        self.registers.soc_mgmt_if_t_r_reg.set(0x2);
+        self.registers.soc_mgmt_if_t_hd_dat_reg.set(0xa);
+        self.registers.soc_mgmt_if_t_su_dat_reg.set(0xa);
 
         // Setup the threshold for the HCI queues (in the internal/private software data structures):
-        self.registers.queue_thld_ctrl.modify(
+        self.registers.piocontrol_queue_thld_ctrl.modify(
             QueueThldCtrl::CmdEmptyBufThld.val(0)
                 + QueueThldCtrl::RespBufThld.val(1)
                 + QueueThldCtrl::IbiStatusThld.val(1),
         );
 
-        self.registers.stby_cr_control.modify(
+        self.registers.stdby_ctrl_mode_stby_cr_control.modify(
             StbyCrControl::StbyCrEnableInit::SET // enable the standby controller
                 + StbyCrControl::TargetXactEnable::SET // enable Target Transaction Interface
                 + StbyCrControl::DaaEntdaaEnable::SET // enable dynamic address assignment
@@ -180,7 +180,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         );
 
         // set TTI queue thresholds
-        self.registers.tti_queue_thld_ctrl.modify(
+        self.registers.tti_tti_queue_thld_ctrl.modify(
             TtiQueueThldCtrl::IbiThld.val(1)
                 + TtiQueueThldCtrl::RxDescThld.val(1)
                 + TtiQueueThldCtrl::TxDescThld.val(1),
@@ -188,12 +188,12 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
 
         // enable the PHY connection to the bus
         self.registers
-            .hc_control
+            .i3c_base_hc_control
             .modify(ModeSelector::SET + BusEnable::SET);
     }
 
     pub fn enable_interrupts(&self) {
-        self.registers.interrupt_enable.modify(
+        self.registers.tti_interrupt_enable.modify(
             InterruptEnable::IbiThldStatEn::SET
                 + InterruptEnable::RxDescThldStatEn::SET
                 + InterruptEnable::TxDescThldStatEn::SET
@@ -203,7 +203,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     pub fn disable_interrupts(&self) {
-        self.registers.interrupt_enable.modify(
+        self.registers.tti_interrupt_enable.modify(
             InterruptEnable::IbiThldStatEn::CLEAR
                 + InterruptEnable::RxDescThldStatEn::CLEAR
                 + InterruptEnable::TxDescThldStatEn::CLEAR
@@ -213,14 +213,14 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     pub fn handle_interrupt(&self, _error: bool) {
-        let tti_interrupts = self.registers.interrupt_status.extract();
+        let tti_interrupts = self.registers.tti_interrupt_status.extract();
         if tti_interrupts.get() != 0 {
             // Bus error occurred
             if tti_interrupts.read(InterruptStatus::TransferErrStat) != 0 {
                 self.transfer_error();
                 // clear the interrupt
                 self.registers
-                    .interrupt_status
+                    .tti_interrupt_status
                     .write(InterruptStatus::TransferErrStat::SET);
             }
             // Bus aborted transaction
@@ -228,42 +228,42 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 self.transfer_error();
                 // clear the interrupt
                 self.registers
-                    .interrupt_status
+                    .tti_interrupt_status
                     .write(InterruptStatus::TransferAbortStat::SET);
             }
             // TTI IBI Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI IBI Queue is >= the value defined in `TTI_IBI_THLD`
             if tti_interrupts.read(InterruptStatus::IbiThldStat) != 0 {
                 debug!("Ignoring I3C IBI threshold interrupt");
                 self.registers
-                    .interrupt_enable
+                    .tti_interrupt_enable
                     .modify(InterruptEnable::IbiThldStatEn::CLEAR);
             }
             // TTI RX Descriptor Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI RX Descriptor Queue is >= the value defined in `TTI_RX_DESC_THLD`
             if tti_interrupts.read(InterruptStatus::RxDescThldStat) != 0 {
                 debug!("Ignoring I3C RX descriptor buffer threshold interrupt");
                 self.registers
-                    .interrupt_enable
+                    .tti_interrupt_enable
                     .modify(InterruptEnable::RxDescThldStatEn::CLEAR);
             }
             // TTI TX Descriptor Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI TX Descriptor Queue is >= the value defined in `TTI_TX_DESC_THLD`
             if tti_interrupts.read(InterruptStatus::TxDescThldStat) != 0 {
                 debug!("Ignoring I3C TX descriptor buffer threshold interrupt");
                 self.registers
-                    .interrupt_enable
+                    .tti_interrupt_enable
                     .modify(InterruptEnable::TxDescThldStatEn::CLEAR);
             }
             // TTI RX Data Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of entries in the TTI RX Data Queue is >= the value defined in `TTI_RX_DATA_THLD`
             if tti_interrupts.read(InterruptStatus::RxDataThldStat) != 0 {
                 debug!("Ignoring I3C RX data buffer buffer threshold interrupt");
                 self.registers
-                    .interrupt_enable
+                    .tti_interrupt_enable
                     .modify(InterruptEnable::RxDataThldStatEn::CLEAR);
             }
             // TTI TX Data Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI TX Data Queue is >= the value defined in TTI_TX_DATA_THLD
             if tti_interrupts.read(InterruptStatus::TxDataThldStat) != 0 {
                 debug!("Ignoring I3C TX data buffer buffer threshold interrupt");
                 self.registers
-                    .interrupt_enable
+                    .tti_interrupt_enable
                     .modify(InterruptEnable::TxDataThldStatEn::CLEAR);
             }
             // Pending Write was NACK’ed because the `TX_DESC_STAT` event was not handled in time
@@ -271,7 +271,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 self.pending_write_nack();
                 // clear the interrupt
                 self.registers
-                    .interrupt_status
+                    .tti_interrupt_status
                     .write(InterruptStatus::TxDescTimeout::SET);
             }
             // Pending Read was NACK’ed because the `RX_DESC_STAT` event was not handled in time
@@ -279,7 +279,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 self.pending_read_nack();
                 // clear the interrupt
                 self.registers
-                    .interrupt_status
+                    .tti_interrupt_status
                     .write(InterruptStatus::TxDescTimeout::SET);
             }
             // There is a pending Read Transaction on the I3C Bus. Software should write data to the TX Descriptor Queue and the TX Data Queue
@@ -325,8 +325,8 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let rx_buffer = self.rx_buffer.take().unwrap();
         let mut buf_idx = self.rx_buffer_idx.get();
         let buf_size = self.rx_buffer_size.get();
-        let desc0 = self.registers.rx_desc_queue_port.get();
-        let desc1 = self.registers.rx_desc_queue_port.get();
+        let desc0 = self.registers.tti_rx_desc_queue_port.get();
+        let desc1 = self.registers.tti_rx_desc_queue_port.get();
         let desc = LocalRegisterCopy::<u64, I3CCommandDescriptor::Register>::new(
             ((desc1 as u64) << 32) | (desc0 as u64),
         );
@@ -335,7 +335,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // read everything
         let mut full = false;
         for i in (0..len.next_multiple_of(4)).step_by(4) {
-            let data = self.registers.rx_data_port0.get().to_le_bytes();
+            let data = self.registers.tti_rx_data_port.get().to_le_bytes();
             for j in 0..4 {
                 if buf_idx >= buf_size {
                     full = true;
@@ -382,7 +382,9 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let size = self.tx_buffer_size.replace(0);
         if idx < size {
             // TODO: get the correct structure of this descriptor
-            self.registers.tx_desc_queue_port.set((size - idx) as u32);
+            self.registers
+                .tti_tx_desc_queue_port
+                .set((size - idx) as u32);
             while idx < size {
                 let mut bytes = [0; 4];
                 for i in 0..4.min(size - idx) {
@@ -390,7 +392,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                     idx += 1;
                 }
                 let word = u32::from_le_bytes(bytes);
-                self.registers.tx_data_port0.set(word);
+                self.registers.tti_tx_data_port.set(word);
             }
         }
         // we're done
@@ -423,9 +425,9 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     fn send_ibi(&self, mdb: u8) {
         // TODO: it is unclear if we need to set anything else in the descriptor
         self.registers
-            .tti_ibi_port
+            .tti_tti_ibi_port
             .set(IbiDescriptor::DataLength.val(1).value);
-        self.registers.tti_ibi_port.set(mdb as u32);
+        self.registers.tti_tti_ibi_port.set(mdb as u32);
     }
 }
 
@@ -472,13 +474,13 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
     fn get_device_info(&self) -> I3CTargetInfo {
         let dynamic_addr = if self
             .registers
-            .stby_cr_device_addr
+            .stdby_ctrl_mode_stby_cr_device_addr
             .read(StbyCrDeviceAddr::DynamicAddrValid)
             == 1
         {
             Some(
                 self.registers
-                    .stby_cr_device_addr
+                    .stdby_ctrl_mode_stby_cr_device_addr
                     .read(StbyCrDeviceAddr::DynamicAddr) as u8,
             )
         } else {
@@ -486,13 +488,13 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         };
         let static_addr = if self
             .registers
-            .stby_cr_device_addr
+            .stdby_ctrl_mode_stby_cr_device_addr
             .read(StbyCrDeviceAddr::StaticAddrValid)
             == 1
         {
             Some(
                 self.registers
-                    .stby_cr_device_addr
+                    .stdby_ctrl_mode_stby_cr_device_addr
                     .read(StbyCrDeviceAddr::StaticAddr) as u8,
             )
         } else {

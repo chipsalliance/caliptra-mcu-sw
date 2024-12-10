@@ -54,6 +54,9 @@ pub(crate) fn autogen(
         "hw/caliptra-ss/src/integration/rtl/soc_address_map.rdl",
         "hw/el2_pic_ctrl.rdl",
         "hw/flash_ctrl.rdl",
+        "hw/entropy_src.rdl",
+        "hw/otp_ctrl.rdl",
+        "hw/mcu.rdl",
     ];
     let mut rdl_files: Vec<PathBuf> = rdl_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
     rdl_files.extend_from_slice(extra_files);
@@ -82,7 +85,7 @@ pub(crate) fn autogen(
     }
 
     // eliminate duplicate type names
-    let patches = vec![
+    let patches = [
         (
             PROJECT_ROOT.join(
                 "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
@@ -117,6 +120,16 @@ pub(crate) fn autogen(
             ),
             "RESET_CONTROL",
             "TTI_RESET_CONTROL",
+        ),
+        (
+            PROJECT_ROOT.join("hw/entropy_src.rdl"),
+            "INTERRUPT_ENABLE",
+            "ENTROPY_INTERRUPT_ENABLE",
+        ),
+        (
+            PROJECT_ROOT.join("hw/otp_ctrl.rdl"),
+            "INTERRUPT_ENABLE",
+            "OTP_INTERRUPT_ENABLE",
         ),
     ];
 
@@ -170,9 +183,8 @@ pub(crate) fn autogen(
     let scope = scope.as_parent();
 
     let addrmap = scope.lookup_typedef("soc").unwrap();
-    let addrmap2 = scope.lookup_typedef("el2_pic").unwrap();
-    let addrmap3 = scope.lookup_typedef("flashctrl_dummy").unwrap();
-    let mut scopes = vec![addrmap, addrmap2, addrmap3];
+    let addrmap2 = scope.lookup_typedef("mcu").unwrap();
+    let mut scopes = vec![addrmap, addrmap2];
     if !extra_addrmap.is_empty() {
         let addrmap3 = scope.lookup_typedef("extra").unwrap();
         scopes.push(addrmap3);
@@ -226,6 +238,9 @@ fn generate_emulator_types(
     let mut validated_blocks = vec![];
 
     for block in blocks.iter_mut() {
+        if block.name.starts_with("caliptra_") {
+            block.name = block.name[9..].to_string();
+        }
         if block.name.ends_with("_reg") || block.name.ends_with("_csr") {
             block.name = block.name[0..block.name.len() - 4].to_string();
         }
@@ -749,6 +764,9 @@ fn generate_fw_registers(
     }
     let mut validated_blocks = vec![];
     for mut block in blocks {
+        if block.name.starts_with("caliptra_") {
+            block.name = block.name[9..].to_string();
+        }
         if block.name.ends_with("_reg") || block.name.ends_with("_csr") {
             block.name = block.name[0..block.name.len() - 4].to_string();
         }

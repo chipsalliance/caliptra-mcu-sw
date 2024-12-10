@@ -78,7 +78,7 @@ pub trait Sha512AccPeripheral {
     fn read_status(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::sha512_acc::bits::Status::Register>
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Status::Register>
     {
         emulator_bus::ReadWriteRegister::new(0)
     }

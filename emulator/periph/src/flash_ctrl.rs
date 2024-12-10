@@ -548,7 +548,17 @@ mod test {
             flash_controller.set_dma_ram(dma_ram);
         }
 
-        AutoRootBus::new(None, None, Some(flash_controller), None, None, None, None)
+        AutoRootBus::new(
+            None,
+            None,
+            Some(flash_controller),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
     }
 
     fn test_helper_prepare_io_page_buffer(
