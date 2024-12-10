@@ -253,13 +253,16 @@ pub unsafe fn main() {
         VirtualSchedulerTimer::new(systick_virtual_alarm)
     );
 
-    let veer = VeeR {
-        alarm,
-        console,
-        lldb,
-        scheduler,
-        scheduler_timer,
-    };
+    let veer = static_init!(
+        VeeR,
+        VeeR {
+            alarm,
+            console,
+            lldb,
+            scheduler,
+            scheduler_timer,
+        }
+    );
 
     kernel::process::load_processes(
         board_kernel,
@@ -286,16 +289,7 @@ pub unsafe fn main() {
         feature = "test-flash-ctrl-erase-page"
     ))]
     {
-        PLATFORM = Some(static_init!(
-            VeeR,
-            VeeR {
-                alarm,
-                console,
-                lldb,
-                scheduler,
-                scheduler_timer,
-            }
-        ));
+        PLATFORM = Some(veer);
         MAIN_CAP = Some(&create_capability!(capabilities::MainLoopCapability));
         BOARD = Some(board_kernel);
     }
@@ -322,7 +316,7 @@ pub unsafe fn main() {
     if let Some(exit) = exit {
         crate::io::exit_emulator(exit);
     }
-    board_kernel.kernel_loop(&veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
+    board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
 }
 
 #[cfg(any(

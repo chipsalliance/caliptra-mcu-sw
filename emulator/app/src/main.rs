@@ -337,8 +337,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         pic: pic.clone(),
         clock: clock.clone(),
     };
-    let root_bus = Rc::new(RefCell::new(CaliptraRootBus::new(bus_args).unwrap()));
-    let dma_ram = root_bus.borrow_mut().dccm.clone();
+    let root_bus = CaliptraRootBus::new(bus_args).unwrap();
+    let dma_ram = root_bus.dccm.clone();
 
     let i3c_error_irq = pic.register_irq(CaliptraRootBus::I3C_ERROR_IRQ);
     let i3c_notif_irq = pic.register_irq(CaliptraRootBus::I3C_NOTIF_IRQ);
