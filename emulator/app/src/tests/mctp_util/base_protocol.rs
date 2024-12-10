@@ -77,6 +77,7 @@ impl MCTPMsgHdr<[u8; MCTP_MSG_HDR_SIZE]> {
         MCTPMsgHdr([0; MCTP_MSG_HDR_SIZE])
     }
 
+    // May be used for other types of messages
     #[allow(dead_code)]
     pub fn prepare_header(&mut self, ic: u8, msg_type: u8) {
         self.set_ic(ic);

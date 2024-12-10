@@ -365,7 +365,6 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         );
 
         let tests = tests::mctp_ctrl_cmd::MCTPCtrlCmdTests::generate_tests();
-        println!("Running tests {:x?}", tests);
         i3c_socket::run_tests(
             running.clone(),
             cli.i3c_port.unwrap(),

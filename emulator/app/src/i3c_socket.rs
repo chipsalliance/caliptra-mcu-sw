@@ -116,7 +116,7 @@ fn handle_i3c_socket_connection(
     bus_command_tx: &mut Sender<I3cBusCommand>,
 ) {
     let stream = &mut stream;
-    stream.set_nonblocking(true).unwrap(); //non-blocking
+    stream.set_nonblocking(true).unwrap();
 
     while running.load(Ordering::Relaxed) {
         // try reading
@@ -127,19 +127,18 @@ fn handle_i3c_socket_connection(
                 let cmd: I3cTcriCommand = incoming_header.command.try_into().unwrap();
 
                 let mut data = vec![0u8; cmd.data_len()];
-                stream.set_nonblocking(false).unwrap(); //blocking
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .read_exact(&mut data)
                     .expect("Failed to read message from socket");
-                stream.set_nonblocking(true).unwrap(); //non-blocking
+                stream.set_nonblocking(true).unwrap();
                 let bus_command = I3cBusCommand {
                     addr: incoming_header.to_addr.into(),
                     cmd: I3cTcriCommandXfer { cmd, data },
                 };
                 bus_command_tx.send(bus_command).unwrap();
             }
-            Err(ref e)
-                if e.kind() == ErrorKind::WouldBlock || e.kind() == ErrorKind::UnexpectedEof => {}
+            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
             Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
                 println!("handle_i3c_socket_connection: Connection reset by client");
                 break;
@@ -151,10 +150,6 @@ fn handle_i3c_socket_connection(
             if data_len > 255 {
                 panic!("Cannot write more than 255 bytes to socket");
             }
-            println!(
-                "handle_i3c_socket_connection: Received response: {:x?}",
-                response
-            );
             let outgoing_header = OutgoingHeader {
                 ibi: response.ibi.unwrap_or_default(),
                 from_addr: response.addr.into(),
@@ -167,8 +162,23 @@ fn handle_i3c_socket_connection(
     }
 }
 
+pub(crate) fn run_tests(
+    running: Arc<AtomicBool>,
+    port: u16,
+    target_addr: DynamicI3cAddress,
+    tests: Vec<Test>,
+) {
+    let running_clone = running.clone();
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let stream = TcpStream::connect(addr).unwrap();
+    std::thread::spawn(move || {
+        let mut test_runner = TestRunner::new(stream, target_addr.into(), running_clone, tests);
+        test_runner.run_tests();
+    });
+}
+
 #[derive(Debug, Clone)]
-enum TestI3cControllerState {
+enum TestState {
     Start,
     SendPrivateWrite,
     WaitForIbi,
@@ -177,54 +187,47 @@ enum TestI3cControllerState {
 }
 
 #[derive(Debug, Clone)]
-pub struct Test {
+pub(crate) struct Test {
     name: String,
-    state: TestI3cControllerState,
+    state: TestState,
     pvt_write_data: Vec<u8>,
     pvt_read_data: Vec<u8>,
     passed: bool,
 }
 
 impl Test {
-    pub fn new(name: &str, pvt_write_data: Vec<u8>, pvt_read_data: Vec<u8>) -> Self {
+    pub(crate) fn new(name: &str, pvt_write_data: Vec<u8>, pvt_read_data: Vec<u8>) -> Self {
         Self {
             name: name.to_string(),
-            state: TestI3cControllerState::Start,
+            state: TestState::Start,
             pvt_write_data,
             pvt_read_data,
             passed: false,
         }
     }
 
-    pub fn is_passed(&self) -> bool {
+    fn is_passed(&self) -> bool {
         self.passed
     }
 
-    pub fn check_response(&mut self, data: &[u8]) {
-        println!("check_response: Received data: {:x?}", data);
-        println!("check_response: Expected data: {:x?}", self.pvt_read_data);
-
+    fn check_response(&mut self, data: &[u8]) {
         if data.len() == self.pvt_read_data.len() && data == self.pvt_read_data {
             self.passed = true;
         }
     }
 
-    pub fn run_test(&mut self, running: Arc<AtomicBool>, stream: &mut TcpStream, target_addr: u8) {
+    fn run_test(&mut self, running: Arc<AtomicBool>, stream: &mut TcpStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
         while running.load(Ordering::Relaxed) {
             match self.state {
-                TestI3cControllerState::Start => {
+                TestState::Start => {
                     println!("Starting test: {}", self.name);
-                    self.state = TestI3cControllerState::SendPrivateWrite;
+                    self.state = TestState::SendPrivateWrite;
                 }
-                TestI3cControllerState::SendPrivateWrite => {
-                    self.send_private_write(stream, target_addr)
-                }
-                TestI3cControllerState::WaitForIbi => self.receive_ibi(stream, target_addr),
-                TestI3cControllerState::ReceivePrivateRead => {
-                    self.receive_private_read(stream, target_addr)
-                }
-                TestI3cControllerState::Finish => {
+                TestState::SendPrivateWrite => self.send_private_write(stream, target_addr),
+                TestState::WaitForIbi => self.receive_ibi(stream, target_addr),
+                TestState::ReceivePrivateRead => self.receive_private_read(stream, target_addr),
+                TestState::Finish => {
                     println!(
                         "Test {} : {}",
                         self.name,
@@ -251,7 +254,7 @@ impl Test {
         stream.write_all(&pvt_write_cmd).unwrap();
         stream.set_nonblocking(true).unwrap();
         stream.write_all(&pkt).unwrap();
-        self.state = TestI3cControllerState::WaitForIbi;
+        self.state = TestState::WaitForIbi;
     }
 
     fn receive_ibi(&mut self, stream: &mut TcpStream, target_addr: u8) {
@@ -264,7 +267,7 @@ impl Test {
                     stream.set_nonblocking(false).unwrap();
                     stream.write_all(&pvt_read_cmd).unwrap();
                     stream.set_nonblocking(true).unwrap();
-                    self.state = TestI3cControllerState::ReceivePrivateRead;
+                    self.state = TestState::ReceivePrivateRead;
                 }
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
@@ -283,12 +286,13 @@ impl Test {
                 let resp_desc = outdata.response_descriptor;
                 let data_len = resp_desc.data_length() as usize;
                 let mut data = vec![0u8; data_len];
+
                 stream.set_nonblocking(false).unwrap();
                 stream
                     .read_exact(&mut data)
                     .expect("Failed to read message from socket");
                 stream.set_nonblocking(true).unwrap();
-                println!("receive_private_read: Received data: {:x?}", data);
+
                 let pec = calculate_crc8((target_addr << 1) | 1, &data[..data.len() - 1]);
                 if pec == data[data.len() - 1] {
                     self.check_response(&data[..data.len() - 1]);
@@ -300,7 +304,7 @@ impl Test {
                     );
                 }
 
-                self.state = TestI3cControllerState::Finish;
+                self.state = TestState::Finish;
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
             Err(e) => panic!("Error reading message from socket: {}", e),
@@ -348,28 +352,12 @@ impl TestRunner {
     }
 }
 
-pub fn run_tests(
-    running: Arc<AtomicBool>,
-    port: u16,
-    target_addr: DynamicI3cAddress,
-    tests: Vec<Test>,
-) {
-    let running_clone = running.clone();
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let stream = TcpStream::connect(addr).unwrap();
-    std::thread::spawn(move || {
-        let mut test_runner = TestRunner::new(stream, target_addr.into(), running_clone, tests);
-        test_runner.run_tests();
-    });
-}
-
 fn prepare_private_write_cmd(to_addr: u8, data_len: u16) -> [u8; 9] {
     let mut write_cmd = ReguDataTransferCommand::read_from_bytes(&[0; 8]).unwrap();
     write_cmd.set_rnw(0);
     write_cmd.set_data_length(data_len);
 
     let cmd_words: [u32; 2] = transmute!(write_cmd);
-    println!("prepare_private_write_cmd: {:x?}", cmd_words);
     let cmd_hdr = IncomingHeader {
         to_addr,
         command: cmd_words,

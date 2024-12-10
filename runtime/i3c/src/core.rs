@@ -291,7 +291,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             }
             // There is a pending Write Transaction. Software should read data from the RX Descriptor Queue and the RX Data Queue
             if tti_interrupts.read(InterruptStatus::RxDescStat) != 0 {
-                println!("Handling incoming write interrupt");
                 self.handle_incoming_write();
             }
         }
@@ -315,7 +314,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         self.retry_incoming_write.set(false);
         if self.rx_buffer.is_none() {
             self.rx_client.map(|client| {
-                debug!("No buffer to receive I3C write");
                 client.write_expected();
             });
         }
@@ -330,7 +328,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let rx_buffer = self.rx_buffer.take().unwrap();
         let mut buf_idx = self.rx_buffer_idx.get();
         let buf_size = self.rx_buffer_size.get();
-        println!("Handling incoming write with buffer of size {}", buf_size);
         let desc0 = self.registers.rx_desc_queue_port.get();
         let desc1 = self.registers.rx_desc_queue_port.get();
         let desc = LocalRegisterCopy::<u64, I3CCommandDescriptor::Register>::new(
@@ -338,7 +335,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         );
         let len = desc.read(I3CCommandDescriptor::DataLength) as usize;
 
-        // debug!("Received data descriptor: {:?} len {}", desc, len);
         // read everything
         let mut full = false;
         for i in (0..len.next_multiple_of(4)).step_by(4) {
@@ -349,7 +345,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                     break;
                 }
                 if let Some(x) = rx_buffer.get_mut(buf_idx) {
-                    // debug!("Received data: {:X} at {}", data[j], buf_idx);
                     *x = data[j];
                 } else {
                     // check if we ran out of space or if this is just the padding
@@ -364,19 +359,18 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         if full {
             // TODO: we need a way to say that the buffer was not big enough
         }
+
         // reset
         self.rx_buffer_idx.set(0);
         self.rx_buffer_size.set(0);
 
         self.rx_client.map(|client| {
-            println!("handling_incoming_write: Received data of length {}. Calling clien's receive_write", len.min(buf_size));
             client.receive_write(rx_buffer, len.min(buf_size));
         });
     }
 
     // called when TTI wants us to send data for a private Read
     pub fn handle_outgoing_read(&self) {
-        println!("Handling outgoing read");
         self.retry_outgoing_read.set(false);
 
         if self.tx_buffer.is_none() {
@@ -391,12 +385,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let size = self.tx_buffer_size.replace(0);
         if idx < size {
             // TODO: get the correct structure of this descriptor
-            // println!(
-            //     "Sending data descriptor queue port for {} bytes size {} idx {}",
-            //     size - idx,
-            //     size,
-            //     idx
-            // );
             self.registers.tx_desc_queue_port.set((size - idx) as u32);
             while idx < size {
                 let mut bytes = [0; 4];
@@ -437,7 +425,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
 
     fn send_ibi(&self, mdb: u8) {
         // TODO: it is unclear if we need to set anything else in the descriptor
-        println!("Sending IBI with MDB {}", mdb);
         self.registers
             .tti_ibi_port
             .set(IbiDescriptor::DataLength.val(1).value);
@@ -455,7 +442,6 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
     }
 
     fn set_rx_buffer(&self, rx_buf: &'static mut [u8]) {
-        println!("Setting rx buffer to len {:?}", rx_buf.len());
         let len = rx_buf.len();
         self.rx_buffer.replace(rx_buf);
         self.rx_buffer_idx.replace(0);

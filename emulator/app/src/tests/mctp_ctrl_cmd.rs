@@ -21,8 +21,6 @@ type MCTPCtrlPacket = (
     Vec<u8>,
 );
 
-// const SMBUS_CRC8 : crc::Crc<u8> = crc::Crc::<u8>::new(&crc::CRC_8_SMBUS);
-
 const MCTP_HDR_OFFSET: usize = 0;
 const MCTP_MSG_HDR_OFFSET: usize = MCTP_HDR_OFFSET + MCTP_HDR_SIZE;
 const MCTP_CTRL_MSG_HDR_OFFSET: usize = MCTP_MSG_HDR_OFFSET + MCTP_MSG_HDR_SIZE;
@@ -31,7 +29,7 @@ const MCTP_CTRL_PAYLOAD_OFFSET: usize = MCTP_CTRL_MSG_HDR_OFFSET + MCTP_CTRL_MSG
 const LOCAL_ENDPOINT_EID: u8 = 0x08;
 
 #[derive(EnumIter, Debug)]
-pub enum MCTPCtrlCmdTests {
+pub(crate) enum MCTPCtrlCmdTests {
     SetEID,
     SetEIDForce,
     SetEIDNullFail,

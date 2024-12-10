@@ -91,13 +91,11 @@ impl<'a> MCTPI3CBinding<'a> {
         let device_info = self.i3c_target.get_device_info();
         self.max_read_len.set(device_info.max_read_len);
         self.max_write_len.set(device_info.max_write_len);
-        println!("MCTPI3CBinding: DeviceInfo {:?} ", device_info);
         self.device_address.set(
             device_info
                 .dynamic_addr
                 .unwrap_or(device_info.static_addr.unwrap_or(0)),
         );
-        // self.i3c_target.enable();
     }
 
     /// SMBus CRC8 calculation.
@@ -161,7 +159,6 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
                     let pec = MCTPI3CBinding::compute_pec(addr, tx_buffer, len);
                     tx_buffer[len] = pec;
 
-                    println!("MCTPI3CBinding: Transmitting packet of length {}", len + 1);
                     match self.i3c_target.transmit_read(tx_buffer, len + 1) {
                         Ok(_) => {}
                         Err((e, tx_buffer)) => {
@@ -210,21 +207,13 @@ impl<'a> RxClient for MCTPI3CBinding<'a> {
         // if yes, compute PEC and check if it matches with the last byte of the buffer
         // if yes, call the client's receive_write function
         // if no, drop the packet and set_rx_buffer on i3c_target to receive the next packet
-        println!("MCTPI3CBinding: Received packet of length {}", len);
         if len == 0 || len > self.max_write_len.get() {
-            println!("MCTPI3CBinding: Invalid packet length. Dropping packet.");
-            // println!("MCTPI3CBinding: Received packet of length {} Dropping", len);
             self.i3c_target.set_rx_buffer(rx_buffer);
             return;
         }
         // Rx is a write operation from the I3C controller. Set the R/W bit at LSB to 0.
         let addr = self.device_address.get() << 1;
         let pec = MCTPI3CBinding::compute_pec(addr, rx_buffer, len - 1);
-        println!(
-            "MCTPI3CBinding: PEC . Expected: {:x}, Received: {:x}",
-            pec,
-            rx_buffer[len - 1]
-        );
         if pec == rx_buffer[len - 1] {
             self.rx_client.map(|client| {
                 client.receive(rx_buffer, len - 1);
@@ -236,9 +225,7 @@ impl<'a> RxClient for MCTPI3CBinding<'a> {
     }
 
     fn write_expected(&self) {
-        // println!("MCTPI3CBinding: Write expected");
         self.rx_client.map(|client| {
-            // println!("MCTPI3CBinding: Calling client's write expected");
             client.write_expected();
         });
     }

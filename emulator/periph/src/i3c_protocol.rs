@@ -309,7 +309,6 @@ impl I3cTarget {
     }
 
     pub fn get_response(&mut self) -> Option<I3cTcriResponseXfer> {
-        // println!("get_response: tx_buf que len {:?}", self.target.lock().unwrap().tx_buffer.len());
         self.target.lock().unwrap().tx_buffer.pop_front()
     }
 

@@ -43,7 +43,6 @@ impl MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]> {
     }
 }
 
-#[derive(Debug)]
 pub enum MCTPCtrlCmd {
     SetEID,
     GetEID,

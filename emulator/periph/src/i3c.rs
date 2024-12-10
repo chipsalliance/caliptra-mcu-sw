@@ -100,7 +100,6 @@ impl I3c {
 
     fn write_tx_data_into_target(&mut self) {
         if !self.tti_tx_desc_queue_raw.is_empty() {
-            // println!("TX: {:?}", self.tti_tx_desc_queue_raw);
             let resp_desc = ResponseDescriptor::read_from_bytes(
                 &self.tti_tx_desc_queue_raw[0].to_le_bytes()[..],
             )
@@ -147,7 +146,6 @@ impl I3c {
             })
             .unwrap_or(false);
         self.interrupt_status.reg.modify(if pending_read {
-            // println!("pending read. setting TxDescStat");
             InterruptStatus::TxDescStat::SET
         } else {
             InterruptStatus::TxDescStat::CLEAR
@@ -157,10 +155,8 @@ impl I3c {
         self.interrupt_status
             .reg
             .modify(if self.tti_rx_desc_queue_raw.is_empty() {
-                // println!(" Clearing RxDescStat");
                 InterruptStatus::RxDescStat::CLEAR
             } else {
-                // println!(" Setting RxDescStat");
                 InterruptStatus::RxDescStat::SET
             });
 
@@ -181,7 +177,6 @@ impl I3c {
             }
 
             let desc = IbiDescriptor::read_from_bytes(&self.tti_ibi_buffer[0..4]).unwrap();
-            println!("IBI buffer: Desc {:?}", desc);
             let len = desc.data_length() as usize;
             if self.tti_ibi_buffer.len() < len + 4 {
                 // wait for more data
@@ -189,11 +184,9 @@ impl I3c {
             }
             // we only need the first byte, which is the MDB.
             // TODO: handle more than the MDB?
-            // MDB is the first byte of the data which is of 4 bytes (size is word).
             // Drain IBI descriptor size + 4 bytes (MDB)
             self.i3c_target.send_ibi(self.tti_ibi_buffer[4]);
             self.tti_ibi_buffer.drain(0..8);
-            println!("IBI buffer: after draining {:?}", self.tti_ibi_buffer);
         }
     }
 }
@@ -254,7 +247,6 @@ impl I3cPeripheral for I3c {
         size: emulator_types::RvSize,
         val: emulator_types::RvData,
     ) {
-        println!("write_i3c_ec_tti_ibi_port :IBI: {:x?} size {}", val, size);
         match size {
             RvSize::Byte => {
                 self.tti_ibi_buffer.push(val as u8);
@@ -267,7 +259,6 @@ impl I3cPeripheral for I3c {
             RvSize::Word => {
                 self.tti_ibi_buffer
                     .extend_from_slice(val.to_le_bytes().as_ref());
-                println!("IBI buffer: {:?}", self.tti_ibi_buffer);
             }
             RvSize::Invalid => {
                 panic!("Invalid size")
