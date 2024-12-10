@@ -498,7 +498,17 @@ mod test {
             DummyFlashCtrl::new(clock, file, flash_ctrl_error_irq, flash_ctrl_event_irq).unwrap(),
         );
 
-        AutoRootBus::new(None, None, Some(flash_controller), None, None, None, None)
+        AutoRootBus::new(
+            None,
+            None,
+            Some(flash_controller),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
     }
 
     fn test_helper_prepare_io_page_buffer(

@@ -77,7 +77,3 @@ addrmap flash_ctrl {
         } EN[0:0];
     } CTRL_REGWEN @ 0x1C;
 };
-
-addrmap flashctrl_dummy {
-    flash_ctrl flash_ctrl @ 0x2000_8000;
-};
