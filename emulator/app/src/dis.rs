@@ -4538,22 +4538,6 @@ pub(crate) fn csr_name(csrno: i32) -> &'static str {
     }
 }
 
-#[cfg(test)]
-mod csr_tests {
-    use std::collections::HashSet;
-    #[test]
-    fn test_csrs_unique() {
-        let mut names = HashSet::new();
-        for i in 0..0x1000 {
-            let name = super::csr_name(i);
-            if !name.is_empty() {
-                assert!(!names.contains(name), "duplicate CSR name: {}", name);
-                names.insert(name);
-            }
-        }
-    }
-}
-
 fn decode_inst_opcode_compressed_0(isa: RvIsa, inst: u64) -> Option<&'static RvOpcodeData> {
     match (inst >> 13) & 7 {
         0 => Some(&RV_OPCODE_DATA_caddi4spn),
@@ -5986,4 +5970,20 @@ pub fn disasm_inst(isa: RvIsa, pc: u64, inst: RvInst) -> String {
     decode_inst_decompress(&mut dec, isa);
     decode_inst_lift_pseudo(&mut dec);
     decode_inst_format(&mut dec)
+}
+
+#[cfg(test)]
+mod csr_tests {
+    use std::collections::HashSet;
+    #[test]
+    fn test_csrs_unique() {
+        let mut names = HashSet::new();
+        for i in 0..0x1000 {
+            let name = super::csr_name(i);
+            if !name.is_empty() {
+                assert!(!names.contains(name), "duplicate CSR name: {}", name);
+                names.insert(name);
+            }
+        }
+    }
 }
