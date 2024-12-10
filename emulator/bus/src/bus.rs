@@ -12,8 +12,6 @@ Abstract:
 
 --*/
 
-use std::{cell::RefCell, rc::Rc};
-
 use emulator_types::{RvAddr, RvData, RvSize};
 
 /// Signal that a trap should be triggered.
@@ -78,30 +76,5 @@ pub trait Bus {
 
     fn update_reset(&mut self) {
         // By default, do nothing
-    }
-}
-
-impl<T> Bus for Rc<RefCell<T>>
-where
-    T: Bus,
-{
-    fn read(&mut self, size: RvSize, addr: RvAddr) -> Result<RvData, BusError> {
-        self.borrow_mut().read(size, addr)
-    }
-
-    fn write(&mut self, size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
-        self.borrow_mut().write(size, addr, val)
-    }
-
-    fn poll(&mut self) {
-        self.borrow_mut().poll()
-    }
-
-    fn warm_reset(&mut self) {
-        self.borrow_mut().warm_reset();
-    }
-
-    fn update_reset(&mut self) {
-        self.borrow_mut().update_reset();
     }
 }

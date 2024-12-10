@@ -146,7 +146,7 @@ fn read_console(running: Arc<AtomicBool>, stdin_uart: Option<Arc<Mutex<Option<u8
 // CPU Main Loop (free_run no GDB)
 fn free_run(
     running: Arc<AtomicBool>,
-    mut mcu_cpu: Cpu<Rc<RefCell<AutoRootBus>>>,
+    mut mcu_cpu: Cpu<AutoRootBus>,
     mut caliptra_cpu: Option<CaliptraMainCpu<CaliptraMainRootBus>>,
     trace_path: Option<PathBuf>,
     stdin_uart: Option<Arc<Mutex<Option<u8>>>>,
@@ -366,7 +366,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     )
     .unwrap();
 
-    let auto_root_bus = Rc::new(RefCell::new(AutoRootBus::new(
+    let mut auto_root_bus = AutoRootBus::new(
         Some(Box::new(root_bus)),
         Some(Box::new(i3c)),
         Some(Box::new(flash_controller)),
@@ -374,11 +374,10 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         None,
         None,
         None,
-    )));
+    );
 
     // Set the DMA RAM for the Flash Controller
     auto_root_bus
-        .borrow_mut()
         .flash_periph
         .as_mut()
         .unwrap()
