@@ -47,9 +47,7 @@ impl MCTPCtrlCmdTests {
                 let test_name = test_id.name();
                 let req_data = test_id.generate_request_packet();
                 let resp_data = test_id.generate_response_packet();
-                let test = Test::new(test_name, req_data, resp_data);
-                // println!("test = {:?}", test);
-                test
+                Test::new(test_name, req_data, resp_data)
             })
             .collect()
     }
@@ -123,13 +121,28 @@ impl MCTPCtrlCmdTests {
                 )
             }
             MCTPCtrlCmdTests::SetEIDNullFail => {
-                set_eid_resp!(CmdCompletionCode::ErrorInvalidData, SetEIDStatus::Rejected, 0, 0)
+                set_eid_resp!(
+                    CmdCompletionCode::ErrorInvalidData,
+                    SetEIDStatus::Rejected,
+                    0,
+                    0
+                )
             }
             MCTPCtrlCmdTests::SetEIDBroadcastFail => {
-                set_eid_resp!(CmdCompletionCode::ErrorInvalidData, SetEIDStatus::Rejected, 0, 0)
+                set_eid_resp!(
+                    CmdCompletionCode::ErrorInvalidData,
+                    SetEIDStatus::Rejected,
+                    0,
+                    0
+                )
             }
             MCTPCtrlCmdTests::SetEIDInvalidFail => {
-                set_eid_resp!(CmdCompletionCode::ErrorInvalidData, SetEIDStatus::Rejected, 0, 0)
+                set_eid_resp!(
+                    CmdCompletionCode::ErrorInvalidData,
+                    SetEIDStatus::Rejected,
+                    0,
+                    0
+                )
             }
             MCTPCtrlCmdTests::GetEID => {
                 get_eid_resp!(CmdCompletionCode::Success, TEST_TARGET_EID + 1)
@@ -145,9 +158,8 @@ impl MCTPCtrlCmdTests {
     }
 
     fn generate_packet(mctp_packet: MCTPCtrlPacket) -> Vec<u8> {
-        let mut pkt: Vec<u8> = Vec::with_capacity(MCTP_CTRL_PAYLOAD_OFFSET + mctp_packet.3.len());
+        let mut pkt: Vec<u8> = vec![0; MCTP_CTRL_PAYLOAD_OFFSET + mctp_packet.3.len()];
 
-        pkt.resize(MCTP_CTRL_PAYLOAD_OFFSET + mctp_packet.3.len(), 0);
         mctp_packet
             .0
             .write_to(&mut pkt[0..MCTP_HDR_SIZE])

@@ -533,6 +533,7 @@ dependencies = [
  "capsules-extra",
  "i3c-driver",
  "kernel",
+ "romtime",
  "zerocopy 0.8.13",
 ]
 
@@ -982,6 +983,7 @@ dependencies = [
  "caliptra-emu-cpu",
  "caliptra-emu-periph",
  "clap 4.5.23",
+ "crc",
  "crossterm",
  "ctrlc",
  "elf 0.7.4",
@@ -1239,12 +1241,6 @@ name = "hashbrown"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
-
-[[package]]
-name = "heck"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
 name = "heck"

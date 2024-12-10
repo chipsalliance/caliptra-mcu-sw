@@ -334,8 +334,8 @@ mod tests {
         let eid = MCTPCtrlCmd::SetEID
             .process_set_endpoint_id(&msg_req, rsp_buf)
             .unwrap();
-
-        assert_eq!(eid, 0x0A);
+        assert!(eid.is_some());
+        assert_eq!(eid.unwrap(), 0x0A);
 
         let rsp: SetEIDResp<[u8; 4]> = SetEIDResp::read_from_bytes(rsp_buf).unwrap();
         assert_eq!(rsp.completion_code(), CmdCompletionCode::Success as u8);
@@ -353,8 +353,7 @@ mod tests {
         let eid = MCTPCtrlCmd::SetEID
             .process_set_endpoint_id(&msg_req, rsp_buf)
             .unwrap();
-
-        assert_eq!(eid, 0x00);
+        assert!(eid.is_none());
 
         let rsp: SetEIDResp<[u8; 4]> = SetEIDResp::read_from_bytes(rsp_buf).unwrap();
         assert_eq!(
@@ -371,8 +370,7 @@ mod tests {
         let eid = MCTPCtrlCmd::SetEID
             .process_set_endpoint_id(&msg_req, rsp_buf)
             .unwrap();
-
-        assert_eq!(eid, 0xFF);
+        assert!(eid.is_none());
 
         let rsp: SetEIDResp<[u8; 4]> = SetEIDResp::read_from_bytes(rsp_buf).unwrap();
         assert_eq!(
