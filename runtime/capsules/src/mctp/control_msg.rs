@@ -104,7 +104,7 @@ impl MCTPCtrlCmd {
 
         match op {
             SetEIDOp::SetEID | SetEIDOp::ForceEID => {
-                if eid == MCTP_NULL_EID || eid == MCTP_BROADCAST_EID {
+                if eid == MCTP_NULL_EID || eid == MCTP_BROADCAST_EID || (1..7).contains(&eid) {
                     completion_code = CmdCompletionCode::ErrorInvalidData;
                 } else {
                     // TODO: Check if rejected case needs to be handled

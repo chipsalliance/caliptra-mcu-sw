@@ -7,7 +7,7 @@ Abstract:
 --*/
 
 use crate::i3c_protocol::{I3cController, I3cTarget, I3cTcriResponseXfer, ResponseDescriptor};
-use crate::{I3cIncomingCommandClient, I3cTcriCommand, IbiDescriptor};
+use crate::{DynamicI3cAddress, I3cIncomingCommandClient, IbiDescriptor, ReguDataTransferCommand};
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::i3c::I3cPeripheral;
@@ -157,8 +157,10 @@ impl I3c {
         self.interrupt_status
             .reg
             .modify(if self.tti_rx_desc_queue_raw.is_empty() {
+                // println!(" Clearing RxDescStat");
                 InterruptStatus::RxDescStat::CLEAR
             } else {
+                // println!(" Setting RxDescStat");
                 InterruptStatus::RxDescStat::SET
             });
 

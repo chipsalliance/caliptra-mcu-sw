@@ -21,6 +21,7 @@ use registers_generated::i3c::I3C_CSR_ADDR;
 use tock_registers::register_bitfields;
 use tock_registers::LocalRegisterCopy;
 
+use core::fmt::Write;
 use romtime::println;
 
 pub const I3C_BASE: StaticRef<I3c> = unsafe { StaticRef::new(I3C_CSR_ADDR as *const I3c) };
@@ -290,6 +291,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             }
             // There is a pending Write Transaction. Software should read data from the RX Descriptor Queue and the RX Data Queue
             if tti_interrupts.read(InterruptStatus::RxDescStat) != 0 {
+                println!("Handling incoming write interrupt");
                 self.handle_incoming_write();
             }
         }
@@ -360,8 +362,8 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         if full {
             // TODO: we need a way to say that the buffer was not big enough
         }
-        // debug!("Received data: {:?}", rx_buffer);
         self.rx_client.map(|client| {
+            println!("handling_incoming_write: Received data of length {}. Calling clien's receive_write", len.min(buf_size));
             client.receive_write(rx_buffer, len.min(buf_size));
         });
         // reset

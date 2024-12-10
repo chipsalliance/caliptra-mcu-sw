@@ -209,14 +209,21 @@ impl<'a> RxClient for MCTPI3CBinding<'a> {
         // if yes, compute PEC and check if it matches with the last byte of the buffer
         // if yes, call the client's receive_write function
         // if no, drop the packet and set_rx_buffer on i3c_target to receive the next packet
+        println!("MCTPI3CBinding: Received packet of length {}", len);
         if len == 0 || len > self.max_write_len.get() {
+            // println!("MCTPI3CBinding: Invalid packet length. Dropping packet.");
+            println!("MCTPI3CBinding: Received packet of length {}", len);
             self.i3c_target.set_rx_buffer(rx_buffer);
             return;
         }
-
         // Rx is a write operation from the I3C controller. Set the R/W bit at LSB to 0.
         let addr = self.device_address.get() << 1;
         let pec = MCTPI3CBinding::compute_pec(addr, rx_buffer, len - 1);
+        println!(
+            "MCTPI3CBinding: PEC . Expected: {:x}, Received: {:x}",
+            pec,
+            rx_buffer[len - 1]
+        );
         if pec == rx_buffer[len - 1] {
             self.rx_client.map(|client| {
                 client.receive(rx_buffer, len - 1);

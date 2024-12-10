@@ -239,6 +239,11 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
 
         let mctp_ctrl_msg_hdr: MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]> =
             MCTPCtrlMsgHdr::read_from_bytes(&msg_buf[0..MCTP_CTRL_MSG_HEADER_LEN]).unwrap();
+
+        println!(
+            "MuxMCTPDriver: Received MCTP Control message. cmd: {:?}",
+            mctp_ctrl_msg_hdr
+        );
         if mctp_ctrl_msg_hdr.rq() != 1 || mctp_ctrl_msg_hdr.datagram() != 0 {
             // Only Command/Request messages are handled
             return Err(ErrorCode::INVAL);
@@ -271,7 +276,13 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
         let mctp_ctrl_cmd: MCTPCtrlCmd = mctp_ctrl_msg_hdr.cmd().into();
         let resp_len = MCTP_CTRL_MSG_HEADER_LEN + MCTP_HDR_SIZE + mctp_ctrl_cmd.resp_data_len();
 
+        println!(
+            "MuxMCTPDriver: Processing MCTP Control message. cmd: {:?}",
+            mctp_ctrl_cmd
+        );
+
         if req_buf.len() < mctp_ctrl_cmd.req_data_len() {
+            println!("MuxMCTPDriver: Invalid buffer len Dropping packet. {:?} ctrl_cmd_len {:?}", req_buf.len(), mctp_ctrl_cmd.req_data_len());
             Err(ErrorCode::INVAL)?;
         }
 
@@ -294,6 +305,8 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
                     _ => return Err(ErrorCode::NOSUPPORT),
                 };
 
+                println!("MuxMCTPDriver: Sending MCTP Control message response");
+
                 match result {
                     Ok(_) => {
                         let res = self
@@ -307,6 +320,10 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
                                     &mut resp_buf[mctp_hdr_offset..],
                                 )
                             });
+                        println!(
+                            "MuxMCTPDriver: Sending MCTP Control message response {:?}",
+                            resp_buf
+                        );
 
                         match res {
                             Ok(_) => match self.mctp_device.transmit(resp_buf, resp_len) {
@@ -350,6 +367,10 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M>
         }
 
         let (mctp_header, msg_type, payload_offset) = self.interpret_packet(&rx_buffer[0..len]);
+        println!(
+            "MuxMCTPDriver: mctp_header: {:?} msg_type: {:?} payload_offset: {}",
+            mctp_header, msg_type, payload_offset
+        );
         if let Some(msg_type) = msg_type {
             match msg_type {
                 MessageType::MCTPControl => {
@@ -357,6 +378,7 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M>
                         && mctp_header.som() == 1
                         && mctp_header.eom() == 1
                     {
+                        println!("MuxMCTPDriver: Processing MCTP Control message");
                         let _ = self
                             .process_mctp_control_msg(mctp_header, &rx_buffer[payload_offset..len]);
                     } else {
