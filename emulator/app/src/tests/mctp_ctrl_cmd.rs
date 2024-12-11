@@ -1,16 +1,15 @@
 // Licensed under the Apache-2.0 license
 
-// use crc;
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
-
-use zerocopy::{FromBytes, IntoBytes};
-
 use crate::i3c_socket::Test;
 use crate::tests::mctp_util::base_protocol::{
     MCTPHdr, MCTPMsgHdr, MCTP_HDR_SIZE, MCTP_MSG_HDR_SIZE,
 };
 use crate::tests::mctp_util::ctrl_protocol::*;
+
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
+
+use zerocopy::IntoBytes;
 
 const TEST_TARGET_EID: u8 = 0xA;
 
@@ -61,22 +60,14 @@ impl MCTPCtrlCmdTests {
         mctp_ctrl_msg_hdr.set_cmd(self.cmd());
 
         let req_data = match self {
-            MCTPCtrlCmdTests::SetEID => {
-                set_eid_req!(SetEIDOp::SetEID, TEST_TARGET_EID)
-            }
+            MCTPCtrlCmdTests::SetEID => set_eid_req_bytes(SetEIDOp::SetEID, TEST_TARGET_EID),
             MCTPCtrlCmdTests::SetEIDForce => {
                 mctp_hdr.set_dest_eid(TEST_TARGET_EID);
-                set_eid_req!(SetEIDOp::ForceEID, TEST_TARGET_EID + 1)
+                set_eid_req_bytes(SetEIDOp::ForceEID, TEST_TARGET_EID + 1)
             }
-            MCTPCtrlCmdTests::SetEIDNullFail => {
-                set_eid_req!(SetEIDOp::SetEID, 0)
-            }
-            MCTPCtrlCmdTests::SetEIDBroadcastFail => {
-                set_eid_req!(SetEIDOp::SetEID, 0xFF)
-            }
-            MCTPCtrlCmdTests::SetEIDInvalidFail => {
-                set_eid_req!(SetEIDOp::SetEID, 0x1)
-            }
+            MCTPCtrlCmdTests::SetEIDNullFail => set_eid_req_bytes(SetEIDOp::SetEID, 0),
+            MCTPCtrlCmdTests::SetEIDBroadcastFail => set_eid_req_bytes(SetEIDOp::SetEID, 0xFF),
+            MCTPCtrlCmdTests::SetEIDInvalidFail => set_eid_req_bytes(SetEIDOp::SetEID, 0x1),
             MCTPCtrlCmdTests::GetEID => {
                 vec![]
             }
@@ -101,49 +92,41 @@ impl MCTPCtrlCmdTests {
         mctp_ctrl_msg_hdr.set_cmd(self.cmd());
 
         let resp_data = match self {
-            MCTPCtrlCmdTests::SetEID => {
-                set_eid_resp!(
-                    CmdCompletionCode::Success,
-                    SetEIDStatus::Accepted,
-                    SetEIDAllocStatus::NoEIDPool,
-                    TEST_TARGET_EID
-                )
-            }
+            MCTPCtrlCmdTests::SetEID => set_eid_resp_bytes(
+                CmdCompletionCode::Success,
+                SetEIDStatus::Accepted,
+                SetEIDAllocStatus::NoEIDPool,
+                TEST_TARGET_EID,
+            ),
             MCTPCtrlCmdTests::SetEIDForce => {
                 mctp_hdr.set_src_eid(TEST_TARGET_EID);
-                set_eid_resp!(
+                set_eid_resp_bytes(
                     CmdCompletionCode::Success,
                     SetEIDStatus::Accepted,
                     SetEIDAllocStatus::NoEIDPool,
-                    TEST_TARGET_EID + 1
+                    TEST_TARGET_EID + 1,
                 )
             }
-            MCTPCtrlCmdTests::SetEIDNullFail => {
-                set_eid_resp!(
-                    CmdCompletionCode::ErrorInvalidData,
-                    SetEIDStatus::Rejected,
-                    0,
-                    0
-                )
-            }
-            MCTPCtrlCmdTests::SetEIDBroadcastFail => {
-                set_eid_resp!(
-                    CmdCompletionCode::ErrorInvalidData,
-                    SetEIDStatus::Rejected,
-                    0,
-                    0
-                )
-            }
-            MCTPCtrlCmdTests::SetEIDInvalidFail => {
-                set_eid_resp!(
-                    CmdCompletionCode::ErrorInvalidData,
-                    SetEIDStatus::Rejected,
-                    0,
-                    0
-                )
-            }
+            MCTPCtrlCmdTests::SetEIDNullFail => set_eid_resp_bytes(
+                CmdCompletionCode::ErrorInvalidData,
+                SetEIDStatus::Rejected,
+                SetEIDAllocStatus::NoEIDPool,
+                0,
+            ),
+            MCTPCtrlCmdTests::SetEIDBroadcastFail => set_eid_resp_bytes(
+                CmdCompletionCode::ErrorInvalidData,
+                SetEIDStatus::Rejected,
+                SetEIDAllocStatus::NoEIDPool,
+                0,
+            ),
+            MCTPCtrlCmdTests::SetEIDInvalidFail => set_eid_resp_bytes(
+                CmdCompletionCode::ErrorInvalidData,
+                SetEIDStatus::Rejected,
+                SetEIDAllocStatus::NoEIDPool,
+                0,
+            ),
             MCTPCtrlCmdTests::GetEID => {
-                get_eid_resp!(CmdCompletionCode::Success, TEST_TARGET_EID + 1)
+                get_eid_resp_bytes(CmdCompletionCode::Success, TEST_TARGET_EID + 1)
             }
         };
 

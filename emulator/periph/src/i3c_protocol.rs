@@ -72,7 +72,6 @@ impl I3cController {
         let running = self.running.clone();
         let targets = self.targets.clone();
         let counter = self.incoming_counter.clone();
-        println!("Starting I3C controller thread");
         thread::spawn(move || {
             while running.load(Ordering::Relaxed) {
                 I3cController::tcri_receive_all(targets.clone())

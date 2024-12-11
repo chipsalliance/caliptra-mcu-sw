@@ -26,7 +26,7 @@ hex.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
 bitfield.workspace = true
-crc = "3.2.1"
+crc.workspace = true
 strum = "0.24"
 strum_macros = "0.24"
 

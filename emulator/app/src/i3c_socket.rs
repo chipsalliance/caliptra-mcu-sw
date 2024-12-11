@@ -406,4 +406,18 @@ mod tests {
         let serialized: [u8; 6] = transmute!(odata);
         assert_eq!("000a04030201", hex::encode(serialized));
     }
+
+    #[test]
+    fn test_prepare_private_write_cmd() {
+        // to_addr = 0x10, cmd_desc = [0x00000000, 0x00200000]
+        let cmd = prepare_private_write_cmd(0x10, 0x20);
+        assert_eq!("100000000000002000", hex::encode(cmd));
+    }
+
+    #[test]
+    fn test_prepare_private_read_cmd() {
+        // to_addr = 0x10, cmd_desc = [0x20000000, 0x00000000]
+        let cmd = prepare_private_read_cmd(0x10);
+        assert_eq!("100000002000000000", hex::encode(cmd));
+    }
 }

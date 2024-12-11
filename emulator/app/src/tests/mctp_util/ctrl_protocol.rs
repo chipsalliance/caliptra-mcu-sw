@@ -5,39 +5,35 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const MCTP_CTRL_MSG_HDR_SIZE: usize = 2;
 
-#[macro_export]
-macro_rules! set_eid_req {
-    ($op:expr, $eid:expr) => {{
-        let mut req_bytes: [u8; 2] = [0; 2];
-        let cmd: &mut SetEIDReq<[u8; 2]> = SetEIDReq::mut_from_bytes(&mut req_bytes).unwrap();
-        cmd.set_eid($eid);
-        cmd.set_op($op as u8);
-        req_bytes.to_vec()
-    }};
+pub fn set_eid_req_bytes(op: SetEIDOp, eid: u8) -> Vec<u8> {
+    let mut req_bytes: [u8; 2] = [0; 2];
+    let cmd: &mut SetEIDReq<[u8; 2]> = SetEIDReq::mut_from_bytes(&mut req_bytes).unwrap();
+    cmd.set_eid(eid);
+    cmd.set_op(op as u8);
+    req_bytes.to_vec()
 }
 
-#[macro_export]
-macro_rules! set_eid_resp {
-    ($cc:expr, $status:expr, $alloc_status:expr, $eid:expr) => {{
-        let mut resp_bytes: [u8; 4] = [0; 4];
-        let resp: &mut SetEIDResp<[u8; 4]> = SetEIDResp::mut_from_bytes(&mut resp_bytes).unwrap();
-        resp.set_completion_code($cc as u8);
-        resp.set_eid_assign_status($status as u8);
-        resp.set_eid_alloc_status($alloc_status as u8);
-        resp.set_assigned_eid($eid);
-        resp_bytes.to_vec()
-    }};
+pub fn set_eid_resp_bytes(
+    cc: CmdCompletionCode,
+    status: SetEIDStatus,
+    alloc_status: SetEIDAllocStatus,
+    eid: u8,
+) -> Vec<u8> {
+    let mut resp_bytes: [u8; 4] = [0; 4];
+    let resp: &mut SetEIDResp<[u8; 4]> = SetEIDResp::mut_from_bytes(&mut resp_bytes).unwrap();
+    resp.set_completion_code(cc as u8);
+    resp.set_eid_assign_status(status as u8);
+    resp.set_eid_alloc_status(alloc_status as u8);
+    resp.set_assigned_eid(eid);
+    resp_bytes.to_vec()
 }
 
-#[macro_export]
-macro_rules! get_eid_resp {
-    ($cc:expr, $eid:expr) => {{
-        let mut resp_bytes: [u8; 4] = [0; 4];
-        let resp: &mut GetEIDResp<[u8; 4]> = GetEIDResp::mut_from_bytes(&mut resp_bytes).unwrap();
-        resp.set_completion_code($cc as u8);
-        resp.set_eid($eid);
-        resp_bytes.to_vec()
-    }};
+pub fn get_eid_resp_bytes(cc: CmdCompletionCode, eid: u8) -> Vec<u8> {
+    let mut resp_bytes: [u8; 4] = [0; 4];
+    let resp: &mut GetEIDResp<[u8; 4]> = GetEIDResp::mut_from_bytes(&mut resp_bytes).unwrap();
+    resp.set_completion_code(cc as u8);
+    resp.set_eid(eid);
+    resp_bytes.to_vec()
 }
 
 bitfield! {

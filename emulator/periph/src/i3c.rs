@@ -107,11 +107,9 @@ impl I3c {
             let data_size = resp_desc.data_length().into();
             if let Some(_data) = self.tti_tx_data_raw.front() {
                 if self.tti_tx_data_raw[0].len() >= data_size {
-                    // self.tti_tx_data_raw.pop_front();
-                    let data = self.tti_tx_data_raw.pop_front().unwrap();
                     let resp = I3cTcriResponseXfer {
                         resp: resp_desc,
-                        data,
+                        data: self.tti_tx_data_raw.pop_front().unwrap(),
                     };
                     self.i3c_target.set_response(resp);
                 }
@@ -186,7 +184,7 @@ impl I3c {
             // TODO: handle more than the MDB?
             // Drain IBI descriptor size + 4 bytes (MDB)
             self.i3c_target.send_ibi(self.tti_ibi_buffer[4]);
-            self.tti_ibi_buffer.drain(0..8);
+            self.tti_ibi_buffer.drain(0..(len + 4).next_multiple_of(4));
         }
     }
 }

@@ -15,7 +15,7 @@ chrono = {version = "0.4.38", features = ["serde"]}
 toml = "0.8.19"
 uuid = { version = "1.10.0", features = ["serde"]}
 serde.workspace = true
-crc = "3.2.1"
+crc.workspace = true
 clap.workspace = true
 num-traits.workspace = true
 num-derive.workspace = true
