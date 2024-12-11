@@ -84,6 +84,7 @@ impl crate::fake::SyscallDriver for Console {
                 let mut bytes = self.messages.take();
                 let buffer = self.buffer.take();
                 let size = cmp::min(buffer.len(), argument0 as usize);
+                eprint!("{}", core::str::from_utf8(&(*buffer)[..size]).unwrap());
                 bytes.extend_from_slice(&(*buffer)[..size]);
                 self.buffer.set(buffer);
                 self.messages.set(bytes);

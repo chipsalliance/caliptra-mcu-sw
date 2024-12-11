@@ -36,6 +36,7 @@ impl crate::fake::SyscallDriver for Alarm {
 
     fn command(&self, command_number: u32, argument0: u32, _argument1: u32) -> CommandReturn {
         match command_number {
+            command::EXISTS => crate::command_return::success(),
             command::FREQUENCY => crate::command_return::success_u32(self.frequency_hz),
             command::SET_RELATIVE => {
                 // We're not actually sleeping, just ticking the timer.

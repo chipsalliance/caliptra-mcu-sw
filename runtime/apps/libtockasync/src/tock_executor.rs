@@ -20,12 +20,44 @@ pub struct TockExecutor {
     not_send: PhantomData<*mut ()>,
 }
 
+impl Default for TockExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TockExecutor {
     /// Create a new Executor.
     pub fn new() -> Self {
         Self {
             inner: raw::Executor::new(core::ptr::null_mut()),
             not_send: PhantomData,
+        }
+    }
+
+    pub fn spawner(&'static self) -> Spawner {
+        self.inner.spawner()
+    }
+
+    pub fn poll(&'static self) {
+        unsafe {
+            self.inner.poll();
+            // we do not care about race conditions between the load and store operations, interrupts
+            // will only set this value to true.
+            critical_section::with(|_| {
+                // if there is work to do, loop back to polling
+                // TODO can we relax this?
+                if SIGNAL_WORK_THREAD_MODE.load(Ordering::SeqCst) {
+                    SIGNAL_WORK_THREAD_MODE.store(false, Ordering::SeqCst);
+                }
+                // if not, yield and wait for OS upcall
+                else {
+                    // Safety: yield-wait does not return a value, which satisfies yield1's
+                    // requirement. The yield-wait system call cannot trigger undefined
+                    // behavior on its own in any other way.
+                    yield1(1);
+                }
+            });
         }
     }
 
@@ -51,29 +83,18 @@ impl TockExecutor {
         init(self.inner.spawner());
 
         loop {
-            unsafe {
-                self.inner.poll();
-                // we do not care about race conditions between the load and store operations, interrupts
-                // will only set this value to true.
-                critical_section::with(|_| {
-                    // if there is work to do, loop back to polling
-                    // TODO can we relax this?
-                    if SIGNAL_WORK_THREAD_MODE.load(Ordering::SeqCst) {
-                        SIGNAL_WORK_THREAD_MODE.store(false, Ordering::SeqCst);
-                    }
-                    // if not, yield and wait for OS upcall
-                    else {
-                        // Safety: yield-wait does not return a value, which satisfies yield1's
-                        // requirement. The yield-wait system call cannot trigger undefined
-                        // behavior on its own in any other way.
-                        yield1(1);
-                    }
-                });
-            }
+            self.poll();
         }
     }
 }
 
+#[cfg(not(target_arch = "riscv32"))]
+unsafe fn yield1(_r0: u32) {
+    use libtock_platform::Syscalls;
+    libtock_unittest::fake::Syscalls::yield_wait();
+}
+
+#[cfg(target_arch = "riscv32")]
 unsafe fn yield1(r0: u32) {
     // Safety: This matches the invariants required by the documentation on
     // RawSyscalls::yield1

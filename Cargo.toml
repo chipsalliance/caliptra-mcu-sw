@@ -45,6 +45,7 @@ members = [
     "runtime/apps/libtock/tools/print_sizes",
     "runtime/apps/libtock/ufmt",
     "runtime/apps/libtock/unittest",
+    "runtime/apps/libtockasync",
     "runtime/capsules",
     "runtime/i3c",
     "tests/hello",
