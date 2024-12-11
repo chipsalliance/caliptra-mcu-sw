@@ -2,15 +2,17 @@
 
 use crate::mctp::base_protocol::{MCTPHeader, MessageType, MCTP_HDR_SIZE};
 use crate::mctp::control_msg::{MCTPCtrlCmd, MCTPCtrlMsgHdr, MCTP_CTRL_MSG_HEADER_LEN};
-use crate::mctp::transport_binding::MCTPTransportBinding;
+use crate::mctp::transport_binding::{MCTPTransportBinding, TransportRxClient, TransportTxClient};
+
+use core::fmt::Write;
+use romtime::println;
 
 use core::cell::Cell;
 
-use i3c_driver::hil::{RxClient, TxClient};
 use kernel::collections::list::{List, ListLink, ListNode};
 use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;
-use kernel::{debug, ErrorCode};
+use kernel::ErrorCode;
 
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -108,11 +110,11 @@ pub struct MuxMCTPDriver<'a, M: MCTPTransportBinding<'a>> {
     mctp_device: &'a dyn MCTPTransportBinding<'a>,
     next_msg_tag: Cell<u8>, //global msg tag. increment by 1 for next tag upto 7 and wrap around.
     local_eid: Cell<u8>,
-    mtu: Cell<u8>,
+    mtu: Cell<usize>,
     // List of outstanding send requests
     sender_list: List<'a, MCTPTxState<'a, M>>,
     receiver_list: List<'a, MCTPRxState<'a>>,
-    tx_pkt_buffer: TakeCell<'static, [u8]>, // Static buffer for tx packet. (may not be needed)
+    tx_pkt_buffer: TakeCell<'static, [u8]>, // Static buffer for tx packet.
     rx_pkt_buffer: TakeCell<'static, [u8]>, //Static buffer for rx packet
 }
 
@@ -120,7 +122,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
     pub fn new(
         mctp_device: &'a dyn MCTPTransportBinding<'a>,
         local_eid: u8,
-        mtu: u8,
+        mtu: usize,
         tx_pkt_buf: &'static mut [u8],
         rx_pkt_buf: &'static mut [u8],
     ) -> MuxMCTPDriver<'a, M> {
@@ -148,7 +150,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
         self.local_eid.set(local_eid);
     }
 
-    pub fn set_mtu(&self, mtu: u8) {
+    pub fn set_mtu(&self, mtu: usize) {
         self.mtu.set(mtu);
     }
 
@@ -156,7 +158,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
         self.local_eid.get()
     }
 
-    pub fn get_mtu(&self) -> u8 {
+    pub fn get_mtu(&self) -> usize {
         self.mtu.get()
     }
 
@@ -204,7 +206,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
         }
 
         mctp_ctrl_msg_hdr_resp.write_to(&mut resp_buf[0..MCTP_CTRL_MSG_HEADER_LEN]).map_err(|_| {
-            debug!("MuxMCTPDriver: Failed to write MCTP Control message header. Dropping tx packet.");
+            println!("MuxMCTPDriver: Failed to write MCTP Control message header. Dropping tx packet.");
             ErrorCode::FAIL
         })
     }
@@ -221,7 +223,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
         mctp_hdr_resp
             .write_to(&mut resp_buf[0..MCTP_HDR_SIZE])
             .map_err(|_| {
-                debug!("MuxMCTPDriver: Failed to write MCTP header. Dropping tx packet.");
+                println!("MuxMCTPDriver: Failed to write MCTP header. Dropping tx packet.");
                 ErrorCode::FAIL
             })
     }
@@ -237,7 +239,8 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
 
         let mctp_ctrl_msg_hdr: MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]> =
             MCTPCtrlMsgHdr::read_from_bytes(&msg_buf[0..MCTP_CTRL_MSG_HEADER_LEN]).unwrap();
-        if mctp_ctrl_msg_hdr.rq() != 0 || mctp_ctrl_msg_hdr.datagram() != 0 {
+
+        if mctp_ctrl_msg_hdr.rq() != 1 || mctp_ctrl_msg_hdr.datagram() != 0 {
             // Only Command/Request messages are handled
             return Err(ErrorCode::INVAL);
         }
@@ -267,7 +270,14 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
 
         let req_buf = &msg_buf[MCTP_CTRL_MSG_HEADER_LEN..];
         let mctp_ctrl_cmd: MCTPCtrlCmd = mctp_ctrl_msg_hdr.cmd().into();
+        let resp_len = MCTP_CTRL_MSG_HEADER_LEN + MCTP_HDR_SIZE + mctp_ctrl_cmd.resp_data_len();
+
         if req_buf.len() < mctp_ctrl_cmd.req_data_len() {
+            println!(
+                "MuxMCTPDriver: Invalid buffer len Dropping packet. {:?} ctrl_cmd_len {:?}",
+                req_buf.len(),
+                mctp_ctrl_cmd.req_data_len()
+            );
             Err(ErrorCode::INVAL)?;
         }
 
@@ -278,7 +288,9 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
                     MCTPCtrlCmd::SetEID => mctp_ctrl_cmd
                         .process_set_endpoint_id(req_buf, &mut resp_buf[msg_payload_offset..])
                         .map(|eid| {
-                            self.set_local_eid(eid);
+                            if let Some(eid) = eid {
+                                self.set_local_eid(eid);
+                            }
                         }),
 
                     MCTPCtrlCmd::GetEID => mctp_ctrl_cmd.process_get_endpoint_id(
@@ -289,6 +301,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
                     MCTPCtrlCmd::GetMsgTypeSupport => return Err(ErrorCode::NOSUPPORT),
                     _ => return Err(ErrorCode::NOSUPPORT),
                 };
+
                 match result {
                     Ok(_) => {
                         let res = self
@@ -304,7 +317,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
                             });
 
                         match res {
-                            Ok(_) => match self.mctp_device.transmit(resp_buf) {
+                            Ok(_) => match self.mctp_device.transmit(resp_buf, resp_len) {
                                 Ok(_) => Ok(()),
                                 Err((err, tx_buf)) => {
                                     self.tx_pkt_buffer.replace(tx_buf);
@@ -330,16 +343,17 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
     }
 }
 
-impl<'a, M: MCTPTransportBinding<'a>> TxClient for MuxMCTPDriver<'a, M> {
+impl<'a, M: MCTPTransportBinding<'a>> TransportTxClient for MuxMCTPDriver<'a, M> {
     fn send_done(&self, tx_buffer: &'static mut [u8], _result: Result<(), ErrorCode>) {
         self.tx_pkt_buffer.replace(tx_buffer);
     }
 }
 
-impl<'a, M: MCTPTransportBinding<'a>> RxClient for MuxMCTPDriver<'a, M> {
-    fn receive_write(&self, rx_buffer: &'static mut [u8], len: usize) {
+impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M> {
+    fn receive(&self, rx_buffer: &'static mut [u8], len: usize) {
         if len == 0 || len > rx_buffer.len() {
-            debug!("MuxMCTPDriver: Invalid packet length. Dropping packet.");
+            println!("MuxMCTPDriver: Invalid packet length. Dropping packet.");
+            self.rx_pkt_buffer.replace(rx_buffer);
             return;
         }
 
@@ -351,17 +365,18 @@ impl<'a, M: MCTPTransportBinding<'a>> RxClient for MuxMCTPDriver<'a, M> {
                         && mctp_header.som() == 1
                         && mctp_header.eom() == 1
                     {
-                        let _ = self.process_mctp_control_msg(
-                            mctp_header,
-                            &rx_buffer[payload_offset + 1..len],
-                        );
+                        let _ = self
+                            .process_mctp_control_msg(mctp_header, &rx_buffer[payload_offset..len]);
                     } else {
-                        debug!("MuxMCTPDriver: Invalid MCTP Control message. Dropping packet.");
+                        println!("MuxMCTPDriver: Invalid MCTP Control message. Dropping packet.");
                     }
                 }
-                _ => unimplemented!(),
+                _ => {
+                    println!("MuxMCTPDriver: Unsupported message type. Dropping packet.");
+                }
             }
         }
+        self.rx_pkt_buffer.replace(rx_buffer);
     }
 
     fn write_expected(&self) {

@@ -12,7 +12,7 @@ const MCTP_BROADCAST_EID: u8 = 0xFF;
 bitfield! {
     #[repr(C)]
     #[derive(Clone, FromBytes, IntoBytes, Immutable)]
-    pub struct MCTPCtrlMsgHdr([u8]);
+    pub struct MCTPCtrlMsgHdr(MSB0 [u8]);
     impl Debug;
     u8;
     pub ic, _: 0, 0;
@@ -89,7 +89,11 @@ impl MCTPCtrlCmd {
         }
     }
 
-    pub fn process_set_endpoint_id(&self, req: &[u8], rsp_buf: &mut [u8]) -> Result<u8, ErrorCode> {
+    pub fn process_set_endpoint_id(
+        &self,
+        req: &[u8],
+        rsp_buf: &mut [u8],
+    ) -> Result<Option<u8>, ErrorCode> {
         if req.len() < self.req_data_len() || rsp_buf.len() < self.resp_data_len() {
             return Err(ErrorCode::NOMEM);
         }
@@ -100,29 +104,36 @@ impl MCTPCtrlCmd {
         let eid = req.eid();
         let mut resp = SetEIDResp::new();
         let mut completion_code = CmdCompletionCode::Success;
+        let mut set_status = SetEIDStatus::Rejected;
 
         match op {
             SetEIDOp::SetEID | SetEIDOp::ForceEID => {
-                if eid == MCTP_NULL_EID || eid == MCTP_BROADCAST_EID {
+                if eid == MCTP_NULL_EID || eid == MCTP_BROADCAST_EID || (1..7).contains(&eid) {
                     completion_code = CmdCompletionCode::ErrorInvalidData;
                 } else {
                     // TODO: Check if rejected case needs to be handled
-                    resp.set_eid_assign_status(SetEIDStatus::Accepted as u8);
+                    set_status = SetEIDStatus::Accepted;
                     resp.set_eid_alloc_status(SetEIDAllocStatus::NoEIDPool as u8);
                     resp.set_assigned_eid(eid);
                     resp.set_eid_pool_size(0);
                 }
             }
             SetEIDOp::ResetEID | SetEIDOp::SetDiscoveredFlag => {
+                set_status = SetEIDStatus::Rejected;
                 completion_code = CmdCompletionCode::ErrorInvalidData;
             }
         }
+        resp.set_eid_assign_status(set_status as u8);
         resp.set_completion_code(completion_code as u8);
 
         resp.write_to(&mut rsp_buf[..self.resp_data_len()])
             .map_err(|_| ErrorCode::FAIL)?;
 
-        Ok(eid)
+        if resp.eid_assign_status() == SetEIDStatus::Accepted as u8 {
+            Ok(Some(eid))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn process_get_endpoint_id(
@@ -170,7 +181,7 @@ impl From<u8> for CmdCompletionCode {
 // Set EID Request
 bitfield! {
     #[derive(Clone, FromBytes)]
-    pub struct SetEIDReq([u8]);
+    pub struct SetEIDReq(MSB0 [u8]);
     impl Debug;
     u8;
     rsvd, _: 5, 0;
@@ -322,8 +333,8 @@ mod tests {
         let eid = MCTPCtrlCmd::SetEID
             .process_set_endpoint_id(&msg_req, rsp_buf)
             .unwrap();
-
-        assert_eq!(eid, 0x0A);
+        assert!(eid.is_some());
+        assert_eq!(eid.unwrap(), 0x0A);
 
         let rsp: SetEIDResp<[u8; 4]> = SetEIDResp::read_from_bytes(rsp_buf).unwrap();
         assert_eq!(rsp.completion_code(), CmdCompletionCode::Success as u8);
@@ -341,8 +352,7 @@ mod tests {
         let eid = MCTPCtrlCmd::SetEID
             .process_set_endpoint_id(&msg_req, rsp_buf)
             .unwrap();
-
-        assert_eq!(eid, 0x00);
+        assert!(eid.is_none());
 
         let rsp: SetEIDResp<[u8; 4]> = SetEIDResp::read_from_bytes(rsp_buf).unwrap();
         assert_eq!(
@@ -359,8 +369,7 @@ mod tests {
         let eid = MCTPCtrlCmd::SetEID
             .process_set_endpoint_id(&msg_req, rsp_buf)
             .unwrap();
-
-        assert_eq!(eid, 0xFF);
+        assert!(eid.is_none());
 
         let rsp: SetEIDResp<[u8; 4]> = SetEIDResp::read_from_bytes(rsp_buf).unwrap();
         assert_eq!(

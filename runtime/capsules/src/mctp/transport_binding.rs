@@ -1,10 +1,11 @@
 // Licensed under the Apache-2.0 license
 
+use core::fmt::Write;
 use i3c_driver::hil::{I3CTarget, RxClient, TxClient};
+use romtime::println;
 
 use core::cell::Cell;
 
-use kernel::debug;
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::cells::TakeCell;
 use kernel::ErrorCode;
@@ -27,7 +28,11 @@ pub trait MCTPTransportBinding<'a> {
     /// Set the buffer that will be used for receiving packets.
     fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
 
-    fn transmit(&self, tx_buffer: &'static mut [u8]) -> Result<(), (ErrorCode, &'static mut [u8])>;
+    fn transmit(
+        &self,
+        tx_buffer: &'static mut [u8],
+        len: usize,
+    ) -> Result<(), (ErrorCode, &'static mut [u8])>;
 
     /// Enable/Disable the I3C target device
     fn enable(&self);
@@ -82,7 +87,7 @@ impl<'a> MCTPI3CBinding<'a> {
         }
     }
 
-    pub fn mctp_i3c_setup(&self) {
+    pub fn setup_mctp_i3c(&self) {
         let device_info = self.i3c_target.get_device_info();
         self.max_read_len.set(device_info.max_read_len);
         self.max_write_len.set(device_info.max_write_len);
@@ -91,7 +96,6 @@ impl<'a> MCTPI3CBinding<'a> {
                 .dynamic_addr
                 .unwrap_or(device_info.static_addr.unwrap_or(0)),
         );
-        self.i3c_target.enable();
     }
 
     /// SMBus CRC8 calculation.
@@ -135,9 +139,11 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
         self.i3c_target.set_rx_buffer(rx_buf);
     }
 
-    fn transmit(&self, tx_buffer: &'static mut [u8]) -> Result<(), (ErrorCode, &'static mut [u8])> {
-        let len = tx_buffer.len();
-
+    fn transmit(
+        &self,
+        tx_buffer: &'static mut [u8],
+        len: usize,
+    ) -> Result<(), (ErrorCode, &'static mut [u8])> {
         self.tx_buffer.replace(tx_buffer);
 
         // Make sure there's enough space for the PEC byte
@@ -149,13 +155,18 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
         let addr = self.device_address.get() << 1 | 0x01;
         match self.tx_buffer.take() {
             Some(tx_buffer) => {
-                let pec = MCTPI3CBinding::compute_pec(addr, tx_buffer, len);
-                tx_buffer[len] = pec;
-                match self.i3c_target.transmit_read(tx_buffer, len + 1) {
-                    Ok(_) => {}
-                    Err((e, tx_buffer)) => {
-                        Err((e, tx_buffer))?;
+                if tx_buffer.len() > len + 1 {
+                    let pec = MCTPI3CBinding::compute_pec(addr, tx_buffer, len);
+                    tx_buffer[len] = pec;
+
+                    match self.i3c_target.transmit_read(tx_buffer, len + 1) {
+                        Ok(_) => {}
+                        Err((e, tx_buffer)) => {
+                            Err((e, tx_buffer))?;
+                        }
                     }
+                } else {
+                    Err((ErrorCode::SIZE, tx_buffer))?;
                 }
             }
             None => {
@@ -197,11 +208,9 @@ impl<'a> RxClient for MCTPI3CBinding<'a> {
         // if yes, call the client's receive_write function
         // if no, drop the packet and set_rx_buffer on i3c_target to receive the next packet
         if len == 0 || len > self.max_write_len.get() {
-            debug!("MCTPI3CBinding: Invalid packet length. Dropping packet.");
             self.i3c_target.set_rx_buffer(rx_buffer);
             return;
         }
-
         // Rx is a write operation from the I3C controller. Set the R/W bit at LSB to 0.
         let addr = self.device_address.get() << 1;
         let pec = MCTPI3CBinding::compute_pec(addr, rx_buffer, len - 1);
@@ -210,7 +219,7 @@ impl<'a> RxClient for MCTPI3CBinding<'a> {
                 client.receive(rx_buffer, len - 1);
             });
         } else {
-            debug!("MCTPI3CBinding: Invalid PEC. Dropping packet.");
+            println!("MCTPI3CBinding: Invalid PEC. Dropping packet.");
             self.i3c_target.set_rx_buffer(rx_buffer);
         }
     }
@@ -242,6 +251,11 @@ mod tests {
             }
         }
         crc
+    }
+
+    #[test]
+    fn test_crc8() {
+        assert_eq!(0xf4, calculate_crc8(b"123456789"));
     }
 
     #[test]

@@ -17,6 +17,8 @@ mod board;
 #[cfg(target_arch = "riscv32")]
 mod chip;
 #[cfg(target_arch = "riscv32")]
+mod components;
+#[cfg(target_arch = "riscv32")]
 pub mod io;
 #[cfg(target_arch = "riscv32")]
 mod pic;

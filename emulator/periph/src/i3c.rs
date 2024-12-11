@@ -7,7 +7,7 @@ Abstract:
 --*/
 
 use crate::i3c_protocol::{I3cController, I3cTarget, I3cTcriResponseXfer, ResponseDescriptor};
-use crate::{I3cIncomingCommandClient, I3cTcriCommand, IbiDescriptor};
+use crate::{DynamicI3cAddress, I3cIncomingCommandClient, IbiDescriptor, ReguDataTransferCommand};
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::i3c::I3cPeripheral;
@@ -94,6 +94,10 @@ impl I3c {
         }
     }
 
+    pub fn get_dynamic_address(&self) -> Option<DynamicI3cAddress> {
+        self.i3c_target.get_address()
+    }
+
     fn write_tx_data_into_target(&mut self) {
         if !self.tti_tx_desc_queue_raw.is_empty() {
             let resp_desc = ResponseDescriptor::read_from_bytes(
@@ -101,13 +105,14 @@ impl I3c {
             )
             .unwrap();
             let data_size = resp_desc.data_length().into();
-            if self.tti_tx_data_raw[0].len() >= data_size {
-                self.tti_tx_data_raw.pop_front();
-                let resp = I3cTcriResponseXfer {
-                    resp: resp_desc,
-                    data: self.tti_tx_data_raw.pop_front().unwrap(),
-                };
-                self.i3c_target.set_response(resp);
+            if let Some(_data) = self.tti_tx_data_raw.front() {
+                if self.tti_tx_data_raw[0].len() >= data_size {
+                    let resp = I3cTcriResponseXfer {
+                        resp: resp_desc,
+                        data: self.tti_tx_data_raw.pop_front().unwrap(),
+                    };
+                    self.i3c_target.set_response(resp);
+                }
             }
         }
     }
@@ -129,15 +134,13 @@ impl I3c {
 
         // Set TxDescStat interrupt if there is a pending Read transaction (i.e., data needs to be written to the tx registers)
         let pending_read = self
-            .i3c_target
-            .peek_command()
-            .map(|xfer| {
-                match &xfer.cmd {
-                    I3cTcriCommand::Regular(reg_xfer) => {
-                        reg_xfer.rnw() == 1 // there is Read transaction pending
-                    }
-                    _ => false, // we only support regular transfers
-                }
+            .tti_rx_desc_queue_raw
+            .front()
+            .map(|x| {
+                ReguDataTransferCommand::read_from_bytes(&(*x as u64).to_le_bytes())
+                    .unwrap()
+                    .rnw()
+                    == 1
             })
             .unwrap_or(false);
         self.interrupt_status.reg.modify(if pending_read {
@@ -179,8 +182,9 @@ impl I3c {
             }
             // we only need the first byte, which is the MDB.
             // TODO: handle more than the MDB?
+            // Drain IBI descriptor size + 4 bytes (MDB)
             self.i3c_target.send_ibi(self.tti_ibi_buffer[4]);
-            self.tti_ibi_buffer.drain(0..len + 4);
+            self.tti_ibi_buffer.drain(0..(len + 4).next_multiple_of(4));
         }
     }
 }
@@ -307,7 +311,7 @@ impl I3cPeripheral for I3c {
             }
             RvSize::Word => {
                 let mut data = self.tti_rx_current.pop_front().unwrap_or(0) as u32;
-                data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 16;
+                data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 8;
                 data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 16;
                 data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 24;
                 data

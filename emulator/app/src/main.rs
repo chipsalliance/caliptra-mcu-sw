@@ -17,6 +17,7 @@ mod dis_test;
 mod elf;
 mod gdb;
 mod i3c_socket;
+mod tests;
 
 use crate::i3c_socket::start_i3c_socket;
 use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAction};
@@ -343,6 +344,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     let i3c_error_irq = pic.register_irq(CaliptraRootBus::I3C_ERROR_IRQ);
     let i3c_notif_irq = pic.register_irq(CaliptraRootBus::I3C_NOTIF_IRQ);
 
+    println!("Starting I3C Socket, port {}", cli.i3c_port.unwrap_or(0));
+
     let mut i3c_controller = if let Some(i3c_port) = cli.i3c_port {
         let (rx, tx) = start_i3c_socket(running.clone(), i3c_port);
         I3cController::new(rx, tx)
@@ -355,6 +358,22 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         i3c_error_irq,
         i3c_notif_irq,
     );
+
+    if cfg!(feature = "test-mctp-ctrl-cmds") {
+        i3c_controller.start();
+        println!(
+            "Starting test thread for testing target {:?}",
+            i3c.get_dynamic_address().unwrap()
+        );
+
+        let tests = tests::mctp_ctrl_cmd::MCTPCtrlCmdTests::generate_tests();
+        i3c_socket::run_tests(
+            running.clone(),
+            cli.i3c_port.unwrap(),
+            i3c.get_dynamic_address().unwrap(),
+            tests,
+        );
+    }
 
     let flash_ctrl_error_irq = pic.register_irq(CaliptraRootBus::FLASH_CTRL_ERROR_IRQ);
     let flash_ctrl_event_irq = pic.register_irq(CaliptraRootBus::FLASH_CTRL_EVENT_IRQ);

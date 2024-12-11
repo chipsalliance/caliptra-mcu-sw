@@ -77,7 +77,12 @@ mod test {
         output
     }
 
-    fn run_runtime(feature: &str, rom_path: PathBuf, runtime_path: PathBuf) -> ExitStatus {
+    fn run_runtime(
+        feature: &str,
+        rom_path: PathBuf,
+        runtime_path: PathBuf,
+        i3c_port: String,
+    ) -> ExitStatus {
         let cargo_run_args = vec![
             "run",
             "-p",
@@ -90,6 +95,8 @@ mod test {
             rom_path.to_str().unwrap(),
             "--firmware",
             runtime_path.to_str().unwrap(),
+            "--i3c-port",
+            i3c_port.as_str(),
         ];
         println!("Running test firmware {}", feature.replace("_", "-"));
         let mut cmd = Command::new("cargo");
@@ -105,7 +112,8 @@ mod test {
                 println!("Compiling test firmware {}", stringify!($test));
                 let feature = stringify!($test).replace("_", "-");
                 let test_runtime = compile_runtime(&feature);
-                let test = run_runtime(&feature, ROM.to_path_buf(), test_runtime);
+                let i3c_port = "65534".to_string();
+                let test = run_runtime(&feature, ROM.to_path_buf(), test_runtime, i3c_port);
                 assert_eq!(0, test.code().unwrap_or_default());
             }
         };
@@ -122,4 +130,5 @@ mod test {
     run_test!(test_flash_ctrl_init);
     run_test!(test_flash_ctrl_read_write_page);
     run_test!(test_flash_ctrl_erase_page);
+    run_test!(test_mctp_ctrl_cmds);
 }

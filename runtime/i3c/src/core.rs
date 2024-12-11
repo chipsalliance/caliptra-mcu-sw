@@ -314,6 +314,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 client.write_expected();
             });
         }
+
         if self.rx_buffer.is_none() {
             // try again later
             self.retry_incoming_write.set(true);
@@ -330,6 +331,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             ((desc1 as u64) << 32) | (desc0 as u64),
         );
         let len = desc.read(I3CCommandDescriptor::DataLength) as usize;
+
         // read everything
         let mut full = false;
         for i in (0..len.next_multiple_of(4)).step_by(4) {
@@ -354,12 +356,14 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         if full {
             // TODO: we need a way to say that the buffer was not big enough
         }
-        self.rx_client.map(|client| {
-            client.receive_write(rx_buffer, len.min(buf_size));
-        });
+
         // reset
         self.rx_buffer_idx.set(0);
         self.rx_buffer_size.set(0);
+
+        self.rx_client.map(|client| {
+            client.receive_write(rx_buffer, len.min(buf_size));
+        });
     }
 
     // called when TTI wants us to send data for a private Read
@@ -381,8 +385,8 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             self.registers.tx_desc_queue_port.set((size - idx) as u32);
             while idx < size {
                 let mut bytes = [0; 4];
-                for i in idx..(idx + 4).min(size) {
-                    bytes[i - idx] = buf[i];
+                for i in 0..4.min(size - idx) {
+                    bytes[i] = buf[idx];
                     idx += 1;
                 }
                 let word = u32::from_le_bytes(bytes);
