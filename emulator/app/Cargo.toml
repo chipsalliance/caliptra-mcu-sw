@@ -34,4 +34,7 @@ strum_macros = "0.24"
 default = []
 test-i3c-simple = []
 test-i3c-constant-writes = ["emulator-periph/test-i3c-constant-writes"]
+test-flash-ctrl-init = []
+test-flash-ctrl-read-write-page = []
+test-flash-ctrl-erase-page = []
 test-mctp-ctrl-cmds = ["emulator-periph/test-mctp-ctrl-cmds"]
