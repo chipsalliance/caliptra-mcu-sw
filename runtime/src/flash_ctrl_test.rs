@@ -2,8 +2,8 @@
 
 // Test flash controller driver read, write, erage page
 
-use crate::flash_ctrl;
 use core::cell::{Cell, RefCell};
+use flash_driver::flash_ctrl;
 use kernel::hil;
 use kernel::hil::flash::{Flash, HasClient};
 use kernel::static_init;

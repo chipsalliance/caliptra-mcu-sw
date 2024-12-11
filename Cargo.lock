@@ -1155,6 +1155,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "flash-driver"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "kernel",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2210,6 +2221,7 @@ dependencies = [
  "capsules-runtime",
  "capsules-system",
  "components",
+ "flash-driver",
  "i3c-driver",
  "kernel",
  "registers-generated",
