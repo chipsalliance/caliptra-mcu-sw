@@ -11,6 +11,10 @@ use kernel::utilities::cells::NumericCellExt;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::ErrorCode;
 
+pub const BUF_LEN: usize = 1024;
+
+//TODO: Syscall Driver to be assiged
+
 /// This module is either waiting to do something, or handling a read/write/erase
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum State {
@@ -161,7 +165,6 @@ impl<'a, F: hil::flash::Flash> crate::hil::FlashStorage<'a> for FlashStorageToPa
         self.page_buffer
             .take()
             .map_or(Err(ErrorCode::RESERVE), move |page_buffer| {
-
                 let page_size = page_buffer.as_mut().len();
 
                 self.state.set(State::Erase);
@@ -282,7 +285,7 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
             State::Erase => {
                 // We did a read because we're not page aligned on either or
                 // both ends.
-               {
+                {
                     let page_size = page_buffer.as_mut().len();
                     // This will get us our offset into the page.
                     let page_index = self.address.get() % page_size;
@@ -299,7 +302,8 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                     page_buffer.as_mut()[page_index..(len + page_index)].fill(0xFF);
 
                     // Do the write.
-                    if let Err((_, page_buffer)) = self.driver.write_page(page_number, page_buffer) {
+                    if let Err((_, page_buffer)) = self.driver.write_page(page_number, page_buffer)
+                    {
                         self.page_buffer.replace(page_buffer);
                     }
                 }
@@ -313,11 +317,10 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
         page_buffer: &'static mut F::Page,
         _result: Result<(), hil::flash::Error>,
     ) {
-
         match self.state.get() {
             State::Write => {
-                 // After a write we could be done, need to do another write, or need to
-                 // do a read.
+                // After a write we could be done, need to do another write, or need to
+                // do a read.
                 self.buffer.take().map(move |buffer| {
                     let page_size = page_buffer.as_mut().len();
 
@@ -340,7 +343,9 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                         self.remaining_length.subtract(page_size);
                         self.address.add(page_size);
                         self.buffer_index.set(buffer_index + page_size);
-                        if let Err((_, page_buffer)) = self.driver.write_page(page_number, page_buffer) {
+                        if let Err((_, page_buffer)) =
+                            self.driver.write_page(page_number, page_buffer)
+                        {
                             self.page_buffer.replace(page_buffer);
                         }
                     } else {
@@ -387,9 +392,7 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                 }
             }
             _ => {}
-
         }
-
     }
 
     fn erase_complete(&self, _result: Result<(), hil::flash::Error>) {
@@ -425,7 +428,5 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
             // No page buffer. This is an error.
             panic!("No page buffer in erase_complete");
         }
-
     }
-
 }

@@ -530,7 +530,9 @@ name = "capsules-runtime"
 version = "0.1.0"
 dependencies = [
  "bitfield",
+ "capsules-core",
  "capsules-extra",
+ "flash-driver",
  "i3c-driver",
  "kernel",
  "romtime",
