@@ -19,10 +19,8 @@ OUTPUT_ARCH( "riscv" )
 MEMORY
 {
   ROM   (rx) : ORIGIN = 0x00000000, LENGTH = 48K
-  DCCM (rwx) : ORIGIN = 0x50000000, LENGTH = 128K
+  RAM  (rwx) : ORIGIN = 0x40050000, LENGTH = 64K /* only use the last 64 KB of RAM so we don't accidentally overwrite the runtime */
 }
-
-STACK_SIZE = 0x1000;
 
 SECTIONS
 {
@@ -44,7 +42,7 @@ SECTIONS
         . = ALIGN(4);
         PROVIDE( GLOBAL_POINTER = . + 0x800 );
         . = ALIGN(4);
-    } > DCCM
+    } > RAM
 
     .bss (NOLOAD) :
     {
@@ -53,7 +51,7 @@ SECTIONS
         *(.sbss*)
         *(COMMON)
         . = ALIGN(4);
-    } > DCCM
+    } > RAM
 
     .stack (NOLOAD):
     {
@@ -61,7 +59,7 @@ SECTIONS
         . = . + STACK_SIZE;
         . = ALIGN(4);
         PROVIDE(STACK_START = . );
-    } > DCCM
+    } > RAM
 
     _end = . ;
 }
@@ -71,3 +69,6 @@ BSS_END = BSS_START + SIZEOF(.bss);
 DATA_START = ADDR(.data);
 DATA_END = DATA_START + SIZEOF(.data);
 ROM_DATA_START = LOADADDR(.data);
+STACK_SIZE = 0x1000;
+STACK_TOP = ORIGIN(RAM) + LENGTH(RAM);
+STACK_ORIGIN = STACK_TOP - STACK_SIZE;

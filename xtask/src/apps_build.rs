@@ -144,5 +144,9 @@ INCLUDE runtime/apps/app_layout.ld",
     if !status.success() {
         Err("build ROM ELF failed")?;
     }
+    println!(
+        "App {} built for location {:x}, RAM start {:x}",
+        app_name, offset, ram_start
+    );
     Ok(())
 }

@@ -12,12 +12,11 @@ Abstract:
 
 --*/
 
-use crate::root_bus::{DCCM_LENGTH, DCCM_OFFSET};
 use core::convert::TryInto;
 use emulator_bus::{ActionHandle, Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::flash::FlashPeripheral;
-use emulator_types::RvSize;
+use emulator_types::{RvSize, RAM_OFFSET, RAM_SIZE};
 use registers_generated::flash_ctrl::bits::{
     CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
 };
@@ -192,7 +191,7 @@ impl DummyFlashCtrl {
     }
 
     fn dma_ram_access_check(&self, addr: u32) -> bool {
-        addr >= DCCM_OFFSET && addr + Self::PAGE_SIZE as u32 <= DCCM_OFFSET + DCCM_LENGTH as u32
+        addr >= RAM_OFFSET && addr + Self::PAGE_SIZE as u32 <= RAM_OFFSET + RAM_SIZE
     }
 
     fn read_page(&mut self) -> Result<(), FlashOpError> {
@@ -224,7 +223,7 @@ impl DummyFlashCtrl {
         }
 
         // Write the entire page from the buffer to the DMA ram
-        let dma_start_addr = self.page_addr.reg.get() - DCCM_OFFSET;
+        let dma_start_addr = self.page_addr.reg.get() - RAM_OFFSET;
         for i in 0..Self::PAGE_SIZE {
             if let Err(err) = self.dma_ram.clone().unwrap().borrow_mut().write(
                 RvSize::Byte,
@@ -255,7 +254,7 @@ impl DummyFlashCtrl {
             return Err(FlashOpError::WriteError);
         }
 
-        let dma_start_addr = self.page_addr.reg.get() - DCCM_OFFSET;
+        let dma_start_addr = self.page_addr.reg.get() - RAM_OFFSET;
         for i in 0..Self::PAGE_SIZE {
             self.buffer[i] = match self
                 .dma_ram
@@ -504,12 +503,11 @@ impl FlashPeripheral for DummyFlashCtrl {
 mod test {
     use super::*;
 
-    use crate::root_bus::{DCCM_LENGTH, DCCM_OFFSET};
     use core::panic;
     use emulator_bus::{Bus, Clock};
     use emulator_cpu::Pic;
     use emulator_registers_generated::root_bus::AutoRootBus;
-    use emulator_types::RvSize;
+    use emulator_types::{RvSize, RAM_OFFSET, RAM_SIZE};
     use registers_generated::flash_ctrl::bits::{
         FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
     };
@@ -526,7 +524,7 @@ mod test {
 
     // Dummy DMA RAM
     fn test_helper_setup_dummy_dma_ram() -> Rc<RefCell<Ram>> {
-        let ram = Rc::new(RefCell::new(Ram::new(vec![0u8; DCCM_LENGTH])));
+        let ram = Rc::new(RefCell::new(Ram::new(vec![0u8; RAM_SIZE as usize])));
         ram
     }
 
@@ -568,12 +566,12 @@ mod test {
         data: Option<&[u8]>,
     ) -> Option<u32> {
         // Check if ref_addr is within the range of DCCM
-        if ref_addr < DCCM_OFFSET || ref_addr + size as u32 > DCCM_OFFSET + DCCM_LENGTH as u32 {
+        if ref_addr < RAM_OFFSET || ref_addr + size as u32 > RAM_OFFSET + RAM_SIZE as u32 {
             return None;
         }
 
         // Allocate a page buffer from dma_ram for I/O operation
-        let addr = ref_addr - DCCM_OFFSET;
+        let addr = ref_addr - RAM_OFFSET;
         let mut dma_ram = dma_ram.borrow_mut();
         let page_buf = &mut dma_ram.data_mut()[addr as usize..(addr + size as u32) as usize];
 
@@ -743,7 +741,7 @@ mod test {
 
         // Prepare the page buffer for write operation
         let w_page_buf_addr = test_helper_prepare_io_page_buffer(
-            0x5000_1000,
+            0x4005_1000,
             dummy_dma_ram.clone(),
             DummyFlashCtrl::PAGE_SIZE,
             Some(&test_data),
@@ -836,7 +834,7 @@ mod test {
 
         // Prepare the page buffer for write operation
         let w_page_buf_addr = test_helper_prepare_io_page_buffer(
-            0x5000_2000,
+            0x4005_2000,
             dummy_dma_ram.clone(),
             DummyFlashCtrl::PAGE_SIZE,
             Some(&test_data),
@@ -919,7 +917,7 @@ mod test {
 
         // Prepare the page buffer for read operation
         let r_page_buf_addr = test_helper_prepare_io_page_buffer(
-            0x5000_3000,
+            0x4005_3000,
             dummy_dma_ram.clone(),
             DummyFlashCtrl::PAGE_SIZE,
             None,
@@ -981,7 +979,7 @@ mod test {
         );
 
         // Read the page buffer data into a slice
-        let start_offset = (r_page_buf_addr.unwrap() - DCCM_OFFSET) as usize;
+        let start_offset = (r_page_buf_addr.unwrap() - RAM_OFFSET) as usize;
         let r_page_buf = dummy_dma_ram.borrow_mut().data_mut()
             [start_offset..start_offset + DummyFlashCtrl::PAGE_SIZE]
             .to_vec();
@@ -1006,7 +1004,7 @@ mod test {
 
         // Prepare the page buffer for read operation
         let r_page_buf_addr = test_helper_prepare_io_page_buffer(
-            0x5000_2000,
+            0x4005_2000,
             dummy_dma_ram.clone(),
             DummyFlashCtrl::PAGE_SIZE,
             None,
