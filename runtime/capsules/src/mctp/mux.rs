@@ -2,101 +2,22 @@
 
 use crate::mctp::base_protocol::{MCTPHeader, MessageType, MCTP_HDR_SIZE};
 use crate::mctp::control_msg::{MCTPCtrlCmd, MCTPCtrlMsgHdr, MCTP_CTRL_MSG_HEADER_LEN};
+use crate::mctp::recv::MCTPRxState;
+use crate::mctp::send::MCTPTxState;
 use crate::mctp::transport_binding::{MCTPTransportBinding, TransportRxClient, TransportTxClient};
 
+use capsules_extra::net::sixlowpan::sixlowpan_compression::Context;
 use core::fmt::Write;
 use romtime::println;
 
 use core::cell::Cell;
 
-use kernel::collections::list::{List, ListLink, ListNode};
-use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
+use kernel::collections::list::List;
+use kernel::utilities::cells::{MapCell, TakeCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
 
 use zerocopy::{FromBytes, IntoBytes};
-
-/// The trait that provides an interface to send the MCTP messages to MCTP kernel stack.
-pub trait MCTPSender {
-    /// Sets the client for the `MCTPSender` instance.
-    fn set_client(&self, client: &dyn MCTPTxClient);
-
-    /// Sends the message to the MCTP kernel stack.
-    fn send_msg(&self, dest_eid: u8, msg_tag: u8, msg_payload: SubSliceMut<'static, u8>);
-}
-
-/// This trait is implemented by client to get notified after message is sent.
-pub trait MCTPTxClient {
-    fn send_done(
-        &self,
-        msg_tag: Option<u8>,
-        result: Result<(), ErrorCode>,
-        msg_payload: SubSliceMut<'static, u8>,
-    );
-}
-
-/// This trait is implemented to get notified of the messages received
-/// on corresponding message_type.
-pub trait MCTPRxClient {
-    fn receive(&self, dst_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8]);
-}
-
-/// Send state for MCTP
-#[allow(dead_code)]
-pub struct MCTPTxState<'a, M: MCTPTransportBinding<'a>> {
-    mctp_mux_sender: &'a MuxMCTPDriver<'a, M>,
-    /// Destination EID
-    dest_eid: Cell<u8>,
-    /// Message type
-    msg_type: Cell<u8>,
-    /// msg_tag for the message being packetized
-    msg_tag: Cell<u8>,
-    /// Current packet sequence
-    pkt_seq: Cell<u8>,
-    /// Offset into the message buffer
-    offset: Cell<usize>,
-    /// Client to invoke when send done. This is set to the corresponding Virtual MCTP driver
-    client: OptionalCell<&'a dyn MCTPTxClient>,
-    /// next node in the list
-    next: ListLink<'a, MCTPTxState<'a, M>>,
-    /// The message buffer is set by the virtual MCTP driver when it issues the Tx request.
-    msg_payload: MapCell<SubSliceMut<'static, u8>>,
-}
-
-impl<'a, M: MCTPTransportBinding<'a>> ListNode<'a, MCTPTxState<'a, M>> for MCTPTxState<'a, M> {
-    fn next(&'a self) -> &'a ListLink<'a, MCTPTxState<'a, M>> {
-        &self.next
-    }
-}
-
-/// Receive state
-#[allow(dead_code)]
-pub struct MCTPRxState<'a> {
-    /// Source EID
-    source_eid: Cell<u8>,
-    /// message type
-    msg_type: Cell<u8>,
-    /// msg_tag for the message being assembled
-    msg_tag: Cell<u8>,
-    /// Current packet sequence
-    pkt_seq: Cell<u8>,
-    /// Offset into the message buffer
-    offset: Cell<usize>,
-    /// Start packet len
-    start_pkt_len: Cell<usize>,
-    /// Client (implements the MCTPRxClient trait)
-    client: OptionalCell<&'a dyn MCTPRxClient>,
-    /// Message buffer
-    msg_payload: MapCell<SubSliceMut<'static, u8>>,
-    /// next MCTPRxState node
-    next: ListLink<'a, MCTPRxState<'a>>,
-}
-
-impl<'a> ListNode<'a, MCTPRxState<'a>> for MCTPRxState<'a> {
-    fn next(&'a self) -> &'a ListLink<'a, MCTPRxState<'a>> {
-        &self.next
-    }
-}
 
 /// MUX struct that manages multiple MCTP driver users (clients).
 ///
@@ -338,6 +259,74 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             })
     }
 
+    // fn receive_packet(
+    //     &self,
+    //     mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>,
+    //     msg_type: MessageType,
+    //     pkt_payload: &[u8],
+    // ) -> Result<(), ErrorCode> {
+    //     let msg_type_val = msg_type as u8;
+    //     let rx_state = self
+    //         .receiver_list
+    //         .iter()
+    //         .find(|rx_state| rx_state.receive_pending(msg_type_val));
+
+    //     if let Some(rx_state) = rx_state {
+
+    //         if mctp_hdr.
+    //         rx_state.is_m(mctp_hdr, pkt_payload);
+    //     } else {
+    //         println!("MuxMCTPDriver: No matching receive request found. Dropping packet.");
+    //     }
+    //     Ok(())
+
+    // }
+
+    fn process_first_packet(
+        &self,
+        mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>,
+        msg_type: MessageType,
+        pkt_payload: &[u8],
+    ) {
+        let rx_state = self
+            .receiver_list
+            .iter()
+            .find(|rx_state| rx_state.is_receive_expected(msg_type));
+
+        if let Some(rx_state) = rx_state {
+            rx_state.start_receive(mctp_hdr, msg_type, pkt_payload);
+        } else {
+            println!("MuxMCTPDriver: No matching receive request found. Dropping packet.");
+        }
+    }
+
+    fn process_packet(&self, mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>, pkt_payload: &[u8]) {
+        if self.local_eid != mctp_hdr.dest_eid().into() {
+            println!("MuxMCTPDriver: Packet not for this Endpoint. Dropping packet.");
+            return;
+        }
+
+        if mctp_hdr.eom() != 1 && pkt_payload.len() < 64 {
+            println!("MuxMCTPDriver: Received first or middle packet with less than 64 bytes. Dropping packet.");
+            return;
+        }
+
+        let rx_state = self
+            .receiver_list
+            .iter()
+            .find(|rx_state| rx_state.is_next_packet(&mctp_hdr, pkt_payload.len()));
+
+        match rx_state {
+            Some(rx_state) => {
+                rx_state.receive_next(mctp_hdr, pkt_payload);
+            }
+            None => {
+                println!("MuxMCTPDriver: No matching receive request found. Dropping packet.");
+                return;
+            }
+        }
+    }
+
     fn get_total_hdr_size(&self) -> usize {
         MCTP_HDR_SIZE + self.mctp_device.get_hdr_size()
     }
@@ -371,10 +360,22 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M>
                         println!("MuxMCTPDriver: Invalid MCTP Control message. Dropping packet.");
                     }
                 }
+                MessageType::PLDM
+                | MessageType::SPDM
+                | MessageType::SSPDM
+                | MessageType::VendorDefinedPCI => {
+                    self.process_first_packet(
+                        mctp_header,
+                        msg_type,
+                        &rx_buffer[payload_offset..len],
+                    );
+                }
                 _ => {
                     println!("MuxMCTPDriver: Unsupported message type. Dropping packet.");
                 }
             }
+        } else {
+            self.process_packet(mctp_header, &rx_buffer[payload_offset..len]);
         }
         self.rx_pkt_buffer.replace(rx_buffer);
     }

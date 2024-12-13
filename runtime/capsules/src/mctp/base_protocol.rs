@@ -58,9 +58,13 @@ impl MCTPHeader<[u8; MCTP_HDR_SIZE]> {
         self.set_tag_owner(tag_owner);
         self.set_msg_tag(msg_tag);
     }
+
+    pub fn next_pkt_seq(&self) -> u8 {
+        (self.pkt_seq() + 1) % 4
+    }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum MessageType {
     MCTPControl,
     PLDM,
