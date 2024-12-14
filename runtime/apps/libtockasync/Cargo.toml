@@ -1,7 +1,8 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "example-app"
+name = "libtockasync"
+description = "Async executor and tools for applications running under Tock"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -15,7 +16,6 @@ libtock_console = { path = "../libtock/apis/interface/console" }
 libtock_debug_panic = { path = "../libtock/panic_handlers/debug_panic" }
 libtock_platform = { path = "../libtock/platform" }
 libtock_runtime = { path = "../libtock/runtime" }
-libtockasync = { path = "../libtockasync" }
 portable-atomic = "1.7.0"
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]

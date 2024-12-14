@@ -33,7 +33,7 @@ pub(super) unsafe fn yield_no_wait(return_ptr: *mut libtock_platform::YieldNoWai
     }
 }
 
-pub(super) fn yield_wait() {
+pub fn yield_wait() {
     let skip_upcall = KERNEL_DATA.with(|refcell| {
         let mut refmut = refcell.borrow_mut();
         let kernel_data = refmut
