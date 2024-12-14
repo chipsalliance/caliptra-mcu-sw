@@ -344,8 +344,21 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
 }
 
 impl<'a, M: MCTPTransportBinding<'a>> TransportTxClient for MuxMCTPDriver<'a, M> {
-    fn send_done(&self, tx_buffer: &'static mut [u8], _result: Result<(), ErrorCode>) {
+    fn send_done(&self, tx_buffer: &'static mut [u8], result: Result<(), ErrorCode>) {
         self.tx_pkt_buffer.replace(tx_buffer);
+
+        let mut cur_sender = self.sender_list.head();
+        if let Some(sender) = cur_sender {
+            if sender.is_eom() {
+                sender.send_done(result);
+                self.sender_list.pop_head();
+                cur_sender = self.sender_list.head();
+            }
+        }
+
+        if let Some(cur_sender) = cur_sender {
+            self.send_next_packet(cur_sender);
+        };
     }
 }
 
@@ -360,7 +373,7 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M>
         let (mctp_header, msg_type, payload_offset) = self.interpret_packet(&rx_buffer[0..len]);
         if let Some(msg_type) = msg_type {
             match msg_type {
-                MessageType::MCTPControl => {
+                MessageType::MctpControl => {
                     if mctp_header.tag_owner() == 1
                         && mctp_header.som() == 1
                         && mctp_header.eom() == 1
@@ -371,9 +384,9 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M>
                         println!("MuxMCTPDriver: Invalid MCTP Control message. Dropping packet.");
                     }
                 }
-                MessageType::PLDM
-                | MessageType::SPDM
-                | MessageType::SSPDM
+                MessageType::Pldm
+                | MessageType::Spdm
+                | MessageType::SecureSPDM
                 | MessageType::VendorDefinedPCI => {
                     self.process_first_packet(
                         mctp_header,

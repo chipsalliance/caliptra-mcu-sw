@@ -2,4 +2,5 @@
 
 //! Components for the Caliptra MCU runtime.
 
+pub mod mctp_driver;
 pub mod mctp_mux;

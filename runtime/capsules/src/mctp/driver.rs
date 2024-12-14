@@ -1,15 +1,13 @@
 // Licensed under the Apache-2.0 license
 
+use crate::mctp::base_protocol::*;
 use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
-
-use crate::mctp::common::*;
 
 use core::cell::Cell;
 use core::fmt::Write;
 use romtime::println;
 
-use kernel::debug;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::processbuffer::{ReadableProcessBuffer, WriteableProcessBuffer};
 use kernel::syscall::{CommandReturn, SyscallDriver};
@@ -17,11 +15,7 @@ use kernel::utilities::cells::MapCell;
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::{ErrorCode, ProcessId};
 
-pub const MAX_MESSAGE_TYPES: usize = 2;
-
-pub const SPDM_MAX_MESSAGE_SIZE: usize = 4098;
-pub const PLDM_MAX_MESSAGE_SIZE: usize = 4098;
-pub const VENDOR_DEFINED_PCI_MAX_MESSAGE_SIZE: usize = 4098;
+pub const MCTP_MAX_MESSAGE_SIZE: usize = 4098;
 
 pub const MCTP_SPDM_DRIVER_NUM: usize = 0xA0000;
 pub const MCTP_PLDM_DRIVER_NUM: usize = 0xA0001;
@@ -58,11 +52,8 @@ mod rw_allow {
 }
 
 enum OpType {
-    SendReq,
-    SendResp,
-    ReceiveReq,
-    ReceiveResp,
-    Idle,
+    Tx,
+    Rx,
 }
 
 struct OpContext {
@@ -73,22 +64,31 @@ struct OpContext {
 }
 
 impl OpContext {
-    fn is_match(&self, msg_tag: u8, peer_eid: u8, msg_type: u8) -> bool {
+    fn for_me(&self, msg_tag: u8, peer_eid: u8, msg_type: u8) -> bool {
         if self.msg_type != msg_type {
             return false;
         }
         match self.op_type {
-            OpType::ReceiveReq => {
-                if msg_tag & MCTP_TAG_OWNER != 0 {
-                    return true;
+            OpType::Rx => {
+                if self.msg_tag == msg_tag {
+                    if msg_tag & MCTP_TAG_OWNER != 0 {
+                        return true;
+                    }
+                    if self.peer_eid == peer_eid {
+                        return true;
+                    }
                 }
             }
-            OpType::ReceiveResp => {
-                if self.msg_tag & MCTP_TAG_MASK == msg_tag && self.peer_eid == peer_eid {
-                    return true;
+            OpType::Tx => {
+                if self.peer_eid == peer_eid {
+                    if msg_tag & MCTP_TAG_OWNER != 0 {
+                        return true;
+                    }
+                    if self.msg_tag == msg_tag {
+                        return true;
+                    }
                 }
             }
-            _ => {}
         }
         false
     }
@@ -96,7 +96,7 @@ impl OpContext {
 
 #[derive(Default)]
 pub struct App {
-    pending_op_ctx: Option<OpContext>,
+    pending_rx: Option<OpContext>,
     pending_tx: Option<OpContext>,
 }
 
@@ -109,7 +109,7 @@ pub struct MCTPDriver<'a> {
         AllowRwCount<{ rw_allow::COUNT }>,
     >,
     current_app: Cell<Option<ProcessId>>,
-    msg_types: [u8; MAX_MESSAGE_TYPES],
+    msg_types: &'static [MessageType],
     max_msg_size: usize,
     kernel_msg_buf: MapCell<SubSliceMut<'static, u8>>,
 }
@@ -123,7 +123,7 @@ impl<'a> MCTPDriver<'a> {
             AllowRoCount<{ ro_allow::COUNT }>,
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
-        msg_types: [u8; MAX_MESSAGE_TYPES],
+        msg_types: &'static [MessageType],
         max_msg_size: usize,
         msg_buf: SubSliceMut<'static, u8>,
     ) -> MCTPDriver<'a> {
@@ -138,12 +138,42 @@ impl<'a> MCTPDriver<'a> {
     }
 
     fn supported_msg_type(&self, msg_type: u8) -> bool {
-        for i in 0..MAX_MESSAGE_TYPES {
-            if msg_type == self.msg_types[i] {
+        for mtype in self.msg_types.iter() {
+            if msg_type == *mtype as u8 {
                 return true;
             }
         }
         false
+    }
+
+    fn validate_args(
+        &self,
+        command_num: usize,
+        arg1: usize,
+        arg2: usize,
+    ) -> Result<(u8, u8, u8), ErrorCode> {
+        // arg1 is always peer_eid
+        let peer_eid = arg1 as u8;
+
+        if !valid_eid(peer_eid) {
+            Err(ErrorCode::INVAL)?;
+        }
+
+        // lower 8 bits of arg2 is always msg_type
+        let msg_type = (arg2 & 0xFF) as u8;
+        if !self.supported_msg_type(msg_type) {
+            Err(ErrorCode::INVAL)?;
+        }
+        let msg_tag = (arg2 >> 8 & 0xFF) as u8;
+
+        // Receive Request message or send Request message
+        if ((command_num == 1 || command_num == 3) && msg_tag != MCTP_TAG_OWNER)
+            || ((command_num == 2 || command_num == 4) && msg_tag & MCTP_TAG_OWNER != 0)
+        {
+            Err(ErrorCode::INVAL)?;
+        }
+
+        Ok((peer_eid, msg_type, msg_tag))
     }
 }
 
@@ -155,51 +185,30 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
         arg2: usize,
         process_id: ProcessId,
     ) -> CommandReturn {
-        // lower 8 bits of arg2 is always msg_type
-        let msg_type = arg2 as u8;
-        if !self.supported_msg_type(msg_type) {
-            return CommandReturn::failure(ErrorCode::INVAL);
-        }
+        let (peer_eid, msg_type, msg_tag) = match self.validate_args(command_num, arg1, arg2) {
+            Ok((peer_eid, msg_type, msg_tag)) => (peer_eid, msg_type, msg_tag),
+            Err(e) => return CommandReturn::failure(e),
+        };
 
         match command_num {
             0 => CommandReturn::success(),
-            // Receive Request Message
-            // arg1: peer_eid
-            // arg2: msg_type
-            1 => self
+            // 1: Receive Request Message
+            // 2: Receive Response Message
+            1 | 2 => self
                 .apps
                 .enter(process_id, |app, _| {
-                    app.pending_op_ctx = Some(OpContext {
-                        msg_tag: MCTP_TAG_OWNER,
-                        peer_eid: arg1 as u8,
-                        msg_type,
-                        op_type: OpType::ReceiveReq,
-                    });
-                    CommandReturn::success()
-                })
-                .unwrap_or_else(|err| CommandReturn::failure(err.into())),
-            // Receive Response Message
-            // arg1: peer_eid
-            // arg2: msg_tag << 8 | msg_type
-            2 => self
-                .apps
-                .enter(process_id, |app, _| {
-                    let peer_eid = arg1 as u8;
-                    let msg_tag = ((arg2 >> 8) & 0xFF) as u8;
-
-                    app.pending_op_ctx = Some(OpContext {
+                    app.pending_rx = Some(OpContext {
                         msg_tag,
                         peer_eid,
                         msg_type,
-                        op_type: OpType::ReceiveResp,
+                        op_type: OpType::Rx,
                     });
                     CommandReturn::success()
                 })
                 .unwrap_or_else(|err| CommandReturn::failure(err.into())),
-            // Send Request Message
-            // arg1: dest_eid
-            // arg2: msg_type
-            3 => {
+            // 3. Send Request Message
+            // 4: Send Response Message
+            3 | 4 => {
                 let result = self
                     .apps
                     .enter(process_id, |app, kernel_data| {
@@ -224,17 +233,18 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
                                             kernel_msg_buf.slice(0..wpayload.len());
 
                                             match self.sender.send_msg(
+                                                msg_type,
                                                 dest_eid,
-                                                MCTP_TAG_OWNER,
+                                                msg_tag,
                                                 kernel_msg_buf,
                                             ) {
                                                 Ok(_) => {
                                                     println!("MCTPDriver: send_msg success");
                                                     app.pending_tx = Some(OpContext {
-                                                        msg_tag: MCTP_TAG_OWNER,
+                                                        msg_tag,
                                                         peer_eid: dest_eid,
                                                         msg_type,
-                                                        op_type: OpType::SendReq,
+                                                        op_type: OpType::Tx,
                                                     });
                                                     self.current_app.set(Some(process_id));
                                                     Ok(())
@@ -264,10 +274,6 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
                     Err(e) => CommandReturn::failure(e),
                 }
             }
-            4 => {
-                debug!("MCTPDriver::command: 4. TODO Send Response Message");
-                CommandReturn::success()
-            }
             5 => CommandReturn::success_u32(self.max_msg_size as u32),
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
@@ -292,7 +298,7 @@ impl<'a> MCTPTxClient for MCTPDriver<'a> {
         if let Some(process_id) = self.current_app.get() {
             _ = self.apps.enter(process_id, |app, up_calls| {
                 if let Some(op_ctx) = app.pending_tx.as_mut() {
-                    if op_ctx.is_match(msg_tag, dest_eid, msg_type) {
+                    if op_ctx.for_me(msg_tag, dest_eid, msg_type) {
                         app.pending_tx = None;
                         let msg_info = (msg_type as usize) << 8 | (msg_tag as usize);
                         up_calls
@@ -316,8 +322,8 @@ impl<'a> MCTPTxClient for MCTPDriver<'a> {
 impl<'a> MCTPRxClient for MCTPDriver<'a> {
     fn receive(&self, src_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8], msg_len: usize) {
         self.apps.each(|_, app, kernel_data| {
-            if let Some(op_ctx) = app.pending_op_ctx.as_mut() {
-                if op_ctx.is_match(msg_tag, src_eid, msg_type) {
+            if let Some(op_ctx) = app.pending_rx.as_mut() {
+                if op_ctx.for_me(msg_tag, src_eid, msg_type) {
                     let res = kernel_data
                         .get_readwrite_processbuffer(rw_allow::MESSAGE_READ)
                         .and_then(|read| {
@@ -333,7 +339,7 @@ impl<'a> MCTPRxClient for MCTPDriver<'a> {
                         .unwrap_or(Ok(()));
 
                     if res.is_ok() {
-                        app.pending_op_ctx = None;
+                        app.pending_rx = None;
                         let msg_info = (msg_type as usize) << 8 | (msg_tag as usize);
                         kernel_data
                             .schedule_upcall(

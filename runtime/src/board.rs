@@ -4,9 +4,8 @@ use crate::chip::VeeRDefaultPeripherals;
 use crate::chip::TIMERS;
 use crate::components as runtime_components;
 use crate::timers::InternalTimers;
+
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
-use capsules_runtime::mctp::mux::MuxMCTPDriver;
-use capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
 use kernel::component::Component;
@@ -76,8 +75,9 @@ struct VeeR {
     scheduler: &'static CooperativeSched<'static>,
     scheduler_timer:
         &'static VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>,
-    // Temporarily add MCTP mux to the platform struct until driver is ready
-    mctp_mux: &'static MuxMCTPDriver<'static, MCTPI3CBinding<'static>>,
+    mctp_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    mctp_vendor_def_pci: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -90,6 +90,11 @@ impl SyscallDriverLookup for VeeR {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
             capsules_core::low_level_debug::DRIVER_NUM => f(Some(self.lldb)),
+            capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM => f(Some(self.mctp_spdm)),
+            capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
+            capsules_runtime::mctp::driver::MCTP_VENDOR_DEFINED_PCI_DRIVER_NUM => {
+                f(Some(self.mctp_vendor_def_pci))
+            }
             _ => f(None),
         }
     }
@@ -225,6 +230,45 @@ pub unsafe fn main() {
     let mctp_mux = runtime_components::mctp_mux::MCTPMuxComponent::new(&peripherals.i3c)
         .finalize(crate::mctp_mux_component_static!(MCTPI3CBinding));
 
+    let mctp_spdm_msg_types = static_init!(
+        [capsules_runtime::mctp::base_protocol::MessageType; 2],
+        [
+            capsules_runtime::mctp::base_protocol::MessageType::Spdm,
+            capsules_runtime::mctp::base_protocol::MessageType::SecureSPDM,
+        ]
+    );
+    let mctp_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
+        board_kernel,
+        capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
+        mctp_mux,
+        mctp_spdm_msg_types,
+    )
+    .finalize(crate::mctp_driver_component_static!());
+
+    let mctp_pldm_msg_types = static_init!(
+        [capsules_runtime::mctp::base_protocol::MessageType; 1],
+        [capsules_runtime::mctp::base_protocol::MessageType::Pldm]
+    );
+    let mctp_pldm = runtime_components::mctp_driver::MCTPDriverComponent::new(
+        board_kernel,
+        capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM,
+        mctp_mux,
+        mctp_pldm_msg_types,
+    )
+    .finalize(crate::mctp_driver_component_static!());
+
+    let mctp_vendor_def_pci_msg_types = static_init!(
+        [capsules_runtime::mctp::base_protocol::MessageType; 1],
+        [capsules_runtime::mctp::base_protocol::MessageType::VendorDefinedPCI]
+    );
+    let mctp_vendor_def_pci = runtime_components::mctp_driver::MCTPDriverComponent::new(
+        board_kernel,
+        capsules_runtime::mctp::driver::MCTP_VENDOR_DEFINED_PCI_DRIVER_NUM,
+        mctp_mux,
+        mctp_vendor_def_pci_msg_types,
+    )
+    .finalize(crate::mctp_driver_component_static!());
+
     peripherals.init();
 
     // Need to enable all interrupts for Tock Kernel
@@ -269,7 +313,9 @@ pub unsafe fn main() {
             lldb,
             scheduler,
             scheduler_timer,
-            mctp_mux,
+            mctp_spdm,
+            mctp_pldm,
+            mctp_vendor_def_pci,
         }
     );
 

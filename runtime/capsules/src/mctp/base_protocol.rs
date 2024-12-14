@@ -8,7 +8,14 @@
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
+pub const MCTP_TAG_OWNER: u8 = 0x08;
+pub const MCTP_TAG_MASK: u8 = 0x07;
+
+pub const MCTP_PROTOCOL_VERSION_1: u8 = 0x01;
+pub const MCTP_PROTOCOL_VERSION_MASK: u8 = 0x0F;
+
 pub const MCTP_HDR_SIZE: usize = 4;
+pub const MCTP_BROADCAST_EID: u8 = 0xFF;
 
 bitfield! {
     #[repr(C)]
@@ -66,25 +73,42 @@ impl MCTPHeader<[u8; MCTP_HDR_SIZE]> {
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum MessageType {
-    MCTPControl,
-    PLDM,
-    SPDM,
-    SSPDM,
-    VendorDefinedPCI,
+    MctpControl = 0,
+    Pldm = 1,
+    Spdm = 5,
+    SecureSPDM = 6,
+    VendorDefinedPCI = 0x7E,
     Invalid,
 }
+
+// impl Into<u8> for MessageType {
+//     fn into(self) -> u8 {
+//         match self {
+//             MessageType::MctpControl => 0,
+//             MessageType::Pldm => 1,
+//             MessageType::Spdm => 5,
+//             MessageType::SecureSPDM => 6,
+//             MessageType::VendorDefinedPCI => 0x7E,
+//             MessageType::Invalid => 0xFF,
+//         }
+//     }
+// }
 
 impl From<u8> for MessageType {
     fn from(val: u8) -> MessageType {
         match val {
-            0 => MessageType::MCTPControl,
-            1 => MessageType::PLDM,
-            5 => MessageType::SPDM,
-            6 => MessageType::SSPDM,
+            0 => MessageType::MctpControl,
+            1 => MessageType::Pldm,
+            5 => MessageType::Spdm,
+            6 => MessageType::SecureSPDM,
             0x7E => MessageType::VendorDefinedPCI,
             _ => MessageType::Invalid,
         }
     }
+}
+
+pub fn valid_eid(eid: u8) -> bool {
+    eid != MCTP_BROADCAST_EID && !(1..7).contains(&eid)
 }
 
 #[cfg(test)]

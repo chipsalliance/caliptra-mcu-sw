@@ -1,11 +1,15 @@
-use crate::mctp::base_protocol::{MCTPHeader, MCTP_HDR_SIZE};
-use crate::mctp::common::{MCTP_TAG_MASK, MCTP_TAG_OWNER};
+// Licensed under the Apache-2.0 license
+
+use crate::mctp::base_protocol::{MCTPHeader, MCTP_HDR_SIZE, MCTP_TAG_MASK, MCTP_TAG_OWNER};
 use crate::mctp::mux::MuxMCTPDriver;
 use crate::mctp::transport_binding::MCTPTransportBinding;
 
 use zerocopy::IntoBytes;
 
 use core::cell::Cell;
+
+use core::fmt::Write;
+use romtime::println;
 
 use kernel::collections::list::{ListLink, ListNode};
 use kernel::utilities::cells::{MapCell, OptionalCell};
@@ -20,6 +24,7 @@ pub trait MCTPSender<'a> {
     /// Sends the message to the MCTP kernel stack.
     fn send_msg(
         &'a self,
+        msg_type: u8,
         dest_eid: u8,
         msg_tag: u8,
         msg_payload: SubSliceMut<'static, u8>,
@@ -45,7 +50,7 @@ pub struct MCTPTxState<'a, M: MCTPTransportBinding<'a>> {
     /// Destination EID
     dest_eid: Cell<u8>,
     /// Message type
-    // msg_type: Cell<u8>,
+    msg_type: Cell<u8>,
     /// msg_tag for the message being packetized
     msg_tag: Cell<u8>,
     tag_owner: Cell<bool>,
@@ -74,6 +79,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MCTPSender<'a> for MCTPTxState<'a, M> {
 
     fn send_msg(
         &'a self,
+        msg_type: u8,
         dest_eid: u8,
         msg_tag: u8,
         msg_payload: SubSliceMut<'static, u8>,
@@ -88,6 +94,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MCTPSender<'a> for MCTPTxState<'a, M> {
             self.msg_tag.set(msg_tag | MCTP_TAG_OWNER);
             self.tag_owner.set(true);
         }
+        self.msg_type.set(msg_type);
         self.msg_payload.replace(msg_payload);
         self.pkt_seq.set(0);
         self.offset.set(0);
@@ -105,6 +112,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MCTPTxState<'a, M> {
             dest_eid: Cell::new(0),
             tag_owner: Cell::new(false),
             msg_tag: Cell::new(0),
+            msg_type: Cell::new(0),
             pkt_seq: Cell::new(0),
             offset: Cell::new(0),
             client: OptionalCell::empty(),
@@ -123,7 +131,8 @@ impl<'a, M: MCTPTransportBinding<'a>> MCTPTxState<'a, M> {
         src_eid: u8,
     ) -> Result<usize, ErrorCode> {
         if self.is_eom() {
-            return Err(ErrorCode::FAIL);
+            println!("MCTPTxState - Error!! next_packet: EOM reached");
+            Err(ErrorCode::FAIL)?;
         }
 
         self.msg_payload
@@ -158,5 +167,27 @@ impl<'a, M: MCTPTransportBinding<'a>> MCTPTxState<'a, M> {
                 self.pkt_seq.set((pkt_seq + 1) % 4);
                 Ok(copy_len + MCTP_HDR_SIZE)
             })
+    }
+
+    pub fn send_done(&self, result: Result<(), ErrorCode>) {
+        self.client.map(|client| {
+            if let Some(msg_payload) = self.msg_payload.take() {
+                let msg_tag = self.msg_tag.get()
+                    | if self.tag_owner.get() {
+                        MCTP_TAG_OWNER
+                    } else {
+                        0
+                    };
+                client.send_done(
+                    self.dest_eid.get(),
+                    self.msg_type.get(),
+                    msg_tag,
+                    result,
+                    msg_payload,
+                );
+            } else {
+                println!("MCTPTxState - Error!! send_done: msg_payload is None");
+            }
+        });
     }
 }

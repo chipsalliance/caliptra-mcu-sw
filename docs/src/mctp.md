@@ -283,7 +283,7 @@ struct OperationCtx {
 
 #[derive(default)]
 pub struct App {
-    pending_op_ctx: OperationCtx,
+    pending_rx: OperationCtx,
     bound_msg_type : u8,
 }
 

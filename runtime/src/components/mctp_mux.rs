@@ -13,8 +13,7 @@
 //!
 
 use capsules_runtime::mctp::mux::MuxMCTPDriver;
-use capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
-use capsules_runtime::mctp::transport_binding::MCTPTransportBinding;
+use capsules_runtime::mctp::transport_binding::{MCTPI3CBinding, MCTPTransportBinding};
 
 use i3c_driver::core::MAX_READ_WRITE_SIZE;
 

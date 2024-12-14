@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use crate::mctp::base_protocol::MCTPHeader;
 
 use core::fmt::Write;
@@ -8,9 +10,7 @@ use core::cell::Cell;
 use kernel::collections::list::{ListLink, ListNode};
 use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
 
-use super::base_protocol::{MessageType, MCTP_HDR_SIZE};
-use super::common::{MCTP_TAG_MASK, MCTP_TAG_OWNER};
-use super::driver::MAX_MESSAGE_TYPES;
+use super::base_protocol::{MessageType, MCTP_HDR_SIZE, MCTP_TAG_MASK, MCTP_TAG_OWNER};
 
 /// This trait is implemented to get notified of the messages received
 /// on corresponding message_type.
@@ -23,7 +23,7 @@ pub trait MCTPRxClient {
 pub struct MCTPRxState<'a> {
     /// Message assembly context
     msg_terminus: MapCell<MsgTerminus>,
-    msg_types: Cell<[u8; MAX_MESSAGE_TYPES]>,
+    msg_types: Cell<&'static [MessageType]>,
     // // /// Source EID
     // // source_eid: Cell<u8>,
     // /// message type
@@ -60,7 +60,7 @@ struct MsgTerminus {
 impl<'a> MCTPRxState<'a> {
     pub fn new(
         rx_msg_buf: &'static mut [u8],
-        message_types: [u8; MAX_MESSAGE_TYPES],
+        message_types: &'static [MessageType],
     ) -> MCTPRxState<'static> {
         MCTPRxState {
             msg_terminus: MapCell::empty(),
@@ -79,7 +79,7 @@ impl<'a> MCTPRxState<'a> {
     pub fn is_receive_expected(&self, msg_type: MessageType) -> bool {
         let msg_types = self.msg_types.get();
         for exp_msg_type in msg_types.iter() {
-            if msg_type as u8 == *exp_msg_type {
+            if msg_type == *exp_msg_type {
                 return true;
             }
         }
@@ -109,7 +109,7 @@ impl<'a> MCTPRxState<'a> {
             let offset = self.msg_size.get();
             let end_offset = offset + pkt_payload.len();
             if end_offset > self.msg_payload.map_or(0, |msg_payload| msg_payload.len()) {
-                println!("MCTPMuxDriver - Received packet with payload length greater than buffer size. Dropping packet.");
+                println!("MuxMCTPDriver - Received packet with payload length greater than buffer size. Dropping packet.");
                 self.msg_size.set(0);
                 return;
             }
@@ -155,7 +155,7 @@ impl<'a> MCTPRxState<'a> {
         pkt_payload: &[u8],
     ) {
         if mctp_hdr.som() != 1 {
-            println!("MCTPMuxDriver - Received first packet without SOM. Dropping packet.");
+            println!("MuxMCTPDriver - Received first packet without SOM. Dropping packet.");
             return;
         }
 
@@ -165,7 +165,7 @@ impl<'a> MCTPRxState<'a> {
             || (pkt_payload_len > 0
                 && pkt_payload_len > self.msg_payload.map_or(0, |msg_payload| msg_payload.len()))
         {
-            println!("MCTPMuxDriver - Received bad packet length. Dropping packet.");
+            println!("MuxMCTPDriver - Received bad packet length. Dropping packet.");
             return;
         }
 
@@ -189,7 +189,7 @@ impl<'a> MCTPRxState<'a> {
             })
             .unwrap_or_else(|| {
                 // This should never happen
-                panic!("MCTPMuxDriver - Received first packet without buffer. Dropping packet.");
+                panic!("MuxMCTPDriver - Received first packet without buffer. Dropping packet.");
             });
 
         if mctp_hdr.eom() == 1 {
