@@ -18,7 +18,7 @@ macro_rules! flash_partition_component_static {
         let buffer = kernel::static_buf!([u8; capsules_runtime::flash_partition::BUF_LEN]);
 
         (page, fs_to_pages, fs, buffer)
-    };};
+    }};
 }
 
 pub struct FlashPartitionComponent<

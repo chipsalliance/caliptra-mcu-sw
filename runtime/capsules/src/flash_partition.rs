@@ -11,8 +11,9 @@ use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::{ErrorCode, ProcessId};
 
 /// Syscall driver number.
-use capsules_core::driver;
-pub const DRIVER_NUM: usize = driver::NUM::NvmStorage as usize;
+//use capsules_core::driver;
+// define driver number for flash partition
+pub const DRIVER_NUM: usize = 0x5006 as usize;
 
 pub const BUF_LEN: usize = 512;
 
