@@ -78,8 +78,8 @@ impl<'a> MCTPRxState<'a> {
 
     pub fn is_receive_expected(&self, msg_type: MessageType) -> bool {
         let msg_types = self.msg_types.get();
-        for i in 0..MAX_MESSAGE_TYPES {
-            if msg_type as u8 == msg_types[i] {
+        for exp_msg_type in msg_types.iter() {
+            if msg_type as u8 == *exp_msg_type {
                 return true;
             }
         }
@@ -130,9 +130,9 @@ impl<'a> MCTPRxState<'a> {
     pub fn end_receive(&self) {
         if let Some(msg_terminus) = self.msg_terminus.take() {
             let msg_tag = if msg_terminus.tag_owner == 1 {
-                msg_terminus.msg_tag & MCTP_TAG_MASK | MCTP_TAG_OWNER
+                (msg_terminus.msg_tag & MCTP_TAG_MASK) | MCTP_TAG_OWNER
             } else {
-                msg_terminus.msg_tag
+                msg_terminus.msg_tag & MCTP_TAG_MASK
             };
             self.client.map(|client| {
                 self.msg_payload.map(|msg_payload| {
@@ -159,12 +159,15 @@ impl<'a> MCTPRxState<'a> {
             return;
         }
 
-        if pkt_payload.len() == 0 {
-            println!("MCTPMuxDriver - Received packet with no payload. Dropping packet.");
+        let pkt_payload_len = pkt_payload.len();
+
+        if pkt_payload.is_empty()
+            || (pkt_payload_len > 0
+                && pkt_payload_len > self.msg_payload.map_or(0, |msg_payload| msg_payload.len()))
+        {
+            println!("MCTPMuxDriver - Received bad packet length. Dropping packet.");
             return;
         }
-
-        let pkt_payload_len = pkt_payload.len();
 
         let msg_terminus = MsgTerminus {
             msg_type: msg_type as u8,
@@ -177,11 +180,17 @@ impl<'a> MCTPRxState<'a> {
 
         self.msg_terminus.replace(msg_terminus);
 
-        self.msg_payload.take().map(|msg_payload| {
-            msg_payload[..pkt_payload.len()].copy_from_slice(pkt_payload);
-            self.msg_payload.replace(msg_payload);
-        });
-        self.msg_size.set(pkt_payload_len);
+        self.msg_payload
+            .take()
+            .map(|msg_payload| {
+                msg_payload[..pkt_payload.len()].copy_from_slice(pkt_payload);
+                self.msg_payload.replace(msg_payload);
+                self.msg_size.set(pkt_payload_len);
+            })
+            .unwrap_or_else(|| {
+                // This should never happen
+                panic!("MCTPMuxDriver - Received first packet without buffer. Dropping packet.");
+            });
 
         if mctp_hdr.eom() == 1 {
             self.end_receive();

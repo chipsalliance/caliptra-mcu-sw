@@ -6,14 +6,13 @@ use crate::mctp::recv::MCTPRxState;
 use crate::mctp::send::MCTPTxState;
 use crate::mctp::transport_binding::{MCTPTransportBinding, TransportRxClient, TransportTxClient};
 
-use capsules_extra::net::sixlowpan::sixlowpan_compression::Context;
 use core::fmt::Write;
 use romtime::println;
 
 use core::cell::Cell;
 
 use kernel::collections::list::List;
-use kernel::utilities::cells::{MapCell, TakeCell};
+use kernel::utilities::cells::TakeCell;
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
 
@@ -60,7 +59,13 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
     }
 
     pub fn add_sender(&self, sender: &'a MCTPTxState<'a, M>) {
+        let list_empty = self.sender_list.head().is_none();
+
         self.sender_list.push_tail(sender);
+
+        if list_empty {
+            self.send_next_packet(sender);
+        }
     }
 
     pub fn add_receiver(&self, receiver: &'a MCTPRxState<'a>) {
@@ -185,9 +190,9 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             mctp_ctrl_msg_hdr.cmd(),
         );
 
-        let mctp_hdr_offset = self.get_total_hdr_size() - MCTP_HDR_SIZE;
-        let mctp_ctrl_msg_hdr_offset = mctp_hdr_offset + MCTP_HDR_SIZE;
-        let msg_payload_offset = mctp_ctrl_msg_hdr_offset + MCTP_CTRL_MSG_HEADER_LEN;
+        let mctp_hdr_start = self.mctp_hdr_offset();
+        let mctp_ctrl_hdr_start = mctp_hdr_start + MCTP_HDR_SIZE;
+        let msg_payload_start = mctp_ctrl_hdr_start + MCTP_CTRL_MSG_HEADER_LEN;
 
         let req_buf = &msg_buf[MCTP_CTRL_MSG_HEADER_LEN..];
         let mctp_ctrl_cmd: MCTPCtrlCmd = mctp_ctrl_msg_hdr.cmd().into();
@@ -207,7 +212,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             .map_or(Err(ErrorCode::NOMEM), |resp_buf| {
                 let result = match mctp_ctrl_cmd {
                     MCTPCtrlCmd::SetEID => mctp_ctrl_cmd
-                        .process_set_endpoint_id(req_buf, &mut resp_buf[msg_payload_offset..])
+                        .process_set_endpoint_id(req_buf, &mut resp_buf[msg_payload_start..])
                         .map(|eid| {
                             if let Some(eid) = eid {
                                 self.set_local_eid(eid);
@@ -216,7 +221,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
 
                     MCTPCtrlCmd::GetEID => mctp_ctrl_cmd.process_get_endpoint_id(
                         self.get_local_eid(),
-                        &mut resp_buf[msg_payload_offset..],
+                        &mut resp_buf[msg_payload_start..],
                     ),
 
                     MCTPCtrlCmd::GetMsgTypeSupport => return Err(ErrorCode::NOSUPPORT),
@@ -228,12 +233,13 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
                         let res = self
                             .fill_mctp_ctrl_hdr_resp(
                                 mctp_ctrl_msg_hdr_resp,
-                                &mut resp_buf[mctp_ctrl_msg_hdr_offset..],
+                                &mut resp_buf[mctp_ctrl_hdr_start
+                                    ..mctp_ctrl_hdr_start + MCTP_CTRL_MSG_HEADER_LEN],
                             )
                             .and_then(|_| {
                                 self.fill_mctp_hdr_resp(
                                     mctp_hdr_resp,
-                                    &mut resp_buf[mctp_hdr_offset..],
+                                    &mut resp_buf[mctp_hdr_start..mctp_hdr_start + MCTP_HDR_SIZE],
                                 )
                             });
 
@@ -259,28 +265,34 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             })
     }
 
-    // fn receive_packet(
-    //     &self,
-    //     mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>,
-    //     msg_type: MessageType,
-    //     pkt_payload: &[u8],
-    // ) -> Result<(), ErrorCode> {
-    //     let msg_type_val = msg_type as u8;
-    //     let rx_state = self
-    //         .receiver_list
-    //         .iter()
-    //         .find(|rx_state| rx_state.receive_pending(msg_type_val));
+    fn send_next_packet(&self, cur_sender: &'a MCTPTxState<'a, M>) {
+        let mut tx_pkt = SubSliceMut::new(self.tx_pkt_buffer.take().unwrap());
+        let mctp_hdr_offset = self.mctp_hdr_offset();
+        let pkt_end_offset = self.get_mtu();
 
-    //     if let Some(rx_state) = rx_state {
+        // set the window of the subslice for MCTP header and the payload
+        tx_pkt.slice(mctp_hdr_offset..pkt_end_offset);
 
-    //         if mctp_hdr.
-    //         rx_state.is_m(mctp_hdr, pkt_payload);
-    //     } else {
-    //         println!("MuxMCTPDriver: No matching receive request found. Dropping packet.");
-    //     }
-    //     Ok(())
-
-    // }
+        match cur_sender.next_packet(&mut tx_pkt, self.local_eid.get()) {
+            Ok(len) => {
+                tx_pkt.reset();
+                match self
+                    .mctp_device
+                    .transmit(tx_pkt.take(), len + mctp_hdr_offset)
+                {
+                    Ok(_) => (),
+                    Err((err, buf)) => {
+                        println!("MuxMCTPDriver: Failed to transmit {:?}", err);
+                        self.tx_pkt_buffer.replace(buf);
+                    }
+                }
+            }
+            Err(err) => {
+                println!("MuxMCTPDriver: Failed to start transmit {:?}", err);
+                self.tx_pkt_buffer.replace(tx_pkt.take());
+            }
+        }
+    }
 
     fn process_first_packet(
         &self,
@@ -322,13 +334,12 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             }
             None => {
                 println!("MuxMCTPDriver: No matching receive request found. Dropping packet.");
-                return;
             }
         }
     }
 
-    fn get_total_hdr_size(&self) -> usize {
-        MCTP_HDR_SIZE + self.mctp_device.get_hdr_size()
+    fn mctp_hdr_offset(&self) -> usize {
+        self.mctp_device.get_hdr_size()
     }
 }
 

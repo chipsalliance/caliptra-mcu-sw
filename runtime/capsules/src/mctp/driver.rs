@@ -6,10 +6,12 @@ use crate::mctp::send::{MCTPSender, MCTPTxClient};
 use crate::mctp::common::*;
 
 use core::cell::Cell;
+use core::fmt::Write;
+use romtime::println;
 
 use kernel::debug;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
-use kernel::processbuffer::WriteableProcessBuffer;
+use kernel::processbuffer::{ReadableProcessBuffer, WriteableProcessBuffer};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::MapCell;
 use kernel::utilities::leasable_buffer::SubSliceMut;
@@ -99,14 +101,14 @@ pub struct App {
 }
 
 pub struct MCTPDriver<'a> {
-    sender: &'a dyn MCTPSender,
+    sender: &'a dyn MCTPSender<'a>,
     apps: Grant<
         App,
         UpcallCount<{ upcall::COUNT }>,
         AllowRoCount<{ ro_allow::COUNT }>,
         AllowRwCount<{ rw_allow::COUNT }>,
     >,
-    app_id: Cell<Option<ProcessId>>,
+    current_app: Cell<Option<ProcessId>>,
     msg_types: [u8; MAX_MESSAGE_TYPES],
     max_msg_size: usize,
     kernel_msg_buf: MapCell<SubSliceMut<'static, u8>>,
@@ -114,7 +116,7 @@ pub struct MCTPDriver<'a> {
 
 impl<'a> MCTPDriver<'a> {
     pub fn new(
-        sender: &'a dyn MCTPSender,
+        sender: &'a dyn MCTPSender<'a>,
         grant: Grant<
             App,
             UpcallCount<{ upcall::COUNT }>,
@@ -128,7 +130,7 @@ impl<'a> MCTPDriver<'a> {
         MCTPDriver {
             sender,
             apps: grant,
-            app_id: Cell::new(None),
+            current_app: Cell::new(None),
             msg_types,
             max_msg_size,
             kernel_msg_buf: MapCell::new(msg_buf),
@@ -153,7 +155,6 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
         arg2: usize,
         process_id: ProcessId,
     ) -> CommandReturn {
-
         // lower 8 bits of arg2 is always msg_type
         let msg_type = arg2 as u8;
         if !self.supported_msg_type(msg_type) {
@@ -171,7 +172,7 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
                     app.pending_op_ctx = Some(OpContext {
                         msg_tag: MCTP_TAG_OWNER,
                         peer_eid: arg1 as u8,
-                        msg_type: msg_type,
+                        msg_type,
                         op_type: OpType::ReceiveReq,
                     });
                     CommandReturn::success()
@@ -199,47 +200,70 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
             // arg1: dest_eid
             // arg2: msg_type
             3 => {
-                let result = self.apps.enter(process_id, |app, kernel_data| {
-                    let dest_eid = arg1 as u8;
+                let result = self
+                    .apps
+                    .enter(process_id, |app, kernel_data| {
+                        let dest_eid = arg1 as u8;
+                        if app.pending_tx.is_some() {
+                            return Err(ErrorCode::BUSY);
+                        }
 
-                    if app.pending_tx.is_some() {
-                        return Err(ErrorCode::BUSY);
-                    }
+                        let res = kernel_data
+                            .get_readonly_processbuffer(ro_allow::MESSAGE_WRITE)
+                            .and_then(|write| {
+                                write.enter(|wpayload| {
+                                    self.kernel_msg_buf.take().map_or(
+                                        Err(ErrorCode::NOMEM),
+                                        |mut kernel_msg_buf| {
+                                            if wpayload.len() > kernel_msg_buf.len() {
+                                                return Err(ErrorCode::SIZE);
+                                            }
+                                            wpayload.copy_to_slice(
+                                                &mut kernel_msg_buf[..wpayload.len()],
+                                            );
+                                            kernel_msg_buf.slice(0..wpayload.len());
 
-                    // copy the app buffer into kernel buffer
-                    kernel_data
-                        .get_readonly_processbuffer(ro_allow::MESSAGE_WRITE)
-                        .and_then(|write| {
-                            write.enter(|wmsg_payload| {
-                                let mut msg_buf = self.kernel_msg_buf.take();
-                                match msg_buf {
-                                    Some(msg_buf) => {
-                                        if wmsg_payload.len() > msg_buf.len() {
-                                            return Err(ErrorCode::SIZE);
-                                        }
-                                        msg_buf[..wmsg_payload.len()].copy_from_slice(wmsg_payload);
-                                        self.kernel_msg_buf.replace(msg_buf);
-                                        Ok(())
-                                    }
-                                    None => Err(ErrorCode::NOMEM),
-                                }
+                                            match self.sender.send_msg(
+                                                dest_eid,
+                                                MCTP_TAG_OWNER,
+                                                kernel_msg_buf,
+                                            ) {
+                                                Ok(_) => {
+                                                    println!("MCTPDriver: send_msg success");
+                                                    app.pending_tx = Some(OpContext {
+                                                        msg_tag: MCTP_TAG_OWNER,
+                                                        peer_eid: dest_eid,
+                                                        msg_type,
+                                                        op_type: OpType::SendReq,
+                                                    });
+                                                    self.current_app.set(Some(process_id));
+                                                    Ok(())
+                                                }
+                                                Err(mut buf) => {
+                                                    println!("MCTPDriver: send_msg failed");
+                                                    buf.reset();
+                                                    self.kernel_msg_buf.replace(buf);
+                                                    Err(ErrorCode::FAIL)
+                                                }
+                                            }
+                                        },
+                                    )
+                                })
                             })
-                        })
-                        .unwrap_or_else(|err| Err(err.into()))?;
-                    
+                            .unwrap_or(Err(ErrorCode::FAIL));
+                        match res {
+                            Ok(()) => Ok(()),
+                            Err(e) => Err(e),
+                        }
+                        // Ok(())
+                    })
+                    .unwrap_or_else(|err| Err(err.into()));
 
-                    
-
-                    
-
-                }).unwrap_or_else(|err| Err(err.into()));
                 match result {
-                    Ok(_) => {
-                        debug!("MCTPDriver::command: 3. Send Request Message");
-                        CommandReturn::success()
-                    }
+                    Ok(()) => CommandReturn::success(),
                     Err(e) => CommandReturn::failure(e),
                 }
+            }
             4 => {
                 debug!("MCTPDriver::command: 4. TODO Send Response Message");
                 CommandReturn::success()
@@ -257,11 +281,35 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
 impl<'a> MCTPTxClient for MCTPDriver<'a> {
     fn send_done(
         &self,
-        msg_tag: Option<u8>,
+        dest_eid: u8,
+        msg_type: u8,
+        msg_tag: u8,
         result: Result<(), ErrorCode>,
-        msg_payload: SubSliceMut<'static, u8>,
+        mut msg_payload: SubSliceMut<'static, u8>,
     ) {
-        debug!("MCTPDriver::send_done: {:?}", result);
+        msg_payload.reset();
+        self.kernel_msg_buf.replace(msg_payload);
+        if let Some(process_id) = self.current_app.get() {
+            _ = self.apps.enter(process_id, |app, up_calls| {
+                if let Some(op_ctx) = app.pending_tx.as_mut() {
+                    if op_ctx.is_match(msg_tag, dest_eid, msg_type) {
+                        app.pending_tx = None;
+                        let msg_info = (msg_type as usize) << 8 | (msg_tag as usize);
+                        up_calls
+                            .schedule_upcall(
+                                upcall::MESSAGE_TRANSMITTED,
+                                (
+                                    kernel::errorcode::into_statuscode(result),
+                                    dest_eid as usize,
+                                    msg_info,
+                                ),
+                            )
+                            .ok();
+                    }
+                }
+            });
+        }
+        self.current_app.set(None);
     }
 }
 
@@ -286,11 +334,11 @@ impl<'a> MCTPRxClient for MCTPDriver<'a> {
 
                     if res.is_ok() {
                         app.pending_op_ctx = None;
-                        let msg_info = msg_type << 8 | msg_tag;
+                        let msg_info = (msg_type as usize) << 8 | (msg_tag as usize);
                         kernel_data
                             .schedule_upcall(
                                 upcall::MESSAGE_RECEIVED,
-                                (msg_len, src_eid as usize, msg_info as usize),
+                                (msg_len, src_eid as usize, msg_info),
                             )
                             .ok();
                     }
