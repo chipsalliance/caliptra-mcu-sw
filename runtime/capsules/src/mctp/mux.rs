@@ -273,7 +273,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
         // set the window of the subslice for MCTP header and the payload
         tx_pkt.slice(mctp_hdr_offset..pkt_end_offset);
 
-        match cur_sender.next_packet(&mut tx_pkt, self.local_eid.get()) {
+        match cur_sender.fill_next_packet(&mut tx_pkt, self.local_eid.get()) {
             Ok(len) => {
                 tx_pkt.reset();
                 match self

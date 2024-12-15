@@ -81,19 +81,6 @@ pub enum MessageType {
     Invalid,
 }
 
-// impl Into<u8> for MessageType {
-//     fn into(self) -> u8 {
-//         match self {
-//             MessageType::MctpControl => 0,
-//             MessageType::Pldm => 1,
-//             MessageType::Spdm => 5,
-//             MessageType::SecureSPDM => 6,
-//             MessageType::VendorDefinedPCI => 0x7E,
-//             MessageType::Invalid => 0xFF,
-//         }
-//     }
-// }
-
 impl From<u8> for MessageType {
     fn from(val: u8) -> MessageType {
         match val {

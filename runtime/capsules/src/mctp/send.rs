@@ -44,7 +44,6 @@ pub trait MCTPTxClient {
 }
 
 /// Send state for MCTP
-#[allow(dead_code)]
 pub struct MCTPTxState<'a, M: MCTPTransportBinding<'a>> {
     mctp_mux_sender: &'a MuxMCTPDriver<'a, M>,
     /// Destination EID
@@ -125,13 +124,22 @@ impl<'a, M: MCTPTransportBinding<'a>> MCTPTxState<'a, M> {
         self.offset.get() >= self.msg_payload.map_or(0, |msg_payload| msg_payload.len())
     }
 
-    pub fn next_packet(
+    /// Fills the next packet in the packet buffer.
+    /// The packet buffer should be large enough to hold the MCTP header and the payload.
+    ///
+    /// # Arguments
+    /// `pkt_buf` - The buffer to fill the next packet.
+    /// `src_eid` - The source EID to be used in the MCTP header.
+    ///
+    /// # Returns
+    /// The number of bytes filled in the packet buffer on success, error code otherwise.
+    pub fn fill_next_packet(
         &self,
         pkt_buf: &mut SubSliceMut<'static, u8>,
         src_eid: u8,
     ) -> Result<usize, ErrorCode> {
         if self.is_eom() {
-            println!("MCTPTxState - Error!! next_packet: EOM reached");
+            println!("MCTPTxState - Error!! fill_next_packet: EOM reached");
             Err(ErrorCode::FAIL)?;
         }
 
@@ -169,6 +177,10 @@ impl<'a, M: MCTPTransportBinding<'a>> MCTPTxState<'a, M> {
             })
     }
 
+    /// Informs the client that the message has been sent.
+    ///
+    /// # Arguments
+    /// `result` - The result of the send operation.
     pub fn send_done(&self, result: Result<(), ErrorCode>) {
         self.client.map(|client| {
             if let Some(msg_payload) = self.msg_payload.take() {
