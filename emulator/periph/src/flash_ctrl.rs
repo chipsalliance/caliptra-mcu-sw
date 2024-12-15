@@ -83,7 +83,7 @@ pub struct DummyFlashCtrl {
 
 impl DummyFlashCtrl {
     /// Page size for the flash storage connected to the controller.
-    pub const PAGE_SIZE: usize = 1024;
+    pub const PAGE_SIZE: usize = 256;
 
     /// Maximum number of pages in the flash storage connected to the controller.
     /// This is a dummy value, the actual value should be set based on the flash storage size.
@@ -203,6 +203,11 @@ impl DummyFlashCtrl {
         // Get the page number from the register
         let page_num = self.page_num.reg.get();
 
+        println!(
+            "[xs debug]emulator: read_page handler: page_num={}",
+            page_num
+        );
+
         // Sanity check for the page number, page size and file
         if page_num >= Self::MAX_PAGES
             || self.page_size.reg.get() < Self::PAGE_SIZE as u32
@@ -245,6 +250,11 @@ impl DummyFlashCtrl {
         }
         // Get the page number from the register
         let page_num = self.page_num.reg.get();
+
+        println!(
+            "[xs debug]emulator: write_page handler: page_num= {}",
+            page_num
+        );
 
         // Sanity check for the page number, page size and file
         if page_num >= Self::MAX_PAGES
@@ -289,6 +299,8 @@ impl DummyFlashCtrl {
     fn erase_page(&mut self) -> Result<(), FlashOpError> {
         // Get the page number from the register
         let page_num = self.page_num.reg.get();
+
+        println!("[xs debug]: erase handler: page_num = {}", page_num);
 
         // Sanity check for the page number and file
         if page_num >= Self::MAX_PAGES

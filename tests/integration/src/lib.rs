@@ -131,4 +131,7 @@ mod test {
     run_test!(test_flash_ctrl_read_write_page);
     run_test!(test_flash_ctrl_erase_page);
     run_test!(test_mctp_ctrl_cmds);
+
+    run_test!(test_flash_storage_read_write);
+    run_test!(test_flash_storage_erase);
 }

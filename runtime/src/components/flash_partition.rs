@@ -1,11 +1,11 @@
 // Component for flash partition driver.
 
+use capsules_runtime::flash_partition::FlashPartition;
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::create_capability;
 use kernel::hil;
-use capsules_runtime::flash_partition::FlashPartition;
 
 #[macro_export]
 macro_rules! flash_partition_component_static {

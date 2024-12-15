@@ -176,16 +176,13 @@ impl<'a, F: hil::flash::Flash> crate::hil::FlashStorage<'a> for FlashStorageToPa
                     self.address.set(address + page_size);
                     self.remaining_length.set(length - page_size);
 
-                    match self.driver.erase_page(address / page_size) {
-                        Ok(()) => Ok(()),
-                        Err(error_code) => {
-                            self.page_buffer.replace(page_buffer);
-                            Err(error_code)
-                        }
-                    }
+                    self.page_buffer.replace(page_buffer);
+
+                    self.driver.erase_page(address / page_size)
                 } else {
                     // Need to do a read first.
                     self.address.set(address);
+                    self.remaining_length.set(length);
 
                     match self.driver.read_page(address / page_size, page_buffer) {
                         Ok(()) => Ok(()),
@@ -378,9 +375,9 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                     self.remaining_length.subtract(page_size);
                     self.address.add(page_size);
 
-                    if let Err(_) = self.driver.erase_page(page_number) {
-                        self.page_buffer.replace(page_buffer);
-                    }
+                    self.page_buffer.replace(page_buffer);
+
+                    let _ = self.driver.erase_page(page_number);
                 } else {
                     // Erase a partial page. Do read first.
                     if let Err((_, page_buffer)) = self
@@ -412,9 +409,9 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                 self.remaining_length.subtract(page_size);
                 self.address.add(page_size);
 
-                if let Err(_) = self.driver.erase_page(page_number) {
-                    self.page_buffer.replace(page_buffer);
-                }
+                self.page_buffer.replace(page_buffer);
+
+                let _ = self.driver.erase_page(page_number);
             } else {
                 // Erase a partial page. Do read first.
                 if let Err((_, page_buffer)) = self
