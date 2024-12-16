@@ -126,9 +126,10 @@ mod test {
     // These use underscores but will be converted to dashes in the feature flags
     run_test!(test_i3c_simple);
     run_test!(test_i3c_constant_writes);
-
     run_test!(test_flash_ctrl_init);
     run_test!(test_flash_ctrl_read_write_page);
     run_test!(test_flash_ctrl_erase_page);
+    run_test!(test_flash_storage_read_write);
+    run_test!(test_flash_storage_erase);
     run_test!(test_mctp_ctrl_cmds);
 }

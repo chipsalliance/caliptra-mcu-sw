@@ -36,19 +36,25 @@ pub static mut PROCESS_PRINTER: Option<
 
 #[cfg(any(
     feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page"
+    feature = "test-flash-ctrl-erase-page",
+    feature = "test-flash-storage-read-write",
+    feature = "test-flash-storage-erase"
 ))]
 static mut BOARD: Option<&'static kernel::Kernel> = None;
 
 #[cfg(any(
     feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page"
+    feature = "test-flash-ctrl-erase-page",
+    feature = "test-flash-storage-read-write",
+    feature = "test-flash-storage-erase"
 ))]
 static mut PLATFORM: Option<&'static VeeR> = None;
 
 #[cfg(any(
     feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page"
+    feature = "test-flash-ctrl-erase-page",
+    feature = "test-flash-storage-read-write",
+    feature = "test-flash-storage-erase"
 ))]
 static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = None;
 
@@ -295,7 +301,9 @@ pub unsafe fn main() {
 
     #[cfg(any(
         feature = "test-flash-ctrl-read-write-page",
-        feature = "test-flash-ctrl-erase-page"
+        feature = "test-flash-ctrl-erase-page",
+        feature = "test-flash-storage-read-write",
+        feature = "test-flash-storage-erase"
     ))]
     {
         PLATFORM = Some(veer);
@@ -319,6 +327,12 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-flash-ctrl-erase-page") {
         debug!("Executing test-flash-ctrl-erase-page");
         crate::flash_ctrl_test::test_flash_ctrl_erase_page()
+    } else if cfg!(feature = "test-flash-storage-read-write") {
+        debug!("Executing test-flash-storage-read-write");
+        crate::flash_storage_test::test_flash_storage_read_write()
+    } else if cfg!(feature = "test-flash-storage-erase") {
+        debug!("Executing test-flash-storage-erase");
+        crate::flash_storage_test::test_flash_storage_erase()
     } else {
         None
     };
@@ -330,7 +344,9 @@ pub unsafe fn main() {
 
 #[cfg(any(
     feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page"
+    feature = "test-flash-ctrl-erase-page",
+    feature = "test-flash-storage-read-write",
+    feature = "test-flash-storage-erase"
 ))]
 pub fn run_kernel_op(loops: usize) {
     unsafe {

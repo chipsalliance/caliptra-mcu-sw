@@ -4,5 +4,5 @@
 
 #[cfg(target_arch = "riscv32")]
 pub mod flash_ctrl;
-pub mod hil;
 pub mod flash_storage_to_pages;
+pub mod hil;

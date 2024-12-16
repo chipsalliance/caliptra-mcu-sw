@@ -2,13 +2,12 @@
 
 // Test flash controller driver read, write, erage page
 
-use crate::flash_ctrl;
-use core::cell::{Cell, RefCell};
+use core::cell::RefCell;
+use flash_driver::flash_ctrl;
 use kernel::hil;
 use kernel::hil::flash::{Flash, HasClient};
 use kernel::static_init;
 use kernel::utilities::cells::TakeCell;
-use kernel::{debug, debug_flush_queue};
 
 #[cfg(any(
     feature = "test-flash-ctrl-erase-page",

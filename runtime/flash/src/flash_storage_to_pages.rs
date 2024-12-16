@@ -24,8 +24,6 @@ use kernel::utilities::cells::NumericCellExt;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::ErrorCode;
 
-pub const BUF_LEN: usize = 1024;
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum State {
     Idle,
