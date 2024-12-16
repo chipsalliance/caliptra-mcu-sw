@@ -5,6 +5,7 @@ use crate::chip::TIMERS;
 use crate::components as runtime_components;
 use crate::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use capsules_core::virtualizers::virtual_flash;
 use capsules_runtime::mctp::mux::MuxMCTPDriver;
 use capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
 use core::ptr::{addr_of, addr_of_mut};
@@ -84,6 +85,8 @@ struct VeeR {
         &'static VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>,
     // Temporarily add MCTP mux to the platform struct until driver is ready
     mctp_mux: &'static MuxMCTPDriver<'static, MCTPI3CBinding<'static>>,
+    // Temorarily add one partition driver for userspace testing.
+    image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -96,6 +99,7 @@ impl SyscallDriverLookup for VeeR {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
             capsules_core::low_level_debug::DRIVER_NUM => f(Some(self.lldb)),
+            capsules_runtime::flash_partition::IMAGE_PAR_DRIVER_NUM => f(Some(self.image_par)),
             _ => f(None),
         }
     }
@@ -233,6 +237,30 @@ pub unsafe fn main() {
 
     peripherals.init();
 
+    // Create a mux for the physical flash controller
+    let mux_flash = components::flash::FlashMuxComponent::new(&peripherals.flash_ctrl).finalize(
+        components::flash_mux_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
+    );
+
+    // Instantiate a flashUser for image partition driver
+    let image_par_fl_user = components::flash::FlashUserComponent::new(mux_flash).finalize(
+        components::flash_user_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
+    );
+
+    // Instantiate flash partition driver that is connected to mux flash via flashUser
+    // TODO: Replace the start address and length with actual values from flash configuration.
+    let image_par = runtime_components::flash_partition::FlashPartitionComponent::new(
+        board_kernel,
+        capsules_runtime::flash_partition::IMAGE_PAR_DRIVER_NUM, // Driver number
+        image_par_fl_user,
+        0x0,        // Start address of the partition. Place holder for testing
+        0x200_0000, // Length of the partition. Place holder for testing
+    )
+    .finalize(crate::flash_partition_component_static!(
+        virtual_flash::FlashUser<'static, flash_driver::flash_ctrl::EmulatedFlashCtrl>,
+        capsules_runtime::flash_partition::BUF_LEN
+    ));
+
     // Need to enable all interrupts for Tock Kernel
     chip.enable_pic_interrupts();
     chip.enable_timer_interrupts();
@@ -276,6 +304,7 @@ pub unsafe fn main() {
             scheduler,
             scheduler_timer,
             mctp_mux,
+            image_par,
         }
     );
 
@@ -336,6 +365,7 @@ pub unsafe fn main() {
     } else {
         None
     };
+
     if let Some(exit) = exit {
         crate::io::exit_emulator(exit);
     }

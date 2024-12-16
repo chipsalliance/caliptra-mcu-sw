@@ -207,7 +207,7 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
     ) {
         match self.state.get() {
             State::Read => {
-                self.buffer.take().map(move |buffer| {
+                if let Some(buffer) = self.buffer.take() {
                     let page_size = page_buffer.as_mut().len();
                     // This will get the offset into the page.
                     let page_index = self.address.get() % page_size;
@@ -243,11 +243,11 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                             self.page_buffer.replace(page_buffer);
                         }
                     }
-                });
+                }
             }
             State::Write => {
                 // Read has been done because it is not page aligned on either or both ends.
-                self.buffer.take().map(move |buffer| {
+                if let Some(buffer) = self.buffer.take() {
                     let page_size = page_buffer.as_mut().len();
                     // This will get us our offset into the page.
                     let page_index = self.address.get() % page_size;
@@ -271,7 +271,7 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                     {
                         self.page_buffer.replace(page_buffer);
                     }
-                });
+                }
             }
 
             State::Erase => {
@@ -308,7 +308,7 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
             State::Write => {
                 // After a write, the operation could be done, need to do another write, or need to
                 // do a read.
-                self.buffer.take().map(move |buffer| {
+                if let Some(buffer) = self.buffer.take() {
                     let page_size = page_buffer.as_mut().len();
 
                     if self.remaining_length.get() == 0 {
@@ -344,7 +344,7 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                             self.page_buffer.replace(page_buffer);
                         }
                     }
-                });
+                }
             }
 
             State::Erase => {
