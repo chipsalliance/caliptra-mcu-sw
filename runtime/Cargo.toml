@@ -13,6 +13,7 @@ capsules-runtime.workspace = true
 capsules-system = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
 components = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
 i3c-driver.workspace = true
+flash-driver.workspace = true
 kernel = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
 registers-generated.workspace = true
 riscv = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
@@ -29,3 +30,5 @@ test-flash-ctrl-init = []
 test-flash-ctrl-read-write-page = []
 test-flash-ctrl-erase-page = []
 test-mctp-ctrl-cmds = []
+test-flash-storage-read-write = []
+test-flash-storage-erase = []
