@@ -349,7 +349,7 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportTxClient for MuxMCTPDriver<'a, M>
 
         let mut cur_sender = self.sender_list.head();
         if let Some(sender) = cur_sender {
-            if sender.is_eom() {
+            if sender.is_eom() || result.is_err() {
                 sender.send_done(result);
                 self.sender_list.pop_head();
                 cur_sender = self.sender_list.head();

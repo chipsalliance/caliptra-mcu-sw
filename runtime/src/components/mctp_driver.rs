@@ -11,10 +11,14 @@
 //! Usage
 //! -----
 //! ```rust
-//! let mctp_driver = MCTPDriverComponent::new().finalize(
+//! let spdm_mctp_driver = MCTPDriverComponent::new(
+//!     board_kernel,
+//!     capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
+//!     mctp_mux,
+//!     mctp_spdm_msg_types,
+//!     )
+//!     .finalize(mctp_driver_component_static!());
 //! ```
-//!
-//!
 
 use capsules_runtime::mctp::base_protocol::MessageType;
 use capsules_runtime::mctp::driver::{MCTPDriver, MCTP_MAX_MESSAGE_SIZE};

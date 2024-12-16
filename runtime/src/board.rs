@@ -352,20 +352,24 @@ pub unsafe fn main() {
     // Run any requested test
     let exit = if cfg!(feature = "test-i3c-simple") {
         debug!("Executing test-i3c-simple");
-        crate::tests::test_i3c_simple()
+        crate::tests::i3c_target_test::test_i3c_simple()
     } else if cfg!(feature = "test-i3c-constant-writes") {
         debug!("Executing test-i3c-constant-writes");
-        crate::tests::test_i3c_constant_writes()
+        crate::tests::i3c_target_test::test_i3c_constant_writes()
     } else if cfg!(feature = "test-flash-ctrl-init") {
         debug!("Executing test-flash-ctrl-init");
-        crate::flash_ctrl_test::test_flash_ctrl_init()
+        crate::tests::flash_ctrl_test::test_flash_ctrl_init()
     } else if cfg!(feature = "test-flash-ctrl-read-write-page") {
         debug!("Executing test-flash-ctrl-read-write-page");
-        crate::flash_ctrl_test::test_flash_ctrl_read_write_page()
+        crate::tests::flash_ctrl_test::test_flash_ctrl_read_write_page()
     } else if cfg!(feature = "test-flash-ctrl-erase-page") {
         debug!("Executing test-flash-ctrl-erase-page");
-        crate::flash_ctrl_test::test_flash_ctrl_erase_page()
-    } else {
+        crate::tests::flash_ctrl_test::test_flash_ctrl_erase_page()
+    } else if cfg!(feature = "test-mctp-mux") {
+        debug!("Executing test-mctp-mux");
+        crate::tests::mctp_mux::test_mctp_mux()
+    } 
+    else {
         None
     };
     if let Some(exit) = exit {
