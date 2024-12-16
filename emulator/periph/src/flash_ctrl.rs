@@ -83,11 +83,11 @@ pub struct DummyFlashCtrl {
 
 impl DummyFlashCtrl {
     /// Page size for the flash storage connected to the controller.
-    pub const PAGE_SIZE: usize = 1024;
+    pub const PAGE_SIZE: usize = 256;
 
     /// Maximum number of pages in the flash storage connected to the controller.
     /// This is a dummy value, the actual value should be set based on the flash storage size.
-    pub const MAX_PAGES: u32 = 64 * 1024;
+    pub const MAX_PAGES: u32 = 64 * 1024 * 1024 / Self::PAGE_SIZE as u32;
 
     /// I/O processing delay in ticks
     pub const IO_START_DELAY: u64 = 200;
