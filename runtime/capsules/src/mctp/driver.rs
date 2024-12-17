@@ -3,20 +3,17 @@
 use crate::mctp::base_protocol::*;
 use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
-
 use core::cell::Cell;
 use core::fmt::Write;
-use romtime::println;
-
-use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
+use kernel::grant::{AllowRoCount, AllowRwCount, Grant, GrantKernelData, UpcallCount};
 use kernel::processbuffer::{ReadableProcessBuffer, WriteableProcessBuffer};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::MapCell;
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::{ErrorCode, ProcessId};
+use romtime::println;
 
 pub const MCTP_MAX_MESSAGE_SIZE: usize = 4098;
-
 pub const MCTP_SPDM_DRIVER_NUM: usize = 0xA0000;
 pub const MCTP_PLDM_DRIVER_NUM: usize = 0xA0001;
 pub const MCTP_VENDOR_DEFINED_PCI_DRIVER_NUM: usize = 0xA0002;
@@ -64,7 +61,7 @@ struct OpContext {
 }
 
 impl OpContext {
-    fn for_me(&self, msg_tag: u8, peer_eid: u8, msg_type: u8) -> bool {
+    fn matches(&self, msg_tag: u8, peer_eid: u8, msg_type: u8) -> bool {
         if self.msg_type != msg_type {
             return false;
         }
@@ -175,9 +172,102 @@ impl<'a> MCTPDriver<'a> {
 
         Ok((peer_eid, msg_type, msg_tag))
     }
+
+    /// Send the message payload to the peer EID.
+    /// Copies the message payload from the process buffer to the kernel buffer.
+    /// Sends the message to the peer EID.
+    /// If the send is successful, the operation context is updated. Otherwise, the result is returned immediately to the caller.
+    ///
+    /// # Arguments
+    /// * `app` - The application context
+    /// * `kernel_data` - Application's grant data provided to kernel
+    /// * `msg_type` - Message type
+    /// * `dest_eid` - Destination EID to send the message to
+    /// * `msg_tag` - Message tag of the message. It is MCTP_TAG_OWNER if the message is a request message or
+    ///               a value between 0 and 7 if it is a response message.
+    ///
+    /// # Returns
+    /// Returns Ok(()) if the message is successfully submitted to be sent to the peer EID.
+    /// Returns NOMEM if the kernel buffer is not available.
+    /// Returns SIZE if the message payload is too large for the kernel buffer.
+    fn send_msg_payload(
+        &self,
+        process_id: ProcessId,
+        app: &mut App,
+        kernel_data: &GrantKernelData,
+        msg_type: u8,
+        dest_eid: u8,
+        msg_tag: u8,
+    ) -> Result<(), ErrorCode> {
+        kernel_data
+            .get_readonly_processbuffer(ro_allow::MESSAGE_WRITE)
+            .and_then(|write| {
+                write.enter(|wpayload| {
+                    match self.kernel_msg_buf.take() {
+                        Some(mut kernel_msg_buf) => {
+                            if wpayload.len() > kernel_msg_buf.len() {
+                                return Err(ErrorCode::SIZE);
+                            }
+
+                            wpayload.copy_to_slice(&mut kernel_msg_buf[..wpayload.len()]);
+                            // Slice the kernel buffer to the length of the message payload
+                            kernel_msg_buf.slice(0..wpayload.len());
+
+                            match self
+                                .sender
+                                .send_msg(msg_type, dest_eid, msg_tag, kernel_msg_buf)
+                            {
+                                Ok(_) => {
+                                    app.pending_tx = Some(OpContext {
+                                        msg_tag,
+                                        peer_eid: dest_eid,
+                                        msg_type,
+                                        op_type: OpType::Tx,
+                                    });
+                                    self.current_app.set(Some(process_id));
+                                    Ok(())
+                                }
+                                Err(mut buf) => {
+                                    println!("MCTPDriver: send_msg failed");
+                                    // Reset the kernel buffer to original size and restore it
+                                    buf.reset();
+                                    self.kernel_msg_buf.replace(buf);
+                                    Err(ErrorCode::FAIL)
+                                }
+                            }
+                        }
+                        None => Err(ErrorCode::NOMEM),
+                    }
+                })
+            })
+            .unwrap_or_else(|err| err.into())
+    }
 }
 
 impl<'a> SyscallDriver for MCTPDriver<'a> {
+    /// MCTP Capsule command
+    ///
+    /// ### `command_num`
+    ///
+    /// - `0`: Driver check.
+    ///
+    /// - `1`: Receive Request Message.
+    /// - `2`: Receive Response Message.
+    ///         Returns INVAL if the command arguments are invalid.
+    ///         Otherwise, replaces the pending rx operation context with the new one.
+    ///         When a new message is received from peer EID, the metadata is compared with the pending rx operation context.
+    ///         If the metadata matches, the message is copied to the process buffer and the upcall is scheduled.
+    ///        
+    ///
+    /// - `3`: Send Request Message.
+    /// - `4`: Send Response Message.
+    ///         Sends the message payload to the peer EID.
+    ///         Returns INVAL if the command arguments are invalid.
+    ///         Returns EBUSY if there is already a pending tx operation.
+    ///         Otherwise, returns the result of send_msg_payload(). A successful send_msg_payload() call
+    ///         will return Ok(()) and the pending tx operation context is updated. Otherwise, the result is returned immediately.
+    ///
+    /// - `5`: Get the maximum message size supported by the MCTP driver.
     fn command(
         &self,
         command_num: usize,
@@ -217,55 +307,14 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
                             return Err(ErrorCode::BUSY);
                         }
 
-                        let res = kernel_data
-                            .get_readonly_processbuffer(ro_allow::MESSAGE_WRITE)
-                            .and_then(|write| {
-                                write.enter(|wpayload| {
-                                    self.kernel_msg_buf.take().map_or(
-                                        Err(ErrorCode::NOMEM),
-                                        |mut kernel_msg_buf| {
-                                            if wpayload.len() > kernel_msg_buf.len() {
-                                                return Err(ErrorCode::SIZE);
-                                            }
-                                            wpayload.copy_to_slice(
-                                                &mut kernel_msg_buf[..wpayload.len()],
-                                            );
-                                            kernel_msg_buf.slice(0..wpayload.len());
-
-                                            match self.sender.send_msg(
-                                                msg_type,
-                                                dest_eid,
-                                                msg_tag,
-                                                kernel_msg_buf,
-                                            ) {
-                                                Ok(_) => {
-                                                    println!("MCTPDriver: send_msg success");
-                                                    app.pending_tx = Some(OpContext {
-                                                        msg_tag,
-                                                        peer_eid: dest_eid,
-                                                        msg_type,
-                                                        op_type: OpType::Tx,
-                                                    });
-                                                    self.current_app.set(Some(process_id));
-                                                    Ok(())
-                                                }
-                                                Err(mut buf) => {
-                                                    println!("MCTPDriver: send_msg failed");
-                                                    buf.reset();
-                                                    self.kernel_msg_buf.replace(buf);
-                                                    Err(ErrorCode::FAIL)
-                                                }
-                                            }
-                                        },
-                                    )
-                                })
-                            })
-                            .unwrap_or(Err(ErrorCode::FAIL));
-                        match res {
-                            Ok(()) => Ok(()),
-                            Err(e) => Err(e),
-                        }
-                        // Ok(())
+                        self.send_msg_payload(
+                            process_id,
+                            app,
+                            kernel_data,
+                            msg_type,
+                            dest_eid,
+                            msg_tag,
+                        )
                     })
                     .unwrap_or_else(|err| Err(err.into()));
 
@@ -298,7 +347,7 @@ impl<'a> MCTPTxClient for MCTPDriver<'a> {
         if let Some(process_id) = self.current_app.get() {
             _ = self.apps.enter(process_id, |app, up_calls| {
                 if let Some(op_ctx) = app.pending_tx.as_mut() {
-                    if op_ctx.for_me(msg_tag, dest_eid, msg_type) {
+                    if op_ctx.matches(msg_tag, dest_eid, msg_type) {
                         app.pending_tx = None;
                         let msg_info = (msg_type as usize) << 8 | (msg_tag as usize);
                         up_calls
@@ -323,7 +372,7 @@ impl<'a> MCTPRxClient for MCTPDriver<'a> {
     fn receive(&self, src_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8], msg_len: usize) {
         self.apps.each(|_, app, kernel_data| {
             if let Some(op_ctx) = app.pending_rx.as_mut() {
-                if op_ctx.for_me(msg_tag, src_eid, msg_type) {
+                if op_ctx.matches(msg_tag, src_eid, msg_type) {
                     let res = kernel_data
                         .get_readwrite_processbuffer(rw_allow::MESSAGE_READ)
                         .and_then(|read| {

@@ -249,7 +249,7 @@ pub unsafe fn main() {
         [capsules_runtime::mctp::base_protocol::MessageType; 2],
         [
             capsules_runtime::mctp::base_protocol::MessageType::Spdm,
-            capsules_runtime::mctp::base_protocol::MessageType::SecureSPDM,
+            capsules_runtime::mctp::base_protocol::MessageType::SecureSpdm,
         ]
     );
     let mctp_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
@@ -274,7 +274,7 @@ pub unsafe fn main() {
 
     let mctp_vendor_def_pci_msg_types = static_init!(
         [capsules_runtime::mctp::base_protocol::MessageType; 1],
-        [capsules_runtime::mctp::base_protocol::MessageType::VendorDefinedPCI]
+        [capsules_runtime::mctp::base_protocol::MessageType::VendorDefinedPci]
     );
     let mctp_vendor_def_pci = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,

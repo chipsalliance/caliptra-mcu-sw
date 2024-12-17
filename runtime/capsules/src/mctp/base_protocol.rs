@@ -17,6 +17,8 @@ pub const MCTP_PROTOCOL_VERSION_MASK: u8 = 0x0F;
 pub const MCTP_HDR_SIZE: usize = 4;
 pub const MCTP_BROADCAST_EID: u8 = 0xFF;
 
+pub const MCTP_BASELINE_TRANSMISSION_UNIT: usize = 64;
+
 bitfield! {
     #[repr(C)]
     #[derive(Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
@@ -69,6 +71,10 @@ impl MCTPHeader<[u8; MCTP_HDR_SIZE]> {
     pub fn next_pkt_seq(&self) -> u8 {
         (self.pkt_seq() + 1) % 4
     }
+
+    pub fn middle_pkt(&self) -> bool {
+        self.som() == 0 && self.eom() == 0
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -76,8 +82,8 @@ pub enum MessageType {
     MctpControl = 0,
     Pldm = 1,
     Spdm = 5,
-    SecureSPDM = 6,
-    VendorDefinedPCI = 0x7E,
+    SecureSpdm = 6,
+    VendorDefinedPci = 0x7E,
     Invalid,
 }
 
@@ -87,8 +93,8 @@ impl From<u8> for MessageType {
             0 => MessageType::MctpControl,
             1 => MessageType::Pldm,
             5 => MessageType::Spdm,
-            6 => MessageType::SecureSPDM,
-            0x7E => MessageType::VendorDefinedPCI,
+            6 => MessageType::SecureSpdm,
+            0x7E => MessageType::VendorDefinedPci,
             _ => MessageType::Invalid,
         }
     }

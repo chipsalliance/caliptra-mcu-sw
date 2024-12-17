@@ -1,20 +1,19 @@
 // Licensed under the Apache-2.0 license
 
+use crate::mctp::base_protocol::{MCTP_BASELINE_TRANSMISSION_UNIT, MCTP_HDR_SIZE};
+use core::cell::Cell;
 use core::fmt::Write;
 use i3c_driver::hil::{I3CTarget, RxClient, TxClient};
-use romtime::println;
-
-use core::cell::Cell;
-
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::cells::TakeCell;
 use kernel::ErrorCode;
+use romtime::println;
 
 // TODO: Set the correct value for MCTP_I3C_MAXBUF.
-pub const MCTP_I3C_MAXBUF: usize = 69; // 4 MCTP header + 64 baseline payload + 1 (PEC)
+pub const MCTP_I3C_MAXBUF: usize = MCTP_HDR_SIZE + MCTP_BASELINE_TRANSMISSION_UNIT + 1; // 4 MCTP header + 64 baseline payload + 1 (PEC)
 
-pub const MCTP_I3C_MAXMTU: usize = MCTP_I3C_MAXBUF - 1; // 64 bytes
-pub const MCTP_I3C_MINMTU: usize = 4 + 64; // 4 MCPT header + 64 baseline payload
+pub const MCTP_I3C_MAXMTU: usize = MCTP_I3C_MAXBUF - 1; // 68 bytes
+pub const MCTP_I3C_MINMTU: usize = MCTP_HDR_SIZE + MCTP_BASELINE_TRANSMISSION_UNIT;
 
 /// This trait contains the interface definition
 /// for sending the MCTP packet through MCTP transport binding layer.
