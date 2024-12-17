@@ -38,6 +38,7 @@ impl<'a> ListNode<'a, MCTPRxState<'a>> for MCTPRxState<'a> {
     }
 }
 
+#[derive(Debug)]
 struct MsgTerminus {
     msg_type: u8,
     msg_tag: u8,
@@ -91,15 +92,21 @@ impl<'a> MCTPRxState<'a> {
         mctp_hdr: &MCTPHeader<[u8; MCTP_HDR_SIZE]>,
         pkt_payload_len: usize,
     ) -> bool {
+        // println!("MCTPRxState - is_next_packet: ");
         self.msg_terminus
             .map(|msg_terminus| {
-                msg_terminus.tag_owner == mctp_hdr.tag_owner()
+                println!("MCTPRxState - is_next_packet: msg_terminus: {:X?}, mctp_hdr {:X?} pkt_payload_len {}", msg_terminus, mctp_hdr, pkt_payload_len);
+                let res = msg_terminus.tag_owner == mctp_hdr.tag_owner()
                     && msg_terminus.msg_tag == mctp_hdr.msg_tag()
                     && msg_terminus.source_eid == mctp_hdr.src_eid()
-                    && msg_terminus.pkt_seq == mctp_hdr.pkt_seq()
-                    && (mctp_hdr.som() == 0
-                        && mctp_hdr.eom() == 0
-                        && msg_terminus.start_payload_len == pkt_payload_len) // middle packet
+                    && msg_terminus.pkt_seq == mctp_hdr.pkt_seq();
+                if mctp_hdr.is_middle_pkt() {
+                    println!(" middle packet check: {}", res && (pkt_payload_len == msg_terminus.start_payload_len));
+                    res && (pkt_payload_len == msg_terminus.start_payload_len)
+                } else {
+                    println!(" end packet check: {}", res);
+                    res
+                }
             })
             .unwrap_or(false)
     }

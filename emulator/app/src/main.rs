@@ -380,16 +380,13 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             i3c.get_dynamic_address().unwrap()
         );
 
-        // let tests = tests::mctp_loopback::MCTPLoopbackTests::generate_tests();
-        // i3c_socket::run_tests(
-        //     running.clone(),
-        //     cli.i3c_port.unwrap(),
-        //     i3c.get_dynamic_address().unwrap(),
-        //     tests,
-        // );
-
-
-
+        let tests = tests::mctp_loopback::generate_tests();
+        i3c_socket::run_tests(
+            running.clone(),
+            cli.i3c_port.unwrap(),
+            i3c.get_dynamic_address().unwrap(),
+            tests,
+        );
     }
 
     let flash_ctrl_error_irq = pic.register_irq(CaliptraRootBus::FLASH_CTRL_ERROR_IRQ);

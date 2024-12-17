@@ -191,6 +191,11 @@ impl I3cController {
             .iter_mut()
             .flat_map(|target| {
                 let mut v = vec![];
+                v.extend(target.get_response().map(|resp| I3cBusResponse {
+                    ibi: None,
+                    addr: target.get_address().unwrap(),
+                    resp,
+                }));
                 v.extend(target.get_ibis().iter().map(|mdb| {
                     I3cBusResponse {
                         ibi: Some(*mdb),
@@ -198,11 +203,9 @@ impl I3cController {
                         resp: I3cTcriResponseXfer::default(), // empty descriptor for the IBI
                     }
                 }));
-                v.extend(target.get_response().map(|resp| I3cBusResponse {
-                    ibi: None,
-                    addr: target.get_address().unwrap(),
-                    resp,
-                }));
+                // if v.len() > 0 {
+                //     println!("tcri_receive_all: {:?}", v);
+                // }
                 v
             })
             .collect()

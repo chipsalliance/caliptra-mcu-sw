@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::mctp::base_protocol::MCTP_TAG_OWNER;
+use crate::mctp::base_protocol::{MCTP_TAG_MASK, MCTP_TAG_OWNER};
 use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
 
@@ -12,7 +12,7 @@ use kernel::utilities::cells::{MapCell, OptionalCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
 
-pub const MCTP_TEST_MSG_TYPE: u8 = 0xAA;
+pub const MCTP_TEST_MSG_TYPE: u8 = 0x70;
 // const MCTP_TEST_LOCAL_EID : u8 = 0x10;
 pub const MCTP_TEST_REMOTE_EID: u8 = 0x20;
 pub const MCTP_TEST_MSG_SIZE: usize = 256;
@@ -127,7 +127,7 @@ impl<'a> MCTPTxClient for MockMctp<'a> {
         assert!(result == Ok(()));
         assert!(dest_eid == MCTP_TEST_REMOTE_EID);
         assert!(msg_type == self.msg_type);
-        self.msg_tag.set(msg_tag);
+        self.msg_tag.set(msg_tag & MCTP_TAG_MASK);
         msg_payload.reset();
         self.mctp_msg_buf.replace(msg_payload);
         println!("Message sent");

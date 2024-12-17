@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use crate::i3c_socket::{TestState, TestTrait, receive_ibi, receive_private_read, send_private_write};
+use crate::i3c_socket::{
+    receive_ibi, receive_private_read, send_private_write, TestState, TestTrait,
+};
 use crate::tests::mctp_util::base_protocol::{
     MCTPHdr, MCTPMsgHdr, MCTP_HDR_SIZE, MCTP_MSG_HDR_SIZE,
 };
@@ -11,9 +13,9 @@ use strum_macros::EnumIter;
 
 use zerocopy::IntoBytes;
 
+use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::net::TcpStream;
 
 const TEST_TARGET_EID: u8 = 0xA;
 
@@ -198,11 +200,8 @@ impl MCTPCtrlCmdTests {
     }
 }
 
-
-
-
 #[derive(Debug, Clone)]
-pub(crate) struct Test {
+struct Test {
     name: String,
     state: TestState,
     pvt_write_data: Vec<u8>,
@@ -211,7 +210,7 @@ pub(crate) struct Test {
 }
 
 impl Test {
-    pub(crate) fn new(name: &str, pvt_write_data: Vec<u8>, pvt_read_data: Vec<u8>) -> Self {
+    fn new(name: &str, pvt_write_data: Vec<u8>, pvt_read_data: Vec<u8>) -> Self {
         Self {
             name: name.to_string(),
             state: TestState::Start,

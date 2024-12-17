@@ -59,7 +59,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
     }
 
     pub fn add_sender(&self, sender: &'a MCTPTxState<'a, M>) {
-        println!("MuxMCTPDriver: Adding sender");
+        // println!("MuxMCTPDriver: Adding sender");
         let list_empty = self.sender_list.head().is_none();
 
         self.sender_list.push_tail(sender);
@@ -117,6 +117,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             if packet.len() < MCTP_HDR_SIZE + 1 {
                 return (mctp_header, msg_type, payload_offset);
             }
+            println!("msg_type: {:X?}", packet[MCTP_HDR_SIZE] & 0x7F);   
             msg_type = Some((packet[MCTP_HDR_SIZE] & 0x7F).into());
         }
         payload_offset = MCTP_HDR_SIZE;
@@ -278,18 +279,14 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
 
         // set the window of the subslice for MCTP header and the payload
         tx_pkt.slice(mctp_hdr_offset..pkt_end_offset);
-        println!(
-            "MuxMCTPDriver: Going to fill the packet tx_pkt.len(): {:?}",
-            tx_pkt.len()
-        );
-
+        
         match cur_sender.fill_next_packet(&mut tx_pkt, self.local_eid.get()) {
             Ok(len) => {
                 tx_pkt.reset();
-                println!(
-                    "MuxMCTPDriver: Sending packet of length {:?} bytes",
-                    len + mctp_hdr_offset
-                );
+                // println!(
+                //     "MuxMCTPDriver: Sending packet of length {:?} bytes",
+                //     len + mctp_hdr_offset
+                // );
                 match self
                     .mctp_device
                     .transmit(tx_pkt.take(), len + mctp_hdr_offset)
@@ -314,6 +311,10 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
         msg_type: MessageType,
         pkt_payload: &[u8],
     ) {
+        println!(
+            "MuxMCTPDriver: Processing first packet. msg_type: {:?}",
+            msg_type
+        );
         let rx_state = self
             .receiver_list
             .iter()
@@ -342,6 +343,10 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             .iter()
             .find(|rx_state| rx_state.is_next_packet(&mctp_hdr, pkt_payload.len()));
 
+        println!(
+            "MuxMCTPDriver: Processing next packet. rx_state: {:?}",
+            rx_state.is_some()
+        );
         match rx_state {
             Some(rx_state) => {
                 rx_state.receive_next(mctp_hdr, pkt_payload);
@@ -384,7 +389,9 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M>
             return;
         }
 
+        // println!("MuxMCTPDriver: Received packet of {:X?}", rx_buffer);
         let (mctp_header, msg_type, payload_offset) = self.interpret_packet(&rx_buffer[0..len]);
+        println!("MuxMCTPDriver: Received packet. msg_type: {:?}", msg_type);
         if let Some(msg_type) = msg_type {
             match msg_type {
                 MessageType::MctpControl => {
@@ -401,13 +408,15 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M>
                 MessageType::Pldm
                 | MessageType::Spdm
                 | MessageType::SecureSPDM
-                | MessageType::VendorDefinedPCI => {
+                | MessageType::VendorDefinedPCI
+                | MessageType::TestMsgType => {
                     self.process_first_packet(
                         mctp_header,
                         msg_type,
                         &rx_buffer[payload_offset..len],
                     );
                 }
+
                 _ => {
                     println!("MuxMCTPDriver: Unsupported message type. Dropping packet.");
                 }

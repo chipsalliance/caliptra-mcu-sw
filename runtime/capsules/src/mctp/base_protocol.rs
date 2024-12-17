@@ -69,6 +69,10 @@ impl MCTPHeader<[u8; MCTP_HDR_SIZE]> {
     pub fn next_pkt_seq(&self) -> u8 {
         (self.pkt_seq() + 1) % 4
     }
+
+    pub fn is_middle_pkt(&self) -> bool {
+        self.som() == 0 && self.eom() == 0
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -78,6 +82,7 @@ pub enum MessageType {
     Spdm = 5,
     SecureSPDM = 6,
     VendorDefinedPCI = 0x7E,
+    TestMsgType = 0x70,
     Invalid,
 }
 
@@ -89,6 +94,7 @@ impl From<u8> for MessageType {
             5 => MessageType::Spdm,
             6 => MessageType::SecureSPDM,
             0x7E => MessageType::VendorDefinedPCI,
+            0x70 => MessageType::TestMsgType,
             _ => MessageType::Invalid,
         }
     }
