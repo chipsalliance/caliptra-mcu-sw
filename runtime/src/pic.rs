@@ -4,6 +4,7 @@
 
 //! Platform Level Interrupt Control peripheral driver for VeeR.
 
+use crate::_pic_vector_table;
 use core::ptr::write_volatile;
 use kernel::utilities::cells::VolatileCell;
 use kernel::utilities::registers::interfaces::{Readable, Writeable};
@@ -120,31 +121,27 @@ impl Pic {
         }
     }
 
-    /// Clear all pending interrupts.
-    pub fn clear_all_pending(&self) {
-        for clear in self.registers.meigwclr.iter() {
-            clear.set(0);
-        }
-    }
-
-    /// Enable all interrupts.
-    pub fn enable_all(&self) {
+    pub fn init(&self) {
         self.registers.mpiccfg.write(MPICCFG::PRIORD::STANDARD);
 
         self.disable_all();
 
+        let meivt_base = core::ptr::addr_of!(_pic_vector_table) as u32;
+
         // redirect all PIC interrupts to _start_trap
-        const MEIVT_BASE: u32 = 0x5000_0000;
         for irq in 0..31 {
             unsafe {
                 write_volatile(
-                    (MEIVT_BASE + irq * 4) as *mut u32,
+                    (meivt_base + irq * 4) as *mut u32,
                     rv32i::_start_trap as usize as u32,
                 );
             }
         }
+
+        assert_eq!(meivt_base & 0x3FF, 0, "MEIVT base must be 1KB aligned");
+
         // set the meivt to point to the base
-        self.meivt.write(MEIVT::BASE.val(MEIVT_BASE as usize >> 10));
+        self.meivt.write(MEIVT::BASE.val(meivt_base as usize >> 10));
 
         for priority in self.registers.meipl.iter() {
             priority.write(MEIPL::PRIORITY.val(15));
@@ -159,8 +156,17 @@ impl Pic {
         self.meipt.set(0);
         self.meicidpl.set(0);
         self.meicurpl.set(0);
+    }
 
-        // Enable all interrupts
+    /// Clear all pending interrupts.
+    pub fn clear_all_pending(&self) {
+        for clear in self.registers.meigwclr.iter() {
+            clear.set(0);
+        }
+    }
+
+    /// Enable all interrupts.
+    pub fn enable_all(&self) {
         for enable in self.registers.meie.iter() {
             enable.write(MEIE::INTEN::ENABLE);
         }

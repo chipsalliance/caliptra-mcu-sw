@@ -29,6 +29,7 @@ use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
 use emulator_periph::{CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, I3c, I3cController};
 use emulator_registers_generated::root_bus::AutoRootBus;
+use emulator_types::ROM_SIZE;
 use gdb::gdb_state;
 use gdb::gdb_target::GdbTarget;
 use std::cell::RefCell;
@@ -293,11 +294,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     };
 
     let rom_buffer = read_binary(args_rom, 0)?;
-    if rom_buffer.len() > CaliptraRootBus::ROM_SIZE {
-        println!(
-            "ROM File Size must not exceed {} bytes",
-            CaliptraRootBus::ROM_SIZE
-        );
+    if rom_buffer.len() > ROM_SIZE as usize {
+        println!("ROM File Size must not exceed {} bytes", ROM_SIZE);
         exit(-1);
     }
     println!(
@@ -339,7 +337,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         clock: clock.clone(),
     };
     let root_bus = CaliptraRootBus::new(bus_args).unwrap();
-    let dma_ram = root_bus.dccm.clone();
+    let dma_ram = root_bus.ram.clone();
 
     let i3c_error_irq = pic.register_irq(CaliptraRootBus::I3C_ERROR_IRQ);
     let i3c_notif_irq = pic.register_irq(CaliptraRootBus::I3C_NOTIF_IRQ);

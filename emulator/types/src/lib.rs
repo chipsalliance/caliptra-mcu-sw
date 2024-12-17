@@ -12,10 +12,12 @@ Abstract:
 
 --*/
 
+mod consts;
 mod exception;
 mod macros;
 
-pub use crate::exception::{RvException, RvExceptionCause};
+pub use consts::*;
+pub use exception::{RvException, RvExceptionCause};
 
 /// RISCV Data width
 pub type RvData = u32;
