@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::mctp::base_protocol::*;
+use crate::mctp::base_protocol::{valid_eid, MessageType, MCTP_TAG_OWNER};
 use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
 use core::cell::Cell;
@@ -106,7 +106,7 @@ pub struct MCTPDriver<'a> {
         AllowRwCount<{ rw_allow::COUNT }>,
     >,
     current_app: Cell<Option<ProcessId>>,
-    msg_types: &'static [u8],
+    msg_types: &'static [MessageType],
     max_msg_size: usize,
     kernel_msg_buf: MapCell<SubSliceMut<'static, u8>>,
 }
@@ -120,7 +120,7 @@ impl<'a> MCTPDriver<'a> {
             AllowRoCount<{ ro_allow::COUNT }>,
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
-        msg_types: &'static [u8],
+        msg_types: &'static [MessageType],
         max_msg_size: usize,
         msg_buf: SubSliceMut<'static, u8>,
     ) -> MCTPDriver<'a> {
@@ -135,7 +135,7 @@ impl<'a> MCTPDriver<'a> {
     }
 
     fn supported_msg_type(&self, msg_type: u8) -> bool {
-        self.msg_types.iter().any(|&t| t == msg_type)
+        self.msg_types.iter().any(|&t| t as u8 == msg_type)
     }
 
     fn validate_args(

@@ -261,7 +261,10 @@ pub fn receive_ibi(stream: &mut TcpStream, target_addr: u8) -> bool {
         Ok(()) => {
             let outdata: OutgoingHeader = transmute!(out_header_bytes);
             if outdata.ibi != 0 && outdata.from_addr == target_addr {
-                println!("Received IBI from target: {}. Read {} bytes from stream", target_addr, 6);
+                println!(
+                    "Received IBI from target: {}. Read {} bytes from stream",
+                    target_addr, 6
+                );
                 let pvt_read_cmd = prepare_private_read_cmd(target_addr);
                 stream.set_nonblocking(false).unwrap();
                 stream.write_all(&pvt_read_cmd).unwrap();
@@ -289,7 +292,6 @@ pub fn receive_private_read(stream: &mut TcpStream, target_addr: u8) -> Option<V
             let mut data = vec![0u8; data_len];
             println!("Private Read {} bytes from stream", 6);
 
-
             stream.set_nonblocking(false).unwrap();
             stream
                 .read_exact(&mut data)
@@ -309,7 +311,6 @@ pub fn receive_private_read(stream: &mut TcpStream, target_addr: u8) -> Option<V
             }
 
             return Some(data[..data.len() - 1].to_vec());
-
         }
         Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
         Err(e) => panic!("Error reading message from socket: {}", e),

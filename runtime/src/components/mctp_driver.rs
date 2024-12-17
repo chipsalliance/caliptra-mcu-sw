@@ -20,6 +20,7 @@
 //!     .finalize(mctp_driver_component_static!());
 //! ```
 
+use capsules_runtime::mctp::base_protocol::MessageType;
 use capsules_runtime::mctp::driver::{MCTPDriver, MCTP_MAX_MESSAGE_SIZE};
 use capsules_runtime::mctp::mux::MuxMCTPDriver;
 use capsules_runtime::mctp::recv::MCTPRxState;
@@ -56,7 +57,7 @@ pub struct MCTPDriverComponent {
     board_kernel: &'static kernel::Kernel,
     driver_num: usize,
     mctp_mux: &'static MuxMCTPDriver<'static, MCTPI3CBinding<'static>>,
-    msg_types: &'static [u8],
+    msg_types: &'static [MessageType],
 }
 
 impl MCTPDriverComponent {
@@ -64,7 +65,7 @@ impl MCTPDriverComponent {
         board_kernel: &'static kernel::Kernel,
         driver_num: usize,
         mctp_mux: &'static MuxMCTPDriver<'static, MCTPI3CBinding<'static>>,
-        msg_types: &'static [u8],
+        msg_types: &'static [MessageType],
     ) -> Self {
         Self {
             board_kernel,

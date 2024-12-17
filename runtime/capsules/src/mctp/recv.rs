@@ -20,7 +20,7 @@ pub struct MCTPRxState<'a> {
     /// Message assembly context
     msg_terminus: MapCell<MsgTerminus>,
     /// Expected message types
-    msg_types: Cell<&'static [u8]>,
+    msg_types: Cell<&'static [MessageType]>,
     /// Client (implements the MCTPRxClient trait)
     client: OptionalCell<&'a dyn MCTPRxClient>,
     /// Message buffer
@@ -49,7 +49,7 @@ struct MsgTerminus {
 impl<'a> MCTPRxState<'a> {
     pub fn new(
         rx_msg_buf: &'static mut [u8],
-        message_types: &'static [u8],
+        message_types: &'static [MessageType],
     ) -> MCTPRxState<'static> {
         MCTPRxState {
             msg_terminus: MapCell::empty(),
@@ -75,7 +75,7 @@ impl<'a> MCTPRxState<'a> {
         self.msg_types
             .get()
             .iter()
-            .any(|&exp_type| exp_type == msg_type as u8)
+            .any(|&exp_type| exp_type == msg_type)
     }
 
     /// Checks from the received MCTP header if the next packet belongs to

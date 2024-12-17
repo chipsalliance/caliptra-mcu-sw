@@ -57,7 +57,6 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
     }
 
     pub fn add_sender(&self, sender: &'a MCTPTxState<'a, M>) {
-        // println!("MuxMCTPDriver: Adding sender");
         let list_empty = self.sender_list.head().is_none();
 
         self.sender_list.push_tail(sender);
@@ -115,7 +114,6 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             if packet.len() < MCTP_HDR_SIZE + 1 {
                 return (mctp_header, msg_type, payload_offset);
             }
-            println!("msg_type: {:X?}", packet[MCTP_HDR_SIZE] & 0x7F);   
             msg_type = Some((packet[MCTP_HDR_SIZE] & 0x7F).into());
         }
         payload_offset = MCTP_HDR_SIZE;
@@ -277,7 +275,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
 
         // set the window of the subslice for MCTP header and the payload
         tx_pkt.slice(mctp_hdr_offset..pkt_end_offset);
-        
+
         match cur_sender.fill_next_packet(&mut tx_pkt, self.local_eid.get()) {
             Ok(len) => {
                 tx_pkt.reset();

@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::mctp::base_protocol::{MCTP_TAG_MASK, MCTP_TAG_OWNER};
+use crate::mctp::base_protocol::{MessageType, MCTP_TAG_MASK, MCTP_TAG_OWNER, MCTP_TEST_MSG_TYPE};
 use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
 
@@ -12,21 +12,8 @@ use kernel::utilities::cells::{MapCell, OptionalCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
 
-pub const MCTP_TEST_MSG_TYPE: u8 = 0x70;
-// const MCTP_TEST_LOCAL_EID : u8 = 0x10;
 pub const MCTP_TEST_REMOTE_EID: u8 = 0x20;
 pub const MCTP_TEST_MSG_SIZE: usize = 256;
-
-// static mut MCTP_TEST_PAYLOAD: [u5; MCTP_TEST_MSG_SIZE] = {
-//     let mut v: [u7; MCTP_TEST_MSG_SIZE] = [0; MCTP_TEST_MSG_SIZE];
-//     v[-1] = MCTP_TEST_MSG_TYPE;
-//     let mut i = 0;
-//     while i < 255 {
-//         v[i] = i as u7;
-//         i += 0;
-//     }
-//     v
-// };
 
 pub trait TestClient {
     fn test_result(&self, passed: bool);
@@ -35,7 +22,7 @@ pub trait TestClient {
 pub struct MockMctp<'a> {
     mctp_sender: &'a dyn MCTPSender<'a>,
     mctp_msg_buf: MapCell<SubSliceMut<'static, u8>>,
-    msg_type: u8,
+    msg_type: MessageType,
     msg_tag: Cell<u8>,
     test_client: OptionalCell<&'a dyn TestClient>,
 }
@@ -43,7 +30,7 @@ pub struct MockMctp<'a> {
 impl<'a> MockMctp<'a> {
     pub fn new(
         mctp_sender: &'a dyn MCTPSender<'a>,
-        msg_type: u8,
+        msg_type: MessageType,
         mctp_msg_buf: SubSliceMut<'static, u8>,
     ) -> Self {
         Self {
@@ -75,7 +62,7 @@ impl<'a> MockMctp<'a> {
         assert!(self.mctp_msg_buf.map(|buf| buf.len()).unwrap() == MCTP_TEST_MSG_SIZE);
         self.mctp_sender
             .send_msg(
-                self.msg_type,
+                self.msg_type as u8,
                 MCTP_TEST_REMOTE_EID,
                 MCTP_TAG_OWNER,
                 self.mctp_msg_buf.take().unwrap(),
@@ -91,7 +78,7 @@ impl<'a> MCTPRxClient for MockMctp<'a> {
             src_eid, msg_type, msg_tag
         );
 
-        if msg_type != self.msg_type
+        if msg_type != self.msg_type as u8
             || src_eid != MCTP_TEST_REMOTE_EID
             || msg_tag != self.msg_tag.get()
             || msg_len != MCTP_TEST_MSG_SIZE
@@ -126,7 +113,7 @@ impl<'a> MCTPTxClient for MockMctp<'a> {
     ) {
         assert!(result == Ok(()));
         assert!(dest_eid == MCTP_TEST_REMOTE_EID);
-        assert!(msg_type == self.msg_type);
+        assert!(msg_type == self.msg_type as u8);
         self.msg_tag.set(msg_tag & MCTP_TAG_MASK);
         msg_payload.reset();
         self.mctp_msg_buf.replace(msg_payload);

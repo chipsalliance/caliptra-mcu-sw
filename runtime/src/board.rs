@@ -6,6 +6,7 @@ use crate::components as runtime_components;
 use crate::timers::InternalTimers;
 
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use capsules_runtime::mctp::base_protocol::MessageType;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
 use kernel::component::Component;
@@ -246,11 +247,8 @@ pub unsafe fn main() {
         .finalize(crate::mctp_mux_component_static!(MCTPI3CBinding));
 
     let mctp_spdm_msg_types = static_init!(
-        [u8; 2],
-        [
-            capsules_runtime::mctp::base_protocol::MessageType::Spdm,
-            capsules_runtime::mctp::base_protocol::MessageType::SecureSpdm,
-        ]
+        [MessageType; 2],
+        [MessageType::Spdm, MessageType::SecureSpdm,]
     );
     let mctp_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
@@ -260,10 +258,7 @@ pub unsafe fn main() {
     )
     .finalize(crate::mctp_driver_component_static!());
 
-    let mctp_pldm_msg_types = static_init!(
-        [u8; 1],
-        [capsules_runtime::mctp::base_protocol::MessageType::Pldm as u8]
-    );
+    let mctp_pldm_msg_types = static_init!([MessageType; 1], [MessageType::Pldm]);
     let mctp_pldm = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM,
@@ -272,10 +267,8 @@ pub unsafe fn main() {
     )
     .finalize(crate::mctp_driver_component_static!());
 
-    let mctp_vendor_def_pci_msg_types = static_init!(
-        [capsules_runtime::mctp::base_protocol::MessageType; 1],
-        [capsules_runtime::mctp::base_protocol::MessageType::VendorDefinedPci]
-    );
+    let mctp_vendor_def_pci_msg_types =
+        static_init!([MessageType; 1], [MessageType::VendorDefinedPci]);
     let mctp_vendor_def_pci = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         capsules_runtime::mctp::driver::MCTP_VENDOR_DEFINED_PCI_DRIVER_NUM,

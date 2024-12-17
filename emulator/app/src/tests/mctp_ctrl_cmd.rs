@@ -7,15 +7,12 @@ use crate::tests::mctp_util::base_protocol::{
     MCTPHdr, MCTPMsgHdr, MCTP_HDR_SIZE, MCTP_MSG_HDR_SIZE,
 };
 use crate::tests::mctp_util::ctrl_protocol::*;
-
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
-
-use zerocopy::IntoBytes;
-
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
+use zerocopy::IntoBytes;
 
 const TEST_TARGET_EID: u8 = 0xA;
 

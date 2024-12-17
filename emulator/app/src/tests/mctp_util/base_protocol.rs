@@ -6,9 +6,6 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 pub const MCTP_HDR_SIZE: usize = 4;
 pub const MCTP_MSG_HDR_SIZE: usize = 1;
 
-pub const MCTP_TAG_OWNER: u8 = 0x08;
-pub const MCTP_TAG_MASK: u8 = 0x07;
-
 bitfield! {
     #[repr(C)]
     #[derive(Clone, FromBytes, IntoBytes, Immutable, KnownLayout, PartialEq)]

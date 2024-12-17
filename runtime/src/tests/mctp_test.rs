@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use crate::components::mock_mctp::MockMctpComponent;
 use capsules_runtime::mctp::mux::MuxMCTPDriver;
 use capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
@@ -21,21 +23,6 @@ pub fn test_mctp_send_loopback(
     mock_mctp.run_send_loopback_test();
     None
 }
-
-// macro_rules! mctp_tester_init {
-//     ($M:expr) => {{
-//         use crate::components::mock_mctp::MockMctpComponent;
-//         use capsules_runtime::mctp::test::TestMctp;
-
-//         let mctp_msg_buf = static_init!([u8; MCTP_MAX_MESSAGE_SIZE], [0; MCTP_MAX_MESSAGE_SIZE]);
-//         let msg_types = static_init!([u8; 1], [MCTP_TEST_MSG_TYPE]);
-//         let mock_mctp_driver = MockMctpComponent::new($M, msg_types).finalize(mock_mctp_component_static!());
-//         let mctp_tester = TestMctp::new(mock_mctp_driver, mctp_msg_buf);
-//         mock_mctp_driver.set_rx_client(&mctp_tester);
-//         mock_mctp_driver.set_tx_client(&mctp_tester);
-//         mctp_tester
-//     }};
-// }
 
 struct TestMctp<'a> {
     _mock_mctp: &'a MockMctp<'a>,
