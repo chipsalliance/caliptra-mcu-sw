@@ -1,16 +1,13 @@
 // Licensed under the Apache-2.0 license
 
-use crate::mctp::base_protocol::MCTPHeader;
-
-use core::fmt::Write;
-use romtime::println;
-
+use crate::mctp::base_protocol::{
+    MCTPHeader, MessageType, MCTP_HDR_SIZE, MCTP_TAG_MASK, MCTP_TAG_OWNER,
+};
 use core::cell::Cell;
-
+use core::fmt::Write;
 use kernel::collections::list::{ListLink, ListNode};
 use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
-
-use super::base_protocol::{MessageType, MCTP_HDR_SIZE, MCTP_TAG_MASK, MCTP_TAG_OWNER};
+use romtime::println;
 
 /// This trait is implemented to get notified of the messages received
 /// on corresponding message_type.
@@ -75,7 +72,10 @@ impl<'a> MCTPRxState<'a> {
     /// # Returns
     /// True if the message type is expected, false otherwise.
     pub fn is_receive_expected(&self, msg_type: MessageType) -> bool {
-        self.msg_types.get().iter().any(|&t| t == msg_type as u8)
+        self.msg_types
+            .get()
+            .iter()
+            .any(|&exp_type| exp_type == msg_type as u8)
     }
 
     /// Checks from the received MCTP header if the next packet belongs to
@@ -95,17 +95,17 @@ impl<'a> MCTPRxState<'a> {
         // println!("MCTPRxState - is_next_packet: ");
         self.msg_terminus
             .map(|msg_terminus| {
-                println!("MCTPRxState - is_next_packet: msg_terminus: {:X?}, mctp_hdr {:X?} pkt_payload_len {}", msg_terminus, mctp_hdr, pkt_payload_len);
-                let res = msg_terminus.tag_owner == mctp_hdr.tag_owner()
+                // Check if the received packet belongs to the current message
+                let next_pkt = msg_terminus.tag_owner == mctp_hdr.tag_owner()
                     && msg_terminus.msg_tag == mctp_hdr.msg_tag()
                     && msg_terminus.source_eid == mctp_hdr.src_eid()
                     && msg_terminus.pkt_seq == mctp_hdr.pkt_seq();
-                if mctp_hdr.is_middle_pkt() {
-                    println!(" middle packet check: {}", res && (pkt_payload_len == msg_terminus.start_payload_len));
-                    res && (pkt_payload_len == msg_terminus.start_payload_len)
+
+                // Check if the payload length of the middle packet is the same as the first packet
+                if mctp_hdr.middle_pkt() {
+                    next_pkt && msg_terminus.start_payload_len == pkt_payload_len
                 } else {
-                    println!(" end packet check: {}", res);
-                    res
+                    next_pkt
                 }
             })
             .unwrap_or(false)
@@ -135,7 +135,8 @@ impl<'a> MCTPRxState<'a> {
                     self.msg_terminus.replace(msg_terminus);
                 })
                 .unwrap_or_else(|| {
-                    println!(
+                    // This should never happen
+                    panic!(
                         "MuxMCTPDriver - No msg buffer in receive next. This should never happen."
                     );
                 });
@@ -168,7 +169,8 @@ impl<'a> MCTPRxState<'a> {
                     });
                 })
                 .unwrap_or_else(|| {
-                    println!(
+                    // This should never happen
+                    panic!(
                         "MuxMCTPDriver - No msg buffer in end receive. This should never happen."
                     );
                 });
@@ -197,9 +199,8 @@ impl<'a> MCTPRxState<'a> {
 
         let pkt_payload_len = pkt_payload.len();
 
-        if pkt_payload.is_empty()
-            || (pkt_payload_len > 0
-                && pkt_payload_len > self.msg_payload.map_or(0, |msg_payload| msg_payload.len()))
+        if pkt_payload_len == 0
+            || pkt_payload_len > self.msg_payload.map_or(0, |msg_payload| msg_payload.len())
         {
             println!("MuxMCTPDriver - Received bad packet length. Dropping packet.");
             return;
@@ -222,7 +223,7 @@ impl<'a> MCTPRxState<'a> {
             })
             .unwrap_or_else(|| {
                 // This should never happen
-                println!("MuxMCTPDriver - Received first packet without buffer. This should never happen.");
+                panic!("MuxMCTPDriver - Received first packet without buffer. This should never happen.");
             });
 
         // Single packet message

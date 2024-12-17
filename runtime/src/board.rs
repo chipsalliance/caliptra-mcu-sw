@@ -17,6 +17,20 @@ use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
 use rv32i::csr;
 
+// These symbols are defined in the linker script.
+extern "C" {
+    /// Beginning of the ROM region containing app images.
+    static _sapps: u8;
+    /// End of the ROM region containing app images.
+    static _eapps: u8;
+    /// Beginning of the RAM region for app memory.
+    static mut _sappmem: u8;
+    /// End of the RAM region for app memory.
+    static _eappmem: u8;
+
+    pub(crate) static _pic_vector_table: u8;
+}
+
 pub const NUM_PROCS: usize = 4;
 
 // Actual memory for holding the active process structures. Need an empty list
@@ -185,6 +199,7 @@ pub unsafe fn main() {
     );
 
     let chip = static_init!(VeeRChip, crate::chip::VeeR::new(peripherals));
+    chip.init();
     CHIP = Some(chip);
 
     // Create a shared UART channel for the console and for kernel debug.
@@ -233,8 +248,8 @@ pub unsafe fn main() {
     let mctp_spdm_msg_types = static_init!(
         [u8; 2],
         [
-            capsules_runtime::mctp::base_protocol::MessageType::Spdm as u8,
-            capsules_runtime::mctp::base_protocol::MessageType::SecureSPDM as u8,
+            capsules_runtime::mctp::base_protocol::MessageType::Spdm,
+            capsules_runtime::mctp::base_protocol::MessageType::SecureSpdm,
         ]
     );
     let mctp_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
@@ -258,8 +273,8 @@ pub unsafe fn main() {
     .finalize(crate::mctp_driver_component_static!());
 
     let mctp_vendor_def_pci_msg_types = static_init!(
-        [u8; 1],
-        [capsules_runtime::mctp::base_protocol::MessageType::VendorDefinedPCI as u8]
+        [capsules_runtime::mctp::base_protocol::MessageType; 1],
+        [capsules_runtime::mctp::base_protocol::MessageType::VendorDefinedPci]
     );
     let mctp_vendor_def_pci = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
@@ -283,18 +298,6 @@ pub unsafe fn main() {
 
     debug!("MCU initialization complete.");
     debug!("Entering main loop.");
-
-    // These symbols are defined in the linker script.
-    extern "C" {
-        /// Beginning of the ROM region containing app images.
-        static _sapps: u8;
-        /// End of the ROM region containing app images.
-        static _eapps: u8;
-        /// Beginning of the RAM region for app memory.
-        static mut _sappmem: u8;
-        /// End of the RAM region for app memory.
-        static _eappmem: u8;
-    }
 
     let scheduler =
         components::sched::cooperative::CooperativeComponent::new(&*addr_of!(PROCESSES))

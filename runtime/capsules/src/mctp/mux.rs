@@ -1,21 +1,19 @@
 // Licensed under the Apache-2.0 license
 
-use crate::mctp::base_protocol::{MCTPHeader, MessageType, MCTP_HDR_SIZE};
+use crate::mctp::base_protocol::{
+    MCTPHeader, MessageType, MCTP_BASELINE_TRANSMISSION_UNIT, MCTP_HDR_SIZE,
+};
 use crate::mctp::control_msg::{MCTPCtrlCmd, MCTPCtrlMsgHdr, MCTP_CTRL_MSG_HEADER_LEN};
 use crate::mctp::recv::MCTPRxState;
 use crate::mctp::send::MCTPTxState;
 use crate::mctp::transport_binding::{MCTPTransportBinding, TransportRxClient, TransportTxClient};
-
-use core::fmt::Write;
-use romtime::println;
-
 use core::cell::Cell;
-
+use core::fmt::Write;
 use kernel::collections::list::List;
 use kernel::utilities::cells::TakeCell;
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
-
+use romtime::println;
 use zerocopy::{FromBytes, IntoBytes};
 
 /// MUX struct that manages multiple MCTP driver users (clients).
@@ -311,10 +309,15 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
         msg_type: MessageType,
         pkt_payload: &[u8],
     ) {
-        println!(
-            "MuxMCTPDriver: Processing first packet. msg_type: {:?}",
-            msg_type
-        );
+        // Check if the first packet of a multi-packet message has at least length of
+        // MCTP_BASELINE_TRANSMISSION_UNIT bytes.
+        if mctp_hdr.eom() == 0 && pkt_payload.len() < MCTP_BASELINE_TRANSMISSION_UNIT {
+            println!(
+                "MuxMCTPDriver: Received first packet with less than 64 bytes. Dropping packet."
+            );
+            return;
+        }
+
         let rx_state = self
             .receiver_list
             .iter()
@@ -333,7 +336,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             return;
         }
 
-        if mctp_hdr.eom() != 1 && pkt_payload.len() < 64 {
+        if mctp_hdr.eom() != 1 && pkt_payload.len() < MCTP_BASELINE_TRANSMISSION_UNIT {
             println!("MuxMCTPDriver: Received first or middle packet with less than 64 bytes. Dropping packet.");
             return;
         }
@@ -407,8 +410,8 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M>
                 }
                 MessageType::Pldm
                 | MessageType::Spdm
-                | MessageType::SecureSPDM
-                | MessageType::VendorDefinedPCI
+                | MessageType::SecureSpdm
+                | MessageType::VendorDefinedPci
                 | MessageType::TestMsgType => {
                     self.process_first_packet(
                         mctp_header,

@@ -19,7 +19,7 @@ use crate::xreg_file::{XReg, XRegFile};
 use crate::Pic;
 use bit_vec::BitVec;
 use emulator_bus::{Bus, BusError, Clock, TimerAction};
-use emulator_types::{RvAddr, RvData, RvException, RvExceptionCause, RvSize};
+use emulator_types::{RvAddr, RvData, RvException, RvExceptionCause, RvSize, RAM_OFFSET, RAM_SIZE};
 use std::rc::Rc;
 
 pub type InstrTracer<'a> = dyn FnMut(u32, RvInstr) + 'a;
@@ -723,14 +723,13 @@ impl<TBus: Bus> Cpu<TBus> {
     fn handle_external_int(&mut self, irq: u8) -> StepAction {
         const REDIRECT_ENTRY_SIZE: u32 = 4;
         const MAX_IRQ: u32 = 32;
-        const DCCM_ORG: u32 = 0x5000_0000;
-        const DCCM_SIZE: u32 = 128 * 1024;
 
         let vec_table = self.ext_int_vec;
-        if vec_table < DCCM_ORG || vec_table + MAX_IRQ * REDIRECT_ENTRY_SIZE > DCCM_ORG + DCCM_SIZE
+        if vec_table < RAM_OFFSET
+            || vec_table + MAX_IRQ * REDIRECT_ENTRY_SIZE > RAM_OFFSET + RAM_SIZE
         {
-            const NON_DCCM_NMI: u32 = 0xF000_1002;
-            return self.handle_nmi(NON_DCCM_NMI, 0);
+            const NON_RAM_NMI: u32 = 0xF000_1002;
+            return self.handle_nmi(NON_RAM_NMI, 0);
         }
         let next_pc_ptr = vec_table + REDIRECT_ENTRY_SIZE * u32::from(irq);
         let Ok(next_pc) = self.read_bus(RvSize::Word, next_pc_ptr) else {

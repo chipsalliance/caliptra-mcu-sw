@@ -1,10 +1,9 @@
 // Licensed under the Apache-2.0 license
 
+use crate::mctp::base_protocol::valid_eid;
 use bitfield::bitfield;
 use kernel::ErrorCode;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
-
-use crate::mctp::base_protocol::valid_eid;
 
 pub const MCTP_CTRL_MSG_HEADER_LEN: usize = 3;
 
