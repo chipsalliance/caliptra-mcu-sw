@@ -92,7 +92,6 @@ impl<'a> MCTPRxState<'a> {
         mctp_hdr: &MCTPHeader<[u8; MCTP_HDR_SIZE]>,
         pkt_payload_len: usize,
     ) -> bool {
-        // println!("MCTPRxState - is_next_packet: ");
         self.msg_terminus
             .map(|msg_terminus| {
                 // Check if the received packet belongs to the current message

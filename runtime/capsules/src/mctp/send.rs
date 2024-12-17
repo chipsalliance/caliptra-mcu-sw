@@ -79,10 +79,6 @@ impl<'a, M: MCTPTransportBinding<'a>> MCTPSender<'a> for MCTPTxState<'a, M> {
         msg_tag: u8,
         msg_payload: SubSliceMut<'static, u8>,
     ) -> Result<(), SubSliceMut<'static, u8>> {
-        // println!(
-        //     "MCTPTxState - send_msg: dest_eid: {}, msg_type: {}, msg_tag: {}, msg_payload: {:?}",
-        //     dest_eid, msg_type, msg_tag, msg_payload
-        // );
         self.dest_eid.set(dest_eid);
         // Response message should not have the owner bit set
         if msg_tag & MCTP_TAG_OWNER == 0 {

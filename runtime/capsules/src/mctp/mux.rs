@@ -268,21 +268,12 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
         let mctp_hdr_offset = self.mctp_hdr_offset();
         let pkt_end_offset = self.get_mtu();
 
-        println!(
-            "MuxMCTPDriver: Sending next packet. mctp_hdr_offset: {:?} pkt_end_offset: {:?}",
-            mctp_hdr_offset, pkt_end_offset
-        );
-
         // set the window of the subslice for MCTP header and the payload
         tx_pkt.slice(mctp_hdr_offset..pkt_end_offset);
 
         match cur_sender.fill_next_packet(&mut tx_pkt, self.local_eid.get()) {
             Ok(len) => {
                 tx_pkt.reset();
-                // println!(
-                //     "MuxMCTPDriver: Sending packet of length {:?} bytes",
-                //     len + mctp_hdr_offset
-                // );
                 match self
                     .mctp_device
                     .transmit(tx_pkt.take(), len + mctp_hdr_offset)
@@ -344,10 +335,6 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             .iter()
             .find(|rx_state| rx_state.is_next_packet(&mctp_hdr, pkt_payload.len()));
 
-        println!(
-            "MuxMCTPDriver: Processing next packet. rx_state: {:?}",
-            rx_state.is_some()
-        );
         match rx_state {
             Some(rx_state) => {
                 rx_state.receive_next(mctp_hdr, pkt_payload);
@@ -417,7 +404,6 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M>
                         &rx_buffer[payload_offset..len],
                     );
                 }
-
                 _ => {
                     println!("MuxMCTPDriver: Unsupported message type. Dropping packet.");
                 }
