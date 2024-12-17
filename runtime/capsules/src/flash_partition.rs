@@ -9,12 +9,15 @@ use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::{ErrorCode, ProcessId};
 
+use romtime::println;
+use core::fmt::Write;
+
 /// Each partition is presented to userspace as a separate driver number.
 /// Below is the temporary driver number for each partition.
 pub const IMAGE_PAR_DRIVER_NUM: usize = 0x5000_0006;
 pub const STAGING_PAR_DRIVER_NUM: usize = 0x5000_0007;
 
-pub const BUF_LEN: usize = 512;
+pub const BUF_LEN: usize = 1024;
 
 /// IDs for subscribed upcalls.
 mod upcall {
@@ -44,7 +47,7 @@ mod rw_allow {
     pub const COUNT: u8 = 1;
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FlashStorageCommand {
     Read,
     Write,
@@ -122,6 +125,7 @@ impl<'a> FlashPartition<'a> {
         length: usize,
         processid: Option<ProcessId>,
     ) -> Result<(), ErrorCode> {
+        println!("[xs debug]SyscallDriver::enqueue_command command = {:?} offset = {:#X} length = {:#X} processid = {:?}", command, offset, length, processid);
         // Do bounds check. Userspace sees memory that starts at address 0 even if it
         // is offset in the physical memory.
         if offset >= self.length || length > self.length || offset + length > self.length {
@@ -213,25 +217,24 @@ impl<'a> FlashPartition<'a> {
         // Calculate where we want to actually read from in the physical
         // storage.
         let physical_address = offset + self.start_address;
+        match command {
+            FlashStorageCommand::Erase => {
+                self.driver.erase(physical_address, length)
+            }
+            FlashStorageCommand::Read | FlashStorageCommand::Write => {
+                self.buffer.take().map_or(Err(ErrorCode::RESERVE), |buffer| {
+                    // Check that the internal buffer and the buffer that was
+                    // allowed are long enough.
+                    let active_len = cmp::min(length, buffer.len());
 
-        self.buffer
-            .take()
-            .map_or(Err(ErrorCode::RESERVE), |buffer| {
-                // Check that the internal buffer and the buffer that was
-                // allowed are long enough.
-                let active_len = cmp::min(length, buffer.len());
-
-                // self.current_app.set(Some(processid));
-                match command {
-                    FlashStorageCommand::Read => {
+                    if command == FlashStorageCommand::Read {
                         self.driver.read(buffer, physical_address, active_len)
-                    }
-                    FlashStorageCommand::Write => {
+                    } else {
                         self.driver.write(buffer, physical_address, active_len)
                     }
-                    FlashStorageCommand::Erase => self.driver.erase(physical_address, active_len),
-                }
-            })
+                })
+            }
+        }
     }
 
     fn check_queue(&self) {
@@ -279,6 +282,7 @@ impl flash_driver::hil::FlashStorageClient for FlashPartition<'_> {
                 // Replace the buffer that is used to do this read.
                 self.buffer.replace(buffer);
 
+                println!("[xs debug]FlashPartition::read_done length = {:#X}, schedule upcall", length);
                 // And then signal the app.
                 kernel_data
                     .schedule_upcall(upcall::READ_DONE, (length, 0, 0))
@@ -295,7 +299,7 @@ impl flash_driver::hil::FlashStorageClient for FlashPartition<'_> {
             let _ = self.apps.enter(processid, move |_, kernel_data| {
                 // Replace the buffer that is used to do this write.
                 self.buffer.replace(buffer);
-
+                println!("[xs debug] FlashPartition::write_done length = {:#X}, schedule upcall", length);
                 // Signal the app.
                 kernel_data
                     .schedule_upcall(upcall::WRITE_DONE, (length, 0, 0))
@@ -310,6 +314,7 @@ impl flash_driver::hil::FlashStorageClient for FlashPartition<'_> {
         // Switch on which user of this capsule generated this callback.
         if let Some(processid) = self.current_app.take() {
             let _ = self.apps.enter(processid, move |_, kernel_data| {
+                println!("[xs debug]FlashPartition::erase_done length = {:#X}, schedule upacall", length);
                 // Signal the app.
                 kernel_data
                     .schedule_upcall(upcall::ERASE_DONE, (length, 0, 0))
