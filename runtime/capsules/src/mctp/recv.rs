@@ -23,7 +23,7 @@ pub struct MCTPRxState<'a> {
     /// Message assembly context
     msg_terminus: MapCell<MsgTerminus>,
     /// Expected message types
-    msg_types: Cell<&'static [MessageType]>,
+    msg_types: Cell<&'static [u8]>,
     /// Client (implements the MCTPRxClient trait)
     client: OptionalCell<&'a dyn MCTPRxClient>,
     /// Message buffer
@@ -51,7 +51,7 @@ struct MsgTerminus {
 impl<'a> MCTPRxState<'a> {
     pub fn new(
         rx_msg_buf: &'static mut [u8],
-        message_types: &'static [MessageType],
+        message_types: &'static [u8],
     ) -> MCTPRxState<'static> {
         MCTPRxState {
             msg_terminus: MapCell::empty(),
@@ -74,13 +74,7 @@ impl<'a> MCTPRxState<'a> {
     /// # Returns
     /// True if the message type is expected, false otherwise.
     pub fn is_receive_expected(&self, msg_type: MessageType) -> bool {
-        let msg_types = self.msg_types.get();
-        for exp_msg_type in msg_types.iter() {
-            if msg_type == *exp_msg_type {
-                return true;
-            }
-        }
-        false
+        self.msg_types.get().iter().any(|&t| t == msg_type as u8)
     }
 
     /// Checks from the received MCTP header if the next packet belongs to

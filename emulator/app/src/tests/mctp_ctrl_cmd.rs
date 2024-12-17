@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::i3c_socket::Test;
+use crate::i3c_socket::{TestState, TestTrait, receive_ibi, receive_private_read, send_private_write};
 use crate::tests::mctp_util::base_protocol::{
     MCTPHdr, MCTPMsgHdr, MCTP_HDR_SIZE, MCTP_MSG_HDR_SIZE,
 };
@@ -10,6 +10,10 @@ use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
 use zerocopy::IntoBytes;
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::net::TcpStream;
 
 const TEST_TARGET_EID: u8 = 0xA;
 
@@ -38,13 +42,13 @@ pub(crate) enum MCTPCtrlCmdTests {
 }
 
 impl MCTPCtrlCmdTests {
-    pub fn generate_tests() -> Vec<Test> {
+    pub fn generate_tests() -> Vec<Box<dyn TestTrait + Send>> {
         MCTPCtrlCmdTests::iter()
             .map(|test_id| {
                 let test_name = test_id.name();
                 let req_data = test_id.generate_request_packet();
                 let resp_data = test_id.generate_response_packet();
-                Test::new(test_name, req_data, resp_data)
+                Box::new(Test::new(test_name, req_data, resp_data)) as Box<dyn TestTrait + Send>
             })
             .collect()
     }
@@ -190,6 +194,78 @@ impl MCTPCtrlCmdTests {
             | MCTPCtrlCmdTests::SetEIDBroadcastFail
             | MCTPCtrlCmdTests::SetEIDInvalidFail => MCTPCtrlCmd::SetEID as u8,
             MCTPCtrlCmdTests::GetEID => MCTPCtrlCmd::GetEID as u8,
+        }
+    }
+}
+
+
+
+
+#[derive(Debug, Clone)]
+pub(crate) struct Test {
+    name: String,
+    state: TestState,
+    pvt_write_data: Vec<u8>,
+    pvt_read_data: Vec<u8>,
+    passed: bool,
+}
+
+impl Test {
+    pub(crate) fn new(name: &str, pvt_write_data: Vec<u8>, pvt_read_data: Vec<u8>) -> Self {
+        Self {
+            name: name.to_string(),
+            state: TestState::Start,
+            pvt_write_data,
+            pvt_read_data,
+            passed: false,
+        }
+    }
+
+    fn check_response(&mut self, data: &[u8]) {
+        if data.len() == self.pvt_read_data.len() && data == self.pvt_read_data {
+            self.passed = true;
+        }
+    }
+}
+
+impl TestTrait for Test {
+    fn is_passed(&self) -> bool {
+        self.passed
+    }
+
+    fn run_test(&mut self, running: Arc<AtomicBool>, stream: &mut TcpStream, target_addr: u8) {
+        stream.set_nonblocking(true).unwrap();
+        while running.load(Ordering::Relaxed) {
+            match self.state {
+                TestState::Start => {
+                    println!("Starting test: {}", self.name);
+                    self.state = TestState::SendPrivateWrite;
+                }
+                TestState::SendPrivateWrite => {
+                    if send_private_write(stream, target_addr, self.pvt_write_data.clone()) {
+                        self.state = TestState::WaitForIbi;
+                    }
+                }
+                TestState::WaitForIbi => {
+                    if receive_ibi(stream, target_addr) {
+                        self.state = TestState::ReceivePrivateRead;
+                    }
+                }
+                TestState::ReceivePrivateRead => {
+                    if let Some(data) = receive_private_read(stream, target_addr) {
+                        self.check_response(data.as_slice());
+                        self.state = TestState::Finish;
+                    }
+                }
+                TestState::Finish => {
+                    println!(
+                        "Test {} : {}",
+                        self.name,
+                        if self.passed { "PASSED" } else { "FAILED" }
+                    );
+                    break;
+                }
+            }
         }
     }
 }

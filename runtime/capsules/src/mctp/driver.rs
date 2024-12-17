@@ -109,7 +109,7 @@ pub struct MCTPDriver<'a> {
         AllowRwCount<{ rw_allow::COUNT }>,
     >,
     current_app: Cell<Option<ProcessId>>,
-    msg_types: &'static [MessageType],
+    msg_types: &'static [u8],
     max_msg_size: usize,
     kernel_msg_buf: MapCell<SubSliceMut<'static, u8>>,
 }
@@ -123,7 +123,7 @@ impl<'a> MCTPDriver<'a> {
             AllowRoCount<{ ro_allow::COUNT }>,
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
-        msg_types: &'static [MessageType],
+        msg_types: &'static [u8],
         max_msg_size: usize,
         msg_buf: SubSliceMut<'static, u8>,
     ) -> MCTPDriver<'a> {
@@ -138,12 +138,7 @@ impl<'a> MCTPDriver<'a> {
     }
 
     fn supported_msg_type(&self, msg_type: u8) -> bool {
-        for mtype in self.msg_types.iter() {
-            if msg_type == *mtype as u8 {
-                return true;
-            }
-        }
-        false
+        self.msg_types.iter().any(|&t| t == msg_type)
     }
 
     fn validate_args(

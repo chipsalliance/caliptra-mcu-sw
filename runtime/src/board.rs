@@ -231,10 +231,10 @@ pub unsafe fn main() {
         .finalize(crate::mctp_mux_component_static!(MCTPI3CBinding));
 
     let mctp_spdm_msg_types = static_init!(
-        [capsules_runtime::mctp::base_protocol::MessageType; 2],
+        [u8; 2],
         [
-            capsules_runtime::mctp::base_protocol::MessageType::Spdm,
-            capsules_runtime::mctp::base_protocol::MessageType::SecureSPDM,
+            capsules_runtime::mctp::base_protocol::MessageType::Spdm as u8,
+            capsules_runtime::mctp::base_protocol::MessageType::SecureSPDM as u8,
         ]
     );
     let mctp_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
@@ -246,8 +246,8 @@ pub unsafe fn main() {
     .finalize(crate::mctp_driver_component_static!());
 
     let mctp_pldm_msg_types = static_init!(
-        [capsules_runtime::mctp::base_protocol::MessageType; 1],
-        [capsules_runtime::mctp::base_protocol::MessageType::Pldm]
+        [u8; 1],
+        [capsules_runtime::mctp::base_protocol::MessageType::Pldm as u8]
     );
     let mctp_pldm = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
@@ -258,8 +258,8 @@ pub unsafe fn main() {
     .finalize(crate::mctp_driver_component_static!());
 
     let mctp_vendor_def_pci_msg_types = static_init!(
-        [capsules_runtime::mctp::base_protocol::MessageType; 1],
-        [capsules_runtime::mctp::base_protocol::MessageType::VendorDefinedPCI]
+        [u8; 1],
+        [capsules_runtime::mctp::base_protocol::MessageType::VendorDefinedPCI as u8]
     );
     let mctp_vendor_def_pci = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
@@ -365,11 +365,10 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-flash-ctrl-erase-page") {
         debug!("Executing test-flash-ctrl-erase-page");
         crate::tests::flash_ctrl_test::test_flash_ctrl_erase_page()
-    } else if cfg!(feature = "test-mctp-mux") {
-        debug!("Executing test-mctp-mux");
-        crate::tests::mctp_mux::test_mctp_mux()
-    } 
-    else {
+    } else if cfg!(feature = "test-mctp-send-loopback") {
+        debug!("Executing test-mctp-send-loopback");
+        crate::tests::mctp_test::test_mctp_send_loopback(mctp_mux)
+    } else {
         None
     };
     if let Some(exit) = exit {

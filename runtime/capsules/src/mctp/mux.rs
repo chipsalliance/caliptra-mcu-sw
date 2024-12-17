@@ -59,6 +59,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
     }
 
     pub fn add_sender(&self, sender: &'a MCTPTxState<'a, M>) {
+        println!("MuxMCTPDriver: Adding sender");
         let list_empty = self.sender_list.head().is_none();
 
         self.sender_list.push_tail(sender);
@@ -270,12 +271,25 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
         let mctp_hdr_offset = self.mctp_hdr_offset();
         let pkt_end_offset = self.get_mtu();
 
+        println!(
+            "MuxMCTPDriver: Sending next packet. mctp_hdr_offset: {:?} pkt_end_offset: {:?}",
+            mctp_hdr_offset, pkt_end_offset
+        );
+
         // set the window of the subslice for MCTP header and the payload
         tx_pkt.slice(mctp_hdr_offset..pkt_end_offset);
+        println!(
+            "MuxMCTPDriver: Going to fill the packet tx_pkt.len(): {:?}",
+            tx_pkt.len()
+        );
 
         match cur_sender.fill_next_packet(&mut tx_pkt, self.local_eid.get()) {
             Ok(len) => {
                 tx_pkt.reset();
+                println!(
+                    "MuxMCTPDriver: Sending packet of length {:?} bytes",
+                    len + mctp_hdr_offset
+                );
                 match self
                     .mctp_device
                     .transmit(tx_pkt.take(), len + mctp_hdr_offset)
