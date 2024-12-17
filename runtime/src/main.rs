@@ -23,6 +23,8 @@ pub mod io;
 #[cfg(target_arch = "riscv32")]
 mod pic;
 #[cfg(target_arch = "riscv32")]
+mod pmp;
+#[cfg(target_arch = "riscv32")]
 #[allow(unused_imports)]
 mod tests;
 #[cfg(target_arch = "riscv32")]
