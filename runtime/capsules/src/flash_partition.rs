@@ -213,25 +213,24 @@ impl<'a> FlashPartition<'a> {
         // Calculate where we want to actually read from in the physical
         // storage.
         let physical_address = offset + self.start_address;
+        match command {
+            FlashStorageCommand::Erase => {
+                self.driver.erase(physical_address, length)
+            }
+            FlashStorageCommand::Read | FlashStorageCommand::Write => {
+                self.buffer.take().map_or(Err(ErrorCode::RESERVE), |buffer| {
+                    // Check that the internal buffer and the buffer that was
+                    // allowed are long enough.
+                    let active_len = cmp::min(length, buffer.len());
 
-        self.buffer
-            .take()
-            .map_or(Err(ErrorCode::RESERVE), |buffer| {
-                // Check that the internal buffer and the buffer that was
-                // allowed are long enough.
-                let active_len = cmp::min(length, buffer.len());
-
-                // self.current_app.set(Some(processid));
-                match command {
-                    FlashStorageCommand::Read => {
+                    if command == FlashStorageCommand::Read {
                         self.driver.read(buffer, physical_address, active_len)
-                    }
-                    FlashStorageCommand::Write => {
+                    } else {
                         self.driver.write(buffer, physical_address, active_len)
                     }
-                    FlashStorageCommand::Erase => self.driver.erase(physical_address, active_len),
-                }
-            })
+                })
+            }
+        }
     }
 
     fn check_queue(&self) {
