@@ -21,9 +21,6 @@ use registers_generated::i3c::I3C_CSR_ADDR;
 use tock_registers::register_bitfields;
 use tock_registers::LocalRegisterCopy;
 
-use core::fmt::Write;
-use romtime::println;
-
 pub const I3C_BASE: StaticRef<I3c> = unsafe { StaticRef::new(I3C_CSR_ADDR as *const I3c) };
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
 pub const MAX_READ_WRITE_SIZE: usize = 250;
@@ -371,7 +368,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
 
     // called when TTI wants us to send data for a private Read
     pub fn handle_outgoing_read(&self) {
-        println!("I3C_CORE: Handling outgoing read");
         self.retry_outgoing_read.set(false);
 
         if self.tx_buffer.is_none() {
@@ -457,13 +453,11 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         len: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
         if self.tx_buffer.is_some() {
-            println!("I3C_CORE: Transmitting read failed, busy");
             return Err((ErrorCode::BUSY, tx_buf));
         }
         self.tx_buffer.replace(tx_buf);
         self.tx_buffer_idx.set(0);
         self.tx_buffer_size.set(len);
-        println!("I3C_CORE: Transmitting read");
         // TODO: check that this is for MCTP or something else
         self.send_ibi(MDB_PENDING_READ_MCTP);
         Ok(())

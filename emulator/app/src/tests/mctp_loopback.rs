@@ -73,6 +73,8 @@ impl TestTrait for Test {
                         } else {
                             self.state = TestState::Finish;
                         }
+                    } else {
+                        self.state = TestState::WaitForIbi;
                     }
                 }
                 TestState::WaitForIbi => {

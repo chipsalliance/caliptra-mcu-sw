@@ -203,9 +203,6 @@ impl I3cController {
                         resp: I3cTcriResponseXfer::default(), // empty descriptor for the IBI
                     }
                 }));
-                // if v.len() > 0 {
-                //     println!("tcri_receive_all: {:?}", v);
-                // }
                 v
             })
             .collect()

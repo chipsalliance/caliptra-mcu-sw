@@ -35,12 +35,15 @@ impl<'a> TestMctp<'a> {
 }
 
 impl<'a> TestClient for TestMctp<'a> {
-    fn test_result(&self, passed: bool) {
+    fn test_result(&self, passed: bool, npassed: usize, ntotal: usize) {
+        println!("MCTP test result: {}/{} passed", npassed, ntotal);
+        println!(
+            "MCTP test result: {}",
+            if passed { "PASSED" } else { "FAILED" }
+        );
         if passed {
-            println!("MCTP test passed");
             crate::io::exit_emulator(0);
         } else {
-            println!("MCTP test failed");
             crate::io::exit_emulator(1);
         }
     }

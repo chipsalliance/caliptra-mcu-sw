@@ -146,7 +146,6 @@ fn handle_i3c_socket_connection(
             Err(e) => panic!("Error reading message from socket: {}", e),
         }
         if let Ok(response) = bus_response_rx.recv_timeout(Duration::from_millis(10)) {
-            // println!("Received response from bus: {:?}", response);
             let data_len = response.resp.resp.data_length() as usize;
             if data_len > 255 {
                 panic!("Cannot write more than 255 bytes to socket");
@@ -158,10 +157,8 @@ fn handle_i3c_socket_connection(
             };
             let header_bytes: [u8; 6] = transmute!(outgoing_header);
             stream.write_all(&header_bytes).unwrap();
-            // println!("i3c_socket: Written {} bytes to stream", 6);
             if data_len > 0 {
                 stream.write_all(&response.resp.data[..data_len]).unwrap();
-                // println!("i3c_socket: Written {} ", data_len);
             }
         }
     }
@@ -237,7 +234,6 @@ impl TestRunner {
 }
 
 pub fn send_private_write(stream: &mut TcpStream, target_addr: u8, data: Vec<u8>) -> bool {
-    // println!("Sending private write to target: {}", target_addr);
     let addr: u8 = target_addr;
 
     let pec = calculate_crc8(addr << 1, data.as_slice());
@@ -255,16 +251,11 @@ pub fn send_private_write(stream: &mut TcpStream, target_addr: u8, data: Vec<u8>
 }
 
 pub fn receive_ibi(stream: &mut TcpStream, target_addr: u8) -> bool {
-    // println!("Waiting for IBI from target: {}", target_addr);
     let mut out_header_bytes: [u8; 6] = [0u8; 6];
     match stream.read_exact(&mut out_header_bytes) {
         Ok(()) => {
             let outdata: OutgoingHeader = transmute!(out_header_bytes);
             if outdata.ibi != 0 && outdata.from_addr == target_addr {
-                println!(
-                    "Received IBI from target: {}. Read {} bytes from stream",
-                    target_addr, 6
-                );
                 let pvt_read_cmd = prepare_private_read_cmd(target_addr);
                 stream.set_nonblocking(false).unwrap();
                 stream.write_all(&pvt_read_cmd).unwrap();
@@ -279,7 +270,6 @@ pub fn receive_ibi(stream: &mut TcpStream, target_addr: u8) -> bool {
 }
 
 pub fn receive_private_read(stream: &mut TcpStream, target_addr: u8) -> Option<Vec<u8>> {
-    // println!("Receiving private read from target: {}", target_addr);
     let mut out_header_bytes = [0u8; 6];
     match stream.read_exact(&mut out_header_bytes) {
         Ok(()) => {
@@ -290,15 +280,12 @@ pub fn receive_private_read(stream: &mut TcpStream, target_addr: u8) -> Option<V
             let resp_desc = outdata.response_descriptor;
             let data_len = resp_desc.data_length() as usize;
             let mut data = vec![0u8; data_len];
-            println!("Private Read {} bytes from stream", 6);
 
             stream.set_nonblocking(false).unwrap();
             stream
                 .read_exact(&mut data)
                 .expect("Failed to read message from socket");
             stream.set_nonblocking(true).unwrap();
-
-            println!("Private Read {} bytes from stream", data.len());
 
             let pec = calculate_crc8((target_addr << 1) | 1, &data[..data.len() - 1]);
             if pec != data[data.len() - 1] {

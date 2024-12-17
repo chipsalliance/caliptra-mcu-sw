@@ -377,9 +377,7 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M>
             return;
         }
 
-        // println!("MuxMCTPDriver: Received packet of {:X?}", rx_buffer);
         let (mctp_header, msg_type, payload_offset) = self.interpret_packet(&rx_buffer[0..len]);
-        println!("MuxMCTPDriver: Received packet. msg_type: {:?}", msg_type);
         if let Some(msg_type) = msg_type {
             match msg_type {
                 MessageType::MctpControl => {
