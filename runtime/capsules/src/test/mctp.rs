@@ -3,15 +3,12 @@
 use crate::mctp::base_protocol::{MessageType, MCTP_TAG_MASK, MCTP_TAG_OWNER, MCTP_TEST_MSG_TYPE};
 use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
-use crate::test;
-
 use core::cell::Cell;
 use core::fmt::Write;
-use romtime::println;
-
 use kernel::utilities::cells::{MapCell, OptionalCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
+use romtime::println;
 
 pub const MCTP_TEST_REMOTE_EID: u8 = 0x20;
 pub const MCTP_TEST_MSG_SIZE: usize = 1000;
@@ -28,7 +25,7 @@ pub struct MockMctp<'a> {
     msg_type: MessageType,
     msg_tag: Cell<u8>,
     test_client: OptionalCell<&'a dyn TestClient>,
-    cur_idx : Cell<usize>,
+    cur_idx: Cell<usize>,
 }
 
 impl<'a> MockMctp<'a> {
@@ -89,7 +86,7 @@ impl<'a> MCTPRxClient for MockMctp<'a> {
             || msg_len != TEST_MSG_LEN_ARR[self.cur_idx.get()]
         {
             self.test_client.map(|client| {
-               client.test_result(false, self.cur_idx.get() + 1, TEST_MSG_LEN_ARR.len());
+                client.test_result(false, self.cur_idx.get() + 1, TEST_MSG_LEN_ARR.len());
             });
         }
 
@@ -100,8 +97,11 @@ impl<'a> MCTPRxClient for MockMctp<'a> {
                 });
             }
         });
-        
-        println!("Completed loopback test for message length: {}", TEST_MSG_LEN_ARR[self.cur_idx.get()]);
+
+        println!(
+            "Completed loopback test for message length: {}",
+            TEST_MSG_LEN_ARR[self.cur_idx.get()]
+        );
 
         if self.cur_idx.get() == TEST_MSG_LEN_ARR.len() - 1 {
             self.test_client.map(|client| {
@@ -137,6 +137,9 @@ impl<'a> MCTPTxClient for MockMctp<'a> {
         self.msg_tag.set(msg_tag & MCTP_TAG_MASK);
         msg_payload.reset();
         self.mctp_msg_buf.replace(msg_payload);
-        println!("Message sent of length : {}", TEST_MSG_LEN_ARR[self.cur_idx.get()]);
+        println!(
+            "Message sent of length : {}",
+            TEST_MSG_LEN_ARR[self.cur_idx.get()]
+        );
     }
 }
