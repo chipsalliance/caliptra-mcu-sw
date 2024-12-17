@@ -11,8 +11,8 @@ use kernel::{ErrorCode, ProcessId};
 
 /// Each partition is presented to userspace as a separate driver number.
 /// Below is the temporary driver number for each partition.
-pub const IMAGE_PAR_DRIVER_NUM: usize = 0x5006;
-pub const STAGING_PAR_DRIVER_NUM: usize = 0x5007;
+pub const IMAGE_PAR_DRIVER_NUM: usize = 0x5000_0006;
+pub const STAGING_PAR_DRIVER_NUM: usize = 0x5000_0007;
 
 pub const BUF_LEN: usize = 512;
 

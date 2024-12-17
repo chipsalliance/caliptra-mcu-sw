@@ -1116,6 +1116,7 @@ dependencies = [
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
+ "flash_api",
  "libtock",
  "libtock_alarm",
  "libtock_console",
@@ -1164,6 +1165,16 @@ dependencies = [
  "registers-generated",
  "romtime",
  "tock-registers",
+]
+
+[[package]]
+name = "flash_api"
+version = "0.1.0"
+dependencies = [
+ "libtock",
+ "libtock_platform",
+ "libtock_unittest",
+ "libtockasync",
 ]
 
 [[package]]

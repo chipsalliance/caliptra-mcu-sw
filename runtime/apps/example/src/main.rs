@@ -12,6 +12,9 @@ use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
+// XS added to sanity test the exist of flash partition driver
+use flash_api::AsyncSpiFlash;
+
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
@@ -75,6 +78,31 @@ pub(crate) async fn async_main<S: Syscalls>() {
         writeln!(console_writer, "async sleeper woke").unwrap();
     }
     writeln!(console_writer, "app finished").unwrap();
+
+    // Sanity test the exist of flash partition driver'
+    match AsyncSpiFlash::<S>::exists() {
+        Ok(()) => {
+            writeln!(console_writer, "[xs debug] Flash partition driver exists").unwrap();
+        }
+        Err(e) => {
+            writeln!(
+                console_writer,
+                "[xs debug] Flash partition driver does not exist: {:?}",
+                e
+            )
+            .unwrap();
+            return;
+        }
+    }
+
+    // Get the capacity of the flash partition
+    let capacity = AsyncSpiFlash::<S>::get_capacity().unwrap();
+    writeln!(
+        console_writer,
+        "[xs debug] Flash partition capacity: {:#X?}",
+        capacity
+    )
+    .unwrap();
 }
 
 // -----------------------------------------------------------------------------

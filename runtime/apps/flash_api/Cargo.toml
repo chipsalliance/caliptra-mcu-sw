@@ -1,0 +1,13 @@
+[package]
+name = "flash_api"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+libtock = { path = "../libtock" }
+libtock_platform = { path = "../libtock/platform" }
+libtockasync = { path = "../libtockasync" }
+
+[dev-dependencies]
+libtock_unittest = { path = "../libtock/unittest" }
