@@ -48,7 +48,7 @@ pub trait Mailbox {
     /// Check the status of the mailbox after a command execution.
     ///
     /// Returns:
-    /// - `Ok(status_code)` where `status_code` represents the current mailbox status.
+    /// - `Ok(MailboxStatus)` where `MailboxStatus` represents the current mailbox status.
     /// - `Err(ErrorCode)` if there was an issue checking the status.
     fn check_status(&self) -> Result<MailboxStatus, ErrorCode>;
 
