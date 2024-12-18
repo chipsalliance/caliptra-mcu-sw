@@ -35,7 +35,7 @@ copy_bss:
     addi t0, t0, 4
     j copy_bss
 end_copy_bss:
-    
+
     # Copy data
     la t0, ROM_DATA_START
     la t1, DATA_START
@@ -48,13 +48,13 @@ copy_data:
     addi t1, t1, 4
     j copy_data
 end_copy_data:
-    
+
     # call main entry point
     call main
-    
+
     # exit the emulator
     la t0, EMU_CTRL_EXIT
     sw zero, 0(t0)
 
 .section .data
-.equ  EMU_CTRL_EXIT, 0x2000F000
+.equ  EMU_CTRL_EXIT, 0x10002000
