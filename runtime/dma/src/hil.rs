@@ -6,7 +6,7 @@ use kernel::ErrorCode;
 /// This trait provides the interfaces for managing DMA transfers.
 /// The full description of the DMA interface can be found in the Caliptra Subsystem Specification:
 /// https://github.com/chipsalliance/caliptra-ss/blob/main/docs/Caliptra%202.0%20Subsystem%20Specification%201.pdf
-pub trait DMA {
+pub trait dma {
     /// Configure the DMA transfer with 64-bit source and destination addresses.
     ///
     /// # Arguments:
