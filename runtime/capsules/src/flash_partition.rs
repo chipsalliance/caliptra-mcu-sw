@@ -210,21 +210,21 @@ impl<'a> FlashPartition<'a> {
         // storage.
         let physical_address = offset + self.start_address;
         match command {
-            FlashStorageCommand::Erase => {
-                self.driver.erase(physical_address, length)
-            }
+            FlashStorageCommand::Erase => self.driver.erase(physical_address, length),
             FlashStorageCommand::Read | FlashStorageCommand::Write => {
-                self.buffer.take().map_or(Err(ErrorCode::RESERVE), |buffer| {
-                    // Check that the internal buffer and the buffer that was
-                    // allowed are long enough.
-                    let active_len = cmp::min(length, buffer.len());
+                self.buffer
+                    .take()
+                    .map_or(Err(ErrorCode::RESERVE), |buffer| {
+                        // Check that the internal buffer and the buffer that was
+                        // allowed are long enough.
+                        let active_len = cmp::min(length, buffer.len());
 
-                    if command == FlashStorageCommand::Read {
-                        self.driver.read(buffer, physical_address, active_len)
-                    } else {
-                        self.driver.write(buffer, physical_address, active_len)
-                    }
-                })
+                        if command == FlashStorageCommand::Read {
+                            self.driver.read(buffer, physical_address, active_len)
+                        } else {
+                            self.driver.write(buffer, physical_address, active_len)
+                        }
+                    })
             }
         }
     }

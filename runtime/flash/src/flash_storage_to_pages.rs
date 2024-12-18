@@ -53,6 +53,8 @@ pub struct FlashStorageToPages<'a, F: hil::flash::Flash + 'static> {
     remaining_length: Cell<usize>,
     /// Position in the user buffer.
     buffer_index: Cell<usize>,
+    /// Flag to indicate if the erase operation is done and write back is pending.
+    partial_erase_wb_pending: Cell<bool>,
 }
 
 impl<'a, F: hil::flash::Flash> FlashStorageToPages<'a, F> {
@@ -67,6 +69,7 @@ impl<'a, F: hil::flash::Flash> FlashStorageToPages<'a, F> {
             length: Cell::new(0),
             remaining_length: Cell::new(0),
             buffer_index: Cell::new(0),
+            partial_erase_wb_pending: Cell::new(false),
         }
     }
 }
@@ -276,24 +279,16 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
 
             State::Erase => {
                 // A read was done because the operation is not page aligned on either or both ends.
+                // Perform erase after read.
                 let page_size = page_buffer.as_mut().len();
-                // This will get the offset into the page.
-                let page_index = self.address.get() % page_size;
-                // Length is either the rest of the page or how much is left.
-                let len = cmp::min(page_size - page_index, self.remaining_length.get());
-                // Which page was read and which is going to be written back to.
+                // Which page was read and which is going to be erased
                 let page_number = self.address.get() / page_size;
 
-                self.remaining_length.subtract(len);
-                self.address.add(len);
+                self.page_buffer.replace(page_buffer);
 
-                // Fill the rest of the page buffer with 0xFF.
-                page_buffer.as_mut()[page_index..(len + page_index)].fill(0xFF);
-
-                // Perform the write.
-                if let Err((_, page_buffer)) = self.driver.write_page(page_number, page_buffer) {
-                    self.page_buffer.replace(page_buffer);
-                }
+                // set a flag write_back pending
+                self.partial_erase_wb_pending.set(true);
+                let _ = self.driver.erase_page(page_number);
             }
             _ => {}
         }
@@ -401,6 +396,26 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                 self.page_buffer.replace(page_buffer);
 
                 let _ = self.driver.erase_page(page_number);
+            } else if self.partial_erase_wb_pending.get() {
+                // Write back the page
+                let page_index = self.address.get() % page_size;
+                // Length is either the rest of the page or how much is left.
+                let len = cmp::min(page_size - page_index, self.remaining_length.get());
+                // Which page was read and which is going to be written back to.
+                let page_number = self.address.get() / page_size;
+
+                self.remaining_length.subtract(len);
+                self.address.add(len);
+
+                // Fill the rest of the page buffer with 0xFF.
+                page_buffer.as_mut()[page_index..(len + page_index)].fill(0xFF);
+
+                // Perform the write.
+                if let Err((_, page_buffer)) = self.driver.write_page(page_number, page_buffer) {
+                    self.page_buffer.replace(page_buffer);
+                }
+
+                self.partial_erase_wb_pending.set(false);
             } else {
                 // Erase a partial page. Do read first.
                 if let Err((_, page_buffer)) = self
