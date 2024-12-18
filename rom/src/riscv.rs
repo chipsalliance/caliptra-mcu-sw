@@ -24,21 +24,12 @@ fn exit_rom() -> ! {
     unsafe {
         core::arch::asm! {
                 "// Clear the stack
-            la a0, STACK_START         // dest
+            la a0, STACK_ORIGIN      // dest
             la a1, STACK_SIZE        // len
-
-            li a2, 0
             add a1, a1, a0
         1:
-            sw a2, 0(a0)
-            sw a2, 4(a0)
-            sw a2, 8(a0)
-            sw a2, 12(a0)
-            sw a2, 16(a0)
-            sw a2, 20(a0)
-            sw a2, 24(a0)
-            sw a2, 28(a0)
-            addi a0, a0, 32
+            sw zero, 0(a0)
+            addi a0, a0, 4
             bltu a0, a1, 1b
 
 

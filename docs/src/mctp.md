@@ -283,7 +283,7 @@ struct OperationCtx {
 
 #[derive(default)]
 pub struct App {
-    pending_op_ctx: OperationCtx,
+    pending_rx: OperationCtx,
     bound_msg_type : u8,
 }
 
@@ -306,7 +306,7 @@ pub trait MCTPSender {
     fn set_client(&self, client: &dyn MCTPTxClient);
 
     /// Sends the message to the MCTP kernel stack.
-    fn send_msg(&self, dest_eid: u8, msg_tag: u8, msg_payload: SubSliceMut<'static, u8>);
+    fn send_msg(&self, dest_eid: u8, msg_tag: u8, msg_payload: SubSliceMut<'static, u8>) -> Result<(), SubSliceMut<'static, u8>>;
 }
 
 /// This is the trait implemented by VirtualMCTPDriver instance to get notified after

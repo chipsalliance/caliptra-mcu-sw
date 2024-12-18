@@ -2978,6 +2978,7 @@ dependencies = [
  "clap 4.5.23",
  "crc32fast",
  "elf 0.7.4",
+ "emulator-types",
  "proc-macro2",
  "quote",
  "registers-generator",

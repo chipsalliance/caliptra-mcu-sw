@@ -173,39 +173,6 @@ SECTIONS
         /* End constructor/destructor */
     } > rom
 
-
-    /* ARM Exception support
-     *
-     * This contains compiler-generated support for unwinding the stack,
-     * consisting of key-value pairs of function addresses and information on
-     * how to unwind stack frames.
-     * https://wiki.linaro.org/KenWerner/Sandbox/libunwind?action=AttachFile&do=get&target=libunwind-LDS.pdf
-     *
-     * .ARM.exidx is sorted, so has to go in its own output section.
-     */
-    PROVIDE_HIDDEN (__exidx_start = .);
-    .ARM.exidx :
-    {
-      /* (C++) Index entries for section unwinding */
-      *(.ARM.exidx* .gnu.linkonce.armexidx.*)
-    } > rom
-    PROVIDE_HIDDEN (__exidx_end = .);
-
-    /* Region for on-chip kernel non-volatile storage.
-     *
-     * Align on PAGE_SIZE number of bytes. Volumes within this region are
-     * allocated with the storage_volume! macro in utils.rs.
-     */
-    .storage :
-    {
-      . = ALIGN(PAGE_SIZE);
-      _sstorage = .;
-      *(.storage* storage*)
-      _estorage = .;
-      . = ALIGN(PAGE_SIZE);
-    } > rom
-    . = ALIGN(PAGE_SIZE);
-
     /* Mark the end of static elements */
     . = ALIGN(4);
     _erodata = .;
@@ -238,11 +205,6 @@ SECTIONS
     } > prog
     /* _eapps symbol used by tock to calculate the length of app flash */
     _eapps = _sapps + LENGTH(prog);
-
-
-
-
-
 
 
     /* Kernel data that must be relocated. This is program data that is
@@ -287,6 +249,11 @@ SECTIONS
 
     .sram (NOLOAD) :
     {
+        /* Reserve space for the PIC vector table */
+        . = ALIGN(1024); /* Must be aligned to 1 KB boundary */
+        _pic_vector_table = .;
+        . = . + 32 * 4;
+
         /* Kernel BSS section. Memory that is expected to be initialized to
          * zero.
          *

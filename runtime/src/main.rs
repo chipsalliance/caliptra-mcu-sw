@@ -19,10 +19,6 @@ mod chip;
 #[cfg(target_arch = "riscv32")]
 mod components;
 #[cfg(target_arch = "riscv32")]
-mod flash_ctrl_test;
-#[cfg(target_arch = "riscv32")]
-mod flash_storage_test;
-#[cfg(target_arch = "riscv32")]
 pub mod io;
 #[cfg(target_arch = "riscv32")]
 mod pic;

@@ -125,6 +125,8 @@ opt-level = 3
 [profile.test.package.tock-registers]
 opt-level = 3
 
-# Keep debug symbols in the release ELF so that we can debug more easily.
 [profile.release]
-debug = true
+debug = true      # Keep debug symbols in the release ELF so that we can debug more easily.
+lto = true
+opt-level = "s"
+codegen-units = 1

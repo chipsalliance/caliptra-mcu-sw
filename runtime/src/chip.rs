@@ -101,6 +101,10 @@ impl<'a, I: InterruptService + 'a> VeeR<'a, I> {
         }
     }
 
+    pub fn init(&self) {
+        self.pic.init();
+    }
+
     pub fn enable_pic_interrupts(&self) {
         self.pic.enable_all();
     }
