@@ -145,7 +145,7 @@ pub struct OutputPin<'a, S: Syscalls> {
     pin: &'a Pin<S>,
 }
 
-impl<'a, S: Syscalls> OutputPin<'a, S> {
+impl<S: Syscalls> OutputPin<'_, S> {
     pub fn toggle(&mut self) -> Result<(), ErrorCode> {
         Gpio::<S>::toggle(self.pin.pin_number)
     }
@@ -162,7 +162,7 @@ pub struct InputPin<'a, S: Syscalls, P: Pull> {
     _pull: PhantomData<P>,
 }
 
-impl<'a, S: Syscalls, P: Pull> InputPin<'a, S, P> {
+impl<S: Syscalls, P: Pull> InputPin<'_, S, P> {
     pub fn read(&self) -> Result<GpioState, ErrorCode> {
         Gpio::<S>::read(self.pin.pin_number)
     }

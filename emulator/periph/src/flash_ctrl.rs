@@ -524,8 +524,8 @@ mod test {
 
     // Dummy DMA RAM
     fn test_helper_setup_dummy_dma_ram() -> Rc<RefCell<Ram>> {
-        let ram = Rc::new(RefCell::new(Ram::new(vec![0u8; RAM_SIZE as usize])));
-        ram
+        
+        Rc::new(RefCell::new(Ram::new(vec![0u8; RAM_SIZE as usize])))
     }
 
     fn test_helper_setup_autobus(
@@ -566,7 +566,7 @@ mod test {
         data: Option<&[u8]>,
     ) -> Option<u32> {
         // Check if ref_addr is within the range of DCCM
-        if ref_addr < RAM_OFFSET || ref_addr + size as u32 > RAM_OFFSET + RAM_SIZE as u32 {
+        if ref_addr < RAM_OFFSET || ref_addr + size as u32 > RAM_OFFSET + RAM_SIZE {
             return None;
         }
 

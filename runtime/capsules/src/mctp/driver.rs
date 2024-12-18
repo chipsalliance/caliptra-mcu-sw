@@ -239,7 +239,7 @@ impl<'a> MCTPDriver<'a> {
     }
 }
 
-impl<'a> SyscallDriver for MCTPDriver<'a> {
+impl SyscallDriver for MCTPDriver<'_> {
     /// MCTP Capsule command
     ///
     /// ### `command_num`
@@ -328,7 +328,7 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
     }
 }
 
-impl<'a> MCTPTxClient for MCTPDriver<'a> {
+impl MCTPTxClient for MCTPDriver<'_> {
     fn send_done(
         &self,
         dest_eid: u8,
@@ -363,7 +363,7 @@ impl<'a> MCTPTxClient for MCTPDriver<'a> {
     }
 }
 
-impl<'a> MCTPRxClient for MCTPDriver<'a> {
+impl MCTPRxClient for MCTPDriver<'_> {
     fn receive(&self, src_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8], msg_len: usize) {
         self.apps.each(|_, app, kernel_data| {
             if let Some(op_ctx) = app.pending_rx.as_mut() {

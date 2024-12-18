@@ -73,7 +73,7 @@ impl<'a> MockMctp<'a> {
     }
 }
 
-impl<'a> MCTPRxClient for MockMctp<'a> {
+impl MCTPRxClient for MockMctp<'_> {
     fn receive(&self, src_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8], msg_len: usize) {
         println!(
             "Received message from EID: {} with message type: {} and message tag: {} msg_len: {}",
@@ -122,7 +122,7 @@ impl<'a> MCTPRxClient for MockMctp<'a> {
     }
 }
 
-impl<'a> MCTPTxClient for MockMctp<'a> {
+impl MCTPTxClient for MockMctp<'_> {
     fn send_done(
         &self,
         dest_eid: u8,

@@ -122,8 +122,8 @@ impl<'buf, const N: usize, S: Syscalls, C: Config> RxSingleBufferOperator<'buf, 
         }
     }
 }
-impl<'buf, const N: usize, S: Syscalls, C: Config> RxOperator
-    for RxSingleBufferOperator<'buf, N, S, C>
+impl<const N: usize, S: Syscalls, C: Config> RxOperator
+    for RxSingleBufferOperator<'_, N, S, C>
 {
     fn receive_frame(&mut self) -> Result<&mut Frame, ErrorCode> {
         if self.buf.has_frame() {
