@@ -11,8 +11,8 @@ use kernel::{ErrorCode, ProcessId};
 
 /// Each partition is presented to userspace as a separate driver number.
 /// Below is the temporary driver number for each partition.
-pub const IMAGE_PAR_DRIVER_NUM: usize = 0x5006;
-pub const STAGING_PAR_DRIVER_NUM: usize = 0x5007;
+pub const IMAGE_PAR_DRIVER_NUM: usize = 0x8000_0006;
+pub const STAGING_PAR_DRIVER_NUM: usize = 0x8000_0007;
 
 pub const BUF_LEN: usize = 512;
 
@@ -177,11 +177,7 @@ impl<'a> FlashPartition<'a> {
                                                 cmp::min(active_len, kernel_buffer.len());
 
                                             let d = &app_buffer[0..write_len];
-                                            for (i, c) in
-                                                kernel_buffer[0..write_len].iter_mut().enumerate()
-                                            {
-                                                *c = d[i].get();
-                                            }
+                                            d.copy_to_slice(&mut kernel_buffer[0..write_len]);
                                         });
                                     })
                                 });
@@ -269,9 +265,7 @@ impl flash_driver::hil::FlashStorageClient for FlashPartition<'_> {
                             let read_len = cmp::min(app_buffer.len(), length);
 
                             let d = &app_buffer[0..read_len];
-                            for (i, c) in buffer[0..read_len].iter().enumerate() {
-                                d[i].set(*c);
-                            }
+                            d.copy_from_slice(&buffer[0..read_len]);
                         })
                     });
 
