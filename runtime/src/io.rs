@@ -51,7 +51,7 @@ pub fn exit_emulator(exit_code: u32) -> ! {
     // Safety: This is a safe memory address to write to for exiting the emulator.
     unsafe {
         // By writing to this address we can exit the emulator.
-        write_volatile(0x2000_f000 as *mut u32, exit_code);
+        write_volatile(0x1000_2000 as *mut u32, exit_code);
     }
     unreachable!()
 }
@@ -70,7 +70,7 @@ impl IoWrite for Writer {
         for b in buf {
             // Print to this address for emulator output
             unsafe {
-                write_volatile(0x2000_1041 as *mut u8, *b);
+                write_volatile(0x1000_1041 as *mut u8, *b);
             }
         }
         buf.len()
@@ -78,7 +78,7 @@ impl IoWrite for Writer {
 }
 
 fn read_byte() -> u8 {
-    unsafe { read_volatile(0x2000_1041 as *mut u8) }
+    unsafe { read_volatile(0x1000_1041 as *mut u8) }
 }
 
 pub struct SemihostUart<'a> {

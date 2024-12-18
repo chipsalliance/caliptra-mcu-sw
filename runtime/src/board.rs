@@ -3,6 +3,11 @@
 use crate::chip::VeeRDefaultPeripherals;
 use crate::chip::TIMERS;
 use crate::components as runtime_components;
+use crate::pmp::CodeRegion;
+use crate::pmp::DataRegion;
+use crate::pmp::KernelTextRegion;
+use crate::pmp::MMIORegion;
+use crate::pmp::VeeRProtectionMMLEPMP;
 use crate::timers::InternalTimers;
 
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
@@ -18,6 +23,7 @@ use kernel::scheduler::cooperative::CooperativeSched;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
 use rv32i::csr;
+use rv32i::pmp::{NAPOTRegionSpec, TORRegionSpec};
 
 // These symbols are defined in the linker script.
 extern "C" {
@@ -29,6 +35,18 @@ extern "C" {
     static mut _sappmem: u8;
     /// End of the RAM region for app memory.
     static _eappmem: u8;
+    /// The start of the kernel text (Included only for kernel PMP)
+    static _stext: u8;
+    /// The end of the kernel text (Included only for kernel PMP)
+    static _etext: u8;
+    /// The start of the kernel / app / storage flash (Included only for kernel PMP)
+    static _srom: u8;
+    /// The end of the kernel / app / storage flash (Included only for kernel PMP)
+    static _eprog: u8;
+    /// The start of the kernel / app RAM (Included only for kernel PMP)
+    static _ssram: u8;
+    /// The end of the kernel / app RAM (Included only for kernel PMP)
+    static _esram: u8;
 
     pub(crate) static _pic_vector_table: u8;
 }
@@ -165,6 +183,36 @@ pub unsafe fn main() {
     // only machine mode
     rv32i::configure_trap_handler();
 
+    // Set up memory protection immediately after setting the trap handler, to
+    // ensure that much of the board initialization routine runs with ePMP
+    // protection.
+
+    // fixed regions to allow user mode direct access to emulator control and UART
+    let user_mmio = [MMIORegion(
+        NAPOTRegionSpec::new(0x1000_0000 as *const u8, 0x1000_0000).unwrap(),
+    )];
+    // additional MMIO for machine only peripherals
+    let machine_mmio = [
+        MMIORegion(NAPOTRegionSpec::new(0x2000_0000 as *const u8, 0x2000_0000).unwrap()),
+        MMIORegion(NAPOTRegionSpec::new(0x6000_0000 as *const u8, 0x1_0000).unwrap()),
+    ];
+
+    let epmp = VeeRProtectionMMLEPMP::new(
+        CodeRegion(
+            TORRegionSpec::new(core::ptr::addr_of!(_srom), core::ptr::addr_of!(_eprog)).unwrap(),
+        ),
+        DataRegion(
+            TORRegionSpec::new(core::ptr::addr_of!(_ssram), core::ptr::addr_of!(_esram)).unwrap(),
+        ),
+        // use the MMIO for the PIC
+        &user_mmio[..],
+        &machine_mmio[..],
+        KernelTextRegion(
+            TORRegionSpec::new(core::ptr::addr_of!(_stext), core::ptr::addr_of!(_etext)).unwrap(),
+        ),
+    )
+    .unwrap();
+
     // initialize capabilities
     let process_mgmt_cap = create_capability!(capabilities::ProcessManagementCapability);
     let memory_allocation_cap = create_capability!(capabilities::MemoryAllocationCapability);
@@ -209,7 +257,7 @@ pub unsafe fn main() {
         VeeRDefaultPeripherals::new(&*mux_alarm)
     );
 
-    let chip = static_init!(VeeRChip, crate::chip::VeeR::new(peripherals));
+    let chip = static_init!(VeeRChip, crate::chip::VeeR::new(peripherals, epmp));
     chip.init();
     CHIP = Some(chip);
 
