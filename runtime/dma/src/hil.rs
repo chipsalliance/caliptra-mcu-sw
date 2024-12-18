@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license.
+
 //! HIL Interface for Caliptra DMA Engine
 use kernel::ErrorCode;
 
