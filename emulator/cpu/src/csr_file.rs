@@ -131,7 +131,7 @@ impl Csr {
     pub const PMPADDR_END: RvAddr = 0x3EF;
 
     /// Number of PMP address/cfg registers
-    pub const PMPCOUNT: usize = 16;
+    pub const PMPCOUNT: usize = 64;
 
     /// Create a new Configurations and Status register
     ///
