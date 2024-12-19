@@ -531,6 +531,7 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "capsules-extra",
+ "flash-driver",
  "i3c-driver",
  "kernel",
  "romtime",
@@ -1152,6 +1153,17 @@ dependencies = [
  "sha2",
  "sha3",
  "zeroize",
+]
+
+[[package]]
+name = "flash-driver"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "kernel",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
 ]
 
 [[package]]
@@ -2210,6 +2222,7 @@ dependencies = [
  "capsules-runtime",
  "capsules-system",
  "components",
+ "flash-driver",
  "i3c-driver",
  "kernel",
  "registers-generated",

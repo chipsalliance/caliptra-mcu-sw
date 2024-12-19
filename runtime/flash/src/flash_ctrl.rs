@@ -17,8 +17,8 @@ use registers_generated::flash_ctrl::{
 pub const FLASH_CTRL_BASE: StaticRef<FlashCtrl> =
     unsafe { StaticRef::new(FLASH_CTRL_ADDR as *const FlashCtrl) };
 
-pub const PAGE_SIZE: usize = 1024;
-pub const FLASH_MAX_PAGES: usize = 64 * 1024;
+pub const PAGE_SIZE: usize = 256;
+pub const FLASH_MAX_PAGES: usize = 64 * 1024 * 1024 / PAGE_SIZE;
 
 #[derive(Debug, PartialEq)]
 #[allow(clippy::enum_variant_names)]
@@ -131,6 +131,8 @@ impl<'a> EmulatedFlashCtrl<'a> {
             // Clear the op_status register
             self.registers.op_status.modify(OpStatus::Err::CLEAR);
 
+            self.clear_error_interrupt();
+
             let read_buf = self.read_buf.take();
             if let Some(buf) = read_buf {
                 // We were doing a read
@@ -157,14 +159,16 @@ impl<'a> EmulatedFlashCtrl<'a> {
                     client.erase_complete(Err(hil::flash::Error::FlashError));
                 });
             }
-
-            self.clear_error_interrupt();
         }
 
         // Handling event interrupt (normal completion)
         if flashctrl_intr.is_set(FlInterruptState::Event) {
             // Clear the op_status register
             self.registers.op_status.modify(OpStatus::Done::CLEAR);
+
+            // Clear the interrupt before callback as it is possible that the callback will start another operation.
+            // Otherwise, emulated flash ctrl won't allow starting another operation if the previous one is not cleared.
+            self.clear_event_interrupt();
 
             if self
                 .registers
@@ -200,8 +204,6 @@ impl<'a> EmulatedFlashCtrl<'a> {
                     client.erase_complete(Ok(()));
                 });
             }
-
-            self.clear_event_interrupt();
         }
     }
 }

@@ -31,9 +31,6 @@ mod tests;
 mod timers;
 
 #[cfg(target_arch = "riscv32")]
-mod flash_ctrl;
-
-#[cfg(target_arch = "riscv32")]
 pub use board::*;
 
 #[cfg(target_arch = "riscv32")]

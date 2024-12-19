@@ -11,6 +11,7 @@ use crate::pmp::VeeRProtectionMMLEPMP;
 use crate::timers::InternalTimers;
 
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use capsules_core::virtualizers::virtual_flash;
 use capsules_runtime::mctp::base_protocol::MessageType;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
@@ -68,19 +69,25 @@ pub static mut PROCESS_PRINTER: Option<
 
 #[cfg(any(
     feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page"
+    feature = "test-flash-ctrl-erase-page",
+    feature = "test-flash-storage-read-write",
+    feature = "test-flash-storage-erase"
 ))]
 static mut BOARD: Option<&'static kernel::Kernel> = None;
 
 #[cfg(any(
     feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page"
+    feature = "test-flash-ctrl-erase-page",
+    feature = "test-flash-storage-read-write",
+    feature = "test-flash-storage-erase"
 ))]
 static mut PLATFORM: Option<&'static VeeR> = None;
 
 #[cfg(any(
     feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page"
+    feature = "test-flash-ctrl-erase-page",
+    feature = "test-flash-storage-read-write",
+    feature = "test-flash-storage-erase"
 ))]
 static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = None;
 
@@ -111,6 +118,8 @@ struct VeeR {
     mctp_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_vendor_def_pci: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    // Temorarily add one partition driver for userspace testing.
+    image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -128,6 +137,7 @@ impl SyscallDriverLookup for VeeR {
             capsules_runtime::mctp::driver::MCTP_VENDOR_DEFINED_PCI_DRIVER_NUM => {
                 f(Some(self.mctp_vendor_def_pci))
             }
+            capsules_runtime::flash_partition::IMAGE_PAR_DRIVER_NUM => f(Some(self.image_par)),
             _ => f(None),
         }
     }
@@ -327,6 +337,30 @@ pub unsafe fn main() {
 
     peripherals.init();
 
+    // Create a mux for the physical flash controller
+    let mux_flash = components::flash::FlashMuxComponent::new(&peripherals.flash_ctrl).finalize(
+        components::flash_mux_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
+    );
+
+    // Instantiate a flashUser for image partition driver
+    let image_par_fl_user = components::flash::FlashUserComponent::new(mux_flash).finalize(
+        components::flash_user_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
+    );
+
+    // Instantiate flash partition driver that is connected to mux flash via flashUser
+    // TODO: Replace the start address and length with actual values from flash configuration.
+    let image_par = runtime_components::flash_partition::FlashPartitionComponent::new(
+        board_kernel,
+        capsules_runtime::flash_partition::IMAGE_PAR_DRIVER_NUM, // Driver number
+        image_par_fl_user,
+        0x0,        // Start address of the partition. Place holder for testing
+        0x200_0000, // Length of the partition. Place holder for testing
+    )
+    .finalize(crate::flash_partition_component_static!(
+        virtual_flash::FlashUser<'static, flash_driver::flash_ctrl::EmulatedFlashCtrl>,
+        capsules_runtime::flash_partition::BUF_LEN
+    ));
+
     // Need to enable all interrupts for Tock Kernel
     chip.enable_pic_interrupts();
     chip.enable_timer_interrupts();
@@ -360,6 +394,7 @@ pub unsafe fn main() {
             mctp_spdm,
             mctp_pldm,
             mctp_vendor_def_pci,
+            image_par,
         }
     );
 
@@ -385,7 +420,9 @@ pub unsafe fn main() {
 
     #[cfg(any(
         feature = "test-flash-ctrl-read-write-page",
-        feature = "test-flash-ctrl-erase-page"
+        feature = "test-flash-ctrl-erase-page",
+        feature = "test-flash-storage-read-write",
+        feature = "test-flash-storage-erase"
     ))]
     {
         PLATFORM = Some(veer);
@@ -412,9 +449,16 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-mctp-send-loopback") {
         debug!("Executing test-mctp-send-loopback");
         crate::tests::mctp_test::test_mctp_send_loopback(mctp_mux)
+    } else if cfg!(feature = "test-flash-storage-read-write") {
+        debug!("Executing test-flash-storage-read-write");
+        crate::tests::flash_storage_test::test_flash_storage_read_write()
+    } else if cfg!(feature = "test-flash-storage-erase") {
+        debug!("Executing test-flash-storage-erase");
+        crate::tests::flash_storage_test::test_flash_storage_erase()
     } else {
         None
     };
+
     if let Some(exit) = exit {
         crate::io::exit_emulator(exit);
     }
@@ -423,7 +467,9 @@ pub unsafe fn main() {
 
 #[cfg(any(
     feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page"
+    feature = "test-flash-ctrl-erase-page",
+    feature = "test-flash-storage-read-write",
+    feature = "test-flash-storage-erase"
 ))]
 pub fn run_kernel_op(loops: usize) {
     unsafe {
