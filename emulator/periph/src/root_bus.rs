@@ -42,16 +42,16 @@ pub struct CaliptraRootBus {
     #[peripheral(offset = 0x0000_0000, len = 0xc000)]
     pub rom: Rom,
 
+    #[peripheral(offset = 0x1000_1000, len = 0x100)]
+    pub uart: Uart,
+
+    #[peripheral(offset = 0x1000_2000, len = 0x4)]
+    pub ctrl: EmuCtrl,
+
     #[peripheral(offset = 0x2000_0000, len = 0x40)]
     pub spi: SpiHost,
 
-    #[peripheral(offset = 0x2000_1000, len = 0x100)]
-    pub uart: Uart,
-
-    #[peripheral(offset = 0x2000_f000, len = 0x4)]
-    pub ctrl: EmuCtrl,
-
-    #[peripheral(offset = 0x3000_4000, len = 0x1000)]
+    #[peripheral(offset = 0x2000_1000, len = 0x1000)]
     pub otp: Otp,
 
     #[peripheral(offset = 0x4000_0000, len = 0x60000)]

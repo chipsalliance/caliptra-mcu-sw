@@ -35,11 +35,11 @@ pub struct CoverageBitmaps<'a> {
     pub iccm: &'a bit_vec::BitVec,
 }
 
-const ICCM_SIZE: usize = 128 * 1024;
-const ICCM_ORG: usize = 0x40000000;
+const ICCM_SIZE: usize = RAM_SIZE as usize;
+const ICCM_ORG: usize = RAM_OFFSET as usize;
 const ICCM_UPPER: usize = ICCM_ORG + ICCM_SIZE - 1;
 
-const ROM_SIZE: usize = 48 * 1024;
+const ROM_SIZE: usize = emulator_types::ROM_SIZE as usize;
 const ROM_ORG: usize = 0x00000000;
 const ROM_UPPER: usize = ROM_ORG + ROM_SIZE - 1;
 

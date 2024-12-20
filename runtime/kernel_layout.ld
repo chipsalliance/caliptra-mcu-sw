@@ -359,7 +359,13 @@ SECTIONS
 _eattributes = LOADADDR(.attributes) + SIZEOF(.attributes);*/
 _sattributes = 0;
 _eattributes = 0;
+_srom = ORIGIN(rom);
 _erom = ORIGIN(rom) + LENGTH(rom);
+_sprog = ORIGIN(prog);
+_eprog = ORIGIN(prog) + LENGTH(prog);
+_ssram = ORIGIN(ram);
+_esram = ORIGIN(ram) + LENGTH(ram);
+
 
 /* This.. this is a dirty, not-fully-understood, hack. In some way, linking is
  * a multi-pass process. i.e., if you were to ASSERT(0, "how many links")
