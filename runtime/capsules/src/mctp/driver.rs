@@ -142,7 +142,7 @@ impl<'a> MCTPDriver<'a> {
             || self.msg_types.iter().any(|&t| t as u8 == msg_type)
     }
 
-    fn validate_args(
+    fn parse_args(
         &self,
         command_num: usize,
         arg1: usize,
@@ -154,21 +154,27 @@ impl<'a> MCTPDriver<'a> {
         if !valid_eid(peer_eid) {
             Err(ErrorCode::INVAL)?;
         }
+        println!("MCTPDriver: parse_args: peer_eid: {}", peer_eid);
 
         // lower 8 bits of arg2 is always msg_type
         let msg_type = (arg2 & 0xFF) as u8;
 
+        println!("MCTPDriver: parse_args: msg_type: {}", msg_type);
+
         if msg_type == MCTP_MSG_TYPE_RECV_ANY && command_num != 1 {
             Err(ErrorCode::INVAL)?;
         }
+        println!("MCTPDriver: parse_args: msg_type check 1: {}", msg_type);
 
         if !self.supported_msg_type(command_num, msg_type) {
             Err(ErrorCode::INVAL)?;
         }
+        println!("MCTPDriver: parse_args: msg_type check 2: {}", msg_type);
 
         // Receive Request message or send Request message should have MCTP_TAG_OWNER
         // Receive Response message or send Response message should have a value between 0 and 7
         let msg_tag = (arg2 >> 8 & 0xFF) as u8;
+        println!("MCTPDriver: parse_args: msg_tag: {}", msg_tag);
         if ((command_num == 1 || command_num == 3) && msg_tag != MCTP_TAG_OWNER)
             || ((command_num == 2 || command_num == 4) && !valid_msg_tag(msg_tag))
         {
@@ -280,34 +286,47 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
         arg2: usize,
         process_id: ProcessId,
     ) -> CommandReturn {
-        let (peer_eid, msg_type, msg_tag) = match self.validate_args(command_num, arg1, arg2) {
-            Ok((peer_eid, msg_type, msg_tag)) => (peer_eid, msg_type, msg_tag),
-            Err(e) => return CommandReturn::failure(e),
-        };
+        println!(
+            "MCTPDriver: command_num: {}, arg1: {}, arg2: {}",
+            command_num, arg1, arg2
+        );
 
         match command_num {
             0 => CommandReturn::success(),
             // 1: Receive Request Message
             // 2: Receive Response Message
-            1 | 2 => self
-                .apps
-                .enter(process_id, |app, _| {
-                    app.pending_rx = Some(OpContext {
-                        msg_tag,
-                        peer_eid,
-                        msg_type,
-                        op_type: OpType::Rx,
-                    });
-                    CommandReturn::success()
-                })
-                .unwrap_or_else(|err| CommandReturn::failure(err.into())),
+            1 | 2 => {
+                let (peer_eid, msg_type, msg_tag) = match self.parse_args(command_num, arg1, arg2) {
+                    Ok((peer_eid, msg_type, msg_tag)) => (peer_eid, msg_type, msg_tag),
+                    Err(e) => {
+                        println!("MCTPDriver: parse_args failed");
+                        return CommandReturn::failure(e);
+                    }
+                };
+
+                println!("MCTPDriver: receive request/response message from peer_eid: {}, msg_type: {}, msg_tag: {}", peer_eid, msg_type, msg_tag);
+                self.apps
+                    .enter(process_id, |app, _| {
+                        app.pending_rx = Some(OpContext {
+                            msg_tag,
+                            peer_eid,
+                            msg_type,
+                            op_type: OpType::Rx,
+                        });
+                        CommandReturn::success()
+                    })
+                    .unwrap_or_else(|err| CommandReturn::failure(err.into()))
+            }
             // 3. Send Request Message
             // 4: Send Response Message
             3 | 4 => {
+                let (peer_eid, msg_type, msg_tag) = match self.parse_args(command_num, arg1, arg2) {
+                    Ok((peer_eid, msg_type, msg_tag)) => (peer_eid, msg_type, msg_tag),
+                    Err(e) => return CommandReturn::failure(e),
+                };
                 let result = self
                     .apps
                     .enter(process_id, |app, kernel_data| {
-                        let dest_eid = arg1 as u8;
                         if app.pending_tx.is_some() {
                             return Err(ErrorCode::BUSY);
                         }
@@ -317,7 +336,7 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
                             app,
                             kernel_data,
                             msg_type,
-                            dest_eid,
+                            peer_eid,
                             msg_tag,
                         )
                     })

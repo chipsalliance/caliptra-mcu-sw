@@ -1,11 +1,14 @@
 // Licensed under the Apache-2.0 license
 
+#![no_std]
+
 use libtock_platform::allow_ro::AllowRo;
 use libtock_platform::allow_rw::AllowRw;
 use libtock_platform::share;
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
+#[derive(Debug)]
 pub struct MessageInfo {
     pub eid: u8,
     pub msg_tag: u8,
@@ -70,6 +73,9 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
             message_type::ANY_SUPPORTED
         };
 
+        let msg_tag: u32 = MCTP_TAG_OWNER as u32;
+        let msg_info = msg_tag << 8 | msg_type as u32;
+
         let sub = share::scope::<(AllowRw<_, { DRIVER_NUM }, { allow_rw::MESSAGE_READ }>,), _, _>(
             |handle| {
                 let allow_rw = handle.split().0;
@@ -84,7 +90,7 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
                     DRIVER_NUM,
                     command::RECEIVE_REQUEST,
                     source_eid as u32,
-                    msg_type as u32,
+                    msg_info as u32,
                 )
                 .to_result::<(), ErrorCode>()?;
 
@@ -304,7 +310,10 @@ impl<
 // Driver number and command IDs
 // -----------------------------------------------------------------------------
 
-mod driver_num {
+const MCTP_TAG_MASK: u8 = 0x07;
+const MCTP_TAG_OWNER: u8 = 0x08;
+
+pub mod driver_num {
     pub const MCTP_SPDM: u32 = 0xA0000;
     pub const MCTP_PLDM: u32 = 0xA0001;
     pub const MCTP_VENDOR_DEFINED_PCI: u32 = 0xA0002;

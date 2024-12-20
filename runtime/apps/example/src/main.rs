@@ -8,6 +8,7 @@
 use core::fmt::Write;
 use libtock::alarm::*;
 use libtock_console::Console;
+use libtock_mctp::{driver_num, message_type, AsyncMctp, MessageInfo};
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
@@ -74,7 +75,34 @@ pub(crate) async fn async_main<S: Syscalls>() {
         sleep::<S>(Milliseconds(1)).await;
         writeln!(console_writer, "async sleeper woke").unwrap();
     }
+
+    writeln!(console_writer, "Now its time for some MCTP stuff").unwrap();
+
+    if AsyncMctp::<{ driver_num::MCTP_SPDM }, S>::exists() {
+        writeln!(console_writer, "MCTP SPDM exists").unwrap();
+        match AsyncMctp::<{ driver_num::MCTP_SPDM }, S>::get_max_message_size() {
+            Ok(size) => writeln!(console_writer, "Max message size: {}", size).unwrap(),
+            Err(e) => writeln!(console_writer, "Error getting max message size: {:?}", e).unwrap(),
+        }
+
+        handle_request::<{ driver_num::MCTP_SPDM }, S>().await;
+    } else {
+        writeln!(console_writer, "MCTP SPDM does not exist").unwrap();
+    }
+
     writeln!(console_writer, "app finished").unwrap();
+}
+
+async fn handle_request<const DRIVER_NUM: u32, S: Syscalls>() -> Result<(), ErrorCode> {
+    let mut rx_buffer = [0; 128];
+    let src_eid: u8 = 0xA;
+
+    let mctp =
+        AsyncMctp::<{ DRIVER_NUM }, S>::receive_request(src_eid, None, &mut rx_buffer).await?;
+    writeln!(Console::<S>::writer(), "Received MCTP message").unwrap();
+    writeln!(Console::<S>::writer(), "Message info: {:?}", mctp).unwrap();
+
+    Ok(())
 }
 
 // -----------------------------------------------------------------------------

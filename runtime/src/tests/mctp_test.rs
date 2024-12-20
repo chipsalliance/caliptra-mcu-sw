@@ -12,7 +12,7 @@ use romtime::println;
 use kernel::component::Component;
 use kernel::static_init;
 
-pub fn test_mctp_send_loopback(
+pub fn test_mctp_capsule_loopback(
     mctp_mux: &'static MuxMCTPDriver<'static, MCTPI3CBinding<'static>>,
 ) -> Option<u32> {
     // set local EID here if needed.

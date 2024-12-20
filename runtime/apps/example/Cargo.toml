@@ -16,6 +16,7 @@ libtock_debug_panic = { path = "../libtock/panic_handlers/debug_panic" }
 libtock_platform = { path = "../libtock/platform" }
 libtock_runtime = { path = "../libtock/runtime" }
 libtockasync = { path = "../libtockasync" }
+libtock_mctp = { path = "../apis/mctp" }
 portable-atomic = "1.7.0"
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]

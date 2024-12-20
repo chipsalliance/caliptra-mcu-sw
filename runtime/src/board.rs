@@ -361,9 +361,9 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-flash-ctrl-erase-page") {
         debug!("Executing test-flash-ctrl-erase-page");
         crate::tests::flash_ctrl_test::test_flash_ctrl_erase_page()
-    } else if cfg!(feature = "test-mctp-send-loopback") {
-        debug!("Executing test-mctp-send-loopback");
-        crate::tests::mctp_test::test_mctp_send_loopback(mctp_mux)
+    } else if cfg!(feature = "test-mctp-capsule-loopback") {
+        debug!("Executing test-mctp-capsule-loopback");
+        crate::tests::mctp_test::test_mctp_capsule_loopback(mctp_mux)
     } else {
         None
     };
