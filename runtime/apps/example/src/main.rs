@@ -6,14 +6,12 @@
 #![allow(static_mut_refs)]
 
 use core::fmt::Write;
+use flash_api::{driver_num, SpiFlash};
 use libtock::alarm::*;
 use libtock_console::Console;
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
-
-// XS added to sanity test the exist of flash partition driver
-use flash_api::AsyncSpiFlash;
 
 #[cfg(target_arch = "riscv32")]
 mod riscv;
@@ -77,76 +75,84 @@ pub(crate) async fn async_main<S: Syscalls>() {
         sleep::<S>(Milliseconds(1)).await;
         writeln!(console_writer, "async sleeper woke").unwrap();
     }
-    writeln!(console_writer, "app finished").unwrap();
 
-
-    // TODO: Move this part into a test routine
     {
-        // TODO: Add a test for the flash partition driver under the feature flag
-        // XS: added for Sanity test the exist of flash partition driver'
-        match AsyncSpiFlash::<S>::exists() {
-            Ok(()) => {
-                writeln!(console_writer, "[xs debug] Flash partition driver exists").unwrap();
-            }
-            Err(e) => {
-                writeln!(
-                    console_writer,
-                    "[xs debug] Flash partition driver does not exist: {:?}",
-                    e
-                )
-                .unwrap();
-                return;
-            }
-        }
+        // Temporarily add usermode flash test here
+        pub const DRIVER_NUM: u32 = driver_num::IMAGE_PARTITION;
+        flash_test_sync::<DRIVER_NUM, S>(&mut console_writer);
+    }
 
-        // Get the capacity of the flash partition
-        let capacity = AsyncSpiFlash::<S>::get_capacity().unwrap();
-        writeln!(
-            console_writer,
-            "[xs debug] Flash partition capacity: {:#X?}",
-            capacity
-        )
-        .unwrap();
+    writeln!(console_writer, "app finished").unwrap();
+}
 
-        {
-            let address: usize = 0;
-            let erase_len = 500;
-            let len = 300;
-            let w_buf = [0xcc; 500];
-            let mut r_buf = [0x0u8; 500];
-            // Erase first
-            writeln!(console_writer, "[xs debug] Erasing flash partition: addr = {} len = {}", address, erase_len).unwrap();
-            let ret = AsyncSpiFlash::<S>::erase_sync(address as usize, erase_len);
-            writeln!(console_writer, "[xs debug] erase done: {:?}", ret).unwrap();
-
-            // Write to the flash partition
-            let io_start: usize = 50; // Start from 50th byte
-            writeln!(console_writer, "[xs debug]Writing to flash partition: addr = {} len = {}", address + io_start, len).unwrap();
-            let ret = AsyncSpiFlash::<S>::write_sync(address + io_start as usize, len, &w_buf);
-
-            writeln!(console_writer, "[xs debug] write done: {:?}", ret).unwrap();
-
-            writeln!(console_writer, "[xs debug]Reading from flash partition: addr = {} len = {}", address, r_buf.len()).unwrap();
-            let ret = AsyncSpiFlash::<S>::read_sync(address as usize, r_buf.len(), &mut r_buf);
-
-            writeln!(console_writer, "[xs debug] read done: {:?}", ret).unwrap();
-
-            // Check if the read buffer from io_start to io_start..len is the same as the write buffer
-            // Check the rest of the read buffer is 0xFF
-            for i in 0..io_start {
-                assert_eq!(r_buf[i], 0xFF);
-            }
-
-            assert_eq!(&w_buf[..len], &r_buf[io_start..io_start + len]);
-
-            for i in io_start + len..r_buf.len() {
-                assert_eq!(r_buf[i], 0xFF);
-            }
-
-            writeln!(console_writer, "[xs debug] read write test done").unwrap();
+pub fn flash_test_sync<const DRIVER_NUM: u32, S: Syscalls>(
+    console_writer: &mut libtock_console::ConsoleWriter<S>,
+) {
+    writeln!(console_writer, "Usermode flash test(sync IO) start").unwrap();
+    match SpiFlash::<DRIVER_NUM, S>::exists() {
+        Ok(()) => {}
+        Err(e) => {
+            writeln!(
+                console_writer,
+                "Flash partition driver does not exist: {:?}",
+                e
+            )
+            .unwrap();
+            return;
         }
     }
 
+    let capacity = SpiFlash::<DRIVER_NUM, S>::get_capacity().unwrap();
+    writeln!(console_writer, "flash partition capacity: {:#X?}", capacity).unwrap();
+
+    // Test read write
+    struct TestConfig {
+        start_addr: usize,
+        length: usize,
+        w_offset: usize,
+        w_len: usize,
+        w_buf: [u8; 512],
+        r_buf: [u8; 512],
+    }
+
+    let mut test_cfg = TestConfig {
+        start_addr: 0,
+        length: 512,
+        w_offset: 50,
+        w_len: 512 - 50,
+        w_buf: [0xAA; 512],
+        r_buf: [0x0u8; 512],
+    };
+
+    let ret = SpiFlash::<DRIVER_NUM, S>::erase_sync(test_cfg.start_addr, test_cfg.length);
+    assert_eq!(ret, Ok(()));
+
+    let ret = SpiFlash::<DRIVER_NUM, S>::write_sync(
+        test_cfg.start_addr + test_cfg.w_offset,
+        test_cfg.w_len,
+        &test_cfg.w_buf,
+    );
+    assert_eq!(ret, Ok(()));
+
+    let ret = SpiFlash::<DRIVER_NUM, S>::read_sync(
+        test_cfg.start_addr,
+        test_cfg.length,
+        &mut test_cfg.r_buf,
+    );
+    assert_eq!(ret, Ok(()));
+
+    assert!(test_cfg.r_buf[..test_cfg.w_offset]
+        .iter()
+        .all(|&b| b == 0xFF));
+    assert_eq!(
+        &test_cfg.w_buf[..test_cfg.w_len],
+        &test_cfg.r_buf[test_cfg.w_offset..test_cfg.w_offset + test_cfg.w_len]
+    );
+    assert!(test_cfg.r_buf[test_cfg.w_offset + test_cfg.w_len..]
+        .iter()
+        .all(|&b| b == 0xFF));
+
+    writeln!(console_writer, "Usermode flash test(sync) succeess").unwrap();
 }
 
 // -----------------------------------------------------------------------------
