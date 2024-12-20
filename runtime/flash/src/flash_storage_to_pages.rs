@@ -386,16 +386,6 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                 self.state.set(State::Idle);
                 self.client
                     .map(move |client| client.erase_done(self.length.get()));
-            } else if self.remaining_length.get() >= page_size {
-                // Erase another page
-                let page_number = self.address.get() / page_size;
-
-                self.remaining_length.subtract(page_size);
-                self.address.add(page_size);
-
-                self.page_buffer.replace(page_buffer);
-
-                let _ = self.driver.erase_page(page_number);
             } else if self.partial_erase_wb_pending.get() {
                 // Write back the page
                 let page_index = self.address.get() % page_size;
@@ -415,7 +405,18 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                     self.page_buffer.replace(page_buffer);
                 }
 
+                // Clear the flag
                 self.partial_erase_wb_pending.set(false);
+            } else if self.remaining_length.get() >= page_size {
+                // Erase another page
+                let page_number = self.address.get() / page_size;
+
+                self.remaining_length.subtract(page_size);
+                self.address.add(page_size);
+
+                self.page_buffer.replace(page_buffer);
+
+                let _ = self.driver.erase_page(page_number);
             } else {
                 // Erase a partial page. Do read first.
                 if let Err((_, page_buffer)) = self
