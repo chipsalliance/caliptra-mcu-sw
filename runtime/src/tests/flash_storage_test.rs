@@ -117,9 +117,42 @@ pub(crate) fn test_flash_storage_erase() -> Option<u32> {
     flash_storage_drv.set_client(test_cb);
 
     {
+        // Erase the entire test range [0..TEST_BUF_LEN)
+        let erase_len = TEST_BUF_LEN;
+        test_cb.reset();
+        assert!(flash_storage_drv.erase(0, erase_len).is_ok());
+
+        #[cfg(feature = "test-flash-storage-erase")]
+        run_kernel_op(2000);
+
+        assert_eq!(test_cb.io_state.borrow().erase_bytes, erase_len);
+        test_cb.reset();
+
+        // Start writing data to the entire test range [0..TEST_BUF_LEN)
+        let write_in_buf = test_cb.write_in_buf.take().unwrap();
+        // Debug prints the buffer of write_in_buf
+        for i in 0..16 {
+            println!("[xs debug]write in buf contents: {:02X}", write_in_buf[i]);
+        }
+
+        assert!(flash_storage_drv
+            .write(write_in_buf, 0, TEST_BUF_LEN)
+            .is_ok());
+
+        #[cfg(feature = "test-flash-storage-erase")]
+        run_kernel_op(5000);
+
+        assert_eq!(test_cb.io_state.borrow().write_bytes, TEST_BUF_LEN);
+
+        // Get the write buffer to compare with the read buffer later
+        let write_out_buf = test_cb.write_out_buf.take().unwrap();
+
+        test_cb.reset();
+
         // Test non-page-aligned erase operation.
+        // Make sure it is within the test range of [0..TEST_BUF_LEN) that is written to flash.
         let length: usize = 4000;
-        let offset: usize = 200;
+        let offset: usize = 50;
 
         assert!(flash_storage_drv.erase(offset, length).is_ok());
 
@@ -127,20 +160,28 @@ pub(crate) fn test_flash_storage_erase() -> Option<u32> {
         run_kernel_op(2000);
 
         assert_eq!(test_cb.io_state.borrow().erase_bytes, length);
-
         test_cb.reset();
+
+        // Read the entire test range to verify data integrity after erase operation.
         let read_in_buf = test_cb.read_in_buf.take().unwrap();
-        assert!(flash_storage_drv.read(read_in_buf, offset, length).is_ok());
+        assert!(flash_storage_drv.read(read_in_buf, 0, erase_len).is_ok());
 
         #[cfg(feature = "test-flash-storage-erase")]
         run_kernel_op(2000);
 
-        assert_eq!(test_cb.io_state.borrow().read_bytes, length);
+        assert_eq!(test_cb.io_state.borrow().read_bytes, erase_len);
 
-        let read_out = test_cb.read_out_buf.take().unwrap();
-        // Check if the read_out_buf is filled with 0xFF
-        for i in 0..length {
-            assert_eq!(read_out[i], 0xffu8, "[ERR] Data mismatch at byte {}", i);
+        let read_out_buf = test_cb.read_out_buf.take().unwrap();
+        for i in 0..erase_len {
+            if i >= offset && i < offset + length {
+                assert_eq!(read_out_buf[i], 0xFFu8, "[ERR] Data mismatch at byte {}", i);
+            } else {
+                assert_eq!(
+                    read_out_buf[i], write_out_buf[i],
+                    "[ERR] Data mismatch at byte {}",
+                    i
+                );
+            }
         }
     }
     Some(0)
@@ -169,8 +210,21 @@ pub(crate) fn test_flash_storage_read_write() -> Option<u32> {
     flash_storage_drv.set_client(test_cb);
 
     {
+        // Erase first
+        let erase_len = TEST_BUF_LEN;
+        test_cb.reset();
+        assert!(flash_storage_drv.erase(0, erase_len).is_ok());
+
+        #[cfg(feature = "test-flash-storage-read-write")]
+        run_kernel_op(2000);
+
+        assert_eq!(test_cb.io_state.borrow().erase_bytes, erase_len);
+        test_cb.reset();
+
+        // Non-page-aligned write operation.
+        // Make sure it is within the range of [0.. TEST_BUF_LEN) that is erased.
         let length: usize = 4000;
-        let offset: usize = 200;
+        let offset: usize = 50;
         let write_in_buf = test_cb.write_in_buf.take().unwrap();
 
         assert!(flash_storage_drv

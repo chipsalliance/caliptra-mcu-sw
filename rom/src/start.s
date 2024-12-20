@@ -24,7 +24,7 @@ _start:
 .option pop
 
     # Initialize the stack pointer
-    la sp, STACK_START
+    la sp, STACK_TOP
 
     # Copy BSS
     la t0, BSS_START

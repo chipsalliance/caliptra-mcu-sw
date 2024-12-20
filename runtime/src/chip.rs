@@ -8,6 +8,7 @@
 #![allow(static_mut_refs)]
 
 use crate::io::SemihostUart;
+use crate::pmp::{VeeRPMP, VeeRProtectionMMLEPMP};
 use crate::timers::{InternalTimers, TimerInterrupts};
 use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
 use core::fmt::Write;
@@ -17,7 +18,6 @@ use kernel::platform::chip::{Chip, InterruptService};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::StaticRef;
 use rv32i::csr::{mcause, mie::mie, CSR};
-use rv32i::pmp::{simple::SimplePMP, PMPUserMPU};
 use rv32i::syscall::SysCall;
 
 use crate::pic::Pic;
@@ -39,7 +39,7 @@ pub struct VeeR<'a, I: InterruptService + 'a> {
     pic: &'a Pic,
     timers: &'static InternalTimers<'static>,
     pub peripherals: &'a I,
-    pmp: PMPUserMPU<4, SimplePMP<8>>,
+    pmp: VeeRPMP,
 }
 
 pub struct VeeRDefaultPeripherals<'a> {
@@ -90,15 +90,19 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
 
 impl<'a, I: InterruptService + 'a> VeeR<'a, I> {
     /// # Safety
-    /// Accesses memory-mapped registers.
-    pub unsafe fn new(pic_interrupt_service: &'a I) -> Self {
+    /// Accesses memory<-mapped registers.
+    pub unsafe fn new(pic_interrupt_service: &'a I, epmp: VeeRProtectionMMLEPMP) -> Self {
         Self {
             userspace_kernel_boundary: SysCall::new(),
             pic: &*addr_of!(PIC),
             timers: &*addr_of!(TIMERS),
             peripherals: pic_interrupt_service,
-            pmp: PMPUserMPU::new(SimplePMP::new().unwrap()),
+            pmp: rv32i::pmp::PMPUserMPU::new(epmp),
         }
+    }
+
+    pub fn init(&self) {
+        self.pic.init();
     }
 
     pub fn enable_pic_interrupts(&self) {
@@ -127,7 +131,7 @@ impl<'a, I: InterruptService + 'a> VeeR<'a, I> {
 }
 
 impl<'a, I: InterruptService + 'a> kernel::platform::chip::Chip for VeeR<'a, I> {
-    type MPU = PMPUserMPU<4, SimplePMP<8>>;
+    type MPU = VeeRPMP;
     type UserspaceKernelBoundary = SysCall;
 
     fn mpu(&self) -> &Self::MPU {

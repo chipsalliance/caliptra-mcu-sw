@@ -107,6 +107,7 @@ impl I3c {
             let data_size = resp_desc.data_length().into();
             if let Some(_data) = self.tti_tx_data_raw.front() {
                 if self.tti_tx_data_raw[0].len() >= data_size {
+                    self.tti_tx_desc_queue_raw.pop_front();
                     let resp = I3cTcriResponseXfer {
                         resp: resp_desc,
                         data: self.tti_tx_data_raw.pop_front().unwrap(),

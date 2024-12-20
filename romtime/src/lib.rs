@@ -31,7 +31,7 @@ pub(crate) fn print_to_console(buf: &str) {
     for b in buf.bytes() {
         // Print to this address for emulator output
         unsafe {
-            core::ptr::write_volatile(0x2000_1041 as *mut u8, b);
+            core::ptr::write_volatile(0x1000_1041 as *mut u8, b);
         }
     }
 }

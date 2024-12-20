@@ -3,11 +3,16 @@
 use crate::chip::VeeRDefaultPeripherals;
 use crate::chip::TIMERS;
 use crate::components as runtime_components;
+use crate::pmp::CodeRegion;
+use crate::pmp::DataRegion;
+use crate::pmp::KernelTextRegion;
+use crate::pmp::MMIORegion;
+use crate::pmp::VeeRProtectionMMLEPMP;
 use crate::timers::InternalTimers;
+
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
-use capsules_runtime::mctp::mux::MuxMCTPDriver;
-use capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
+use capsules_runtime::mctp::base_protocol::MessageType;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
 use kernel::component::Component;
@@ -18,6 +23,33 @@ use kernel::scheduler::cooperative::CooperativeSched;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
 use rv32i::csr;
+use rv32i::pmp::{NAPOTRegionSpec, TORRegionSpec};
+
+// These symbols are defined in the linker script.
+extern "C" {
+    /// Beginning of the ROM region containing app images.
+    static _sapps: u8;
+    /// End of the ROM region containing app images.
+    static _eapps: u8;
+    /// Beginning of the RAM region for app memory.
+    static mut _sappmem: u8;
+    /// End of the RAM region for app memory.
+    static _eappmem: u8;
+    /// The start of the kernel text (Included only for kernel PMP)
+    static _stext: u8;
+    /// The end of the kernel text (Included only for kernel PMP)
+    static _etext: u8;
+    /// The start of the kernel / app / storage flash (Included only for kernel PMP)
+    static _srom: u8;
+    /// The end of the kernel / app / storage flash (Included only for kernel PMP)
+    static _eprog: u8;
+    /// The start of the kernel / app RAM (Included only for kernel PMP)
+    static _ssram: u8;
+    /// The end of the kernel / app RAM (Included only for kernel PMP)
+    static _esram: u8;
+
+    pub(crate) static _pic_vector_table: u8;
+}
 
 pub const NUM_PROCS: usize = 4;
 
@@ -83,8 +115,9 @@ struct VeeR {
     scheduler: &'static CooperativeSched<'static>,
     scheduler_timer:
         &'static VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>,
-    // Temporarily add MCTP mux to the platform struct until driver is ready
-    mctp_mux: &'static MuxMCTPDriver<'static, MCTPI3CBinding<'static>>,
+    mctp_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    mctp_vendor_def_pci: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     // Temorarily add one partition driver for userspace testing.
     image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
 }
@@ -99,6 +132,11 @@ impl SyscallDriverLookup for VeeR {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
             capsules_core::low_level_debug::DRIVER_NUM => f(Some(self.lldb)),
+            capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM => f(Some(self.mctp_spdm)),
+            capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
+            capsules_runtime::mctp::driver::MCTP_VENDOR_DEFINED_PCI_DRIVER_NUM => {
+                f(Some(self.mctp_vendor_def_pci))
+            }
             capsules_runtime::flash_partition::IMAGE_PAR_DRIVER_NUM => f(Some(self.image_par)),
             _ => f(None),
         }
@@ -145,6 +183,36 @@ pub unsafe fn main() {
     // only machine mode
     rv32i::configure_trap_handler();
 
+    // Set up memory protection immediately after setting the trap handler, to
+    // ensure that much of the board initialization routine runs with ePMP
+    // protection.
+
+    // fixed regions to allow user mode direct access to emulator control and UART
+    let user_mmio = [MMIORegion(
+        NAPOTRegionSpec::new(0x1000_0000 as *const u8, 0x1000_0000).unwrap(),
+    )];
+    // additional MMIO for machine only peripherals
+    let machine_mmio = [
+        MMIORegion(NAPOTRegionSpec::new(0x2000_0000 as *const u8, 0x2000_0000).unwrap()),
+        MMIORegion(NAPOTRegionSpec::new(0x6000_0000 as *const u8, 0x1_0000).unwrap()),
+    ];
+
+    let epmp = VeeRProtectionMMLEPMP::new(
+        CodeRegion(
+            TORRegionSpec::new(core::ptr::addr_of!(_srom), core::ptr::addr_of!(_eprog)).unwrap(),
+        ),
+        DataRegion(
+            TORRegionSpec::new(core::ptr::addr_of!(_ssram), core::ptr::addr_of!(_esram)).unwrap(),
+        ),
+        // use the MMIO for the PIC
+        &user_mmio[..],
+        &machine_mmio[..],
+        KernelTextRegion(
+            TORRegionSpec::new(core::ptr::addr_of!(_stext), core::ptr::addr_of!(_etext)).unwrap(),
+        ),
+    )
+    .unwrap();
+
     // initialize capabilities
     let process_mgmt_cap = create_capability!(capabilities::ProcessManagementCapability);
     let memory_allocation_cap = create_capability!(capabilities::MemoryAllocationCapability);
@@ -189,7 +257,8 @@ pub unsafe fn main() {
         VeeRDefaultPeripherals::new(&*mux_alarm)
     );
 
-    let chip = static_init!(VeeRChip, crate::chip::VeeR::new(peripherals));
+    let chip = static_init!(VeeRChip, crate::chip::VeeR::new(peripherals, epmp));
+    chip.init();
     CHIP = Some(chip);
 
     // Create a shared UART channel for the console and for kernel debug.
@@ -235,6 +304,37 @@ pub unsafe fn main() {
     let mctp_mux = runtime_components::mctp_mux::MCTPMuxComponent::new(&peripherals.i3c)
         .finalize(crate::mctp_mux_component_static!(MCTPI3CBinding));
 
+    let mctp_spdm_msg_types = static_init!(
+        [MessageType; 2],
+        [MessageType::Spdm, MessageType::SecureSpdm,]
+    );
+    let mctp_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
+        board_kernel,
+        capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
+        mctp_mux,
+        mctp_spdm_msg_types,
+    )
+    .finalize(crate::mctp_driver_component_static!());
+
+    let mctp_pldm_msg_types = static_init!([MessageType; 1], [MessageType::Pldm]);
+    let mctp_pldm = runtime_components::mctp_driver::MCTPDriverComponent::new(
+        board_kernel,
+        capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM,
+        mctp_mux,
+        mctp_pldm_msg_types,
+    )
+    .finalize(crate::mctp_driver_component_static!());
+
+    let mctp_vendor_def_pci_msg_types =
+        static_init!([MessageType; 1], [MessageType::VendorDefinedPci]);
+    let mctp_vendor_def_pci = runtime_components::mctp_driver::MCTPDriverComponent::new(
+        board_kernel,
+        capsules_runtime::mctp::driver::MCTP_VENDOR_DEFINED_PCI_DRIVER_NUM,
+        mctp_mux,
+        mctp_vendor_def_pci_msg_types,
+    )
+    .finalize(crate::mctp_driver_component_static!());
+
     peripherals.init();
 
     // Create a mux for the physical flash controller
@@ -274,18 +374,6 @@ pub unsafe fn main() {
     debug!("MCU initialization complete.");
     debug!("Entering main loop.");
 
-    // These symbols are defined in the linker script.
-    extern "C" {
-        /// Beginning of the ROM region containing app images.
-        static _sapps: u8;
-        /// End of the ROM region containing app images.
-        static _eapps: u8;
-        /// Beginning of the RAM region for app memory.
-        static mut _sappmem: u8;
-        /// End of the RAM region for app memory.
-        static _eappmem: u8;
-    }
-
     let scheduler =
         components::sched::cooperative::CooperativeComponent::new(&*addr_of!(PROCESSES))
             .finalize(components::cooperative_component_static!(NUM_PROCS));
@@ -303,7 +391,9 @@ pub unsafe fn main() {
             lldb,
             scheduler,
             scheduler_timer,
-            mctp_mux,
+            mctp_spdm,
+            mctp_pldm,
+            mctp_vendor_def_pci,
             image_par,
         }
     );
@@ -343,25 +433,28 @@ pub unsafe fn main() {
     // Run any requested test
     let exit = if cfg!(feature = "test-i3c-simple") {
         debug!("Executing test-i3c-simple");
-        crate::tests::test_i3c_simple()
+        crate::tests::i3c_target_test::test_i3c_simple()
     } else if cfg!(feature = "test-i3c-constant-writes") {
         debug!("Executing test-i3c-constant-writes");
-        crate::tests::test_i3c_constant_writes()
+        crate::tests::i3c_target_test::test_i3c_constant_writes()
     } else if cfg!(feature = "test-flash-ctrl-init") {
         debug!("Executing test-flash-ctrl-init");
-        crate::flash_ctrl_test::test_flash_ctrl_init()
+        crate::tests::flash_ctrl_test::test_flash_ctrl_init()
     } else if cfg!(feature = "test-flash-ctrl-read-write-page") {
         debug!("Executing test-flash-ctrl-read-write-page");
-        crate::flash_ctrl_test::test_flash_ctrl_read_write_page()
+        crate::tests::flash_ctrl_test::test_flash_ctrl_read_write_page()
     } else if cfg!(feature = "test-flash-ctrl-erase-page") {
         debug!("Executing test-flash-ctrl-erase-page");
-        crate::flash_ctrl_test::test_flash_ctrl_erase_page()
+        crate::tests::flash_ctrl_test::test_flash_ctrl_erase_page()
+    } else if cfg!(feature = "test-mctp-send-loopback") {
+        debug!("Executing test-mctp-send-loopback");
+        crate::tests::mctp_test::test_mctp_send_loopback(mctp_mux)
     } else if cfg!(feature = "test-flash-storage-read-write") {
         debug!("Executing test-flash-storage-read-write");
-        crate::flash_storage_test::test_flash_storage_read_write()
+        crate::tests::flash_storage_test::test_flash_storage_read_write()
     } else if cfg!(feature = "test-flash-storage-erase") {
         debug!("Executing test-flash-storage-erase");
-        crate::flash_storage_test::test_flash_storage_erase()
+        crate::tests::flash_storage_test::test_flash_storage_erase()
     } else {
         None
     };

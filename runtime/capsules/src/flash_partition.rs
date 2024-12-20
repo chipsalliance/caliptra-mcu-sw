@@ -14,8 +14,8 @@ use core::fmt::Write;
 
 /// Each partition is presented to userspace as a separate driver number.
 /// Below is the temporary driver number for each partition.
-pub const IMAGE_PAR_DRIVER_NUM: usize = 0x5000_0006;
-pub const STAGING_PAR_DRIVER_NUM: usize = 0x5000_0007;
+pub const IMAGE_PAR_DRIVER_NUM: usize = 0x8000_0006;
+pub const STAGING_PAR_DRIVER_NUM: usize = 0x8000_0007;
 
 pub const BUF_LEN: usize = 1024;
 
@@ -181,11 +181,7 @@ impl<'a> FlashPartition<'a> {
                                                 cmp::min(active_len, kernel_buffer.len());
 
                                             let d = &app_buffer[0..write_len];
-                                            for (i, c) in
-                                                kernel_buffer[0..write_len].iter_mut().enumerate()
-                                            {
-                                                *c = d[i].get();
-                                            }
+                                            d.copy_to_slice(&mut kernel_buffer[0..write_len]);
                                         });
                                     })
                                 });
@@ -218,21 +214,21 @@ impl<'a> FlashPartition<'a> {
         // storage.
         let physical_address = offset + self.start_address;
         match command {
-            FlashStorageCommand::Erase => {
-                self.driver.erase(physical_address, length)
-            }
+            FlashStorageCommand::Erase => self.driver.erase(physical_address, length),
             FlashStorageCommand::Read | FlashStorageCommand::Write => {
-                self.buffer.take().map_or(Err(ErrorCode::RESERVE), |buffer| {
-                    // Check that the internal buffer and the buffer that was
-                    // allowed are long enough.
-                    let active_len = cmp::min(length, buffer.len());
+                self.buffer
+                    .take()
+                    .map_or(Err(ErrorCode::RESERVE), |buffer| {
+                        // Check that the internal buffer and the buffer that was
+                        // allowed are long enough.
+                        let active_len = cmp::min(length, buffer.len());
 
-                    if command == FlashStorageCommand::Read {
-                        self.driver.read(buffer, physical_address, active_len)
-                    } else {
-                        self.driver.write(buffer, physical_address, active_len)
-                    }
-                })
+                        if command == FlashStorageCommand::Read {
+                            self.driver.read(buffer, physical_address, active_len)
+                        } else {
+                            self.driver.write(buffer, physical_address, active_len)
+                        }
+                    })
             }
         }
     }
@@ -273,9 +269,7 @@ impl flash_driver::hil::FlashStorageClient for FlashPartition<'_> {
                             let read_len = cmp::min(app_buffer.len(), length);
 
                             let d = &app_buffer[0..read_len];
-                            for (i, c) in buffer[0..read_len].iter().enumerate() {
-                                d[i].set(*c);
-                            }
+                            d.copy_from_slice(&buffer[0..read_len]);
                         })
                     });
 

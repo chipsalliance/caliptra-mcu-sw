@@ -6,7 +6,7 @@ use core::result::Result;
 use kernel::ErrorCode;
 
 /// Simple interface for reading, writing and erasing the arbitrary length of data on flash storage. It is expected
-/// that drivers for tje flash storage access would implement this trait.
+/// that drivers for the flash storage access would implement this trait.
 pub trait FlashStorage<'a> {
     fn set_client(&self, client: &'a dyn FlashStorageClient);
 

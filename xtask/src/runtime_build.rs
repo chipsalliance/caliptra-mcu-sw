@@ -11,16 +11,15 @@ use crate::apps_build::apps_build_flat_tbf;
 use crate::{DynError, PROJECT_ROOT, TARGET};
 use elf::endian::AnyEndian;
 use elf::ElfBytes;
+use emulator_types::{RAM_OFFSET, RAM_SIZE};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::LazyLock;
 
 const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
-const RUNTIME_START: usize = 0x4000_0000;
 const INTERRUPT_TABLE_SIZE: usize = 128;
-const ICCM_SIZE: usize = 256 * 1024;
-const RAM_START: usize = 0x5000_0000;
-const RAM_SIZE: usize = 128 * 1024;
+// amount to reserve for data RAM at the end of RAM
+const DATA_RAM_SIZE: usize = 64 * 1024;
 
 static SYSROOT: LazyLock<String> = LazyLock::new(|| {
     // cache this in the target directory as it seems to be very slow to call rustc
@@ -108,17 +107,31 @@ fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize, DynError> {
     x.ok_or("error finding _sappmem symbol".into())
 }
 
+/// Build the runtime kernel binary without any applications.
+/// If parameters are not provided with the offsets and sizes for the kernel and apps, then placeholders
+/// will be used.
+/// Returns the kernel size and the apps memory offset.
 fn runtime_build_no_apps(
-    apps_offset: usize,
+    kernel_size: Option<usize>,
+    apps_offset: Option<usize>,
+    apps_size: Option<usize>,
     features: &[&str],
     output_name: &str,
-) -> Result<usize, DynError> {
+) -> Result<(usize, usize), DynError> {
     let tock_dir = &PROJECT_ROOT.join("runtime");
     let sysr = SYSROOT.clone();
     let ld_file_path = tock_dir.join("layout.ld");
 
-    let runtime_size = apps_offset - RUNTIME_START - INTERRUPT_TABLE_SIZE;
-    let apps_size = ICCM_SIZE - runtime_size - INTERRUPT_TABLE_SIZE;
+    // placeholder values
+    let runtime_size = kernel_size.unwrap_or(128 * 1024);
+    let apps_offset = apps_offset.unwrap_or(RAM_OFFSET as usize + 192 * 1024);
+    let apps_size = apps_size.unwrap_or(64 * 1024);
+
+    let ram_start = RAM_OFFSET as usize + RAM_SIZE as usize - DATA_RAM_SIZE;
+    assert!(
+        ram_start >= apps_offset + apps_size,
+        "RAM must be after apps"
+    );
 
     std::fs::write(
         &ld_file_path,
@@ -140,12 +153,12 @@ MEMORY
 
 INCLUDE runtime/kernel_layout.ld
 ",
-            RUNTIME_START + INTERRUPT_TABLE_SIZE,
+            RAM_OFFSET + INTERRUPT_TABLE_SIZE as u32,
             runtime_size,
             apps_offset,
             apps_size,
-            RAM_START,
-            RAM_SIZE,
+            ram_start,
+            DATA_RAM_SIZE,
         ),
     )?;
 
@@ -266,20 +279,22 @@ INCLUDE runtime/kernel_layout.ld
         Err("objcopy failed to build runtime")?;
     }
 
-    get_apps_memory_offset(target_binary("runtime"))
+    let kernel_size = std::fs::metadata(target_binary(output_name)).unwrap().len() as usize;
+
+    get_apps_memory_offset(target_binary("runtime")).map(|apps_offset| (kernel_size, apps_offset))
 }
 
 pub fn runtime_build_with_apps(
     features: &[&str],
     output_name: Option<&str>,
 ) -> Result<(), DynError> {
-    let mut app_offset = RUNTIME_START;
+    let mut app_offset = RAM_OFFSET as usize;
     let output_name = output_name.unwrap_or(DEFAULT_RUNTIME_NAME);
     let runtime_bin = target_binary(output_name);
 
     // build once to get the size of the runtime binary without apps
-    let apps_memory_offset =
-        runtime_build_no_apps(RUNTIME_START + 0x2_0000, features, output_name)?;
+    let (kernel_size, apps_memory_offset) =
+        runtime_build_no_apps(None, None, None, features, output_name)?;
 
     let runtime_bin_size = std::fs::metadata(&runtime_bin)?.len() as usize;
     app_offset += runtime_bin_size;
@@ -289,16 +304,39 @@ pub fn runtime_build_with_apps(
     let app_offset = (runtime_end_offset + INTERRUPT_TABLE_SIZE).next_multiple_of(4096);
     let padding = app_offset - runtime_end_offset - INTERRUPT_TABLE_SIZE;
 
-    // re-link and place the apps after the runtime binary
-    runtime_build_no_apps(app_offset, features, output_name)?;
+    // build the apps with the data memory at some incorrect offset
+    let apps_bin_len = apps_build_flat_tbf(app_offset, apps_memory_offset)?.len();
+    println!("Apps built: {} bytes", apps_bin_len);
+
+    // re-link and place the apps and data RAM after the runtime binary
+    let (kernel_size2, apps_memory_offset) = runtime_build_no_apps(
+        Some(kernel_size),
+        Some(app_offset),
+        Some(apps_bin_len),
+        features,
+        output_name,
+    )?;
+
+    assert_eq!(
+        kernel_size, kernel_size2,
+        "Kernel size changed between runs"
+    );
+
+    // re-link the applications with the correct data memory offsets
+    let apps_bin = apps_build_flat_tbf(app_offset, apps_memory_offset)?;
+    assert_eq!(
+        apps_bin_len,
+        apps_bin.len(),
+        "Applications sizes changed between runs"
+    );
+
+    println!("Apps data memory offset is {:x}", apps_memory_offset);
+    println!("Apps built: {} bytes", apps_bin.len());
 
     let mut bin = std::fs::read(&runtime_bin)?;
     let kernel_size = bin.len();
     println!("Kernel binary built: {} bytes", kernel_size);
 
-    // build the apps starting at the correct offset
-    let apps_bin = apps_build_flat_tbf(app_offset, apps_memory_offset)?;
-    println!("Apps built: {} bytes", apps_bin.len());
     bin.extend_from_slice(vec![0; padding].as_slice());
     bin.extend_from_slice(&apps_bin);
     std::fs::write(&runtime_bin, &bin)?;

@@ -1,102 +1,20 @@
 // Licensed under the Apache-2.0 license
 
-use crate::mctp::base_protocol::{MCTPHeader, MessageType, MCTP_HDR_SIZE};
+use crate::mctp::base_protocol::{
+    MCTPHeader, MessageType, MCTP_BASELINE_TRANSMISSION_UNIT, MCTP_HDR_SIZE,
+};
 use crate::mctp::control_msg::{MCTPCtrlCmd, MCTPCtrlMsgHdr, MCTP_CTRL_MSG_HEADER_LEN};
+use crate::mctp::recv::MCTPRxState;
+use crate::mctp::send::MCTPTxState;
 use crate::mctp::transport_binding::{MCTPTransportBinding, TransportRxClient, TransportTxClient};
-
-use core::fmt::Write;
-use romtime::println;
-
 use core::cell::Cell;
-
-use kernel::collections::list::{List, ListLink, ListNode};
-use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
+use core::fmt::Write;
+use kernel::collections::list::List;
+use kernel::utilities::cells::TakeCell;
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
-
+use romtime::println;
 use zerocopy::{FromBytes, IntoBytes};
-
-/// The trait that provides an interface to send the MCTP messages to MCTP kernel stack.
-pub trait MCTPSender {
-    /// Sets the client for the `MCTPSender` instance.
-    fn set_client(&self, client: &dyn MCTPTxClient);
-
-    /// Sends the message to the MCTP kernel stack.
-    fn send_msg(&self, dest_eid: u8, msg_tag: u8, msg_payload: SubSliceMut<'static, u8>);
-}
-
-/// This trait is implemented by client to get notified after message is sent.
-pub trait MCTPTxClient {
-    fn send_done(
-        &self,
-        msg_tag: Option<u8>,
-        result: Result<(), ErrorCode>,
-        msg_payload: SubSliceMut<'static, u8>,
-    );
-}
-
-/// This trait is implemented to get notified of the messages received
-/// on corresponding message_type.
-pub trait MCTPRxClient {
-    fn receive(&self, dst_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8]);
-}
-
-/// Send state for MCTP
-#[allow(dead_code)]
-pub struct MCTPTxState<'a, M: MCTPTransportBinding<'a>> {
-    mctp_mux_sender: &'a MuxMCTPDriver<'a, M>,
-    /// Destination EID
-    dest_eid: Cell<u8>,
-    /// Message type
-    msg_type: Cell<u8>,
-    /// msg_tag for the message being packetized
-    msg_tag: Cell<u8>,
-    /// Current packet sequence
-    pkt_seq: Cell<u8>,
-    /// Offset into the message buffer
-    offset: Cell<usize>,
-    /// Client to invoke when send done. This is set to the corresponding Virtual MCTP driver
-    client: OptionalCell<&'a dyn MCTPTxClient>,
-    /// next node in the list
-    next: ListLink<'a, MCTPTxState<'a, M>>,
-    /// The message buffer is set by the virtual MCTP driver when it issues the Tx request.
-    msg_payload: MapCell<SubSliceMut<'static, u8>>,
-}
-
-impl<'a, M: MCTPTransportBinding<'a>> ListNode<'a, MCTPTxState<'a, M>> for MCTPTxState<'a, M> {
-    fn next(&'a self) -> &'a ListLink<'a, MCTPTxState<'a, M>> {
-        &self.next
-    }
-}
-
-/// Receive state
-#[allow(dead_code)]
-pub struct MCTPRxState<'a> {
-    /// Source EID
-    source_eid: Cell<u8>,
-    /// message type
-    msg_type: Cell<u8>,
-    /// msg_tag for the message being assembled
-    msg_tag: Cell<u8>,
-    /// Current packet sequence
-    pkt_seq: Cell<u8>,
-    /// Offset into the message buffer
-    offset: Cell<usize>,
-    /// Start packet len
-    start_pkt_len: Cell<usize>,
-    /// Client (implements the MCTPRxClient trait)
-    client: OptionalCell<&'a dyn MCTPRxClient>,
-    /// Message buffer
-    msg_payload: MapCell<SubSliceMut<'static, u8>>,
-    /// next MCTPRxState node
-    next: ListLink<'a, MCTPRxState<'a>>,
-}
-
-impl<'a> ListNode<'a, MCTPRxState<'a>> for MCTPRxState<'a> {
-    fn next(&'a self) -> &'a ListLink<'a, MCTPRxState<'a>> {
-        &self.next
-    }
-}
 
 /// MUX struct that manages multiple MCTP driver users (clients).
 ///
@@ -139,7 +57,13 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
     }
 
     pub fn add_sender(&self, sender: &'a MCTPTxState<'a, M>) {
+        let list_empty = self.sender_list.head().is_none();
+
         self.sender_list.push_tail(sender);
+
+        if list_empty {
+            self.send_next_packet(sender);
+        }
     }
 
     pub fn add_receiver(&self, receiver: &'a MCTPRxState<'a>) {
@@ -264,9 +188,9 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             mctp_ctrl_msg_hdr.cmd(),
         );
 
-        let mctp_hdr_offset = self.get_total_hdr_size() - MCTP_HDR_SIZE;
-        let mctp_ctrl_msg_hdr_offset = mctp_hdr_offset + MCTP_HDR_SIZE;
-        let msg_payload_offset = mctp_ctrl_msg_hdr_offset + MCTP_CTRL_MSG_HEADER_LEN;
+        let mctp_hdr_start = self.mctp_hdr_offset();
+        let mctp_ctrl_hdr_start = mctp_hdr_start + MCTP_HDR_SIZE;
+        let msg_payload_start = mctp_ctrl_hdr_start + MCTP_CTRL_MSG_HEADER_LEN;
 
         let req_buf = &msg_buf[MCTP_CTRL_MSG_HEADER_LEN..];
         let mctp_ctrl_cmd: MCTPCtrlCmd = mctp_ctrl_msg_hdr.cmd().into();
@@ -286,7 +210,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             .map_or(Err(ErrorCode::NOMEM), |resp_buf| {
                 let result = match mctp_ctrl_cmd {
                     MCTPCtrlCmd::SetEID => mctp_ctrl_cmd
-                        .process_set_endpoint_id(req_buf, &mut resp_buf[msg_payload_offset..])
+                        .process_set_endpoint_id(req_buf, &mut resp_buf[msg_payload_start..])
                         .map(|eid| {
                             if let Some(eid) = eid {
                                 self.set_local_eid(eid);
@@ -295,7 +219,7 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
 
                     MCTPCtrlCmd::GetEID => mctp_ctrl_cmd.process_get_endpoint_id(
                         self.get_local_eid(),
-                        &mut resp_buf[msg_payload_offset..],
+                        &mut resp_buf[msg_payload_start..],
                     ),
 
                     MCTPCtrlCmd::GetMsgTypeSupport => return Err(ErrorCode::NOSUPPORT),
@@ -307,12 +231,13 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
                         let res = self
                             .fill_mctp_ctrl_hdr_resp(
                                 mctp_ctrl_msg_hdr_resp,
-                                &mut resp_buf[mctp_ctrl_msg_hdr_offset..],
+                                &mut resp_buf[mctp_ctrl_hdr_start
+                                    ..mctp_ctrl_hdr_start + MCTP_CTRL_MSG_HEADER_LEN],
                             )
                             .and_then(|_| {
                                 self.fill_mctp_hdr_resp(
                                     mctp_hdr_resp,
-                                    &mut resp_buf[mctp_hdr_offset..],
+                                    &mut resp_buf[mctp_hdr_start..mctp_hdr_start + MCTP_HDR_SIZE],
                                 )
                             });
 
@@ -338,14 +263,109 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             })
     }
 
-    fn get_total_hdr_size(&self) -> usize {
-        MCTP_HDR_SIZE + self.mctp_device.get_hdr_size()
+    fn send_next_packet(&self, cur_sender: &'a MCTPTxState<'a, M>) {
+        let mut tx_pkt = SubSliceMut::new(self.tx_pkt_buffer.take().unwrap());
+        let mctp_hdr_offset = self.mctp_hdr_offset();
+        let pkt_end_offset = self.get_mtu();
+
+        // set the window of the subslice for MCTP header and the payload
+        tx_pkt.slice(mctp_hdr_offset..pkt_end_offset);
+
+        match cur_sender.fill_next_packet(&mut tx_pkt, self.local_eid.get()) {
+            Ok(len) => {
+                tx_pkt.reset();
+                match self
+                    .mctp_device
+                    .transmit(tx_pkt.take(), len + mctp_hdr_offset)
+                {
+                    Ok(_) => (),
+                    Err((err, buf)) => {
+                        println!("MuxMCTPDriver: Failed to transmit {:?}", err);
+                        self.tx_pkt_buffer.replace(buf);
+                    }
+                }
+            }
+            Err(err) => {
+                println!("MuxMCTPDriver: Failed to start transmit {:?}", err);
+                self.tx_pkt_buffer.replace(tx_pkt.take());
+            }
+        }
+    }
+
+    fn process_first_packet(
+        &self,
+        mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>,
+        msg_type: MessageType,
+        pkt_payload: &[u8],
+    ) {
+        // Check if the first packet of a multi-packet message has at least length of
+        // MCTP_BASELINE_TRANSMISSION_UNIT bytes.
+        if mctp_hdr.eom() == 0 && pkt_payload.len() < MCTP_BASELINE_TRANSMISSION_UNIT {
+            println!(
+                "MuxMCTPDriver: Received first packet with less than 64 bytes. Dropping packet."
+            );
+            return;
+        }
+
+        let rx_state = self
+            .receiver_list
+            .iter()
+            .find(|rx_state| rx_state.is_receive_expected(msg_type));
+
+        if let Some(rx_state) = rx_state {
+            rx_state.start_receive(mctp_hdr, msg_type, pkt_payload);
+        } else {
+            println!("MuxMCTPDriver: No matching receive request found. Dropping packet.");
+        }
+    }
+
+    fn process_packet(&self, mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>, pkt_payload: &[u8]) {
+        if self.local_eid != mctp_hdr.dest_eid().into() {
+            println!("MuxMCTPDriver: Packet not for this Endpoint. Dropping packet.");
+            return;
+        }
+
+        if mctp_hdr.eom() != 1 && pkt_payload.len() < MCTP_BASELINE_TRANSMISSION_UNIT {
+            println!("MuxMCTPDriver: Received first or middle packet with less than 64 bytes. Dropping packet.");
+            return;
+        }
+
+        let rx_state = self
+            .receiver_list
+            .iter()
+            .find(|rx_state| rx_state.is_next_packet(&mctp_hdr, pkt_payload.len()));
+
+        match rx_state {
+            Some(rx_state) => {
+                rx_state.receive_next(mctp_hdr, pkt_payload);
+            }
+            None => {
+                println!("MuxMCTPDriver: No matching receive request found. Dropping packet.");
+            }
+        }
+    }
+
+    fn mctp_hdr_offset(&self) -> usize {
+        self.mctp_device.get_hdr_size()
     }
 }
 
 impl<'a, M: MCTPTransportBinding<'a>> TransportTxClient for MuxMCTPDriver<'a, M> {
-    fn send_done(&self, tx_buffer: &'static mut [u8], _result: Result<(), ErrorCode>) {
+    fn send_done(&self, tx_buffer: &'static mut [u8], result: Result<(), ErrorCode>) {
         self.tx_pkt_buffer.replace(tx_buffer);
+
+        let mut cur_sender = self.sender_list.head();
+        if let Some(sender) = cur_sender {
+            if sender.is_eom() || result.is_err() {
+                sender.send_done(result);
+                self.sender_list.pop_head();
+                cur_sender = self.sender_list.head();
+            }
+        }
+
+        if let Some(cur_sender) = cur_sender {
+            self.send_next_packet(cur_sender);
+        };
     }
 }
 
@@ -360,7 +380,7 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M>
         let (mctp_header, msg_type, payload_offset) = self.interpret_packet(&rx_buffer[0..len]);
         if let Some(msg_type) = msg_type {
             match msg_type {
-                MessageType::MCTPControl => {
+                MessageType::MctpControl => {
                     if mctp_header.tag_owner() == 1
                         && mctp_header.som() == 1
                         && mctp_header.eom() == 1
@@ -371,10 +391,23 @@ impl<'a, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, M>
                         println!("MuxMCTPDriver: Invalid MCTP Control message. Dropping packet.");
                     }
                 }
+                MessageType::Pldm
+                | MessageType::Spdm
+                | MessageType::SecureSpdm
+                | MessageType::VendorDefinedPci
+                | MessageType::TestMsgType => {
+                    self.process_first_packet(
+                        mctp_header,
+                        msg_type,
+                        &rx_buffer[payload_offset..len],
+                    );
+                }
                 _ => {
                     println!("MuxMCTPDriver: Unsupported message type. Dropping packet.");
                 }
             }
+        } else {
+            self.process_packet(mctp_header, &rx_buffer[payload_offset..len]);
         }
         self.rx_pkt_buffer.replace(rx_buffer);
     }

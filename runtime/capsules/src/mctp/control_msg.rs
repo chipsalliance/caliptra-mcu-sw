@@ -1,13 +1,11 @@
 // Licensed under the Apache-2.0 license
 
+use crate::mctp::base_protocol::valid_eid;
 use bitfield::bitfield;
 use kernel::ErrorCode;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const MCTP_CTRL_MSG_HEADER_LEN: usize = 3;
-
-const MCTP_NULL_EID: u8 = 0;
-const MCTP_BROADCAST_EID: u8 = 0xFF;
 
 bitfield! {
     #[repr(C)]
@@ -108,7 +106,7 @@ impl MCTPCtrlCmd {
 
         match op {
             SetEIDOp::SetEID | SetEIDOp::ForceEID => {
-                if eid == MCTP_NULL_EID || eid == MCTP_BROADCAST_EID || (1..7).contains(&eid) {
+                if eid == 0 || !valid_eid(eid) {
                     completion_code = CmdCompletionCode::ErrorInvalidData;
                 } else {
                     // TODO: Check if rejected case needs to be handled
@@ -318,7 +316,7 @@ mod tests {
         let mut msg_hdr = MCTPCtrlMsgHdr::new();
         msg_hdr.prepare_header(0, 0, 0, MCTPCtrlCmd::SetEID.to_u8());
         assert_eq!(msg_hdr.ic(), 0);
-        assert_eq!(msg_hdr.msg_type(), MessageType::MCTPControl as u8);
+        assert_eq!(msg_hdr.msg_type(), MessageType::MctpControl as u8);
         assert_eq!(msg_hdr.rq(), 0);
         assert_eq!(msg_hdr.datagram(), 0);
         assert_eq!(msg_hdr.instance_id(), 0);

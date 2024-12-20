@@ -162,6 +162,7 @@ pub fn test_flash_ctrl_erase_page() -> Option<u32> {
 
     // Check if the read operation is completed
     assert!(!test_cb.io_state.borrow().read_pending);
+    assert!(!test_cb.io_state.borrow().op_error);
 
     // Check if the read_out_buf is filled with 0xFF
     let read_out = test_cb.read_out_buf.take().unwrap();

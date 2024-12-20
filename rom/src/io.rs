@@ -17,7 +17,7 @@ pub fn panic_fmt(_pi: &PanicInfo) -> ! {
 
     // Cause the emulator to exit
     unsafe {
-        write_volatile(0x200f0000 as *mut u32, 0);
+        write_volatile(0x1000_2000 as *mut u32, 0);
     }
     unreachable!()
 }
@@ -33,10 +33,10 @@ fn write_byte(b: u8) {
     // # Safety
     // Accesses memory-mapped registers.
     unsafe {
-        write_volatile(0x2000_1041 as *mut u8, b);
+        write_volatile(0x1000_1041 as *mut u8, b);
     }
 }
 
 fn _read_byte() -> u8 {
-    unsafe { read_volatile(0x2000_1041 as *mut u8) }
+    unsafe { read_volatile(0x1000_1041 as *mut u8) }
 }
