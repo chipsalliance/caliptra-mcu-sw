@@ -1571,6 +1571,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "libtock_mctp"
+version = "0.1.0"
+dependencies = [
+ "libtock_platform",
+ "libtockasync",
+]
+
+[[package]]
 name = "libtock_ninedof"
 version = "0.1.0"
 dependencies = [

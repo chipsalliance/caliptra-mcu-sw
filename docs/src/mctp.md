@@ -155,13 +155,13 @@ impl<S:Syscalls, C:Config> Mctp<S,C> {
     ///
     /// # Arguments
     /// * `source_eid` - The source EID from which the request is to be received.
-    /// * `message_types` - The message types to receive. This is needed for SPDM to receive both SPDM(0x5) and secured SPDM(0x6) messages
+    /// * `msg_types` - The message types to receive. This is needed for SPDM to receive both SPDM(0x5) and secured SPDM(0x6) messages
     /// * `msg_payload` - The buffer to store the received message payload
     ///
     /// # Returns
     /// * `MessageInfo` - The message information containing the EID, message tag, message type, and payload length on success
     /// * `ErrorCode` - The error code on failure
-    pub async fn receive_request(&self, source_eid: u8, message_types: [u8],  msg_payload: &mut [u8]) -> Result<MessageInfo, ErrorCode>;
+    pub async fn receive_request(&self, source_eid: u8, msg_types: [u8],  msg_payload: &mut [u8]) -> Result<MessageInfo, ErrorCode>;
     /// Send the MCTP response to the destination EID
     ///
     /// # Arguments
@@ -190,13 +190,13 @@ impl<S:Syscalls, C:Config> Mctp<S,C> {
     ///
     /// # Arguments
     /// * `source_eid` - The source EID from which the response is to be received
-    /// * `message_type` - The message type to receive. This is needed for SPDM to differentiate between SPDM(0x5) and secured SPDM(0x6) messages
+    /// * `msg_type` - The message type to receive. This is needed for SPDM to differentiate between SPDM(0x5) and secured SPDM(0x6) messages
     /// * `msg_payload` - The buffer to store the received response payload
     ///
     /// # Returns
     /// * `()` - On success
     /// * `ErrorCode` - The error code on failure
-    pub async fn receive_response(&self, source_eid: u8, message_type: u8, msg_payload: &mut [u8]) -> Result<(), ErrorCode>;
+    pub async fn receive_response(&self, source_eid: u8, msg_type: u8, msg_payload: &mut [u8]) -> Result<(), ErrorCode>;
 }
 ```
 
@@ -287,7 +287,7 @@ pub struct App {
     bound_msg_type : u8,
 }
 
-/// Implements userspace driver for a particular message_type.
+/// Implements userspace driver for a particular msg_type.
 pub struct VirtualMCTPDriver {
     mctp_sender: &dyn MCTPSender,
     apps : Grant<App, 2 /*upcalls*/, 1 /*allowro*/, 1/*allow_rw*/>,
@@ -333,7 +333,7 @@ pub struct MCTPTxState<M:MCTPTransportBinding> {
 
 ```Rust
 /// This is the trait implemented by VirtualMCTPDriver instance to get notified of
-/// the messages received on corresponding message_type.
+/// the messages received on corresponding msg_type.
 pub trait MCTPRxClient {
     fn receive(&self, dst_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8]);
 }

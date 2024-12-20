@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use crate::mctp::base_protocol::{valid_eid, MessageType, MCTP_TAG_OWNER};
+use crate::mctp::base_protocol::{
+    valid_eid, valid_msg_tag, MessageType, MCTP_MSG_TYPE_RECV_ANY, MCTP_TAG_OWNER,
+};
 use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
 use core::cell::Cell;
@@ -62,7 +64,7 @@ struct OpContext {
 
 impl OpContext {
     fn matches(&self, msg_tag: u8, peer_eid: u8, msg_type: u8) -> bool {
-        if self.msg_type != msg_type {
+        if self.msg_type != MCTP_MSG_TYPE_RECV_ANY && self.msg_type != msg_type {
             return false;
         }
         match self.op_type {
@@ -134,8 +136,10 @@ impl<'a> MCTPDriver<'a> {
         }
     }
 
-    fn supported_msg_type(&self, msg_type: u8) -> bool {
-        self.msg_types.iter().any(|&t| t as u8 == msg_type)
+    fn supported_msg_type(&self, cmd_num: usize, msg_type: u8) -> bool {
+        // If the message type is MCTP_MSG_TYPE_RECV_ANY, then the command_num must be 1 (receive request)
+        (msg_type == MCTP_MSG_TYPE_RECV_ANY && cmd_num == 1)
+            || self.msg_types.iter().any(|&t| t as u8 == msg_type)
     }
 
     fn validate_args(
@@ -153,14 +157,20 @@ impl<'a> MCTPDriver<'a> {
 
         // lower 8 bits of arg2 is always msg_type
         let msg_type = (arg2 & 0xFF) as u8;
-        if !self.supported_msg_type(msg_type) {
+
+        if msg_type == MCTP_MSG_TYPE_RECV_ANY && command_num != 1 {
             Err(ErrorCode::INVAL)?;
         }
-        let msg_tag = (arg2 >> 8 & 0xFF) as u8;
 
-        // Receive Request message or send Request message
+        if !self.supported_msg_type(command_num, msg_type) {
+            Err(ErrorCode::INVAL)?;
+        }
+
+        // Receive Request message or send Request message should have MCTP_TAG_OWNER
+        // Receive Response message or send Response message should have a value between 0 and 7
+        let msg_tag = (arg2 >> 8 & 0xFF) as u8;
         if ((command_num == 1 || command_num == 3) && msg_tag != MCTP_TAG_OWNER)
-            || ((command_num == 2 || command_num == 4) && msg_tag & MCTP_TAG_OWNER != 0)
+            || ((command_num == 2 || command_num == 4) && !valid_msg_tag(msg_tag))
         {
             Err(ErrorCode::INVAL)?;
         }

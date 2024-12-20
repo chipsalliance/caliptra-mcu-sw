@@ -10,7 +10,7 @@ use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
 use romtime::println;
 
 /// This trait is implemented to get notified of the messages received
-/// on corresponding message_type.
+/// on corresponding msg_type.
 pub trait MCTPRxClient {
     fn receive(&self, dst_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8], msg_len: usize);
 }
@@ -49,11 +49,11 @@ struct MsgTerminus {
 impl<'a> MCTPRxState<'a> {
     pub fn new(
         rx_msg_buf: &'static mut [u8],
-        message_types: &'static [MessageType],
+        msg_types: &'static [MessageType],
     ) -> MCTPRxState<'static> {
         MCTPRxState {
             msg_terminus: MapCell::empty(),
-            msg_types: Cell::new(message_types),
+            msg_types: Cell::new(msg_types),
             client: OptionalCell::empty(),
             msg_payload: TakeCell::new(rx_msg_buf),
             next: ListLink::empty(),
