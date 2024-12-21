@@ -1,0 +1,15 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "libtock_flash"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+libtock = { path = "../../libtock" }
+libtock_platform = { path = "../../libtock/platform" }
+libtockasync = { path = "../../libtockasync" }
+
+# TODO: Remove this when creating PR
+romtime.workspace = true

@@ -11,6 +11,7 @@ critical-section = "1.1.2"
 embassy-executor = { version = "0.6.3", features = ["nightly"] }
 libtock = { path = "../libtock" }
 libtock_alarm = { path = "../libtock/apis/peripherals/alarm" }
+libtock_flash = { path = "../apis/flash" }
 libtock_console = { path = "../libtock/apis/interface/console" }
 libtock_debug_panic = { path = "../libtock/panic_handlers/debug_panic" }
 libtock_platform = { path = "../libtock/platform" }

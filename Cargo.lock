@@ -1120,6 +1120,7 @@ dependencies = [
  "libtock_alarm",
  "libtock_console",
  "libtock_debug_panic",
+ "libtock_flash",
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
@@ -1525,6 +1526,16 @@ dependencies = [
  "libtock_low_level_debug",
  "libtock_platform",
  "libtock_runtime",
+]
+
+[[package]]
+name = "libtock_flash"
+version = "0.1.0"
+dependencies = [
+ "libtock",
+ "libtock_platform",
+ "libtockasync",
+ "romtime",
 ]
 
 [[package]]
