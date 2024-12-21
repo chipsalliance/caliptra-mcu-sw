@@ -1588,6 +1588,7 @@ dependencies = [
 name = "libtock_mctp"
 version = "0.1.0"
 dependencies = [
+ "libtock_console",
  "libtock_platform",
  "libtockasync",
 ]

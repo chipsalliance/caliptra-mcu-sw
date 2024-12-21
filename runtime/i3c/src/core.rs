@@ -21,6 +21,9 @@ use registers_generated::i3c::I3C_CSR_ADDR;
 use tock_registers::register_bitfields;
 use tock_registers::LocalRegisterCopy;
 
+use core::fmt::Write;
+use romtime::println;
+
 pub const I3C_BASE: StaticRef<I3c> = unsafe { StaticRef::new(I3C_CSR_ADDR as *const I3c) };
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
 pub const MAX_READ_WRITE_SIZE: usize = 250;
@@ -288,6 +291,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             }
             // There is a pending Write Transaction. Software should read data from the RX Descriptor Queue and the RX Data Queue
             if tti_interrupts.read(InterruptStatus::RxDescStat) != 0 {
+                println!("I3C_CORE: Handling incoming write interrupt");
                 self.handle_incoming_write();
             }
         }
@@ -308,6 +312,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
 
     // called when TTI has a private Write with data for us to grab
     pub fn handle_incoming_write(&self) {
+        println!("I3C_CORE: Handling incoming write");
         self.retry_incoming_write.set(false);
         if self.rx_buffer.is_none() {
             self.rx_client.map(|client| {

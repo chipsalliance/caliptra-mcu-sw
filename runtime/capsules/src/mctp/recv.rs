@@ -227,6 +227,7 @@ impl<'a> MCTPRxState<'a> {
 
         // Single packet message
         if mctp_hdr.eom() == 1 {
+            println!("MuxMCTPDriver - Received single packet message. Ending receive.");
             self.end_receive();
         }
     }

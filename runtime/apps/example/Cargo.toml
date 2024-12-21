@@ -25,3 +25,6 @@ libtock_unittest = { path = "../libtock/unittest" }
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embedded-alloc = "0.5.1"
+
+[features]
+test-mctp-user-loopback = []

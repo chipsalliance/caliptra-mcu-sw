@@ -269,6 +269,27 @@ pub fn receive_ibi(stream: &mut TcpStream, target_addr: u8) -> bool {
     false
 }
 
+pub fn receive_ibi_timeout(stream: &mut TcpStream, target_addr: u8) -> bool {
+    let mut out_header_bytes: [u8; 6] = [0u8; 6];
+    match stream.read_exact(&mut out_header_bytes) {
+        Ok(()) => {
+            let outdata: OutgoingHeader = transmute!(out_header_bytes);
+            if outdata.ibi != 0 && outdata.from_addr == target_addr {
+                let pvt_read_cmd = prepare_private_read_cmd(target_addr);
+                stream.set_nonblocking(false).unwrap();
+                stream.write_all(&pvt_read_cmd).unwrap();
+                stream.set_nonblocking(true).unwrap();
+                return true;
+            }
+        }
+        Err(ref e) if e.kind() == ErrorKind::WouldBlock || e.kind() == ErrorKind::TimedOut => {
+            return false
+        }
+        Err(e) => panic!("Error reading message from socket: {}", e),
+    }
+    false
+}
+
 pub fn receive_private_read(stream: &mut TcpStream, target_addr: u8) -> Option<Vec<u8>> {
     let mut out_header_bytes = [0u8; 6];
     match stream.read_exact(&mut out_header_bytes) {

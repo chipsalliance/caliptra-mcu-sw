@@ -1,7 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use crate::i3c_socket::{
-    receive_ibi, receive_private_read, send_private_write, TestState, TestTrait,
+    receive_ibi, receive_ibi_timeout, receive_private_read, send_private_write, TestState,
+    TestTrait,
 };
 use crate::tests::mctp_util::base_protocol::{MCTPHdr, LOCAL_TEST_ENDPOINT_EID, MCTP_HDR_SIZE};
 use std::collections::VecDeque;
@@ -14,6 +15,7 @@ use zerocopy::{FromBytes, IntoBytes};
 
 #[derive(EnumIter, Debug)]
 pub(crate) enum MctpSpdmTests {
+    MctpSpdmResponderReady,
     MctpSpdmLoopbackTest64,
     // MctpSpdmLoopbackTest63,
     // MctpSpdmLoopbackTest256,
@@ -28,17 +30,21 @@ impl MctpSpdmTests {
         MctpSpdmTests::iter()
             .map(|test_id| {
                 let test_name = test_id.name();
-                let msg_type = test_id.msg_type();
                 let (req_msg_buf, req_pkts) = test_id.generate_req_pkts();
 
-                Box::new(Test::new(test_name, msg_type, req_msg_buf, req_pkts))
-                    as Box<dyn TestTrait + Send>
+                Box::new(Test::new(
+                    test_name,
+                    test_id.msg_type(),
+                    req_msg_buf,
+                    req_pkts,
+                )) as Box<dyn TestTrait + Send>
             })
             .collect()
     }
 
     fn name(&self) -> &'static str {
         match self {
+            MctpSpdmTests::MctpSpdmResponderReady => "MctpSpdmResponderReady",
             MctpSpdmTests::MctpSpdmLoopbackTest64 => "MctpSpdmLoopbackTest64",
             MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => "MctpSecureSpdmLoopbackTest1024",
         }
@@ -46,6 +52,7 @@ impl MctpSpdmTests {
 
     fn msg_type(&self) -> u8 {
         match self {
+            MctpSpdmTests::MctpSpdmResponderReady => 5,
             MctpSpdmTests::MctpSpdmLoopbackTest64 => 5,
             MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 6,
         }
@@ -53,6 +60,7 @@ impl MctpSpdmTests {
 
     fn msg_size(&self) -> usize {
         match self {
+            MctpSpdmTests::MctpSpdmResponderReady => 1,
             MctpSpdmTests::MctpSpdmLoopbackTest64 => 64,
             MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 1024,
         }
@@ -60,8 +68,9 @@ impl MctpSpdmTests {
 
     fn msg_tag(&self) -> u8 {
         match self {
-            MctpSpdmTests::MctpSpdmLoopbackTest64 => 0,
-            MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 1,
+            MctpSpdmTests::MctpSpdmResponderReady => 0,
+            MctpSpdmTests::MctpSpdmLoopbackTest64 => 1,
+            MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 2,
         }
     }
 
@@ -92,6 +101,8 @@ impl MctpSpdmTests {
         msg_buf[0] = self.msg_type();
         let payloads: Vec<Vec<u8>> = msg_buf.chunks(64).map(|chunk| chunk.to_vec()).collect();
         let n = payloads.len() - 1;
+
+        println!("Payloads: {:?}", payloads);
 
         let processed_payloads: Vec<Vec<u8>> = payloads
             .into_iter()
@@ -205,6 +216,69 @@ impl Test {
             self.check_response_message();
         }
     }
+
+    fn responder_ready_test(&self) -> bool {
+        match self.test_name.as_str() {
+            "MctpSpdmResponderReady" => true,
+            _ => false,
+        }
+    }
+
+    fn run_responder_ready_test(
+        &mut self,
+        running: Arc<AtomicBool>,
+        stream: &mut TcpStream,
+        target_addr: u8,
+    ) {
+        let mut loop_count = 100;
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        while running.load(Ordering::Relaxed) && loop_count > 0 {
+            match self.state {
+                TestState::Start => {
+                    println!("RESPONDER_READY: Starting test: {}", self.test_name);
+                    self.state = TestState::SendPrivateWrite;
+                }
+
+                TestState::SendPrivateWrite => {
+                    println!("RESPONDER_READY: Sending private write");
+                    let write_pkt = self.req_pkts.front().unwrap().clone();
+                    if send_private_write(stream, target_addr, write_pkt) {
+                        stream.set_nonblocking(false).unwrap();
+                        self.state = TestState::WaitForIbi;
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                    }
+                }
+                TestState::WaitForIbi => {
+                    if receive_ibi_timeout(stream, target_addr) {
+                        stream.set_nonblocking(true).unwrap();
+                        self.state = TestState::ReceivePrivateRead;
+                        println!("RESPONDER_READY: Received IBI");
+                        println!("RESPONDER_READY: Waiting for private read");
+                    } else {
+                        println!(
+                            "RESPONDER_READY: timeout waiting for IBI. Send private write again"
+                        );
+                        self.state = TestState::SendPrivateWrite;
+                    }
+                }
+                TestState::ReceivePrivateRead => {
+                    if let Some(data) = receive_private_read(stream, target_addr) {
+                        if data.len() == 5 && data[4] == 0x05 {
+                            println!("RESPONDER_READY: Received private read");
+                        }
+                        self.state = TestState::Finish;
+                    }
+                }
+                TestState::Finish => {
+                    self.passed = true;
+                    break;
+                }
+            }
+            loop_count -= 1;
+        }
+    }
 }
 
 impl TestTrait for Test {
@@ -213,36 +287,49 @@ impl TestTrait for Test {
     }
 
     fn run_test(&mut self, running: Arc<AtomicBool>, stream: &mut TcpStream, target_addr: u8) {
+        println!("SPDM_LOOPBACK: Running test: {}", self.test_name);
         stream.set_nonblocking(true).unwrap();
-        while running.load(Ordering::Relaxed) {
-            match self.state {
-                TestState::Start => {
-                    println!("Starting test: {}", self.test_name);
-                    self.state = TestState::SendPrivateWrite;
-                }
-                TestState::SendPrivateWrite => {
-                    if let Some(write_pkt) = self.req_pkts.pop_front() {
-                        if send_private_write(stream, target_addr, write_pkt) {
-                            self.state = TestState::SendPrivateWrite;
+        if self.responder_ready_test() {
+            self.run_responder_ready_test(running, stream, target_addr);
+            return;
+        } else {
+            while running.load(Ordering::Relaxed) {
+                match self.state {
+                    TestState::Start => {
+                        println!("Starting test: {}", self.test_name);
+                        self.state = TestState::SendPrivateWrite;
+                    }
+                    TestState::SendPrivateWrite => {
+                        // let write_pkt = if wait_for_responder {
+                        //     self.req_pkts.front().map(|pkt| pkt.clone())
+                        // } else {
+                        //     self.req_pkts.pop_front()
+                        // };
+
+                        if let Some(pkt) = self.req_pkts.pop_front() {
+                            println!("Sending private write");
+                            if send_private_write(stream, target_addr, pkt) {
+                                self.state = TestState::SendPrivateWrite;
+                            } else {
+                                self.state = TestState::Finish;
+                            }
                         } else {
-                            self.state = TestState::Finish;
+                            self.state = TestState::WaitForIbi;
                         }
-                    } else {
-                        self.state = TestState::WaitForIbi;
                     }
-                }
-                TestState::WaitForIbi => {
-                    if receive_ibi(stream, target_addr) {
-                        self.state = TestState::ReceivePrivateRead;
+                    TestState::WaitForIbi => {
+                        if receive_ibi(stream, target_addr) {
+                            self.state = TestState::ReceivePrivateRead;
+                        }
                     }
-                }
-                TestState::ReceivePrivateRead => {
-                    if let Some(data) = receive_private_read(stream, target_addr) {
-                        self.resp_pkts.push_back(data);
+                    TestState::ReceivePrivateRead => {
+                        if let Some(data) = receive_private_read(stream, target_addr) {
+                            self.resp_pkts.push_back(data);
+                        }
                     }
-                }
-                TestState::Finish => {
-                    self.passed = true;
+                    TestState::Finish => {
+                        self.passed = true;
+                    }
                 }
             }
         }

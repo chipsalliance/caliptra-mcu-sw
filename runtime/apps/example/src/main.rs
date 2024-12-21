@@ -76,35 +76,67 @@ pub(crate) async fn async_main<S: Syscalls>() {
         writeln!(console_writer, "async sleeper woke").unwrap();
     }
 
+    // if cfg!(feature = "test-mctp-user-loopback") {
     writeln!(console_writer, "Now its time for some MCTP stuff").unwrap();
 
     if AsyncMctp::<{ driver_num::MCTP_SPDM }, S>::exists() {
-        writeln!(console_writer, "MCTP SPDM exists").unwrap();
+        writeln!(console_writer, "USER: MCTP SPDM exists").unwrap();
         match AsyncMctp::<{ driver_num::MCTP_SPDM }, S>::get_max_message_size() {
             Ok(size) => writeln!(console_writer, "Max message size: {}", size).unwrap(),
             Err(e) => writeln!(console_writer, "Error getting max message size: {:?}", e).unwrap(),
         }
 
-        handle_request::<{ driver_num::MCTP_SPDM }, S>().await;
+        let mut msg_buffer: [u8; 16] = [0; 16];
+        let peer_eid: u8 = 0xA;
+
+        writeln!(console_writer, "USER: Sending for MCTP request").unwrap();
+
+        let result = handle_request::<{ driver_num::MCTP_SPDM }, S>(peer_eid, &mut msg_buffer).await;
+        match result {
+            Ok((dest_eid, msg_type, msg_tag)) => {
+                writeln!(console_writer, "USER: Request received. dest_eid {} msg_type {} msg_tag {}", dest_eid, msg_type, msg_tag).unwrap();
+                // let result = handle_response::<{ driver_num::MCTP_SPDM }, S>(
+                //     dest_eid, msg_type, msg_tag, &msg_buffer,
+                // )
+                // .await;
+                // match result {
+                //     Ok(_) => writeln!(console_writer, "USER: Response Sent").unwrap(),
+                //     Err(e) => {
+                //         writeln!(console_writer, "USER: Error handling response: {:?}", e).unwrap()
+                //     }
+                // }
+            }
+            Err(e) => writeln!(console_writer, "USER: Error handling request: {:?}", e).unwrap(),
+        }
     } else {
         writeln!(console_writer, "MCTP SPDM does not exist").unwrap();
     }
 
+    // }
     writeln!(console_writer, "app finished").unwrap();
 }
 
-async fn handle_request<const DRIVER_NUM: u32, S: Syscalls>() -> Result<(), ErrorCode> {
-    let mut rx_buffer = [0; 128];
-    let src_eid: u8 = 0xA;
+async fn handle_request<const DRIVER_NUM: u32, S: Syscalls>(
+    src_eid: u8,
+    rx_buf: &mut [u8],
+) -> Result<(u8, u8, u8), ErrorCode> {
+    let mctp = AsyncMctp::<{ DRIVER_NUM }, S>::receive_request(src_eid, None, rx_buf).await?;
+    writeln!(Console::<S>::writer(), "USER: Received MCTP Request").unwrap();
+    writeln!(Console::<S>::writer(), "USER: Message info: {:?}", mctp).unwrap();
 
-    let mctp =
-        AsyncMctp::<{ DRIVER_NUM }, S>::receive_request(src_eid, None, &mut rx_buffer).await?;
-    writeln!(Console::<S>::writer(), "Received MCTP message").unwrap();
-    writeln!(Console::<S>::writer(), "Message info: {:?}", mctp).unwrap();
-
-    Ok(())
+    Ok((mctp.eid, mctp.msg_type, mctp.msg_tag))
 }
 
+async fn handle_response<const DRIVER_NUM: u32, S: Syscalls>(
+    dest_eid: u8,
+    msg_type: u8,
+    msg_tag: u8,
+    tx_buf: &[u8],
+) -> Result<(), ErrorCode> {
+    AsyncMctp::<{ DRIVER_NUM }, S>::send_response(dest_eid, msg_type, msg_tag, tx_buf).await?;
+    writeln!(Console::<S>::writer(), "USER: Sent MCTP Response").unwrap();
+    Ok(())
+}
 // -----------------------------------------------------------------------------
 // Driver number and command IDs
 // -----------------------------------------------------------------------------
@@ -170,7 +202,10 @@ impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
         S::command(DRIVER_NUM, command::SET_RELATIVE, ticks, 0)
             .to_result()
             .map(|_when: u32| ())?;
-        sub.await.map(|_| ())
+        sub.await.map(|_| {
+            writeln!(Console::<S>::writer(), "Alarm woke up in Await").unwrap();
+            ()
+        })
     }
 }
 

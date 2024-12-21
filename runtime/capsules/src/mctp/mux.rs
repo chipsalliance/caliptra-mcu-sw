@@ -307,6 +307,8 @@ impl<'a, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, M> {
             return;
         }
 
+        println!("Receiving first packet of type {:?}", msg_type);
+
         let rx_state = self
             .receiver_list
             .iter()

@@ -8,6 +8,9 @@ use libtock_platform::share;
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
+use core::fmt::Write;
+use libtock_console::Console;
+
 #[derive(Debug)]
 pub struct MessageInfo {
     pub eid: u8,
@@ -66,12 +69,19 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
         msg_type: Option<u8>,
         msg_payload: &mut [u8],
     ) -> Result<MessageInfo, ErrorCode> {
+        let mut console_writer = Console::<S>::writer();
         let msg_type = if let Some(msg_type) = msg_type {
             AsyncMctp::<DRIVER_NUM, S, C>::supported_message_type(msg_type)?;
             msg_type
         } else {
             message_type::ANY_SUPPORTED
         };
+
+        if msg_payload.is_empty() {
+            writeln!(console_writer, "USER: Empty buffer!!!!").unwrap();
+            return Err(ErrorCode::Invalid);
+        }
+        writeln!(console_writer, "USER payload size {}", msg_payload.len()).unwrap();
 
         let msg_tag: u32 = MCTP_TAG_OWNER as u32;
         let msg_info = msg_tag << 8 | msg_type as u32;

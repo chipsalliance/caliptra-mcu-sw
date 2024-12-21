@@ -50,11 +50,13 @@ mod rw_allow {
     pub const COUNT: u8 = 1;
 }
 
+#[derive(Debug)]
 enum OpType {
     Tx,
     Rx,
 }
 
+#[derive(Debug)]
 struct OpContext {
     msg_tag: u8,
     peer_eid: u8,
@@ -305,8 +307,24 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
                 };
 
                 println!("MCTPDriver: receive request/response message from peer_eid: {}, msg_type: {}, msg_tag: {}", peer_eid, msg_type, msg_tag);
+                self.apps.each(|_, app, kernel_data| {
+                    println!("MCTPDriver: Entering grant for each app in command");
+                    kernel_data.get_readwrite_processbuffer(rw_allow::MESSAGE_READ).and_then(|read| {
+                        read.mut_enter(|rmsg_payload| {
+                            println!("MCTPDriver: Entering grant for read buffer rmsg_payload {}", rmsg_payload.len());
+                            if rmsg_payload.len() < self.max_msg_size {
+                                println!("MCTPDriver: rmsg_payload.len(): {}, max_msg_size: {}", rmsg_payload.len(), self.max_msg_size);
+                            }
+
+                        })
+                    }).unwrap_or(());
+                });
+
+
                 self.apps
                     .enter(process_id, |app, _| {
+
+                        
                         app.pending_rx = Some(OpContext {
                             msg_tag,
                             peer_eid,
@@ -394,13 +412,24 @@ impl<'a> MCTPTxClient for MCTPDriver<'a> {
 
 impl<'a> MCTPRxClient for MCTPDriver<'a> {
     fn receive(&self, src_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8], msg_len: usize) {
+        println!(
+            "MCTPDriver receive called with src_eid: {}, msg_type: {}, msg_tag: {}, msg_len: {} Driver msg types {:?}",
+            src_eid, msg_type, msg_tag, msg_len, self.msg_types
+        );
+
         self.apps.each(|_, app, kernel_data| {
+            println!("MCTPDriver: Entering grant for each app in receive app.pending_rx {:?}", app.pending_rx);
             if let Some(op_ctx) = app.pending_rx.as_mut() {
                 if op_ctx.matches(msg_tag, src_eid, msg_type) {
                     let res = kernel_data
                         .get_readwrite_processbuffer(rw_allow::MESSAGE_READ)
                         .and_then(|read| {
                             read.mut_enter(|rmsg_payload| {
+                                println!(
+                                    "rmsg_payload.len(): {}, msg_len {}",
+                                    rmsg_payload.len(),
+                                    msg_len
+                                );
                                 if rmsg_payload.len() < msg_len {
                                     Err(ErrorCode::SIZE)
                                 } else {
@@ -409,10 +438,18 @@ impl<'a> MCTPRxClient for MCTPDriver<'a> {
                                 }
                             })
                         })
-                        .unwrap_or(Ok(()));
-
+                        .unwrap_or(Err(ErrorCode::NOMEM));
+                    // .map_err(|err| {
+                    //     println!("MCTPDriver: receive failed: {:?}", err);
+                    //     err
+                    // });
+                    println!(
+                        "MCTPDriver: Check the result of receive operation {:?}",
+                        res
+                    );
                     if res.is_ok() {
                         app.pending_rx = None;
+                        println!("MCTPDriver: receive upcall scheduled");
                         let msg_info = (msg_type as usize) << 8 | (msg_tag as usize);
                         kernel_data
                             .schedule_upcall(
@@ -421,7 +458,11 @@ impl<'a> MCTPRxClient for MCTPDriver<'a> {
                             )
                             .ok();
                     }
+                } else {
+                    println!("MCTPDriver: receive upcall not scheduled. Opcontext does not match");
                 }
+            } else {
+                println!("MCTPDriver: no pending rx operation from user space");
             }
         });
     }
