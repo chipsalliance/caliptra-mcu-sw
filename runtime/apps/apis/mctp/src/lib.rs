@@ -1,10 +1,11 @@
 // Licensed under the Apache-2.0 license
 
 #![no_std]
-
+use core::cell::Cell;
 use libtock_platform::allow_ro::AllowRo;
 use libtock_platform::allow_rw::AllowRw;
 use libtock_platform::share;
+use libtock_platform::subscribe::Subscribe;
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
@@ -54,6 +55,113 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
         S::command(DRIVER_NUM, command::EXISTS, 0, 0).is_success()
     }
 
+    pub fn receive_request_sync(
+        source_eid: u8,
+        msg_type: Option<u8>,
+        msg_payload: &mut [u8],
+    ) -> Result<MessageInfo, ErrorCode> {
+        let called: Cell<Option<(u32, u32, u32)>> = Cell::new(None);
+        let mut console_writer = Console::<S>::writer();
+        let msg_type = if let Some(msg_type) = msg_type {
+            AsyncMctp::<DRIVER_NUM, S, C>::supported_message_type(msg_type)?;
+            msg_type
+        } else {
+            message_type::ANY_SUPPORTED
+        };
+
+        if msg_payload.is_empty() {
+            writeln!(console_writer, "USER: Empty buffer!!!!").unwrap();
+            return Err(ErrorCode::Invalid);
+        }
+        writeln!(console_writer, "USER payload size {}", msg_payload.len()).unwrap();
+
+        let msg_tag: u32 = MCTP_TAG_OWNER as u32;
+        let msg_info = msg_tag << 8 | msg_type as u32;
+
+        share::scope::<
+            (
+                AllowRw<_, { DRIVER_NUM }, { allow_rw::MESSAGE_READ }>,
+                Subscribe<_, { DRIVER_NUM }, { subscribe::MESSAGE_RECEIVED }>,
+            ),
+            _,
+            _,
+        >(|handle| {
+            let (allow_rw, subscribe) = handle.split();
+            S::allow_rw::<C, DRIVER_NUM, { allow_rw::MESSAGE_READ }>(allow_rw, msg_payload)?;
+            S::subscribe::<_, _, C, DRIVER_NUM, { subscribe::MESSAGE_RECEIVED }>(
+                subscribe, &called,
+            )?;
+
+            // let sub = TockSubscribe::subscribe::<S>(DRIVER_NUM, subscribe::MESSAGE_RECEIVED);
+
+            S::command(
+                DRIVER_NUM,
+                command::RECEIVE_REQUEST,
+                source_eid as u32,
+                msg_info as u32,
+            )
+            .to_result::<(), ErrorCode>()?;
+
+            loop {
+                S::yield_wait();
+                if let Some((msg_len, src_eid, msg_info)) = called.get() {
+                    return Ok(MessageInfo {
+                        eid: src_eid as u8,
+                        msg_tag: (msg_info & 0x07) as u8,
+                        msg_type: (msg_info >> 8) as u8,
+                        payload_len: msg_len as usize,
+                    });
+                }
+            }
+        })
+    }
+
+    pub fn send_response_sync(
+        dest_eid: u8,
+        msg_type: u8,
+        msg_tag: u8,
+        msg_payload: &[u8],
+    ) -> Result<(), ErrorCode> {
+        let called: Cell<Option<(u32, u32, u32)>> = Cell::new(None);
+        AsyncMctp::<DRIVER_NUM, S, C>::supported_message_type(msg_type)?;
+
+        let msg_info = (msg_tag as u32) << 8 | msg_type as u32;
+
+        share::scope::<
+            (
+                AllowRo<_, DRIVER_NUM, { allow_ro::MESSAGE_WRITE }>,
+                Subscribe<_, DRIVER_NUM, { subscribe::MESSAGE_TRANSMITTED }>,
+            ),
+            _,
+            _,
+        >(|handle| {
+            let (allow_ro, subscribe) = handle.split();
+            S::allow_ro::<C, { DRIVER_NUM }, { allow_ro::MESSAGE_WRITE }>(allow_ro, msg_payload)?;
+
+            S::subscribe::<_, _, C, DRIVER_NUM, { subscribe::MESSAGE_TRANSMITTED }>(
+                subscribe, &called,
+            )?;
+
+            S::command(
+                DRIVER_NUM,
+                command::SEND_RESPONSE,
+                dest_eid as u32,
+                msg_info,
+            )
+            .to_result::<(), ErrorCode>()?;
+
+            loop {
+                S::yield_wait();
+                if let Some((result, _, _)) = called.get() {
+                    return match result {
+                        0 => Ok(()),
+                        _ => Err(result.try_into().unwrap_or(ErrorCode::Fail)),
+                    };
+                }
+            }
+        })
+    }
+
     /// Receive the MCTP request from the source EID
     ///
     /// # Arguments
@@ -89,10 +197,7 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
         let sub = share::scope::<(AllowRw<_, { DRIVER_NUM }, { allow_rw::MESSAGE_READ }>,), _, _>(
             |handle| {
                 let allow_rw = handle.split().0;
-                S::allow_rw::<C, { DRIVER_NUM }, { allow_rw::MESSAGE_READ }>(
-                    allow_rw,
-                    msg_payload,
-                )?;
+                S::allow_rw::<C, DRIVER_NUM, { allow_rw::MESSAGE_READ }>(allow_rw, msg_payload)?;
 
                 let sub = TockSubscribe::subscribe::<S>(DRIVER_NUM, subscribe::MESSAGE_RECEIVED);
 
@@ -106,16 +211,38 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
 
                 Ok(sub)
             },
-        )?;
+        );
 
-        sub.await.map(|(msg_len, src_eid, msg_info)| {
-            Ok(MessageInfo {
-                eid: src_eid as u8,
-                msg_tag: (msg_info & 0xFF) as u8,
-                msg_type: (msg_info >> 8) as u8,
-                payload_len: msg_len as usize,
-            })
-        })?
+        match sub {
+            Ok(sub) => {
+                writeln!(console_writer, "USER: AWAIT in Receive request").unwrap();
+                let (msg_len, src_eid, msg_info) = sub.await?;
+                Ok(MessageInfo {
+                    eid: src_eid as u8,
+                    msg_tag: (msg_info & 0xFF) as u8,
+                    msg_type: (msg_info >> 8) as u8,
+                    payload_len: msg_len as usize,
+                })
+            }
+            Err(e) => {
+                writeln!(
+                    console_writer,
+                    "USER: Error in AWAIT in Receive request: {:?}",
+                    e
+                )
+                .unwrap();
+                Err(e)
+            }
+        }
+
+        // sub.await.map(|(msg_len, src_eid, msg_info)| {
+        //     Ok(MessageInfo {
+        //         eid: src_eid as u8,
+        //         msg_tag: (msg_info & 0xFF) as u8,
+        //         msg_type: (msg_info >> 8) as u8,
+        //         payload_len: msg_len as usize,
+        //     })
+        // })?
     }
 
     /// Send the MCTP response to the destination EID
@@ -160,7 +287,10 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
             },
         )?;
 
-        sub.await.map(|_| Ok(()))?
+        sub.await.map(|(result, _, _)| match result {
+            0 => Ok(()),
+            _ => Err(result.try_into().unwrap_or(ErrorCode::Fail)),
+        })?
     }
 
     /// Send the MCTP request to the destination EID

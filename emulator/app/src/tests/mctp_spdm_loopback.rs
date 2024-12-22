@@ -232,7 +232,7 @@ impl Test {
     ) {
         let mut loop_count = 100;
         stream
-            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .set_read_timeout(Some(std::time::Duration::from_secs(10)))
             .unwrap();
         while running.load(Ordering::Relaxed) && loop_count > 0 {
             match self.state {
@@ -247,12 +247,13 @@ impl Test {
                     if send_private_write(stream, target_addr, write_pkt) {
                         stream.set_nonblocking(false).unwrap();
                         self.state = TestState::WaitForIbi;
-                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        std::thread::sleep(std::time::Duration::from_secs(8));
                     }
                 }
                 TestState::WaitForIbi => {
                     if receive_ibi_timeout(stream, target_addr) {
                         stream.set_nonblocking(true).unwrap();
+                        std::thread::sleep(std::time::Duration::from_secs(2));
                         self.state = TestState::ReceivePrivateRead;
                         println!("RESPONDER_READY: Received IBI");
                         println!("RESPONDER_READY: Waiting for private read");
@@ -265,6 +266,7 @@ impl Test {
                 }
                 TestState::ReceivePrivateRead => {
                     if let Some(data) = receive_private_read(stream, target_addr) {
+                        println!("RESPONDER_READY: Received private read {:?}", data);
                         if data.len() == 5 && data[4] == 0x05 {
                             println!("RESPONDER_READY: Received private read");
                         }

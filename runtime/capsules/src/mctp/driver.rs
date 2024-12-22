@@ -307,24 +307,32 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
                 };
 
                 println!("MCTPDriver: receive request/response message from peer_eid: {}, msg_type: {}, msg_tag: {}", peer_eid, msg_type, msg_tag);
-                self.apps.each(|_, app, kernel_data| {
-                    println!("MCTPDriver: Entering grant for each app in command");
-                    kernel_data.get_readwrite_processbuffer(rw_allow::MESSAGE_READ).and_then(|read| {
-                        read.mut_enter(|rmsg_payload| {
-                            println!("MCTPDriver: Entering grant for read buffer rmsg_payload {}", rmsg_payload.len());
-                            if rmsg_payload.len() < self.max_msg_size {
-                                println!("MCTPDriver: rmsg_payload.len(): {}, max_msg_size: {}", rmsg_payload.len(), self.max_msg_size);
-                            }
+                // self.apps.each(|process_id, app, kernel_data| {
+                //     println!("MCTPDriver: Entering grant for each app in command for process id {:?}", process_id);
+                //     kernel_data.get_readwrite_processbuffer(rw_allow::MESSAGE_READ).and_then(|read| {
+                //         read.mut_enter(|rmsg_payload| {
+                //             println!("MCTPDriver: Entering grant for read buffer rmsg_payload {}", rmsg_payload.len());
+                //             if rmsg_payload.len() < self.max_msg_size {
+                //                 println!("MCTPDriver: rmsg_payload.len(): {}, max_msg_size: {}", rmsg_payload.len(), self.max_msg_size);
+                //             }
 
-                        })
-                    }).unwrap_or(());
-                });
-
+                //         })
+                //     }).unwrap_or(());
+                // });
 
                 self.apps
-                    .enter(process_id, |app, _| {
-
-                        
+                    .enter(process_id, |app, kernel_data| {
+                        println!("MCTPDriver: Entering grant for app in command for process id {:?}", process_id);
+                        let res = kernel_data.get_readwrite_processbuffer(rw_allow::MESSAGE_READ).and_then(|read| {
+                            read.mut_enter(|rmsg_payload| {
+                                println!("MCTPDriver: Entering grant for read buffer rmsg_payload {}", rmsg_payload.len());
+                                if rmsg_payload.len() < self.max_msg_size {
+                                    println!("MCTPDriver: rmsg_payload.len(): {}, max_msg_size: {}", rmsg_payload.len(), self.max_msg_size);
+                                }
+                                Ok(())
+                            })
+                        }).unwrap_or(Err(ErrorCode::NOMEM));
+                        println!("MCTPDriver: Check the result of receive operation {:?} for process id {:?}", res, process_id);
                         app.pending_rx = Some(OpContext {
                             msg_tag,
                             peer_eid,
@@ -371,6 +379,7 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
     }
 
     fn allocate_grant(&self, process_id: ProcessId) -> Result<(), kernel::process::Error> {
+        println!("MCTPDriver: allocate_grant for process_id {:?}", process_id);
         self.apps.enter(process_id, |_, _| {})
     }
 }
@@ -417,8 +426,8 @@ impl<'a> MCTPRxClient for MCTPDriver<'a> {
             src_eid, msg_type, msg_tag, msg_len, self.msg_types
         );
 
-        self.apps.each(|_, app, kernel_data| {
-            println!("MCTPDriver: Entering grant for each app in receive app.pending_rx {:?}", app.pending_rx);
+        self.apps.each(|process_id, app, kernel_data| {
+            println!("MCTPDriver: Entering grant for each app in receive app.pending_rx {:?} process_id {:?}", app.pending_rx, process_id);
             if let Some(op_ctx) = app.pending_rx.as_mut() {
                 if op_ctx.matches(msg_tag, src_eid, msg_type) {
                     let res = kernel_data

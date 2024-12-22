@@ -6,8 +6,10 @@ use crate::mctp::base_protocol::{
 use core::cell::Cell;
 use core::fmt::Write;
 use kernel::collections::list::{ListLink, ListNode};
+use kernel::hil::time::{Alarm, Ticks};
 use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
 use romtime::println;
+use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 
 /// This trait is implemented to get notified of the messages received
 /// on corresponding msg_type.
@@ -16,7 +18,7 @@ pub trait MCTPRxClient {
 }
 
 /// Receive state
-pub struct MCTPRxState<'a> {
+pub struct MCTPRxState<'a, A: Alarm<'a>> {
     /// Message assembly context
     msg_terminus: MapCell<MsgTerminus>,
     /// Expected message types
@@ -26,11 +28,13 @@ pub struct MCTPRxState<'a> {
     /// Message buffer
     msg_payload: TakeCell<'static, [u8]>,
     /// next MCTPRxState node
-    next: ListLink<'a, MCTPRxState<'a>>,
+    next: ListLink<'a, MCTPRxState<'a, A>>,
+    /// Alarm is currently only used for the time stamping of the received messages
+    alarm: &'a A,
 }
 
-impl<'a> ListNode<'a, MCTPRxState<'a>> for MCTPRxState<'a> {
-    fn next(&'a self) -> &'a ListLink<'a, MCTPRxState<'a>> {
+impl<'a, A: Alarm<'a>> ListNode<'a, MCTPRxState<'a, A>> for MCTPRxState<'a, A> {
+    fn next(&'a self) -> &'a ListLink<'a, MCTPRxState<'a, A>> {
         &self.next
     }
 }
@@ -46,17 +50,19 @@ struct MsgTerminus {
     msg_size: usize,
 }
 
-impl<'a> MCTPRxState<'a> {
+impl<'a, A: Alarm<'a>> MCTPRxState<'a, A> {
     pub fn new(
         rx_msg_buf: &'static mut [u8],
         msg_types: &'static [MessageType],
-    ) -> MCTPRxState<'static> {
+        alarm: &'a A,
+    ) -> MCTPRxState<'a, A> {
         MCTPRxState {
             msg_terminus: MapCell::empty(),
             msg_types: Cell::new(msg_types),
             client: OptionalCell::empty(),
             msg_payload: TakeCell::new(rx_msg_buf),
             next: ListLink::empty(),
+            alarm,
         }
     }
 

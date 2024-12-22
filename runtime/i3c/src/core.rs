@@ -373,6 +373,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
 
     // called when TTI wants us to send data for a private Read
     pub fn handle_outgoing_read(&self) {
+        println!("I3C_CORE: Handling outgoing read");
         self.retry_outgoing_read.set(false);
 
         if self.tx_buffer.is_none() {
@@ -428,6 +429,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     fn send_ibi(&self, mdb: u8) {
+        println!("I3C_CORE: Sending IBI");
         // TODO: it is unclear if we need to set anything else in the descriptor
         self.registers
             .tti_tti_ibi_port
@@ -463,6 +465,7 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         self.tx_buffer.replace(tx_buf);
         self.tx_buffer_idx.set(0);
         self.tx_buffer_size.set(len);
+        println!("I3C_CORE: Submitted request to transmit read");
         // TODO: check that this is for MCTP or something else
         self.send_ibi(MDB_PENDING_READ_MCTP);
         Ok(())
