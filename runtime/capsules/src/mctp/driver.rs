@@ -316,7 +316,7 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
                 println!("MCTPDriver::command receive request/response message from peer_eid: {}, msg_type: {}, msg_tag: {}", peer_eid, msg_type, msg_tag);
 
                 self.apps
-                    .enter(process_id, |app, kernel_data| {
+                    .enter(process_id, |app, _| {
                         app.pending_rx = Some(OpContext {
                             msg_tag,
                             peer_eid,

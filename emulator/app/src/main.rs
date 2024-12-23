@@ -392,7 +392,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             i3c.get_dynamic_address().unwrap()
         );
 
-        let spdm_loopback_tests = tests::mctp_spdm_loopback::MctpSpdmTests::generate_tests();
+        let spdm_loopback_tests = tests::mctp_user_loopback::MctpSpdmTests::generate_tests();
         println!("Running SPDM Loopback Tests");
 
         i3c_socket::run_tests(

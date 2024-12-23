@@ -31,6 +31,24 @@ pub mod message_type {
 
 pub struct AsyncMctp<const DRIVER_NUM: u32, S: Syscalls, C: Config = DefaultConfig>(S, C);
 
+macro_rules! eid {
+    ($msg_info:expr) => {
+        (($msg_info & 0xFF0000) >> 16) as u8
+    };
+}
+
+macro_rules! msg_tag {
+    ($msg_info:expr) => {
+        ($msg_info & 0x07) as u8
+    };
+}
+
+macro_rules! msg_type {
+    ($msg_info:expr) => {
+        (($msg_info & 0xFF00) >> 8) as u8
+    };
+}
+
 impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> {
     /// Check if the MCTP driver for a specific message type exists
     ///
@@ -83,7 +101,7 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
                 DRIVER_NUM,
                 command::RECEIVE_REQUEST,
                 source_eid as u32,
-                msg_info as u32,
+                msg_info,
             )
             .to_result::<(), ErrorCode>()?;
 
@@ -91,10 +109,10 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
                 S::yield_wait();
                 if let Some((msg_len, recv_time, msg_info)) = called.get() {
                     return Ok(MessageInfo {
-                        eid: ((msg_info & 0xFF0000) >> 16) as u8,
-                        msg_tag: (msg_info & 0x07) as u8,
-                        msg_type: (msg_info >> 8) as u8,
-                        recv_time: recv_time as u32,
+                        eid: eid!(msg_info),
+                        msg_tag: msg_tag!(msg_info),
+                        msg_type: msg_type!(msg_info),
+                        recv_time,
                         payload_len: msg_len as usize,
                     });
                 }
@@ -191,46 +209,33 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
                     DRIVER_NUM,
                     command::RECEIVE_REQUEST,
                     source_eid as u32,
-                    msg_info as u32,
+                    msg_info,
                 )
                 .to_result::<(), ErrorCode>()?;
 
                 Ok(sub)
             },
-        );
+        )?;
 
-        match sub {
-            Ok(sub) => {
-                writeln!(console_writer, "USER: AWAIT in Receive request").unwrap();
-                let (msg_len, src_eid, msg_info) = sub.await?;
-                Ok(MessageInfo {
-                    eid: src_eid as u8,
-                    msg_tag: (msg_info & 0xFF) as u8,
-                    msg_type: (msg_info >> 8) as u8,
-                    recv_time: 0,
-                    payload_len: msg_len as usize,
-                })
-            }
-            Err(e) => {
-                writeln!(
-                    console_writer,
-                    "USER: Error in AWAIT in Receive request: {:?}",
-                    e
-                )
-                .unwrap();
-                Err(e)
-            }
-        }
-
-        // sub.await.map(|(msg_len, src_eid, msg_info)| {
-        //     Ok(MessageInfo {
-        //         eid: src_eid as u8,
-        //         msg_tag: (msg_info & 0xFF) as u8,
-        //         msg_type: (msg_info >> 8) as u8,
-        //         payload_len: msg_len as usize,
-        //     })
-        // })?
+        writeln!(console_writer, "USER: AWAIT in Receive request").unwrap();
+        let (msg_len, recv_time, msg_info) = sub.await?;
+        Ok(MessageInfo {
+            eid: eid!(msg_info),
+            msg_tag: msg_tag!(msg_info),
+            msg_type: msg_type!(msg_info),
+            recv_time: recv_time,
+            payload_len: msg_len as usize,
+        })
     }
+
+    // sub.await.map(|(msg_len, src_eid, msg_info)| {
+    //     Ok(MessageInfo {
+    //         eid: src_eid as u8,
+    //         msg_tag: (msg_info & 0xFF) as u8,
+    //         msg_type: (msg_info >> 8) as u8,
+    //         payload_len: msg_len as usize,
+    //     })
+    // })?
 
     /// Send the MCTP response to the destination EID
     ///
@@ -378,7 +383,7 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
                     eid: ((msg_info & 0xFF0000) >> 16) as u8,
                     msg_tag: (msg_info & 0xFF) as u8,
                     msg_type: (msg_info >> 8) as u8,
-                    recv_time: recv_time as u32,
+                    recv_time,
                     payload_len: msg_len as usize,
                 })
             })
@@ -438,7 +443,6 @@ impl<
 // Driver number and command IDs
 // -----------------------------------------------------------------------------
 
-const MCTP_TAG_MASK: u8 = 0x07;
 const MCTP_TAG_OWNER: u8 = 0x08;
 
 pub mod driver_num {

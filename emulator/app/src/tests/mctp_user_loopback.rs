@@ -27,13 +27,16 @@ pub(crate) enum MctpSpdmTests {
 impl MctpSpdmTests {
     pub fn generate_tests() -> Vec<Box<dyn TestTrait + Send>> {
         MctpSpdmTests::iter()
-            .map(|test_id| {
+            .enumerate()
+            .map(|(i, test_id)| {
                 let test_name = test_id.name();
-                let (req_msg_buf, req_pkts) = test_id.generate_req_pkts();
+                let msg_tag = (i % 4) as u8;
+                let (req_msg_buf, req_pkts) = test_id.generate_req_pkts(msg_tag);
 
                 Box::new(Test::new(
                     test_name,
                     test_id.msg_type(),
+                    msg_tag,
                     req_msg_buf,
                     req_pkts,
                 )) as Box<dyn TestTrait + Send>
@@ -78,33 +81,19 @@ impl MctpSpdmTests {
         }
     }
 
-    fn msg_tag(&self) -> u8 {
-        match self {
-            MctpSpdmTests::MctpSpdmResponderReady => 0,
-            MctpSpdmTests::MctpSpdmLoopbackTest64 => 1,
-            MctpSpdmTests::MctpSpdmLoopbackTest63 => 2,
-            MctpSpdmTests::MctpSpdmLoopbackTest256 => 3,
-            MctpSpdmTests::MctpSpdmLoopbackTest1000 => 4,
-            MctpSpdmTests::MctpSecureSpdmLoopbackTest64 => 5,
-            MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 6,
-        }
-    }
-
-    fn generate_mctp_packet(&self, index: usize, payload: Vec<u8>, last: bool) -> Vec<u8> {
+    fn generate_mctp_packet(
+        &self,
+        index: usize,
+        payload: Vec<u8>,
+        msg_tag: u8,
+        last: bool,
+    ) -> Vec<u8> {
         let mut pkt: Vec<u8> = vec![0; MCTP_HDR_SIZE + payload.len()];
         let pkt_seq: u8 = (index % 4) as u8;
         let som = if index == 0 { 1 } else { 0 };
         let eom = if last { 1 } else { 0 };
         let mut mctp_hdr = MCTPHdr::new();
-        mctp_hdr.prepare_header(
-            0,
-            LOCAL_TEST_ENDPOINT_EID,
-            som,
-            eom,
-            pkt_seq,
-            1,
-            self.msg_tag(),
-        );
+        mctp_hdr.prepare_header(0, LOCAL_TEST_ENDPOINT_EID, som, eom, pkt_seq, 1, msg_tag);
         mctp_hdr
             .write_to(&mut pkt[0..MCTP_HDR_SIZE])
             .expect("mctp header write failed");
@@ -112,7 +101,7 @@ impl MctpSpdmTests {
         pkt
     }
 
-    fn generate_req_pkts(&self) -> (Vec<u8>, VecDeque<Vec<u8>>) {
+    fn generate_req_pkts(&self, msg_tag: u8) -> (Vec<u8>, VecDeque<Vec<u8>>) {
         let mut msg_buf: Vec<u8> = (0..self.msg_size()).map(|_| rand::random::<u8>()).collect();
         msg_buf[0] = self.msg_type();
         let payloads: Vec<Vec<u8>> = msg_buf.chunks(64).map(|chunk| chunk.to_vec()).collect();
@@ -123,7 +112,7 @@ impl MctpSpdmTests {
         let processed_payloads: Vec<Vec<u8>> = payloads
             .into_iter()
             .enumerate()
-            .map(|(i, payload)| self.generate_mctp_packet(i, payload, n == i))
+            .map(|(i, payload)| self.generate_mctp_packet(i, payload, msg_tag, n == i))
             .collect();
 
         let req_pkts: VecDeque<Vec<u8>> = processed_payloads.into_iter().collect();
@@ -136,6 +125,7 @@ struct Test {
     test_name: String,
     state: TestState,
     msg_type: u8,
+    msg_tag: u8,
     req_msg_buf: Vec<u8>,
     req_pkts: VecDeque<Vec<u8>>,
     resp_pkts: VecDeque<Vec<u8>>,
@@ -146,6 +136,7 @@ impl Test {
     fn new(
         test_name: &str,
         msg_type: u8,
+        msg_tag: u8,
         req_msg_buf: Vec<u8>,
         req_pkts: VecDeque<Vec<u8>>,
     ) -> Self {
@@ -153,6 +144,7 @@ impl Test {
             test_name: test_name.to_string(),
             state: TestState::Start,
             msg_type,
+            msg_tag,
             req_msg_buf,
             req_pkts,
             resp_pkts: VecDeque::new(),
@@ -164,8 +156,6 @@ impl Test {
         let mut resp_msg: Vec<u8> = Vec::new();
         let mut i = 0;
         for pkt in self.resp_pkts.iter() {
-            // let req_mctp_hdr: MCTPHdr<[u8; MCTP_HDR_SIZE]> =
-            //     MCTPHdr::read_from_bytes(&self.req_pkts[i][0..MCTP_HDR_SIZE]).unwrap();
             let resp_mctp_hdr: MCTPHdr<[u8; MCTP_HDR_SIZE]> =
                 MCTPHdr::read_from_bytes(&pkt[0..MCTP_HDR_SIZE]).unwrap();
             if i == 0 {
@@ -177,7 +167,7 @@ impl Test {
             let seq_num = (i % 4) as u8;
             assert!(resp_mctp_hdr.dest_eid() == LOCAL_TEST_ENDPOINT_EID);
             assert!(resp_mctp_hdr.tag_owner() == 0);
-            assert!(resp_mctp_hdr.msg_tag() == self.get_msg_tag());
+            assert!(resp_mctp_hdr.msg_tag() == self.msg_tag);
             assert!(resp_mctp_hdr.pkt_seq() == seq_num);
 
             resp_msg.extend_from_slice(&pkt[MCTP_HDR_SIZE..]);
@@ -203,10 +193,6 @@ impl Test {
         if mctp_hdr.dest_eid() != LOCAL_TEST_ENDPOINT_EID {
             return false;
         }
-        // let src_eid = mctp_hdr.src_eid();
-        // mctp_hdr.set_src_eid(mctp_hdr.dest_eid());
-        // mctp_hdr.set_dest_eid(src_eid);
-        // mctp_hdr.set_tag_owner(0);
 
         if mctp_hdr.eom() == 1 {
             last_pkt = true;
@@ -230,27 +216,13 @@ impl Test {
         }
     }
 
-    fn get_msg_tag(&self) -> u8 {
-        match self.test_name.as_str() {
-            "MctpSpdmResponderReady" => 0,
-            "MctpSpdmLoopbackTest64" => 1,
-            "MctpSpdmLoopbackTest63" => 2,
-            "MctpSpdmLoopbackTest256" => 3,
-            "MctpSpdmLoopbackTest1000" => 4,
-            "MctpSecureSpdmLoopbackTest64" => 5,
-            "MctpSecureSpdmLoopbackTest1024" => 6,
-            _ => 0,
-        }
-    }
-
     fn wait_for_responder(
         &mut self,
         running: Arc<AtomicBool>,
         stream: &mut TcpStream,
         target_addr: u8,
     ) {
-        let mut loop_count = 100000;
-        while running.load(Ordering::Relaxed) && loop_count > 0 {
+        while running.load(Ordering::Relaxed) {
             match self.state {
                 TestState::Start => {
                     println!("RESPONDER_READY: Starting test: {}", self.test_name);
@@ -262,7 +234,7 @@ impl Test {
                     let write_pkt = self.req_pkts.front().unwrap().clone();
                     if send_private_write(stream, target_addr, write_pkt) {
                         self.state = TestState::WaitForIbi;
-                        std::thread::sleep(std::time::Duration::from_secs(10));
+                        std::thread::sleep(std::time::Duration::from_secs(5));
                     }
                 }
                 TestState::WaitForIbi => {
@@ -299,7 +271,6 @@ impl Test {
                     break;
                 }
             }
-            loop_count -= 1;
         }
     }
 
@@ -314,6 +285,7 @@ impl Test {
             match self.state {
                 TestState::Start => {
                     println!("REQUESTER_LOOPBACK: Starting test: {}", self.test_name);
+                    std::thread::sleep(std::time::Duration::from_secs(2));
                     self.state = TestState::SendPrivateWrite;
                 }
                 TestState::SendPrivateWrite => {
@@ -327,6 +299,7 @@ impl Test {
                         }
                     } else {
                         self.state = TestState::WaitForIbi;
+                        std::thread::sleep(std::time::Duration::from_secs(2));
                     }
                 }
                 TestState::WaitForIbi => {

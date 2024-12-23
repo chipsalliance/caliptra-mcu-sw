@@ -8,7 +8,7 @@
 use core::fmt::Write;
 use libtock::alarm::*;
 use libtock_console::{Console, ConsoleWriter};
-use libtock_mctp::{driver_num, message_type, AsyncMctp, MessageInfo};
+use libtock_mctp::{driver_num, AsyncMctp};
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
@@ -70,53 +70,19 @@ pub(crate) async fn async_main<S: Syscalls>() {
         }
     };
 
-    // for _ in 0..5 {
-    //     writeln!(console_writer, "Sleeping for 1 millisecond").unwrap();
-    //     sleep::<S>(Milliseconds(1)).await;
-    //     writeln!(console_writer, "async sleeper woke").unwrap();
-    // }
+    for _ in 0..5 {
+        writeln!(console_writer, "Sleeping for 1 millisecond").unwrap();
+        sleep::<S>(Milliseconds(1)).await;
+        writeln!(console_writer, "async sleeper woke").unwrap();
+    }
 
     // if cfg!(feature = "test-mctp-user-loopback") {
     writeln!(console_writer, "Now its time for some MCTP stuff").unwrap();
 
-    test_mctp_loopback_sync::<{ driver_num::MCTP_SPDM }, S>(&mut console_writer);
+    // test_mctp_loopback_sync::<{ driver_num::MCTP_SPDM }, S>(&mut console_writer);
 
-    // test_mctp_loopback::<{ driver_num::MCTP_SPDM }, S>(&mut console_writer).await;
+    test_mctp_loopback::<{ driver_num::MCTP_SPDM }, S>(&mut console_writer).await;
 
-    // if AsyncMctp::<{ driver_num::MCTP_SPDM }, S>::exists() {
-    //     writeln!(console_writer, "USER: MCTP SPDM exists").unwrap();
-    //     match AsyncMctp::<{ driver_num::MCTP_SPDM }, S>::get_max_message_size() {
-    //         Ok(size) => writeln!(console_writer, "Max message size: {}", size).unwrap(),
-    //         Err(e) => writeln!(console_writer, "Error getting max message size: {:?}", e).unwrap(),
-    //     }
-
-    //     let mut msg_buffer: [u8; 1024] = [0; 1024];
-    //     let peer_eid: u8 = 0xA;
-
-    //     writeln!(console_writer, "USER: Sending for MCTP request").unwrap();
-
-    //     let result = handle_request::<{ driver_num::MCTP_SPDM }, S>(peer_eid, &mut msg_buffer).await;
-    //     match result {
-    //         Ok((dest_eid, msg_type, msg_tag)) => {
-    //             writeln!(console_writer, "USER: Request received. dest_eid {} msg_type {} msg_tag {}", dest_eid, msg_type, msg_tag).unwrap();
-    //             // let result = handle_response::<{ driver_num::MCTP_SPDM }, S>(
-    //             //     dest_eid, msg_type, msg_tag, &msg_buffer,
-    //             // )
-    //             // .await;
-    //             // match result {
-    //             //     Ok(_) => writeln!(console_writer, "USER: Response Sent").unwrap(),
-    //             //     Err(e) => {
-    //             //         writeln!(console_writer, "USER: Error handling response: {:?}", e).unwrap()
-    //             //     }
-    //             // }
-    //         }
-    //         Err(e) => writeln!(console_writer, "USER: Error handling request: {:?}", e).unwrap(),
-    //     }
-    // } else {
-    //     writeln!(console_writer, "MCTP SPDM does not exist").unwrap();
-    // }
-
-    // }
     writeln!(console_writer, "app finished").unwrap();
 }
 
@@ -127,10 +93,10 @@ fn test_mctp_loopback_sync<const DRIVER_NUM: u32, S: Syscalls>(cw: &mut ConsoleW
 
         if AsyncMctp::<{ DRIVER_NUM }, S>::exists() {
             writeln!(cw, "USER: MCTP SPDM exists").unwrap();
-            // match AsyncMctp::<{ DRIVER_NUM }, S>::get_max_message_size() {
-            //     Ok(size) => writeln!(cw, "Max message size: {}", size).unwrap(),
-            //     Err(e) => writeln!(cw, "Error getting max message size: {:?}", e).unwrap(),
-            // }
+            match AsyncMctp::<{ DRIVER_NUM }, S>::get_max_message_size() {
+                Ok(size) => writeln!(cw, "Max message size: {}", size).unwrap(),
+                Err(e) => writeln!(cw, "Error getting max message size: {:?}", e).unwrap(),
+            }
 
             writeln!(cw, "USER: Setting up to receive MCTP request").unwrap();
 
@@ -172,67 +138,54 @@ fn test_mctp_loopback_sync<const DRIVER_NUM: u32, S: Syscalls>(cw: &mut ConsoleW
 }
 
 async fn test_mctp_loopback<const DRIVER_NUM: u32, S: Syscalls>(cw: &mut ConsoleWriter<S>) {
-    let mut msg_buffer: [u8; 64] = [0; 64];
-    let peer_eid: u8 = 0xA;
+    loop {
+        let mut msg_buffer: [u8; 64] = [0; 64];
+        let peer_eid: u8 = 0xA;
 
-    if AsyncMctp::<{ DRIVER_NUM }, S>::exists() {
-        writeln!(cw, "USER: MCTP SPDM exists").unwrap();
-        match AsyncMctp::<{ DRIVER_NUM }, S>::get_max_message_size() {
-            Ok(size) => writeln!(cw, "Max message size: {}", size).unwrap(),
-            Err(e) => writeln!(cw, "Error getting max message size: {:?}", e).unwrap(),
-        }
-
-        writeln!(cw, "USER: Sending for MCTP request").unwrap();
-
-        let result = handle_request::<{ DRIVER_NUM }, S>(peer_eid, &mut msg_buffer).await;
-        match result {
-            Ok((dest_eid, msg_type, msg_tag)) => {
-                writeln!(
-                    cw,
-                    "USER: Request received. dest_eid {} msg_type {} msg_tag {}",
-                    dest_eid, msg_type, msg_tag
-                )
-                .unwrap();
-                // let result = handle_response::<{ driver_num::MCTP_SPDM }, S>(
-                //     dest_eid, msg_type, msg_tag, &msg_buffer,
-                // )
-                // .await;
-                // match result {
-                //     Ok(_) => writeln!(cw, "USER: Response Sent").unwrap(),
-                //     Err(e) => {
-                //         writeln!(cw, "USER: Error handling response: {:?}", e).unwrap()
-                //     }
-                // }
+        if AsyncMctp::<{ DRIVER_NUM }, S>::exists() {
+            writeln!(cw, "USER: MCTP SPDM exists").unwrap();
+            match AsyncMctp::<{ DRIVER_NUM }, S>::get_max_message_size() {
+                Ok(size) => writeln!(cw, "Max message size: {}", size).unwrap(),
+                Err(e) => writeln!(cw, "Error getting max message size: {:?}", e).unwrap(),
             }
-            Err(e) => writeln!(cw, "USER: Error handling request: {:?}", e).unwrap(),
+
+            writeln!(cw, "USER: Setting up for MCTP request").unwrap();
+
+            let result =
+                AsyncMctp::<{ DRIVER_NUM }, S>::receive_request(peer_eid, None, &mut msg_buffer)
+                    .await;
+            match result {
+                Ok(msg_info) => {
+                    writeln!(
+                        cw,
+                        "USER: Request received. dest_eid {} msg_type {} msg_tag {} ",
+                        msg_info.eid, msg_info.msg_type, msg_info.msg_tag
+                    )
+                    .unwrap();
+
+                    let msg_tag = msg_info.msg_tag;
+                    let result = AsyncMctp::<{ DRIVER_NUM }, S>::send_response(
+                        msg_info.eid,
+                        msg_info.msg_type,
+                        msg_tag,
+                        &msg_buffer[..msg_info.payload_len],
+                    )
+                    .await;
+
+                    match result {
+                        Ok(()) => writeln!(cw, "USER: Response Sent").unwrap(),
+                        Err(e) => writeln!(cw, "USER: Error in send_response: {:?}", e).unwrap(),
+                    }
+                }
+                Err(e) => writeln!(cw, "USER: Error handling request: {:?}", e).unwrap(),
+            }
+        } else {
+            writeln!(cw, "MCTP SPDM does not exist").unwrap();
+            break;
         }
-    } else {
-        writeln!(cw, "MCTP SPDM does not exist").unwrap();
     }
 }
 
-async fn handle_request<const DRIVER_NUM: u32, S: Syscalls>(
-    src_eid: u8,
-    rx_buf: &mut [u8],
-) -> Result<(u8, u8, u8), ErrorCode> {
-    let mctp = AsyncMctp::<{ DRIVER_NUM }, S>::receive_request(src_eid, None, rx_buf);
-    writeln!(Console::<S>::writer(), "USER: Received MCTP Request").unwrap();
-    let m = mctp.await?;
-    writeln!(Console::<S>::writer(), "USER: Message info: {:?}", m).unwrap();
-
-    Ok((m.eid, m.msg_type, m.msg_tag))
-}
-
-async fn handle_response<const DRIVER_NUM: u32, S: Syscalls>(
-    dest_eid: u8,
-    msg_type: u8,
-    msg_tag: u8,
-    tx_buf: &[u8],
-) -> Result<(), ErrorCode> {
-    AsyncMctp::<{ DRIVER_NUM }, S>::send_response(dest_eid, msg_type, msg_tag, tx_buf).await?;
-    writeln!(Console::<S>::writer(), "USER: Sent MCTP Response").unwrap();
-    Ok(())
-}
 // -----------------------------------------------------------------------------
 // Driver number and command IDs
 // -----------------------------------------------------------------------------

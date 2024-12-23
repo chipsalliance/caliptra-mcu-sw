@@ -17,8 +17,6 @@ use kernel::ErrorCode;
 use romtime::println;
 use zerocopy::{FromBytes, IntoBytes};
 
-use super::recv;
-
 /// MUX struct that manages multiple MCTP driver users (clients).
 ///
 /// This struct implements a FIFO queue for the
