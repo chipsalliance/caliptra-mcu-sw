@@ -17,11 +17,10 @@ use zerocopy::{FromBytes, IntoBytes};
 pub(crate) enum MctpSpdmTests {
     MctpSpdmResponderReady,
     MctpSpdmLoopbackTest64,
-    // MctpSpdmLoopbackTest63,
-    // MctpSpdmLoopbackTest256,
-    // MctpSpdmLoopbackTest1000,
-    // MctpSpdmLoopbackTest4096,
-    // MctpSecureSpdmLoopbackTest64,
+    MctpSpdmLoopbackTest63,
+    MctpSpdmLoopbackTest256,
+    MctpSpdmLoopbackTest1000,
+    MctpSecureSpdmLoopbackTest64,
     MctpSecureSpdmLoopbackTest1024,
 }
 
@@ -46,22 +45,35 @@ impl MctpSpdmTests {
         match self {
             MctpSpdmTests::MctpSpdmResponderReady => "MctpSpdmResponderReady",
             MctpSpdmTests::MctpSpdmLoopbackTest64 => "MctpSpdmLoopbackTest64",
+            MctpSpdmTests::MctpSpdmLoopbackTest63 => "MctpSpdmLoopbackTest63",
+            MctpSpdmTests::MctpSpdmLoopbackTest256 => "MctpSpdmLoopbackTest256",
+            MctpSpdmTests::MctpSpdmLoopbackTest1000 => "MctpSpdmLoopbackTest1000",
+            MctpSpdmTests::MctpSecureSpdmLoopbackTest64 => "MctpSecureSpdmLoopbackTest64",
             MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => "MctpSecureSpdmLoopbackTest1024",
         }
     }
 
     fn msg_type(&self) -> u8 {
         match self {
-            MctpSpdmTests::MctpSpdmResponderReady => 5,
-            MctpSpdmTests::MctpSpdmLoopbackTest64 => 5,
-            MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 6,
+            MctpSpdmTests::MctpSpdmResponderReady
+            | MctpSpdmTests::MctpSpdmLoopbackTest64
+            | MctpSpdmTests::MctpSpdmLoopbackTest63
+            | MctpSpdmTests::MctpSpdmLoopbackTest256
+            | MctpSpdmTests::MctpSpdmLoopbackTest1000 => 5,
+            MctpSpdmTests::MctpSecureSpdmLoopbackTest64
+            | MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 6,
         }
     }
 
     fn msg_size(&self) -> usize {
         match self {
             MctpSpdmTests::MctpSpdmResponderReady => 1,
-            MctpSpdmTests::MctpSpdmLoopbackTest64 => 64,
+            MctpSpdmTests::MctpSpdmLoopbackTest64 | MctpSpdmTests::MctpSecureSpdmLoopbackTest64 => {
+                64
+            }
+            MctpSpdmTests::MctpSpdmLoopbackTest63 => 63,
+            MctpSpdmTests::MctpSpdmLoopbackTest256 => 256,
+            MctpSpdmTests::MctpSpdmLoopbackTest1000 => 1000,
             MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 1024,
         }
     }
@@ -70,7 +82,11 @@ impl MctpSpdmTests {
         match self {
             MctpSpdmTests::MctpSpdmResponderReady => 0,
             MctpSpdmTests::MctpSpdmLoopbackTest64 => 1,
-            MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 2,
+            MctpSpdmTests::MctpSpdmLoopbackTest63 => 2,
+            MctpSpdmTests::MctpSpdmLoopbackTest256 => 3,
+            MctpSpdmTests::MctpSpdmLoopbackTest1000 => 4,
+            MctpSpdmTests::MctpSecureSpdmLoopbackTest64 => 5,
+            MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 6,
         }
     }
 
@@ -121,7 +137,6 @@ struct Test {
     state: TestState,
     msg_type: u8,
     req_msg_buf: Vec<u8>,
-    resp_msg_buf: Vec<u8>,
     req_pkts: VecDeque<Vec<u8>>,
     resp_pkts: VecDeque<Vec<u8>>,
     passed: bool,
@@ -139,7 +154,6 @@ impl Test {
             state: TestState::Start,
             msg_type,
             req_msg_buf,
-            resp_msg_buf: Vec::new(),
             req_pkts,
             resp_pkts: VecDeque::new(),
             passed: false,
@@ -148,16 +162,10 @@ impl Test {
 
     fn check_response_message(&mut self) {
         let mut resp_msg: Vec<u8> = Vec::new();
-        assert!(self.req_pkts.len() == self.resp_pkts.len());
-        // if self.req_pkts.len() != self.resp_pkts.len() {
-        //     self.passed = false;
-        //     self.state = TestState::Finish;
-        //     return;
-        //
         let mut i = 0;
         for pkt in self.resp_pkts.iter() {
-            let req_mctp_hdr: MCTPHdr<[u8; MCTP_HDR_SIZE]> =
-                MCTPHdr::read_from_bytes(&self.req_pkts[i][0..MCTP_HDR_SIZE]).unwrap();
+            // let req_mctp_hdr: MCTPHdr<[u8; MCTP_HDR_SIZE]> =
+            //     MCTPHdr::read_from_bytes(&self.req_pkts[i][0..MCTP_HDR_SIZE]).unwrap();
             let resp_mctp_hdr: MCTPHdr<[u8; MCTP_HDR_SIZE]> =
                 MCTPHdr::read_from_bytes(&pkt[0..MCTP_HDR_SIZE]).unwrap();
             if i == 0 {
@@ -166,37 +174,34 @@ impl Test {
             if i == self.resp_pkts.len() - 1 {
                 assert!(resp_mctp_hdr.eom() == 1);
             }
-            assert!(resp_mctp_hdr.dest_eid() == req_mctp_hdr.src_eid());
-            assert!(resp_mctp_hdr.src_eid() == req_mctp_hdr.dest_eid());
+            let seq_num = (i % 4) as u8;
+            assert!(resp_mctp_hdr.dest_eid() == LOCAL_TEST_ENDPOINT_EID);
             assert!(resp_mctp_hdr.tag_owner() == 0);
-            assert!(resp_mctp_hdr.msg_tag() == req_mctp_hdr.msg_tag());
-            assert!(resp_mctp_hdr.pkt_seq() == req_mctp_hdr.pkt_seq());
+            assert!(resp_mctp_hdr.msg_tag() == self.get_msg_tag());
+            assert!(resp_mctp_hdr.pkt_seq() == seq_num);
 
             resp_msg.extend_from_slice(&pkt[MCTP_HDR_SIZE..]);
             i += 1;
         }
-
         assert!(self.req_msg_buf == resp_msg);
+        self.passed = true;
+        self.state = TestState::Finish;
     }
 
-    fn process_received_packet(&mut self, data: Vec<u8>) {
+    fn process_received_packet(&mut self, data: Vec<u8>) -> bool {
         let mut last_pkt = false;
         let resp_pkt = data.clone();
         let mctp_hdr: MCTPHdr<[u8; MCTP_HDR_SIZE]> =
             MCTPHdr::read_from_bytes(&resp_pkt[0..MCTP_HDR_SIZE]).unwrap();
         if mctp_hdr.som() == 1 {
             if resp_pkt[MCTP_HDR_SIZE] != self.msg_type {
-                self.passed = false;
-                self.state = TestState::Finish;
-                return;
+                return false;
             }
             self.resp_pkts.clear();
         }
 
         if mctp_hdr.dest_eid() != LOCAL_TEST_ENDPOINT_EID {
-            self.passed = false;
-            self.state = TestState::Finish;
-            return;
+            return false;
         }
         // let src_eid = mctp_hdr.src_eid();
         // mctp_hdr.set_src_eid(mctp_hdr.dest_eid());
@@ -215,6 +220,7 @@ impl Test {
         if last_pkt {
             self.check_response_message();
         }
+        return true;
     }
 
     fn responder_ready_test(&self) -> bool {
@@ -224,16 +230,26 @@ impl Test {
         }
     }
 
-    fn run_responder_ready_test(
+    fn get_msg_tag(&self) -> u8 {
+        match self.test_name.as_str() {
+            "MctpSpdmResponderReady" => 0,
+            "MctpSpdmLoopbackTest64" => 1,
+            "MctpSpdmLoopbackTest63" => 2,
+            "MctpSpdmLoopbackTest256" => 3,
+            "MctpSpdmLoopbackTest1000" => 4,
+            "MctpSecureSpdmLoopbackTest64" => 5,
+            "MctpSecureSpdmLoopbackTest1024" => 6,
+            _ => 0,
+        }
+    }
+
+    fn wait_for_responder(
         &mut self,
         running: Arc<AtomicBool>,
         stream: &mut TcpStream,
         target_addr: u8,
     ) {
-        let mut loop_count = 100;
-        stream
-            .set_read_timeout(Some(std::time::Duration::from_secs(10)))
-            .unwrap();
+        let mut loop_count = 100000;
         while running.load(Ordering::Relaxed) && loop_count > 0 {
             match self.state {
                 TestState::Start => {
@@ -245,15 +261,12 @@ impl Test {
                     println!("RESPONDER_READY: Sending private write");
                     let write_pkt = self.req_pkts.front().unwrap().clone();
                     if send_private_write(stream, target_addr, write_pkt) {
-                        stream.set_nonblocking(false).unwrap();
                         self.state = TestState::WaitForIbi;
-                        std::thread::sleep(std::time::Duration::from_secs(8));
+                        std::thread::sleep(std::time::Duration::from_secs(10));
                     }
                 }
                 TestState::WaitForIbi => {
-                    if receive_ibi_timeout(stream, target_addr) {
-                        stream.set_nonblocking(true).unwrap();
-                        std::thread::sleep(std::time::Duration::from_secs(2));
+                    if receive_ibi(stream, target_addr) {
                         self.state = TestState::ReceivePrivateRead;
                         println!("RESPONDER_READY: Received IBI");
                         println!("RESPONDER_READY: Waiting for private read");
@@ -267,18 +280,74 @@ impl Test {
                 TestState::ReceivePrivateRead => {
                     if let Some(data) = receive_private_read(stream, target_addr) {
                         println!("RESPONDER_READY: Received private read {:?}", data);
-                        if data.len() == 5 && data[4] == 0x05 {
+                        if data[4] == 0x05 {
                             println!("RESPONDER_READY: Received private read");
+                            self.passed = true;
+                        } else {
+                            println!("RESPONDER_READY: Received invalid private read");
+                            self.passed = false;
                         }
                         self.state = TestState::Finish;
                     }
                 }
                 TestState::Finish => {
-                    self.passed = true;
+                    println!(
+                        "RESPONDER_READY: Test {} : {}",
+                        self.test_name,
+                        if self.passed { "PASSED" } else { "FAILED" }
+                    );
                     break;
                 }
             }
             loop_count -= 1;
+        }
+    }
+
+    fn run_loopback_test(
+        &mut self,
+        running: Arc<AtomicBool>,
+        stream: &mut TcpStream,
+        target_addr: u8,
+    ) {
+        stream.set_nonblocking(true).unwrap();
+        while running.load(Ordering::Relaxed) {
+            match self.state {
+                TestState::Start => {
+                    println!("REQUESTER_LOOPBACK: Starting test: {}", self.test_name);
+                    self.state = TestState::SendPrivateWrite;
+                }
+                TestState::SendPrivateWrite => {
+                    if let Some(write_pkt) = self.req_pkts.pop_front() {
+                        println!("REQUESTER_LOOPBACK: Sending private write");
+                        if send_private_write(stream, target_addr, write_pkt) {
+                            self.state = TestState::SendPrivateWrite;
+                        } else {
+                            self.passed = false;
+                            self.state = TestState::Finish;
+                        }
+                    } else {
+                        self.state = TestState::WaitForIbi;
+                    }
+                }
+                TestState::WaitForIbi => {
+                    if receive_ibi(stream, target_addr) {
+                        self.state = TestState::ReceivePrivateRead;
+                    }
+                }
+                TestState::ReceivePrivateRead => {
+                    if let Some(data) = receive_private_read(stream, target_addr) {
+                        self.process_received_packet(data);
+                    }
+                }
+                TestState::Finish => {
+                    println!(
+                        "REQUESTER_LOOPBACK: Test {} : {}",
+                        self.test_name,
+                        if self.passed { "PASSED" } else { "FAILED" }
+                    );
+                    break;
+                }
+            }
         }
     }
 }
@@ -292,48 +361,9 @@ impl TestTrait for Test {
         println!("SPDM_LOOPBACK: Running test: {}", self.test_name);
         stream.set_nonblocking(true).unwrap();
         if self.responder_ready_test() {
-            self.run_responder_ready_test(running, stream, target_addr);
-            return;
+            self.wait_for_responder(running, stream, target_addr);
         } else {
-            while running.load(Ordering::Relaxed) {
-                match self.state {
-                    TestState::Start => {
-                        println!("Starting test: {}", self.test_name);
-                        self.state = TestState::SendPrivateWrite;
-                    }
-                    TestState::SendPrivateWrite => {
-                        // let write_pkt = if wait_for_responder {
-                        //     self.req_pkts.front().map(|pkt| pkt.clone())
-                        // } else {
-                        //     self.req_pkts.pop_front()
-                        // };
-
-                        if let Some(pkt) = self.req_pkts.pop_front() {
-                            println!("Sending private write");
-                            if send_private_write(stream, target_addr, pkt) {
-                                self.state = TestState::SendPrivateWrite;
-                            } else {
-                                self.state = TestState::Finish;
-                            }
-                        } else {
-                            self.state = TestState::WaitForIbi;
-                        }
-                    }
-                    TestState::WaitForIbi => {
-                        if receive_ibi(stream, target_addr) {
-                            self.state = TestState::ReceivePrivateRead;
-                        }
-                    }
-                    TestState::ReceivePrivateRead => {
-                        if let Some(data) = receive_private_read(stream, target_addr) {
-                            self.resp_pkts.push_back(data);
-                        }
-                    }
-                    TestState::Finish => {
-                        self.passed = true;
-                    }
-                }
-            }
+            self.run_loopback_test(running, stream, target_addr);
         }
     }
 }

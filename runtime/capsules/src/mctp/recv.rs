@@ -6,19 +6,25 @@ use crate::mctp::base_protocol::{
 use core::cell::Cell;
 use core::fmt::Write;
 use kernel::collections::list::{ListLink, ListNode};
-use kernel::hil::time::{Alarm, Ticks};
 use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
 use romtime::println;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 
 /// This trait is implemented to get notified of the messages received
 /// on corresponding msg_type.
 pub trait MCTPRxClient {
-    fn receive(&self, dst_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8], msg_len: usize);
+    fn receive(
+        &self,
+        dst_eid: u8,
+        msg_type: u8,
+        msg_tag: u8,
+        msg_payload: &[u8],
+        msg_len: usize,
+        recv_time: u32,
+    );
 }
 
 /// Receive state
-pub struct MCTPRxState<'a, A: Alarm<'a>> {
+pub struct MCTPRxState<'a> {
     /// Message assembly context
     msg_terminus: MapCell<MsgTerminus>,
     /// Expected message types
@@ -28,13 +34,11 @@ pub struct MCTPRxState<'a, A: Alarm<'a>> {
     /// Message buffer
     msg_payload: TakeCell<'static, [u8]>,
     /// next MCTPRxState node
-    next: ListLink<'a, MCTPRxState<'a, A>>,
-    /// Alarm is currently only used for the time stamping of the received messages
-    alarm: &'a A,
+    next: ListLink<'a, MCTPRxState<'a>>,
 }
 
-impl<'a, A: Alarm<'a>> ListNode<'a, MCTPRxState<'a, A>> for MCTPRxState<'a, A> {
-    fn next(&'a self) -> &'a ListLink<'a, MCTPRxState<'a, A>> {
+impl<'a> ListNode<'a, MCTPRxState<'a>> for MCTPRxState<'a> {
+    fn next(&'a self) -> &'a ListLink<'a, MCTPRxState<'a>> {
         &self.next
     }
 }
@@ -50,19 +54,17 @@ struct MsgTerminus {
     msg_size: usize,
 }
 
-impl<'a, A: Alarm<'a>> MCTPRxState<'a, A> {
+impl<'a> MCTPRxState<'a> {
     pub fn new(
         rx_msg_buf: &'static mut [u8],
         msg_types: &'static [MessageType],
-        alarm: &'a A,
-    ) -> MCTPRxState<'a, A> {
+    ) -> MCTPRxState<'static> {
         MCTPRxState {
             msg_terminus: MapCell::empty(),
             msg_types: Cell::new(msg_types),
             client: OptionalCell::empty(),
             msg_payload: TakeCell::new(rx_msg_buf),
             next: ListLink::empty(),
-            alarm,
         }
     }
 
@@ -123,7 +125,12 @@ impl<'a, A: Alarm<'a>> MCTPRxState<'a, A> {
     /// # Arguments
     /// 'mctp_hdr' - The MCTP header of the received packet.
     /// 'pkt_payload' - The payload of the received packet.
-    pub fn receive_next(&self, mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>, pkt_payload: &[u8]) {
+    pub fn receive_next(
+        &self,
+        mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>,
+        pkt_payload: &[u8],
+        recv_time: u32,
+    ) {
         if let Some(mut msg_terminus) = self.msg_terminus.take() {
             let offset = msg_terminus.msg_size;
             let end_offset = offset + pkt_payload.len();
@@ -147,14 +154,14 @@ impl<'a, A: Alarm<'a>> MCTPRxState<'a, A> {
                 });
 
             if mctp_hdr.eom() == 1 {
-                self.end_receive();
+                self.end_receive(recv_time);
             }
         }
     }
 
     /// Called at the end of the message assembly to deliver the message to the client.
     /// The message terminus state is set to None after the message is delivered.
-    pub fn end_receive(&self) {
+    pub fn end_receive(&self, recv_time: u32) {
         if let Some(msg_terminus) = self.msg_terminus.take() {
             let msg_tag = if msg_terminus.tag_owner == 1 {
                 (msg_terminus.msg_tag & MCTP_TAG_MASK) | MCTP_TAG_OWNER
@@ -170,6 +177,7 @@ impl<'a, A: Alarm<'a>> MCTPRxState<'a, A> {
                             msg_tag,
                             msg_payload,
                             msg_terminus.msg_size,
+                            recv_time,
                         );
                     });
                 })
@@ -196,6 +204,7 @@ impl<'a, A: Alarm<'a>> MCTPRxState<'a, A> {
         mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>,
         msg_type: MessageType,
         pkt_payload: &[u8],
+        recv_time: u32,
     ) {
         if mctp_hdr.som() != 1 {
             println!("MuxMCTPDriver - Received first packet without SOM. Dropping packet.");
@@ -234,7 +243,7 @@ impl<'a, A: Alarm<'a>> MCTPRxState<'a, A> {
         // Single packet message
         if mctp_hdr.eom() == 1 {
             println!("MuxMCTPDriver - Received single packet message. Ending receive.");
-            self.end_receive();
+            self.end_receive(recv_time);
         }
     }
 }

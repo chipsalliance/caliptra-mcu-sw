@@ -301,9 +301,10 @@ pub unsafe fn main() {
     ));
     let _ = process_console.start();
 
-    let mux_mctp = runtime_components::mux_mctp::MCTPMuxComponent::new(&peripherals.i3c).finalize(
-        crate::mctp_mux_component_static!(MCTPI3CBinding, InternalTimers),
-    );
+    let mux_mctp =
+        runtime_components::mux_mctp::MCTPMuxComponent::new(&peripherals.i3c, mux_alarm).finalize(
+            crate::mctp_mux_component_static!(InternalTimers, MCTPI3CBinding),
+        );
 
     let mctp_spdm_msg_types = static_init!(
         [MessageType; 2],
@@ -314,7 +315,6 @@ pub unsafe fn main() {
         capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
         mux_mctp,
         mctp_spdm_msg_types,
-        mux_alarm,
     )
     .finalize(crate::mctp_driver_component_static!(InternalTimers));
 
@@ -324,7 +324,6 @@ pub unsafe fn main() {
         capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM,
         mux_mctp,
         mctp_pldm_msg_types,
-        mux_alarm,
     )
     .finalize(crate::mctp_driver_component_static!(InternalTimers));
 
@@ -335,7 +334,6 @@ pub unsafe fn main() {
         capsules_runtime::mctp::driver::MCTP_VENDOR_DEFINED_PCI_DRIVER_NUM,
         mux_mctp,
         mctp_vendor_def_pci_msg_types,
-        mux_alarm,
     )
     .finalize(crate::mctp_driver_component_static!(InternalTimers));
 
@@ -452,7 +450,7 @@ pub unsafe fn main() {
         crate::tests::flash_ctrl_test::test_flash_ctrl_erase_page()
     } else if cfg!(feature = "test-mctp-capsule-loopback") {
         debug!("Executing test-mctp-capsule-loopback");
-        crate::tests::mctp_test::test_mctp_capsule_loopback(mux_mctp, mux_alarm)
+        crate::tests::mctp_test::test_mctp_capsule_loopback(mux_mctp)
     } else if cfg!(feature = "test-flash-storage-read-write") {
         debug!("Executing test-flash-storage-read-write");
         crate::tests::flash_storage_test::test_flash_storage_read_write()

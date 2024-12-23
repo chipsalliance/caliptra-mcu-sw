@@ -41,8 +41,8 @@ pub trait MCTPTxClient {
 }
 
 /// Send state for MCTP
-pub struct MCTPTxState<'a, M: MCTPTransportBinding<'a>, A: Alarm<'a>> {
-    mctp_mux_sender: &'a MuxMCTPDriver<'a, M, A>,
+pub struct MCTPTxState<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> {
+    mctp_mux_sender: &'a MuxMCTPDriver<'a, A, M>,
     /// Destination EID
     dest_eid: Cell<u8>,
     /// Message type
@@ -57,20 +57,20 @@ pub struct MCTPTxState<'a, M: MCTPTransportBinding<'a>, A: Alarm<'a>> {
     /// Client to invoke when send done. This is set to the corresponding Virtual MCTP driver
     client: OptionalCell<&'a dyn MCTPTxClient>,
     /// next node in the list
-    next: ListLink<'a, MCTPTxState<'a, M, A>>,
+    next: ListLink<'a, MCTPTxState<'a, A, M>>,
     /// The message buffer is set by the virtual MCTP driver when it issues the Tx request.
     msg_payload: MapCell<SubSliceMut<'static, u8>>,
 }
 
-impl<'a, M: MCTPTransportBinding<'a>, A: Alarm<'a>> ListNode<'a, MCTPTxState<'a, M, A>>
-    for MCTPTxState<'a, M, A>
+impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> ListNode<'a, MCTPTxState<'a, A, M>>
+    for MCTPTxState<'a, A, M>
 {
-    fn next(&'a self) -> &'a ListLink<'a, MCTPTxState<'a, M, A>> {
+    fn next(&'a self) -> &'a ListLink<'a, MCTPTxState<'a, A, M>> {
         &self.next
     }
 }
 
-impl<'a, M: MCTPTransportBinding<'a>, A: Alarm<'a>> MCTPSender<'a> for MCTPTxState<'a, M, A> {
+impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MCTPSender<'a> for MCTPTxState<'a, A, M> {
     fn set_client(&self, client: &'a dyn MCTPTxClient) {
         self.client.set(client);
     }
@@ -103,8 +103,8 @@ impl<'a, M: MCTPTransportBinding<'a>, A: Alarm<'a>> MCTPSender<'a> for MCTPTxSta
     }
 }
 
-impl<'a, M: MCTPTransportBinding<'a>, A: Alarm<'a>> MCTPTxState<'a, M, A> {
-    pub fn new(mctp_mux_sender: &'a MuxMCTPDriver<'a, M, A>) -> MCTPTxState<'a, M, A> {
+impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MCTPTxState<'a, A, M> {
+    pub fn new(mctp_mux_sender: &'a MuxMCTPDriver<'a, A, M>) -> MCTPTxState<'a, A, M> {
         MCTPTxState {
             mctp_mux_sender,
             dest_eid: Cell::new(0),

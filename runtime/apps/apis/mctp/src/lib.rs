@@ -17,6 +17,7 @@ pub struct MessageInfo {
     pub eid: u8,
     pub msg_tag: u8,
     pub msg_type: u8,
+    pub recv_time: u32,
     pub payload_len: usize,
 }
 
@@ -31,22 +32,6 @@ pub mod message_type {
 pub struct AsyncMctp<const DRIVER_NUM: u32, S: Syscalls, C: Config = DefaultConfig>(S, C);
 
 impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> {
-    // /// Create a new MCTP driver instance for the specified
-    // /// message type driver number
-    // ///
-    // /// # Arguments
-    // /// * `driver_num` - The driver number for the MCTP message type
-    // ///
-    // /// # Returns
-    // /// * `AsyncMctp` - The MCTP driver instance
-    // pub fn new(driver: MctpDriver) -> Self {
-    //     Self {
-    //         syscall: PhantomData,
-    //         config: PhantomData,
-    //         driver,
-    //     }
-    // }
-
     /// Check if the MCTP driver for a specific message type exists
     ///
     /// # Returns
@@ -104,11 +89,12 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
 
             loop {
                 S::yield_wait();
-                if let Some((msg_len, src_eid, msg_info)) = called.get() {
+                if let Some((msg_len, recv_time, msg_info)) = called.get() {
                     return Ok(MessageInfo {
-                        eid: src_eid as u8,
+                        eid: ((msg_info & 0xFF0000) >> 16) as u8,
                         msg_tag: (msg_info & 0x07) as u8,
                         msg_type: (msg_info >> 8) as u8,
+                        recv_time: recv_time as u32,
                         payload_len: msg_len as usize,
                     });
                 }
@@ -221,6 +207,7 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
                     eid: src_eid as u8,
                     msg_tag: (msg_info & 0xFF) as u8,
                     msg_type: (msg_info >> 8) as u8,
+                    recv_time: 0,
                     payload_len: msg_len as usize,
                 })
             }
@@ -386,11 +373,12 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
         })?;
 
         sub.await
-            .map(|(msg_len, src_eid, msg_info)| {
+            .map(|(msg_len, recv_time, msg_info)| {
                 Ok(MessageInfo {
-                    eid: src_eid as u8,
+                    eid: ((msg_info & 0xFF0000) >> 16) as u8,
                     msg_tag: (msg_info & 0xFF) as u8,
                     msg_type: (msg_info >> 8) as u8,
+                    recv_time: recv_time as u32,
                     payload_len: msg_len as usize,
                 })
             })

@@ -132,7 +132,7 @@ fn test_mctp_loopback_sync<const DRIVER_NUM: u32, S: Syscalls>(cw: &mut ConsoleW
             //     Err(e) => writeln!(cw, "Error getting max message size: {:?}", e).unwrap(),
             // }
 
-            writeln!(cw, "USER: Sending for MCTP request").unwrap();
+            writeln!(cw, "USER: Setting up to receive MCTP request").unwrap();
 
             let result = AsyncMctp::<{ DRIVER_NUM }, S>::receive_request_sync(
                 peer_eid,
@@ -141,21 +141,28 @@ fn test_mctp_loopback_sync<const DRIVER_NUM: u32, S: Syscalls>(cw: &mut ConsoleW
             );
             match result {
                 Ok(msg_info) => {
-                    writeln!(cw, "USER: Request received. dmsg_info {:?}", msg_info).unwrap();
-
+                    writeln!(
+                        cw,
+                        "USER: Request received. dest_eid {} msg_type {} msg_tag {} ",
+                        msg_info.eid, msg_info.msg_type, msg_info.msg_tag
+                    )
+                    .unwrap();
+                    // let start_time = msg_info.recv_time;
+                    // let end_time = start_time + get_ticks::<S>(Milliseconds(10)).unwrap();
+                    // let cur_time
                     let msg_tag = msg_info.msg_tag;
                     let result = AsyncMctp::<{ DRIVER_NUM }, S>::send_response_sync(
                         msg_info.eid,
                         msg_info.msg_type,
                         msg_tag,
-                        &msg_buffer,
+                        &msg_buffer[..msg_info.payload_len],
                     );
                     match result {
                         Ok(()) => writeln!(cw, "USER: Response Sent").unwrap(),
-                        Err(e) => writeln!(cw, "USER: Error handling response: {:?}", e).unwrap(),
+                        Err(e) => writeln!(cw, "USER: Error in send_response: {:?}", e).unwrap(),
                     }
                 }
-                Err(e) => writeln!(cw, "USER: Error handling request: {:?}", e).unwrap(),
+                Err(e) => writeln!(cw, "USER: Error receive_request: {:?}", e).unwrap(),
             }
         } else {
             writeln!(cw, "MCTP SPDM does not exist").unwrap();
@@ -252,6 +259,12 @@ mod subscribe {
 pub(crate) async fn sleep<S: Syscalls>(time: Milliseconds) {
     let x = AsyncAlarm::<S>::sleep_for(time).await;
     writeln!(Console::<S>::writer(), "Async sleep done {:?}", x).unwrap();
+}
+
+pub(crate) fn get_ticks<S: Syscalls>(time: Milliseconds) -> Result<u32, ErrorCode> {
+    let freq = AsyncAlarm::<S>::get_frequency()?;
+    let ticks = time.to_ticks(freq).0;
+    Ok(ticks)
 }
 
 pub struct AsyncAlarm<S: Syscalls, C: platform::subscribe::Config = DefaultConfig>(S, C);
