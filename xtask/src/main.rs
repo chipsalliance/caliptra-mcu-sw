@@ -48,6 +48,12 @@ enum Commands {
 
         #[arg(long, default_value_t = false)]
         no_stdin: bool,
+
+        #[arg(long)]
+        caliptra_rom: Option<PathBuf>,
+
+        #[arg(long)]
+        caliptra_firmware: Option<PathBuf>,
     },
     /// Build Runtime image
     RuntimeBuild {
@@ -156,9 +162,18 @@ fn main() {
             i3c_port,
             features,
             no_stdin,
+            caliptra_rom,
+            caliptra_firmware,
         } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            runtime::runtime_run(*trace, *i3c_port, &features, *no_stdin)
+            runtime::runtime_run(
+                *trace,
+                *i3c_port,
+                &features,
+                *no_stdin,
+                caliptra_rom.as_ref(),
+                caliptra_firmware.as_ref(),
+            )
         }
         Commands::RuntimeBuild { features, output } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();

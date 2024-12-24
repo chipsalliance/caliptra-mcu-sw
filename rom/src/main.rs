@@ -20,6 +20,8 @@ mod io;
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
+mod static_ref;
+
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub extern "C" fn main() {

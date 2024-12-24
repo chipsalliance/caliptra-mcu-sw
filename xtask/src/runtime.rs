@@ -3,7 +3,7 @@
 use crate::{
     rom::rom_build, runtime_build::runtime_build_with_apps, DynError, PROJECT_ROOT, TARGET,
 };
-use std::process::Command as StdCommand;
+use std::{path::PathBuf, process::Command as StdCommand};
 
 /// Run the Runtime Tock kernel image for RISC-V in the emulator.
 pub(crate) fn runtime_run(
@@ -11,6 +11,8 @@ pub(crate) fn runtime_run(
     i3c_port: Option<u16>,
     features: &[&str],
     no_stdin: bool,
+    caliptra_rom: Option<&PathBuf>,
+    caliptra_firmware: Option<&PathBuf>,
 ) -> Result<(), DynError> {
     rom_build()?;
     runtime_build_with_apps(features, None)?;
@@ -44,6 +46,24 @@ pub(crate) fn runtime_run(
     }
     if trace {
         cargo_run_args.extend(["-t", "-l", PROJECT_ROOT.to_str().unwrap()]);
+    }
+    if let Some(caliptra_rom) = caliptra_rom {
+        if !caliptra_rom.exists() {
+            return Err(format!("Caliptra ROM file not found: {:?}", caliptra_rom).into());
+        }
+        cargo_run_args.extend([
+            "--caliptra",
+            "--caliptra-rom",
+            caliptra_rom.to_str().unwrap(),
+        ]);
+    }
+    if let Some(caliptra_firmware) = caliptra_firmware {
+        if !caliptra_firmware.exists() {
+            return Err(
+                format!("Caliptra runtime bundle not found: {:?}", caliptra_firmware).into(),
+            );
+        }
+        cargo_run_args.extend(["--caliptra-firmware", caliptra_firmware.to_str().unwrap()]);
     }
     StdCommand::new("cargo")
         .args(cargo_run_args)

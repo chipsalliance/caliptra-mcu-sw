@@ -14,7 +14,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraHwErrorFatal::Register,
+        registers_generated::soc::bits::CptraHwErrorFatal::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -23,7 +23,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraHwErrorFatal::Register,
+            registers_generated::soc::bits::CptraHwErrorFatal::Register,
         >,
     ) {
     }
@@ -32,7 +32,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraHwErrorNonFatal::Register,
+        registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -41,7 +41,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraHwErrorNonFatal::Register,
+            registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
         >,
     ) {
     }
@@ -113,7 +113,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraFlowStatus::Register,
+        registers_generated::soc::bits::CptraFlowStatus::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -122,7 +122,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraFlowStatus::Register,
+            registers_generated::soc::bits::CptraFlowStatus::Register,
         >,
     ) {
     }
@@ -131,7 +131,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraResetReason::Register,
+        registers_generated::soc::bits::CptraResetReason::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -140,7 +140,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraSecurityState::Register,
+        registers_generated::soc::bits::CptraSecurityState::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -161,7 +161,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraXxxxAxiIdLock::Register,
+        registers_generated::soc::bits::CptraXxxxAxiIdLock::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -170,7 +170,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraXxxxAxiIdLock::Register,
+            registers_generated::soc::bits::CptraXxxxAxiIdLock::Register,
         >,
     ) {
     }
@@ -191,7 +191,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraXxxxAxiIdLock::Register,
+        registers_generated::soc::bits::CptraXxxxAxiIdLock::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -200,7 +200,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraXxxxAxiIdLock::Register,
+            registers_generated::soc::bits::CptraXxxxAxiIdLock::Register,
         >,
     ) {
     }
@@ -216,10 +216,8 @@ pub trait SocPeripheral {
     fn read_cptra_trng_ctrl(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::CptraTrngCtrl::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::CptraTrngCtrl::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_trng_ctrl(
@@ -227,7 +225,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraTrngCtrl::Register,
+            registers_generated::soc::bits::CptraTrngCtrl::Register,
         >,
     ) {
     }
@@ -236,7 +234,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc_trng::bits::CptraTrngStatus::Register,
+        registers_generated::soc::bits::CptraTrngStatus::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -245,7 +243,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc_trng::bits::CptraTrngStatus::Register,
+            registers_generated::soc::bits::CptraTrngStatus::Register,
         >,
     ) {
     }
@@ -254,7 +252,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraFuseWrDone::Register,
+        registers_generated::soc::bits::CptraFuseWrDone::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -263,7 +261,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraFuseWrDone::Register,
+            registers_generated::soc::bits::CptraFuseWrDone::Register,
         >,
     ) {
     }
@@ -281,7 +279,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraBootfsmGo::Register,
+        registers_generated::soc::bits::CptraBootfsmGo::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -290,7 +288,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraBootfsmGo::Register,
+            registers_generated::soc::bits::CptraBootfsmGo::Register,
         >,
     ) {
     }
@@ -311,7 +309,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraClkGatingEn::Register,
+        registers_generated::soc::bits::CptraClkGatingEn::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -320,7 +318,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraClkGatingEn::Register,
+            registers_generated::soc::bits::CptraClkGatingEn::Register,
         >,
     ) {
     }
@@ -345,10 +343,8 @@ pub trait SocPeripheral {
     fn read_cptra_hw_rev_id(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::CptraHwRevId::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::CptraHwRevId::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn read_cptra_fw_rev_id(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
@@ -363,10 +359,8 @@ pub trait SocPeripheral {
     fn read_cptra_hw_config(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::CptraHwConfig::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::CptraHwConfig::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn read_cptra_wdt_timer1_en(
@@ -374,7 +368,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraWdtTimer1En::Register,
+        registers_generated::soc::bits::CptraWdtTimer1En::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -383,7 +377,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraWdtTimer1En::Register,
+            registers_generated::soc::bits::CptraWdtTimer1En::Register,
         >,
     ) {
     }
@@ -392,7 +386,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraWdtTimer1Ctrl::Register,
+        registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -401,7 +395,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraWdtTimer1Ctrl::Register,
+            registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
         >,
     ) {
     }
@@ -422,7 +416,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraWdtTimer2En::Register,
+        registers_generated::soc::bits::CptraWdtTimer2En::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -431,7 +425,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraWdtTimer2En::Register,
+            registers_generated::soc::bits::CptraWdtTimer2En::Register,
         >,
     ) {
     }
@@ -440,7 +434,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraWdtTimer2Ctrl::Register,
+        registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -449,7 +443,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraWdtTimer2Ctrl::Register,
+            registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
         >,
     ) {
     }
@@ -470,7 +464,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraWdtStatus::Register,
+        registers_generated::soc::bits::CptraWdtStatus::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -479,7 +473,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraWdtStatus::Register,
+            registers_generated::soc::bits::CptraWdtStatus::Register,
         >,
     ) {
     }
@@ -500,7 +494,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraXxxxAxiIdLock::Register,
+        registers_generated::soc::bits::CptraXxxxAxiIdLock::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -509,7 +503,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraXxxxAxiIdLock::Register,
+            registers_generated::soc::bits::CptraXxxxAxiIdLock::Register,
         >,
     ) {
     }
@@ -523,7 +517,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraItrngEntropyConfig0::Register,
+        registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -532,7 +526,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraItrngEntropyConfig0::Register,
+            registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
         >,
     ) {
     }
@@ -541,7 +535,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::CptraItrngEntropyConfig1::Register,
+        registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -550,7 +544,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::CptraItrngEntropyConfig1::Register,
+            registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
         >,
     ) {
     }
@@ -588,7 +582,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::FuseKeyManifestPkHashMask::Register,
+        registers_generated::soc::bits::FuseKeyManifestPkHashMask::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -597,7 +591,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::FuseKeyManifestPkHashMask::Register,
+            registers_generated::soc::bits::FuseKeyManifestPkHashMask::Register,
         >,
     ) {
     }
@@ -636,7 +630,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::FuseAntiRollbackDisable::Register,
+        registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -645,7 +639,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::FuseAntiRollbackDisable::Register,
+            registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
         >,
     ) {
     }
@@ -676,10 +670,8 @@ pub trait SocPeripheral {
     fn read_fuse_life_cycle(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::FuseLifeCycle::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::FuseLifeCycle::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_fuse_life_cycle(
@@ -687,17 +679,15 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::FuseLifeCycle::Register,
+            registers_generated::soc::bits::FuseLifeCycle::Register,
         >,
     ) {
     }
     fn read_fuse_lms_verify(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::FuseLmsVerify::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::FuseLmsVerify::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_fuse_lms_verify(
@@ -705,7 +695,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::FuseLmsVerify::Register,
+            registers_generated::soc::bits::FuseLmsVerify::Register,
         >,
     ) {
     }
@@ -726,7 +716,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::FuseSocSteppingId::Register,
+        registers_generated::soc::bits::FuseSocSteppingId::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -735,7 +725,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::FuseSocSteppingId::Register,
+            registers_generated::soc::bits::FuseSocSteppingId::Register,
         >,
     ) {
     }
@@ -750,7 +740,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::InternalIccmLock::Register,
+        registers_generated::soc::bits::InternalIccmLock::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -759,7 +749,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::InternalIccmLock::Register,
+            registers_generated::soc::bits::InternalIccmLock::Register,
         >,
     ) {
     }
@@ -768,7 +758,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::InternalFwUpdateReset::Register,
+        registers_generated::soc::bits::InternalFwUpdateReset::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -777,7 +767,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::InternalFwUpdateReset::Register,
+            registers_generated::soc::bits::InternalFwUpdateReset::Register,
         >,
     ) {
     }
@@ -786,7 +776,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::InternalFwUpdateResetWaitCycles::Register,
+        registers_generated::soc::bits::InternalFwUpdateResetWaitCycles::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -795,7 +785,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::InternalFwUpdateResetWaitCycles::Register,
+            registers_generated::soc::bits::InternalFwUpdateResetWaitCycles::Register,
         >,
     ) {
     }
@@ -816,7 +806,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::InternalHwErrorFatalMask::Register,
+        registers_generated::soc::bits::InternalHwErrorFatalMask::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -825,7 +815,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::InternalHwErrorFatalMask::Register,
+            registers_generated::soc::bits::InternalHwErrorFatalMask::Register,
         >,
     ) {
     }
@@ -834,7 +824,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::InternalHwErrorNonFatalMask::Register,
+        registers_generated::soc::bits::InternalHwErrorNonFatalMask::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -843,7 +833,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::InternalHwErrorNonFatalMask::Register,
+            registers_generated::soc::bits::InternalHwErrorNonFatalMask::Register,
         >,
     ) {
     }
@@ -922,10 +912,8 @@ pub trait SocPeripheral {
     fn read_intr_block_rf_global_intr_en_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::GlobalIntrEnT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::GlobalIntrEnT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_global_intr_en_r(
@@ -933,17 +921,15 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::GlobalIntrEnT::Register,
+            registers_generated::soc::bits::GlobalIntrEnT::Register,
         >,
     ) {
     }
     fn read_intr_block_rf_error_intr_en_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::ErrorIntrEnT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::ErrorIntrEnT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_error_intr_en_r(
@@ -951,17 +937,15 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::ErrorIntrEnT::Register,
+            registers_generated::soc::bits::ErrorIntrEnT::Register,
         >,
     ) {
     }
     fn read_intr_block_rf_notif_intr_en_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::NotifIntrEnT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::NotifIntrEnT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_notif_intr_en_r(
@@ -969,35 +953,29 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::NotifIntrEnT::Register,
+            registers_generated::soc::bits::NotifIntrEnT::Register,
         >,
     ) {
     }
     fn read_intr_block_rf_error_global_intr_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::GlobalIntrT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::GlobalIntrT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_notif_global_intr_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::GlobalIntrT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::GlobalIntrT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_error_internal_intr_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::ErrorIntrT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::ErrorIntrT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_error_internal_intr_r(
@@ -1005,17 +983,15 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::ErrorIntrT::Register,
+            registers_generated::soc::bits::ErrorIntrT::Register,
         >,
     ) {
     }
     fn read_intr_block_rf_notif_internal_intr_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::NotifIntrT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::NotifIntrT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_notif_internal_intr_r(
@@ -1023,7 +999,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::NotifIntrT::Register,
+            registers_generated::soc::bits::NotifIntrT::Register,
         >,
     ) {
     }
@@ -1032,7 +1008,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::ErrorIntrTrigT::Register,
+        registers_generated::soc::bits::ErrorIntrTrigT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1041,7 +1017,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::ErrorIntrTrigT::Register,
+            registers_generated::soc::bits::ErrorIntrTrigT::Register,
         >,
     ) {
     }
@@ -1050,7 +1026,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::NotifIntrTrigT::Register,
+        registers_generated::soc::bits::NotifIntrTrigT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1059,7 +1035,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::NotifIntrTrigT::Register,
+            registers_generated::soc::bits::NotifIntrTrigT::Register,
         >,
     ) {
     }
@@ -1236,7 +1212,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1245,7 +1221,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1254,7 +1230,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1263,7 +1239,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1272,7 +1248,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1281,7 +1257,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1290,7 +1266,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1299,7 +1275,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1308,7 +1284,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1317,7 +1293,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1326,7 +1302,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1335,7 +1311,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1344,7 +1320,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -1353,7 +1329,7 @@ pub trait SocPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }

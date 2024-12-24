@@ -978,6 +978,8 @@ dependencies = [
 name = "emulator-bus"
 version = "0.1.0"
 dependencies = [
+ "caliptra-emu-bus",
+ "caliptra-emu-types",
  "emulator-types",
  "tock-registers",
 ]
@@ -2130,8 +2132,11 @@ dependencies = [
 name = "rom"
 version = "0.1.0"
 dependencies = [
+ "registers-generated",
  "riscv-csr",
+ "romtime",
  "rv32i",
+ "tock-registers",
 ]
 
 [[package]]

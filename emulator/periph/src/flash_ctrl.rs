@@ -547,7 +547,7 @@ mod test {
         }
 
         AutoRootBus::new(
-            None,
+            vec![],
             None,
             Some(flash_controller),
             None,
