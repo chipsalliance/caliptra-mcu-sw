@@ -198,12 +198,10 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
         let msg_tag: u32 = MCTP_TAG_OWNER as u32;
         let msg_info = msg_tag << 8 | msg_type as u32;
 
-        let sub = share::scope::<(AllowRw<_, { DRIVER_NUM }, { allow_rw::MESSAGE_READ }>,), _, _>(
-            |handle| {
-                let allow_rw = handle.split().0;
-                S::allow_rw::<C, DRIVER_NUM, { allow_rw::MESSAGE_READ }>(allow_rw, msg_payload)?;
+        let sub = share::scope::<(), _, _>(
+            |_handle| {
 
-                let sub = TockSubscribe::subscribe::<S>(DRIVER_NUM, subscribe::MESSAGE_RECEIVED);
+                let sub = TockSubscribe::subscribe_allow_rw::<S, C>(DRIVER_NUM, subscribe::MESSAGE_RECEIVED, allow_rw::MESSAGE_READ, msg_payload);
 
                 S::command(
                     DRIVER_NUM,
@@ -255,17 +253,17 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
     ) -> Result<(), ErrorCode> {
         AsyncMctp::<DRIVER_NUM, S, C>::supported_message_type(msg_type)?;
 
-        let msg_info = (msg_tag << 8) as u32 | msg_type as u32;
+        let msg_info = (msg_tag as u32) << 8 | msg_type as u32;
 
-        let sub = share::scope::<(AllowRo<_, DRIVER_NUM, { allow_ro::MESSAGE_WRITE }>,), _, _>(
-            |handle| {
-                let allow_ro = handle.split().0;
-                S::allow_ro::<C, { DRIVER_NUM }, { allow_ro::MESSAGE_WRITE }>(
-                    allow_ro,
-                    msg_payload,
-                )?;
+        let sub = share::scope::<(), _, _>(
+            |_handle| {
+                // let allow_ro = handle.split()V.0;
+                // S::allow_ro::<C, { DRIVER_NUM }, { allow_ro::MESSAGE_WRITE }>(
+                //     allow_ro,
+                //     msg_payload,
+                // )?;
 
-                let sub = TockSubscribe::subscribe::<S>(DRIVER_NUM, subscribe::MESSAGE_TRANSMITTED);
+                let sub = TockSubscribe::subscribe_allow_ro::<S, C>(DRIVER_NUM, subscribe::MESSAGE_TRANSMITTED, allow_ro::MESSAGE_WRITE, msg_payload);
 
                 S::command(
                     DRIVER_NUM,
@@ -303,15 +301,15 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
     ) -> Result<u8, ErrorCode> {
         AsyncMctp::<DRIVER_NUM, S, C>::supported_message_type(msg_type)?;
 
-        let sub = share::scope::<(AllowRo<_, { DRIVER_NUM }, { allow_ro::MESSAGE_WRITE }>,), _, _>(
-            |handle| {
-                let allow_ro = handle.split().0;
-                S::allow_ro::<C, { DRIVER_NUM }, { allow_ro::MESSAGE_WRITE }>(
-                    allow_ro,
-                    msg_payload,
-                )?;
+        let sub = share::scope::<(), _, _>(
+            |_handle| {
+                // let allow_ro = handle.split().0;
+                // S::allow_ro::<C, { DRIVER_NUM }, { allow_ro::MESSAGE_WRITE }>(
+                //     allow_ro,
+                //     msg_payload,
+                // )?;
 
-                let sub = TockSubscribe::subscribe::<S>(DRIVER_NUM, subscribe::MESSAGE_TRANSMITTED);
+                let sub = TockSubscribe::subscribe_allow_ro::<S, C>(DRIVER_NUM, subscribe::MESSAGE_TRANSMITTED, allow_ro::MESSAGE_WRITE, msg_payload);
 
                 S::command(
                     DRIVER_NUM,
@@ -355,16 +353,16 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncMctp<DRIVER_NUM, S, C> 
 
         let sub = share::scope::<
             (
-                AllowRw<_, { DRIVER_NUM }, { allow_rw::MESSAGE_READ }>,
+                // AllowRw<_, { DRIVER_NUM }, { allow_rw::MESSAGE_READ }>,
                 // Subscribe<_, { DRIVER_NUM }, { subscribe::MESSAGE_RECEIVED }>,
             ),
             _,
             _,
-        >(|handle| {
-            let allow_rw = handle.split().0;
-            S::allow_rw::<C, DRIVER_NUM, { allow_rw::MESSAGE_READ }>(allow_rw, msg_payload)?;
+        >(|_handle| {
+            // let allow_rw = handle.split().0;
+            // S::allow_rw::<C, DRIVER_NUM, { allow_rw::MESSAGE_READ }>(allow_rw, msg_payload)?;
 
-            let sub = TockSubscribe::subscribe::<S>(DRIVER_NUM, subscribe::MESSAGE_RECEIVED);
+            let sub = TockSubscribe::subscribe_allow_rw::<S, C>(DRIVER_NUM, subscribe::MESSAGE_RECEIVED, allow_rw::MESSAGE_READ, msg_payload);
 
             S::command(
                 DRIVER_NUM,

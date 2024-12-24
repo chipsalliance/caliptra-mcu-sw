@@ -389,6 +389,7 @@ impl<'a> MCTPTxClient for MCTPDriver<'a> {
                     if op_ctx.matches(msg_tag, dest_eid, msg_type) {
                         app.pending_tx = None;
                         let msg_info = (msg_type as usize) << 8 | (msg_tag as usize);
+                        println!("MCTPDriver: send_done UPCALL scheduled");
                         up_calls
                             .schedule_upcall(
                                 upcall::MESSAGE_TRANSMITTED,

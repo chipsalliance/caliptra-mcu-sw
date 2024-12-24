@@ -139,7 +139,7 @@ fn test_mctp_loopback_sync<const DRIVER_NUM: u32, S: Syscalls>(cw: &mut ConsoleW
 
 async fn test_mctp_loopback<const DRIVER_NUM: u32, S: Syscalls>(cw: &mut ConsoleWriter<S>) {
     loop {
-        let mut msg_buffer: [u8; 64] = [0; 64];
+        let mut msg_buffer: [u8; 1024] = [0; 1024];
         let peer_eid: u8 = 0xA;
 
         if AsyncMctp::<{ DRIVER_NUM }, S>::exists() {
