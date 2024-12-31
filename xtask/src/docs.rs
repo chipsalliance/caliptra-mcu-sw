@@ -9,17 +9,18 @@ pub(crate) fn docs() -> Result<(), DynError> {
     check_mermaid()?;
     println!("Running: mdbook");
     let dir = PROJECT_ROOT.join("docs");
+    let dest_dir = PROJECT_ROOT.join("target/book");
     let mut args = vec!["clippy", "--workspace"];
     args.extend(["--", "-D", "warnings", "--no-deps"]);
     let status = Command::new("mdbook")
         .current_dir(&*dir)
-        .args(["build"])
+        .args(["build", "--dest-dir", dest_dir.to_str().unwrap()])
         .status()?;
 
     if !status.success() {
         Err("mdbook failed")?;
     }
-    println!("Docs built successfully: view at at docs/book/index.html");
+    println!("Docs built successfully: view at at {}/book/index.html", dest_dir.display());
     Ok(())
 }
 
