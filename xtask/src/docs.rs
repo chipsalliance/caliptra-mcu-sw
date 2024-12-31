@@ -20,7 +20,10 @@ pub(crate) fn docs() -> Result<(), DynError> {
     if !status.success() {
         Err("mdbook failed")?;
     }
-    println!("Docs built successfully: view at {}/book/index.html", dest_dir.display());
+    println!(
+        "Docs built successfully: view at {}/book/index.html",
+        dest_dir.display()
+    );
     Ok(())
 }
 
