@@ -47,13 +47,13 @@ impl TockSubscribe {
         // Safety: we are passing in a fixed (safe) function pointer and a pointer to a pinned instance.
         // If the instance is dropped before the upcall comes in, then we panic in the Drop impl.
         let [r0, r1, r2, _] = unsafe {
-                S::syscall4::<{ syscall_class::ALLOW_RW }>([
-                    driver_num.into(),
-                    buffer_num.into(),
-                    buffer.as_mut_ptr().into(),
-                    buffer.len().into(),
-                ])
-            };
+            S::syscall4::<{ syscall_class::ALLOW_RW }>([
+                driver_num.into(),
+                buffer_num.into(),
+                buffer.as_mut_ptr().into(),
+                buffer.len().into(),
+            ])
+        };
 
         let return_variant: ReturnVariant = r0.as_u32().into();
         match return_variant {
@@ -65,10 +65,10 @@ impl TockSubscribe {
                 f.set_err(ErrorCode::Fail);
             }
         }
-        
+
         let returned_buffer: (usize, usize) = (r1.into(), r2.into());
-            if returned_buffer != (0, 0) {
-                C::returned_nonzero_buffer(driver_num, buffer_num);
+        if returned_buffer != (0, 0) {
+            C::returned_nonzero_buffer(driver_num, buffer_num);
         }
 
         // Safety: we are passing in a fixed (safe) function pointer and a pointer to a pinned instance.
@@ -108,13 +108,13 @@ impl TockSubscribe {
         // Safety: we are passing in a fixed (safe) function pointer and a pointer to a pinned instance.
         // If the instance is dropped before the upcall comes in, then we panic in the Drop impl.
         let [r0, r1, r2, _] = unsafe {
-                S::syscall4::<{ syscall_class::ALLOW_RO }>([
-                    driver_num.into(),
-                    buffer_num.into(),
-                    buffer.as_ptr().into(),
-                    buffer.len().into(),
-                ])
-            };
+            S::syscall4::<{ syscall_class::ALLOW_RO }>([
+                driver_num.into(),
+                buffer_num.into(),
+                buffer.as_ptr().into(),
+                buffer.len().into(),
+            ])
+        };
 
         let return_variant: ReturnVariant = r0.as_u32().into();
         match return_variant {
@@ -129,7 +129,7 @@ impl TockSubscribe {
 
         let returned_buffer: (usize, usize) = (r1.into(), r2.into());
         if returned_buffer != (0, 0) {
-                C::returned_nonzero_buffer(driver_num, buffer_num);
+            C::returned_nonzero_buffer(driver_num, buffer_num);
         }
 
         // Safety: we are passing in a fixed (safe) function pointer and a pointer to a pinned instance.

@@ -407,7 +407,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCT
                 MessageType::Pldm
                 | MessageType::Spdm
                 | MessageType::SecureSpdm
-                | MessageType::VendorDefinedPci
+                | MessageType::Caliptra
                 | MessageType::TestMsgType => {
                     self.process_first_packet(
                         mctp_header,

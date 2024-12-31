@@ -20,8 +20,8 @@ pub(crate) enum MctpSpdmTests {
     MctpSpdmLoopbackTest63,
     MctpSpdmLoopbackTest256,
     MctpSpdmLoopbackTest1000,
-    MctpSecureSpdmLoopbackTest64,
-    MctpSecureSpdmLoopbackTest1024,
+    // MctpSecureSpdmLoopbackTest64,
+    // MctpSecureSpdmLoopbackTest1024,
 }
 
 impl MctpSpdmTests {
@@ -51,8 +51,8 @@ impl MctpSpdmTests {
             MctpSpdmTests::MctpSpdmLoopbackTest63 => "MctpSpdmLoopbackTest63",
             MctpSpdmTests::MctpSpdmLoopbackTest256 => "MctpSpdmLoopbackTest256",
             MctpSpdmTests::MctpSpdmLoopbackTest1000 => "MctpSpdmLoopbackTest1000",
-            MctpSpdmTests::MctpSecureSpdmLoopbackTest64 => "MctpSecureSpdmLoopbackTest64",
-            MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => "MctpSecureSpdmLoopbackTest1024",
+            // MctpSpdmTests::MctpSecureSpdmLoopbackTest64 => "MctpSecureSpdmLoopbackTest64",
+            // MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => "MctpSecureSpdmLoopbackTest1024",
         }
     }
 
@@ -63,21 +63,19 @@ impl MctpSpdmTests {
             | MctpSpdmTests::MctpSpdmLoopbackTest63
             | MctpSpdmTests::MctpSpdmLoopbackTest256
             | MctpSpdmTests::MctpSpdmLoopbackTest1000 => 5,
-            MctpSpdmTests::MctpSecureSpdmLoopbackTest64
-            | MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 6,
+            // MctpSpdmTests::MctpSecureSpdmLoopbackTest64
+            // | MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 6,
         }
     }
 
     fn msg_size(&self) -> usize {
         match self {
             MctpSpdmTests::MctpSpdmResponderReady => 1,
-            MctpSpdmTests::MctpSpdmLoopbackTest64 | MctpSpdmTests::MctpSecureSpdmLoopbackTest64 => {
-                64
-            }
+            MctpSpdmTests::MctpSpdmLoopbackTest64 => 64,
             MctpSpdmTests::MctpSpdmLoopbackTest63 => 63,
             MctpSpdmTests::MctpSpdmLoopbackTest256 => 256,
             MctpSpdmTests::MctpSpdmLoopbackTest1000 => 1000,
-            MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 1024,
+            // MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 1024,
         }
     }
 

@@ -25,6 +25,9 @@ use kernel::{create_capability, debug, static_init};
 use rv32i::csr;
 use rv32i::pmp::{NAPOTRegionSpec, TORRegionSpec};
 
+use core::fmt::Write;
+use romtime::println;
+
 // These symbols are defined in the linker script.
 extern "C" {
     /// Beginning of the ROM region containing app images.
@@ -116,8 +119,9 @@ struct VeeR {
     scheduler_timer:
         &'static VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>,
     mctp_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    // mctp_secure_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    mctp_vendor_def_pci: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     // Temorarily add one partition driver for userspace testing.
     image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
 }
@@ -133,10 +137,11 @@ impl SyscallDriverLookup for VeeR {
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
             capsules_core::low_level_debug::DRIVER_NUM => f(Some(self.lldb)),
             capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM => f(Some(self.mctp_spdm)),
+            // capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM => {
+            //     f(Some(self.mctp_secure_spdm))
+            // }
             capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
-            capsules_runtime::mctp::driver::MCTP_VENDOR_DEFINED_PCI_DRIVER_NUM => {
-                f(Some(self.mctp_vendor_def_pci))
-            }
+            capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
             capsules_runtime::flash_partition::IMAGE_PAR_DRIVER_NUM => f(Some(self.image_par)),
             _ => f(None),
         }
@@ -306,34 +311,35 @@ pub unsafe fn main() {
             crate::mctp_mux_component_static!(InternalTimers, MCTPI3CBinding),
         );
 
-    let mctp_spdm_msg_types = static_init!(
-        [MessageType; 2],
-        [MessageType::Spdm, MessageType::SecureSpdm,]
-    );
     let mctp_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
         mux_mctp,
-        mctp_spdm_msg_types,
+        MessageType::Spdm,
     )
     .finalize(crate::mctp_driver_component_static!(InternalTimers));
 
-    let mctp_pldm_msg_types = static_init!([MessageType; 1], [MessageType::Pldm]);
+    // let mctp_secure_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
+    //     board_kernel,
+    //     capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM,
+    //     mux_mctp,
+    //     MessageType::SecureSpdm,
+    // )
+    // .finalize(crate::mctp_driver_component_static!(InternalTimers));
+
     let mctp_pldm = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM,
         mux_mctp,
-        mctp_pldm_msg_types,
+        MessageType::Pldm,
     )
     .finalize(crate::mctp_driver_component_static!(InternalTimers));
 
-    let mctp_vendor_def_pci_msg_types =
-        static_init!([MessageType; 1], [MessageType::VendorDefinedPci]);
-    let mctp_vendor_def_pci = runtime_components::mctp_driver::MCTPDriverComponent::new(
+    let mctp_caliptra = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
-        capsules_runtime::mctp::driver::MCTP_VENDOR_DEFINED_PCI_DRIVER_NUM,
+        capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM,
         mux_mctp,
-        mctp_vendor_def_pci_msg_types,
+        MessageType::Caliptra,
     )
     .finalize(crate::mctp_driver_component_static!(InternalTimers));
 
@@ -373,8 +379,8 @@ pub unsafe fn main() {
         .modify(csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::BIT29::SET);
     csr::CSR.mstatus.modify(csr::mstatus::mstatus::mie::SET);
 
-    debug!("MCU initialization complete.");
-    debug!("Entering main loop.");
+    println!("MCU initialization complete.");
+    println!("Entering main loop.");
 
     let scheduler =
         components::sched::cooperative::CooperativeComponent::new(&*addr_of!(PROCESSES))
@@ -394,11 +400,15 @@ pub unsafe fn main() {
             scheduler,
             scheduler_timer,
             mctp_spdm,
+            // mctp_secure_spdm,
             mctp_pldm,
-            mctp_vendor_def_pci,
+            mctp_caliptra,
             image_par,
         }
     );
+    
+    println!("Loading processes at addresses: start app flash {:?} end app flash {:?}", &raw const _sapps, &raw const _eapps); 
+    println!("Loading processes at addresses: start app mem {:?} end app mem {:?}", &raw const _sappmem, &raw const _eappmem);
 
     kernel::process::load_processes(
         board_kernel,
@@ -416,9 +426,10 @@ pub unsafe fn main() {
         &process_mgmt_cap,
     )
     .unwrap_or_else(|err| {
-        debug!("Error loading processes!");
-        debug!("{:?}", err);
+        println!("Error loading processes!");
+        println!("{:?}", err);
     });
+
 
     #[cfg(any(
         feature = "test-flash-ctrl-read-write-page",

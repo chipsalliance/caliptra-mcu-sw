@@ -79,81 +79,29 @@ pub(crate) async fn async_main<S: Syscalls>() {
     // if cfg!(feature = "test-mctp-user-loopback") {
     writeln!(console_writer, "Now its time for some MCTP stuff").unwrap();
 
-    // test_mctp_loopback_sync::<{ driver_num::MCTP_SPDM }, S>(&mut console_writer);
-
-    test_mctp_loopback::<{ driver_num::MCTP_SPDM }, S>(&mut console_writer).await;
+    test_mctp_loopback::<S>(&mut console_writer).await;
 
     writeln!(console_writer, "app finished").unwrap();
 }
 
-fn test_mctp_loopback_sync<const DRIVER_NUM: u32, S: Syscalls>(cw: &mut ConsoleWriter<S>) {
+async fn test_mctp_loopback<S: Syscalls>(cw: &mut ConsoleWriter<S>) {
+    writeln!(cw, "USER: Starting MCTP loopback test").unwrap();
+    
+    let mctp_spdm = AsyncMctp::<S>::new(driver_num::MCTP_SPDM);
     loop {
         let mut msg_buffer: [u8; 1024] = [0; 1024];
         let peer_eid: u8 = 0xA;
 
-        if AsyncMctp::<{ DRIVER_NUM }, S>::exists() {
+        if mctp_spdm.exists() {
             writeln!(cw, "USER: MCTP SPDM exists").unwrap();
-            match AsyncMctp::<{ DRIVER_NUM }, S>::get_max_message_size() {
-                Ok(size) => writeln!(cw, "Max message size: {}", size).unwrap(),
-                Err(e) => writeln!(cw, "Error getting max message size: {:?}", e).unwrap(),
-            }
-
-            writeln!(cw, "USER: Setting up to receive MCTP request").unwrap();
-
-            let result = AsyncMctp::<{ DRIVER_NUM }, S>::receive_request_sync(
-                peer_eid,
-                None,
-                &mut msg_buffer,
-            );
-            match result {
-                Ok(msg_info) => {
-                    writeln!(
-                        cw,
-                        "USER: Request received. dest_eid {} msg_type {} msg_tag {} ",
-                        msg_info.eid, msg_info.msg_type, msg_info.msg_tag
-                    )
-                    .unwrap();
-                    // let start_time = msg_info.recv_time;
-                    // let end_time = start_time + get_ticks::<S>(Milliseconds(10)).unwrap();
-                    // let cur_time
-                    let msg_tag = msg_info.msg_tag;
-                    let result = AsyncMctp::<{ DRIVER_NUM }, S>::send_response_sync(
-                        msg_info.eid,
-                        msg_info.msg_type,
-                        msg_tag,
-                        &msg_buffer[..msg_info.payload_len],
-                    );
-                    match result {
-                        Ok(()) => writeln!(cw, "USER: Response Sent").unwrap(),
-                        Err(e) => writeln!(cw, "USER: Error in send_response: {:?}", e).unwrap(),
-                    }
-                }
-                Err(e) => writeln!(cw, "USER: Error receive_request: {:?}", e).unwrap(),
-            }
-        } else {
-            writeln!(cw, "MCTP SPDM does not exist").unwrap();
-            break;
-        }
-    }
-}
-
-async fn test_mctp_loopback<const DRIVER_NUM: u32, S: Syscalls>(cw: &mut ConsoleWriter<S>) {
-    loop {
-        let mut msg_buffer: [u8; 1024] = [0; 1024];
-        let peer_eid: u8 = 0xA;
-
-        if AsyncMctp::<{ DRIVER_NUM }, S>::exists() {
-            writeln!(cw, "USER: MCTP SPDM exists").unwrap();
-            match AsyncMctp::<{ DRIVER_NUM }, S>::get_max_message_size() {
+            match mctp_spdm.get_max_message_size() {
                 Ok(size) => writeln!(cw, "Max message size: {}", size).unwrap(),
                 Err(e) => writeln!(cw, "Error getting max message size: {:?}", e).unwrap(),
             }
 
             writeln!(cw, "USER: Setting up for MCTP request").unwrap();
 
-            let result =
-                AsyncMctp::<{ DRIVER_NUM }, S>::receive_request(peer_eid, None, &mut msg_buffer)
-                    .await;
+            let result = mctp_spdm.receive_request(peer_eid, &mut msg_buffer).await;
             match result {
                 Ok(msg_info) => {
                     writeln!(
@@ -164,13 +112,9 @@ async fn test_mctp_loopback<const DRIVER_NUM: u32, S: Syscalls>(cw: &mut Console
                     .unwrap();
 
                     let msg_tag = msg_info.msg_tag;
-                    let result = AsyncMctp::<{ DRIVER_NUM }, S>::send_response(
-                        msg_info.eid,
-                        msg_info.msg_type,
-                        msg_tag,
-                        &msg_buffer[..msg_info.payload_len],
-                    )
-                    .await;
+                    let result = mctp_spdm
+                        .send_response(msg_info.eid, msg_tag, &msg_buffer[..msg_info.payload_len])
+                        .await;
 
                     match result {
                         Ok(()) => writeln!(cw, "USER: Response Sent").unwrap(),

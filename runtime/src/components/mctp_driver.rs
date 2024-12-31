@@ -61,7 +61,7 @@ pub struct MCTPDriverComponent<A: Alarm<'static> + 'static> {
     board_kernel: &'static kernel::Kernel,
     driver_num: usize,
     mux_mctp: &'static MuxMCTPDriver<'static, VirtualMuxAlarm<'static, A>, MCTPI3CBinding<'static>>,
-    msg_types: &'static [MessageType],
+    msg_type: MessageType,
 }
 
 impl<A: Alarm<'static>> MCTPDriverComponent<A> {
@@ -73,13 +73,13 @@ impl<A: Alarm<'static>> MCTPDriverComponent<A> {
             VirtualMuxAlarm<'static, A>,
             MCTPI3CBinding<'static>,
         >,
-        msg_types: &'static [MessageType],
+        msg_type: MessageType,
     ) -> Self {
         Self {
             board_kernel,
             driver_num,
             mux_mctp,
-            msg_types,
+            msg_type,
         }
     }
 }
@@ -106,12 +106,12 @@ impl<A: Alarm<'static>> Component for MCTPDriverComponent<A> {
 
         let rx_state = static_buffer
             .1
-            .write(MCTPRxState::new(rx_msg_buf, self.msg_types));
+            .write(MCTPRxState::new(rx_msg_buf, self.msg_type));
 
         let mctp_driver = static_buffer.4.write(MCTPDriver::new(
             tx_state,
             self.board_kernel.create_grant(self.driver_num, &grant_cap),
-            self.msg_types,
+            self.msg_type,
             MCTP_MAX_MESSAGE_SIZE,
             SubSliceMut::new(tx_msg_buf),
         ));

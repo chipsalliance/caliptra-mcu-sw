@@ -209,8 +209,9 @@ pub enum NUM {
     ...
     // Mctp
     MctpSpdm                  = 0xA0000,
-    MctpPldm                  = 0xA0001,
-    MctpVenDef                = 0xA0002,
+    MctpSecureSpdm            = 0xA0001,
+    MctpPldm                  = 0xA0002,
+    MctpVenDef                = 0xA0003,
     ...
 }
 

@@ -29,11 +29,8 @@ macro_rules! mock_mctp_component_static {
         let rx_state = kernel::static_buf!(MCTPRxState<'static>);
         let rx_msg_buf = kernel::static_buf!([u8; MCTP_MAX_MESSAGE_SIZE]);
         let tx_msg_buf = kernel::static_buf!([u8; MCTP_MAX_MESSAGE_SIZE]);
-        let msg_types = kernel::static_buf!([MessageType; 1]);
         let mock_mctp = kernel::static_buf!(MockMctp<'static>);
-        (
-            tx_state, rx_state, rx_msg_buf, tx_msg_buf, msg_types, mock_mctp,
-        )
+        (tx_state, rx_state, rx_msg_buf, tx_msg_buf, mock_mctp)
     }};
 }
 
@@ -61,7 +58,6 @@ impl<A: Alarm<'static>> Component for MockMctpComponent<A> {
         &'static mut MaybeUninit<MCTPRxState<'static>>,
         &'static mut MaybeUninit<[u8; MCTP_MAX_MESSAGE_SIZE]>,
         &'static mut MaybeUninit<[u8; MCTP_MAX_MESSAGE_SIZE]>,
-        &'static mut MaybeUninit<[MessageType; 1]>,
         &'static mut MaybeUninit<MockMctp<'static>>,
     );
     type Output = &'static MockMctp<'static>;
@@ -72,12 +68,11 @@ impl<A: Alarm<'static>> Component for MockMctpComponent<A> {
 
         let tx_state = static_buffer.0.write(MCTPTxState::new(self.mux_mctp));
 
-        let msg_types = static_buffer.4.write([MessageType::TestMsgType; 1]);
         let rx_state = static_buffer
             .1
-            .write(MCTPRxState::new(rx_msg_buf, msg_types));
+            .write(MCTPRxState::new(rx_msg_buf, MessageType::TestMsgType));
 
-        let mock_mctp = static_buffer.5.write(MockMctp::new(
+        let mock_mctp = static_buffer.4.write(MockMctp::new(
             tx_state,
             MessageType::TestMsgType,
             SubSliceMut::new(tx_msg_buf),
