@@ -1,8 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::mctp::base_protocol::{
-    valid_eid, valid_msg_tag, MessageType, MCTP_MSG_TYPE_RECV_ANY, MCTP_TAG_OWNER,
-};
+use crate::mctp::base_protocol::{valid_eid, valid_msg_tag, MessageType, MCTP_TAG_OWNER};
 use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
 use core::cell::Cell;
@@ -15,7 +13,7 @@ use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::{ErrorCode, ProcessId};
 use romtime::println;
 
-pub const MCTP_MAX_MESSAGE_SIZE: usize = 4098;
+pub const MCTP_MAX_MESSAGE_SIZE: usize = 2048;
 pub const MCTP_SPDM_DRIVER_NUM: usize = 0xA0000;
 pub const MCTP_SECURE_SPDM_DRIVER_NUM: usize = 0xA0001;
 pub const MCTP_PLDM_DRIVER_NUM: usize = 0xA0002;
@@ -139,12 +137,6 @@ impl<'a> MCTPDriver<'a> {
         }
     }
 
-    // fn supported_msg_type(&self, cmd_num: usize, msg_type: u8) -> bool {
-    //     // If the message type is MCTP_MSG_TYPE_RECV_ANY, then the command_num must be 1 (receive request)
-    //     (msg_type == MCTP_MSG_TYPE_RECV_ANY && cmd_num == 1)
-    //         || self.msg_type.iter().any(|&t| t as u8 == msg_type)
-    // }
-
     fn parse_args(
         &self,
         command_num: usize,
@@ -158,19 +150,6 @@ impl<'a> MCTPDriver<'a> {
             Err(ErrorCode::INVAL)?;
         }
         println!("MCTPDriver: parse_args: peer_eid: {}", peer_eid);
-
-        // lower 8 bits of arg2 is always msg_type
-        // let msg_type = (arg2 & 0xFF) as u8;
-
-        println!("MCTPDriver: parse_args: msg_type: {:?}", self.msg_type);
-
-        // if msg_type == MCTP_MSG_TYPE_RECV_ANY && command_num != 1 {
-        //     Err(ErrorCode::INVAL)?;
-        // }
-
-        // if !self.supported_msg_type(command_num, msg_type) {
-        //     Err(ErrorCode::INVAL)?;
-        // }
 
         // Receive Request message or send Request message should have MCTP_TAG_OWNER
         // Receive Response message or send Response message should have a value between 0 and 7

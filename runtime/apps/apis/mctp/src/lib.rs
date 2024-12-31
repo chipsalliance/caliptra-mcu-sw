@@ -52,10 +52,10 @@ macro_rules! msg_type {
 
 impl<S: Syscalls, C: Config> AsyncMctp<S, C> {
     /// Create a new instance of the MCTP driver
-    /// 
+    ///
     /// # Arguments
     /// * `driver_num` - The driver number for the MCTP driver
-    /// 
+    ///
     /// # Returns
     /// * `AsyncMctp` - The MCTP driver instance
     pub fn new(driver_num: u32) -> Self {
@@ -95,10 +95,8 @@ impl<S: Syscalls, C: Config> AsyncMctp<S, C> {
         }
         writeln!(console_writer, "USER payload size {}", msg_payload.len()).unwrap();
 
-        // let msg_tag: u32 = MCTP_TAG_OWNER as u32;
-
-        let sub = share::scope::<(), _, _>(|_handle| {
-            let sub = TockSubscribe::subscribe_allow_rw::<S, C>(
+        let rw_sub = share::scope::<(), _, _>(|_handle| {
+            let rw_sub = TockSubscribe::subscribe_allow_rw::<S, C>(
                 self.driver_num,
                 subscribe::MESSAGE_RECEIVED,
                 allow_rw::MESSAGE_READ,
@@ -113,11 +111,11 @@ impl<S: Syscalls, C: Config> AsyncMctp<S, C> {
             )
             .to_result::<(), ErrorCode>()?;
 
-            Ok(sub)
+            Ok(rw_sub)
         })?;
 
         writeln!(console_writer, "USER: AWAIT in Receive request").unwrap();
-        let (msg_len, recv_time, msg_info) = sub.await?;
+        let (msg_len, recv_time, msg_info) = rw_sub.await?;
         Ok(MessageInfo {
             eid: eid!(msg_info),
             msg_tag: msg_tag!(msg_info),
@@ -143,7 +141,7 @@ impl<S: Syscalls, C: Config> AsyncMctp<S, C> {
         msg_tag: u8,
         msg_payload: &[u8],
     ) -> Result<(), ErrorCode> {
-        let async_send_resp = share::scope::<(), _, _>(|_handle| {
+        let ro_sub = share::scope::<(), _, _>(|_handle| {
             let ro_sub = TockSubscribe::subscribe_allow_ro::<S, C>(
                 self.driver_num,
                 subscribe::MESSAGE_TRANSMITTED,
@@ -162,7 +160,7 @@ impl<S: Syscalls, C: Config> AsyncMctp<S, C> {
             Ok(ro_sub)
         })?;
 
-        async_send_resp.await.map(|(result, _, _)| match result {
+        ro_sub.await.map(|(result, _, _)| match result {
             0 => Ok(()),
             _ => Err(result.try_into().unwrap_or(ErrorCode::Fail)),
         })?
@@ -180,8 +178,8 @@ impl<S: Syscalls, C: Config> AsyncMctp<S, C> {
     /// * `u8` - The message tag assigned to the request
     /// * `ErrorCode` - The error code on failure
     pub async fn send_request(&self, dest_eid: u8, msg_payload: &[u8]) -> Result<u8, ErrorCode> {
-        let sub = share::scope::<(), _, _>(|_handle| {
-            let sub = TockSubscribe::subscribe_allow_ro::<S, C>(
+        let ro_sub = share::scope::<(), _, _>(|_handle| {
+            let ro_sub = TockSubscribe::subscribe_allow_ro::<S, C>(
                 self.driver_num,
                 subscribe::MESSAGE_TRANSMITTED,
                 allow_ro::MESSAGE_WRITE,
@@ -196,10 +194,11 @@ impl<S: Syscalls, C: Config> AsyncMctp<S, C> {
             )
             .to_result::<(), ErrorCode>()?;
 
-            Ok(sub)
+            Ok(ro_sub)
         })?;
 
-        sub.await
+        ro_sub
+            .await
             .map(|(result, _dest_eid, msg_info)| match result {
                 0 => Ok(((msg_info >> 8) & 0xFF) as u8),
                 _ => Err(result.try_into().unwrap_or(ErrorCode::Fail)),
@@ -222,8 +221,8 @@ impl<S: Syscalls, C: Config> AsyncMctp<S, C> {
         msg_tag: u8,
         msg_payload: &mut [u8],
     ) -> Result<MessageInfo, ErrorCode> {
-        let sub = share::scope::<(), _, _>(|_handle| {
-            let sub = TockSubscribe::subscribe_allow_rw::<S, C>(
+        let rw_sub = share::scope::<(), _, _>(|_handle| {
+            let rw_sub = TockSubscribe::subscribe_allow_rw::<S, C>(
                 self.driver_num,
                 subscribe::MESSAGE_RECEIVED,
                 allow_rw::MESSAGE_READ,
@@ -238,10 +237,11 @@ impl<S: Syscalls, C: Config> AsyncMctp<S, C> {
             )
             .to_result::<(), ErrorCode>()?;
 
-            Ok(sub)
+            Ok(rw_sub)
         })?;
 
-        sub.await
+        rw_sub
+            .await
             .map(|(msg_len, recv_time, msg_info)| {
                 Ok(MessageInfo {
                     eid: ((msg_info & 0xFF0000) >> 16) as u8,

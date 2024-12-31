@@ -1,10 +1,11 @@
 // Licensed under the Apache-2.0 license
 
 use crate::i3c_socket::{
-    receive_ibi, receive_ibi_timeout, receive_private_read, send_private_write, TestState,
-    TestTrait,
+    receive_ibi, receive_private_read, send_private_write, TestState, TestTrait,
 };
-use crate::tests::mctp_util::base_protocol::{MCTPHdr, LOCAL_TEST_ENDPOINT_EID, MCTP_HDR_SIZE};
+use crate::tests::mctp_util::base_protocol::{
+    MCTPHdr, MctpMsgType, LOCAL_TEST_ENDPOINT_EID, MCTP_HDR_SIZE,
+};
 use std::collections::VecDeque;
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,28 +15,27 @@ use strum_macros::EnumIter;
 use zerocopy::{FromBytes, IntoBytes};
 
 #[derive(EnumIter, Debug)]
-pub(crate) enum MctpSpdmTests {
-    MctpSpdmResponderReady,
-    MctpSpdmLoopbackTest64,
-    MctpSpdmLoopbackTest63,
-    MctpSpdmLoopbackTest256,
-    MctpSpdmLoopbackTest1000,
-    // MctpSecureSpdmLoopbackTest64,
-    // MctpSecureSpdmLoopbackTest1024,
+pub(crate) enum MctpUserAppTests {
+    MctpAppResponderReady,
+    MctpAppLoopbackTest64,
+    MctpAppLoopbackTest63,
+    MctpAppLoopbackTest256,
+    MctpAppLoopbackTest1000,
+    MctpAppLoopbackTest1024,
 }
 
-impl MctpSpdmTests {
-    pub fn generate_tests() -> Vec<Box<dyn TestTrait + Send>> {
-        MctpSpdmTests::iter()
+impl MctpUserAppTests {
+    pub fn generate_tests(msg_type: u8) -> Vec<Box<dyn TestTrait + Send>> {
+        MctpUserAppTests::iter()
             .enumerate()
             .map(|(i, test_id)| {
                 let test_name = test_id.name();
                 let msg_tag = (i % 4) as u8;
-                let (req_msg_buf, req_pkts) = test_id.generate_req_pkts(msg_tag);
+                let (req_msg_buf, req_pkts) = test_id.generate_req_pkts(msg_tag, msg_type);
 
                 Box::new(Test::new(
                     test_name,
-                    test_id.msg_type(),
+                    msg_type,
                     msg_tag,
                     req_msg_buf,
                     req_pkts,
@@ -46,36 +46,23 @@ impl MctpSpdmTests {
 
     fn name(&self) -> &'static str {
         match self {
-            MctpSpdmTests::MctpSpdmResponderReady => "MctpSpdmResponderReady",
-            MctpSpdmTests::MctpSpdmLoopbackTest64 => "MctpSpdmLoopbackTest64",
-            MctpSpdmTests::MctpSpdmLoopbackTest63 => "MctpSpdmLoopbackTest63",
-            MctpSpdmTests::MctpSpdmLoopbackTest256 => "MctpSpdmLoopbackTest256",
-            MctpSpdmTests::MctpSpdmLoopbackTest1000 => "MctpSpdmLoopbackTest1000",
-            // MctpSpdmTests::MctpSecureSpdmLoopbackTest64 => "MctpSecureSpdmLoopbackTest64",
-            // MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => "MctpSecureSpdmLoopbackTest1024",
-        }
-    }
-
-    fn msg_type(&self) -> u8 {
-        match self {
-            MctpSpdmTests::MctpSpdmResponderReady
-            | MctpSpdmTests::MctpSpdmLoopbackTest64
-            | MctpSpdmTests::MctpSpdmLoopbackTest63
-            | MctpSpdmTests::MctpSpdmLoopbackTest256
-            | MctpSpdmTests::MctpSpdmLoopbackTest1000 => 5,
-            // MctpSpdmTests::MctpSecureSpdmLoopbackTest64
-            // | MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 6,
+            MctpUserAppTests::MctpAppResponderReady => "MctpAppResponderReady",
+            MctpUserAppTests::MctpAppLoopbackTest64 => "MctpAppLoopbackTest64",
+            MctpUserAppTests::MctpAppLoopbackTest63 => "MctpAppLoopbackTest63",
+            MctpUserAppTests::MctpAppLoopbackTest256 => "MctpAppLoopbackTest256",
+            MctpUserAppTests::MctpAppLoopbackTest1000 => "MctpAppLoopbackTest1000",
+            MctpUserAppTests::MctpAppLoopbackTest1024 => "MctpAppLoopbackTest1024",
         }
     }
 
     fn msg_size(&self) -> usize {
         match self {
-            MctpSpdmTests::MctpSpdmResponderReady => 1,
-            MctpSpdmTests::MctpSpdmLoopbackTest64 => 64,
-            MctpSpdmTests::MctpSpdmLoopbackTest63 => 63,
-            MctpSpdmTests::MctpSpdmLoopbackTest256 => 256,
-            MctpSpdmTests::MctpSpdmLoopbackTest1000 => 1000,
-            // MctpSpdmTests::MctpSecureSpdmLoopbackTest1024 => 1024,
+            MctpUserAppTests::MctpAppResponderReady => 1,
+            MctpUserAppTests::MctpAppLoopbackTest64 => 64,
+            MctpUserAppTests::MctpAppLoopbackTest63 => 63,
+            MctpUserAppTests::MctpAppLoopbackTest256 => 256,
+            MctpUserAppTests::MctpAppLoopbackTest1000 => 1000,
+            MctpUserAppTests::MctpAppLoopbackTest1024 => 1024,
         }
     }
 
@@ -99,13 +86,11 @@ impl MctpSpdmTests {
         pkt
     }
 
-    fn generate_req_pkts(&self, msg_tag: u8) -> (Vec<u8>, VecDeque<Vec<u8>>) {
+    fn generate_req_pkts(&self, msg_tag: u8, msg_type: u8) -> (Vec<u8>, VecDeque<Vec<u8>>) {
         let mut msg_buf: Vec<u8> = (0..self.msg_size()).map(|_| rand::random::<u8>()).collect();
-        msg_buf[0] = self.msg_type();
+        msg_buf[0] = msg_type;
         let payloads: Vec<Vec<u8>> = msg_buf.chunks(64).map(|chunk| chunk.to_vec()).collect();
         let n = payloads.len() - 1;
-
-        println!("Payloads: {:?}", payloads);
 
         let processed_payloads: Vec<Vec<u8>> = payloads
             .into_iter()
@@ -209,7 +194,7 @@ impl Test {
 
     fn responder_ready_test(&self) -> bool {
         match self.test_name.as_str() {
-            "MctpSpdmResponderReady" => true,
+            "MctpAppResponderReady" => true,
             _ => false,
         }
     }
@@ -223,12 +208,12 @@ impl Test {
         while running.load(Ordering::Relaxed) {
             match self.state {
                 TestState::Start => {
-                    println!("RESPONDER_READY: Starting test: {}", self.test_name);
+                    // println!("RESPONDER_READY: Starting test: {}", self.test_name);
                     self.state = TestState::SendPrivateWrite;
                 }
 
                 TestState::SendPrivateWrite => {
-                    println!("RESPONDER_READY: Sending private write");
+                    // println!("RESPONDER_READY: Sending private write");
                     let write_pkt = self.req_pkts.front().unwrap().clone();
                     if send_private_write(stream, target_addr, write_pkt) {
                         self.state = TestState::WaitForIbi;
@@ -238,23 +223,23 @@ impl Test {
                 TestState::WaitForIbi => {
                     if receive_ibi(stream, target_addr) {
                         self.state = TestState::ReceivePrivateRead;
-                        println!("RESPONDER_READY: Received IBI");
-                        println!("RESPONDER_READY: Waiting for private read");
+                        // println!("RESPONDER_READY: Received IBI");
+                        // println!("RESPONDER_READY: Waiting for private read");
                     } else {
-                        println!(
-                            "RESPONDER_READY: timeout waiting for IBI. Send private write again"
-                        );
+                        // println!(
+                        //     "RESPONDER_READY: timeout waiting for IBI. Send private write again"
+                        // );
                         self.state = TestState::SendPrivateWrite;
                     }
                 }
                 TestState::ReceivePrivateRead => {
                     if let Some(data) = receive_private_read(stream, target_addr) {
-                        println!("RESPONDER_READY: Received private read {:?}", data);
+                        // println!("RESPONDER_READY: Received private read {:?}", data);
                         if data[4] == 0x05 {
-                            println!("RESPONDER_READY: Received private read");
+                            // println!("RESPONDER_READY: Received private read");
                             self.passed = true;
                         } else {
-                            println!("RESPONDER_READY: Received invalid private read");
+                            // println!("RESPONDER_READY: Received invalid private read");
                             self.passed = false;
                         }
                         self.state = TestState::Finish;
@@ -282,13 +267,13 @@ impl Test {
         while running.load(Ordering::Relaxed) {
             match self.state {
                 TestState::Start => {
-                    println!("REQUESTER_LOOPBACK: Starting test: {}", self.test_name);
+                    // println!("REQUESTER_LOOPBACK: Starting test: {}", self.test_name);
                     std::thread::sleep(std::time::Duration::from_secs(2));
                     self.state = TestState::SendPrivateWrite;
                 }
                 TestState::SendPrivateWrite => {
                     if let Some(write_pkt) = self.req_pkts.pop_front() {
-                        println!("REQUESTER_LOOPBACK: Sending private write");
+                        // println!("REQUESTER_LOOPBACK: Sending private write");
                         if send_private_write(stream, target_addr, write_pkt) {
                             self.state = TestState::SendPrivateWrite;
                         } else {
@@ -329,7 +314,7 @@ impl TestTrait for Test {
     }
 
     fn run_test(&mut self, running: Arc<AtomicBool>, stream: &mut TcpStream, target_addr: u8) {
-        println!("SPDM_LOOPBACK: Running test: {}", self.test_name);
+        // println!("SPDM_LOOPBACK: Running test: {}", self.test_name);
         stream.set_nonblocking(true).unwrap();
         if self.responder_ready_test() {
             self.wait_for_responder(running, stream, target_addr);

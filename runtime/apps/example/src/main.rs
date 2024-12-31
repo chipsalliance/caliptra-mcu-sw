@@ -86,7 +86,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
 async fn test_mctp_loopback<S: Syscalls>(cw: &mut ConsoleWriter<S>) {
     writeln!(cw, "USER: Starting MCTP loopback test").unwrap();
-    
+
     let mctp_spdm = AsyncMctp::<S>::new(driver_num::MCTP_SPDM);
     loop {
         let mut msg_buffer: [u8; 1024] = [0; 1024];
@@ -156,12 +156,6 @@ mod subscribe {
 pub(crate) async fn sleep<S: Syscalls>(time: Milliseconds) {
     let x = AsyncAlarm::<S>::sleep_for(time).await;
     writeln!(Console::<S>::writer(), "Async sleep done {:?}", x).unwrap();
-}
-
-pub(crate) fn get_ticks<S: Syscalls>(time: Milliseconds) -> Result<u32, ErrorCode> {
-    let freq = AsyncAlarm::<S>::get_frequency()?;
-    let ticks = time.to_ticks(freq).0;
-    Ok(ticks)
 }
 
 pub struct AsyncAlarm<S: Syscalls, C: platform::subscribe::Config = DefaultConfig>(S, C);

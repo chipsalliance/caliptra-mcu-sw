@@ -119,7 +119,7 @@ struct VeeR {
     scheduler_timer:
         &'static VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>,
     mctp_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    // mctp_secure_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    mctp_secure_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     // Temorarily add one partition driver for userspace testing.
@@ -137,9 +137,9 @@ impl SyscallDriverLookup for VeeR {
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
             capsules_core::low_level_debug::DRIVER_NUM => f(Some(self.lldb)),
             capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM => f(Some(self.mctp_spdm)),
-            // capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM => {
-            //     f(Some(self.mctp_secure_spdm))
-            // }
+            capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM => {
+                f(Some(self.mctp_secure_spdm))
+            }
             capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
             capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
             capsules_runtime::flash_partition::IMAGE_PAR_DRIVER_NUM => f(Some(self.image_par)),
@@ -319,13 +319,13 @@ pub unsafe fn main() {
     )
     .finalize(crate::mctp_driver_component_static!(InternalTimers));
 
-    // let mctp_secure_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
-    //     board_kernel,
-    //     capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM,
-    //     mux_mctp,
-    //     MessageType::SecureSpdm,
-    // )
-    // .finalize(crate::mctp_driver_component_static!(InternalTimers));
+    let mctp_secure_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
+        board_kernel,
+        capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM,
+        mux_mctp,
+        MessageType::SecureSpdm,
+    )
+    .finalize(crate::mctp_driver_component_static!(InternalTimers));
 
     let mctp_pldm = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
@@ -400,15 +400,21 @@ pub unsafe fn main() {
             scheduler,
             scheduler_timer,
             mctp_spdm,
-            // mctp_secure_spdm,
+            mctp_secure_spdm,
             mctp_pldm,
             mctp_caliptra,
             image_par,
         }
     );
-    
-    println!("Loading processes at addresses: start app flash {:?} end app flash {:?}", &raw const _sapps, &raw const _eapps); 
-    println!("Loading processes at addresses: start app mem {:?} end app mem {:?}", &raw const _sappmem, &raw const _eappmem);
+
+    println!(
+        "Loading processes at addresses: start app flash {:?} end app flash {:?}",
+        &raw const _sapps, &raw const _eapps
+    );
+    println!(
+        "Loading processes at addresses: start app mem {:?} end app mem {:?}",
+        &raw const _sappmem, &raw const _eappmem
+    );
 
     kernel::process::load_processes(
         board_kernel,
@@ -430,6 +436,7 @@ pub unsafe fn main() {
         println!("{:?}", err);
     });
 
+    println!("Kernel: Loaded processes");
 
     #[cfg(any(
         feature = "test-flash-ctrl-read-write-page",

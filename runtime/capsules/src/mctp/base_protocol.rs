@@ -10,8 +10,6 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const MCTP_TEST_MSG_TYPE: u8 = 0x70;
 
-pub const MCTP_MSG_TYPE_RECV_ANY: u8 = 0xFF;
-
 pub const MCTP_TAG_OWNER: u8 = 0x08;
 pub const MCTP_TAG_MASK: u8 = 0x07;
 

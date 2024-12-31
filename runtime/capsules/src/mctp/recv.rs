@@ -3,10 +3,10 @@
 use crate::mctp::base_protocol::{
     MCTPHeader, MessageType, MCTP_HDR_SIZE, MCTP_TAG_MASK, MCTP_TAG_OWNER,
 };
-use core::cell::Cell;
-use core::fmt::Write;
 use kernel::collections::list::{ListLink, ListNode};
 use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
+
+use core::fmt::Write;
 use romtime::println;
 
 /// This trait is implemented to get notified of the messages received
