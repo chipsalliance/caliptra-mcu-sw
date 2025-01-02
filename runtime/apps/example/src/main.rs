@@ -76,10 +76,11 @@ pub(crate) async fn async_main<S: Syscalls>() {
         writeln!(console_writer, "async sleeper woke").unwrap();
     }
 
-    // if cfg!(feature = "test-mctp-user-loopback") {
-    writeln!(console_writer, "Now its time for some MCTP stuff").unwrap();
+    if cfg!(feature = "test-mctp-user-loopback") {
+        writeln!(console_writer, "Now its time for some MCTP stuff").unwrap();
 
-    test_mctp_loopback::<S>(&mut console_writer).await;
+        test_mctp_loopback::<S>(&mut console_writer).await;
+    }
 
     writeln!(console_writer, "app finished").unwrap();
 }
