@@ -87,7 +87,7 @@ sequenceDiagram
 
 ## Syscall Library in userspace
 Userspace applications can use syscall library in to send and receive MCTP messages. The following APIs are provided by the MCTP syscall library.
-Each user space application will instantiate the `AsyncMctp` module with appropriate driver number. The `AsyncMctp` module provides the following APIs to send and receive MCTP messages.
+Each user space application will instantiate the `Mctp` module with appropriate driver number. The `Mctp` module provides the following APIs to send and receive MCTP messages.
 
 ```Rust
 //! The MCTP library provides the interface to send and receive MCTP messages.
@@ -96,7 +96,7 @@ Each user space application will instantiate the `AsyncMctp` module with appropr
 //! Usage
 //! -----
 //!```Rust
-//! use mctp::AsyncMctp;
+//! use mctp::Mctp;
 //!
 //! const SPDM_MESSAGE_TYPE: u8 = 0x5;
 //! const SECURE_SPDM_MESSAGE_TYPE: u8 = 0x6;
@@ -104,7 +104,7 @@ Each user space application will instantiate the `AsyncMctp` module with appropr
 //! #[embassy_executor::task]
 //! async fn async_main() {
 //!     /// Initialize the MCTP driver with the driver number
-//!     let mctp = AsyncMctp::<TockSyscalls>::new(MCTP_SPDM_DRIVER_NUM);
+//!     let mctp = Mctp::<TockSyscalls>::new(MCTP_SPDM_DRIVER_NUM);
 //!
 //!     loop {
 //!         /// Receive the MCTP request
@@ -135,7 +135,7 @@ Each user space application will instantiate the `AsyncMctp` module with appropr
 //!```
 
 /// mctp/src/lib.rs
-pub struct AsyncMctp<S:Syscalls, C:Config = DefaultConfig > {
+pub struct Mctp<S:Syscalls, C:Config = DefaultConfig > {
     syscall: PhantomData<S>,
     config: PhantomData<C>,
     driver_num: usize,

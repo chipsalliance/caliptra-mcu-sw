@@ -3,9 +3,7 @@
 use crate::i3c_socket::{
     receive_ibi, receive_private_read, send_private_write, TestState, TestTrait,
 };
-use crate::tests::mctp_util::base_protocol::{
-    MCTPHdr, MctpMsgType, LOCAL_TEST_ENDPOINT_EID, MCTP_HDR_SIZE,
-};
+use crate::tests::mctp_util::base_protocol::{MCTPHdr, LOCAL_TEST_ENDPOINT_EID, MCTP_HDR_SIZE};
 use std::collections::VecDeque;
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -137,8 +135,7 @@ impl Test {
 
     fn check_response_message(&mut self) {
         let mut resp_msg: Vec<u8> = Vec::new();
-        let mut i = 0;
-        for pkt in self.resp_pkts.iter() {
+        for (i, pkt) in self.resp_pkts.iter().enumerate() {
             let resp_mctp_hdr: MCTPHdr<[u8; MCTP_HDR_SIZE]> =
                 MCTPHdr::read_from_bytes(&pkt[0..MCTP_HDR_SIZE]).unwrap();
             if i == 0 {
@@ -154,7 +151,6 @@ impl Test {
             assert!(resp_mctp_hdr.pkt_seq() == seq_num);
 
             resp_msg.extend_from_slice(&pkt[MCTP_HDR_SIZE..]);
-            i += 1;
         }
         assert!(self.req_msg_buf == resp_msg);
         self.passed = true;
@@ -189,14 +185,11 @@ impl Test {
         if last_pkt {
             self.check_response_message();
         }
-        return true;
+        true
     }
 
     fn responder_ready_test(&self) -> bool {
-        match self.test_name.as_str() {
-            "MctpAppResponderReady" => true,
-            _ => false,
-        }
+        matches!(self.test_name.as_str(), "MctpAppResponderReady")
     }
 
     fn wait_for_responder(

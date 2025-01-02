@@ -1120,9 +1120,9 @@ dependencies = [
  "embedded-alloc",
  "libtock",
  "libtock_alarm",
+ "libtock_caliptra",
  "libtock_console",
  "libtock_debug_panic",
- "libtock_mctp",
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
@@ -1513,6 +1513,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "libtock_caliptra"
+version = "0.1.0"
+dependencies = [
+ "libtock_console",
+ "libtock_platform",
+ "libtockasync",
+]
+
+[[package]]
 name = "libtock_console"
 version = "0.1.0"
 dependencies = [
@@ -1583,15 +1592,6 @@ version = "0.1.0"
 dependencies = [
  "libtock_platform",
  "libtock_unittest",
-]
-
-[[package]]
-name = "libtock_mctp"
-version = "0.1.0"
-dependencies = [
- "libtock_console",
- "libtock_platform",
- "libtockasync",
 ]
 
 [[package]]

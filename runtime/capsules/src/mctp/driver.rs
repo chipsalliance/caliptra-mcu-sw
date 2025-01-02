@@ -153,11 +153,14 @@ impl<'a> MCTPDriver<'a> {
 
         // Receive Request message or send Request message should have MCTP_TAG_OWNER
         // Receive Response message or send Response message should have a value between 0 and 7
-        let msg_tag = (arg2 & 0xFF) as u8;
+        let mut msg_tag = (arg2 & 0xFF) as u8;
         println!("MCTPDriver: parse_args: msg_tag: {}", msg_tag);
-        if ((command_num == 1 || command_num == 3) && msg_tag != MCTP_TAG_OWNER)
-            || ((command_num == 2 || command_num == 4) && !valid_msg_tag(msg_tag))
-        {
+
+        if command_num == 1 || command_num == 3 {
+            msg_tag = MCTP_TAG_OWNER;
+        }
+
+        if (command_num == 2 || command_num == 4) && !valid_msg_tag(msg_tag) {
             Err(ErrorCode::INVAL)?;
         }
 

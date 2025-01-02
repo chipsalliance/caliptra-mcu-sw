@@ -7,8 +7,8 @@
 
 use core::fmt::Write;
 use libtock::alarm::*;
+use libtock_caliptra::mctp::{driver_num, Mctp};
 use libtock_console::{Console, ConsoleWriter};
-use libtock_mctp::{driver_num, AsyncMctp};
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
@@ -87,33 +87,32 @@ pub(crate) async fn async_main<S: Syscalls>() {
 async fn test_mctp_loopback<S: Syscalls>(cw: &mut ConsoleWriter<S>) {
     writeln!(cw, "USER: Starting MCTP loopback test").unwrap();
 
-    let mctp_spdm = AsyncMctp::<S>::new(driver_num::MCTP_SPDM);
+    let mctp_spdm = Mctp::<S>::new(driver_num::MCTP_SPDM);
     loop {
         let mut msg_buffer: [u8; 1024] = [0; 1024];
-        let peer_eid: u8 = 0xA;
+        // let peer_eid: u8 = 0xA;
 
         if mctp_spdm.exists() {
             writeln!(cw, "USER: MCTP SPDM exists").unwrap();
-            match mctp_spdm.get_max_message_size() {
+            match mctp_spdm.max_message_size() {
                 Ok(size) => writeln!(cw, "Max message size: {}", size).unwrap(),
                 Err(e) => writeln!(cw, "Error getting max message size: {:?}", e).unwrap(),
             }
 
             writeln!(cw, "USER: Setting up for MCTP request").unwrap();
 
-            let result = mctp_spdm.receive_request(peer_eid, &mut msg_buffer).await;
+            let result = mctp_spdm.receive_request(&mut msg_buffer).await;
             match result {
-                Ok(msg_info) => {
-                    writeln!(
-                        cw,
-                        "USER: Request received. dest_eid {} msg_type {} msg_tag {} ",
-                        msg_info.eid, msg_info.msg_type, msg_info.msg_tag
-                    )
-                    .unwrap();
+                Ok((msg_len, msg_info)) => {
+                    writeln!(cw, "USER: Request received. msg_len {}", msg_len).unwrap();
 
-                    let msg_tag = msg_info.msg_tag;
+                    let msg_len = msg_len as usize;
+
+                    assert!(msg_len <= msg_buffer.len());
+
+                    // let msg_tag = msg_info.msg_tag;
                     let result = mctp_spdm
-                        .send_response(msg_info.eid, msg_tag, &msg_buffer[..msg_info.payload_len])
+                        .send_response(&msg_buffer[..msg_len], msg_info)
                         .await;
 
                     match result {
@@ -197,7 +196,6 @@ impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
             .map(|_when: u32| ())?;
         sub.await.map(|_| {
             writeln!(Console::<S>::writer(), "Alarm woke up in Await").unwrap();
-            ()
         })
     }
 }

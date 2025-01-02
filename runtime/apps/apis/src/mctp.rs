@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-#![no_std]
 use core::marker::PhantomData;
 use libtock_platform::share;
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
@@ -33,7 +32,6 @@ pub mod message_type {
     pub const SECURE_SPDM: u8 = 0x6;
     pub const PLDM: u8 = 0x1;
     pub const CALIPTRA: u8 = 0x7E;
-    pub const ANY_SUPPORTED: u8 = 0xFF; // Receive any supported message type
 }
 
 pub struct Mctp<S: Syscalls> {
@@ -48,7 +46,7 @@ impl<S: Syscalls> Mctp<S> {
     /// * `driver_num` - The driver number for the MCTP driver
     ///
     /// # Returns
-    /// * `AsyncMctp` - The MCTP driver instance
+    /// * `Mctp` - The MCTP driver instance
     pub fn new(driver_num: u32) -> Self {
         Self {
             syscall: PhantomData,
@@ -121,7 +119,7 @@ impl<S: Syscalls> Mctp<S> {
                 self.driver_num,
                 command::SEND_RESPONSE,
                 info.eid as u32,
-                info.tag as u32,
+                (info.tag & 0x07) as u32,
             )
             .to_result::<(), ErrorCode>()?;
 
