@@ -19,6 +19,7 @@ members = [
     "romtime",
     "runtime",
     "runtime/apps/example",
+    "runtime/apps/apis/flash",
     "runtime/apps/libtock/apis/interface/buttons",
     "runtime/apps/libtock/apis/interface/buzzer",
     "runtime/apps/libtock/apis/interface/console",
