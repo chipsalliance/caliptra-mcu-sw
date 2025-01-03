@@ -16,6 +16,7 @@ libtock_debug_panic = { path = "../libtock/panic_handlers/debug_panic" }
 libtock_platform = { path = "../libtock/platform" }
 libtock_runtime = { path = "../libtock/runtime" }
 libtockasync = { path = "../libtockasync" }
+libtock_caliptra = { path = "../apis" }
 portable-atomic = "1.7.0"
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
@@ -24,3 +25,16 @@ libtock_unittest = { path = "../libtock/unittest" }
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embedded-alloc = "0.5.1"
+
+[features]
+default = []
+test-i3c-simple = []
+test-i3c-constant-writes = []
+test-flash-ctrl-init = []
+test-flash-ctrl-read-write-page = []
+test-flash-ctrl-erase-page = []
+test-flash-storage-read-write = []
+test-flash-storage-erase = []
+test-mctp-ctrl-cmds = []
+test-mctp-capsule-loopback = []
+test-mctp-user-loopback = []

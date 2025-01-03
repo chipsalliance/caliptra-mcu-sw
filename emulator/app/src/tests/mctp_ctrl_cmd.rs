@@ -4,7 +4,7 @@ use crate::i3c_socket::{
     receive_ibi, receive_private_read, send_private_write, TestState, TestTrait,
 };
 use crate::tests::mctp_util::base_protocol::{
-    MCTPHdr, MCTPMsgHdr, MCTP_HDR_SIZE, MCTP_MSG_HDR_SIZE,
+    MCTPHdr, MCTPMsgHdr, LOCAL_TEST_ENDPOINT_EID, MCTP_HDR_SIZE, MCTP_MSG_HDR_SIZE,
 };
 use crate::tests::mctp_util::ctrl_protocol::*;
 use std::net::TcpStream;
@@ -27,8 +27,6 @@ const MCTP_HDR_OFFSET: usize = 0;
 const MCTP_MSG_HDR_OFFSET: usize = MCTP_HDR_OFFSET + MCTP_HDR_SIZE;
 const MCTP_CTRL_MSG_HDR_OFFSET: usize = MCTP_MSG_HDR_OFFSET + MCTP_MSG_HDR_SIZE;
 const MCTP_CTRL_PAYLOAD_OFFSET: usize = MCTP_CTRL_MSG_HDR_OFFSET + MCTP_CTRL_MSG_HDR_SIZE;
-
-const LOCAL_ENDPOINT_EID: u8 = 0x08;
 
 #[derive(EnumIter, Debug)]
 pub(crate) enum MCTPCtrlCmdTests {
@@ -54,7 +52,7 @@ impl MCTPCtrlCmdTests {
 
     fn generate_request_packet(&self) -> Vec<u8> {
         let mut mctp_hdr = MCTPHdr::new();
-        mctp_hdr.prepare_header(0, LOCAL_ENDPOINT_EID, 1, 1, 0, 1, self.msg_tag());
+        mctp_hdr.prepare_header(0, LOCAL_TEST_ENDPOINT_EID, 1, 1, 0, 1, self.msg_tag());
 
         let mctp_common_msg_hdr = MCTPMsgHdr::new();
 
@@ -86,7 +84,7 @@ impl MCTPCtrlCmdTests {
 
     fn generate_response_packet(&self) -> Vec<u8> {
         let mut mctp_hdr = MCTPHdr::new();
-        mctp_hdr.prepare_header(LOCAL_ENDPOINT_EID, 0, 1, 1, 0, 0, self.msg_tag());
+        mctp_hdr.prepare_header(LOCAL_TEST_ENDPOINT_EID, 0, 1, 1, 0, 0, self.msg_tag());
 
         let mctp_common_msg_hdr = MCTPMsgHdr::new();
 

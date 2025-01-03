@@ -305,7 +305,7 @@ pub fn runtime_build_with_apps(
     let padding = app_offset - runtime_end_offset - INTERRUPT_TABLE_SIZE;
 
     // build the apps with the data memory at some incorrect offset
-    let apps_bin_len = apps_build_flat_tbf(app_offset, apps_memory_offset)?.len();
+    let apps_bin_len = apps_build_flat_tbf(app_offset, apps_memory_offset, features)?.len();
     println!("Apps built: {} bytes", apps_bin_len);
 
     // re-link and place the apps and data RAM after the runtime binary
@@ -323,7 +323,7 @@ pub fn runtime_build_with_apps(
     );
 
     // re-link the applications with the correct data memory offsets
-    let apps_bin = apps_build_flat_tbf(app_offset, apps_memory_offset)?;
+    let apps_bin = apps_build_flat_tbf(app_offset, apps_memory_offset, features)?;
     assert_eq!(
         apps_bin_len,
         apps_bin.len(),

@@ -371,7 +371,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             i3c.get_dynamic_address().unwrap(),
             tests,
         );
-    } else if cfg!(feature = "test-mctp-send-loopback") {
+    } else if cfg!(feature = "test-mctp-capsule-loopback") {
         i3c_controller.start();
         println!(
             "Starting loopback test thread for testing target {:?}",
@@ -384,6 +384,23 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             cli.i3c_port.unwrap(),
             i3c.get_dynamic_address().unwrap(),
             tests,
+        );
+    } else if cfg!(feature = "test-mctp-user-loopback") {
+        i3c_controller.start();
+        println!(
+            "Starting loopback test thread for testing target {:?}",
+            i3c.get_dynamic_address().unwrap()
+        );
+
+        let spdm_loopback_tests = tests::mctp_user_loopback::MctpUserAppTests::generate_tests(
+            tests::mctp_util::base_protocol::MctpMsgType::Spdm as u8,
+        );
+
+        i3c_socket::run_tests(
+            running.clone(),
+            cli.i3c_port.unwrap(),
+            i3c.get_dynamic_address().unwrap(),
+            spdm_loopback_tests,
         );
     }
 

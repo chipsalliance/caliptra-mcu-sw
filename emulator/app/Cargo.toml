@@ -29,6 +29,7 @@ bitfield.workspace = true
 crc.workspace = true
 strum = "0.24"
 strum_macros = "0.24"
+rand = "0.8.5"
 
 [features]
 default = []
@@ -37,7 +38,8 @@ test-i3c-constant-writes = ["emulator-periph/test-i3c-constant-writes"]
 test-flash-ctrl-init = []
 test-flash-ctrl-read-write-page = []
 test-flash-ctrl-erase-page = []
-test-mctp-ctrl-cmds = ["emulator-periph/test-mctp-ctrl-cmds"]
-test-mctp-send-loopback = ["emulator-periph/test-mctp-send-loopback"]
 test-flash-storage-read-write = []
 test-flash-storage-erase = []
+test-mctp-ctrl-cmds = ["emulator-periph/test-mctp-ctrl-cmds"]
+test-mctp-capsule-loopback = ["emulator-periph/test-mctp-capsule-loopback"]
+test-mctp-user-loopback = ["emulator-periph/test-mctp-user-loopback"]
