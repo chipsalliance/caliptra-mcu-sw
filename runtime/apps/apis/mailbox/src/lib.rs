@@ -2,8 +2,8 @@
 
 //! # AsyncMailbox: Mailbox Interface
 
-use libtock_platform::allow_ro::{AllowRo, Config as ReadOnlyConfig};
-use libtock_platform::allow_rw::{AllowRw, Config as ReadWriteConfig};
+use libtock_platform::allow_ro::AllowRo;
+use libtock_platform::allow_rw::AllowRw;
 use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 /// Mailbox interface user interface.
@@ -13,16 +13,11 @@ use libtockasync::TockSubscribe;
 /// - `S`: The syscall implementation.
 /// - `W`: Configuration for writable buffers (response).
 /// - `R`: Configuration for read-only buffers (input), defaults to `DefaultConfig`.
-pub struct AsyncMailbox<
-    const DRIVER_NUM: u32,
-    S: Syscalls,
-    W: ReadWriteConfig,
-    R: ReadOnlyConfig = DefaultConfig,
->(S, W, R);
+pub struct AsyncMailbox<S: Syscalls>(S);
 
-impl<const DRIVER_NUM: u32, S: Syscalls, W: ReadWriteConfig, R: ReadOnlyConfig>
-    AsyncMailbox<DRIVER_NUM, S, W, R>
-{
+const MAILBOX_DRIVER_NUM: u32 = 0x8000_0009;
+
+impl<S: Syscalls> AsyncMailbox<S> {
     /// Executes a mailbox command and returns the response.
     ///
     /// This method sends a mailbox command to the kernel, then waits
@@ -44,8 +39,8 @@ impl<const DRIVER_NUM: u32, S: Syscalls, W: ReadWriteConfig, R: ReadOnlyConfig>
     ) -> Result<usize, ErrorCode> {
         share::scope::<
             (
-                AllowRo<_, DRIVER_NUM, { mailbox_buffer::INPUT }>,
-                AllowRw<_, DRIVER_NUM, { mailbox_buffer::RESPONSE }>,
+                AllowRo<_, MAILBOX_DRIVER_NUM, { mailbox_buffer::INPUT }>,
+                AllowRw<_, MAILBOX_DRIVER_NUM, { mailbox_buffer::RESPONSE }>,
             ),
             _,
             _,
@@ -53,17 +48,22 @@ impl<const DRIVER_NUM: u32, S: Syscalls, W: ReadWriteConfig, R: ReadOnlyConfig>
             let (allow_ro, allow_rw) = handle.split();
 
             // Share the input buffer (read-only)
-            S::allow_ro::<R, DRIVER_NUM, { mailbox_buffer::INPUT }>(allow_ro, input_data)?;
+            S::allow_ro::<DefaultConfig, MAILBOX_DRIVER_NUM, { mailbox_buffer::INPUT }>(
+                allow_ro, input_data,
+            )?;
 
             // Share the response buffer (read-write)
-            S::allow_rw::<W, DRIVER_NUM, { mailbox_buffer::RESPONSE }>(allow_rw, response_buffer)?;
+            S::allow_rw::<DefaultConfig, MAILBOX_DRIVER_NUM, { mailbox_buffer::RESPONSE }>(
+                allow_rw,
+                response_buffer,
+            )?;
 
             // Subscribe to the asynchronous notification for when the command is processed
             let async_command =
-                TockSubscribe::subscribe::<S>(DRIVER_NUM, mailbox_subscribe::COMMAND_DONE);
+                TockSubscribe::subscribe::<S>(MAILBOX_DRIVER_NUM, mailbox_subscribe::COMMAND_DONE);
 
             // Issue the command to the kernel
-            S::command(DRIVER_NUM, mailbox_cmd::EXECUTE_COMMAND, command, 0)
+            S::command(MAILBOX_DRIVER_NUM, mailbox_cmd::EXECUTE_COMMAND, command, 0)
                 .to_result::<(), ErrorCode>()?;
 
             // Return the subscription for further processing

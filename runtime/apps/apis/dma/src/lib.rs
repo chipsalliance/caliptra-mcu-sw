@@ -9,8 +9,9 @@ use libtock_platform::{ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
 /// DMA interface.
-pub struct AsyncDMA<const DRIVER_NUM: u32, S: Syscalls>(S);
+pub struct AsyncDMA<S: Syscalls>(S);
 
+const DMA_DRIVER_NUM: u32 = 0x8000_0008;
 /// Configuration parameters for a DMA transfer.
 #[derive(Debug, Copy, Clone)]
 pub struct DMATransaction {
@@ -22,7 +23,7 @@ pub struct DMATransaction {
     pub dest_addr: u64,
 }
 
-impl<const DRIVER_NUM: u32, S: Syscalls> AsyncDMA<DRIVER_NUM, S> {
+impl<S: Syscalls> AsyncDMA<S> {
     /// Do a DMA transfer.
     ///
     /// This method executes a DMA transfer based on the provided `DMATransaction` configuration.
@@ -36,16 +37,16 @@ impl<const DRIVER_NUM: u32, S: Syscalls> AsyncDMA<DRIVER_NUM, S> {
     pub async fn xfer(transaction: DMATransaction) -> Result<(), ErrorCode> {
         Self::setup(transaction).await?;
 
-        let async_start = TockSubscribe::subscribe::<S>(DRIVER_NUM, dma_subscribe::XFER_DONE);
-        S::command(DRIVER_NUM, dma_cmd::START, 0, 0).to_result::<(), ErrorCode>()?;
+        let async_start = TockSubscribe::subscribe::<S>(DMA_DRIVER_NUM, dma_subscribe::XFER_DONE);
+        S::command(DMA_DRIVER_NUM, dma_cmd::START, 0, 0).to_result::<(), ErrorCode>()?;
         async_start.await.map(|_| ())
     }
 
     async fn setup(config: DMATransaction) -> Result<(), ErrorCode> {
         let async_configure =
-            TockSubscribe::subscribe::<S>(DRIVER_NUM, dma_subscribe::SET_BYTE_XFER_COUNT_DONE);
+            TockSubscribe::subscribe::<S>(DMA_DRIVER_NUM, dma_subscribe::SET_BYTE_XFER_COUNT_DONE);
         S::command(
-            DRIVER_NUM,
+            DMA_DRIVER_NUM,
             dma_cmd::SET_BYTE_XFER_COUNT,
             config.byte_count as u32,
             0,
@@ -53,9 +54,9 @@ impl<const DRIVER_NUM: u32, S: Syscalls> AsyncDMA<DRIVER_NUM, S> {
         .to_result::<(), ErrorCode>()?;
         async_configure.await.map(|_| ())?;
 
-        let async_src = TockSubscribe::subscribe::<S>(DRIVER_NUM, dma_subscribe::SET_SRC_DONE);
+        let async_src = TockSubscribe::subscribe::<S>(DMA_DRIVER_NUM, dma_subscribe::SET_SRC_DONE);
         S::command(
-            DRIVER_NUM,
+            DMA_DRIVER_NUM,
             dma_cmd::SET_SRC_ADDR,
             (config.src_addr & 0xFFFF_FFFF) as u32,
             (config.src_addr >> 32) as u32,
@@ -63,9 +64,10 @@ impl<const DRIVER_NUM: u32, S: Syscalls> AsyncDMA<DRIVER_NUM, S> {
         .to_result::<(), ErrorCode>()?;
         async_src.await.map(|_| ())?;
 
-        let async_dest = TockSubscribe::subscribe::<S>(DRIVER_NUM, dma_subscribe::SET_DEST_DONE);
+        let async_dest =
+            TockSubscribe::subscribe::<S>(DMA_DRIVER_NUM, dma_subscribe::SET_DEST_DONE);
         S::command(
-            DRIVER_NUM,
+            DMA_DRIVER_NUM,
             dma_cmd::SET_DEST_ADDR,
             (config.dest_addr & 0xFFFF_FFFF) as u32,
             (config.dest_addr >> 32) as u32,
