@@ -18,7 +18,7 @@ use caliptra_emu_cpu::Cpu;
 use caliptra_emu_periph::soc_reg::DebugManufService;
 use caliptra_emu_periph::{
     CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal, ReadyForFwCb,
-    TbServicesCb, UploadUpdateFwCb,
+    SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
 };
 use caliptra_hw_model::BusMmio;
 use std::fs::File;
@@ -64,7 +64,9 @@ pub struct StartCaliptraArgs {
 }
 
 /// Creates and returns an initialized a Caliptra emulator CPU.
-pub fn start_caliptra(args: &StartCaliptraArgs) -> io::Result<Cpu<CaliptraRootBus>> {
+pub fn start_caliptra(
+    args: &StartCaliptraArgs,
+) -> io::Result<(Cpu<CaliptraRootBus>, SocToCaliptraBus)> {
     let args_rom = &args.rom;
     let args_current_fw = &args.firmware;
     let args_update_fw = &args.update_firmware;
@@ -295,7 +297,8 @@ pub fn start_caliptra(args: &StartCaliptraArgs) -> io::Result<Cpu<CaliptraRootBu
             .write(|_| (wdt_timeout >> 32) as u32);
     }
 
-    Ok(Cpu::new(root_bus, clock))
+    let ext_soc_ifc = root_bus.soc_to_caliptra_bus();
+    Ok((Cpu::new(root_bus, clock), ext_soc_ifc))
 }
 
 fn change_dword_endianess(data: &mut [u8]) {

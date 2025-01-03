@@ -21,7 +21,7 @@ mod register_array;
 mod rom;
 pub mod testing;
 
-pub use crate::bus::{Bus, BusError, Trap};
+pub use crate::bus::{Bus, BusConverter, BusError, Trap};
 pub use crate::clock::{ActionHandle, Clock, Timer, TimerAction};
 pub use crate::dynamic_bus::DynamicBus;
 pub use crate::ram::Ram;

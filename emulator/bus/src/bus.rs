@@ -35,6 +35,18 @@ pub enum BusError {
     StoreAccessFault,
 }
 
+impl From<caliptra_emu_bus::BusError> for BusError {
+    fn from(value: caliptra_emu_bus::BusError) -> Self {
+        match value {
+            caliptra_emu_bus::BusError::InstrAccessFault => BusError::InstrAccessFault,
+            caliptra_emu_bus::BusError::LoadAddrMisaligned => BusError::LoadAddrMisaligned,
+            caliptra_emu_bus::BusError::LoadAccessFault => BusError::LoadAccessFault,
+            caliptra_emu_bus::BusError::StoreAddrMisaligned => BusError::StoreAddrMisaligned,
+            caliptra_emu_bus::BusError::StoreAccessFault => BusError::StoreAccessFault,
+        }
+    }
+}
+
 /// Represents an abstract memory bus. Used to read and write from RAM and
 /// peripheral addresses.
 pub trait Bus {
@@ -76,5 +88,44 @@ pub trait Bus {
 
     fn update_reset(&mut self) {
         // By default, do nothing
+    }
+}
+
+pub struct BusConverter {
+    caliptra_bus: Box<dyn caliptra_emu_bus::Bus>,
+}
+
+impl BusConverter {
+    pub fn new(caliptra_bus: Box<dyn caliptra_emu_bus::Bus>) -> Self {
+        Self { caliptra_bus }
+    }
+}
+
+impl Bus for BusConverter {
+    fn read(&mut self, size: RvSize, addr: RvAddr) -> Result<RvData, BusError> {
+        self.caliptra_bus
+            .read((size as usize).into(), addr as caliptra_emu_types::RvAddr)
+            .map_err(|x| x.into())
+    }
+
+    fn write(&mut self, size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
+        self.caliptra_bus
+            .write(
+                (size as usize).into(),
+                addr as caliptra_emu_types::RvAddr,
+                val,
+            )
+            .map_err(|x| x.into())
+    }
+    fn poll(&mut self) {
+        self.caliptra_bus.poll();
+    }
+
+    fn warm_reset(&mut self) {
+        self.caliptra_bus.warm_reset();
+    }
+
+    fn update_reset(&mut self) {
+        self.caliptra_bus.update_reset();
     }
 }

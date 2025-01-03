@@ -658,17 +658,17 @@ fn emu_make_root_bus<'a>(
     let mut tokens = TokenStream::new();
     tokens.extend(quote! {
         pub struct AutoRootBus {
-            delegate: Option<Box<dyn emulator_bus::Bus>>,
+            delegates: Vec<Box<dyn emulator_bus::Bus>>,
             #field_tokens
         }
         impl AutoRootBus {
             #[allow(clippy::too_many_arguments)]
             pub fn new(
-                delegate: Option<Box<dyn emulator_bus::Bus>>,
+                delegates: Vec<Box<dyn emulator_bus::Bus>>,
                 #constructor_params_tokens
             ) -> Self {
                 Self {
-                    delegate,
+                    delegates,
                     #constructor_tokens
                 }
             }
@@ -679,44 +679,48 @@ fn emu_make_root_bus<'a>(
                     #read_tokens
                     _ => Err(emulator_bus::BusError::LoadAccessFault),
                 };
-                if let Some(delegate) = self.delegate.as_mut() {
-                    match result {
-                        Err(emulator_bus::BusError::LoadAccessFault) => delegate.read(size, addr),
-                        _ => result,
-                    }
-                } else {
-                    result
+                if !matches!(result, Err(emulator_bus::BusError::LoadAccessFault)) {
+                    return result;
                 }
+                for delegate in self.delegates.iter_mut() {
+                    let result = delegate.read(size, addr);
+                    if !matches!(result, Err(emulator_bus::BusError::LoadAccessFault)) {
+                        return result;
+                    }
+                }
+                result
             }
             fn write(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr, val: emulator_types::RvData) -> Result<(), emulator_bus::BusError> {
                 let result = match addr {
                     #write_tokens
                     _ => Err(emulator_bus::BusError::StoreAccessFault),
                 };
-                if let Some(delegate) = self.delegate.as_mut() {
-                    match result {
-                        Err(emulator_bus::BusError::StoreAccessFault) => delegate.write(size, addr, val),
-                        _ => result,
-                    }
-                } else {
-                    result
+                if !matches!(result, Err(emulator_bus::BusError::StoreAccessFault)) {
+                    return result;
                 }
+                for delegate in self.delegates.iter_mut() {
+                    let result = delegate.write(size, addr, val);
+                    if !matches!(result, Err(emulator_bus::BusError::StoreAccessFault)) {
+                        return result;
+                    }
+                }
+                result
             }
             fn poll(&mut self) {
                 #poll_tokens
-                if let Some(delegate) = self.delegate.as_mut() {
+                for delegate in self.delegates.iter_mut() {
                     delegate.poll();
                 }
             }
             fn warm_reset(&mut self) {
                 #warm_reset_tokens
-                if let Some(delegate) = self.delegate.as_mut() {
+                for delegate in self.delegates.iter_mut() {
                     delegate.warm_reset();
                 }
             }
             fn update_reset(&mut self) {
                 #update_reset_tokens
-                if let Some(delegate) = self.delegate.as_mut() {
+                for delegate in self.delegates.iter_mut() {
                     delegate.update_reset();
                 }
             }
@@ -768,6 +772,9 @@ fn generate_fw_registers(
             block.name = block.name[9..].to_string();
         }
         if block.name.ends_with("_reg") || block.name.ends_with("_csr") {
+            block.name = block.name[0..block.name.len() - 4].to_string();
+        }
+        if block.name.ends_with("_ifc") {
             block.name = block.name[0..block.name.len() - 4].to_string();
         }
         if block.name == "I3CCSR" {

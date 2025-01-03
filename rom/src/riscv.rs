@@ -12,11 +12,38 @@ Abstract:
 
 --*/
 
+use core::fmt::Write;
+use registers_generated::soc;
+use tock_registers::interfaces::Readable;
+
+use crate::static_ref::StaticRef;
+
 #[cfg(target_arch = "riscv32")]
 core::arch::global_asm!(include_str!("start.s"));
 
+pub const SOC_BASE: StaticRef<soc::regs::Soc> =
+    unsafe { StaticRef::new(soc::SOC_IFC_REG_ADDR as *const soc::regs::Soc) };
+
+pub struct Soc {
+    registers: StaticRef<soc::regs::Soc>,
+}
+
+impl Soc {
+    pub const fn new(registers: StaticRef<soc::regs::Soc>) -> Self {
+        Soc { registers }
+    }
+}
+
 pub extern "C" fn rom_entry() -> ! {
-    crate::io::write(b"Hello from ROM\n");
+    romtime::println!("Hello from ROM");
+    let soc = Soc::new(SOC_BASE);
+    let flow_status = soc.registers.cptra_flow_status.get();
+    romtime::println!("Caliptra flow status {:x}", flow_status);
+    if flow_status == 0 {
+        romtime::println!("Caliptra not detected; skipping Caliptra boot flow");
+        exit_rom();
+    }
+    // TODO: implement Caliptra boot flow
     exit_rom();
 }
 

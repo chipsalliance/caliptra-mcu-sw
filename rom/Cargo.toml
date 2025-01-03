@@ -6,6 +6,11 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
+[dependencies]
+registers-generated.workspace = true
+tock-registers.workspace = true
+romtime.workspace = true
+
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 riscv-csr.workspace = true
 rv32i.workspace = true

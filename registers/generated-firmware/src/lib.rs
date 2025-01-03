@@ -11,5 +11,4 @@ pub mod i3c;
 pub mod mbox;
 pub mod otp_ctrl;
 pub mod sha512_acc;
-pub mod soc_ifc;
-pub mod soc_ifc_trng;
+pub mod soc;

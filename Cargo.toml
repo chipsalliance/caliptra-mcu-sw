@@ -134,6 +134,7 @@ caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw.git",
 caliptra-emu-bus = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
 caliptra-emu-cpu = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
 caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
+caliptra-emu-types = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
 caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
 caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
 

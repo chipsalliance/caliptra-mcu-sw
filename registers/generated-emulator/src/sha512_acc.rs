@@ -106,10 +106,8 @@ pub trait Sha512AccPeripheral {
     fn read_intr_block_rf_global_intr_en_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::GlobalIntrEnT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::GlobalIntrEnT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_global_intr_en_r(
@@ -117,17 +115,15 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::GlobalIntrEnT::Register,
+            registers_generated::soc::bits::GlobalIntrEnT::Register,
         >,
     ) {
     }
     fn read_intr_block_rf_error_intr_en_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::ErrorIntrEnT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::ErrorIntrEnT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_error_intr_en_r(
@@ -135,17 +131,15 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::ErrorIntrEnT::Register,
+            registers_generated::soc::bits::ErrorIntrEnT::Register,
         >,
     ) {
     }
     fn read_intr_block_rf_notif_intr_en_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::NotifIntrEnT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::NotifIntrEnT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_notif_intr_en_r(
@@ -153,35 +147,29 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::NotifIntrEnT::Register,
+            registers_generated::soc::bits::NotifIntrEnT::Register,
         >,
     ) {
     }
     fn read_intr_block_rf_error_global_intr_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::GlobalIntrT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::GlobalIntrT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_notif_global_intr_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::GlobalIntrT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::GlobalIntrT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_error_internal_intr_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::ErrorIntrT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::ErrorIntrT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_error_internal_intr_r(
@@ -189,17 +177,15 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::ErrorIntrT::Register,
+            registers_generated::soc::bits::ErrorIntrT::Register,
         >,
     ) {
     }
     fn read_intr_block_rf_notif_internal_intr_r(
         &mut self,
         _size: emulator_types::RvSize,
-    ) -> emulator_bus::ReadWriteRegister<
-        u32,
-        registers_generated::soc_ifc::bits::NotifIntrT::Register,
-    > {
+    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::NotifIntrT::Register>
+    {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_notif_internal_intr_r(
@@ -207,7 +193,7 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::NotifIntrT::Register,
+            registers_generated::soc::bits::NotifIntrT::Register,
         >,
     ) {
     }
@@ -216,7 +202,7 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::ErrorIntrTrigT::Register,
+        registers_generated::soc::bits::ErrorIntrTrigT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -225,7 +211,7 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::ErrorIntrTrigT::Register,
+            registers_generated::soc::bits::ErrorIntrTrigT::Register,
         >,
     ) {
     }
@@ -234,7 +220,7 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::NotifIntrTrigT::Register,
+        registers_generated::soc::bits::NotifIntrTrigT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -243,7 +229,7 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc_ifc::bits::NotifIntrTrigT::Register,
+            registers_generated::soc::bits::NotifIntrTrigT::Register,
         >,
     ) {
     }
@@ -312,7 +298,7 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -321,7 +307,7 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -330,7 +316,7 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -339,7 +325,7 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -348,7 +334,7 @@ pub trait Sha512AccPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc_ifc::bits::IntrCountIncrT::Register,
+        registers_generated::soc::bits::IntrCountIncrT::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
