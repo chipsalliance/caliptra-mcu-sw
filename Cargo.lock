@@ -519,6 +519,7 @@ name = "capsules-runtime"
 version = "0.1.0"
 dependencies = [
  "bitfield",
+ "capsules-core",
  "capsules-extra",
  "flash-driver",
  "i3c-driver",
@@ -968,6 +969,7 @@ dependencies = [
  "gdbstub",
  "gdbstub_arch",
  "hex",
+ "rand",
  "strum",
  "strum_macros",
  "tock-registers",
@@ -1089,6 +1091,7 @@ dependencies = [
  "embedded-alloc",
  "libtock",
  "libtock_alarm",
+ "libtock_caliptra",
  "libtock_console",
  "libtock_debug_panic",
  "libtock_platform",
@@ -1469,6 +1472,15 @@ version = "0.1.0"
 dependencies = [
  "libtock_platform",
  "libtock_unittest",
+]
+
+[[package]]
+name = "libtock_caliptra"
+version = "0.1.0"
+dependencies = [
+ "libtock_console",
+ "libtock_platform",
+ "libtockasync",
 ]
 
 [[package]]

@@ -7,6 +7,7 @@
 
 use core::fmt::Write;
 use libtock::alarm::*;
+use libtock_caliptra::mctp::{driver_num, Mctp};
 use libtock_console::Console;
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
@@ -74,7 +75,41 @@ pub(crate) async fn async_main<S: Syscalls>() {
         sleep::<S>(Milliseconds(1)).await;
         writeln!(console_writer, "async sleeper woke").unwrap();
     }
+
+    if cfg!(feature = "test-mctp-user-loopback") {
+        writeln!(
+            console_writer,
+            "Running test-mctp-user-loopback test for SPDM msg type"
+        )
+        .unwrap();
+
+        test_mctp_loopback::<S>().await;
+    }
+
     writeln!(console_writer, "app finished").unwrap();
+}
+
+async fn test_mctp_loopback<S: Syscalls>() {
+    let mctp_spdm = Mctp::<S>::new(driver_num::MCTP_SPDM);
+    loop {
+        let mut msg_buffer: [u8; 1024] = [0; 1024];
+
+        assert!(mctp_spdm.exists());
+        let max_msg_size = mctp_spdm.max_message_size();
+        assert!(max_msg_size.is_ok());
+        assert!(max_msg_size.unwrap() > 0);
+
+        let result = mctp_spdm.receive_request(&mut msg_buffer).await;
+        assert!(result.is_ok());
+        let (msg_len, msg_info) = result.unwrap();
+        let msg_len = msg_len as usize;
+        assert!(msg_len <= msg_buffer.len());
+
+        let result = mctp_spdm
+            .send_response(&msg_buffer[..msg_len], msg_info)
+            .await;
+        assert!(result.is_ok());
+    }
 }
 
 // -----------------------------------------------------------------------------

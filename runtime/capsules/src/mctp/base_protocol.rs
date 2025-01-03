@@ -85,7 +85,7 @@ pub enum MessageType {
     Pldm = 1,
     Spdm = 5,
     SecureSpdm = 6,
-    VendorDefinedPci = 0x7E,
+    Caliptra = 0x7E, // Vendor defined PCI message type
     TestMsgType = MCTP_TEST_MSG_TYPE as isize,
     Invalid,
 }
@@ -97,7 +97,7 @@ impl From<u8> for MessageType {
             1 => MessageType::Pldm,
             5 => MessageType::Spdm,
             6 => MessageType::SecureSpdm,
-            0x7E => MessageType::VendorDefinedPci,
+            0x7E => MessageType::Caliptra,
             MCTP_TEST_MSG_TYPE => MessageType::TestMsgType,
             _ => MessageType::Invalid,
         }
@@ -106,6 +106,10 @@ impl From<u8> for MessageType {
 
 pub fn valid_eid(eid: u8) -> bool {
     eid != MCTP_BROADCAST_EID && !(1..7).contains(&eid)
+}
+
+pub fn valid_msg_tag(tag: u8) -> bool {
+    tag <= MCTP_TAG_MASK
 }
 
 #[cfg(test)]

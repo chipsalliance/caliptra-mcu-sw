@@ -87,7 +87,7 @@ sequenceDiagram
 
 ## Syscall Library in userspace
 Userspace applications can use syscall library in to send and receive MCTP messages. The following APIs are provided by the MCTP syscall library.
-Each user space application will instantiate the `AsyncMctp` module with appropriate driver number. The `AsyncMctp` module provides the following APIs to send and receive MCTP messages.
+Each user space application will instantiate the `Mctp` module with appropriate driver number. The `Mctp` module provides the following APIs to send and receive MCTP messages.
 
 ```Rust
 //! The MCTP library provides the interface to send and receive MCTP messages.
@@ -96,7 +96,7 @@ Each user space application will instantiate the `AsyncMctp` module with appropr
 //! Usage
 //! -----
 //!```Rust
-//! use mctp::AsyncMctp;
+//! use mctp::Mctp;
 //!
 //! const SPDM_MESSAGE_TYPE: u8 = 0x5;
 //! const SECURE_SPDM_MESSAGE_TYPE: u8 = 0x6;
@@ -104,19 +104,19 @@ Each user space application will instantiate the `AsyncMctp` module with appropr
 //! #[embassy_executor::task]
 //! async fn async_main() {
 //!     /// Initialize the MCTP driver with the driver number
-//!     let mctp = AsyncMctp::<TockSyscalls>::new(MCTP_SPDM_DRIVER_NUM);
+//!     let mctp = Mctp::<TockSyscalls>::new(MCTP_SPDM_DRIVER_NUM);
 //!
 //!     loop {
 //!         /// Receive the MCTP request
 //!         let mut rx_buf = [0; 1024];
-//!         let res = mctp.receive_request(0x0, SPDM_MESSAGE_TYPE, &mut rx_buf).await;
+//!         let res = mctp.receive_request(&mut rx_buf).await;
 //!         match res {
-//!             Ok(msg_info) => {
+//!             Ok((req_len, msg_info)) => {
 //!                 /// Process the received message
 //!                 /// ........
 //!                 /// Send the response message
 //!                 let mut tx_buf = [0; 1024];
-//!                 let result = mctp.send_response(msg_info.eid, msg_info.msg_tag, &tx_buf).await;
+//!                 let result = mctp.send_response(&tx_buf, msg_info).await;
 //!                 match result {
 //!                     Ok(_) => {
 //!                         /// Handle the send response success
@@ -135,68 +135,75 @@ Each user space application will instantiate the `AsyncMctp` module with appropr
 //!```
 
 /// mctp/src/lib.rs
-pub struct AsyncMctp<S:Syscalls, C:Config = DefaultConfig > {
-    syscall: PhantomData<S>,
-    config: PhantomData<C>,
-    driver_num: usize,
-}
+type EndpointId = u8;
+type Tag = u8;
 
 pub struct MessageInfo {
-    pub eid: u8,
-    pub msg_tag: u8,
-    pub msg_type: u8, /// Needed for SPDM to differentiate between SPDM(0x5) and secured SPDM(0x6) messages
-    pub payload_len: usize,
+    eid: EndpointId,
+    tag: Tag,
 }
 
-impl<S:Syscalls, C:Config> Mctp<S,C> {
-    pub fn new(drv_num: u32) -> Self;
-    pub fn exists() -> Result<(), ErrorCode>;
-    /// Receive the MCTP request from the source EID
+pub struct Mctp<S: Syscalls> {
+    syscall: PhantomData<S>,
+    driver_num: u32,
+}
+
+impl<S: Syscalls> Mctp<S> {
+    /// Create a new instance of the MCTP driver
     ///
     /// # Arguments
-    /// * `source_eid` - The source EID from which the request is to be received.
-    /// * `message_types` - The message types to receive. This is needed for SPDM to receive both SPDM(0x5) and secured SPDM(0x6) messages
-    /// * `msg_payload` - The buffer to store the received message payload
+    /// * `driver_num` - The driver number for the MCTP driver
     ///
     /// # Returns
-    /// * `MessageInfo` - The message information containing the EID, message tag, message type, and payload length on success
-    /// * `ErrorCode` - The error code on failure
-    pub async fn receive_request(&self, source_eid: u8, message_types: [u8],  msg_payload: &mut [u8]) -> Result<MessageInfo, ErrorCode>;
-    /// Send the MCTP response to the destination EID
+    /// * `Mctp` - The MCTP driver instance
+    pub fn new(drv_num: u32) -> Self;
+    /// Check if the MCTP driver for a specific message type exists
+    ///
+    /// # Returns
+    /// * `bool` - `true` if the driver exists, `false` otherwise
+    pub fn exists() -> Result<(), ErrorCode>;
+    /// Receive the MCTP request.
+    /// Receives a message from any source EID. The user should use the returned MessageInfo to send a response.
     ///
     /// # Arguments
-    /// * `dest_eid` - The destination EID to which the response is to be sent
-    /// * `msg_tag` - The message tag assigned to the request
-    /// * `msg_payload` - The payload to be sent in the response
+    /// * `req` - The buffer to store the received request payload
+    ///
+    /// # Returns
+    /// * `(u32, MessageInfo)` - On success, returns tuple containing length of the request received and the message information containing the source EID, message tag
+    /// * `ErrorCode` - The error code on failure
+    pub async fn receive_request(&self, req: &mut [u8]) -> Result<(u32, MessageInfo), ErrorCode>;
+    /// Send the MCTP response to an endpoint
+    ///
+    /// # Arguments
+    /// * `resp` - The buffer containing the response payload
+    /// * `info` - The message information containing the destination EID, message tag which was received in `receive_request` call
     ///
     /// # Returns
     /// * `()` - On success
     /// * `ErrorCode` - The error code on failure
-    pub async fn send_response(&self, dest_eid: u8, msg_tag: u8, msg_payload: &[u8]) -> Result<(), ErrorCode>;
+    pub async fn send_response(&self, resp: &[u8], info: MessageInfo) -> Result<(), ErrorCode>;
     /// Send the MCTP request to the destination EID
-
-    /// The function returns the message tag assigned to the request.
+    /// The function returns the message tag assigned to the request by the MCTP Capsule.
+    /// This tag will be used in the `receive_response` call to receive the corresponding response.
     ///
     /// # Arguments
     /// * `dest_eid` - The destination EID to which the request is to be sent
-    /// * `msg_payload` - The payload to be sent in the request
+    /// * `req` - The payload to be sent in the request
     ///
     /// # Returns
-    /// * `u8` - The message tag assigned to the request
+    /// * `Tag` - The message tag assigned to the request
     /// * `ErrorCode` - The error code on failure
-    pub async fn send_request(&self, dest_eid: u8, msg_payload: &[u8]) -> Result<u8, ErrorCode>;
-
-    /// Receive the MCTP response from the source EID
+    pub async fn send_request(&self, dest_eid: u8, req: &[u8]) -> Result<Tag, ErrorCode>;
+    /// Receive the MCTP response from an endpoint
     ///
     /// # Arguments
-    /// * `source_eid` - The source EID from which the response is to be received
-    /// * `message_type` - The message type to receive. This is needed for SPDM to differentiate between SPDM(0x5) and secured SPDM(0x6) messages
-    /// * `msg_payload` - The buffer to store the received response payload
-    ///
+    /// * `resp` - The buffer to store the received response payload from the endpoint
+    /// * `tag` - The message tag to match against the response message
+    /// 
     /// # Returns
-    /// * `()` - On success
+    /// * `(u32, MessageInfo)` - On success, returns tuple containing length of the response received and the message information containing the source EID, message tag
     /// * `ErrorCode` - The error code on failure
-    pub async fn receive_response(&self, source_eid: u8, message_type: u8, msg_payload: &mut [u8]) -> Result<(), ErrorCode>;
+    pub async fn receive_response(&self, resp: &mut [u8], tag: Tag) -> Result<(u32, MessageInfo), ErrorCode>;
 }
 ```
 
@@ -209,8 +216,9 @@ pub enum NUM {
     ...
     // Mctp
     MctpSpdm                  = 0xA0000,
-    MctpPldm                  = 0xA0001,
-    MctpVenDef                = 0xA0002,
+    MctpSecureSpdm            = 0xA0001,
+    MctpPldm                  = 0xA0002,
+    MctpVenDef                = 0xA0003,
     ...
 }
 
@@ -287,7 +295,7 @@ pub struct App {
     bound_msg_type : u8,
 }
 
-/// Implements userspace driver for a particular message_type.
+/// Implements userspace driver for a particular msg_type.
 pub struct VirtualMCTPDriver {
     mctp_sender: &dyn MCTPSender,
     apps : Grant<App, 2 /*upcalls*/, 1 /*allowro*/, 1/*allow_rw*/>,
@@ -333,7 +341,7 @@ pub struct MCTPTxState<M:MCTPTransportBinding> {
 
 ```Rust
 /// This is the trait implemented by VirtualMCTPDriver instance to get notified of
-/// the messages received on corresponding message_type.
+/// the messages received on corresponding msg_type.
 pub trait MCTPRxClient {
     fn receive(&self, dst_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8]);
 }

@@ -36,12 +36,16 @@ pub const BASE_PERMISSIONS: &[(u32, u32)] = &[
 ];
 
 // creates a single flat binary with all the apps built with TBF headers
-pub fn apps_build_flat_tbf(start: usize, ram_start: usize) -> Result<Vec<u8>, DynError> {
+pub fn apps_build_flat_tbf(
+    start: usize,
+    ram_start: usize,
+    features: &[&str],
+) -> Result<Vec<u8>, DynError> {
     let mut bin = vec![];
     let mut offset = start;
     let mut ram_start = ram_start;
     for app in APPS.iter() {
-        let app_bin = app_build_tbf(app, offset, ram_start)?;
+        let app_bin = app_build_tbf(app, offset, ram_start, features)?;
         bin.extend_from_slice(&app_bin);
         offset += app_bin.len();
         // TODO: support different amount of RAM per app
@@ -51,7 +55,12 @@ pub fn apps_build_flat_tbf(start: usize, ram_start: usize) -> Result<Vec<u8>, Dy
 }
 
 // creates a flat binary of the app with the TBF header
-fn app_build_tbf(app: &App, start: usize, ram_start: usize) -> Result<Vec<u8>, DynError> {
+fn app_build_tbf(
+    app: &App,
+    start: usize,
+    ram_start: usize,
+    features: &[&str],
+) -> Result<Vec<u8>, DynError> {
     // start the TBF header
     let mut tbf = TbfHeader::new();
     let mut permissions = BASE_PERMISSIONS.to_vec();
@@ -70,7 +79,7 @@ fn app_build_tbf(app: &App, start: usize, ram_start: usize) -> Result<Vec<u8>, D
     tbf.set_binary_end_offset(0); // temporary just to get the size of the header
     let tbf_header_size = tbf.generate()?.get_ref().len();
 
-    app_build(app.name, start, ram_start, tbf_header_size)?;
+    app_build(app.name, start, ram_start, tbf_header_size, features)?;
     let objcopy = objcopy()?;
 
     let app_bin = target_binary(&format!("{}.bin", app.name));
@@ -107,6 +116,7 @@ fn app_build(
     offset: usize,
     ram_start: usize,
     tbf_header_size: usize,
+    features: &[&str],
 ) -> Result<(), DynError> {
     let layout_ld = &PROJECT_ROOT.join("runtime").join("apps").join("layout.ld");
 
@@ -128,6 +138,12 @@ INCLUDE runtime/apps/app_layout.ld",
 
     let ld_flag = format!("-C link-arg=-T{}", layout_ld.display());
 
+    let features_str = if features.is_empty() {
+        "".to_string()
+    } else {
+        features.join(",")
+    };
+
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
         .args([
@@ -135,6 +151,8 @@ INCLUDE runtime/apps/app_layout.ld",
             "-p",
             app_name,
             "--release",
+            "--features",
+            &features_str,
             "--target",
             TARGET,
             "--",

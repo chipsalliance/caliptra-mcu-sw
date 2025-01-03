@@ -116,8 +116,9 @@ struct VeeR {
     scheduler_timer:
         &'static VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>,
     mctp_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    mctp_secure_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    mctp_vendor_def_pci: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     // Temorarily add one partition driver for userspace testing.
     image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
 }
@@ -133,10 +134,11 @@ impl SyscallDriverLookup for VeeR {
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
             capsules_core::low_level_debug::DRIVER_NUM => f(Some(self.lldb)),
             capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM => f(Some(self.mctp_spdm)),
-            capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
-            capsules_runtime::mctp::driver::MCTP_VENDOR_DEFINED_PCI_DRIVER_NUM => {
-                f(Some(self.mctp_vendor_def_pci))
+            capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM => {
+                f(Some(self.mctp_secure_spdm))
             }
+            capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
+            capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
             capsules_runtime::flash_partition::IMAGE_PAR_DRIVER_NUM => f(Some(self.image_par)),
             _ => f(None),
         }
@@ -301,39 +303,42 @@ pub unsafe fn main() {
     ));
     let _ = process_console.start();
 
-    let mctp_mux = runtime_components::mctp_mux::MCTPMuxComponent::new(&peripherals.i3c)
-        .finalize(crate::mctp_mux_component_static!(MCTPI3CBinding));
+    let mux_mctp =
+        runtime_components::mux_mctp::MCTPMuxComponent::new(&peripherals.i3c, mux_alarm).finalize(
+            crate::mctp_mux_component_static!(InternalTimers, MCTPI3CBinding),
+        );
 
-    let mctp_spdm_msg_types = static_init!(
-        [MessageType; 2],
-        [MessageType::Spdm, MessageType::SecureSpdm,]
-    );
     let mctp_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
-        mctp_mux,
-        mctp_spdm_msg_types,
+        mux_mctp,
+        MessageType::Spdm,
     )
-    .finalize(crate::mctp_driver_component_static!());
+    .finalize(crate::mctp_driver_component_static!(InternalTimers));
 
-    let mctp_pldm_msg_types = static_init!([MessageType; 1], [MessageType::Pldm]);
+    let mctp_secure_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
+        board_kernel,
+        capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM,
+        mux_mctp,
+        MessageType::SecureSpdm,
+    )
+    .finalize(crate::mctp_driver_component_static!(InternalTimers));
+
     let mctp_pldm = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM,
-        mctp_mux,
-        mctp_pldm_msg_types,
+        mux_mctp,
+        MessageType::Pldm,
     )
-    .finalize(crate::mctp_driver_component_static!());
+    .finalize(crate::mctp_driver_component_static!(InternalTimers));
 
-    let mctp_vendor_def_pci_msg_types =
-        static_init!([MessageType; 1], [MessageType::VendorDefinedPci]);
-    let mctp_vendor_def_pci = runtime_components::mctp_driver::MCTPDriverComponent::new(
+    let mctp_caliptra = runtime_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
-        capsules_runtime::mctp::driver::MCTP_VENDOR_DEFINED_PCI_DRIVER_NUM,
-        mctp_mux,
-        mctp_vendor_def_pci_msg_types,
+        capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM,
+        mux_mctp,
+        MessageType::Caliptra,
     )
-    .finalize(crate::mctp_driver_component_static!());
+    .finalize(crate::mctp_driver_component_static!(InternalTimers));
 
     peripherals.init();
 
@@ -392,8 +397,9 @@ pub unsafe fn main() {
             scheduler,
             scheduler_timer,
             mctp_spdm,
+            mctp_secure_spdm,
             mctp_pldm,
-            mctp_vendor_def_pci,
+            mctp_caliptra,
             image_par,
         }
     );
@@ -446,9 +452,9 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-flash-ctrl-erase-page") {
         debug!("Executing test-flash-ctrl-erase-page");
         crate::tests::flash_ctrl_test::test_flash_ctrl_erase_page()
-    } else if cfg!(feature = "test-mctp-send-loopback") {
-        debug!("Executing test-mctp-send-loopback");
-        crate::tests::mctp_test::test_mctp_send_loopback(mctp_mux)
+    } else if cfg!(feature = "test-mctp-capsule-loopback") {
+        debug!("Executing test-mctp-capsule-loopback");
+        crate::tests::mctp_test::test_mctp_capsule_loopback(mux_mctp)
     } else if cfg!(feature = "test-flash-storage-read-write") {
         debug!("Executing test-flash-storage-read-write");
         crate::tests::flash_storage_test::test_flash_storage_read_write()
