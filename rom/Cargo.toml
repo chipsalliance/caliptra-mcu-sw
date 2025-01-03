@@ -7,5 +7,5 @@ authors.workspace = true
 edition.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
-riscv-csr = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
-rv32i = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
+riscv-csr.workspace = true
+rv32i.workspace = true

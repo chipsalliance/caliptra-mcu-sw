@@ -1028,7 +1028,6 @@ dependencies = [
 name = "emulator-periph"
 version = "0.1.0"
 dependencies = [
- "arrayref",
  "bitfield",
  "emulator-bus",
  "emulator-cpu",
@@ -1036,7 +1035,6 @@ dependencies = [
  "emulator-registers-generated",
  "emulator-types",
  "lazy_static",
- "libc",
  "num_enum",
  "registers-generated",
  "serde",
@@ -1631,7 +1629,6 @@ dependencies = [
  "embassy-executor",
  "embedded-alloc",
  "libtock",
- "libtock_alarm",
  "libtock_console",
  "libtock_debug_panic",
  "libtock_platform",
@@ -2908,6 +2905,7 @@ dependencies = [
  "registers-systemrdl",
  "semver",
  "tempfile",
+ "toml",
  "walkdir",
  "zerocopy 0.8.13",
 ]

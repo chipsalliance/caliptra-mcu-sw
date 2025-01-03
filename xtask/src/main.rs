@@ -10,6 +10,7 @@ use clap::{Parser, Subcommand};
 mod apps_build;
 mod cargo_lock;
 mod clippy;
+mod deps;
 mod docs;
 mod flash_image;
 mod format;
@@ -101,6 +102,8 @@ enum Commands {
         #[arg(short, long)]
         addrmap: Vec<String>,
     },
+    /// Check dependencies
+    Deps,
 }
 
 #[derive(Subcommand)]
@@ -192,6 +195,7 @@ fn main() {
             files,
             addrmap,
         } => registers::autogen(*check, files, addrmap),
+        Commands::Deps => deps::check(),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {}", e);

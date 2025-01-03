@@ -8,7 +8,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-arrayref.workspace = true
 bitfield.workspace = true
 emulator-bus.workspace = true
 emulator-cpu.workspace = true
@@ -22,9 +21,6 @@ serde_json.workspace = true
 serde.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
-
-[dev-dependencies]
-libc = "0.2"
 
 [features]
 default = []
