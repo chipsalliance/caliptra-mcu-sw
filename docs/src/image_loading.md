@@ -5,7 +5,6 @@
 The Image Loading module is a component of the MCU Runtime SDK designed for managing SOC images. This module provides APIs for:
 
 - Loading SOC images to target components. The SOC images could come from a [flash storage](./flash_layout.md) or from another platform capable of streaming images through PLDM T5 (e.g., a BMC Recovery Agent).
-- Retrieving the SOC Image Metadata (as defined in the [SOC Manifest](https://github.com/chipsalliance/caliptra-sw/blob/main-2.x/auth-manifest/README.md) documentation)
 - Verifying and authenticating the SOC Images through the Caliptra Core. Images that are loaded to the target SOC components will be authenticated using a mailbox command to the Caliptra core and are verified against the measurements in the SOC Manifest.
 
 The diagram below provides an **example** of how the Caliptra subsystem, integrated with custom SOC elements (highlighted in green), facilitates the loading of SOC images to vendor components.
@@ -34,14 +33,14 @@ The sequence diagram below shows the high level steps of loading MCU RT image an
 * *Black Arrows indicates actions taken by the PLDM FW Update Agent*
 
 <p align="center">
-    <!--- https://www.plantuml.com/plantuml/uml/ZLFVRzem47xtNt7hNZQf3OEjFyf3LKOBhTI82gWsQQqcannWoN6YvCBM_VMx60muCBgNnFPzz-Exk--w89bJcMZnZkQO82GoBqJ6RofIcJG4HrsfLKQvF09PWBluaD5T1pfHP15ytkyFeLHwalwkKExi8yFkapNoVyS0es4dTDQVrSM7335A5vY_mdsZPs7kmOSzFjo4qFi6p-OfYoKXT6Peo3fK9X_SqxAOMviz2M5IzgYYhllGXc5fZ3ApzGiC1w5em0RAzMvGVB40mOUJ7--pCiyqlbnPJ3E0-qJE44PfcKVyGuqHFPiFDdkZgk_ZdXAEhRaDhG0w9StJNFr1a2Q6XrJ6MsMDcVTU1f-3EWc75kxEfUOOlrovfhRX2pkXZ5zXckOm6dGXb4PDiI0XDIrxMNrEjbnE0sReGL4NkEgj_Muwuhcrwcuc5i81N6chZMh3cO_U9R5XVhvi6HgUkIJq_0wHlzWcRqSwNexkt-GlWwQ7_3_kbyozvcRY7UfE4Rn2dsfmuMmEo_9a60_YZdE24zQ17ZMvWcwQi33y_h24R8X50Ilvsv278l6YZP3Wzljjjz4Vm5T5DRGJ0YzNFuLVYbCMI7MjECWD4aQ4CInZWIeEeJcpxOdJ5IZ31PjuC9q2oOb6KPDiypJmPJjsgfteSXtvZ458kS85lX7UZtzSBGZxdrS36py2cZB1N99AZRz4Bj_sb2zucVfhFY6IZ2L97fFcr3P4VRlsHscz5OMNxPe_PQB_0W00 -->
+    <!--- https://www.plantuml.com/plantuml/uml/ZPDHRzem4CVV_IbktSichM5qQxVoK9NHqbPgn0HKcxHMaqaEiEGuaNDXwpxzBWO33epr9R5plxlS_-p_PKdIKfLfyOhcc25aqfQYu6ygKOKq14SzgLL1LXw1BC5lGcHqsuLkaZY2r_lp8PPAJ_BVDUNN8Hdt7boGtpi160sxiO_-h3SXCiGaNw1zXhjMts7-GuXzlR-AeVyD7ir3aKf2wCxGa4keGo7SrxASkvXR2M5opgYhhkVGWM5bZ3ApzHSO3cBHWWtA_MuetZX0yEBun-kYieN6fml7j2Euo-GCOPHNDk4NQapeqRnnVs_L_RtTqy8x5-x0IGJTYkQvLNyGf4dXFfVfLbjZrhrNmOUeASBJmk-vLOlfquKVQWS-SXBAz1cckONHe0UnD6gA9GcfQJdB-d6ybN8QjQCGHLtYQhRkkPb8a7RIJ3Ef41xmhQrkL0VEGdfNn4Rvf-N8q91A966GTqZyvstnxaZ7owFxj_Zpg1sGBzD-pjeRQIRTaUuTmLVeVGCNFkPPjYTZV12t_4_mnZemepPtqCipDaOu7xQGAx4eOML_L_9G9Rve8oIu_dxTQzqCu8kY1ksDm9Vh9eTVoYAKI4slUEGA2HF259QrG9M7QFwpcudt5IZ33PjqC9q2oOb6qR1i-pGARJlshfteQbtvZ24agt21_oalBj6aLQR_0W00 -->
     <img src="images/image_loading_sequence.svg" alt="flash_config" width="100%">
 </p>
 
 The following steps are done for every SOC image:
 
 <p align="center">
-    <!--- https://www.plantuml.com/plantuml/uml/TLB1RjD04BtlLxmM2S41bmOua4FLO5gAH0GYIa4Y5ThQOsSbUzVQ7LFQhsUys4bNIdsmP_QzcNdxnkU1jUU-RTGHRwabjDe7rScPAKodBUCurutfsEjZw80fIIchgmKMHH4P4X-knrARvjRzZQmnJfdBV1r1-IgLGj--V5pYyWSsTjsLcWcBcYn7zW2bvCj6Xst4OfI2rsHBvv6xjdDswb5CcPAdSQv39HpwG_uUgwyvJAjhKhhX_zEEEg_hLeF9FO1zJseuVlNhsMtJqytPhjiSf--pqmoVX_AJlAgLeYRGA2k-doYQFIuInKeysL57y-QOlSwWUzuwRnxeHHJvsvGlrQwNb7WgRyvaAS9Eb4nhcIXJBZmPVatULFUu4eKm5kE2nVuxmzjeoL9RKr7WoDdOQDYau811wRZ7TtYJuJjnxor2NnGKWdgE4TtVE5_FiHhXlHM9whSPLiIu-7cHdtno-60OhjflTcCBvpq5oKfZQx3Roqt59RkOlSiWtUwC9mJYOHSOVX1rBb7VDly0_ -->
+    <!--- https://www.plantuml.com/plantuml/uml/ZLBHRXCn47ptLqoBXE21AmqWe0zLmz5I928GKGeIgIBtRdEnvBDFzXwb_NeSSqvgAG7oa5jxPzQpitlcMJhkMoqEU4KjePNEYoxSgKfrqZ0EIwbLnquUGdgaGmwPNeunhgg82F5kFYPIwHlxAwA6E4TEobbCXgyGUUhBf_SJN7p3tCowMZ9Xt93XY5wdSl25bduLSp7AarTaQkjGshQp9jMeqac4dxQsmp9Ww2UvEqm_br2jR4W4NSz-FBhHFLsV3WsSuFXrWOPueQsi5xAk7Nd_9E8Ngdug7gTM0zDHVNsQx3Z1lwWYGHDr--QR0Wz9sIk3ldAs0oSr__7he7EoQIMOx3tOzIJMrnlsnezGusrnNE3ZMjLHkMo48ErfC3R-xo6D7fA2vxlT6pql87jUMQVkwNzisq_PF9yeOHC3EXEVgkoe6lHUaLFBEro6fg0CXgt6tDmgNiKzc4YZbkGvOkOcRabIiCFJlGCSlIZmbRXt1hwlgh-CS3gaj-vbgbyMc1BZ_FjvUVJ1ufrYsELsdUUciiwH3wTQcGPijt9pSTduHgyAX6gtoX4yyNfyqDPsuYn4VQj_0m00 -->
     <img src="images/image_loading_sequence_loop.svg" alt="flash_config" width="80%">
 </p>  
 The following outlines the steps carried out by the MCU RT during the SOC boot process:
@@ -68,15 +67,12 @@ The following outlines the steps carried out by the MCU RT during the SOC boot p
 14. The EXEC/GO bit sets a Caliptra wire to MCU (as a consequence of setting the EXEC/GO bit in the previous step). When MCU detects this event, it sets a parameter using the FW HandOff table to indicate the image source (i.e. the image source where it booted from).
 15. MCU switches to MCU RT
 16. MCU RT retrieves the image source from HandOff table
-17. BMC or a similar platform component will now do MCTP enumeration flow to MCU over I3C. This will be used for transfering SOC images via PLDM.
-18. Retrieve SOC Images Metadata
 
-    1. If Image is coming from PLDM, retrieve Image Metadata Collection (from the PLDM SoC Manifest component) through PLDM T5 flow.
-    2. If Image is coming from flash, read Flash Image Metadata Collection section of the SOC Manifest.
+For every image that needs to be loaded, user initiates a call to load an image identified by an image_id:
 
-For every image listed in the Metadata collection:
-
-19. Retrieve the SOC Image (could be Firmware or Configuration payload). MCU RT writes directly the image to the target load address as specified in the image metadata. (In the example custom SOC design, this will be the Vendor RAM or Vendor Cfg Storage)
+17. MCU RT issues a mailbox command to get the load address of the image with the given image_id
+18. Caliptra RT responds with the load address if it exists
+19. MCU RT writes directly the image to the target load address. (In the example custom SOC design, this will be the Vendor RAM or Vendor Cfg Storage)
 20. MCU RT sends a Caliptra mailbox command to authorize the image in the SHA Acc identified by the image_id in the image metadata.
 21. Caliptra RT sends the image to the SHA Acc.
 22. Caliptra RT verifies the computed hash in SHA acc versus the one in the SOC manifest corresponding to the image_id given.
@@ -107,40 +103,14 @@ The APIs are presented as methods of the ImageLoader trait.
 
 /// Trait defining the Image Loading module
 pub trait ImageLoader {
-    /// Retrieves the Image Metadata collection from the image source.
-    /// The ImageLoader module automatically selects the appropriate image source based on the parameter passed by MCU ROM in the HandOff FW table.
-    ///
-    /// # Returns
-    /// - `Ok(ImageMetadataCollection)`: The ImageMetadataCollection if successfully retrieved.
-    /// - `Err(DynError)`: An error if retrieval fails.
-    async fn get_imc(&self) -> Result<ImageMetadataCollection, DynError>;
-
     /// Loads the specified image to a storage mapped to the AXI bus memory map.
-    /// If the image will be loaded directly to the target component, the AXI mapped load address in the image metadata can be used.
+    ///
+    /// # Parameters
+    /// image_id: The unsigned integer identifier of the image.
     ///
     /// # Returns
     /// - `Ok()`: Image has been loaded and authorized succesfully.
     /// - `Err(DynError)`: Indication of the failure to load or authorize the image.
-    async fn load_and_authorize(&self, image_id: u32, address: u64) -> Result<(), DynError>;
+    async fn load_and_authorize(&self, image_id: u32) -> Result<(), DynError>;
 }
-```
-
-## Using ImageLoader in the Application
-
-This section describes how to use ImageLoader to load an image.
-
-1. Retrieve the SOC manifest from flash using ImageLoader.
-
-```rust
-loader.get_imc().await?
-```
-
-3. Load and authorize the image
-
-```rust
-    for entry in &imc.image_metadata_entries {
-        loader.load_and_authorize(entry.image_identifier, entry.load_address).await?;
-        // Call API to indicate to target component that image has been authenticated and is ready to be executed / processed.
- 
-    }
 ```
