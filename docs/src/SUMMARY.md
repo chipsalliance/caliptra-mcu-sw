@@ -6,5 +6,6 @@
     - [PLDM Package](./pldm_package.md)
     - [Flash Layout](./flash_layout.md)
     - [Flash Controller](./flash_controller.md)
+    - [Image Loading](./image_loading.md)
     - [MCTP](./mctp.md)
     - [SPDM](./spdm.md)

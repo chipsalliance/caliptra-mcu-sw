@@ -410,7 +410,7 @@ mod tests {
             .tcri_send(DynamicI3cAddress::new(8).unwrap(), cmd)
             .unwrap();
 
-        let mut bus = AutoRootBus::new(None, Some(i3c), None, None, None, None, None, None, None);
+        let mut bus = AutoRootBus::new(vec![], Some(i3c), None, None, None, None, None, None, None);
         for _ in 0..10000 {
             clock.increment_and_process_timer_actions(1, &mut bus);
         }

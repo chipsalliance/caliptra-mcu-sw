@@ -8,6 +8,6 @@ authors.workspace = true
 
 [dependencies]
 emulator-bus.workspace = true
-registers-generated.workspace = true
 emulator-types.workspace = true
+registers-generated.workspace = true
 tock-registers.workspace = true

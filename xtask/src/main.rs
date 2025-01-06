@@ -10,6 +10,7 @@ use clap::{Parser, Subcommand};
 mod apps_build;
 mod cargo_lock;
 mod clippy;
+mod deps;
 mod docs;
 mod flash_image;
 mod format;
@@ -47,6 +48,12 @@ enum Commands {
 
         #[arg(long, default_value_t = false)]
         no_stdin: bool,
+
+        #[arg(long)]
+        caliptra_rom: Option<PathBuf>,
+
+        #[arg(long)]
+        caliptra_firmware: Option<PathBuf>,
     },
     /// Build Runtime image
     RuntimeBuild {
@@ -101,6 +108,8 @@ enum Commands {
         #[arg(short, long)]
         addrmap: Vec<String>,
     },
+    /// Check dependencies
+    Deps,
 }
 
 #[derive(Subcommand)]
@@ -153,9 +162,18 @@ fn main() {
             i3c_port,
             features,
             no_stdin,
+            caliptra_rom,
+            caliptra_firmware,
         } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            runtime::runtime_run(*trace, *i3c_port, &features, *no_stdin)
+            runtime::runtime_run(
+                *trace,
+                *i3c_port,
+                &features,
+                *no_stdin,
+                caliptra_rom.as_ref(),
+                caliptra_firmware.as_ref(),
+            )
         }
         Commands::RuntimeBuild { features, output } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
@@ -192,6 +210,7 @@ fn main() {
             files,
             addrmap,
         } => registers::autogen(*check, files, addrmap),
+        Commands::Deps => deps::check(),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {}", e);

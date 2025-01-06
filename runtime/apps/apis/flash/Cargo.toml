@@ -2,14 +2,15 @@
 
 [package]
 name = "libtock_flash"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 
 [dependencies]
-libtock = { path = "../../libtock" }
-libtock_platform = { path = "../../libtock/platform" }
-libtockasync = { path = "../../libtockasync" }
+libtock.workspace = true
+libtock_platform.workspace = true
+libtockasync.workspace = true
 
 # TODO: Remove this when creating PR
 romtime.workspace = true
