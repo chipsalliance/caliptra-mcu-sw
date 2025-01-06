@@ -234,6 +234,36 @@ impl<'a> MCTPDriver<'a> {
             })
             .unwrap_or_else(|err| err.into())
     }
+
+    fn rx_pending(&self, app: &mut App, msg_tag: u8, src_eid: u8) -> bool {
+        let op_ctx = match app.pending_rx.as_ref() {
+            Some(op_ctx) => op_ctx,
+            None => {
+                return false;
+            }
+        };
+
+        if !op_ctx.matches(msg_tag, src_eid) {
+            return false;
+        }
+
+        true
+    }
+
+    fn tx_pending(&self, app: &mut App, msg_tag: u8, dest_eid: u8) -> bool {
+        let op_ctx = match app.pending_tx.as_ref() {
+            Some(op_ctx) => op_ctx,
+            None => {
+                return false;
+            }
+        };
+
+        if !op_ctx.matches(msg_tag, dest_eid) {
+            return false;
+        }
+
+        true
+    }
 }
 
 impl<'a> SyscallDriver for MCTPDriver<'a> {
@@ -339,34 +369,42 @@ impl<'a> MCTPTxClient for MCTPDriver<'a> {
         msg_payload.reset();
         self.kernel_msg_buf.replace(msg_payload);
 
-        if self.msg_type as u8 == msg_type {
-            if let Some(process_id) = self.current_app.get() {
-                _ = self.apps.enter(process_id, |app, up_calls| {
-                    if let Some(op_ctx) = app.pending_tx.as_mut() {
-                        if op_ctx.matches(msg_tag, dest_eid) {
-                            app.pending_tx = None;
-                            let msg_info = (msg_type as usize) << 8 | (msg_tag as usize);
-                            up_calls
-                                .schedule_upcall(
-                                    upcall::MESSAGE_TRANSMITTED,
-                                    (
-                                        kernel::errorcode::into_statuscode(result),
-                                        dest_eid as usize,
-                                        msg_info,
-                                    ),
-                                )
-                                .ok();
-                        }
-                    }
-                });
-            }
-            self.current_app.set(None);
-        } else {
+        if self.msg_type as u8 != msg_type {
             panic!(
                 "MCTPDriver::send_done received for msg_type {} that does not match driver msg type {}",
                 msg_type, self.msg_type as u8
             );
         }
+
+        let process_id = match self.current_app.get() {
+            Some(process_id) => process_id,
+            None => {
+                println!("MCTPDriver::send_done no app waiting for send_done");
+                return;
+            }
+        };
+
+        _ = self.apps.enter(process_id, |app, up_calls| {
+            // Check if the send operation matches the pending tx operation
+            if !self.tx_pending(app, msg_tag, dest_eid) {
+                println!("MCTPDriver::send_done no pending tx operation");
+                return;
+            }
+
+            app.pending_tx = None;
+            let msg_info = (msg_type as usize) << 8 | (msg_tag as usize);
+            up_calls
+                .schedule_upcall(
+                    upcall::MESSAGE_TRANSMITTED,
+                    (
+                        kernel::errorcode::into_statuscode(result),
+                        dest_eid as usize,
+                        msg_info,
+                    ),
+                )
+                .ok();
+        });
+        self.current_app.set(None);
     }
 }
 
@@ -380,46 +418,47 @@ impl<'a> MCTPRxClient for MCTPDriver<'a> {
         msg_len: usize,
         recv_time: u32,
     ) {
-        if self.msg_type as u8 == msg_type {
-            self.apps.each(|_, app, kernel_data| {
-                if let Some(op_ctx) = app.pending_rx.as_mut() {
-                    if op_ctx.matches(msg_tag, src_eid) {
-                        let res = kernel_data
-                            .get_readwrite_processbuffer(rw_allow::MESSAGE_READ)
-                            .and_then(|read| {
-                                read.mut_enter(|rmsg_payload| {
-                                    if rmsg_payload.len() < msg_len {
-                                        Err(ErrorCode::SIZE)
-                                    } else {
-                                        rmsg_payload[..msg_len]
-                                            .copy_from_slice(&msg_payload[..msg_len]);
-                                        Ok(())
-                                    }
-                                })
-                            })
-                            .unwrap_or(Err(ErrorCode::NOMEM));
-                        if res.is_ok() {
-                            app.pending_rx = None;
-                            let msg_info = (src_eid as usize) << 16
-                                | (msg_type as usize) << 8
-                                | (msg_tag as usize);
-                            kernel_data
-                                .schedule_upcall(
-                                    upcall::MESSAGE_RECEIVED,
-                                    (msg_len, recv_time as usize, msg_info),
-                                )
-                                .ok();
-                        }
-                    }
-                } else {
-                    println!("MCTPDriver: no pending rx operation from user space");
-                }
-            });
-        } else {
+        if self.msg_type as u8 != msg_type {
             panic!(
-                "MCTPDriver: received msg_type {} does not match driver's msg type {}",
+                "MCTPDriver::receive received for msg_type {} that does not match driver msg type {}",
                 msg_type, self.msg_type as u8
             );
         }
+
+        self.apps.each(|_, app, kernel_data| {
+            // Check if the received message matches the pending rx operation
+            if !self.rx_pending(app, msg_tag, src_eid) {
+                println!("MCTPDriver::receive no pending rx operation");
+                return;
+            }
+
+            // Copy the message payload to the process buffer
+            let res = kernel_data
+                .get_readwrite_processbuffer(rw_allow::MESSAGE_READ)
+                .and_then(|read| {
+                    read.mut_enter(|rmsg_payload| {
+                        if rmsg_payload.len() < msg_len {
+                            Err(ErrorCode::SIZE)
+                        } else {
+                            rmsg_payload[..msg_len].copy_from_slice(&msg_payload[..msg_len]);
+                            Ok(())
+                        }
+                    })
+                })
+                .unwrap_or(Err(ErrorCode::NOMEM));
+
+            // Schedule the upcall if the message payload is copied successfully
+            if res.is_ok() {
+                app.pending_rx = None;
+                let msg_info =
+                    (src_eid as usize) << 16 | (msg_type as usize) << 8 | (msg_tag as usize);
+                kernel_data
+                    .schedule_upcall(
+                        upcall::MESSAGE_RECEIVED,
+                        (msg_len, recv_time as usize, msg_info),
+                    )
+                    .ok();
+            }
+        });
     }
 }

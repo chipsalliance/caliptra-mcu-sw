@@ -23,13 +23,6 @@ impl From<u32> for MessageInfo {
     }
 }
 
-pub mod message_type {
-    pub const SPDM: u8 = 0x5;
-    pub const SECURE_SPDM: u8 = 0x6;
-    pub const PLDM: u8 = 0x1;
-    pub const CALIPTRA: u8 = 0x7E;
-}
-
 pub struct Mctp<S: Syscalls> {
     syscall: PhantomData<S>,
     driver_num: u32,
