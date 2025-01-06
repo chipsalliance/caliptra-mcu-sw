@@ -980,6 +980,8 @@ dependencies = [
 name = "emulator-bus"
 version = "0.1.0"
 dependencies = [
+ "caliptra-emu-bus",
+ "caliptra-emu-types",
  "emulator-types",
  "tock-registers",
 ]
@@ -1030,7 +1032,6 @@ dependencies = [
 name = "emulator-periph"
 version = "0.1.0"
 dependencies = [
- "arrayref",
  "bitfield",
  "emulator-bus",
  "emulator-cpu",
@@ -1038,7 +1039,6 @@ dependencies = [
  "emulator-registers-generated",
  "emulator-types",
  "lazy_static",
- "libc",
  "num_enum",
  "registers-generated",
  "serde",
@@ -1643,7 +1643,6 @@ dependencies = [
  "embassy-executor",
  "embedded-alloc",
  "libtock",
- "libtock_alarm",
  "libtock_console",
  "libtock_debug_panic",
  "libtock_platform",
@@ -2145,8 +2144,11 @@ dependencies = [
 name = "rom"
 version = "0.1.0"
 dependencies = [
+ "registers-generated",
  "riscv-csr",
+ "romtime",
  "rv32i",
+ "tock-registers",
 ]
 
 [[package]]
@@ -2920,6 +2922,7 @@ dependencies = [
  "registers-systemrdl",
  "semver",
  "tempfile",
+ "toml",
  "walkdir",
  "zerocopy 0.8.13",
 ]

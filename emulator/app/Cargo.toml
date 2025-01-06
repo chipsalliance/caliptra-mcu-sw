@@ -9,8 +9,10 @@ edition = "2021"
 
 [dependencies]
 caliptra-emu-cpu.workspace = true
+bitfield.workspace = true
 caliptra-emu-periph.workspace = true
 clap.workspace = true
+crc.workspace = true
 crossterm.workspace = true
 ctrlc.workspace = true
 elf.workspace = true
@@ -23,13 +25,10 @@ emulator-types.workspace = true
 gdbstub_arch.workspace = true
 gdbstub.workspace = true
 hex.workspace = true
+strum_macros.workspace = true
+strum.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
-bitfield.workspace = true
-crc.workspace = true
-strum = "0.24"
-strum_macros = "0.24"
-rand = "0.8.5"
 
 [features]
 default = []

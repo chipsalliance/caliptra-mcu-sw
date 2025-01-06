@@ -7,24 +7,23 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-critical-section = "1.1.2"
-embassy-executor = { version = "0.6.3", features = ["nightly"] }
-libtock = { path = "../libtock" }
-libtock_alarm = { path = "../libtock/apis/peripherals/alarm" }
-libtock_console = { path = "../libtock/apis/interface/console" }
-libtock_debug_panic = { path = "../libtock/panic_handlers/debug_panic" }
-libtock_platform = { path = "../libtock/platform" }
-libtock_runtime = { path = "../libtock/runtime" }
-libtockasync = { path = "../libtockasync" }
-libtock_caliptra = { path = "../apis" }
-portable-atomic = "1.7.0"
+critical-section.workspace = true
+embassy-executor.workspace = true
+libtock_alarm.workspace = true
+libtock_console.workspace = true
+libtock_debug_panic.workspace = true
+libtock_platform.workspace = true
+libtock_runtime.workspace = true
+libtock.workspace = true
+libtockasync.workspace = true
+portable-atomic.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
-embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
-libtock_unittest = { path = "../libtock/unittest" }
+libtock_unittest.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
-embedded-alloc = "0.5.1"
+embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
+embedded-alloc.workspace = true
 
 [features]
 default = []

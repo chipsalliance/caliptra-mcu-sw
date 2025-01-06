@@ -11,9 +11,9 @@ name = "pldm-fw-pkg"
 path = "src/main.rs"
 
 [dependencies]
-chrono = {version = "0.4.38", features = ["serde"]}
-toml = "0.8.19"
-uuid = { version = "1.10.0", features = ["serde"]}
+chrono.workspace = true
+toml.workspace = true
+uuid.workspace = true
 serde.workspace = true
 crc.workspace = true
 clap.workspace = true

@@ -24,11 +24,12 @@ use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAct
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use clap::{ArgAction, Parser};
 use crossterm::event::{Event, KeyCode, KeyEvent};
-use emulator_bus::{Clock, Timer};
+use emulator_bus::{Bus, BusConverter, Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
 use emulator_periph::{CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, I3c, I3cController};
 use emulator_registers_generated::root_bus::AutoRootBus;
+use emulator_registers_generated::soc::SocPeripheral;
 use emulator_types::ROM_SIZE;
 use gdb::gdb_state;
 use gdb::gdb_target::GdbTarget;
@@ -268,7 +269,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         exit(-1);
     }
 
-    let caliptra_cpu = if cli.caliptra {
+    let (caliptra_cpu, soc_to_caliptra) = if cli.caliptra {
         if cli.gdb_port.is_some() {
             println!("Caliptra CPU cannot be started with GDB enabled");
             exit(-1);
@@ -281,16 +282,15 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             println!("Caliptra ROM File is required if Caliptra is enabled");
             exit(-1);
         }
-        Some(
-            start_caliptra(&StartCaliptraArgs {
-                rom: cli.caliptra_rom.unwrap(),
-                firmware: cli.caliptra_firmware,
-                ..Default::default()
-            })
-            .expect("Failed to start Caliptra CPU"),
-        )
+        let (caliptra_cpu, soc_to_caliptra) = start_caliptra(&StartCaliptraArgs {
+            rom: cli.caliptra_rom.unwrap(),
+            firmware: cli.caliptra_firmware,
+            ..Default::default()
+        })
+        .expect("Failed to start Caliptra CPU");
+        (Some(caliptra_cpu), Some(soc_to_caliptra))
     } else {
-        None
+        (None, None)
     };
 
     let rom_buffer = read_binary(args_rom, 0)?;
@@ -414,15 +414,24 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     )
     .unwrap();
 
+    let mut delegates: Vec<Box<dyn Bus>> = vec![Box::new(root_bus)];
+    let soc_periph = if let Some(soc_to_caliptra) = soc_to_caliptra {
+        delegates.push(Box::new(BusConverter::new(Box::new(soc_to_caliptra))));
+        None
+    } else {
+        // pass an empty SoC interface that returns 0 for everything
+        Some(Box::new(FakeSoc {}) as Box<dyn SocPeripheral>)
+    };
+
     let mut auto_root_bus = AutoRootBus::new(
-        Some(Box::new(root_bus)),
+        delegates,
         Some(Box::new(i3c)),
         Some(Box::new(flash_controller)),
         None,
         None,
         None,
         None,
-        None,
+        soc_periph,
         None,
     );
 
@@ -459,3 +468,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
     Ok(uart_output.map(|o| o.borrow().clone()).unwrap_or_default())
 }
+
+struct FakeSoc {}
+
+impl SocPeripheral for FakeSoc {}
