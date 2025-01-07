@@ -7,6 +7,6 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-libtock_platform = { path = "../libtock/platform" }
-libtockasync = { path = "../libtockasync" }
-libtock_console = { path = "../libtock/apis/interface/console" }
+libtock_console.workspace = true
+libtock_platform.workspace = true
+libtockasync.workspace = true

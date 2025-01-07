@@ -92,6 +92,7 @@ num-traits = "0.2"
 portable-atomic = "1.7.0"
 proc-macro2 = "1.0.66"
 quote = "1.0"
+rand = "0.8.5"
 semver = "1.0.23"
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
@@ -129,6 +130,7 @@ libtock_debug_panic = { path = "runtime/apps/libtock/panic_handlers/debug_panic"
 libtock_platform = { path = "runtime/apps/libtock/platform" }
 libtock_runtime = { path = "runtime/apps/libtock/runtime" }
 libtock_unittest = { path = "runtime/apps/libtock/unittest" }
+libtock_caliptra = { path = "runtime/apps/apis" }
 
 # caliptra dependencies; keep git revs in sync
 caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }

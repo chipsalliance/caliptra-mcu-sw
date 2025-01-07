@@ -25,6 +25,7 @@ emulator-types.workspace = true
 gdbstub_arch.workspace = true
 gdbstub.workspace = true
 hex.workspace = true
+rand.workspace = true
 strum_macros.workspace = true
 strum.workspace = true
 tock-registers.workspace = true
