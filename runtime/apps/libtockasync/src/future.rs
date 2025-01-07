@@ -33,6 +33,128 @@ impl TockSubscribe {
         self.error = Some(err);
     }
 
+    pub fn subscribe_allow_rw<S: Syscalls, C: allow_rw::Config>(
+        driver_num: u32,
+        subscribe_num: u32,
+        buffer_num: u32,
+        buffer: &mut [u8],
+    ) -> impl Future<Output = Result<(u32, u32, u32), ErrorCode>> {
+        // Pinning is necessary since we are passing a pointer to the TockSubscribe to the kernel.
+        let mut f = Pin::new(Box::new(TockSubscribe::new()));
+        let upcall_fcn = (kernel_upcall::<S> as *const ()) as usize;
+        let upcall_data = (&*f as *const TockSubscribe) as usize;
+
+        // Safety: we are passing in a fixed (safe) function pointer and a pointer to a pinned instance.
+        // If the instance is dropped before the upcall comes in, then we panic in the Drop impl.
+        let [r0, r1, r2, _] = unsafe {
+            S::syscall4::<{ syscall_class::ALLOW_RW }>([
+                driver_num.into(),
+                buffer_num.into(),
+                buffer.as_mut_ptr().into(),
+                buffer.len().into(),
+            ])
+        };
+
+        let return_variant: ReturnVariant = r0.as_u32().into();
+        match return_variant {
+            return_variant::SUCCESS_2_U32 => {}
+            return_variant::FAILURE_2_U32 => {
+                f.set_err(r1.as_u32().try_into().unwrap_or(ErrorCode::Fail));
+            }
+            _ => {
+                f.set_err(ErrorCode::Fail);
+            }
+        }
+
+        let returned_buffer: (usize, usize) = (r1.into(), r2.into());
+        if returned_buffer != (0, 0) {
+            C::returned_nonzero_buffer(driver_num, buffer_num);
+        }
+
+        // Safety: we are passing in a fixed (safe) function pointer and a pointer to a pinned instance.
+        // If the instance is dropped before the upcall comes in, then we panic in the Drop impl.
+        let [r0, r1, _, _] = unsafe {
+            S::syscall4::<{ syscall_class::SUBSCRIBE }>([
+                driver_num.into(),
+                subscribe_num.into(),
+                upcall_fcn.into(),
+                upcall_data.into(),
+            ])
+        };
+        let return_variant: ReturnVariant = r0.as_u32().into();
+        match return_variant {
+            return_variant::SUCCESS_2_U32 => {}
+            return_variant::FAILURE_2_U32 => {
+                f.set_err(r1.as_u32().try_into().unwrap_or(ErrorCode::Fail));
+            }
+            _ => {
+                f.set_err(ErrorCode::Fail);
+            }
+        }
+        f
+    }
+
+    pub fn subscribe_allow_ro<S: Syscalls, C: allow_ro::Config>(
+        driver_num: u32,
+        subscribe_num: u32,
+        buffer_num: u32,
+        buffer: &[u8],
+    ) -> impl Future<Output = Result<(u32, u32, u32), ErrorCode>> {
+        // Pinning is necessary since we are passing a pointer to the TockSubscribe to the kernel.
+        let mut f = Pin::new(Box::new(TockSubscribe::new()));
+        let upcall_fcn = (kernel_upcall::<S> as *const ()) as usize;
+        let upcall_data = (&*f as *const TockSubscribe) as usize;
+
+        // Safety: we are passing in a fixed (safe) function pointer and a pointer to a pinned instance.
+        // If the instance is dropped before the upcall comes in, then we panic in the Drop impl.
+        let [r0, r1, r2, _] = unsafe {
+            S::syscall4::<{ syscall_class::ALLOW_RO }>([
+                driver_num.into(),
+                buffer_num.into(),
+                buffer.as_ptr().into(),
+                buffer.len().into(),
+            ])
+        };
+
+        let return_variant: ReturnVariant = r0.as_u32().into();
+        match return_variant {
+            return_variant::SUCCESS_2_U32 => {}
+            return_variant::FAILURE_2_U32 => {
+                f.set_err(r1.as_u32().try_into().unwrap_or(ErrorCode::Fail));
+            }
+            _ => {
+                f.set_err(ErrorCode::Fail);
+            }
+        }
+
+        let returned_buffer: (usize, usize) = (r1.into(), r2.into());
+        if returned_buffer != (0, 0) {
+            C::returned_nonzero_buffer(driver_num, buffer_num);
+        }
+
+        // Safety: we are passing in a fixed (safe) function pointer and a pointer to a pinned instance.
+        // If the instance is dropped before the upcall comes in, then we panic in the Drop impl.
+        let [r0, r1, _, _] = unsafe {
+            S::syscall4::<{ syscall_class::SUBSCRIBE }>([
+                driver_num.into(),
+                subscribe_num.into(),
+                upcall_fcn.into(),
+                upcall_data.into(),
+            ])
+        };
+        let return_variant: ReturnVariant = r0.as_u32().into();
+        match return_variant {
+            return_variant::SUCCESS_2_U32 => {}
+            return_variant::FAILURE_2_U32 => {
+                f.set_err(r1.as_u32().try_into().unwrap_or(ErrorCode::Fail));
+            }
+            _ => {
+                f.set_err(ErrorCode::Fail);
+            }
+        }
+        f
+    }
+
     pub fn subscribe<S: Syscalls>(
         driver_num: u32,
         subscribe_num: u32,
