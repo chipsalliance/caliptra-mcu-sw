@@ -40,7 +40,7 @@ The sequence diagram below shows the high level steps of loading MCU RT image an
 The following steps are done for every SOC image:
 
 <p align="center">
-    <!--- https://www.plantuml.com/plantuml/uml/ZLBHRXCn47ptLqoBXE21AmqWe0zLmz5I928GKGeIgIBtRdEnvBDFzXwb_NeSSqvgAG7oa5jxPzQpitlcMJhkMoqEU4KjePNEYoxSgKfrqZ0EIwbLnquUGdgaGmwPNeunhgg82F5kFYPIwHlxAwA6E4TEobbCXgyGUUhBf_SJN7p3tCowMZ9Xt93XY5wdSl25bduLSp7AarTaQkjGshQp9jMeqac4dxQsmp9Ww2UvEqm_br2jR4W4NSz-FBhHFLsV3WsSuFXrWOPueQsi5xAk7Nd_9E8Ngdug7gTM0zDHVNsQx3Z1lwWYGHDr--QR0Wz9sIk3ldAs0oSr__7he7EoQIMOx3tOzIJMrnlsnezGusrnNE3ZMjLHkMo48ErfC3R-xo6D7fA2vxlT6pql87jUMQVkwNzisq_PF9yeOHC3EXEVgkoe6lHUaLFBEro6fg0CXgt6tDmgNiKzc4YZbkGvOkOcRabIiCFJlGCSlIZmbRXt1hwlgh-CS3gaj-vbgbyMc1BZ_FjvUVJ1ufrYsELsdUUciiwH3wTQcGPijt9pSTduHgyAX6gtoX4yyNfyqDPsuYn4VQj_0m00 -->
+    <!--- https://www.plantuml.com/plantuml/uml/ZLHjRzCm4FxkNt4R4e8FPAoyxyEq4ZQ6H0MYT23HgVAIIshXs95zOMo_7iU9brcaNLkfzUMUv_pSo-N44ZVKL9BjqHehX8eRoshtJ6IYvefWF-LIr6JuFd0BmOWXy_CfJBFC8znvd0ypBkIL_jkYmZb6pjA5Txf_ncBNryyVPd3s0vPgKUUS4AObAlBerXM3poItQ-_pfzXvWIhN1b9TrLg565cmcFj8hMie70R_eBc1-PSKHCLBPCm9U_RhqPLiyFAup-083jyaK2AjF6QbYy8YFUaCaJzbZqEkZcamlpmEzJY2XwWiG0DrkFDj0ZlSrojD5_ypDYNphbCaDSzNFCyDMhjRCjkesvEPF4_WFcayXH5Srwd9OGBV3LUsGDEb2491jcxKRykuf6v0zch3oue3eRu5CWsozd5yWOlKVk5J6-GWBSek2aDfiHyb_pl2ceomL1xL-6x6F2KY30neKnflpSHHU4DhRSGjxjAJpPGxAO7YbjQXNzpJ5BShZleoWGiqehY1SrUDjjhz2m2MwbhGsg_CZ2jHe2MFMIg_K471I3SsJyUh1BuXDKQ1RR9iotpCU_TGlKZrwmJcI73wypGz-AZXlI3GnR3vIvLfOz0wAnUg1DA3t5XSt4gtmYxQjJ085cdeuOaxDPNy1m00 -->
     <img src="images/image_loading_sequence_loop.svg" alt="flash_config" width="80%">
 </p>  
 The following outlines the steps carried out by the MCU RT during the SOC boot process:
@@ -70,17 +70,19 @@ The following outlines the steps carried out by the MCU RT during the SOC boot p
 
 For every image that needs to be loaded, user initiates a call to load an image identified by an image_id:
 
-17. MCU RT issues a mailbox command to get the load address of the image with the given image_id
-18. Caliptra RT responds with the load address if it exists
-19. MCU RT writes directly the image to the target load address. (In the example custom SOC design, this will be the Vendor RAM or Vendor Cfg Storage)
-20. MCU RT sends a Caliptra mailbox command to authorize the image in the SHA Acc identified by the image_id in the image metadata.
-21. Caliptra RT sends the image to the SHA Acc.
-22. Caliptra RT verifies the computed hash in SHA acc versus the one in the SOC manifest corresponding to the image_id given.
-23. Once verified, Caliptra RT returns Success response to MCU via the mailbox.
+17. MCU RT issues a mailbox command to get the offset of the image (with respect to the start of the SOC manifest).
+18. Caliptra RT responds with the image offset.
+19. MCU RT issues a mailbox command to get the load address of the image with the given image_id
+20. Caliptra RT responds with the load address if it exists
+21. MCU RT reads a chunk of the image into a local buffer and writes it directly the image to the target load address. (In the example custom SOC design, this will be the Vendor RAM or Vendor Cfg Storage). This is done until all chunks are copied to the destination.
+22. MCU RT sends a Caliptra mailbox command to authorize the image in the SHA Acc identified by the image_id in the image metadata.
+23. Caliptra RT sends the image to the SHA Acc.
+24. Caliptra RT verifies the computed hash in SHA acc versus the one in the SOC manifest corresponding to the image_id given.
+25. Once verified, Caliptra RT returns Success response to MCU via the mailbox.
 
-Steps 24-25, are SOC design-specific options One option is to use the Caliptra 'Go' register to set the corresponding 'Go' wire to allow the target component to process the loaded image.
-24. MCU RT sets the corresponding Go bit in Caliptra register corresponding to the image component.
-25. The Go bit sets the corresponding wire that indicates the component can process the loaded image.
+Steps 26-27, are SOC design-specific options One option is to use the Caliptra 'Go' register to set the corresponding 'Go' wire to allow the target component to process the loaded image.
+26. MCU RT sets the corresponding Go bit in Caliptra register corresponding to the image component.
+27. The Go bit sets the corresponding wire that indicates the component can process the loaded image.
 
 ## Architecture
 
