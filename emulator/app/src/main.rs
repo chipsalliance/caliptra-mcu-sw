@@ -27,7 +27,9 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_bus::{Bus, BusConverter, Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
-use emulator_periph::{CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, I3c, I3cController};
+use emulator_periph::{
+    CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, I3c, I3cController, Otp,
+};
 use emulator_registers_generated::root_bus::AutoRootBus;
 use emulator_registers_generated::soc::SocPeripheral;
 use emulator_types::ROM_SIZE;
@@ -331,7 +333,6 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         firmware: firmware_buffer,
         log_dir: args_log_dir.clone(),
         uart_output: uart_output.clone(),
-        otp_file: cli.otp,
         uart_rx: stdin_uart.clone(),
         pic: pic.clone(),
         clock: clock.clone(),
@@ -406,12 +407,13 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         Some(Box::new(FakeSoc {}) as Box<dyn SocPeripheral>)
     };
 
+    let otp = Otp::new(&clock.clone(), cli.otp)?;
     let mut auto_root_bus = AutoRootBus::new(
         delegates,
         Some(Box::new(i3c)),
         Some(Box::new(flash_controller)),
         None,
-        None,
+        Some(Box::new(otp)),
         None,
         None,
         soc_periph,

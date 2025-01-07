@@ -10,6 +10,7 @@ edition.workspace = true
 registers-generated.workspace = true
 tock-registers.workspace = true
 romtime.workspace = true
+zeroize.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 riscv-csr.workspace = true

@@ -12,7 +12,7 @@ Abstract:
 
 --*/
 
-use crate::{spi_host::SpiHost, EmuCtrl, Otp, Uart};
+use crate::{spi_host::SpiHost, EmuCtrl, Uart};
 use emulator_bus::{Clock, Ram, Rom};
 use emulator_cpu::{Pic, PicMmioRegisters};
 use emulator_derive::Bus;
@@ -33,7 +33,6 @@ pub struct CaliptraRootBusArgs {
     pub firmware: Vec<u8>,
     pub log_dir: PathBuf,
     pub uart_output: Option<Rc<RefCell<Vec<u8>>>>,
-    pub otp_file: Option<PathBuf>,
     pub uart_rx: Option<Arc<Mutex<Option<u8>>>>,
 }
 
@@ -50,9 +49,6 @@ pub struct CaliptraRootBus {
 
     #[peripheral(offset = 0x2000_0000, len = 0x40)]
     pub spi: SpiHost,
-
-    #[peripheral(offset = 0x2000_1000, len = 0x1000)]
-    pub otp: Otp,
 
     #[peripheral(offset = 0x4000_0000, len = 0x60000)]
     pub ram: Rc<RefCell<Ram>>,
@@ -83,7 +79,6 @@ impl CaliptraRootBus {
             spi: SpiHost::new(&clock.clone()),
             uart: Uart::new(args.uart_output, args.uart_rx, uart_irq, &clock.clone()),
             ctrl: EmuCtrl::new(),
-            otp: Otp::new(&clock.clone(), args.otp_file)?,
             pic_regs: pic.mmio_regs(clock.clone()),
         })
     }

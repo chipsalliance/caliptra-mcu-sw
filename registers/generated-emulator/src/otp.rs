@@ -422,11 +422,23 @@ pub trait OtpPeripheral {
     ) -> emulator_types::RvData {
         0
     }
+    fn write_dai_wdata_rf_direct_access_wdata_0(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
+    }
     fn read_dai_wdata_rf_direct_access_wdata_1(
         &mut self,
         _size: emulator_types::RvSize,
     ) -> emulator_types::RvData {
         0
+    }
+    fn write_dai_wdata_rf_direct_access_wdata_1(
+        &mut self,
+        _size: emulator_types::RvSize,
+        _val: emulator_types::RvData,
+    ) {
     }
     fn read_dai_rdata_rf_direct_access_rdata_0(
         &mut self,
@@ -1001,6 +1013,18 @@ impl emulator_bus::Bus for OtpBus {
             (emulator_types::RvSize::Word, 0xbd..=0xbf) => {
                 Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
+            (size, 0x44) => {
+                self.periph
+                    .write_dai_wdata_rf_direct_access_wdata_0(size, val);
+                Ok(())
+            }
+            (_, 0x45..=0x47) => Err(emulator_bus::BusError::StoreAddrMisaligned),
+            (size, 0x48) => {
+                self.periph
+                    .write_dai_wdata_rf_direct_access_wdata_1(size, val);
+                Ok(())
+            }
+            (_, 0x49..=0x4b) => Err(emulator_bus::BusError::StoreAddrMisaligned),
             _ => Err(emulator_bus::BusError::StoreAccessFault),
         }
     }

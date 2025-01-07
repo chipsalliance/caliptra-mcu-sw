@@ -236,6 +236,12 @@ impl<T: UIntLike + RvDataConverter<T>, R: RegisterLongName> Register for ReadWri
     }
 }
 
+impl<T: UIntLike, R: RegisterLongName> From<T> for ReadWriteRegister<T, R> {
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
+
 /// Read Only Register
 pub struct ReadOnlyRegister<T: UIntLike, R: RegisterLongName = ()> {
     /// Register

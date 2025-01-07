@@ -8,3 +8,4 @@ authors.workspace = true
 
 [dependencies]
 tock-registers.workspace = true
+zeroize.workspace = true

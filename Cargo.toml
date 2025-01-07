@@ -94,6 +94,7 @@ quote = "1.0"
 semver = "1.0.23"
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
+serde-hjson = "1.1.0"
 strum = "0.24"
 strum_macros = "0.24"
 syn = "1.0.107"
@@ -102,6 +103,7 @@ toml = "0.8.19"
 uuid = { version = "1.10.0", features = ["serde"]}
 walkdir = "2.5.0"
 zerocopy = { version = "0.8.7", features = ["derive"] }
+zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_derive"] }
 
 # local dependencies
 capsules-runtime = { path = "runtime/capsules" }

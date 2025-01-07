@@ -16,6 +16,8 @@ Abstract:
 #![no_main]
 
 #[cfg(target_arch = "riscv32")]
+mod fuses;
+#[cfg(target_arch = "riscv32")]
 mod io;
 #[cfg(target_arch = "riscv32")]
 mod riscv;

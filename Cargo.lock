@@ -1640,6 +1640,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "linked-hash-map"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "linked_list_allocator"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2085,6 +2094,7 @@ name = "registers-generated"
 version = "0.1.0"
 dependencies = [
  "tock-registers",
+ "zeroize",
 ]
 
 [[package]]
@@ -2137,6 +2147,7 @@ dependencies = [
  "romtime",
  "rv32i",
  "tock-registers",
+ "zeroize",
 ]
 
 [[package]]
@@ -2251,6 +2262,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6513c1ad0b11a9376da888e3e0baa0077f1aed55c17f50e7b2397136129fb88f"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-hjson"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00962f7686acc7ab668cb70932997c078876fd4adcf4cb951cade6784e6d89ee"
+dependencies = [
+ "lazy_static",
+ "linked-hash-map",
+ "num-traits",
+ "regex",
+ "serde",
 ]
 
 [[package]]
@@ -2909,6 +2933,8 @@ dependencies = [
  "registers-generator",
  "registers-systemrdl",
  "semver",
+ "serde",
+ "serde-hjson",
  "tempfile",
  "toml",
  "walkdir",

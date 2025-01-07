@@ -12,11 +12,10 @@ Abstract:
 
 --*/
 
+use crate::{fuses::Otp, static_ref::StaticRef};
 use core::fmt::Write;
-use registers_generated::soc;
-use tock_registers::interfaces::Readable;
-
-use crate::static_ref::StaticRef;
+use registers_generated::{fuses::Fuses, i3c, otp_ctrl, soc};
+use tock_registers::interfaces::{Readable, Writeable};
 
 #[cfg(target_arch = "riscv32")]
 core::arch::global_asm!(include_str!("start.s"));
@@ -24,7 +23,7 @@ core::arch::global_asm!(include_str!("start.s"));
 pub const SOC_BASE: StaticRef<soc::regs::Soc> =
     unsafe { StaticRef::new(soc::SOC_IFC_REG_ADDR as *const soc::regs::Soc) };
 
-pub struct Soc {
+struct Soc {
     registers: StaticRef<soc::regs::Soc>,
 }
 
@@ -32,19 +31,114 @@ impl Soc {
     pub const fn new(registers: StaticRef<soc::regs::Soc>) -> Self {
         Soc { registers }
     }
+
+    fn flow_status(&self) -> u32 {
+        self.registers.cptra_flow_status.get()
+    }
+
+    fn ready_for_fuses(&self) -> bool {
+        self.flow_status() & 0x40000000 != 0
+    }
+
+    fn populate_fuses(&self, fuses: &Fuses) {
+        // secret fuses are populated by a hardware state machine, so we can skip those
+
+        // TODO: vendor-specific fuses when those are supported
+
+        self.registers
+            .fuse_fmc_key_manifest_svn
+            .set(fuses.fmc_key_manifest_svn());
+        self.registers.fuse_key_manifest_pk_hash_mask.write(
+            soc::bits::FuseKeyManifestPkHashMask::Mask.val(fuses.key_manifest_pk_hash_mask()),
+        );
+        for i in 0..12 {
+            self.registers.fuse_owner_pk_hash[i].set(fuses.owner_pk_hash()[i]);
+        }
+        for i in 0..4 {
+            self.registers.fuse_runtime_svn[i].set(fuses.runtime_svn()[i]);
+        }
+        // TODO
+        // self.registers
+        //     .fuse_anti_rollback_disable
+        //     .set(fuses.anti_rollback_disable());
+        for i in 0..24 {
+            self.registers.fuse_idevid_cert_attr[i].set(fuses.idevid_cert_attr()[i]);
+        }
+        for i in 0..4 {
+            self.registers.fuse_idevid_manuf_hsm_id[i].set(fuses.idevid_manuf_hsm_id()[i]);
+        }
+        // TODO: read the lifecycle partition from the lifecycle controller
+        // self.registers
+        //     .fuse_life_cycle
+        //     .write(soc::bits::FuseLifeCycle::LifeCycle.val(..));
+        self.registers
+            .fuse_lms_revocation
+            .set(fuses.lms_revocation());
+        // TODO
+        //self.registers.fuse_mldsa_revocation.set(fuses.mldsa_revocation());
+        self.registers
+            .fuse_soc_stepping_id
+            .write(soc::bits::FuseSocSteppingId::SocSteppingId.val(fuses.soc_stepping_id()));
+        // TODO: debug unlock / rma token?
+    }
+
+    fn fuse_write_done(&self) {
+        self.registers.cptra_fuse_wr_done.set(1);
+    }
 }
+
+pub const OTP_BASE: StaticRef<otp_ctrl::regs::OtpCtrl> =
+    unsafe { StaticRef::new(otp_ctrl::CALIPTRA_OTP_CTRL_ADDR as *const otp_ctrl::regs::OtpCtrl) };
+
+pub const I3C_BASE: StaticRef<i3c::regs::I3c> =
+    unsafe { StaticRef::new(i3c::I3C_CSR_ADDR as *const i3c::regs::I3c) };
 
 pub extern "C" fn rom_entry() -> ! {
     romtime::println!("Hello from ROM");
+
+    let otp = Otp::new(OTP_BASE);
+    otp.init();
+    let fuses = otp.read_fuses();
+
     let soc = Soc::new(SOC_BASE);
-    let flow_status = soc.registers.cptra_flow_status.get();
+    let flow_status = soc.flow_status();
     romtime::println!("Caliptra flow status {:x}", flow_status);
     if flow_status == 0 {
         romtime::println!("Caliptra not detected; skipping Caliptra boot flow");
         exit_rom();
     }
-    // TODO: implement Caliptra boot flow
+
+    while !soc.ready_for_fuses() {}
+    soc.populate_fuses(&fuses);
+    soc.fuse_write_done();
+    while soc.ready_for_fuses() {}
+
+    // TODO(MCI): de-assert caliptra reset
+
+    recovery_flow();
+
+    // TODO: verify MCU firmware is valid
+
     exit_rom();
+}
+
+struct I3c {
+    registers: StaticRef<i3c::regs::I3c>,
+}
+
+impl I3c {
+    pub const fn new(registers: StaticRef<i3c::regs::I3c>) -> Self {
+        I3c { registers }
+    }
+}
+
+fn recovery_flow() {
+    // TODO: implement Caliptra boot flow
+    let i3c = I3c::new(I3C_BASE);
+
+    // TODO: read this value from the fuses (according to the spec)?
+    i3c.registers.sec_fw_recovery_if_device_id_0.set(0x3a);
+    i3c.registers.stdby_ctrl_mode_stby_cr_device_addr.set(0x3a);
 }
 
 fn exit_rom() -> ! {
