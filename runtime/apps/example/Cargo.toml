@@ -10,7 +10,7 @@ edition.workspace = true
 critical-section.workspace = true
 embassy-executor.workspace = true
 libtock_alarm.workspace = true
-libtock_flash.workspace = true
+libtock_mcu_flash.workspace = true
 libtock_console.workspace = true
 libtock_debug_panic.workspace = true
 libtock_platform.workspace = true
@@ -25,3 +25,16 @@ libtock_unittest.workspace = true
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
 embedded-alloc.workspace = true
+
+[features]
+default = []
+test-i3c-simple = []
+test-i3c-constant-writes = []
+test-flash-ctrl-init = []
+test-flash-ctrl-read-write-page = []
+test-flash-ctrl-erase-page = []
+test-mctp-ctrl-cmds = []
+test-mctp-send-loopback = []
+test-flash-storage-read-write = []
+test-flash-storage-erase = []
+test-flash-usermode = []

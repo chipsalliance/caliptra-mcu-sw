@@ -7,8 +7,8 @@
 
 use core::fmt::Write;
 use libtock::alarm::*;
-use libtock_console::{Console, ConsoleWriter};
-use libtock_flash::{driver_num, AsyncSpiFlash};
+use libtock_console::Console;
+use libtock_mcu_flash::{driver_num, FlashCapacity, SpiFlash};
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
@@ -76,76 +76,86 @@ pub(crate) async fn async_main<S: Syscalls>() {
         writeln!(console_writer, "async sleeper woke").unwrap();
     }
 
-    writeln!(console_writer, "Flash async test start").unwrap();
-    // Temporarily add usermode flash test here
-    pub const DRIVER_NUM: u32 = driver_num::IMAGE_PARTITION;
-    flash_test_async::<DRIVER_NUM, S>(&mut console_writer).await;
-    writeln!(console_writer, "Flash async test done").unwrap();
+    if cfg!(feature = "test-flash-usermode") {
+        let mut test_cfg = FlashTestConfig {
+            r_offset: 0,
+            r_len: 512,
+            w_offset: 100,
+            w_len: 300,
+            w_buf: [0xAA; 512],
+            r_buf: [0x0u8; 512],
+            drv_num: driver_num::IMAGE_PARTITION,
+            capacity: FlashCapacity(0x200_0000),
+        };
+
+        writeln!(console_writer, "flash usermode simple test starts").unwrap();
+        simple_flash_test::<S>(&mut test_cfg).await;
+        writeln!(console_writer, "flash usermode simple test succeeds").unwrap();
+    }
 
     writeln!(console_writer, "app finished").unwrap();
 }
 
-pub async fn flash_test_async<const DRIVER_NUM: u32, S: Syscalls>(
-    console_writer: &mut ConsoleWriter<S>,
-) {
-    struct TestConfig {
-        start_addr: usize,
-        length: usize,
-        w_offset: usize,
-        w_len: usize,
-        w_buf: [u8; 512],
-        r_buf: [u8; 512],
-    }
+pub const FLASH_TEST_BUF_LEN: usize = 512;
+pub struct FlashTestConfig {
+    r_offset: usize,
+    r_len: usize,
+    w_offset: usize,
+    w_len: usize,
+    w_buf: [u8; FLASH_TEST_BUF_LEN],
+    r_buf: [u8; FLASH_TEST_BUF_LEN],
+    drv_num: u32,
+    capacity: FlashCapacity,
+}
 
-    let mut test_cfg = TestConfig {
-        start_addr: 0,
-        length: 512,
-        w_offset: 50,
-        w_len: 512 - 50,
-        w_buf: [0xAA; 512],
-        r_buf: [0x0u8; 512],
-    };
-    match AsyncSpiFlash::<DRIVER_NUM, S>::exists() {
-        Ok(()) => {}
-        Err(e) => {
-            writeln!(
-                console_writer,
-                "Flash partition driver does not exist: {:?}",
-                e
-            )
-            .unwrap();
-            return;
-        }
-    }
+pub async fn simple_flash_test<S: Syscalls>(test_cfg: &mut FlashTestConfig) {
+    let flash_par = SpiFlash::<S>::new(test_cfg.drv_num);
 
-    let capacity = AsyncSpiFlash::<DRIVER_NUM, S>::get_capacity().unwrap();
-    writeln!(console_writer, "flash partition capacity: {:#X?}", capacity).unwrap();
+    assert!(flash_par.exists().is_ok());
+    assert_eq!(flash_par.get_capacity().unwrap(), test_cfg.capacity);
 
-    // Test erase
-    let ret = AsyncSpiFlash::<DRIVER_NUM, S>::erase(0, 512).await;
-    assert_eq!(ret, Ok(()));
-
-    writeln!(console_writer, "flash test ASYNC erase succeess").unwrap();
+    // Erase test
+    assert_eq!(
+        flash_par.erase(test_cfg.r_offset, test_cfg.r_len).await,
+        Ok(())
+    );
 
     // Write test
-    let ret = AsyncSpiFlash::<DRIVER_NUM, S>::write(
-        test_cfg.start_addr + test_cfg.w_offset,
-        test_cfg.w_len,
-        &test_cfg.w_buf,
-    )
-    .await;
-    assert_eq!(ret, Ok(()));
-    writeln!(console_writer, "flash test ASYNC WRITE succeess").unwrap();
+    assert_eq!(
+        flash_par
+            .write(
+                test_cfg.r_offset + test_cfg.w_offset,
+                test_cfg.w_len,
+                &test_cfg.w_buf,
+            )
+            .await,
+        Ok(())
+    );
 
     // Read test
-    let ret = AsyncSpiFlash::<DRIVER_NUM, S>::read(
-        test_cfg.start_addr,
-        test_cfg.length,
-        &mut test_cfg.r_buf,
-    )
-    .await;
-    assert_eq!(ret, Ok(()));
-    writeln!(console_writer, "flash test ASYNC READ succeess").unwrap();
+    assert_eq!(
+        flash_par
+            .read(test_cfg.r_offset, test_cfg.r_len, &mut test_cfg.r_buf)
+            .await,
+        Ok(())
+    );
+
+    // Data integrity check
+    for i in 0..test_cfg.w_offset {
+        assert_eq!(test_cfg.r_buf[i], 0xFF, "data mismatch at {}", i);
+    }
+    for i in test_cfg.w_offset..test_cfg.w_offset + test_cfg.w_len {
+        assert_eq!(
+            test_cfg.r_buf[i],
+            test_cfg.w_buf[i - test_cfg.w_offset],
+            "data mismatch at {}",
+            i
+        );
+    }
+
+    for i in test_cfg.w_offset + test_cfg.w_len..test_cfg.r_len {
+        assert_eq!(test_cfg.r_buf[i], 0xFF, "data mismatch at {}", i);
+    }
 }
 
 // -----------------------------------------------------------------------------

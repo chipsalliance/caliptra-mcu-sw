@@ -4,14 +4,14 @@
 
 #![no_std]
 
-use libtock_platform as platform;
-use libtock_platform::allow_rw::AllowRw;
-use libtock_platform::share;
-use libtock_platform::AllowRo;
-use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
+use core::marker::PhantomData;
+use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
-pub struct AsyncSpiFlash<const DRIVER_NUM: u32, S: Syscalls, C: Config = DefaultConfig>(S, C);
+pub struct SpiFlash<S: Syscalls> {
+    syscall: PhantomData<S>,
+    driver_num: u32,
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FlashCapacity(pub u32);
@@ -19,16 +19,31 @@ pub struct FlashCapacity(pub u32);
 /// Represents an asynchronous SPI flash memory interface.
 ///
 /// This struct provides methods to interact with SPI flash memory in an asynchronous manner,
-/// allowing for non-blocking read, write, and erase operations.
-impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncSpiFlash<DRIVER_NUM, S, C> {
+/// allowing for non-blocking read, write and erase operations.
+impl<S: Syscalls> SpiFlash<S> {
+    /// Creates a new instance of `SpiFlash`.
+    ///
+    /// # Arguments
+    ///
+    /// * `driver_num` - The driver number associated with the SPI flash.
+    ///
+    /// # Returns
+    /// A new instance of `SpiFlash`.
+    pub fn new(driver_num: u32) -> Self {
+        Self {
+            syscall: PhantomData,
+            driver_num,
+        }
+    }
+
     /// Checks if the SPI flash exists.
     ///
     /// # Returns
     ///
     /// * `Ok(())` if the SPI flash exists.
     /// * `Err(ErrorCode)` if there is an error.
-    pub fn exists() -> Result<(), ErrorCode> {
-        S::command(DRIVER_NUM, flash_storage_cmd::EXISTS, 0, 0).to_result()
+    pub fn exists(&self) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, flash_storage_cmd::EXISTS, 0, 0).to_result()
     }
 
     /// Gets the capacity of the SPI flash memory that is available to userspace.
@@ -37,8 +52,8 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncSpiFlash<DRIVER_NUM, S,
     ///
     /// * `Ok(FlashCapacity)` with the capacity of the SPI flash memory.
     /// * `Err(ErrorCode)` if there is an error.
-    pub fn get_capacity() -> Result<FlashCapacity, ErrorCode> {
-        S::command(DRIVER_NUM, flash_storage_cmd::CAPACITY, 0, 0)
+    pub fn get_capacity(&self) -> Result<FlashCapacity, ErrorCode> {
+        S::command(self.driver_num, flash_storage_cmd::CAPACITY, 0, 0)
             .to_result()
             .map(FlashCapacity)
     }
@@ -54,51 +69,60 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncSpiFlash<DRIVER_NUM, S,
     ///
     /// * `Ok(())` if the read operation is successful.
     /// * `Err(ErrorCode)` if there is an error.
-    pub async fn read(address: usize, len: usize, buf: &mut [u8]) -> Result<(), ErrorCode> {
+    pub async fn read(&self, address: usize, len: usize, buf: &mut [u8]) -> Result<(), ErrorCode> {
         if buf.len() < len {
             return Err(ErrorCode::NoMem);
         }
 
-        let async_read_sub =
-            share::scope::<(AllowRw<_, DRIVER_NUM, { rw_allow::READ }>,), _, _>(|handle| {
-                let allow_rw = handle.split().0;
-                S::allow_rw::<C, DRIVER_NUM, { rw_allow::READ }>(allow_rw, buf)?;
+        share::scope::<(), _, _>(|_handle| {
+            let sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
+                self.driver_num,
+                subscribe::READ_DONE,
+                rw_allow::READ,
+                buf,
+            );
 
-                let sub = TockSubscribe::subscribe::<S>(DRIVER_NUM, subscribe::READ_DONE);
-                S::command(
-                    DRIVER_NUM,
-                    flash_storage_cmd::READ,
-                    address as u32,
-                    len as u32,
-                )
-                .to_result::<(), ErrorCode>()?;
+            S::command(
+                self.driver_num,
+                flash_storage_cmd::READ,
+                address as u32,
+                len as u32,
+            )
+            .to_result::<(), ErrorCode>()?;
 
-                Ok(sub)
-            })?;
+            Ok(sub)
+        })?
+        .await?;
 
-        async_read_sub.await.map(|_| Ok(()))?
+        Ok(())
     }
 
-    pub async fn write(address: usize, len: usize, buf: &[u8]) -> Result<(), ErrorCode> {
-        let async_write_sub =
-            share::scope::<(AllowRo<_, DRIVER_NUM, { ro_allow::WRITE }>,), _, _>(|handle| {
-                let allow_ro = handle.split().0;
-                S::allow_ro::<C, DRIVER_NUM, { ro_allow::WRITE }>(allow_ro, buf)?;
+    pub async fn write(&self, address: usize, len: usize, buf: &[u8]) -> Result<(), ErrorCode> {
+        if buf.len() < len {
+            return Err(ErrorCode::NoMem);
+        }
 
-                let sub = TockSubscribe::subscribe::<S>(DRIVER_NUM, subscribe::WRITE_DONE);
+        share::scope::<(), _, _>(|_handle| {
+            let sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
+                self.driver_num,
+                subscribe::WRITE_DONE,
+                ro_allow::WRITE,
+                buf,
+            );
 
-                S::command(
-                    DRIVER_NUM,
-                    flash_storage_cmd::WRITE,
-                    address as u32,
-                    len as u32,
-                )
-                .to_result::<(), ErrorCode>()?;
+            S::command(
+                self.driver_num,
+                flash_storage_cmd::WRITE,
+                address as u32,
+                len as u32,
+            )
+            .to_result::<(), ErrorCode>()?;
 
-                Ok(sub)
-            })?;
+            Ok(sub)
+        })?
+        .await?;
 
-        async_write_sub.await.map(|_| Ok(()))?
+        Ok(())
     }
 
     /// Erases an arbitrary number of bytes from the flash memory.
@@ -114,28 +138,17 @@ impl<const DRIVER_NUM: u32, S: Syscalls, C: Config> AsyncSpiFlash<DRIVER_NUM, S,
     ///
     /// * `Ok(())` if the erase operation is successful.
     /// * `Err(ErrorCode)` if there is an error.
-    pub async fn erase(address: usize, len: usize) -> Result<(), ErrorCode> {
-        let async_erase_sub = TockSubscribe::subscribe::<S>(DRIVER_NUM, subscribe::ERASE_DONE);
+    pub async fn erase(&self, address: usize, len: usize) -> Result<(), ErrorCode> {
+        let async_erase_sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::ERASE_DONE);
         S::command(
-            DRIVER_NUM,
+            self.driver_num,
             flash_storage_cmd::ERASE,
             address as u32,
             len as u32,
         )
         .to_result::<(), ErrorCode>()?;
-
         async_erase_sub.await.map(|_| Ok(()))?
     }
-}
-
-/// System call configuration trait for `AsyncSpiFlash`.
-pub trait Config:
-    platform::allow_ro::Config + platform::allow_rw::Config + platform::subscribe::Config
-{
-}
-impl<T: platform::allow_ro::Config + platform::allow_rw::Config + platform::subscribe::Config>
-    Config for T
-{
 }
 
 // -----------------------------------------------------------------------------
