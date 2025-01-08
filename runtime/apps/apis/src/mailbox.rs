@@ -2,8 +2,7 @@
 
 //! # Mailbox Interface
 
-use libtock_platform::allow_ro::AllowRo;
-use libtock_platform::allow_rw::AllowRw;
+use core::marker::PhantomData;
 use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
@@ -11,9 +10,19 @@ use libtockasync::TockSubscribe;
 ///
 /// # Generics
 /// - `S`: The syscall implementation.
-pub struct Mailbox<S: Syscalls>(S);
+pub struct Mailbox<S: Syscalls> {
+    syscall: PhantomData<S>,
+    driver_num: u32,
+}
 
 impl<S: Syscalls> Mailbox<S> {
+    pub fn new(driver_num: u32) -> Self {
+        Self {
+            syscall: PhantomData,
+            driver_num,
+        }
+    }
+
     /// Executes a mailbox command and returns the response.
     ///
     /// This method sends a mailbox command to the kernel, then waits
@@ -29,37 +38,24 @@ impl<S: Syscalls> Mailbox<S> {
     /// - `Ok(usize)` on success, containing the number of bytes written to the response buffer.
     /// - `Err(ErrorCode)` if the command fails.
     pub async fn execute(
+        &self,
         command: u32,
         input_data: &[u8],
         response_buffer: &mut [u8],
     ) -> Result<usize, ErrorCode> {
-        share::scope::<
-            (
-                AllowRo<_, MAILBOX_DRIVER_NUM, { mailbox_buffer::INPUT }>,
-                AllowRw<_, MAILBOX_DRIVER_NUM, { mailbox_buffer::RESPONSE }>,
-            ),
-            _,
-            _,
-        >(|handle| {
-            let (allow_ro, allow_rw) = handle.split();
-
-            // Share the input buffer (read-only)
-            S::allow_ro::<DefaultConfig, MAILBOX_DRIVER_NUM, { mailbox_buffer::INPUT }>(
-                allow_ro, input_data,
-            )?;
-
-            // Share the response buffer (read-write)
-            S::allow_rw::<DefaultConfig, MAILBOX_DRIVER_NUM, { mailbox_buffer::RESPONSE }>(
-                allow_rw,
-                response_buffer,
-            )?;
-
+        share::scope::<(), _, _>(|_| {
             // Subscribe to the asynchronous notification for when the command is processed
-            let async_command =
-                TockSubscribe::subscribe::<S>(MAILBOX_DRIVER_NUM, mailbox_subscribe::COMMAND_DONE);
+            let async_command = TockSubscribe::subscribe_allow_ro_rw::<S, DefaultConfig>(
+                self.driver_num,
+                mailbox_subscribe::COMMAND_DONE,
+                mailbox_buffer::INPUT,
+                input_data,
+                mailbox_buffer::RESPONSE,
+                response_buffer,
+            );
 
             // Issue the command to the kernel
-            S::command(MAILBOX_DRIVER_NUM, mailbox_cmd::EXECUTE_COMMAND, command, 0)
+            S::command(self.driver_num, mailbox_cmd::EXECUTE_COMMAND, command, 0)
                 .to_result::<(), ErrorCode>()?;
 
             // Return the subscription for further processing
@@ -74,7 +70,8 @@ impl<S: Syscalls> Mailbox<S> {
 // Command IDs and Mailbox-specific constants
 // -----------------------------------------------------------------------------
 
-const MAILBOX_DRIVER_NUM: u32 = 0x8000_0009;
+// Driver number for the Mailbox interface
+pub const DMA_DRIVER_NUM: u32 = 0x8000_0009;
 
 /// Command IDs for mailbox operations.
 mod mailbox_cmd {

@@ -5,11 +5,14 @@
 //! This library provides an abstraction for performing asynchronous Direct Memory Access (DMA)
 //! transfers between AXI source and AXI destination addresses.
 
-use libtock_platform::allow_ro::AllowRo;
+use core::marker::PhantomData;
 use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 /// DMA interface.
-pub struct DMA<S: Syscalls>(S);
+pub struct DMA<S: Syscalls> {
+    syscall: PhantomData<S>,
+    driver_num: u32,
+}
 
 /// Configuration parameters for a DMA transfer.
 #[derive(Debug, Clone)]
@@ -32,6 +35,13 @@ pub enum DMASource<'a> {
 }
 
 impl<S: Syscalls> DMA<S> {
+    pub fn new(driver_num: u32) -> Self {
+        Self {
+            syscall: PhantomData,
+            driver_num,
+        }
+    }
+
     /// Do a DMA transfer.
     ///
     /// This method executes a DMA transfer based on the provided `DMATransaction` configuration.
@@ -42,49 +52,45 @@ impl<S: Syscalls> DMA<S> {
     /// # Returns
     /// * `Ok(())` if the transfer starts successfully.
     /// * `Err(ErrorCode)` if the transfer fails.
-    pub async fn xfer<'a>(transaction: &DMATransaction<'a>) -> Result<(), ErrorCode> {
-        Self::setup(transaction).await?;
+    pub async fn xfer<'a>(&self, transaction: &DMATransaction<'a>) -> Result<(), ErrorCode> {
+        self.setup(transaction).await?;
 
         match transaction.source {
-            DMASource::Buffer(buffer) => Self::xfer_src_buffer(buffer).await.map(|_| ()),
-            DMASource::Address(_) => Self::xfer_src_address().await.map(|_| ()),
+            DMASource::Buffer(buffer) => self.xfer_src_buffer(buffer).await.map(|_| ()),
+            DMASource::Address(_) => self.xfer_src_address().await.map(|_| ()),
         }
     }
 
-    async fn xfer_src_address() -> Result<(), ErrorCode> {
-        let async_start = TockSubscribe::subscribe::<S>(DMA_DRIVER_NUM, dma_subscribe::XFER_DONE);
-        S::command(DMA_DRIVER_NUM, dma_cmd::XFER_AXI_TO_AXI, 0, 0).to_result::<(), ErrorCode>()?;
+    async fn xfer_src_address(&self) -> Result<(), ErrorCode> {
+        let async_start = TockSubscribe::subscribe::<S>(self.driver_num, dma_subscribe::XFER_DONE);
+        S::command(self.driver_num, dma_cmd::XFER_AXI_TO_AXI, 0, 0).to_result::<(), ErrorCode>()?;
         async_start.await.map(|_| ())
     }
 
-    async fn xfer_src_buffer(buffer: &[u8]) -> Result<(), ErrorCode> {
+    async fn xfer_src_buffer(&self, buffer: &[u8]) -> Result<(), ErrorCode> {
         // Use `share::scope` to safely share the buffer with the kernel
-        share::scope::<(AllowRo<_, DMA_DRIVER_NUM, { dma_buffer::LOCAL_SOURCE }>,), _, _>(
-            |handle| {
-                let allow_ro = handle.split().0;
+        share::scope::<(), _, _>(|_| {
+            let async_start = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
+                self.driver_num,
+                dma_subscribe::XFER_DONE,
+                dma_buffer::LOCAL_SOURCE,
+                buffer,
+            );
 
-                // Share the local buffer as the source
-                S::allow_ro::<DefaultConfig, DMA_DRIVER_NUM, { dma_buffer::LOCAL_SOURCE }>(
-                    allow_ro, buffer,
-                )?;
-
-                // Start the DMA transfer
-                let async_start =
-                    TockSubscribe::subscribe::<S>(DMA_DRIVER_NUM, dma_subscribe::XFER_DONE);
-                S::command(DMA_DRIVER_NUM, dma_cmd::XFER_LOCAL_TO_AXI, 0, 0)
-                    .to_result::<(), ErrorCode>()?;
-                Ok(async_start)
-            },
-        )?
+            // Start the DMA transfer
+            S::command(self.driver_num, dma_cmd::XFER_LOCAL_TO_AXI, 0, 0)
+                .to_result::<(), ErrorCode>()?;
+            Ok(async_start)
+        })?
         .await
         .map(|_| ())
     }
 
-    async fn setup<'a>(config: &DMATransaction<'a>) -> Result<(), ErrorCode> {
+    async fn setup<'a>(&self, config: &DMATransaction<'a>) -> Result<(), ErrorCode> {
         let async_configure =
-            TockSubscribe::subscribe::<S>(DMA_DRIVER_NUM, dma_subscribe::SET_BYTE_XFER_COUNT_DONE);
+            TockSubscribe::subscribe::<S>(self.driver_num, dma_subscribe::SET_BYTE_XFER_COUNT_DONE);
         S::command(
-            DMA_DRIVER_NUM,
+            self.driver_num,
             dma_cmd::SET_BYTE_XFER_COUNT,
             config.byte_count as u32,
             0,
@@ -94,9 +100,9 @@ impl<S: Syscalls> DMA<S> {
 
         if let DMASource::Address(src_addr) = config.source {
             let async_src =
-                TockSubscribe::subscribe::<S>(DMA_DRIVER_NUM, dma_subscribe::SET_SRC_DONE);
+                TockSubscribe::subscribe::<S>(self.driver_num, dma_subscribe::SET_SRC_DONE);
             S::command(
-                DMA_DRIVER_NUM,
+                self.driver_num,
                 dma_cmd::SET_SRC_ADDR,
                 (src_addr & 0xFFFF_FFFF) as u32,
                 (src_addr >> 32) as u32,
@@ -106,9 +112,9 @@ impl<S: Syscalls> DMA<S> {
         }
 
         let async_dest =
-            TockSubscribe::subscribe::<S>(DMA_DRIVER_NUM, dma_subscribe::SET_DEST_DONE);
+            TockSubscribe::subscribe::<S>(self.driver_num, dma_subscribe::SET_DEST_DONE);
         S::command(
-            DMA_DRIVER_NUM,
+            self.driver_num,
             dma_cmd::SET_DEST_ADDR,
             (config.dest_addr & 0xFFFF_FFFF) as u32,
             (config.dest_addr >> 32) as u32,
@@ -124,7 +130,8 @@ impl<S: Syscalls> DMA<S> {
 // Command IDs and DMA-specific constants
 // -----------------------------------------------------------------------------
 
-const DMA_DRIVER_NUM: u32 = 0x8000_0008;
+// Driver number for the DMA interface
+pub const DMA_DRIVER_NUM: u32 = 0x8000_0008;
 
 /// Command IDs used by the DMA interface.
 mod dma_cmd {
