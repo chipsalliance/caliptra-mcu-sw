@@ -3,16 +3,23 @@
 use crate::mctp::base_protocol::{
     MCTPHeader, MessageType, MCTP_HDR_SIZE, MCTP_TAG_MASK, MCTP_TAG_OWNER,
 };
-use core::cell::Cell;
 use core::fmt::Write;
 use kernel::collections::list::{ListLink, ListNode};
 use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
 use romtime::println;
 
 /// This trait is implemented to get notified of the messages received
-/// on corresponding message_type.
+/// on corresponding msg_type.
 pub trait MCTPRxClient {
-    fn receive(&self, dst_eid: u8, msg_type: u8, msg_tag: u8, msg_payload: &[u8], msg_len: usize);
+    fn receive(
+        &self,
+        dst_eid: u8,
+        msg_type: u8,
+        msg_tag: u8,
+        msg_payload: &[u8],
+        msg_len: usize,
+        recv_time: u32,
+    );
 }
 
 /// Receive state
@@ -20,7 +27,7 @@ pub struct MCTPRxState<'a> {
     /// Message assembly context
     msg_terminus: MapCell<MsgTerminus>,
     /// Expected message types
-    msg_types: Cell<&'static [MessageType]>,
+    msg_type: MessageType,
     /// Client (implements the MCTPRxClient trait)
     client: OptionalCell<&'a dyn MCTPRxClient>,
     /// Message buffer
@@ -47,13 +54,10 @@ struct MsgTerminus {
 }
 
 impl<'a> MCTPRxState<'a> {
-    pub fn new(
-        rx_msg_buf: &'static mut [u8],
-        message_types: &'static [MessageType],
-    ) -> MCTPRxState<'static> {
+    pub fn new(rx_msg_buf: &'static mut [u8], msg_type: MessageType) -> MCTPRxState<'static> {
         MCTPRxState {
             msg_terminus: MapCell::empty(),
-            msg_types: Cell::new(message_types),
+            msg_type,
             client: OptionalCell::empty(),
             msg_payload: TakeCell::new(rx_msg_buf),
             next: ListLink::empty(),
@@ -72,10 +76,7 @@ impl<'a> MCTPRxState<'a> {
     /// # Returns
     /// True if the message type is expected, false otherwise.
     pub fn is_receive_expected(&self, msg_type: MessageType) -> bool {
-        self.msg_types
-            .get()
-            .iter()
-            .any(|&exp_type| exp_type == msg_type)
+        self.msg_type == msg_type
     }
 
     /// Checks from the received MCTP header if the next packet belongs to
@@ -117,7 +118,12 @@ impl<'a> MCTPRxState<'a> {
     /// # Arguments
     /// 'mctp_hdr' - The MCTP header of the received packet.
     /// 'pkt_payload' - The payload of the received packet.
-    pub fn receive_next(&self, mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>, pkt_payload: &[u8]) {
+    pub fn receive_next(
+        &self,
+        mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>,
+        pkt_payload: &[u8],
+        recv_time: u32,
+    ) {
         if let Some(mut msg_terminus) = self.msg_terminus.take() {
             let offset = msg_terminus.msg_size;
             let end_offset = offset + pkt_payload.len();
@@ -141,14 +147,14 @@ impl<'a> MCTPRxState<'a> {
                 });
 
             if mctp_hdr.eom() == 1 {
-                self.end_receive();
+                self.end_receive(recv_time);
             }
         }
     }
 
     /// Called at the end of the message assembly to deliver the message to the client.
     /// The message terminus state is set to None after the message is delivered.
-    pub fn end_receive(&self) {
+    pub fn end_receive(&self, recv_time: u32) {
         if let Some(msg_terminus) = self.msg_terminus.take() {
             let msg_tag = if msg_terminus.tag_owner == 1 {
                 (msg_terminus.msg_tag & MCTP_TAG_MASK) | MCTP_TAG_OWNER
@@ -164,6 +170,7 @@ impl<'a> MCTPRxState<'a> {
                             msg_tag,
                             msg_payload,
                             msg_terminus.msg_size,
+                            recv_time,
                         );
                     });
                 })
@@ -190,6 +197,7 @@ impl<'a> MCTPRxState<'a> {
         mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>,
         msg_type: MessageType,
         pkt_payload: &[u8],
+        recv_time: u32,
     ) {
         if mctp_hdr.som() != 1 {
             println!("MuxMCTPDriver - Received first packet without SOM. Dropping packet.");
@@ -227,7 +235,7 @@ impl<'a> MCTPRxState<'a> {
 
         // Single packet message
         if mctp_hdr.eom() == 1 {
-            self.end_receive();
+            self.end_receive(recv_time);
         }
     }
 }

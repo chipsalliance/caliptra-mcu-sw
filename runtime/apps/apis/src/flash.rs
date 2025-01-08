@@ -2,8 +2,6 @@
 
 // Flash userspace library
 
-#![no_std]
-
 use core::marker::PhantomData;
 use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;

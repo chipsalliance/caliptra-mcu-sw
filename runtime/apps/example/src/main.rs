@@ -7,9 +7,10 @@
 
 use core::fmt::Write;
 use libtock::alarm::*;
-use libtock_console::Console;
 #[cfg(feature = "test-flash-usermode")]
-use libtock_mcu_flash::{driver_num, FlashCapacity, SpiFlash};
+use libtock_caliptra::flash::{driver_num as par_driver_num, FlashCapacity, SpiFlash};
+use libtock_caliptra::mctp::{driver_num, Mctp};
+use libtock_console::Console;
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
@@ -77,6 +78,16 @@ pub(crate) async fn async_main<S: Syscalls>() {
         writeln!(console_writer, "async sleeper woke").unwrap();
     }
 
+    if cfg!(feature = "test-mctp-user-loopback") {
+        writeln!(
+            console_writer,
+            "Running test-mctp-user-loopback test for SPDM msg type"
+        )
+        .unwrap();
+
+        test_mctp_loopback::<S>().await;
+    }
+
     #[cfg(feature = "test-flash-usermode")]
     {
         writeln!(console_writer, "flash usermode test starts").unwrap();
@@ -91,12 +102,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
         };
 
         let mut test_cfg = flash_test::FlashTestConfig {
-            drv_num: driver_num::IMAGE_PARTITION,
+            drv_num: par_driver_num::IMAGE_PARTITION,
             expected_capacity: flash_test::EXPECTED_CAPACITY,
             expected_chunk_size: flash_test::EXPECTED_CHUNK_SIZE,
             e_offset: 0,
             e_len: flash_test::BUF_LEN,
-            w_offset: 1000,
+            w_offset: 20,
             w_len: 1000,
             w_buf: &user_w_buf,
             r_buf: &mut user_r_buf,
@@ -108,10 +119,33 @@ pub(crate) async fn async_main<S: Syscalls>() {
     writeln!(console_writer, "app finished").unwrap();
 }
 
+async fn test_mctp_loopback<S: Syscalls>() {
+    let mctp_spdm = Mctp::<S>::new(driver_num::MCTP_SPDM);
+    loop {
+        let mut msg_buffer: [u8; 1024] = [0; 1024];
+
+        assert!(mctp_spdm.exists());
+        let max_msg_size = mctp_spdm.max_message_size();
+        assert!(max_msg_size.is_ok());
+        assert!(max_msg_size.unwrap() > 0);
+
+        let result = mctp_spdm.receive_request(&mut msg_buffer).await;
+        assert!(result.is_ok());
+        let (msg_len, msg_info) = result.unwrap();
+        let msg_len = msg_len as usize;
+        assert!(msg_len <= msg_buffer.len());
+
+        let result = mctp_spdm
+            .send_response(&msg_buffer[..msg_len], msg_info)
+            .await;
+        assert!(result.is_ok());
+    }
+}
+
 #[cfg(feature = "test-flash-usermode")]
 pub mod flash_test {
     use super::*;
-    pub const BUF_LEN: usize = 2048;
+    pub const BUF_LEN: usize = 1024;
     pub const EXPECTED_CAPACITY: FlashCapacity = FlashCapacity(0x200_0000);
     pub const EXPECTED_CHUNK_SIZE: usize = 512;
 

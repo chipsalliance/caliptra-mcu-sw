@@ -9,6 +9,7 @@ edition.workspace = true
 [dependencies]
 bitfield.workspace = true
 capsules-extra.workspace = true
+capsules-core.workspace = true
 flash-driver.workspace = true
 i3c-driver.workspace = true
 kernel.workspace = true

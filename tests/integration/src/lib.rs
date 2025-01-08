@@ -134,5 +134,6 @@ mod test {
     run_test!(test_flash_storage_read_write);
     run_test!(test_flash_storage_erase);
     run_test!(test_mctp_ctrl_cmds);
-    run_test!(test_mctp_send_loopback);
+    run_test!(test_mctp_capsule_loopback);
+    run_test!(test_mctp_user_loopback);
 }
