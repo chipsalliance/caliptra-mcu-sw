@@ -327,6 +327,7 @@ impl SyscallDriver for FlashPartition<'_> {
     /// - `2`: Start a read
     /// - `3`: Start a write
     /// - `4`: Start an erase
+    /// - `5`: Return the chunk size for reads and writes
     fn command(
         &self,
         command_num: usize,
@@ -385,6 +386,11 @@ impl SyscallDriver for FlashPartition<'_> {
                     Ok(()) => CommandReturn::success(),
                     Err(e) => CommandReturn::failure(e),
                 }
+            }
+
+            5 => {
+                // Return the chunk size for reads and writes
+                CommandReturn::success_u32(BUF_LEN as u32)
             }
 
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),

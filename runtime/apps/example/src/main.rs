@@ -8,6 +8,7 @@
 use core::fmt::Write;
 use libtock::alarm::*;
 use libtock_console::Console;
+#[cfg(feature = "test-flash-usermode")]
 use libtock_mcu_flash::{driver_num, FlashCapacity, SpiFlash};
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
@@ -76,85 +77,130 @@ pub(crate) async fn async_main<S: Syscalls>() {
         writeln!(console_writer, "async sleeper woke").unwrap();
     }
 
-    if cfg!(feature = "test-flash-usermode") {
-        let mut test_cfg = FlashTestConfig {
-            r_offset: 0,
-            r_len: 512,
-            w_offset: 100,
-            w_len: 300,
-            w_buf: [0xAA; 512],
-            r_buf: [0x0u8; 512],
-            drv_num: driver_num::IMAGE_PARTITION,
-            capacity: FlashCapacity(0x200_0000),
+    #[cfg(feature = "test-flash-usermode")]
+    {
+        writeln!(console_writer, "flash usermode test starts").unwrap();
+        let mut user_r_buf: [u8; flash_test::BUF_LEN] = [0u8; flash_test::BUF_LEN];
+        // Fill the write buffer with a pattern
+        let user_w_buf: [u8; flash_test::BUF_LEN] = {
+            let mut buf = [0u8; flash_test::BUF_LEN];
+            for i in 0..buf.len() {
+                buf[i] = (i % 256) as u8;
+            }
+            buf
         };
 
-        writeln!(console_writer, "flash usermode simple test starts").unwrap();
-        simple_flash_test::<S>(&mut test_cfg).await;
-        writeln!(console_writer, "flash usermode simple test succeeds").unwrap();
+        let mut test_cfg = flash_test::FlashTestConfig {
+            drv_num: driver_num::IMAGE_PARTITION,
+            expected_capacity: flash_test::EXPECTED_CAPACITY,
+            expected_chunk_size: flash_test::EXPECTED_CHUNK_SIZE,
+            e_offset: 0,
+            e_len: flash_test::BUF_LEN,
+            w_offset: 1000,
+            w_len: 1000,
+            w_buf: &user_w_buf,
+            r_buf: &mut user_r_buf,
+        };
+        flash_test::simple_test::<S>(&mut test_cfg).await;
+        writeln!(console_writer, "flash usermode test succeeds").unwrap();
     }
 
     writeln!(console_writer, "app finished").unwrap();
 }
 
-pub const FLASH_TEST_BUF_LEN: usize = 512;
-pub struct FlashTestConfig {
-    r_offset: usize,
-    r_len: usize,
-    w_offset: usize,
-    w_len: usize,
-    w_buf: [u8; FLASH_TEST_BUF_LEN],
-    r_buf: [u8; FLASH_TEST_BUF_LEN],
-    drv_num: u32,
-    capacity: FlashCapacity,
-}
+#[cfg(feature = "test-flash-usermode")]
+pub mod flash_test {
+    use super::*;
+    pub const BUF_LEN: usize = 2048;
+    pub const EXPECTED_CAPACITY: FlashCapacity = FlashCapacity(0x200_0000);
+    pub const EXPECTED_CHUNK_SIZE: usize = 512;
 
-pub async fn simple_flash_test<S: Syscalls>(test_cfg: &mut FlashTestConfig) {
-    let flash_par = SpiFlash::<S>::new(test_cfg.drv_num);
-
-    assert!(flash_par.exists().is_ok());
-    assert_eq!(flash_par.get_capacity().unwrap(), test_cfg.capacity);
-
-    // Erase test
-    assert_eq!(
-        flash_par.erase(test_cfg.r_offset, test_cfg.r_len).await,
-        Ok(())
-    );
-
-    // Write test
-    assert_eq!(
-        flash_par
-            .write(
-                test_cfg.r_offset + test_cfg.w_offset,
-                test_cfg.w_len,
-                &test_cfg.w_buf,
-            )
-            .await,
-        Ok(())
-    );
-
-    // Read test
-    assert_eq!(
-        flash_par
-            .read(test_cfg.r_offset, test_cfg.r_len, &mut test_cfg.r_buf)
-            .await,
-        Ok(())
-    );
-
-    // Data integrity check
-    for i in 0..test_cfg.w_offset {
-        assert_eq!(test_cfg.r_buf[i], 0xFF, "data mismatch at {}", i);
+    pub struct FlashTestConfig<'a> {
+        pub drv_num: u32,
+        pub expected_capacity: FlashCapacity,
+        pub expected_chunk_size: usize,
+        pub e_offset: usize,
+        pub e_len: usize,
+        pub w_offset: usize,
+        pub w_len: usize,
+        pub w_buf: &'a [u8],
+        pub r_buf: &'a mut [u8],
     }
-    for i in test_cfg.w_offset..test_cfg.w_offset + test_cfg.w_len {
+
+    pub async fn simple_test<'a, S: Syscalls>(test_cfg: &'a mut FlashTestConfig<'a>) {
+        let flash_par = SpiFlash::<S>::new(test_cfg.drv_num);
         assert_eq!(
-            test_cfg.r_buf[i],
-            test_cfg.w_buf[i - test_cfg.w_offset],
-            "data mismatch at {}",
-            i
+            flash_par.get_capacity().unwrap(),
+            test_cfg.expected_capacity
         );
-    }
+        assert_eq!(
+            flash_par.get_chunk_size().unwrap(),
+            test_cfg.expected_chunk_size
+        );
 
-    for i in test_cfg.w_offset + test_cfg.w_len..test_cfg.r_len {
-        assert_eq!(test_cfg.r_buf[i], 0xFF, "data mismatch at {}", i);
+        let ret = flash_par.erase(test_cfg.e_offset, test_cfg.e_len).await;
+        assert_eq!(ret, Ok(()));
+
+        // Write test region partially
+        let ret = flash_par
+            .write(test_cfg.w_offset, test_cfg.w_len, test_cfg.w_buf as &[u8])
+            .await;
+        assert_eq!(ret, Ok(()));
+
+        // Read the written region
+        let ret = flash_par
+            .read(
+                test_cfg.w_offset,
+                test_cfg.w_len,
+                test_cfg.r_buf as &mut [u8],
+            )
+            .await;
+        assert_eq!(ret, Ok(()));
+
+        // Data compare read and write
+        for i in 0..test_cfg.w_len {
+            assert_eq!(
+                test_cfg.r_buf[i], test_cfg.w_buf[i],
+                "data mismatch at {}",
+                i
+            );
+        }
+
+        // Reset read buffer
+        test_cfg.r_buf.iter_mut().for_each(|x| *x = 0);
+
+        // Read whole test region
+        let ret = flash_par
+            .read(
+                test_cfg.e_offset,
+                test_cfg.e_len,
+                test_cfg.r_buf as &mut [u8],
+            )
+            .await;
+        assert_eq!(ret, Ok(()));
+
+        // Data integrity check
+        {
+            for i in 0..test_cfg.w_offset.min(test_cfg.r_buf.len()) {
+                assert_eq!(test_cfg.r_buf[i], 0xFF, "data mismatch at {}", i);
+            }
+            for i in
+                test_cfg.w_offset..(test_cfg.w_offset + test_cfg.w_len).min(test_cfg.r_buf.len())
+            {
+                assert_eq!(
+                    test_cfg.r_buf[i],
+                    test_cfg.w_buf[i - test_cfg.w_offset],
+                    "data mismatch at {}",
+                    i
+                );
+            }
+
+            for i in (test_cfg.w_offset + test_cfg.w_len).min(test_cfg.r_buf.len())
+                ..test_cfg.e_len.min(test_cfg.r_buf.len())
+            {
+                assert_eq!(test_cfg.r_buf[i], 0xFF, "data mismatch at {}", i);
+            }
+        }
     }
 }
 

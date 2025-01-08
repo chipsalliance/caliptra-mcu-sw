@@ -53,24 +53,33 @@ impl<S: Syscalls> SpiFlash<S> {
     /// * `Ok(FlashCapacity)` with the capacity of the SPI flash memory.
     /// * `Err(ErrorCode)` if there is an error.
     pub fn get_capacity(&self) -> Result<FlashCapacity, ErrorCode> {
-        S::command(self.driver_num, flash_storage_cmd::CAPACITY, 0, 0)
+        S::command(self.driver_num, flash_storage_cmd::GET_CAPACITY, 0, 0)
             .to_result()
             .map(FlashCapacity)
     }
 
-    /// Reads data from the SPI flash memory in an asynchronous manner.
-    ///
-    /// # Arguments
-    /// * `address` - The address in the SPI flash memory to read from.
-    /// * `len` - The number of bytes to read.
-    /// * `buf` - The buffer to read the data into. The buffer must be at least `len` bytes long.
+    /// Gets the chunk size for read and write operations.
     ///
     /// # Returns
     ///
-    /// * `Ok(())` if the read operation is successful.
+    /// * `Ok(usize)` with the chunk size for read and write operations.
     /// * `Err(ErrorCode)` if there is an error.
-    pub async fn read(&self, address: usize, len: usize, buf: &mut [u8]) -> Result<(), ErrorCode> {
-        if buf.len() < len {
+    pub fn get_chunk_size(&self) -> Result<usize, ErrorCode> {
+        S::command(self.driver_num, flash_storage_cmd::GET_CHUNK_SIZE, 0, 0)
+            .to_result()
+            .map(|x: u32| x as usize)
+    }
+
+    /// Internal function to read a chunk of data from the flash memory.
+    /// Don't use this function directly, use `read` instead.
+    async fn read_chunk(
+        &self,
+        address: usize,
+        len: usize,
+        buf: &mut [u8],
+    ) -> Result<(), ErrorCode> {
+        // Check if the buffer is large enough and the length is within the chunk size
+        if buf.len() < len || len > self.get_chunk_size()? {
             return Err(ErrorCode::NoMem);
         }
 
@@ -97,8 +106,42 @@ impl<S: Syscalls> SpiFlash<S> {
         Ok(())
     }
 
-    pub async fn write(&self, address: usize, len: usize, buf: &[u8]) -> Result<(), ErrorCode> {
+    /// Reads data from the SPI flash memory in an asynchronous manner.
+    ///
+    /// # Arguments
+    /// * `address` - The address in the SPI flash memory to read from.
+    /// * `len` - The number of bytes to read.
+    /// * `buf` - The buffer to read the data into. The buffer must be at least `len` bytes long.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the read operation is successful.
+    /// * `Err(ErrorCode)` if there is an error.
+    pub async fn read(&self, address: usize, len: usize, buf: &mut [u8]) -> Result<(), ErrorCode> {
         if buf.len() < len {
+            return Err(ErrorCode::NoMem);
+        }
+
+        // Split into chunk reads
+        let chunk_size = self.get_chunk_size()?;
+        let mut remaining = len;
+        let mut offset = 0;
+        while remaining > 0 {
+            let len = core::cmp::min(remaining, chunk_size);
+            self.read_chunk(address + offset, len, &mut buf[offset..offset + len])
+                .await?;
+            remaining -= len;
+            offset += len;
+        }
+
+        Ok(())
+    }
+
+    /// Internal helper function to write a chunk of data to the flash memory.
+    /// Don't use this function directly, use `write` instead.
+    async fn write_chunk(&self, address: usize, len: usize, buf: &[u8]) -> Result<(), ErrorCode> {
+        // Check if the buffer is large enough and the length is within the chunk size
+        if buf.len() < len || len > self.get_chunk_size()? {
             return Err(ErrorCode::NoMem);
         }
 
@@ -121,6 +164,40 @@ impl<S: Syscalls> SpiFlash<S> {
             Ok(sub)
         })?
         .await?;
+
+        Ok(())
+    }
+
+    /// Writes an arbitrary number of bytes to the flash memory.
+    ///
+    /// This method writes the bytes from the provided `buf` to the flash memory starting at the
+    /// specified `address`.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - The starting address to write to.
+    /// * `buf` - The buffer containing the bytes to write.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the write operation is successful.
+    /// * `Err(ErrorCode)` if there is an error.
+    pub async fn write(&self, address: usize, len: usize, buf: &[u8]) -> Result<(), ErrorCode> {
+        if buf.len() < len {
+            return Err(ErrorCode::NoMem);
+        }
+
+        // Split into chunk writes
+        let chunk_size = self.get_chunk_size()?;
+        let mut remaining = len;
+        let mut offset = 0;
+        while remaining > 0 {
+            let len = core::cmp::min(remaining, chunk_size);
+            self.write_chunk(address + offset, len, &buf[offset..offset + len])
+                .await?;
+            remaining -= len;
+            offset += len;
+        }
 
         Ok(())
     }
@@ -188,10 +265,12 @@ mod rw_allow {
 /// - `2`: Start a read
 /// - `3`: Start a write
 /// - `4`: Start an erase
+/// - `5`: Get the chunk size for read/write operations.
 mod flash_storage_cmd {
     pub const EXISTS: u32 = 0;
-    pub const CAPACITY: u32 = 1;
+    pub const GET_CAPACITY: u32 = 1;
     pub const READ: u32 = 2;
     pub const WRITE: u32 = 3;
     pub const ERASE: u32 = 4;
+    pub const GET_CHUNK_SIZE: u32 = 5;
 }
