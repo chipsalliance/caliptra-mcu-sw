@@ -4,5 +4,6 @@
 
 pub mod flash_partition;
 pub mod mctp_driver;
+#[cfg(feature = "test-mctp-capsule-loopback")]
 pub mod mock_mctp;
 pub mod mux_mctp;

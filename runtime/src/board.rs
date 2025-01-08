@@ -452,9 +452,6 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-flash-ctrl-erase-page") {
         debug!("Executing test-flash-ctrl-erase-page");
         crate::tests::flash_ctrl_test::test_flash_ctrl_erase_page()
-    } else if cfg!(feature = "test-mctp-capsule-loopback") {
-        debug!("Executing test-mctp-capsule-loopback");
-        crate::tests::mctp_test::test_mctp_capsule_loopback(mux_mctp)
     } else if cfg!(feature = "test-flash-storage-read-write") {
         debug!("Executing test-flash-storage-read-write");
         crate::tests::flash_storage_test::test_flash_storage_read_write()
@@ -464,6 +461,12 @@ pub unsafe fn main() {
     } else {
         None
     };
+
+    #[cfg(feature = "test-mctp-capsule-loopback")]
+    {
+        debug!("Executing test-mctp-capsule-loopback");
+        crate::tests::mctp_test::test_mctp_capsule_loopback(mux_mctp);
+    }
 
     if let Some(exit) = exit {
         crate::io::exit_emulator(exit);
