@@ -48,9 +48,9 @@ impl<S: Syscalls> Mailbox<S> {
             let async_command = TockSubscribe::subscribe_allow_ro_rw::<S, DefaultConfig>(
                 self.driver_num,
                 mailbox_subscribe::COMMAND_DONE,
-                mailbox_buffer::INPUT,
+                mailbox_ro_buffer::INPUT,
                 input_data,
-                mailbox_buffer::RESPONSE,
+                mailbox_rw_buffer::RESPONSE,
                 response_buffer,
             );
 
@@ -79,12 +79,16 @@ mod mailbox_cmd {
     pub const EXECUTE_COMMAND: u32 = 1;
 }
 
-/// Buffer IDs for mailbox read/write operations.
-mod mailbox_buffer {
+/// Buffer IDs for mailbox read operations.
+mod mailbox_ro_buffer {
     /// Buffer ID for the input buffer (read-only).
     pub const INPUT: u32 = 0;
+}
+
+/// Buffer IDs for mailbox read-write operations.
+mod mailbox_rw_buffer {
     /// Buffer ID for the response buffer (read-write).
-    pub const RESPONSE: u32 = 1;
+    pub const RESPONSE: u32 = 0;
 }
 
 /// Subscription IDs for asynchronous mailbox events.

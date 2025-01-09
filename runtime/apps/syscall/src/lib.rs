@@ -2,4 +2,5 @@
 
 #![no_std]
 
-pub mod mctp;
+pub mod dma;
+pub mod mailbox;

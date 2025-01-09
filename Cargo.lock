@@ -1396,6 +1396,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8355be11b20d696c8f18f6cc018c4e372165b1fa8126cef092399c9951984ffa"
 
 [[package]]
+name = "libsyscall-caliptra"
+version = "0.1.0"
+dependencies = [
+ "libtock_console",
+ "libtock_platform",
+ "libtockasync",
+]
+
+[[package]]
 name = "libtock"
 version = "0.1.0"
 dependencies = [

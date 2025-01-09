@@ -47,6 +47,7 @@ members = [
     "runtime/apps/libtock/ufmt",
     "runtime/apps/libtock/unittest",
     "runtime/apps/libtockasync",
+    "runtime/apps/syscall",
     "runtime/capsules",
     "runtime/i3c",
     "tests/hello",
@@ -131,6 +132,7 @@ libtock_platform = { path = "runtime/apps/libtock/platform" }
 libtock_runtime = { path = "runtime/apps/libtock/runtime" }
 libtock_unittest = { path = "runtime/apps/libtock/unittest" }
 libtock_caliptra = { path = "runtime/apps/apis" }
+libsyscall-caliptra = { path = "runtime/apps/syscall" }
 
 # caliptra dependencies; keep git revs in sync
 caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }

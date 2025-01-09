@@ -73,7 +73,7 @@ impl<S: Syscalls> DMA<S> {
             let async_start = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
                 self.driver_num,
                 dma_subscribe::XFER_DONE,
-                dma_buffer::LOCAL_SOURCE,
+                dma_ro_buffer::LOCAL_SOURCE,
                 buffer,
             );
 
@@ -87,8 +87,6 @@ impl<S: Syscalls> DMA<S> {
     }
 
     async fn setup<'a>(&self, config: &DMATransaction<'a>) -> Result<(), ErrorCode> {
-        let async_configure =
-            TockSubscribe::subscribe::<S>(self.driver_num, dma_subscribe::SET_BYTE_XFER_COUNT_DONE);
         S::command(
             self.driver_num,
             dma_cmd::SET_BYTE_XFER_COUNT,
@@ -96,11 +94,8 @@ impl<S: Syscalls> DMA<S> {
             0,
         )
         .to_result::<(), ErrorCode>()?;
-        async_configure.await.map(|_| ())?;
 
         if let DMASource::Address(src_addr) = config.source {
-            let async_src =
-                TockSubscribe::subscribe::<S>(self.driver_num, dma_subscribe::SET_SRC_DONE);
             S::command(
                 self.driver_num,
                 dma_cmd::SET_SRC_ADDR,
@@ -108,11 +103,8 @@ impl<S: Syscalls> DMA<S> {
                 (src_addr >> 32) as u32,
             )
             .to_result::<(), ErrorCode>()?;
-            async_src.await.map(|_| ())?;
         }
 
-        let async_dest =
-            TockSubscribe::subscribe::<S>(self.driver_num, dma_subscribe::SET_DEST_DONE);
         S::command(
             self.driver_num,
             dma_cmd::SET_DEST_ADDR,
@@ -120,7 +112,6 @@ impl<S: Syscalls> DMA<S> {
             (config.dest_addr >> 32) as u32,
         )
         .to_result::<(), ErrorCode>()?;
-        async_dest.await.map(|_| ())?;
 
         Ok(())
     }
@@ -142,16 +133,13 @@ mod dma_cmd {
     pub const XFER_LOCAL_TO_AXI: u32 = 4;
 }
 
-/// Buffer IDs for DMA
-mod dma_buffer {
+/// Buffer IDs for DMA (read-only)
+mod dma_ro_buffer {
     /// Buffer ID for local buffers (read-only)
     pub const LOCAL_SOURCE: u32 = 0;
 }
 
 /// Subscription IDs for asynchronous notifications.
 mod dma_subscribe {
-    pub const SET_BYTE_XFER_COUNT_DONE: u32 = 0;
-    pub const SET_SRC_DONE: u32 = 1;
-    pub const SET_DEST_DONE: u32 = 2;
-    pub const XFER_DONE: u32 = 3;
+    pub const XFER_DONE: u32 = 0;
 }
