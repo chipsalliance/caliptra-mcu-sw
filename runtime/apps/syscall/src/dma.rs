@@ -14,6 +14,9 @@ pub struct DMA<S: Syscalls> {
     driver_num: u32,
 }
 
+/// Define type for AXI address (64-bit wide).
+pub type AXIAddr = u64;
+
 /// Configuration parameters for a DMA transfer.
 #[derive(Debug, Clone)]
 pub struct DMATransaction<'a> {
@@ -21,15 +24,15 @@ pub struct DMATransaction<'a> {
     pub byte_count: usize,
     /// Source for the transfer.
     pub source: DMASource<'a>,
-    /// Destination address for the transfer.
-    pub dest_addr: u64,
+    /// Destination AXI address for the transfer.
+    pub dest_addr: AXIAddr,
 }
 
 /// Represents the source of data for a DMA transfer.
 #[derive(Debug, Clone)]
 pub enum DMASource<'a> {
-    /// A memory address as the source.
-    Address(u64),
+    /// AXI memory address as the source.
+    Address(AXIAddr),
     /// A local buffer as the source.
     Buffer(&'a [u8]),
 }
@@ -53,7 +56,7 @@ impl<S: Syscalls> DMA<S> {
     /// * `Ok(())` if the transfer starts successfully.
     /// * `Err(ErrorCode)` if the transfer fails.
     pub async fn xfer<'a>(&self, transaction: &DMATransaction<'a>) -> Result<(), ErrorCode> {
-        self.setup(transaction).await?;
+        self.setup(transaction)?;
 
         match transaction.source {
             DMASource::Buffer(buffer) => self.xfer_src_buffer(buffer).await.map(|_| ()),
@@ -86,7 +89,7 @@ impl<S: Syscalls> DMA<S> {
         .map(|_| ())
     }
 
-    async fn setup<'a>(&self, config: &DMATransaction<'a>) -> Result<(), ErrorCode> {
+    fn setup(&self, config: &DMATransaction<'_>) -> Result<(), ErrorCode> {
         S::command(
             self.driver_num,
             dma_cmd::SET_BYTE_XFER_COUNT,
