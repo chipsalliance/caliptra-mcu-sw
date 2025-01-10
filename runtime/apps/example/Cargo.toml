@@ -9,8 +9,8 @@ edition.workspace = true
 [dependencies]
 critical-section.workspace = true
 embassy-executor.workspace = true
+libsyscall-caliptra.workspace = true
 libtock_alarm.workspace = true
-libtock_caliptra.workspace = true
 libtock_console.workspace = true
 libtock_debug_panic.workspace = true
 libtock_platform.workspace = true

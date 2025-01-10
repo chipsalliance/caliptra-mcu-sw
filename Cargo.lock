@@ -1089,9 +1089,9 @@ dependencies = [
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
+ "libsyscall-caliptra",
  "libtock",
  "libtock_alarm",
- "libtock_caliptra",
  "libtock_console",
  "libtock_debug_panic",
  "libtock_platform",
@@ -1481,15 +1481,6 @@ version = "0.1.0"
 dependencies = [
  "libtock_platform",
  "libtock_unittest",
-]
-
-[[package]]
-name = "libtock_caliptra"
-version = "0.1.0"
-dependencies = [
- "libtock_console",
- "libtock_platform",
- "libtockasync",
 ]
 
 [[package]]

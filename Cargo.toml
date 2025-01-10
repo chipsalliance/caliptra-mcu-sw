@@ -19,7 +19,6 @@ members = [
     "romtime",
     "runtime",
     "runtime/apps/example",
-    "runtime/apps/apis",
     "runtime/apps/libtock/apis/interface/buttons",
     "runtime/apps/libtock/apis/interface/buzzer",
     "runtime/apps/libtock/apis/interface/console",
@@ -131,7 +130,6 @@ libtock_debug_panic = { path = "runtime/apps/libtock/panic_handlers/debug_panic"
 libtock_platform = { path = "runtime/apps/libtock/platform" }
 libtock_runtime = { path = "runtime/apps/libtock/runtime" }
 libtock_unittest = { path = "runtime/apps/libtock/unittest" }
-libtock_caliptra = { path = "runtime/apps/apis" }
 libsyscall-caliptra = { path = "runtime/apps/syscall" }
 
 # caliptra dependencies; keep git revs in sync
