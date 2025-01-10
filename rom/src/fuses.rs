@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::{error::MCUError, static_ref::StaticRef};
+use crate::{error::McuError, static_ref::StaticRef};
 use core::fmt::Write;
 use registers_generated::fuses;
 use registers_generated::fuses::Fuses;
@@ -18,10 +18,10 @@ impl Otp {
         Otp { registers }
     }
 
-    pub fn init(&self) -> Result<(), MCUError> {
+    pub fn init(&self) -> Result<(), McuError> {
         if self.registers.status.get() & 0x1fff != 0 {
             romtime::println!("OTP error: {:x}", self.registers.status.get());
-            return Err(MCUError::FusesError);
+            return Err(McuError::FusesError);
         }
 
         // OTP DAI status should be idle
@@ -31,7 +31,7 @@ impl Otp {
             .is_set(otp_ctrl::bits::Status::DailIdle)
         {
             romtime::println!("OTP not idle");
-            return Err(MCUError::FusesError);
+            return Err(McuError::FusesError);
         }
 
         // Disable periodic background checks
@@ -50,9 +50,9 @@ impl Otp {
         word_addr: usize,
         word_len: usize,
         data: &mut [u32],
-    ) -> Result<(), MCUError> {
+    ) -> Result<(), McuError> {
         if data.len() < word_len {
-            return Err(MCUError::InvalidDataError);
+            return Err(McuError::InvalidDataError);
         }
         for i in 0..word_len {
             data[i] = self.read_word(word_addr + i)?;
@@ -60,7 +60,7 @@ impl Otp {
         Ok(())
     }
 
-    fn read_word(&self, word_addr: usize) -> Result<u32, MCUError> {
+    fn read_word(&self, word_addr: usize) -> Result<u32, McuError> {
         // OTP DAI status should be idle
         while !self
             .registers
@@ -83,7 +83,7 @@ impl Otp {
 
         if let Some(err) = self.check_error() {
             romtime::println!("Error reading fuses: {:x}", err);
-            return Err(MCUError::FusesError);
+            return Err(McuError::FusesError);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
     }
@@ -97,7 +97,7 @@ impl Otp {
         }
     }
 
-    pub fn read_fuses(&self) -> Result<Fuses, MCUError> {
+    pub fn read_fuses(&self) -> Result<Fuses, McuError> {
         let mut fuses = Fuses::default();
         self.read_data(
             fuses::NON_SECRET_FUSES_WORD_OFFSET,

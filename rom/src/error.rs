@@ -3,7 +3,7 @@
 #[allow(dead_code)]
 #[repr(u32)]
 #[derive(Debug)]
-pub enum MCUError {
+pub enum McuError {
     InvalidDataError = 0xf000_0001,
     FusesError = 0xf000_0002,
 }
