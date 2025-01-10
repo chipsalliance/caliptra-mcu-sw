@@ -37,14 +37,15 @@ impl Soc {
     }
 
     fn ready_for_fuses(&self) -> bool {
-        self.flow_status() & 0x40000000 != 0
+        self.registers
+            .cptra_flow_status
+            .is_set(soc::bits::CptraFlowStatus::ReadyForFuses)
     }
 
     fn populate_fuses(&self, fuses: &Fuses) {
         // secret fuses are populated by a hardware state machine, so we can skip those
 
         // TODO: vendor-specific fuses when those are supported
-
         self.registers
             .fuse_fmc_key_manifest_svn
             .set(fuses.fmc_key_manifest_svn());
@@ -113,14 +114,20 @@ pub extern "C" fn rom_entry() -> ! {
         exit_rom();
     }
 
+    romtime::println!("Waiting for Caliptra to be ready for fuses");
     while !soc.ready_for_fuses() {}
+    romtime::println!("Writing fuses to Caliptra");
     soc.populate_fuses(&fuses);
     soc.fuse_write_done();
     while soc.ready_for_fuses() {}
 
+    romtime::println!("Fuses written to Caliptra");
+
     // TODO(MCI): de-assert caliptra reset
 
+    romtime::println!("Starting recovery flow");
     recovery_flow();
+    romtime::println!("Recovery flow complete");
 
     // TODO: verify MCU firmware is valid
 
@@ -142,7 +149,7 @@ fn recovery_flow() {
     let i3c = I3c::new(I3C_BASE);
 
     // TODO: read this value from the fuses (according to the spec)?
-    i3c.registers.sec_fw_recovery_if_device_id_0.set(0x3a);
+    i3c.registers.sec_fw_recovery_if_device_id_0.set(0x3a); // placeholder address for now
     i3c.registers.stdby_ctrl_mode_stby_cr_device_addr.set(0x3a);
 }
 
