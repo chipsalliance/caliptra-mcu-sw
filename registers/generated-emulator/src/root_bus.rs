@@ -4,6 +4,7 @@
 //
 pub struct AutoRootBus {
     delegates: Vec<Box<dyn emulator_bus::Bus>>,
+    pub dccm: emulator_bus::Ram,
     pub i3c_periph: Option<crate::i3c::I3cBus>,
     pub flash_periph: Option<crate::flash::FlashBus>,
     pub entropy_src_periph: Option<crate::entropy_src::EntropySrcBus>,
@@ -28,6 +29,7 @@ impl AutoRootBus {
     ) -> Self {
         Self {
             delegates,
+            dccm: emulator_bus::Ram::new(vec![0; 16384u32 as usize]),
             i3c_periph: i3c_periph.map(|p| crate::i3c::I3cBus { periph: p }),
             flash_periph: flash_periph.map(|p| crate::flash::FlashBus { periph: p }),
             entropy_src_periph: entropy_src_periph
@@ -48,56 +50,57 @@ impl emulator_bus::Bus for AutoRootBus {
         addr: emulator_types::RvAddr,
     ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
         let result = match addr {
-            0x2000_4000..=0x2000_5988 => {
+            0x5000_0000..=0x5000_3fff => self.dccm.read(size, addr - 0x5000_0000),
+            0x2000_4000..=0x2000_5987 => {
                 if let Some(periph) = self.i3c_periph.as_mut() {
                     periph.read(size, addr - 0x2000_4000)
                 } else {
                     Err(emulator_bus::BusError::LoadAccessFault)
                 }
             }
-            0x2000_8000..=0x2000_8090 => {
+            0x2000_8000..=0x2000_808f => {
                 if let Some(periph) = self.flash_periph.as_mut() {
                     periph.read(size, addr - 0x2000_8000)
                 } else {
                     Err(emulator_bus::BusError::LoadAccessFault)
                 }
             }
-            0x2000_9000..=0x2000_a9d4 => {
+            0x2000_9000..=0x2000_a9d3 => {
                 if let Some(periph) = self.entropy_src_periph.as_mut() {
                     periph.read(size, addr - 0x2000_9000)
                 } else {
                     Err(emulator_bus::BusError::LoadAccessFault)
                 }
             }
-            0x2000_b000..=0x2000_b9dc => {
+            0x2000_b000..=0x2000_b9db => {
                 if let Some(periph) = self.otp_periph.as_mut() {
                     periph.read(size, addr - 0x2000_b000)
                 } else {
                     Err(emulator_bus::BusError::LoadAccessFault)
                 }
             }
-            0x3002_0000..=0x3002_00b4 => {
+            0x3002_0000..=0x3002_00b3 => {
                 if let Some(periph) = self.mbox_periph.as_mut() {
                     periph.read(size, addr - 0x3002_0000)
                 } else {
                     Err(emulator_bus::BusError::LoadAccessFault)
                 }
             }
-            0x3002_1000..=0x3002_289c => {
+            0x3002_1000..=0x3002_289b => {
                 if let Some(periph) = self.sha512_acc_periph.as_mut() {
                     periph.read(size, addr - 0x3002_1000)
                 } else {
                     Err(emulator_bus::BusError::LoadAccessFault)
                 }
             }
-            0x3003_0000..=0x3003_91c0 => {
+            0x3003_0000..=0x3003_91bf => {
                 if let Some(periph) = self.soc_periph.as_mut() {
                     periph.read(size, addr - 0x3003_0000)
                 } else {
                     Err(emulator_bus::BusError::LoadAccessFault)
                 }
             }
-            0x6000_0000..=0x6000_f018 => {
+            0x6000_0000..=0x6000_f017 => {
                 if let Some(periph) = self.el2_pic_periph.as_mut() {
                     periph.read(size, addr - 0x6000_0000)
                 } else {
@@ -124,56 +127,57 @@ impl emulator_bus::Bus for AutoRootBus {
         val: emulator_types::RvData,
     ) -> Result<(), emulator_bus::BusError> {
         let result = match addr {
-            0x2000_4000..=0x2000_5988 => {
+            0x5000_0000..=0x5000_3fff => self.dccm.write(size, addr - 0x5000_0000, val),
+            0x2000_4000..=0x2000_5987 => {
                 if let Some(periph) = self.i3c_periph.as_mut() {
                     periph.write(size, addr - 0x2000_4000, val)
                 } else {
                     Err(emulator_bus::BusError::StoreAccessFault)
                 }
             }
-            0x2000_8000..=0x2000_8090 => {
+            0x2000_8000..=0x2000_808f => {
                 if let Some(periph) = self.flash_periph.as_mut() {
                     periph.write(size, addr - 0x2000_8000, val)
                 } else {
                     Err(emulator_bus::BusError::StoreAccessFault)
                 }
             }
-            0x2000_9000..=0x2000_a9d4 => {
+            0x2000_9000..=0x2000_a9d3 => {
                 if let Some(periph) = self.entropy_src_periph.as_mut() {
                     periph.write(size, addr - 0x2000_9000, val)
                 } else {
                     Err(emulator_bus::BusError::StoreAccessFault)
                 }
             }
-            0x2000_b000..=0x2000_b9dc => {
+            0x2000_b000..=0x2000_b9db => {
                 if let Some(periph) = self.otp_periph.as_mut() {
                     periph.write(size, addr - 0x2000_b000, val)
                 } else {
                     Err(emulator_bus::BusError::StoreAccessFault)
                 }
             }
-            0x3002_0000..=0x3002_00b4 => {
+            0x3002_0000..=0x3002_00b3 => {
                 if let Some(periph) = self.mbox_periph.as_mut() {
                     periph.write(size, addr - 0x3002_0000, val)
                 } else {
                     Err(emulator_bus::BusError::StoreAccessFault)
                 }
             }
-            0x3002_1000..=0x3002_289c => {
+            0x3002_1000..=0x3002_289b => {
                 if let Some(periph) = self.sha512_acc_periph.as_mut() {
                     periph.write(size, addr - 0x3002_1000, val)
                 } else {
                     Err(emulator_bus::BusError::StoreAccessFault)
                 }
             }
-            0x3003_0000..=0x3003_91c0 => {
+            0x3003_0000..=0x3003_91bf => {
                 if let Some(periph) = self.soc_periph.as_mut() {
                     periph.write(size, addr - 0x3003_0000, val)
                 } else {
                     Err(emulator_bus::BusError::StoreAccessFault)
                 }
             }
-            0x6000_0000..=0x6000_f018 => {
+            0x6000_0000..=0x6000_f017 => {
                 if let Some(periph) = self.el2_pic_periph.as_mut() {
                     periph.write(size, addr - 0x6000_0000, val)
                 } else {

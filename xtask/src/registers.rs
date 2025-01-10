@@ -208,8 +208,10 @@ pub(crate) fn autogen(
         registers_dest_dir,
         &mut register_types_to_crates,
     )?;
+    let defines = generate_defines(check, header.clone(), registers_dest_dir)?;
     generate_emulator_types(
         check,
+        &defines,
         &scopes,
         bus_dest_dir,
         header.clone(),
@@ -221,6 +223,7 @@ pub(crate) fn autogen(
 /// Generate types used by the emulator.
 fn generate_emulator_types(
     check: bool,
+    defines: &HashMap<String, u32>,
     scopes: &[ParentScope],
     dest_dir: &Path,
     header: String,
@@ -288,6 +291,7 @@ fn generate_emulator_types(
         });
     }
     let root_bus_code = emu_make_root_bus(
+        defines,
         validated_blocks
             .iter()
             .filter(|b| !SKIP_TYPES.contains(b.block().name.as_str())),
@@ -586,6 +590,7 @@ fn hex_literal(val: u64) -> Literal {
 
 // Make the root bus that can be used by the emulator.
 fn emu_make_root_bus<'a>(
+    defines: &HashMap<String, u32>,
     blocks: impl Iterator<Item = &'a ValidatedRegisterBlock>,
 ) -> Result<TokenStream, DynError> {
     let mut read_tokens = TokenStream::new();
@@ -599,6 +604,32 @@ fn emu_make_root_bus<'a>(
 
     let mut blocks_sorted = blocks.collect::<Vec<_>>();
     blocks_sorted.sort_by_key(|b| b.block().instances[0].address);
+
+    // add the DCCM from the defines
+    if let Some(dccm_offset) = defines.get("RV_DCCM_SADR") {
+        if let Some(dccm_bits) = defines.get("RV_DCCM_BITS") {
+            let ram_size = 1 << *dccm_bits;
+            field_tokens.extend(quote! {
+                pub dccm: emulator_bus::Ram,
+            });
+            constructor_tokens.extend(quote! {
+                dccm: emulator_bus::Ram::new(vec![0; #ram_size as usize]),
+            });
+
+            let a = hex_literal(*dccm_offset as u64);
+            let b = hex_literal((*dccm_offset + ram_size - 1) as u64);
+            read_tokens.extend(quote! {
+                #a..=#b => {
+                    self.dccm.read(size, addr - #a)
+                }
+            });
+            write_tokens.extend(quote! {
+                #a..=#b => {
+                    self.dccm.write(size, addr - #a, val)
+                }
+            });
+        }
+    }
 
     for block in blocks_sorted {
         let rblock = block.block();
@@ -622,7 +653,7 @@ fn emu_make_root_bus<'a>(
             pub #periph_field: Option<crate::#crate_name::#bus>,
         });
         let a = hex_literal(rblock.instances[0].address as u64);
-        let b = hex_literal(rblock.instances[0].address as u64 + whole_width(rblock));
+        let b = hex_literal(rblock.instances[0].address as u64 + whole_width(rblock) - 1);
         read_tokens.extend(quote! {
             #a..=#b => {
                 if let Some(periph) = self.#periph_field.as_mut() {
@@ -847,6 +878,7 @@ fn generate_fw_registers(
         registers_generator::generate_code("crate::", &root_block, true, register_types_to_crates);
     let recursion = "#![recursion_limit = \"256\"]\n";
     let root_tokens = root_type_tokens;
+    let defines_mod = "pub mod defines;\n";
     let fuses_tokens = "pub mod fuses;\n";
     file_action(
         &dest_dir.join("lib.rs"),
@@ -855,10 +887,81 @@ fn generate_fw_registers(
                 + recursion
                 + &root_tokens.to_string()
                 + &root_submod_tokens
+                + defines_mod
                 + fuses_tokens),
         )?,
     )?;
     Ok(())
+}
+
+fn generate_defines(
+    check: bool,
+    header: String,
+    dest_dir: &Path,
+) -> Result<HashMap<String, u32>, DynError> {
+    let file_action = if check {
+        file_check_contents
+    } else {
+        write_file
+    };
+
+    let mut defines_map = HashMap::new();
+
+    let define_files = ["hw/caliptra-ss/src/riscv_core/veer_el2/rtl/defines/defines.h"];
+    let define_files: Vec<PathBuf> = define_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
+    for define_file in define_files.iter() {
+        if !define_file.exists() {
+            return Err(format!("Define file not found: {:?} -- ensure that you have run `git submodule init` and `git submodule update --recursive`", define_file).into());
+        }
+    }
+
+    let mut defines = String::new();
+    for define_file in define_files.iter() {
+        let define_data = std::fs::read_to_string(define_file)?;
+        let (new_defines, entries) = generate_defines_from_file(define_data);
+        defines += &new_defines;
+        for (k, v) in entries {
+            defines_map.insert(k, v);
+        }
+    }
+
+    file_action(
+        &dest_dir.join("defines.rs"),
+        &rustfmt(&(header.clone() + &defines))?,
+    )?;
+
+    Ok(defines_map)
+}
+
+fn generate_defines_from_file(source: String) -> (String, Vec<(String, u32)>) {
+    // quick and dirty C header file parser
+    let mut result = String::new();
+    let mut entries = vec![];
+    for line in source.lines() {
+        let line = line.trim();
+        if line.starts_with("//") || line.starts_with("/*") {
+            continue;
+        }
+        if !line.starts_with("#define") {
+            continue;
+        }
+        let parts = line.split_whitespace().collect::<Vec<_>>();
+        if parts.len() != 3 {
+            continue;
+        }
+        let name = snake_case(parts[1]).to_uppercase();
+        let value = parts[2];
+        if let Some(value) = value.strip_prefix("0x") {
+            if let Ok(value32) = u32::from_str_radix(value, 16) {
+                entries.push((name.clone(), value32));
+                result += &format!("pub const {}: u32 = {};\n", name, hex_const(value32.into()));
+            }
+        } else if let Ok(value32) = value.parse::<u32>() {
+            entries.push((name.clone(), value32));
+            result += &format!("pub const {}: u32 = {};\n", name, value32);
+        }
+    }
+    (result, entries)
 }
 
 /// Run a command and return its stdout as a string.
