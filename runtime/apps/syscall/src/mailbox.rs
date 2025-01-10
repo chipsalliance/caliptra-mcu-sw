@@ -15,6 +15,12 @@ pub struct Mailbox<S: Syscalls> {
     driver_num: u32,
 }
 
+impl<S: Syscalls> Default for Mailbox<S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<S: Syscalls> Mailbox<S> {
     pub fn new() -> Self {
         Self {

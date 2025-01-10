@@ -37,11 +37,17 @@ pub enum DMASource<'a> {
     Buffer(&'a [u8]),
 }
 
+impl<S: Syscalls> Default for DMA<S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<S: Syscalls> DMA<S> {
     pub fn new() -> Self {
         Self {
             syscall: PhantomData,
-            driver_num: DMA_DRIVER_NUM
+            driver_num: DMA_DRIVER_NUM,
         }
     }
 
