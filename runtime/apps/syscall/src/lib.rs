@@ -3,5 +3,6 @@
 #![no_std]
 
 pub mod dma;
+pub mod flash;
 pub mod mailbox;
 pub mod mctp;

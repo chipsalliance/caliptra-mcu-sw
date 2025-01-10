@@ -130,11 +130,6 @@ pub(crate) fn test_flash_storage_erase() -> Option<u32> {
 
         // Start writing data to the entire test range [0..TEST_BUF_LEN)
         let write_in_buf = test_cb.write_in_buf.take().unwrap();
-        // Debug prints the buffer of write_in_buf
-        for i in 0..16 {
-            println!("[xs debug]write in buf contents: {:02X}", write_in_buf[i]);
-        }
-
         assert!(flash_storage_drv
             .write(write_in_buf, 0, TEST_BUF_LEN)
             .is_ok());
