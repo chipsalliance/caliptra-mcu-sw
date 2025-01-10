@@ -38,10 +38,10 @@ pub enum DMASource<'a> {
 }
 
 impl<S: Syscalls> DMA<S> {
-    pub fn new(driver_num: u32) -> Self {
+    pub fn new() -> Self {
         Self {
             syscall: PhantomData,
-            driver_num,
+            driver_num: DMA_DRIVER_NUM
         }
     }
 

@@ -16,10 +16,10 @@ pub struct Mailbox<S: Syscalls> {
 }
 
 impl<S: Syscalls> Mailbox<S> {
-    pub fn new(driver_num: u32) -> Self {
+    pub fn new() -> Self {
         Self {
             syscall: PhantomData,
-            driver_num,
+            driver_num: MAILBOX_DRIVER_NUM,
         }
     }
 
@@ -71,7 +71,7 @@ impl<S: Syscalls> Mailbox<S> {
 // -----------------------------------------------------------------------------
 
 // Driver number for the Mailbox interface
-pub const DMA_DRIVER_NUM: u32 = 0x8000_0009;
+pub const MAILBOX_DRIVER_NUM: u32 = 0x8000_0009;
 
 /// Command IDs for mailbox operations.
 mod mailbox_cmd {
