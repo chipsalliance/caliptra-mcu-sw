@@ -8,14 +8,20 @@ use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
-use registers_generated::flash_ctrl::{
+use registers_generated::main_flash_ctrl::{
     bits::{CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus},
-    regs::FlashCtrl,
-    FLASH_CTRL_ADDR,
+    regs::MainFlashCtrl,
+    MAIN_FLASH_CTRL_ADDR,
 };
+use registers_generated::recovery_flash_ctrl::RECOVERY_FLASH_CTRL_ADDR;
 
-pub const FLASH_CTRL_BASE: StaticRef<FlashCtrl> =
-    unsafe { StaticRef::new(FLASH_CTRL_ADDR as *const FlashCtrl) };
+// The recovery flash controller is identical to the main flash controller in the emulator.
+// Both controllers use the same register structures, differing only in their base addresses.
+// Therefore, we can use MainFlashCtrl to represent both flash controllers.
+pub const MAIN_FLASH_CTRL_BASE: StaticRef<MainFlashCtrl> =
+    unsafe { StaticRef::new(MAIN_FLASH_CTRL_ADDR as *const MainFlashCtrl) };
+pub const RECOVERY_FLASH_CTRL_BASE: StaticRef<MainFlashCtrl> =
+    unsafe { StaticRef::new(RECOVERY_FLASH_CTRL_ADDR as *const MainFlashCtrl) };
 
 pub const PAGE_SIZE: usize = 256;
 pub const FLASH_MAX_PAGES: usize = 64 * 1024 * 1024 / PAGE_SIZE;
@@ -70,14 +76,14 @@ impl AsMut<[u8]> for EmulatedFlashPage {
 }
 
 pub struct EmulatedFlashCtrl<'a> {
-    registers: StaticRef<FlashCtrl>,
+    registers: StaticRef<MainFlashCtrl>,
     flash_client: OptionalCell<&'a dyn hil::flash::Client<EmulatedFlashCtrl<'a>>>,
     read_buf: TakeCell<'static, EmulatedFlashPage>,
     write_buf: TakeCell<'static, EmulatedFlashPage>,
 }
 
 impl<'a> EmulatedFlashCtrl<'a> {
-    pub fn new(base: StaticRef<FlashCtrl>) -> EmulatedFlashCtrl<'a> {
+    pub fn new(base: StaticRef<MainFlashCtrl>) -> EmulatedFlashCtrl<'a> {
         EmulatedFlashCtrl {
             registers: base,
             flash_client: OptionalCell::empty(),

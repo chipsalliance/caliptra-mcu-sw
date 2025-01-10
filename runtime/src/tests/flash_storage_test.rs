@@ -75,8 +75,19 @@ impl flash_driver::hil::FlashStorageClient for FlashStorageTestCallBack {
     }
 }
 
-macro_rules! static_init_fs_test_cb {
-    ($buf_len:expr) => {{
+macro_rules! static_init_fs_test {
+    ($flash_ctrl:expr, $buf_len:expr) => {{
+        let fs_drv = static_init!(
+            FlashStorageToPages<flash_ctrl::EmulatedFlashCtrl>,
+            FlashStorageToPages::new(
+                $flash_ctrl,
+                static_init!(
+                    flash_ctrl::EmulatedFlashPage,
+                    flash_ctrl::EmulatedFlashPage::default()
+                )
+            )
+        );
+
         let read_in_buf = static_buf!([u8; $buf_len]).write([0u8; $buf_len]) as &'static mut [u8];
         let write_in_buf =
             static_buf!([u8; $buf_len]).write([0u8; $buf_len]) as &'static mut [u8];
@@ -87,33 +98,18 @@ macro_rules! static_init_fs_test_cb {
             write_in_buf[i] = val;
         }
 
-        static_init!(
+        let test_cb = static_init!(
             FlashStorageTestCallBack,
             FlashStorageTestCallBack::new(read_in_buf, write_in_buf)
-        )
+        );
+        (fs_drv, test_cb)
     }};
 }
 
-pub(crate) fn test_flash_storage_erase() -> Option<u32> {
-    println!("Starting flash storage erase test");
-    let chip = unsafe { crate::CHIP.unwrap() };
-    let flash_ctrl = &chip.peripherals.flash_ctrl;
-    let flash_storage_drv = unsafe {
-        static_init!(
-            FlashStorageToPages<flash_ctrl::EmulatedFlashCtrl>,
-            FlashStorageToPages::new(
-                flash_ctrl,
-                static_init!(
-                    flash_ctrl::EmulatedFlashPage,
-                    flash_ctrl::EmulatedFlashPage::default()
-                )
-            )
-        )
-    };
-    // Flash storage logical driver is the client of phyiscal flash ctrl driver
-    flash_ctrl.set_client(flash_storage_drv);
-    let test_cb = unsafe { static_init_fs_test_cb!(TEST_BUF_LEN) };
-    // Test callback is the client of flash storage driver
+fn test_single_flash_storage_erase(
+    flash_storage_drv: &'static FlashStorageToPages<flash_ctrl::EmulatedFlashCtrl>,
+    test_cb: &'static FlashStorageTestCallBack,
+) {
     flash_storage_drv.set_client(test_cb);
 
     {
@@ -179,29 +175,31 @@ pub(crate) fn test_flash_storage_erase() -> Option<u32> {
             }
         }
     }
+}
+
+pub fn test_flash_storage_erase() -> Option<u32> {
+    let chip = unsafe { crate::CHIP.unwrap() };
+    println!("Starting flash storage erase test on main flash controller");
+    let main_flash_ctrl = &chip.peripherals.main_flash_ctrl;
+    let (fs_drv_main, test_cb_main) =
+        unsafe { static_init_fs_test!(main_flash_ctrl, TEST_BUF_LEN) };
+    main_flash_ctrl.set_client(fs_drv_main);
+    test_single_flash_storage_erase(fs_drv_main, test_cb_main);
+
+    println!("Starting flash storage erase test on recovery flash controller");
+    let recovery_flash_ctrl = &chip.peripherals.recovery_flash_ctrl;
+    let (fs_drv_recovery, test_cb_recovery) =
+        unsafe { static_init_fs_test!(recovery_flash_ctrl, TEST_BUF_LEN) };
+    recovery_flash_ctrl.set_client(fs_drv_recovery);
+    test_single_flash_storage_erase(fs_drv_recovery, test_cb_recovery);
+
     Some(0)
 }
 
-pub(crate) fn test_flash_storage_read_write() -> Option<u32> {
-    println!("Starting flash storage read write test");
-    let chip = unsafe { crate::CHIP.unwrap() };
-    let flash_ctrl = &chip.peripherals.flash_ctrl;
-    let flash_storage_drv = unsafe {
-        static_init!(
-            FlashStorageToPages<flash_ctrl::EmulatedFlashCtrl>,
-            FlashStorageToPages::new(
-                flash_ctrl,
-                static_init!(
-                    flash_ctrl::EmulatedFlashPage,
-                    flash_ctrl::EmulatedFlashPage::default()
-                )
-            )
-        )
-    };
-    // Flash storage logical driver is the client of phyiscal flash ctrl driver
-    flash_ctrl.set_client(flash_storage_drv);
-    let test_cb = unsafe { static_init_fs_test_cb!(TEST_BUF_LEN) };
-    // Test callback is the client of flash storage driver
+fn test_single_flash_storage_read_write(
+    flash_storage_drv: &'static FlashStorageToPages<flash_ctrl::EmulatedFlashCtrl>,
+    test_cb: &'static FlashStorageTestCallBack,
+) {
     flash_storage_drv.set_client(test_cb);
 
     {
@@ -263,5 +261,23 @@ pub(crate) fn test_flash_storage_read_write() -> Option<u32> {
             );
         }
     }
+}
+
+pub(crate) fn test_flash_storage_read_write() -> Option<u32> {
+    let chip = unsafe { crate::CHIP.unwrap() };
+    println!("Starting flash storage read write test on main flash controller");
+    let main_flash_ctrl = &chip.peripherals.main_flash_ctrl;
+    let (fs_drv_main, test_cb_main) =
+        unsafe { static_init_fs_test!(main_flash_ctrl, TEST_BUF_LEN) };
+    main_flash_ctrl.set_client(fs_drv_main);
+    test_single_flash_storage_read_write(fs_drv_main, test_cb_main);
+
+    println!("Starting flash storage read write test on recovery flash controller");
+    let recovery_flash_ctrl = &chip.peripherals.recovery_flash_ctrl;
+    let (fs_drv_recovery, test_cb_recovery) =
+        unsafe { static_init_fs_test!(recovery_flash_ctrl, TEST_BUF_LEN) };
+    recovery_flash_ctrl.set_client(fs_drv_recovery);
+    test_single_flash_storage_read_write(fs_drv_recovery, test_cb_recovery);
+
     Some(0)
 }

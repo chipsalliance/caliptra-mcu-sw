@@ -4,10 +4,11 @@
 //
 pub mod el2_pic;
 pub mod entropy_src;
-pub mod flash;
 pub mod i3c;
+pub mod main_flash;
 pub mod mbox;
 pub mod otp;
+pub mod recovery_flash;
 pub mod root_bus;
 pub mod sha512_acc;
 pub mod soc;

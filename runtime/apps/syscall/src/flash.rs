@@ -229,8 +229,9 @@ impl<S: Syscalls> SpiFlash<S> {
 // -----------------------------------------------------------------------------
 
 pub mod driver_num {
-    pub const IMAGE_PARTITION: u32 = 0x8000_0006;
+    pub const ACTIVE_IMAGE_PARTITION: u32 = 0x8000_0006;
     pub const STAGING_PARTITION: u32 = 0x8000_0007;
+    pub const RECOVERY_IMAGE_PARTITION: u32 = 0x8000_0008;
 }
 
 mod subscribe {
