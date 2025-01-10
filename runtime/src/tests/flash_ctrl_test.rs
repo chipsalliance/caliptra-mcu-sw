@@ -21,7 +21,8 @@ use romtime::println;
 pub(crate) fn test_flash_ctrl_init() -> Option<u32> {
     // Safety: this is run after the board has initialized the chip.
     let chip = unsafe { crate::CHIP.unwrap() };
-    chip.peripherals.flash_ctrl.init();
+    chip.peripherals.main_flash_ctrl.init();
+    chip.peripherals.recovery_flash_ctrl.init();
     Some(0)
 }
 
@@ -131,7 +132,7 @@ macro_rules! static_init_test {
 pub fn test_flash_ctrl_erase_page() -> Option<u32> {
     println!("Starting flash controller erase page test");
     let chip = unsafe { crate::CHIP.unwrap() };
-    let flash_ctrl = &chip.peripherals.flash_ctrl;
+    let flash_ctrl = &chip.peripherals.main_flash_ctrl;
     let test_cb = unsafe { static_init_test!() };
 
     // Set up the client
@@ -175,7 +176,7 @@ pub fn test_flash_ctrl_erase_page() -> Option<u32> {
 pub(crate) fn test_flash_ctrl_read_write_page() -> Option<u32> {
     println!("Starting flash controller read write page test");
     let chip = unsafe { crate::CHIP.unwrap() };
-    let flash_ctrl = &chip.peripherals.flash_ctrl;
+    let flash_ctrl = &chip.peripherals.main_flash_ctrl;
     let test_cb = unsafe { static_init_test!() };
 
     // Set up the client

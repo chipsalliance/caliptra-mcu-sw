@@ -6,10 +6,11 @@
 #![no_std]
 pub mod el2_pic_ctrl;
 pub mod entropy_src;
-pub mod flash_ctrl;
 pub mod fuses;
 pub mod i3c;
+pub mod main_flash_ctrl;
 pub mod mbox;
 pub mod otp_ctrl;
+pub mod recovery_flash_ctrl;
 pub mod sha512_acc;
 pub mod soc;

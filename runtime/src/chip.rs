@@ -31,8 +31,10 @@ pub static mut TIMERS: InternalTimers<'static> = InternalTimers::new();
 pub const UART_IRQ: u8 = 0x10;
 pub const I3C_ERROR_IRQ: u8 = 0x11;
 pub const I3C_NOTIF_IRQ: u8 = 0x12;
-pub const FLASH_CTRL_ERROR_IRQ: u8 = 0x13;
-pub const FLASH_CTRL_EVENT_IRQ: u8 = 0x14;
+pub const MAIN_FLASH_CTRL_ERROR_IRQ: u8 = 0x13;
+pub const MAIN_FLASH_CTRL_EVENT_IRQ: u8 = 0x14;
+pub const RECOVERY_FLASH_CTRL_EVENT_IRQ: u8 = 0x15;
+pub const RECOVERY_FLASH_CTRL_ERROR_IRQ: u8 = 0x16;
 
 pub struct VeeR<'a, I: InterruptService + 'a> {
     userspace_kernel_boundary: SysCall,
@@ -45,7 +47,8 @@ pub struct VeeR<'a, I: InterruptService + 'a> {
 pub struct VeeRDefaultPeripherals<'a> {
     pub uart: SemihostUart<'a>,
     pub i3c: i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
-    pub flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
+    pub main_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
+    pub recovery_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
 }
 
 impl<'a> VeeRDefaultPeripherals<'a> {
@@ -53,8 +56,11 @@ impl<'a> VeeRDefaultPeripherals<'a> {
         Self {
             uart: SemihostUart::new(alarm),
             i3c: i3c_driver::core::I3CCore::new(i3c_driver::core::I3C_BASE, alarm),
-            flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
-                flash_driver::flash_ctrl::FLASH_CTRL_BASE,
+            main_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
+                flash_driver::flash_ctrl::MAIN_FLASH_CTRL_BASE,
+            ),
+            recovery_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
+                flash_driver::flash_ctrl::RECOVERY_FLASH_CTRL_BASE,
             ),
         }
     }
@@ -62,7 +68,8 @@ impl<'a> VeeRDefaultPeripherals<'a> {
     pub fn init(&'static self) {
         kernel::deferred_call::DeferredCallClient::register(&self.uart);
         self.i3c.init();
-        self.flash_ctrl.init();
+        self.main_flash_ctrl.init();
+        self.recovery_flash_ctrl.init();
     }
 }
 
@@ -77,10 +84,15 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
         } else if interrupt == I3C_NOTIF_IRQ as u32 {
             self.i3c.handle_notification_interrupt();
             return true;
-        } else if interrupt == FLASH_CTRL_ERROR_IRQ as u32
-            || interrupt == FLASH_CTRL_EVENT_IRQ as u32
+        } else if interrupt == MAIN_FLASH_CTRL_ERROR_IRQ as u32
+            || interrupt == MAIN_FLASH_CTRL_EVENT_IRQ as u32
         {
-            self.flash_ctrl.handle_interrupt();
+            self.main_flash_ctrl.handle_interrupt();
+            return true;
+        } else if interrupt == RECOVERY_FLASH_CTRL_ERROR_IRQ as u32
+            || interrupt == RECOVERY_FLASH_CTRL_EVENT_IRQ as u32
+        {
+            self.recovery_flash_ctrl.handle_interrupt();
             return true;
         }
         debug!("Unhandled interrupt {}", interrupt);

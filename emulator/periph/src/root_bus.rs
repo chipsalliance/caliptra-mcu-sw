@@ -61,8 +61,10 @@ impl CaliptraRootBus {
     pub const UART_NOTIF_IRQ: u8 = 16;
     pub const I3C_ERROR_IRQ: u8 = 17;
     pub const I3C_NOTIF_IRQ: u8 = 18;
-    pub const FLASH_CTRL_ERROR_IRQ: u8 = 19;
-    pub const FLASH_CTRL_EVENT_IRQ: u8 = 20;
+    pub const MAIN_FLASH_CTRL_ERROR_IRQ: u8 = 19;
+    pub const MAIN_FLASH_CTRL_EVENT_IRQ: u8 = 20;
+    pub const RECOVERY_FLASH_CTRL_ERROR_IRQ: u8 = 21;
+    pub const RECOVERY_FLASH_CTRL_EVENT_IRQ: u8 = 22;
 
     pub fn new(mut args: CaliptraRootBusArgs) -> Result<Self, std::io::Error> {
         let clock = args.clock;

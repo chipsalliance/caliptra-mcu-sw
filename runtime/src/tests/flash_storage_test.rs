@@ -97,7 +97,7 @@ macro_rules! static_init_fs_test_cb {
 pub(crate) fn test_flash_storage_erase() -> Option<u32> {
     println!("Starting flash storage erase test");
     let chip = unsafe { crate::CHIP.unwrap() };
-    let flash_ctrl = &chip.peripherals.flash_ctrl;
+    let flash_ctrl = &chip.peripherals.main_flash_ctrl;
     let flash_storage_drv = unsafe {
         static_init!(
             FlashStorageToPages<flash_ctrl::EmulatedFlashCtrl>,
@@ -185,7 +185,7 @@ pub(crate) fn test_flash_storage_erase() -> Option<u32> {
 pub(crate) fn test_flash_storage_read_write() -> Option<u32> {
     println!("Starting flash storage read write test");
     let chip = unsafe { crate::CHIP.unwrap() };
-    let flash_ctrl = &chip.peripherals.flash_ctrl;
+    let flash_ctrl = &chip.peripherals.main_flash_ctrl;
     let flash_storage_drv = unsafe {
         static_init!(
             FlashStorageToPages<flash_ctrl::EmulatedFlashCtrl>,
