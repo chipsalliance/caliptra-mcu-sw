@@ -1,0 +1,12 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "libsyscall-caliptra"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+libtock_console.workspace = true
+libtock_platform.workspace = true
+libtockasync.workspace = true
