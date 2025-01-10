@@ -51,20 +51,20 @@ impl Soc {
         self.registers.fuse_key_manifest_pk_hash_mask.write(
             soc::bits::FuseKeyManifestPkHashMask::Mask.val(fuses.key_manifest_pk_hash_mask()),
         );
-        for i in 0..12 {
+        for i in 0..self.registers.fuse_owner_pk_hash.len() {
             self.registers.fuse_owner_pk_hash[i].set(fuses.owner_pk_hash()[i]);
         }
-        for i in 0..4 {
+        for i in 0..self.registers.fuse_runtime_svn.len() {
             self.registers.fuse_runtime_svn[i].set(fuses.runtime_svn()[i]);
         }
         // TODO
         // self.registers
         //     .fuse_anti_rollback_disable
         //     .set(fuses.anti_rollback_disable());
-        for i in 0..24 {
+        for i in 0..self.registers.fuse_idevid_cert_attr.len() {
             self.registers.fuse_idevid_cert_attr[i].set(fuses.idevid_cert_attr()[i]);
         }
-        for i in 0..4 {
+        for i in 0..self.registers.fuse_idevid_manuf_hsm_id.len() {
             self.registers.fuse_idevid_manuf_hsm_id[i].set(fuses.idevid_manuf_hsm_id()[i]);
         }
         // TODO: read the lifecycle partition from the lifecycle controller
@@ -97,8 +97,13 @@ pub extern "C" fn rom_entry() -> ! {
     romtime::println!("Hello from ROM");
 
     let otp = Otp::new(OTP_BASE);
-    otp.init();
-    let fuses = otp.read_fuses();
+    if let Err(err) = otp.init() {
+        panic!("Error initializing OTP: {:x}", err as u32);
+    }
+    let fuses = match otp.read_fuses() {
+        Ok(fuses) => fuses,
+        Err(e) => panic!("Error reading fuses: {:x}", e as u32),
+    };
 
     let soc = Soc::new(SOC_BASE);
     let flow_status = soc.flow_status();

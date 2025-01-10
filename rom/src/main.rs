@@ -15,6 +15,7 @@ Abstract:
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![no_main]
 
+mod error;
 #[cfg(target_arch = "riscv32")]
 mod fuses;
 #[cfg(target_arch = "riscv32")]
