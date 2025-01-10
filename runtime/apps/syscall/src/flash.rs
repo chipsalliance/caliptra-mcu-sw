@@ -166,14 +166,12 @@ impl<S: Syscalls> SpiFlash<S> {
         Ok(())
     }
 
-    /// Writes an arbitrary number of bytes to the flash memory.
-    ///
-    /// This method writes the bytes from the provided `buf` to the flash memory starting at the
-    /// specified `address`.
+    /// Writes an arbitrary number of bytes to the flash memory in an asynchronous manner.
     ///
     /// # Arguments
     ///
     /// * `address` - The starting address to write to.
+    /// * `len` - The number of bytes to write.
     /// * `buf` - The buffer containing the bytes to write.
     ///
     /// # Returns

@@ -1089,6 +1089,7 @@ dependencies = [
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
+ "libsyscall-caliptra",
  "libtock",
  "libtock_alarm",
  "libtock_caliptra",

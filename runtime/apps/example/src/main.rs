@@ -6,9 +6,9 @@
 #![allow(static_mut_refs)]
 
 use core::fmt::Write;
-use libtock::alarm::*;
 #[cfg(feature = "test-flash-usermode")]
-use libtock_caliptra::flash::{driver_num as par_driver_num, FlashCapacity, SpiFlash};
+use libsyscall_caliptra::flash::{driver_num as par_driver_num, FlashCapacity, SpiFlash};
+use libtock::alarm::*;
 use libtock_caliptra::mctp::{driver_num, Mctp};
 use libtock_console::Console;
 use libtock_platform::{self as platform};

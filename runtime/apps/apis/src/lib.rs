@@ -2,5 +2,4 @@
 
 #![no_std]
 
-pub mod flash;
 pub mod mctp;
