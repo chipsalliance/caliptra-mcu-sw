@@ -114,6 +114,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
         };
         flash_test::simple_test::<S>(&mut test_cfg).await;
         writeln!(console_writer, "flash usermode test succeeds").unwrap();
+
+        // Terminate the emulator explicitly after the test is completed within app.
+        unsafe {
+            // By writing to this address we can exit the emulator.
+            core::ptr::write_volatile(0x1000_2000 as *mut u32, 0);
+        }
     }
 
     writeln!(console_writer, "app finished").unwrap();
