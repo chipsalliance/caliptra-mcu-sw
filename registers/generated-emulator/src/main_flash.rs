@@ -4,7 +4,7 @@
 //
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
-pub trait FlashPeripheral {
+pub trait MainFlashPeripheral {
     fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {}
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
@@ -14,7 +14,7 @@ pub trait FlashPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::flash_ctrl::bits::FlInterruptState::Register,
+        registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -23,7 +23,7 @@ pub trait FlashPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::flash_ctrl::bits::FlInterruptState::Register,
+            registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
     }
@@ -32,7 +32,7 @@ pub trait FlashPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::flash_ctrl::bits::FlInterruptEnable::Register,
+        registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -41,7 +41,7 @@ pub trait FlashPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::flash_ctrl::bits::FlInterruptEnable::Register,
+            registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
     }
@@ -62,7 +62,7 @@ pub trait FlashPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::flash_ctrl::bits::FlControl::Register,
+        registers_generated::main_flash_ctrl::bits::FlControl::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -71,7 +71,7 @@ pub trait FlashPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::flash_ctrl::bits::FlControl::Register,
+            registers_generated::main_flash_ctrl::bits::FlControl::Register,
         >,
     ) {
     }
@@ -80,7 +80,7 @@ pub trait FlashPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::flash_ctrl::bits::OpStatus::Register,
+        registers_generated::main_flash_ctrl::bits::OpStatus::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
@@ -89,7 +89,7 @@ pub trait FlashPeripheral {
         _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::flash_ctrl::bits::OpStatus::Register,
+            registers_generated::main_flash_ctrl::bits::OpStatus::Register,
         >,
     ) {
     }
@@ -98,15 +98,15 @@ pub trait FlashPeripheral {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::flash_ctrl::bits::CtrlRegwen::Register,
+        registers_generated::main_flash_ctrl::bits::CtrlRegwen::Register,
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
 }
-pub struct FlashBus {
-    pub periph: Box<dyn FlashPeripheral>,
+pub struct MainFlashBus {
+    pub periph: Box<dyn MainFlashPeripheral>,
 }
-impl emulator_bus::Bus for FlashBus {
+impl emulator_bus::Bus for MainFlashBus {
     fn read(
         &mut self,
         size: emulator_types::RvSize,

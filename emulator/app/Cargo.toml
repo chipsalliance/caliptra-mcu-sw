@@ -30,16 +30,18 @@ strum_macros.workspace = true
 strum.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
+tempfile.workspace = true
 
 [features]
 default = []
 test-i3c-simple = []
 test-i3c-constant-writes = ["emulator-periph/test-i3c-constant-writes"]
-test-flash-ctrl-init = []
-test-flash-ctrl-read-write-page = []
-test-flash-ctrl-erase-page = []
-test-flash-storage-read-write = []
-test-flash-storage-erase = []
+test-flash-ctrl-init = ["emulator-periph/test-flash-ctrl-init"]
+test-flash-ctrl-read-write-page = ["emulator-periph/test-flash-ctrl-read-write-page"]
+test-flash-ctrl-erase-page = ["emulator-periph/test-flash-ctrl-erase-page"]
+test-flash-storage-read-write = ["emulator-periph/test-flash-storage-read-write"]
+test-flash-storage-erase = ["emulator-periph/test-flash-storage-erase"]
 test-mctp-ctrl-cmds = ["emulator-periph/test-mctp-ctrl-cmds"]
 test-mctp-capsule-loopback = ["emulator-periph/test-mctp-capsule-loopback"]
 test-mctp-user-loopback = ["emulator-periph/test-mctp-user-loopback"]
+test-flash-usermode = ["emulator-periph/test-flash-usermode"]

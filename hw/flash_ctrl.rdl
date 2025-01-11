@@ -1,5 +1,5 @@
 addrmap flash_ctrl {
-      reg {
+    reg {
         field {
             sw = rw;
             onwrite = woclr;

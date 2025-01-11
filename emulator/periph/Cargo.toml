@@ -22,13 +22,18 @@ serde.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [features]
 default = []
 test-i3c-constant-writes = []
+test-flash-ctrl-init = []
 test-flash-ctrl-read-write-page = []
 test-flash-ctrl-erase-page = []
 test-flash-storage-read-write = []
 test-flash-storage-erase = []
+test-flash-usermode = []
 test-mctp-ctrl-cmds = []
 test-mctp-capsule-loopback = []
 test-mctp-user-loopback = []
