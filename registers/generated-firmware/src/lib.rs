@@ -4,6 +4,7 @@
 //
 #![recursion_limit = "256"]
 #![no_std]
+pub mod defines;
 pub mod el2_pic_ctrl;
 pub mod entropy_src;
 pub mod fuses;

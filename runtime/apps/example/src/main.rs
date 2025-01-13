@@ -8,8 +8,8 @@
 use core::fmt::Write;
 #[cfg(feature = "test-flash-usermode")]
 use libsyscall_caliptra::flash::{driver_num as par_driver_num, FlashCapacity, SpiFlash};
+use libsyscall_caliptra::mctp::{driver_num, Mctp};
 use libtock::alarm::*;
-use libtock_caliptra::mctp::{driver_num, Mctp};
 use libtock_console::Console;
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
