@@ -9,7 +9,6 @@ use core::fmt::Write;
 #[cfg(feature = "test-flash-usermode")]
 use libsyscall_caliptra::flash::{driver_num as par_driver_num, FlashCapacity, SpiFlash};
 use libtock::alarm::*;
-use libtock_caliptra::mctp::{driver_num, Mctp};
 use libtock_console::Console;
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
@@ -78,7 +77,8 @@ pub(crate) async fn async_main<S: Syscalls>() {
         writeln!(console_writer, "async sleeper woke").unwrap();
     }
 
-    if cfg!(feature = "test-mctp-user-loopback") {
+    #[cfg(feature = "test-mctp-user-loopback")]
+    {
         writeln!(
             console_writer,
             "Running test-mctp-user-loopback test for SPDM msg type"
@@ -136,11 +136,19 @@ pub(crate) async fn async_main<S: Syscalls>() {
             "flash usermode test on recovery image par succeeds"
         )
         .unwrap();
+
+        // Terminate the emulator explicitly after the test is completed within app.
+        unsafe {
+            // By writing to this address we can exit the emulator.
+            core::ptr::write_volatile(0x1000_2000 as *mut u32, 0);
+        }
     }
     writeln!(console_writer, "app finished").unwrap();
 }
 
+#[allow(dead_code)]
 async fn test_mctp_loopback<S: Syscalls>() {
+    use libsyscall_caliptra::mctp::{driver_num, Mctp};
     let mctp_spdm = Mctp::<S>::new(driver_num::MCTP_SPDM);
     loop {
         let mut msg_buffer: [u8; 1024] = [0; 1024];

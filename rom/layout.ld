@@ -19,7 +19,7 @@ OUTPUT_ARCH( "riscv" )
 MEMORY
 {
   ROM   (rx) : ORIGIN = 0x00000000, LENGTH = 48K
-  RAM  (rwx) : ORIGIN = 0x40050000, LENGTH = 64K /* only use the last 64 KB of RAM so we don't accidentally overwrite the runtime */
+  RAM  (rwx) : ORIGIN = 0x50000000, LENGTH = 16K /* dedicated SRAM for the ROM stack */
 }
 
 SECTIONS
@@ -69,6 +69,6 @@ BSS_END = BSS_START + SIZEOF(.bss);
 DATA_START = ADDR(.data);
 DATA_END = DATA_START + SIZEOF(.data);
 ROM_DATA_START = LOADADDR(.data);
-STACK_SIZE = 0x1000;
+STACK_SIZE = 0x3000;
 STACK_TOP = ORIGIN(RAM) + LENGTH(RAM);
 STACK_ORIGIN = STACK_TOP - STACK_SIZE;
