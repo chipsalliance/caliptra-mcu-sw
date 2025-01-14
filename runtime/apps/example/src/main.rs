@@ -77,7 +77,8 @@ pub(crate) async fn async_main<S: Syscalls>() {
         writeln!(console_writer, "async sleeper woke").unwrap();
     }
 
-    if cfg!(feature = "test-mctp-user-loopback") {
+    #[cfg(feature = "test-mctp-user-loopback")]
+    {
         writeln!(
             console_writer,
             "Running test-mctp-user-loopback test for SPDM msg type"
@@ -118,6 +119,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
     writeln!(console_writer, "app finished").unwrap();
 }
 
+#[allow(dead_code)]
 async fn test_mctp_loopback<S: Syscalls>() {
     use libsyscall_caliptra::mctp::{driver_num, Mctp};
     let mctp_spdm = Mctp::<S>::new(driver_num::MCTP_SPDM);
