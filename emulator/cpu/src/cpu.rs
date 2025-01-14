@@ -596,8 +596,7 @@ impl<TBus: Bus> Cpu<TBus> {
         fired_action_types.sort_by_key(|a| -a.priority());
         let mut step_action = None;
         let mut saved = vec![];
-        while !fired_action_types.is_empty() {
-            let action_type = fired_action_types.pop().unwrap();
+        while let Some(action_type) = fired_action_types.pop() {
             let mut save = false;
             match action_type {
                 TimerAction::WarmReset => {
