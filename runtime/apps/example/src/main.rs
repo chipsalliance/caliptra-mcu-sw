@@ -8,7 +8,6 @@
 use core::fmt::Write;
 #[cfg(feature = "test-flash-usermode")]
 use libsyscall_caliptra::flash::{driver_num as par_driver_num, FlashCapacity, SpiFlash};
-use libsyscall_caliptra::mctp::{driver_num, Mctp};
 use libtock::alarm::*;
 use libtock_console::Console;
 use libtock_platform::{self as platform};
@@ -120,6 +119,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
 }
 
 async fn test_mctp_loopback<S: Syscalls>() {
+    use libsyscall_caliptra::mctp::{driver_num, Mctp};
     let mctp_spdm = Mctp::<S>::new(driver_num::MCTP_SPDM);
     loop {
         let mut msg_buffer: [u8; 1024] = [0; 1024];
