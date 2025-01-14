@@ -166,6 +166,11 @@ pub struct Cpu<TBus: Bus> {
     pub(crate) watch_ptr_cfg: WatchPtrCfg,
 
     pub code_coverage: CodeCoverage,
+
+    #[cfg(test)]
+    internal_timer_local_int_counter: usize,
+    #[cfg(test)]
+    external_int_counter: usize,
 }
 
 /// Cpu instruction step action
@@ -206,6 +211,10 @@ impl<TBus: Bus> Cpu<TBus> {
             // TODO: Pass in code_coverage from the outside (as caliptra-emu-cpu
             // isn't supposed to know anything about the caliptra memory map)
             code_coverage: CodeCoverage::new(ROM_SIZE, ICCM_SIZE),
+            #[cfg(test)]
+            internal_timer_local_int_counter: 0,
+            #[cfg(test)]
+            external_int_counter: 0,
         }
     }
 
@@ -664,6 +673,10 @@ impl<TBus: Bus> Cpu<TBus> {
     }
 
     fn handle_internal_timer_local_interrupt(&mut self, timer_id: u8) -> StepAction {
+        #[cfg(test)]
+        {
+            self.internal_timer_local_int_counter += 1;
+        }
         let mcause = 0x8000_001D - (timer_id as u32);
         match self.handle_trap(
             self.read_pc(),
@@ -748,6 +761,10 @@ impl<TBus: Bus> Cpu<TBus> {
 
     //// Handle external interrupts
     fn handle_external_int(&mut self, irq: u8) -> StepAction {
+        #[cfg(test)]
+        {
+            self.external_int_counter += 1;
+        }
         const REDIRECT_ENTRY_SIZE: u32 = 4;
         const MAX_IRQ: u32 = 32;
 
@@ -1735,5 +1752,64 @@ mod tests {
 
         // Check for expected values
         assert_eq!(count_executed(&coverage), 8);
+    }
+
+    #[test]
+    fn test_multiple_events_not_lost() {
+        const RV32_NO_OP: u32 = 0x00000013;
+
+        let clock = Rc::new(Clock::new());
+        let timer = Timer::new(&clock);
+        let mut bus = DynamicBus::new();
+
+        let rom = Rom::new(
+            std::iter::repeat(RV32_NO_OP)
+                .take(256)
+                .flat_map(u32::to_le_bytes)
+                .collect(),
+        );
+        bus.attach_dev("ROM", 0..=0x3ff, Box::new(rom)).unwrap();
+
+        let mut action0 = Some(timer.schedule_poll_in(31));
+        timer.schedule_action_in(31, TimerAction::InternalTimerLocalInterrupt { timer_id: 0 });
+        timer.schedule_action_in(
+            31,
+            TimerAction::ExtInt {
+                irq: 1,
+                can_wake: true,
+            },
+        );
+
+        let pic = Rc::new(Pic::new());
+        let mut cpu = Cpu::new(bus, clock.clone(), pic);
+        cpu.global_int_en = true;
+        cpu.ext_int_en = true;
+
+        for i in 0..30 {
+            assert_eq!(cpu.clock.now(), i);
+            assert_eq!(cpu.step(None), StepAction::Continue);
+        }
+        assert!(!timer.fired(&mut action0));
+
+        assert_eq!(cpu.internal_timer_local_int_counter, 0);
+        assert_eq!(cpu.external_int_counter, 0);
+
+        assert_eq!(cpu.step(None), StepAction::Continue);
+
+        assert!(timer.fired(&mut action0));
+        // the external interrupt should be handled first
+        assert_eq!(cpu.internal_timer_local_int_counter, 0);
+        assert_eq!(cpu.external_int_counter, 1);
+
+        // this will trigger a disabling of the global interrupt enable, which takes priority
+        assert_eq!(cpu.step(None), StepAction::Continue);
+
+        // re-allow global interrupts
+        cpu.global_int_en = true;
+        assert_eq!(cpu.step(None), StepAction::Continue);
+
+        // now the timer interrupt should be processed
+        assert_eq!(cpu.internal_timer_local_int_counter, 1);
+        assert_eq!(cpu.external_int_counter, 1);
     }
 }
