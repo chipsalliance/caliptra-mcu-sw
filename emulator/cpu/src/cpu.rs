@@ -20,6 +20,7 @@ use crate::Pic;
 use bit_vec::BitVec;
 use emulator_bus::{Bus, BusError, Clock, TimerAction};
 use emulator_types::{RvAddr, RvData, RvException, RvExceptionCause, RvSize, RAM_OFFSET, RAM_SIZE};
+use std::collections::VecDeque;
 use std::rc::Rc;
 
 pub type InstrTracer<'a> = dyn FnMut(u32, RvInstr) + 'a;
@@ -585,7 +586,13 @@ impl<TBus: Bus> Cpu<TBus> {
             .into_iter()
             .collect();
         fired_action_types.sort_by_key(|a| a.priority());
-        for action_type in fired_action_types.iter() {
+        let mut fired_action_types: VecDeque<TimerAction> =
+            fired_action_types.into_iter().collect();
+        let mut step_action = None;
+        let mut saved = vec![];
+        while !fired_action_types.is_empty() {
+            let action_type = fired_action_types.pop_front().unwrap();
+            let mut save = false;
             match action_type {
                 TimerAction::WarmReset => {
                     self.do_reset();
@@ -597,26 +604,49 @@ impl<TBus: Bus> Cpu<TBus> {
                 }
                 TimerAction::Nmi { mcause } => {
                     self.halted = false;
-                    return self.handle_nmi(*mcause, 0);
+                    step_action = Some(self.handle_nmi(mcause, 0));
+                    break;
                 }
-                TimerAction::SetNmiVec { addr } => self.nmivec = *addr,
+                TimerAction::SetNmiVec { addr } => self.nmivec = addr,
                 TimerAction::ExtInt { irq, can_wake } => {
-                    if self.global_int_en && self.ext_int_en && (!self.halted || *can_wake) {
+                    if self.global_int_en && self.ext_int_en && (!self.halted || can_wake) {
                         self.halted = false;
-                        return self.handle_external_int(*irq);
+                        step_action = Some(self.handle_external_int(irq));
+                        break;
+                    } else {
+                        save = true;
                     }
                 }
-                TimerAction::SetExtIntVec { addr } => self.ext_int_vec = *addr,
-                TimerAction::SetGlobalIntEn { en } => self.global_int_en = *en,
-                TimerAction::SetExtIntEn { en } => self.ext_int_en = *en,
+                TimerAction::SetExtIntVec { addr } => self.ext_int_vec = addr,
+                TimerAction::SetGlobalIntEn { en } => self.global_int_en = en,
+                TimerAction::SetExtIntEn { en } => self.ext_int_en = en,
                 TimerAction::InternalTimerLocalInterrupt { timer_id } => {
                     if self.global_int_en && !self.halted {
-                        return self.handle_internal_timer_local_interrupt(*timer_id);
+                        step_action = Some(self.handle_internal_timer_local_interrupt(timer_id));
+                        break;
+                    } else {
+                        save = true;
                     }
                 }
                 TimerAction::Halt => self.halted = true,
                 _ => {}
             }
+            if save {
+                saved.push(action_type);
+            }
+        }
+
+        // reschedule actions that were not processed
+        for action in saved {
+            self.clock.timer().schedule_action_in(1, action);
+        }
+        for action in fired_action_types {
+            self.clock.timer().schedule_action_in(1, action);
+        }
+
+        // if we already processed an interrupt, then return immediately
+        if let Some(returned_action) = step_action {
+            return returned_action;
         }
 
         // We are in a halted state. Don't continue executing but poll the bus for interrupts
