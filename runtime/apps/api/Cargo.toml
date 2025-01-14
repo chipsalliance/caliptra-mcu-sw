@@ -1,0 +1,9 @@
+[package]
+name = "libapi-caliptra"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libtock_platform.workspace = true
+zerocopy.workspace = true
+libsyscall-caliptra.workspace = true
