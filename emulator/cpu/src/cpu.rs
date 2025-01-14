@@ -20,7 +20,6 @@ use crate::Pic;
 use bit_vec::BitVec;
 use emulator_bus::{Bus, BusError, Clock, TimerAction};
 use emulator_types::{RvAddr, RvData, RvException, RvExceptionCause, RvSize, RAM_OFFSET, RAM_SIZE};
-use std::collections::VecDeque;
 use std::rc::Rc;
 
 pub type InstrTracer<'a> = dyn FnMut(u32, RvInstr) + 'a;
@@ -585,13 +584,11 @@ impl<TBus: Bus> Cpu<TBus> {
             .increment_and_process_timer_actions(1, &mut self.bus)
             .into_iter()
             .collect();
-        fired_action_types.sort_by_key(|a| a.priority());
-        let mut fired_action_types: VecDeque<TimerAction> =
-            fired_action_types.into_iter().collect();
+        fired_action_types.sort_by_key(|a| -a.priority());
         let mut step_action = None;
         let mut saved = vec![];
         while !fired_action_types.is_empty() {
-            let action_type = fired_action_types.pop_front().unwrap();
+            let action_type = fired_action_types.pop().unwrap();
             let mut save = false;
             match action_type {
                 TimerAction::WarmReset => {

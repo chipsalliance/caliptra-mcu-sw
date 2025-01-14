@@ -262,7 +262,7 @@ pub enum TimerAction {
 
 impl TimerAction {
     /// Sort priority based on VeeR EL2 Programmer's Reference Manual Table 14.1.
-    pub fn priority(&self) -> usize {
+    pub fn priority(&self) -> isize {
         match self {
             TimerAction::Poll => 0,
             TimerAction::Halt => 1,
