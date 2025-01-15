@@ -405,15 +405,46 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         );
     }
 
-    let flash_ctrl_error_irq = pic.register_irq(CaliptraRootBus::FLASH_CTRL_ERROR_IRQ);
-    let flash_ctrl_event_irq = pic.register_irq(CaliptraRootBus::FLASH_CTRL_EVENT_IRQ);
-    let flash_controller = DummyFlashCtrl::new(
-        &clock.clone(),
-        Some(PathBuf::from("primary_flash")), // TODO: make this configurable
-        flash_ctrl_error_irq,
-        flash_ctrl_event_irq,
-    )
-    .unwrap();
+    let create_flash_controller = |default_path: &str, error_irq: u8, event_irq: u8| {
+        // Use a temporary file for flash storage if we're running a test
+        let flash_file = if cfg!(any(
+            feature = "test-flash-ctrl-init",
+            feature = "test-flash-ctrl-read-write-page",
+            feature = "test-flash-ctrl-erase-page",
+            feature = "test-flash-storage-read-write",
+            feature = "test-flash-storage-erase",
+            feature = "test-flash-usermode",
+        )) {
+            Some(
+                tempfile::NamedTempFile::new()
+                    .unwrap()
+                    .into_temp_path()
+                    .to_path_buf(),
+            )
+        } else {
+            Some(PathBuf::from(default_path))
+        };
+
+        DummyFlashCtrl::new(
+            &clock.clone(),
+            flash_file,
+            pic.register_irq(error_irq),
+            pic.register_irq(event_irq),
+        )
+        .unwrap()
+    };
+
+    let main_flash_controller = create_flash_controller(
+        "main_flash",
+        CaliptraRootBus::MAIN_FLASH_CTRL_ERROR_IRQ,
+        CaliptraRootBus::MAIN_FLASH_CTRL_EVENT_IRQ,
+    );
+
+    let recovery_flash_controller = create_flash_controller(
+        "recovery_flash",
+        CaliptraRootBus::RECOVERY_FLASH_CTRL_ERROR_IRQ,
+        CaliptraRootBus::RECOVERY_FLASH_CTRL_EVENT_IRQ,
+    );
 
     let mut delegates: Vec<Box<dyn Bus>> = vec![Box::new(root_bus)];
     let soc_periph = if let Some(soc_to_caliptra) = soc_to_caliptra {
@@ -428,7 +459,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     let mut auto_root_bus = AutoRootBus::new(
         delegates,
         Some(Box::new(i3c)),
-        Some(Box::new(flash_controller)),
+        Some(Box::new(main_flash_controller)),
+        Some(Box::new(recovery_flash_controller)),
         None,
         Some(Box::new(otp)),
         None,
@@ -437,9 +469,17 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         None,
     );
 
-    // Set the DMA RAM for the Flash Controller
+    // Set the DMA RAM for Main Flash Controller
     auto_root_bus
-        .flash_periph
+        .main_flash_periph
+        .as_mut()
+        .unwrap()
+        .periph
+        .set_dma_ram(dma_ram.clone());
+
+    // Set the DMA RAM for Recovery Flash Controller
+    auto_root_bus
+        .recovery_flash_periph
         .as_mut()
         .unwrap()
         .periph

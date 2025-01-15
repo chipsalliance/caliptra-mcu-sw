@@ -101,8 +101,8 @@ pub(crate) async fn async_main<S: Syscalls>() {
             buf
         };
 
-        let mut test_cfg = flash_test::FlashTestConfig {
-            drv_num: par_driver_num::IMAGE_PARTITION,
+        let mut test_cfg_1 = flash_test::FlashTestConfig {
+            drv_num: par_driver_num::ACTIVE_IMAGE_PARTITION,
             expected_capacity: flash_test::EXPECTED_CAPACITY,
             expected_chunk_size: flash_test::EXPECTED_CHUNK_SIZE,
             e_offset: 0,
@@ -112,10 +112,31 @@ pub(crate) async fn async_main<S: Syscalls>() {
             w_buf: &user_w_buf,
             r_buf: &mut user_r_buf,
         };
-        flash_test::simple_test::<S>(&mut test_cfg).await;
-        writeln!(console_writer, "flash usermode test succeeds").unwrap();
-    }
+        flash_test::simple_test::<S>(&mut test_cfg_1).await;
+        writeln!(
+            console_writer,
+            "flash usermode test on active image par succeeds"
+        )
+        .unwrap();
 
+        let mut test_cfg_2 = flash_test::FlashTestConfig {
+            drv_num: par_driver_num::RECOVERY_IMAGE_PARTITION,
+            expected_capacity: flash_test::EXPECTED_CAPACITY,
+            expected_chunk_size: flash_test::EXPECTED_CHUNK_SIZE,
+            e_offset: 0,
+            e_len: flash_test::BUF_LEN,
+            w_offset: 20,
+            w_len: 1000,
+            w_buf: &user_w_buf,
+            r_buf: &mut user_r_buf,
+        };
+        flash_test::simple_test::<S>(&mut test_cfg_2).await;
+        writeln!(
+            console_writer,
+            "flash usermode test on recovery image par succeeds"
+        )
+        .unwrap();
+    }
     writeln!(console_writer, "app finished").unwrap();
 }
 

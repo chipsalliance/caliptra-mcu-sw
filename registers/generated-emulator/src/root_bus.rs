@@ -6,7 +6,8 @@ pub struct AutoRootBus {
     delegates: Vec<Box<dyn emulator_bus::Bus>>,
     pub dccm: emulator_bus::Ram,
     pub i3c_periph: Option<crate::i3c::I3cBus>,
-    pub flash_periph: Option<crate::flash::FlashBus>,
+    pub main_flash_periph: Option<crate::main_flash::MainFlashBus>,
+    pub recovery_flash_periph: Option<crate::recovery_flash::RecoveryFlashBus>,
     pub entropy_src_periph: Option<crate::entropy_src::EntropySrcBus>,
     pub otp_periph: Option<crate::otp::OtpBus>,
     pub mbox_periph: Option<crate::mbox::MboxBus>,
@@ -19,7 +20,8 @@ impl AutoRootBus {
     pub fn new(
         delegates: Vec<Box<dyn emulator_bus::Bus>>,
         i3c_periph: Option<Box<dyn crate::i3c::I3cPeripheral>>,
-        flash_periph: Option<Box<dyn crate::flash::FlashPeripheral>>,
+        main_flash_periph: Option<Box<dyn crate::main_flash::MainFlashPeripheral>>,
+        recovery_flash_periph: Option<Box<dyn crate::recovery_flash::RecoveryFlashPeripheral>>,
         entropy_src_periph: Option<Box<dyn crate::entropy_src::EntropySrcPeripheral>>,
         otp_periph: Option<Box<dyn crate::otp::OtpPeripheral>>,
         mbox_periph: Option<Box<dyn crate::mbox::MboxPeripheral>>,
@@ -31,7 +33,10 @@ impl AutoRootBus {
             delegates,
             dccm: emulator_bus::Ram::new(vec![0; 16384u32 as usize]),
             i3c_periph: i3c_periph.map(|p| crate::i3c::I3cBus { periph: p }),
-            flash_periph: flash_periph.map(|p| crate::flash::FlashBus { periph: p }),
+            main_flash_periph: main_flash_periph
+                .map(|p| crate::main_flash::MainFlashBus { periph: p }),
+            recovery_flash_periph: recovery_flash_periph
+                .map(|p| crate::recovery_flash::RecoveryFlashBus { periph: p }),
             entropy_src_periph: entropy_src_periph
                 .map(|p| crate::entropy_src::EntropySrcBus { periph: p }),
             otp_periph: otp_periph.map(|p| crate::otp::OtpBus { periph: p }),
@@ -59,8 +64,15 @@ impl emulator_bus::Bus for AutoRootBus {
                 }
             }
             0x2000_8000..=0x2000_808f => {
-                if let Some(periph) = self.flash_periph.as_mut() {
+                if let Some(periph) = self.main_flash_periph.as_mut() {
                     periph.read(size, addr - 0x2000_8000)
+                } else {
+                    Err(emulator_bus::BusError::LoadAccessFault)
+                }
+            }
+            0x2000_8800..=0x2000_888f => {
+                if let Some(periph) = self.recovery_flash_periph.as_mut() {
+                    periph.read(size, addr - 0x2000_8800)
                 } else {
                     Err(emulator_bus::BusError::LoadAccessFault)
                 }
@@ -136,8 +148,15 @@ impl emulator_bus::Bus for AutoRootBus {
                 }
             }
             0x2000_8000..=0x2000_808f => {
-                if let Some(periph) = self.flash_periph.as_mut() {
+                if let Some(periph) = self.main_flash_periph.as_mut() {
                     periph.write(size, addr - 0x2000_8000, val)
+                } else {
+                    Err(emulator_bus::BusError::StoreAccessFault)
+                }
+            }
+            0x2000_8800..=0x2000_888f => {
+                if let Some(periph) = self.recovery_flash_periph.as_mut() {
+                    periph.write(size, addr - 0x2000_8800, val)
                 } else {
                     Err(emulator_bus::BusError::StoreAccessFault)
                 }
@@ -201,7 +220,10 @@ impl emulator_bus::Bus for AutoRootBus {
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.poll();
         }
-        if let Some(periph) = self.flash_periph.as_mut() {
+        if let Some(periph) = self.main_flash_periph.as_mut() {
+            periph.poll();
+        }
+        if let Some(periph) = self.recovery_flash_periph.as_mut() {
             periph.poll();
         }
         if let Some(periph) = self.entropy_src_periph.as_mut() {
@@ -230,7 +252,10 @@ impl emulator_bus::Bus for AutoRootBus {
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.warm_reset();
         }
-        if let Some(periph) = self.flash_periph.as_mut() {
+        if let Some(periph) = self.main_flash_periph.as_mut() {
+            periph.warm_reset();
+        }
+        if let Some(periph) = self.recovery_flash_periph.as_mut() {
             periph.warm_reset();
         }
         if let Some(periph) = self.entropy_src_periph.as_mut() {
@@ -259,7 +284,10 @@ impl emulator_bus::Bus for AutoRootBus {
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.update_reset();
         }
-        if let Some(periph) = self.flash_periph.as_mut() {
+        if let Some(periph) = self.main_flash_periph.as_mut() {
+            periph.update_reset();
+        }
+        if let Some(periph) = self.recovery_flash_periph.as_mut() {
             periph.update_reset();
         }
         if let Some(periph) = self.entropy_src_periph.as_mut() {

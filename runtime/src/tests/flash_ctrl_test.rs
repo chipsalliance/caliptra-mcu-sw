@@ -21,7 +21,8 @@ use romtime::println;
 pub(crate) fn test_flash_ctrl_init() -> Option<u32> {
     // Safety: this is run after the board has initialized the chip.
     let chip = unsafe { crate::CHIP.unwrap() };
-    chip.peripherals.flash_ctrl.init();
+    chip.peripherals.main_flash_ctrl.init();
+    chip.peripherals.recovery_flash_ctrl.init();
     Some(0)
 }
 
@@ -114,7 +115,6 @@ macro_rules! static_init_test {
             flash_ctrl::EmulatedFlashPage::default()
         );
         let mut val: u8 = 0;
-
         for i in 0..flash_ctrl::PAGE_SIZE {
             val = val.wrapping_add(0x10);
             r_in_page[i] = 0x00;
@@ -128,18 +128,14 @@ macro_rules! static_init_test {
     }};
 }
 
-pub fn test_flash_ctrl_erase_page() -> Option<u32> {
-    println!("Starting flash controller erase page test");
-    let chip = unsafe { crate::CHIP.unwrap() };
-    let flash_ctrl = &chip.peripherals.flash_ctrl;
-    let test_cb = unsafe { static_init_test!() };
-
-    // Set up the client
+fn test_single_flash_ctrl_erase_page(
+    flash_ctrl: &'static flash_ctrl::EmulatedFlashCtrl,
+    test_cb: &'static FlashCtrlTestCallBack,
+) {
     flash_ctrl.set_client(test_cb);
     test_cb.reset();
 
     let page_num: usize = 15;
-
     // Test erase page
     assert!(flash_ctrl.erase_page(page_num).is_ok());
     test_cb.io_state.borrow_mut().erase_pending = true;
@@ -151,7 +147,6 @@ pub fn test_flash_ctrl_erase_page() -> Option<u32> {
     assert!(!test_cb.io_state.borrow().erase_pending);
 
     test_cb.reset();
-
     // Read the erased page to verify the erase operation
     let read_in_page = test_cb.read_in_page.take().unwrap();
     assert!(flash_ctrl.read_page(page_num, read_in_page).is_ok());
@@ -167,23 +162,28 @@ pub fn test_flash_ctrl_erase_page() -> Option<u32> {
     // Check if the read_out_buf is filled with 0xFF
     let read_out = test_cb.read_out_buf.take().unwrap();
     assert!(read_out.iter().all(|&x| x == 0xFF));
+}
 
+pub fn test_flash_ctrl_erase_page() -> Option<u32> {
+    let chip = unsafe { crate::CHIP.unwrap() };
+    println!("Starting erase page test on main flash controller");
+    let test_cb_main = unsafe { static_init_test!() };
+    test_single_flash_ctrl_erase_page(&chip.peripherals.main_flash_ctrl, test_cb_main);
+
+    println!("Starting erase page test on recovery flash controller");
+    let test_cb_recovery = unsafe { static_init_test!() };
+    test_single_flash_ctrl_erase_page(&chip.peripherals.recovery_flash_ctrl, test_cb_recovery);
     Some(0)
 }
 
-// Set up the test for write page operation
-pub(crate) fn test_flash_ctrl_read_write_page() -> Option<u32> {
-    println!("Starting flash controller read write page test");
-    let chip = unsafe { crate::CHIP.unwrap() };
-    let flash_ctrl = &chip.peripherals.flash_ctrl;
-    let test_cb = unsafe { static_init_test!() };
-
-    // Set up the client
+fn test_single_flash_ctrl_read_write_page(
+    flash_ctrl: &'static flash_ctrl::EmulatedFlashCtrl,
+    test_cb: &'static FlashCtrlTestCallBack,
+) {
     flash_ctrl.set_client(test_cb);
     test_cb.reset();
 
     let page_num: usize = 20;
-
     let write_in_page = test_cb.write_in_page.take().unwrap();
     assert!(flash_ctrl.write_page(page_num, write_in_page).is_ok());
     test_cb.io_state.borrow_mut().write_pending = true;
@@ -218,6 +218,17 @@ pub(crate) fn test_flash_ctrl_read_write_page() -> Option<u32> {
         "[ERR] Read data indicates flash write error on page {}",
         page_num
     );
+}
+
+pub(crate) fn test_flash_ctrl_read_write_page() -> Option<u32> {
+    let chip = unsafe { crate::CHIP.unwrap() };
+    println!("Starting read write page test on main flash controller");
+    let test_cb_main = unsafe { static_init_test!() };
+    test_single_flash_ctrl_read_write_page(&chip.peripherals.main_flash_ctrl, test_cb_main);
+
+    println!("Starting read write page test on recovery flash controller");
+    let test_cb_recovery = unsafe { static_init_test!() };
+    test_single_flash_ctrl_read_write_page(&chip.peripherals.recovery_flash_ctrl, test_cb_recovery);
 
     Some(0)
 }

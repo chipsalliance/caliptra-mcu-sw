@@ -119,8 +119,8 @@ struct VeeR {
     mctp_secure_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    // Temorarily add one partition driver for userspace testing.
-    image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
+    active_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
+    recovery_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -139,7 +139,12 @@ impl SyscallDriverLookup for VeeR {
             }
             capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
             capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
-            capsules_runtime::flash_partition::IMAGE_PAR_DRIVER_NUM => f(Some(self.image_par)),
+            capsules_runtime::flash_partition::ACTIVE_IMAGE_PAR_DRIVER_NUM => {
+                f(Some(self.active_image_par))
+            }
+            capsules_runtime::flash_partition::RECOVERY_IMAGE_PAR_DRIVER_NUM => {
+                f(Some(self.recovery_image_par))
+            }
             _ => f(None),
         }
     }
@@ -343,21 +348,46 @@ pub unsafe fn main() {
     peripherals.init();
 
     // Create a mux for the physical flash controller
-    let mux_flash = components::flash::FlashMuxComponent::new(&peripherals.flash_ctrl).finalize(
-        components::flash_mux_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
-    );
+    let mux_main_flash = components::flash::FlashMuxComponent::new(&peripherals.main_flash_ctrl)
+        .finalize(components::flash_mux_component_static!(
+            flash_driver::flash_ctrl::EmulatedFlashCtrl
+        ));
 
     // Instantiate a flashUser for image partition driver
-    let image_par_fl_user = components::flash::FlashUserComponent::new(mux_flash).finalize(
+    let image_par_fl_user = components::flash::FlashUserComponent::new(mux_main_flash).finalize(
         components::flash_user_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
     );
 
     // Instantiate flash partition driver that is connected to mux flash via flashUser
     // TODO: Replace the start address and length with actual values from flash configuration.
-    let image_par = runtime_components::flash_partition::FlashPartitionComponent::new(
+    let active_image_par = runtime_components::flash_partition::FlashPartitionComponent::new(
         board_kernel,
-        capsules_runtime::flash_partition::IMAGE_PAR_DRIVER_NUM, // Driver number
+        capsules_runtime::flash_partition::ACTIVE_IMAGE_PAR_DRIVER_NUM, // Driver number
         image_par_fl_user,
+        0x0,        // Start address of the partition. Place holder for testing
+        0x200_0000, // Length of the partition. Place holder for testing
+    )
+    .finalize(crate::flash_partition_component_static!(
+        virtual_flash::FlashUser<'static, flash_driver::flash_ctrl::EmulatedFlashCtrl>,
+        capsules_runtime::flash_partition::BUF_LEN
+    ));
+
+    // Create a mux for the recovery flash controller
+    let mux_recovery_flash =
+        components::flash::FlashMuxComponent::new(&peripherals.recovery_flash_ctrl).finalize(
+            components::flash_mux_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
+        );
+
+    // Instantiate a flashUser for recovery image partition driver
+    let recovery_image_par_fl_user = components::flash::FlashUserComponent::new(mux_recovery_flash)
+        .finalize(components::flash_user_component_static!(
+            flash_driver::flash_ctrl::EmulatedFlashCtrl
+        ));
+
+    let recovery_image_par = runtime_components::flash_partition::FlashPartitionComponent::new(
+        board_kernel,
+        capsules_runtime::flash_partition::RECOVERY_IMAGE_PAR_DRIVER_NUM, // Driver number
+        recovery_image_par_fl_user,
         0x0,        // Start address of the partition. Place holder for testing
         0x200_0000, // Length of the partition. Place holder for testing
     )
@@ -400,7 +430,8 @@ pub unsafe fn main() {
             mctp_secure_spdm,
             mctp_pldm,
             mctp_caliptra,
-            image_par,
+            active_image_par,
+            recovery_image_par,
         }
     );
 
