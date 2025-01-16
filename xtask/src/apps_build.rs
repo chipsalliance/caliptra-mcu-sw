@@ -97,10 +97,11 @@ fn app_build_tbf(
 
     // read the flat binary
     let b = std::fs::read(&app_bin)?;
+    let total_size = b.len() + tbf_header_size;
 
-    tbf.set_total_size(b.len() as u32);
+    tbf.set_total_size(total_size as u32);
     tbf.set_init_fn_offset(0x20);
-    tbf.set_binary_end_offset(b.len() as u32);
+    tbf.set_binary_end_offset(total_size as u32);
     let tbf = tbf.generate()?;
 
     // concatenate the TBF header and the binary
