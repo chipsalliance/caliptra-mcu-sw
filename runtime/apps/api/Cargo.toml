@@ -1,0 +1,17 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "libapi-caliptra"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+libtock_platform.workspace = true
+zerocopy.workspace = true
+libsyscall-caliptra.workspace = true
+
+[dev-dependencies]
+libtock_unittest.workspace = true
+futures.workspace = true
+

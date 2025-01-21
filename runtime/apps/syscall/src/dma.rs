@@ -6,7 +6,7 @@
 //! transfers between AXI source and AXI destination addresses.
 
 use core::marker::PhantomData;
-use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
+use libtock_platform::{share, AllowRo, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 /// DMA interface.
 pub struct DMA<S: Syscalls> {
@@ -77,22 +77,23 @@ impl<S: Syscalls> DMA<S> {
     }
 
     async fn xfer_src_buffer(&self, buffer: &[u8]) -> Result<(), ErrorCode> {
-        // Use `share::scope` to safely share the buffer with the kernel
-        share::scope::<(), _, _>(|_| {
-            let async_start = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
-                self.driver_num,
-                dma_subscribe::XFER_DONE,
-                dma_ro_buffer::LOCAL_SOURCE,
-                buffer,
-            );
+        let async_start = TockSubscribe::subscribe::<S>(self.driver_num, dma_subscribe::XFER_DONE);
 
-            // Start the DMA transfer
-            S::command(self.driver_num, dma_cmd::XFER_LOCAL_TO_AXI, 0, 0)
-                .to_result::<(), ErrorCode>()?;
-            Ok(async_start)
-        })?
-        .await
-        .map(|_| ())
+        share::scope::<AllowRo<_, DMA_DRIVER_NUM, { dma_ro_buffer::LOCAL_SOURCE }>, _, _>(
+            |handle| {
+                let allow_ro = handle;
+                S::allow_ro::<DefaultConfig, DMA_DRIVER_NUM, { dma_ro_buffer::LOCAL_SOURCE }>(
+                    allow_ro, buffer,
+                )?;
+
+                // Start the DMA transfer
+                S::command(self.driver_num, dma_cmd::XFER_LOCAL_TO_AXI, 0, 0)
+                    .to_result::<(), ErrorCode>()?;
+                Ok(())
+            },
+        )?;
+
+        async_start.await.map(|_| ())
     }
 
     fn setup(&self, config: &DMATransaction<'_>) -> Result<(), ErrorCode> {
