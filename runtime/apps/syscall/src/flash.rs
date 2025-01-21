@@ -81,7 +81,8 @@ impl<S: Syscalls> SpiFlash<S> {
             return Err(ErrorCode::NoMem);
         }
 
-        share::scope::<(), _, _>(|_handle| {
+        let result = share::scope::<(), _, _>(|_handle| {
+            //            S::unallow_rw(self.driver_num, rw_allow::READ);
             let sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
                 self.driver_num,
                 subscribe::READ_DONE,
@@ -99,9 +100,10 @@ impl<S: Syscalls> SpiFlash<S> {
 
             Ok(sub)
         })?
-        .await?;
+        .await;
 
-        Ok(())
+        S::unallow_rw(self.driver_num, rw_allow::READ);
+        result.map(|_| ())
     }
 
     /// Reads data from the SPI flash memory in an asynchronous manner.
@@ -143,7 +145,7 @@ impl<S: Syscalls> SpiFlash<S> {
             return Err(ErrorCode::NoMem);
         }
 
-        share::scope::<(), _, _>(|_handle| {
+        let result = share::scope::<(), _, _>(|_handle| {
             let sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
                 self.driver_num,
                 subscribe::WRITE_DONE,
@@ -161,9 +163,11 @@ impl<S: Syscalls> SpiFlash<S> {
 
             Ok(sub)
         })?
-        .await?;
+        .await;
 
-        Ok(())
+        S::unallow_ro(self.driver_num, ro_allow::WRITE);
+
+        result.map(|_| ())
     }
 
     /// Writes an arbitrary number of bytes to the flash memory in an asynchronous manner.
