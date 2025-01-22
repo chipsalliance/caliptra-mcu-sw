@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use crate::mailbox::MailboxRequestTrait;
 use crate::mailbox::{
     AuthorizeAndStashRequest, GetImageLoadAddressRequest, GetImageLocationOffsetRequest,
-    GetImageSizeRequest, MailboxAPI, MailboxRequest, MailboxResponse, AUTHORIZED_IMAGE,
+    GetImageSizeRequest, Mailbox, MailboxRequest, MailboxRequestType, MailboxResponse,
+    AUTHORIZED_IMAGE,
 };
 use libsyscall_caliptra::dma::{AXIAddr, DMASource, DMATransaction, DMA as DMASyscall};
 use libsyscall_caliptra::flash::{driver_num, SpiFlash as FlashSyscall};
@@ -11,7 +11,7 @@ use libtock_platform::ErrorCode;
 use libtock_platform::Syscalls;
 
 pub struct ImageLoaderAPI<S: Syscalls> {
-    mailbox_api: MailboxAPI<S>,
+    mailbox_api: Mailbox<S>,
 }
 
 /// This is the size of the buffer used for DMA transfers.
@@ -27,7 +27,7 @@ impl<S: Syscalls> ImageLoaderAPI<S> {
     /// Creates a new instance of the ImageLoaderAPI.
     pub fn new() -> Self {
         Self {
-            mailbox_api: MailboxAPI::new(),
+            mailbox_api: Mailbox::new(),
         }
     }
 
@@ -130,7 +130,7 @@ impl<S: Syscalls> ImageLoaderAPI<S> {
         img_size: usize,
     ) -> Result<(), ErrorCode> {
         let dma_syscall = DMASyscall::<S>::new();
-        let flash_syscall = FlashSyscall::<S>::new(driver_num::IMAGE_PARTITION);
+        let flash_syscall = FlashSyscall::<S>::new(driver_num::ACTIVE_IMAGE_PARTITION);
         let mut remaining_size = img_size;
         let mut current_offset = offset;
         let mut current_address = load_address;

@@ -9,7 +9,7 @@ mod tests {
     };
     use std::rc::Rc;
 
-    fn add_mailbox_response<Response: MailboxResponseTrait>(
+    fn add_mailbox_response<Response: MailboxResponseType>(
         mailbox_driver: &Rc<FakeMailboxDriver>,
         command_id: u32,
         response: &mut Response,
