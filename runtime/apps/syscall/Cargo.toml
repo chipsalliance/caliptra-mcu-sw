@@ -10,3 +10,8 @@ edition.workspace = true
 libtock_console.workspace = true
 libtock_platform.workspace = true
 libtockasync.workspace = true
+
+[dev-dependencies]
+libtock_unittest.workspace = true
+futures.workspace = true
+
