@@ -82,7 +82,6 @@ impl<S: Syscalls> SpiFlash<S> {
         }
 
         let result = share::scope::<(), _, _>(|_handle| {
-            //            S::unallow_rw(self.driver_num, rw_allow::READ);
             let sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
                 self.driver_num,
                 subscribe::READ_DONE,

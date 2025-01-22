@@ -2,27 +2,27 @@
 
 use crate::checksum;
 use core::mem;
-use libsyscall_caliptra::mailbox::Mailbox;
+use libsyscall_caliptra::mailbox::Mailbox as MailboxSyscall;
 use libtock_platform::{ErrorCode, Syscalls};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Ref, TryFromBytes};
 
 /// API for interacting with the mailbox.
-pub struct MailboxAPI<S: Syscalls> {
-    syscall: Mailbox<S>,
+pub struct Mailbox<S: Syscalls> {
+    syscall: MailboxSyscall<S>,
 }
 
-impl<S: Syscalls> Default for MailboxAPI<S> {
+impl<S: Syscalls> Default for Mailbox<S> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<S: Syscalls> MailboxAPI<S> {
+impl<S: Syscalls> Mailbox<S> {
     /// Creates a new instance of the Mailbox API.
     #[inline]
     pub fn new() -> Self {
         Self {
-            syscall: Mailbox::new(),
+            syscall: MailboxSyscall::new(),
         }
     }
 
@@ -44,10 +44,10 @@ impl<S: Syscalls> MailboxAPI<S> {
 }
 
 /// Trait for mailbox requests.
-pub trait MailboxRequestTrait: FromBytes + IntoBytes + Immutable {
+pub trait MailboxRequestType: FromBytes + IntoBytes + Immutable {
     /// Returns the command ID associated with the request.
     const COMMAND_ID: u32;
-    type Response: MailboxResponseTrait;
+    type Response: MailboxResponseType;
 
     /// Populates the checksum field for the request.
     fn populate_checksum(&mut self) {
@@ -132,22 +132,20 @@ impl MailboxRequest {
     fn parse_response(&self, response: &[u8]) -> Result<MailboxResponse, ErrorCode> {
         match self {
             MailboxRequest::GetImageLoadAddress(_) => {
-                <GetImageLoadAddressRequest as MailboxRequestTrait>::Response::parse_response(
+                <GetImageLoadAddressRequest as MailboxRequestType>::Response::parse_response(
                     response,
                 )
             }
             MailboxRequest::GetImageLocationOffset(_) => {
-                <GetImageLocationOffsetRequest as MailboxRequestTrait>::Response::parse_response(
+                <GetImageLocationOffsetRequest as MailboxRequestType>::Response::parse_response(
                     response,
                 )
             }
             MailboxRequest::GetImageSize(_) => {
-                <GetImageSizeRequest as MailboxRequestTrait>::Response::parse_response(response)
+                <GetImageSizeRequest as MailboxRequestType>::Response::parse_response(response)
             }
             MailboxRequest::AuthorizeAndStash(_) => {
-                <AuthorizeAndStashRequest as MailboxRequestTrait>::Response::parse_response(
-                    response,
-                )
+                <AuthorizeAndStashRequest as MailboxRequestType>::Response::parse_response(response)
             }
         }
     }
@@ -175,7 +173,7 @@ impl MailboxResponse {
 }
 
 /// Trait for mailbox responses.
-pub trait MailboxResponseTrait: FromBytes + IntoBytes + Immutable {
+pub trait MailboxResponseType: FromBytes + IntoBytes + Immutable {
     /// Populates the checksum field for the response.
     fn populate_checksum(&mut self) {
         let checksum = checksum::calc_checksum(0, &self.as_bytes()[mem::size_of::<i32>()..]);
@@ -238,7 +236,7 @@ pub struct GetImageLoadAddressRequest {
     pub fw_id: [u8; 4],
 }
 
-impl MailboxRequestTrait for GetImageLoadAddressRequest {
+impl MailboxRequestType for GetImageLoadAddressRequest {
     const COMMAND_ID: u32 = 0x494D_4C41; // "IMLA"
     type Response = GetImageLoadAddressResponse;
 }
@@ -252,7 +250,7 @@ pub struct GetImageLoadAddressResponse {
     pub load_address_low: u32,
 }
 
-impl MailboxResponseTrait for GetImageLoadAddressResponse {
+impl MailboxResponseType for GetImageLoadAddressResponse {
     fn parse_response(response: &[u8]) -> Result<MailboxResponse, ErrorCode> {
         Self::try_read_from_bytes(response)
             .map(MailboxResponse::GetImageLoadAddress)
@@ -268,7 +266,7 @@ pub struct GetImageLocationOffsetRequest {
     pub fw_id: [u8; 4],
 }
 
-impl MailboxRequestTrait for GetImageLocationOffsetRequest {
+impl MailboxRequestType for GetImageLocationOffsetRequest {
     const COMMAND_ID: u32 = 0x494D_4C4F; // "IMLO"
     type Response = GetImageLocationOffsetResponse;
 }
@@ -281,7 +279,7 @@ pub struct GetImageLocationOffsetResponse {
     pub offset: u32,
 }
 
-impl MailboxResponseTrait for GetImageLocationOffsetResponse {
+impl MailboxResponseType for GetImageLocationOffsetResponse {
     fn parse_response(response: &[u8]) -> Result<MailboxResponse, ErrorCode> {
         GetImageLocationOffsetResponse::try_read_from_bytes(response)
             .map(MailboxResponse::GetImageLocationOffset)
@@ -297,7 +295,7 @@ pub struct GetImageSizeRequest {
     pub fw_id: [u8; 4],
 }
 
-impl MailboxRequestTrait for GetImageSizeRequest {
+impl MailboxRequestType for GetImageSizeRequest {
     const COMMAND_ID: u32 = 0x494D_535A; // "IMSZ"
     type Response = GetImageSizeResponse;
 }
@@ -310,7 +308,7 @@ pub struct GetImageSizeResponse {
     pub size: u32,
 }
 
-impl MailboxResponseTrait for GetImageSizeResponse {
+impl MailboxResponseType for GetImageSizeResponse {
     fn parse_response(response: &[u8]) -> Result<MailboxResponse, ErrorCode> {
         GetImageSizeResponse::try_read_from_bytes(response)
             .map(MailboxResponse::GetImageSize)
@@ -344,7 +342,7 @@ impl Default for AuthorizeAndStashRequest {
     }
 }
 
-impl MailboxRequestTrait for AuthorizeAndStashRequest {
+impl MailboxRequestType for AuthorizeAndStashRequest {
     const COMMAND_ID: u32 = 0x4154_5348; // "ATSH"
     type Response = AuthorizeAndStashResponse;
 }
@@ -364,7 +362,7 @@ pub const IMAGE_NOT_AUTHORIZED: u32 = 0x21523F21;
 /// Image hash mismatch.
 pub const IMAGE_HASH_MISMATCH: u32 = 0x8BFB95CB;
 
-impl MailboxResponseTrait for AuthorizeAndStashResponse {
+impl MailboxResponseType for AuthorizeAndStashResponse {
     fn parse_response(response: &[u8]) -> Result<MailboxResponse, ErrorCode> {
         AuthorizeAndStashResponse::try_read_from_bytes(response)
             .map(MailboxResponse::AuthorizeAndStash)

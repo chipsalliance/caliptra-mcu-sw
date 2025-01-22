@@ -17,8 +17,8 @@ mod tests {
         let fake_driver_rc = Rc::new(fake_driver);
         fake_kernel.add_driver(&fake_driver_rc);
 
-        // Create the MailboxAPI instance
-        let api: MailboxAPI<Syscalls> = MailboxAPI::new();
+        // Create the Mailbox instance
+        let api: Mailbox<Syscalls> = Mailbox::new();
 
         // Prepare the mailbox request
         let mut request = GetImageLoadAddressRequest {
@@ -71,8 +71,8 @@ mod tests {
         let fake_driver_rc = Rc::new(fake_driver);
         fake_kernel.add_driver(&fake_driver_rc);
 
-        // Create the MailboxAPI instance
-        let api: MailboxAPI<Syscalls> = MailboxAPI::new();
+        // Create the Mailbox instance
+        let api: Mailbox<Syscalls> = Mailbox::new();
 
         // Prepare the mailbox request
         let mut request = GetImageLoadAddressRequest {
@@ -119,8 +119,8 @@ mod tests {
         let fake_driver_rc = Rc::new(fake_driver);
         fake_kernel.add_driver(&fake_driver_rc);
 
-        // Create the MailboxAPI instance
-        let api: MailboxAPI<Syscalls> = MailboxAPI::new();
+        // Create the Mailbox instance
+        let api: Mailbox<Syscalls> = Mailbox::new();
 
         // Prepare the mailbox request
         let mut request = GetImageLoadAddressRequest {
