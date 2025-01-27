@@ -18,10 +18,10 @@ use emulator_cpu::Irq;
 use emulator_registers_generated::main_flash::MainFlashPeripheral;
 use emulator_registers_generated::recovery_flash::RecoveryFlashPeripheral;
 use emulator_types::{RvSize, RAM_OFFSET, RAM_SIZE};
+use registers_generated::main_flash_ctrl;
 use registers_generated::main_flash_ctrl::bits::{
     CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
 };
-use registers_generated::recovery_flash_ctrl;
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{Read, Seek, Write};
@@ -542,7 +542,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::recovery_flash_ctrl::bits::FlInterruptState::Register,
+        registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.interrupt_state.reg.get())
     }
@@ -552,19 +552,19 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         _size: emulator_types::RvSize,
         val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::recovery_flash_ctrl::bits::FlInterruptState::Register,
+            registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
         // Interrupt state register: SW write 1 to clear
         if val
             .reg
-            .is_set(recovery_flash_ctrl::bits::FlInterruptState::Error)
+            .is_set(main_flash_ctrl::bits::FlInterruptState::Error)
         {
             self.clear_interrupt(FlashCtrlIntType::Error);
         }
         if val
             .reg
-            .is_set(recovery_flash_ctrl::bits::FlInterruptState::Event)
+            .is_set(main_flash_ctrl::bits::FlInterruptState::Event)
         {
             self.clear_interrupt(FlashCtrlIntType::Event);
         }
@@ -575,7 +575,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::recovery_flash_ctrl::bits::FlInterruptEnable::Register,
+        registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
     }
@@ -585,13 +585,13 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         _size: emulator_types::RvSize,
         val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::recovery_flash_ctrl::bits::FlInterruptEnable::Register,
+            registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
         if self.interrupt_state.reg.is_set(FlInterruptState::Error)
             && val
                 .reg
-                .is_set(recovery_flash_ctrl::bits::FlInterruptEnable::Error)
+                .is_set(main_flash_ctrl::bits::FlInterruptEnable::Error)
         {
             self.error_irq.set_level(true);
             self.timer.schedule_poll_in(1);
@@ -600,7 +600,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         if self.interrupt_state.reg.is_set(FlInterruptState::Event)
             && val
                 .reg
-                .is_set(recovery_flash_ctrl::bits::FlInterruptEnable::Event)
+                .is_set(main_flash_ctrl::bits::FlInterruptEnable::Event)
         {
             self.event_irq.set_level(true);
             self.timer.schedule_poll_in(1);
@@ -639,7 +639,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::recovery_flash_ctrl::bits::FlControl::Register,
+        registers_generated::main_flash_ctrl::bits::FlControl::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.control.reg.get())
     }
@@ -649,7 +649,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         _size: emulator_types::RvSize,
         val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::recovery_flash_ctrl::bits::FlControl::Register,
+            registers_generated::main_flash_ctrl::bits::FlControl::Register,
         >,
     ) {
         if !self.ctrl_regwen.reg.is_set(CtrlRegwen::En) {
@@ -672,7 +672,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::recovery_flash_ctrl::bits::OpStatus::Register,
+        registers_generated::main_flash_ctrl::bits::OpStatus::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.op_status.reg.get())
     }
@@ -682,7 +682,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         _size: emulator_types::RvSize,
         val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::recovery_flash_ctrl::bits::OpStatus::Register,
+            registers_generated::main_flash_ctrl::bits::OpStatus::Register,
         >,
     ) {
         self.op_status.reg.set(val.reg.get());
@@ -693,7 +693,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::recovery_flash_ctrl::bits::CtrlRegwen::Register,
+        registers_generated::main_flash_ctrl::bits::CtrlRegwen::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.ctrl_regwen.reg.get())
     }

@@ -27,7 +27,11 @@ static HEADER_SUFFIX: &str = r"
 */
 ";
 
-static SKIP_TYPES: LazyLock<HashSet<&str>> = LazyLock::new(|| HashSet::from([]));
+static SKIP_TYPES: LazyLock<HashSet<&str>> = LazyLock::new(|| {
+    HashSet::from([
+        "csrng", "hmac", "kv_read", "hmac512", "sha256", "sha512", "spi_host",
+    ])
+});
 
 pub(crate) fn autogen(
     check: bool,
@@ -46,17 +50,24 @@ pub(crate) fn autogen(
         .join("src")
         .to_path_buf();
 
-    // TODO: the parsing is too fragile and requires the files to be passed in in a specific order
     let rdl_files = [
+        "hw/caliptra-ss/src/fuse_ctrl/data/entropy_src.rdl",
+        "hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl.rdl",
+        "hw/caliptra-ss/third_party/caliptra-rtl/src/csrng/data/csrng.rdl",
+        "hw/caliptra-ss/third_party/caliptra-rtl/src/keyvault/rtl/kv_def.rdl",
+        "hw/caliptra-ss/third_party/caliptra-rtl/src/hmac/rtl/hmac_reg.rdl",
+        "hw/caliptra-ss/third_party/caliptra-rtl/src/sha256/rtl/sha256_reg.rdl",
+        "hw/caliptra-ss/third_party/caliptra-rtl/src/sha512/rtl/sha512_reg.rdl",
         "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/mbox_csr.rdl",
         "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/sha512_acc_csr.rdl",
         "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/soc_ifc_reg.rdl",
+        "hw/caliptra-ss/third_party/caliptra-rtl/src/spi_host/data/spi_host.rdl",
+        "hw/caliptra-ss/third_party/caliptra-rtl/src/uart/data/uart.rdl",
         "hw/caliptra-ss/third_party/i3c-core/src/rdl/registers.rdl",
+        "hw/caliptra-ss/src/mci/rtl/mci_reg.rdl",
         "hw/caliptra-ss/src/integration/rtl/soc_address_map.rdl",
         "hw/el2_pic_ctrl.rdl",
         "hw/flash_ctrl.rdl",
-        "hw/entropy_src.rdl",
-        "hw/otp_ctrl.rdl",
         "hw/mcu.rdl",
     ];
     let mut rdl_files: Vec<PathBuf> = rdl_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
@@ -123,14 +134,26 @@ pub(crate) fn autogen(
             "TTI_RESET_CONTROL",
         ),
         (
-            PROJECT_ROOT.join("hw/entropy_src.rdl"),
+            PROJECT_ROOT.join("hw/caliptra-ss/src/fuse_ctrl/data/entropy_src.rdl"),
             "INTERRUPT_ENABLE",
             "ENTROPY_INTERRUPT_ENABLE",
         ),
         (
-            PROJECT_ROOT.join("hw/otp_ctrl.rdl"),
+            PROJECT_ROOT.join("hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl.rdl"),
             "INTERRUPT_ENABLE",
             "OTP_INTERRUPT_ENABLE",
+        ),
+        (
+            PROJECT_ROOT.join("hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl.rdl"),
+            // this field should be writable by firmware
+            r#"default sw = r; // field prperty
+            default hw = w; // field prperty
+
+            field { desc = "wdata.";}"#,
+            r#"default sw = rw; // field prperty
+            default hw = w; // field prperty
+
+            field { desc = "wdata.";}"#,
         ),
     ];
 
@@ -268,6 +291,8 @@ fn generate_emulator_types(
         let block = block.clone().validate_and_dedup()?;
         validated_blocks.push(block);
     }
+
+    validated_blocks.sort_by_key(|b| b.block().name.clone());
 
     for block in validated_blocks.iter() {
         let rblock = block.block();
@@ -813,6 +838,10 @@ fn generate_fw_registers(
         if block.name == "I3CCSR" {
             block.name = "i3c".to_string();
         }
+        // skip as this is identical to the main flash definition
+        if block.name == "recovery_flash_ctrl" {
+            continue;
+        }
         if SKIP_TYPES.contains(block.name.as_str()) {
             continue;
         }
@@ -1028,10 +1057,8 @@ fn autogen_fuses(check: bool, dest_dir: &Path) -> Result<(), DynError> {
         write_file
     };
 
-    // TODO: when we update caliptra-ss, we can use its copy of this file instead of our copy
     let mmap_hjson = &PROJECT_ROOT
-        .join("hw")
-        .join("otp_ctrl_mmap.hjson")
+        .join("hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson")
         .to_path_buf();
 
     let otp: OtpMmap = serde_hjson::from_str(std::fs::read_to_string(mmap_hjson)?.as_str())?;

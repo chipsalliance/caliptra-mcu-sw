@@ -376,7 +376,6 @@ fn generate_reg_structs(crate_prefix: &str, block: &RegisterBlock) -> String {
         let kind = if array_prod == 1 {
             kind
         } else {
-            assert_eq!(reg.array_dimensions.len(), 1);
             format!("[{}; {}]", kind, array_prod)
         };
         let reg_tokens = format!("(0x{offset:x} => pub {name}: {kind}),\n");
