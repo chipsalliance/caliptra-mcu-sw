@@ -3,7 +3,7 @@
 //! # Mailbox Interface
 
 use core::marker::PhantomData;
-use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
+use libtock_platform::{share, AllowRo, AllowRw, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
 /// Mailbox interface user interface.
@@ -49,26 +49,33 @@ impl<S: Syscalls> Mailbox<S> {
         input_data: &[u8],
         response_buffer: &mut [u8],
     ) -> Result<usize, ErrorCode> {
-        share::scope::<(), _, _>(|_| {
-            // Subscribe to the asynchronous notification for when the command is processed
-            let async_command = TockSubscribe::subscribe_allow_ro_rw::<S, DefaultConfig>(
-                self.driver_num,
-                mailbox_subscribe::COMMAND_DONE,
-                mailbox_ro_buffer::INPUT,
-                input_data,
-                mailbox_rw_buffer::RESPONSE,
-                response_buffer,
-            );
+        // Subscribe to the asynchronous notification for when the command is processed
+        let async_command =
+            TockSubscribe::subscribe::<S>(self.driver_num, mailbox_subscribe::COMMAND_DONE);
 
+        share::scope::<
+            (
+                AllowRo<_, MAILBOX_DRIVER_NUM, { mailbox_ro_buffer::INPUT }>,
+                AllowRw<_, MAILBOX_DRIVER_NUM, { mailbox_rw_buffer::RESPONSE }>,
+            ),
+            _,
+            _,
+        >(|handle| {
+            let (allow_ro, allow_rw) = handle.split();
+            S::allow_ro::<DefaultConfig, MAILBOX_DRIVER_NUM, { mailbox_ro_buffer::INPUT }>(
+                allow_ro, input_data,
+            )?;
+            S::allow_rw::<DefaultConfig, MAILBOX_DRIVER_NUM, { mailbox_rw_buffer::RESPONSE }>(
+                allow_rw,
+                response_buffer,
+            )?;
             // Issue the command to the kernel
             S::command(self.driver_num, mailbox_cmd::EXECUTE_COMMAND, command, 0)
                 .to_result::<(), ErrorCode>()?;
+            Ok(())
+        })?;
 
-            // Return the subscription for further processing
-            Ok(async_command)
-        })?
-        .await
-        .map(|res| res.0 as usize)
+        async_command.await.map(|res| res.0 as usize)
     }
 }
 
@@ -100,5 +107,5 @@ mod mailbox_rw_buffer {
 /// Subscription IDs for asynchronous mailbox events.
 mod mailbox_subscribe {
     /// Subscription ID for the `COMMAND_DONE` event.
-    pub const COMMAND_DONE: u32 = 1;
+    pub const COMMAND_DONE: u32 = 0;
 }
