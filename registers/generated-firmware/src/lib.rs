@@ -12,5 +12,6 @@ pub mod main_flash_ctrl;
 pub mod mbox;
 pub mod mci;
 pub mod otp_ctrl;
+pub mod recovery_flash_ctrl;
 pub mod sha512_acc;
 pub mod soc;

@@ -838,10 +838,6 @@ fn generate_fw_registers(
         if block.name == "I3CCSR" {
             block.name = "i3c".to_string();
         }
-        // skip as this is identical to the main flash definition
-        if block.name == "recovery_flash_ctrl" {
-            continue;
-        }
         if SKIP_TYPES.contains(block.name.as_str()) {
             continue;
         }
@@ -889,6 +885,8 @@ fn generate_fw_registers(
     registers_generator::filter_unused_types(&mut all_blocks);
 
     for block in validated_blocks {
+        // Only generate addresses for this since the types are covered elsewhere
+        let addr_only = block.block().name == "recovery_flash_ctrl";
         let module_ident = block.block().name.clone();
         let dest_file = dest_dir.join(format!("{}.rs", block.block().name));
         let tokens = registers_generator::generate_code(
@@ -896,6 +894,7 @@ fn generate_fw_registers(
             &block,
             false,
             register_types_to_crates,
+            addr_only,
         );
         root_submod_tokens += &format!("pub mod {module_ident};\n");
         file_action(
@@ -903,8 +902,13 @@ fn generate_fw_registers(
             &rustfmt(&(header.clone() + &tokens.to_string()))?,
         )?;
     }
-    let root_type_tokens =
-        registers_generator::generate_code("crate::", &root_block, true, register_types_to_crates);
+    let root_type_tokens = registers_generator::generate_code(
+        "crate::",
+        &root_block,
+        true,
+        register_types_to_crates,
+        false,
+    );
     let recursion = "#![recursion_limit = \"256\"]\n";
     let root_tokens = root_type_tokens;
     let defines_mod = "pub mod defines;\n";

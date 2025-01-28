@@ -206,7 +206,12 @@ pub fn generate_code(
     block: &ValidatedRegisterBlock,
     is_root_module: bool,
     register_types_to_crates: &mut HashMap<String, String>,
+    addr_only: bool,
 ) -> String {
+    let address_tokens = generate_address_tokens(block.block());
+    if addr_only {
+        return address_tokens;
+    }
     let mut defined_bits = HashSet::new();
     let mut bit_tokens = generate_bitfields(
         block.register_types().values().cloned(),
@@ -229,8 +234,6 @@ pub fn generate_code(
     } else {
         generate_reg_structs(crate_prefix, block.block())
     };
-
-    let address_tokens = generate_address_tokens(block.block());
 
     let mut tokens = String::new();
 
