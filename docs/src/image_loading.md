@@ -84,6 +84,8 @@ Steps 26-27, are SOC design-specific options One option is to use the Caliptra '
 26. MCU RT sets the corresponding Go bit in Caliptra register corresponding to the image component.
 27. The Go bit sets the corresponding wire that indicates the component can process the loaded image.
 
+Refer to [Streaming Boot](./firmware_update_and_streaming_boot.md) specification for detailed steps on PLDM T5 message exchanges.
+
 ## Architecture
 
 The following diagram presents the software stack architecture where the Image Loading module resides.
@@ -114,5 +116,17 @@ pub trait ImageLoader {
     /// - `Ok()`: Image has been loaded and authorized succesfully.
     /// - `Err(DynError)`: Indication of the failure to load or authorize the image.
     async fn load_and_authorize(&self, image_id: u32) -> Result<(), DynError>;
+
+    /// Start streaming SOC image components through PLDM - T5
+    ///
+    /// # Parameters
+    /// device_identifier - The PLDM Device Identifer
+    /// parameters - The PLDM Firmware Parameters containing component image information for SOC Images
+    ///
+    /// # Returns
+    /// - `Ok()`: Image has been loaded and authorized succesfully.
+    /// - `Err(DynError)`: Indication of the failure to load or authorize the image.
+    async fn start_streaming_boot(&self, device_identifier : DeviceIdentifier, parameters: FirmwareParameters) -> Result<(), DynError>;
+
 }
 ```

@@ -12,11 +12,13 @@ The MCU PLDM stack handles the PLDM firmware messages from an external Firmware 
 
 ## PLDM Firmware Download Sequence
 
-<!--
-https://www.plantuml.com/plantuml/svg/ZLLDJyCu4BtdLumuxMfLxMal710X_I1IFxfDMAHLfMfe9iN2iREEMvP_lpPktE1iA4W1wdb-C_FUJ7FVQ5JwMF58Cyq9fanLxwW8dke2DS7la6b5M35nW0SfDMJqpv74dgAeDXVPdjKeDDoSuV61XBu1R60z7o--Gko9OSFz6umW_yEYVBgloB28U9rQjFqRHRZNKi5DAfXcQFvraRgEeiZy7jqPqArDexHdtuepKKRgn4pj1ZEwQwDNqIOZEza3NsraU-ao_7aazJ4c2qyB4fgLZ5GJjO3HdRrm2tr4Zsb6klsmHeKLwVyZwaFwJ1lhLADTCvx12UILFI7Z-C9DqqjfQzgZPb8uWOoSLu61agkteDIWZAtOK5DBqHWDkPGr78qI793phTZBoaH8wArWefHGOzDGqMjhROwJ2_GNV-tNC7K8zQb9562pdsiefG8w6GF1SmLPMnckvhNQXjX0CVE3N8UBzdcsI9v0AiXM2QGL7joSEixP9DzbUJnBbxDTF1vl9bcs5GlZoOlyrvPTeIWYiWzlADXPopr8Eb_5uokCvhdkSzXrr-ckrLsN6oZak-0I2og6vgOz7gF6dYlTOEX2DmQ10mCUUA4MA5XfadUqUZYM9IdG4hZS8__qQXCldDu9SbPhXJ1T9Bzjyiwr99wdwtmJxwRFdr9V94vQYGs1Oyk7p7zMJ9D9lHMPneErDLQ4pfZhVlTvO6uaXxWe53MDOv3wbLG3GcgxZFATlFTzwplx4vgMAnIDrSdE0IUZQMZBNwHO-G5-JW9hld4WCzCQF-MFkqMyJAUJBD-ARpHaGU_svcgJ_ZtPnSknNQNiyNB_fpFkYX_iBQvhxhz4WjO6bZxeDlIg6xJ6JJashyPkgKntFncTHDOVJWiebQoW7Q0-r_2csnCdWElGzt-PWt0nu_Chipq9bFBndaHNsibCId_PHOED6XpQy9NckmXCTlJ1k-hUS1uh_Xy0
--->
+<!---
+https://www.plantuml.com/plantuml/svg/ZLLFJ_iu4BtdKumuxMfLSTeB1qH8_n2fVxfDMAHLf6fe9iN2iREEMvPlltRJkC7vXO9Ke9xnctdlpIGFjKQb3oKFDDESOCfK-O6AuBdAKHFSGg8LOSd47Xwbr93GlmSIEmg2obnaErQXq71pJW_t9FGDO0th-NZnDSMU63JSlSC8qZzjbYltDTDl8bp7jvc8IzmJp2NcjXbpPX7ito30dPOARcB1D4FpRnEfgY08pE_HlKcwiwMLTXKpSGPFI1sPuMDoHlTjz6gsgSYEzi0n22o_Bi9V1rAVOxBfSKv2iuAHgeCsONHlBzn1BwEFD2FTVbcZmfBqhu3wANsaZNMlrWqPXz08vDG-8kFuoWtffRGzxL0pAHg1Z9nN4pqbL-zUgruRcTXGNKbH6msvb1KSZ18SaFDCx6Hf8YHq9fWe95HOrvJtQAtDSNH9_SrT-zqlxQUwqYHoiDNFFHHI0HsDWU2mlAgj35VhMctzN4ynyuDS-yjtEbj4po0L9Ai8JWjmji5YpYRfDad3MRoSRSFnU3D9aamiZ2UlyZ_RTeaY3yX-U4tU7bliGT3vAXnVGJIVwpxtML-SxbhTTRc6N7u8BZ6dV6XkskCnQkovqWtwBdHZu3amu84JQe625QPuHwl7Gr6G0Ys1ontoarURSD7e7I5dbLO8qqNqnoRjN8l2URnED-5s-dAI-Y9nr4fi01gqTCZy5yKqcTAPI3JkhQsX8coCkUvt7-VqO8KmpnNLTOCWzHkf6eJKTXdb1pdl-zPVzgTdMgfGr5OdEmUSZAQ-BN-JOiKdk3dnhFd6WSHCQ_YSFcqNuJAUJf8q4zzeo3pkzkPg4_ypsORBiLsbvEbo_wSptZG_o2siAkuU8XwrWQNtsFfUTOFMk2d7-itOBPLXzvFHYMJrsMW1XP8bj0FKnnhUT7FI2c0PNlYxEUWjPdX-PROddb8ktfFe2ft4b7INcwYtKOD3wx_I70lFv0RUUrSz6Cn3oVy7
+--->
 
-The diagram below shows the steps and interaction between the different software layers as the firmware update process is performed. It also shows the actions if streaming boot is performed instead.
+The diagram below shows the steps and interaction between the different software layers as the firmware update process is performed. Since firmware update has lots of common steps with streaming boot, the actions taken for streaming boot are also included.
+
+The corresponding API will be used depending on the initiator's purpose (i.e. for firmware updates, use the FirmwareUpdate API and for streaming boot use ImageLoading API).
 
 Note: For streaming boot, only SOC images are allowed to be downloaded.
 
@@ -88,3 +90,23 @@ pub enum FirmwareUpdateNotification<'a>{
 
 }
 ```
+
+# Streaming Boot
+
+The purpose of the streaming boot service is to stream and load firmware images from the PLDM update agent (e.g. BMC) to the custom SOC components. This process should be started after the recovery flow for the MCU RT firmware.
+
+Streaming Boot uses the [Image Loading API](./image_loading.md).
+
+## Streaming Boot Steps
+
+Refer to the sequence diagram in the PLDM Firmware Download Sequence section above.
+
+Note that these steps are performed by MCU RT.
+
+1. After MCU RT boots up and while the SOC Components are held on reset, the main process responsible for the recovery flow starts the firmware service througn the Image Loading API ("API"). It should provide the appropriate DeviceIdentifies and FirmwareParameters as defined by DMTF DSP0267 1.3.0 specification. For Streaming Boot, the FirmwareParameters should only contain the components for the SOC Images. Streaming Boot API will ignore non-SOC Image components.
+2. API will be notified by PLDM stack if firmware image is available for update (i.e. streaming boot).
+3. API will be notified by PLDM stack which component is being downloaded using the UpdateComponent Notification. If the image is not a SOC Image, an error code should be returned to the Stack. If the component is a SOC Image, then the load address will be retrieved from the SOC Manifest stored in the Caliptra Core using a mailbox command.
+4. FirmwareData notification will be notified by the PLDM stack to the API for every chunk of firmware received. This includies the data,size and the chunk offset. The chunk will be written to the load address determined from step 3.
+5. Once all firmware chunks are downloaded, the PLDM stack will notify the API to verify the component the MCU will send the AUTHORIZE_AND_STASH command with an indication that the image to be verified is in the load area.
+6. After verification, PLDM Stack will notify API to apply the image. Since there is no need to copy the image to another location, there are no actions for the MCU, and should return OK to the stack.
+7. When Update Agent sends the 'ActivateFirmware' command, the API will relinquish control back to the initiator. SOC specific logic will be applied to handle the download image.
