@@ -1,4 +1,4 @@
-# Firmware Update
+# boxFirmware Update
 
 ## Overview
 
@@ -6,15 +6,11 @@ The MCU SDK provides an API that allows for updating the firmware of Caliptra FM
 
 ## Architecture
 
-The MCU PLDM stack handles the PLDM firmware messages from an external Firmware Update Agent. The stack will generate upstream notifications to the Firmware Update API to handle application specific actions such as writing firmware chunks to a staging or permanent storage location, verifying components, etc. The API notifies the application of the start and completion of the firmware update process.
+The MCU PLDM stack handles the PLDM firmware messages from an external Firmware Update Agent. The stack will generate upstream notifications to the Firmware Update API to handle application specific actions such as writing firmware chunks to a staging or SPI Flash storage location, verifying components, etc. The API notifies the application of the start and completion of the firmware update process.
 
 ![flash_config](images/firmware_update_software_stack.svg)
 
 ## PLDM Firmware Download Sequence
-
-<!---
-https://www.plantuml.com/plantuml/svg/ZLLFJ_iu4BtdKumuxMfLSTeB1qH8_n2fVxfDMAHLf6fe9iN2iREEMvPlltRJkC7vXO9Ke9xnctdlpIGFjKQb3oKFDDESOCfK-O6AuBdAKHFSGg8LOSd47Xwbr93GlmSIEmg2obnaErQXq71pJW_t9FGDO0th-NZnDSMU63JSlSC8qZzjbYltDTDl8bp7jvc8IzmJp2NcjXbpPX7ito30dPOARcB1D4FpRnEfgY08pE_HlKcwiwMLTXKpSGPFI1sPuMDoHlTjz6gsgSYEzi0n22o_Bi9V1rAVOxBfSKv2iuAHgeCsONHlBzn1BwEFD2FTVbcZmfBqhu3wANsaZNMlrWqPXz08vDG-8kFuoWtffRGzxL0pAHg1Z9nN4pqbL-zUgruRcTXGNKbH6msvb1KSZ18SaFDCx6Hf8YHq9fWe95HOrvJtQAtDSNH9_SrT-zqlxQUwqYHoiDNFFHHI0HsDWU2mlAgj35VhMctzN4ynyuDS-yjtEbj4po0L9Ai8JWjmji5YpYRfDad3MRoSRSFnU3D9aamiZ2UlyZ_RTeaY3yX-U4tU7bliGT3vAXnVGJIVwpxtML-SxbhTTRc6N7u8BZ6dV6XkskCnQkovqWtwBdHZu3amu84JQe625QPuHwl7Gr6G0Ys1ontoarURSD7e7I5dbLO8qqNqnoRjN8l2URnED-5s-dAI-Y9nr4fi01gqTCZy5yKqcTAPI3JkhQsX8coCkUvt7-VqO8KmpnNLTOCWzHkf6eJKTXdb1pdl-zPVzgTdMgfGr5OdEmUSZAQ-BN-JOiKdk3dnhFd6WSHCQ_YSFcqNuJAUJf8q4zzeo3pkzkPg4_ypsORBiLsbvEbo_wSptZG_o2siAkuU8XwrWQNtsFfUTOFMk2d7-itOBPLXzvFHYMJrsMW1XP8bj0FKnnhUT7FI2c0PNlYxEUWjPdX-PROddb8ktfFe2ft4b7INcwYtKOD3wx_I70lFv0RUUrSz6Cn3oVy7
---->
 
 The diagram below shows the steps and interaction between the different software layers as the firmware update process is performed. Since firmware update has lots of common steps with streaming boot, the actions taken for streaming boot are also included.
 
@@ -22,7 +18,170 @@ The corresponding API will be used depending on the initiator's purpose (i.e. fo
 
 Note: For streaming boot, only SOC images are allowed to be downloaded.
 
-<img src="images/firmware_update_sequence.svg" width="50%">
+```mermaid
+sequenceDiagram
+    title Firmware Update Service Initialization
+    
+    actor App as Initiator
+    participant API as Firmware Update API / Image Loading API
+    participant Firmware as PLDM Stack - T5
+    participant PLDM as Update Agent
+    
+    App->>API: Start Firmware Update Service
+    API->>Firmware: Start Firmware Update Service
+    activate Firmware
+```
+
+### **Query Device Information**
+
+```mermaid
+sequenceDiagram
+    title Query Device Information
+
+    actor App as Initiator
+    participant API as Firmware Update API / Image Loading API
+    participant Firmware as PLDM Stack - T5
+    participant PLDM as Update Agent    
+    
+    PLDM->>Firmware: QueryDeviceIdentifiers
+    Firmware-->>PLDM: DeviceIdentifiers
+
+    PLDM->>Firmware: GetFirmwareParameters
+    Firmware-->>PLDM: FirmwareParameters
+```
+
+### **Request Update and Pass Components**
+
+```mermaid
+sequenceDiagram
+    title Request Update and Pass Components
+
+    actor App as Initiator
+    participant API as Firmware Update API / Image Loading API
+    participant Firmware as PLDM Stack - T5
+    participant PLDM as Update Agent    
+    
+    PLDM->>Firmware: RequestUpdate
+    Firmware->>API: Update Available Notification
+    API->>App: Update Available Notification
+    API-->>Firmware: Ok
+    Firmware-->>PLDM: RequestUpdate Response
+
+    loop until all component info passed
+        PLDM->>Firmware: PassComponent(component)
+        Firmware-->>PLDM: PassComponent Response
+    end
+```
+
+### **Updating Components**
+
+```mermaid
+sequenceDiagram
+    title Updating Components
+
+    actor App as Initiator
+    participant API as Firmware Update API / Image Loading API
+    participant Firmware as PLDM Stack - T5
+    participant PLDM as Update Agent    
+    
+    loop for every component
+        PLDM->>Firmware: UpdateComponent(component)
+        Firmware->>API: UpdateComponent Notification
+
+        alt Firmware Update
+            alt MCU or SOC Image
+                API->>API: GET_STAGING_ADDRESS Mailbox Command
+            end
+        else Streaming Boot
+            alt SOC Image
+                API->>API: GET_LOAD_ADDRESS Mailbox Command
+            end
+        end
+
+        API-->>Firmware: Ok
+        Firmware-->>PLDM: UpdateComponent Response
+    end
+```
+
+### **Requesting and Transferring Firmware Data**
+
+```mermaid
+sequenceDiagram
+    title Requesting and Transferring Firmware Data
+
+    actor App as Initiator
+    participant API as Firmware Update API / Image Loading API
+    participant Firmware as PLDM Stack - T5
+    participant PLDM as Update Agent    
+    
+    loop until component is downloaded
+        Firmware->>PLDM: RequestFirmwareData
+        PLDM-->>Firmware: FirmwareData
+        Firmware->>API: FirmwareData Notification
+
+        alt Firmware Update
+            alt SOC Manifest
+                API->>API: Buffer to local MCU RAM
+            else Caliptra FMC+RT
+                API->>API: CALIPTRA_FW_LOAD Mailbox Command
+            else MCU RT or SOC Image
+                API->>API: Write to Staging Area
+            end
+        else Streaming Boot
+            alt SOC Image
+                API->>API: Write to Load Address
+            else others not allowed
+            end
+        end
+        API-->>Firmware: Ok
+    end
+
+    Firmware-->>PLDM: Transfer Complete
+```
+
+### **Verifying and Applying Components**
+
+```mermaid
+sequenceDiagram
+    title Verifying and Applying Components
+
+    actor App as Initiator
+    participant API as Firmware Update API / Image Loading API
+    participant Firmware as PLDM Stack - T5
+    participant PLDM as Update Agent    
+    
+    Firmware->>API: Verify Component Notification
+
+    alt SOC Manifest
+        API->>API: SET_AUTH_MANIFEST Command
+    else MCU RT or SOC image
+        API->>API: AUTHORIZE_AND_STASH Command
+    end
+
+    API-->>Firmware: Ok
+    Firmware-->>PLDM: VerifyComplete
+```
+
+### **Activating Firmware**
+
+```mermaid
+sequenceDiagram
+    title Activating Firmware
+
+    actor App as Initiator
+    participant API as Firmware Update API / Image Loading API
+    participant Firmware as PLDM Stack - T5
+    participant PLDM as Update Agent
+    
+    PLDM->>Firmware: ActivateFirmware
+    Firmware->>API: Activate Notification
+    alt MCU RT or SOC Image
+        API->>API: Send Activate Image Mailbox Command
+    end
+    API-->>Firmware: Ok
+    API->>App: UpdateComplete
+    Firmware-->>PLDM: Activate Response
+```
 
 ## Firmware Update Steps
 
@@ -38,8 +197,10 @@ Note: Actions below are performed by MCU RT Firmware.
 5. Once all firmware chunks are downloaded, the PLDM stack will notify the API to verify the component
    1. If the component is a SOC Manifest, the MCU will send a SET_AUTH_MANIFEST mailbox command that contains the downloaded manifest to the Caliptra Core. The mailbox command response will indicate the authenticity and correctness of the manifest
    2. If the component is a MCU RT or SOC Image, the MCU will send the AUTHORIZE_AND_STASH command with an indication that the image to be verified is in the staging area.
-6. After verification, PLDM Stack will notify API to apply the image. MCU will write the images to permanent storage from the temporary or staging area.
+6. After verification, PLDM Stack will notify API to apply the image. MCU will write the images to SPI Flash storage from the temporary or staging area.
 7. When Update Agent sends the 'ActivateFirmware' command, the API will get a notification and prompts it to send an 'ActivateImage' mailbox command to the Caliptra core. Actions taken by the Caliptra core are described in [the main Caliptra specification.](https://github.com/chipsalliance/Caliptra/blob/main/doc/Caliptra.md#subsystem-support-for-hitless-updates)
+
+Note: Sending mailbox commands are done through the Mailbox API which is responsible for locking the mailbox before sending the command.
 
 ## Interfaces
 
