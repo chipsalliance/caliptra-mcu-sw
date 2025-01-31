@@ -43,7 +43,7 @@ Note: Actions below are performed by MCU RT Firmware.
 
 ## Interfaces
 
-```
+```rust
 pub trait FirmwareUpdateApi {
 
     /// Start the firmware update service.
