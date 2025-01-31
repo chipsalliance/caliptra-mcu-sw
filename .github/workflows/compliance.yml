@@ -47,8 +47,8 @@ jobs:
       run: |
         git clone https://github.com/riscv/sail-riscv.git && \
         pushd sail-riscv && \
-        make c_emulator/riscv_sim_RV32 ARCH=32 -j$(nproc) && \
-        sudo cp -r c_emulator/riscv_sim_RV32 /usr/bin && \
+        ./build_simulators.sh && \
+        sudo cp -r build/c_emulator/riscv_sim_RV32 /usr/bin && \
         popd
     - name: Install Rust tools
       run: rustup update
