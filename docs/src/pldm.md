@@ -123,9 +123,9 @@ sequenceDiagram
     FD-->>UA: UpdateComponent Response
     FD->>UA: RequestFirmwareData
     UA-->>FD: FirmwareData Response
-
     FD->>UA: TransferComplete
     UA-->>FD: TransferComplete Response
+    Note over FD: Verifying component
     FD->>UA: VerifyComplete
     UA-->>FD: VerifyComplete Response
     FD->>UA: ApplyComplete
@@ -136,3 +136,133 @@ sequenceDiagram
     FD-->>UA: Status Response
 ```
 
+## Interface
+
+```Rust
+/// Trait representing a PLDM Firmware Update Service Manager.
+///
+/// This trait defines the necessary methods to start and stop the PLDM firmware update service.
+///
+/// # Methods
+///
+/// * `start_service` - Asynchronously starts the PLDM firmware update service.
+/// * `stop_service` - Asynchronously stops the PLDM firmware update service.
+///
+/// # Errors
+///
+/// Both methods return a `Result` which, on error, contains a `PldmServiceError`.
+pub trait PldmFwUpdateServiceMgr {
+    async fn start_service(&self) -> Result<(), PldmServiceError>;
+    async fn stop_service(&self) -> Result<(), PldmServiceError>;
+}
+pub struct PldmServiceError(pub NonZeroU32);
+
+/// Represents a PLDM Firmware Update Service.
+///
+/// This struct is responsible for handling the PLDM firmware update process
+/// using the specified transport, message responder, and message requester.
+///
+/// # Type Parameters
+///
+/// * `T` - A type that implements the `Mctp` trait, representing the transport layer.
+/// * `U` - A type that implements the `MessageResponder` trait, representing the command interface responder.
+/// * `R` - A type that implements the `MessageRequester` trait, representing the command interface requester.
+///
+/// # Fields
+///
+/// * `transport` - The transport layer used for communication.
+/// * `cmd_interface_responder` - The command interface responder.
+/// * `cmd_interface_requester` - The command interface requester.
+/// * `other fields` - Additional fields required for the service.
+
+pub struct PldmFwUpdateService<T: Mctp, U: MessageResponder, R: MessageRequester> {
+    transport: T,
+    cmd_interface_responder: MessageResponder,
+    cmd_interface_requester: MessageRequester,
+    /// other fields
+}
+
+impl PldmFwUpdateServiceMgr for PldmFwUpdateService {
+    async fn start_service(&self) -> Result<(), PldmServiceError> {};
+    async fn stop_service(&self) -> Result<(), PldmServiceError> {};
+}
+
+/// Trait representing a message responder that can process requests and responses asynchronously.
+///
+/// # Required Methods
+///
+/// - `process_request(&self, payload: &mut [u8]) -> Result<usize, MessageHandlerError>`:
+///   Processes an incoming request message.
+///   - `payload`: A mutable reference to the payload data to be processed.
+///   - Returns a `Result` containing the size of the processed data or a `MessageHandlerError`.
+///
+/// - `process_response(&self, payload: &mut [u8]) -> Result<usize, MessageHandlerError>`:
+///   Processes an incoming response message.
+///   - `payload`: A mutable reference to the payload data to be processed.
+///   - Returns a `Result` containing the size of the processed data or a `MessageHandlerError`.
+///
+/// # Errors
+///
+/// Both methods return a `Result` which, on failure, contains a `MessageHandlerError`.
+pub trait MessageResponder: Send + Sync {
+    async fn process_request(&self, payload: &mut [u8]) -> Result<usize, MessageHandlerError>;
+    async fn process_response(&self, payload: &mut [u8]) -> Result<usize, MessageHandlerError>;
+}
+
+/// Trait representing a message requester that can generate requests asynchronously.
+pub trait MessageRequester: Send + Sync {
+    /// Asynchronously generates a request with the given payload.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` - A mutable reference to a byte slice that will be used to generate the request.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the size of the generated request on success, or a `MessageHandlerError` on failure.
+    async fn generate_request(&self, payload: &mut [u8]) -> Result<usize, MessageHandlerError>;
+}
+pub struct MessageHandlerError(pub NonZeroU32);
+
+
+/// Trait representing a command handler that can execute commands asynchronously.
+///
+/// # Required Methods
+///
+/// - `execute(&self, payload: &mut [u8], context: &mut PldmContext) -> usize`:
+///   Executes a command with the given payload and context.
+///   - `payload`: A mutable reference to the payload data to be processed.
+///   - `context`: A mutable reference to the PLDM context.
+///   - Returns the size of the processed data.
+///
+/// - `send_notification()`:
+///   Sends a notification to other modules or APIs asynchronously.
+///
+/// - `receive_notification()`:
+///   Receives a notification from other modules or APIs asynchronously.
+pub trait CommandHandler: Send + Sync {
+    async fn execute(&self, payload: &mut [u8], context: &mut PldmContext) -> usize;
+    async fn send_notification(&self);
+    async fn receive_notification(&self);
+}
+
+/// Represents a PLDM Command Interface Responder.
+///
+/// This struct is responsible for handling the PLDM command interface
+/// by maintaining a collection of command handlers and the PLDM context.
+///
+/// # Fields
+///
+/// * `handlers` - A hashmap that maps command codes to their respective command handlers.
+/// * `context` - The PLDM context used for processing commands.
+/// * `other fields` - Additional fields required for the command interface responder.
+pub struct CmdInterfaceResponder {
+    handlers: HashMap<u8, Box<dyn CommandHandler>>,
+    context: PldmContext,
+    // Other fields
+}
+pub struct CmdInterfaceRequester {
+    handlers: HashMap<u8, Box<dyn CommandHandler>>,
+    // Other fields
+}
+```
