@@ -139,11 +139,11 @@ sequenceDiagram
     Firmware-->>PLDM: Transfer Complete
 ```
 
-### **Verifying and Applying Components**
+### **Verifying Components**
 
 ```mermaid
 sequenceDiagram
-    title Verifying and Applying Components
+    title Verifying Components
 
     actor App as Initiator
     participant API as Firmware Update API / Image Loading API
@@ -160,6 +160,31 @@ sequenceDiagram
 
     API-->>Firmware: Ok
     Firmware-->>PLDM: VerifyComplete
+```
+
+### **Applying Components**
+
+```mermaid
+sequenceDiagram
+    title Applying Components
+
+    actor App as Initiator
+    participant API as Firmware Update API / Image Loading API
+    participant Firmware as PLDM Stack - T5
+    participant PLDM as Update Agent      
+
+    Firmware->>API: Apply component Notification
+    alt Firmware Update
+        alt SOC Manifest
+            API->>API: Write SOC Manifest to Flash Storage
+        else MCU RT or SOC Image
+            API->>API: Copy image from Staging to Flash Storage
+        end
+    end
+
+    API->>Firmware: Ok
+    Firmware->>PLDM: ApplyComplete
+
 ```
 
 ### **Activating Firmware**
@@ -246,7 +271,7 @@ pub enum FirmwareUpdateNotification<'a>{
     // Firmware Update is complete.
     UpdateComplete,
 
-    // Firmware Update is cancelled.
+    // Firmware Update is canceled.
     UpdateCanceled,
 
 }
