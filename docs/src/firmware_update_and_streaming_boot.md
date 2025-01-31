@@ -86,7 +86,7 @@ pub enum FirmwareUpdateNotification<'a>{
     UpdateComplete,
 
     // Firmware Update is cancelled.
-    UpdateCancelled,
+    UpdateCanceled,
 
 }
 ```
