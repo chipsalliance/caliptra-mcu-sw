@@ -31,7 +31,7 @@ Note: Actions below are performed by MCU RT Firmware.
 1. An Initiator (such as custom user application) starts the firmware service througn the Firmware Update API ("API"). The initiator should provide the appropriate DeviceIdentifies and FirmwareParameters as defined by DMTF DSP0267 1.3.0 specification.
 2. API will be notified by PLDM stack if firmware image is available for update.
 3. API will be notified by PLDM stack which component is being downloaded using the UpdateComponent Notification. If the image is MCU RT or SOC Image, then the staging address will be retrieved from the SOC Manifest stored in the Caliptra Core using a mailbox command.
-4. FirmwareData notification will be notified by the PLDM stack to the API for every chunk of firmware received. This includies the data,size and the chunk offset.
+4. FirmwareData notification will be notified by the PLDM stack to the API for every chunk of firmware received. This includes the data, size and the chunk offset.
    1. If the component is a SOC Manifest, it is stored temporarily in a local buffer
    2. If the component is Caliptra FMC+RT, it is uploaded to Caliptra core using CALIPTRA_FW_UPLOAD command
    3. If the component is MCU RT or SOC Image, it is written to a staging area determined in step 3
