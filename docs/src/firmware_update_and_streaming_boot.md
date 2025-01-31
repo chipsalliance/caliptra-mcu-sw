@@ -1,4 +1,4 @@
-# boxFirmware Update
+# Firmware Update
 
 ## Overview
 
