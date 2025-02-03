@@ -30,7 +30,6 @@ pub struct CaliptraRootBusArgs {
     pub pic: Rc<Pic>,
     pub clock: Rc<Clock>,
     pub rom: Vec<u8>,
-    pub firmware: Vec<u8>,
     pub log_dir: PathBuf,
     pub uart_output: Option<Rc<RefCell<Vec<u8>>>>,
     pub uart_rx: Option<Arc<Mutex<Option<u8>>>>,
@@ -71,10 +70,7 @@ impl CaliptraRootBus {
         let pic = args.pic;
         let rom = Rom::new(std::mem::take(&mut args.rom));
         let uart_irq = pic.register_irq(Self::UART_NOTIF_IRQ);
-        let mut ram = Ram::new(vec![0; RAM_SIZE as usize]);
-        // copy runtime firmware into ICCM
-        ram.data_mut()[0x80..0x80 + args.firmware.len()].copy_from_slice(&args.firmware);
-
+        let ram = Ram::new(vec![0; RAM_SIZE as usize]);
         Ok(Self {
             rom,
             ram: Rc::new(RefCell::new(ram)),
@@ -83,5 +79,12 @@ impl CaliptraRootBus {
             ctrl: EmuCtrl::new(),
             pic_regs: pic.mmio_regs(clock.clone()),
         })
+    }
+
+    pub fn load_ram(&mut self, offset: usize, data: &[u8]) {
+        if offset + data.len() > self.ram.borrow().len() as usize {
+            panic!("Data exceeds RAM size");
+        }
+        self.ram.borrow_mut().data_mut()[offset..offset + data.len()].copy_from_slice(data);
     }
 }

@@ -14,7 +14,7 @@ Abstract:
 
 use crate::{fuses::Otp, static_ref::StaticRef};
 use core::fmt::Write;
-use registers_generated::{fuses::Fuses, i3c, otp_ctrl, soc};
+use registers_generated::{fuses::Fuses, i3c, mbox, mci, otp_ctrl, soc};
 use tock_registers::interfaces::{Readable, Writeable};
 
 #[cfg(target_arch = "riscv32")]
@@ -93,6 +93,38 @@ pub const OTP_BASE: StaticRef<otp_ctrl::regs::OtpCtrl> =
 pub const I3C_BASE: StaticRef<i3c::regs::I3c> =
     unsafe { StaticRef::new(i3c::I3C_CSR_ADDR as *const i3c::regs::I3c) };
 
+pub const MCI_BASE: StaticRef<mci::regs::Mci> =
+    unsafe { StaticRef::new(mci::MCI_REG_ADDR as *const mci::regs::Mci) };
+
+pub const MBOX_BASE: StaticRef<mbox::regs::Mbox> =
+    unsafe { StaticRef::new(mbox::MBOX_CSR_ADDR as *const mbox::regs::Mbox) };
+
+struct Mailbox {
+    registers: StaticRef<mbox::regs::Mbox>,
+}
+
+impl Mailbox {}
+
+struct Mci {
+    registers: StaticRef<mci::regs::Mci>,
+}
+
+impl Mci {
+    pub const fn new(registers: StaticRef<mci::regs::Mci>) -> Self {
+        Mci { registers }
+    }
+
+    fn caliptra_boot_go(&self) {
+        self.registers.caliptra_boot_go.set(1);
+    }
+
+    fn flow_status(&self) -> u32 {
+        self.registers
+            .flow_status
+            .read(mci::bits::FlowStatus::Status)
+    }
+}
+
 pub extern "C" fn rom_entry() -> ! {
     romtime::println!("Hello from ROM");
 
@@ -122,15 +154,35 @@ pub extern "C" fn rom_entry() -> ! {
 
     romtime::println!("Fuses written to Caliptra");
 
-    // TODO(MCI): de-assert caliptra reset
+    // De-assert caliptra reset
+    let mut mci = Mci::new(MCI_BASE);
+    mci.caliptra_boot_go();
+
+    // tell Caliptra to download firmware from the recovery interface
 
     romtime::println!("Starting recovery flow");
-    recovery_flow();
+    recovery_flow(&mut mci);
     romtime::println!("Recovery flow complete");
 
-    // TODO: verify MCU firmware is valid
+    // Check that the firmware was actually loaded before jumping to it
+    let firmware_ptr = 0x4000_0080u32 as *const u32;
+    // Safety: this address is valid
+    if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
+        romtime::println!("Invalid firmware detected; halting");
+        exit_emulator(1);
+    }
 
     exit_rom();
+}
+
+/// Exit the emulator
+pub fn exit_emulator(exit_code: u32) -> ! {
+    // Safety: This is a safe memory address to write to for exiting the emulator.
+    unsafe {
+        // By writing to this address we can exit the emulator.
+        core::ptr::write_volatile(0x1000_2000 as *mut u32, exit_code);
+    }
+    unreachable!()
 }
 
 struct I3c {
@@ -143,13 +195,18 @@ impl I3c {
     }
 }
 
-fn recovery_flow() {
+fn recovery_flow(mci: &mut Mci) {
     // TODO: implement Caliptra boot flow
     let i3c = I3c::new(I3C_BASE);
 
     // TODO: read this value from the fuses (according to the spec)?
     i3c.registers.sec_fw_recovery_if_device_id_0.set(0x3a); // placeholder address for now
     i3c.registers.stdby_ctrl_mode_stby_cr_device_addr.set(0x3a);
+
+    // TODO: what value are we looking for
+    while mci.flow_status() != 123 {
+        // wait for us to get the signal to boot
+    }
 }
 
 fn exit_rom() -> ! {

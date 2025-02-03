@@ -8,14 +8,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-caliptra-emu-cpu.workspace = true
 bitfield.workspace = true
+caliptra-emu-bus.workspace = true
+caliptra-emu-cpu.workspace = true
 caliptra-emu-periph.workspace = true
 clap.workspace = true
 crc.workspace = true
 crossterm.workspace = true
 ctrlc.workspace = true
 elf.workspace = true
+emulator-bmc.workspace = true
 emulator-bus.workspace = true
 emulator-caliptra.workspace = true
 emulator-cpu.workspace = true
@@ -26,11 +28,12 @@ gdbstub_arch.workspace = true
 gdbstub.workspace = true
 hex.workspace = true
 rand.workspace = true
+smlang.workspace = true
 strum_macros.workspace = true
 strum.workspace = true
+tempfile.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
-tempfile.workspace = true
 
 [features]
 default = []
