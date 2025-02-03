@@ -13,7 +13,8 @@ Abstract:
 --*/
 
 use crate::{spi_host::SpiHost, EmuCtrl, Uart};
-use emulator_bus::{Clock, Ram, Rom};
+use caliptra_emu_bus::{Device, EventData};
+use emulator_bus::{Bus, Clock, Ram, Rom};
 use emulator_cpu::{Pic, PicMmioRegisters};
 use emulator_derive::Bus;
 use emulator_types::RAM_SIZE;
@@ -30,13 +31,13 @@ pub struct CaliptraRootBusArgs {
     pub pic: Rc<Pic>,
     pub clock: Rc<Clock>,
     pub rom: Vec<u8>,
-    pub firmware: Vec<u8>,
     pub log_dir: PathBuf,
     pub uart_output: Option<Rc<RefCell<Vec<u8>>>>,
     pub uart_rx: Option<Arc<Mutex<Option<u8>>>>,
 }
 
 #[derive(Bus)]
+#[incoming_event_fn(handle_incoming_event)]
 pub struct CaliptraRootBus {
     #[peripheral(offset = 0x0000_0000, len = 0xc000)]
     pub rom: Rom,
@@ -71,10 +72,7 @@ impl CaliptraRootBus {
         let pic = args.pic;
         let rom = Rom::new(std::mem::take(&mut args.rom));
         let uart_irq = pic.register_irq(Self::UART_NOTIF_IRQ);
-        let mut ram = Ram::new(vec![0; RAM_SIZE as usize]);
-        // copy runtime firmware into ICCM
-        ram.data_mut()[0x80..0x80 + args.firmware.len()].copy_from_slice(&args.firmware);
-
+        let ram = Ram::new(vec![0; RAM_SIZE as usize]);
         Ok(Self {
             rom,
             ram: Rc::new(RefCell::new(ram)),
@@ -83,5 +81,39 @@ impl CaliptraRootBus {
             ctrl: EmuCtrl::new(),
             pic_regs: pic.mmio_regs(clock.clone()),
         })
+    }
+
+    pub fn load_ram(&mut self, offset: usize, data: &[u8]) {
+        if offset + data.len() > self.ram.borrow().len() as usize {
+            panic!("Data exceeds RAM size");
+        }
+        self.ram.borrow_mut().data_mut()[offset..offset + data.len()].copy_from_slice(data);
+    }
+
+    fn handle_incoming_event(&mut self, event: Rc<caliptra_emu_bus::Event>) {
+        self.rom.incoming_event(event.clone());
+        self.uart.incoming_event(event.clone());
+        self.ctrl.incoming_event(event.clone());
+        self.spi.incoming_event(event.clone());
+        self.ram.borrow_mut().incoming_event(event.clone());
+        self.pic_regs.incoming_event(event.clone());
+
+        if let (Device::MCU, EventData::MemoryWrite { start_addr, data }) =
+            (event.dest, event.event.clone())
+        {
+            let start = (start_addr + 0x80) as usize;
+            if start >= RAM_SIZE as usize || start + data.len() >= RAM_SIZE as usize {
+                println!(
+                    "Ignoring invalid MCU RAM write to {}..{}",
+                    start,
+                    start + data.len()
+                );
+            } else {
+                let mut ram = self.ram.borrow_mut();
+                let ram_size = ram.len() as usize;
+                let len = data.len().min(ram_size - start);
+                ram.data_mut()[start..start + len].copy_from_slice(&data[..len]);
+            }
+        }
     }
 }

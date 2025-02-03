@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::io::HexWord;
 use crate::{error::McuError, static_ref::StaticRef};
 use core::fmt::Write;
 use registers_generated::fuses;
@@ -82,7 +83,7 @@ impl Otp {
         {}
 
         if let Some(err) = self.check_error() {
-            romtime::println!("Error reading fuses: {}", err);
+            romtime::println!("Error reading fuses: {}", HexWord(err));
             return Err(McuError::FusesError);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
@@ -103,6 +104,26 @@ impl Otp {
             fuses::NON_SECRET_FUSES_WORD_OFFSET,
             fuses::NON_SECRET_FUSES_WORD_SIZE,
             &mut fuses.non_secret_fuses,
+        )?;
+        self.read_data(
+            fuses::SECRET0_WORD_OFFSET,
+            fuses::SECRET0_WORD_SIZE,
+            &mut fuses.secret0,
+        )?;
+        self.read_data(
+            fuses::SECRET1_WORD_OFFSET,
+            fuses::SECRET1_WORD_SIZE,
+            &mut fuses.secret1,
+        )?;
+        self.read_data(
+            fuses::SECRET2_WORD_OFFSET,
+            fuses::SECRET2_WORD_SIZE,
+            &mut fuses.secret2,
+        )?;
+        self.read_data(
+            fuses::SECRET3_WORD_OFFSET,
+            fuses::SECRET3_WORD_SIZE,
+            &mut fuses.secret3,
         )?;
         Ok(fuses)
     }

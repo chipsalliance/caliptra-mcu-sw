@@ -468,7 +468,10 @@ pub unsafe fn main() {
     }
 
     // Run any requested test
-    let exit = if cfg!(feature = "test-i3c-simple") {
+    let exit = if cfg!(feature = "test-exit-immediately") {
+        debug!("Executing test-exit-immediately");
+        Some(0)
+    } else if cfg!(feature = "test-i3c-simple") {
         debug!("Executing test-i3c-simple");
         crate::tests::i3c_target_test::test_i3c_simple()
     } else if cfg!(feature = "test-i3c-constant-writes") {

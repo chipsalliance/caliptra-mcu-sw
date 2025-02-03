@@ -311,4 +311,71 @@ impl emulator_bus::Bus for AutoRootBus {
             delegate.update_reset();
         }
     }
+    fn incoming_event(&mut self, event: std::rc::Rc<caliptra_emu_bus::Event>) {
+        if let Some(periph) = self.i3c_periph.as_mut() {
+            periph.incoming_event(event.clone());
+        }
+        if let Some(periph) = self.main_flash_periph.as_mut() {
+            periph.incoming_event(event.clone());
+        }
+        if let Some(periph) = self.recovery_flash_periph.as_mut() {
+            periph.incoming_event(event.clone());
+        }
+        if let Some(periph) = self.otp_periph.as_mut() {
+            periph.incoming_event(event.clone());
+        }
+        if let Some(periph) = self.mci_periph.as_mut() {
+            periph.incoming_event(event.clone());
+        }
+        if let Some(periph) = self.mbox_periph.as_mut() {
+            periph.incoming_event(event.clone());
+        }
+        if let Some(periph) = self.sha512_acc_periph.as_mut() {
+            periph.incoming_event(event.clone());
+        }
+        if let Some(periph) = self.soc_periph.as_mut() {
+            periph.incoming_event(event.clone());
+        }
+        if let Some(periph) = self.el2_pic_periph.as_mut() {
+            periph.incoming_event(event.clone());
+        }
+        for delegate in self.delegates.iter_mut() {
+            delegate.incoming_event(event.clone());
+        }
+    }
+    fn register_outgoing_events(
+        &mut self,
+        sender: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
+    ) {
+        if let Some(periph) = self.i3c_periph.as_mut() {
+            periph.register_outgoing_events(sender.clone());
+        }
+        if let Some(periph) = self.main_flash_periph.as_mut() {
+            periph.register_outgoing_events(sender.clone());
+        }
+        if let Some(periph) = self.recovery_flash_periph.as_mut() {
+            periph.register_outgoing_events(sender.clone());
+        }
+        if let Some(periph) = self.otp_periph.as_mut() {
+            periph.register_outgoing_events(sender.clone());
+        }
+        if let Some(periph) = self.mci_periph.as_mut() {
+            periph.register_outgoing_events(sender.clone());
+        }
+        if let Some(periph) = self.mbox_periph.as_mut() {
+            periph.register_outgoing_events(sender.clone());
+        }
+        if let Some(periph) = self.sha512_acc_periph.as_mut() {
+            periph.register_outgoing_events(sender.clone());
+        }
+        if let Some(periph) = self.soc_periph.as_mut() {
+            periph.register_outgoing_events(sender.clone());
+        }
+        if let Some(periph) = self.el2_pic_periph.as_mut() {
+            periph.register_outgoing_events(sender.clone());
+        }
+        for delegate in self.delegates.iter_mut() {
+            delegate.register_outgoing_events(sender.clone());
+        }
+    }
 }
