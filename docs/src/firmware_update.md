@@ -6,7 +6,7 @@ The MCU SDK provides an API that allows for updating the firmware of Caliptra FM
 
 ## Architecture
 
-The MCU PLDM stack handles PLDM firmware messages from an external Firmware Update Agent. The stack generates upstream notifications to the Firmware Update API to handle application-specific actions such as writing firmware chunks to a staging or SPI Flash storage location, verifying components, etc. The API notifies the application of the start and completion of the firmware update process.
+The MCU PLDM stack handles PLDM firmware messages from an external Firmware Update Agent. The stack generates upstream notifications to the Firmware Update API to handle application-specific actions such as writing firmware chunks to a staging or SPI Flash storage location, verifying components, etc through the Image Loading API. The API notifies the application of the start and completion of the firmware update process.
 
 ```mermaid
 graph TD;
@@ -23,18 +23,15 @@ graph TD;
 
 ## PLDM Firmware Download Sequence
 
-The diagram below shows the steps and interactions between different software layers during the firmware update process. Since firmware updates share many steps with streaming boot, the actions taken for streaming boot are also included.
+The diagram below shows the steps and interactions between different software layers during the firmware update process. 
 
-The corresponding API will be used depending on the initiator's purpose (i.e., for firmware updates, use the Firmware Update API, and for streaming boot, use the Image Loading API).
-
-**Note:** For streaming boot, only SoC images are allowed to be downloaded.
 
 ```mermaid
 sequenceDiagram
     title Firmware Update Service Initialization
     
     actor App as Initiator
-    participant API as Firmware Update API / Image Loading API
+    participant API as Firmware Update API
     participant Firmware as PLDM Stack - T5
     participant PLDM as Update Agent
     
@@ -44,6 +41,7 @@ sequenceDiagram
     end
     
     API->>Firmware: Start Firmware Update Service
+    Firmware->>Firmware: Start listen loop
     activate Firmware
 ```
 
@@ -54,7 +52,7 @@ sequenceDiagram
     title Query Device Information
 
     actor App as Initiator
-    participant API as Firmware Update API / Image Loading API
+    participant API as Firmware Update API
     participant Firmware as PLDM Stack - T5
     participant PLDM as Update Agent    
     
@@ -72,7 +70,7 @@ sequenceDiagram
     title Request Update and Pass Components
 
     actor App as Initiator
-    participant API as Firmware Update API / Image Loading API
+    participant API as Firmware Update API
     participant Firmware as PLDM Stack - T5
     participant PLDM as Update Agent    
     
@@ -95,7 +93,7 @@ sequenceDiagram
     title Updating Components
 
     actor App as Initiator
-    participant API as Firmware Update API / Image Loading API
+    participant API as Firmware Update API
     participant Firmware as PLDM Stack - T5
     participant PLDM as Update Agent    
     
@@ -103,16 +101,10 @@ sequenceDiagram
         PLDM->>Firmware: UpdateComponent(component)
         Firmware->>API: UpdateComponent Notification
 
-        alt Firmware Update
-            alt Caliptra FMC+RT or SoC Manifest
-                API->>API: Acquire mailbox lock
-            else MCU RT or SoC Image
-                API->>API: GET_STAGING_ADDRESS
-            end
-        else Streaming Boot
-            alt SoC Image
-                API->>API: GET_LOAD_ADDRESS Mailbox Command
-            end
+        alt Caliptra FMC+RT or SoC Manifest
+            API->>API: Acquire mailbox lock
+        else MCU RT or SoC Image
+            API->>API: GET_STAGING_ADDRESS
         end
 
         API-->>Firmware: Ok
@@ -127,7 +119,7 @@ sequenceDiagram
     title Requesting and Transferring Firmware Data
 
     actor App as Initiator
-    participant API as Firmware Update API / Image Loading API
+    participant API as Firmware Update API
     participant Firmware as PLDM Stack - T5
     participant PLDM as Update Agent    
     
@@ -136,19 +128,12 @@ sequenceDiagram
         PLDM-->>Firmware: FirmwareData
         Firmware->>API: FirmwareData Notification
 
-        alt Firmware Update
-            alt SoC Manifest
-                API->>API: Stream as SoC_MANIFEST<br/>Mailbox command
-            else Caliptra FMC+RT
-                API->>API: Stream as CALIPTRA_FW_LOAD<br/>Mailbox Command
-            else MCU RT or SoC Image
-                API->>API: Write to Staging Area
-            end
-        else Streaming Boot
-            alt SoC Image
-                API->>API: Write to Load Address
-            else others not allowed
-            end
+        alt SoC Manifest
+            API->>API: Stream as SoC_MANIFEST<br/>Mailbox command
+        else Caliptra FMC+RT
+            API->>API: Stream as CALIPTRA_FW_LOAD<br/>Mailbox Command
+        else MCU RT or SoC Image
+            API->>API: Write to Staging Area
         end
         API-->>Firmware: Ok
     end
@@ -165,7 +150,7 @@ sequenceDiagram
     title Verifying Components
 
     actor App as Initiator
-    participant API as Firmware Update API / Image Loading API
+    participant API as Firmware Update API
     participant Firmware as PLDM Stack - T5
     participant PLDM as Update Agent    
     
@@ -188,7 +173,7 @@ sequenceDiagram
     title Applying Components
 
     actor App as Initiator
-    participant API as Firmware Update API / Image Loading API
+    participant API as Firmware Update API
     participant Firmware as PLDM Stack - T5
     participant PLDM as Update Agent      
 
@@ -213,7 +198,7 @@ sequenceDiagram
     title Activating Firmware
 
     actor App as Initiator
-    participant API as Firmware Update API / Image Loading API
+    participant API as Firmware Update API
     participant Firmware as PLDM Stack - T5
     participant PLDM as Update Agent
     
@@ -231,7 +216,7 @@ sequenceDiagram
 
 **Note:** Actions below are performed by MCU RT Firmware.
 
-1. An initiator (such as a custom user application) starts the firmware service through the Firmware Update API. The API queries firmware component metadata from the Caliptra core (e.g., component version numbers, classification, etc.) using a mailbox command to construct the Device Identifiers and Firmware Parameters, as defined by the DMTF DSP0267 1.3.0 specification, needed by the PLDM stack.
+1. An initiator (such as a custom user application) starts the firmware service through the Firmware Update API. This will start the responder loop in the PLDM stack that will listen for PLDM messages coming from the PLDM agent. The API queries firmware component metadata from the Caliptra core (e.g., component version numbers, classification, etc.) using a mailbox command to construct the Device Identifiers and Firmware Parameters, as defined by the DMTF DSP0267 1.3.0 specification, needed by the PLDM stack.
 2. The PLDM stack notifies the API if a firmware image is available for update.
 3. The PLDM stack notifies the API which component is being downloaded using the UpdateComponent notification. If the image is an MCU RT or SoC Image, the staging address is retrieved from the SoC Manifest stored in the Caliptra Core using a mailbox command. For Caliptra FMC+RT and the SoC Manifest, the mailbox lock is acquired since these images are streamed directly through the mailbox interface. The lock is released after all chunks of the image have been transferred.
 4. The PLDM stack sends a FirmwareData notification to the API for each received firmware chunk, including the data, size, and chunk offset.
@@ -290,24 +275,3 @@ pub enum FirmwareUpdateNotification<'a>{
 
 }
 ```
-
-# Streaming Boot
-
-The purpose of the streaming boot service is to stream and load firmware images from the PLDM update agent (e.g. BMC) to the custom SoC components. This process should be started after the recovery flow for the MCU RT firmware.
-
-Streaming Boot uses the [Image Loading API](./image_loading.md).
-
-## Streaming Boot Steps
-
-Refer to the sequence diagram in the PLDM Firmware Download Sequence section above.
-
-Note that these steps are performed by MCU RT.
-
-1. After MCU RT boots up and while the SoC Components are held on reset, the main process responsible for the recovery flow starts the firmware service througn the Image Loading API ("API"). MCU RT should query the information from Caliptra core needed to construct the DeviceIdentifies and FirmwareParameters messages as defined by DMTF DSP0267 1.3.0 specification. For Streaming Boot, the FirmwareParameters should only contain the components for the SoC Images. Streaming Boot API will ignore non-SoC Image components.
-2. API will be notified by PLDM stack if firmware image is available for update (i.e. streaming boot).
-3. API will be notified by PLDM stack which component is being downloaded using the UpdateComponent Notification. If the image is not a SoC Image, an error code should be returned to the Stack. If the component is a SoC Image, then the load address will be retrieved from the SoC Manifest stored in the Caliptra Core using a mailbox command.
-4. FirmwareData notification will be notified by the PLDM stack to the API for every chunk of firmware received. This includies the data,size and the chunk offset. The chunk will be written to the load address determined from step 3.
-5. Once all firmware chunks are downloaded, the PLDM stack will notify the API to verify the component the MCU will send the AUTHORIZE_AND_STASH command with an indication that the image to be verified is in the load area.
-Note: The AUTHORIZE_AND_STASH command should compute the SHA of the image through the SHA-Acc by streaming the image from the load address to the SHA Acc through DMA. The computed SHA will then be compared against the SHA in the SoC Manifest for the particular image.
-6. After verification, PLDM Stack will notify API to apply the image. Since there is no need to copy the image to another location, there are no actions for the MCU, and should return OK to the stack.
-7. When Update Agent sends the 'ActivateFirmware' command, the API will relinquish control back to the initiator. SoC specific logic will be applied to handle the download image.
