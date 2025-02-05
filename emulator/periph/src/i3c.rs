@@ -293,9 +293,7 @@ impl I3cPeripheral for I3c {
     fn write_i3c_ec_tti_tx_data_port(&mut self, val: u32) {
         let to_append = val.to_le_bytes();
         let idx = self.tti_tx_data_raw.len() - 1;
-        for byte in to_append {
-            self.tti_tx_data_raw[idx].push(byte);
-        }
+        self.tti_tx_data_raw[idx].extend_from_slice(&to_append);
         self.write_tx_data_into_target();
     }
 
