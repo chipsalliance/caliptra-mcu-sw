@@ -402,12 +402,12 @@ fn emu_make_peripheral_trait(
         if has_single_32_bit_field(&r.ty) {
             if r.can_read() {
                 fn_tokens.extend(quote! {
-                    fn #read_name(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData { 0 }
+                    fn #read_name(&mut self) -> emulator_types::RvData { 0 }
                 });
             }
             if r.can_write() {
                 fn_tokens.extend(quote! {
-                    fn #write_name(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {}
+                    fn #write_name(&mut self, _val: emulator_types::RvData) {}
                 });
             }
         } else {
@@ -423,14 +423,14 @@ fn emu_make_peripheral_trait(
             let fulltyn = quote! { emulator_bus::ReadWriteRegister::<#prim, #read_val> };
             if r.can_read() {
                 fn_tokens.extend(quote! {
-                    fn #read_name(&mut self, _size: emulator_types::RvSize) -> #fulltyn {
+                    fn #read_name(&mut self) -> #fulltyn {
                         emulator_bus::ReadWriteRegister :: new(0)
                     }
                 });
             }
             if r.can_write() {
                 fn_tokens.extend(quote! {
-                    fn #write_name(&mut self, _size: emulator_types::RvSize, _val: #fulltyn) {}
+                    fn #write_name(&mut self, _val: #fulltyn) {}
                 });
             }
         }
@@ -488,80 +488,41 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, Dyn
             format!("write_{}{}", base_name, base_field).replace("__", "_"),
         );
         let a = hex_literal(offset + r.offset);
-        let a1 = hex_literal(offset + r.offset + 1);
-        let a3 = hex_literal(offset + r.offset + 3);
+        let b = hex_literal(
+            offset + r.offset + r.ty.width.in_bytes() * r.array_dimensions.iter().product::<u64>(),
+        );
+        assert_eq!(r.ty.width, RegisterWidth::_32);
         if has_single_32_bit_field(&r.ty) {
             if r.ty.fields[0].ty.can_read() {
                 read_tokens.extend(quote! {
-                    (size, #a) => Ok(self.periph.#read_name(size)),
-                    (_, #a1 ..= #a3) => Err(emulator_bus::BusError::LoadAddrMisaligned),
+                    #a..#b => Ok(self.periph.#read_name()),
                 });
             }
             if r.ty.fields[0].ty.can_write() {
                 write_tokens.extend(quote! {
-                    (size, #a) => {
-                        self.periph.#write_name(size, val);
+                    #a..#b => {
+                        self.periph.#write_name(val);
                         Ok(())
                     }
-                    (_, #a1 ..= #a3) => Err(emulator_bus::BusError::StoreAddrMisaligned),
                 });
             }
         } else {
-            match r.ty.width {
-                RegisterWidth::_8 => {
-                    if r.can_read() {
-                        read_tokens.extend(quote! {
-                            (emulator_types::RvSize::Byte, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name(emulator_types::RvSize::Byte).reg.get())),
-                        });
+            if r.can_read() {
+                read_tokens.extend(quote! {
+                    #a..#b => Ok(emulator_types::RvData::from(self.periph.#read_name().reg.get())),
+                });
+            }
+            if r.can_write() {
+                write_tokens.extend(quote! {
+                    #a..#b => {
+                        self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val));
+                        Ok(())
                     }
-                    if r.can_write() {
-                        write_tokens.extend(quote! {
-                            (emulator_types::RvSize::Byte, #a) => {
-                                self.periph.#write_name(emulator_types::RvSize::Byte, emulator_bus::ReadWriteRegister::new(val));
-                                Ok(())
-                            }
-                        });
-                    }
-                }
-                RegisterWidth::_16 => {
-                    if r.can_read() {
-                        read_tokens.extend(quote! {
-                            (emulator_types::RvSize::HalfWord, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name(emulator_types::RvSize::HalfWord).reg.get())),
-                            (emulator_types::RvSize::HalfWord, #a1) => Err(emulator_bus::BusError::LoadAddrMisaligned),
-                        });
-                    }
-                    if r.can_write() {
-                        write_tokens.extend(quote! {
-                            (emulator_types::RvSize::HalfWord, #a) => {
-                                self.periph.#write_name(emulator_types::RvSize::HalfWord, emulator_bus::ReadWriteRegister::new(val));
-                                Ok(())
-                            }
-                            (emulator_types::RvSize::HalfWord, #a1) => Err(emulator_bus::BusError::StoreAddrMisaligned),
-                        });
-                    }
-                },
-                RegisterWidth::_32 => {
-                    if r.can_read() {
-                        read_tokens.extend(quote! {
-                            (emulator_types::RvSize::Word, #a) => Ok(emulator_types::RvData::from(self.periph.#read_name(emulator_types::RvSize::Word).reg.get())),
-                            (emulator_types::RvSize::Word, #a1 ..= #a3) => Err(emulator_bus::BusError::LoadAddrMisaligned),
-                        });
-                    }
-                    if r.can_write() {
-                        write_tokens.extend(quote! {
-                            (emulator_types::RvSize::Word, #a) => {
-                                self.periph.#write_name(emulator_types::RvSize::Word, emulator_bus::ReadWriteRegister::new(val));
-                                Ok(())
-                            }
-                            (emulator_types::RvSize::Word, #a1 ..= #a3) => Err(emulator_bus::BusError::StoreAddrMisaligned),
-                        });
-                    }
-                },
-                RegisterWidth::_64 => todo!(),
-                RegisterWidth::_128 => todo!(),
+                });
             }
         }
     });
+
     let mut tokens = TokenStream::new();
     tokens.extend(quote! {
         pub struct #bus {
@@ -569,13 +530,19 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, Dyn
         }
         impl emulator_bus::Bus for #bus {
             fn read(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr) -> Result<emulator_types::RvData, emulator_bus::BusError> {
-                match (size, addr) {
+                if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+                    return Err(emulator_bus::BusError::LoadAddrMisaligned);
+                }
+                match addr {
                     #read_tokens
                     _ => Err(emulator_bus::BusError::LoadAccessFault),
                 }
             }
             fn write(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr, val: emulator_types::RvData) -> Result<(), emulator_bus::BusError> {
-                match (size, addr) {
+                if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+                    return Err(emulator_bus::BusError::StoreAddrMisaligned);
+                }
+                match addr {
                     #write_tokens
                     _ => Err(emulator_bus::BusError::StoreAccessFault),
                 }
@@ -599,7 +566,7 @@ fn whole_width(block: &RegisterBlock) -> u64 {
     let a = block
         .registers
         .iter()
-        .map(|r| r.offset + r.ty.width.in_bytes())
+        .map(|r| r.offset + r.ty.width.in_bytes() * r.array_dimensions.iter().product::<u64>())
         .sum::<u64>();
     let b = block
         .sub_blocks

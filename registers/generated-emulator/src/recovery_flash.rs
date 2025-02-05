@@ -11,7 +11,6 @@ pub trait RecoveryFlashPeripheral {
     fn update_reset(&mut self) {}
     fn read_fl_interrupt_state(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
@@ -20,7 +19,6 @@ pub trait RecoveryFlashPeripheral {
     }
     fn write_fl_interrupt_state(
         &mut self,
-        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
@@ -29,7 +27,6 @@ pub trait RecoveryFlashPeripheral {
     }
     fn read_fl_interrupt_enable(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
@@ -38,28 +35,26 @@ pub trait RecoveryFlashPeripheral {
     }
     fn write_fl_interrupt_enable(
         &mut self,
-        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
     }
-    fn read_page_size(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn read_page_size(&mut self) -> emulator_types::RvData {
         0
     }
-    fn write_page_size(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {}
-    fn read_page_num(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn write_page_size(&mut self, _val: emulator_types::RvData) {}
+    fn read_page_num(&mut self) -> emulator_types::RvData {
         0
     }
-    fn write_page_num(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {}
-    fn read_page_addr(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn write_page_num(&mut self, _val: emulator_types::RvData) {}
+    fn read_page_addr(&mut self) -> emulator_types::RvData {
         0
     }
-    fn write_page_addr(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {}
+    fn write_page_addr(&mut self, _val: emulator_types::RvData) {}
     fn read_fl_control(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::FlControl::Register,
@@ -68,7 +63,6 @@ pub trait RecoveryFlashPeripheral {
     }
     fn write_fl_control(
         &mut self,
-        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::main_flash_ctrl::bits::FlControl::Register,
@@ -77,7 +71,6 @@ pub trait RecoveryFlashPeripheral {
     }
     fn read_op_status(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::OpStatus::Register,
@@ -86,7 +79,6 @@ pub trait RecoveryFlashPeripheral {
     }
     fn write_op_status(
         &mut self,
-        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::main_flash_ctrl::bits::OpStatus::Register,
@@ -95,7 +87,6 @@ pub trait RecoveryFlashPeripheral {
     }
     fn read_ctrl_regwen(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::CtrlRegwen::Register,
@@ -112,58 +103,28 @@ impl emulator_bus::Bus for RecoveryFlashBus {
         size: emulator_types::RvSize,
         addr: emulator_types::RvAddr,
     ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
-        match (size, addr) {
-            (emulator_types::RvSize::Word, 0) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_fl_interrupt_state(emulator_types::RvSize::Word)
-                    .reg
-                    .get(),
+        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+            return Err(emulator_bus::BusError::LoadAddrMisaligned);
+        }
+        match addr {
+            0..4 => Ok(emulator_types::RvData::from(
+                self.periph.read_fl_interrupt_state().reg.get(),
             )),
-            (emulator_types::RvSize::Word, 1..=3) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 4) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_fl_interrupt_enable(emulator_types::RvSize::Word)
-                    .reg
-                    .get(),
+            4..8 => Ok(emulator_types::RvData::from(
+                self.periph.read_fl_interrupt_enable().reg.get(),
             )),
-            (emulator_types::RvSize::Word, 5..=7) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (size, 8) => Ok(self.periph.read_page_size(size)),
-            (_, 9..=0xb) => Err(emulator_bus::BusError::LoadAddrMisaligned),
-            (size, 0xc) => Ok(self.periph.read_page_num(size)),
-            (_, 0xd..=0xf) => Err(emulator_bus::BusError::LoadAddrMisaligned),
-            (size, 0x10) => Ok(self.periph.read_page_addr(size)),
-            (_, 0x11..=0x13) => Err(emulator_bus::BusError::LoadAddrMisaligned),
-            (emulator_types::RvSize::Word, 0x14) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_fl_control(emulator_types::RvSize::Word)
-                    .reg
-                    .get(),
+            8..0xc => Ok(self.periph.read_page_size()),
+            0xc..0x10 => Ok(self.periph.read_page_num()),
+            0x10..0x14 => Ok(self.periph.read_page_addr()),
+            0x14..0x18 => Ok(emulator_types::RvData::from(
+                self.periph.read_fl_control().reg.get(),
             )),
-            (emulator_types::RvSize::Word, 0x15..=0x17) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x18) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_op_status(emulator_types::RvSize::Word)
-                    .reg
-                    .get(),
+            0x18..0x1c => Ok(emulator_types::RvData::from(
+                self.periph.read_op_status().reg.get(),
             )),
-            (emulator_types::RvSize::Word, 0x19..=0x1b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x1c) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_ctrl_regwen(emulator_types::RvSize::Word)
-                    .reg
-                    .get(),
+            0x1c..0x20 => Ok(emulator_types::RvData::from(
+                self.periph.read_ctrl_regwen().reg.get(),
             )),
-            (emulator_types::RvSize::Word, 0x1d..=0x1f) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
             _ => Err(emulator_bus::BusError::LoadAccessFault),
         }
     }
@@ -173,61 +134,41 @@ impl emulator_bus::Bus for RecoveryFlashBus {
         addr: emulator_types::RvAddr,
         val: emulator_types::RvData,
     ) -> Result<(), emulator_bus::BusError> {
-        match (size, addr) {
-            (emulator_types::RvSize::Word, 0) => {
-                self.periph.write_fl_interrupt_state(
-                    emulator_types::RvSize::Word,
-                    emulator_bus::ReadWriteRegister::new(val),
-                );
+        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+            return Err(emulator_bus::BusError::StoreAddrMisaligned);
+        }
+        match addr {
+            0..4 => {
+                self.periph
+                    .write_fl_interrupt_state(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 1..=3) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 4) => {
-                self.periph.write_fl_interrupt_enable(
-                    emulator_types::RvSize::Word,
-                    emulator_bus::ReadWriteRegister::new(val),
-                );
+            4..8 => {
+                self.periph
+                    .write_fl_interrupt_enable(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 5..=7) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (size, 8) => {
-                self.periph.write_page_size(size, val);
+            8..0xc => {
+                self.periph.write_page_size(val);
                 Ok(())
             }
-            (_, 9..=0xb) => Err(emulator_bus::BusError::StoreAddrMisaligned),
-            (size, 0xc) => {
-                self.periph.write_page_num(size, val);
+            0xc..0x10 => {
+                self.periph.write_page_num(val);
                 Ok(())
             }
-            (_, 0xd..=0xf) => Err(emulator_bus::BusError::StoreAddrMisaligned),
-            (size, 0x10) => {
-                self.periph.write_page_addr(size, val);
+            0x10..0x14 => {
+                self.periph.write_page_addr(val);
                 Ok(())
             }
-            (_, 0x11..=0x13) => Err(emulator_bus::BusError::StoreAddrMisaligned),
-            (emulator_types::RvSize::Word, 0x14) => {
-                self.periph.write_fl_control(
-                    emulator_types::RvSize::Word,
-                    emulator_bus::ReadWriteRegister::new(val),
-                );
+            0x14..0x18 => {
+                self.periph
+                    .write_fl_control(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x15..=0x17) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x18) => {
-                self.periph.write_op_status(
-                    emulator_types::RvSize::Word,
-                    emulator_bus::ReadWriteRegister::new(val),
-                );
+            0x18..0x1c => {
+                self.periph
+                    .write_op_status(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
-            }
-            (emulator_types::RvSize::Word, 0x19..=0x1b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             _ => Err(emulator_bus::BusError::StoreAccessFault),
         }

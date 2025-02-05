@@ -104,14 +104,14 @@ impl emulator_bus::Bus for AutoRootBus {
                     Err(emulator_bus::BusError::LoadAccessFault)
                 }
             }
-            0x3003_0000..=0x3003_f4fb => {
+            0x3003_0000..=0x3003_f703 => {
                 if let Some(periph) = self.soc_periph.as_mut() {
                     periph.read(size, addr - 0x3003_0000)
                 } else {
                     Err(emulator_bus::BusError::LoadAccessFault)
                 }
             }
-            0x6000_0000..=0x6000_f017 => {
+            0x6000_0000..=0x6001_0403 => {
                 if let Some(periph) = self.el2_pic_periph.as_mut() {
                     periph.read(size, addr - 0x6000_0000)
                 } else {
@@ -188,14 +188,14 @@ impl emulator_bus::Bus for AutoRootBus {
                     Err(emulator_bus::BusError::StoreAccessFault)
                 }
             }
-            0x3003_0000..=0x3003_f4fb => {
+            0x3003_0000..=0x3003_f703 => {
                 if let Some(periph) = self.soc_periph.as_mut() {
                     periph.write(size, addr - 0x3003_0000, val)
                 } else {
                     Err(emulator_bus::BusError::StoreAccessFault)
                 }
             }
-            0x6000_0000..=0x6000_f017 => {
+            0x6000_0000..=0x6001_0403 => {
                 if let Some(periph) = self.el2_pic_periph.as_mut() {
                     periph.write(size, addr - 0x6000_0000, val)
                 } else {

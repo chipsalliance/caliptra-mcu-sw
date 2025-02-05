@@ -363,7 +363,6 @@ impl MainFlashPeripheral for DummyFlashCtrl {
 
     fn read_fl_interrupt_state(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
@@ -373,7 +372,6 @@ impl MainFlashPeripheral for DummyFlashCtrl {
 
     fn write_fl_interrupt_state(
         &mut self,
-        _size: emulator_types::RvSize,
         val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
@@ -396,7 +394,6 @@ impl MainFlashPeripheral for DummyFlashCtrl {
 
     fn read_fl_interrupt_enable(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
@@ -406,7 +403,6 @@ impl MainFlashPeripheral for DummyFlashCtrl {
 
     fn write_fl_interrupt_enable(
         &mut self,
-        _size: emulator_types::RvSize,
         val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
@@ -433,34 +429,33 @@ impl MainFlashPeripheral for DummyFlashCtrl {
         self.interrupt_enable.reg.set(val.reg.get());
     }
 
-    fn write_page_size(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
+    fn write_page_size(&mut self, val: emulator_types::RvData) {
         self.page_size.reg.set(val);
     }
 
     // Return the page size of the flash storage connected to the controller
-    fn read_page_size(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn read_page_size(&mut self) -> emulator_types::RvData {
         Self::PAGE_SIZE as u32
     }
 
-    fn read_page_num(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn read_page_num(&mut self) -> emulator_types::RvData {
         self.page_num.reg.get()
     }
 
-    fn write_page_num(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
+    fn write_page_num(&mut self, val: emulator_types::RvData) {
         self.page_num.reg.set(val);
     }
 
-    fn read_page_addr(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn read_page_addr(&mut self) -> emulator_types::RvData {
         self.page_addr.reg.get()
     }
 
-    fn write_page_addr(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
+    fn write_page_addr(&mut self, val: emulator_types::RvData) {
         self.page_addr.reg.set(val);
     }
 
     fn read_fl_control(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::FlControl::Register,
@@ -470,7 +465,6 @@ impl MainFlashPeripheral for DummyFlashCtrl {
 
     fn write_fl_control(
         &mut self,
-        _size: emulator_types::RvSize,
         val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::main_flash_ctrl::bits::FlControl::Register,
@@ -493,7 +487,6 @@ impl MainFlashPeripheral for DummyFlashCtrl {
 
     fn read_op_status(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::OpStatus::Register,
@@ -503,7 +496,6 @@ impl MainFlashPeripheral for DummyFlashCtrl {
 
     fn write_op_status(
         &mut self,
-        _size: emulator_types::RvSize,
         val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::main_flash_ctrl::bits::OpStatus::Register,
@@ -514,7 +506,6 @@ impl MainFlashPeripheral for DummyFlashCtrl {
 
     fn read_ctrl_regwen(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::CtrlRegwen::Register,
@@ -539,7 +530,6 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
 
     fn read_fl_interrupt_state(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
@@ -549,7 +539,6 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
 
     fn write_fl_interrupt_state(
         &mut self,
-        _size: emulator_types::RvSize,
         val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
@@ -572,7 +561,6 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
 
     fn read_fl_interrupt_enable(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
@@ -582,7 +570,6 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
 
     fn write_fl_interrupt_enable(
         &mut self,
-        _size: emulator_types::RvSize,
         val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
@@ -609,34 +596,33 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         self.interrupt_enable.reg.set(val.reg.get());
     }
 
-    fn write_page_size(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
+    fn write_page_size(&mut self, val: emulator_types::RvData) {
         self.page_size.reg.set(val);
     }
 
     // Return the page size of the flash storage connected to the controller
-    fn read_page_size(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn read_page_size(&mut self) -> emulator_types::RvData {
         Self::PAGE_SIZE as u32
     }
 
-    fn read_page_num(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn read_page_num(&mut self) -> emulator_types::RvData {
         self.page_num.reg.get()
     }
 
-    fn write_page_num(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
+    fn write_page_num(&mut self, val: emulator_types::RvData) {
         self.page_num.reg.set(val);
     }
 
-    fn read_page_addr(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn read_page_addr(&mut self) -> emulator_types::RvData {
         self.page_addr.reg.get()
     }
 
-    fn write_page_addr(&mut self, _size: emulator_types::RvSize, val: emulator_types::RvData) {
+    fn write_page_addr(&mut self, val: emulator_types::RvData) {
         self.page_addr.reg.set(val);
     }
 
     fn read_fl_control(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::FlControl::Register,
@@ -646,7 +632,6 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
 
     fn write_fl_control(
         &mut self,
-        _size: emulator_types::RvSize,
         val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::main_flash_ctrl::bits::FlControl::Register,
@@ -669,7 +654,6 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
 
     fn read_op_status(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::OpStatus::Register,
@@ -679,7 +663,6 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
 
     fn write_op_status(
         &mut self,
-        _size: emulator_types::RvSize,
         val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::main_flash_ctrl::bits::OpStatus::Register,
@@ -690,7 +673,6 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
 
     fn read_ctrl_regwen(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::main_flash_ctrl::bits::CtrlRegwen::Register,

@@ -11,7 +11,7 @@ use crate::{DynamicI3cAddress, I3cIncomingCommandClient, IbiDescriptor, ReguData
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::i3c::I3cPeripheral;
-use emulator_types::{RvData, RvSize};
+use emulator_types::RvData;
 use registers_generated::i3c::bits::{
     ExtcapHeader, InterruptEnable, InterruptStatus, StbyCrCapabilities, StbyCrDeviceAddr,
     TtiQueueSize,
@@ -191,13 +191,12 @@ impl I3c {
 }
 
 impl I3cPeripheral for I3c {
-    fn read_i3c_base_hci_version(&mut self, _size: RvSize) -> RvData {
+    fn read_i3c_base_hci_version(&mut self) -> RvData {
         RvData::from(Self::HCI_VERSION)
     }
 
     fn read_i3c_ec_tti_interrupt_enable(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::InterruptEnable::Register,
@@ -207,7 +206,6 @@ impl I3cPeripheral for I3c {
 
     fn read_i3c_ec_tti_interrupt_status(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::InterruptStatus::Register,
@@ -217,7 +215,7 @@ impl I3cPeripheral for I3c {
 
     fn write_i3c_ec_tti_interrupt_status(
         &mut self,
-        _size: emulator_types::RvSize,
+
         val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::InterruptStatus::Register,
@@ -232,7 +230,7 @@ impl I3cPeripheral for I3c {
 
     fn write_i3c_ec_tti_interrupt_enable(
         &mut self,
-        _size: emulator_types::RvSize,
+
         val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::InterruptEnable::Register,
@@ -241,41 +239,20 @@ impl I3cPeripheral for I3c {
         self.interrupt_enable.reg.set(val.reg.get());
     }
 
-    fn write_i3c_ec_tti_tti_ibi_port(
-        &mut self,
-        size: emulator_types::RvSize,
-        val: emulator_types::RvData,
-    ) {
-        match size {
-            RvSize::Byte => {
-                self.tti_ibi_buffer.push(val as u8);
-            }
-            RvSize::HalfWord => {
-                let val = val as u16;
-                self.tti_ibi_buffer.push(val as u8);
-                self.tti_ibi_buffer.push((val >> 8) as u8);
-            }
-            RvSize::Word => {
-                self.tti_ibi_buffer
-                    .extend_from_slice(val.to_le_bytes().as_ref());
-            }
-            RvSize::Invalid => {
-                panic!("Invalid size")
-            }
-        }
+    fn write_i3c_ec_tti_tti_ibi_port(&mut self, val: emulator_types::RvData) {
+        self.tti_ibi_buffer
+            .extend_from_slice(val.to_le_bytes().as_ref());
         self.check_ibi_buffer();
     }
 
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
         &mut self,
-        _size: RvSize,
     ) -> ReadWriteRegister<u32, StbyCrCapabilities::Register> {
         ReadWriteRegister::new(StbyCrCapabilities::TargetXactSupport.val(1).value)
     }
 
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
         &mut self,
-        _size: RvSize,
     ) -> ReadWriteRegister<u32, StbyCrDeviceAddr::Register> {
         let val = match self.i3c_target.get_address() {
             Some(addr) => {
@@ -287,14 +264,11 @@ impl I3cPeripheral for I3c {
         ReadWriteRegister::new(val.value)
     }
 
-    fn read_i3c_ec_tti_extcap_header(
-        &mut self,
-        _size: RvSize,
-    ) -> ReadWriteRegister<u32, ExtcapHeader::Register> {
+    fn read_i3c_ec_tti_extcap_header(&mut self) -> ReadWriteRegister<u32, ExtcapHeader::Register> {
         ReadWriteRegister::new(ExtcapHeader::CapId.val(0xc4).value)
     }
 
-    fn read_i3c_ec_tti_rx_desc_queue_port(&mut self, _size: RvSize) -> u32 {
+    fn read_i3c_ec_tti_rx_desc_queue_port(&mut self) -> u32 {
         if self.tti_rx_desc_queue_raw.len() & 1 == 0 {
             // only replace the data every other read since the descriptor is 64 bits
             self.tti_rx_current = self.tti_rx_data_raw.pop_front().unwrap_or_default().into();
@@ -302,46 +276,30 @@ impl I3cPeripheral for I3c {
         self.tti_rx_desc_queue_raw.pop_front().unwrap_or(0)
     }
 
-    fn read_i3c_ec_tti_rx_data_port(&mut self, size: RvSize) -> u32 {
-        match size {
-            RvSize::Byte => self.tti_rx_current.pop_front().unwrap_or(0) as u32,
-            RvSize::HalfWord => {
-                let mut data = (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 8;
-                data |= self.tti_rx_current.pop_front().unwrap_or(0) as u32;
-                data
-            }
-            RvSize::Word => {
-                let mut data = self.tti_rx_current.pop_front().unwrap_or(0) as u32;
-                data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 8;
-                data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 16;
-                data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 24;
-                data
-            }
-            RvSize::Invalid => {
-                panic!("Invalid size")
-            }
-        }
+    fn read_i3c_ec_tti_rx_data_port(&mut self) -> u32 {
+        let mut data = self.tti_rx_current.pop_front().unwrap_or(0) as u32;
+        data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 8;
+        data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 16;
+        data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 24;
+        data
     }
 
-    fn write_i3c_ec_tti_tx_desc_queue_port(&mut self, _size: RvSize, val: u32) {
+    fn write_i3c_ec_tti_tx_desc_queue_port(&mut self, val: u32) {
         self.tti_tx_desc_queue_raw.push_back(val);
         self.tti_tx_data_raw.push_back(vec![]);
         self.write_tx_data_into_target();
     }
 
-    fn write_i3c_ec_tti_tx_data_port(&mut self, size: RvSize, val: u32) {
+    fn write_i3c_ec_tti_tx_data_port(&mut self, val: u32) {
         let to_append = val.to_le_bytes();
         let idx = self.tti_tx_data_raw.len() - 1;
-        for byte in &to_append[..size.into()] {
-            self.tti_tx_data_raw[idx].push(*byte);
+        for byte in to_append {
+            self.tti_tx_data_raw[idx].push(byte);
         }
         self.write_tx_data_into_target();
     }
 
-    fn read_i3c_ec_tti_tti_queue_size(
-        &mut self,
-        _size: RvSize,
-    ) -> ReadWriteRegister<u32, TtiQueueSize::Register> {
+    fn read_i3c_ec_tti_tti_queue_size(&mut self) -> ReadWriteRegister<u32, TtiQueueSize::Register> {
         ReadWriteRegister::new(
             (TtiQueueSize::RxDataBufferSize.val(5)
                 + TtiQueueSize::TxDataBufferSize.val(5)
@@ -381,7 +339,7 @@ mod tests {
     use emulator_bus::Bus;
     use emulator_cpu::Pic;
     use emulator_registers_generated::root_bus::AutoRootBus;
-    use emulator_types::RvAddr;
+    use emulator_types::{RvAddr, RvSize};
 
     const TTI_RX_DESC_QUEUE_PORT: RvAddr = 0x1dc;
 
@@ -394,10 +352,7 @@ mod tests {
         let mut i3c_controller = I3cController::default();
         let mut i3c = Box::new(I3c::new(&clock, &mut i3c_controller, error_irq, notif_irq));
 
-        assert_eq!(
-            i3c.read_i3c_base_hci_version(RvSize::Word),
-            I3c::HCI_VERSION
-        );
+        assert_eq!(i3c.read_i3c_base_hci_version(), I3c::HCI_VERSION);
 
         let cmd_bytes: [u8; 8] = [0x01, 0, 0, 0, 0, 0, 0, 0];
         let cmd = I3cTcriCommandXfer {

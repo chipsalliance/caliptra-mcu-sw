@@ -14,7 +14,7 @@ Abstract:
 --*/
 use crate::otp_digest;
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
-use emulator_types::{RvAddr, RvData, RvSize};
+use emulator_types::{RvAddr, RvData};
 use registers_generated::fuses;
 use registers_generated::otp_ctrl::bits::{DirectAccessCmd, Status};
 use serde::{Deserialize, Serialize};
@@ -190,7 +190,6 @@ impl Otp {
 impl emulator_registers_generated::otp::OtpPeripheral for Otp {
     fn read_status(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Status::Register>
     {
         self.status.clone()
@@ -198,7 +197,6 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
 
     fn write_direct_access_address(
         &mut self,
-        _size: RvSize,
         val: ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
@@ -212,7 +210,6 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
 
     fn read_direct_access_address(
         &mut self,
-        _size: RvSize,
     ) -> ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::DirectAccessAddress::Register>
     {
         self.direct_access_address.into()
@@ -220,7 +217,6 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
 
     fn write_direct_access_cmd(
         &mut self,
-        _size: RvSize,
         val: ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::DirectAccessCmd::Register>,
     ) {
         let val = val.reg.get();
@@ -232,22 +228,15 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
         self.status.reg.set(Status::DailIdle::CLEAR.value);
     }
 
-    fn read_dai_rdata_rf_direct_access_rdata_0(&mut self, _size: RvSize) -> RvData {
+    fn read_dai_rdata_rf_direct_access_rdata_0(&mut self) -> RvData {
         self.direct_access_buffer
     }
 
-    fn read_dai_wdata_rf_direct_access_wdata_0(
-        &mut self,
-        _size: emulator_types::RvSize,
-    ) -> emulator_types::RvData {
+    fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> emulator_types::RvData {
         self.direct_access_buffer
     }
 
-    fn write_dai_wdata_rf_direct_access_wdata_0(
-        &mut self,
-        _size: emulator_types::RvSize,
-        val: RvData,
-    ) {
+    fn write_dai_wdata_rf_direct_access_wdata_0(&mut self, val: RvData) {
         self.direct_access_buffer = val;
     }
 
@@ -320,21 +309,21 @@ mod test {
         let mut otp = Otp::new(&clock, None).unwrap();
         // simulate post-bootup flow
         assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
-        otp.write_integrity_check_period(RvSize::Word, 0x3_FFFFu32.into());
-        otp.write_consistency_check_period(RvSize::Word, 0x3FF_FFFFu32.into());
-        otp.write_check_timeout(RvSize::Word, 0b10_0000u32.into());
-        otp.write_check_regwen(RvSize::Word, 0u32.into());
+        otp.write_integrity_check_period(0x3_FFFFu32.into());
+        otp.write_consistency_check_period(0x3FF_FFFFu32.into());
+        otp.write_check_timeout(0b10_0000u32.into());
+        otp.write_check_regwen(0u32.into());
         // one-off integrity check
-        otp.write_check_trigger(RvSize::Word, 0b11u32.into());
+        otp.write_check_trigger(0b11u32.into());
 
         // assert_eq!(
         //     Status::CHECK_PENDING::SET.value,
         //     otp.status.reg.read(Status::CHECK_PENDING)
         // );
         // disable integrity checks
-        otp.write_check_trigger_regwen(RvSize::Word, 0u32.into());
+        otp.write_check_trigger_regwen(0u32.into());
         // block read access to the SW managed partitions
-        otp.write_vendor_test_read_lock(RvSize::Word, 0u32.into());
+        otp.write_vendor_test_read_lock(0u32.into());
     }
 
     #[test]
@@ -344,9 +333,9 @@ mod test {
         // write the vendor partition
         assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
         for i in 0..fuses::VENDOR_TEST_WORD_SIZE {
-            otp.write_dai_wdata_rf_direct_access_wdata_0(RvSize::Word, i as u32);
-            otp.write_direct_access_address(RvSize::Word, ((i * 4) as u32).into());
-            otp.write_direct_access_cmd(RvSize::Word, 2u32.into());
+            otp.write_dai_wdata_rf_direct_access_wdata_0(i as u32);
+            otp.write_direct_access_address(((i * 4) as u32).into());
+            otp.write_direct_access_cmd(2u32.into());
             // wait for idle
             assert_eq!(otp.status.reg.get(), Status::DailIdle::CLEAR.value);
             for _ in 0..1000 {
@@ -362,8 +351,8 @@ mod test {
         // read the vendor partition
         assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
         for i in 0..fuses::VENDOR_TEST_WORD_SIZE {
-            otp.write_direct_access_address(RvSize::Word, ((i * 4) as u32).into());
-            otp.write_direct_access_cmd(RvSize::Word, 1u32.into());
+            otp.write_direct_access_address(((i * 4) as u32).into());
+            otp.write_direct_access_cmd(1u32.into());
             // wait for idle
             assert_eq!(otp.status.reg.get(), Status::DailIdle::CLEAR.value);
             for _ in 0..1000 {
@@ -375,7 +364,7 @@ mod test {
             // check that we are idle with no errors
             assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
             // read the data
-            let data = otp.read_dai_rdata_rf_direct_access_rdata_0(RvSize::Word);
+            let data = otp.read_dai_rdata_rf_direct_access_rdata_0();
             assert_eq!(data, i as u32);
         }
     }
@@ -387,9 +376,9 @@ mod test {
         // write the vendor partition
         assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
         for i in 0..fuses::VENDOR_TEST_WORD_SIZE {
-            otp.write_dai_wdata_rf_direct_access_wdata_0(RvSize::Word, i as u32);
-            otp.write_direct_access_address(RvSize::Word, ((i * 4) as u32).into());
-            otp.write_direct_access_cmd(RvSize::Word, 2u32.into());
+            otp.write_dai_wdata_rf_direct_access_wdata_0(i as u32);
+            otp.write_direct_access_address(((i * 4) as u32).into());
+            otp.write_direct_access_cmd(2u32.into());
             // wait for idle
             assert_eq!(otp.status.reg.get(), Status::DailIdle::CLEAR.value);
             for _ in 0..1000 {
@@ -403,8 +392,8 @@ mod test {
         }
 
         // trigger a digest
-        otp.write_direct_access_address(RvSize::Word, 0u32.into());
-        otp.write_direct_access_cmd(RvSize::Word, 4u32.into());
+        otp.write_direct_access_address(0u32.into());
+        otp.write_direct_access_cmd(4u32.into());
         // wait for idle
         assert_eq!(otp.status.reg.get(), Status::DailIdle::CLEAR.value);
         for _ in 0..1000 {

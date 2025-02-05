@@ -11,39 +11,36 @@ pub trait MboxPeripheral {
     fn update_reset(&mut self) {}
     fn read_lock(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::Lock::Register> {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn read_user(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn read_user(&mut self) -> emulator_types::RvData {
         0
     }
-    fn read_cmd(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn read_cmd(&mut self) -> emulator_types::RvData {
         0
     }
-    fn write_cmd(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {}
-    fn read_dlen(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn write_cmd(&mut self, _val: emulator_types::RvData) {}
+    fn read_dlen(&mut self) -> emulator_types::RvData {
         0
     }
-    fn write_dlen(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {}
-    fn read_datain(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn write_dlen(&mut self, _val: emulator_types::RvData) {}
+    fn read_datain(&mut self) -> emulator_types::RvData {
         0
     }
-    fn write_datain(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {}
-    fn read_dataout(&mut self, _size: emulator_types::RvSize) -> emulator_types::RvData {
+    fn write_datain(&mut self, _val: emulator_types::RvData) {}
+    fn read_dataout(&mut self) -> emulator_types::RvData {
         0
     }
-    fn write_dataout(&mut self, _size: emulator_types::RvSize, _val: emulator_types::RvData) {}
+    fn write_dataout(&mut self, _val: emulator_types::RvData) {}
     fn read_execute(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::Execute::Register>
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_execute(
         &mut self,
-        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::Execute::Register,
@@ -52,14 +49,12 @@ pub trait MboxPeripheral {
     }
     fn read_status(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::Status::Register>
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_status(
         &mut self,
-        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::Status::Register,
@@ -68,14 +63,12 @@ pub trait MboxPeripheral {
     }
     fn read_unlock(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::Unlock::Register>
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_unlock(
         &mut self,
-        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::Unlock::Register,
@@ -84,14 +77,12 @@ pub trait MboxPeripheral {
     }
     fn read_tap_mode(
         &mut self,
-        _size: emulator_types::RvSize,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::TapMode::Register>
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn write_tap_mode(
         &mut self,
-        _size: emulator_types::RvSize,
         _val: emulator_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::TapMode::Register,
@@ -108,62 +99,30 @@ impl emulator_bus::Bus for MboxBus {
         size: emulator_types::RvSize,
         addr: emulator_types::RvAddr,
     ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
-        match (size, addr) {
-            (emulator_types::RvSize::Word, 0) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_lock(emulator_types::RvSize::Word)
-                    .reg
-                    .get(),
+        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+            return Err(emulator_bus::BusError::LoadAddrMisaligned);
+        }
+        match addr {
+            0..4 => Ok(emulator_types::RvData::from(
+                self.periph.read_lock().reg.get(),
             )),
-            (emulator_types::RvSize::Word, 1..=3) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (size, 4) => Ok(self.periph.read_user(size)),
-            (_, 5..=7) => Err(emulator_bus::BusError::LoadAddrMisaligned),
-            (size, 8) => Ok(self.periph.read_cmd(size)),
-            (_, 9..=0xb) => Err(emulator_bus::BusError::LoadAddrMisaligned),
-            (size, 0xc) => Ok(self.periph.read_dlen(size)),
-            (_, 0xd..=0xf) => Err(emulator_bus::BusError::LoadAddrMisaligned),
-            (size, 0x10) => Ok(self.periph.read_datain(size)),
-            (_, 0x11..=0x13) => Err(emulator_bus::BusError::LoadAddrMisaligned),
-            (size, 0x14) => Ok(self.periph.read_dataout(size)),
-            (_, 0x15..=0x17) => Err(emulator_bus::BusError::LoadAddrMisaligned),
-            (emulator_types::RvSize::Word, 0x18) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_execute(emulator_types::RvSize::Word)
-                    .reg
-                    .get(),
+            4..8 => Ok(self.periph.read_user()),
+            8..0xc => Ok(self.periph.read_cmd()),
+            0xc..0x10 => Ok(self.periph.read_dlen()),
+            0x10..0x14 => Ok(self.periph.read_datain()),
+            0x14..0x18 => Ok(self.periph.read_dataout()),
+            0x18..0x1c => Ok(emulator_types::RvData::from(
+                self.periph.read_execute().reg.get(),
             )),
-            (emulator_types::RvSize::Word, 0x19..=0x1b) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x1c) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_status(emulator_types::RvSize::Word)
-                    .reg
-                    .get(),
+            0x1c..0x20 => Ok(emulator_types::RvData::from(
+                self.periph.read_status().reg.get(),
             )),
-            (emulator_types::RvSize::Word, 0x1d..=0x1f) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x20) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_unlock(emulator_types::RvSize::Word)
-                    .reg
-                    .get(),
+            0x20..0x24 => Ok(emulator_types::RvData::from(
+                self.periph.read_unlock().reg.get(),
             )),
-            (emulator_types::RvSize::Word, 0x21..=0x23) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x24) => Ok(emulator_types::RvData::from(
-                self.periph
-                    .read_tap_mode(emulator_types::RvSize::Word)
-                    .reg
-                    .get(),
+            0x24..0x28 => Ok(emulator_types::RvData::from(
+                self.periph.read_tap_mode().reg.get(),
             )),
-            (emulator_types::RvSize::Word, 0x25..=0x27) => {
-                Err(emulator_bus::BusError::LoadAddrMisaligned)
-            }
             _ => Err(emulator_bus::BusError::LoadAccessFault),
         }
     }
@@ -173,66 +132,45 @@ impl emulator_bus::Bus for MboxBus {
         addr: emulator_types::RvAddr,
         val: emulator_types::RvData,
     ) -> Result<(), emulator_bus::BusError> {
-        match (size, addr) {
-            (size, 8) => {
-                self.periph.write_cmd(size, val);
+        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+            return Err(emulator_bus::BusError::StoreAddrMisaligned);
+        }
+        match addr {
+            8..0xc => {
+                self.periph.write_cmd(val);
                 Ok(())
             }
-            (_, 9..=0xb) => Err(emulator_bus::BusError::StoreAddrMisaligned),
-            (size, 0xc) => {
-                self.periph.write_dlen(size, val);
+            0xc..0x10 => {
+                self.periph.write_dlen(val);
                 Ok(())
             }
-            (_, 0xd..=0xf) => Err(emulator_bus::BusError::StoreAddrMisaligned),
-            (size, 0x10) => {
-                self.periph.write_datain(size, val);
+            0x10..0x14 => {
+                self.periph.write_datain(val);
                 Ok(())
             }
-            (_, 0x11..=0x13) => Err(emulator_bus::BusError::StoreAddrMisaligned),
-            (size, 0x14) => {
-                self.periph.write_dataout(size, val);
+            0x14..0x18 => {
+                self.periph.write_dataout(val);
                 Ok(())
             }
-            (_, 0x15..=0x17) => Err(emulator_bus::BusError::StoreAddrMisaligned),
-            (emulator_types::RvSize::Word, 0x18) => {
-                self.periph.write_execute(
-                    emulator_types::RvSize::Word,
-                    emulator_bus::ReadWriteRegister::new(val),
-                );
+            0x18..0x1c => {
+                self.periph
+                    .write_execute(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x19..=0x1b) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x1c) => {
-                self.periph.write_status(
-                    emulator_types::RvSize::Word,
-                    emulator_bus::ReadWriteRegister::new(val),
-                );
+            0x1c..0x20 => {
+                self.periph
+                    .write_status(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x1d..=0x1f) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x20) => {
-                self.periph.write_unlock(
-                    emulator_types::RvSize::Word,
-                    emulator_bus::ReadWriteRegister::new(val),
-                );
+            0x20..0x24 => {
+                self.periph
+                    .write_unlock(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
-            (emulator_types::RvSize::Word, 0x21..=0x23) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
-            }
-            (emulator_types::RvSize::Word, 0x24) => {
-                self.periph.write_tap_mode(
-                    emulator_types::RvSize::Word,
-                    emulator_bus::ReadWriteRegister::new(val),
-                );
+            0x24..0x28 => {
+                self.periph
+                    .write_tap_mode(emulator_bus::ReadWriteRegister::new(val));
                 Ok(())
-            }
-            (emulator_types::RvSize::Word, 0x25..=0x27) => {
-                Err(emulator_bus::BusError::StoreAddrMisaligned)
             }
             _ => Err(emulator_bus::BusError::StoreAccessFault),
         }
