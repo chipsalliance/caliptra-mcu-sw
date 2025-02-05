@@ -114,8 +114,8 @@ pub trait ImageLoader {
     ///
     /// # Returns
     /// - `Ok()`: Image has been loaded and authorized succesfully.
-    /// - `Err(DynError)`: Indication of the failure to load or authorize the image.
-    async fn load_and_authorize(&self, image_id: u32) -> Result<(), DynError>;
+    /// - `Err(ErrorCode)`: Indication of the failure to load or authorize the image.
+    async fn load_and_authorize(&self, image_id: u32) -> Result<(), ErrorCode>;
 
     /// Loads the specified image to a storage mapped to the AXI bus memory map.
     ///
@@ -125,8 +125,8 @@ pub trait ImageLoader {
     ///
     /// # Returns
     /// - `Ok()`: Image has been authorized succesfully.
-    /// - `Err(DynError)`: Indication of the failure to authorize the image.
-    async fn authorize(&self, image_id: u32, location: ImageLocation) -> Result<(), DynError>;
+    /// - `Err(ErrorCode)`: Indication of the failure to authorize the image.ErrorCode
+    async fn authorize(&self, image_id: u32, location: ImageLocation) -> Result<(), ErrorCode>;
 
     /// This sends out a mailbox command retrieve the number of image components active in the device
     /// that are defined in the SoC Manifest.
