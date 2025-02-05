@@ -51,9 +51,12 @@ impl Soc {
             .set(fuses.fmc_key_manifest_svn());
         // TODO: this seems to be bigger in the SoC registers than in the fuses
         self.registers.fuse_key_manifest_pk_hash_mask[0].set(fuses.key_manifest_pk_hash_mask());
+        romtime::print!("[mcu fuse write] Writing Owner PK hash from fuses: ");
         for i in 0..self.registers.cptra_owner_pk_hash.len() {
+            romtime::print!("{:08x}", fuses.owner_pk_hash()[i]);
             self.registers.cptra_owner_pk_hash[i].set(fuses.owner_pk_hash()[i]);
         }
+        romtime::println!("");
         for i in 0..self.registers.fuse_runtime_svn.len() {
             self.registers.fuse_runtime_svn[i].set(fuses.runtime_svn()[i]);
         }

@@ -17,6 +17,8 @@ pub(crate) fn runtime_run(args: Commands) -> Result<(), DynError> {
         caliptra_firmware,
         soc_manifest,
         active_mode,
+        vendor_pk_hash,
+        owner_pk_hash,
     } = args
     else {
         panic!("Must call runtime_run with Commands::Runtime");
@@ -78,6 +80,12 @@ pub(crate) fn runtime_run(args: Commands) -> Result<(), DynError> {
     }
     if active_mode {
         cargo_run_args.extend(["--active-mode"]);
+    }
+    if let Some(vendor_pk_hash) = vendor_pk_hash.as_ref() {
+        cargo_run_args.extend(["--vendor-pk-hash", vendor_pk_hash]);
+    }
+    if let Some(owner_pk_hash) = owner_pk_hash.as_ref() {
+        cargo_run_args.extend(["--owner-pk-hash", owner_pk_hash]);
     }
     StdCommand::new("cargo")
         .args(cargo_run_args)

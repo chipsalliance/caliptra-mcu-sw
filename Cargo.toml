@@ -80,6 +80,7 @@ critical-section = "1.1.2"
 crossterm = "0.28.1"
 ctrlc = "3.4.5"
 elf = "0.7.4"
+ecdsa = { version = "0.16.9", features = ["pem"]}
 embassy-executor = { version = "0.6.3", features = ["nightly"] }
 embedded-alloc = "0.5.1"
 futures = "0.3.31"
@@ -92,13 +93,16 @@ num_enum = "0.7.2"
 num-derive = "0.4.2"
 num-traits = "0.2"
 portable-atomic = "1.7.0"
+p384 = "0.13.0"
 proc-macro2 = "1.0.66"
 quote = "1.0"
 rand = "0.8.5"
 semver = "1.0.23"
+sec1 = { version = "0.7.3" }
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
 serde-hjson = "1.1.0"
+sha2 = "0.10.8"
 smlang = "0.8.0"
 strum = "0.24"
 strum_macros = "0.24"
@@ -148,6 +152,8 @@ caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw", re
 caliptra-emu-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
 caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
 caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
+caliptra-image-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
+caliptra-test = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
 # caliptra-api-types = { path = "../caliptra-sw/api/types" }
 # caliptra-emu-bus = { path = "../caliptra-sw/sw-emulator/lib/bus" }
 # caliptra-emu-cpu = { path = "../caliptra-sw/sw-emulator/lib/cpu" }
