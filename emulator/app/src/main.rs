@@ -487,7 +487,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
                 caliptra_emu_bus::Bus::write(
                     &mut soc_to_caliptra,
                     RvSize::Word,
-                    SOC_BASE + VENDOR_PK_HASH_OFFSET + i,
+                    SOC_BASE + VENDOR_PK_HASH_OFFSET + i * 4,
                     hash[i as usize],
                 )
                 .unwrap();
