@@ -15,7 +15,7 @@ Abstract:
 use crate::otp_digest;
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
 use emulator_types::{RvAddr, RvData};
-use registers_generated::fuses::{self, NON_SECRET_FUSES_WORD_OFFSET};
+use registers_generated::fuses::{self, NON_SECRET_FUSES_WORD_OFFSET, SECRET3_WORD_OFFSET};
 use registers_generated::otp_ctrl::bits::{DirectAccessCmd, Status};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -83,6 +83,7 @@ impl Otp {
         clock: &Clock,
         file_name: Option<PathBuf>,
         owner_pk_hash: Option<[u8; 48]>,
+        vendor_pk_hash: Option<[u8; 48]>,
     ) -> Result<Self, std::io::Error> {
         let file = if let Some(path) = file_name {
             Some(
@@ -109,10 +110,16 @@ impl Otp {
             digests: [0; 12],
         };
         otp.read_from_file()?;
-        if let Some(owner_pk_hash) = owner_pk_hash {
+        if let Some(mut owner_pk_hash) = owner_pk_hash {
+            swap_endianness(&mut owner_pk_hash);
             otp.partitions
                 [(NON_SECRET_FUSES_WORD_OFFSET + 8) * 4..(NON_SECRET_FUSES_WORD_OFFSET + 20) * 4]
                 .copy_from_slice(&owner_pk_hash);
+        }
+        if let Some(mut vendor_pk_hash) = vendor_pk_hash {
+            swap_endianness(&mut vendor_pk_hash);
+            otp.partitions[SECRET3_WORD_OFFSET * 4..(SECRET3_WORD_OFFSET + 12) * 4]
+                .copy_from_slice(&mut vendor_pk_hash);
         }
         // if there were digests that were pending a reset, then calculate them now
         otp.calculate_digests()?;
@@ -302,6 +309,13 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
     /// Called by Bus::warm_reset() to reset the device.
     fn warm_reset(&mut self) {
         self.calculate_digests().unwrap();
+    }
+}
+
+/// Convert the slice to hardware format
+fn swap_endianness(value: &mut [u8]) {
+    for i in (0..value.len()).step_by(4) {
+        value[i..i + 4].reverse();
     }
 }
 

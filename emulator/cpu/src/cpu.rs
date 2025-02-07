@@ -18,7 +18,7 @@ use crate::types::{RvInstr, RvMStatus, RvMemAccessType, RvMsecCfg, RvPrivMode};
 use crate::xreg_file::{XReg, XRegFile};
 use crate::Pic;
 use bit_vec::BitVec;
-use caliptra_emu_bus::{Event, EventData};
+use caliptra_emu_bus::Event;
 use emulator_bus::{Bus, BusError, Clock, TimerAction};
 use emulator_types::{RvAddr, RvData, RvException, RvExceptionCause, RvSize, RAM_OFFSET, RAM_SIZE};
 use std::rc::Rc;

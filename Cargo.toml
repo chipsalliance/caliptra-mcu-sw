@@ -145,24 +145,24 @@ libapi-caliptra = { path = "runtime/apps/api" }
 
 # caliptra dependencies; keep git revs in sync
 # TODO: update this when https://github.com/chipsalliance/caliptra-sw/pull/1938 is merged
-# caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
-# caliptra-emu-bus = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
-# caliptra-emu-cpu = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
-# caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
-# caliptra-emu-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
-# caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
-# caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
-# caliptra-image-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
-# caliptra-test = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2bdda08376efd0c78f6e5f8220a2fb0e8d5e501f" }
-caliptra-api-types = { path = "../caliptra-sw/api/types" }
-caliptra-emu-bus = { path = "../caliptra-sw/sw-emulator/lib/bus" }
-caliptra-emu-cpu = { path = "../caliptra-sw/sw-emulator/lib/cpu" }
-caliptra-emu-periph = { path = "../caliptra-sw/sw-emulator/lib/periph" }
-caliptra-emu-types = { path = "../caliptra-sw/sw-emulator/lib/types" }
-caliptra-hw-model = { path = "../caliptra-sw/hw-model" }
-caliptra-image-types = { path = "../caliptra-sw/image/types" }
-caliptra-registers = { path = "../caliptra-sw/registers" }
-caliptra-test = { path = "../caliptra-sw/test" }
+caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fd766d6911d69f6aad548e0a90142d129c54a0e2" }
+caliptra-emu-bus = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fd766d6911d69f6aad548e0a90142d129c54a0e2" }
+caliptra-emu-cpu = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fd766d6911d69f6aad548e0a90142d129c54a0e2" }
+caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fd766d6911d69f6aad548e0a90142d129c54a0e2" }
+caliptra-emu-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fd766d6911d69f6aad548e0a90142d129c54a0e2" }
+caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fd766d6911d69f6aad548e0a90142d129c54a0e2" }
+caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fd766d6911d69f6aad548e0a90142d129c54a0e2" }
+caliptra-image-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fd766d6911d69f6aad548e0a90142d129c54a0e2" }
+caliptra-test = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fd766d6911d69f6aad548e0a90142d129c54a0e2" }
+# caliptra-api-types = { path = "../caliptra-sw/api/types" }
+# caliptra-emu-bus = { path = "../caliptra-sw/sw-emulator/lib/bus" }
+# caliptra-emu-cpu = { path = "../caliptra-sw/sw-emulator/lib/cpu" }
+# caliptra-emu-periph = { path = "../caliptra-sw/sw-emulator/lib/periph" }
+# caliptra-emu-types = { path = "../caliptra-sw/sw-emulator/lib/types" }
+# caliptra-hw-model = { path = "../caliptra-sw/hw-model" }
+# caliptra-image-types = { path = "../caliptra-sw/image/types" }
+# caliptra-registers = { path = "../caliptra-sw/registers" }
+# caliptra-test = { path = "../caliptra-sw/test" }
 
 # tock dependencies; keep git revs in sync
 capsules-core = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }

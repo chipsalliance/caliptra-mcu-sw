@@ -22,7 +22,6 @@ mod tests;
 use crate::i3c_socket::start_i3c_socket;
 use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
-use caliptra_emu_types::RvSize;
 use clap::{ArgAction, Parser};
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_bmc::Bmc;
@@ -489,24 +488,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     );
 
     let mut delegates: Vec<Box<dyn Bus>> = vec![Box::new(root_bus)];
-    let soc_periph = if let Some(mut soc_to_caliptra) = soc_to_caliptra {
-        if let Some(vendor_pk_hash) = cli.vendor_pk_hash {
-            let v = hex::decode(vendor_pk_hash).unwrap();
-            let vendor_pk_hash: [u8; 48] = v.try_into().unwrap();
-            let hash: [u32; 12] = to_hw_format(&vendor_pk_hash);
-            const SOC_BASE: u32 = 0x3003_0000;
-            const VENDOR_PK_HASH_OFFSET: u32 = 0x260;
-            const VENDOR_PK_HASH_SIZE: u32 = 12;
-            for i in 0..VENDOR_PK_HASH_SIZE {
-                caliptra_emu_bus::Bus::write(
-                    &mut soc_to_caliptra,
-                    RvSize::Word,
-                    SOC_BASE + VENDOR_PK_HASH_OFFSET + i * 4,
-                    hash[i as usize],
-                )
-                .unwrap();
-            }
-        }
+    let soc_periph = if let Some(soc_to_caliptra) = soc_to_caliptra {
         delegates.push(Box::new(BusConverter::new(Box::new(soc_to_caliptra))));
         None
     } else {
@@ -514,12 +496,16 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         Some(Box::new(FakeSoc {}) as Box<dyn SocPeripheral>)
     };
 
+    let vendor_pk_hash = cli.vendor_pk_hash.map(|hash| {
+        let v = hex::decode(hash).unwrap();
+        v.try_into().unwrap()
+    });
     let owner_pk_hash = cli.owner_pk_hash.map(|hash| {
         let v = hex::decode(hash).unwrap();
         v.try_into().unwrap()
     });
 
-    let otp = Otp::new(&clock.clone(), cli.otp, owner_pk_hash)?;
+    let otp = Otp::new(&clock.clone(), cli.otp, owner_pk_hash, vendor_pk_hash)?;
     let mci = Mci::default();
     let mut auto_root_bus = AutoRootBus::new(
         delegates,
@@ -625,15 +611,6 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     }
 
     Ok(uart_output.map(|o| o.borrow().clone()).unwrap_or_default())
-}
-
-/// Convert the slice to hardware format
-fn to_hw_format<const NUM_WORDS: usize>(value: &[u8]) -> [u32; NUM_WORDS] {
-    let mut result = [0u32; NUM_WORDS];
-    for i in 0..result.len() {
-        result[i] = u32::from_be_bytes(value[i * 4..][..4].try_into().unwrap())
-    }
-    result
 }
 
 struct FakeSoc {}

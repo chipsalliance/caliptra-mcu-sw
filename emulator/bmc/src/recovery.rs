@@ -212,7 +212,6 @@ impl StateMachineContext for Context {
     }
 
     fn start_recovery(&mut self, status: RecoveryStatusBlock) -> Result<(), ()> {
-        println!("Recovery status = {:x}", status.reg.get());
         let idx = status.reg.read(RecoveryStatus::RECOVERY_IMAGE_INDEX);
 
         if idx as usize >= self.recovery_images.len() {

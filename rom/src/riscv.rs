@@ -49,9 +49,17 @@ impl Soc {
         self.registers
             .fuse_fmc_key_manifest_svn
             .set(fuses.fmc_key_manifest_svn());
+
+        romtime::print!("[mcu-fuse-write] Writing fuse key manifest PK hash: ");
+        for i in 0..self.registers.fuse_key_manifest_pk_hash.len() {
+            romtime::print!("{:08x}", fuses.key_manifest_pk_hash()[i]);
+            self.registers.fuse_key_manifest_pk_hash[i].set(fuses.key_manifest_pk_hash()[i]);
+        }
+        romtime::println!("");
+
         // TODO: this seems to be bigger in the SoC registers than in the fuses
         self.registers.fuse_key_manifest_pk_hash_mask[0].set(fuses.key_manifest_pk_hash_mask());
-        romtime::print!("[mcu fuse write] Writing Owner PK hash from fuses: ");
+        romtime::print!("[mcu-fuse-write] Writing Owner PK hash from fuses: ");
         for i in 0..self.registers.cptra_owner_pk_hash.len() {
             romtime::print!("{:08x}", fuses.owner_pk_hash()[i]);
             self.registers.cptra_owner_pk_hash[i].set(fuses.owner_pk_hash()[i]);
@@ -99,9 +107,11 @@ pub const I3C_BASE: StaticRef<i3c::regs::I3c> =
 pub const MCI_BASE: StaticRef<mci::regs::Mci> =
     unsafe { StaticRef::new(mci::MCI_REG_ADDR as *const mci::regs::Mci) };
 
+#[allow(dead_code)]
 pub const MBOX_BASE: StaticRef<mbox::regs::Mbox> =
     unsafe { StaticRef::new(mbox::MBOX_CSR_ADDR as *const mbox::regs::Mbox) };
 
+#[allow(dead_code)]
 struct Mailbox {
     registers: StaticRef<mbox::regs::Mbox>,
 }
@@ -121,6 +131,7 @@ impl Mci {
         self.registers.caliptra_boot_go.set(1);
     }
 
+    #[allow(dead_code)]
     fn flow_status(&self) -> u32 {
         self.registers
             .flow_status
@@ -129,7 +140,7 @@ impl Mci {
 }
 
 pub extern "C" fn rom_entry() -> ! {
-    romtime::println!("Hello from ROM");
+    romtime::println!("[mcu-rom] Hello from ROM");
 
     let otp = Otp::new(OTP_BASE);
     if let Err(err) = otp.init() {
@@ -142,20 +153,20 @@ pub extern "C" fn rom_entry() -> ! {
 
     let soc = Soc::new(SOC_BASE);
     let flow_status = soc.flow_status();
-    romtime::println!("Caliptra flow status {:x}", flow_status);
+    romtime::println!("[mcu-rom] Caliptra flow status {:x}", flow_status);
     if flow_status == 0 {
         romtime::println!("Caliptra not detected; skipping Caliptra boot flow");
         exit_rom();
     }
 
-    romtime::println!("Waiting for Caliptra to be ready for fuses");
+    romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for fuses");
     while !soc.ready_for_fuses() {}
-    romtime::println!("Writing fuses to Caliptra");
+    romtime::println!("[mcu-rom] Writing fuses to Caliptra");
     soc.populate_fuses(&fuses);
     soc.fuse_write_done();
     while soc.ready_for_fuses() {}
 
-    romtime::println!("Fuses written to Caliptra");
+    romtime::println!("[mcu-rom] Fuses written to Caliptra");
 
     // De-assert caliptra reset
     let mut mci = Mci::new(MCI_BASE);
@@ -163,9 +174,9 @@ pub extern "C" fn rom_entry() -> ! {
 
     // tell Caliptra to download firmware from the recovery interface
 
-    romtime::println!("Starting recovery flow");
+    romtime::println!("[mcu-rom] Starting recovery flow");
     recovery_flow(&mut mci);
-    romtime::println!("Recovery flow complete");
+    romtime::println!("[mcu-rom] Recovery flow complete");
 
     // Check that the firmware was actually loaded before jumping to it
     let firmware_ptr = 0x4000_0080u32 as *const u32;
@@ -174,10 +185,7 @@ pub extern "C" fn rom_entry() -> ! {
         romtime::println!("Invalid firmware detected; halting");
         exit_emulator(1);
     }
-    romtime::println!(
-        "[mcu] Jumping to firmware (first few bytes: {:08x})",
-        unsafe { core::ptr::read_volatile(firmware_ptr) }
-    );
+    romtime::println!("[mcu-rom] Jumping to firmware");
 
     exit_rom();
 }
@@ -202,7 +210,7 @@ impl I3c {
     }
 }
 
-fn recovery_flow(mci: &mut Mci) {
+fn recovery_flow(_mci: &mut Mci) {
     // TODO: implement Caliptra boot flow
     let i3c = I3c::new(I3C_BASE);
 
