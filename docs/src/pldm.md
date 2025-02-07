@@ -1,60 +1,59 @@
-# PLDM stack
+# PLDM Stack
 
 ## Overview
 
-The Platform Level Data Model (PLDM) is a suite of specifications that define a common data model and message formats for communication between management controllers and managed devices. It is designed to standardize the way devices communicate in a platform management environment, enabling interoperability and simplifying the management of hardware components. In the context of Caliptra MCU, [PLDM Base Protocol](https://www.dmtf.org/sites/default/files/standards/documents/DSP0240_1.1.0.pdf) and [PLDM for Firmware Update Protocol](https://www.dmtf.org/sites/default/files/standards/documents/DSP0267_1.3.0.pdf) are supported by PLDM stack to facilitate the following use cases:
+The Platform Level Data Model (PLDM) is a suite of specifications that define a common data model and message formats for communication between management controllers and managed devices. It is designed to standardize the way devices communicate in a platform management environment, enabling interoperability and simplifying the management of hardware components. In the context of Caliptra MCU, [PLDM Base Protocol](https://www.dmtf.org/sites/default/files/standards/documents/DSP0240_1.1.0.pdf) and [PLDM for Firmware Update Protocol](https://www.dmtf.org/sites/default/files/standards/documents/DSP0267_1.3.0.pdf) are supported by the PLDM stack to facilitate the following use cases:
 
 - **PLDM message control and discovery**: This feature enables the device to be discovered by the platform management controller (typically a BMC) following MCTP enumeration. It forms the foundation for running other PLDM protocols.
 
-- **Streaming boot reminder firmware**: PLDM firmware update protocol defines standardized messages and data structures for obtaining firmware code and data. MCU leverages it to stream boot reminder firmware, which is vendor-specific SoC firmware and beyond. There are several customized amendments to PLDM firmware update specification to enable streaming boot and automatic activation. Details are available in OCP whitepaper [Flashless Boot using OCP, PCIe, and DMTF Standards](https://docs.google.com/document/d/1cjdgcKgOzcug5bBoK6k2Mw2mvsQJElp8bs0ec_xLZHc/edit?usp=sharing).
+- **Streaming boot remainder firmware**: The PLDM firmware update protocol defines standardized messages and data structures for obtaining firmware code and data. The MCU leverages it to stream boot the remainder firmware, which is any vendor-specific SoC or other firmware. There are several customized amendments to the PLDM firmware update specification to enable streaming boot and automatic activation. Details are available in the OCP whitepaper, [Flashless Boot using OCP, PCIe, and DMTF Standards](https://docs.google.com/document/d/1cjdgcKgOzcug5bBoK6k2Mw2mvsQJElp8bs0ec_xLZHc/edit?usp=sharing).
 
-- **Impactless firmware update**: PLDM firmware update over MCTP is a well-established approach for firmware updates, supporting multiple firmware components within a single package. Updates can be applied to a subset of components supported by the Firmware Device (FD), which is a valuable properity to enable impactless updates. Details can be found in [MCU firmware update spec](TODO: link to the document)
+- **Impactless firmware update**: PLDM firmware update over MCTP is a well-established approach for firmware updates, supporting multiple firmware components within a single package. Updates can be applied to a subset of components supported by the Firmware Device (FD), which is a valuable property to enable impactless updates. Details can be found in the [firmware update spec](https://github.com/chipsalliance/caliptra-mcu-sw/blob/main/docs/src/firmware_update.md).
 
 ## Architecture
 
-PLDM stack in MCU runtime is a modular implementation that supports PLDM base protocol as responder and PLDM firmware update protocol as Firmware Device(FD). It operates in the userspace of MCU runtime, interacts with the MCTP transport layer to handle communication.
+The PLDM stack in MCU runtime is a modular implementation that supports the PLDM base protocol as a responder and the PLDM firmware update protocol as a Firmware Device (FD). It operates in the userspace of MCU runtime and interacts with the MCTP transport layer to handle communication.
 
-### PLDM stack for base protocol
+### PLDM Stack for Base Protocol
 
 ![PLDM stack base](images/pldm_stack_base.svg)
 
 - **PLDM service**
-      - Listens for incoming PLDM requests.
-      - Extracts the command op code from the request and invokes the corresponding handler to process.
-      - Sends the response via MCTP transport layer.
+  - Listens for incoming PLDM requests.
+  - Extracts the command opcode from the request and invokes the corresponding handler to process.
+  - Sends the response via the MCTP transport layer.
 - **Command handler**
-      - Interacts with message decoding library to decode the request.
-      - Executs the command.
-      - Encodes the response by interacting with message encoding library.
+  - Interacts with the message decoding library to decode the request.
+  - Executes the command.
+  - Encodes the response by interacting with the message encoding library.
 
-## PLDM stack for firmware update protocol
+## PLDM Stack for Firmware Update Protocol
 
 ![PLDM stack firmware update](images/pldm_stack_fw_update.svg)
 
 - **PLDM service**
   - Listens for incoming firmware update requests and responses.
-  - Extracts the command op code from the request or response and invoke the corresponding handler to process.
-  - Sends the response via MCTP transport layer.
+  - Extracts the command opcode from the request or response and invokes the corresponding handler to process.
+  - Sends the response via the MCTP transport layer.
 
 - **Firmware update service**
   - Firmware update command handler
-    - Decode the request or response.
-    - Executes the appropriate actions based on the command and interacts with state machine to trigger the state transition.
-    - Encodes responses by interacting with message encoding library.
+    - Decodes the request or response.
+    - Executes the appropriate actions based on the command and interacts with the state machine to trigger the state transition.
+    - Encodes responses by interacting with the message encoding library.
 
   - Firmware update state control
     - Maintains the current state of the firmware update process.
     - Provides mechanisms to transition between different states, ensuring the correct sequence of operations.
-    - Interacts with the firmware update service to manage state transitions based on the stage of the update process, and signals the request inititor to process outgoing request.
+    - Interacts with the firmware update service to manage state transitions based on the stage of the update process and signals the request initiator to process the outgoing request.
 
   - Request initiator
-    - Listens for the signal from state control to process outgoing request.
-    - Interacts with message encoding library to encode the request.
+    - Listens for the signal from state control to process the outgoing request.
+    - Interacts with the message encoding library to encode the request.
 
+### PLDM Base Protocol Sequence
 
-### PLDM base protocol sequence
-
-The table below shows the command codes of base protocol that are supported by PLDM stack as a responder.
+The table below shows the command codes of the base protocol that are supported by the PLDM stack as a responder.
 
 | Command Name       | Command Code | Direction | Requirement |
 |--------------------|--------------|-----------|-------------|
@@ -64,28 +63,28 @@ The table below shows the command codes of base protocol that are supported by P
 | `GetPLDMCommands`  | `0x05`       | UA -> FD  | Mandatory   |
 | `SetTID`           | `0x01`       | UA -> FD  | Optional    |
 
-The digram below shows the PLDM message control and discovery sequence.
+The diagram below shows the PLDM message control and discovery sequence.
 ```mermaid
 sequenceDiagram
-    participant UA as Update Agent
-    participant FD as Firmware Device
-    UA->>FD: GetTID
-    FD-->>UA: TID Response
-    UA->>FD: GetPLDMTypes
-    FD-->>UA: PLDMTypes Response (type-0, type-5)
-    UA->>FD: GetPLDMVersion for type-0
-    FD-->>UA: PLDMVersion Response
-    UA->>FD: GetPLDMCommands for type-0
-    FD-->>UA: PLDMCommands Response
-    UA->>FD: GetPLDMVersion for type-5
-    FD-->>UA: PLDMVersion Response
-    UA->>FD: GetPLDMCommands for type-5
-    FD-->>UA: PLDMCommands Response
+        participant UA as Update Agent
+        participant FD as Firmware Device
+        UA->>FD: GetTID
+        FD-->>UA: TID Response
+        UA->>FD: GetPLDMTypes
+        FD-->>UA: PLDMTypes Response (type-0, type-5)
+        UA->>FD: GetPLDMVersion for type-0
+        FD-->>UA: PLDMVersion Response
+        UA->>FD: GetPLDMCommands for type-0
+        FD-->>UA: PLDMCommands Response
+        UA->>FD: GetPLDMVersion for type-5
+        FD-->>UA: PLDMVersion Response
+        UA->>FD: GetPLDMCommands for type-5
+        FD-->>UA: PLDMCommands Response
 ```
 
-### PLDM firmware update protocol sequence
+### PLDM Firmware Update Protocol Sequence
 
-The table below shows the inventory commands and firmware update commands are supported by PLDM stack as FD.
+The table below shows the inventory commands and firmware update commands supported by the PLDM stack as FD.
 
 | Command Name                   | Command Code | Direction | Requirement |
 |--------------------------------|--------------|-----------|-------------|
@@ -109,34 +108,76 @@ The table below shows the inventory commands and firmware update commands are su
 The diagram below shows a complete PLDM firmware update sequence:
 ```mermaid
 sequenceDiagram
-    participant UA as Update Agent
-    participant FD as Firmware Device
-    UA->>FD: QueryDeviceIdentifiers
-    FD-->>UA: DeviceIdentifiers Response
-    UA->>FD: GetFirmwareParameters
-    FD-->>UA: FirmwareParameters Response
-    UA->>FD: RequestUpdate
-    FD-->>UA: Update Response
-    UA->>FD: PassComponentTable
-    FD-->>UA: ComponentTable Response
-    UA->>FD: UpdateComponent
-    FD-->>UA: UpdateComponent Response
-    FD->>UA: RequestFirmwareData
-    UA-->>FD: FirmwareData Response
-    FD->>UA: TransferComplete
-    UA-->>FD: TransferComplete Response
-    Note over FD: Verifying component
-    FD->>UA: VerifyComplete
-    UA-->>FD: VerifyComplete Response
-    FD->>UA: ApplyComplete
-    UA-->>FD: ApplyComplete Response
-    UA->>FD: ActivateFirmware
-    FD-->>UA: ActivateFirmware Response
-    UA->>FD: GetStatus
-    FD-->>UA: Status Response
+        participant UA as Update Agent
+        participant FD as Firmware Device
+        UA->>FD: QueryDeviceIdentifiers
+        FD-->>UA: DeviceIdentifiers Response
+        UA->>FD: GetFirmwareParameters
+        FD-->>UA: FirmwareParameters Response
+        UA->>FD: RequestUpdate
+        FD-->>UA: Update Response
+        UA->>FD: PassComponentTable
+        FD-->>UA: ComponentTable Response
+        UA->>FD: UpdateComponent
+        FD-->>UA: UpdateComponent Response
+        FD->>UA: RequestFirmwareData
+        UA-->>FD: FirmwareData Response
+        FD->>UA: TransferComplete
+        UA-->>FD: TransferComplete Response
+        Note over FD: Verifying component
+        FD->>UA: VerifyComplete
+        UA-->>FD: VerifyComplete Response
+        FD->>UA: ApplyComplete
+        UA-->>FD: ApplyComplete Response
+        UA->>FD: ActivateFirmware
+        FD-->>UA: ActivateFirmware Response
+        UA->>FD: GetStatus
+        FD-->>UA: Status Response
 ```
 
 ## Interface
+
+The PLDM stack is designed as a library that supports the PLDM base protocol as a responder and the PLDM firmware update protocol as a Firmware Device (FD). The diagram below shows the interface and components inside the stack. `PldmFwUpdateServiceMgr` serves as the interface between the PLDM stack and upper-level APIs, such as Firmware Update and Streaming Boot.
+
+```mermaid
+classDiagram
+        class PldmFwUpdateServiceMgr {
+                <<interface>>
+                +start_service() Result<(), PldmServiceError>
+                +stop_service() Result<(), PldmServiceError>
+        }
+
+        class PldmFwUpdateService {
+                +transport: T
+                +cmd_interface_responder: MessageResponder
+                +cmd_interface_requester: MessageRequester
+                +start_service() Result<(), PldmServiceError>
+                +stop_service() Result<(), PldmServiceError>
+        }
+
+        class MessageResponder {
+                <<interface>>
+                +process_request(payload: &mut [u8]) Result<usize, MessageHandlerError>
+                +process_response(payload: &mut [u8]) Result<usize, MessageHandlerError>
+        }
+
+        class MessageRequester {
+                <<interface>>
+                +generate_request(payload: &mut [u8]) Result<usize, MessageHandlerError>
+        }
+
+        class CommandHandler {
+                <<interface>>
+                +execute(payload: &mut [u8], context: &mut PldmContext) usize
+                +send_notification()
+                +receive_notification()
+        }
+
+        PldmFwUpdateServiceMgr <|-- PldmFwUpdateService
+        PldmFwUpdateService o-- MessageResponder
+        PldmFwUpdateService o-- MessageRequester
+        MessageResponder ..> CommandHandler : invoke
+```
 
 ```Rust
 /// Trait representing a PLDM Firmware Update Service Manager.
@@ -146,6 +187,7 @@ sequenceDiagram
 /// # Methods
 ///
 /// * `start_service` - Asynchronously starts the PLDM firmware update service.
+///    This method creates an async task to listen for and process incoming requests.
 /// * `stop_service` - Asynchronously stops the PLDM firmware update service.
 ///
 /// # Errors
@@ -224,7 +266,6 @@ pub trait MessageRequester: Send + Sync {
 }
 pub struct MessageHandlerError(pub NonZeroU32);
 
-
 /// Trait representing a command handler that can execute commands asynchronously.
 ///
 /// # Required Methods
@@ -253,16 +294,18 @@ pub trait CommandHandler: Send + Sync {
 ///
 /// # Fields
 ///
-/// * `handlers` - A hashmap that maps command codes to their respective command handlers.
+/// * `handlers` - A heapless hash table that maps command codes to their respective command handlers.
 /// * `context` - The PLDM context used for processing commands.
 /// * `other fields` - Additional fields required for the command interface responder.
-pub struct CmdInterfaceResponder {
-    handlers: HashMap<u8, Box<dyn CommandHandler>>,
+pub struct CmdInterfaceResponder<'a, const N: usize> {
+    handlers: heapless::FnvIndexMap<u8, &'a dyn CommandHandler, N>,
     context: PldmContext,
     // Other fields
 }
-pub struct CmdInterfaceRequester {
-    handlers: HashMap<u8, Box<dyn CommandHandler>>,
+
+pub struct CmdInterfaceRequester<'a, const N: usize> {
+    handlers: heapless::FnvIndexMap<u8, &'a dyn CommandHandler, N>,
     // Other fields
 }
+
 ```
