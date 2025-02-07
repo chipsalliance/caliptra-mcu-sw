@@ -7,6 +7,8 @@ use std::sync::mpsc;
 pub struct Bmc {
     events_to_caliptra: mpsc::Sender<Event>,
     events_from_caliptra: mpsc::Receiver<Event>,
+    events_to_mcu: mpsc::Sender<Event>,
+    events_from_mcu: mpsc::Receiver<Event>,
 
     /// Recovery state machine
     recovery_state_machine: recovery::StateMachine<recovery::Context>,
@@ -16,11 +18,15 @@ impl Bmc {
     pub fn new(
         events_to_caliptra: mpsc::Sender<Event>,
         events_from_caliptra: mpsc::Receiver<Event>,
+        events_to_mcu: mpsc::Sender<Event>,
+        events_from_mcu: mpsc::Receiver<Event>,
     ) -> Bmc {
         let recovery_context = recovery::Context::new(events_to_caliptra.clone());
         Bmc {
             events_to_caliptra,
             events_from_caliptra,
+            events_to_mcu,
+            events_from_mcu,
             recovery_state_machine: recovery::StateMachine::new(recovery_context),
         }
     }
@@ -37,10 +43,23 @@ impl Bmc {
         let prev_state = *self.recovery_state_machine.state();
         // process any incoming events
         while let Ok(event) = self.events_from_caliptra.try_recv() {
-            if event.dest != Device::BMC {
-                continue;
+            match event.dest {
+                Device::BMC => self.incoming_caliptra_event(event),
+                // route to the MCU
+                Device::MCU => {
+                    self.events_to_mcu.send(event).unwrap();
+                }
+                _ => {}
             }
-            self.incoming_event(event);
+        }
+
+        while let Ok(event) = self.events_from_mcu.try_recv() {
+            match event.dest {
+                Device::BMC => self.incoming_mcu_event(event),
+                // route to the Caliptra core
+                Device::CaliptraCore => self.events_to_caliptra.send(event).unwrap(),
+                _ => {}
+            }
         }
 
         self.recovery_step();
@@ -65,8 +84,12 @@ impl Bmc {
         }
     }
 
+    pub fn incoming_mcu_event(&mut self, _event: Event) {
+        // do nothing for now
+    }
+
     // translate from Caliptra events to state machine events
-    pub fn incoming_event(&mut self, event: Event) {
+    pub fn incoming_caliptra_event(&mut self, event: Event) {
         match &event.event {
             EventData::RecoveryBlockReadResponse {
                 source_addr: _,

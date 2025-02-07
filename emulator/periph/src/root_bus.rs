@@ -13,7 +13,8 @@ Abstract:
 --*/
 
 use crate::{spi_host::SpiHost, EmuCtrl, Uart};
-use emulator_bus::{Clock, Ram, Rom};
+use caliptra_emu_bus::{Device, EventData};
+use emulator_bus::{Bus, Clock, Ram, Rom};
 use emulator_cpu::{Pic, PicMmioRegisters};
 use emulator_derive::Bus;
 use emulator_types::RAM_SIZE;
@@ -36,6 +37,7 @@ pub struct CaliptraRootBusArgs {
 }
 
 #[derive(Bus)]
+#[incoming_event_fn(handle_incoming_event)]
 pub struct CaliptraRootBus {
     #[peripheral(offset = 0x0000_0000, len = 0xc000)]
     pub rom: Rom,
@@ -86,5 +88,34 @@ impl CaliptraRootBus {
             panic!("Data exceeds RAM size");
         }
         self.ram.borrow_mut().data_mut()[offset..offset + data.len()].copy_from_slice(data);
+    }
+
+    fn handle_incoming_event(&mut self, event: Rc<caliptra_emu_bus::Event>) {
+        self.rom.incoming_event(event.clone());
+        self.uart.incoming_event(event.clone());
+        self.ctrl.incoming_event(event.clone());
+        self.spi.incoming_event(event.clone());
+        self.ram.borrow_mut().incoming_event(event.clone());
+        self.pic_regs.incoming_event(event.clone());
+
+        match (event.dest, event.event.clone()) {
+            (Device::MCU, EventData::MemoryWrite { start_addr, data }) => {
+                let start = (start_addr + 0x80) as usize;
+                if start >= RAM_SIZE as usize || start + data.len() >= RAM_SIZE as usize {
+                    println!(
+                        "Ignoring invalid MCU RAM write to {}..{}",
+                        start,
+                        start + data.len()
+                    );
+                } else {
+                    let mut ram = self.ram.borrow_mut();
+                    let ram_size = ram.len() as usize;
+                    let len = data.len().min(ram_size - start as usize);
+                    ram.data_mut()[start as usize..start as usize + len]
+                        .copy_from_slice(&data[..len]);
+                }
+            }
+            _ => {}
+        }
     }
 }

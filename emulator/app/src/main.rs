@@ -183,13 +183,24 @@ fn free_run(
         let trace_fn: &mut dyn FnMut(u32, RvInstr) = &mut |pc, instr| match instr {
             RvInstr::Instr32(instr32) => {
                 let _ = writeln!(&mut f, "{}", disassemble(pc, instr32));
-                println!("{}", disassemble(pc, instr32));
+                println!("{{mcu cpu}}      {}", disassemble(pc, instr32));
             }
             RvInstr::Instr16(instr16) => {
                 let _ = writeln!(&mut f, "{}", disassemble(pc, instr16 as u32));
-                println!("{}", disassemble(pc, instr16 as u32));
+                println!("{{mcu cpu}}      {}", disassemble(pc, instr16 as u32));
             }
         };
+
+        // we don't put the caliptra trace in the file
+        let caliptra_trace_fn: &mut dyn FnMut(u32, caliptra_emu_cpu::RvInstr) =
+            &mut |pc, instr| match instr {
+                caliptra_emu_cpu::RvInstr::Instr32(instr32) => {
+                    println!("{{caliptra cpu}} {}", disassemble(pc, instr32));
+                }
+                caliptra_emu_cpu::RvInstr::Instr16(instr16) => {
+                    println!("{{caliptra cpu}} {}", disassemble(pc, instr16 as u32));
+                }
+            };
 
         // Need to have the loop in the same scope as trace_fn to prevent borrowing rules violation
         while running.load(std::sync::atomic::Ordering::Relaxed) {
@@ -202,7 +213,10 @@ fn free_run(
             if action != StepAction::Continue {
                 break;
             }
-            match caliptra_cpu.as_mut().map(|cpu| cpu.step(None)) {
+            match caliptra_cpu
+                .as_mut()
+                .map(|cpu| cpu.step(Some(caliptra_trace_fn)))
+            {
                 Some(CaliptraMainStepAction::Continue) | None => {}
                 _ => {
                     println!("Caliptra CPU Halted");
@@ -536,13 +550,20 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         .periph
         .set_dma_ram(dma_ram);
 
-    let cpu = Cpu::new(auto_root_bus, clock, pic);
+    let mut cpu = Cpu::new(auto_root_bus, clock, pic);
+    cpu.register_events();
 
     let mut bmc = match caliptra_cpu.as_mut() {
-        Some(cpu) => {
+        Some(caliptra_cpu) => {
             println!("Initializing recovery interface");
-            let (event_sender, event_receiver) = cpu.register_events();
-            let bmc = Bmc::new(event_sender, event_receiver);
+            let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
+            let (mcu_event_sender, mcu_event_reciever) = cpu.register_events();
+            let bmc = Bmc::new(
+                caliptra_event_sender,
+                caliptra_event_receiver,
+                mcu_event_sender,
+                mcu_event_reciever,
+            );
             Some(bmc)
         }
         _ => None,

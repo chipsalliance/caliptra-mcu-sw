@@ -174,6 +174,10 @@ pub extern "C" fn rom_entry() -> ! {
         romtime::println!("Invalid firmware detected; halting");
         exit_emulator(1);
     }
+    romtime::println!(
+        "[mcu] Jumping to firmware (first few bytes: {:08x})",
+        unsafe { core::ptr::read_volatile(firmware_ptr) }
+    );
 
     exit_rom();
 }
@@ -207,9 +211,11 @@ fn recovery_flow(mci: &mut Mci) {
     i3c.registers.stdby_ctrl_mode_stby_cr_device_addr.set(0x3a);
 
     // TODO: what value are we looking for
-    while mci.flow_status() != 123 {
-        // wait for us to get the signal to boot
-    }
+    // while mci.flow_status() != 123 {
+    //     // wait for us to get the signal to boot
+    // }
+    // hack until we have MCI hooked up: just look for a non-zero firmware value somewhere
+    while unsafe { core::ptr::read_volatile(0x4000_ffff as *const u32) } == 0 {}
 }
 
 fn exit_rom() -> ! {

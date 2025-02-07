@@ -12,6 +12,9 @@ Abstract:
 
 --*/
 
+use std::{rc::Rc, sync::mpsc};
+
+use caliptra_emu_bus::Event;
 use emulator_types::{RvAddr, RvData, RvSize};
 
 /// Signal that a trap should be triggered.
@@ -87,6 +90,14 @@ pub trait Bus {
     }
 
     fn update_reset(&mut self) {
+        // By default, do nothing
+    }
+
+    fn incoming_event(&mut self, _event: Rc<Event>) {
+        // By default, do nothing
+    }
+
+    fn register_outgoing_events(&mut self, _sender: mpsc::Sender<Event>) {
         // By default, do nothing
     }
 }

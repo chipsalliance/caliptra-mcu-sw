@@ -10,6 +10,7 @@ edition = "2021"
 [dependencies]
 bit-vec.workspace = true
 bitfield.workspace = true
+caliptra-emu-bus.workspace = true
 emulator-bus.workspace = true
 emulator-derive.workspace = true
 emulator-types.workspace = true

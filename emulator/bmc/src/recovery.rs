@@ -36,7 +36,7 @@ statemachine! {
         Activate + DeviceStatus(DeviceStatusBlock) [check_device_status_recovery_running_recovery]
             = ActivateCheckRecoveryStatus,
         ActivateCheckRecoveryStatus + RecoveryStatus(RecoveryStatusBlock) [check_recovery_status_awaiting]
-            / start_recovery = StartRecoveryFlow,
+            / start_recovery = WaitForRecoveryPending,
     }
 }
 
@@ -46,7 +46,7 @@ pub(crate) fn state_to_read_request(state: States) -> Option<Event> {
         States::ReadProtCap => Some(RecoveryCommandCode::ProtCap),
         States::ReadDeviceStatus => Some(RecoveryCommandCode::DeviceStatus),
         States::WaitForRecoveryStatus => Some(RecoveryCommandCode::RecoveryStatus),
-        States::WaitForRecoveryPending => Some(RecoveryCommandCode::RecoveryStatus),
+        States::WaitForRecoveryPending => Some(RecoveryCommandCode::DeviceStatus),
         States::Activate => Some(RecoveryCommandCode::DeviceStatus),
         States::ActivateCheckRecoveryStatus => Some(RecoveryCommandCode::RecoveryStatus),
         _ => None,
@@ -172,7 +172,7 @@ impl StateMachineContext for Context {
         }
     }
 
-    /// Check that the recovery status is pending activation.
+    /// Check that the device status is recovery pending
     fn check_device_status_recovery_pending(&self, status: &DeviceStatusBlock) -> Result<bool, ()> {
         let status = status.reg.read(DeviceStatus::Status);
         if status == DeviceStatus::Status::RecoveryPending.value {
@@ -212,10 +212,14 @@ impl StateMachineContext for Context {
     }
 
     fn start_recovery(&mut self, status: RecoveryStatusBlock) -> Result<(), ()> {
+        println!("Recovery status = {:x}", status.reg.get());
         let idx = status.reg.read(RecoveryStatus::RECOVERY_IMAGE_INDEX);
 
         if idx as usize >= self.recovery_images.len() {
-            println!("Invalid recovery image index {}", idx);
+            println!(
+                "[emulator bmc recovery] Invalid recovery image index {}",
+                idx
+            );
             Err(())
         } else {
             let image = &self.recovery_images[idx as usize];
