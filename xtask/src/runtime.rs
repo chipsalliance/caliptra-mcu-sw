@@ -1,21 +1,31 @@
 // Licensed under the Apache-2.0 license
 
+use crate::Commands;
 use crate::{
     rom::rom_build, runtime_build::runtime_build_with_apps, DynError, PROJECT_ROOT, TARGET,
 };
-use std::{path::PathBuf, process::Command as StdCommand};
+use std::process::Command as StdCommand;
 
 /// Run the Runtime Tock kernel image for RISC-V in the emulator.
-pub(crate) fn runtime_run(
-    trace: bool,
-    i3c_port: Option<u16>,
-    features: &[&str],
-    no_stdin: bool,
-    caliptra_rom: Option<&PathBuf>,
-    caliptra_firmware: Option<&PathBuf>,
-) -> Result<(), DynError> {
+pub(crate) fn runtime_run(args: Commands) -> Result<(), DynError> {
+    let Commands::Runtime {
+        trace,
+        i3c_port,
+        features,
+        no_stdin,
+        caliptra_rom,
+        caliptra_firmware,
+        soc_manifest,
+        active_mode,
+        vendor_pk_hash,
+        owner_pk_hash,
+    } = args
+    else {
+        panic!("Must call runtime_run with Commands::Runtime");
+    };
+    let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
     rom_build()?;
-    runtime_build_with_apps(features, None)?;
+    runtime_build_with_apps(&features, None)?;
     let rom_binary = PROJECT_ROOT
         .join("target")
         .join(TARGET)
@@ -47,7 +57,7 @@ pub(crate) fn runtime_run(
     if trace {
         cargo_run_args.extend(["-t", "-l", PROJECT_ROOT.to_str().unwrap()]);
     }
-    if let Some(caliptra_rom) = caliptra_rom {
+    if let Some(caliptra_rom) = caliptra_rom.as_ref() {
         if !caliptra_rom.exists() {
             return Err(format!("Caliptra ROM file not found: {:?}", caliptra_rom).into());
         }
@@ -57,13 +67,25 @@ pub(crate) fn runtime_run(
             caliptra_rom.to_str().unwrap(),
         ]);
     }
-    if let Some(caliptra_firmware) = caliptra_firmware {
+    if let Some(caliptra_firmware) = caliptra_firmware.as_ref() {
         if !caliptra_firmware.exists() {
             return Err(
                 format!("Caliptra runtime bundle not found: {:?}", caliptra_firmware).into(),
             );
         }
         cargo_run_args.extend(["--caliptra-firmware", caliptra_firmware.to_str().unwrap()]);
+    }
+    if let Some(soc_manifest) = soc_manifest.as_ref() {
+        cargo_run_args.extend(["--soc-manifest", soc_manifest.to_str().unwrap()]);
+    }
+    if active_mode {
+        cargo_run_args.extend(["--active-mode"]);
+    }
+    if let Some(vendor_pk_hash) = vendor_pk_hash.as_ref() {
+        cargo_run_args.extend(["--vendor-pk-hash", vendor_pk_hash]);
+    }
+    if let Some(owner_pk_hash) = owner_pk_hash.as_ref() {
+        cargo_run_args.extend(["--owner-pk-hash", owner_pk_hash]);
     }
     StdCommand::new("cargo")
         .args(cargo_run_args)

@@ -590,6 +590,8 @@ fn emu_make_root_bus<'a>(
     let mut poll_tokens = TokenStream::new();
     let mut warm_reset_tokens = TokenStream::new();
     let mut update_reset_tokens = TokenStream::new();
+    let mut incoming_event_tokens = TokenStream::new();
+    let mut register_outgoing_events_tokens = TokenStream::new();
     let mut field_tokens = TokenStream::new();
     let mut constructor_tokens = TokenStream::new();
     let mut constructor_params_tokens = TokenStream::new();
@@ -679,6 +681,16 @@ fn emu_make_root_bus<'a>(
                 periph.update_reset();
             }
         });
+        incoming_event_tokens.extend(quote! {
+            if let Some(periph) = self.#periph_field.as_mut() {
+                periph.incoming_event(event.clone());
+            }
+        });
+        register_outgoing_events_tokens.extend(quote! {
+            if let Some(periph) = self.#periph_field.as_mut() {
+                periph.register_outgoing_events(sender.clone());
+            }
+        });
     }
     let mut tokens = TokenStream::new();
     tokens.extend(quote! {
@@ -749,7 +761,19 @@ fn emu_make_root_bus<'a>(
                     delegate.update_reset();
                 }
             }
-        }
+            fn incoming_event(&mut self, event: std::rc::Rc<caliptra_emu_bus::Event>) {
+                #incoming_event_tokens
+                for delegate in self.delegates.iter_mut() {
+                    delegate.incoming_event(event.clone());
+                }
+            }
+            fn register_outgoing_events(&mut self, sender: std::sync::mpsc::Sender<caliptra_emu_bus::Event>) {
+                #register_outgoing_events_tokens
+                for delegate in self.delegates.iter_mut() {
+                    delegate.register_outgoing_events(sender.clone());
+                }
+            }
+}
     });
     Ok(tokens)
 }

@@ -54,6 +54,18 @@ enum Commands {
 
         #[arg(long)]
         caliptra_firmware: Option<PathBuf>,
+
+        #[arg(long, default_value_t = false)]
+        active_mode: bool,
+
+        #[arg(long)]
+        soc_manifest: Option<PathBuf>,
+
+        #[arg(long)]
+        vendor_pk_hash: Option<String>,
+
+        #[arg(long)]
+        owner_pk_hash: Option<String>,
     },
     /// Build Runtime image
     RuntimeBuild {
@@ -157,24 +169,7 @@ static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
 fn main() {
     let cli = Xtask::parse();
     let result = match &cli.xtask {
-        Commands::Runtime {
-            trace,
-            i3c_port,
-            features,
-            no_stdin,
-            caliptra_rom,
-            caliptra_firmware,
-        } => {
-            let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            runtime::runtime_run(
-                *trace,
-                *i3c_port,
-                &features,
-                *no_stdin,
-                caliptra_rom.as_ref(),
-                caliptra_firmware.as_ref(),
-            )
-        }
+        Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),
         Commands::RuntimeBuild { features, output } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
             runtime_build::runtime_build_with_apps(&features, output.as_deref())

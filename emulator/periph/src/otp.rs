@@ -15,7 +15,7 @@ Abstract:
 use crate::otp_digest;
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
 use emulator_types::{RvAddr, RvData};
-use registers_generated::fuses;
+use registers_generated::fuses::{self, NON_SECRET_FUSES_WORD_OFFSET, SECRET3_WORD_OFFSET};
 use registers_generated::otp_ctrl::bits::{DirectAccessCmd, Status};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -79,7 +79,12 @@ impl Drop for Otp {
 
 #[allow(dead_code)]
 impl Otp {
-    pub fn new(clock: &Clock, file_name: Option<PathBuf>) -> Result<Self, std::io::Error> {
+    pub fn new(
+        clock: &Clock,
+        file_name: Option<PathBuf>,
+        owner_pk_hash: Option<[u8; 48]>,
+        vendor_pk_hash: Option<[u8; 48]>,
+    ) -> Result<Self, std::io::Error> {
         let file = if let Some(path) = file_name {
             Some(
                 std::fs::File::options()
@@ -105,6 +110,17 @@ impl Otp {
             digests: [0; 12],
         };
         otp.read_from_file()?;
+        if let Some(mut owner_pk_hash) = owner_pk_hash {
+            swap_endianness(&mut owner_pk_hash);
+            otp.partitions
+                [(NON_SECRET_FUSES_WORD_OFFSET + 8) * 4..(NON_SECRET_FUSES_WORD_OFFSET + 20) * 4]
+                .copy_from_slice(&owner_pk_hash);
+        }
+        if let Some(mut vendor_pk_hash) = vendor_pk_hash {
+            swap_endianness(&mut vendor_pk_hash);
+            otp.partitions[SECRET3_WORD_OFFSET * 4..(SECRET3_WORD_OFFSET + 12) * 4]
+                .copy_from_slice(&vendor_pk_hash);
+        }
         // if there were digests that were pending a reset, then calculate them now
         otp.calculate_digests()?;
         Ok(otp)
@@ -296,6 +312,13 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
     }
 }
 
+/// Convert the slice to hardware format
+fn swap_endianness(value: &mut [u8]) {
+    for i in (0..value.len()).step_by(4) {
+        value[i..i + 4].reverse();
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -306,7 +329,7 @@ mod test {
     #[test]
     fn test_bootup() {
         let clock = Clock::new();
-        let mut otp = Otp::new(&clock, None).unwrap();
+        let mut otp = Otp::new(&clock, None, None, None).unwrap();
         // simulate post-bootup flow
         assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
         otp.write_integrity_check_period(0x3_FFFFu32.into());
@@ -329,7 +352,7 @@ mod test {
     #[test]
     fn test_write_and_read() {
         let clock = Clock::new();
-        let mut otp = Otp::new(&clock, None).unwrap();
+        let mut otp = Otp::new(&clock, None, None, None).unwrap();
         // write the vendor partition
         assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
         for i in 0..fuses::VENDOR_TEST_WORD_SIZE {
@@ -372,7 +395,7 @@ mod test {
     #[test]
     fn test_digest() {
         let clock = Clock::new();
-        let mut otp = Otp::new(&clock, None).unwrap();
+        let mut otp = Otp::new(&clock, None, None, None).unwrap();
         // write the vendor partition
         assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
         for i in 0..fuses::VENDOR_TEST_WORD_SIZE {

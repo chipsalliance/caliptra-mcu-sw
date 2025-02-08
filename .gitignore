@@ -1,4 +1,4 @@
-/target/
+/target*/
 
 # By default, ignore Cargo.lock files in non-workspace directories.
 */**/Cargo.lock
