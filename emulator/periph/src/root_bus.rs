@@ -98,24 +98,22 @@ impl CaliptraRootBus {
         self.ram.borrow_mut().incoming_event(event.clone());
         self.pic_regs.incoming_event(event.clone());
 
-        match (event.dest, event.event.clone()) {
-            (Device::MCU, EventData::MemoryWrite { start_addr, data }) => {
-                let start = (start_addr + 0x80) as usize;
-                if start >= RAM_SIZE as usize || start + data.len() >= RAM_SIZE as usize {
-                    println!(
-                        "Ignoring invalid MCU RAM write to {}..{}",
-                        start,
-                        start + data.len()
-                    );
-                } else {
-                    let mut ram = self.ram.borrow_mut();
-                    let ram_size = ram.len() as usize;
-                    let len = data.len().min(ram_size - start as usize);
-                    ram.data_mut()[start as usize..start as usize + len]
-                        .copy_from_slice(&data[..len]);
-                }
+        if let (Device::MCU, EventData::MemoryWrite { start_addr, data }) =
+            (event.dest, event.event.clone())
+        {
+            let start = (start_addr + 0x80) as usize;
+            if start >= RAM_SIZE as usize || start + data.len() >= RAM_SIZE as usize {
+                println!(
+                    "Ignoring invalid MCU RAM write to {}..{}",
+                    start,
+                    start + data.len()
+                );
+            } else {
+                let mut ram = self.ram.borrow_mut();
+                let ram_size = ram.len() as usize;
+                let len = data.len().min(ram_size - start);
+                ram.data_mut()[start..start + len].copy_from_slice(&data[..len]);
             }
-            _ => {}
         }
     }
 }

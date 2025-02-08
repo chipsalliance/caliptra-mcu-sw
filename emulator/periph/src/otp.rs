@@ -119,7 +119,7 @@ impl Otp {
         if let Some(mut vendor_pk_hash) = vendor_pk_hash {
             swap_endianness(&mut vendor_pk_hash);
             otp.partitions[SECRET3_WORD_OFFSET * 4..(SECRET3_WORD_OFFSET + 12) * 4]
-                .copy_from_slice(&mut vendor_pk_hash);
+                .copy_from_slice(&vendor_pk_hash);
         }
         // if there were digests that were pending a reset, then calculate them now
         otp.calculate_digests()?;
@@ -329,7 +329,7 @@ mod test {
     #[test]
     fn test_bootup() {
         let clock = Clock::new();
-        let mut otp = Otp::new(&clock, None, None).unwrap();
+        let mut otp = Otp::new(&clock, None, None, None).unwrap();
         // simulate post-bootup flow
         assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
         otp.write_integrity_check_period(0x3_FFFFu32.into());
@@ -352,7 +352,7 @@ mod test {
     #[test]
     fn test_write_and_read() {
         let clock = Clock::new();
-        let mut otp = Otp::new(&clock, None, None).unwrap();
+        let mut otp = Otp::new(&clock, None, None, None).unwrap();
         // write the vendor partition
         assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
         for i in 0..fuses::VENDOR_TEST_WORD_SIZE {
@@ -395,7 +395,7 @@ mod test {
     #[test]
     fn test_digest() {
         let clock = Clock::new();
-        let mut otp = Otp::new(&clock, None, None).unwrap();
+        let mut otp = Otp::new(&clock, None, None, None).unwrap();
         // write the vendor partition
         assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
         for i in 0..fuses::VENDOR_TEST_WORD_SIZE {
