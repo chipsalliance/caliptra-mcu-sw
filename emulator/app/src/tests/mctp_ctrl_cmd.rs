@@ -84,15 +84,12 @@ impl MCTPCtrlCmdTests {
                 SetEIDAllocStatus::NoEIDPool,
                 TEST_TARGET_EID,
             ),
-            MCTPCtrlCmdTests::SetEIDForce => {
-                // self.mctp_util.set_src_eid(TEST_TARGET_EID);
-                set_eid_resp_bytes(
-                    CmdCompletionCode::Success,
-                    SetEIDStatus::Accepted,
-                    SetEIDAllocStatus::NoEIDPool,
-                    TEST_TARGET_EID + 1,
-                )
-            }
+            MCTPCtrlCmdTests::SetEIDForce => set_eid_resp_bytes(
+                CmdCompletionCode::Success,
+                SetEIDStatus::Accepted,
+                SetEIDAllocStatus::NoEIDPool,
+                TEST_TARGET_EID + 1,
+            ),
             MCTPCtrlCmdTests::SetEIDNullFail => set_eid_resp_bytes(
                 CmdCompletionCode::ErrorInvalidData,
                 SetEIDStatus::Rejected,

@@ -1,7 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use crate::i3c_socket::{MctpTestState, TestTrait};
-// use crate::tests::mctp_util::base_protocol::{MCTPHdr, MCTP_HDR_SIZE};
 use crate::tests::mctp_util::common::MctpUtil;
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
