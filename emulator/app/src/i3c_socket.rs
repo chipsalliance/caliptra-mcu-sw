@@ -179,21 +179,22 @@ pub(crate) fn run_tests(
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let stream = TcpStream::connect(addr).unwrap();
     std::thread::spawn(move || {
-        let mut test_runner = TestRunner::new(stream, target_addr.into(), running_clone, tests);
+        let mut test_runner = MctpTestRunner::new(stream, target_addr.into(), running_clone, tests);
         test_runner.run_tests();
     });
 }
 
 #[derive(Debug, Clone)]
-pub enum TestState {
+pub enum MctpTestState {
     Start,
-    SendPrivateWrite,
-    WaitForIbi,
-    ReceivePrivateRead,
+    SendReq,
+    ReceiveResp,
+    ReceiveReq,
+    SendResp,
     Finish,
 }
 
-struct TestRunner {
+struct MctpTestRunner {
     stream: TcpStream,
     target_addr: u8,
     passed: usize,
@@ -201,7 +202,7 @@ struct TestRunner {
     tests: Vec<Box<dyn TestTrait + Send>>,
 }
 
-impl TestRunner {
+impl MctpTestRunner {
     pub fn new(
         stream: TcpStream,
         target_addr: u8,

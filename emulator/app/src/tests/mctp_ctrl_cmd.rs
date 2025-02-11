@@ -1,11 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use crate::i3c_socket::{
-    receive_ibi, receive_private_read, send_private_write, TestState, TestTrait,
-};
-use crate::tests::mctp_util::base_protocol::{
-    MCTPHdr, MCTPMsgHdr, LOCAL_TEST_ENDPOINT_EID, MCTP_HDR_SIZE, MCTP_MSG_HDR_SIZE,
-};
+use crate::i3c_socket::{MctpTestState, TestTrait};
+use crate::tests::mctp_util::base_protocol::{MCTPMsgHdr, MCTP_MSG_HDR_SIZE};
+use crate::tests::mctp_util::common::MctpUtil;
 use crate::tests::mctp_util::ctrl_protocol::*;
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,15 +13,13 @@ use zerocopy::IntoBytes;
 
 const TEST_TARGET_EID: u8 = 0xA;
 
-type MCTPCtrlPacket = (
-    MCTPHdr<[u8; MCTP_HDR_SIZE]>,
+type MCTPCtrlMsg = (
     MCTPMsgHdr<[u8; MCTP_MSG_HDR_SIZE]>,
     MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HDR_SIZE]>,
     Vec<u8>,
 );
 
-const MCTP_HDR_OFFSET: usize = 0;
-const MCTP_MSG_HDR_OFFSET: usize = MCTP_HDR_OFFSET + MCTP_HDR_SIZE;
+const MCTP_MSG_HDR_OFFSET: usize = 0;
 const MCTP_CTRL_MSG_HDR_OFFSET: usize = MCTP_MSG_HDR_OFFSET + MCTP_MSG_HDR_SIZE;
 const MCTP_CTRL_PAYLOAD_OFFSET: usize = MCTP_CTRL_MSG_HDR_OFFSET + MCTP_CTRL_MSG_HDR_SIZE;
 
@@ -41,19 +36,19 @@ pub(crate) enum MCTPCtrlCmdTests {
 impl MCTPCtrlCmdTests {
     pub fn generate_tests() -> Vec<Box<dyn TestTrait + Send>> {
         MCTPCtrlCmdTests::iter()
-            .map(|test_id| {
+            .enumerate()
+            .map(|(i, test_id)| {
                 let test_name = test_id.name();
-                let req_data = test_id.generate_request_packet();
-                let resp_data = test_id.generate_response_packet();
-                Box::new(Test::new(test_name, req_data, resp_data)) as Box<dyn TestTrait + Send>
+                let req_msg = test_id.generate_request_msg();
+                let resp_msg = test_id.generate_response_msg();
+                let msg_tag = (i % 4) as u8;
+                Box::new(Test::new(test_name, req_msg, resp_msg, msg_tag))
+                    as Box<dyn TestTrait + Send>
             })
             .collect()
     }
 
-    fn generate_request_packet(&self) -> Vec<u8> {
-        let mut mctp_hdr = MCTPHdr::new();
-        mctp_hdr.prepare_header(0, LOCAL_TEST_ENDPOINT_EID, 1, 1, 0, 1, self.msg_tag());
-
+    fn generate_request_msg(&self) -> Vec<u8> {
         let mctp_common_msg_hdr = MCTPMsgHdr::new();
 
         let mut mctp_ctrl_msg_hdr = MCTPCtrlMsgHdr::new();
@@ -63,7 +58,6 @@ impl MCTPCtrlCmdTests {
         let req_data = match self {
             MCTPCtrlCmdTests::SetEID => set_eid_req_bytes(SetEIDOp::SetEID, TEST_TARGET_EID),
             MCTPCtrlCmdTests::SetEIDForce => {
-                mctp_hdr.set_dest_eid(TEST_TARGET_EID);
                 set_eid_req_bytes(SetEIDOp::ForceEID, TEST_TARGET_EID + 1)
             }
             MCTPCtrlCmdTests::SetEIDNullFail => set_eid_req_bytes(SetEIDOp::SetEID, 0),
@@ -73,19 +67,10 @@ impl MCTPCtrlCmdTests {
                 vec![]
             }
         };
-
-        MCTPCtrlCmdTests::generate_packet((
-            mctp_hdr,
-            mctp_common_msg_hdr,
-            mctp_ctrl_msg_hdr,
-            req_data,
-        ))
+        MCTPCtrlCmdTests::generate_msg((mctp_common_msg_hdr, mctp_ctrl_msg_hdr, req_data))
     }
 
-    fn generate_response_packet(&self) -> Vec<u8> {
-        let mut mctp_hdr = MCTPHdr::new();
-        mctp_hdr.prepare_header(LOCAL_TEST_ENDPOINT_EID, 0, 1, 1, 0, 0, self.msg_tag());
-
+    fn generate_response_msg(&self) -> Vec<u8> {
         let mctp_common_msg_hdr = MCTPMsgHdr::new();
 
         let mut mctp_ctrl_msg_hdr = MCTPCtrlMsgHdr::new();
@@ -100,7 +85,7 @@ impl MCTPCtrlCmdTests {
                 TEST_TARGET_EID,
             ),
             MCTPCtrlCmdTests::SetEIDForce => {
-                mctp_hdr.set_src_eid(TEST_TARGET_EID);
+                // self.mctp_util.set_src_eid(TEST_TARGET_EID);
                 set_eid_resp_bytes(
                     CmdCompletionCode::Success,
                     SetEIDStatus::Accepted,
@@ -131,33 +116,24 @@ impl MCTPCtrlCmdTests {
             }
         };
 
-        MCTPCtrlCmdTests::generate_packet((
-            mctp_hdr,
-            mctp_common_msg_hdr,
-            mctp_ctrl_msg_hdr,
-            resp_data,
-        ))
+        MCTPCtrlCmdTests::generate_msg((mctp_common_msg_hdr, mctp_ctrl_msg_hdr, resp_data))
     }
 
-    fn generate_packet(mctp_packet: MCTPCtrlPacket) -> Vec<u8> {
-        let mut pkt: Vec<u8> = vec![0; MCTP_CTRL_PAYLOAD_OFFSET + mctp_packet.3.len()];
+    fn generate_msg(mctp_msg: MCTPCtrlMsg) -> Vec<u8> {
+        let mut pkt: Vec<u8> = vec![0; MCTP_CTRL_PAYLOAD_OFFSET + mctp_msg.2.len()];
 
-        mctp_packet
+        mctp_msg
             .0
-            .write_to(&mut pkt[0..MCTP_HDR_SIZE])
-            .expect("mctp header write failed");
-        mctp_packet
-            .1
             .write_to(&mut pkt[MCTP_MSG_HDR_OFFSET..MCTP_MSG_HDR_OFFSET + MCTP_MSG_HDR_SIZE])
             .expect("mctp common msg header write failed");
-        mctp_packet
-            .2
+        mctp_msg
+            .1
             .write_to(
                 &mut pkt
                     [MCTP_CTRL_MSG_HDR_OFFSET..MCTP_CTRL_MSG_HDR_OFFSET + MCTP_CTRL_MSG_HDR_SIZE],
             )
             .expect("mctp ctrl msg header write failed");
-        pkt[MCTP_CTRL_PAYLOAD_OFFSET..].copy_from_slice(&mctp_packet.3);
+        pkt[MCTP_CTRL_PAYLOAD_OFFSET..].copy_from_slice(&mctp_msg.2);
         pkt
     }
 
@@ -169,17 +145,6 @@ impl MCTPCtrlCmdTests {
             MCTPCtrlCmdTests::SetEIDBroadcastFail => "SetEIDBroadcastFail",
             MCTPCtrlCmdTests::SetEIDInvalidFail => "SetEIDInvalidFail",
             MCTPCtrlCmdTests::GetEID => "GetEID",
-        }
-    }
-
-    fn msg_tag(&self) -> u8 {
-        match self {
-            MCTPCtrlCmdTests::SetEID => 0,
-            MCTPCtrlCmdTests::SetEIDForce => 1,
-            MCTPCtrlCmdTests::SetEIDNullFail => 2,
-            MCTPCtrlCmdTests::SetEIDBroadcastFail => 3,
-            MCTPCtrlCmdTests::SetEIDInvalidFail => 4,
-            MCTPCtrlCmdTests::GetEID => 5,
         }
     }
 
@@ -198,26 +163,37 @@ impl MCTPCtrlCmdTests {
 #[derive(Debug, Clone)]
 struct Test {
     name: String,
-    state: TestState,
-    pvt_write_data: Vec<u8>,
-    pvt_read_data: Vec<u8>,
+    test_state: MctpTestState,
+    req_msg: Vec<u8>,
+    resp_msg: Vec<u8>,
+    msg_tag: u8,
+    mctp_util: MctpUtil,
     passed: bool,
 }
 
 impl Test {
-    fn new(name: &str, pvt_write_data: Vec<u8>, pvt_read_data: Vec<u8>) -> Self {
+    fn new(name: &str, req_msg: Vec<u8>, resp_msg: Vec<u8>, msg_tag: u8) -> Self {
         Self {
             name: name.to_string(),
-            state: TestState::Start,
-            pvt_write_data,
-            pvt_read_data,
+            test_state: MctpTestState::Start,
+            req_msg,
+            resp_msg,
+            msg_tag,
+            mctp_util: MctpUtil::new(),
             passed: false,
         }
     }
 
     fn check_response(&mut self, data: &[u8]) {
-        if data.len() == self.pvt_read_data.len() && data == self.pvt_read_data {
+        if data.len() == self.resp_msg.len() && data == self.resp_msg {
             self.passed = true;
+        }
+    }
+
+    fn pre_process(&mut self) {
+        match self.name.as_str() {
+            "SetEID" => {}
+            _ => self.mctp_util.set_dest_eid(TEST_TARGET_EID),
         }
     }
 }
@@ -230,28 +206,34 @@ impl TestTrait for Test {
     fn run_test(&mut self, running: Arc<AtomicBool>, stream: &mut TcpStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
         while running.load(Ordering::Relaxed) {
-            match self.state {
-                TestState::Start => {
+            match self.test_state {
+                MctpTestState::Start => {
                     println!("Starting test: {}", self.name);
-                    self.state = TestState::SendPrivateWrite;
+                    self.test_state = MctpTestState::SendReq;
                 }
-                TestState::SendPrivateWrite => {
-                    if send_private_write(stream, target_addr, self.pvt_write_data.clone()) {
-                        self.state = TestState::WaitForIbi;
+                MctpTestState::SendReq => {
+                    self.pre_process();
+                    self.mctp_util.send_request(
+                        self.msg_tag,
+                        self.req_msg.as_slice(),
+                        running.clone(),
+                        stream,
+                        target_addr,
+                    );
+                    self.test_state = MctpTestState::ReceiveResp;
+                }
+                MctpTestState::ReceiveResp => {
+                    let resp_msg =
+                        self.mctp_util
+                            .receive_response(running.clone(), stream, target_addr);
+
+                    if !resp_msg.is_empty() {
+                        self.check_response(&resp_msg);
+                        self.passed = true;
                     }
+                    self.test_state = MctpTestState::Finish;
                 }
-                TestState::WaitForIbi => {
-                    if receive_ibi(stream, target_addr) {
-                        self.state = TestState::ReceivePrivateRead;
-                    }
-                }
-                TestState::ReceivePrivateRead => {
-                    if let Some(data) = receive_private_read(stream, target_addr) {
-                        self.check_response(data.as_slice());
-                        self.state = TestState::Finish;
-                    }
-                }
-                TestState::Finish => {
+                MctpTestState::Finish => {
                     println!(
                         "Test {} : {}",
                         self.name,
@@ -259,6 +241,7 @@ impl TestTrait for Test {
                     );
                     break;
                 }
+                _ => {}
             }
         }
     }
