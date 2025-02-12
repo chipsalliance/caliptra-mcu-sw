@@ -2533,6 +2533,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "spdm-app"
+version = "0.1.0"
+dependencies = [
+ "critical-section",
+ "embassy-executor",
+ "embedded-alloc",
+ "libsyscall-caliptra",
+ "libtock",
+ "libtock_console",
+ "libtock_debug_panic",
+ "libtock_platform",
+ "libtock_runtime",
+ "libtock_unittest",
+ "libtockasync",
+ "portable-atomic",
+]
+
+[[package]]
+name = "spdm-lib"
+version = "0.1.0"
+
+[[package]]
 name = "spki"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

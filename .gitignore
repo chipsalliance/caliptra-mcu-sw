@@ -23,3 +23,6 @@ book
 # flash file
 main_flash
 recovery_flash
+
+# Protocol validator test logs
+test.log

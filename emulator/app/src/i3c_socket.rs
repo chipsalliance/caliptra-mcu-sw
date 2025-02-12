@@ -46,6 +46,8 @@ use std::time::Duration;
 use std::vec;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
+use crate::tests::spdm_validator::start_spdm_device_validator;
+
 const CRC8_SMBUS: crc::Crc<u8> = crc::Crc::<u8>::new(&crc::CRC_8_SMBUS);
 
 pub(crate) fn start_i3c_socket(
@@ -89,6 +91,10 @@ fn handle_i3c_socket_loop(
                 std::thread::sleep(std::time::Duration::from_millis(10));
             }
             Err(e) => panic!("Error accepting connection: {}", e),
+        }
+
+        if cfg!(feature = "test-spdm-validator") {
+            let _ = start_spdm_device_validator(running.clone());
         }
     }
 }

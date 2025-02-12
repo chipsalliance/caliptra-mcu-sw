@@ -5,11 +5,18 @@ use crate::tbf::TbfHeader;
 use crate::{DynError, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
-pub const APPS: &[App] = &[App {
-    name: "example-app",
-    permissions: vec![],
-    minimum_ram: 16384,
-}];
+pub const APPS: &[App] = &[
+    App {
+        name: "example-app",
+        permissions: vec![],
+        minimum_ram: 16384,
+    },
+    App {
+        name: "spdm-app",
+        permissions: vec![],
+        minimum_ram: 16384,
+    },
+];
 
 pub struct App {
     pub name: &'static str,
@@ -45,6 +52,7 @@ pub fn apps_build_flat_tbf(
     let mut offset = start;
     let mut ram_start = ram_start;
     for app in APPS.iter() {
+        println!("Building TBF for app {}", app.name);
         let app_bin = app_build_tbf(app, offset, ram_start, features)?;
         bin.extend_from_slice(&app_bin);
         offset += app_bin.len();
