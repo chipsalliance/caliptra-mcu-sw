@@ -106,7 +106,7 @@ tempfile = "3.14.0"
 toml = "0.8.19"
 uuid = { version = "1.10.0", features = ["serde"]}
 walkdir = "2.5.0"
-zerocopy = { version = "0.8.7", features = ["derive"] }
+zerocopy = { version = "0.8.8", features = ["derive"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_derive"] }
 
 # local dependencies
@@ -138,13 +138,13 @@ libsyscall-caliptra = { path = "runtime/apps/syscall" }
 libapi-caliptra = { path = "runtime/apps/api" }
 
 # caliptra dependencies; keep git revs in sync
-caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
-caliptra-emu-bus = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
-caliptra-emu-cpu = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
-caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
-caliptra-emu-types = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
-caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
-caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }
+caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "dd307762140a39d5f3841a5e770a6fb8087aca29" }
+caliptra-emu-bus = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "dd307762140a39d5f3841a5e770a6fb8087aca29" }
+caliptra-emu-cpu = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "dd307762140a39d5f3841a5e770a6fb8087aca29" }
+caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "dd307762140a39d5f3841a5e770a6fb8087aca29" }
+caliptra-emu-types = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "dd307762140a39d5f3841a5e770a6fb8087aca29" }
+caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "dd307762140a39d5f3841a5e770a6fb8087aca29" }
+caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "dd307762140a39d5f3841a5e770a6fb8087aca29" }
 
 # tock dependencies; keep git revs in sync
 capsules-core = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
