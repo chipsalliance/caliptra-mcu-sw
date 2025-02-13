@@ -1,3 +1,5 @@
+# Licensed under the Apache-2.0 license
+
 [package]
 name = "spdm-app"
 version.workspace = true
@@ -25,3 +27,4 @@ embedded-alloc.workspace = true
 
 [features]
 default = []
+test-spdm-validator = []

@@ -11,11 +11,11 @@ pub const APPS: &[App] = &[
         permissions: vec![],
         minimum_ram: 16384,
     },
-    // App {
-    //     name: "spdm-app",
-    //     permissions: vec![],
-    //     minimum_ram: 16385,
-    // },
+    App {
+        name: "spdm-app",
+        permissions: vec![],
+        minimum_ram: 16384,
+    },
 ];
 
 pub struct App {

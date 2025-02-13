@@ -234,6 +234,22 @@ impl Test {
         match socket_command {
             SOCKET_SPDM_COMMAND_TEST => {
                 println!("SPDM_SERVER: Received test command. Send Server Hello");
+                self.cur_req_msg = vec![5];
+                let result = self.mctp_util.wait_for_responder(
+                    self.cur_msg_tag,
+                    &self.cur_req_msg.as_slice(),
+                    running,
+                    i3c_server_stream,
+                    target_addr,
+                );
+                if let Some(resp_msg) = result {
+                    println!("SPDM_SERVER: Received response from target");
+                    assert!(resp_msg == self.cur_req_msg);
+                } else {
+                    println!("SPDM_SERVER: No response from target");
+                    return false;
+                }
+
                 self.send_hello(spdm_client_stream, transport_type);
                 self.spdm_server_state = SpdmServerState::ReceiveRequest;
                 true
@@ -371,22 +387,27 @@ pub fn start_spdm_device_validator(_running: Arc<AtomicBool>) -> io::Result<()> 
         .spawn()
         .expect("failed to execute spdm validator");
 
-    let output = child
-        .wait_with_output()
-        .expect("failed to wait on child process");
-    println!(
-        "spdm_device_validator_sample process Status {}",
-        output.status
-    );
-    println!(
-        "spdm_device_validator_sample process stdout {}",
-        String::from_utf8_lossy(&output.stdout)
-    );
-    println!(
-        "spdm_device_validator_sample process stderr {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    io::stdout().flush().unwrap();
-    io::stderr().flush().unwrap();
+    if child.id() == 0 {
+        println!("spdm_device_validator_sample process failed to start");
+        return Err(ErrorKind::NotFound.into());
+    }
+
+    // let output = child
+    //     .wait_with_output()
+    //     .expect("failed to wait on child process");
+    // println!(
+    //     "spdm_device_validator_sample process Status {}",
+    //     output.status
+    // );
+    // println!(
+    //     "spdm_device_validator_sample process stdout {}",
+    //     String::from_utf8_lossy(&output.stdout)
+    // );
+    // println!(
+    //     "spdm_device_validator_sample process stderr {}",
+    //     String::from_utf8_lossy(&output.stderr)
+    // );
+    // io::stdout().flush().unwrap();
+    // io::stderr().flush().unwrap();
     Ok(())
 }

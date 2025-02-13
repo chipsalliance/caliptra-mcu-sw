@@ -46,20 +46,17 @@ async fn start() {
 
 pub(crate) async fn async_main<S: Syscalls>() {
     let mut console_writer = Console::<S>::writer();
-    writeln!(console_writer, "Hello SPDM async world!").unwrap();
+    writeln!(console_writer, "SPDM_APP: Hello SPDM async world!").unwrap();
 
-    writeln!(
-        console_writer,
-        "Running test-mctp-user-loopback test for SPDM msg type"
-    )
-    .unwrap();
+    writeln!(console_writer, "SPDM_APP: Running SPDM-APP...").unwrap();
 
     test_mctp_loopback::<S>().await;
 
-    writeln!(console_writer, "SPDM app finished").unwrap();
+    writeln!(console_writer, "SPDM_APP: app finished").unwrap();
 }
 
 async fn test_mctp_loopback<S: Syscalls>() {
+    let mut console_writer = Console::<S>::writer();
     use libsyscall_caliptra::mctp::{driver_num, Mctp};
     let mctp_spdm = Mctp::<S>::new(driver_num::MCTP_SPDM);
     loop {
@@ -70,6 +67,7 @@ async fn test_mctp_loopback<S: Syscalls>() {
         assert!(max_msg_size.is_ok());
         assert!(max_msg_size.unwrap() > 0);
 
+        writeln!(console_writer, "SPDM_APP: waiting for MCTP message").unwrap();
         let result = mctp_spdm.receive_request(&mut msg_buffer).await;
         assert!(result.is_ok());
         let (msg_len, msg_info) = result.unwrap();
