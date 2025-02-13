@@ -11,11 +11,11 @@ pub const APPS: &[App] = &[
         permissions: vec![],
         minimum_ram: 16384,
     },
-    App {
-        name: "spdm-app",
-        permissions: vec![],
-        minimum_ram: 16384,
-    },
+    // App {
+    //     name: "spdm-app",
+    //     permissions: vec![],
+    //     minimum_ram: 16385,
+    // },
 ];
 
 pub struct App {
@@ -57,7 +57,7 @@ pub fn apps_build_flat_tbf(
         bin.extend_from_slice(&app_bin);
         offset += app_bin.len();
         // TODO: support different amount of RAM per app
-        ram_start += 0x4000;
+        ram_start += app.minimum_ram as usize;
     }
     Ok(bin)
 }
@@ -127,7 +127,11 @@ fn app_build(
     tbf_header_size: usize,
     features: &[&str],
 ) -> Result<(), DynError> {
-    let layout_ld = &PROJECT_ROOT.join("runtime").join("apps").join("layout.ld");
+    let app_ld_filename = format!("{}-layout.ld", app_name);
+    let layout_ld = &PROJECT_ROOT
+        .join("runtime")
+        .join("apps")
+        .join(app_ld_filename);
 
     // TODO: do we need to fix the RAM start and length?
     std::fs::write(
@@ -144,6 +148,12 @@ INCLUDE runtime/apps/app_layout.ld",
             tbf_header_size, offset, ram_start
         ),
     )?;
+
+    println!("Layout file: {}", layout_ld.display());
+    println!(
+        "Layout file contents: {}",
+        std::fs::read_to_string(layout_ld)?
+    );
 
     let ld_flag = format!("-C link-arg=-T{}", layout_ld.display());
 

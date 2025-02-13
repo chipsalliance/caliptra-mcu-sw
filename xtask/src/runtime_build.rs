@@ -296,14 +296,29 @@ pub fn runtime_build_with_apps(
     let (kernel_size, apps_memory_offset) =
         runtime_build_no_apps(None, None, None, features, output_name)?;
 
+    println!(
+        "1. Runtime kernel binary built: 0x{:X} bytes, apps_memory_offset 0x{:X}",
+        kernel_size, apps_memory_offset
+    );
+
     let runtime_bin_size = std::fs::metadata(&runtime_bin)?.len() as usize;
     app_offset += runtime_bin_size;
     let runtime_end_offset = app_offset;
+
+    println!(
+        "2. Runtime kernel binary size: 0x{:X} bytes, runtime end offset in RAM 0x{:X}",
+        runtime_bin_size, runtime_end_offset
+    );
+
     // ensure that we leave space for the interrupt table
     // and align to 4096 bytes (needed for rust-lld)
     let app_offset = (runtime_end_offset + INTERRUPT_TABLE_SIZE).next_multiple_of(4096);
     let padding = app_offset - runtime_end_offset - INTERRUPT_TABLE_SIZE;
 
+    println!(
+        "3. Applications offset in RAM: 0x{:X} bytes, padding size 0x{:X}",
+        app_offset, padding
+    );
     // build the apps with the data memory at some incorrect offset
     let apps_bin_len = apps_build_flat_tbf(app_offset, apps_memory_offset, features)?.len();
     println!("Apps built: {} bytes", apps_bin_len);
