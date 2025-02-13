@@ -19,7 +19,7 @@ use std::sync::LazyLock;
 const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
 const INTERRUPT_TABLE_SIZE: usize = 128;
 // amount to reserve for data RAM at the end of RAM
-const DATA_RAM_SIZE: usize = 64 * 1024;
+const DATA_RAM_SIZE: usize = 80 * 1024;
 
 static SYSROOT: LazyLock<String> = LazyLock::new(|| {
     // cache this in the target directory as it seems to be very slow to call rustc
