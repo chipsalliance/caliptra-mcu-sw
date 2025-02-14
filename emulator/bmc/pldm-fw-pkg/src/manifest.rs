@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use crc::{Crc, CRC_32_ISO_HDLC};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct FirmwareManifest {
     pub package_header_information: PackageHeaderInformation,
     pub firmware_device_id_records: Vec<FirmwareDeviceIdRecord>,
@@ -27,7 +27,7 @@ pub struct FirmwareManifest {
     pub component_image_information: Vec<ComponentImageInformation>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct PackageHeaderInformation {
     pub package_header_identifier: Uuid,
     pub package_header_format_revision: u8,
@@ -256,6 +256,12 @@ impl StringType {
             StringType::Utf16Be => "UTF-16BE",
             _ => "UNKNOWN",
         }
+    }
+}
+
+impl Default for StringType {
+    fn default() -> Self {
+        StringType::Ascii
     }
 }
 

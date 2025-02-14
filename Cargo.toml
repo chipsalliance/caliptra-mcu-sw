@@ -53,6 +53,7 @@ members = [
     "tests/hello",
     "tests/integration",
     "xtask",
+    "emulator/bmc/pldm",
 ]
 resolver = "2"
 
@@ -73,14 +74,13 @@ clap = { version = "4.5.23", features = [
     "unicode",
     "wrap_help",
 ] }
-clap_derive = "4.5.11"
 crc = "3.2.1"
 crc32fast = "1.4.2"
 critical-section = "1.1.2"
 crossterm = "0.28.1"
 ctrlc = "3.4.5"
 elf = "0.7.4"
-embassy-executor = { version = "0.6.3", features = ["nightly"] }
+embassy-executor = { version = "0.6.3", features = ["nightly", "executor-thread"] }
 embedded-alloc = "0.5.1"
 futures = "0.3.31"
 gdbstub = "0.6.3"
@@ -101,7 +101,6 @@ serde_json = { version = "1.0.127", features = ["alloc"] }
 serde-hjson = "1.1.0"
 strum = "0.24"
 strum_macros = "0.24"
-syn = "1.0.107"
 tempfile = "3.14.0"
 toml = "0.8.19"
 uuid = { version = "1.10.0", features = ["serde"]}
@@ -121,6 +120,7 @@ emulator-types = { path = "emulator/types" }
 flash-driver = { path = "runtime/flash" }
 i3c-driver = { path = "runtime/i3c" }
 libtockasync = { path = "runtime/apps/libtockasync" }
+pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
 registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }
@@ -135,7 +135,6 @@ libtock_platform = { path = "runtime/apps/libtock/platform" }
 libtock_runtime = { path = "runtime/apps/libtock/runtime" }
 libtock_unittest = { path = "runtime/apps/libtock/unittest" }
 libsyscall-caliptra = { path = "runtime/apps/syscall" }
-libapi-caliptra = { path = "runtime/apps/api" }
 
 # caliptra dependencies; keep git revs in sync
 caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "2f6de531e321b7bb24b17b1bd02b43d2854aef3a" }

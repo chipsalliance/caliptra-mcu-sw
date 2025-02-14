@@ -455,6 +455,10 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         Some(Box::new(FakeSoc {}) as Box<dyn SocPeripheral>)
     };
 
+    if cfg!(feature = "test-marco") {
+        println!("Running Marco test");
+    }
+
     let otp = Otp::new(&clock.clone(), cli.otp)?;
     let mut auto_root_bus = AutoRootBus::new(
         delegates,
