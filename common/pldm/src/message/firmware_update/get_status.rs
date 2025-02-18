@@ -1,0 +1,248 @@
+// Licensed under the Apache-2.0 license
+
+use crate::codec::{PldmCodec, PldmCodecError};
+use crate::error::PldmError;
+use crate::protocol::base::{
+    InstanceId, PldmMsgHeader, PldmMsgType, PldmSupportedType, PLDM_MSG_HEADER_LEN,
+};
+use crate::protocol::firmware_update::{FirmwareDeviceState, FwUpdateCmd, UpdateOptionFlags};
+use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProgressPercent(u8);
+
+impl ProgressPercent {
+    pub fn new(value: u8) -> Result<Self, PldmError> {
+        if value > 100 {
+            Err(PldmError::InvalidData)
+        } else {
+            Ok(ProgressPercent(value))
+        }
+    }
+
+    pub fn value(&self) -> u8 {
+        self.0
+    }
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuxState {
+    OperationInProgress = 0,
+    OperationSuccessful = 1,
+    OperationFailed = 2,
+    IdleLearnComponentsReadXfer = 3,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuxStateStatus {
+    AuxStateInProgressOrSuccess = 0x00,
+    Timeout = 0x09,
+    GenericError = 0x0a,
+    VendorDefined,
+}
+
+impl TryFrom<u8> for AuxStateStatus {
+    type Error = PldmError;
+
+    fn try_from(value: u8) -> Result<Self, PldmError> {
+        match value {
+            0x00 => Ok(AuxStateStatus::AuxStateInProgressOrSuccess),
+            0x09 => Ok(AuxStateStatus::Timeout),
+            0x0a => Ok(AuxStateStatus::GenericError),
+            0x70..=0xef => Ok(AuxStateStatus::VendorDefined),
+            _ => Err(PldmError::InvalidAuxStateStatus),
+        }
+    }
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReasonCode {
+    Initialization = 0,
+    ActivateFw = 1,
+    CancelUpdate = 2,
+    LearnComponentTimeout = 3,
+    ReadyXferTimeout = 4,
+    DownloadTimeout = 5,
+    VerifyTimeout = 6,
+    ApplyTimeout = 7,
+    VendorDefined,
+}
+
+impl TryFrom<u8> for ReasonCode {
+    type Error = PldmError;
+
+    fn try_from(value: u8) -> Result<Self, PldmError> {
+        match value {
+            0 => Ok(ReasonCode::Initialization),
+            1 => Ok(ReasonCode::ActivateFw),
+            2 => Ok(ReasonCode::CancelUpdate),
+            3 => Ok(ReasonCode::LearnComponentTimeout),
+            4 => Ok(ReasonCode::ReadyXferTimeout),
+            5 => Ok(ReasonCode::DownloadTimeout),
+            6 => Ok(ReasonCode::VerifyTimeout),
+            7 => Ok(ReasonCode::ApplyTimeout),
+            200..=255 => Ok(ReasonCode::VendorDefined),
+            _ => Err(PldmError::InvalidGetStatusReasonCode),
+        }
+    }
+}
+
+#[derive(Debug, Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
+#[repr(C, packed)]
+pub struct GetStatusRequest {
+    pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
+}
+
+impl GetStatusRequest {
+    pub fn new(instance_id: InstanceId, msg_type: PldmMsgType) -> GetStatusRequest {
+        GetStatusRequest {
+            hdr: PldmMsgHeader::new(
+                instance_id,
+                msg_type,
+                PldmSupportedType::FwUpdate,
+                FwUpdateCmd::GetStatus as u8,
+            ),
+        }
+    }
+}
+impl PldmCodec for GetStatusRequest {
+    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
+        let bytes = core::mem::size_of::<GetStatusRequest>();
+        if buffer.len() < bytes {
+            return Err(PldmCodecError::BufferTooShort);
+        }
+        let offset = 0;
+        self.write_to(&mut buffer[offset..offset + bytes]).unwrap();
+        Ok(bytes)
+    }
+
+    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
+        let bytes = core::mem::size_of::<GetStatusRequest>();
+        if buffer.len() < bytes {
+            return Err(PldmCodecError::BufferTooShort);
+        }
+        let offset = 0;
+        Ok(GetStatusRequest::read_from_bytes(&buffer[offset..offset + bytes]).unwrap())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[repr(u8)]
+pub enum UpdateOptionResp {
+    NoForceUpdate = 0,
+    ForceUpdate = 1,
+}
+
+#[derive(Debug, Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
+#[repr(C, packed)]
+pub struct GetStatusResponse {
+    pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
+    pub completion_code: u8,
+    pub current_state: u8,
+    pub previous_state: u8,
+    pub aux_state: u8,
+    pub aux_state_status: u8,
+    pub progress_percent: u8,
+    pub reason_code: u8,
+    pub update_option_flags_enabled: u32, // Assuming bitfield32_t is a 32-bit integer
+}
+
+#[allow(clippy::too_many_arguments)]
+impl GetStatusResponse {
+    pub fn new(
+        instance_id: InstanceId,
+        completion_code: u8,
+        current_state: FirmwareDeviceState,
+        previous_state: FirmwareDeviceState,
+        aux_state: AuxState,
+        aux_state_status: AuxStateStatus,
+        progress_percent: ProgressPercent,
+        reason_code: ReasonCode,
+        update_option: UpdateOptionResp,
+    ) -> GetStatusResponse {
+        GetStatusResponse {
+            hdr: PldmMsgHeader::new(
+                instance_id,
+                PldmMsgType::Response,
+                PldmSupportedType::FwUpdate,
+                FwUpdateCmd::GetStatus as u8,
+            ),
+            completion_code,
+            current_state: current_state as u8,
+            previous_state: previous_state as u8,
+            aux_state: aux_state as u8,
+            aux_state_status: aux_state_status as u8,
+            progress_percent: progress_percent.value(),
+            reason_code: reason_code as u8,
+            update_option_flags_enabled: {
+                let mut flags = UpdateOptionFlags(0);
+                flags.set_request_force_update(update_option == UpdateOptionResp::ForceUpdate);
+                flags.0
+            },
+        }
+    }
+}
+
+impl PldmCodec for GetStatusResponse {
+    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
+        let bytes = core::mem::size_of::<GetStatusResponse>();
+        if buffer.len() < bytes {
+            return Err(PldmCodecError::BufferTooShort);
+        }
+        let offset = 0;
+        self.write_to(&mut buffer[offset..offset + bytes]).unwrap();
+        Ok(bytes)
+    }
+
+    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
+        let bytes = core::mem::size_of::<GetStatusResponse>();
+        if buffer.len() < bytes {
+            return Err(PldmCodecError::BufferTooShort);
+        }
+        let offset = 0;
+        Ok(GetStatusResponse::read_from_bytes(&buffer[offset..offset + bytes]).unwrap())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_get_status_request() {
+        let instance_id = 1;
+        let msg_type = PldmMsgType::Request;
+        let request = GetStatusRequest::new(instance_id, msg_type);
+        let mut buffer = [0u8; 16];
+        let encoded_size = request.encode(&mut buffer).unwrap();
+        assert_eq!(encoded_size, core::mem::size_of::<GetStatusRequest>());
+
+        let decoded_request = GetStatusRequest::decode(&buffer).unwrap();
+        assert_eq!(request, decoded_request);
+    }
+
+    #[test]
+    fn test_get_status_response() {
+        let response = GetStatusResponse::new(
+            1,
+            0,
+            FirmwareDeviceState::Idle,
+            FirmwareDeviceState::Idle,
+            AuxState::IdleLearnComponentsReadXfer,
+            AuxStateStatus::AuxStateInProgressOrSuccess,
+            ProgressPercent::new(50).unwrap(),
+            ReasonCode::Initialization,
+            UpdateOptionResp::NoForceUpdate,
+        );
+
+        let mut buffer = [0u8; 32];
+        let encoded_size = response.encode(&mut buffer).unwrap();
+        assert_eq!(encoded_size, core::mem::size_of::<GetStatusResponse>());
+
+        let decoded_response = GetStatusResponse::decode(&buffer).unwrap();
+        assert_eq!(response, decoded_response);
+    }
+}
