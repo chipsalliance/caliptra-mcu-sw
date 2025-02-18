@@ -7,12 +7,12 @@ use std::time::Duration;
 use std::thread::JoinHandle;
 
 /// A struct to manage running a Future inside a separate thread
-pub struct FutureThread<T> {
+pub struct FutureExecutor<T> {
     handle: Option<JoinHandle<()>>,
     result: Arc<Mutex<Option<T>>>,
 }
 
-impl<T> FutureThread<T> {
+impl<T> FutureExecutor<T> {
     /// Spawns a new thread that runs the given future
     pub fn spawn<F>(future: F) -> Self
     where
@@ -59,7 +59,7 @@ mod tests {
             42
         };
 
-        let future_thread = FutureThread::spawn(future);
+        let future_thread = FutureExecutor::spawn(future);
         assert!(future_thread.get_output().unwrap() == 42);
         
     }

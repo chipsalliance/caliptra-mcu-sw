@@ -3,10 +3,10 @@ use crate::event_queue::EventQueue;
 use crate::transport::PldmSocket;
 use crate::pldm_codec;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub enum DiscoveryAgentEvents {
     Sm(Events),
-    Rx,
+    #[default] Rx,
     DeferredTx,
 }
 

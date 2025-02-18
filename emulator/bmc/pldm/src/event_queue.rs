@@ -1,14 +1,15 @@
-use std::sync::mpsc::{self, Sender, Receiver};
+//use std::sync::mpsc::{self, Sender, Receiver};
+use thingbuf::mpsc::{self, blocking};
 
 /// Thread-safe event queue
-pub struct EventQueue<Event> {
-    sender: Sender<Event>,
-    receiver: Option<Receiver<Event>>
+pub struct EventQueue<Event : Default + Clone> {
+    sender: blocking::Sender<Event>,
+    receiver: Option<blocking::Receiver<Event>>
 }
 
-impl<Event> EventQueue<Event> {
+impl<Event:Default + Clone> EventQueue<Event> {
     pub fn new() -> (Self) {
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::blocking::channel::<Event>(20);
         Self { sender: tx , receiver: Some(rx)}
     }
 
@@ -20,8 +21,7 @@ impl<Event> EventQueue<Event> {
 
     pub fn dequeue(&self) -> Option<Event> {
         if let Some(receiver) = &self.receiver {
-            let x = receiver.recv().ok();
-            x
+            receiver.recv()
         } else {
             None
         }
@@ -41,9 +41,14 @@ use std::thread;
 use std::time::Duration;
 
 // define an enum for events
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum TestEvent {
     DataReceived(u8),
+}
+impl Default for TestEvent {
+    fn default() -> Self {
+        TestEvent::DataReceived(0)
+    }
 }
 
 

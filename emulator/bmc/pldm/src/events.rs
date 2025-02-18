@@ -1,12 +1,13 @@
-use crate::update_sm::UpdateAgentEvents as ua_events;
-use crate::discovery_sm::DiscoveryAgentEvents as discovery_events;
+use crate::update_sm::UpdateAgentEvents;
+use crate::discovery_sm::DiscoveryAgentEvents;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub enum PldmEvents {
+    #[default]
     TestEvent1,
     TestEvent2,
-    Discovery(discovery_events),
-    Update(ua_events),
+    Discovery(DiscoveryAgentEvents),
+    Update(UpdateAgentEvents),
 }
 
 

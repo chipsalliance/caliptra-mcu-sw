@@ -19,4 +19,5 @@ futures.workspace = true
 num-derive.workspace = true
 num-traits.workspace = true
 tokio = "1.43.0"
+thingbuf = "0.1.6"
 

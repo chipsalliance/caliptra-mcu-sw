@@ -2,9 +2,10 @@ use smlang::statemachine;
 use crate::event_queue::EventQueue;
 use crate::transport::PldmSocket;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub enum UpdateAgentEvents {
     Sm(Events),
+    #[default]
     Rx,
     DeferredTx,
 }

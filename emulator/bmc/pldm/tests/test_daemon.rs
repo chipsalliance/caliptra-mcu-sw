@@ -7,8 +7,7 @@ use mock_transport::{MockTransport,MockPldmSocket};
 use pldm::update_sm::DefaultActions;
 use pldm::transport::{PldmTransport,PldmSocket};
 use pldm::daemon::Daemon;
-mod future_thread;
-use future_thread::FutureThread;
+use pldm::future_executor::FutureExecutor;
 
 // create a unit test for update_agent
 
@@ -23,7 +22,7 @@ fn test_daemon() {
 
     let x = Daemon::run(ua_sock);
 
-    let y = future_thread::FutureThread::spawn(x);
+    let y = FutureExecutor::spawn(x);
 
     fd_sock.disconnect();
 
