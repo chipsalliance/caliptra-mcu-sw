@@ -91,8 +91,6 @@ The table below shows the inventory commands and firmware update commands suppor
 | `QueryDeviceIdentifiers`       | `0x01`       | UA -> FD  | Mandatory   |
 | `GetFirmwareParameters`        | `0x02`       | UA -> FD  | Mandatory   |
 | `RequestUpdate`                | `0x10`       | UA -> FD  | Mandatory   |
-| `GetPackageData`               | `0x11`       | FD -> UA  | Mandatory   |
-| `GetDeviceMetaData`            | `0x12`       | UA -> FD  | Mandatory   |
 | `PassComponentTable`           | `0x13`       | UA -> FD  | Mandatory   |
 | `UpdateComponent`              | `0x14`       | UA -> FD  | Mandatory   |
 | `RequestFirmwareData`          | `0x15`       | FD -> UA  | Mandatory   |
@@ -151,6 +149,7 @@ classDiagram
                 +transport: T
                 +cmd_interface_responder: MessageResponder
                 +cmd_interface_requester: MessageRequester
+                +notification: Notifications
                 +start_service() Result<(), PldmServiceError>
                 +stop_service() Result<(), PldmServiceError>
         }
@@ -169,8 +168,6 @@ classDiagram
         class CommandHandler {
                 <<interface>>
                 +execute(payload: &mut [u8], context: &mut PldmContext) usize
-                +send_notification()
-                +receive_notification()
         }
 
         PldmFwUpdateServiceMgr <|-- PldmFwUpdateService
@@ -209,19 +206,33 @@ pub struct PldmServiceError(pub NonZeroU32);
 /// * `T` - A type that implements the `Mctp` trait, representing the transport layer.
 /// * `U` - A type that implements the `MessageResponder` trait, representing the command interface responder.
 /// * `R` - A type that implements the `MessageRequester` trait, representing the command interface requester.
+/// * `N` - A type that implements the `Notifications` trait, representing the notification interface.
 ///
 /// # Fields
 ///
 /// * `transport` - The transport layer used for communication.
 /// * `cmd_interface_responder` - The command interface responder.
 /// * `cmd_interface_requester` - The command interface requester.
+/// *  `notification` - The notification interface to upper API.
 /// * `other fields` - Additional fields required for the service.
-
-pub struct PldmFwUpdateService<T: Mctp, U: MessageResponder, R: MessageRequester> {
+pub struct PldmFwUpdateService<T: Mctp, U: MessageResponder, R: MessageRequester, N: Notifications> {
     transport: T,
-    cmd_interface_responder: MessageResponder,
-    cmd_interface_requester: MessageRequester,
-    /// other fields
+    cmd_interface_responder: U,
+    cmd_interface_requester: R,
+    notifications: N,
+    // other fields
+}
+
+/// Trait representing the notification interface for the PLDM firmware update service.
+///
+/// This trait defines the necessary methods that will be called by the `PldmFwUpdateService`
+/// to notify the upper-level API of specific events during the firmware update process.
+pub trait Notifications {
+    fn on_request_update_received(&self, payload: &[u8]) -> Result<(), ErrCode>;
+    fn on_image_verify(&self, payload: &[u8]) -> Result<(), ErrCode>;
+    fn on_image_apply(&self, payload: &[u8]) -> Result<(), ErrCode>;
+    fn on_update_component_received(&self, payload: &[u8]) -> Result<(), ErrCode>;
+    fn on_activate_firmware_received(&self, payload: &[u8]) -> Result<(), ErrCode>;
 }
 
 impl PldmFwUpdateServiceMgr for PldmFwUpdateService {
@@ -275,16 +286,8 @@ pub struct MessageHandlerError(pub NonZeroU32);
 ///   - `payload`: A mutable reference to the payload data to be processed.
 ///   - `context`: A mutable reference to the PLDM context.
 ///   - Returns the size of the processed data.
-///
-/// - `send_notification()`:
-///   Sends a notification to other modules or APIs asynchronously.
-///
-/// - `receive_notification()`:
-///   Receives a notification from other modules or APIs asynchronously.
 pub trait CommandHandler: Send + Sync {
     async fn execute(&self, payload: &mut [u8], context: &mut PldmContext) -> usize;
-    async fn send_notification(&self);
-    async fn receive_notification(&self);
 }
 
 /// Represents a PLDM Command Interface Responder.
