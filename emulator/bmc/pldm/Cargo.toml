@@ -16,7 +16,7 @@ panic-probe = "0.3"
 async-executor = "1.13.1"
 async-io = "2.4.0"
 futures.workspace = true
-pldm-fw = "0.1.0"
 num-derive.workspace = true
 num-traits.workspace = true
+tokio = "1.43.0"
 

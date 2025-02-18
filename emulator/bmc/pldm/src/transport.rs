@@ -28,6 +28,8 @@ pub trait PldmSocket {
     fn receive(&self, timeout: Option<Duration>) -> Result<RxPacket, ()>;
 
     fn disconnect(&self);
+
+    fn clone(&self) -> Self;
 }
 
 

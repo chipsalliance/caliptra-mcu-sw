@@ -80,7 +80,7 @@ critical-section = "1.1.2"
 crossterm = "0.28.1"
 ctrlc = "3.4.5"
 elf = "0.7.4"
-embassy-executor = { version = "0.6.3", features = ["nightly", "executor-thread"] }
+embassy-executor = { version = "0.6.3", features = ["nightly"] }
 embedded-alloc = "0.5.1"
 futures = "0.3.31"
 gdbstub = "0.6.3"

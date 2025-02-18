@@ -64,6 +64,40 @@ impl PldmPacket {
         }
     }
 
+    pub fn new_request(
+        instance_id: u8,
+        pldm_type: PldmType,
+        pldm_command: u8,
+        payload: Option<Vec<u8>>,
+    ) -> Self {
+        PldmPacket::new(
+            true,
+            false,
+            instance_id,
+            PLDM_HEADER_VERSION,
+            pldm_type as u8,
+            pldm_command,
+            payload,
+        )
+    }
+
+    pub fn new_response(
+        instance_id: u8,
+        pldm_type: PldmType,
+        pldm_command: u8,
+        payload: Option<Vec<u8>>,
+    ) -> Self {
+        PldmPacket::new(
+            false,
+            false,
+            instance_id,
+            PLDM_HEADER_VERSION,
+            pldm_type as u8,
+            pldm_command,
+            payload,
+        )
+    }
+
     /// Encodes the PLDM packet into a binary format (byte array).
     ///
     /// The reserved bit is always encoded as 0.
@@ -220,76 +254,114 @@ impl PldmCompletionCode {
     }
 }
 
+mod discovery {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[repr(u8)]
+    pub enum CommandId {
+        // Messaging Control and Discovery Commands
+        SetTid = 0x01,
+        GetTid = 0x02,
+        GetPldmVersion = 0x03,
+        GetPldmTypes = 0x04,
+        GetPldmCommands = 0x05,
+    }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum CommandId {
-    // Inventory Commands
-    QueryDeviceIdentifiers = 0x01,
-    GetFirmwareParameters = 0x02,
-    QueryDownstreamDevices = 0x03,
-    QueryDownstreamIdentifiers = 0x04,
-    GetDownstreamFirmwareParameters = 0x05,
+    impl TryFrom<u8> for CommandId {
+        type Error = ();
 
-    // Update Commands
-    RequestUpdate = 0x10,
-    GetPackageData = 0x11,
-    GetDeviceMetaData = 0x12,
-    PassComponentTable = 0x13,
-    UpdateComponent = 0x14,
-    RequestFirmwareData = 0x15,
-    TransferComplete = 0x16,
-    VerifyComplete = 0x17,
-    ApplyComplete = 0x18,
-    GetMetaData = 0x19,
-    ActivateFirmware = 0x1A,
-    GetStatus = 0x1B,
-    CancelUpdateComponent = 0x1C,
-    CancelUpdate = 0x1D,
-    ActivatePendingComponentImageSet = 0x1E,
-    ActivatePendingComponentImage = 0x1F,
-    RequestDownstreamDeviceUpdate = 0x20,
-    GetComponentOpaqueData = 0x21,
-    UpdateSecurityRevision = 0x22,
-}
+        fn try_from(value: u8) -> Result<Self, Self::Error> {
+            match value {
+                0x01 => Ok(Self::SetTid),
+                0x02 => Ok(Self::GetTid),
+                0x03 => Ok(Self::GetPldmVersion),
+                0x04 => Ok(Self::GetPldmTypes),
+                0x05 => Ok(Self::GetPldmCommands),
+                _ => Err(()),
+            }
+        }
+    }
 
-impl TryFrom<u8> for CommandId {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0x01 => Ok(Self::QueryDeviceIdentifiers),
-            0x02 => Ok(Self::GetFirmwareParameters),
-            0x03 => Ok(Self::QueryDownstreamDevices),
-            0x04 => Ok(Self::QueryDownstreamIdentifiers),
-            0x05 => Ok(Self::GetDownstreamFirmwareParameters),
-            0x10 => Ok(Self::RequestUpdate),
-            0x11 => Ok(Self::GetPackageData),
-            0x12 => Ok(Self::GetDeviceMetaData),
-            0x13 => Ok(Self::PassComponentTable),
-            0x14 => Ok(Self::UpdateComponent),
-            0x15 => Ok(Self::RequestFirmwareData),
-            0x16 => Ok(Self::TransferComplete),
-            0x17 => Ok(Self::VerifyComplete),
-            0x18 => Ok(Self::ApplyComplete),
-            0x19 => Ok(Self::GetMetaData),
-            0x1A => Ok(Self::ActivateFirmware),
-            0x1B => Ok(Self::GetStatus),
-            0x1C => Ok(Self::CancelUpdateComponent),
-            0x1D => Ok(Self::CancelUpdate),
-            0x1E => Ok(Self::ActivatePendingComponentImageSet),
-            0x1F => Ok(Self::ActivatePendingComponentImage),
-            0x20 => Ok(Self::RequestDownstreamDeviceUpdate),
-            0x21 => Ok(Self::GetComponentOpaqueData),
-            0x22 => Ok(Self::UpdateSecurityRevision),
-            _ => Err(()),
+    impl From<CommandId> for u8 {
+        fn from(cmd: CommandId) -> Self {
+            cmd as u8
         }
     }
 }
 
-impl From<CommandId> for u8 {
-    fn from(cmd: CommandId) -> Self {
-        cmd as u8
+
+mod firmware_update {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[repr(u8)]
+    pub enum CommandId {
+        // Inventory Commands
+        QueryDeviceIdentifiers = 0x01,
+        GetFirmwareParameters = 0x02,
+        QueryDownstreamDevices = 0x03,
+        QueryDownstreamIdentifiers = 0x04,
+        GetDownstreamFirmwareParameters = 0x05,
+    
+        // Update Commands
+        RequestUpdate = 0x10,
+        GetPackageData = 0x11,
+        GetDeviceMetaData = 0x12,
+        PassComponentTable = 0x13,
+        UpdateComponent = 0x14,
+        RequestFirmwareData = 0x15,
+        TransferComplete = 0x16,
+        VerifyComplete = 0x17,
+        ApplyComplete = 0x18,
+        GetMetaData = 0x19,
+        ActivateFirmware = 0x1A,
+        GetStatus = 0x1B,
+        CancelUpdateComponent = 0x1C,
+        CancelUpdate = 0x1D,
+        ActivatePendingComponentImageSet = 0x1E,
+        ActivatePendingComponentImage = 0x1F,
+        RequestDownstreamDeviceUpdate = 0x20,
+        GetComponentOpaqueData = 0x21,
+        UpdateSecurityRevision = 0x22,
+    }
+    
+    impl TryFrom<u8> for CommandId {
+        type Error = ();
+    
+        fn try_from(value: u8) -> Result<Self, Self::Error> {
+            match value {
+                0x01 => Ok(Self::QueryDeviceIdentifiers),
+                0x02 => Ok(Self::GetFirmwareParameters),
+                0x03 => Ok(Self::QueryDownstreamDevices),
+                0x04 => Ok(Self::QueryDownstreamIdentifiers),
+                0x05 => Ok(Self::GetDownstreamFirmwareParameters),
+                0x10 => Ok(Self::RequestUpdate),
+                0x11 => Ok(Self::GetPackageData),
+                0x12 => Ok(Self::GetDeviceMetaData),
+                0x13 => Ok(Self::PassComponentTable),
+                0x14 => Ok(Self::UpdateComponent),
+                0x15 => Ok(Self::RequestFirmwareData),
+                0x16 => Ok(Self::TransferComplete),
+                0x17 => Ok(Self::VerifyComplete),
+                0x18 => Ok(Self::ApplyComplete),
+                0x19 => Ok(Self::GetMetaData),
+                0x1A => Ok(Self::ActivateFirmware),
+                0x1B => Ok(Self::GetStatus),
+                0x1C => Ok(Self::CancelUpdateComponent),
+                0x1D => Ok(Self::CancelUpdate),
+                0x1E => Ok(Self::ActivatePendingComponentImageSet),
+                0x1F => Ok(Self::ActivatePendingComponentImage),
+                0x20 => Ok(Self::RequestDownstreamDeviceUpdate),
+                0x21 => Ok(Self::GetComponentOpaqueData),
+                0x22 => Ok(Self::UpdateSecurityRevision),
+                _ => Err(()),
+            }
+        }
+    }
+    
+    impl From<CommandId> for u8 {
+        fn from(cmd: CommandId) -> Self {
+            cmd as u8
+        }
     }
 }
+
+
 

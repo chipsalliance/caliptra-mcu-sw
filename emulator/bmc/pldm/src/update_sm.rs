@@ -1,5 +1,6 @@
 use smlang::statemachine;
 use crate::event_queue::EventQueue;
+use crate::transport::PldmSocket;
 
 #[derive(Debug)]
 pub enum UpdateAgentEvents {

@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 #[test]
 fn test_update_agent() {
-    let transport = Arc::new(MockTransport::new());
+    let transport = MockTransport::new();
 
     let ua_sid = pldm::transport::SockId(0x01);
     let fd_sid = pldm::transport::SockId(0x02);
