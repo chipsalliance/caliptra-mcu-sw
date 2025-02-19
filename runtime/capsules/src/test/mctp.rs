@@ -83,16 +83,15 @@ impl<'a> MCTPRxClient for MockMctp<'a> {
         msg_len: usize,
         _recv_time: u32,
     ) {
-        println!(
-            "Received message from EID: {} with message type: {} and message tag: {} msg_len: {}",
-            src_eid, msg_type, msg_tag, msg_len
-        );
-
         if msg_type != self.msg_type as u8
             || src_eid != MCTP_TEST_REMOTE_EID
             || msg_tag != self.msg_tag.get()
             || msg_len != TEST_MSG_LEN_ARR[self.cur_idx.get()]
         {
+            println!(
+            "FAILED! Received message from EID/expected: {}/{} with message type/expected: {}/{} and message tag/expected: {}/{} msg_len/expected: {}/{}",
+            src_eid, MCTP_TEST_REMOTE_EID, msg_type, self.msg_type as u8, msg_tag, self.msg_tag.get(), msg_len, TEST_MSG_LEN_ARR[self.cur_idx.get()]
+        );
             self.test_client.map(|client| {
                 client.test_result(false, self.cur_idx.get() + 1, TEST_MSG_LEN_ARR.len());
             });
