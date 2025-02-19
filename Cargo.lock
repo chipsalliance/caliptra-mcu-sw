@@ -1082,6 +1082,7 @@ dependencies = [
  "gdbstub",
  "gdbstub_arch",
  "hex",
+ "pldm-common",
  "rand",
  "strum",
  "strum_macros",

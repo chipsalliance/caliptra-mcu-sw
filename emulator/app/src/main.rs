@@ -28,22 +28,28 @@ use emulator_bus::{Bus, BusConverter, Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
 use emulator_periph::{
-    CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, I3c, I3cController, Otp,
+    CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, DynamicI3cAddress, I3c, I3cController, Otp
 };
 use emulator_registers_generated::root_bus::AutoRootBus;
 use emulator_registers_generated::soc::SocPeripheral;
 use emulator_types::ROM_SIZE;
 use gdb::gdb_state;
 use gdb::gdb_target::GdbTarget;
+use pldm_common::protocol::base::PldmMsgType;
+use tests::mctp_util::base_protocol::{MCTPHdr, MCTPMsgHdr};
+use zerocopy::IntoBytes;
 use std::cell::RefCell;
 use std::fs::File;
 use std::io;
 use std::io::{IsTerminal, Read, Write};
+use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
+use pldm_common::message::control::{GetTidRequest, GetTidResponse};
+use pldm_common::codec::PldmCodec;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None, name = "Caliptra MCU Emulator")]
@@ -252,6 +258,62 @@ fn read_binary(path: &PathBuf, expect_load_addr: u32) -> io::Result<Vec<u8>> {
     Ok(buffer)
 }
 
+fn test_marco(port: u16, target_addr: DynamicI3cAddress) ->Result<(), ()> {
+    println!("Test sending PLDM GetTID request");
+
+    // Prepare the MCTP Header
+    let mut mctp_util = crate::tests::mctp_util::common::MctpUtil::new();
+    mctp_util.set_dest_eid(0x7E);
+    mctp_util.set_src_eid(0x60);
+    mctp_util.set_msg_tag(0x1);
+    mctp_util.set_tag_owner(0x1);
+    mctp_util.new_req(0x1);
+
+
+    // Create an MCTP common header
+    let mut mctp_common_msg_hdr = MCTPMsgHdr::new(); 
+    let ic = 0u8; // Always 0 for PLDM over MCTP
+    let msg_type = 1u8; // For PLDM
+    mctp_common_msg_hdr.prepare_header(ic, msg_type);
+
+    // Create the PLDM message
+    let instance_id = 1u8;
+    let get_tid_request = GetTidRequest::new(instance_id, PldmMsgType::Request);
+    let mut pldm_pkt_buffer = [0u8; 4096];
+    let pldm_pkt_sz = get_tid_request.encode(&mut pldm_pkt_buffer).map_err(|_| ())?;
+
+    // Combine the MCTP common header and the PLDM Message
+    let mut mctp_payload: Vec<u8> = Vec::new();
+    mctp_payload.extend_from_slice(&mctp_common_msg_hdr.as_bytes());
+    mctp_payload.extend_from_slice(&pldm_pkt_buffer[..pldm_pkt_sz]);
+
+    // Print the packet as hex
+    let mctp_packets = mctp_util.packetize(&mctp_payload);
+
+    for mctp_packet in mctp_packets {
+        println!("MCTP Packet: {:?}", mctp_packet);
+        mctp_packet.iter().for_each(|byte| print!("{:02x} ", byte));
+    }
+
+
+    // Send MCTP packet
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let mut stream = TcpStream::connect(addr).unwrap();
+    let msg_tag = mctp_util.get_msg_tag();
+    let running = Arc::new(AtomicBool::new(true));
+
+//    mctp_util.send_request(msg_tag, &mctp_payload, running, &mut stream, target_addr.into());
+
+
+
+    Ok(())
+
+
+
+
+
+}
+
 fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     // exit cleanly on Ctrl-C so that we save any state.
     let running = Arc::new(AtomicBool::new(true));
@@ -405,6 +467,12 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         );
     }
 
+//    if cfg!(feature = "test-marco") {
+        println!("Running Marco test in emulator");
+        i3c_controller.start();
+        let _x = test_marco(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
+//    }
+
     let create_flash_controller = |default_path: &str, error_irq: u8, event_irq: u8| {
         // Use a temporary file for flash storage if we're running a test
         let flash_file = if cfg!(any(
@@ -455,9 +523,6 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         Some(Box::new(FakeSoc {}) as Box<dyn SocPeripheral>)
     };
 
-    if cfg!(feature = "test-marco") {
-        println!("Running Marco test");
-    }
 
     let otp = Otp::new(&clock.clone(), cli.otp)?;
     let mut auto_root_bus = AutoRootBus::new(

@@ -333,7 +333,7 @@ impl MctpUtil {
         pkt
     }
 
-    fn packetize(&self, message: &[u8]) -> VecDeque<Vec<u8>> {
+    pub fn packetize(&self, message: &[u8]) -> VecDeque<Vec<u8>> {
         assert!(self.msg_tag <= 7, "A valid msg tag is required");
         let pkt_payloads: Vec<Vec<u8>> = message
             .chunks(self.pkt_payload_size)

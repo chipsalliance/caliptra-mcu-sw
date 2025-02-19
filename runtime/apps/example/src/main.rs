@@ -9,7 +9,7 @@ use core::fmt::Write;
 #[cfg(feature = "test-flash-usermode")]
 use libsyscall_caliptra::flash::{driver_num as par_driver_num, FlashCapacity, SpiFlash};
 use libtock::alarm::*;
-use libtock_console::Console;
+use libtock_console::{Console, ConsoleWriter};
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
@@ -49,7 +49,7 @@ async fn start() {
 }
 
 pub(crate) async fn async_main<S: Syscalls>() {
-    let mut console_writer = Console::<S>::writer();
+    let mut console_writer: libtock_console::ConsoleWriter<S> = Console::<S>::writer();
     writeln!(console_writer, "Hello async world!").unwrap();
     writeln!(
         console_writer,
@@ -143,6 +143,11 @@ pub(crate) async fn async_main<S: Syscalls>() {
             core::ptr::write_volatile(0x1000_2000 as *mut u32, 0);
         }
     }
+    #[cfg(feature = "test-marco")]
+    {
+        writeln!(console_writer, "Running test-marco test").unwrap();
+        test_marco::<S>(&mut console_writer).await;
+    }
     writeln!(console_writer, "app finished").unwrap();
 }
 
@@ -169,6 +174,39 @@ async fn test_mctp_loopback<S: Syscalls>() {
             .await;
         assert!(result.is_ok());
     }
+}
+
+async fn test_marco<S: Syscalls>(console_writer: &mut ConsoleWriter<S>) {
+    use libsyscall_caliptra::mctp::{driver_num, Mctp};
+    let mctp_pldm = Mctp::<S>::new(driver_num::MCTP_PLDM);
+    
+    
+    let mut msg_buffer: [u8; 1024] = [0; 1024];
+
+    assert!(mctp_pldm.exists());
+    let max_msg_size = mctp_pldm.max_message_size();
+    assert!(max_msg_size.is_ok());
+    assert!(max_msg_size.unwrap() > 0);
+    writeln!(
+        console_writer,
+        "Waiting to Receive MCTP Packet",
+    ).unwrap();
+
+
+    let result = mctp_pldm.receive_request(&mut msg_buffer).await;
+    writeln!(
+        console_writer,
+        "Received PLDM message of length",
+    ).unwrap();
+
+    assert!(result.is_ok());
+    let (msg_len, msg_info) = result.unwrap();
+    let msg_len = msg_len as usize;
+    assert!(msg_len <= msg_buffer.len());
+
+
+
+    
 }
 
 #[cfg(feature = "test-flash-usermode")]

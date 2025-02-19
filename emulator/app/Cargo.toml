@@ -31,6 +31,7 @@ strum.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
 tempfile.workspace = true
+pldm-common.workspace = true
 
 [features]
 default = []
