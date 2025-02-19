@@ -17,8 +17,8 @@ fn test_daemon() {
 
     let ua_sid = pldm::transport::SockId(0x01);
     let fd_sid = pldm::transport::SockId(0x02);
-    let ua_sock = transport.create_socket(ua_sid).unwrap();
-    let fd_sock = transport.create_socket(fd_sid).unwrap();
+    let ua_sock = transport.create_socket(ua_sid, fd_sid).unwrap();
+    let fd_sock = transport.create_socket(fd_sid, ua_sid).unwrap();
 
     let x = Daemon::run(ua_sock);
 

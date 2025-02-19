@@ -1,7 +1,10 @@
+use pldm_common::codec::PldmCodec;
 use smlang::statemachine;
 use crate::event_queue::EventQueue;
-use crate::transport::PldmSocket;
-use crate::pldm_codec;
+use crate::transport::{PldmSocket, MAX_PLDM_PAYLOAD_SIZE};
+use pldm_common::message::control::{GetTidRequest, GetTidResponse};
+use pldm_common::protocol::base::{InstanceId, PldmControlCmd, PldmMsgHeader, PldmMsgType};
+use log::{debug, error, info, trace, warn};
 
 #[derive(Debug, Clone, Default)]
 pub enum DiscoveryAgentEvents {
@@ -36,71 +39,110 @@ statemachine! {
 pub trait StateMachineActions {
     // Guards
     fn is_tid_response_valid(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
-        println!("Checking TID Response validity...");
+        debug!("Checking TID Response validity...");
         Ok(true)
     }
 
     fn is_pldm_types_response_valid(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
-        println!("Checking PLDM Types Response validity...");
+        debug!("Checking PLDM Types Response validity...");
         Ok(true)
     }
 
     fn is_pldm_version_response_valid(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
-        println!("Checking PLDM Version Response validity...");
+        debug!("Checking PLDM Version Response validity...");
         Ok(true)
     }
 
     fn is_pldm_commands_response_valid(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
-        println!("Checking PLDM Commands Response validity...");
+        debug!("Checking PLDM Commands Response validity...");
         Ok(true)
     }
 
     // Actions
     fn on_start_discovery(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        println!("Starting PLDM Discovery...");
-        
-
-
-
-        Ok(())
+        debug!("Send GetTID Request");
+        let request = GetTidRequest::new(ctx.instance_id, PldmMsgType::Request);
+        let mut buffer = [0u8; MAX_PLDM_PAYLOAD_SIZE];
+        let sz = request.encode(&mut buffer).map_err(|_| ())?;
+        ctx.socket.send(&buffer[..sz])
     }
 
     fn on_tid_response(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        println!("Received GetTID Response");
+        debug!("Received GetTID Response");
         Ok(())
     }
 
     fn on_pldm_types_response(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        println!("Received GetPLDMTypes Response");
+        debug!("Received GetPLDMTypes Response");
         Ok(())
     }
 
     fn on_pldm_version_response_type0(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        println!("Received GetPLDMVersion Response for Type 0");
+        debug!("Received GetPLDMVersion Response for Type 0");
         Ok(())
     }
 
     fn on_pldm_commands_response_type0(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        println!("Received GetPLDMCommands Response for Type 0");
+        debug!("Received GetPLDMCommands Response for Type 0");
         Ok(())
     }
 
     fn on_pldm_version_response_type1(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        println!("Received GetPLDMVersion Response for Type 1");
+        debug!("Received GetPLDMVersion Response for Type 1");
         Ok(())
     }
 
     fn on_pldm_commands_response_type1(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        println!("Received GetPLDMCommands Response for Type 1");
+        debug!("Received GetPLDMCommands Response for Type 1");
         Ok(())
     }
 
     fn on_cancel_discovery(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        println!("Cancelling PLDM Discovery...");
+        debug!("Cancelling PLDM Discovery...");
         Ok(())
     }
 }
 
+
+pub fn verify_discovery_packet_event(packet: &[u8])->Result<DiscoveryAgentEvents, ()> {
+    debug!("Handling packet: {:?}", packet);
+    let header = PldmMsgHeader::decode(packet).map_err(|_| (error!("Error decoding packet!")))?;
+    if !header.is_hdr_ver_valid() {
+        error!("Invalid header version!");
+        return Err(());
+    }
+    
+    if !header.is_valid_msg_type() {
+        error!("Invalid msg type!");
+        return Err(());
+    }
+
+    match PldmControlCmd::try_from(header.cmd_code()) {
+        Ok(cmd) => {
+            debug!("Command: {:?}", cmd);
+            match cmd {
+                PldmControlCmd::GetTid => {
+                    debug!("GetTID command");
+                    Ok(DiscoveryAgentEvents::Sm(Events::GetTIDResponse))
+                },
+                PldmControlCmd::GetPldmTypes => {
+                    debug!("GetPLDMTypes command");
+                    Ok(DiscoveryAgentEvents::Sm(Events::GetPLDMTypesResponse))
+                },
+                PldmControlCmd::GetPldmVersion => {
+                    debug!("GetPLDMVersion command");
+                    Ok(DiscoveryAgentEvents::Sm(Events::GetPLDMVersionResponse))
+                },
+                PldmControlCmd::GetPldmCommands => {
+                    debug!("GetPLDMCommands command");
+                    Ok(DiscoveryAgentEvents::Sm(Events::GetPLDMCommandsResponse))
+                },
+                _ => Err(()),
+            }
+        },
+        Err(_) => Err(()),
+    }
+}
 // Implement the context struct
 pub struct DefaultActions;
 impl StateMachineActions for DefaultActions {}
@@ -108,6 +150,7 @@ impl StateMachineActions for DefaultActions {}
 pub struct InnerContext<S :PldmSocket> {
     event_queue: EventQueue<DiscoveryAgentEvents>,
     socket : S,
+    instance_id: InstanceId,
 }
 
 pub struct Context<T: StateMachineActions, S :PldmSocket> {
@@ -119,7 +162,7 @@ impl<T: StateMachineActions,
 
 S: PldmSocket> Context<T,S> {
     pub fn new(context: T, socket : S) -> Self {
-        Self { inner: context, inner_ctx: InnerContext { event_queue : EventQueue::new(), socket } }
+        Self { inner: context, inner_ctx: InnerContext { event_queue : EventQueue::new(), socket, instance_id : 0} }
     }
 }
 

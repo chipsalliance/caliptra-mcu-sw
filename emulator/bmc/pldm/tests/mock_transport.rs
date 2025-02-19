@@ -8,19 +8,20 @@ use core::time::Duration;
 
 
 pub struct MockPldmSocket {
-    sid: SockId,
+    source: SockId,
+    dest: SockId,
     senders: Arc<Mutex<HashMap<SockId, Sender<TxPacket>>>>,
     receiver: Arc<Mutex<Option<Receiver<TxPacket>>>>,
 }
 
 impl PldmSocket for MockPldmSocket {
-    fn send(&self, dst: SockId, payload: &[u8]) -> Result<(), ()> {
+    fn send(&self, payload: &[u8]) -> Result<(), ()> {
         let mut tx_payload = [0u8; MAX_PLDM_PAYLOAD_SIZE];
         tx_payload[..payload.len()].copy_from_slice(payload);
         
         let pkt = TxPacket { 
-            src: self.sid, 
-            dest: dst, 
+            src: self.source, 
+            dest: self.dest, 
             payload: Payload {
                 data: tx_payload,
                 len: payload.len(),
@@ -60,13 +61,13 @@ impl PldmSocket for MockPldmSocket {
         // Send an empty packet to indicate disconnection
         // for all senders send a null packet
         for (id, sender) in self.senders.lock().unwrap().iter() {
-            let pkt = TxPacket { src: self.sid, dest: *id, payload: Payload { data: [0; MAX_PLDM_PAYLOAD_SIZE], len: 0 } };
+            let pkt = TxPacket { src: self.source, dest: *id, payload: Payload { data: [0; MAX_PLDM_PAYLOAD_SIZE], len: 0 } };
             let _ = sender.send(pkt);
         }
     }
 
     fn clone(&self) -> Self {
-        MockPldmSocket { sid: self.sid, senders: Arc::clone(&self.senders), receiver: Arc::clone(&self.receiver) }
+        MockPldmSocket { source: self.source, dest: self.dest, senders: Arc::clone(&self.senders), receiver: Arc::clone(&self.receiver) }
     }
 
 }
@@ -85,10 +86,10 @@ impl MockTransport {
 }
 
 impl PldmTransport<MockPldmSocket> for MockTransport {
-    fn create_socket(&self, sid: SockId) -> Result<MockPldmSocket, ()> {
+    fn create_socket(&self, source : SockId, dest : SockId) -> Result<MockPldmSocket, ()> {
         let (tx, rx) = mpsc::channel();
-        self.senders.lock().unwrap().insert(sid, tx);
-        Ok(MockPldmSocket { sid, senders: Arc::clone(&self.senders), receiver: Arc::new(Mutex::new(Some(rx))) })
+        self.senders.lock().unwrap().insert(source, tx);
+        Ok(MockPldmSocket { source, dest, senders: Arc::clone(&self.senders), receiver: Arc::new(Mutex::new(Some(rx))) })
     }
 }
 
@@ -100,8 +101,8 @@ fn test_send_receive() {
     let sid1 = SockId(1);
     let sid2 = SockId(2);
     
-    let sock1 = Arc::new(transport.create_socket(sid1).unwrap());
-    let sock2 = Arc::new(transport.create_socket(sid2).unwrap());
+    let sock1 = Arc::new(transport.create_socket(sid1, sid2).unwrap());
+    let sock2 = Arc::new(transport.create_socket(sid2, sid1).unwrap());
     
     let sock1_clone = Arc::clone(&sock1);
     let h1 = thread::spawn(move || {
@@ -117,8 +118,8 @@ fn test_send_receive() {
         }
     });
     
-    sock1.send(sid2, &[1,2,3]).unwrap();
-    sock2.send(sid1, &[4,5,6]).unwrap();
+    sock1.send( &[1,2,3]).unwrap();
+    sock2.send( &[4,5,6]).unwrap();
     
     // wait for h1 and h2 to finish
     h1.join().unwrap();
@@ -135,12 +136,12 @@ fn test_send_receive_same_socket() {
     let sid1 = SockId(1);
     let sid2 = SockId(2);
     
-    let sock1 = Arc::new(transport.create_socket(sid1).unwrap());
-    let sock2 = Arc::new(transport.create_socket(sid2).unwrap());
+    let sock1 = Arc::new(transport.create_socket(sid1,sid2).unwrap());
+    let sock2 = Arc::new(transport.create_socket(sid2,sid1).unwrap());
     
     let sock1_clone = Arc::clone(&sock1);
     let h1 = thread::spawn(move || {
-        sock1_clone.send(sid2, &[7,8,9]).unwrap();
+        sock1_clone.send( &[7,8,9]).unwrap();
     });
     
     let sock2_clone = Arc::clone(&sock2);
@@ -152,7 +153,7 @@ fn test_send_receive_same_socket() {
         }
     });
     
-    sock1.send(sid2, &[1,2,3]).unwrap();
+    sock1.send( &[1,2,3]).unwrap();
     
     
     // wait for h1 and h2 to finish

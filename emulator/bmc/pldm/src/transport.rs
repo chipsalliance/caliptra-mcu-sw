@@ -3,7 +3,7 @@ use core::time::Duration;
 
 
 pub trait PldmTransport<T : PldmSocket> {
-    fn create_socket(&self, eid: SockId) -> Result<T, ()>;
+    fn create_socket(&self, source: SockId, dest: SockId) -> Result<T, ()>;
 }
 
 pub const MAX_PLDM_PAYLOAD_SIZE: usize = 1024;
@@ -18,7 +18,7 @@ pub trait PldmSocket {
     /// # Returns
     ///
     /// * `Result<(), ()>` - Returns `Ok(())` if the packet was sent successfully, otherwise returns `Err(())`.
-    fn send(&self, dst : SockId, payload: &[u8]) -> Result<(), ()>;
+    fn send(&self, payload: &[u8]) -> Result<(), ()>;
 
     /// Receives an MCTP packet.
     ///

@@ -2,7 +2,6 @@ use crate::update_sm::{StateMachine, Context, StateMachineActions, States};
 use crate::transport::PldmSocket;
 use crate::event_queue::EventQueue;
 use crate::update_sm::{UpdateAgentEvents,Events as SmEvents};
-use crate::pldm_codec::PldmPacket;
 
 pub struct UpdateAgent<T: StateMachineActions, S: PldmSocket> {
     sm: StateMachine<Context<T>>,
@@ -66,7 +65,7 @@ impl<T: StateMachineActions, S: PldmSocket> UpdateAgent<T,S> {
         match self.socket.receive(None).map_err(|_| ()) {
             Ok(rx_pkt) => {
                 println!("Received request: {}", rx_pkt);
-                let _x = self.socket.send(rx_pkt.src, &[1,2,3,4]);
+                let _x = self.socket.send(&[1,2,3,4]);
                 self.event_queue.enqueue(UpdateAgentEvents::Rx);
             },
             Err(_) => {

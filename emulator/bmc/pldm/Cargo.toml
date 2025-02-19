@@ -5,19 +5,13 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
-smlang = "0.8.0"
 pldm-fw-pkg.workspace = true
-spin = "0.9.8"
-embassy-executor = { version = "0.5", features = ["executor-thread", "arch-std"] }
-embassy-time = { version = "0.3", features = ["std"] }
-defmt = "0.3"
-defmt-rtt = "0.4"
-panic-probe = "0.3"
-async-executor = "1.13.1"
-async-io = "2.4.0"
 futures.workspace = true
 num-derive.workspace = true
 num-traits.workspace = true
 tokio = "1.43.0"
 thingbuf = "0.1.6"
-
+smlang = "0.8.0"
+pldm-common.workspace = true
+log = "0.4.25"
+simple_logger = "4"
