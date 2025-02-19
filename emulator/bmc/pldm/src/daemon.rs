@@ -1,4 +1,4 @@
-use crate::transport::PldmSocket;
+use crate::transport::{PldmSocket,RxPacket};
 use crate::event_queue::EventQueue;
 use crate::events::PldmEvents;
 use crate::discovery_sm;
@@ -35,7 +35,7 @@ impl Daemon {
                 Ok(rx_pkt) => {
                     debug!("Received request: {}", rx_pkt);
                     //let _x = socket.send(&[1,2,3,4]);
-                    let ev = Self::handle_packet(&rx_pkt.payload.data[..rx_pkt.payload.len])?;
+                    let ev = Self::handle_packet(&rx_pkt)?;
                     event_queue.enqueue(ev);
 
                     
@@ -65,9 +65,9 @@ impl Daemon {
         Ok(())
     }
 
-    pub fn handle_packet(packet : &[u8]) -> Result<PldmEvents, ()> {
+    pub fn handle_packet(packet : &RxPacket) -> Result<PldmEvents, ()> {
         debug!("Handling packet: {:?}", packet);
-        let header = PldmMsgHeader::decode(packet).map_err(|_| ( error!("Error decoding packet!")))?;
+        let header = PldmMsgHeader::decode(&packet.payload.data[..packet.payload.len]).map_err(|_| ( error!("Error decoding packet!")))?;
         if !header.is_hdr_ver_valid() {
             error!("Invalid header version!");
             return Err(());

@@ -1,5 +1,5 @@
 [package]
-name = "pldm"
+name = "pldm-ua"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -15,3 +15,4 @@ smlang = "0.8.0"
 pldm-common.workspace = true
 log = "0.4.25"
 simple_logger = "4"
+pldm-fw = "0.1.0"

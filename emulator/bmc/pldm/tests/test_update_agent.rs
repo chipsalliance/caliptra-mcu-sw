@@ -2,9 +2,9 @@
 mod mock_transport;
 use mock_transport::MockTransport;
 
-use pldm::update_agent::UpdateAgent;
-use pldm::update_sm::DefaultActions;
-use pldm::transport::{PldmTransport,PldmSocket};
+use pldm_ua::update_agent::UpdateAgent;
+use pldm_ua::update_sm::DefaultActions;
+use pldm_ua::transport::{PldmTransport,PldmSocket};
 use std::sync::Arc;
 
 // create a unit test for update_agent
@@ -13,8 +13,8 @@ use std::sync::Arc;
 fn test_update_agent() {
     let transport = MockTransport::new();
 
-    let ua_sid = pldm::transport::SockId(0x01);
-    let fd_sid = pldm::transport::SockId(0x02);
+    let ua_sid = pldm_ua::transport::SockId(0x01);
+    let fd_sid = pldm_ua::transport::SockId(0x02);
 
     let ua_sock = transport.create_socket(ua_sid, fd_sid).unwrap();
     let fd_sock = transport.create_socket(fd_sid, ua_sid).unwrap();

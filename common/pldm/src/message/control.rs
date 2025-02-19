@@ -52,7 +52,7 @@ impl PldmCodec for GetTidRequest {
 }
 
 #[repr(C, packed)]
-#[derive(Debug, PartialEq, FromBytes, IntoBytes, Immutable)]
+#[derive(Debug, PartialEq, FromBytes, IntoBytes, Immutable, Clone)]
 pub struct GetTidResponse {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
     pub completion_code: u8,
