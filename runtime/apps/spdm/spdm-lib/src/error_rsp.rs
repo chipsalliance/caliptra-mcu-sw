@@ -1,0 +1,105 @@
+// Licensed under the Apache-2.0 license
+
+use crate::context::SpdmContext;
+use crate::message_buf::{Codec, CodecError, CodecResult, MessageBuf};
+use crate::protocol::SpdmMsgHdr;
+use crate::req_resp_codes::{CommandResult, ReqRespCode};
+use crate::SpdmVersion;
+use libtock_platform::Syscalls;
+use thiserror_no_std::Error;
+
+#[derive(Debug, Error)]
+pub enum CommandError {
+    #[error("Buffer too small")]
+    BufferTooSmall,
+    // #[error("Coded error")]
+    // Codec(#[from] CodecError),
+    #[error("Request failed with error code {:?}", .0)]
+    ErrorCode(ErrorCode),
+    #[error("Unsupported request")]
+    UnsupportedRequest,
+}
+
+///! SPDM error codes
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum ErrorCode {
+    InvalidRequest = 0x01,
+    Busy = 0x03,
+    UnexpectedRequest = 0x04,
+    Unspecified = 0x05,
+    DecryptError = 0x06,
+    UnsupportedRequest = 0x07,
+    RequestInFlight = 0x08,
+    InvalidResponseCode = 0x09,
+    SessionLimitExceeded = 0x0A,
+    SessionRequired = 0x0B,
+    ResetRequired = 0x0C,
+    ResponseTooLarge = 0x0D,
+    RequestTooLarge = 0x0E,
+    LargeResponse = 0x0F,
+    MessageLost = 0x10,
+    InvalidPolicy = 0x11,
+    VersionMismatch = 0x41,
+    ResponseNotReady = 0x42,
+    RequestResynch = 0x43,
+    OperationFailed = 0x44,
+    NoPendingRequests = 0x45,
+    VendorDefined = 0xFF,
+}
+
+impl From<ErrorCode> for u8 {
+    fn from(code: ErrorCode) -> Self {
+        code as u8
+    }
+}
+
+pub type ErrorData = u8;
+
+pub struct ErrorResponse<'a> {
+    error_code: ErrorCode,
+    error_data: ErrorData,
+    extended_error_data: Option<&'a [u8]>,
+}
+
+impl<'a> ErrorResponse<'a> {
+    pub fn new(
+        error_code: ErrorCode,
+        error_data: ErrorData,
+        extended_error_data: Option<&'a [u8]>,
+    ) -> Option<Self> {
+        if extended_error_data.map_or(0, |data| data.len()) > 32 {
+            return None;
+        }
+        Some(Self {
+            error_code,
+            error_data,
+            extended_error_data,
+        })
+    }
+
+    pub fn len(&self) -> usize {
+        2 + self.extended_error_data.map_or(0, |data| data.len())
+    }
+}
+
+impl<'a> Codec for ErrorResponse<'a> {
+    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
+        // make space for the data at the end of the buffer
+        buf.push_data(self.len())?;
+
+        // get a mutable slice of the data offset and fill it
+        let rsp = buf.data_mut(self.len())?;
+
+        rsp[0] = self.error_code.into();
+        rsp[1] = self.error_data;
+        if let Some(data) = self.extended_error_data {
+            rsp[2..data.len()].copy_from_slice(data);
+        }
+
+        Ok(self.len())
+    }
+
+    fn decode(_buf: &mut MessageBuf) -> CodecResult<Self> {
+        unimplemented!()
+    }
+}

@@ -48,6 +48,7 @@ struct Test {
     // outgoing_resp_pkts: VecDeque<Vec<u8>>,
     cur_msg_tag: u8,
     mctp_util: MctpUtil,
+    responder_ready: bool,
     passed: bool,
 }
 
@@ -69,6 +70,7 @@ impl Test {
             cur_resp_msg: Vec::new(),
             cur_msg_tag: 0,
             mctp_util: MctpUtil::new(),
+            responder_ready: false,
             passed: false,
         }
     }
@@ -234,21 +236,21 @@ impl Test {
         match socket_command {
             SOCKET_SPDM_COMMAND_TEST => {
                 println!("SPDM_SERVER: Received test command. Send Server Hello");
-                self.cur_req_msg = vec![5];
-                let result = self.mctp_util.wait_for_responder(
-                    self.cur_msg_tag,
-                    &self.cur_req_msg.as_slice(),
-                    running,
-                    i3c_server_stream,
-                    target_addr,
-                );
-                if let Some(resp_msg) = result {
-                    println!("SPDM_SERVER: Received response from target");
-                    assert!(resp_msg == self.cur_req_msg);
-                } else {
-                    println!("SPDM_SERVER: No response from target");
-                    return false;
-                }
+                // self.cur_req_msg = vec![5];
+                // let result = self.mctp_util.wait_for_responder(
+                //     self.cur_msg_tag,
+                //     &self.cur_req_msg.as_slice(),
+                //     running,
+                //     i3c_server_stream,
+                //     target_addr,
+                // );
+                // if let Some(resp_msg) = result {
+                //     println!("SPDM_SERVER: Received response from target");
+                //     assert!(resp_msg == self.cur_req_msg);
+                // } else {
+                //     println!("SPDM_SERVER: No response from target");
+                //     return false;
+                // }
 
                 self.send_hello(spdm_client_stream, transport_type);
                 self.spdm_server_state = SpdmServerState::ReceiveRequest;
@@ -263,7 +265,27 @@ impl Test {
             SOCKET_SPDM_COMMAND_NORMAL => {
                 println!("SPDM_SERVER: Received normal SPDM command. Send it to the target");
                 self.cur_req_msg = buffer;
-                self.send_req_receive_resp(running, i3c_server_stream, target_addr);
+                if self.responder_ready == false {
+                    let result = self.mctp_util.wait_for_responder(
+                        self.cur_msg_tag,
+                        &self.cur_req_msg.as_slice(),
+                        running,
+                        i3c_server_stream,
+                        target_addr,
+                    );
+                    if let Some(resp_msg) = result {
+                        println!("SPDM_SERVER: Received response from target {:?}", resp_msg);
+                        assert!(resp_msg[0] == self.cur_req_msg[0]);
+                        self.cur_resp_msg = resp_msg;
+                        self.responder_ready = true;
+                    } else {
+                        println!("SPDM_SERVER: No response from target");
+                        return false;
+                    }
+                } else {
+                    self.send_req_receive_resp(running, i3c_server_stream, target_addr);
+                }
+
                 self.spdm_server_state = SpdmServerState::SendResponse;
                 self.cur_msg_tag = (self.cur_msg_tag + 1) % 4 as u8;
                 true
@@ -392,22 +414,5 @@ pub fn start_spdm_device_validator(_running: Arc<AtomicBool>) -> io::Result<()> 
         return Err(ErrorKind::NotFound.into());
     }
 
-    // let output = child
-    //     .wait_with_output()
-    //     .expect("failed to wait on child process");
-    // println!(
-    //     "spdm_device_validator_sample process Status {}",
-    //     output.status
-    // );
-    // println!(
-    //     "spdm_device_validator_sample process stdout {}",
-    //     String::from_utf8_lossy(&output.stdout)
-    // );
-    // println!(
-    //     "spdm_device_validator_sample process stderr {}",
-    //     String::from_utf8_lossy(&output.stderr)
-    // );
-    // io::stdout().flush().unwrap();
-    // io::stderr().flush().unwrap();
     Ok(())
 }

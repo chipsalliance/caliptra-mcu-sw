@@ -97,7 +97,7 @@ impl MCTPCtrlCmd {
         }
 
         let req: SetEIDReq<[u8; 2]> =
-            SetEIDReq::read_from_bytes(&req[..self.req_data_len()]).unwrap();
+            SetEIDReq::read_from_bytes(&req[..self.req_data_len()]).map_err(|_| ErrorCode::FAIL)?;
         let op = req.op().into();
         let eid = req.eid();
         let mut resp = SetEIDResp::new();

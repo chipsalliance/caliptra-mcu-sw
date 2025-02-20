@@ -5,10 +5,13 @@ use libtock_platform::share;
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
+use core::fmt::Write;
+use libtock_console::Console;
+
 type EndpointId = u8;
 type Tag = u8;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MessageInfo {
     eid: EndpointId,
     tag: Tag,
@@ -61,7 +64,9 @@ impl<S: Syscalls> Mctp<S> {
     /// * `(u32, MessageInfo)` - On success, returns tuple containing length of the request received and the message information containing the source EID, message tag
     /// * `ErrorCode` - The error code on failure
     pub async fn receive_request(&self, req: &mut [u8]) -> Result<(u32, MessageInfo), ErrorCode> {
+        let mut console_writer = Console::<S>::writer();
         if req.is_empty() {
+            writeln!(console_writer, "MCTP: received empty req").unwrap();
             Err(ErrorCode::Invalid)?;
         }
 
@@ -203,6 +208,16 @@ impl<S: Syscalls> Mctp<S> {
 
     pub fn max_message_size(&self) -> Result<u32, ErrorCode> {
         S::command(self.driver_num, command::GET_MAX_MESSAGE_SIZE, 0, 0).to_result()
+    }
+
+    pub fn msg_type(&self) -> Result<u8, ErrorCode> {
+        match self.driver_num {
+            driver_num::MCTP_SPDM => Ok(5),
+            driver_num::MCTP_SECURE => Ok(6),
+            driver_num::MCTP_PLDM => Ok(1),
+            driver_num::MCTP_CALIPTRA => Ok(0x7E),
+            _ => Err(ErrorCode::Invalid)?,
+        }
     }
 }
 

@@ -7,3 +7,12 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+bitfield.workspace = true
+zerocopy.workspace = true
+libsyscall-caliptra.workspace = true
+libtock_platform.workspace = true
+libtock_console.workspace = true
+thiserror-no-std.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
