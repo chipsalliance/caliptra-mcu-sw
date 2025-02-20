@@ -6,12 +6,11 @@ use bitfield::bitfield;
 use core::convert::TryFrom;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-pub const MCTP_PLDM_MSG_TYPE: u8 = 0x01;
-pub const PLDM_MSG_HEADER_LEN: usize = 4;
-pub const PLDM_FAILURE_RESP_LEN: usize = 5;
+pub const PLDM_MSG_HEADER_LEN: usize = 3;
+pub const PLDM_FAILURE_RESP_LEN: usize = 4;
 pub type InstanceId = u8;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
 pub enum PldmSupportedType {
     Base = 0x00,
@@ -191,15 +190,13 @@ bitfield! {
     #[derive(Copy, Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
     pub struct PldmMsgHeader(MSB0 [u8]);
     impl Debug;
-    pub u8, ic, _: 0, 0;
-    pub u8, msg_type, set_msg_type: 7, 1;
-    pub u8, instance_id, set_instance_id: 12, 8;
-    pub u8, reserved, _: 13, 13;
-    pub u8, datagram, set_datagram: 14, 14;
-    pub u8, rq, set_rq: 15,15;
-    pub u8, pldm_type, set_pldm_type: 21, 16;
-    pub u8, hdr_ver, set_hdr_ver: 23, 22;
-    pub u8, cmd_code, set_command_code: 31, 24;
+    pub u8, instance_id, set_instance_id: 4, 0;
+    pub u8, reserved, _: 5, 5;
+    pub u8, datagram, set_datagram: 6, 6;
+    pub u8, rq, set_rq: 7, 7;
+    pub u8, pldm_type, set_pldm_type: 13, 8;
+    pub u8, hdr_ver, set_hdr_ver: 15, 14;
+    pub u8, cmd_code, set_command_code: 23, 16;
 }
 
 impl PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]> {
@@ -213,7 +210,6 @@ impl PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]> {
         cmd_code: u8,
     ) -> Self {
         let mut header = PldmMsgHeader([0; PLDM_MSG_HEADER_LEN]);
-        header.set_msg_type(MCTP_PLDM_MSG_TYPE);
         header.set_instance_id(instance_id);
         header.set_datagram(message_type as u8 & Self::DATAGRAM_MASK);
         header.set_rq((message_type as u8 & Self::REQUEST_MASK) >> 1);
@@ -229,10 +225,6 @@ impl PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]> {
 
     pub fn is_hdr_ver_valid(&self) -> bool {
         self.hdr_ver() == PldmHeaderVersion::Version0 as u8
-    }
-
-    pub fn is_valid_msg_type(&self) -> bool {
-        self.msg_type() == MCTP_PLDM_MSG_TYPE
     }
 
     // switch the message type to response
@@ -311,7 +303,6 @@ mod tests {
             PldmSupportedType::Base,
             PldmControlCmd::GetTid as u8,
         );
-        assert_eq!(header.is_valid_msg_type(), true);
         assert_eq!(header.is_request(), true);
         let response = header.into_response();
         assert_eq!(response.rq(), PldmMsgType::Response as u8);

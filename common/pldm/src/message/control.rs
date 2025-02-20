@@ -7,7 +7,6 @@ use crate::protocol::base::{
     TransferOperationFlag, TransferRespFlag, PLDM_MSG_HEADER_LEN,
 };
 use crate::protocol::version::{PldmVersion, ProtocolVersionStr, Ver32};
-use bit_vec::BitVec;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const PLDM_CMDS_BITMAP_LEN: usize = 32;
@@ -302,15 +301,13 @@ impl PldmCodec for GetPldmTypeRequest {
 }
 
 fn construct_bitmap<const N: usize>(items: &[u8]) -> [u8; N] {
-    let mut bitmap = BitVec::from_elem(N * 8, false);
-    items
-        .iter()
-        .for_each(|&item| bitmap.set(item as usize, true));
-    let mut result = [0u8; N];
-    for (i, byte) in bitmap.to_bytes().iter().enumerate().take(N) {
-        result[i] = byte.reverse_bits();
+    let mut bitmap = [0u8; N];
+    for &item in items.iter().take(N * 8) {
+        let byte_index = (item / 8) as usize;
+        let bit_index = (item % 8) as usize;
+        bitmap[byte_index] |= 1 << bit_index;
     }
-    result
+    bitmap
 }
 
 #[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
@@ -466,7 +463,7 @@ mod test {
     #[test]
     fn test_get_tid_request() {
         let request = GetTidRequest::new(0x01, PldmMsgType::Request);
-        let mut buffer = [0u8; 4];
+        let mut buffer = [0u8; core::mem::size_of::<GetTidRequest>()];
         request.encode(&mut buffer).unwrap();
         let decoded_request = GetTidRequest::decode(&buffer).unwrap();
         assert_eq!(request, decoded_request);
@@ -475,7 +472,7 @@ mod test {
     #[test]
     fn test_get_tid_response() {
         let response = GetTidResponse::new(0x01, 42, 0);
-        let mut buffer = [0u8; 6];
+        let mut buffer = [0u8; core::mem::size_of::<GetTidResponse>()];
         response.encode(&mut buffer).unwrap();
         let decoded_response = GetTidResponse::decode(&buffer).unwrap();
         assert_eq!(response, decoded_response);
@@ -484,7 +481,7 @@ mod test {
     #[test]
     fn test_set_tid_request() {
         let request = SetTidRequest::new(0x01, PldmMsgType::Request, 42);
-        let mut buffer = [0u8; 5];
+        let mut buffer = [0u8; core::mem::size_of::<SetTidRequest>()];
         request.encode(&mut buffer).unwrap();
         let decoded_request = SetTidRequest::decode(&buffer).unwrap();
         assert_eq!(request, decoded_request);
@@ -493,7 +490,7 @@ mod test {
     #[test]
     fn test_set_tid_response() {
         let response = SetTidResponse::new(0x01, 0);
-        let mut buffer = [0u8; 5];
+        let mut buffer = [0u8; core::mem::size_of::<SetTidResponse>()];
         response.encode(&mut buffer).unwrap();
         let decoded_response = SetTidResponse::decode(&buffer).unwrap();
         assert_eq!(response, decoded_response);
@@ -502,7 +499,7 @@ mod test {
     #[test]
     fn test_get_pldm_commands_request() {
         let request = GetPldmCommandsRequest::new(0x01, PldmMsgType::Request, 1, "1.0.0");
-        let mut buffer = [0u8; 9];
+        let mut buffer = [0u8; core::mem::size_of::<GetPldmCommandsRequest>()];
         request.encode(&mut buffer).unwrap();
         let decoded_request = GetPldmCommandsRequest::decode(&buffer).unwrap();
         assert_eq!(request, decoded_request);
@@ -511,7 +508,7 @@ mod test {
     #[test]
     fn test_get_pldm_commands_response() {
         let response = GetPldmCommandsResponse::new(0x01, 0, &[1, 2, 3]);
-        let mut buffer = [0u8; 37];
+        let mut buffer = [0u8; core::mem::size_of::<GetPldmCommandsResponse>()];
         response.encode(&mut buffer).unwrap();
         let decoded_response = GetPldmCommandsResponse::decode(&buffer).unwrap();
         assert_eq!(response, decoded_response);
@@ -520,7 +517,7 @@ mod test {
     #[test]
     fn test_get_pldm_type_request() {
         let request = GetPldmTypeRequest::new(0x01, PldmMsgType::Request);
-        let mut buffer = [0u8; 4];
+        let mut buffer = [0u8; core::mem::size_of::<GetPldmTypeRequest>()];
         request.encode(&mut buffer).unwrap();
         let decoded_request = GetPldmTypeRequest::decode(&buffer).unwrap();
         assert_eq!(request, decoded_request);
@@ -534,7 +531,7 @@ mod test {
         expected_bitmap[0] = 0b00100001;
         assert_eq!(response.pldm_types, expected_bitmap);
 
-        let mut buffer = [0u8; 13];
+        let mut buffer = [0u8; core::mem::size_of::<GetPldmTypeResponse>()];
         response.encode(&mut buffer).unwrap();
         let decoded_response = GetPldmTypeResponse::decode(&buffer).unwrap();
         assert_eq!(response, decoded_response);
@@ -549,7 +546,7 @@ mod test {
             TransferOperationFlag::GetFirstPart,
             PldmSupportedType::Base,
         );
-        let mut buffer = [0u8; 10];
+        let mut buffer = [0u8; core::mem::size_of::<GetPldmVersionRequest>()];
         request.encode(&mut buffer).unwrap();
         let decoded_request = GetPldmVersionRequest::decode(&buffer).unwrap();
         assert_eq!(request, decoded_request);
@@ -560,7 +557,7 @@ mod test {
         let response =
             GetPldmVersionResponse::new(0x01, 0, 0, TransferRespFlag::StartAndEnd, "1.3.0")
                 .unwrap();
-        let mut buffer = [0u8; 14];
+        let mut buffer = [0u8; core::mem::size_of::<GetPldmVersionResponse>()];
         response.encode(&mut buffer).unwrap();
         let decoded_response = GetPldmVersionResponse::decode(&buffer).unwrap();
         assert_eq!(response, decoded_response);
