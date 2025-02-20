@@ -16,3 +16,4 @@ pldm-common.workspace = true
 log = "0.4.25"
 simple_logger = "4"
 pldm-fw = "0.1.0"
+emulator-periph.workspace = true

@@ -18,6 +18,7 @@ mod elf;
 mod gdb;
 mod i3c_socket;
 mod tests;
+mod mctp_transport;
 
 use crate::i3c_socket::start_i3c_socket;
 use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAction};
@@ -48,6 +49,7 @@ use std::process::exit;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use pldm_common::message::control::{GetTidRequest, GetTidResponse};
 use pldm_common::codec::PldmCodec;
 
@@ -286,7 +288,6 @@ fn test_marco(port: u16, target_addr: DynamicI3cAddress) ->Result<(), ()> {
     let mut mctp_payload: Vec<u8> = Vec::new();
     mctp_payload.extend_from_slice(&mctp_common_msg_hdr.as_bytes());
     mctp_payload.extend_from_slice(&pldm_pkt_buffer[..pldm_pkt_sz]);
-
     // Print the packet as hex
     let mctp_packets = mctp_util.packetize(&mctp_payload);
 
@@ -302,14 +303,13 @@ fn test_marco(port: u16, target_addr: DynamicI3cAddress) ->Result<(), ()> {
     let msg_tag = mctp_util.get_msg_tag();
     let running = Arc::new(AtomicBool::new(true));
 
-    mctp_util.send_request(msg_tag, &mctp_payload, running, &mut stream, target_addr.into());
-
-
+    std::thread::spawn(move || {
+        println!("Inside a thread");
+//        mctp_util.send_request(msg_tag, mctp_payload.as_mut_slice(), running, &mut stream, target_addr.into());
+        mctp_util.wait_for_responder(msg_tag, mctp_payload.as_mut_slice(), running, &mut stream, target_addr.into());
+    });
 
     Ok(())
-
-
-
 
 
 }
@@ -467,11 +467,11 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         );
     }
 
-//    if cfg!(feature = "test-marco") {
+    if cfg!(feature = "test-marco") {
         println!("Running Marco test in emulator");
         i3c_controller.start();
         let _x = test_marco(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
-//    }
+    }
 
     let create_flash_controller = |default_path: &str, error_irq: u8, event_irq: u8| {
         // Use a temporary file for flash storage if we're running a test

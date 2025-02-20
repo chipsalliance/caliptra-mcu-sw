@@ -1,5 +1,5 @@
 use crate::update_sm::{StateMachine, Context, StateMachineActions, States};
-use crate::transport::PldmSocket;
+use crate::transport::{FilterType, PldmSocket};
 use crate::event_queue::EventQueue;
 use crate::update_sm::{UpdateAgentEvents,Events as SmEvents};
 
@@ -62,7 +62,7 @@ impl<T: StateMachineActions, S: PldmSocket> UpdateAgent<T,S> {
     }
     fn listen(&mut self) -> Result<(), ()> {
 
-        match self.socket.receive(None).map_err(|_| ()) {
+        match self.socket.receive(None, FilterType::Any).map_err(|_| ()) {
             Ok(rx_pkt) => {
                 println!("Received request: {}", rx_pkt);
                 let _x = self.socket.send(&[1,2,3,4]);

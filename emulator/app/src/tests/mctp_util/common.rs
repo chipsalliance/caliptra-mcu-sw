@@ -385,6 +385,7 @@ impl MctpUtil {
         stream.set_nonblocking(true).unwrap();
         while running.load(Ordering::Relaxed) {
             if let Some(write_pkt) = pkts.pop_front() {
+                println!("Sending packet with length {}", write_pkt.len());
                 if !send_private_write(stream, target_addr, write_pkt) {
                     break;
                 }

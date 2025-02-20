@@ -3,6 +3,7 @@
 [workspace]
 members = [
     "emulator/app",
+    "emulator/bmc/pldm",
     "emulator/bmc/pldm-fw-pkg",
     "emulator/bus",
     "emulator/caliptra",
@@ -54,7 +55,6 @@ members = [
     "tests/integration",
     "xtask",
     "common/pldm",
-    "emulator/bmc/pldm",
 ]
 resolver = "2"
 
@@ -129,6 +129,7 @@ registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }
 romtime = { path = "romtime" }
 pldm-common = { path = "common/pldm"}
+pldm-ua = {path = "emulator/bmc/pldm"}
 
 # libtock dependencies
 libtock = { path = "runtime/apps/libtock" }

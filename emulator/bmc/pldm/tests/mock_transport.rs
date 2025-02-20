@@ -33,7 +33,7 @@ impl PldmSocket for MockPldmSocket {
         Ok(())
     }
 
-    fn receive(&self, timeout: Option<Duration>) -> Result<RxPacket, ()> {
+    fn receive(&self, timeout: Option<Duration>, _filter: FilterType) -> Result<RxPacket, ()> {
         if let Some(receiver) = self.receiver.lock().unwrap().as_ref() {
             if let Ok(pkt) = receiver.recv_timeout(timeout.unwrap_or(Duration::from_secs(1))) {
                 if pkt.payload.len == 0 {
@@ -64,6 +64,10 @@ impl PldmSocket for MockPldmSocket {
             let pkt = TxPacket { src: self.source, dest: *id, payload: Payload { data: [0; MAX_PLDM_PAYLOAD_SIZE], len: 0 } };
             let _ = sender.send(pkt);
         }
+    }
+
+    fn connect(&self) -> Result<(), ()> {
+        Ok(())
     }
 
     fn clone(&self) -> Self {
@@ -106,14 +110,14 @@ fn test_send_receive() {
     
     let sock1_clone = Arc::clone(&sock1);
     let h1 = thread::spawn(move || {
-        if let Ok(packet) = sock1_clone.receive(None) {
+        if let Ok(packet) = sock1_clone.receive(None,FilterType::Any) {
             println!("SockId 1 received: {}", packet);
         }
     });
     
     let sock2_clone = Arc::clone(&sock2);
     let h2 = thread::spawn(move || {
-        if let Ok(packet) = sock2_clone.receive(None) {
+        if let Ok(packet) = sock2_clone.receive(None,FilterType::Any) {
             println!("SockId 2 received: {}", packet);
         }
     });
@@ -131,6 +135,8 @@ fn test_send_receive() {
 #[cfg(test)]
 #[test]
 fn test_send_receive_same_socket() {
+    use pldm_ua::transport::FilterType;
+
     let transport = MockTransport::new();
 
     let sid1 = SockId(1);
@@ -147,7 +153,7 @@ fn test_send_receive_same_socket() {
     let sock2_clone = Arc::clone(&sock2);
     let h2 = thread::spawn(move || {
         for _ in 0..2 {
-            if let Ok(packet) = sock2_clone.receive(None) {
+            if let Ok(packet) = sock2_clone.receive(None, FilterType::Any) {
                 println!("SockId 2 received: {}", packet);
             }
         }

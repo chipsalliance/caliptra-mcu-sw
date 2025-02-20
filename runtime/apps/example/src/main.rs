@@ -194,17 +194,22 @@ async fn test_marco<S: Syscalls>(console_writer: &mut ConsoleWriter<S>) {
 
 
     let result = mctp_pldm.receive_request(&mut msg_buffer).await;
+    let length = result.unwrap().0;
     writeln!(
         console_writer,
-        "Received PLDM message of length",
+        "Received PLDM message of length {}",
+        length
     ).unwrap();
 
-    assert!(result.is_ok());
-    let (msg_len, msg_info) = result.unwrap();
-    let msg_len = msg_len as usize;
-    assert!(msg_len <= msg_buffer.len());
-
-
+    // hex dump the received message
+    writeln!(
+        console_writer,
+        "Received PLDM message: "
+    ).unwrap();
+    for i in 0..length as usize {
+        write!(console_writer, "{:02X} ", msg_buffer[i]).unwrap();
+    }
+    writeln!(console_writer, "").unwrap();
 
     
 }

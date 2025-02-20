@@ -1,8 +1,10 @@
+use core::error;
+
 use pldm_common::codec::PldmCodec;
 use smlang::statemachine;
 use crate::event_queue::EventQueue;
 use crate::transport::{PldmSocket,RxPacket, MAX_PLDM_PAYLOAD_SIZE};
-use pldm_common::message::control::{GetTidRequest, GetTidResponse};
+use pldm_common::message::control as pldm_packet;
 use pldm_common::protocol::base::{InstanceId, PldmControlCmd, PldmMsgHeader, PldmMsgType};
 use log::{debug, error, info, trace, warn};
 
@@ -20,91 +22,86 @@ statemachine! {
     transitions: {
         *Idle + StartDiscovery / on_start_discovery = GetTIDSent,
         
-        GetTIDSent + GetTIDResponse(RxPacket) [is_tid_response_valid] / on_tid_response = GetPLDMTypesSent,
+        GetTIDSent + GetTIDResponse(pldm_packet::GetTidResponse) [is_tid_response_valid] / on_tid_response = GetPLDMTypesSent,
         
-        GetPLDMTypesSent + GetPLDMTypesResponse [is_pldm_types_response_valid] / on_pldm_types_response = GetPLDMVersionType0Sent,
+        GetPLDMTypesSent + GetPLDMTypesResponse(pldm_packet::GetPldmTypeResponse) [is_pldm_types_response_valid] / on_pldm_types_response = GetPLDMVersionType0Sent,
         
-        GetPLDMVersionType0Sent + GetPLDMVersionResponse [is_pldm_version_response_valid] / on_pldm_version_response_type0 = GetPLDMCommandsType0Sent,
+        GetPLDMVersionType0Sent + GetPLDMVersionResponse(pldm_packet::GetPldmVersionResponse) [is_pldm_version_response_valid] / on_pldm_version_response_type0 = GetPLDMCommandsType0Sent,
         
-        GetPLDMCommandsType0Sent + GetPLDMCommandsResponse [is_pldm_commands_response_valid] / on_pldm_commands_response_type0 = GetPLDMVersionType1Sent,
+        GetPLDMCommandsType0Sent + GetPLDMCommandsResponse(pldm_packet::GetPldmCommandsResponse)  [is_pldm_commands_response_valid] / on_pldm_commands_response_type0 = GetPLDMVersionType1Sent,
 
-        GetPLDMVersionType1Sent + GetPLDMVersionResponse [is_pldm_version_response_valid] / on_pldm_version_response_type1 = GetPLDMCommandsType1Sent,
+        GetPLDMVersionType1Sent + GetPLDMVersionResponse(pldm_packet::GetPldmVersionResponse) [is_pldm_version_response_valid] / on_pldm_version_response_type1 = GetPLDMCommandsType1Sent,
 
-        GetPLDMCommandsType1Sent + GetPLDMCommandsResponse [is_pldm_commands_response_valid] / on_pldm_commands_response_type1 = Done,
+        GetPLDMCommandsType1Sent + GetPLDMCommandsResponse(pldm_packet::GetPldmCommandsResponse) [is_pldm_commands_response_valid] / on_pldm_commands_response_type1 = Done,
 
         _ + CancelDiscovery / on_cancel_discovery = Idle
     }
 }
 
 pub trait StateMachineActions {
-    // Guards
-    fn is_tid_response_valid(&self, ctx: &InnerContext<impl PldmSocket>, rx_pkt : &RxPacket) -> Result<bool, ()> {
-        debug!("Checking TID Response validity...");
-        Ok(true)
-    }
-
-    fn is_pldm_types_response_valid(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
-        debug!("Checking PLDM Types Response validity...");
-        Ok(true)
-    }
-
-    fn is_pldm_version_response_valid(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
-        debug!("Checking PLDM Version Response validity...");
-        Ok(true)
-    }
-
-    fn is_pldm_commands_response_valid(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
-        debug!("Checking PLDM Commands Response validity...");
-        Ok(true)
-    }
-
     // Actions
-    fn on_start_discovery(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        debug!("Send GetTID Request");
-        let request = GetTidRequest::new(ctx.instance_id, PldmMsgType::Request);
+    fn on_start_discovery(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<(), ()> {
+        debug!("on_start_discovery");
+        let request = pldm_packet::GetTidRequest::new(ctx.instance_id, PldmMsgType::Request);
         let mut buffer = [0u8; MAX_PLDM_PAYLOAD_SIZE];
         let sz = request.encode(&mut buffer).map_err(|_| ())?;
-        ctx.socket.send(&buffer[..sz])
+        ctx.socket.send(&buffer[..sz])?;
+        Ok(())
     }
-
-    fn on_tid_response(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        debug!("Received GetTID Response");
+    fn on_tid_response(&self, ctx: &InnerContext<impl PldmSocket>, response: pldm_packet::GetTidResponse) -> Result<(), ()> {
+        debug!("on_tid_response");
+        Ok(())
+    }
+    fn on_pldm_types_response(&self, ctx: &InnerContext<impl PldmSocket>, response: pldm_packet::GetPldmTypeResponse) -> Result<(), ()> {
+        debug!("on_pldm_types_response");
+        Ok(())
+    }
+    fn on_pldm_version_response_type0(&self, ctx: &InnerContext<impl PldmSocket>, response: pldm_packet::GetPldmVersionResponse) -> Result<(), ()> {
+        debug!("on_pldm_version_response_type0");
+        Ok(())
+    }
+    fn on_pldm_commands_response_type0(&self, ctx: &InnerContext<impl PldmSocket>, response: pldm_packet::GetPldmCommandsResponse) -> Result<(), ()> {
+        debug!("on_pldm_commands_response_type0");
+        Ok(())
+    }
+    fn on_pldm_version_response_type1(&self, ctx: &InnerContext<impl PldmSocket>, response: pldm_packet::GetPldmVersionResponse) -> Result<(), ()> {
+        debug!("on_pldm_version_response_type1");
+        Ok(())
+    }
+    fn on_pldm_commands_response_type1(&self, ctx: &InnerContext<impl PldmSocket>, response: pldm_packet::GetPldmCommandsResponse) -> Result<(), ()> {
+        debug!("on_pldm_commands_response_type1");
+        Ok(())
+    }
+    fn on_cancel_discovery(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<(), ()> {
+        debug!("on_cancel_discovery");
         Ok(())
     }
 
-    fn on_pldm_types_response(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        debug!("Received GetPLDMTypes Response");
-        Ok(())
+    // Guards
+    fn is_tid_response_valid(&self, ctx: &InnerContext<impl PldmSocket>, response: &pldm_packet::GetTidResponse) -> Result<bool, ()> {
+        debug!("is_tid_response_valid");
+        Ok(true)
+    }
+    fn is_pldm_types_response_valid(&self, ctx: &InnerContext<impl PldmSocket>, response: &pldm_packet::GetPldmTypeResponse) -> Result<bool, ()> {
+        debug!("is_pldm_types_response_valid");
+        Ok(true)
+    }
+    fn is_pldm_version_response_valid(&self, ctx: &InnerContext<impl PldmSocket>, response: &pldm_packet::GetPldmVersionResponse) -> Result<bool, ()> {
+        debug!("is_pldm_version_response_valid");
+        Ok(true)
+    }
+    fn is_pldm_commands_response_valid(&self, ctx: &InnerContext<impl PldmSocket>, response: &pldm_packet::GetPldmCommandsResponse) -> Result<bool, ()> {
+        debug!("is_pldm_commands_response_valid");
+        Ok(true)
     }
 
-    fn on_pldm_version_response_type0(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        debug!("Received GetPLDMVersion Response for Type 0");
-        Ok(())
-    }
 
-    fn on_pldm_commands_response_type0(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        debug!("Received GetPLDMCommands Response for Type 0");
-        Ok(())
-    }
 
-    fn on_pldm_version_response_type1(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        debug!("Received GetPLDMVersion Response for Type 1");
-        Ok(())
-    }
 
-    fn on_pldm_commands_response_type1(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        debug!("Received GetPLDMCommands Response for Type 1");
-        Ok(())
-    }
-
-    fn on_cancel_discovery(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        debug!("Cancelling PLDM Discovery...");
-        Ok(())
-    }
 }
 
 
-pub fn verify_discovery_packet_event(packet: &RxPacket)->Result<DiscoveryAgentEvents, ()> {
+pub fn process_packet(packet: &RxPacket)->Result<DiscoveryAgentEvents, ()> {
     debug!("Handling packet: {:?}", packet);
     let header = PldmMsgHeader::decode(&packet.payload.data[..packet.payload.len]).map_err(|_| (error!("Error decoding packet!")))?;
     if !header.is_hdr_ver_valid() {
@@ -123,19 +120,35 @@ pub fn verify_discovery_packet_event(packet: &RxPacket)->Result<DiscoveryAgentEv
             match cmd {
                 PldmControlCmd::GetTid => {
                     debug!("GetTID command");
-                    Ok(DiscoveryAgentEvents::Sm(Events::GetTIDResponse(packet.clone())))
+                    if header.rq() == 0 && header.datagram() == 0 {
+                        error!("Not a GetTid response");
+                        return Err(());
+                    }
+                    Ok(DiscoveryAgentEvents::Sm(Events::GetTIDResponse(pldm_packet::GetTidResponse::decode(&packet.payload.data[..packet.payload.len]).map_err(|_| ())?)))
                 },
                 PldmControlCmd::GetPldmTypes => {
                     debug!("GetPLDMTypes command");
-                    Ok(DiscoveryAgentEvents::Sm(Events::GetPLDMTypesResponse))
+                    if header.rq() == 0 && header.datagram() == 0 {
+                        error!("Not a GetPldmTypes response");
+                        return Err(());
+                    }
+                    Ok(DiscoveryAgentEvents::Sm(Events::GetPLDMTypesResponse(pldm_packet::GetPldmTypeResponse::decode(&packet.payload.data[..packet.payload.len]).map_err(|_| ())?)))
                 },
                 PldmControlCmd::GetPldmVersion => {
                     debug!("GetPLDMVersion command");
-                    Ok(DiscoveryAgentEvents::Sm(Events::GetPLDMVersionResponse))
+                    if header.rq() == 0 && header.datagram() == 0 {
+                        error!("Not a GetPldmVersion response");
+                        return Err(());
+                    }
+                    Ok(DiscoveryAgentEvents::Sm(Events::GetPLDMVersionResponse(pldm_packet::GetPldmVersionResponse::decode(&packet.payload.data[..packet.payload.len]).map_err(|_| ())?)))
                 },
                 PldmControlCmd::GetPldmCommands => {
                     debug!("GetPLDMCommands command");
-                    Ok(DiscoveryAgentEvents::Sm(Events::GetPLDMCommandsResponse))
+                    if header.rq() == 0 && header.datagram() == 0 {
+                        error!("Not a GetPldmCommands response");
+                        return Err(());
+                    }                    
+                    Ok(DiscoveryAgentEvents::Sm(Events::GetPLDMCommandsResponse(pldm_packet::GetPldmCommandsResponse::decode(&packet.payload.data[..packet.payload.len]).map_err(|_| ())?)))
                 },
                 _ => Err(()),
             }
@@ -166,63 +179,46 @@ S: PldmSocket> Context<T,S> {
     }
 }
 
-// Implement the state machine context
-macro_rules! impl_state_machine_context {
-    ($context_type:ty, $inner_type:ty, $inner_ctx:ident, 
-        guards: [$($guard:ident $(($param:ident : $param_ty:ty))?),*], 
-        actions: [$($action:ident $(($action_param:ident : $action_ty:ty))?),*],
-        packet_handlers : [$($packet_handler:ident $(($packet_handler_param:ident : $packet_handler_ty:ty))?),*],
-        packet_verifiers : [$($packet_verifier:ident $(($packet_param:ident : $packet_ty:ty))?),*]
-    ) => {
-        impl<T: StateMachineActions, S: PldmSocket> StateMachineContext for $context_type {
-            $( 
-                fn $guard(&self $(, $param: &$param_ty)?) -> Result<bool, ()> {
-                    self.inner.$guard(&self.$inner_ctx $(, $param)?)
-                }
-            )*
 
-            $( 
-                fn $action(&mut self $(, $action_param: $action_ty)?) -> Result<(), ()> {
-                    self.inner.$action(&mut self.$inner_ctx $(, $action_param)?)
-                }
-            )*
-            
-            $( 
-                fn $packet_handler(&mut self, rx_pkt : RxPacket, $(, $packet_handler_param: $packet_handler_ty)?) -> Result<(), ()> {
-                    self.inner.$packet_handler(&mut self.$inner_ctx $(, $packet_handler_param)?)
-                }
-            )*
-            $( 
-                fn $packet_verifier(&self, rx_pkt : &RxPacket, $(, $packet_param: $packet_ty)?) -> Result<bool, ()> {
-                    self.inner.$packet_verifier(&self.$inner_ctx $(, $packet_param)?, &rx_pkt)
-                }
-            )*
+impl<T: StateMachineActions, S: PldmSocket> StateMachineContext for Context<T,S> {
+        // Actions
+        fn on_start_discovery(&mut self) -> Result<(), ()> {
+            self.inner.on_start_discovery(&mut self.inner_ctx)
         }
-    };
-}
+        fn on_tid_response(&mut self, response: pldm_packet::GetTidResponse) -> Result<(), ()> {
+            self.inner.on_tid_response(&mut self.inner_ctx, response)
+        }
+        fn on_pldm_types_response(&mut self, response: pldm_packet::GetPldmTypeResponse) -> Result<(), ()> {
+            self.inner.on_pldm_types_response(&mut self.inner_ctx, response)
+        }
+        fn on_pldm_version_response_type0(&mut self, response: pldm_packet::GetPldmVersionResponse) -> Result<(), ()> {
+            self.inner.on_pldm_version_response_type0(&mut self.inner_ctx, response)
+        }
+        fn on_pldm_commands_response_type0(&mut self, response: pldm_packet::GetPldmCommandsResponse) -> Result<(), ()> {
+            self.inner.on_pldm_commands_response_type0(&mut self.inner_ctx, response)
+        }
+        fn on_pldm_version_response_type1(&mut self, response: pldm_packet::GetPldmVersionResponse) -> Result<(), ()> {
+            self.inner.on_pldm_version_response_type1(&mut self.inner_ctx, response)
+        }
+        fn on_pldm_commands_response_type1(&mut self, response: pldm_packet::GetPldmCommandsResponse) -> Result<(), ()> {
+            self.inner.on_pldm_commands_response_type1(&mut self.inner_ctx, response)
+        }
+        fn on_cancel_discovery(&mut self) -> Result<(), ()> {
+            self.inner.on_cancel_discovery(&mut self.inner_ctx)
+        }
 
-impl_state_machine_context!(
-    Context<T,S>,
-    StateMachineActions,
-    inner_ctx,
-    guards: [
-        is_pldm_types_response_valid,
-        is_pldm_version_response_valid,
-        is_pldm_commands_response_valid
-    ],
-    actions: [
-        on_start_discovery,
-        on_pldm_types_response,
-        on_pldm_version_response_type0,
-        on_pldm_commands_response_type0,
-        on_pldm_version_response_type1,
-        on_pldm_commands_response_type1,
-        on_cancel_discovery
-    ],
-    packet_handlers: [
-        on_tid_response
-    ],
-    packet_verifiers: [
-        is_tid_response_valid
-    ]
-);
+        // Guards
+        fn is_tid_response_valid(&self, response: &pldm_packet::GetTidResponse) -> Result<bool, ()> {
+            self.inner.is_tid_response_valid(&self.inner_ctx, response)
+        }
+        fn is_pldm_types_response_valid(&self, response: &pldm_packet::GetPldmTypeResponse) -> Result<bool, ()> {
+            self.inner.is_pldm_types_response_valid(&self.inner_ctx, response)
+        }
+        fn is_pldm_version_response_valid(&self, response: &pldm_packet::GetPldmVersionResponse) -> Result<bool, ()> {
+            self.inner.is_pldm_version_response_valid(&self.inner_ctx, response)
+        }
+        fn is_pldm_commands_response_valid(&self, response: &pldm_packet::GetPldmCommandsResponse) -> Result<bool, ()> {
+            self.inner.is_pldm_commands_response_valid(&self.inner_ctx, response)
+        }
+    
+}

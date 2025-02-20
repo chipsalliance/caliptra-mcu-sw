@@ -6,6 +6,12 @@ pub trait PldmTransport<T : PldmSocket> {
     fn create_socket(&self, source: SockId, dest: SockId) -> Result<T, ()>;
 }
 
+pub enum FilterType {
+    Any,
+    Request,
+    Response,
+}
+
 pub const MAX_PLDM_PAYLOAD_SIZE: usize = 1024;
 /// A trait representing a PLDM (Platform Level Data Model) socket for sending and receiving MCTP (Management Component Transport Protocol) packets.
 pub trait PldmSocket {
@@ -25,7 +31,9 @@ pub trait PldmSocket {
     /// # Returns
     ///
     /// * `Result<TransportPacket, ()>` - Returns `Ok(TransportPacket)` if a packet was received successfully, otherwise returns `Err(())`.
-    fn receive(&self, timeout: Option<Duration>) -> Result<RxPacket, ()>;
+    fn receive(&self, timeout: Option<Duration>, filter: FilterType) -> Result<RxPacket, ()>;
+
+    fn connect(&self) -> Result<(), ()>;
 
     fn disconnect(&self);
 

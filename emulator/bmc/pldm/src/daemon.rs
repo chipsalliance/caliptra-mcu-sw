@@ -2,7 +2,6 @@ use crate::transport::{PldmSocket,RxPacket};
 use crate::event_queue::EventQueue;
 use crate::events::PldmEvents;
 use crate::discovery_sm;
-use pldm_common::{codec::PldmCodec, protocol::base::{PldmControlCmd, PldmMsgHeader}};
 use log::{debug, error, info, trace, warn};
 
 pub struct Daemon {
@@ -67,17 +66,10 @@ impl Daemon {
 
     pub fn handle_packet(packet : &RxPacket) -> Result<PldmEvents, ()> {
         debug!("Handling packet: {:?}", packet);
-        let header = PldmMsgHeader::decode(&packet.payload.data[..packet.payload.len]).map_err(|_| ( error!("Error decoding packet!")))?;
-        if !header.is_hdr_ver_valid() {
-            error!("Invalid header version!");
-            return Err(());
+        let event = discovery_sm::process_packet(packet);
+        if event.is_ok() {
+            return Ok(PldmEvents::Discovery(event.unwrap()));
         }
-        
-        if !header.is_valid_msg_type() {
-            error!("Invalid msg type!");
-            return Err(());
-        }
-        discovery_sm::verify_discovery_packet_event(packet)?;
         Ok(PldmEvents::TestEvent1)
     }
 }
