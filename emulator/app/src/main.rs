@@ -302,7 +302,7 @@ fn test_marco(port: u16, target_addr: DynamicI3cAddress) ->Result<(), ()> {
     let msg_tag = mctp_util.get_msg_tag();
     let running = Arc::new(AtomicBool::new(true));
 
-//    mctp_util.send_request(msg_tag, &mctp_payload, running, &mut stream, target_addr.into());
+    mctp_util.send_request(msg_tag, &mctp_payload, running, &mut stream, target_addr.into());
 
 
 
