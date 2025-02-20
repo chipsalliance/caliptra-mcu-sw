@@ -28,3 +28,9 @@ pub enum PldmError {
     InvalidGetStatusReasonCode,
     InvalidAuxStateStatus,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TransportError {
+    InvalidMctpPayloadLength,
+    InvalidMctpMsgType,
+}
