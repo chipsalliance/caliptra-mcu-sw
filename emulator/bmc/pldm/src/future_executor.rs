@@ -1,10 +1,10 @@
-use std::thread;
-use std::sync::{Arc, Mutex};
+use futures::future::poll_fn;
 use std::future::Future;
 use std::pin::Pin;
-use futures::future::poll_fn;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 /// A struct to manage running a Future inside a separate thread
 pub struct FutureExecutor<T> {
@@ -22,18 +22,21 @@ impl<T> FutureExecutor<T> {
         let result = Arc::new(Mutex::new(None));
         let result_clone = Arc::clone(&result);
         let handle = thread::spawn(move || {
-            result_clone.lock().unwrap().replace(futures::executor::block_on(async {
-                poll_future(future).await
-            }));
+            result_clone
+                .lock()
+                .unwrap()
+                .replace(futures::executor::block_on(async {
+                    poll_future(future).await
+                }));
         });
 
         Self {
             handle: Some(handle),
-            result
+            result,
         }
     }
 
-    pub fn get_output(self) -> Result<T,()> {
+    pub fn get_output(self) -> Result<T, ()> {
         self.handle.unwrap().join().map_err(|_| ())?;
         self.result.lock().unwrap().take().ok_or(())
     }
@@ -45,8 +48,6 @@ fn poll_future<F: Future>(mut fut: F) -> impl Future<Output = F::Output> {
         pinned_fut.poll(cx)
     })
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -61,6 +62,5 @@ mod tests {
 
         let future_thread = FutureExecutor::spawn(future);
         assert!(future_thread.get_output().unwrap() == 42);
-        
     }
 }

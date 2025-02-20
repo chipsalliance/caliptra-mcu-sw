@@ -1,6 +1,6 @@
-use smlang::statemachine;
 use crate::event_queue::EventQueue;
 use crate::transport::PldmSocket;
+use smlang::statemachine;
 
 #[derive(Debug, Clone, Default)]
 pub enum UpdateAgentEvents {
@@ -9,7 +9,6 @@ pub enum UpdateAgentEvents {
     Rx,
     DeferredTx,
 }
-
 
 // Define the state machine
 statemachine! {
@@ -52,151 +51,150 @@ statemachine! {
 
 pub trait StateMachineActions {
     // Guards
-    fn can_start(&self, ctx : &InnerContext, some_value : &u32) -> Result<bool, ()> {
+    fn can_start(&self, ctx: &InnerContext, some_value: &u32) -> Result<bool, ()> {
         println!("Can Start Update {}", some_value);
         Ok(true)
     }
-    fn is_request_update_response_valid(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn is_request_update_response_valid(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn is_pass_component_response_valid(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn is_pass_component_response_valid(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn are_all_components_passed(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn are_all_components_passed(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn can_update_component(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn can_update_component(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn can_update_invalid(&self, ctx : &InnerContext) -> Result<bool, ()> {
-        Ok(false)  // Example case where invalid data should not allow transition
+    fn can_update_invalid(&self, ctx: &InnerContext) -> Result<bool, ()> {
+        Ok(false) // Example case where invalid data should not allow transition
     }
 
-    fn can_request_firmware(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn can_request_firmware(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn can_transfer_fail(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn can_transfer_fail(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn can_transfer_success(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn can_transfer_success(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn can_get_status(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn can_get_status(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn can_verify_success(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn can_verify_success(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn can_verify_fail(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn can_verify_fail(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn can_apply_success(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn can_apply_success(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn can_apply_fail(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn can_apply_fail(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn can_activate_firmware(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn can_activate_firmware(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn can_get_metadata(&self, ctx : &InnerContext) -> Result<bool, ()> {
+    fn can_get_metadata(&self, ctx: &InnerContext) -> Result<bool, ()> {
         Ok(true)
     }
 
     // Actions
-    fn on_start_update(&mut self, ctx : &mut InnerContext, some_value : u32) -> Result<(), ()> {
+    fn on_start_update(&mut self, ctx: &mut InnerContext, some_value: u32) -> Result<(), ()> {
         println!("Starting Update {}", some_value);
         ctx.event_queue.enqueue(UpdateAgentEvents::Rx);
         Ok(())
     }
-    fn on_request_update_response(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_request_update_response(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Requesting Update");
         Ok(())
     }
 
-    fn on_pass_component_response(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_pass_component_response(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Passing Component");
         Ok(())
     }
 
-    fn on_update_component(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_update_component(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Updating Component");
         Ok(())
     }
 
-    fn on_update_invalid(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_update_invalid(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Invalid Update Data");
         Ok(())
     }
 
-    fn on_request_firmware(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_request_firmware(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Requesting Firmware Data");
         Ok(())
     }
 
-    fn on_transfer_fail(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_transfer_fail(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Transfer Failed");
         Ok(())
     }
 
-    fn on_transfer_success(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_transfer_success(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Transfer Successful");
         Ok(())
     }
 
-    fn on_get_status(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_get_status(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Getting Status");
         Ok(())
     }
 
-    fn on_verify_success(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_verify_success(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Verification Successful");
         Ok(())
     }
 
-    fn on_verify_fail(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_verify_fail(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Verification Failed");
         Ok(())
     }
 
-    fn on_apply_success(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_apply_success(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Apply Successful");
         Ok(())
     }
 
-    fn on_apply_fail(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_apply_fail(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Apply Failed");
         Ok(())
     }
 
-    fn on_activate_firmware(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_activate_firmware(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Activating Firmware");
         Ok(())
     }
 
-    fn on_get_metadata(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_get_metadata(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Getting Metadata");
         Ok(())
     }
 
-    fn on_cancel_update(&mut self, ctx : &mut InnerContext) -> Result<(), ()> {
+    fn on_cancel_update(&mut self, ctx: &mut InnerContext) -> Result<(), ()> {
         println!("Cancelling Update");
         Ok(())
     }
-
 }
 
 // Implement the context struct
@@ -213,15 +211,17 @@ pub struct Context<T: StateMachineActions> {
 }
 
 impl<T: StateMachineActions> Context<T> {
-    pub fn new(context: T, event_queue : EventQueue<UpdateAgentEvents>) -> Self {
-        Self { inner: context, inner_ctx: InnerContext { event_queue } }
+    pub fn new(context: T, event_queue: EventQueue<UpdateAgentEvents>) -> Self {
+        Self {
+            inner: context,
+            inner_ctx: InnerContext { event_queue },
+        }
     }
 }
 
-
 macro_rules! impl_state_machine_context {
-    ($context_type:ty, $inner_type:ty, $inner_ctx:ident, 
-        guards: [$($guard:ident $(($param:ident : $param_ty:ty))?),*], 
+    ($context_type:ty, $inner_type:ty, $inner_ctx:ident,
+        guards: [$($guard:ident $(($param:ident : $param_ty:ty))?),*],
         actions: [$($action:ident $(($action_param:ident : $action_ty:ty))?),*]
     ) => {
         impl<T: StateMachineActions> StateMachineContext for $context_type {

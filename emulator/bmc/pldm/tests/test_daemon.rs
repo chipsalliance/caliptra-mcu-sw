@@ -1,13 +1,12 @@
 #[cfg(test)]
 mod mock_transport;
 use futures::future;
-use mock_transport::{MockTransport,MockPldmSocket};
+use mock_transport::{MockPldmSocket, MockTransport};
 
-
-use pldm_ua::update_sm::DefaultActions;
-use pldm_ua::transport::{PldmTransport,PldmSocket};
 use pldm_ua::daemon::Daemon;
 use pldm_ua::future_executor::FutureExecutor;
+use pldm_ua::transport::{PldmSocket, PldmTransport};
+use pldm_ua::update_sm::DefaultActions;
 
 // create a unit test for update_agent
 
@@ -27,7 +26,4 @@ fn test_daemon() {
     fd_sock.disconnect();
 
     let _z = y.get_output().unwrap();
-
-    
-    
 }

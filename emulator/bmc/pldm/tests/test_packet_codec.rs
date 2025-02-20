@@ -1,9 +1,10 @@
-
 // Create a unit test to encode pldm packet header
 
 #[cfg(test)]
 mod test_packet_codec {
-    use pldm_common::protocol::base::{PldmMsgHeader, PldmMsgType, PldmControlCmd, PldmSupportedType};
+    use pldm_common::protocol::base::{
+        PldmControlCmd, PldmMsgHeader, PldmMsgType, PldmSupportedType,
+    };
     use pldm_fw::GetStatusResponse;
     #[test]
     fn test_encode_header() {
@@ -12,15 +13,19 @@ mod test_packet_codec {
             0x0a,
             PldmMsgType::Request,
             PldmSupportedType::FwUpdate,
-            PldmControlCmd::GetPldmTypes as u8
+            PldmControlCmd::GetPldmTypes as u8,
         );
         // Print bytes as hex
         let raw_bytes = header.0;
         println!(
             "Hex Dump: {}",
-            raw_bytes.iter().map(|b| format!("{:02X}", b)).collect::<Vec<String>>().join(" ")
+            raw_bytes
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<String>>()
+                .join(" ")
         );
-        
+
         // Expected header bytes : 2a 05 04
 
         // Expected header to be size 3 only (from rq to command code)
@@ -34,7 +39,5 @@ mod test_packet_codec {
 
         // Expect byte2 to be 0x04
         assert_eq!(raw_bytes[2], 0x04);
-
-
     }
 }

@@ -2,9 +2,9 @@
 mod mock_transport;
 use mock_transport::MockTransport;
 
+use pldm_ua::transport::{FilterType, PldmSocket, PldmTransport};
 use pldm_ua::update_agent::UpdateAgent;
 use pldm_ua::update_sm::DefaultActions;
-use pldm_ua::transport::{PldmTransport,PldmSocket};
 use std::sync::Arc;
 
 // create a unit test for update_agent
@@ -24,19 +24,16 @@ fn test_update_agent() {
         let mut update_agent = UpdateAgent::new(DefaultActions {}, ua_sock);
         update_agent.start_update().unwrap();
     });
-    
 
-    fd_sock.send(&[1,2,3]).unwrap();
+    fd_sock.send(&[1, 2, 3]).unwrap();
 
-    println!("Received in FD: {}", fd_sock.receive(None).unwrap());
+    println!("Received in FD: {}", fd_sock.receive(None, FilterType::Any).unwrap());
 
-    fd_sock.send(&[4,5,6,7,8]).unwrap();
+    fd_sock.send(&[4, 5, 6, 7, 8]).unwrap();
 
-    println!("Received in FD: {}", fd_sock.receive(None).unwrap());    
-
+    println!("Received in FD: {}", fd_sock.receive(None, FilterType::Any).unwrap());
 
     fd_sock.disconnect();
-    
+
     let _x = ua_thread.join();
-    
 }

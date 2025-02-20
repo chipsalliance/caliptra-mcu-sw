@@ -1,8 +1,7 @@
 use core::fmt::{Display, Formatter};
 use core::time::Duration;
 
-
-pub trait PldmTransport<T : PldmSocket> {
+pub trait PldmTransport<T: PldmSocket> {
     fn create_socket(&self, source: SockId, dest: SockId) -> Result<T, ()>;
 }
 
@@ -40,12 +39,11 @@ pub trait PldmSocket {
     fn clone(&self) -> Self;
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct SockId(pub u8);
 #[derive(Debug, Clone)]
 pub struct Payload {
-    pub data: [u8;MAX_PLDM_PAYLOAD_SIZE],
+    pub data: [u8; MAX_PLDM_PAYLOAD_SIZE],
     pub len: usize,
 }
 
@@ -60,7 +58,12 @@ impl Default for Payload {
 
 impl Display for Payload {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Payload {{ data: {:?}, len: {} }}", &self.data[..self.len], self.len)
+        write!(
+            f,
+            "Payload {{ data: {:?}, len: {} }}",
+            &self.data[..self.len],
+            self.len
+        )
     }
 }
 
@@ -68,17 +71,21 @@ impl Display for Payload {
 pub struct TxPacket {
     pub src: SockId,
     pub dest: SockId,
-    pub payload: Payload
+    pub payload: Payload,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct RxPacket {
     pub src: SockId,
-    pub payload: Payload
+    pub payload: Payload,
 }
 
 impl Display for RxPacket {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "RxPacket {{ src: {:?}, payload: {} }}", self.src, self.payload)
+        write!(
+            f,
+            "RxPacket {{ src: {:?}, payload: {} }}",
+            self.src, self.payload
+        )
     }
 }

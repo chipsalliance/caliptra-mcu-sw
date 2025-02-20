@@ -77,7 +77,6 @@ fn handle_i3c_socket_loop(
     while running.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, addr)) => {
-
                 println!("Accepted connection from {}", addr);
                 handle_i3c_socket_connection(
                     running.clone(),
@@ -124,7 +123,10 @@ fn handle_i3c_socket_connection(
         let mut incoming_header_bytes = [0u8; 9];
         match stream.read_exact(&mut incoming_header_bytes) {
             Ok(()) => {
-                println!("i3c_socket: received message with length {}", incoming_header_bytes.len());
+                println!(
+                    "i3c_socket: received message with length {}",
+                    incoming_header_bytes.len()
+                );
                 let incoming_header: IncomingHeader = transmute!(incoming_header_bytes);
                 let cmd: I3cTcriCommand = incoming_header.command.try_into().unwrap();
 

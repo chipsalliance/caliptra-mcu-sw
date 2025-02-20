@@ -2,15 +2,18 @@
 use thingbuf::mpsc::{self, blocking};
 
 /// Thread-safe event queue
-pub struct EventQueue<Event : Default + Clone> {
+pub struct EventQueue<Event: Default + Clone> {
     sender: blocking::Sender<Event>,
-    receiver: Option<blocking::Receiver<Event>>
+    receiver: Option<blocking::Receiver<Event>>,
 }
 
-impl<Event:Default + Clone> EventQueue<Event> {
+impl<Event: Default + Clone> EventQueue<Event> {
     pub fn new() -> (Self) {
         let (tx, rx) = mpsc::blocking::channel::<Event>(20);
-        Self { sender: tx , receiver: Some(rx)}
+        Self {
+            sender: tx,
+            receiver: Some(rx),
+        }
     }
 
     pub fn enqueue(&self, event: Event) {
@@ -30,7 +33,7 @@ impl<Event:Default + Clone> EventQueue<Event> {
     pub fn clone(&self) -> Self {
         Self {
             sender: self.sender.clone(),
-            receiver: None // Receiver cannot be cloned
+            receiver: None, // Receiver cannot be cloned
         }
     }
 }
@@ -51,13 +54,12 @@ impl Default for TestEvent {
     }
 }
 
-
 #[test]
 fn test_event_queue() {
     let queue = EventQueue::new();
 
     // Spawn a thread to enqueue events
-    let queue_clone : EventQueue<TestEvent>= queue.clone();
+    let queue_clone: EventQueue<TestEvent> = queue.clone();
     thread::spawn(move || {
         for i in 0..5 {
             queue_clone.enqueue(TestEvent::DataReceived(i));
@@ -71,7 +73,7 @@ fn test_event_queue() {
             queue_clone.enqueue(TestEvent::DataReceived(i));
             thread::sleep(Duration::from_millis(100));
         }
-    });    
+    });
 
     // Dequeue events in the main thread
     for _ in 0..7 {

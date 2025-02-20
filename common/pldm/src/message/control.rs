@@ -221,7 +221,7 @@ impl PldmCodec for GetPldmCommandsRequest {
     }
 }
 
-#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq,Clone)]
+#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
 #[repr(C, packed)]
 pub struct GetPldmCommandsResponse {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
@@ -313,7 +313,7 @@ fn construct_bitmap<const N: usize>(items: &[u8]) -> [u8; N] {
     result
 }
 
-#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq,Clone)]
+#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
 #[repr(C, packed)]
 pub struct GetPldmTypeResponse {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
@@ -405,7 +405,7 @@ impl PldmCodec for GetPldmVersionRequest {
     }
 }
 
-#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq,Clone)]
+#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
 #[repr(C, packed)]
 pub struct GetPldmVersionResponse {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,

@@ -1,26 +1,27 @@
-use crate::update_sm::{StateMachine, Context, StateMachineActions, States};
-use crate::transport::{FilterType, PldmSocket};
 use crate::event_queue::EventQueue;
-use crate::update_sm::{UpdateAgentEvents,Events as SmEvents};
+use crate::transport::{FilterType, PldmSocket};
+use crate::update_sm::{Context, StateMachine, StateMachineActions, States};
+use crate::update_sm::{Events as SmEvents, UpdateAgentEvents};
 
 pub struct UpdateAgent<T: StateMachineActions, S: PldmSocket> {
     sm: StateMachine<Context<T>>,
-    socket : S,
-    event_queue : EventQueue<UpdateAgentEvents>
+    socket: S,
+    event_queue: EventQueue<UpdateAgentEvents>,
 }
 
-impl<T: StateMachineActions, S: PldmSocket> UpdateAgent<T,S> {
+impl<T: StateMachineActions, S: PldmSocket> UpdateAgent<T, S> {
     pub fn new(transitions: T, socket: S) -> Self {
         let q = EventQueue::new();
         Self {
             sm: StateMachine::new(Context::new(transitions, q.clone())),
             socket,
-            event_queue: q
+            event_queue: q,
         }
     }
 
     pub fn start_update(&mut self) -> Result<(), ()> {
-        self.event_queue.enqueue(UpdateAgentEvents::Sm(SmEvents::StartUpdate(5)));
+        self.event_queue
+            .enqueue(UpdateAgentEvents::Sm(SmEvents::StartUpdate(5)));
 
         self.process_events()
     }
@@ -29,13 +30,9 @@ impl<T: StateMachineActions, S: PldmSocket> UpdateAgent<T,S> {
         match event {
             UpdateAgentEvents::Sm(sm_event) => {
                 println!("Processing state machine event: {:?}", sm_event);
-                self.sm.process_event(sm_event)
-                    .map(|_| ())
-                    .map_err(|_| ())
+                self.sm.process_event(sm_event).map(|_| ()).map_err(|_| ())
             }
-            UpdateAgentEvents::Rx => {
-                self.listen()
-            }
+            UpdateAgentEvents::Rx => self.listen(),
             UpdateAgentEvents::DeferredTx => {
                 println!("Processing deferred transaction");
                 Ok(())
@@ -55,33 +52,28 @@ impl<T: StateMachineActions, S: PldmSocket> UpdateAgent<T,S> {
                     return Err(());
                 }
             }
-        } 
+        }
         println!("Update Agent Exiting");
         Ok(())
-
     }
     fn listen(&mut self) -> Result<(), ()> {
-
         match self.socket.receive(None, FilterType::Any).map_err(|_| ()) {
             Ok(rx_pkt) => {
                 println!("Received request: {}", rx_pkt);
-                let _x = self.socket.send(&[1,2,3,4]);
+                let _x = self.socket.send(&[1, 2, 3, 4]);
                 self.event_queue.enqueue(UpdateAgentEvents::Rx);
-            },
+            }
             Err(_) => {
                 println!("Error receiving packet");
-                self.event_queue.enqueue(UpdateAgentEvents::Sm(SmEvents::StopUpdate));
+                self.event_queue
+                    .enqueue(UpdateAgentEvents::Sm(SmEvents::StopUpdate));
             }
         }
 
-
- 
         println!("Update Agent Exiting");
         Ok(())
     }
     fn handle_pldm_packet(&mut self, pkt: &[u8]) -> Result<(), ()> {
-
         Ok(())
     }
-
 }
