@@ -221,7 +221,7 @@ pub fn start_caliptra(
                 .try_into()
                 .expect("mfg_pk_hash must be 48 bytes"),
         );
-        soc_ifc.fuse_key_manifest_pk_hash().write(&mfg_pk_hash);
+        soc_ifc.fuse_vendor_pk_hash().write(&mfg_pk_hash);
     }
 
     if !owner_pk_hash.is_empty() {
@@ -230,7 +230,7 @@ pub fn start_caliptra(
                 .try_into()
                 .expect("owner_pk_hash must be 48 bytes"),
         );
-        soc_ifc.fuse_owner_pk_hash().write(&owner_pk_hash);
+        soc_ifc.cptra_owner_pk_hash().write(&owner_pk_hash);
     }
 
     // Populate DBG_MANUF_SERVICE_REG
