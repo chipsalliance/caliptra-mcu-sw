@@ -93,14 +93,15 @@ impl VersionRespCommon<[u8; VERSION_RESP_COMMON_SIZE]> {
 impl Codec for VersionRespCommon<[u8; VERSION_RESP_COMMON_SIZE]> {
     fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
         let len: usize = core::mem::size_of::<Self>();
-
-        // Make space for data
-        buf.put_data(len)?;
+        if buf.data_len() < len {
+            Err(CodecError::BufferTooSmall)?;
+        }
 
         let rsp = buf.data_mut(len)?;
-        let mut buf_hdr: VersionRespCommon<[u8; VERSION_RESP_COMMON_SIZE]> =
-            VersionRespCommon::read_from_bytes(rsp).map_err(|_| CodecError::ReadError)?;
-        buf_hdr.set_version_num_entry_count(self.version_num_entry_count());
+        let src_bytes = self.as_bytes();
+        rsp.copy_from_slice(src_bytes);
+
+        buf.pull_data(len)?;
 
         Ok(len)
     }
@@ -125,10 +126,10 @@ bitfield! {
 pub struct VersionNumberEntry(MSB0 [u8]);
 impl Debug;
 u8;
-    pub major, set_major: 3, 0;
-    pub minor, set_minor: 7, 4;
-    pub update_ver , set_update_ver: 11, 8;
-    pub alpha, set_alpha: 15, 12;
+    pub update_ver, set_update_ver: 3, 0;
+    pub alpha, set_alpha: 7, 4;
+    pub major, set_major: 11, 8;
+    pub minor, set_minor: 15, 12;
 }
 
 impl Default for VersionNumberEntry<[u8; 2]> {
@@ -141,7 +142,9 @@ impl VersionNumberEntry<[u8; 2]> {
     pub fn new(version: SpdmVersion) -> Self {
         let mut entry = VersionNumberEntry([0u8; 2]);
         entry.set_major(version.major());
+        assert!(entry.minor() != 1);
         entry.set_minor(version.minor());
+        // assert!(entry.minor() != version.minor());
         entry
     }
 }

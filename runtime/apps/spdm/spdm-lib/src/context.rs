@@ -14,6 +14,7 @@ use zerocopy::{FromBytes, IntoBytes};
 // use libsyscall_caliptra::mctp::{driver_num, Mctp};
 use crate::error::*;
 use core::fmt::Write;
+use core::time;
 use libtock_console::{Console, ConsoleWriter};
 use libtock_platform::Syscalls;
 
@@ -152,12 +153,20 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
     ) -> SpdmResult<()> {
         let spdm_version = self.state.version_number();
         let spdm_resp_hdr = SpdmMsgHdr::new(spdm_version, resp_code);
+        writeln!(
+            self.cw,
+            "SPDM_LIB: Sending response with version {:?} resp_code {:?} cur data offset : {:?}",
+            spdm_resp_hdr.version(),
+            spdm_resp_hdr.req_resp_code(),
+            resp.data_offset()
+        )
+        .unwrap();
         let mut len = match spdm_resp_hdr.encode(resp) {
             Ok(len) => len,
             Err(_) => return Err(SpdmError::BufferTooSmall),
         };
 
-        let len = resp.len();
+        let len = resp.data_len();
 
         writeln!(
             self.cw,
@@ -229,20 +238,21 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         let total_payload_len = core::mem::size_of::<VersionRespCommon<[u8; 4]>>()
             + entry_count as usize * core::mem::size_of::<VersionNumberEntry<[u8; 2]>>();
 
-        // Make space for payload
-        // match rsp_buf.put_data(total_payload_len) {
-        //     Ok(_) => {
-        //         writeln!(
-        //             self.cw,
-        //             "SPDM_LIB 2: Making space for payload cur len {} data len {} {:?}",
-        //             rsp_buf.len(),
-        //             rsp_buf.data_len(),
-        //             rsp_buf.total_data(),
-        //         )
-        //         .unwrap();
-        //     }
-        //     Err(_) => return CommandResult::ErrorNoResponse(CommandError::BufferTooSmall),
-        // };
+        // Make space for total payload
+        match rsp_buf.put_data(total_payload_len) {
+            Ok(_) => {
+                writeln!(
+                    self.cw,
+                    "SPDM_LIB 2: Making space for payload cur len {} data len {} data offset {} {:?}",
+                    rsp_buf.len(),
+                    rsp_buf.data_len(),
+                    rsp_buf.data_offset(),
+                    rsp_buf.total_data(),
+                )
+                .unwrap();
+            }
+            Err(_) => return CommandResult::ErrorNoResponse(CommandError::BufferTooSmall),
+        };
 
         // Encode
         let resp_common = VersionRespCommon::new(entry_count);
@@ -253,9 +263,10 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
 
         writeln!(
             self.cw,
-            "SPDM_LIB 3: Generating version response cur len {} data len {} {:?} entry count {}",
+            "SPDM_LIB 3: Generating version response cur len {} data len {} data offset {} {:?} entry count {}",
             rsp_buf.len(),
             rsp_buf.data_len(),
+            rsp_buf.data_offset(),
             rsp_buf.total_data(),
             resp_common.version_num_entry_count(),
         )
@@ -265,20 +276,20 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         let payload_len =
             entry_count as usize * core::mem::size_of::<VersionNumberEntry<[u8; 2]>>();
 
-        // Make space for payload
-        match rsp_buf.put_data(payload_len) {
-            Ok(_) => {
-                writeln!(
-                    self.cw,
-                    "SPDM_LIB 3.1: Generating version response cur len {} data len {} {:?}",
-                    rsp_buf.len(),
-                    rsp_buf.data_len(),
-                    rsp_buf.total_data(),
-                )
-                .unwrap();
-            }
-            Err(_) => return CommandResult::ErrorNoResponse(CommandError::BufferTooSmall),
-        };
+        // // Make space for payload
+        // match rsp_buf.put_data(payload_len) {
+        //     Ok(_) => {
+        //         writeln!(
+        //             self.cw,
+        //             "SPDM_LIB 3.1: Generating version response cur len {} data len {} {:?}",
+        //             rsp_buf.len(),
+        //             rsp_buf.data_len(),
+        //             rsp_buf.total_data(),
+        //         )
+        //         .unwrap();
+        //     }
+        //     Err(_) => return CommandResult::ErrorNoResponse(CommandError::BufferTooSmall),
+        // };
 
         // Get the data buffer for the payload and fill it
         let payload = match rsp_buf.data_mut(payload_len) {
@@ -289,19 +300,39 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         for (i, &version) in self.supported_versions.iter().enumerate() {
             let entry = VersionNumberEntry::new(version);
             let entry_bytes = entry.as_bytes();
+            writeln!(
+                self.cw,
+                "SPDM_LIB 4.1: Entry {}  {:?} Version.major {} Version.minor {}",
+                i,
+                entry_bytes,
+                entry.major(),
+                entry.minor()
+            )
+            .unwrap();
             let start = i * entry_bytes.len();
             let end = start + entry_bytes.len();
             payload[start..end].copy_from_slice(entry_bytes);
+        }
+        match rsp_buf.pull_data(payload_len) {
+            Ok(_) => {}
+            Err(_) => return CommandResult::ErrorNoResponse(CommandError::BufferTooSmall),
         }
 
         let final_len = rsp_buf.len();
         writeln!(
             self.cw,
-            "SPDM_LIB 4: Generating version response cur len {} {:?}",
+            "SPDM_LIB 4: Generating version response cur len {} data offset {} {:?}",
             final_len,
+            rsp_buf.data_offset(),
             rsp_buf.total_data()
         )
         .unwrap();
+
+        // Push data offset up by total payload length
+        match rsp_buf.push_data(total_payload_len) {
+            Ok(_) => {}
+            Err(_) => return CommandResult::ErrorNoResponse(CommandError::BufferTooSmall),
+        };
 
         CommandResult::Success
     }

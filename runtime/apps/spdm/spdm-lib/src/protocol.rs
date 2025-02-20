@@ -49,10 +49,7 @@ impl Codec for SpdmMsgHdr {
 
         let header = buf.data_mut(len)?;
 
-        let mut buf_hdr: SpdmMsgHdr =
-            SpdmMsgHdr::read_from_bytes(header).map_err(|_| CodecError::ReadError)?;
-        buf_hdr.set_version(self.version());
-        buf_hdr.set_req_resp_code(self.req_resp_code());
+        self.write_to(header).map_err(|_| CodecError::WriteError)?;
 
         Ok(len)
     }
@@ -65,7 +62,6 @@ impl Codec for SpdmMsgHdr {
         let hdr_bytes = buf.data(len)?;
 
         let hdr = SpdmMsgHdr::read_from_bytes(hdr_bytes).map_err(|_| CodecError::ReadError)?;
-        assert!(hdr.version == 0x10);
         buf.pull_data(len)?;
         Ok(hdr)
     }

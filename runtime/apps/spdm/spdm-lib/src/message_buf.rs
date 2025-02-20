@@ -96,6 +96,8 @@ pub enum CodecError {
     BufferTooSmall,
     #[error("Read from buffer bytes error")]
     ReadError,
+    #[error("Write to buffer bytes error")]
+    WriteError,
     #[error("Buffer overflow")]
     BufferOverflow,
     #[error("Buffer underflow")]
@@ -185,7 +187,7 @@ impl<'a> MessageBuf<'a> {
     /// header.copy_from_slice(&[1; 8]);
     /// ```
     pub fn push_data(&mut self, len: usize) -> CodecResult<()> {
-        if self.data < len {
+        if self.data - len < self.head {
             return Err(CodecError::BufferUnderflow);
         }
         self.data -= len;
@@ -226,7 +228,7 @@ impl<'a> MessageBuf<'a> {
     }
 
     pub fn total_data(&self) -> &[u8] {
-        &self.buffer[self.data..self.tail]
+        &self.buffer[..self.tail]
     }
 
     pub fn data_mut(&mut self, len: usize) -> CodecResult<&mut [u8]> {
@@ -234,6 +236,10 @@ impl<'a> MessageBuf<'a> {
             return Err(CodecError::BufferOverflow);
         }
         Ok(&mut self.buffer[self.data..self.data + len])
+    }
+
+    pub fn data_offset(&self) -> usize {
+        self.data
     }
 
     // pub fn data_at(&self, offset: usize, len: usize) -> CodecResult<&[u8]> {
