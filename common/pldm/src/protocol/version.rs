@@ -44,50 +44,55 @@ impl TryFrom<ProtocolVersionStr> for PldmVersion {
     type Error = String;
 
     fn try_from(version: ProtocolVersionStr) -> Result<Self, Self::Error> {
-        // alpha can be attached to either minor or update
+        let mut parts = version.split('.');
+        let major_str = parts
+            .next()
+            .ok_or_else(|| "Invalid version format".to_string())?;
+        let minor_str = parts
+            .next()
+            .ok_or_else(|| "Invalid version format".to_string())?;
+        let update_str = parts.next().unwrap_or("FF");
 
-        let mut version_parts = version.split('.').collect::<Vec<ProtocolVersionStr>>();
-        if version_parts.len() < 2 || version_parts.len() > 3 {
+        if parts.next().is_some() {
             return Err("Invalid version format".to_string());
         }
 
-        // Extract alpha, update, minor and major from the version string
-        let alpha = if version_parts[1].chars().last().unwrap().is_alphabetic() {
-            let alpha = version_parts[1].chars().last().unwrap() as u8;
-            version_parts[1] = &version_parts[1][..version_parts[1].len() - 1];
-            alpha
-        } else if version_parts.len() > 2
-            && version_parts[2].chars().last().unwrap().is_alphabetic()
-        {
-            let alpha = version_parts[2].chars().last().unwrap() as u8;
-            version_parts[2] = &version_parts[2][..version_parts[2].len() - 1];
-            alpha
+        let (alpha, minor_str) = if let Some(last_char) = minor_str.chars().last() {
+            if last_char.is_alphabetic() {
+                (last_char as u8, &minor_str[..minor_str.len() - 1])
+            } else {
+                (0, minor_str)
+            }
         } else {
-            0
+            (0, minor_str)
         };
 
-        let update = if version_parts.len() == 3 {
-            version_parts[2]
+        let (alpha, update_str) = if update_str != "FF" {
+            if let Some(last_char) = update_str.chars().last() {
+                if last_char.is_alphabetic() {
+                    (last_char as u8, &update_str[..update_str.len() - 1])
+                } else {
+                    (alpha, update_str)
+                }
+            } else {
+                (alpha, update_str)
+            }
+        } else {
+            (alpha, update_str)
+        };
+
+        let major = major_str
+            .parse::<u8>()
+            .map_err(|_| "Invalid major version")?;
+        let minor = minor_str
+            .parse::<u8>()
+            .map_err(|_| "Invalid minor version")?;
+        let update = if update_str == "FF" {
+            0xFF
+        } else {
+            update_str
                 .parse::<u8>()
                 .map_err(|_| "Invalid update version")?
-        } else {
-            0xFF
-        };
-
-        let minor = if version_parts[1] == "FF" {
-            return Err("Invalid minor version".to_string());
-        } else {
-            version_parts[1]
-                .parse::<u8>()
-                .map_err(|_| "Invalid minor version")?
-        };
-
-        let major = if version_parts[0] == "FF" {
-            return Err("Invalid major string".to_string());
-        } else {
-            version_parts[0]
-                .parse::<u8>()
-                .map_err(|_| "Invalid major version")?
         };
 
         Ok(PldmVersion {
@@ -249,6 +254,21 @@ mod test {
 
         let test_version3 = PldmVersion::bcd_decode_from_ver32(0xF1F0FF62);
         assert_eq!(test_version3, PldmVersion::new(0x62, 0xFF, 0x0, 0x1));
+    }
+
+    #[test]
+    fn test_pldm_version_str_to_ver32() {
+        let test_version1 = "1.3.0";
+        let test_version1_ver32 = PldmVersion::try_from(test_version1)
+            .unwrap()
+            .bcd_encode_to_ver32();
+        assert_eq!(test_version1_ver32, 0xF1F3F000);
+
+        let test_version2 = "1.1.0";
+        let test_version2_ver32 = PldmVersion::try_from(test_version2)
+            .unwrap()
+            .bcd_encode_to_ver32();
+        assert_eq!(test_version2_ver32, 0xF1F1F000);
     }
 
     #[test]

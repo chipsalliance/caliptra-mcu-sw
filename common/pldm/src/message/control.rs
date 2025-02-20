@@ -7,7 +7,6 @@ use crate::protocol::base::{
     TransferOperationFlag, TransferRespFlag, PLDM_MSG_HEADER_LEN,
 };
 use crate::protocol::version::{PldmVersion, ProtocolVersionStr, Ver32};
-use bit_vec::BitVec;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const PLDM_CMDS_BITMAP_LEN: usize = 32;
@@ -302,15 +301,13 @@ impl PldmCodec for GetPldmTypeRequest {
 }
 
 fn construct_bitmap<const N: usize>(items: &[u8]) -> [u8; N] {
-    let mut bitmap = BitVec::from_elem(N * 8, false);
-    items
-        .iter()
-        .for_each(|&item| bitmap.set(item as usize, true));
-    let mut result = [0u8; N];
-    for (i, byte) in bitmap.to_bytes().iter().enumerate().take(N) {
-        result[i] = byte.reverse_bits();
+    let mut bitmap = [0u8; N];
+    for &item in items.iter().take(N * 8) {
+        let byte_index = (item / 8) as usize;
+        let bit_index = (item % 8) as usize;
+        bitmap[byte_index] |= 1 << bit_index;
     }
-    result
+    bitmap
 }
 
 #[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
