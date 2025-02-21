@@ -13,8 +13,8 @@ use libtock_console::{Console, ConsoleWriter};
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
-use pldm_common::codec::PldmCodec;
-use pldm_common::protocol::base::{PldmControlCmd, PldmMsgHeader};
+// use pldm_common::codec::PldmCodec;
+// use pldm_common::protocol::base::{PldmControlCmd, PldmMsgHeader};
 
 #[cfg(target_arch = "riscv32")]
 mod riscv;
@@ -180,14 +180,14 @@ async fn test_mctp_loopback<S: Syscalls>() {
 
 fn handle_pldm_packet<S:Syscalls>(packet : &[u8], console_writer: &mut ConsoleWriter<S>) -> Result<(), ()>
 {
+
+/*
     let header = PldmMsgHeader::decode(&packet).map_err(|_| ())?;
     if !header.is_hdr_ver_valid() {
         return Err(());
     }
 
-    if !header.is_valid_msg_type() {
-        return Err(());
-    }
+
 
     match PldmControlCmd::try_from(header.cmd_code()) {
         Ok(cmd) => {
@@ -219,6 +219,7 @@ fn handle_pldm_packet<S:Syscalls>(packet : &[u8], console_writer: &mut ConsoleWr
             Err(())
         }
     }
+     */
     Ok(())
 }
 

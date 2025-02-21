@@ -1259,7 +1259,6 @@ dependencies = [
  "libtock_runtime",
  "libtock_unittest",
  "libtockasync",
- "pldm-common",
  "portable-atomic",
 ]
 

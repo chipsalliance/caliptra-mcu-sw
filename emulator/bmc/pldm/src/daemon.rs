@@ -2,6 +2,7 @@ use crate::discovery_sm;
 use crate::event_queue::EventQueue;
 use crate::events::PldmEvents;
 use crate::transport::{FilterType, PldmSocket, RxPacket};
+use simple_logger::SimpleLogger;
 use log::{debug, error, info, trace, warn};
 
 pub struct Daemon {}
@@ -9,7 +10,7 @@ pub struct Daemon {}
 impl Daemon {
     pub async fn run<S: PldmSocket + Send + 'static>(socket: S) -> Result<(), ()> {
         debug!("Daemon is running...");
-
+        SimpleLogger::new().init().unwrap();
         let event_queue = EventQueue::<PldmEvents>::new();
         let event_queue_clone1 = event_queue.clone();
         let event_queue_clone2 = event_queue.clone();

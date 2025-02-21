@@ -54,7 +54,8 @@ pub trait StateMachineActions {
         ctx: &InnerContext<impl PldmSocket>,
         response: pldm_packet::GetTidResponse,
     ) -> Result<(), ()> {
-        debug!("on_tid_response");
+        debug!("on_tid_response : {:?}", response);
+
         Ok(())
     }
     fn on_pldm_types_response(
@@ -143,11 +144,6 @@ pub fn process_packet(packet: &RxPacket) -> Result<DiscoveryAgentEvents, ()> {
         .map_err(|_| (error!("Error decoding packet!")))?;
     if !header.is_hdr_ver_valid() {
         error!("Invalid header version!");
-        return Err(());
-    }
-
-    if !header.is_valid_msg_type() {
-        error!("Invalid msg type!");
         return Err(());
     }
 
