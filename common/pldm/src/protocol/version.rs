@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use core::{convert::TryFrom, fmt};
+use crate::error::PldmError;
+use core::convert::TryFrom;
 
 pub type Ver32 = u32;
 pub type VersionCheckSum = u32;
@@ -39,22 +40,17 @@ pub struct PldmVersion {
     pub major: u8,
 }
 
-// Convert from version string to PldmVersion
 impl TryFrom<ProtocolVersionStr> for PldmVersion {
-    type Error = String;
+    type Error = PldmError;
 
-    fn try_from(version: ProtocolVersionStr) -> Result<Self, Self::Error> {
+    fn try_from(version: ProtocolVersionStr) -> Result<Self, PldmError> {
         let mut parts = version.split('.');
-        let major_str = parts
-            .next()
-            .ok_or_else(|| "Invalid version format".to_string())?;
-        let minor_str = parts
-            .next()
-            .ok_or_else(|| "Invalid version format".to_string())?;
+        let major_str = parts.next().ok_or(PldmError::InvalidProtocolVersion)?;
+        let minor_str = parts.next().ok_or(PldmError::InvalidProtocolVersion)?;
         let update_str = parts.next().unwrap_or("FF");
 
         if parts.next().is_some() {
-            return Err("Invalid version format".to_string());
+            return Err(PldmError::InvalidProtocolVersion);
         }
 
         let (alpha, minor_str) = if let Some(last_char) = minor_str.chars().last() {
@@ -83,16 +79,16 @@ impl TryFrom<ProtocolVersionStr> for PldmVersion {
 
         let major = major_str
             .parse::<u8>()
-            .map_err(|_| "Invalid major version")?;
+            .map_err(|_| PldmError::InvalidProtocolVersion)?;
         let minor = minor_str
             .parse::<u8>()
-            .map_err(|_| "Invalid minor version")?;
+            .map_err(|_| PldmError::InvalidProtocolVersion)?;
         let update = if update_str == "FF" {
             0xFF
         } else {
             update_str
                 .parse::<u8>()
-                .map_err(|_| "Invalid update version")?
+                .map_err(|_| PldmError::InvalidProtocolVersion)?
         };
 
         Ok(PldmVersion {
@@ -173,25 +169,6 @@ impl PldmVersion {
     }
 }
 
-impl fmt::Display for PldmVersion {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let major_str = format!("{}", self.major); // Major is directly converted to string
-        let minor_str = format!("{}", self.minor); // Minor is directly converted to string
-        let update_str = if self.update == 0xFF {
-            String::new() // Omit or use a placeholder if update is not present
-        } else {
-            format!(".{}", self.update) // Convert update to string if present
-        };
-        let alpha_str = if self.alpha != 0x00 {
-            format!("{}", self.alpha as char) // Convert alpha to char if present
-        } else {
-            String::new() // Omit if alpha is not present
-        };
-
-        write!(f, "{}.{}{}{}", major_str, minor_str, update_str, alpha_str)
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -220,16 +197,16 @@ mod test {
     #[test]
     fn test_pldm_version_try_from_str_error() {
         let test_version = PldmVersion::try_from("3.FF.10");
-        assert_eq!(test_version, Err("Invalid minor version".to_string()));
+        assert!(test_version.is_err());
 
         let test_version = PldmVersion::try_from("3.7.10a.1");
-        assert_eq!(test_version, Err("Invalid version format".to_string()));
+        assert!(test_version.is_err());
 
         let test_version = PldmVersion::try_from("3.7.10a.1.1");
-        assert_eq!(test_version, Err("Invalid version format".to_string()));
+        assert!(test_version.is_err());
 
         let test_version = PldmVersion::try_from("3a.7.10");
-        assert_eq!(test_version, Err("Invalid major version".to_string()));
+        assert!(test_version.is_err());
     }
 
     #[test]
@@ -269,17 +246,5 @@ mod test {
             .unwrap()
             .bcd_encode_to_ver32();
         assert_eq!(test_version2_ver32, 0xF1F1F000);
-    }
-
-    #[test]
-    fn test_pldm_version_display() {
-        let test_version1 = PldmVersion::new(0x61, 0x10, 0x7, 0x3);
-        assert_eq!(format!("{}", test_version1), "3.7.16a");
-
-        let test_version2 = PldmVersion::new(0x00, 0xFF, 10, 0x3);
-        assert_eq!(format!("{}", test_version2), "3.10");
-
-        let test_version3 = PldmVersion::new(0x61, 0xFF, 0x0, 0x1);
-        assert_eq!(format!("{}", test_version3), "1.0a");
     }
 }

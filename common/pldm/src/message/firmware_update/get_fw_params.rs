@@ -102,7 +102,7 @@ impl FirmwareParameters {
     }
 
     fn codec_size_in_bytes(&self) -> usize {
-        let mut bytes = std::mem::size_of::<FirmwareParamFixed>();
+        let mut bytes = core::mem::size_of::<FirmwareParamFixed>();
         if self.pending_comp_image_set_ver_str.is_some() {
             bytes += self.params_fixed.pending_comp_image_set_ver_str_len as usize;
         }
@@ -118,10 +118,10 @@ impl PldmCodec for FirmwareParameters {
             return Err(PldmCodecError::BufferTooShort);
         }
         self.params_fixed
-            .write_to(&mut buffer[offset..offset + std::mem::size_of::<FirmwareParamFixed>()])
+            .write_to(&mut buffer[offset..offset + core::mem::size_of::<FirmwareParamFixed>()])
             .unwrap();
 
-        offset += std::mem::size_of::<FirmwareParamFixed>();
+        offset += core::mem::size_of::<FirmwareParamFixed>();
 
         if let Some(pending_comp_image_set_ver_str) = &self.pending_comp_image_set_ver_str {
             let len = self.params_fixed.pending_comp_image_set_ver_str_len as usize;
@@ -139,11 +139,11 @@ impl PldmCodec for FirmwareParameters {
 
         let params_fixed = FirmwareParamFixed::read_from_bytes(
             buffer
-                .get(offset..offset + std::mem::size_of::<FirmwareParamFixed>())
+                .get(offset..offset + core::mem::size_of::<FirmwareParamFixed>())
                 .ok_or(PldmCodecError::BufferTooShort)?,
         )
         .unwrap();
-        offset += std::mem::size_of::<FirmwareParamFixed>();
+        offset += core::mem::size_of::<FirmwareParamFixed>();
 
         let pending_comp_image_set_ver_str = if params_fixed.pending_comp_image_set_ver_str_len > 0
         {
@@ -213,9 +213,9 @@ impl PldmCodec for GetFirmwareParametersResponse {
         offset += PLDM_MSG_HEADER_LEN;
 
         self.completion_code
-            .write_to(&mut buffer[offset..offset + std::mem::size_of::<u8>()])
+            .write_to(&mut buffer[offset..offset + core::mem::size_of::<u8>()])
             .unwrap();
-        offset += std::mem::size_of::<u8>();
+        offset += core::mem::size_of::<u8>();
 
         let bytes = self.parms.encode(&mut buffer[offset..])?;
         offset += bytes;
@@ -235,11 +235,11 @@ impl PldmCodec for GetFirmwareParametersResponse {
         offset += PLDM_MSG_HEADER_LEN;
         let completion_code = u8::read_from_bytes(
             buffer
-                .get(offset..offset + std::mem::size_of::<u8>())
+                .get(offset..offset + core::mem::size_of::<u8>())
                 .ok_or(PldmCodecError::BufferTooShort)?,
         )
         .unwrap();
-        offset += std::mem::size_of::<u8>();
+        offset += core::mem::size_of::<u8>();
 
         let parms = FirmwareParameters::decode(&buffer[offset..])?;
         Ok(GetFirmwareParametersResponse {
