@@ -28,7 +28,7 @@ embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
 embedded-alloc.workspace = true
 
 [features]
-default = [ "test-marco" ]
+default = [ ]
 test-i3c-simple = []
 test-i3c-constant-writes = []
 test-flash-ctrl-init = []
@@ -40,4 +40,4 @@ test-mctp-ctrl-cmds = []
 test-mctp-capsule-loopback = []
 test-mctp-user-loopback = []
 test-flash-usermode = []
-test-marco = [ ]
+test-pldm-request-response = [ ]

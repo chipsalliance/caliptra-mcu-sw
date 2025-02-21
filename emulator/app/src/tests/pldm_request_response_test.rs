@@ -7,7 +7,7 @@ use pldm_common::codec::PldmCodec;
 use pldm_common::protocol::base::PldmMsgType;
 use pldm_ua::transport::{PldmSocket, FilterType};
 
-pub struct PldmLoopbackTest{
+pub struct PldmRequestResponseTest{
     test_messages : Vec<PldmExpectedMessagePair>,
     socket: MctpPldmSocket,
     running: Arc<AtomicBool>,
@@ -22,21 +22,9 @@ pub struct PldmExpectedMessagePair {
 }
 
 
-impl PldmLoopbackTest {
+impl PldmRequestResponseTest {
     fn new(socket : MctpPldmSocket, running: Arc<AtomicBool>) -> Self {
         let mut test_messages:Vec<PldmExpectedMessagePair> = Vec::new();
-
-
-        let req= GetTidRequest::new(1u8, PldmMsgType::Request);
-        let mut buffer= [0u8; 1024];
-        let sz = req.encode(&mut buffer).unwrap();
-        println!("Emulator: PLDM Raw packet: {:02x?}", &buffer[..sz]);
-        
-
-        let mybuf = [1u8,2u8,3u8];
-        println!("Emulator: mybuf: {:02x?}", &mybuf[..sz]);
-
-
         Self::add_test_message(
             &mut test_messages,
             GetTidRequest::new(1u8, PldmMsgType::Request),
@@ -67,17 +55,10 @@ impl PldmLoopbackTest {
         self.socket.connect()?;
         
         for message_pair in &self.test_messages {
-
-            // hexdump the request
-            println!("Emulator: Sending: {:02x?}", message_pair.request);
-
             self.socket.send(&message_pair.request)?;
             let rx_pkt = self.socket.receive(
                 None,
                 FilterType::Response)?;
-
-            println!("Emulator: Received: {:02x?}", &rx_pkt.payload.data[..rx_pkt.payload.len]);
-
             assert_eq!(rx_pkt.payload.data[..rx_pkt.payload.len], message_pair.response);
             
         }
@@ -89,7 +70,7 @@ impl PldmLoopbackTest {
             print!(
                 "Emulator: Running PLDM Loopback Test: ",
             );
-            let mut test = PldmLoopbackTest::new(socket, running);
+            let mut test = PldmRequestResponseTest::new(socket, running);
             if test.test_send_receive().is_err() {
                 println!("Failed");
             } else {

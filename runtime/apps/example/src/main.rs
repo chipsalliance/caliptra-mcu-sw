@@ -14,10 +14,8 @@ use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
-#[cfg(feature = "test-marco")]
+#[cfg(feature = "test-pldm-request-response")]
 mod test_pldm_request_response;
-
-
 
 #[cfg(target_arch = "riscv32")]
 mod riscv;
@@ -148,9 +146,9 @@ pub(crate) async fn async_main<S: Syscalls>() {
             core::ptr::write_volatile(0x1000_2000 as *mut u32, 0);
         }
     }
-    #[cfg(feature = "test-marco")]
+    #[cfg(feature = "test-pldm-request-response")]
     {
-        test_pldm_request_response::test::test_marco::<S>(&mut Some(&mut console_writer)).await;
+        test_pldm_request_response::test::test_pldm_request_response::<S>().await;
     }
     writeln!(console_writer, "app finished").unwrap();
 }
