@@ -1,32 +1,24 @@
 // Licensed under the Apache-2.0 license
 
+use crate::codec::{Codec, MessageBuf};
+use crate::commands::error_rsp::ErrorCode;
+use crate::commands::error_rsp::ErrorResponse;
+use crate::commands::version_rsp::{VersionNumberEntry, VersionRespCommon};
+// use crate::error::CommandResult;
 use crate::error::*;
-use crate::error_rsp::ErrorResponse;
-use crate::error_rsp::{CommandError, ErrorCode};
-use crate::message_buf::{Codec, MessageBuf};
-use crate::protocol::SpdmMsgHdr;
-use crate::req_resp_codes::{CommandResult, ReqRespCode};
+use crate::protocol::{
+    ReqRespCode, SpdmMsgHdr, SpdmVersion, MAX_NUM_SUPPORTED_SPDM_VERSIONS, MAX_SUPORTED_VERSION,
+};
 use crate::state::{ConnectionState, State};
 use crate::transport::MctpTransport;
-use crate::version_rsp::{SpdmVersion, VersionNumberEntry, VersionRespCommon};
-use zerocopy::{FromBytes, IntoBytes};
-
-// use libsyscall_caliptra::mctp::{driver_num, Mctp};
-use crate::error::*;
 use core::fmt::Write;
-use core::time;
-use libtock_console::{Console, ConsoleWriter};
+use libtock_console::ConsoleWriter;
 use libtock_platform::Syscalls;
-
-pub const MAX_SPDM_MSG_SIZE: usize = 1024;
-
-pub const MAX_NUM_SUPPORTED_SPDM_VERSIONS: usize = 2;
-pub const MAX_SUPORTED_VERSION: SpdmVersion = SpdmVersion::V13;
+use zerocopy::IntoBytes;
 
 pub struct SpdmContext<'a, S: Syscalls> {
     supported_versions: &'a [SpdmVersion],
     transport: &'a mut MctpTransport<S>,
-    secure_transport: &'a mut MctpTransport<S>,
     state: State,
     cw: &'a mut ConsoleWriter<S>,
 }
@@ -35,7 +27,6 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
     pub fn new(
         supported_versions: &'a [SpdmVersion],
         spdm_transport: &'a mut MctpTransport<S>,
-        secure_spdm_transport: &'a mut MctpTransport<S>,
         cw: &'a mut ConsoleWriter<S>,
     ) -> SpdmResult<Self> {
         if supported_versions.is_empty()
@@ -48,7 +39,6 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         Ok(Self {
             supported_versions,
             transport: spdm_transport,
-            secure_transport: secure_spdm_transport,
             state: State::new(),
             cw,
         })
@@ -56,18 +46,11 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
 
     pub async fn process_message(&mut self, msg_buf: &mut MessageBuf<'a>) -> SpdmResult<()> {
         writeln!(self.cw, "SPDM_LIB: Start processing the message").unwrap();
-        // let mut buf = &raw_buf[..];
-
-        // let mut msg_buf = MessageBuf::new(raw_buf, 0).ok_or(SpdmError::BufferTooSmall)?;
 
         self.transport.receive_request(msg_buf).await.map_err(|e| {
             writeln!(self.cw, "SPDM_LIB: Failed to receive request").unwrap();
             e
         })?;
-        writeln!(self.cw, "SPDM_LIB: Received request").unwrap();
-
-        // let mut req_buf = MessageBuf::new(&mut raw_buf[transport_hdr_size..], msg_len)
-        //     .ok_or(SpdmError::BufferTooSmall)?;
 
         // Process message
         self.handle_request(msg_buf).await.map_err(|e| {
@@ -79,12 +62,6 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
     }
 
     async fn handle_request(&mut self, buf: &mut MessageBuf<'a>) -> SpdmResult<()> {
-        writeln!(
-            self.cw,
-            "SPDM_LIB: Handling request buffer {:X?}",
-            buf.data(2)
-        )
-        .unwrap();
         let mut req = buf;
 
         let req_msg_header: SpdmMsgHdr = SpdmMsgHdr::decode(req)?;
@@ -97,7 +74,9 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         )
         .unwrap();
 
-        let req_code = req_msg_header.req_resp_code();
+        let req_code = req_msg_header
+            .req_resp_code()
+            .map_err(|_| SpdmError::UnsupportedRequest)?;
         let mut resp_code = req_code
             .response_code()
             .ok_or(SpdmError::UnsupportedRequest)?;
@@ -153,26 +132,13 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
     ) -> SpdmResult<()> {
         let spdm_version = self.state.version_number();
         let spdm_resp_hdr = SpdmMsgHdr::new(spdm_version, resp_code);
-        writeln!(
-            self.cw,
-            "SPDM_LIB: Sending response with version {:?} resp_code {:?} cur data offset : {:?}",
-            spdm_resp_hdr.version(),
-            spdm_resp_hdr.req_resp_code(),
-            resp.data_offset()
-        )
-        .unwrap();
-        let mut len = match spdm_resp_hdr.encode(resp) {
-            Ok(len) => len,
-            Err(_) => return Err(SpdmError::BufferTooSmall),
-        };
-
-        let len = resp.data_len();
+        spdm_resp_hdr.encode(resp)?;
 
         writeln!(
             self.cw,
             "SPDM_LIB: SpdmCtx Sending response of len {} {:?}",
-            len,
-            resp.data(len)
+            resp.data_len(),
+            resp.total_message(),
         )
         .unwrap();
         self.transport.send_response(resp).await.map_err(|e| {
@@ -186,8 +152,17 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         spdm_hdr: SpdmMsgHdr,
         req_payload: &mut MessageBuf<'a>,
     ) -> CommandResult {
-        if spdm_hdr.version() != SpdmVersion::V10 {
-            return self.generate_error_response(ErrorCode::VersionMismatch, 0, None, req_payload);
+        match spdm_hdr.version() {
+            Ok(version) if version == SpdmVersion::V10 => {}
+            _ => {
+                writeln!(self.cw, "SPDM_LIB: Version Error").unwrap();
+                return self.generate_error_response(
+                    ErrorCode::VersionMismatch,
+                    0,
+                    None,
+                    req_payload,
+                );
+            }
         }
 
         self.state.reset();
@@ -247,7 +222,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
                     rsp_buf.len(),
                     rsp_buf.data_len(),
                     rsp_buf.data_offset(),
-                    rsp_buf.total_data(),
+                    rsp_buf.total_message(),
                 )
                 .unwrap();
             }
@@ -267,7 +242,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             rsp_buf.len(),
             rsp_buf.data_len(),
             rsp_buf.data_offset(),
-            rsp_buf.total_data(),
+            rsp_buf.total_message(),
             resp_common.version_num_entry_count(),
         )
         .unwrap();
@@ -275,21 +250,6 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         // Construct response
         let payload_len =
             entry_count as usize * core::mem::size_of::<VersionNumberEntry<[u8; 2]>>();
-
-        // // Make space for payload
-        // match rsp_buf.put_data(payload_len) {
-        //     Ok(_) => {
-        //         writeln!(
-        //             self.cw,
-        //             "SPDM_LIB 3.1: Generating version response cur len {} data len {} {:?}",
-        //             rsp_buf.len(),
-        //             rsp_buf.data_len(),
-        //             rsp_buf.total_data(),
-        //         )
-        //         .unwrap();
-        //     }
-        //     Err(_) => return CommandResult::ErrorNoResponse(CommandError::BufferTooSmall),
-        // };
 
         // Get the data buffer for the payload and fill it
         let payload = match rsp_buf.data_mut(payload_len) {
@@ -324,7 +284,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             "SPDM_LIB 4: Generating version response cur len {} data offset {} {:?}",
             final_len,
             rsp_buf.data_offset(),
-            rsp_buf.total_data()
+            rsp_buf.total_message()
         )
         .unwrap();
 

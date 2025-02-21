@@ -1,24 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::context::SpdmContext;
-use crate::message_buf::{Codec, CodecError, CodecResult, MessageBuf};
-use crate::protocol::SpdmMsgHdr;
-use crate::req_resp_codes::{CommandResult, ReqRespCode};
-use crate::SpdmVersion;
-use libtock_platform::Syscalls;
-use thiserror_no_std::Error;
-
-#[derive(Debug, Error)]
-pub enum CommandError {
-    #[error("Buffer too small")]
-    BufferTooSmall,
-    // #[error("Coded error")]
-    // Codec(#[from] CodecError),
-    #[error("Request failed with error code {:?}", .0)]
-    ErrorCode(ErrorCode),
-    #[error("Unsupported request")]
-    UnsupportedRequest,
-}
+use crate::codec::{Codec, CodecResult, MessageBuf};
 
 ///! SPDM error codes
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -83,7 +65,7 @@ impl<'a> ErrorResponse<'a> {
 }
 
 impl<'a> Codec for ErrorResponse<'a> {
-    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
+    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<()> {
         // make space for the data at the end of the buffer
         buf.push_data(self.len())?;
 
@@ -96,7 +78,7 @@ impl<'a> Codec for ErrorResponse<'a> {
             rsp[2..data.len()].copy_from_slice(data);
         }
 
-        Ok(self.len())
+        Ok(())
     }
 
     fn decode(_buf: &mut MessageBuf) -> CodecResult<Self> {

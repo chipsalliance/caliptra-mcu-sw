@@ -12,10 +12,10 @@ use libsyscall_caliptra::mctp::driver_num;
 use libtock_console::Console;
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
+use spdm_lib::codec::MessageBuf;
 use spdm_lib::context::SpdmContext;
-use spdm_lib::message_buf::MessageBuf;
+use spdm_lib::protocol::{SpdmVersion, MAX_SPDM_MSG_SIZE};
 use spdm_lib::transport::MctpTransport;
-use spdm_lib::{SpdmVersion, MAX_SPDM_MSG_SIZE};
 
 #[cfg(target_arch = "riscv32")]
 mod riscv;
@@ -57,8 +57,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
     writeln!(console_writer, "SPDM_APP: Running SPDM-APP...").unwrap();
 
-    // let mut raw_buffer = [0; MAX_SPDM_MSG_SIZE];
-    let mut raw_buffer = [0; 16];
+    let mut raw_buffer = [0; MAX_SPDM_MSG_SIZE];
 
     spdm_loop::<S>(&mut raw_buffer).await;
 
@@ -68,15 +67,11 @@ pub(crate) async fn async_main<S: Syscalls>() {
 async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8]) {
     let mut console_writer = Console::<S>::writer();
     let mut mctp_spdm_transport = MctpTransport::new(driver_num::MCTP_SPDM);
-    let mut mctp_secure_spdm_transport = MctpTransport::new(driver_num::MCTP_SECURE);
     let supported_versions = [SpdmVersion::V12, SpdmVersion::V13];
-
-    // let mut spdm_msg_buf =  MessageBuf::new();
 
     let mut ctx = match SpdmContext::new(
         &supported_versions,
         &mut mctp_spdm_transport,
-        &mut mctp_secure_spdm_transport,
         &mut console_writer,
     ) {
         Ok(ctx) => ctx,
@@ -91,10 +86,8 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8]) {
         }
     };
 
-    // writeln!(console_writer, "SPDM_APP: Start processing the message").unwrap();
     let mut cons_wr = Console::<S>::writer();
     let mut msg_buffer = MessageBuf::new(raw_buffer);
-    // let mut raw_buffer = [0; MAX_SPDM_MSG_SIZE];
     loop {
         let result = ctx.process_message(&mut msg_buffer).await;
         match result {

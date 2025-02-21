@@ -1,12 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use crate::i3c_socket::{
-    receive_ibi, receive_private_read, send_private_write, MctpTestState, TestTrait,
-};
-use crate::tests::mctp_util::base_protocol::{MCTPHdr, MCTP_HDR_SIZE};
+use crate::i3c_socket::{MctpTestState, TestTrait};
 use crate::tests::mctp_util::common::MctpUtil;
-use std::collections::VecDeque;
-use std::env;
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -20,7 +15,6 @@ use zerocopy::{transmute, FromBytes, Immutable, IntoBytes};
 const RECEIVER_BUFFER_SIZE: usize = 4160;
 pub const SOCKET_SPDM_COMMAND_NORMAL: u32 = 0x0001;
 pub const SOCKET_SPDM_COMMAND_STOP: u32 = 0xFFFE;
-pub const SOCKET_SPDM_COMMAND_UNKOWN: u32 = 0xFFFF;
 pub const SOCKET_SPDM_COMMAND_TEST: u32 = 0xDEAD;
 pub const SOCKET_HEADER_LEN: usize = 12;
 
@@ -148,18 +142,6 @@ impl Test {
         );
     }
 
-    // fn send_hello(&self, stream: &mut TcpStream, transport_encap: u32, session_id: u32) {
-    //     let mut hello_msg = vec![0u8; 12];
-    //     let mut hello_msg_bytes = [0u8; 12];
-    //     let hello_header = SpdmSocketHeader {
-    //         command: 0,
-    //         transport_type: transport_encap,
-    //         payload_size: 0,
-    //     };
-    //     hello_msg_bytes.copy_from_slice(&transmute!(hello_header));
-    //     stream.write_all(&hello_msg_bytes).unwrap();
-    // }
-
     fn send_req_receive_resp(
         &mut self,
         running: Arc<AtomicBool>,
@@ -236,22 +218,6 @@ impl Test {
         match socket_command {
             SOCKET_SPDM_COMMAND_TEST => {
                 println!("SPDM_SERVER: Received test command. Send Server Hello");
-                // self.cur_req_msg = vec![5];
-                // let result = self.mctp_util.wait_for_responder(
-                //     self.cur_msg_tag,
-                //     &self.cur_req_msg.as_slice(),
-                //     running,
-                //     i3c_server_stream,
-                //     target_addr,
-                // );
-                // if let Some(resp_msg) = result {
-                //     println!("SPDM_SERVER: Received response from target");
-                //     assert!(resp_msg == self.cur_req_msg);
-                // } else {
-                //     println!("SPDM_SERVER: No response from target");
-                //     return false;
-                // }
-
                 self.send_hello(spdm_client_stream, transport_type);
                 self.spdm_server_state = SpdmServerState::ReceiveRequest;
                 true
@@ -290,10 +256,7 @@ impl Test {
                 self.cur_msg_tag = (self.cur_msg_tag + 1) % 4 as u8;
                 true
             }
-            _ => {
-                // send_unknown(stream, transport_encap.clone(), res.0).await;
-                false
-            }
+            _ => false,
         }
     }
 
@@ -376,7 +339,7 @@ impl TestTrait for Test {
 }
 
 pub fn start_spdm_device_validator(_running: Arc<AtomicBool>) -> io::Result<()> {
-    let spdm_validator_dir = env::var("SPDM_VALIDATOR_DIR");
+    let spdm_validator_dir = std::env::var("SPDM_VALIDATOR_DIR");
     let dir_path = match spdm_validator_dir {
         Ok(dir) => {
             println!("SPDM_VALIDATOR_DIR: {}", dir);

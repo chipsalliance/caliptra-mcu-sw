@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::version_rsp::SpdmVersion;
+use crate::protocol::SpdmVersion;
 
 pub struct State {
     connection_state: ConnectionState,
