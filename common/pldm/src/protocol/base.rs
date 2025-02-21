@@ -188,7 +188,7 @@ impl TryFrom<u8> for TransferRespFlag {
 bitfield! {
     #[repr(C)]
     #[derive(Copy, Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
-    pub struct PldmMsgHeader(MSB0 [u8]);
+    pub struct PldmMsgHeader([u8]);
     impl Debug;
     pub u8, instance_id, set_instance_id: 4, 0;
     pub u8, reserved, _: 5, 5;
@@ -303,8 +303,10 @@ mod tests {
             PldmSupportedType::Base,
             PldmControlCmd::GetTid as u8,
         );
+        assert_eq!(header.0, [0x81, 0x00, 0x02]);
         assert_eq!(header.is_request(), true);
         let response = header.into_response();
+        assert_eq!(response.0, [0x01, 0x00, 0x02]);
         assert_eq!(response.rq(), PldmMsgType::Response as u8);
 
         let mut buffer = [0; PLDM_MSG_HEADER_LEN];
