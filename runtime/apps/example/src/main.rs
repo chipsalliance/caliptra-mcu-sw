@@ -13,8 +13,11 @@ use libtock_console::{Console, ConsoleWriter};
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
-// use pldm_common::codec::PldmCodec;
-// use pldm_common::protocol::base::{PldmControlCmd, PldmMsgHeader};
+
+#[cfg(feature = "test-marco")]
+mod test_pldm_request_response;
+
+
 
 #[cfg(target_arch = "riscv32")]
 mod riscv;
@@ -147,8 +150,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
     }
     #[cfg(feature = "test-marco")]
     {
-        writeln!(console_writer, "Running test-marco test").unwrap();
-        test_marco::<S>(&mut console_writer).await;
+        test_pldm_request_response::test::test_marco::<S>(&mut Some(&mut console_writer)).await;
     }
     writeln!(console_writer, "app finished").unwrap();
 }
@@ -176,95 +178,6 @@ async fn test_mctp_loopback<S: Syscalls>() {
             .await;
         assert!(result.is_ok());
     }
-}
-
-fn handle_pldm_packet<S:Syscalls>(packet : &[u8], console_writer: &mut ConsoleWriter<S>) -> Result<(), ()>
-{
-
-/*
-    let header = PldmMsgHeader::decode(&packet).map_err(|_| ())?;
-    if !header.is_hdr_ver_valid() {
-        return Err(());
-    }
-
-
-
-    match PldmControlCmd::try_from(header.cmd_code()) {
-        Ok(cmd) => {
-            match cmd {
-                PldmControlCmd::GetTid => {
-                    writeln!(console_writer, "Device: Received GetTid",).unwrap();
-
-                }
-                PldmControlCmd::GetPldmTypes => {
-                    writeln!(console_writer, "Device: Received GetPldmTypes",).unwrap();
-
-                }
-                PldmControlCmd::GetPldmVersion => {
-                    writeln!(console_writer, "Device: Received GetPldmVersion",).unwrap();
-
-                }
-                PldmControlCmd::GetPldmCommands => {
-                    writeln!(console_writer, "Device: Received console_writer",).unwrap();
-
-                }
-                _ => {
-                    writeln!(console_writer, "Device: Unknown PLDM Command code",).unwrap();
-                    return Err(());
-                }
-            }
-        }
-        Err(_) => return {
-            writeln!(console_writer, "Device: Error decoding PLDM command code",).unwrap();
-            Err(())
-        }
-    }
-     */
-    Ok(())
-}
-
-async fn test_marco<S: Syscalls>(console_writer: &mut ConsoleWriter<S>) {
-    use libsyscall_caliptra::mctp::{driver_num, Mctp};
-    let mctp_pldm = Mctp::<S>::new(driver_num::MCTP_PLDM);
-
-    let mut msg_buffer: [u8; 1024] = [0; 1024];
-
-    assert!(mctp_pldm.exists());
-    let max_msg_size = mctp_pldm.max_message_size();
-    assert!(max_msg_size.is_ok());
-    assert!(max_msg_size.unwrap() > 0);
-    writeln!(console_writer, "Device: Waiting to Receive MCTP Packet",).unwrap();
-
-    let (length, info) = mctp_pldm.receive_request(&mut msg_buffer).await.unwrap();
-
-    writeln!(console_writer, "Device: Received PLDM message of length {}", length).unwrap();
-
-    // hex dump the received message
-    writeln!(console_writer, "Device: Received PLDM message: ").unwrap();
-    for i in 0..length as usize {
-        write!(console_writer, "{:02X} ", msg_buffer[i]).unwrap();
-    }
-    writeln!(console_writer, "").unwrap();
-
-    handle_pldm_packet(&msg_buffer[..length as usize], console_writer).unwrap();
-
-    // Send a response
-    mctp_pldm.send_response(&msg_buffer[..length as usize], info).await.unwrap();
-
-    // Wait for another request
-    writeln!(console_writer, "Device: Wait for another request {}", length).unwrap();
-    let (length, info) = mctp_pldm.receive_request(&mut msg_buffer).await.unwrap();
-    writeln!(console_writer, "Device: Received PLDM message of length {}", length).unwrap();
-    // hex dump the received message
-    writeln!(console_writer, "Device: Received PLDM message: ").unwrap();
-    for i in 0..length as usize {
-        write!(console_writer, "{:02X} ", msg_buffer[i]).unwrap();
-    }
-    writeln!(console_writer, "Device: Sending response {}", length).unwrap();
-    mctp_pldm.send_response(&msg_buffer[..length as usize], info).await.unwrap();
-    
-
-
 }
 
 #[cfg(feature = "test-flash-usermode")]

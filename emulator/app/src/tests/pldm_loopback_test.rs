@@ -36,21 +36,6 @@ impl PldmLoopbackTest {
         let mybuf = [1u8,2u8,3u8];
         println!("Emulator: mybuf: {:02x?}", &mybuf[..sz]);
 
-        test_messages.push(PldmExpectedMessagePair{
-            request: vec![0x81,00,02],
-            response: vec![0x81,00,02]
-        });
-        test_messages.push(PldmExpectedMessagePair{
-            request: vec![0x81,00,03],
-            response: vec![0x81,00,03]
-        });
-
-/*
-        Self::add_test_message(
-            &mut test_messages,
-            GetTidRequest::new(1u8, PldmMsgType::Request),
-            GetTidResponse::new(1u8, 1u8, 0u8)
-        );
 
         Self::add_test_message(
             &mut test_messages,
@@ -63,7 +48,7 @@ impl PldmLoopbackTest {
             SetTidRequest::new(2u8, PldmMsgType::Request, 2u8),
             SetTidResponse::new(2u8, 0u8)
         );        
- */
+
         Self { test_messages, socket, running }
 
     }
