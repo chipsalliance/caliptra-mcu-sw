@@ -177,12 +177,12 @@ impl TryFrom<&str> for VersionStringType {
     type Error = PldmError;
 
     fn try_from(input: &str) -> Result<VersionStringType, Self::Error> {
-        match input.to_uppercase().as_str() {
-            "ASCII" => Ok(VersionStringType::Ascii),
-            "UTF-8" => Ok(VersionStringType::Utf8),
-            "UTF-16" => Ok(VersionStringType::Utf16),
-            "UTF-16LE" => Ok(VersionStringType::Utf16Le),
-            "UTF-16BE" => Ok(VersionStringType::Utf16Be),
+        match input {
+            "ASCII" | "ascii" => Ok(VersionStringType::Ascii),
+            "UTF-8" | "utf-8" => Ok(VersionStringType::Utf8),
+            "UTF-16" | "utf-16" => Ok(VersionStringType::Utf16),
+            "UTF-16LE" | "utf-16le" => Ok(VersionStringType::Utf16Le),
+            "UTF-16BE" | "utf-16be" => Ok(VersionStringType::Utf16Be),
             _ => Err(PldmError::InvalidVersionStringType),
         }
     }
