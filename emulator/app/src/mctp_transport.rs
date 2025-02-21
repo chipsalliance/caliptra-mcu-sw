@@ -1,18 +1,14 @@
 use crate::tests::mctp_util::common::MctpUtil;
 use core::time::Duration;
 use emulator_periph::DynamicI3cAddress;
-use pldm_common::codec::PldmCodec;
-use pldm_common::message::control::GetTidRequest;
-use pldm_common::protocol::base::PldmMsgType;
+use pldm_common::util::mctp_transport::{MctpCommonHeader, MCTP_PLDM_MSG_TYPE};
 use pldm_ua::transport::{
-    FilterType, Payload, PldmSocket, PldmTransport, RxPacket, SockId, TxPacket, MAX_PLDM_PAYLOAD_SIZE
+    FilterType, Payload, PldmSocket, PldmTransport, RxPacket, SockId, MAX_PLDM_PAYLOAD_SIZE
 };
-use std::collections::HashMap;
 use std::net::{SocketAddr, TcpStream};
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::thread;
+
 
 pub struct MctpPldmSocket {
     source: SockId,
@@ -21,40 +17,87 @@ pub struct MctpPldmSocket {
     stream: Arc<Mutex<TcpStream>>,
     msg_tag: u8,
     running: Arc<AtomicBool>,
+    first_response: Arc<Mutex<Option<Vec<u8>>>>,
+    wait_for_responder: Arc<Mutex<bool>>,
+    mctp_util: Arc<Mutex<MctpUtil>>,
     
 }
 
 impl PldmSocket for MctpPldmSocket {
     fn send(&self, payload: &[u8]) -> Result<(), ()> {
-        let mut mctp_util = MctpUtil::new();
-        mctp_util.set_dest_eid(self.dest.0);
-        mctp_util.set_src_eid(self.source.0);
-        mctp_util.set_msg_tag(self.msg_tag);
-        mctp_util.set_tag_owner(0x1);
-        mctp_util.new_req(0x1);
+        let mctp_util = &mut *self.mctp_util.lock().unwrap();
+        
+        let mut mctp_common_headeer = MctpCommonHeader(0);
+        mctp_common_headeer.set_ic(0);
+        mctp_common_headeer.set_msg_type(MCTP_PLDM_MSG_TYPE);
 
-        if payload[0] & 0x80 == 0x80 {
-            mctp_util.send_request(
-                self.msg_tag,
-                payload,
-                self.running.clone(),
-                self.stream.lock().as_mut().unwrap(),
-                self.target_addr,
-            );
-        } else {
-            mctp_util.send_response(
-                payload,
-                self.running.clone(),
-                self.stream.lock().as_mut().unwrap(),
-                self.target_addr,
-            );
+
+        let mut mctp_payload: Vec<u8> = Vec::new();
+        mctp_payload.push(mctp_common_headeer.0);
+        mctp_payload.extend_from_slice(payload);
+
+        if *self.wait_for_responder.lock().unwrap()
+        {
+            /* If this is the first time we are sending a request,
+            * we need to make sure that the responder is ready
+            * so we wait for a response for the first message
+             */
+            mctp_util.new_req(self.msg_tag);
+            let response = mctp_util.wait_for_responder(self.msg_tag, 
+                mctp_payload.as_mut_slice(), 
+            self.running.clone(), 
+            self.stream.lock().as_mut().unwrap(), self.target_addr);
+
+            self.first_response.lock().unwrap().replace(response.unwrap());
+
+            *self.wait_for_responder.lock().unwrap() = false;
         }
+        else 
+        {
+            let x = payload[0];
+            println!("payload[0] = {:02x}", x);
+            if payload[0] & 0x80 == 0x80 {
+                mctp_util.send_request(
+                    self.msg_tag,
+                    mctp_payload.as_mut_slice(),
+                    self.running.clone(),
+                    self.stream.lock().as_mut().unwrap(),
+                    self.target_addr,
+                );
+            } else {
+                mctp_util.send_response(
+                    mctp_payload.as_mut_slice(),
+                    self.running.clone(),
+                    self.stream.lock().as_mut().unwrap(),
+                    self.target_addr,
+                );
+            }
+        }
+
 
         Ok(())
     }
 
     fn receive(&self, _timeout: Option<Duration>, filter: FilterType) -> Result<RxPacket, ()> {
-        let mut mctp_util = MctpUtil::new();
+        let mut first_response = self.first_response.lock().unwrap();
+        if let Some(response) = first_response.as_mut() {
+            let mut data = [0u8; MAX_PLDM_PAYLOAD_SIZE];
+            // Skip the first byte containing the MCTP common header
+            // and only return the PLDM payload
+            data[..response.len() - 1].copy_from_slice(&response[1..]);
+            let ret = RxPacket {
+                src: self.dest,
+                payload: Payload {
+                    data: data,
+                    len: response.len()-1,
+                },
+            };
+            *first_response = None;
+            return Ok(ret);
+        }
+
+
+        let mctp_util = &mut *self.mctp_util.lock().unwrap();
         let mut raw_pkt: Vec<u8> = Vec::new();
         match filter {
             FilterType::Any | FilterType::Request => {
@@ -75,55 +118,33 @@ impl PldmSocket for MctpPldmSocket {
                 return Err(());
             }
         }
-        let len = raw_pkt.len();
+        let len = raw_pkt.len()-1;
         if raw_pkt.len() == 0 {
             return Err(());
         }
+        let mut data = [0u8; MAX_PLDM_PAYLOAD_SIZE];
+        // Skip the first byte containing the MCTP common header
+        // and only return the PLDM payload
+        data[..len].copy_from_slice(&raw_pkt[1..]);
         Ok(RxPacket {
             src: self.dest,
             payload: Payload {
-                data: raw_pkt.try_into().unwrap(),
+                data: data,
                 len: len,
             },
         })
     }
-    fn connect(&self) -> Result<(), ()> {
-        // Send a packet to the target address and wait for a response
-        // Prepare the MCTP Header
-        let mut mctp_util = MctpUtil::new();
-        mctp_util.set_dest_eid(self.dest.0);
-        mctp_util.set_src_eid(self.source.0);
-        mctp_util.set_msg_tag(self.msg_tag);
-        mctp_util.set_tag_owner(0x1);
-        mctp_util.new_req(0x1);
 
-        // Create the PLDM message
-        let instance_id = 1u8;
-        let get_tid_request = GetTidRequest::new(instance_id, PldmMsgType::Request);
-        let mut pldm_pkt_buffer = [0u8; 4096];
-        let pldm_pkt_sz = get_tid_request
-            .encode(&mut pldm_pkt_buffer)
-            .map_err(|_| ())?;
-
-        // Combine the MCTP common header and the PLDM Message
-        let mut mctp_payload: Vec<u8> = Vec::new();
-        mctp_payload.extend_from_slice(&pldm_pkt_buffer[..pldm_pkt_sz]);
-
-        let response = mctp_util.wait_for_responder(
-            self.msg_tag,
-            mctp_payload.as_mut_slice(),
-            self.running.clone(),
-            self.stream.lock().as_mut().unwrap(),
-            self.target_addr,
-        );
-        if response.is_none() {
-            return Err(());
-        }
-
+    fn connect(&self) -> Result<(), ()> 
+    {
+        // Not supported
         Ok(())
     }
 
-    fn disconnect(&self) {}
+    fn disconnect(&self) 
+    {
+        // Not supported
+    }
 
     fn clone(&self) -> Self {
         MctpPldmSocket {
@@ -133,6 +154,9 @@ impl PldmSocket for MctpPldmSocket {
             stream: self.stream.clone(),
             msg_tag: self.msg_tag,
             running: self.running.clone(),
+            first_response: self.first_response.clone(),
+            wait_for_responder: self.wait_for_responder.clone(),
+            mctp_util: self.mctp_util.clone(),
         }
     }
 }
@@ -154,14 +178,18 @@ impl PldmTransport<MctpPldmSocket> for MctpTransport {
         let addr = SocketAddr::from(([127, 0, 0, 1], self.port));
         let stream = Arc::new(Mutex::new(TcpStream::connect(addr).map_err(|_| ())?));
         let running = Arc::new(AtomicBool::new(true));
-
+        let mctp_util = MctpUtil::new();
+        let msg_tag = 0u8;
         Ok(MctpPldmSocket {
             source,
             dest,
             target_addr: self.target_addr.into(),
             stream,
-            msg_tag: 0,
+            msg_tag: msg_tag,
             running,
+            first_response: Arc::new(Mutex::new(None)),
+            wait_for_responder: Arc::new(Mutex::new(true)),
+            mctp_util: Arc::new(Mutex::new(mctp_util)),
         })
     }
 }

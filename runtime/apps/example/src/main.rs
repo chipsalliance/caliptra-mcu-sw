@@ -235,8 +235,8 @@ async fn test_marco<S: Syscalls>(console_writer: &mut ConsoleWriter<S>) {
     assert!(max_msg_size.unwrap() > 0);
     writeln!(console_writer, "Device: Waiting to Receive MCTP Packet",).unwrap();
 
-    let result = mctp_pldm.receive_request(&mut msg_buffer).await;
-    let length = result.unwrap().0;
+    let (length, info) = mctp_pldm.receive_request(&mut msg_buffer).await.unwrap();
+
     writeln!(console_writer, "Device: Received PLDM message of length {}", length).unwrap();
 
     // hex dump the received message
@@ -247,9 +247,23 @@ async fn test_marco<S: Syscalls>(console_writer: &mut ConsoleWriter<S>) {
     writeln!(console_writer, "").unwrap();
 
     handle_pldm_packet(&msg_buffer[..length as usize], console_writer).unwrap();
-    
 
     // Send a response
+    mctp_pldm.send_response(&msg_buffer[..length as usize], info).await.unwrap();
+
+    // Wait for another request
+    writeln!(console_writer, "Device: Wait for another request {}", length).unwrap();
+    let (length, info) = mctp_pldm.receive_request(&mut msg_buffer).await.unwrap();
+    writeln!(console_writer, "Device: Received PLDM message of length {}", length).unwrap();
+    // hex dump the received message
+    writeln!(console_writer, "Device: Received PLDM message: ").unwrap();
+    for i in 0..length as usize {
+        write!(console_writer, "{:02X} ", msg_buffer[i]).unwrap();
+    }
+    writeln!(console_writer, "Device: Sending response {}", length).unwrap();
+    mctp_pldm.send_response(&msg_buffer[..length as usize], info).await.unwrap();
+    
+
 
 }
 

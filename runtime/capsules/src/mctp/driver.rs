@@ -75,8 +75,11 @@ impl OpContext {
         match self.op_type {
             OpType::Rx => {
                 if self.pending_request() {
+                    println!("Device: msg_tag");
                     return msg_tag & MCTP_TAG_OWNER != 0;
                 } else if self.pending_response() {
+                    println!("Device: msg_tag {} self {} peer_eid {} self {}", 
+                        msg_tag, self.msg_tag, peer_eid, self.peer_eid);
                     return msg_tag == self.msg_tag && peer_eid == self.peer_eid;
                 }
             }
@@ -239,6 +242,7 @@ impl<'a> MCTPDriver<'a> {
         let op_ctx = match app.pending_rx.as_ref() {
             Some(op_ctx) => op_ctx,
             None => {
+                println!("Device: op_ctx is None");
                 return false;
             }
         };

@@ -55,6 +55,7 @@ pub trait StateMachineActions {
         response: pldm_packet::GetTidResponse,
     ) -> Result<(), ()> {
         debug!("on_tid_response : {:?}", response);
+        
 
         Ok(())
     }

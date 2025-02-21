@@ -57,6 +57,7 @@ use zerocopy::IntoBytes;
 use pldm_ua::daemon::Daemon;
 use pldm_ua::future_executor::{self, FutureExecutor};
 use mctp_transport::{MctpTransport,MctpPldmSocket};
+use tests::pldm_loopback_test::PldmLoopbackTest;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None, name = "Caliptra MCU Emulator")]
@@ -280,6 +281,14 @@ fn test_marco2(port: u16, target_addr: DynamicI3cAddress) -> Result<(), ()> {
     Ok(())
 }
 
+fn test_marco3(port: u16, target_addr: DynamicI3cAddress,running: Arc<AtomicBool> ) {
+    let pldm_transport = MctpTransport::new(port, target_addr);
+    let pldm_socket = pldm_transport.create_socket(SockId(0), SockId(1)).unwrap();
+    PldmLoopbackTest::run(pldm_socket, running);
+
+
+}
+
 fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     // exit cleanly on Ctrl-C so that we save any state.
     let running = Arc::new(AtomicBool::new(true));
@@ -436,7 +445,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 //    if cfg!(feature = "test-marco") {
         println!("Running Marco test in emulator");
         i3c_controller.start();
-        let _x = test_marco2(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
+        test_marco3(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap(), running.clone());
 //    }
 
     let create_flash_controller = |default_path: &str, error_irq: u8, event_irq: u8| {
