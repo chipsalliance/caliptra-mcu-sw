@@ -1,0 +1,8 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "pldm-ua"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
