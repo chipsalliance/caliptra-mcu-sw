@@ -2,7 +2,7 @@
 
 use crate::codec::{Codec, CodecResult, MessageBuf};
 
-///! SPDM error codes
+// SPDM error codes
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ErrorCode {
     InvalidRequest = 0x01,
@@ -59,18 +59,18 @@ impl<'a> ErrorResponse<'a> {
         })
     }
 
-    pub fn len(&self) -> usize {
+    pub fn payload_len(&self) -> usize {
         2 + self.extended_error_data.map_or(0, |data| data.len())
     }
 }
 
 impl<'a> Codec for ErrorResponse<'a> {
-    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<()> {
+    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
         // make space for the data at the end of the buffer
-        buf.push_data(self.len())?;
+        buf.put_data(self.payload_len())?;
 
         // get a mutable slice of the data offset and fill it
-        let rsp = buf.data_mut(self.len())?;
+        let rsp = buf.data_mut(self.payload_len())?;
 
         rsp[0] = self.error_code.into();
         rsp[1] = self.error_data;
@@ -78,7 +78,9 @@ impl<'a> Codec for ErrorResponse<'a> {
             rsp[2..data.len()].copy_from_slice(data);
         }
 
-        Ok(())
+        buf.pull_data(self.payload_len())?;
+
+        Ok(self.payload_len())
     }
 
     fn decode(_buf: &mut MessageBuf) -> CodecResult<Self> {

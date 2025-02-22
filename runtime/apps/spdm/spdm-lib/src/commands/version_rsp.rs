@@ -35,32 +35,25 @@ impl VersionRespCommon<[u8; VERSION_RESP_COMMON_SIZE]> {
 }
 
 impl Codec for VersionRespCommon<[u8; VERSION_RESP_COMMON_SIZE]> {
-    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<()> {
+    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
         let len: usize = core::mem::size_of::<Self>();
+        buf.put_data(len)?;
+
         if buf.data_len() < len {
             Err(CodecError::BufferTooSmall)?;
         }
 
-        let rsp = buf.data_mut(len)?;
+        let payload = buf.data_mut(len)?;
         let src_bytes = self.as_bytes();
-        rsp.copy_from_slice(src_bytes);
+        payload.copy_from_slice(src_bytes);
 
         buf.pull_data(len)?;
 
-        Ok(())
+        Ok(len)
     }
 
-    fn decode(buf: &mut MessageBuf) -> CodecResult<Self> {
-        let len = core::mem::size_of::<Self>();
-        if buf.len() < len {
-            Err(CodecError::BufferTooSmall)?;
-        }
-        let hdr_bytes = buf.data(len)?;
-
-        let hdr =
-            VersionRespCommon::read_from_bytes(hdr_bytes).map_err(|_| CodecError::ReadError)?;
-        buf.pull_data(len)?;
-        Ok(hdr)
+    fn decode(_buf: &mut MessageBuf) -> CodecResult<Self> {
+        unimplemented!()
     }
 }
 
@@ -93,37 +86,22 @@ impl VersionNumberEntry<[u8; 2]> {
     }
 }
 
-// impl Codec for VersionNumberEntry<[u8; 2]> {
-//     fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
-//         let len = core::mem::size_of::<Self>();
-//         if buf.remaining() < len {
-//             Err(CodecError::BufferTooSmall)?;
-//         }
+impl Codec for VersionNumberEntry<[u8; 2]> {
+    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
+        let len = core::mem::size_of::<Self>();
+        buf.put_data(len)?;
 
-//         if buf.len() < len {
-//             Err(CodecError::BufferTooSmall)?;
-//         }
-//         let mut buf_hdr: VersionNumberEntry<[u8; 2]> =
-//             VersionNumberEntry::read_from_bytes(buf).map_err(|_| CodecError::ReadError)?;
-//         buf_hdr.set_major(self.major());
-//         buf_hdr.set_minor(self.minor());
+        let payload = buf.data_mut(len)?;
+        self.write_to(payload).map_err(|_| CodecError::WriteError)?;
 
-//         buf.push_offset(len)?;
-//         Ok(len)
-//     }
+        buf.pull_data(len)?;
+        Ok(len)
+    }
 
-//     fn decode(buf: &mut MessageBuf) -> CodecResult<Self> {
-//         if buf.len() < core::mem::size_of::<Self>() {
-//             Err(CodecError::BufferTooSmall)?;
-//         }
-//         let buf_hdr =
-//             VersionNumberEntry::read_from_bytes(buf).map_err(|_| CodecError::ReadError)?;
-
-//         buf.push_offset(core::mem::size_of::<Self>())?;
-
-//         Ok(buf_hdr)
-//     }
-// }
+    fn decode(_buf: &mut MessageBuf) -> CodecResult<Self> {
+        unimplemented!()
+    }
+}
 
 // #[cfg(test)]
 // mod tests {

@@ -25,8 +25,6 @@ pub enum TransportError {
     BufferTooSmall,
     #[error("Codec error")]
     Codec(#[from] CodecError),
-    #[error("Invalid argument")]
-    InvalidArgument,
     #[error("Unexpected message type received")]
     UnexpectedMessageType,
     #[error("Message receive error")]
@@ -64,18 +62,18 @@ impl MctpMsgHdr<[u8; 1]> {
 }
 
 impl Codec for MctpMsgHdr<[u8; 1]> {
-    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<()> {
+    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
         let len: usize = core::mem::size_of::<Self>();
         buf.push_data(len)?;
         let header = buf.data_mut(len)?;
         self.write_to(header).map_err(|_| CodecError::WriteError)?;
 
-        Ok(())
+        Ok(len)
     }
 
     fn decode(buf: &mut MessageBuf) -> CodecResult<Self> {
         let len = core::mem::size_of::<Self>();
-        if buf.len() < len {
+        if buf.data_len() < len {
             Err(CodecError::BufferTooSmall)?;
         }
         let hdr_bytes = buf.data(len)?;

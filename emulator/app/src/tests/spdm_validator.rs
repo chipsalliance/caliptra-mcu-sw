@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
+use std::process::ExitStatus;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -23,6 +24,7 @@ pub fn generate_tests() -> Vec<Box<dyn TestTrait + Send>> {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum SpdmServerState {
     Start,
     ReceiveRequest,
@@ -201,6 +203,7 @@ impl Test {
         self.send_socket_message(stream, tranport_type, SOCKET_SPDM_COMMAND_STOP, &[]);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn process_socket_message(
         &mut self,
         running: Arc<AtomicBool>,
@@ -231,10 +234,10 @@ impl Test {
             SOCKET_SPDM_COMMAND_NORMAL => {
                 println!("SPDM_SERVER: Received normal SPDM command. Send it to the target");
                 self.cur_req_msg = buffer;
-                if self.responder_ready == false {
+                if !self.responder_ready {
                     let result = self.mctp_util.wait_for_responder(
                         self.cur_msg_tag,
-                        &self.cur_req_msg.as_slice(),
+                        self.cur_req_msg.as_slice(),
                         running,
                         i3c_server_stream,
                         target_addr,
@@ -253,7 +256,7 @@ impl Test {
                 }
 
                 self.spdm_server_state = SpdmServerState::SendResponse;
-                self.cur_msg_tag = (self.cur_msg_tag + 1) % 4 as u8;
+                self.cur_msg_tag = (self.cur_msg_tag + 1) % 4;
                 true
             }
             _ => false,
@@ -285,7 +288,7 @@ impl Test {
                             command,
                             buffer,
                         );
-                        if result == false {
+                        if !result {
                             self.spdm_server_state = SpdmServerState::Finish;
                         }
                     }
@@ -301,7 +304,6 @@ impl Test {
                     self.spdm_server_state = SpdmServerState::ReceiveRequest;
                 }
                 SpdmServerState::Finish => {
-                    // self.passed = true;
                     break;
                 }
                 _ => {
@@ -338,7 +340,26 @@ impl TestTrait for Test {
     }
 }
 
-pub fn start_spdm_device_validator(_running: Arc<AtomicBool>) -> io::Result<()> {
+pub fn execute_spdm_validator(_running: Arc<AtomicBool>) -> io::Result<()> {
+    std::thread::spawn(move || -> io::Result<()> {
+        let status = start_spdm_device_validator().map_err(|e| {
+            println!("Failed to start spdm_device_validator_sample: {:?}", e);
+            e
+        });
+        if let Err(e) = status {
+            println!("Error: {:?}", e);
+        } else {
+            println!(
+                "spdm_device_validator_sample exited with status: {:?}",
+                status
+            );
+        }
+        Ok(())
+    });
+    Ok(())
+}
+
+pub fn start_spdm_device_validator() -> io::Result<ExitStatus> {
     let spdm_validator_dir = std::env::var("SPDM_VALIDATOR_DIR");
     let dir_path = match spdm_validator_dir {
         Ok(dir) => {
@@ -366,16 +387,16 @@ pub fn start_spdm_device_validator(_running: Arc<AtomicBool>) -> io::Result<()> 
 
     println!("Starting spdm_device_validator_sample process");
 
-    let child = Command::new(utility_path)
+    Command::new(utility_path)
         .stdout(Stdio::from(output_file))
         .stderr(Stdio::from(output_file_clone))
-        .spawn()
-        .expect("failed to execute spdm validator");
+        .spawn()?
+        .wait()
 
-    if child.id() == 0 {
-        println!("spdm_device_validator_sample process failed to start");
-        return Err(ErrorKind::NotFound.into());
-    }
+    // if child.id() == 0 {
+    //     println!("spdm_device_validator_sample process failed to start");
+    //     return Err(ErrorKind::NotFound.into());
+    // }
 
-    Ok(())
+    // child.wait()
 }

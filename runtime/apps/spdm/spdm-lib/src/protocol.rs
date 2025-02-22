@@ -1,26 +1,20 @@
 // Licensed under the Apache-2.0 license
 
-use zerocopy::{FromBytes, Immutable, IntoBytes};
-
 use crate::codec::{Codec, CodecError, CodecResult, MessageBuf};
 use crate::error::{SpdmError, SpdmResult};
+use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const MAX_SPDM_MSG_SIZE: usize = 1024;
 pub const MAX_NUM_SUPPORTED_SPDM_VERSIONS: usize = 2;
 pub const MAX_SUPORTED_VERSION: SpdmVersion = SpdmVersion::V13;
 
-#[derive(Debug, PartialEq, Clone, Copy, PartialOrd)]
+#[derive(Debug, Default, PartialEq, Clone, Copy, PartialOrd)]
 pub enum SpdmVersion {
+    #[default]
     V10,
     V11,
     V12,
     V13,
-}
-
-impl Default for SpdmVersion {
-    fn default() -> Self {
-        SpdmVersion::V10
-    }
 }
 
 impl TryFrom<u8> for SpdmVersion {
@@ -43,7 +37,7 @@ impl From<SpdmVersion> for u8 {
 }
 
 impl SpdmVersion {
-    fn to_u8(&self) -> u8 {
+    fn to_u8(self) -> u8 {
         match self {
             SpdmVersion::V10 => 0x10,
             SpdmVersion::V11 => 0x11,
@@ -87,11 +81,11 @@ impl From<ReqRespCode> for u8 {
 }
 
 impl ReqRespCode {
-    pub fn response_code(&self) -> Option<ReqRespCode> {
+    pub fn response_code(&self) -> SpdmResult<ReqRespCode> {
         match self {
-            ReqRespCode::GetVersion => Some(ReqRespCode::Version),
-            ReqRespCode::Error => Some(ReqRespCode::Error),
-            _ => None,
+            ReqRespCode::GetVersion => Ok(ReqRespCode::Version),
+            ReqRespCode::Error => Ok(ReqRespCode::Error),
+            _ => Err(SpdmError::UnsupportedRequest),
         }
     }
 }
@@ -129,18 +123,18 @@ impl SpdmMsgHdr {
 }
 
 impl Codec for SpdmMsgHdr {
-    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<()> {
+    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
         let len = core::mem::size_of::<Self>();
         buf.push_data(len)?;
         let header = buf.data_mut(len)?;
         self.write_to(header).map_err(|_| CodecError::WriteError)?;
 
-        Ok(())
+        Ok(len)
     }
 
     fn decode(buf: &mut MessageBuf) -> CodecResult<Self> {
         let len = core::mem::size_of::<Self>();
-        if buf.len() < len {
+        if buf.data_len() < len {
             Err(CodecError::BufferTooSmall)?;
         }
         let hdr_bytes = buf.data(len)?;

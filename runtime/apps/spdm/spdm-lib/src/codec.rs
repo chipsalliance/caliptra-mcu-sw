@@ -3,94 +3,9 @@
 use core::ops::{Deref, DerefMut};
 use thiserror_no_std::Error;
 
-// #[derive(Debug)]
-// pub struct MessageBuf<'a> {
-//     buffer: &'a mut [u8],
-//     transport_hdr_offset: usize,
-//     cur_offset: usize,
-//     msg_len: usize,
-//     max_buf_len: usize,
-// }
-
-// impl<'a> Deref for MessageBuf<'a> {
-//     type Target = [u8];
-
-//     fn deref(&self) -> &Self::Target {
-//         &self.buffer[self.cur_offset..]
-//     }
-// }
-
-// impl<'a> DerefMut for MessageBuf<'a> {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         &mut self.buffer[self.cur_offset..]
-//     }
-// }
-
-// impl<'a> MessageBuf<'a> {
-//     pub fn new(buffer: &'a mut [u8], msg_len: usize) -> Option<Self> {
-//         let buf_len = buffer.len();
-
-//         if msg_len > buf_len {
-//             return None;
-//         }
-
-//         Some(Self {
-//             buffer,
-//             transport_hdr_offset: 0,
-//             cur_offset: 0,
-//             msg_len,
-//             max_buf_len: buf_len,
-//         })
-//     }
-
-//     pub fn reset(&mut self) {
-//         self.cur_offset = 0;
-//         self.msg_len = 0;
-//         self.buffer.fill(0);
-//     }
-
-//     pub fn push_offset(&mut self, offset: usize) -> CodecResult<()> {
-//         if self.cur_offset + offset >= self.msg_len {
-//             Err(CodecError::BufferOverflow)
-//         } else {
-//             self.cur_offset += offset;
-//             Ok(())
-//         }
-//     }
-
-//     pub fn set_transport_hdr_offset(&mut self, offset: usize) {
-//         self.transport_hdr_offset = offset;
-//     }
-
-//     // pub fn pull_offset(&mut self, offset: usize) -> CodecResult<usize> {
-//     //     if self.cur_offset < offset {
-//     //         Err(CodecError::BufferOverflow)
-//     //     } else {
-//     //         self.cur_offset -= offset;
-//     //         Ok(offset)
-//     //     }
-//     // }
-
-//     pub fn set_msg_len(&mut self, msg_len: usize) {
-//         self.msg_len = msg_len;
-//     }
-
-//     pub fn cur_offset(&self) -> usize {
-//         self.cur_offset
-//     }
-
-//     pub fn reset_offset(&mut self) {
-//         self.cur_offset = 0;
-//     }
-
-//     pub fn len(&self) -> usize {
-//         self.msg_len - self.cur_offset
-//     }
-// }
-
 pub type CodecResult<T> = Result<T, CodecError>;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum CodecError {
     #[error("Buffer too small")]
     BufferTooSmall,
@@ -105,7 +20,7 @@ pub enum CodecError {
 }
 
 pub trait Codec {
-    fn encode(&self, buffer: &mut MessageBuf) -> CodecResult<()>;
+    fn encode(&self, buffer: &mut MessageBuf) -> CodecResult<usize>;
     fn decode(data: &mut MessageBuf) -> CodecResult<Self>
     where
         Self: Sized;
@@ -115,8 +30,6 @@ pub trait Codec {
 pub struct MessageBuf<'a> {
     // Message buffer
     buffer: &'a mut [u8],
-    // Start of the message
-    head: usize,
     // Start of the payload
     data: usize,
     // End of the payload
@@ -142,7 +55,6 @@ impl<'a> MessageBuf<'a> {
     pub fn new(buffer: &'a mut [u8]) -> Self {
         Self {
             buffer,
-            head: 0,
             tail: 0,
             data: 0,
         }
@@ -172,6 +84,7 @@ impl<'a> MessageBuf<'a> {
         Ok(())
     }
 
+    /// Push data offset to the front of the message buffer.
     /// Makes space at the front of the message buffer for the header
     /// example usage
     /// ```
@@ -180,7 +93,7 @@ impl<'a> MessageBuf<'a> {
     /// header.copy_from_slice(&[1; 8]);
     /// ```
     pub fn push_data(&mut self, len: usize) -> CodecResult<()> {
-        if self.data - len < self.head {
+        if self.data < len {
             return Err(CodecError::BufferUnderflow);
         }
         self.data -= len;
@@ -232,17 +145,6 @@ impl<'a> MessageBuf<'a> {
         Ok(&mut self.buffer[self.data..self.data + len])
     }
 
-    pub fn data_offset(&self) -> usize {
-        self.data
-    }
-
-    // pub fn data_at(&self, offset: usize, len: usize) -> CodecResult<&[u8]> {
-    //     if self.data + offset + len > self.tail {
-    //         return Err(CodecError::BufferOverflow);
-    //     }
-    //     Ok(&self.buffer[self.data + offset..self.data + offset + len])
-    // }
-
     pub fn data_at_mut(&mut self, offset: usize, len: usize) -> CodecResult<&mut [u8]> {
         if self.data + offset + len > self.tail {
             return Err(CodecError::BufferOverflow);
@@ -250,8 +152,16 @@ impl<'a> MessageBuf<'a> {
         Ok(&mut self.buffer[self.data + offset..self.data + offset + len])
     }
 
-    pub fn len(&self) -> usize {
+    pub fn data_offset(&self) -> usize {
+        self.data
+    }
+
+    pub fn msg_len(&self) -> usize {
         self.tail
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tail == 0
     }
 
     pub fn capacity(&self) -> usize {
@@ -260,7 +170,6 @@ impl<'a> MessageBuf<'a> {
 
     pub fn reset(&mut self) {
         self.buffer.fill(0);
-        self.head = 0;
         self.data = 0;
         self.tail = 0;
     }
@@ -279,11 +188,14 @@ mod tests {
         let msg_len = 48;
         let mut msg = [0u8; 48];
         rng.fill(&mut msg[..msg_len]);
+
         // header 1 of size 1 byte
+        // eg. SPDM message type
         let header1_len = 1;
         let header1 = [0x05];
-        msg[0] = 0x05; // eg. SPDM message type
-                       // header 2 of size 2 bytes
+        msg[0] = 0x05;
+
+        // header 2 of size 2 bytes
         let header2_len = 2;
         let header2 = [0x10, 0x84];
 
@@ -300,13 +212,11 @@ mod tests {
         // Initialize buffer
         let mut msg_buf = MessageBuf::new(&mut buffer);
         assert_eq!(msg_buf.capacity(), 64);
-        assert_eq!(msg_buf.head, 0);
         assert_eq!(msg_buf.tail, 0);
         assert_eq!(msg_buf.data_len(), 0);
 
         // Set the len to full message length
         assert!(msg_buf.put_data(64).is_ok());
-        assert_eq!(msg_buf.head, 0);
         assert_eq!(msg_buf.tail, 64);
         assert_eq!(msg_buf.data_len(), 64);
         assert_eq!(msg_buf.data(64).unwrap(), &[0; 64]);
@@ -316,7 +226,6 @@ mod tests {
         assert!(data.is_ok());
         data.unwrap().copy_from_slice(&msg[..msg_len]);
         assert!(msg_buf.trim(msg_len).is_ok());
-        assert_eq!(msg_buf.head, 0);
         assert_eq!(msg_buf.tail, 48);
         assert_eq!(msg_buf.data_len(), 48);
         assert_eq!(msg_buf.data(48).unwrap(), &msg[..msg_len]);
@@ -328,7 +237,6 @@ mod tests {
         assert!(hdr1.is_ok());
         assert_eq!(hdr1.unwrap(), &header1[..]);
         assert!(msg_buf.pull_data(header1_len).is_ok());
-        assert!(msg_buf.head == 0);
         assert!(msg_buf.tail == 48);
         assert!(msg_buf.data_len() == 47);
         assert_eq!(msg_buf.data(47).unwrap(), &msg[1..]);
@@ -338,7 +246,6 @@ mod tests {
         assert!(hdr2.is_ok());
         assert_eq!(hdr2.unwrap(), &header2[..]);
         assert!(msg_buf.pull_data(2).is_ok());
-        assert!(msg_buf.head == 0);
         assert!(msg_buf.tail == 48);
         assert!(msg_buf.data_len() == 45);
         assert_eq!(msg_buf.data(45).unwrap(), &msg[3..]);
@@ -348,27 +255,24 @@ mod tests {
         assert!(hdr3.is_ok());
         assert_eq!(hdr3.unwrap(), &header3[..]);
         assert!(msg_buf.pull_data(4).is_ok());
-        assert!(msg_buf.head == 0);
         assert!(msg_buf.tail == 48);
         assert!(msg_buf.data_len() == 41);
         assert_eq!(msg_buf.data(41).unwrap(), &msg[7..]);
 
         // Reset the buffer for response
         msg_buf.reset();
-        assert!(msg_buf.head == 0);
         assert!(msg_buf.tail == 0);
         assert!(msg_buf.data_len() == 0);
         assert!(msg_buf.capacity() == 64);
-        assert!(msg_buf.len() == 0);
+        assert!(msg_buf.msg_len() == 0);
 
         // Reserve space for header 1,2 and 3
         assert!(msg_buf
             .reserve(header1_len + header2_len + header3_len)
             .is_ok());
-        assert!(msg_buf.head == 0);
         assert!(msg_buf.tail == header1_len + header2_len + header3_len);
         assert!(msg_buf.data_len() == 0);
-        assert!(msg_buf.len() == header1_len + header2_len + header3_len);
+        assert!(msg_buf.msg_len() == header1_len + header2_len + header3_len);
         assert!(msg_buf.capacity() == 64);
 
         // Add response payload
@@ -376,10 +280,9 @@ mod tests {
         let payload_offset = header1_len + header2_len + header3_len;
 
         assert!(msg_buf.put_data(payload_len).is_ok());
-        assert!(msg_buf.head == 0);
         assert!(msg_buf.tail == msg_len);
         assert!(msg_buf.data_len() == payload_len);
-        assert!(msg_buf.len() == msg_len);
+        assert!(msg_buf.msg_len() == msg_len);
         assert!(msg_buf.capacity() == 64);
 
         let data = msg_buf.data_mut(payload_len);
@@ -393,10 +296,9 @@ mod tests {
         let rsp_header3 = rsp_header3.unwrap();
         assert!(rsp_header3.len() == header3_len);
         rsp_header3.copy_from_slice(&header3[..]);
-        assert!(msg_buf.head == 0);
         assert!(msg_buf.tail == msg_len);
         assert!(msg_buf.data_len() == payload_len + header3_len);
-        assert!(msg_buf.len() == msg_len);
+        assert!(msg_buf.msg_len() == msg_len);
 
         // Add header2
         assert!(msg_buf.push_data(header2_len).is_ok());
@@ -405,10 +307,9 @@ mod tests {
         let rsp_header2 = rsp_header2.unwrap();
         assert!(rsp_header2.len() == header2_len);
         rsp_header2.copy_from_slice(&header2[..]);
-        assert!(msg_buf.head == 0);
         assert!(msg_buf.tail == msg_len);
         assert!(msg_buf.data_len() == payload_len + header2_len + header3_len);
-        assert!(msg_buf.len() == msg_len);
+        assert!(msg_buf.msg_len() == msg_len);
 
         // Add header3
         assert!(msg_buf.push_data(header1_len).is_ok());
@@ -417,10 +318,9 @@ mod tests {
         let rsp_header1 = rsp_header1.unwrap();
         assert!(rsp_header1.len() == header1_len);
         rsp_header1.copy_from_slice(&header1[..]);
-        assert!(msg_buf.head == 0);
         assert!(msg_buf.tail == msg_len);
         assert!(msg_buf.data_len() == payload_len + header1_len + header2_len + header3_len);
-        assert!(msg_buf.len() == msg_len);
+        assert!(msg_buf.msg_len() == msg_len);
 
         // Compare the response with the original message
         assert_eq!(msg_buf.data(msg_len).unwrap(), &msg[..]);

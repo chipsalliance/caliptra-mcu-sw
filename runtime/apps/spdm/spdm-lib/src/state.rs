@@ -7,6 +7,12 @@ pub struct State {
     version_number: SpdmVersion,
 }
 
+impl Default for State {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl State {
     pub fn new() -> Self {
         Self {

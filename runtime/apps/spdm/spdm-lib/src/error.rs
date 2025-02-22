@@ -26,17 +26,13 @@ pub enum SpdmError {
 
 pub type SpdmResult<T> = Result<T, SpdmError>;
 
-pub enum CommandResult {
-    Success,
-    ErrorResponse(CommandError),
-    ErrorNoResponse(CommandError),
-}
+pub type CommandResult<T> = Result<T, (bool, CommandError)>;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum CommandError {
     #[error("Buffer too small")]
     BufferTooSmall,
-    #[error("Coded error")]
+    #[error("Codec error")]
     Codec(#[from] CodecError),
     #[error("Request failed with error code {:?}", .0)]
     ErrorCode(ErrorCode),

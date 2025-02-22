@@ -46,7 +46,7 @@ use std::time::Duration;
 use std::vec;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
-use crate::tests::spdm_validator::start_spdm_device_validator;
+use crate::tests::spdm_validator::execute_spdm_validator;
 
 const CRC8_SMBUS: crc::Crc<u8> = crc::Crc::<u8>::new(&crc::CRC_8_SMBUS);
 
@@ -79,7 +79,6 @@ fn handle_i3c_socket_loop(
     while running.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, addr)) => {
-                println!("I3C_SERVER: Accepted connection from {}", addr);
                 handle_i3c_socket_connection(
                     running.clone(),
                     stream,
@@ -89,7 +88,6 @@ fn handle_i3c_socket_loop(
                 );
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                println!("I3C_SERVER: Would block, sleeping");
                 std::thread::sleep(std::time::Duration::from_millis(10));
             }
             Err(e) => panic!("Error accepting connection: {}", e),
@@ -127,10 +125,6 @@ fn handle_i3c_socket_connection(
         let mut incoming_header_bytes = [0u8; 9];
         match stream.read_exact(&mut incoming_header_bytes) {
             Ok(()) => {
-                println!(
-                    "I3C_SERVER: Reading message from socket. Incomomg header: {:X?}",
-                    incoming_header_bytes
-                );
                 let incoming_header: IncomingHeader = transmute!(incoming_header_bytes);
                 let cmd: I3cTcriCommand = incoming_header.command.try_into().unwrap();
 
@@ -193,7 +187,7 @@ pub(crate) fn run_tests(
     });
 
     if cfg!(feature = "test-spdm-validator") {
-        let _ = start_spdm_device_validator(running.clone());
+        let _ = execute_spdm_validator(running.clone());
     }
 }
 
@@ -257,10 +251,6 @@ pub fn send_private_write(stream: &mut TcpStream, target_addr: u8, data: Vec<u8>
     pkt.push(pec);
 
     let pvt_write_cmd = prepare_private_write_cmd(addr, pkt.len() as u16);
-    println!(
-        "I3C_CLIENT: Sending private write command: {:X?}",
-        pvt_write_cmd
-    );
     stream.set_nonblocking(false).unwrap();
     stream.write_all(&pvt_write_cmd).unwrap();
     stream.set_nonblocking(true).unwrap();

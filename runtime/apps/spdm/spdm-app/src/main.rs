@@ -5,13 +5,10 @@
 #![feature(impl_trait_in_assoc_type)]
 #![allow(static_mut_refs)]
 
-use core::char::MAX;
 use core::fmt::Write;
-use core::result;
 use libsyscall_caliptra::mctp::driver_num;
-use libtock_console::Console;
-use libtock_platform::{self as platform};
-use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
+use libtock_console::{Console, ConsoleWriter};
+use libtock_platform::Syscalls;
 use spdm_lib::codec::MessageBuf;
 use spdm_lib::context::SpdmContext;
 use spdm_lib::protocol::{SpdmVersion, MAX_SPDM_MSG_SIZE};
@@ -59,12 +56,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
     let mut raw_buffer = [0; MAX_SPDM_MSG_SIZE];
 
-    spdm_loop::<S>(&mut raw_buffer).await;
+    spdm_loop::<S>(&mut raw_buffer, &mut console_writer).await;
 
     writeln!(console_writer, "SPDM_APP: app finished").unwrap();
 }
 
-async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8]) {
+async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cons_wr: &mut ConsoleWriter<S>) {
     let mut console_writer = Console::<S>::writer();
     let mut mctp_spdm_transport = MctpTransport::new(driver_num::MCTP_SPDM);
     let supported_versions = [SpdmVersion::V12, SpdmVersion::V13];
@@ -76,17 +73,17 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8]) {
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
-            // writeln!(
-            //     console_writer,
-            //     "SPDM_APP: Failed to create SPDM context: {:?}",
-            //     e
-            // )
-            // .unwrap();
+            writeln!(
+                console_writer,
+                "SPDM_APP: Failed to create SPDM context: {:?}",
+                e
+            )
+            .unwrap();
             return;
         }
     };
 
-    let mut cons_wr = Console::<S>::writer();
+    // let mut cons_wr = Console::<S>::writer();
     let mut msg_buffer = MessageBuf::new(raw_buffer);
     loop {
         let result = ctx.process_message(&mut msg_buffer).await;
