@@ -39,10 +39,8 @@ struct Test {
     spdm_server_state: SpdmServerState,
     mctp_test_state: MctpTestState,
     cur_req_msg: Vec<u8>,
-    // incoming_req_pkts: VecDeque<Vec<u8>>,
     cur_resp_msg: Vec<u8>,
-    // outgoing_resp_pkts: VecDeque<Vec<u8>>,
-    cur_msg_tag: u8,
+    msg_tag: u8,
     mctp_util: MctpUtil,
     responder_ready: bool,
     passed: bool,
@@ -64,7 +62,7 @@ impl Test {
             mctp_test_state: MctpTestState::Start,
             cur_req_msg: Vec::new(),
             cur_resp_msg: Vec::new(),
-            cur_msg_tag: 0,
+            msg_tag: 0,
             mctp_util: MctpUtil::new(),
             responder_ready: false,
             passed: false,
@@ -161,7 +159,7 @@ impl Test {
                 }
                 MctpTestState::SendReq => {
                     self.mctp_util.send_request(
-                        self.cur_msg_tag,
+                        self.msg_tag,
                         self.cur_req_msg.as_slice(),
                         running.clone(),
                         i3c_stream,
@@ -171,11 +169,9 @@ impl Test {
                 }
 
                 MctpTestState::ReceiveResp => {
-                    let resp_msg = self.mctp_util.receive_response(
-                        running.clone(),
-                        i3c_stream,
-                        self.cur_msg_tag,
-                    );
+                    let resp_msg =
+                        self.mctp_util
+                            .receive_response(running.clone(), i3c_stream, self.msg_tag);
                     if !resp_msg.is_empty() {
                         self.cur_resp_msg = resp_msg;
                         self.mctp_test_state = MctpTestState::Finish;
@@ -191,7 +187,7 @@ impl Test {
     }
 
     fn send_hello(&self, stream: &mut TcpStream, tranport_type: u32) {
-        println!("get hello");
+        println!("SPDM_SERVER: Got Client Hello");
         let server_hello = b"Server Hello!\0";
         let hello_bytes = server_hello.as_bytes();
 
@@ -199,7 +195,7 @@ impl Test {
     }
 
     fn send_stop(&self, stream: &mut TcpStream, tranport_type: u32) {
-        println!("get stop");
+        println!("SPDM_SERVER: Got Stop");
         self.send_socket_message(stream, tranport_type, SOCKET_SPDM_COMMAND_STOP, &[]);
     }
 
@@ -236,7 +232,7 @@ impl Test {
                 self.cur_req_msg = buffer;
                 if !self.responder_ready {
                     let result = self.mctp_util.wait_for_responder(
-                        self.cur_msg_tag,
+                        self.msg_tag,
                         self.cur_req_msg.as_slice(),
                         running,
                         i3c_server_stream,
@@ -256,7 +252,7 @@ impl Test {
                 }
 
                 self.spdm_server_state = SpdmServerState::SendResponse;
-                self.cur_msg_tag = (self.cur_msg_tag + 1) % 4;
+                self.msg_tag = (self.msg_tag + 1) % 4;
                 true
             }
             _ => false,
@@ -392,11 +388,4 @@ pub fn start_spdm_device_validator() -> io::Result<ExitStatus> {
         .stderr(Stdio::from(output_file_clone))
         .spawn()?
         .wait()
-
-    // if child.id() == 0 {
-    //     println!("spdm_device_validator_sample process failed to start");
-    //     return Err(ErrorKind::NotFound.into());
-    // }
-
-    // child.wait()
 }

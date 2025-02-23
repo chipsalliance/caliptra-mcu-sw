@@ -83,7 +83,6 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cons_wr: &mut ConsoleWrit
         }
     };
 
-    // let mut cons_wr = Console::<S>::writer();
     let mut msg_buffer = MessageBuf::new(raw_buffer);
     loop {
         let result = ctx.process_message(&mut msg_buffer).await;
@@ -95,7 +94,6 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cons_wr: &mut ConsoleWrit
                 writeln!(cons_wr, "SPDM_APP: Process message failed: {:?}", e).unwrap();
             }
         }
-        // msg_buffer = [0; MAX_SPDM_MSG_SIZE];
         writeln!(cons_wr, "SPDM_APP: Process message finished").unwrap();
     }
 }

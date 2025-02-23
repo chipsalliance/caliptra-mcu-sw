@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-use core::ops::{Deref, DerefMut};
 use thiserror_no_std::Error;
 
 pub type CodecResult<T> = Result<T, CodecError>;
@@ -26,29 +25,15 @@ pub trait Codec {
         Self: Sized;
 }
 
+// Generic message buffer for message encoding and decoding
 #[derive(Debug)]
 pub struct MessageBuf<'a> {
-    // Message buffer
+    /// Message buffer
     buffer: &'a mut [u8],
-    // Start of the payload
+    /// Start of the payload
     data: usize,
-    // End of the payload
-    // Represents the length of the message
+    /// End of the payload. Represents the length of the message
     tail: usize,
-}
-
-impl<'a> Deref for MessageBuf<'a> {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.buffer[self.data..self.tail]
-    }
-}
-
-impl<'a> DerefMut for MessageBuf<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.buffer[self.data..self.tail]
-    }
 }
 
 impl<'a> MessageBuf<'a> {
@@ -75,7 +60,9 @@ impl<'a> MessageBuf<'a> {
         self.tail - self.data
     }
 
-    /// Increments the length of the data in the message buffer
+    /// Advances the tail pointer by specified number of bytes.
+    /// This is used to add data to the end of the message buffer
+    /// example usage
     pub fn put_data(&mut self, len: usize) -> CodecResult<()> {
         if self.tail + len > self.buffer.len() {
             return Err(CodecError::BufferTooSmall);
@@ -84,14 +71,10 @@ impl<'a> MessageBuf<'a> {
         Ok(())
     }
 
-    /// Push data offset to the front of the message buffer.
-    /// Makes space at the front of the message buffer for the header
+    /// Decrements the data pointer (pushes up) by the specified number of bytes.
+    /// This is used to add data to the start of the message buffer (eg. headers)
+    /// This also increases the length of the message by the specified number of bytes
     /// example usage
-    /// ```
-    /// msg_buf.push_data(8)?;
-    /// let header = msg_buf.data();
-    /// header.copy_from_slice(&[1; 8]);
-    /// ```
     pub fn push_data(&mut self, len: usize) -> CodecResult<()> {
         if self.data < len {
             return Err(CodecError::BufferUnderflow);
@@ -100,14 +83,9 @@ impl<'a> MessageBuf<'a> {
         Ok(())
     }
 
-    /// Removes data at the front of the message buffer to make
-    /// space for the header
-    /// example usage
-    /// ```
-    ///
-    /// msg_buf.pull(8)?;
-    /// let header = msg_buf.data();
-    /// ```
+    /// Increments the data pointer (pulls down) by specified number of bytes.
+    /// This is used to remove data (eg. headers) at the front of the message
+    /// after processing it.
     pub fn pull_data(&mut self, len: usize) -> CodecResult<()> {
         if self.data + len > self.tail {
             return Err(CodecError::BufferOverflow);
@@ -116,7 +94,8 @@ impl<'a> MessageBuf<'a> {
         Ok(())
     }
 
-    /// Remove data from the end of the buffer
+    /// Remove data from the end of the buffer by the specified number of bytes
+    /// This is used to resize the buffer length.
     pub fn trim(&mut self, len: usize) -> CodecResult<()> {
         if self.tail < len {
             return Err(CodecError::BufferUnderflow);
@@ -126,6 +105,7 @@ impl<'a> MessageBuf<'a> {
         Ok(())
     }
 
+    // Returns the data slice in the message buffer of specified length
     pub fn data(&self, len: usize) -> CodecResult<&[u8]> {
         if self.data + len > self.tail {
             return Err(CodecError::BufferOverflow);
@@ -133,11 +113,7 @@ impl<'a> MessageBuf<'a> {
         Ok(&self.buffer[self.data..self.data + len])
     }
 
-    /// For debug purposes
-    pub fn total_message(&self) -> &[u8] {
-        &self.buffer[..self.tail]
-    }
-
+    // Returns the mutable data slice in the message buffer of specified length
     pub fn data_mut(&mut self, len: usize) -> CodecResult<&mut [u8]> {
         if self.data + len > self.tail {
             return Err(CodecError::BufferOverflow);
@@ -145,11 +121,21 @@ impl<'a> MessageBuf<'a> {
         Ok(&mut self.buffer[self.data..self.data + len])
     }
 
-    pub fn data_at_mut(&mut self, offset: usize, len: usize) -> CodecResult<&mut [u8]> {
-        if self.data + offset + len > self.tail {
-            return Err(CodecError::BufferOverflow);
-        }
-        Ok(&mut self.buffer[self.data + offset..self.data + offset + len])
+    /// Returns the total capacity of the message buffer
+    pub fn capacity(&self) -> usize {
+        self.buffer.len()
+    }
+
+    /// Resets the message buffer
+    pub fn reset(&mut self) {
+        self.buffer.fill(0);
+        self.data = 0;
+        self.tail = 0;
+    }
+
+    /// For debug purposes
+    pub fn total_message(&self) -> &[u8] {
+        &self.buffer[..self.tail]
     }
 
     pub fn data_offset(&self) -> usize {
@@ -158,20 +144,6 @@ impl<'a> MessageBuf<'a> {
 
     pub fn msg_len(&self) -> usize {
         self.tail
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.tail == 0
-    }
-
-    pub fn capacity(&self) -> usize {
-        self.buffer.len()
-    }
-
-    pub fn reset(&mut self) {
-        self.buffer.fill(0);
-        self.data = 0;
-        self.tail = 0;
     }
 }
 

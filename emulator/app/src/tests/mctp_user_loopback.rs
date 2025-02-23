@@ -103,18 +103,21 @@ impl Test {
             target_addr,
         );
 
+        // if let Some(resp_msg) = resp_msg {
+        //     if resp_msg[0] != self.msg_type || self.req_msg_buf != resp_msg {
+        //         self.passed = false;
+        //     } else {
+        //         self.passed = true;
+        //     }
+        // }
         if let Some(resp_msg) = resp_msg {
-            assert!(resp_msg[0] == self.msg_type);
-            assert!(self.req_msg_buf == resp_msg);
-            println!(
-                "RESPONDER_READY: Test {} : {}",
-                self.test_name,
-                if self.passed { "PASSED" } else { "FAILED" }
-            );
-            self.passed = true;
-        } else {
-            self.passed = false
+            self.passed = !(resp_msg[0] != self.msg_type || self.req_msg_buf != resp_msg);
         }
+        println!(
+            "RESPONDER_READY: Test {} : {}",
+            self.test_name,
+            if self.passed { "PASSED" } else { "FAILED" }
+        );
     }
 
     fn run_loopback_test(

@@ -435,14 +435,6 @@ pub unsafe fn main() {
         }
     );
 
-    debug!(
-        "LOADING TOCK PROCESSES: _sapps {:X} _eapps {:X} _sappmem {:X} _eappmem {:X}",
-        core::ptr::addr_of!(_sapps) as usize,
-        core::ptr::addr_of!(_eapps) as usize,
-        core::ptr::addr_of!(_sappmem) as usize,
-        core::ptr::addr_of!(_eappmem) as usize
-    );
-
     kernel::process::load_processes(
         board_kernel,
         chip,

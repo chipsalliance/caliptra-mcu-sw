@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::codec::{Codec, CodecResult, MessageBuf};
+use crate::error::{CommandError, CommandResult};
 
 // SPDM error codes
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -86,4 +87,26 @@ impl<'a> Codec for ErrorResponse<'a> {
     fn decode(_buf: &mut MessageBuf) -> CodecResult<Self> {
         unimplemented!()
     }
+}
+
+pub fn fill_error_response(
+    rsp_buf: &mut MessageBuf,
+    error_code: ErrorCode,
+    error_data: u8,
+    extended_data: Option<&[u8]>,
+) -> CommandResult<()> {
+    // SPDM Error response payload
+    let error_payload = ErrorResponse::new(error_code, error_data, extended_data);
+    if let Some(error_payload) = error_payload {
+        let len = error_payload
+            .encode(rsp_buf)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+
+        rsp_buf
+            .push_data(len)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+    } else {
+        Err((false, CommandError::ErrorCode(error_code)))?
+    }
+    Ok(())
 }

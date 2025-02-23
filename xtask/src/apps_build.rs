@@ -149,12 +149,6 @@ INCLUDE runtime/apps/app_layout.ld",
         ),
     )?;
 
-    println!("Layout file: {}", layout_ld.display());
-    println!(
-        "Layout file contents: {}",
-        std::fs::read_to_string(layout_ld)?
-    );
-
     let ld_flag = format!("-C link-arg=-T{}", layout_ld.display());
 
     let features_str = if features.is_empty() {

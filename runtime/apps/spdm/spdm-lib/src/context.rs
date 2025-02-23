@@ -1,9 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use crate::codec::{Codec, MessageBuf};
-use crate::commands::error_rsp::ErrorCode;
-use crate::commands::error_rsp::ErrorResponse;
-use crate::commands::version_rsp::{VersionNumberEntry, VersionRespCommon};
+use crate::commands::error_rsp::{fill_error_response, ErrorCode};
+use crate::commands::version_rsp;
 use crate::error::*;
 use crate::protocol::{
     ReqRespCode, SpdmMsgHdr, SpdmVersion, MAX_NUM_SUPPORTED_SPDM_VERSIONS, MAX_SUPORTED_VERSION,
@@ -142,7 +141,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             Ok(SpdmVersion::V10) => {}
             _ => {
                 writeln!(self.cw, "SPDM_LIB: Version Error").unwrap();
-                self.generate_error_response(ErrorCode::VersionMismatch, 0, None, req_payload)?;
+                self.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None)?;
             }
         }
 
@@ -152,7 +151,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         writeln!(
             self.cw,
             "Get Version Success. Generated response of len {}",
-            rsp_buf.len()
+            rsp_buf.msg_len()
         )
         .unwrap();
 
@@ -169,51 +168,19 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         Ok(())
     }
 
-    pub fn generate_version_response(&mut self, rsp_buf: &mut MessageBuf) -> CommandResult<()> {
+    fn generate_version_response(&mut self, rsp_buf: &mut MessageBuf) -> CommandResult<()> {
         self.prepare_response_buffer(rsp_buf)?;
-
-        let entry_count = self.supported_versions.len() as u8;
-
-        // Fill the response in buffer
-        let resp_common = VersionRespCommon::new(entry_count);
-        let mut payload_len = resp_common
-            .encode(rsp_buf)
-            .map_err(|_| (false, CommandError::BufferTooSmall))?;
-
-        for &version in self.supported_versions.iter() {
-            let entry = VersionNumberEntry::new(version);
-            payload_len += entry
-                .encode(rsp_buf)
-                .map_err(|_| (false, CommandError::BufferTooSmall))?;
-        }
-
-        // Push data offset up by total payload length
-        rsp_buf
-            .push_data(payload_len)
-            .map_err(|_| (false, CommandError::BufferTooSmall))
+        version_rsp::fill_version_response(rsp_buf, self.supported_versions)
     }
 
-    pub fn generate_error_response(
+    fn generate_error_response(
         &self,
+        msg_buf: &mut MessageBuf,
         error_code: ErrorCode,
         error_data: u8,
         extended_data: Option<&[u8]>,
-        msg_buf: &mut MessageBuf,
     ) -> CommandResult<()> {
         self.prepare_response_buffer(msg_buf)?;
-
-        // SPDM Error response payload
-        let error_payload = ErrorResponse::new(error_code, error_data, extended_data);
-        if let Some(error_payload) = error_payload {
-            let len = error_payload
-                .encode(msg_buf)
-                .map_err(|e| (false, CommandError::Codec(e)))?;
-            msg_buf
-                .push_data(len)
-                .map_err(|e| (false, CommandError::Codec(e)))?;
-        } else {
-            Err((false, CommandError::ErrorCode(error_code)))?
-        }
-        Err((true, CommandError::ErrorCode(error_code)))
+        fill_error_response(msg_buf, error_code, error_data, extended_data)
     }
 }

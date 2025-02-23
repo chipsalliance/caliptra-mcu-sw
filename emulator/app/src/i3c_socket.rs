@@ -179,7 +179,6 @@ pub(crate) fn run_tests(
 ) {
     let running_clone = running.clone();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    println!("I3C_CLIENT: Connecting to {}", addr);
     let stream = TcpStream::connect(addr).unwrap();
     std::thread::spawn(move || {
         let mut test_runner = MctpTestRunner::new(stream, target_addr.into(), running_clone, tests);

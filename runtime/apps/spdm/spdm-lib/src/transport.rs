@@ -19,8 +19,8 @@ pub enum SpdmTransportType {
 
 #[derive(Error, Debug)]
 pub enum TransportError {
-    #[error("MCTP driver Error")]
-    MctpDriverError,
+    #[error("Driver Error")]
+    DriverError,
     #[error("Buffer too small")]
     BufferTooSmall,
     #[error("Codec error")]
@@ -111,7 +111,7 @@ impl<S: Syscalls> MctpTransport<S> {
             .map_err(|_| TransportError::UnexpectedMessageType)?;
         let header = MctpMsgHdr::new(0, msg_type);
         header.encode(req)?;
-        let req_len = req.len();
+        let req_len = req.data_len();
         let req_buf = req
             .data(req_len)
             .map_err(|_| TransportError::BufferTooSmall)?;
@@ -219,7 +219,7 @@ impl<S: Syscalls> MctpTransport<S> {
         let header = MctpMsgHdr::new(0, msg_type);
         header.encode(resp)?;
 
-        let msg_len = resp.len();
+        let msg_len = resp.msg_len();
         let rsp_buf = resp
             .data(msg_len)
             .map_err(|_| TransportError::BufferTooSmall)?;
@@ -233,7 +233,7 @@ impl<S: Syscalls> MctpTransport<S> {
 
         if let Some(msg_info) = self.cur_resp_ctx.clone() {
             self.mctp
-                .send_response(&resp[..msg_len], msg_info)
+                .send_response(rsp_buf, msg_info)
                 .await
                 .map_err(|_| TransportError::SendError)?
         } else {
@@ -249,7 +249,7 @@ impl<S: Syscalls> MctpTransport<S> {
         let max_size = self
             .mctp
             .max_message_size()
-            .map_err(|_| TransportError::MctpDriverError)?;
+            .map_err(|_| TransportError::DriverError)?;
         Ok(max_size as usize - self.header_size())
     }
 

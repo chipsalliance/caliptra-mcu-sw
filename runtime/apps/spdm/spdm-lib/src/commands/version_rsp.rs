@@ -1,12 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::codec::{Codec, CodecError, CodecResult, MessageBuf};
+use crate::error::{CommandError, CommandResult};
 use crate::protocol::SpdmVersion;
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
-
-pub const VERSION_RESP_COMMON_SIZE: usize = 4;
-pub const VERSION_NUMBER_ENTRY_SIZE: usize = 2;
 
 bitfield! {
 #[repr(C)]
@@ -26,17 +24,17 @@ impl Default for VersionRespCommon<[u8; 4]> {
     }
 }
 
-impl VersionRespCommon<[u8; VERSION_RESP_COMMON_SIZE]> {
+impl VersionRespCommon<[u8; 4]> {
     pub fn new(entry_count: u8) -> Self {
-        let mut payload = VersionRespCommon([0u8; VERSION_RESP_COMMON_SIZE]);
+        let mut payload = VersionRespCommon([0u8; 4]);
         payload.set_version_num_entry_count(entry_count);
         payload
     }
 }
 
-impl Codec for VersionRespCommon<[u8; VERSION_RESP_COMMON_SIZE]> {
+impl Codec for VersionRespCommon<[u8; 4]> {
     fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
-        let len: usize = core::mem::size_of::<Self>();
+        let len = core::mem::size_of::<Self>();
         buf.put_data(len)?;
 
         if buf.data_len() < len {
@@ -52,8 +50,16 @@ impl Codec for VersionRespCommon<[u8; VERSION_RESP_COMMON_SIZE]> {
         Ok(len)
     }
 
-    fn decode(_buf: &mut MessageBuf) -> CodecResult<Self> {
-        unimplemented!()
+    fn decode(buf: &mut MessageBuf) -> CodecResult<Self> {
+        let len = core::mem::size_of::<Self>();
+        if buf.data_len() < len {
+            Err(CodecError::BufferTooSmall)?;
+        }
+        let payload = buf.data(len)?;
+        let payload =
+            VersionRespCommon::read_from_bytes(payload).map_err(|_| CodecError::ReadError)?;
+        buf.pull_data(len)?;
+        Ok(payload)
     }
 }
 
@@ -79,9 +85,7 @@ impl VersionNumberEntry<[u8; 2]> {
     pub fn new(version: SpdmVersion) -> Self {
         let mut entry = VersionNumberEntry([0u8; 2]);
         entry.set_major(version.major());
-        assert!(entry.minor() != 1);
         entry.set_minor(version.minor());
-        // assert!(entry.minor() != version.minor());
         entry
     }
 }
@@ -98,23 +102,39 @@ impl Codec for VersionNumberEntry<[u8; 2]> {
         Ok(len)
     }
 
-    fn decode(_buf: &mut MessageBuf) -> CodecResult<Self> {
-        unimplemented!()
+    fn decode(buf: &mut MessageBuf) -> CodecResult<Self> {
+        let len = core::mem::size_of::<Self>();
+        if buf.data_len() < len {
+            Err(CodecError::BufferTooSmall)?;
+        }
+        let payload = buf.data(len)?;
+        let payload =
+            VersionNumberEntry::read_from_bytes(payload).map_err(|_| CodecError::ReadError)?;
+        buf.pull_data(len)?;
+        Ok(payload)
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use crate::req_resp_codes::ReqRespCode;
+pub fn fill_version_response(
+    rsp_buf: &mut MessageBuf,
+    supported_versions: &[SpdmVersion],
+) -> CommandResult<()> {
+    let entry_count = supported_versions.len() as u8;
+    // Fill the response in buffer
+    let resp_common = VersionRespCommon::new(entry_count);
+    let mut payload_len = resp_common
+        .encode(rsp_buf)
+        .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
-//     #[test]
-//     fn test_version_conversion() {
-//         let version = SpdmVersion::V10;
-//         let ver_num: u8 = version.into();
-//         assert_eq!(ver_num, 0x10);
+    for &version in supported_versions.iter() {
+        let entry = VersionNumberEntry::new(version);
+        payload_len += entry
+            .encode(rsp_buf)
+            .map_err(|_| (false, CommandError::BufferTooSmall))?;
+    }
 
-//         let ver_num: SpdmVersion = 0x11.into();
-//         assert_eq!(ver_num, SpdmVersion::V11);
-//     }
-// }
+    // Push data offset up by total payload length
+    rsp_buf
+        .push_data(payload_len)
+        .map_err(|_| (false, CommandError::BufferTooSmall))
+}

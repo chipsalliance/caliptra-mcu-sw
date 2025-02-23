@@ -425,11 +425,6 @@ impl<'a> MCTPRxClient for MCTPDriver<'a> {
             );
         }
 
-        println!(
-            "MCTPDriver::receive src_eid {}, msg_tag {}, msg_len {}",
-            src_eid, msg_tag, msg_len
-        );
-
         self.apps.each(|_, app, kernel_data| {
             // Check if the received message matches the pending rx operation
             if !self.rx_pending(app, msg_tag, src_eid) {
