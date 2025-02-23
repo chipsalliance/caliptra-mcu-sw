@@ -46,6 +46,8 @@ use std::time::Duration;
 use std::vec;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
+use crate::tests::spdm_validator::execute_spdm_validator;
+
 const CRC8_SMBUS: crc::Crc<u8> = crc::Crc::<u8>::new(&crc::CRC_8_SMBUS);
 
 pub(crate) fn start_i3c_socket(
@@ -182,6 +184,10 @@ pub(crate) fn run_tests(
         let mut test_runner = MctpTestRunner::new(stream, target_addr.into(), running_clone, tests);
         test_runner.run_tests();
     });
+
+    if cfg!(feature = "test-spdm-validator") {
+        let _ = execute_spdm_validator(running.clone());
+    }
 }
 
 #[derive(Debug, Clone)]

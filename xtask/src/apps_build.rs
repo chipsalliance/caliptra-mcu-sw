@@ -5,11 +5,18 @@ use crate::tbf::TbfHeader;
 use crate::{DynError, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
-pub const APPS: &[App] = &[App {
-    name: "example-app",
-    permissions: vec![],
-    minimum_ram: 16384,
-}];
+pub const APPS: &[App] = &[
+    App {
+        name: "example-app",
+        permissions: vec![],
+        minimum_ram: 16384,
+    },
+    App {
+        name: "spdm-app",
+        permissions: vec![],
+        minimum_ram: 16384,
+    },
+];
 
 pub struct App {
     pub name: &'static str,
@@ -45,11 +52,12 @@ pub fn apps_build_flat_tbf(
     let mut offset = start;
     let mut ram_start = ram_start;
     for app in APPS.iter() {
+        println!("Building TBF for app {}", app.name);
         let app_bin = app_build_tbf(app, offset, ram_start, features)?;
         bin.extend_from_slice(&app_bin);
         offset += app_bin.len();
         // TODO: support different amount of RAM per app
-        ram_start += 0x4000;
+        ram_start += app.minimum_ram as usize;
     }
     Ok(bin)
 }
@@ -119,7 +127,11 @@ fn app_build(
     tbf_header_size: usize,
     features: &[&str],
 ) -> Result<(), DynError> {
-    let layout_ld = &PROJECT_ROOT.join("runtime").join("apps").join("layout.ld");
+    let app_ld_filename = format!("{}-layout.ld", app_name);
+    let layout_ld = &PROJECT_ROOT
+        .join("runtime")
+        .join("apps")
+        .join(app_ld_filename);
 
     // TODO: do we need to fix the RAM start and length?
     std::fs::write(

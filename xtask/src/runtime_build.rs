@@ -19,7 +19,7 @@ use std::sync::LazyLock;
 const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
 const INTERRUPT_TABLE_SIZE: usize = 128;
 // amount to reserve for data RAM at the end of RAM
-const DATA_RAM_SIZE: usize = 64 * 1024;
+const DATA_RAM_SIZE: usize = 80 * 1024;
 
 static SYSROOT: LazyLock<String> = LazyLock::new(|| {
     // cache this in the target directory as it seems to be very slow to call rustc
@@ -299,6 +299,7 @@ pub fn runtime_build_with_apps(
     let runtime_bin_size = std::fs::metadata(&runtime_bin)?.len() as usize;
     app_offset += runtime_bin_size;
     let runtime_end_offset = app_offset;
+
     // ensure that we leave space for the interrupt table
     // and align to 4096 bytes (needed for rust-lld)
     let app_offset = (runtime_end_offset + INTERRUPT_TABLE_SIZE).next_multiple_of(4096);

@@ -394,7 +394,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         );
 
         let spdm_loopback_tests = tests::mctp_user_loopback::MctpUserAppTests::generate_tests(
-            tests::mctp_util::base_protocol::MctpMsgType::Spdm as u8,
+            tests::mctp_util::base_protocol::MctpMsgType::Caliptra as u8,
         );
 
         i3c_socket::run_tests(
@@ -402,6 +402,15 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             cli.i3c_port.unwrap(),
             i3c.get_dynamic_address().unwrap(),
             spdm_loopback_tests,
+        );
+    } else if cfg!(feature = "test-spdm-validator") {
+        i3c_controller.start();
+        let spdm_validator_tests = tests::spdm_validator::generate_tests();
+        i3c_socket::run_tests(
+            running.clone(),
+            cli.i3c_port.unwrap(),
+            i3c.get_dynamic_address().unwrap(),
+            spdm_validator_tests,
         );
     }
 
