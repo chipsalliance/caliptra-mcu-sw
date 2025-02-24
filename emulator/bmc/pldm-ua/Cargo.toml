@@ -1,19 +1,8 @@
+# Licensed under the Apache-2.0 license
+
 [package]
 name = "pldm-ua"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 
-[dependencies]
-pldm-fw-pkg.workspace = true
-futures.workspace = true
-num-derive.workspace = true
-num-traits.workspace = true
-tokio = "1.43.0"
-thingbuf = "0.1.6"
-smlang = "0.8.0"
-pldm-common.workspace = true
-log = "0.4.25"
-simple_logger = "4"
-pldm-fw = "0.1.0"
-emulator-periph.workspace = true

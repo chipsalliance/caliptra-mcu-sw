@@ -1,6 +1,9 @@
+// Licensed under the Apache-2.0 license
+
 use core::time::Duration;
 use pldm_ua::transport::{
-    FilterType, Payload, PldmSocket, PldmTransport, RxPacket, SockId, TxPacket, MAX_PLDM_PAYLOAD_SIZE
+    EndpointId, FilterType, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket,
+    TxPacket, MAX_PLDM_PAYLOAD_SIZE,
 };
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -8,14 +11,14 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 pub struct MockPldmSocket {
-    source: SockId,
-    dest: SockId,
-    senders: Arc<Mutex<HashMap<SockId, Sender<TxPacket>>>>,
+    source: EndpointId,
+    dest: EndpointId,
+    senders: Arc<Mutex<HashMap<EndpointId, Sender<TxPacket>>>>,
     receiver: Arc<Mutex<Option<Receiver<TxPacket>>>>,
 }
 
 impl PldmSocket for MockPldmSocket {
-    fn send(&self, payload: &[u8]) -> Result<(), ()> {
+    fn send(&self, payload: &[u8]) -> Result<(), PldmTransportError> {
         let mut tx_payload = [0u8; MAX_PLDM_PAYLOAD_SIZE];
         tx_payload[..payload.len()].copy_from_slice(payload);
 
@@ -33,28 +36,32 @@ impl PldmSocket for MockPldmSocket {
         Ok(())
     }
 
-    fn receive(&self, timeout: Option<Duration>, _filter: FilterType) -> Result<RxPacket, ()> {
+    fn receive(
+        &self,
+        timeout: Option<Duration>,
+        _filter: FilterType,
+    ) -> Result<RxPacket, PldmTransportError> {
         if let Some(receiver) = self.receiver.lock().unwrap().as_ref() {
             if let Ok(pkt) = receiver.recv_timeout(timeout.unwrap_or(Duration::from_secs(1))) {
                 if pkt.payload.len == 0 {
-                    return Err(());
+                    Err(PldmTransportError::Underflow)
                 } else {
                     let src = pkt.src;
                     let mut data = [0u8; MAX_PLDM_PAYLOAD_SIZE];
                     data[..pkt.payload.len].copy_from_slice(&pkt.payload.data[..pkt.payload.len]);
-                    return Ok(RxPacket {
+                    Ok(RxPacket {
                         src,
                         payload: Payload {
                             data,
                             len: pkt.payload.len,
                         },
-                    });
+                    })
                 }
             } else {
-                return Err(());
+                Err(PldmTransportError::Timeout)
             }
         } else {
-            return Err(());
+            Err(PldmTransportError::NotInitialized)
         }
     }
 
@@ -74,7 +81,7 @@ impl PldmSocket for MockPldmSocket {
         }
     }
 
-    fn connect(&self) -> Result<(), ()> {
+    fn connect(&self) -> Result<(), PldmTransportError> {
         Ok(())
     }
 
@@ -90,7 +97,13 @@ impl PldmSocket for MockPldmSocket {
 
 #[derive(Clone)]
 pub struct MockTransport {
-    senders: Arc<Mutex<HashMap<SockId, Sender<TxPacket>>>>,
+    senders: Arc<Mutex<HashMap<EndpointId, Sender<TxPacket>>>>,
+}
+
+impl Default for MockTransport {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MockTransport {
@@ -102,7 +115,11 @@ impl MockTransport {
 }
 
 impl PldmTransport<MockPldmSocket> for MockTransport {
-    fn create_socket(&self, source: SockId, dest: SockId) -> Result<MockPldmSocket, ()> {
+    fn create_socket(
+        &self,
+        source: EndpointId,
+        dest: EndpointId,
+    ) -> Result<MockPldmSocket, PldmTransportError> {
         let (tx, rx) = mpsc::channel();
         self.senders.lock().unwrap().insert(source, tx);
         Ok(MockPldmSocket {
@@ -119,23 +136,23 @@ impl PldmTransport<MockPldmSocket> for MockTransport {
 fn test_send_receive() {
     let transport = MockTransport::new();
 
-    let sid1 = SockId(1);
-    let sid2 = SockId(2);
+    let sid1 = EndpointId(1);
+    let sid2 = EndpointId(2);
 
     let sock1 = Arc::new(transport.create_socket(sid1, sid2).unwrap());
     let sock2 = Arc::new(transport.create_socket(sid2, sid1).unwrap());
 
     let sock1_clone = Arc::clone(&sock1);
     let h1 = thread::spawn(move || {
-        if let Ok(packet) = sock1_clone.receive(None, FilterType::Any) {
-            println!("SockId 1 received: {}", packet);
+        if let Ok(packet) = sock1_clone.receive(None, FilterType::Request) {
+            println!("EndpointId 1 received: {}", packet);
         }
     });
 
     let sock2_clone = Arc::clone(&sock2);
     let h2 = thread::spawn(move || {
-        if let Ok(packet) = sock2_clone.receive(None, FilterType::Any) {
-            println!("SockId 2 received: {}", packet);
+        if let Ok(packet) = sock2_clone.receive(None, FilterType::Request) {
+            println!("EndpointId 2 received: {}", packet);
         }
     });
 
@@ -155,8 +172,8 @@ fn test_send_receive_same_socket() {
 
     let transport = MockTransport::new();
 
-    let sid1 = SockId(1);
-    let sid2 = SockId(2);
+    let sid1 = EndpointId(1);
+    let sid2 = EndpointId(2);
 
     let sock1 = Arc::new(transport.create_socket(sid1, sid2).unwrap());
     let sock2 = Arc::new(transport.create_socket(sid2, sid1).unwrap());
@@ -169,8 +186,8 @@ fn test_send_receive_same_socket() {
     let sock2_clone = Arc::clone(&sock2);
     let h2 = thread::spawn(move || {
         for _ in 0..2 {
-            if let Ok(packet) = sock2_clone.receive(None, FilterType::Any) {
-                println!("SockId 2 received: {}", packet);
+            if let Ok(packet) = sock2_clone.receive(None, FilterType::Request) {
+                println!("EndpointId 2 received: {}", packet);
             }
         }
     });

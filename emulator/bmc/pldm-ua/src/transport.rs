@@ -1,46 +1,95 @@
+// Licensed under the Apache-2.0 license
+
 use core::fmt::{Display, Formatter};
 use core::time::Duration;
 
+// This module provides traits for representing the PLDM transport layer.
+// The PldmTransport and PldmSocket traits define generic transport entities used by PLDM for communication.
+// PldmTransport represents the virtual channel where PLDM messages are sent and received. An example of this is MCTP (Management Component Transport Protocol).
+// PldmSocket is a binding between a source and destination entity within the transport layer.
+// To communicate within the transport, a PldmSocket should be created from the transport, indicating the source and destination endpoints.
+// The endpoint will be using the PldmSocket to send and receive PLDM messages.
+//
+//
+//     Endpoint                           Endpoint
+//        |                                   |
+//        |                                   |
+//    PldmSocket                          PldmSocket
+// --------------------------------------------------------
+//                     PldmTransport
+// --------------------------------------------------------
+
 pub trait PldmTransport<T: PldmSocket> {
-    fn create_socket(&self, source: SockId, dest: SockId) -> Result<T, ()>;
+    fn create_socket(&self, source: EndpointId, dest: EndpointId) -> Result<T, PldmTransportError>;
 }
 
 pub enum FilterType {
-    Any,
     Request,
     Response,
 }
 
+#[derive(Debug)]
+pub enum PldmTransportError {
+    Timeout,
+    Disconnected,
+    Underflow,
+    NotInitialized,
+}
 pub const MAX_PLDM_PAYLOAD_SIZE: usize = 1024;
-/// A trait representing a PLDM (Platform Level Data Model) socket for sending and receiving MCTP (Management Component Transport Protocol) packets.
+
 pub trait PldmSocket {
-    /// Sends an MCTP packet.
+    /// Sends a payload over the PLDM socket.
     ///
     /// # Arguments
     ///
-    /// * `pkt` - A reference to the `TransportPacket` to be sent.
+    /// * `payload` - A byte slice containing the data to be sent.
     ///
     /// # Returns
     ///
-    /// * `Result<(), ()>` - Returns `Ok(())` if the packet was sent successfully, otherwise returns `Err(())`.
-    fn send(&self, payload: &[u8]) -> Result<(), ()>;
+    /// * `Result<(), PldmTransportError>` - Returns `Ok(())` if the payload is sent successfully,
+    ///   otherwise returns a `PldmTransportError`.
+    fn send(&self, payload: &[u8]) -> Result<(), PldmTransportError>;
 
-    /// Receives an MCTP packet.
+    /// Receives a packet from the PLDM socket.
+    ///
+    /// # Arguments
+    ///
+    /// * `timeout` - An optional `Duration` specifying the maximum time to wait for a packet.
+    /// * `filter` - A `FilterType` to apply to incoming packets.
     ///
     /// # Returns
     ///
-    /// * `Result<TransportPacket, ()>` - Returns `Ok(TransportPacket)` if a packet was received successfully, otherwise returns `Err(())`.
-    fn receive(&self, timeout: Option<Duration>, filter: FilterType) -> Result<RxPacket, ()>;
+    /// * `Result<RxPacket, PldmTransportError>` - Returns `Ok(RxPacket)` if a packet is received successfully,
+    ///   otherwise returns a `PldmTransportError`.
+    fn receive(
+        &self,
+        timeout: Option<Duration>,
+        filter: FilterType,
+    ) -> Result<RxPacket, PldmTransportError>;
 
-    fn connect(&self) -> Result<(), ()>;
+    /// Establishes a connection for the PLDM socket.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), PldmTransportError>` - Returns `Ok(())` if the connection is established successfully,
+    ///   otherwise returns a `PldmTransportError`.
+    fn connect(&self) -> Result<(), PldmTransportError>;
 
+    /// Disconnects the PLDM socket.
+    ///
+    /// This method does not return a result and is expected to always succeed.
     fn disconnect(&self);
 
+    /// Clones the PLDM socket. This allows the socket to be shared across multiple threads or tasks.
+    ///
+    /// # Returns
+    ///
+    /// * `Self` - Returns a new instance of the PLDM socket.
     fn clone(&self) -> Self;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub struct SockId(pub u8);
+pub struct EndpointId(pub u8);
 #[derive(Debug, Clone)]
 pub struct Payload {
     pub data: [u8; MAX_PLDM_PAYLOAD_SIZE],
@@ -69,14 +118,14 @@ impl Display for Payload {
 
 #[derive(Debug, Clone, Default)]
 pub struct TxPacket {
-    pub src: SockId,
-    pub dest: SockId,
+    pub src: EndpointId,
+    pub dest: EndpointId,
     pub payload: Payload,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct RxPacket {
-    pub src: SockId,
+    pub src: EndpointId,
     pub payload: Payload,
 }
 

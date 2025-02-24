@@ -333,7 +333,7 @@ impl MctpUtil {
         pkt
     }
 
-    pub fn packetize(&self, message: &[u8]) -> VecDeque<Vec<u8>> {
+    fn packetize(&self, message: &[u8]) -> VecDeque<Vec<u8>> {
         assert!(self.msg_tag <= 7, "A valid msg tag is required");
         let pkt_payloads: Vec<Vec<u8>> = message
             .chunks(self.pkt_payload_size)
@@ -385,7 +385,6 @@ impl MctpUtil {
         stream.set_nonblocking(true).unwrap();
         while running.load(Ordering::Relaxed) {
             if let Some(write_pkt) = pkts.pop_front() {
-                println!("Sending packet with length {}", write_pkt.len());
                 if !send_private_write(stream, target_addr, write_pkt) {
                     break;
                 }

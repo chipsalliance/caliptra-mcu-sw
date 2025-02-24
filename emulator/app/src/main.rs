@@ -29,34 +29,24 @@ use emulator_bus::{Bus, BusConverter, Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
 use emulator_periph::{
-    CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, DynamicI3cAddress, I3c, I3cController,
-    Otp,
+    CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, I3c, I3cController, Otp,
 };
 use emulator_registers_generated::root_bus::AutoRootBus;
 use emulator_registers_generated::soc::SocPeripheral;
 use emulator_types::ROM_SIZE;
 use gdb::gdb_state;
 use gdb::gdb_target::GdbTarget;
-use pldm_common::codec::PldmCodec;
-use pldm_common::message::control::{GetTidRequest, GetTidResponse};
-use pldm_common::protocol::base::PldmMsgType;
-use pldm_ua::transport::{PldmSocket, PldmTransport, SockId};
+use mctp_transport::MctpTransport;
+use pldm_ua::transport::{EndpointId, PldmTransport};
 use std::cell::RefCell;
 use std::fs::File;
 use std::io;
 use std::io::{IsTerminal, Read, Write};
-use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use tests::mctp_util::base_protocol::{MCTPHdr, MCTPMsgHdr};
-use zerocopy::IntoBytes;
-use pldm_ua::daemon::Daemon;
-use pldm_ua::future_executor::{self, FutureExecutor};
-use mctp_transport::{MctpTransport,MctpPldmSocket};
 use tests::pldm_request_response_test::PldmRequestResponseTest;
 
 #[derive(Parser)]
@@ -266,22 +256,6 @@ fn read_binary(path: &PathBuf, expect_load_addr: u32) -> io::Result<Vec<u8>> {
     Ok(buffer)
 }
 
-
-
-fn test_marco2(port: u16, target_addr: DynamicI3cAddress) -> Result<(), ()> {
-    println!("Test PLDM Daemon");
-
-    let pldm_transport = MctpTransport::new(port, target_addr);
-    let pldm_socket = pldm_transport.create_socket(SockId(0), SockId(1))?;
-    let pldm_daemon = Daemon::run(pldm_socket);
-
-    let _ = FutureExecutor::spawn(pldm_daemon);
-    
-
-    Ok(())
-}
-
-
 fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     // exit cleanly on Ctrl-C so that we save any state.
     let running = Arc::new(AtomicBool::new(true));
@@ -438,8 +412,11 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     if cfg!(feature = "test-pldm-request-response") {
         println!("Emulator: Starting test-pldm-request-respons");
         i3c_controller.start();
-        let pldm_transport = MctpTransport::new(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
-        let pldm_socket = pldm_transport.create_socket(SockId(0), SockId(1)).unwrap();
+        let pldm_transport =
+            MctpTransport::new(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
+        let pldm_socket = pldm_transport
+            .create_socket(EndpointId(0), EndpointId(1))
+            .unwrap();
         PldmRequestResponseTest::run(pldm_socket, running.clone());
     }
 
