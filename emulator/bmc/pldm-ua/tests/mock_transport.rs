@@ -42,7 +42,7 @@ impl PldmSocket for MockPldmSocket {
         _filter: FilterType,
     ) -> Result<RxPacket, PldmTransportError> {
         if let Some(receiver) = self.receiver.lock().unwrap().as_ref() {
-            if let Ok(pkt) = receiver.recv_timeout(timeout.unwrap_or(Duration::from_secs(1))) {
+            if let Ok(pkt) = receiver.recv() {
                 if pkt.payload.len == 0 {
                     Err(PldmTransportError::Underflow)
                 } else {

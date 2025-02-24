@@ -57,7 +57,7 @@ impl<T: StateMachineActions, S: PldmSocket> UpdateAgent<T, S> {
         Ok(())
     }
     fn listen(&mut self) -> Result<(), ()> {
-        match self.socket.receive(None, FilterType::Any).map_err(|_| ()) {
+        match self.socket.receive(None, FilterType::Request).map_err(|_| ()) {
             Ok(rx_pkt) => {
                 println!("Received request: {}", rx_pkt);
                 let _x = self.socket.send(&[1, 2, 3, 4]);

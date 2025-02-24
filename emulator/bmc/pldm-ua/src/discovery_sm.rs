@@ -23,7 +23,8 @@ statemachine! {
     transitions: {
         *Idle + StartDiscovery / on_start_discovery = GetTIDSent,
 
-        GetTIDSent + GetTIDResponse(pldm_packet::GetTidResponse) [is_tid_response_valid] / on_tid_response = GetPLDMTypesSent,
+//        GetTIDSent + GetTIDResponse(pldm_packet::GetTidResponse) [is_tid_response_valid] / on_tid_response = GetPLDMTypesSent,
+        GetTIDSent + GetTIDResponse(pldm_packet::GetTidResponse) [is_tid_response_valid] / on_tid_response = Done,
 
         GetPLDMTypesSent + GetPLDMTypesResponse(pldm_packet::GetPldmTypeResponse) [is_pldm_types_response_valid] / on_pldm_types_response = GetPLDMVersionType0Sent,
 
@@ -46,7 +47,7 @@ pub trait StateMachineActions {
         let request = pldm_packet::GetTidRequest::new(ctx.instance_id, PldmMsgType::Request);
         let mut buffer = [0u8; MAX_PLDM_PAYLOAD_SIZE];
         let sz = request.encode(&mut buffer).map_err(|_| ())?;
-        ctx.socket.send(&buffer[..sz])?;
+        ctx.socket.send(&buffer[..sz]).map_err(|_| ())?;
         Ok(())
     }
     fn on_tid_response(

@@ -2,36 +2,34 @@ use crate::discovery_sm;
 use crate::event_queue::EventQueue;
 use crate::events::PldmEvents;
 use crate::transport::{FilterType, PldmSocket, RxPacket};
-use simple_logger::SimpleLogger;
+use futures::{future, join};
 use log::{debug, error, info, trace, warn};
 
 pub struct Daemon {}
 
 impl Daemon {
-    pub async fn run<S: PldmSocket + Send + 'static>(socket: S) -> Result<(), ()> {
+    pub async fn run<S: PldmSocket + Send + 'static, D: discovery_sm::StateMachineActions>(socket: S, opts: Options<D>) -> Result<(), ()> {
         debug!("Daemon is running...");
-        SimpleLogger::new().init().unwrap();
+        
         let event_queue = EventQueue::<PldmEvents>::new();
         let event_queue_clone1 = event_queue.clone();
         let event_queue_clone2 = event_queue.clone();
         let socket_clone1 = socket.clone();
         let socket_clone2 = socket.clone();
-        let socket_clone3 = socket.clone();
-        Daemon::connect(socket).await?;
 
-        let _ = Daemon::rx_loop_request(socket_clone1, event_queue_clone1);
-        let _ = Daemon::rx_loop_response(socket_clone2, event_queue_clone2);
-        Daemon::event_loop(socket_clone3, event_queue).await?;
+        let f3 =  Daemon::event_loop(socket, event_queue, opts.discovery_sm_actions);
+        let f1 = Daemon::rx_loop_request(socket_clone1, event_queue_clone1);
+        let f2 = Daemon::rx_loop_response(socket_clone2, event_queue_clone2);
+        
 
+        let f = join!(f1, f2, f3);
+        f.0?;
+        f.1?;
+        f.2?;
 
         Ok(())
     }
 
-    async fn connect<S: PldmSocket>(socket: S) -> Result<(), ()> {
-        debug!("Daemon is connecting...");
-        socket.connect().map_err(|_| ())?;
-        Ok(())
-    }
 
     async fn rx_loop_request<S: PldmSocket>(
         socket: S,
@@ -75,14 +73,18 @@ impl Daemon {
         }
     }
 
-    async fn event_loop<S: PldmSocket>(
+    async fn event_loop<S: PldmSocket, D: discovery_sm::StateMachineActions>(
         socket: S,
         event_queue: EventQueue<PldmEvents>,
+        discovery_sm_actions: D,
     ) -> Result<(), ()> {
         let mut discovery_sm = discovery_sm::StateMachine::new(discovery_sm::Context::new(
-            discovery_sm::DefaultActions {},
+            discovery_sm_actions,
             socket,
         ));
+
+        let _ = discovery_sm.process_event(discovery_sm::Events::StartDiscovery);
+
         debug!("Daemon Event loop is running...");
         while *discovery_sm.state() != discovery_sm::States::Done {
             let ev = event_queue.dequeue();
@@ -110,8 +112,6 @@ impl Daemon {
         }
         
 
-        
-
         Ok(())
     }
 
@@ -122,5 +122,18 @@ impl Daemon {
             return Ok(PldmEvents::Discovery(event.unwrap()));
         }
         Ok(PldmEvents::TestEvent1)
+    }
+}
+
+
+pub struct Options <D: discovery_sm::StateMachineActions>{
+    pub discovery_sm_actions: D,
+}
+
+impl Default for Options<discovery_sm::DefaultActions> {
+    fn default() -> Self {
+        Self {
+            discovery_sm_actions: discovery_sm::DefaultActions {}
+        }
     }
 }

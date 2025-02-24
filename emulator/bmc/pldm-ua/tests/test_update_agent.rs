@@ -13,8 +13,8 @@ use std::sync::Arc;
 fn test_update_agent() {
     let transport = MockTransport::new();
 
-    let ua_sid = pldm_ua::transport::SockId(0x01);
-    let fd_sid = pldm_ua::transport::SockId(0x02);
+    let ua_sid = pldm_ua::transport::EndpointId(0x01);
+    let fd_sid = pldm_ua::transport::EndpointId(0x02);
 
     let ua_sock = transport.create_socket(ua_sid, fd_sid).unwrap();
     let fd_sock = transport.create_socket(fd_sid, ua_sid).unwrap();
@@ -27,11 +27,11 @@ fn test_update_agent() {
 
     fd_sock.send(&[1, 2, 3]).unwrap();
 
-    println!("Received in FD: {}", fd_sock.receive(None, FilterType::Any).unwrap());
+    println!("Received in FD: {}", fd_sock.receive(None, FilterType::Request).unwrap());
 
     fd_sock.send(&[4, 5, 6, 7, 8]).unwrap();
 
-    println!("Received in FD: {}", fd_sock.receive(None, FilterType::Any).unwrap());
+    println!("Received in FD: {}", fd_sock.receive(None, FilterType::Request).unwrap());
 
     fd_sock.disconnect();
 
