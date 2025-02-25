@@ -38,7 +38,7 @@ impl PldmSocket for MockPldmSocket {
 
     fn receive(
         &self,
-        timeout: Option<Duration>,
+        _timeout: Option<Duration>,
         _filter: FilterType,
     ) -> Result<RxPacket, PldmTransportError> {
         if let Some(receiver) = self.receiver.lock().unwrap().as_ref() {

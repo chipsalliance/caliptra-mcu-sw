@@ -82,7 +82,6 @@ mod tests {
             if let Some(event) = queue.dequeue() {
                 match event {
                     TestEvent::DataReceived(data) => println!("Received data: {}", data),
-                    _ => {}
                 }
             }
         }
