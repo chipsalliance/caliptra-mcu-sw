@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-use crate::codec::{PldmCodec, PldmCodecError};
 use crate::error::PldmError;
 use crate::protocol::base::{
     InstanceId, PldmControlCmd, PldmMsgHeader, PldmMsgType, PldmSupportedType,
@@ -31,25 +30,6 @@ impl GetTidRequest {
     }
 }
 
-impl PldmCodec for GetTidRequest {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetTidRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        self.write_to(&mut buffer[..bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetTidRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        Ok(Self::read_from_bytes(&buffer[..bytes]).unwrap())
-    }
-}
-
 #[repr(C, packed)]
 #[derive(Debug, PartialEq, FromBytes, IntoBytes, Immutable)]
 pub struct GetTidResponse {
@@ -73,25 +53,6 @@ impl GetTidResponse {
     }
 }
 
-impl PldmCodec for GetTidResponse {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetTidResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        self.write_to(&mut buffer[..bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetTidResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        Ok(Self::read_from_bytes(&buffer[..bytes]).unwrap())
-    }
-}
-
 #[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
 #[repr(C, packed)]
 pub struct SetTidRequest {
@@ -109,25 +70,6 @@ impl SetTidRequest {
             ),
             tid,
         }
-    }
-}
-
-impl PldmCodec for SetTidRequest {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<SetTidRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        self.write_to(&mut buffer[..bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<SetTidRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        Ok(Self::read_from_bytes(&buffer[..bytes]).unwrap())
     }
 }
 
@@ -149,25 +91,6 @@ impl SetTidResponse {
             ),
             completion_code: ompletion_code,
         }
-    }
-}
-
-impl PldmCodec for SetTidResponse {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<SetTidResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        self.write_to(&mut buffer[..bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<SetTidResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        Ok(Self::read_from_bytes(&buffer[..bytes]).unwrap())
     }
 }
 
@@ -201,25 +124,6 @@ impl GetPldmCommandsRequest {
     }
 }
 
-impl PldmCodec for GetPldmCommandsRequest {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetPldmCommandsRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        self.write_to(&mut buffer[..bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetPldmCommandsRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        Ok(Self::read_from_bytes(&buffer[..bytes]).unwrap())
-    }
-}
-
 #[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
 #[repr(C, packed)]
 pub struct GetPldmCommandsResponse {
@@ -243,25 +147,6 @@ impl GetPldmCommandsResponse {
     }
 }
 
-impl PldmCodec for GetPldmCommandsResponse {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetPldmCommandsResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        self.write_to(&mut buffer[..bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetPldmCommandsResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        Ok(Self::read_from_bytes(&buffer[..bytes]).unwrap())
-    }
-}
-
 #[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
 #[repr(C, packed)]
 pub struct GetPldmTypeRequest {
@@ -278,25 +163,6 @@ impl GetPldmTypeRequest {
                 PldmControlCmd::GetPldmTypes as u8,
             ),
         }
-    }
-}
-
-impl PldmCodec for GetPldmTypeRequest {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetPldmTypeRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        self.write_to(&mut buffer[..bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetPldmTypeRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        Ok(Self::read_from_bytes(&buffer[..bytes]).unwrap())
     }
 }
 
@@ -333,25 +199,6 @@ impl GetPldmTypeResponse {
     }
 }
 
-impl PldmCodec for GetPldmTypeResponse {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetPldmTypeResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        self.write_to(&mut buffer[..bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetPldmTypeResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        Ok(Self::read_from_bytes(&buffer[..bytes]).unwrap())
-    }
-}
-
 #[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
 #[repr(C, packed)]
 pub struct GetPldmVersionRequest {
@@ -380,25 +227,6 @@ impl GetPldmVersionRequest {
             transfer_op_flag: transfer_op_flag as u8,
             pldm_type: pldm_type as u8,
         }
-    }
-}
-
-impl PldmCodec for GetPldmVersionRequest {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetPldmVersionRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        self.write_to(&mut buffer[..bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetPldmVersionRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        Ok(Self::read_from_bytes(&buffer[..bytes]).unwrap())
     }
 }
 
@@ -437,28 +265,10 @@ impl GetPldmVersionResponse {
     }
 }
 
-impl PldmCodec for GetPldmVersionResponse {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetPldmVersionResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        self.write_to(&mut buffer[..bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetPldmVersionResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        Ok(Self::read_from_bytes(&buffer[..bytes]).unwrap())
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::codec::{PldmCodec, PldmCodecError};
 
     #[test]
     fn test_get_tid_request() {
@@ -561,5 +371,12 @@ mod test {
         response.encode(&mut buffer).unwrap();
         let decoded_response = GetPldmVersionResponse::decode(&buffer).unwrap();
         assert_eq!(response, decoded_response);
+    }
+
+    #[test]
+    fn test_buffer_too_short() {
+        let buffer = [0u8; 2];
+        let result = GetTidRequest::decode(&buffer);
+        assert_eq!(result, Err(PldmCodecError::BufferTooShort));
     }
 }

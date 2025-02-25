@@ -38,25 +38,6 @@ impl RequestFirmwareDataRequest {
     }
 }
 
-impl PldmCodec for RequestFirmwareDataRequest {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<RequestFirmwareDataRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        };
-        let offset = 0;
-        self.write_to(&mut buffer[offset..offset + bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<RequestFirmwareDataRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        };
-        Ok(RequestFirmwareDataRequest::read_from_bytes(&buffer[0..bytes]).unwrap())
-    }
-}
 #[derive(Debug, Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
 #[repr(C, packed)]
 pub struct RequestFirmwareDataResponseFixed {

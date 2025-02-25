@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-#[derive(Debug)]
+use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+#[derive(Debug, PartialEq)]
 pub enum PldmCodecError {
     BufferTooShort,
     Unsupported,
@@ -33,4 +35,22 @@ pub trait PldmCodec: core::fmt::Debug + Sized {
     ///
     /// A `Result` containing the decoded message on success, or a `PldmCodecError` on failure.
     fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError>;
+}
+
+// Default implementation of PldmCodec for types that can leverage zerocopy.
+impl<T> PldmCodec for T
+where
+    T: core::fmt::Debug + Sized + FromBytes + IntoBytes + Immutable,
+{
+    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
+        self.write_to_prefix(buffer)
+            .map_err(|_| PldmCodecError::BufferTooShort)
+            .map(|_| core::mem::size_of::<T>())
+    }
+
+    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
+        Ok(Self::read_from_prefix(buffer)
+            .map_err(|_| PldmCodecError::BufferTooShort)?
+            .0)
+    }
 }

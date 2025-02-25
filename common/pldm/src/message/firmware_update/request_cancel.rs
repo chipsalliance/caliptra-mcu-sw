@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-use crate::codec::{PldmCodec, PldmCodecError};
 use crate::error::PldmError;
 use crate::protocol::base::{
     InstanceId, PldmMsgHeader, PldmMsgType, PldmSupportedType, PLDM_MSG_HEADER_LEN,
@@ -45,29 +44,6 @@ impl CancelUpdateComponentRequest {
     }
 }
 
-impl PldmCodec for CancelUpdateComponentRequest {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<CancelUpdateComponentRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-
-        let offset = 0;
-        self.write_to(&mut buffer[offset..offset + bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<CancelUpdateComponentRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-
-        let offset = 0;
-        Ok(CancelUpdateComponentRequest::read_from_bytes(&buffer[offset..offset + bytes]).unwrap())
-    }
-}
-
 #[derive(Debug, Clone, FromBytes, IntoBytes, Immutable)]
 #[repr(C, packed)]
 pub struct CancelUpdateComponentResponse {
@@ -89,32 +65,6 @@ impl CancelUpdateComponentResponse {
     }
 }
 
-impl PldmCodec for CancelUpdateComponentResponse {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<CancelUpdateComponentResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-
-        let offset = 0;
-        self.write_to(&mut buffer[offset..offset + bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<CancelUpdateComponentResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-
-        let offset = 0;
-        Ok(
-            CancelUpdateComponentResponse::read_from_bytes(&buffer[offset..offset + bytes])
-                .unwrap(),
-        )
-    }
-}
-
 #[derive(Debug, Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
 #[repr(C, packed)]
 pub struct CancelUpdateRequest {
@@ -131,29 +81,6 @@ impl CancelUpdateRequest {
                 FwUpdateCmd::CancelUpdate as u8,
             ),
         }
-    }
-}
-
-impl PldmCodec for CancelUpdateRequest {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<CancelUpdateRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-
-        let offset = 0;
-        self.write_to(&mut buffer[offset..offset + bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<CancelUpdateRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-
-        let offset = 0;
-        Ok(CancelUpdateRequest::read_from_bytes(&buffer[offset..offset + bytes]).unwrap())
     }
 }
 
@@ -200,32 +127,10 @@ impl CancelUpdateResponse {
     }
 }
 
-impl PldmCodec for CancelUpdateResponse {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<CancelUpdateResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-
-        let offset = 0;
-        self.write_to(&mut buffer[offset..offset + bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<CancelUpdateResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-
-        let offset = 0;
-        Ok(CancelUpdateResponse::read_from_bytes(&buffer[offset..offset + bytes]).unwrap())
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::codec::PldmCodec;
 
     #[test]
     fn test_cancel_update_request() {

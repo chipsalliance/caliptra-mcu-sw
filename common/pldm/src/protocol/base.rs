@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-use crate::codec::{PldmCodec, PldmCodecError};
 use crate::error::PldmError;
 use bitfield::bitfield;
 use core::convert::TryFrom;
@@ -235,23 +234,6 @@ impl PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]> {
     }
 }
 
-impl PldmCodec for PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]> {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        if buffer.len() < PLDM_MSG_HEADER_LEN {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        self.write_to(&mut buffer[..PLDM_MSG_HEADER_LEN]).unwrap();
-        Ok(PLDM_MSG_HEADER_LEN)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        if buffer.len() < PLDM_MSG_HEADER_LEN {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        Ok(Self::read_from_bytes(&buffer[..PLDM_MSG_HEADER_LEN]).unwrap())
-    }
-}
-
 #[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
 #[repr(C, packed)]
 pub struct PldmFailureResponse {
@@ -274,26 +256,10 @@ impl PldmFailureResponse {
     }
 }
 
-impl PldmCodec for PldmFailureResponse {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        if buffer.len() < PLDM_FAILURE_RESP_LEN {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        self.write_to(&mut buffer[..PLDM_FAILURE_RESP_LEN]).unwrap();
-        Ok(PLDM_FAILURE_RESP_LEN)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        if buffer.len() < PLDM_FAILURE_RESP_LEN {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        Ok(Self::read_from_bytes(&buffer[..PLDM_FAILURE_RESP_LEN]).unwrap())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::codec::PldmCodec;
 
     #[test]
     fn test_pldm_msg_header() {

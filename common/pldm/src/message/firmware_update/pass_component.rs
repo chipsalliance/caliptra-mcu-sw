@@ -149,27 +149,6 @@ impl PassComponentTableResponse {
     }
 }
 
-impl PldmCodec for PassComponentTableResponse {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<PassComponentTableResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        let offset = 0;
-        self.write_to(&mut buffer[offset..offset + bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<PassComponentTableResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        let offset = 0;
-        Ok(PassComponentTableResponse::read_from_bytes(&buffer[offset..offset + bytes]).unwrap())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

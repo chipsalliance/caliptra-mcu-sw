@@ -2,6 +2,7 @@
 
 [workspace]
 members = [
+    "common/pldm",
     "emulator/app",
     "emulator/bmc/pldm-fw-pkg",
     "emulator/bus",
@@ -53,7 +54,6 @@ members = [
     "tests/hello",
     "tests/integration",
     "xtask",
-    "common/pldm",
 ]
 resolver = "2"
 
@@ -120,11 +120,11 @@ emulator-types = { path = "emulator/types" }
 flash-driver = { path = "runtime/flash" }
 i3c-driver = { path = "runtime/i3c" }
 libtockasync = { path = "runtime/apps/libtockasync" }
+pldm-common = { path = "common/pldm"}
 registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }
 romtime = { path = "romtime" }
-pldm-common = { path = "common/pldm"}
 
 # libtock dependencies
 libtock = { path = "runtime/apps/libtock" }

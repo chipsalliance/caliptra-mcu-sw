@@ -29,23 +29,6 @@ impl GetFirmwareParametersRequest {
     }
 }
 
-impl PldmCodec for GetFirmwareParametersRequest {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        if buffer.len() < PLDM_MSG_HEADER_LEN {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        self.write_to(&mut buffer[..PLDM_MSG_HEADER_LEN]).unwrap();
-        Ok(PLDM_MSG_HEADER_LEN)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        if buffer.len() < PLDM_MSG_HEADER_LEN {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        Ok(Self::read_from_bytes(&buffer[..PLDM_MSG_HEADER_LEN]).unwrap())
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, FromBytes, IntoBytes, Immutable)]
 #[repr(C, packed)]
 pub struct FirmwareParamFixed {
