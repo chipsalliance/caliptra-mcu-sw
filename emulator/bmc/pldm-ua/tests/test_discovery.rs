@@ -11,7 +11,7 @@ use log::error;
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::control::*;
 use pldm_ua::daemon::{Daemon,Options};
-use pldm_ua::transport::{FilterType, PldmSocket, PldmTransport};
+use pldm_ua::transport::{PldmSocket, PldmTransport};
 
 const COMPLETION_CODE_SUCCESSFUL: u8 = 0x00;
 
@@ -22,7 +22,7 @@ fn send_response<P: PldmCodec>(socket: &MockPldmSocket, response: &P) {
 }
 
 fn receive_request<P: PldmCodec>(socket: &MockPldmSocket, cmd_code : PldmControlCmd) -> Result<P,()> {
-    let request = socket.receive(None, FilterType::Request).unwrap();
+    let request = socket.receive(None).unwrap();
 
 
     let header = PldmMsgHeader::decode(&request.payload.data[..request.payload.len])

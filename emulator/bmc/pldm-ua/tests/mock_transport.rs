@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 use pldm_ua::transport::{
-    EndpointId, FilterType, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket,
+    EndpointId, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket,
     TxPacket, MAX_PLDM_PAYLOAD_SIZE,
 };
 use std::collections::HashMap;
@@ -38,8 +38,7 @@ impl PldmSocket for MockPldmSocket {
 
     fn receive(
         &self,
-        _timeout: Option<Duration>,
-        _filter: FilterType,
+        _timeout: Option<Duration>
     ) -> Result<RxPacket, PldmTransportError> {
         if let Some(receiver) = self.receiver.lock().unwrap().as_ref() {
 
@@ -145,14 +144,14 @@ fn test_send_receive() {
 
     let sock1_clone = Arc::clone(&sock1);
     let h1 = thread::spawn(move || {
-        if let Ok(packet) = sock1_clone.receive(None, FilterType::Request) {
+        if let Ok(packet) = sock1_clone.receive(None) {
             println!("EndpointId 1 received: {}", packet);
         }
     });
 
     let sock2_clone = Arc::clone(&sock2);
     let h2 = thread::spawn(move || {
-        if let Ok(packet) = sock2_clone.receive(None, FilterType::Request) {
+        if let Ok(packet) = sock2_clone.receive(None) {
             println!("EndpointId 2 received: {}", packet);
         }
     });
@@ -169,8 +168,6 @@ fn test_send_receive() {
 #[cfg(test)]
 #[test]
 fn test_send_receive_same_socket() {
-    use pldm_ua::transport::FilterType;
-
     let transport = MockTransport::new();
 
     let sid1 = EndpointId(1);
@@ -187,7 +184,7 @@ fn test_send_receive_same_socket() {
     let sock2_clone = Arc::clone(&sock2);
     let h2 = thread::spawn(move || {
         for _ in 0..2 {
-            if let Ok(packet) = sock2_clone.receive(None, FilterType::Request) {
+            if let Ok(packet) = sock2_clone.receive(None) {
                 println!("EndpointId 2 received: {}", packet);
             }
         }

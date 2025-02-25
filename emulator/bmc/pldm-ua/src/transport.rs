@@ -23,11 +23,6 @@ pub trait PldmTransport<T: PldmSocket> {
     fn create_socket(&self, source: EndpointId, dest: EndpointId) -> Result<T, PldmTransportError>;
 }
 
-pub enum FilterType {
-    Request,
-    Response,
-}
-
 #[derive(Debug)]
 pub enum PldmTransportError {
     Timeout,
@@ -55,7 +50,6 @@ pub trait PldmSocket {
     /// # Arguments
     ///
     /// * `timeout` - An optional `Duration` specifying the maximum time to wait for a packet.
-    /// * `filter` - A `FilterType` to apply to incoming packets.
     ///
     /// # Returns
     ///
@@ -64,7 +58,6 @@ pub trait PldmSocket {
     fn receive(
         &self,
         timeout: Option<Duration>,
-        filter: FilterType,
     ) -> Result<RxPacket, PldmTransportError>;
 
     /// Establishes a connection for the PLDM socket.

@@ -10,7 +10,7 @@ use core::time::Duration;
 use emulator_periph::DynamicI3cAddress;
 use pldm_common::util::mctp_transport::{MctpCommonHeader, MCTP_PLDM_MSG_TYPE};
 use pldm_ua::transport::{
-    EndpointId, FilterType, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket,
+    EndpointId, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket,
     MAX_PLDM_PAYLOAD_SIZE,
 };
 use std::net::{SocketAddr, TcpStream};
@@ -83,8 +83,7 @@ impl PldmSocket for MctpPldmSocket {
 
     fn receive(
         &self,
-        _timeout: Option<Duration>,
-        filter: FilterType,
+        _timeout: Option<Duration>
     ) -> Result<RxPacket, PldmTransportError> {
         let mut first_response = self.first_response.lock().unwrap();
         if let Some(response) = first_response.as_mut() {
@@ -104,18 +103,11 @@ impl PldmSocket for MctpPldmSocket {
         }
 
         let mctp_util = &mut *self.mctp_util.lock().unwrap();
-        let raw_pkt: Vec<u8> = match filter {
-            FilterType::Request => mctp_util.receive_request(
-                self.running.clone(),
-                self.stream.lock().as_mut().unwrap(),
-                self.target_addr,
-            ),
-            FilterType::Response => mctp_util.receive_response(
-                self.running.clone(),
-                self.stream.lock().as_mut().unwrap(),
-                self.target_addr,
-            ),
-        };
+        let raw_pkt: Vec<u8> = mctp_util.receive(
+            self.running.clone(),
+            self.stream.lock().as_mut().unwrap(),
+            self.target_addr,
+        );
         let len = raw_pkt.len() - 1;
         if raw_pkt.is_empty() {
             return Err(PldmTransportError::Underflow);

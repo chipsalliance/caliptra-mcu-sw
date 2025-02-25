@@ -3,7 +3,7 @@ use std::thread::JoinHandle;
 use crate::discovery_sm;
 use crate::event_queue::EventQueue;
 use crate::events::PldmEvents;
-use crate::transport::{FilterType, PldmSocket, RxPacket};
+use crate::transport::{PldmSocket, RxPacket};
 use log::{debug, error};
 
 pub struct Daemon {}
@@ -34,7 +34,7 @@ impl Daemon {
         event_queue: EventQueue<PldmEvents>,
     ) -> Result<(), ()> {
         loop {
-            match socket.receive(None, FilterType::Response).map_err(|_| ()) {
+            match socket.receive(None).map_err(|_| ()) {
                 Ok(rx_pkt) => {
                     debug!("Received response: {}", rx_pkt);
                     let ev = Self::handle_packet(&rx_pkt)?;

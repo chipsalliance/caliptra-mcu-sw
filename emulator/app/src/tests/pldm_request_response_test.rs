@@ -9,7 +9,7 @@ use crate::mctp_transport::MctpPldmSocket;
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::control::*;
 use pldm_common::protocol::base::PldmMsgType;
-use pldm_ua::transport::{FilterType, PldmSocket, PldmTransportError};
+use pldm_ua::transport::{PldmSocket, PldmTransportError};
 
 pub struct PldmRequestResponseTest {
     test_messages: Vec<PldmExpectedMessagePair>,
@@ -66,7 +66,7 @@ impl PldmRequestResponseTest {
 
         for message_pair in &self.test_messages {
             self.socket.send(&message_pair.request)?;
-            let rx_pkt = self.socket.receive(None, FilterType::Response)?;
+            let rx_pkt = self.socket.receive(None)?;
             assert_eq!(
                 rx_pkt.payload.data[..rx_pkt.payload.len],
                 message_pair.response

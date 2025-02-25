@@ -228,12 +228,6 @@ pub trait StateMachineActions {
         if response.completion_code != PldmBaseCompletionCode::Success as u8 {
             return Ok(false);
         }
-        if response.hdr.instance_id() != ctx.instance_id {
-            return Ok(false);
-        }
-        if response.completion_code != PldmBaseCompletionCode::Success as u8 {
-            return Ok(false);
-        }
         let supported_cmds = [
             FwUpdateCmd::QueryDeviceIdentifiers,
             FwUpdateCmd::GetFirmwareParameters,
