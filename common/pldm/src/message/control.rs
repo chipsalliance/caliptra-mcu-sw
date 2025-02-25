@@ -310,6 +310,12 @@ fn construct_bitmap<const N: usize>(items: &[u8]) -> [u8; N] {
     bitmap
 }
 
+pub fn is_bit_set(bitmap: &[u8], item: u8) -> bool {
+    let byte_index = (item / 8) as usize;
+    let bit_index = (item % 8) as usize;
+    bitmap[byte_index] & (1 << bit_index) != 0
+}
+
 #[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
 #[repr(C, packed)]
 pub struct GetPldmTypeResponse {

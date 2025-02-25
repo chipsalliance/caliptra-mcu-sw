@@ -1,58 +1,35 @@
+use std::thread::JoinHandle;
+
 use crate::discovery_sm;
 use crate::event_queue::EventQueue;
 use crate::events::PldmEvents;
 use crate::transport::{FilterType, PldmSocket, RxPacket};
-use futures::{future, join};
-use log::{debug, error, info, trace, warn};
+use log::{debug, error};
 
 pub struct Daemon {}
 
 impl Daemon {
-    pub async fn run<S: PldmSocket + Send + 'static, D: discovery_sm::StateMachineActions>(socket: S, opts: Options<D>) -> Result<(), ()> {
+    pub fn run<S: PldmSocket + Send + 'static, D: discovery_sm::StateMachineActions + Send + 'static>(socket: S, opts: Options<D>) -> JoinHandle<()> {
         debug!("Daemon is running...");
         
         let event_queue = EventQueue::<PldmEvents>::new();
         let event_queue_clone1 = event_queue.clone();
-        let event_queue_clone2 = event_queue.clone();
         let socket_clone1 = socket.clone();
-        let socket_clone2 = socket.clone();
 
-        let f3 =  Daemon::event_loop(socket, event_queue, opts.discovery_sm_actions);
-        let f1 = Daemon::rx_loop_request(socket_clone1, event_queue_clone1);
-        let f2 = Daemon::rx_loop_response(socket_clone2, event_queue_clone2);
+
+       std::thread::spawn(move || {
+            Daemon::rx_loop(socket_clone1, event_queue_clone1).unwrap();
+        });
+
+       std::thread::spawn(move || {
+            Daemon::event_loop(socket, event_queue, opts.discovery_sm_actions).unwrap();
+        })
+
+
         
-
-        let f = join!(f1, f2, f3);
-        f.0?;
-        f.1?;
-        f.2?;
-
-        Ok(())
     }
 
-
-    async fn rx_loop_request<S: PldmSocket>(
-        socket: S,
-        event_queue: EventQueue<PldmEvents>,
-    ) -> Result<(), ()> {
-        loop {
-            match socket.receive(None, FilterType::Request).map_err(|_| ()) {
-                Ok(rx_pkt) => {
-                    debug!("Received request: {}", rx_pkt);
-                    //let _x = socket.send(&[1,2,3,4]);
-                    let ev = Self::handle_packet(&rx_pkt)?;
-                    event_queue.enqueue(ev);
-                }
-                Err(_) => {
-                    debug!("Error receiving packet");
-                    event_queue.enqueue(PldmEvents::TestEvent1);
-                    return Err(());
-                }
-            }
-        }
-    }
-
-    async fn rx_loop_response<S: PldmSocket>(
+    fn rx_loop<S: PldmSocket>(
         socket: S,
         event_queue: EventQueue<PldmEvents>,
     ) -> Result<(), ()> {
@@ -60,20 +37,19 @@ impl Daemon {
             match socket.receive(None, FilterType::Response).map_err(|_| ()) {
                 Ok(rx_pkt) => {
                     debug!("Received response: {}", rx_pkt);
-                    //let _x = socket.send(&[1,2,3,4]);
                     let ev = Self::handle_packet(&rx_pkt)?;
                     event_queue.enqueue(ev);
                 }
                 Err(_) => {
-                    debug!("Error receiving packet");
-                    event_queue.enqueue(PldmEvents::TestEvent1);
+                    error!("Error receiving packet");
+                    event_queue.enqueue(PldmEvents::Discovery(discovery_sm::DiscoveryAgentEvents::Sm(discovery_sm::Events::CancelDiscovery)));
                     return Err(());
                 }
             }
         }
     }
 
-    async fn event_loop<S: PldmSocket, D: discovery_sm::StateMachineActions>(
+    fn event_loop<S: PldmSocket, D: discovery_sm::StateMachineActions>(
         socket: S,
         event_queue: EventQueue<PldmEvents>,
         discovery_sm_actions: D,
@@ -91,19 +67,22 @@ impl Daemon {
             if let Some(ev) = ev {
                 debug!("Event Loop processing event: {:?}", ev);
                 match ev {
+                    
                     PldmEvents::Discovery(event) => {
+                        debug!("Discovery state machine state: {:?}", discovery_sm.state());
                         match event {
                             discovery_sm::DiscoveryAgentEvents::Sm(event) => {
                                 debug!("Processing discovery event: {:?}", event);
                                 let _ = discovery_sm.process_event(event);
+                                debug!("Discovery state machine state: {:?}", discovery_sm.state());
                             }
                             _ => {
-                                debug!("Unhandled discovery event: {:?}", event);
+                                error!("Unhandled discovery event: {:?}", event);
                             }
                         }
                     }
                     _ => {
-                        debug!("Unknown event received: {:?}", ev);
+                        error!("Unknown event received: {:?}", ev);
                     }
                 }
             }
@@ -116,12 +95,13 @@ impl Daemon {
     }
 
     fn handle_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
-        debug!("Handling packet: {:?}", packet);
+        debug!("Handling packet: {}", packet);
         let event = discovery_sm::process_packet(packet);
         if event.is_ok() {
             return Ok(PldmEvents::Discovery(event.unwrap()));
         }
-        Ok(PldmEvents::TestEvent1)
+        error!("Unhandled packet: {}", packet);
+        Err(())
     }
 }
 
