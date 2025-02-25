@@ -21,9 +21,7 @@ mod riscv;
 pub(crate) fn kernel() -> libtock_unittest::fake::Kernel {
     use libtock_unittest::fake;
     let kernel = fake::Kernel::new();
-    let alarm = fake::Alarm::new(1_000_000);
     let console = fake::Console::new();
-    kernel.add_driver(&alarm);
     kernel.add_driver(&console);
     kernel
 }

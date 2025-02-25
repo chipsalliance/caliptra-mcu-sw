@@ -186,7 +186,7 @@ pub(crate) fn run_tests(
     });
 
     if cfg!(feature = "test-spdm-validator") {
-        let _ = execute_spdm_validator(running.clone());
+        execute_spdm_validator(running.clone());
     }
 }
 

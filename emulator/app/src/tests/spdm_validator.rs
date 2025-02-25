@@ -6,8 +6,7 @@ use std::fs::File;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
-use std::process::ExitStatus;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::vec;
@@ -336,26 +335,38 @@ impl TestTrait for Test {
     }
 }
 
-pub fn execute_spdm_validator(_running: Arc<AtomicBool>) -> io::Result<()> {
-    std::thread::spawn(move || -> io::Result<()> {
-        let status = start_spdm_device_validator().map_err(|e| {
-            println!("Failed to start spdm_device_validator_sample: {:?}", e);
-            e
-        });
-        if let Err(e) = status {
-            println!("Error: {:?}", e);
-        } else {
+pub fn execute_spdm_validator(running: Arc<AtomicBool>) {
+    std::thread::spawn(move || match start_spdm_device_validator() {
+        Ok(mut child) => {
+            while running.load(Ordering::Relaxed) {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        println!(
+                            "spdm_device_validator_sample exited with status: {:?}",
+                            status
+                        );
+                        break;
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        println!("Error: {:?}", e);
+                        break;
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            let _ = child.kill();
+        }
+        Err(e) => {
             println!(
-                "spdm_device_validator_sample exited with status: {:?}",
-                status
+                "Error: {:?} Failed to spawn spdm_device_validator_sample!!",
+                e
             );
         }
-        Ok(())
     });
-    Ok(())
 }
 
-pub fn start_spdm_device_validator() -> io::Result<ExitStatus> {
+pub fn start_spdm_device_validator() -> io::Result<Child> {
     let spdm_validator_dir = std::env::var("SPDM_VALIDATOR_DIR");
     let dir_path = match spdm_validator_dir {
         Ok(dir) => {
@@ -386,6 +397,5 @@ pub fn start_spdm_device_validator() -> io::Result<ExitStatus> {
     Command::new(utility_path)
         .stdout(Stdio::from(output_file))
         .stderr(Stdio::from(output_file_clone))
-        .spawn()?
-        .wait()
+        .spawn()
 }

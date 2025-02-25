@@ -18,9 +18,8 @@ members = [
     "rom",
     "romtime",
     "runtime",
+    "runtime/apps/api",
     "runtime/apps/example",
-    "runtime/apps/spdm/spdm-lib",
-    "runtime/apps/spdm/spdm-app",
     "runtime/apps/libtock/apis/interface/buttons",
     "runtime/apps/libtock/apis/interface/buzzer",
     "runtime/apps/libtock/apis/interface/console",
@@ -48,7 +47,8 @@ members = [
     "runtime/apps/libtock/ufmt",
     "runtime/apps/libtock/unittest",
     "runtime/apps/libtockasync",
-    "runtime/apps/api",
+    "runtime/apps/spdm/spdm-app",
+    "runtime/apps/spdm/spdm-lib",
     "runtime/apps/syscall",
     "runtime/capsules",
     "runtime/i3c",
@@ -105,12 +105,12 @@ strum = "0.24"
 strum_macros = "0.24"
 syn = "1.0.107"
 tempfile = "3.14.0"
+thiserror-no-std = "2.0.2"
 toml = "0.8.19"
 uuid = { version = "1.10.0", features = ["serde"]}
 walkdir = "2.5.0"
 zerocopy = { version = "0.8.8", features = ["derive"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_derive"] }
-thiserror-no-std = "2.0.2"
 
 # local dependencies
 capsules-runtime = { path = "runtime/capsules" }

@@ -7,14 +7,14 @@ use crate::error::*;
 use crate::protocol::{
     ReqRespCode, SpdmMsgHdr, SpdmVersion, MAX_NUM_SUPPORTED_SPDM_VERSIONS, MAX_SUPORTED_VERSION,
 };
-use crate::state::{ConnectionState, State};
+use crate::state::State;
 use crate::transport::MctpTransport;
 use libtock_platform::Syscalls;
 
 pub struct SpdmContext<'a, S: Syscalls> {
-    supported_versions: &'a [SpdmVersion],
     transport: &'a mut MctpTransport<S>,
-    state: State,
+    pub(crate) supported_versions: &'a [SpdmVersion],
+    pub(crate) state: State,
 }
 
 impl<'a, S: Syscalls> SpdmContext<'a, S> {
@@ -76,7 +76,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             .map_err(|_| (false, CommandError::UnsupportedRequest))?;
 
         match req_code {
-            ReqRespCode::GetVersion => self.handle_version(req_msg_header, req).await?,
+            ReqRespCode::GetVersion => version_rsp::handle_version(self, req_msg_header, req)?,
             _ => Err((false, CommandError::UnsupportedRequest))?,
         }
         Ok(resp_code)
@@ -95,31 +95,9 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             .send_response(resp)
             .await
             .map_err(SpdmError::Transport)
-        // .map_err(|e| SpdmError::Transport(e))
     }
 
-    async fn handle_version(
-        &mut self,
-        spdm_hdr: SpdmMsgHdr,
-        req_payload: &mut MessageBuf<'a>,
-    ) -> CommandResult<()> {
-        match spdm_hdr.version() {
-            Ok(SpdmVersion::V10) => {}
-            _ => {
-                self.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None)?;
-            }
-        }
-
-        self.state.reset();
-        let rsp_buf = req_payload;
-        self.generate_version_response(rsp_buf)?;
-
-        self.state
-            .set_connection_state(ConnectionState::AfterVersion);
-        Ok(())
-    }
-
-    fn prepare_response_buffer(&self, rsp_buf: &mut MessageBuf) -> CommandResult<()> {
+    pub(crate) fn prepare_response_buffer(&self, rsp_buf: &mut MessageBuf) -> CommandResult<()> {
         rsp_buf.reset();
         rsp_buf
             .reserve(self.transport.header_size() + core::mem::size_of::<SpdmMsgHdr>())
@@ -127,12 +105,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         Ok(())
     }
 
-    fn generate_version_response(&mut self, rsp_buf: &mut MessageBuf) -> CommandResult<()> {
-        self.prepare_response_buffer(rsp_buf)?;
-        version_rsp::fill_version_response(rsp_buf, self.supported_versions)
-    }
-
-    fn generate_error_response(
+    pub fn generate_error_response(
         &self,
         msg_buf: &mut MessageBuf,
         error_code: ErrorCode,

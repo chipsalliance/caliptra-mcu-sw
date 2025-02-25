@@ -103,15 +103,8 @@ impl Test {
             target_addr,
         );
 
-        // if let Some(resp_msg) = resp_msg {
-        //     if resp_msg[0] != self.msg_type || self.req_msg_buf != resp_msg {
-        //         self.passed = false;
-        //     } else {
-        //         self.passed = true;
-        //     }
-        // }
         if let Some(resp_msg) = resp_msg {
-            self.passed = !(resp_msg[0] != self.msg_type || self.req_msg_buf != resp_msg);
+            self.passed = resp_msg[0] == self.msg_type && self.req_msg_buf == resp_msg;
         }
         println!(
             "RESPONDER_READY: Test {} : {}",

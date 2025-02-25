@@ -56,7 +56,6 @@ pub fn apps_build_flat_tbf(
         let app_bin = app_build_tbf(app, offset, ram_start, features)?;
         bin.extend_from_slice(&app_bin);
         offset += app_bin.len();
-        // TODO: support different amount of RAM per app
         ram_start += app.minimum_ram as usize;
     }
     Ok(bin)
