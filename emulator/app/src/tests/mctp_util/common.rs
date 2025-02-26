@@ -426,10 +426,10 @@ impl MctpUtil {
                 assert_eq!(mctp_hdr.eom(), 1);
             }
             let seq_num = (i % 4) as u8;
-            assert_eq!(mctp_hdr.dest_eid(), message_identifier.dest_eid);
-            assert_eq!(mctp_hdr.tag_owner(), message_identifier.tag_owner);
-            assert_eq!(mctp_hdr.msg_tag(), message_identifier.msg_tag);
-            assert_eq!(mctp_hdr.pkt_seq(), seq_num);
+            assert!(mctp_hdr.dest_eid() == message_identifier.dest_eid);
+            assert!(mctp_hdr.tag_owner() == message_identifier.tag_owner);
+            assert!(mctp_hdr.msg_tag() == message_identifier.msg_tag);
+            assert!(mctp_hdr.pkt_seq() == seq_num);
 
             msg.extend_from_slice(&pkt[MCTP_HDR_SIZE..]);
         }

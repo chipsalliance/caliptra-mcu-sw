@@ -470,6 +470,17 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         PldmRequestResponseTest::run(pldm_socket, running.clone());
     }
 
+    if cfg!(feature = "test-pldm-request-response") {
+        println!("Emulator: Starting test-pldm-request-respons");
+        i3c_controller.start();
+        let pldm_transport =
+            MctpTransport::new(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
+        let pldm_socket = pldm_transport
+            .create_socket(EndpointId(0), EndpointId(1))
+            .unwrap();
+        PldmRequestResponseTest::run(pldm_socket, running.clone());
+    }
+
     let create_flash_controller = |default_path: &str, error_irq: u8, event_irq: u8| {
         // Use a temporary file for flash storage if we're running a test
         let flash_file = if cfg!(any(

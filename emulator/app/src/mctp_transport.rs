@@ -21,22 +21,17 @@ pub struct MctpPldmSocket {
     source: EndpointId,
     dest: EndpointId,
     target_addr: u8,
+    stream: Arc<Mutex<TcpStream>>,
     msg_tag: u8,
     running: Arc<AtomicBool>,
-    context: Arc<Mutex<MctpPldmSocketData>>,
-}
-
-struct MctpPldmSocketData {
-    stream: TcpStream,
-    first_response: Option<Vec<u8>>,
-    wait_for_responder: bool,
-    mctp_util: MctpUtil,
+    first_response: Arc<Mutex<Option<Vec<u8>>>>,
+    wait_for_responder: Arc<Mutex<bool>>,
+    mctp_util: Arc<Mutex<MctpUtil>>,
 }
 
 impl PldmSocket for MctpPldmSocket {
     fn send(&self, payload: &[u8]) -> Result<(), PldmTransportError> {
-        let context = &mut *self.context.lock().unwrap();
-        let mctp_util = &mut context.mctp_util;
+        let mctp_util = &mut *self.mctp_util.lock().unwrap();
 
         let mut mctp_common_headeer = MctpCommonHeader(0);
         mctp_common_headeer.set_ic(0);
@@ -46,7 +41,7 @@ impl PldmSocket for MctpPldmSocket {
         mctp_payload.push(mctp_common_headeer.0);
         mctp_payload.extend_from_slice(payload);
 
-        if context.wait_for_responder {
+        if *self.wait_for_responder.lock().unwrap() {
             /* If this is the first time we are sending a request,
              * we need to make sure that the responder is ready
              * so we wait for a response for the first message
@@ -56,26 +51,29 @@ impl PldmSocket for MctpPldmSocket {
                 self.msg_tag,
                 mctp_payload.as_mut_slice(),
                 self.running.clone(),
-                &mut context.stream,
+                self.stream.lock().as_mut().unwrap(),
                 self.target_addr,
             );
 
-            context.first_response.replace(response.unwrap());
+            self.first_response
+                .lock()
+                .unwrap()
+                .replace(response.unwrap());
 
-            context.wait_for_responder = false;
+            *self.wait_for_responder.lock().unwrap() = false;
         } else if payload[0] & 0x80 == 0x80 {
             mctp_util.send_request(
                 self.msg_tag,
                 mctp_payload.as_mut_slice(),
                 self.running.clone(),
-                &mut context.stream,
+                self.stream.lock().as_mut().unwrap(),
                 self.target_addr,
             );
         } else {
             mctp_util.send_response(
                 mctp_payload.as_mut_slice(),
                 self.running.clone(),
-                &mut context.stream,
+                self.stream.lock().as_mut().unwrap(),
                 self.target_addr,
             );
         }
@@ -84,8 +82,8 @@ impl PldmSocket for MctpPldmSocket {
     }
 
     fn receive(&self, _timeout: Option<Duration>) -> Result<RxPacket, PldmTransportError> {
-        let context = &mut *self.context.lock().unwrap();
-        if let Some(response) = context.first_response.as_mut() {
+        let mut first_response = self.first_response.lock().unwrap();
+        if let Some(response) = first_response.as_mut() {
             let mut data = [0u8; MAX_PLDM_PAYLOAD_SIZE];
             // Skip the first byte containing the MCTP common header
             // and only return the PLDM payload
@@ -97,13 +95,16 @@ impl PldmSocket for MctpPldmSocket {
                     len: response.len() - 1,
                 },
             };
-            context.first_response = None;
+            *first_response = None;
             return Ok(ret);
         }
 
-        let mctp_util = &mut context.mctp_util;
-        let raw_pkt: Vec<u8> =
-            mctp_util.receive(self.running.clone(), &mut context.stream, self.target_addr);
+        let mctp_util = &mut *self.mctp_util.lock().unwrap();
+        let raw_pkt: Vec<u8> = mctp_util.receive(
+            self.running.clone(),
+            self.stream.lock().as_mut().unwrap(),
+            self.target_addr,
+        );
         let len = raw_pkt.len() - 1;
         if raw_pkt.is_empty() {
             return Err(PldmTransportError::Underflow);
@@ -132,9 +133,12 @@ impl PldmSocket for MctpPldmSocket {
             source: self.source,
             dest: self.dest,
             target_addr: self.target_addr,
+            stream: self.stream.clone(),
             msg_tag: self.msg_tag,
             running: self.running.clone(),
-            context: self.context.clone(),
+            first_response: self.first_response.clone(),
+            wait_for_responder: self.wait_for_responder.clone(),
+            mctp_util: self.mctp_util.clone(),
         }
     }
 }
@@ -158,7 +162,9 @@ impl PldmTransport<MctpPldmSocket> for MctpTransport {
         dest: EndpointId,
     ) -> Result<MctpPldmSocket, PldmTransportError> {
         let addr = SocketAddr::from(([127, 0, 0, 1], self.port));
-        let stream = TcpStream::connect(addr).map_err(|_| PldmTransportError::Disconnected)?;
+        let stream = Arc::new(Mutex::new(
+            TcpStream::connect(addr).map_err(|_| PldmTransportError::Disconnected)?,
+        ));
         let running = Arc::new(AtomicBool::new(true));
         let mctp_util = MctpUtil::new();
         let msg_tag = 0u8;
@@ -166,14 +172,12 @@ impl PldmTransport<MctpPldmSocket> for MctpTransport {
             source,
             dest,
             target_addr: self.target_addr.into(),
+            stream,
             msg_tag,
             running,
-            context: Arc::new(Mutex::new(MctpPldmSocketData {
-                stream,
-                first_response: None,
-                wait_for_responder: true,
-                mctp_util,
-            })),
+            first_response: Arc::new(Mutex::new(None)),
+            wait_for_responder: Arc::new(Mutex::new(true)),
+            mctp_util: Arc::new(Mutex::new(mctp_util)),
         })
     }
 }

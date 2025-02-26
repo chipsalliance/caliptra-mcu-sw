@@ -210,37 +210,4 @@ mod test {
     run_test!(test_mctp_capsule_loopback);
     run_test!(test_mctp_user_loopback);
     run_test!(test_pldm_request_response);
-    // TODO: debug why this test is failing
-    //run_test!(test_spdm_validator);
-
-    /// This tests a full active mode boot run through with Caliptra, including
-    /// loading MCU's firmware from Caliptra over the recovery interface.
-    #[test]
-    fn test_active_mode_recovery_with_caliptra() {
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let feature = "test-exit-immediately".to_string();
-        println!("Compiling test firmware {}", &feature);
-        let test_runtime = compile_runtime(&feature);
-        let i3c_port = "65534".to_string();
-        let soc_manifest = write_soc_manifest();
-        let caliptra_rom = compile_caliptra_rom();
-        let (caliptra_fw, vendor_pk_hash) = compile_caliptra_fw();
-        let test = run_runtime(
-            &feature,
-            ROM.to_path_buf(),
-            test_runtime,
-            i3c_port,
-            Some(soc_manifest),
-            Some(caliptra_rom),
-            Some(caliptra_fw),
-            Some(vendor_pk_hash),
-            true,
-        );
-        assert_eq!(0, test.code().unwrap_or_default());
-
-        // force the compiler to keep the lock
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
 }
