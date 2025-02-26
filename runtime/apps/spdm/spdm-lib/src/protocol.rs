@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::codec::{Codec, CodecError, CodecResult, MessageBuf};
+use crate::codec::{CommonCodec, DataKind};
 use crate::error::{SpdmError, SpdmResult};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
@@ -122,25 +122,6 @@ impl SpdmMsgHdr {
     }
 }
 
-impl Codec for SpdmMsgHdr {
-    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
-        let len = core::mem::size_of::<Self>();
-        buf.push_data(len)?;
-        let header = buf.data_mut(len)?;
-        self.write_to(header).map_err(|_| CodecError::WriteError)?;
-
-        Ok(len)
-    }
-
-    fn decode(buf: &mut MessageBuf) -> CodecResult<Self> {
-        let len = core::mem::size_of::<Self>();
-        if buf.data_len() < len {
-            Err(CodecError::BufferTooSmall)?;
-        }
-        let hdr_bytes = buf.data(len)?;
-
-        let hdr = SpdmMsgHdr::read_from_bytes(hdr_bytes).map_err(|_| CodecError::ReadError)?;
-        buf.pull_data(len)?;
-        Ok(hdr)
-    }
+impl CommonCodec for SpdmMsgHdr {
+    const DATA_KIND: DataKind = DataKind::Header;
 }

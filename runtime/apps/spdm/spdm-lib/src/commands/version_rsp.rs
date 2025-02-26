@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::codec::{Codec, CodecError, CodecResult, MessageBuf};
+use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
@@ -36,35 +36,8 @@ impl VersionRespCommon<[u8; 4]> {
     }
 }
 
-impl Codec for VersionRespCommon<[u8; 4]> {
-    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
-        let len = core::mem::size_of::<Self>();
-        buf.put_data(len)?;
-
-        if buf.data_len() < len {
-            Err(CodecError::BufferTooSmall)?;
-        }
-
-        let payload = buf.data_mut(len)?;
-        let src_bytes = self.as_bytes();
-        payload.copy_from_slice(src_bytes);
-
-        buf.pull_data(len)?;
-
-        Ok(len)
-    }
-
-    fn decode(buf: &mut MessageBuf) -> CodecResult<Self> {
-        let len = core::mem::size_of::<Self>();
-        if buf.data_len() < len {
-            Err(CodecError::BufferTooSmall)?;
-        }
-        let payload = buf.data(len)?;
-        let payload =
-            VersionRespCommon::read_from_bytes(payload).map_err(|_| CodecError::ReadError)?;
-        buf.pull_data(len)?;
-        Ok(payload)
-    }
+impl CommonCodec for VersionRespCommon<[u8; 4]> {
+    const DATA_KIND: DataKind = DataKind::Payload;
 }
 
 bitfield! {
@@ -94,29 +67,8 @@ impl VersionNumberEntry<[u8; 2]> {
     }
 }
 
-impl Codec for VersionNumberEntry<[u8; 2]> {
-    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
-        let len = core::mem::size_of::<Self>();
-        buf.put_data(len)?;
-
-        let payload = buf.data_mut(len)?;
-        self.write_to(payload).map_err(|_| CodecError::WriteError)?;
-
-        buf.pull_data(len)?;
-        Ok(len)
-    }
-
-    fn decode(buf: &mut MessageBuf) -> CodecResult<Self> {
-        let len = core::mem::size_of::<Self>();
-        if buf.data_len() < len {
-            Err(CodecError::BufferTooSmall)?;
-        }
-        let payload = buf.data(len)?;
-        let payload =
-            VersionNumberEntry::read_from_bytes(payload).map_err(|_| CodecError::ReadError)?;
-        buf.pull_data(len)?;
-        Ok(payload)
-    }
+impl CommonCodec for VersionNumberEntry<[u8; 2]> {
+    const DATA_KIND: DataKind = DataKind::Payload;
 }
 
 pub fn fill_version_response(

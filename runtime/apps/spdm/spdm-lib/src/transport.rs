@@ -3,7 +3,7 @@
 use thiserror_no_std::Error;
 
 use crate::codec::MessageBuf;
-use crate::codec::{Codec, CodecError, CodecResult};
+use crate::codec::{Codec, CodecError, CommonCodec, DataKind};
 use bitfield::bitfield;
 use libsyscall_caliptra::mctp::{Mctp, MessageInfo};
 use libtock_platform::Syscalls;
@@ -59,30 +59,9 @@ impl MctpMsgHdr<[u8; 1]> {
     }
 }
 
-impl Codec for MctpMsgHdr<[u8; 1]> {
-    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
-        let len: usize = core::mem::size_of::<Self>();
-        buf.push_data(len)?;
-        let header = buf.data_mut(len)?;
-        self.write_to(header).map_err(|_| CodecError::WriteError)?;
-
-        Ok(len)
-    }
-
-    fn decode(buf: &mut MessageBuf) -> CodecResult<Self> {
-        let len = core::mem::size_of::<Self>();
-        if buf.data_len() < len {
-            Err(CodecError::BufferTooSmall)?;
-        }
-        let hdr_bytes = buf.data(len)?;
-
-        let hdr = MctpMsgHdr::read_from_bytes(hdr_bytes).map_err(|_| CodecError::ReadError)?;
-        buf.pull_data(len)?;
-
-        Ok(hdr)
-    }
+impl CommonCodec for MctpMsgHdr<[u8; 1]> {
+    const DATA_KIND: DataKind = DataKind::Header;
 }
-
 pub struct MctpTransport<S: Syscalls> {
     mctp: Mctp<S>,
     cur_resp_ctx: Option<MessageInfo>,

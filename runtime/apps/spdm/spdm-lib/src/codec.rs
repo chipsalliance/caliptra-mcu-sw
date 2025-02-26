@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use thiserror_no_std::Error;
+use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub type CodecResult<T> = Result<T, CodecError>;
 
@@ -23,6 +24,54 @@ pub trait Codec {
     fn decode(data: &mut MessageBuf) -> CodecResult<Self>
     where
         Self: Sized;
+}
+
+pub enum DataKind {
+    Header,
+    Payload,
+}
+
+pub trait CommonCodec: FromBytes + IntoBytes + Immutable {
+    const DATA_KIND: DataKind;
+}
+
+impl<T> Codec for T
+where
+    T: CommonCodec,
+{
+    fn encode(&self, buffer: &mut MessageBuf) -> CodecResult<usize> {
+        let len = core::mem::size_of::<T>();
+        match T::DATA_KIND {
+            DataKind::Header => {
+                buffer.push_data(core::mem::size_of::<Self>())?;
+                let header = buffer.data_mut(len)?;
+                self.write_to(header).map_err(|_| CodecError::WriteError)?;
+            }
+            DataKind::Payload => {
+                buffer.put_data(len)?;
+
+                if buffer.data_len() < len {
+                    return Err(CodecError::BufferTooSmall);
+                }
+                let payload = buffer.data_mut(len)?;
+                self.write_to(payload).map_err(|_| CodecError::WriteError)?;
+                buffer.pull_data(len)?;
+            }
+        }
+
+        Ok(len)
+    }
+
+    fn decode(buffer: &mut MessageBuf) -> CodecResult<T> {
+        let len = core::mem::size_of::<T>();
+        if buffer.data_len() < len {
+            return Err(CodecError::BufferTooSmall);
+        }
+        let data = buffer.data(len)?;
+        let data = T::read_from_bytes(data).map_err(|_| CodecError::ReadError)?;
+        buffer.pull_data(len)?;
+        Ok(data)
+    }
 }
 
 // Generic message buffer for message encoding and decoding
