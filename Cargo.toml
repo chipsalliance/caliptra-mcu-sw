@@ -2,6 +2,7 @@
 
 [workspace]
 members = [
+    "common/pldm",
     "emulator/app",
     "emulator/bmc/pldm-fw-pkg",
     "emulator/bus",
@@ -75,7 +76,6 @@ clap = { version = "4.5.23", features = [
     "unicode",
     "wrap_help",
 ] }
-clap_derive = "4.5.11"
 crc = "3.2.1"
 crc32fast = "1.4.2"
 critical-section = "1.1.2"
@@ -103,7 +103,6 @@ serde_json = { version = "1.0.127", features = ["alloc"] }
 serde-hjson = "1.1.0"
 strum = "0.24"
 strum_macros = "0.24"
-syn = "1.0.107"
 tempfile = "3.14.0"
 thiserror-no-std = "2.0.2"
 toml = "0.8.19"
@@ -124,6 +123,7 @@ emulator-types = { path = "emulator/types" }
 flash-driver = { path = "runtime/flash" }
 i3c-driver = { path = "runtime/i3c" }
 libtockasync = { path = "runtime/apps/libtockasync" }
+pldm-common = { path = "common/pldm"}
 registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }
@@ -142,6 +142,7 @@ libtock_runtime = { path = "runtime/apps/libtock/runtime" }
 libtock_unittest = { path = "runtime/apps/libtock/unittest" }
 libsyscall-caliptra = { path = "runtime/apps/syscall" }
 libapi-caliptra = { path = "runtime/apps/api" }
+
 
 # caliptra dependencies; keep git revs in sync
 caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw.git", rev = "dd307762140a39d5f3841a5e770a6fb8087aca29" }
