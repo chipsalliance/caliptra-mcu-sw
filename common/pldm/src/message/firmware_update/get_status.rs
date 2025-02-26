@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-use crate::codec::{PldmCodec, PldmCodecError};
 use crate::error::PldmError;
 use crate::protocol::base::{
     InstanceId, PldmMsgHeader, PldmMsgType, PldmSupportedType, PLDM_MSG_HEADER_LEN,
@@ -108,26 +107,6 @@ impl GetStatusRequest {
         }
     }
 }
-impl PldmCodec for GetStatusRequest {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetStatusRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        let offset = 0;
-        self.write_to(&mut buffer[offset..offset + bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetStatusRequest>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        let offset = 0;
-        Ok(GetStatusRequest::read_from_bytes(&buffer[offset..offset + bytes]).unwrap())
-    }
-}
 
 #[derive(Debug, Clone, PartialEq)]
 #[repr(u8)]
@@ -186,30 +165,10 @@ impl GetStatusResponse {
     }
 }
 
-impl PldmCodec for GetStatusResponse {
-    fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetStatusResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        let offset = 0;
-        self.write_to(&mut buffer[offset..offset + bytes]).unwrap();
-        Ok(bytes)
-    }
-
-    fn decode(buffer: &[u8]) -> Result<Self, PldmCodecError> {
-        let bytes = core::mem::size_of::<GetStatusResponse>();
-        if buffer.len() < bytes {
-            return Err(PldmCodecError::BufferTooShort);
-        }
-        let offset = 0;
-        Ok(GetStatusResponse::read_from_bytes(&buffer[offset..offset + bytes]).unwrap())
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::codec::PldmCodec;
 
     #[test]
     fn test_get_status_request() {

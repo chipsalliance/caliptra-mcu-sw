@@ -81,10 +81,7 @@ impl PldmSocket for MctpPldmSocket {
         Ok(())
     }
 
-    fn receive(
-        &self,
-        _timeout: Option<Duration>
-    ) -> Result<RxPacket, PldmTransportError> {
+    fn receive(&self, _timeout: Option<Duration>) -> Result<RxPacket, PldmTransportError> {
         let mut first_response = self.first_response.lock().unwrap();
         if let Some(response) = first_response.as_mut() {
             let mut data = [0u8; MAX_PLDM_PAYLOAD_SIZE];

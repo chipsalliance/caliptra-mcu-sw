@@ -135,6 +135,7 @@ pub struct RequestUpdateResponseFixed {
     pub fd_meta_data_len: u16,
     pub fd_will_send_pkg_data_cmd: u8,
 }
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RequestUpdateResponse {
     pub fixed: RequestUpdateResponseFixed,

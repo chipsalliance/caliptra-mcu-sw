@@ -40,7 +40,6 @@ pub struct MessageIdentifier {
     pub tag_owner: u8,
 }
 
-
 impl MctpUtil {
     pub fn new() -> MctpUtil {
         MctpUtil {
@@ -165,12 +164,12 @@ impl MctpUtil {
                             let message_identifier = MessageIdentifier {
                                 dest_eid: self.src_eid, // Destination is the requester
                                 src_eid: self.dest_eid, // Source is the responder
-                                msg_tag: msg_tag, // The message tag sent in the request
-                                tag_owner: 0, // Not tag owner for response
+                                msg_tag,                // The message tag sent in the request
+                                tag_owner: 0,           // Not tag owner for response
                             };
                             resp_pkts.push_back(data);
                             self.new_resp();
-                            let resp = self.assemble(resp_pkts,& message_identifier);
+                            let resp = self.assemble(resp_pkts, &message_identifier);
                             return Some(resp);
                         }
 
@@ -331,7 +330,12 @@ impl MctpUtil {
         pkts
     }
 
-    fn receive_packet(&mut self, pkts: &mut VecDeque<Vec<u8>>, data: Vec<u8>, message_identifier: &mut MessageIdentifier) -> bool {
+    fn receive_packet(
+        &mut self,
+        pkts: &mut VecDeque<Vec<u8>>,
+        data: Vec<u8>,
+        message_identifier: &mut MessageIdentifier,
+    ) -> bool {
         let mut last_pkt = false;
         let mut pkt = data.clone();
         let mctp_hdr: &mut MCTPHdr<[u8; MCTP_HDR_SIZE]> =
@@ -404,7 +408,11 @@ impl MctpUtil {
         mctp_pkts
     }
 
-    fn assemble(&self, packets: VecDeque<Vec<u8>>, message_identifier: &MessageIdentifier) -> Vec<u8> {
+    fn assemble(
+        &self,
+        packets: VecDeque<Vec<u8>>,
+        message_identifier: &MessageIdentifier,
+    ) -> Vec<u8> {
         let mut msg: Vec<u8> = Vec::new();
         for (i, pkt) in packets.iter().enumerate() {
             let mctp_hdr: MCTPHdr<[u8; MCTP_HDR_SIZE]> =
@@ -469,7 +477,7 @@ mod tests {
         mctp.set_pkt_payload_size(pkt_payload_size);
         mctp.set_msg_tag(tag);
 
-        let expected_packets = (msg_size + pkt_payload_size - 1) / pkt_payload_size;
+        let expected_packets = msg_size.div_ceil(pkt_payload_size);
 
         let packets = mctp.packetize(&msg_buf);
         if packets.len() != expected_packets {
@@ -491,6 +499,6 @@ mod tests {
             println!("MCTP_UTIL: Assembled message does not match original message");
             return false;
         }
-        return true;
+        true
     }
 }

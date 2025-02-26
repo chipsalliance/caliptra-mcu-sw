@@ -20,7 +20,7 @@ impl Otp {
 
     pub fn init(&self) -> Result<(), McuError> {
         if self.registers.status.get() & 0x1fff != 0 {
-            romtime::println!("OTP error: {:x}", self.registers.status.get());
+            romtime::println!("OTP error: {}", self.registers.status.get());
             return Err(McuError::FusesError);
         }
 
@@ -82,7 +82,7 @@ impl Otp {
         {}
 
         if let Some(err) = self.check_error() {
-            romtime::println!("Error reading fuses: {:x}", err);
+            romtime::println!("Error reading fuses: {}", err);
             return Err(McuError::FusesError);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())

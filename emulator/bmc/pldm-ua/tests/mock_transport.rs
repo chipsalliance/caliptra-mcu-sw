@@ -2,8 +2,8 @@
 
 use core::time::Duration;
 use pldm_ua::transport::{
-    EndpointId, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket,
-    TxPacket, MAX_PLDM_PAYLOAD_SIZE,
+    EndpointId, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket, TxPacket,
+    MAX_PLDM_PAYLOAD_SIZE,
 };
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -36,12 +36,8 @@ impl PldmSocket for MockPldmSocket {
         Ok(())
     }
 
-    fn receive(
-        &self,
-        _timeout: Option<Duration>
-    ) -> Result<RxPacket, PldmTransportError> {
+    fn receive(&self, _timeout: Option<Duration>) -> Result<RxPacket, PldmTransportError> {
         if let Some(receiver) = self.receiver.lock().unwrap().as_ref() {
-
             if let Ok(pkt) = receiver.recv() {
                 if pkt.payload.len == 0 {
                     Err(PldmTransportError::Underflow)

@@ -1,15 +1,15 @@
-//use std::sync::mpsc::{self, Sender, Receiver};
-use thingbuf::mpsc::{self, blocking};
+
+use std::sync::mpsc::{self, Sender, Receiver};
 
 /// Thread-safe event queue
 pub struct EventQueue<Event: Default + Clone> {
-    sender: blocking::Sender<Event>,
-    receiver: Option<blocking::Receiver<Event>>,
+    sender: Sender<Event>,
+    receiver: Option<Receiver<Event>>,
 }
 
 impl<Event: Default + Clone> EventQueue<Event> {
     pub fn new() -> Self {
-        let (tx, rx) = mpsc::blocking::channel::<Event>(20);
+        let (tx, rx) = mpsc::channel();
         Self {
             sender: tx,
             receiver: Some(rx),
@@ -24,7 +24,7 @@ impl<Event: Default + Clone> EventQueue<Event> {
 
     pub fn dequeue(&self) -> Option<Event> {
         if let Some(receiver) = &self.receiver {
-            receiver.recv()
+            receiver.recv().ok()
         } else {
             None
         }

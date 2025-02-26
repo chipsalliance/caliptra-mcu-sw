@@ -55,10 +55,7 @@ pub trait PldmSocket {
     ///
     /// * `Result<RxPacket, PldmTransportError>` - Returns `Ok(RxPacket)` if a packet is received successfully,
     ///   otherwise returns a `PldmTransportError`.
-    fn receive(
-        &self,
-        timeout: Option<Duration>,
-    ) -> Result<RxPacket, PldmTransportError>;
+    fn receive(&self, timeout: Option<Duration>) -> Result<RxPacket, PldmTransportError>;
 
     /// Establishes a connection for the PLDM socket.
     ///

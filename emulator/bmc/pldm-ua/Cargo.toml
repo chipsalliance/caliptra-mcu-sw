@@ -7,10 +7,11 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
-futures.workspace = true
-log = "0.4.26"
+log.workspace = true
 pldm-common.workspace = true
-simple_logger = "5.0.0"
-smlang = "0.8.0"
-thingbuf = "0.1.6"
+smlang.workspace = true
+
+[dev-dependencies]
+simple_logger.workspace = true
+
 

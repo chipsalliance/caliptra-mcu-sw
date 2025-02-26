@@ -2,9 +2,10 @@
 
 use std::process::Command;
 
-use crate::{DynError, PROJECT_ROOT, TARGET};
+use crate::{rom::rom_build, DynError, PROJECT_ROOT, TARGET};
 
 pub(crate) fn test() -> Result<(), DynError> {
+    test_panic_missing()?;
     cargo_test()?;
     e2e_tests()
 }
@@ -65,4 +66,41 @@ fn test_hello() -> Result<(), DynError> {
     }
 
     Ok(())
+}
+
+fn test_panic_missing() -> Result<(), DynError> {
+    rom_build()?;
+    let rom_elf = PROJECT_ROOT
+        .join("target")
+        .join(TARGET)
+        .join("release")
+        .join("rom");
+    let rom_elf = std::fs::read(rom_elf)?;
+    let symbols = elf_symbols(&rom_elf)?;
+    if symbols.iter().any(|s| s.contains("panic_is_possible")) {
+        return Err(
+            "The MCU ROM contains the panic_is_possible symbol, which is not allowed. \
+                Please remove any code that might panic."
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+pub fn elf_symbols(elf_bytes: &[u8]) -> Result<Vec<String>, DynError> {
+    let elf = elf::ElfBytes::<elf::endian::LittleEndian>::minimal_parse(elf_bytes)?;
+    let Some((symbols, strings)) = elf.symbol_table()? else {
+        return Ok(vec![]);
+    };
+    let mut result = vec![];
+    for sym in symbols.iter() {
+        let sym_name = strings.get(sym.st_name as usize).map_err(|e| {
+            format!(
+                "Could not parse symbol string at index {}: {e}",
+                sym.st_name
+            )
+        })?;
+        result.push(sym_name.to_string());
+    }
+    Ok(result)
 }

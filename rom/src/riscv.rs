@@ -12,7 +12,7 @@ Abstract:
 
 --*/
 
-use crate::{fuses::Otp, static_ref::StaticRef};
+use crate::{fatal_error, fuses::Otp, static_ref::StaticRef};
 use core::fmt::Write;
 use registers_generated::{fuses::Fuses, i3c, otp_ctrl, soc};
 use tock_registers::interfaces::{Readable, Writeable};
@@ -98,16 +98,20 @@ pub extern "C" fn rom_entry() -> ! {
 
     let otp = Otp::new(OTP_BASE);
     if let Err(err) = otp.init() {
-        panic!("Error initializing OTP: {:x}", err as u32);
+        romtime::println!("Error initializing OTP: {}", err as u32);
+        fatal_error();
     }
     let fuses = match otp.read_fuses() {
         Ok(fuses) => fuses,
-        Err(e) => panic!("Error reading fuses: {:x}", e as u32),
+        Err(e) => {
+            romtime::println!("Error reading fuses: {}", e as u32);
+            fatal_error()
+        }
     };
 
     let soc = Soc::new(SOC_BASE);
     let flow_status = soc.flow_status();
-    romtime::println!("Caliptra flow status {:x}", flow_status);
+    romtime::println!("Caliptra flow status {}", flow_status);
     if flow_status == 0 {
         romtime::println!("Caliptra not detected; skipping Caliptra boot flow");
         exit_rom();
