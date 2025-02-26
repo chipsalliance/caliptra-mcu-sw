@@ -15,7 +15,7 @@ riscv-arch-test
 
 # dynamically calculated
 runtime/layout.ld
-runtime/apps/layout.ld
+runtime/apps/*.ld
 
 # mdbook
 book
@@ -23,3 +23,6 @@ book
 # flash file
 main_flash
 recovery_flash
+
+# Protocol validator test logs
+test.log

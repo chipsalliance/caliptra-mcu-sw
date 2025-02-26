@@ -108,7 +108,12 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
             return (mctp_header, msg_type, payload_offset);
         }
 
-        mctp_header = MCTPHeader::read_from_bytes(&packet[0..MCTP_HDR_SIZE]).unwrap();
+        mctp_header = match MCTPHeader::read_from_bytes(&packet[0..MCTP_HDR_SIZE]) {
+            Ok(header) => header,
+            Err(_) => {
+                return (mctp_header, msg_type, payload_offset);
+            }
+        };
 
         if mctp_header.hdr_version() != 1 {
             return (mctp_header, msg_type, payload_offset);
@@ -166,7 +171,8 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         }
 
         let mctp_ctrl_msg_hdr: MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]> =
-            MCTPCtrlMsgHdr::read_from_bytes(&msg_buf[0..MCTP_CTRL_MSG_HEADER_LEN]).unwrap();
+            MCTPCtrlMsgHdr::read_from_bytes(&msg_buf[0..MCTP_CTRL_MSG_HEADER_LEN])
+                .map_err(|_| ErrorCode::FAIL)?;
 
         if mctp_ctrl_msg_hdr.rq() != 1 || mctp_ctrl_msg_hdr.datagram() != 0 {
             // Only Command/Request messages are handled

@@ -19,6 +19,7 @@ members = [
     "rom",
     "romtime",
     "runtime",
+    "runtime/apps/api",
     "runtime/apps/example",
     "runtime/apps/libtock/apis/interface/buttons",
     "runtime/apps/libtock/apis/interface/buzzer",
@@ -47,7 +48,8 @@ members = [
     "runtime/apps/libtock/ufmt",
     "runtime/apps/libtock/unittest",
     "runtime/apps/libtockasync",
-    "runtime/apps/api",
+    "runtime/apps/spdm/spdm-app",
+    "runtime/apps/spdm/spdm-lib",
     "runtime/apps/syscall",
     "runtime/capsules",
     "runtime/i3c",
@@ -102,6 +104,7 @@ serde-hjson = "1.1.0"
 strum = "0.24"
 strum_macros = "0.24"
 tempfile = "3.14.0"
+thiserror-no-std = "2.0.2"
 toml = "0.8.19"
 uuid = { version = "1.10.0", features = ["serde"]}
 walkdir = "2.5.0"
@@ -125,6 +128,9 @@ registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }
 romtime = { path = "romtime" }
+
+# App related dependencies
+spdm-lib = { path = "runtime/apps/spdm/spdm-lib" }
 
 # libtock dependencies
 libtock = { path = "runtime/apps/libtock" }

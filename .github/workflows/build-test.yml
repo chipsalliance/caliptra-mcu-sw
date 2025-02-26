@@ -93,3 +93,41 @@ jobs:
         run: |
           cargo --config "$EXTRA_CARGO_CONFIG" xtask precheckin
           sccache --show-stats
+
+      - name: Checkout spdm-emu repository
+        uses: actions/checkout@v4
+        with:
+          repository: parvathib/spdm-emu
+          ref: pbhogaraju/spdm-selective-cmd-validator
+          path: spdm-emu
+          submodules: recursive
+      
+      - name: Build spdm-emu
+        run: |
+          pushd spdm-emu
+          git submodule update --init --recursive
+          mkdir build
+          pushd build
+          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=mbedtls ..
+          make copy_sample_key
+          make
+          popd
+          popd
+
+      - name: Run all tests
+        run: |
+          export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
+          cargo --config "$EXTRA_CARGO_CONFIG" xtask test
+          sccache --show-stats
+      
+      - name: display SPDM Validator test results
+        run: |
+          cat $GITHUB_WORKSPACE/test.log
+          if grep -q "fail: 0" $GITHUB_WORKSPACE/test.log; then
+          echo "All tests passed."
+          else
+          echo "Some tests failed."
+          exit 1
+          fi
+    
+          
