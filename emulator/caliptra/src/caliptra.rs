@@ -33,6 +33,8 @@ use tock_registers::registers::InMemoryRegister;
 
 /// Firmware Load Command Opcode
 const FW_LOAD_CMD_OPCODE: u32 = 0x4657_4C44;
+/// Start firmware download
+const RI_DOWNLOAD_FIRMWARE: u32 = 0x5249_4644;
 
 /// The number of CPU clock cycles it takes to write the firmware to the mailbox.
 const FW_WRITE_TICKS: u64 = 1000;
@@ -180,13 +182,13 @@ pub fn start_caliptra(
 
     let ready_for_fw_cb = if args.active_mode {
         // in active mode, we don't upload the firmware here
-        // CHEAT for now
+        // TODO: this needs to be moved to the MCU ROM when that has a mailbox driver
         ReadyForFwCb::new(move |args| {
             args.schedule_later(FW_WRITE_TICKS, move |mailbox: &mut MailboxInternal| {
                 let soc_mbox = mailbox.as_external().regs();
                 // Write the cmd to mailbox.
                 assert!(!soc_mbox.lock().read().lock());
-                soc_mbox.cmd().write(|_| 0x5249_4644);
+                soc_mbox.cmd().write(|_| RI_DOWNLOAD_FIRMWARE);
                 soc_mbox.dlen().write(|_| 0u32);
                 soc_mbox.execute().write(|w| w.execute(true));
             });
