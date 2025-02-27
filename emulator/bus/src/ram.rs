@@ -13,7 +13,7 @@ Abstract:
 --*/
 
 use crate::{mem::Mem, Bus, BusError};
-use emulator_types::{RvAddr, RvData, RvSize};
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
 
 /// Read Only Memory Device
 pub struct Ram {

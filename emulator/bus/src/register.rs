@@ -14,7 +14,7 @@ Abstract:
 
 use crate::mem::Mem;
 use crate::{Bus, BusError};
-use emulator_types::{RvAddr, RvData, RvSize};
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use tock_registers::interfaces::{Readable, Writeable};
 use tock_registers::registers::InMemoryRegister;
 use tock_registers::{LocalRegisterCopy, RegisterLongName, UIntLike};

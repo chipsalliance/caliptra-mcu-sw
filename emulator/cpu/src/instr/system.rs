@@ -17,8 +17,8 @@ use crate::csr_file::Csr;
 use crate::types::{
     RvInstr32I, RvInstr32Opcode, RvInstr32SystemFunct3, RvInstr32SystemImm, RvMStatus, RvPrivMode,
 };
+use caliptra_emu_types::{RvData, RvException};
 use emulator_bus::Bus;
-use emulator_types::{RvData, RvException};
 
 impl<TBus: Bus> Cpu<TBus> {
     /// Execute system Instructions
@@ -118,7 +118,7 @@ mod tests {
     };
     use crate::xreg_file::XReg;
     use crate::{isa_test, isa_test_cpu, text};
-    use emulator_types::RvException;
+    use caliptra_emu_types::RvException;
 
     #[test]
     fn test_ecall() {

@@ -13,8 +13,8 @@ Abstract:
 
 --*/
 use crate::otp_digest;
+use caliptra_emu_types::{RvAddr, RvData};
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
-use emulator_types::{RvAddr, RvData};
 use registers_generated::fuses::{self, NON_SECRET_FUSES_WORD_OFFSET, SECRET3_WORD_OFFSET};
 use registers_generated::otp_ctrl::bits::{DirectAccessCmd, Status};
 use serde::{Deserialize, Serialize};
@@ -248,7 +248,7 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
         self.direct_access_buffer
     }
 
-    fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> emulator_types::RvData {
+    fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> RvData {
         self.direct_access_buffer
     }
 

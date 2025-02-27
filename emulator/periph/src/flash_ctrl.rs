@@ -12,12 +12,13 @@ Abstract:
 
 --*/
 
+use caliptra_emu_types::{RvData, RvSize};
 use core::convert::TryInto;
 use emulator_bus::{ActionHandle, Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
+use emulator_consts::{RAM_OFFSET, RAM_SIZE};
 use emulator_cpu::Irq;
 use emulator_registers_generated::main_flash::MainFlashPeripheral;
 use emulator_registers_generated::recovery_flash::RecoveryFlashPeripheral;
-use emulator_types::{RvSize, RAM_OFFSET, RAM_SIZE};
 use registers_generated::main_flash_ctrl;
 use registers_generated::main_flash_ctrl::bits::{
     CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
@@ -429,28 +430,28 @@ impl MainFlashPeripheral for DummyFlashCtrl {
         self.interrupt_enable.reg.set(val.reg.get());
     }
 
-    fn write_page_size(&mut self, val: emulator_types::RvData) {
+    fn write_page_size(&mut self, val: RvData) {
         self.page_size.reg.set(val);
     }
 
     // Return the page size of the flash storage connected to the controller
-    fn read_page_size(&mut self) -> emulator_types::RvData {
+    fn read_page_size(&mut self) -> RvData {
         Self::PAGE_SIZE as u32
     }
 
-    fn read_page_num(&mut self) -> emulator_types::RvData {
+    fn read_page_num(&mut self) -> RvData {
         self.page_num.reg.get()
     }
 
-    fn write_page_num(&mut self, val: emulator_types::RvData) {
+    fn write_page_num(&mut self, val: RvData) {
         self.page_num.reg.set(val);
     }
 
-    fn read_page_addr(&mut self) -> emulator_types::RvData {
+    fn read_page_addr(&mut self) -> RvData {
         self.page_addr.reg.get()
     }
 
-    fn write_page_addr(&mut self, val: emulator_types::RvData) {
+    fn write_page_addr(&mut self, val: RvData) {
         self.page_addr.reg.set(val);
     }
 
@@ -596,28 +597,28 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         self.interrupt_enable.reg.set(val.reg.get());
     }
 
-    fn write_page_size(&mut self, val: emulator_types::RvData) {
+    fn write_page_size(&mut self, val: RvData) {
         self.page_size.reg.set(val);
     }
 
     // Return the page size of the flash storage connected to the controller
-    fn read_page_size(&mut self) -> emulator_types::RvData {
+    fn read_page_size(&mut self) -> RvData {
         Self::PAGE_SIZE as u32
     }
 
-    fn read_page_num(&mut self) -> emulator_types::RvData {
+    fn read_page_num(&mut self) -> RvData {
         self.page_num.reg.get()
     }
 
-    fn write_page_num(&mut self, val: emulator_types::RvData) {
+    fn write_page_num(&mut self, val: RvData) {
         self.page_num.reg.set(val);
     }
 
-    fn read_page_addr(&mut self) -> emulator_types::RvData {
+    fn read_page_addr(&mut self) -> RvData {
         self.page_addr.reg.get()
     }
 
-    fn write_page_addr(&mut self, val: emulator_types::RvData) {
+    fn write_page_addr(&mut self, val: RvData) {
         self.page_addr.reg.set(val);
     }
 
@@ -685,11 +686,12 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
 mod test {
     use super::*;
 
+    use caliptra_emu_types::RvSize;
     use core::panic;
     use emulator_bus::{Bus, Clock};
+    use emulator_consts::{RAM_OFFSET, RAM_SIZE};
     use emulator_cpu::Pic;
     use emulator_registers_generated::root_bus::AutoRootBus;
-    use emulator_types::{RvSize, RAM_OFFSET, RAM_SIZE};
     use registers_generated::main_flash_ctrl::bits::{
         FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
     };
@@ -774,7 +776,7 @@ mod test {
         data: Option<&[u8]>,
     ) -> Option<u32> {
         // Check if ref_addr is within the range of DCCM
-        if ref_addr < RAM_OFFSET || ref_addr + size as u32 > RAM_OFFSET + RAM_SIZE as u32 {
+        if ref_addr < RAM_OFFSET || ref_addr + size as u32 > RAM_OFFSET + RAM_SIZE {
             return None;
         }
 

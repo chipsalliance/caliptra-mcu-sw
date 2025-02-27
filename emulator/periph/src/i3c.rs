@@ -8,10 +8,10 @@ Abstract:
 
 use crate::i3c_protocol::{I3cController, I3cTarget, I3cTcriResponseXfer, ResponseDescriptor};
 use crate::{DynamicI3cAddress, I3cIncomingCommandClient, IbiDescriptor, ReguDataTransferCommand};
+use caliptra_emu_types::RvData;
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
 use emulator_cpu::Irq;
 use emulator_registers_generated::i3c::I3cPeripheral;
-use emulator_types::RvData;
 use registers_generated::i3c::bits::{
     ExtcapHeader, InterruptEnable, InterruptStatus, StbyCrCapabilities, StbyCrDeviceAddr,
     TtiQueueSize,
@@ -239,7 +239,7 @@ impl I3cPeripheral for I3c {
         self.interrupt_enable.reg.set(val.reg.get());
     }
 
-    fn write_i3c_ec_tti_tti_ibi_port(&mut self, val: emulator_types::RvData) {
+    fn write_i3c_ec_tti_tti_ibi_port(&mut self, val: RvData) {
         self.tti_ibi_buffer
             .extend_from_slice(val.to_le_bytes().as_ref());
         self.check_ibi_buffer();
@@ -334,10 +334,10 @@ mod tests {
     use crate::i3c_protocol::{
         DynamicI3cAddress, I3cTcriCommand, I3cTcriCommandXfer, ImmediateDataTransferCommand,
     };
+    use caliptra_emu_types::{RvAddr, RvSize};
     use emulator_bus::Bus;
     use emulator_cpu::Pic;
     use emulator_registers_generated::root_bus::AutoRootBus;
-    use emulator_types::{RvAddr, RvSize};
 
     const TTI_RX_DESC_QUEUE_PORT: RvAddr = 0x1dc;
 

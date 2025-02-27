@@ -9,15 +9,15 @@ pub trait I3cPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
-    fn read_dat(&mut self) -> emulator_types::RvData {
+    fn read_dat(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_dat(&mut self, _val: emulator_types::RvData) {}
-    fn read_dct(&mut self) -> emulator_types::RvData {
+    fn write_dat(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_dct(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_dct(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_base_hci_version(&mut self) -> emulator_types::RvData {
+    fn write_dct(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_base_hci_version(&mut self) -> caliptra_emu_types::RvData {
         0
     }
     fn read_i3c_base_hc_control(
@@ -250,15 +250,15 @@ pub trait I3cPeripheral {
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn write_piocontrol_command_port(&mut self, _val: emulator_types::RvData) {}
-    fn read_piocontrol_response_port(&mut self) -> emulator_types::RvData {
+    fn write_piocontrol_command_port(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_piocontrol_response_port(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_piocontrol_tx_data_port(&mut self, _val: emulator_types::RvData) {}
-    fn read_piocontrol_rx_data_port(&mut self) -> emulator_types::RvData {
+    fn write_piocontrol_tx_data_port(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_piocontrol_rx_data_port(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_piocontrol_ibi_port(&mut self) -> emulator_types::RvData {
+    fn read_piocontrol_ibi_port(&mut self) -> caliptra_emu_types::RvData {
         0
     }
     fn read_piocontrol_queue_thld_ctrl(
@@ -377,88 +377,104 @@ pub trait I3cPeripheral {
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_0(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_0(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_prot_cap_0(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_1(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_prot_cap_0(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_1(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_prot_cap_1(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_2(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_prot_cap_1(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_2(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_prot_cap_2(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_3(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_prot_cap_2(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_3(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_prot_cap_3(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_0(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_prot_cap_3(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_0(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_0(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_1(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_0(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_1(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_1(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_2(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_1(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_2(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_2(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_3(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_2(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_3(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_3(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_4(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_3(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_4(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_4(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_5(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_4(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_5(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_5(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_6(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_5(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_6(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_6(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_device_status_0(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_6(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_device_status_0(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_status_0(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_device_status_1(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_device_status_0(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+    ) {
+    }
+    fn read_i3c_ec_sec_fw_recovery_if_device_status_1(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_status_1(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_device_reset(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_device_status_1(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+    ) {
+    }
+    fn read_i3c_ec_sec_fw_recovery_if_device_reset(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_reset(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_recovery_ctrl(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_device_reset(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_recovery_ctrl(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_recovery_ctrl(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_recovery_status(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_recovery_ctrl(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_recovery_status(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_recovery_status(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_hw_status(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_recovery_status(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+    ) {
+    }
+    fn read_i3c_ec_sec_fw_recovery_if_hw_status(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_hw_status(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_sec_fw_recovery_if_hw_status(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0(
@@ -469,40 +485,53 @@ pub trait I3cPeripheral {
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_5(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_5(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_5(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_indirect_fifo_data(&mut self, _val: emulator_types::RvData) {
+    fn write_i3c_ec_sec_fw_recovery_if_indirect_fifo_data(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+    ) {
     }
     fn read_i3c_ec_stdby_ctrl_mode_extcap_header(
         &mut self,
@@ -556,10 +585,10 @@ pub trait I3cPeripheral {
         >,
     ) {
     }
-    fn read_i3c_ec_stdby_ctrl_mode_rsvd_0(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_stdby_ctrl_mode_rsvd_0(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_stdby_ctrl_mode_rsvd_0(&mut self, _val: emulator_types::RvData) {}
+    fn write_i3c_ec_stdby_ctrl_mode_rsvd_0(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_status(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::StbyCrStatus::Register>
@@ -590,10 +619,13 @@ pub trait I3cPeripheral {
         >,
     ) {
     }
-    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(&mut self, _val: emulator_types::RvData) {
+    fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+    ) {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
         &mut self,
@@ -611,10 +643,10 @@ pub trait I3cPeripheral {
         >,
     ) {
     }
-    fn read_i3c_ec_stdby_ctrl_mode_rsvd_1(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_stdby_ctrl_mode_rsvd_1(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_stdby_ctrl_mode_rsvd_1(&mut self, _val: emulator_types::RvData) {}
+    fn write_i3c_ec_stdby_ctrl_mode_rsvd_1(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
@@ -695,10 +727,10 @@ pub trait I3cPeripheral {
         >,
     ) {
     }
-    fn read_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self, _val: emulator_types::RvData) {}
+    fn write_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_tti_extcap_header(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ExtcapHeader::Register>
@@ -791,15 +823,15 @@ pub trait I3cPeripheral {
         >,
     ) {
     }
-    fn read_i3c_ec_tti_rx_desc_queue_port(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_tti_rx_desc_queue_port(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_i3c_ec_tti_rx_data_port(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_tti_rx_data_port(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_tti_tx_desc_queue_port(&mut self, _val: emulator_types::RvData) {}
-    fn write_i3c_ec_tti_tx_data_port(&mut self, _val: emulator_types::RvData) {}
-    fn write_i3c_ec_tti_tti_ibi_port(&mut self, _val: emulator_types::RvData) {}
+    fn write_i3c_ec_tti_tx_desc_queue_port(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_i3c_ec_tti_tx_data_port(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_i3c_ec_tti_tti_ibi_port(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_tti_tti_queue_size(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TtiQueueSize::Register>
@@ -852,30 +884,30 @@ pub trait I3cPeripheral {
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_0(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_0(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_0(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_1(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_0(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_1(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_1(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_1(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self, _val: emulator_types::RvData) {}
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_soc_mgmt_if_soc_pad_conf(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::SocPadConf::Register>
@@ -904,14 +936,14 @@ pub trait I3cPeripheral {
         >,
     ) {
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self, _val: emulator_types::RvData) {}
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_soc_mgmt_if_t_r_reg(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TRReg::Register> {
@@ -1030,18 +1062,18 @@ pub trait I3cPeripheral {
         >,
     ) {
     }
-    fn read_i3c_ec_soc_mgmt_if_t_free_reg(&mut self) -> emulator_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_t_free_reg(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_t_free_reg(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_soc_mgmt_if_t_free_reg(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self, _val: emulator_types::RvData) {}
-    fn read_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self) -> emulator_types::RvData {
+    fn write_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self, _val: emulator_types::RvData) {}
+    fn write_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_ctrl_cfg_extcap_header(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ExtcapHeader::Register>
@@ -1063,116 +1095,116 @@ pub struct I3cBus {
 impl emulator_bus::Bus for I3cBus {
     fn read(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-    ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
             0x400..0x800 => Ok(self.periph.read_dat()),
             0x800..0x1000 => Ok(self.periph.read_dct()),
             0..4 => Ok(self.periph.read_i3c_base_hci_version()),
-            4..8 => Ok(emulator_types::RvData::from(
+            4..8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_hc_control().reg.get(),
             )),
-            8..0xc => Ok(emulator_types::RvData::from(
+            8..0xc => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_controller_device_addr().reg.get(),
             )),
-            0xc..0x10 => Ok(emulator_types::RvData::from(
+            0xc..0x10 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_hc_capabilities().reg.get(),
             )),
-            0x10..0x14 => Ok(emulator_types::RvData::from(
+            0x10..0x14 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_reset_control().reg.get(),
             )),
-            0x14..0x18 => Ok(emulator_types::RvData::from(
+            0x14..0x18 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_present_state().reg.get(),
             )),
-            0x20..0x24 => Ok(emulator_types::RvData::from(
+            0x20..0x24 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_intr_status().reg.get(),
             )),
-            0x24..0x28 => Ok(emulator_types::RvData::from(
+            0x24..0x28 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_intr_status_enable().reg.get(),
             )),
-            0x28..0x2c => Ok(emulator_types::RvData::from(
+            0x28..0x2c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_intr_signal_enable().reg.get(),
             )),
-            0x30..0x34 => Ok(emulator_types::RvData::from(
+            0x30..0x34 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_dat_section_offset().reg.get(),
             )),
-            0x34..0x38 => Ok(emulator_types::RvData::from(
+            0x34..0x38 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_dct_section_offset().reg.get(),
             )),
-            0x38..0x3c => Ok(emulator_types::RvData::from(
+            0x38..0x3c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_base_ring_headers_section_offset()
                     .reg
                     .get(),
             )),
-            0x3c..0x40 => Ok(emulator_types::RvData::from(
+            0x3c..0x40 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_pio_section_offset().reg.get(),
             )),
-            0x40..0x44 => Ok(emulator_types::RvData::from(
+            0x40..0x44 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_base_ext_caps_section_offset()
                     .reg
                     .get(),
             )),
-            0x4c..0x50 => Ok(emulator_types::RvData::from(
+            0x4c..0x50 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_int_ctrl_cmds_en().reg.get(),
             )),
-            0x58..0x5c => Ok(emulator_types::RvData::from(
+            0x58..0x5c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_ibi_notify_ctrl().reg.get(),
             )),
-            0x5c..0x60 => Ok(emulator_types::RvData::from(
+            0x5c..0x60 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_ibi_data_abort_ctrl().reg.get(),
             )),
-            0x60..0x64 => Ok(emulator_types::RvData::from(
+            0x60..0x64 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_dev_ctx_base_lo().reg.get(),
             )),
-            0x64..0x68 => Ok(emulator_types::RvData::from(
+            0x64..0x68 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_dev_ctx_base_hi().reg.get(),
             )),
-            0x68..0x6c => Ok(emulator_types::RvData::from(
+            0x68..0x6c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_dev_ctx_sg().reg.get(),
             )),
             0x84..0x88 => Ok(self.periph.read_piocontrol_response_port()),
             0x88..0x8c => Ok(self.periph.read_piocontrol_rx_data_port()),
             0x8c..0x90 => Ok(self.periph.read_piocontrol_ibi_port()),
-            0x90..0x94 => Ok(emulator_types::RvData::from(
+            0x90..0x94 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_piocontrol_queue_thld_ctrl().reg.get(),
             )),
-            0x94..0x98 => Ok(emulator_types::RvData::from(
+            0x94..0x98 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_piocontrol_data_buffer_thld_ctrl()
                     .reg
                     .get(),
             )),
-            0x98..0x9c => Ok(emulator_types::RvData::from(
+            0x98..0x9c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_piocontrol_queue_size().reg.get(),
             )),
-            0x9c..0xa0 => Ok(emulator_types::RvData::from(
+            0x9c..0xa0 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_piocontrol_alt_queue_size().reg.get(),
             )),
-            0xa0..0xa4 => Ok(emulator_types::RvData::from(
+            0xa0..0xa4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_piocontrol_pio_intr_status().reg.get(),
             )),
-            0xa4..0xa8 => Ok(emulator_types::RvData::from(
+            0xa4..0xa8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_piocontrol_pio_intr_status_enable()
                     .reg
                     .get(),
             )),
-            0xa8..0xac => Ok(emulator_types::RvData::from(
+            0xa8..0xac => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_piocontrol_pio_intr_signal_enable()
                     .reg
                     .get(),
             )),
-            0xb0..0xb4 => Ok(emulator_types::RvData::from(
+            0xb0..0xb4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_piocontrol_pio_control().reg.get(),
             )),
-            0x100..0x104 => Ok(emulator_types::RvData::from(
+            0x100..0x104 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_extcap_header()
                     .reg
@@ -1201,7 +1233,7 @@ impl emulator_bus::Bus for I3cBus {
             0x14c..0x150 => Ok(self
                 .periph
                 .read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1()),
-            0x150..0x154 => Ok(emulator_types::RvData::from(
+            0x150..0x154 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0()
                     .reg
@@ -1225,38 +1257,38 @@ impl emulator_bus::Bus for I3cBus {
             0x168..0x16c => Ok(self
                 .periph
                 .read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data()),
-            0x180..0x184 => Ok(emulator_types::RvData::from(
+            0x180..0x184 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_extcap_header()
                     .reg
                     .get(),
             )),
-            0x184..0x188 => Ok(emulator_types::RvData::from(
+            0x184..0x188 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_control()
                     .reg
                     .get(),
             )),
-            0x188..0x18c => Ok(emulator_types::RvData::from(
+            0x188..0x18c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr()
                     .reg
                     .get(),
             )),
-            0x18c..0x190 => Ok(emulator_types::RvData::from(
+            0x18c..0x190 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities()
                     .reg
                     .get(),
             )),
             0x190..0x194 => Ok(self.periph.read_i3c_ec_stdby_ctrl_mode_rsvd_0()),
-            0x194..0x198 => Ok(emulator_types::RvData::from(
+            0x194..0x198 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_status()
                     .reg
                     .get(),
             )),
-            0x198..0x19c => Ok(emulator_types::RvData::from(
+            0x198..0x19c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_char()
                     .reg
@@ -1265,83 +1297,83 @@ impl emulator_bus::Bus for I3cBus {
             0x19c..0x1a0 => Ok(self
                 .periph
                 .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo()),
-            0x1a0..0x1a4 => Ok(emulator_types::RvData::from(
+            0x1a0..0x1a4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status()
                     .reg
                     .get(),
             )),
             0x1a4..0x1a8 => Ok(self.periph.read_i3c_ec_stdby_ctrl_mode_rsvd_1()),
-            0x1a8..0x1ac => Ok(emulator_types::RvData::from(
+            0x1a8..0x1ac => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable()
                     .reg
                     .get(),
             )),
-            0x1ac..0x1b0 => Ok(emulator_types::RvData::from(
+            0x1ac..0x1b0 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force()
                     .reg
                     .get(),
             )),
-            0x1b0..0x1b4 => Ok(emulator_types::RvData::from(
+            0x1b0..0x1b4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps()
                     .reg
                     .get(),
             )),
-            0x1b4..0x1b8 => Ok(emulator_types::RvData::from(
+            0x1b4..0x1b8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params()
                     .reg
                     .get(),
             )),
-            0x1b8..0x1bc => Ok(emulator_types::RvData::from(
+            0x1b8..0x1bc => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr()
                     .reg
                     .get(),
             )),
             0x1bc..0x1c0 => Ok(self.periph.read_i3c_ec_stdby_ctrl_mode_rsvd_3()),
-            0x1c0..0x1c4 => Ok(emulator_types::RvData::from(
+            0x1c0..0x1c4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_extcap_header().reg.get(),
             )),
-            0x1c4..0x1c8 => Ok(emulator_types::RvData::from(
+            0x1c4..0x1c8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_control().reg.get(),
             )),
-            0x1c8..0x1cc => Ok(emulator_types::RvData::from(
+            0x1c8..0x1cc => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_status().reg.get(),
             )),
-            0x1cc..0x1d0 => Ok(emulator_types::RvData::from(
+            0x1cc..0x1d0 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_tti_reset_control().reg.get(),
             )),
-            0x1d0..0x1d4 => Ok(emulator_types::RvData::from(
+            0x1d0..0x1d4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_interrupt_status().reg.get(),
             )),
-            0x1d4..0x1d8 => Ok(emulator_types::RvData::from(
+            0x1d4..0x1d8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_interrupt_enable().reg.get(),
             )),
-            0x1d8..0x1dc => Ok(emulator_types::RvData::from(
+            0x1d8..0x1dc => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_interrupt_force().reg.get(),
             )),
             0x1dc..0x1e0 => Ok(self.periph.read_i3c_ec_tti_rx_desc_queue_port()),
             0x1e0..0x1e4 => Ok(self.periph.read_i3c_ec_tti_rx_data_port()),
-            0x1f0..0x1f4 => Ok(emulator_types::RvData::from(
+            0x1f0..0x1f4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_tti_queue_size().reg.get(),
             )),
-            0x1f4..0x1f8 => Ok(emulator_types::RvData::from(
+            0x1f4..0x1f8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_ibi_tti_queue_size().reg.get(),
             )),
-            0x1f8..0x1fc => Ok(emulator_types::RvData::from(
+            0x1f8..0x1fc => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_tti_queue_thld_ctrl().reg.get(),
             )),
-            0x1fc..0x200 => Ok(emulator_types::RvData::from(
+            0x1fc..0x200 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_tti_tti_data_buffer_thld_ctrl()
                     .reg
                     .get(),
             )),
-            0x200..0x204 => Ok(emulator_types::RvData::from(
+            0x200..0x204 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_soc_mgmt_if_extcap_header()
                     .reg
@@ -1353,48 +1385,48 @@ impl emulator_bus::Bus for I3cBus {
             0x210..0x214 => Ok(self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_1()),
             0x214..0x218 => Ok(self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2()),
             0x218..0x21c => Ok(self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3()),
-            0x21c..0x220 => Ok(emulator_types::RvData::from(
+            0x21c..0x220 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_soc_pad_conf().reg.get(),
             )),
-            0x220..0x224 => Ok(emulator_types::RvData::from(
+            0x220..0x224 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_soc_pad_attr().reg.get(),
             )),
             0x224..0x228 => Ok(self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2()),
             0x228..0x22c => Ok(self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3()),
-            0x22c..0x230 => Ok(emulator_types::RvData::from(
+            0x22c..0x230 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_r_reg().reg.get(),
             )),
-            0x230..0x234 => Ok(emulator_types::RvData::from(
+            0x230..0x234 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_f_reg().reg.get(),
             )),
-            0x234..0x238 => Ok(emulator_types::RvData::from(
+            0x234..0x238 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_su_dat_reg().reg.get(),
             )),
-            0x238..0x23c => Ok(emulator_types::RvData::from(
+            0x238..0x23c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_hd_dat_reg().reg.get(),
             )),
-            0x23c..0x240 => Ok(emulator_types::RvData::from(
+            0x23c..0x240 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_high_reg().reg.get(),
             )),
-            0x240..0x244 => Ok(emulator_types::RvData::from(
+            0x240..0x244 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_low_reg().reg.get(),
             )),
-            0x244..0x248 => Ok(emulator_types::RvData::from(
+            0x244..0x248 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_hd_sta_reg().reg.get(),
             )),
-            0x248..0x24c => Ok(emulator_types::RvData::from(
+            0x248..0x24c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_su_sta_reg().reg.get(),
             )),
-            0x24c..0x250 => Ok(emulator_types::RvData::from(
+            0x24c..0x250 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_su_sto_reg().reg.get(),
             )),
             0x250..0x254 => Ok(self.periph.read_i3c_ec_soc_mgmt_if_t_free_reg()),
             0x254..0x258 => Ok(self.periph.read_i3c_ec_soc_mgmt_if_t_aval_reg()),
             0x258..0x25c => Ok(self.periph.read_i3c_ec_soc_mgmt_if_t_idle_reg()),
-            0x260..0x264 => Ok(emulator_types::RvData::from(
+            0x260..0x264 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_ctrl_cfg_extcap_header().reg.get(),
             )),
-            0x264..0x268 => Ok(emulator_types::RvData::from(
+            0x264..0x268 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_ctrl_cfg_controller_config()
                     .reg
@@ -1405,11 +1437,11 @@ impl emulator_bus::Bus for I3cBus {
     }
     fn write(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-        val: emulator_types::RvData,
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+        val: caliptra_emu_types::RvData,
     ) -> Result<(), emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::StoreAddrMisaligned);
         }
         match addr {

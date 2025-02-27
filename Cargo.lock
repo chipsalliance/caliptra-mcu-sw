@@ -868,10 +868,10 @@ checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
 name = "compliance-test"
 version = "0.1.0"
 dependencies = [
+ "caliptra-emu-types",
  "clap 4.5.23",
  "emulator-bus",
  "emulator-cpu",
- "emulator-types",
  "getrandom",
 ]
 
@@ -1230,10 +1230,10 @@ dependencies = [
  "emulator-bmc",
  "emulator-bus",
  "emulator-caliptra",
+ "emulator-consts",
  "emulator-cpu",
  "emulator-periph",
  "emulator-registers-generated",
- "emulator-types",
  "gdbstub",
  "gdbstub_arch",
  "hex",
@@ -1266,7 +1266,6 @@ version = "0.1.0"
 dependencies = [
  "caliptra-emu-bus",
  "caliptra-emu-types",
- "emulator-types",
  "tock-registers",
 ]
 
@@ -1290,15 +1289,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "emulator-consts"
+version = "0.1.0"
+
+[[package]]
 name = "emulator-cpu"
 version = "0.1.0"
 dependencies = [
  "bit-vec",
  "bitfield",
  "caliptra-emu-bus",
+ "caliptra-emu-types",
  "emulator-bus",
+ "emulator-consts",
  "emulator-derive",
- "emulator-types",
  "lazy_static",
  "tock-registers",
 ]
@@ -1308,8 +1312,8 @@ name = "emulator-derive"
 version = "0.1.0"
 dependencies = [
  "caliptra-emu-bus",
+ "caliptra-emu-types",
  "emulator-bus",
- "emulator-types",
  "proc-macro2",
  "quote",
 ]
@@ -1320,11 +1324,12 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "caliptra-emu-bus",
+ "caliptra-emu-types",
  "emulator-bus",
+ "emulator-consts",
  "emulator-cpu",
  "emulator-derive",
  "emulator-registers-generated",
- "emulator-types",
  "lazy_static",
  "num_enum",
  "registers-generated",
@@ -1340,15 +1345,11 @@ name = "emulator-registers-generated"
 version = "0.1.0"
 dependencies = [
  "caliptra-emu-bus",
+ "caliptra-emu-types",
  "emulator-bus",
- "emulator-types",
  "registers-generated",
  "tock-registers",
 ]
-
-[[package]]
-name = "emulator-types"
-version = "0.1.0"
 
 [[package]]
 name = "enum_primitive"
@@ -3013,6 +3014,7 @@ dependencies = [
  "caliptra-builder",
  "caliptra-emu-cpu",
  "caliptra-emu-periph",
+ "caliptra-emu-types",
  "caliptra-image-crypto",
  "caliptra-image-gen",
  "clap 4.5.23",
@@ -3023,7 +3025,6 @@ dependencies = [
  "emulator-cpu",
  "emulator-periph",
  "emulator-registers-generated",
- "emulator-types",
  "gdbstub",
  "gdbstub_arch",
  "hex",
@@ -3453,7 +3454,7 @@ dependencies = [
  "clap 4.5.23",
  "crc32fast",
  "elf 0.7.4",
- "emulator-types",
+ "emulator-consts",
  "proc-macro2",
  "quote",
  "registers-generator",

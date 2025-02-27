@@ -10,6 +10,7 @@ edition = "2021"
 [dependencies]
 bitfield.workspace = true
 caliptra-emu-bus.workspace = true
+emulator-consts.workspace = true
 caliptra-emu-cpu.workspace = true
 caliptra-emu-periph.workspace = true
 caliptra-emu-types.workspace = true
@@ -27,7 +28,6 @@ emulator-caliptra.workspace = true
 emulator-cpu.workspace = true
 emulator-periph.workspace = true
 emulator-registers-generated.workspace = true
-emulator-types.workspace = true
 gdbstub_arch.workspace = true
 gdbstub.workspace = true
 hex.workspace = true

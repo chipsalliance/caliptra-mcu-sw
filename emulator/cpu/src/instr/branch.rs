@@ -14,8 +14,8 @@ Abstract:
 
 use crate::cpu::Cpu;
 use crate::types::{RvInstr32B, RvInstr32BranchFunct3, RvInstr32Opcode};
+use caliptra_emu_types::RvException;
 use emulator_bus::Bus;
-use emulator_types::RvException;
 
 impl<TBus: Bus> Cpu<TBus> {
     /// Execute branch Instructions

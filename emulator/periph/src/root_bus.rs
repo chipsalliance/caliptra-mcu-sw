@@ -15,9 +15,9 @@ Abstract:
 use crate::{spi_host::SpiHost, EmuCtrl, Uart};
 use caliptra_emu_bus::{Device, EventData};
 use emulator_bus::{Bus, Clock, Ram, Rom};
+use emulator_consts::RAM_SIZE;
 use emulator_cpu::{Pic, PicMmioRegisters};
 use emulator_derive::Bus;
-use emulator_types::RAM_SIZE;
 use std::{
     cell::RefCell,
     path::PathBuf,

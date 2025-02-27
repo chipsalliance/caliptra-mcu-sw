@@ -12,10 +12,10 @@ Abstract:
 
 --*/
 
+use caliptra_emu_types::RvSize;
 use clap::{arg, value_parser};
 use emulator_bus::{Bus, Clock, Ram};
 use emulator_cpu::{Cpu, Pic, StepAction};
-use emulator_types::RvSize;
 use fs::TempDir;
 use std::error::Error;
 use std::io::ErrorKind;

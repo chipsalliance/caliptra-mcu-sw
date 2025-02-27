@@ -33,8 +33,8 @@ mod test_macros;
 
 use crate::cpu::{Cpu, InstrTracer, StepAction};
 use crate::types::{RvInstr, RvInstr32, RvInstr32Opcode};
+use caliptra_emu_types::{RvException, RvSize};
 use emulator_bus::Bus;
-use emulator_types::{RvException, RvSize};
 
 /// Instruction
 pub enum Instr {

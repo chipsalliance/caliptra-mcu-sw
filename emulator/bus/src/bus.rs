@@ -15,7 +15,7 @@ Abstract:
 use std::{rc::Rc, sync::mpsc};
 
 use caliptra_emu_bus::Event;
-use emulator_types::{RvAddr, RvData, RvSize};
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
 
 /// Signal that a trap should be triggered.
 pub type Trap = u32;

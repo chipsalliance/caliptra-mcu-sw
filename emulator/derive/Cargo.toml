@@ -12,7 +12,7 @@ proc-macro = true
 
 [dependencies]
 caliptra-emu-bus.workspace = true
+caliptra-emu-types.workspace = true
 emulator-bus.workspace = true
-emulator-types.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true

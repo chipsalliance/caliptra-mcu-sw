@@ -18,8 +18,8 @@ References:
 
 use crate::cpu::Cpu;
 use crate::types::{RvInstr32OpFunct3, RvInstr32OpFunct7, RvInstr32Opcode, RvInstr32R};
+use caliptra_emu_types::{RvData, RvException};
 use emulator_bus::Bus;
-use emulator_types::{RvData, RvException};
 
 impl<TBus: Bus> Cpu<TBus> {
     /// Execute register operation instructions

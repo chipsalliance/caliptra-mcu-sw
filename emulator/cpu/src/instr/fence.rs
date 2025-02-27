@@ -14,8 +14,8 @@ Abstract:
 
 use crate::cpu::Cpu;
 use crate::types::{RvInstr32FenceFunct3, RvInstr32I, RvInstr32Opcode};
+use caliptra_emu_types::RvException;
 use emulator_bus::Bus;
-use emulator_types::RvException;
 
 impl<TBus: Bus> Cpu<TBus> {
     /// Execute Fence Instructions

@@ -12,8 +12,8 @@ Abstract:
 
 --*/
 
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use emulator_bus::{Bus, BusError};
-use emulator_types::{RvAddr, RvData, RvSize};
 use std::process::exit;
 
 /// Emulation Control

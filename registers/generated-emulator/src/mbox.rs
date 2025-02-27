@@ -14,25 +14,25 @@ pub trait MboxPeripheral {
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::Lock::Register> {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn read_user(&mut self) -> emulator_types::RvData {
+    fn read_user(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_cmd(&mut self) -> emulator_types::RvData {
+    fn read_cmd(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_cmd(&mut self, _val: emulator_types::RvData) {}
-    fn read_dlen(&mut self) -> emulator_types::RvData {
+    fn write_cmd(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_dlen(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_dlen(&mut self, _val: emulator_types::RvData) {}
-    fn read_datain(&mut self) -> emulator_types::RvData {
+    fn write_dlen(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_datain(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_datain(&mut self, _val: emulator_types::RvData) {}
-    fn read_dataout(&mut self) -> emulator_types::RvData {
+    fn write_datain(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_dataout(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_dataout(&mut self, _val: emulator_types::RvData) {}
+    fn write_dataout(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_execute(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::Execute::Register>
@@ -96,14 +96,14 @@ pub struct MboxBus {
 impl emulator_bus::Bus for MboxBus {
     fn read(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-    ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
-            0..4 => Ok(emulator_types::RvData::from(
+            0..4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_lock().reg.get(),
             )),
             4..8 => Ok(self.periph.read_user()),
@@ -111,16 +111,16 @@ impl emulator_bus::Bus for MboxBus {
             0xc..0x10 => Ok(self.periph.read_dlen()),
             0x10..0x14 => Ok(self.periph.read_datain()),
             0x14..0x18 => Ok(self.periph.read_dataout()),
-            0x18..0x1c => Ok(emulator_types::RvData::from(
+            0x18..0x1c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_execute().reg.get(),
             )),
-            0x1c..0x20 => Ok(emulator_types::RvData::from(
+            0x1c..0x20 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_status().reg.get(),
             )),
-            0x20..0x24 => Ok(emulator_types::RvData::from(
+            0x20..0x24 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_unlock().reg.get(),
             )),
-            0x24..0x28 => Ok(emulator_types::RvData::from(
+            0x24..0x28 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_tap_mode().reg.get(),
             )),
             _ => Err(emulator_bus::BusError::LoadAccessFault),
@@ -128,11 +128,11 @@ impl emulator_bus::Bus for MboxBus {
     }
     fn write(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-        val: emulator_types::RvData,
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+        val: caliptra_emu_types::RvData,
     ) -> Result<(), emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::StoreAddrMisaligned);
         }
         match addr {

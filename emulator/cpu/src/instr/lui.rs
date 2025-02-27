@@ -14,8 +14,8 @@ Abstract:
 
 use crate::cpu::Cpu;
 use crate::types::{RvInstr32Opcode, RvInstr32U};
+use caliptra_emu_types::{RvData, RvException};
 use emulator_bus::Bus;
-use emulator_types::{RvData, RvException};
 
 impl<TBus: Bus> Cpu<TBus> {
     /// Execute `lui` Instruction

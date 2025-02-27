@@ -11,7 +11,7 @@ use crate::apps_build::apps_build_flat_tbf;
 use crate::{DynError, PROJECT_ROOT, TARGET};
 use elf::endian::AnyEndian;
 use elf::ElfBytes;
-use emulator_types::{RAM_OFFSET, RAM_SIZE};
+use emulator_consts::{RAM_OFFSET, RAM_SIZE};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::LazyLock;

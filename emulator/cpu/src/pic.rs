@@ -3,11 +3,11 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use emulator_bus::{
     Bus, BusError, Clock, ReadWriteRegister, ReadWriteRegisterArray, Register, Timer, TimerAction,
 };
 use emulator_derive::Bus;
-use emulator_types::{RvAddr, RvData, RvSize};
 use tock_registers::interfaces::Readable;
 use tock_registers::register_bitfields;
 

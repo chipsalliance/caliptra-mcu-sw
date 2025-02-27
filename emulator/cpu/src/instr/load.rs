@@ -14,8 +14,8 @@ Abstract:
 
 use crate::cpu::Cpu;
 use crate::types::{RvInstr32I, RvInstr32LoadFunct3, RvInstr32Opcode};
+use caliptra_emu_types::{RvAddr, RvData, RvException, RvSize};
 use emulator_bus::Bus;
-use emulator_types::{RvAddr, RvData, RvException, RvSize};
 
 impl<TBus: Bus> Cpu<TBus> {
     /// Execute load instructions

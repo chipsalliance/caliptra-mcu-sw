@@ -402,12 +402,12 @@ fn emu_make_peripheral_trait(
         if has_single_32_bit_field(&r.ty) {
             if r.can_read() {
                 fn_tokens.extend(quote! {
-                    fn #read_name(&mut self) -> emulator_types::RvData { 0 }
+                    fn #read_name(&mut self) -> caliptra_emu_types::RvData { 0 }
                 });
             }
             if r.can_write() {
                 fn_tokens.extend(quote! {
-                    fn #write_name(&mut self, _val: emulator_types::RvData) {}
+                    fn #write_name(&mut self, _val: caliptra_emu_types::RvData) {}
                 });
             }
         } else {
@@ -509,7 +509,7 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, Dyn
         } else {
             if r.can_read() {
                 read_tokens.extend(quote! {
-                    #a..#b => Ok(emulator_types::RvData::from(self.periph.#read_name().reg.get())),
+                    #a..#b => Ok(caliptra_emu_types::RvData::from(self.periph.#read_name().reg.get())),
                 });
             }
             if r.can_write() {
@@ -529,8 +529,8 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, Dyn
             pub periph: Box<dyn #periph>,
         }
         impl emulator_bus::Bus for #bus {
-            fn read(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr) -> Result<emulator_types::RvData, emulator_bus::BusError> {
-                if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+            fn read(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+                if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
                     return Err(emulator_bus::BusError::LoadAddrMisaligned);
                 }
                 match addr {
@@ -538,8 +538,8 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, Dyn
                     _ => Err(emulator_bus::BusError::LoadAccessFault),
                 }
             }
-            fn write(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr, val: emulator_types::RvData) -> Result<(), emulator_bus::BusError> {
-                if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+            fn write(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr, val: caliptra_emu_types::RvData) -> Result<(), emulator_bus::BusError> {
+                if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
                     return Err(emulator_bus::BusError::StoreAddrMisaligned);
                 }
                 match addr {
@@ -711,7 +711,7 @@ fn emu_make_root_bus<'a>(
             }
         }
         impl emulator_bus::Bus for AutoRootBus {
-            fn read(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr) -> Result<emulator_types::RvData, emulator_bus::BusError> {
+            fn read(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
                 let result = match addr {
                     #read_tokens
                     _ => Err(emulator_bus::BusError::LoadAccessFault),
@@ -727,7 +727,7 @@ fn emu_make_root_bus<'a>(
                 }
                 result
             }
-            fn write(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr, val: emulator_types::RvData) -> Result<(), emulator_bus::BusError> {
+            fn write(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr, val: caliptra_emu_types::RvData) -> Result<(), emulator_bus::BusError> {
                 let result = match addr {
                     #write_tokens
                     _ => Err(emulator_bus::BusError::StoreAccessFault),

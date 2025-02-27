@@ -14,7 +14,7 @@ Abstract:
 
 use crate::mem::Mem;
 use crate::{Bus, BusError};
-use emulator_types::{RvAddr, RvData, RvSize};
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
 
 /// Read Only Memory Device
 pub struct Rom {

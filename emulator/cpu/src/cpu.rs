@@ -19,8 +19,9 @@ use crate::xreg_file::{XReg, XRegFile};
 use crate::Pic;
 use bit_vec::BitVec;
 use caliptra_emu_bus::Event;
+use caliptra_emu_types::{RvAddr, RvData, RvException, RvExceptionCause, RvSize};
 use emulator_bus::{Bus, BusError, Clock, TimerAction};
-use emulator_types::{RvAddr, RvData, RvException, RvExceptionCause, RvSize, RAM_OFFSET, RAM_SIZE};
+use emulator_consts::{RAM_OFFSET, RAM_SIZE};
 use std::rc::Rc;
 use std::sync::mpsc;
 
@@ -41,7 +42,7 @@ const ICCM_SIZE: usize = RAM_SIZE as usize;
 const ICCM_ORG: usize = RAM_OFFSET as usize;
 const ICCM_UPPER: usize = ICCM_ORG + ICCM_SIZE - 1;
 
-const ROM_SIZE: usize = emulator_types::ROM_SIZE as usize;
+const ROM_SIZE: usize = emulator_consts::ROM_SIZE as usize;
 const ROM_ORG: usize = 0x00000000;
 const ROM_UPPER: usize = ROM_ORG + ROM_SIZE - 1;
 
