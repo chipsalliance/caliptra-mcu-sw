@@ -64,13 +64,13 @@ pub fn fill_error_response(
     error_code: ErrorCode,
     error_data: u8,
     extended_data: Option<&[u8]>,
-    // ) -> CommandResult<()> {
 ) -> (bool, CommandError) {
     // SPDM Error response payload
     let fixed_payload = ErrorResponse::new(error_code, error_data);
-    let mut total_len = fixed_payload
-        .encode(rsp_buf)
-        .map_err(|e| (false, CommandError::Codec(e)))?;
+    let mut total_len = match fixed_payload.encode(rsp_buf) {
+        Ok(len) => len,
+        Err(e) => return (false, CommandError::Codec(e)),
+    };
 
     // Encode variable length extended data for the Error response
     if let Some(data) = extended_data {
@@ -80,28 +80,29 @@ pub fn fill_error_response(
         }
 
         // make space for the data at the end of the buffer
-        rsp_buf
+        let _ = rsp_buf
             .put_data(variable_len)
-            .map_err(|e| (false, CommandError::Codec(e)))?;
+            .map_err(|e| return (false, CommandError::Codec(e)));
 
         // get a mutable slice of the data offset and fill it
-        let variable_payload = rsp_buf
-            .data_mut(variable_len)
-            .map_err(|e| (false, CommandError::Codec(e)))?;
+        let variable_payload = match rsp_buf.data_mut(variable_len) {
+            Ok(payload) => payload,
+            Err(e) => return (false, CommandError::Codec(e)),
+        };
         variable_payload.copy_from_slice(data);
 
         // pull data offset by the length of the variable data
-        rsp_buf
+        let _ = rsp_buf
             .pull_data(variable_len)
-            .map_err(|e| (false, CommandError::Codec(e)))?;
+            .map_err(|e| return (false, CommandError::Codec(e)));
         total_len += variable_len;
     }
 
     // Push data offset up by total payload length
-    rsp_buf
-        .push_data(total_len)
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-    Ok(())
+    match rsp_buf.push_data(total_len) {
+        Ok(_) => (true, CommandError::ErrorCode(error_code)),
+        Err(e) => (false, CommandError::Codec(e)),
+    }
 }
 
 #[cfg(test)]
@@ -116,7 +117,10 @@ mod test {
         let error_code = ErrorCode::InvalidRequest;
         let error_data = 0x01;
 
-        assert!(fill_error_response(&mut buf, error_code, error_data, None).is_ok());
+        assert!(
+            fill_error_response(&mut buf, error_code, error_data, None)
+                == (true, CommandError::ErrorCode(error_code))
+        );
         assert_eq!(buf.data_len(), 2);
         assert!(raw_buf[0] == error_code.into());
         assert!(raw_buf[1] == error_data);
@@ -131,7 +135,10 @@ mod test {
         let extended_raw_data = [0x02; 32];
         let extended_data = Some(&extended_raw_data[..]);
 
-        assert!(fill_error_response(&mut buf, error_code, error_data, extended_data).is_ok());
+        assert!(
+            fill_error_response(&mut buf, error_code, error_data, extended_data)
+                == (true, CommandError::ErrorCode(error_code))
+        );
         assert_eq!(buf.data_len(), 34);
         assert!(raw_buf[0] == error_code.into());
         assert!(raw_buf[1] == error_data);
@@ -147,7 +154,10 @@ mod test {
         let extended_raw_data = [0x02; 33];
         let extended_data = Some(&extended_raw_data[..]);
 
-        assert!(fill_error_response(&mut buf, error_code, error_data, extended_data).is_err());
+        assert!(
+            fill_error_response(&mut buf, error_code, error_data, extended_data)
+                == (false, CommandError::BufferTooSmall)
+        );
         assert_eq!(buf.data_len(), 0);
     }
 }
