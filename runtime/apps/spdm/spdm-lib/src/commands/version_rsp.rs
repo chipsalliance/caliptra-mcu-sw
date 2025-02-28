@@ -13,33 +13,35 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 use core::fmt::Write;
 
-bitfield! {
-#[repr(C)]
+const VERSION_ENTRY_SIZE: usize = 2;
+
+#[allow(dead_code)]
 #[derive(FromBytes, IntoBytes, Immutable)]
-pub struct VersionRespCommon(MSB0 [u8]);
-impl Debug;
-u8;
-    param1, _: 7, 0;
-    param2, _: 15, 8;
-    reserved, _: 23, 16;
-    pub version_num_entry_count, set_version_num_entry_count: 31, 24;
+pub struct VersionRespCommon {
+    param1: u8,
+    param2: u8,
+    reserved: u8,
+    version_num_entry_count: u8,
 }
 
-impl Default for VersionRespCommon<[u8; 4]> {
+impl Default for VersionRespCommon {
     fn default() -> Self {
         VersionRespCommon::new(0)
     }
 }
 
-impl VersionRespCommon<[u8; 4]> {
+impl VersionRespCommon {
     pub fn new(entry_count: u8) -> Self {
-        let mut payload = VersionRespCommon([0u8; 4]);
-        payload.set_version_num_entry_count(entry_count);
-        payload
+        VersionRespCommon {
+            param1: 0,
+            param2: 0,
+            reserved: 0,
+            version_num_entry_count: entry_count,
+        }
     }
 }
 
-impl CommonCodec for VersionRespCommon<[u8; 4]> {
+impl CommonCodec for VersionRespCommon {
     const DATA_KIND: DataKind = DataKind::Payload;
 }
 
@@ -55,22 +57,22 @@ u8;
     pub minor, set_minor: 15, 12;
 }
 
-impl Default for VersionNumberEntry<[u8; 2]> {
+impl Default for VersionNumberEntry<[u8; VERSION_ENTRY_SIZE]> {
     fn default() -> Self {
         VersionNumberEntry::new(SpdmVersion::default())
     }
 }
 
-impl VersionNumberEntry<[u8; 2]> {
+impl VersionNumberEntry<[u8; VERSION_ENTRY_SIZE]> {
     pub fn new(version: SpdmVersion) -> Self {
-        let mut entry = VersionNumberEntry([0u8; 2]);
+        let mut entry = VersionNumberEntry([0u8; VERSION_ENTRY_SIZE]);
         entry.set_major(version.major());
         entry.set_minor(version.minor());
         entry
     }
 }
 
-impl CommonCodec for VersionNumberEntry<[u8; 2]> {
+impl CommonCodec for VersionNumberEntry<[u8; VERSION_ENTRY_SIZE]> {
     const DATA_KIND: DataKind = DataKind::Payload;
 }
 
@@ -107,13 +109,7 @@ pub(crate) fn handle_version<'a, S: Syscalls>(
     match spdm_hdr.version() {
         Ok(SpdmVersion::V10) => {}
         _ => {
-            writeln!(ctx.cw, "SPDM_LIB: SEnding error response").unwrap();
-            return Err(ctx.generate_error_response(
-                req_payload,
-                ErrorCode::VersionMismatch,
-                0,
-                None,
-            ));
+            Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
         }
     }
 

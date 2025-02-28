@@ -1,7 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use crate::codec::{Codec, CodecResult, MessageBuf};
+use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
 use crate::error::CommandError;
+use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 // SPDM error codes
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -38,55 +39,24 @@ impl From<ErrorCode> for u8 {
 
 pub type ErrorData = u8;
 
-pub struct ErrorResponse<'a> {
-    error_code: ErrorCode,
+#[allow(dead_code)]
+#[derive(FromBytes, IntoBytes, Immutable)]
+pub struct ErrorResponse {
+    error_code: u8,
     error_data: ErrorData,
-    extended_error_data: Option<&'a [u8]>,
 }
 
-impl<'a> ErrorResponse<'a> {
-    pub fn new(
-        error_code: ErrorCode,
-        error_data: ErrorData,
-        extended_error_data: Option<&'a [u8]>,
-    ) -> Option<Self> {
-        if extended_error_data.map_or(0, |data| data.len()) > 32 {
-            return None;
-        }
-        Some(Self {
-            error_code,
+impl ErrorResponse {
+    pub fn new(error_code: ErrorCode, error_data: ErrorData) -> Self {
+        Self {
+            error_code: error_code.into(),
             error_data,
-            extended_error_data,
-        })
-    }
-
-    pub fn payload_len(&self) -> usize {
-        2 + self.extended_error_data.map_or(0, |data| data.len())
+        }
     }
 }
 
-impl<'a> Codec for ErrorResponse<'a> {
-    fn encode(&self, buf: &mut MessageBuf) -> CodecResult<usize> {
-        // make space for the data at the end of the buffer
-        buf.put_data(self.payload_len())?;
-
-        // get a mutable slice of the data offset and fill it
-        let rsp = buf.data_mut(self.payload_len())?;
-
-        rsp[0] = self.error_code.into();
-        rsp[1] = self.error_data;
-        if let Some(data) = self.extended_error_data {
-            rsp[2..data.len()].copy_from_slice(data);
-        }
-
-        buf.pull_data(self.payload_len())?;
-
-        Ok(self.payload_len())
-    }
-
-    fn decode(_buf: &mut MessageBuf) -> CodecResult<Self> {
-        unimplemented!()
-    }
+impl CommonCodec for ErrorResponse {
+    const DATA_KIND: DataKind = DataKind::Payload;
 }
 
 pub fn fill_error_response(
@@ -97,20 +67,87 @@ pub fn fill_error_response(
     // ) -> CommandResult<()> {
 ) -> (bool, CommandError) {
     // SPDM Error response payload
-    let error_payload = ErrorResponse::new(error_code, error_data, extended_data);
-    if let Some(error_payload) = error_payload {
-        let len = match error_payload.encode(rsp_buf) {
-            Ok(len) => len,
-            Err(e) => return (false, CommandError::Codec(e)),
-        };
-        // .map_err(|e| return (false, CommandError::Codec(e)));
+    let fixed_payload = ErrorResponse::new(error_code, error_data);
+    let mut total_len = fixed_payload
+        .encode(rsp_buf)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
 
+    // Encode variable length extended data for the Error response
+    if let Some(data) = extended_data {
+        let variable_len = data.len();
+        if variable_len > 32 {
+            return (false, CommandError::BufferTooSmall);
+        }
+
+        // make space for the data at the end of the buffer
         rsp_buf
-            .push_data(len)
-            .map_err(|e| return (false, CommandError::Codec(e)));
+            .put_data(variable_len)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
 
-        return (true, CommandError::ErrorCode(error_code));
-    } else {
-        return (false, CommandError::ErrorCode(error_code));
+        // get a mutable slice of the data offset and fill it
+        let variable_payload = rsp_buf
+            .data_mut(variable_len)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+        variable_payload.copy_from_slice(data);
+
+        // pull data offset by the length of the variable data
+        rsp_buf
+            .pull_data(variable_len)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+        total_len += variable_len;
+    }
+
+    // Push data offset up by total payload length
+    rsp_buf
+        .push_data(total_len)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::codec::MessageBuf;
+
+    #[test]
+    fn test_fill_error_response() {
+        let mut raw_buf = [0u8; 64];
+        let mut buf = MessageBuf::new(&mut raw_buf);
+        let error_code = ErrorCode::InvalidRequest;
+        let error_data = 0x01;
+
+        assert!(fill_error_response(&mut buf, error_code, error_data, None).is_ok());
+        assert_eq!(buf.data_len(), 2);
+        assert!(raw_buf[0] == error_code.into());
+        assert!(raw_buf[1] == error_data);
+    }
+
+    #[test]
+    fn test_fill_error_response_with_extended_data() {
+        let mut raw_buf = [0u8; 64];
+        let mut buf = MessageBuf::new(&mut raw_buf);
+        let error_code = ErrorCode::InvalidRequest;
+        let error_data = 0x01;
+        let extended_raw_data = [0x02; 32];
+        let extended_data = Some(&extended_raw_data[..]);
+
+        assert!(fill_error_response(&mut buf, error_code, error_data, extended_data).is_ok());
+        assert_eq!(buf.data_len(), 34);
+        assert!(raw_buf[0] == error_code.into());
+        assert!(raw_buf[1] == error_data);
+        assert_eq!(&raw_buf[2..34], extended_raw_data);
+    }
+
+    #[test]
+    fn test_fill_error_response_with_too_large_extended_data() {
+        let mut raw_buf = [0u8; 64];
+        let mut buf = MessageBuf::new(&mut raw_buf);
+        let error_code = ErrorCode::InvalidRequest;
+        let error_data = 0x01;
+        let extended_raw_data = [0x02; 33];
+        let extended_data = Some(&extended_raw_data[..]);
+
+        assert!(fill_error_response(&mut buf, error_code, error_data, extended_data).is_err());
+        assert_eq!(buf.data_len(), 0);
     }
 }

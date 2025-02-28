@@ -33,7 +33,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             || supported_versions.len() > MAX_NUM_SUPPORTED_SPDM_VERSIONS
             || supported_versions.iter().any(|v| *v > MAX_SUPORTED_VERSION)
         {
-            return Err(SpdmError::InvalidParam);
+            Err(SpdmError::InvalidParam)?;
         }
 
         Ok(Self {
