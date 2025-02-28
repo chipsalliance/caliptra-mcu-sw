@@ -4,11 +4,14 @@ use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
-use crate::protocol::{SpdmMsgHdr, SpdmVersion};
+use crate::protocol::common::SpdmMsgHdr;
+use crate::protocol::SpdmVersion;
 use crate::state::ConnectionState;
 use bitfield::bitfield;
 use libtock_platform::Syscalls;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+use core::fmt::Write;
 
 bitfield! {
 #[repr(C)]
@@ -100,10 +103,17 @@ pub(crate) fn handle_version<'a, S: Syscalls>(
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
+    writeln!(ctx.cw, "SPDM_LIB: Received version message").unwrap();
     match spdm_hdr.version() {
         Ok(SpdmVersion::V10) => {}
         _ => {
-            ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None)?;
+            writeln!(ctx.cw, "SPDM_LIB: SEnding error response").unwrap();
+            return Err(ctx.generate_error_response(
+                req_payload,
+                ErrorCode::VersionMismatch,
+                0,
+                None,
+            ));
         }
     }
 
@@ -112,8 +122,19 @@ pub(crate) fn handle_version<'a, S: Syscalls>(
     ctx.prepare_response_buffer(rsp_buf)?;
     fill_version_response(rsp_buf, ctx.supported_versions)?;
 
+    let data_len = rsp_buf.data_len();
+
+    writeln!(
+        ctx.cw,
+        "SPDM_LIB: Filled version response data len {}  data {:X?}",
+        data_len,
+        rsp_buf.data(data_len)
+    )
+    .unwrap();
+
     ctx.state.reset();
     ctx.state
-        .set_connection_state(ConnectionState::AfterVersion);
+        .connection_info
+        .set_state(ConnectionState::AfterVersion);
     Ok(())
 }

@@ -93,6 +93,10 @@ impl Test {
                 transport_type = socket_header.transport_type.to_be();
 
                 expected_size = socket_header.payload_size.to_be() as usize + SOCKET_HEADER_LEN;
+                println!(
+                    "Buffersize {} Command {:X?} Transport Type {:X?} Expected Size {:X?}",
+                    buffer_size, command, transport_type, expected_size
+                );
             }
             if (expected_size != 0) && (buffer_size >= expected_size) {
                 break;
@@ -170,7 +174,7 @@ impl Test {
                 MctpTestState::ReceiveResp => {
                     let resp_msg =
                         self.mctp_util
-                            .receive_response(running.clone(), i3c_stream, self.msg_tag);
+                            .receive_response(running.clone(), i3c_stream, target_addr);
                     if !resp_msg.is_empty() {
                         self.cur_resp_msg = resp_msg;
                         self.mctp_test_state = MctpTestState::Finish;
