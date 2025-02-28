@@ -78,14 +78,14 @@ mod test {
     }
 
     fn write_soc_manifest() -> PathBuf {
-        let path = (&*PROJECT_ROOT).join("target").join("soc-manifest");
-        std::fs::write(&path, &[1, 2, 3]).unwrap();
+        let path = PROJECT_ROOT.join("target").join("soc-manifest");
+        std::fs::write(&path, [1, 2, 3]).unwrap();
         path
     }
 
     fn compile_caliptra_rom() -> PathBuf {
         let rom_bytes = caliptra_builder::rom_for_fw_integration_tests().unwrap();
-        let path = (&*PROJECT_ROOT).join("target").join("caliptra-rom.bin");
+        let path = PROJECT_ROOT.join("target").join("caliptra-rom.bin");
         std::fs::write(&path, rom_bytes).unwrap();
         path
     }
@@ -105,9 +105,7 @@ mod test {
         )
         .encode_hex();
         let fw_bytes = bundle.to_bytes().unwrap();
-        let path = (&*PROJECT_ROOT)
-            .join("target")
-            .join("caliptra-fw-bundle.bin");
+        let path = PROJECT_ROOT.join("target").join("caliptra-fw-bundle.bin");
         std::fs::write(&path, fw_bytes).unwrap();
         (path, vendor_pk_hash)
     }
