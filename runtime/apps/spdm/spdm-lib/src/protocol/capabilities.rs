@@ -1,7 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use crate::protocol::SpdmVersion;
-
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 

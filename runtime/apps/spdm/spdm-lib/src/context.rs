@@ -11,15 +11,11 @@ use crate::state::State;
 use crate::transport::MctpTransport;
 use libtock_platform::Syscalls;
 
-use core::fmt::Write;
-use libtock_console::ConsoleWriter;
-
 pub struct SpdmContext<'a, S: Syscalls> {
     transport: &'a mut MctpTransport<S>,
     pub(crate) supported_versions: &'a [SpdmVersion],
     pub(crate) state: State,
     pub(crate) local_capabilities: DeviceCapabilities,
-    pub(crate) cw: &'a mut ConsoleWriter<S>,
 }
 
 impl<'a, S: Syscalls> SpdmContext<'a, S> {
@@ -27,7 +23,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         supported_versions: &'a [SpdmVersion],
         spdm_transport: &'a mut MctpTransport<S>,
         local_capabilities: DeviceCapabilities,
-        cw: &'a mut ConsoleWriter<S>,
+        // cw: &'a mut ConsoleWriter<S>,
     ) -> SpdmResult<Self> {
         if supported_versions.is_empty()
             || supported_versions.len() > MAX_NUM_SUPPORTED_SPDM_VERSIONS
@@ -41,7 +37,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             transport: spdm_transport,
             state: State::new(),
             local_capabilities,
-            cw,
+            // cw,
         })
     }
 
@@ -54,26 +50,12 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         // Process message
         match self.handle_request(msg_buf) {
             Ok(resp_code) => {
-                writeln!(
-                    self.cw,
-                    "SPDM_LIB: Sending response version: {:?} respcode {:?}",
-                    self.state.connection_info.version_number(),
-                    resp_code
-                )
-                .unwrap();
                 self.send_response(resp_code, msg_buf)
                     .await
                     .inspect_err(|_| {})?;
             }
             Err((rsp, command_error)) => {
                 if rsp {
-                    writeln!(
-                        self.cw,
-                        "SPDM_LIB: Sending error response version: {:?} respcode {:?}",
-                        self.state.connection_info.version_number(),
-                        command_error
-                    )
-                    .unwrap();
                     self.send_response(ReqRespCode::Error, msg_buf)
                         .await
                         .inspect_err(|_| {})?;
@@ -90,14 +72,6 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
 
         let req_msg_header: SpdmMsgHdr =
             SpdmMsgHdr::decode(req).map_err(|e| (false, CommandError::Codec(e)))?;
-
-        writeln!(
-            self.cw,
-            "SPDM_LIB: Received message version: {:?} reqcode {:?}",
-            req_msg_header.version(),
-            req_msg_header.req_resp_code()
-        )
-        .unwrap();
 
         let req_code = req_msg_header
             .req_resp_code()
@@ -124,14 +98,6 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         let spdm_version = self.state.connection_info.version_number();
         let spdm_resp_hdr = SpdmMsgHdr::new(spdm_version, resp_code);
         spdm_resp_hdr.encode(resp)?;
-
-        writeln!(
-            self.cw,
-            "SPDM_LIB: Sending response to transport message version: {:?} reqcode {:?}",
-            spdm_resp_hdr.version(),
-            spdm_resp_hdr.req_resp_code()
-        )
-        .unwrap();
 
         self.transport
             .send_response(resp)

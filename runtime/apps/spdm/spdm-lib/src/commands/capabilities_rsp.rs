@@ -5,12 +5,10 @@ use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
 use crate::protocol::capabilities::*;
 use crate::protocol::common::SpdmMsgHdr;
-use crate::protocol::{PskCapability, SpdmVersion, MIN_DATA_TRANSFER_SIZE_V12};
+use crate::protocol::SpdmVersion;
 use crate::state::ConnectionState;
 use libtock_platform::Syscalls;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
-
-use core::fmt::Write;
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C)]
@@ -26,7 +24,7 @@ impl CommonCodec for GetCapabilitiesBase {
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(packed)]
 #[allow(dead_code)]
-pub(crate) struct GetCapabilitiesv11 {
+pub(crate) struct GetCapabilitiesV11 {
     reserved: u8,
     ct_exponent: u8,
     reserved2: u8,
@@ -34,7 +32,7 @@ pub(crate) struct GetCapabilitiesv11 {
     flags: CapabilityFlags,
 }
 
-impl GetCapabilitiesv11 {
+impl GetCapabilitiesV11 {
     pub fn new(ct_exponent: u8, flags: CapabilityFlags) -> Self {
         Self {
             reserved: 0,
@@ -46,18 +44,18 @@ impl GetCapabilitiesv11 {
     }
 }
 
-impl CommonCodec for GetCapabilitiesv11 {
+impl CommonCodec for GetCapabilitiesV11 {
     const DATA_KIND: DataKind = DataKind::Payload;
 }
 
 #[derive(IntoBytes, FromBytes, Immutable)]
 #[repr(packed)]
-pub(crate) struct GetCapabilitiesReqv12 {
+pub(crate) struct GetCapabilitiesV12 {
     data_transfer_size: u32,
     max_spdm_msg_size: u32,
 }
 
-impl CommonCodec for GetCapabilitiesReqv12 {
+impl CommonCodec for GetCapabilitiesV12 {
     const DATA_KIND: DataKind = DataKind::Payload;
 }
 
@@ -156,11 +154,6 @@ fn process_get_capabilities<S: Syscalls>(
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf,
 ) -> CommandResult<()> {
-    writeln!(
-        ctx.cw,
-        "SPDM_LIB: Process_get_capability Processing capabilities request"
-    )
-    .unwrap();
     let version = match spdm_hdr.version() {
         Ok(v) => v,
         Err(_) => {
@@ -172,13 +165,6 @@ fn process_get_capabilities<S: Syscalls>(
             ));
         }
     };
-
-    writeln!(
-        ctx.cw,
-        "SPDM_LIB: process_get_capability Received capabilities message version: {:?}",
-        version
-    )
-    .unwrap();
 
     // Check if version is supported and set it
     let version = match ctx.supported_versions.iter().find(|&&v| v == version) {
@@ -202,11 +188,6 @@ fn process_get_capabilities<S: Syscalls>(
 
     // Reserved fields must be zero - or unexpected request error
     if base_req.param1 != 0 || base_req.param2 != 0 {
-        writeln!(
-            ctx.cw,
-            "SPDM_LIB: process_get_capability Reserved fields not zero"
-        )
-        .unwrap();
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
@@ -214,7 +195,7 @@ fn process_get_capabilities<S: Syscalls>(
         let mut max_spdm_msg_size = 0;
         let mut data_transfer_size = 0;
 
-        let req_11 = GetCapabilitiesv11::decode(req_payload).map_err(|_| {
+        let req_11 = GetCapabilitiesV11::decode(req_payload).map_err(|_| {
             ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
         })?;
 
@@ -228,13 +209,6 @@ fn process_get_capabilities<S: Syscalls>(
             ));
         }
 
-        writeln!(
-            ctx.cw,
-            "SPDM_LIB: process_get_capability ct_exponent {}",
-            req_11.ct_exponent
-        )
-        .unwrap();
-
         if req_11.ct_exponent > MAX_CT_EXPONENT {
             return Err(ctx.generate_error_response(
                 req_payload,
@@ -245,7 +219,7 @@ fn process_get_capabilities<S: Syscalls>(
         }
 
         if version >= SpdmVersion::V12 {
-            let req_12 = GetCapabilitiesReqv12::decode(req_payload).map_err(|_| {
+            let req_12 = GetCapabilitiesV12::decode(req_payload).map_err(|_| {
                 ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
             })?;
 
@@ -261,12 +235,6 @@ fn process_get_capabilities<S: Syscalls>(
 
             // If no large message transfer supported, the data transfer size must be the same as
             // the max SPDM message size
-            writeln!(
-                ctx.cw,
-                "SPDM_LIB: process_get_capability chunk_cap {} data_transfer_size {} max_spdm_msg_size {}", flags.chunk_cap(),
-                data_transfer_size, max_spdm_msg_size
-            )
-            .unwrap();
             if flags.chunk_cap() == 0 && data_transfer_size != max_spdm_msg_size {
                 Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
             }
@@ -310,7 +278,7 @@ fn generate_capabilities_response(
         .map_err(|_| (false, CommandError::BufferTooSmall))
         .unwrap();
 
-    let rsp_11 = GetCapabilitiesv11::new(local_capabilities.ct_exponent, local_capabilities.flags);
+    let rsp_11 = GetCapabilitiesV11::new(local_capabilities.ct_exponent, local_capabilities.flags);
 
     payload_len += rsp_11
         .encode(rsp_buf)
@@ -318,7 +286,7 @@ fn generate_capabilities_response(
         .unwrap();
 
     if version >= SpdmVersion::V12 {
-        let rsp_12 = GetCapabilitiesReqv12 {
+        let rsp_12 = GetCapabilitiesV12 {
             data_transfer_size: local_capabilities.data_transfer_size,
             max_spdm_msg_size: local_capabilities.max_spdm_msg_size,
         };
@@ -339,8 +307,6 @@ pub(crate) fn handle_capabilities<'a, S: Syscalls>(
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    writeln!(ctx.cw, "SPDM_LIB: Received capabilities message").unwrap();
-
     if ctx.state.connection_info.state() != ConnectionState::AfterVersion {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }

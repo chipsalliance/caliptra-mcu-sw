@@ -93,10 +93,6 @@ impl Test {
                 transport_type = socket_header.transport_type.to_be();
 
                 expected_size = socket_header.payload_size.to_be() as usize + SOCKET_HEADER_LEN;
-                println!(
-                    "Buffersize {} Command {:X?} Transport Type {:X?} Expected Size {:X?}",
-                    buffer_size, command, transport_type, expected_size
-                );
             }
             if (expected_size != 0) && (buffer_size >= expected_size) {
                 break;

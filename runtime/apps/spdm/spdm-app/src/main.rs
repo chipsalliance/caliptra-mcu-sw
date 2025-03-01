@@ -66,7 +66,6 @@ pub(crate) async fn async_main<S: Syscalls>() {
 }
 
 async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>) {
-    let mut console_writer = Console::<S>::writer();
     let mut mctp_spdm_transport: MctpTransport<S> = MctpTransport::new(driver_num::MCTP_SPDM);
     let supported_versions = [
         SpdmVersion::V10,
@@ -108,7 +107,6 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
         &supported_versions,
         &mut mctp_spdm_transport,
         local_capabilities,
-        &mut console_writer,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {

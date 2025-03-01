@@ -9,9 +9,6 @@ use libsyscall_caliptra::mctp::{Mctp, MessageInfo};
 use libtock_platform::Syscalls;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use core::fmt::Write;
-use libtock_console::Console;
-
 pub type TransportResult<T> = Result<T, TransportError>;
 
 pub enum SpdmTransportType {
@@ -192,11 +189,6 @@ impl<S: Syscalls> MctpTransport<S> {
     }
 
     pub async fn send_response<'a>(&mut self, resp: &mut MessageBuf<'a>) -> TransportResult<()> {
-        writeln!(
-            Console::<S>::writer(),
-            "SPDM_LIB:Transport Sending response"
-        )
-        .unwrap();
         let msg_type = self
             .mctp
             .msg_type()
@@ -208,13 +200,6 @@ impl<S: Syscalls> MctpTransport<S> {
         let rsp_buf = resp
             .data(msg_len)
             .map_err(|_| TransportError::BufferTooSmall)?;
-
-        writeln!(
-            Console::<S>::writer(),
-            "SPDM_LIB:Transport Sending response {:x?}",
-            rsp_buf
-        )
-        .unwrap();
 
         if let Some(msg_info) = self.cur_resp_ctx.clone() {
             self.mctp
