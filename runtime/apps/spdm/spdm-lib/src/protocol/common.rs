@@ -60,14 +60,6 @@ impl SpdmMsgHdr {
         }
     }
 
-    pub(crate) fn set_version(&mut self, version: SpdmVersion) {
-        self.version = version.into();
-    }
-
-    pub(crate) fn set_req_resp_code(&mut self, req_resp_code: ReqRespCode) {
-        self.req_resp_code = req_resp_code.into();
-    }
-
     pub(crate) fn version(&self) -> SpdmResult<SpdmVersion> {
         self.version.try_into()
     }

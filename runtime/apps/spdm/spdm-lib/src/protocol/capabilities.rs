@@ -37,6 +37,7 @@ pub enum PskCapability {
 
 /// Endpoint Information Capability
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub(crate) enum EpInfoCapability {
     NoEpInfo = 0,
     EpInfoWithNoSignature = 1,
@@ -45,7 +46,7 @@ pub(crate) enum EpInfoCapability {
 }
 
 /// Device Capabilities
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct DeviceCapabilities {
     pub ct_exponent: u8,
     pub flags: CapabilityFlags,
@@ -54,19 +55,8 @@ pub struct DeviceCapabilities {
     pub max_spdm_msg_size: u32,
 }
 
-impl Default for DeviceCapabilities {
-    fn default() -> Self {
-        Self {
-            ct_exponent: 0,
-            flags: CapabilityFlags::default(),
-            data_transfer_size: 0,
-            max_spdm_msg_size: 0,
-        }
-    }
-}
-
 bitfield! {
-#[derive(FromBytes, IntoBytes, Immutable, Clone, Copy)]
+#[derive(FromBytes, IntoBytes, Immutable, Default, Clone, Copy)]
 #[repr(C)]
 pub struct CapabilityFlags(u32);
 impl Debug;
@@ -98,12 +88,6 @@ pub multi_key_cap, set_multi_key_cap: 27, 26;
 pub get_key_pair_info_cap, set_get_key_pair_info_cap: 28, 28;
 pub set_key_pair_info_cap, set_set_key_pair_info_cap: 29, 29;
 reserved , _: 31, 30;
-}
-
-impl Default for CapabilityFlags {
-    fn default() -> Self {
-        Self(0)
-    }
 }
 
 impl CapabilityFlags {

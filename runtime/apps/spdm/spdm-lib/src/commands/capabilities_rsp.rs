@@ -12,46 +12,26 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 use core::fmt::Write;
 
-#[derive(IntoBytes, FromBytes, Immutable)]
+#[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C)]
 pub(crate) struct GetCapabilitiesBase {
     param1: u8,
     param2: u8,
 }
 
-impl Default for GetCapabilitiesBase {
-    fn default() -> Self {
-        Self {
-            param1: 0,
-            param2: 0,
-        }
-    }
-}
-
 impl CommonCodec for GetCapabilitiesBase {
     const DATA_KIND: DataKind = DataKind::Payload;
 }
 
-#[derive(IntoBytes, FromBytes, Immutable)]
+#[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(packed)]
+#[allow(dead_code)]
 pub(crate) struct GetCapabilitiesv11 {
     reserved: u8,
     ct_exponent: u8,
     reserved2: u8,
     reserved3: u8,
     flags: CapabilityFlags,
-}
-
-impl Default for GetCapabilitiesv11 {
-    fn default() -> Self {
-        Self {
-            reserved: 0,
-            ct_exponent: 0,
-            reserved2: 0,
-            reserved3: 0,
-            flags: CapabilityFlags::default(),
-        }
-    }
 }
 
 impl GetCapabilitiesv11 {
@@ -84,12 +64,12 @@ impl CommonCodec for GetCapabilitiesReqv12 {
 fn req_flag_compatible(version: SpdmVersion, flags: &CapabilityFlags) -> bool {
     // Checks common to 1.1 and higher
     if version >= SpdmVersion::V11 {
-        // Illgal to reserved values set for requester capabilities (2 or 3)
+        // Illgal to return reserved values (2 and 3)
         if flags.psk_cap() >= PskCapability::PskWithContext as u8 {
             return false;
         }
 
-        // If KEY_EX_CAP or PSK_CAP are set, then either ENCRYPT_CAP or  MAC_CAP must be set
+        // Checks that originate from key exhange capabilities
         if flags.key_ex_cap() == 1 || flags.psk_cap() != PskCapability::NoPsk as u8 {
             if flags.mac_cap() == 0 && flags.encrypt_cap() == 0 {
                 return false;
@@ -104,17 +84,16 @@ fn req_flag_compatible(version: SpdmVersion, flags: &CapabilityFlags) -> bool {
                 return false;
             }
 
-            if version >= SpdmVersion::V13 {
-                if flags.event_cap() == 1 {
-                    return false;
-                }
+            if version >= SpdmVersion::V13 && flags.event_cap() == 1 {
+                return false;
             }
         }
 
-        if flags.key_ex_cap() == 0 && flags.psk_cap() == PskCapability::PskWithContext as u8 {
-            if flags.handshake_in_the_clear_cap() == 1 {
-                return false;
-            }
+        if flags.key_ex_cap() == 0
+            && flags.psk_cap() == PskCapability::PskWithNoContext as u8
+            && flags.handshake_in_the_clear_cap() == 1
+        {
+            return false;
         }
 
         // Checks that orginate from certiticate or public key capabilities
@@ -133,16 +112,16 @@ fn req_flag_compatible(version: SpdmVersion, flags: &CapabilityFlags) -> bool {
                 return false;
             }
 
-            if version >= SpdmVersion::V13 {
-                if flags.ep_info_cap() == EpInfoCapability::EpInfoWithSignature as u8 {
-                    return false;
-                }
+            if version >= SpdmVersion::V13
+                && flags.ep_info_cap() == EpInfoCapability::EpInfoWithSignature as u8
+            {
+                return false;
             }
         }
 
         // Checks that originate from mutual authentication capabilities
         if flags.mut_auth_cap() == 1 {
-            //Mutual authentication with asymmetric keys can only occur through the basic mutual
+            // Mutual authentication with asymmetric keys can only occur through the basic mutual
             // authentication flow (CHAL_CAP == 1) or the session-based mutual authentication flow
             // (KEY_EX_CAP == 1)
             if flags.cert_cap() == 0 && flags.pub_key_id_cap() == 0 {
@@ -152,10 +131,8 @@ fn req_flag_compatible(version: SpdmVersion, flags: &CapabilityFlags) -> bool {
     }
 
     // Checks specific to 1.1
-    if version == SpdmVersion::V11 {
-        if flags.mut_auth_cap() == 1 && flags.encap_cap() == 0 {
-            return false;
-        }
+    if version == SpdmVersion::V11 && flags.mut_auth_cap() == 1 && flags.encap_cap() == 0 {
+        return false;
     }
 
     // Checks specific to 1.3 and higher
@@ -174,8 +151,8 @@ fn req_flag_compatible(version: SpdmVersion, flags: &CapabilityFlags) -> bool {
     true
 }
 
-fn process_get_capabilities<'a, S: Syscalls>(
-    ctx: &mut SpdmContext<'a, S>,
+fn process_get_capabilities<S: Syscalls>(
+    ctx: &mut SpdmContext<S>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf,
 ) -> CommandResult<()> {

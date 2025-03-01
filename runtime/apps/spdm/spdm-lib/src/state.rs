@@ -57,10 +57,6 @@ impl ConnectionInfo {
         self.state = state;
     }
 
-    pub fn peer_capabilities(&self) -> DeviceCapabilities {
-        self.peer_capabilities
-    }
-
     pub fn set_peer_capabilities(&mut self, peer_capabilities: DeviceCapabilities) {
         self.peer_capabilities = peer_capabilities;
     }

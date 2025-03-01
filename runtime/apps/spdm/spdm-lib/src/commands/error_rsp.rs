@@ -82,7 +82,7 @@ pub fn fill_error_response(
         // make space for the data at the end of the buffer
         let _ = rsp_buf
             .put_data(variable_len)
-            .map_err(|e| return (false, CommandError::Codec(e)));
+            .map_err(|e| (false, CommandError::Codec(e)));
 
         // get a mutable slice of the data offset and fill it
         let variable_payload = match rsp_buf.data_mut(variable_len) {
@@ -94,7 +94,7 @@ pub fn fill_error_response(
         // pull data offset by the length of the variable data
         let _ = rsp_buf
             .pull_data(variable_len)
-            .map_err(|e| return (false, CommandError::Codec(e)));
+            .map_err(|e| (false, CommandError::Codec(e)));
         total_len += variable_len;
     }
 
