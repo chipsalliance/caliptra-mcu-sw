@@ -332,9 +332,9 @@ mod test {
         let mut otp = Otp::new(&clock, None, None, None).unwrap();
         // simulate post-bootup flow
         assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
-        otp.write_integrity_check_period(0x3_FFFFu32.into());
-        otp.write_consistency_check_period(0x3FF_FFFFu32.into());
-        otp.write_check_timeout(0b10_0000u32.into());
+        otp.write_integrity_check_period(0x3_FFFFu32);
+        otp.write_consistency_check_period(0x3FF_FFFFu32);
+        otp.write_check_timeout(0b10_0000u32);
         otp.write_check_regwen(0u32.into());
         // one-off integrity check
         otp.write_check_trigger(0b11u32.into());

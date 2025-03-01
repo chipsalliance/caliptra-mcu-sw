@@ -14,6 +14,7 @@ mod deps;
 mod docs;
 mod flash_image;
 mod format;
+mod fpga;
 mod header;
 mod precheckin;
 mod registers;
@@ -122,6 +123,8 @@ enum Commands {
     },
     /// Check dependencies
     Deps,
+    /// Build and install the FPGA kernel modules for uio and the ROM backdoors
+    FpgaInstallKernelModules,
 }
 
 #[derive(Subcommand)]
@@ -206,6 +209,7 @@ fn main() {
             addrmap,
         } => registers::autogen(*check, files, addrmap),
         Commands::Deps => deps::check(),
+        Commands::FpgaInstallKernelModules => fpga::fpga_install_kernel_modules(),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {}", e);

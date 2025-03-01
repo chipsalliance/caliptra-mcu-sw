@@ -106,6 +106,7 @@ serde_json = { version = "1.0.127", features = ["alloc"] }
 serde-hjson = "1.1.0"
 sha2 = "0.10.8"
 smlang = "0.8.0"
+sudo = "0.6.0"
 strum = "0.24"
 strum_macros = "0.24"
 tempfile = "3.14.0"

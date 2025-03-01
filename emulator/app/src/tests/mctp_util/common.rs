@@ -417,7 +417,7 @@ mod tests {
         mctp.set_pkt_payload_size(pkt_payload_size);
         mctp.set_msg_tag(tag);
 
-        let expected_packets = (msg_size + pkt_payload_size - 1) / pkt_payload_size;
+        let expected_packets = msg_size.div_ceil(pkt_payload_size);
 
         let packets = mctp.packetize(&msg_buf);
         if packets.len() != expected_packets {
@@ -434,6 +434,6 @@ mod tests {
             println!("MCTP_UTIL: Assembled message does not match original message");
             return false;
         }
-        return true;
+        true
     }
 }
