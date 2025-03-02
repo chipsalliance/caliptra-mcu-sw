@@ -132,7 +132,7 @@ impl MctpUtil {
                     let write_pkt = pkts.front().unwrap().clone();
                     if send_private_write(stream, target_addr, write_pkt) {
                         i3c_state = I3cControllerState::WaitForIbi;
-                        std::thread::sleep(std::time::Duration::from_secs(5));
+                        std::thread::sleep(std::time::Duration::from_millis(500));
                     }
                 }
                 I3cControllerState::WaitForIbi => {
@@ -279,7 +279,9 @@ impl MctpUtil {
                         }
                     }
                 }
-                _ => {}
+                _ => {
+                    panic!("Unknown state {:?}", i3c_state);
+                }
             }
         }
 

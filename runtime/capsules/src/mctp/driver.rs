@@ -279,7 +279,7 @@ impl<'a> SyscallDriver for MCTPDriver<'a> {
     ///         Otherwise, replaces the pending rx operation context with the new one.
     ///         When a new message is received from peer EID, the metadata is compared with the pending rx operation context.
     ///         If the metadata matches, the message is copied to the process buffer and the upcall is scheduled.
-    ///        
+    ///
     ///
     /// - `3`: Send Request Message.
     /// - `4`: Send Response Message.
@@ -452,12 +452,12 @@ impl<'a> MCTPRxClient for MCTPDriver<'a> {
                 app.pending_rx = None;
                 let msg_info =
                     (src_eid as usize) << 16 | (msg_type as usize) << 8 | (msg_tag as usize);
-                kernel_data
-                    .schedule_upcall(
-                        upcall::MESSAGE_RECEIVED,
-                        (msg_len, recv_time as usize, msg_info),
-                    )
-                    .ok();
+                if let Err(e) = kernel_data.schedule_upcall(
+                    upcall::MESSAGE_RECEIVED,
+                    (msg_len, recv_time as usize, msg_info),
+                ) {
+                    panic!("MCTPDriver::receive upcall schedule failed: {:?}", e);
+                }
             }
         });
     }

@@ -120,12 +120,6 @@ jobs:
           cargo --config "$EXTRA_CARGO_CONFIG" xtask test
           sccache --show-stats
 
-      # - name: display SPDM Validator test results
+      # - name: Display SPDM Validator test results
       #   run: |
       #     cat $GITHUB_WORKSPACE/test.log
-      #     if grep -q "fail: 0" $GITHUB_WORKSPACE/test.log; then
-      #     echo "All tests passed."
-      #     else
-      #     echo "Some tests failed."
-      #     exit 1
-      #     fi
