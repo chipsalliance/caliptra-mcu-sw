@@ -176,8 +176,9 @@ impl Test {
                         println!("Test: response received, marking finished");
                         self.cur_resp_msg = resp_msg;
                         self.mctp_test_state = MctpTestState::Finish;
+                    } else {
+                        println!("Test: no response received");
                     }
-                    println!("Test: no response received");
                 }
 
                 MctpTestState::Finish => {
