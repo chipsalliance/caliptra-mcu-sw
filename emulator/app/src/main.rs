@@ -27,7 +27,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_bmc::Bmc;
 use emulator_bus::{Bus, BusConverter, Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
-use emulator_consts::{RAM_OFFSET, RAM_SIZE};
+use emulator_consts::{RAM_OFFSET, ROM_SIZE};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
 use emulator_periph::{
     CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, I3c, I3cController, Mci, Otp,
@@ -328,8 +328,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     };
 
     let rom_buffer = read_binary(args_rom, 0)?;
-    if rom_buffer.len() > RAM_SIZE as usize {
-        println!("ROM File Size must not exceed {} bytes", RAM_SIZE);
+    if rom_buffer.len() > ROM_SIZE as usize {
+        println!("ROM File Size must not exceed {} bytes", ROM_SIZE);
         exit(-1);
     }
     println!(
