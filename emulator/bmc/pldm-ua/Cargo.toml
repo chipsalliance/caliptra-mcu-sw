@@ -7,4 +7,11 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
+log.workspace = true
 pldm-common.workspace = true
+smlang.workspace = true
+
+[dev-dependencies]
+simple_logger.workspace = true
+
+

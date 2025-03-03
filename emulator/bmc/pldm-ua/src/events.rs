@@ -10,4 +10,6 @@ pub enum PldmEvents {
     Stop,
     /// Discovery state machine events
     Discovery(crate::discovery_sm::Events),
+    /// Firmware Update state machine events
+    Update(crate::update_sm::Events)
 }
