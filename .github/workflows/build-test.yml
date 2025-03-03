@@ -72,6 +72,10 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+
+      - name: Do a quick build to ensure the right toolchain is installed
+        run: cargo b
+
       - name: Check that Cargo.lock doesn't need to be updated
           # Note: this isn't the same as checking that Cargo.lock is up to date
           # (cargo update --locked), which makes sure that every package is the
