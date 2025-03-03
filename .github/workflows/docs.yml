@@ -34,10 +34,15 @@ jobs:
       MDBOOK_VERSION: 0.4.40
     steps:
       - uses: actions/checkout@v4
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy
+          sudo apt-get install -qy rustup
+          rustup toolchain install \
+            $(cat rust-toolchain.toml | grep channel | cut -d'=' -f2 | cut -d'"' -f2)-unknown-linux-gnu \
+            -c clippy rust-src llvm-tools rustfmt rustc-dev
       - name: Install mdBook
         run: |
-          curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf -y | sh
-          rustup update
           cargo install --version ${MDBOOK_VERSION} mdbook
           cargo install mdbook-mermaid
       - name: Setup Pages

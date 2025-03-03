@@ -39,9 +39,10 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install build-essential curl gcc-multilib gcc-riscv64-unknown-elf git \
-          curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf -y | sh
-          rustup update
+          sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup
+          rustup toolchain install \
+            $(cat rust-toolchain.toml | grep channel | cut -d'=' -f2 | cut -d'"' -f2)-unknown-linux-gnu \
+            -c clippy rust-src llvm-tools rustfmt rustc-dev
 
       - name: Restore sccache binary
         uses: actions/cache/restore@v3
@@ -71,12 +72,6 @@ jobs:
             core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
-
-      - name: Install the toolchain and components
-        run: |
-          rustup toolchain install nightly-2024-10-01-x86_64-unknown-linux-gnu
-          rustup component add --toolchain nightly-2024-10-01-x86_64-unknown-linux-gnu clippy rust-src llvm-tools rustfmt rustc-dev
 
       - name: Check that Cargo.lock doesn't need to be updated
           # Note: this isn't the same as checking that Cargo.lock is up to date
