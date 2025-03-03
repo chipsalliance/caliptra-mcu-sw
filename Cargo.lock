@@ -1256,6 +1256,7 @@ dependencies = [
  "gdbstub",
  "gdbstub_arch",
  "hex",
+ "p384",
  "pldm-common",
  "pldm-ua",
  "rand",
@@ -2408,7 +2409,10 @@ dependencies = [
 name = "pldm-ua"
 version = "0.1.0"
 dependencies = [
+ "log",
  "pldm-common",
+ "simple_logger",
+ "smlang 0.8.0",
 ]
 
 [[package]]
