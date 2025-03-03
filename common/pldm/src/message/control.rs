@@ -12,7 +12,7 @@ pub const PLDM_CMDS_BITMAP_LEN: usize = 32;
 pub const PLDM_TYPES_BITMAP_LEN: usize = 8;
 
 #[repr(C, packed)]
-#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
+#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
 pub struct GetTidRequest {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
 }
@@ -31,7 +31,7 @@ impl GetTidRequest {
 }
 
 #[repr(C, packed)]
-#[derive(Debug, PartialEq, FromBytes, IntoBytes, Immutable)]
+#[derive(Debug, PartialEq, FromBytes, IntoBytes, Immutable, Clone)]
 pub struct GetTidResponse {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
     pub completion_code: u8,
@@ -53,7 +53,7 @@ impl GetTidResponse {
     }
 }
 
-#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
+#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
 #[repr(C, packed)]
 pub struct SetTidRequest {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
@@ -73,7 +73,7 @@ impl SetTidRequest {
     }
 }
 
-#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
+#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
 #[repr(C, packed)]
 pub struct SetTidResponse {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
@@ -95,7 +95,7 @@ impl SetTidResponse {
 }
 
 #[repr(C, packed)]
-#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
+#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
 pub struct GetPldmCommandsRequest {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
     pub pldm_type: u8,
@@ -124,7 +124,7 @@ impl GetPldmCommandsRequest {
     }
 }
 
-#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
+#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
 #[repr(C, packed)]
 pub struct GetPldmCommandsResponse {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
@@ -147,7 +147,7 @@ impl GetPldmCommandsResponse {
     }
 }
 
-#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
+#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
 #[repr(C, packed)]
 pub struct GetPldmTypeRequest {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
@@ -176,7 +176,13 @@ fn construct_bitmap<const N: usize>(items: &[u8]) -> [u8; N] {
     bitmap
 }
 
-#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
+pub fn is_bit_set(bitmap: &[u8], item: u8) -> bool {
+    let byte_index = (item / 8) as usize;
+    let bit_index = (item % 8) as usize;
+    bitmap[byte_index] & (1 << bit_index) != 0
+}
+
+#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
 #[repr(C, packed)]
 pub struct GetPldmTypeResponse {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
@@ -199,7 +205,7 @@ impl GetPldmTypeResponse {
     }
 }
 
-#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
+#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
 #[repr(C, packed)]
 pub struct GetPldmVersionRequest {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
@@ -230,7 +236,7 @@ impl GetPldmVersionRequest {
     }
 }
 
-#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
+#[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq, Clone)]
 #[repr(C, packed)]
 pub struct GetPldmVersionResponse {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
