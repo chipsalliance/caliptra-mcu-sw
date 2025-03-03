@@ -209,6 +209,7 @@ mod test {
     run_test!(test_mctp_ctrl_cmds);
     run_test!(test_mctp_capsule_loopback);
     run_test!(test_mctp_user_loopback);
+    run_test!(test_pldm_request_response);
     // TODO: debug why this test is failing
     //run_test!(test_spdm_validator);
 

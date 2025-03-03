@@ -18,6 +18,7 @@ libtock_runtime.workspace = true
 libtock.workspace = true
 libtockasync.workspace = true
 portable-atomic.workspace = true
+pldm-common.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 libtock_unittest.workspace = true
@@ -40,4 +41,5 @@ test-mctp-ctrl-cmds = []
 test-mctp-capsule-loopback = []
 test-mctp-user-loopback = []
 test-flash-usermode = []
+test-pldm-request-response = [ ]
 test-spdm-validator = []

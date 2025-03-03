@@ -1238,6 +1238,8 @@ dependencies = [
  "gdbstub_arch",
  "hex",
  "p384",
+ "pldm-common",
+ "pldm-ua",
  "rand",
  "sec1",
  "sha2",
@@ -1387,6 +1389,7 @@ dependencies = [
  "libtock_runtime",
  "libtock_unittest",
  "libtockasync",
+ "pldm-common",
  "portable-atomic",
 ]
 
@@ -2080,9 +2083,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.22"
+version = "0.4.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
+checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
 
 [[package]]
 name = "managed"
@@ -2366,6 +2369,13 @@ dependencies = [
  "serde",
  "toml",
  "uuid",
+]
+
+[[package]]
+name = "pldm-ua"
+version = "0.1.0"
+dependencies = [
+ "pldm-common",
 ]
 
 [[package]]

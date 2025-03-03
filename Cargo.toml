@@ -4,6 +4,7 @@
 members = [
     "common/pldm",
     "emulator/app",
+    "emulator/bmc/pldm-ua",
     "emulator/bmc/pldm-fw-pkg",
     "emulator/bus",
     "emulator/caliptra",
@@ -131,6 +132,7 @@ flash-driver = { path = "runtime/flash" }
 i3c-driver = { path = "runtime/i3c" }
 libtockasync = { path = "runtime/apps/libtockasync" }
 pldm-common = { path = "common/pldm"}
+pldm-ua = {path = "emulator/bmc/pldm-ua"}
 registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }

@@ -17,6 +17,7 @@ mod dis_test;
 mod elf;
 mod gdb;
 mod i3c_socket;
+mod mctp_transport;
 mod tests;
 
 use crate::i3c_socket::start_i3c_socket;
@@ -36,6 +37,8 @@ use emulator_registers_generated::soc::SocPeripheral;
 use emulator_types::ROM_SIZE;
 use gdb::gdb_state;
 use gdb::gdb_target::GdbTarget;
+use mctp_transport::MctpTransport;
+use pldm_ua::transport::{EndpointId, PldmTransport};
 use std::cell::RefCell;
 use std::fs::File;
 use std::io;
@@ -45,6 +48,7 @@ use std::process::exit;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
+use tests::pldm_request_response_test::PldmRequestResponseTest;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None, name = "Caliptra MCU Emulator")]
@@ -453,6 +457,17 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             i3c.get_dynamic_address().unwrap(),
             spdm_validator_tests,
         );
+    }
+
+    if cfg!(feature = "test-pldm-request-response") {
+        println!("Emulator: Starting test-pldm-request-respons");
+        i3c_controller.start();
+        let pldm_transport =
+            MctpTransport::new(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
+        let pldm_socket = pldm_transport
+            .create_socket(EndpointId(0), EndpointId(1))
+            .unwrap();
+        PldmRequestResponseTest::run(pldm_socket, running.clone());
     }
 
     let create_flash_controller = |default_path: &str, error_irq: u8, event_irq: u8| {

@@ -41,6 +41,8 @@ strum.workspace = true
 tempfile.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
+pldm-common.workspace = true
+pldm-ua.workspace = true
 
 [features]
 default = []
@@ -57,3 +59,4 @@ test-mctp-capsule-loopback = ["emulator-periph/test-mctp-capsule-loopback"]
 test-mctp-user-loopback = ["emulator-periph/test-mctp-user-loopback"]
 test-spdm-validator = ["emulator-periph/test-spdm-validator"]
 test-exit-immediately = []
+test-pldm-request-response = []
