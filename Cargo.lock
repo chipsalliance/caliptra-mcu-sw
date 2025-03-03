@@ -232,6 +232,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-auth-man-gen"
+version = "0.1.0"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=aec9434c1b42ebe77ae553c884006f9449ad5eb5#aec9434c1b42ebe77ae553c884006f9449ad5eb5"
+dependencies = [
+ "anyhow",
+ "bitflags 2.6.0",
+ "caliptra-auth-man-types",
+ "caliptra-image-gen",
+ "caliptra-image-types",
+ "caliptra-lms-types",
+ "memoffset 0.8.0",
+ "zerocopy 0.8.8",
+]
+
+[[package]]
 name = "caliptra-auth-man-types"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=aec9434c1b42ebe77ae553c884006f9449ad5eb5#aec9434c1b42ebe77ae553c884006f9449ad5eb5"
@@ -3099,12 +3114,16 @@ version = "0.1.0"
 name = "tests-integration"
 version = "0.1.0"
 dependencies = [
+ "caliptra-auth-man-gen",
+ "caliptra-auth-man-types",
  "caliptra-builder",
  "caliptra-emu-cpu",
  "caliptra-emu-periph",
  "caliptra-emu-types",
  "caliptra-image-crypto",
+ "caliptra-image-fake-keys",
  "caliptra-image-gen",
+ "caliptra-image-types",
  "clap 4.5.23",
  "ctrlc",
  "elf 0.7.4",
