@@ -7,17 +7,7 @@ use std::process::Command;
 pub fn rom_build() -> Result<(), DynError> {
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .args([
-            "rustc",
-            "-p",
-            "rom",
-            "--release",
-            "--target",
-            TARGET,
-            "--",
-            "-C",
-            "link-arg=-Trom/layout.ld",
-        ])
+        .args(["build", "-p", "rom", "--release", "--target", TARGET])
         .status()?;
     if !status.success() {
         Err("build ROM binary failed")?;
