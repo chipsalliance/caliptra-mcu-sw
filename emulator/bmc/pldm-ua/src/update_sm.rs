@@ -1,5 +1,7 @@
 // Licensed under the Apache-2.0 license
 
+use core::error;
+
 use crate::events::PldmEvents;
 use crate::{event_queue::EventQueue, transport::MAX_PLDM_PAYLOAD_SIZE};
 use crate::transport::{PldmSocket, RxPacket};
@@ -8,28 +10,33 @@ use pldm_common::message::firmware_update as pldm_packet;
 use pldm_common::codec::PldmCodec;
 use pldm_common::protocol::base::{InstanceId, PldmMsgHeader, PldmMsgType};
 use pldm_common::protocol::firmware_update::{FwUpdateCmd, PldmFirmwareString};
+use pldm_fw_pkg::manifest::FirmwareDeviceIdRecord;
+use pldm_fw_pkg::FirmwareManifest;
 use smlang::statemachine;
-use log::{debug, error};
+use log::{debug, error, warn};
 
 
 const MAX_TRANSFER_SIZE: u32 = 64;
 const MAX_OUTSTANDING_TRANSFER_REQ : u8 = 1;
+
+
 
 // Define the state machine
 statemachine! {
     derive_states: [Debug],
     derive_events: [Clone, Debug],
     transitions: {
-        *Idle + StartUpdate / on_start_update = QueryDeviceIdentifiersSent,
-        QueryDeviceIdentifiersSent + QueryDeviceIdentifiersResponse(pldm_packet::query_devid::QueryDeviceIdentifiersResponse) / on_query_device_identifiers_response = GetFirmwareParametersSent,
+        *Idle + StartUpdate  / on_start_update = QueryDeviceIdentifiersSent,
+        QueryDeviceIdentifiersSent + QueryDeviceIdentifiersResponse(pldm_packet::query_devid::QueryDeviceIdentifiersResponse) [is_device_id_supported] / on_query_device_identifiers_response = GetFirmwareParametersSent,
+        QueryDeviceIdentifiersSent + QueryDeviceIdentifiersResponse(pldm_packet::query_devid::QueryDeviceIdentifiersResponse) [!is_device_id_supported] / on_unsupported_device_identifiers_response = Done,
         GetFirmwareParametersSent + GetFirmwareParametersResponse(pldm_packet::get_fw_params::GetFirmwareParametersResponse) / on_get_firmware_parameters_response = RequestUpdateSent,
         RequestUpdateSent + RequestUpdateResponse(pldm_packet::request_update::RequestUpdateResponse) [is_request_update_response_valid] / on_request_update_response = LearnComponents,
-        LearnComponents + PassComponentResponse [is_pass_component_response_valid && !are_all_components_passed] / on_pass_component_response = LearnComponents,
-        LearnComponents + PassComponentResponse [is_pass_component_response_valid && are_all_components_passed] / on_pass_component_response = ReadyXfer,
+        LearnComponents + PassComponentResponse(pldm_packet::pass_component::PassComponentTableResponse) [!are_all_components_passed] / on_pass_component_response = LearnComponents,
+        LearnComponents + PassComponentResponse(pldm_packet::pass_component::PassComponentTableResponse) [are_all_components_passed] / on_pass_component_response = ReadyXfer,
         LearnComponents + CancelUpdateOrTimeout  / on_cancel_update = Idle,
 
         ReadyXfer + UpdateComponent [can_update_component] / on_update_component = Download,
-        ReadyXfer + UpdateComponentInvalidData [can_update_invalid] / on_update_invalid = ReadyXfer,
+        ReadyXfer + UpdateComponent [!can_update_component] = ReadyXfer,
         ReadyXfer + CancelUpdateComponent  / on_cancel_update = Idle,
 
         Download + RequestFirmwareData [can_request_firmware] / on_request_firmware = Download,
@@ -52,7 +59,7 @@ statemachine! {
         Activate + ActivateFirmware [can_activate_firmware] / on_activate_firmware = Idle,
         Activate + CancelUpdate  / on_cancel_update = Idle,
 
-        _ + StopUpdate = End
+        _ + StopUpdate / on_stop_update = Done
     }
 }
 
@@ -63,26 +70,79 @@ fn send_request_helper<S: PldmSocket, P: PldmCodec>(socket: &S, message: &P) -> 
     debug!("Sent request: {:?}", std::any::type_name::<P>());
     Ok(())
 }
+
+fn is_pkg_descriptor_in_response_descriptor(pkg_descriptor: &pldm_fw_pkg::manifest::Descriptor, response_descriptor : &pldm_common::protocol::firmware_update::Descriptor) -> bool
+{
+    if response_descriptor.descriptor_type != pkg_descriptor.descriptor_type as u16 {
+        return false;
+    }
+    if response_descriptor.descriptor_length != pkg_descriptor.descriptor_data.len() as u16 {
+        return false;
+    }
+    if &response_descriptor.descriptor_data[..response_descriptor.descriptor_length as usize] != pkg_descriptor.descriptor_data.as_slice() {
+        return false;
+    }
+    true
+}
+
+fn is_pkg_device_id_in_response(pkg_dev_id: &FirmwareDeviceIdRecord, response: &pldm_packet::query_devid::QueryDeviceIdentifiersResponse) -> bool {
+    if response.descriptor_count < 1 {
+        error!("No descriptors in response");
+        return false;
+    }
+    
+    // Check initial descriptor
+    if !is_pkg_descriptor_in_response_descriptor(&pkg_dev_id.initial_descriptor, &response.initial_descriptor) {
+        error!("Initial descriptor does not match");
+        return false;
+    }
+
+    // Check additional descriptors
+    if let Some(additional_descriptors) =  &pkg_dev_id.additional_descriptors {
+        if response.descriptor_count < additional_descriptors.len() as u8 + 1 {
+            error!("Not enough descriptors in response");
+            return false;
+        }
+
+        for additional_descriptor in additional_descriptors {
+            let mut additional_descriptor_in_response = false;
+            if let Some(response_descriptors) = &response.additional_descriptors {
+                for i in 1..response.descriptor_count {
+                    if is_pkg_descriptor_in_response_descriptor(&additional_descriptor, &response_descriptors[i as usize]) {
+                        additional_descriptor_in_response = true;
+                        break;
+                    }
+                }                
+            }
+
+            if !additional_descriptor_in_response {
+                error!("Additional descriptor not found in response");
+                return false;
+            }
+        }
+    }
+    true
+}
 pub trait StateMachineActions {
     // Guards
+    fn is_device_id_supported(&self, ctx: &InnerContext<impl PldmSocket>, response: &pldm_packet::query_devid::QueryDeviceIdentifiersResponse) -> Result<bool, ()> {
+        for pkg_dev_id in &ctx.pldm_fw_pkg.firmware_device_id_records {
+            if is_pkg_device_id_in_response(&pkg_dev_id, response) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
     fn is_request_update_response_valid(&self, ctx: &InnerContext<impl PldmSocket>, response: &pldm_packet::request_update::RequestUpdateResponse) -> Result<bool, ()> {
         Ok(true)
     }
 
-    fn is_pass_component_response_valid(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
-        Ok(true)
-    }
-
-    fn are_all_components_passed(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
+    fn are_all_components_passed(&self, ctx: &InnerContext<impl PldmSocket>, response: &pldm_packet::pass_component::PassComponentTableResponse) -> Result<bool, ()> {
         Ok(true)
     }
 
     fn can_update_component(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
         Ok(true)
-    }
-
-    fn can_update_invalid(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
-        Ok(false) // Example case where invalid data should not allow transition
     }
 
     fn can_request_firmware(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
@@ -129,6 +189,35 @@ pub trait StateMachineActions {
     fn on_start_update(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
         send_request_helper(
             &ctx.socket,
+            &pldm_packet::query_devid::QueryDeviceIdentifiersRequest::new(
+                ctx.instance_id,
+                PldmMsgType::Request
+            ),
+        )
+    }
+    fn on_request_update_response(&mut self, ctx: &mut InnerContext<impl PldmSocket>, response: pldm_packet::request_update::RequestUpdateResponse) -> Result<(), ()> {
+        println!("Requesting Update");
+        Ok(())
+    }
+
+    fn on_query_device_identifiers_response(&mut self, ctx: &mut InnerContext<impl PldmSocket>, response : pldm_packet::query_devid::QueryDeviceIdentifiersResponse) -> Result<(), ()> {
+        send_request_helper(
+            &ctx.socket,
+            &        pldm_packet::get_fw_params::GetFirmwareParametersRequest::new(
+                ctx.instance_id,
+                PldmMsgType::Request,
+            ),
+        )
+        
+    }
+
+    fn on_unsupported_device_identifiers_response(&mut self, ctx: &mut InnerContext<impl PldmSocket>, response : pldm_packet::query_devid::QueryDeviceIdentifiersResponse) -> Result<(), ()> {
+        Ok(())
+    }
+
+    fn on_get_firmware_parameters_response(&mut self, ctx: &mut InnerContext<impl PldmSocket>, response : pldm_packet::get_fw_params::GetFirmwareParametersResponse) -> Result<(), ()> {
+        send_request_helper(
+            &ctx.socket,
             
             &pldm_packet::request_update::RequestUpdateRequest::new(
                 ctx.instance_id,
@@ -141,33 +230,16 @@ pub trait StateMachineActions {
             ),
         )
     }
-    fn on_request_update_response(&mut self, ctx: &mut InnerContext<impl PldmSocket>, response: pldm_packet::request_update::RequestUpdateResponse) -> Result<(), ()> {
-        println!("Requesting Update");
-        Ok(())
-    }
-
-    fn on_query_device_identifiers_response(&mut self, ctx: &mut InnerContext<impl PldmSocket>, response : pldm_packet::query_devid::QueryDeviceIdentifiersResponse) -> Result<(), ()> {
-        Ok(())
-    }
-
-    fn on_get_firmware_parameters_response(&mut self, ctx: &mut InnerContext<impl PldmSocket>, response : pldm_packet::get_fw_params::GetFirmwareParametersResponse) -> Result<(), ()> {
-        Ok(())
-    }
 
     
 
-    fn on_pass_component_response(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_pass_component_response(&mut self, ctx: &mut InnerContext<impl PldmSocket>, response : pldm_packet::pass_component::PassComponentTableResponse) -> Result<(), ()> {
         println!("Passing Component");
         Ok(())
     }
 
     fn on_update_component(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
         println!("Updating Component");
-        Ok(())
-    }
-
-    fn on_update_invalid(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        println!("Invalid Update Data");
         Ok(())
     }
 
@@ -225,6 +297,11 @@ pub trait StateMachineActions {
         println!("Cancelling Update");
         Ok(())
     }
+
+    fn on_stop_update(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+        println!("Stopping Update");
+        Ok(())
+    }
 }
 
 fn packet_to_event<T: PldmCodec>(
@@ -260,9 +337,10 @@ pub fn process_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
             FwUpdateCmd::QueryDeviceIdentifiers => packet_to_event(&header, packet, true, Events::QueryDeviceIdentifiersResponse),
             FwUpdateCmd::GetFirmwareParameters => packet_to_event(&header, packet, true, Events::GetFirmwareParametersResponse),
             FwUpdateCmd::RequestUpdate => packet_to_event(&header, packet, true, Events::RequestUpdateResponse),
+            FwUpdateCmd::PassComponentTable => packet_to_event(&header, packet, true, Events::PassComponentResponse),
 
             _ => {
-                error!("Unknown discovery command");
+                debug!("Unknown firmware update command");
                 Err(())
             }
         },
@@ -277,6 +355,8 @@ impl StateMachineActions for DefaultActions {}
 
 pub struct InnerContext<S: PldmSocket> {
     socket: S,
+    pldm_fw_pkg: FirmwareManifest,
+    pub event_queue : EventQueue<PldmEvents>,
     instance_id: InstanceId,
 }
 
@@ -286,11 +366,13 @@ pub struct Context<T: StateMachineActions, S: PldmSocket> {
 }
 
 impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
-    pub fn new(context: T, socket: S) -> Self {
+    pub fn new(context: T, socket: S, pldm_fw_pkg: FirmwareManifest, event_queue : EventQueue<PldmEvents>) -> Self {
         Self {
             inner: context,
             inner_ctx: InnerContext {
                 socket,
+                pldm_fw_pkg,
+                event_queue,
                 instance_id: 0,
             },
         }
@@ -329,16 +411,17 @@ impl<T: StateMachineActions, S: PldmSocket> StateMachineContext for Context<T, S
     delegate_to_inner_action! {
         on_start_update() -> Result<(),()>,
         on_query_device_identifiers_response(response : pldm_packet::query_devid::QueryDeviceIdentifiersResponse) -> Result<(),()>,
+        on_unsupported_device_identifiers_response(response : pldm_packet::query_devid::QueryDeviceIdentifiersResponse) -> Result<(),()>,
         on_get_firmware_parameters_response(response : pldm_packet::get_fw_params::GetFirmwareParametersResponse) -> Result<(), ()>,
         on_request_update_response(response: pldm_packet::request_update::RequestUpdateResponse) -> Result<(),()>,
-        on_pass_component_response() -> Result<(),()>,
+        on_pass_component_response(response : pldm_packet::pass_component::PassComponentTableResponse) -> Result<(),()>,
         on_update_component() -> Result<(),()>,
-        on_update_invalid() -> Result<(),()>,
         on_request_firmware() -> Result<(),()>,
         on_transfer_fail() -> Result<(),()>,
         on_transfer_success() -> Result<(),()>,
         on_get_status() -> Result<(),()>,
         on_cancel_update() -> Result<(),()>,
+        on_stop_update() -> Result<(),()>,
         on_verify_success() -> Result<(),()>,
         on_verify_fail() -> Result<(),()>,
         on_apply_success() -> Result<(),()>,
@@ -349,11 +432,10 @@ impl<T: StateMachineActions, S: PldmSocket> StateMachineContext for Context<T, S
 
     // Guards
     delegate_to_inner_guard! {
+        is_device_id_supported(response: &pldm_packet::query_devid::QueryDeviceIdentifiersResponse) -> Result<bool, ()>,
         is_request_update_response_valid(response: &pldm_packet::request_update::RequestUpdateResponse) -> Result<bool, ()>,
-        is_pass_component_response_valid() -> Result<bool, ()>,
-        are_all_components_passed() -> Result<bool, ()>,
+        are_all_components_passed(response : &pldm_packet::pass_component::PassComponentTableResponse) -> Result<bool, ()>,
         can_update_component() -> Result<bool, ()>,
-        can_update_invalid() -> Result<bool, ()>,
         can_request_firmware() -> Result<bool, ()>,
         can_transfer_fail() -> Result<bool, ()>,
         can_transfer_success() -> Result<bool, ()>,

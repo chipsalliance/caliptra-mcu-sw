@@ -134,6 +134,7 @@ flash-driver = { path = "runtime/flash" }
 i3c-driver = { path = "runtime/i3c" }
 libtockasync = { path = "runtime/apps/libtockasync" }
 pldm-common = { path = "common/pldm"}
+pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
 pldm-ua = {path = "emulator/bmc/pldm-ua"}
 registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }

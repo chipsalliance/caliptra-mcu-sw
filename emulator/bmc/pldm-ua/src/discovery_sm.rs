@@ -2,6 +2,7 @@
 
 use crate::events::PldmEvents;
 use crate::transport::{PldmSocket, RxPacket, MAX_PLDM_PAYLOAD_SIZE};
+use crate::update_sm;
 use log::{debug, error};
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::control::{self as pldm_packet, is_bit_set, GetPldmCommandsRequest};
@@ -12,6 +13,7 @@ use pldm_common::protocol::base::{
 use pldm_common::protocol::firmware_update::FwUpdateCmd;
 use pldm_common::protocol::version::{PLDM_BASE_PROTOCOL_VERSION, PLDM_FW_UPDATE_PROTOCOL_VERSION};
 use smlang::statemachine;
+use crate::event_queue::EventQueue;
 
 // Define the state machine for PLDM Discovery Requester
 statemachine! {
@@ -131,9 +133,10 @@ pub trait StateMachineActions {
     }
     fn on_pldm_commands_response_type5(
         &self,
-        _ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket>,
         _response: pldm_packet::GetPldmCommandsResponse,
     ) -> Result<(), ()> {
+        ctx.event_queue.enqueue(PldmEvents::Update(update_sm::Events::StartUpdate));
         Ok(())
     }
     fn on_cancel_discovery(&self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
@@ -287,7 +290,7 @@ pub fn process_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
                 packet_to_event(&header, packet, Events::GetPLDMCommandsResponse)
             }
             _ => {
-                error!("Unknown discovery command");
+                debug!("Unknown discovery command");
                 Err(())
             }
         },
@@ -299,8 +302,9 @@ pub struct DefaultActions;
 impl StateMachineActions for DefaultActions {}
 
 pub struct InnerContext<S: PldmSocket> {
-    socket: S,
-    instance_id: InstanceId,
+    pub socket: S,
+    pub event_queue : EventQueue<PldmEvents>,
+    pub instance_id: InstanceId,
 }
 
 pub struct Context<T: StateMachineActions, S: PldmSocket> {
@@ -309,11 +313,12 @@ pub struct Context<T: StateMachineActions, S: PldmSocket> {
 }
 
 impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
-    pub fn new(context: T, socket: S) -> Self {
+    pub fn new(context: T, socket: S, event_queue : EventQueue<PldmEvents>) -> Self {
         Self {
             inner: context,
             inner_ctx: InnerContext {
                 socket,
+                event_queue,
                 instance_id: 0,
             },
         }
