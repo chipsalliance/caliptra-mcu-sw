@@ -121,6 +121,6 @@ jobs:
           cargo --config "$EXTRA_CARGO_CONFIG" xtask test
           sccache --show-stats
 
-      # - name: Display SPDM Validator test results
-      #   run: |
-      #     cat $GITHUB_WORKSPACE/test.log
+      - name: Display SPDM Validator test results
+        run: |
+          cat $GITHUB_WORKSPACE/test.log
