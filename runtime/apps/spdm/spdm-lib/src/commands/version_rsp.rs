@@ -4,7 +4,8 @@ use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
-use crate::protocol::{SpdmMsgHdr, SpdmVersion};
+use crate::protocol::common::SpdmMsgHdr;
+use crate::protocol::SpdmVersion;
 use crate::state::ConnectionState;
 use bitfield::bitfield;
 use libtock_platform::Syscalls;
@@ -105,7 +106,7 @@ pub(crate) fn handle_version<'a, S: Syscalls>(
     match spdm_hdr.version() {
         Ok(SpdmVersion::V10) => {}
         _ => {
-            return ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None);
+            Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
         }
     }
 
@@ -116,6 +117,7 @@ pub(crate) fn handle_version<'a, S: Syscalls>(
 
     ctx.state.reset();
     ctx.state
-        .set_connection_state(ConnectionState::AfterVersion);
+        .connection_info
+        .set_state(ConnectionState::AfterVersion);
     Ok(())
 }
