@@ -17,6 +17,7 @@ members = [
     "registers/generated-firmware",
     "registers/generator",
     "registers/systemrdl",
+    "platforms/emulator/rom",
     "rom",
     "romtime",
     "runtime",
@@ -131,6 +132,7 @@ emulator-registers-generated = { path = "registers/generated-emulator" }
 flash-driver = { path = "runtime/flash" }
 i3c-driver = { path = "runtime/i3c" }
 libtockasync = { path = "runtime/apps/libtockasync" }
+mcu-rom-common = { path = "rom" }
 pldm-common = { path = "common/pldm"}
 pldm-ua = {path = "emulator/bmc/pldm-ua"}
 registers-generated = { path = "registers/generated-firmware" }

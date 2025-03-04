@@ -12,10 +12,13 @@ Abstract:
 
 --*/
 
-use crate::io::HexWord;
-use crate::{fuses::Otp, static_ref::StaticRef};
+#![allow(unused)]
+
+use crate::fatal_error;
+use crate::fuses::Otp;
 use core::fmt::Write;
 use registers_generated::{fuses::Fuses, i3c, mbox, mci, otp_ctrl, soc};
+use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
 pub const SOC_BASE: StaticRef<soc::regs::Soc> =
@@ -226,31 +229,4 @@ pub fn recovery_flow(_mci: &mut Mci) {
     // }
     // hack until we have MCI hooked up: just look for a non-zero firmware value somewhere
     while unsafe { core::ptr::read_volatile(0x4000_ffff as *const u32) } == 0 {}
-}
-
-fn fatal_error(code: u32) -> ! {
-    unsafe {
-        fatal_error_handler.handle_error(code);
-    }
-}
-
-static mut fatal_error_handler: &'static dyn ErrorHandler = &DefaultErrorHandler {};
-
-pub trait ErrorHandler {
-    fn handle_error(&self, error: u32) -> !;
-}
-
-pub struct DefaultErrorHandler {}
-
-impl ErrorHandler for DefaultErrorHandler {
-    fn handle_error(&self, _error: u32) -> ! {
-        loop {}
-    }
-}
-
-pub fn set_fatal_error_handler(handler: &'static dyn ErrorHandler) {
-    // Safety: this is a global handle that is set once at boot time.
-    unsafe {
-        fatal_error_handler = handler;
-    }
 }
