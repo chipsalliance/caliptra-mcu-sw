@@ -210,8 +210,7 @@ mod test {
     run_test!(test_mctp_capsule_loopback);
     run_test!(test_mctp_user_loopback);
     run_test!(test_pldm_request_response);
-    // TODO: debug why this test is failing
-    //run_test!(test_spdm_validator);
+    run_test!(test_spdm_validator);
 
     /// This tests a full active mode boot run through with Caliptra, including
     /// loading MCU's firmware from Caliptra over the recovery interface.
