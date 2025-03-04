@@ -13,6 +13,24 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v4
+    - name: Checkout riscv-isa-sim repository
+      uses: actions/checkout@v4
+      with:
+        repository: riscv-software-src/riscv-isa-sim
+        ref: 643e6c6cb0b17c49dcfa80b5b2057dfe076f931d
+        path: riscv-isa-sim
+    - name: Checkout sail-riscv repository
+      uses: actions/checkout@v4
+      with:
+        repository: riscv/sail-riscv
+        ref: 2dfc4ff9f2bed3dcd0a3e8748211c99099e70ab7
+        path: sail-riscv
+    - name: Checkout RISC-V tests
+      uses: actions/checkout@v4
+      with:
+        repository: riscv-non-isa/riscv-arch-test
+        ref: 1d01dde1fbeb627ba666c655c57a058470a9301e
+        path: emulator/compliance-test/riscv-arch-test
     - name: Install dependencies
       run: |
         sudo apt update && \
@@ -21,38 +39,36 @@ jobs:
           device-tree-compiler \
           gcc-multilib \
           gcc-riscv64-unknown-elf \
+          libgmp-dev \
           opam \
+          rustup \
           z3
+    - name: Rustup install
+      run: |
+        rustup toolchain install \
+          $(cat rust-toolchain.toml | grep channel | cut -d'=' -f2 | cut -d'"' -f2)-unknown-linux-gnu \
+          -c clippy rust-src llvm-tools rustfmt rustc-dev
     - name: Install RISC-V Python tools
       run: |
-        pip install git+https://github.com/riscv/riscv-isac.git@dev && \
+        pip install git+https://github.com/riscv/riscv-isac.git@dev
         pip install git+https://github.com/riscv/riscof.git
     - name: Install riscv-isa-sim
+      working-directory: riscv-isa-sim
       run: |
-        git clone https://github.com/riscv-software-src/riscv-isa-sim.git && \
-        pushd riscv-isa-sim && \
-        mkdir build && \
-        pushd build && \
-        ../configure --prefix=/usr && \
-        make -j$(nproc) && \
-        sudo make install && \
-        popd && \
-        popd
+        mkdir build
+        cd build
+        ../configure --prefix=/usr
+        make -j$(nproc)
+        sudo make install
     - name: Install Sail
       run: |
         opam init -a -y && \
         opam install -y sail && \
         echo "$HOME/.opam/default/bin" >> "$GITHUB_PATH"
     - name: Install Sail RISC-V
+      working-directory: sail-riscv
       run: |
-        git clone https://github.com/riscv/sail-riscv.git && \
-        pushd sail-riscv && \
-        ./build_simulators.sh && \
-        sudo cp -r build/c_emulator/riscv_sim_rv32d /usr/bin/riscv_sim_RV32 && \
-        popd
-    - name: Install Rust tools
-      run: rustup update
-    - name: Checkout RISC-V tests
-      run: git clone https://github.com/riscv-non-isa/riscv-arch-test.git emulator/compliance-test/riscv-arch-test
+        DOWNLOAD_GMP=FALSE ./build_simulators.sh
+        sudo cp -r build/c_emulator/riscv_sim_rv32d /usr/bin/riscv_sim_RV32
     - name: Run compliance tests
       run: cargo run -p compliance-test -- --test_root_path emulator/compliance-test/riscv-arch-test
