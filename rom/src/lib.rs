@@ -31,6 +31,7 @@ pub trait FatalErrorHandler {
 static mut FATAL_ERROR_HANDLER: Option<&'static mut dyn FatalErrorHandler> = None;
 
 /// Set the fatal error handler.
+///
 /// SAFETY: it is important that the passed fatal handler is never used otherwise
 /// and no other references exist to it. It is recommended to create a single instance
 /// of the struct and pass it in immediatly, and never use it otherwise.

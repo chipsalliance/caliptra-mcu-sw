@@ -10,7 +10,7 @@ pub fn rom_build() -> Result<(), DynError> {
         .args([
             "build",
             "-p",
-            "rom-emulator",
+            "mcu-rom-emulator",
             "--release",
             "--target",
             TARGET,

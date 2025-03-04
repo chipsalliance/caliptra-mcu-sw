@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "rom-emulator"
+name = "mcu-rom-emulator"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
