@@ -16,6 +16,11 @@ pub const APPS: &[App] = &[
         permissions: vec![],
         minimum_ram: 16384,
     },
+    App {
+        name: "pldm-app",
+        permissions: vec![],
+        minimum_ram: 8192,
+    },
 ];
 
 pub struct App {

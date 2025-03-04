@@ -237,8 +237,8 @@ impl PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]> {
 #[derive(Debug, FromBytes, IntoBytes, Immutable, PartialEq)]
 #[repr(C, packed)]
 pub struct PldmFailureResponse {
-    hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
-    completion_code: u8,
+    pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
+    pub completion_code: u8,
 }
 
 impl PldmFailureResponse {
