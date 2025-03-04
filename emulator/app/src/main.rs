@@ -17,6 +17,7 @@ mod dis_test;
 mod elf;
 mod gdb;
 mod i3c_socket;
+mod mctp_transport;
 mod tests;
 
 use crate::i3c_socket::start_i3c_socket;
@@ -24,17 +25,20 @@ use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAct
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use clap::{ArgAction, Parser};
 use crossterm::event::{Event, KeyCode, KeyEvent};
+use emulator_bmc::Bmc;
 use emulator_bus::{Bus, BusConverter, Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
 use emulator_periph::{
-    CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, I3c, I3cController, Otp,
+    CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, I3c, I3cController, Mci, Otp,
 };
 use emulator_registers_generated::root_bus::AutoRootBus;
 use emulator_registers_generated::soc::SocPeripheral;
 use emulator_types::ROM_SIZE;
 use gdb::gdb_state;
 use gdb::gdb_target::GdbTarget;
+use mctp_transport::MctpTransport;
+use pldm_ua::transport::{EndpointId, PldmTransport};
 use std::cell::RefCell;
 use std::fs::File;
 use std::io;
@@ -44,6 +48,7 @@ use std::process::exit;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
+use tests::pldm_request_response_test::PldmRequestResponseTest;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None, name = "Caliptra MCU Emulator")]
@@ -93,7 +98,20 @@ struct Emulator {
     caliptra_firmware: Option<PathBuf>,
 
     #[arg(long)]
+    soc_manifest: Option<PathBuf>,
+
+    #[arg(long)]
     i3c_port: Option<u16>,
+
+    /// Boot active mode (MCU firmware will need to be loaded by Caliptra Core)
+    #[arg(long)]
+    active_mode: bool,
+
+    #[arg(long)]
+    vendor_pk_hash: Option<String>,
+
+    #[arg(long)]
+    owner_pk_hash: Option<String>,
 }
 
 //const EXPECTED_CALIPTRA_BOOT_TIME_IN_CYCLES: u64 = 20_000_000; // 20 million cycles
@@ -155,6 +173,7 @@ fn free_run(
     mut caliptra_cpu: Option<CaliptraMainCpu<CaliptraMainRootBus>>,
     trace_path: Option<PathBuf>,
     stdin_uart: Option<Arc<Mutex<Option<u8>>>>,
+    mut bmc: Option<Bmc>,
 ) {
     // read from the console in a separate thread to prevent blocking
     let running_clone = running.clone();
@@ -167,13 +186,24 @@ fn free_run(
         let trace_fn: &mut dyn FnMut(u32, RvInstr) = &mut |pc, instr| match instr {
             RvInstr::Instr32(instr32) => {
                 let _ = writeln!(&mut f, "{}", disassemble(pc, instr32));
-                println!("{}", disassemble(pc, instr32));
+                println!("{{mcu cpu}}      {}", disassemble(pc, instr32));
             }
             RvInstr::Instr16(instr16) => {
                 let _ = writeln!(&mut f, "{}", disassemble(pc, instr16 as u32));
-                println!("{}", disassemble(pc, instr16 as u32));
+                println!("{{mcu cpu}}      {}", disassemble(pc, instr16 as u32));
             }
         };
+
+        // we don't put the caliptra trace in the file
+        let caliptra_trace_fn: &mut dyn FnMut(u32, caliptra_emu_cpu::RvInstr) =
+            &mut |pc, instr| match instr {
+                caliptra_emu_cpu::RvInstr::Instr32(instr32) => {
+                    println!("{{caliptra cpu}} {}", disassemble(pc, instr32));
+                }
+                caliptra_emu_cpu::RvInstr::Instr16(instr16) => {
+                    println!("{{caliptra cpu}} {}", disassemble(pc, instr16 as u32));
+                }
+            };
 
         // Need to have the loop in the same scope as trace_fn to prevent borrowing rules violation
         while running.load(std::sync::atomic::Ordering::Relaxed) {
@@ -186,12 +216,18 @@ fn free_run(
             if action != StepAction::Continue {
                 break;
             }
-            match caliptra_cpu.as_mut().map(|cpu| cpu.step(None)) {
+            match caliptra_cpu
+                .as_mut()
+                .map(|cpu| cpu.step(Some(caliptra_trace_fn)))
+            {
                 Some(CaliptraMainStepAction::Continue) | None => {}
                 _ => {
                     println!("Caliptra CPU Halted");
                     caliptra_cpu = None;
                 }
+            }
+            if let Some(bmc) = bmc.as_mut() {
+                bmc.step();
             }
         }
     } else {
@@ -211,6 +247,9 @@ fn free_run(
                     println!("Caliptra CPU Halted");
                     caliptra_cpu = None;
                 }
+            }
+            if let Some(bmc) = bmc.as_mut() {
+                bmc.step();
             }
         }
     };
@@ -262,7 +301,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         })
         .unwrap();
     }
-
+    let active_mode = cli.active_mode;
     let args_rom = &cli.rom;
     let args_log_dir = &cli.log_dir.unwrap_or_else(|| PathBuf::from("/tmp"));
 
@@ -271,7 +310,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         exit(-1);
     }
 
-    let (caliptra_cpu, soc_to_caliptra) = if cli.caliptra {
+    let (mut caliptra_cpu, soc_to_caliptra) = if cli.caliptra {
         if cli.gdb_port.is_some() {
             println!("Caliptra CPU cannot be started with GDB enabled");
             exit(-1);
@@ -280,13 +319,10 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             println!("Caliptra ROM File is required if Caliptra is enabled");
             exit(-1);
         }
-        if cli.caliptra_firmware.is_none() {
-            println!("Caliptra ROM File is required if Caliptra is enabled");
-            exit(-1);
-        }
         let (caliptra_cpu, soc_to_caliptra) = start_caliptra(&StartCaliptraArgs {
             rom: cli.caliptra_rom.unwrap(),
-            firmware: cli.caliptra_firmware,
+            device_lifecycle: Some("production".into()),
+            active_mode,
             ..Default::default()
         })
         .expect("Failed to start Caliptra CPU");
@@ -306,7 +342,12 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         rom_buffer.len(),
     );
 
-    let firmware_buffer = if let Some(firmware_path) = cli.firmware {
+    if active_mode && cli.firmware.is_none() {
+        println!("Active mode requires an MCU firmware file to be passed");
+        exit(-1);
+    }
+
+    let mcu_firmware = if let Some(firmware_path) = cli.firmware {
         read_binary(&firmware_path, 0x4000_0080)?
     } else {
         // this just immediately exits
@@ -330,14 +371,18 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
     let bus_args = CaliptraRootBusArgs {
         rom: rom_buffer,
-        firmware: firmware_buffer,
         log_dir: args_log_dir.clone(),
         uart_output: uart_output.clone(),
         uart_rx: stdin_uart.clone(),
         pic: pic.clone(),
         clock: clock.clone(),
     };
-    let root_bus = CaliptraRootBus::new(bus_args).unwrap();
+    let mut root_bus = CaliptraRootBus::new(bus_args).unwrap();
+
+    if !active_mode {
+        root_bus.load_ram(0x80, &mcu_firmware);
+    }
+
     let dma_ram = root_bus.ram.clone();
 
     let i3c_error_irq = pic.register_irq(CaliptraRootBus::I3C_ERROR_IRQ);
@@ -414,6 +459,17 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         );
     }
 
+    if cfg!(feature = "test-pldm-request-response") {
+        println!("Emulator: Starting test-pldm-request-respons");
+        i3c_controller.start();
+        let pldm_transport =
+            MctpTransport::new(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
+        let pldm_socket = pldm_transport
+            .create_socket(EndpointId(0), EndpointId(1))
+            .unwrap();
+        PldmRequestResponseTest::run(pldm_socket, running.clone());
+    }
+
     let create_flash_controller = |default_path: &str, error_irq: u8, event_irq: u8| {
         // Use a temporary file for flash storage if we're running a test
         let flash_file = if cfg!(any(
@@ -464,14 +520,24 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         Some(Box::new(FakeSoc {}) as Box<dyn SocPeripheral>)
     };
 
-    let otp = Otp::new(&clock.clone(), cli.otp)?;
+    let vendor_pk_hash = cli.vendor_pk_hash.map(|hash| {
+        let v = hex::decode(hash).unwrap();
+        v.try_into().unwrap()
+    });
+    let owner_pk_hash = cli.owner_pk_hash.map(|hash| {
+        let v = hex::decode(hash).unwrap();
+        v.try_into().unwrap()
+    });
+
+    let otp = Otp::new(&clock.clone(), cli.otp, owner_pk_hash, vendor_pk_hash)?;
+    let mci = Mci::default();
     let mut auto_root_bus = AutoRootBus::new(
         delegates,
         Some(Box::new(i3c)),
         Some(Box::new(main_flash_controller)),
         Some(Box::new(recovery_flash_controller)),
         Some(Box::new(otp)),
-        None,
+        Some(Box::new(mci)),
         None,
         None,
         soc_periph,
@@ -494,7 +560,51 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         .periph
         .set_dma_ram(dma_ram);
 
-    let cpu = Cpu::new(auto_root_bus, clock, pic);
+    let mut cpu = Cpu::new(auto_root_bus, clock, pic);
+    cpu.register_events();
+
+    let mut bmc = match caliptra_cpu.as_mut() {
+        Some(caliptra_cpu) => {
+            println!("Initializing recovery interface");
+            let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
+            let (mcu_event_sender, mcu_event_reciever) = cpu.register_events();
+            let bmc = Bmc::new(
+                caliptra_event_sender,
+                caliptra_event_receiver,
+                mcu_event_sender,
+                mcu_event_reciever,
+            );
+            Some(bmc)
+        }
+        _ => None,
+    };
+
+    // prepare the BMC recovery interface emulator
+    if active_mode {
+        if bmc.is_none() {
+            println!("Active mode is only supported when Caliptra CPU is enabled");
+            exit(-1);
+        }
+        let bmc = bmc.as_mut().unwrap();
+
+        // load the firmware images and SoC manifest into the recovery interface emulator
+        // TODO: support reading these from firmware bundle as well
+        let Some(caliptra_firmware) = cli.caliptra_firmware else {
+            println!("Caliptra firmware file is required in active mode");
+            exit(-1);
+        };
+        let Some(soc_manifest) = cli.soc_manifest else {
+            println!("SoC manifest file is required in active mode");
+            exit(-1);
+        };
+        let caliptra_firmware = read_binary(&caliptra_firmware, 0x4000_0000).unwrap();
+        let soc_manifest = read_binary(&soc_manifest, 0).unwrap();
+        bmc.push_recovery_image(caliptra_firmware);
+        bmc.push_recovery_image(soc_manifest);
+        bmc.push_recovery_image(mcu_firmware);
+        println!("Active mode enabled with 3 recovery images");
+        // TODO: set caliptra SoC registers if active mode
+    }
 
     // Check if Optional GDB Port is passed
     match cli.gdb_port {
@@ -513,7 +623,14 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             };
 
             // If no GDB Port is passed, Free Run
-            free_run(running.clone(), cpu, caliptra_cpu, instr_trace, stdin_uart);
+            free_run(
+                running.clone(),
+                cpu,
+                caliptra_cpu,
+                instr_trace,
+                stdin_uart,
+                bmc,
+            );
         }
     }
 

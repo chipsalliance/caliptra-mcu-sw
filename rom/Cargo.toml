@@ -8,8 +8,8 @@ edition.workspace = true
 
 [dependencies]
 registers-generated.workspace = true
-tock-registers.workspace = true
 romtime.workspace = true
+tock-registers.workspace = true
 zeroize.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]

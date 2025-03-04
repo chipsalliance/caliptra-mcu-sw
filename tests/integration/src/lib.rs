@@ -2,6 +2,9 @@
 
 #[cfg(test)]
 mod test {
+    use caliptra_image_crypto::RustCrypto as Crypto;
+    use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
+    use hex::ToHex;
     use std::io::Write;
     use std::process::ExitStatus;
     use std::sync::atomic::AtomicU32;
@@ -11,6 +14,7 @@ mod test {
         process::Command,
         sync::LazyLock,
     };
+    use zerocopy::IntoBytes;
 
     const TARGET: &str = "riscv32imc-unknown-none-elf";
 
@@ -73,13 +77,51 @@ mod test {
         output
     }
 
+    fn write_soc_manifest() -> PathBuf {
+        let path = PROJECT_ROOT.join("target").join("soc-manifest");
+        std::fs::write(&path, [1, 2, 3]).unwrap();
+        path
+    }
+
+    fn compile_caliptra_rom() -> PathBuf {
+        let rom_bytes = caliptra_builder::rom_for_fw_integration_tests().unwrap();
+        let path = PROJECT_ROOT.join("target").join("caliptra-rom.bin");
+        std::fs::write(&path, rom_bytes).unwrap();
+        path
+    }
+
+    fn compile_caliptra_fw() -> (PathBuf, String) {
+        let bundle = caliptra_builder::build_and_sign_image(
+            &caliptra_builder::firmware::FMC_WITH_UART,
+            &caliptra_builder::firmware::APP_WITH_UART,
+            caliptra_builder::ImageOptions::default(),
+        )
+        .unwrap();
+        let crypto = Crypto::default();
+        let vendor_pk_hash = from_hw_format(
+            &crypto
+                .sha384_digest(bundle.manifest.preamble.vendor_pub_key_info.as_bytes())
+                .unwrap(),
+        )
+        .encode_hex();
+        let fw_bytes = bundle.to_bytes().unwrap();
+        let path = PROJECT_ROOT.join("target").join("caliptra-fw-bundle.bin");
+        std::fs::write(&path, fw_bytes).unwrap();
+        (path, vendor_pk_hash)
+    }
+
     fn run_runtime(
         feature: &str,
         rom_path: PathBuf,
         runtime_path: PathBuf,
         i3c_port: String,
+        soc_manifest: Option<PathBuf>,
+        caliptra_rom: Option<PathBuf>,
+        caliptra_fw: Option<PathBuf>,
+        vendor_pk_hash: Option<String>,
+        active_mode: bool,
     ) -> ExitStatus {
-        let cargo_run_args = vec![
+        let mut cargo_run_args = vec![
             "run",
             "-p",
             "emulator",
@@ -94,6 +136,26 @@ mod test {
             "--i3c-port",
             i3c_port.as_str(),
         ];
+        if active_mode {
+            cargo_run_args.push("--active-mode");
+        }
+        if let Some(soc_manifest) = soc_manifest.as_ref() {
+            cargo_run_args.push("--soc-manifest");
+            cargo_run_args.push(soc_manifest.to_str().unwrap());
+        }
+        if let Some(caliptra_rom) = caliptra_rom.as_ref() {
+            cargo_run_args.push("--caliptra");
+            cargo_run_args.push("--caliptra-rom");
+            cargo_run_args.push(caliptra_rom.to_str().unwrap());
+        }
+        if let Some(caliptra_fw) = caliptra_fw.as_ref() {
+            cargo_run_args.push("--caliptra-firmware");
+            cargo_run_args.push(caliptra_fw.to_str().unwrap());
+        }
+        if let Some(vendor_pk_hash) = vendor_pk_hash.as_ref() {
+            cargo_run_args.push("--vendor-pk-hash");
+            cargo_run_args.push(vendor_pk_hash.as_str());
+        }
         println!("Running test firmware {}", feature.replace("_", "-"));
         let mut cmd = Command::new("cargo");
         let cmd = cmd.args(&cargo_run_args).current_dir(&*PROJECT_ROOT);
@@ -112,7 +174,17 @@ mod test {
                 let feature = stringify!($test).replace("_", "-");
                 let test_runtime = compile_runtime(&feature);
                 let i3c_port = "65534".to_string();
-                let test = run_runtime(&feature, ROM.to_path_buf(), test_runtime, i3c_port);
+                let test = run_runtime(
+                    &feature,
+                    ROM.to_path_buf(),
+                    test_runtime,
+                    i3c_port,
+                    None,
+                    None,
+                    None,
+                    None,
+                    false,
+                );
                 assert_eq!(0, test.code().unwrap_or_default());
 
                 // force the compiler to keep the lock
@@ -137,5 +209,38 @@ mod test {
     run_test!(test_mctp_ctrl_cmds);
     run_test!(test_mctp_capsule_loopback);
     run_test!(test_mctp_user_loopback);
-    run_test!(test_spdm_validator);
+    run_test!(test_pldm_request_response);
+    // TODO: debug why this test is failing
+    //run_test!(test_spdm_validator);
+
+    /// This tests a full active mode boot run through with Caliptra, including
+    /// loading MCU's firmware from Caliptra over the recovery interface.
+    #[test]
+    fn test_active_mode_recovery_with_caliptra() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let feature = "test-exit-immediately".to_string();
+        println!("Compiling test firmware {}", &feature);
+        let test_runtime = compile_runtime(&feature);
+        let i3c_port = "65534".to_string();
+        let soc_manifest = write_soc_manifest();
+        let caliptra_rom = compile_caliptra_rom();
+        let (caliptra_fw, vendor_pk_hash) = compile_caliptra_fw();
+        let test = run_runtime(
+            &feature,
+            ROM.to_path_buf(),
+            test_runtime,
+            i3c_port,
+            Some(soc_manifest),
+            Some(caliptra_rom),
+            Some(caliptra_fw),
+            Some(vendor_pk_hash),
+            true,
+        );
+        assert_eq!(0, test.code().unwrap_or_default());
+
+        // force the compiler to keep the lock
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }

@@ -774,7 +774,7 @@ mod test {
         data: Option<&[u8]>,
     ) -> Option<u32> {
         // Check if ref_addr is within the range of DCCM
-        if ref_addr < RAM_OFFSET || ref_addr + size as u32 > RAM_OFFSET + RAM_SIZE as u32 {
+        if ref_addr < RAM_OFFSET || ref_addr + size as u32 > RAM_OFFSET + RAM_SIZE {
             return None;
         }
 
@@ -1421,7 +1421,7 @@ mod test {
         );
     }
 
-    //// TEST CASE STARTED HERE
+    /// TEST CASE STARTED HERE
     #[test]
     fn test_main_flash_regs_access() {
         test_flash_ctrl_regs_access(FlashType::Main);

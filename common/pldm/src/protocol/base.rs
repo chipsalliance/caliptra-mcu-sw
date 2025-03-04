@@ -270,7 +270,7 @@ mod tests {
             PldmControlCmd::GetTid as u8,
         );
         assert_eq!(header.0, [0x81, 0x00, 0x02]);
-        assert_eq!(header.is_request(), true);
+        assert!(header.is_request());
         let response = header.into_response();
         assert_eq!(response.0, [0x01, 0x00, 0x02]);
         assert_eq!(response.rq(), PldmMsgType::Response as u8);

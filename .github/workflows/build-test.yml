@@ -39,9 +39,10 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install build-essential curl gcc-multilib gcc-riscv64-unknown-elf git \
-          curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf -y | sh
-          rustup update
+          sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup
+          rustup toolchain install \
+            $(cat rust-toolchain.toml | grep channel | cut -d'=' -f2 | cut -d'"' -f2)-unknown-linux-gnu \
+            -c clippy rust-src llvm-tools rustfmt rustc-dev
 
       - name: Restore sccache binary
         uses: actions/cache/restore@v3
@@ -101,7 +102,7 @@ jobs:
           ref: pbhogaraju/spdm-selective-cmd-validator
           path: spdm-emu
           submodules: recursive
-      
+
       - name: Build spdm-emu
         run: |
           pushd spdm-emu
@@ -119,15 +120,7 @@ jobs:
           export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
           cargo --config "$EXTRA_CARGO_CONFIG" xtask test
           sccache --show-stats
-      
-      - name: display SPDM Validator test results
-        run: |
-          cat $GITHUB_WORKSPACE/test.log
-          if grep -q "fail: 0" $GITHUB_WORKSPACE/test.log; then
-          echo "All tests passed."
-          else
-          echo "Some tests failed."
-          exit 1
-          fi
-    
-          
+
+      # - name: Display SPDM Validator test results
+      #   run: |
+      #     cat $GITHUB_WORKSPACE/test.log

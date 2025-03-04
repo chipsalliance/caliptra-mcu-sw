@@ -18,9 +18,11 @@ use crate::types::{RvInstr, RvMStatus, RvMemAccessType, RvMsecCfg, RvPrivMode};
 use crate::xreg_file::{XReg, XRegFile};
 use crate::Pic;
 use bit_vec::BitVec;
+use caliptra_emu_bus::Event;
 use emulator_bus::{Bus, BusError, Clock, TimerAction};
 use emulator_types::{RvAddr, RvData, RvException, RvExceptionCause, RvSize, RAM_OFFSET, RAM_SIZE};
 use std::rc::Rc;
+use std::sync::mpsc;
 
 pub type InstrTracer<'a> = dyn FnMut(u32, RvInstr) + 'a;
 
@@ -171,6 +173,11 @@ pub struct Cpu<TBus: Bus> {
     internal_timer_local_int_counter: usize,
     #[cfg(test)]
     external_int_counter: usize,
+
+    // incoming communication with other components
+    incoming_events: Option<mpsc::Receiver<Event>>,
+    // events sent to other components
+    outgoing_events: Option<mpsc::Sender<Event>>,
 }
 
 /// Cpu instruction step action
@@ -215,6 +222,8 @@ impl<TBus: Bus> Cpu<TBus> {
             internal_timer_local_int_counter: 0,
             #[cfg(test)]
             external_int_counter: 0,
+            incoming_events: None,
+            outgoing_events: None,
         }
     }
 
@@ -660,7 +669,7 @@ impl<TBus: Bus> Cpu<TBus> {
             return StepAction::Continue;
         }
 
-        match self.exec_instr(instr_tracer) {
+        let action = match self.exec_instr(instr_tracer) {
             Ok(result) => result,
             Err(exception) => match exception.cause() {
                 RvExceptionCause::IllegalInstr => {
@@ -668,7 +677,11 @@ impl<TBus: Bus> Cpu<TBus> {
                 }
                 _ => self.handle_exception(exception),
             },
-        }
+        };
+
+        // handle incoming events at this point, if there are any
+        self.handle_incoming_events();
+        action
     }
 
     fn handle_internal_timer_local_interrupt(&mut self, timer_id: u8) -> StepAction {
@@ -808,6 +821,27 @@ impl<TBus: Bus> Cpu<TBus> {
     //// Get WatchPointer
     pub fn get_watchptr_hit(&self) -> Option<&WatchPtrHit> {
         self.watch_ptr_cfg.hit.as_ref()
+    }
+
+    // returns a sender (that sends events to this CPU)
+    // and a receiver (that receives events that this CPU sends)
+    pub fn register_events(&mut self) -> (mpsc::Sender<Event>, mpsc::Receiver<Event>) {
+        let (tx, rx) = mpsc::channel();
+        let (tx2, rx2) = mpsc::channel();
+
+        self.incoming_events = Some(rx);
+        // let the bus be able to send events
+        self.bus.register_outgoing_events(tx2.clone());
+        self.outgoing_events = Some(tx2);
+        (tx, rx2)
+    }
+
+    fn handle_incoming_events(&mut self) {
+        if let Some(incoming_events) = &self.incoming_events {
+            for event in incoming_events.try_iter() {
+                self.bus.incoming_event(Rc::new(event));
+            }
+        }
     }
 }
 

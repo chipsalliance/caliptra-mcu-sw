@@ -33,6 +33,8 @@ use tock_registers::registers::InMemoryRegister;
 
 /// Firmware Load Command Opcode
 const FW_LOAD_CMD_OPCODE: u32 = 0x4657_4C44;
+/// Start firmware download
+const RI_DOWNLOAD_FIRMWARE: u32 = 0x5249_4644;
 
 /// The number of CPU clock cycles it takes to write the firmware to the mailbox.
 const FW_WRITE_TICKS: u64 = 1000;
@@ -50,6 +52,7 @@ fn words_from_bytes_le(arr: &[u8; 48]) -> [u32; 12] {
 #[derive(Default)]
 pub struct StartCaliptraArgs {
     pub rom: PathBuf,
+    pub active_mode: bool,
     pub firmware: Option<PathBuf>,
     pub update_firmware: Option<PathBuf>,
     pub log_dir: Option<PathBuf>,
@@ -177,6 +180,28 @@ pub fn start_caliptra(
         },
     );
 
+    let ready_for_fw_cb = if args.active_mode {
+        // in active mode, we don't upload the firmware here
+        // TODO: this needs to be moved to the MCU ROM when that has a mailbox driver
+        ReadyForFwCb::new(move |args| {
+            args.schedule_later(FW_WRITE_TICKS, move |mailbox: &mut MailboxInternal| {
+                let soc_mbox = mailbox.as_external().regs();
+                // Write the cmd to mailbox.
+                assert!(!soc_mbox.lock().read().lock());
+                soc_mbox.cmd().write(|_| RI_DOWNLOAD_FIRMWARE);
+                soc_mbox.dlen().write(|_| 0u32);
+                soc_mbox.execute().write(|w| w.execute(true));
+            });
+        })
+    } else {
+        ReadyForFwCb::new(move |args| {
+            let firmware_buffer = current_fw_buf.clone();
+            args.schedule_later(FW_WRITE_TICKS, move |mailbox: &mut MailboxInternal| {
+                upload_fw_to_mailbox(mailbox, firmware_buffer);
+            });
+        })
+    };
+
     let bus_args = CaliptraRootBusArgs {
         rom: rom_buffer,
         log_dir: args_log_dir.clone(),
@@ -185,12 +210,7 @@ pub fn start_caliptra(
             0xFF => exit(0x00),
             _ => print!("{}", val as char),
         }),
-        ready_for_fw_cb: ReadyForFwCb::new(move |args| {
-            let firmware_buffer = current_fw_buf.clone();
-            args.schedule_later(FW_WRITE_TICKS, move |mailbox: &mut MailboxInternal| {
-                upload_fw_to_mailbox(mailbox, firmware_buffer);
-            });
-        }),
+        ready_for_fw_cb,
         security_state,
         upload_update_fw: UploadUpdateFwCb::new(move |mailbox: &mut MailboxInternal| {
             upload_fw_to_mailbox(mailbox, update_fw_buf.clone());
@@ -204,6 +224,7 @@ pub fn start_caliptra(
                 download_idev_id_csr(mailbox, log_dir.clone(), cptra_dbg_manuf_service_reg);
             },
         ),
+        active_mode: args.active_mode,
         ..Default::default()
     };
 

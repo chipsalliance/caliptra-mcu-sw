@@ -39,6 +39,7 @@ use emulator_periph::{
 };
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Arc};
@@ -180,6 +181,12 @@ pub(crate) fn run_tests(
     let running_clone = running.clone();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let stream = TcpStream::connect(addr).unwrap();
+    let running_clone_stop = running.clone();
+    // cancel the test after 30 seconds
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(30));
+        running_clone_stop.store(false, Ordering::Relaxed);
+    });
     std::thread::spawn(move || {
         let mut test_runner = MctpTestRunner::new(stream, target_addr.into(), running_clone, tests);
         test_runner.run_tests();
@@ -232,11 +239,16 @@ impl MctpTestRunner {
             }
         }
         println!(
-            "Test Result: {} tests/{} total tests passed ",
+            "Test Result: {}/{} tests passed",
             self.passed,
             self.tests.len()
         );
         self.running.store(false, Ordering::Relaxed);
+        if self.passed == self.tests.len() {
+            exit(0);
+        } else {
+            exit(-1);
+        }
     }
 }
 

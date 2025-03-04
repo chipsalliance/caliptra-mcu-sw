@@ -26,6 +26,7 @@ rv32i.workspace = true
 
 [features]
 default = []
+test-exit-immediately = []
 test-i3c-simple = []
 test-i3c-constant-writes = []
 test-flash-ctrl-init = []
@@ -37,4 +38,5 @@ test-flash-usermode = []
 test-mctp-ctrl-cmds = []
 test-mctp-capsule-loopback = []
 test-mctp-user-loopback = []
+test-pldm-request-response = []
 test-spdm-validator = []

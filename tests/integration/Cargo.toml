@@ -8,6 +8,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+caliptra-builder.workspace = true
+caliptra-image-crypto.workspace = true
+caliptra-image-gen.workspace = true
 caliptra-emu-cpu.workspace = true
 caliptra-emu-periph.workspace = true
 clap.workspace = true

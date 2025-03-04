@@ -8,14 +8,20 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-caliptra-emu-cpu.workspace = true
 bitfield.workspace = true
+caliptra-emu-bus.workspace = true
+caliptra-emu-cpu.workspace = true
 caliptra-emu-periph.workspace = true
+caliptra-emu-types.workspace = true
+caliptra-image-types.workspace = true
+caliptra-test.workspace = true
 clap.workspace = true
 crc.workspace = true
 crossterm.workspace = true
 ctrlc.workspace = true
+ecdsa.workspace = true
 elf.workspace = true
+emulator-bmc.workspace = true
 emulator-bus.workspace = true
 emulator-caliptra.workspace = true
 emulator-cpu.workspace = true
@@ -25,12 +31,18 @@ emulator-types.workspace = true
 gdbstub_arch.workspace = true
 gdbstub.workspace = true
 hex.workspace = true
+p384.workspace = true
 rand.workspace = true
+sec1.workspace = true
+sha2.workspace = true
+smlang.workspace = true
 strum_macros.workspace = true
 strum.workspace = true
+tempfile.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
-tempfile.workspace = true
+pldm-common.workspace = true
+pldm-ua.workspace = true
 
 [features]
 default = []
@@ -46,3 +58,5 @@ test-mctp-ctrl-cmds = ["emulator-periph/test-mctp-ctrl-cmds"]
 test-mctp-capsule-loopback = ["emulator-periph/test-mctp-capsule-loopback"]
 test-mctp-user-loopback = ["emulator-periph/test-mctp-user-loopback"]
 test-spdm-validator = ["emulator-periph/test-spdm-validator"]
+test-exit-immediately = []
+test-pldm-request-response = []

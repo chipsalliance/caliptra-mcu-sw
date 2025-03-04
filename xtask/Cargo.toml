@@ -17,6 +17,7 @@ registers-systemrdl.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde-hjson.workspace = true
+sudo.workspace = true
 tempfile.workspace = true
 toml.workspace = true
 walkdir.workspace = true

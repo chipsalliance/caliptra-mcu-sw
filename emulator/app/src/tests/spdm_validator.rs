@@ -148,7 +148,7 @@ impl Test {
         target_addr: u8,
     ) {
         i3c_stream.set_nonblocking(true).unwrap();
-        println!("Sending message to target {:X?}", self.cur_req_msg);
+        println!("Test: Sending message to target {:x?}", self.cur_req_msg);
         self.mctp_test_state = MctpTestState::Start;
 
         while running.load(Ordering::Relaxed) {
@@ -168,19 +168,25 @@ impl Test {
                 }
 
                 MctpTestState::ReceiveResp => {
+                    println!("Test: receive_response");
                     let resp_msg =
                         self.mctp_util
                             .receive_response(running.clone(), i3c_stream, target_addr);
                     if !resp_msg.is_empty() {
+                        println!("Test: response received, marking finished");
                         self.cur_resp_msg = resp_msg;
                         self.mctp_test_state = MctpTestState::Finish;
+                    } else {
+                        println!("Test: no response received");
                     }
                 }
 
                 MctpTestState::Finish => {
                     break;
                 }
-                _ => {}
+                _ => {
+                    panic!("Unknown state: {:?}", self.mctp_test_state);
+                }
             }
         }
     }
@@ -239,7 +245,7 @@ impl Test {
                     );
                     if let Some(resp_msg) = result {
                         println!("SPDM_SERVER: Received response from target {:?}", resp_msg);
-                        assert!(resp_msg[0] == self.cur_req_msg[0]);
+                        assert_eq!(resp_msg[0], self.cur_req_msg[0]);
                         self.cur_resp_msg = resp_msg;
                         self.responder_ready = true;
                     } else {
