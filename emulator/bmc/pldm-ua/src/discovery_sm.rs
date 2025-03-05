@@ -18,9 +18,11 @@ statemachine! {
     derive_states: [Debug],
     derive_events: [Clone, Debug],
     transitions: {
-        *Idle + StartDiscovery / on_start_discovery = GetTIDSent,
+        *Idle + StartDiscovery / on_start_discovery = SetTidSent,
 
-        GetTIDSent + GetTIDResponse(pldm_packet::GetTidResponse) / on_tid_response = GetPLDMTypesSent,
+        SetTidSent + SetTidResponse(pldm_packet::SetTidResponse) / on_set_tid_response = GetTIDSent,
+
+        GetTIDSent + GetTIDResponse(pldm_packet::GetTidResponse) / on_get_tid_response = GetPLDMTypesSent,
 
         GetPLDMTypesSent + GetPLDMTypesResponse(pldm_packet::GetPldmTypeResponse) [is_valid_pldm_types_response0] / on_pldm_types_response = GetPLDMVersionType0Sent,
 
@@ -49,10 +51,21 @@ pub trait StateMachineActions {
     fn on_start_discovery(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<(), ()> {
         send_request_helper(
             &ctx.socket,
+            &pldm_packet::SetTidRequest::new(ctx.instance_id, PldmMsgType::Request, ctx.fd_tid),
+        )
+    }
+    fn on_set_tid_response(
+        &self,
+        ctx: &mut InnerContext<impl PldmSocket>,
+        _response: pldm_packet::SetTidResponse,
+    ) -> Result<(), ()> {
+        ctx.instance_id += 1;
+        send_request_helper(
+            &ctx.socket,
             &pldm_packet::GetTidRequest::new(ctx.instance_id, PldmMsgType::Request),
         )
     }
-    fn on_tid_response(
+    fn on_get_tid_response(
         &self,
         ctx: &mut InnerContext<impl PldmSocket>,
         _response: pldm_packet::GetTidResponse,
@@ -276,6 +289,7 @@ pub fn process_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
     // Convert packet to state machine event
     match PldmControlCmd::try_from(header.cmd_code()) {
         Ok(cmd) => match cmd {
+            PldmControlCmd::SetTid => packet_to_event(&header, packet, Events::SetTidResponse),
             PldmControlCmd::GetTid => packet_to_event(&header, packet, Events::GetTIDResponse),
             PldmControlCmd::GetPldmTypes => {
                 packet_to_event(&header, packet, Events::GetPLDMTypesResponse)
@@ -285,10 +299,6 @@ pub fn process_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
             }
             PldmControlCmd::GetPldmCommands => {
                 packet_to_event(&header, packet, Events::GetPLDMCommandsResponse)
-            }
-            _ => {
-                error!("Unknown discovery command");
-                Err(())
             }
         },
         Err(_) => Err(()),
@@ -301,6 +311,7 @@ impl StateMachineActions for DefaultActions {}
 pub struct InnerContext<S: PldmSocket> {
     socket: S,
     instance_id: InstanceId,
+    fd_tid: u8,
 }
 
 pub struct Context<T: StateMachineActions, S: PldmSocket> {
@@ -309,12 +320,13 @@ pub struct Context<T: StateMachineActions, S: PldmSocket> {
 }
 
 impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
-    pub fn new(context: T, socket: S) -> Self {
+    pub fn new(context: T, socket: S, fd_tid: u8) -> Self {
         Self {
             inner: context,
             inner_ctx: InnerContext {
                 socket,
                 instance_id: 0,
+                fd_tid,
             },
         }
     }
@@ -345,7 +357,8 @@ impl<T: StateMachineActions, S: PldmSocket> StateMachineContext for Context<T, S
     // Actions
     delegate_to_inner! {
         on_start_discovery() -> Result<(), ()>,
-        on_tid_response(response: pldm_packet::GetTidResponse) -> Result<(), ()>,
+        on_set_tid_response(response: pldm_packet::SetTidResponse) -> Result<(), ()>,
+        on_get_tid_response(response: pldm_packet::GetTidResponse) -> Result<(), ()>,
         on_pldm_types_response(response: pldm_packet::GetPldmTypeResponse) -> Result<(), ()>,
         on_pldm_version_response_type0(response: pldm_packet::GetPldmVersionResponse) -> Result<(), ()>,
         on_pldm_commands_response_type0(response: pldm_packet::GetPldmCommandsResponse) -> Result<(), ()>,

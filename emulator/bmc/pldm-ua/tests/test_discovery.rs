@@ -9,6 +9,7 @@ use pldm_common::protocol::base::{
 };
 use pldm_common::protocol::firmware_update::FwUpdateCmd;
 use pldm_common::protocol::version::{PLDM_BASE_PROTOCOL_VERSION, PLDM_FW_UPDATE_PROTOCOL_VERSION};
+use pldm_ua::discovery_sm;
 use simple_logger::SimpleLogger;
 
 use pldm_common::codec::PldmCodec;
@@ -69,9 +70,25 @@ fn test_discovery() {
     let fd_sock = transport.create_socket(fd_sid, ua_sid).unwrap();
 
     // Run the PLDM daemon
-    let mut daemon = PldmDaemon::run(ua_sock, Options::default());
+    let mut daemon = PldmDaemon::run(
+        ua_sock,
+        Options {
+            discovery_sm_actions: discovery_sm::DefaultActions {},
+            fd_tid: DEVICE_TID,
+        },
+    );
 
+    // TID to be assigned to the device
     const DEVICE_TID: u8 = 0x01;
+
+    let request: SetTidRequest = receive_request(&fd_sock, PldmControlCmd::SetTid).unwrap();
+    assert_eq!(request.tid, DEVICE_TID);
+
+    // Send SetTid response
+    send_response(
+        &fd_sock,
+        &SetTidResponse::new(request.hdr.instance_id(), COMPLETION_CODE_SUCCESSFUL),
+    );
 
     // Receive GetTid request
     let request: GetTidRequest = receive_request(&fd_sock, PldmControlCmd::GetTid).unwrap();
