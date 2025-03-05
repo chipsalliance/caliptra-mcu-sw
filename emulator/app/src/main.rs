@@ -28,13 +28,13 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_bmc::Bmc;
 use emulator_bus::{Bus, BusConverter, Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
+use emulator_consts::{RAM_OFFSET, ROM_SIZE};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
 use emulator_periph::{
     CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, I3c, I3cController, Mci, Otp,
 };
 use emulator_registers_generated::root_bus::AutoRootBus;
 use emulator_registers_generated::soc::SocPeripheral;
-use emulator_types::ROM_SIZE;
 use gdb::gdb_state;
 use gdb::gdb_target::GdbTarget;
 use mctp_transport::MctpTransport;
@@ -597,7 +597,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             println!("SoC manifest file is required in active mode");
             exit(-1);
         };
-        let caliptra_firmware = read_binary(&caliptra_firmware, 0x4000_0000).unwrap();
+        let caliptra_firmware = read_binary(&caliptra_firmware, RAM_OFFSET).unwrap();
         let soc_manifest = read_binary(&soc_manifest, 0).unwrap();
         bmc.push_recovery_image(caliptra_firmware);
         bmc.push_recovery_image(soc_manifest);

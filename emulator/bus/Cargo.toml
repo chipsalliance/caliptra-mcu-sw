@@ -10,5 +10,4 @@ edition = "2021"
 [dependencies]
 caliptra-emu-bus.workspace = true
 caliptra-emu-types.workspace = true
-emulator-types.workspace = true
 tock-registers.workspace = true

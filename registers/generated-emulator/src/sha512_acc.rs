@@ -23,7 +23,7 @@ pub trait Sha512AccPeripheral {
         >,
     ) {
     }
-    fn read_user(&mut self) -> emulator_types::RvData {
+    fn read_user(&mut self) -> caliptra_emu_types::RvData {
         0
     }
     fn read_mode(
@@ -40,18 +40,18 @@ pub trait Sha512AccPeripheral {
         >,
     ) {
     }
-    fn read_start_address(&mut self) -> emulator_types::RvData {
+    fn read_start_address(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_start_address(&mut self, _val: emulator_types::RvData) {}
-    fn read_dlen(&mut self) -> emulator_types::RvData {
+    fn write_start_address(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_dlen(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_dlen(&mut self, _val: emulator_types::RvData) {}
-    fn read_datain(&mut self) -> emulator_types::RvData {
+    fn write_dlen(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_datain(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_datain(&mut self, _val: emulator_types::RvData) {}
+    fn write_datain(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_execute(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
@@ -74,7 +74,7 @@ pub trait Sha512AccPeripheral {
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn read_digest(&mut self) -> emulator_types::RvData {
+    fn read_digest(&mut self) -> caliptra_emu_types::RvData {
         0
     }
     fn read_control(
@@ -207,26 +207,30 @@ pub trait Sha512AccPeripheral {
         >,
     ) {
     }
-    fn read_intr_block_rf_error0_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn read_intr_block_rf_error0_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_intr_block_rf_error0_intr_count_r(&mut self, _val: emulator_types::RvData) {}
-    fn read_intr_block_rf_error1_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn write_intr_block_rf_error0_intr_count_r(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_intr_block_rf_error1_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_intr_block_rf_error1_intr_count_r(&mut self, _val: emulator_types::RvData) {}
-    fn read_intr_block_rf_error2_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn write_intr_block_rf_error1_intr_count_r(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_intr_block_rf_error2_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_intr_block_rf_error2_intr_count_r(&mut self, _val: emulator_types::RvData) {}
-    fn read_intr_block_rf_error3_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn write_intr_block_rf_error2_intr_count_r(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_intr_block_rf_error3_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_intr_block_rf_error3_intr_count_r(&mut self, _val: emulator_types::RvData) {}
-    fn read_intr_block_rf_notif_cmd_done_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn write_intr_block_rf_error3_intr_count_r(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_intr_block_rf_notif_cmd_done_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_intr_block_rf_notif_cmd_done_intr_count_r(&mut self, _val: emulator_types::RvData) {}
+    fn write_intr_block_rf_notif_cmd_done_intr_count_r(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+    ) {
+    }
     fn read_intr_block_rf_error0_intr_count_incr_r(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
@@ -274,70 +278,70 @@ pub struct Sha512AccBus {
 impl emulator_bus::Bus for Sha512AccBus {
     fn read(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-    ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
-            0..4 => Ok(emulator_types::RvData::from(
+            0..4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_lock().reg.get(),
             )),
             4..8 => Ok(self.periph.read_user()),
-            8..0xc => Ok(emulator_types::RvData::from(
+            8..0xc => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mode().reg.get(),
             )),
             0xc..0x10 => Ok(self.periph.read_start_address()),
             0x10..0x14 => Ok(self.periph.read_dlen()),
             0x14..0x18 => Ok(self.periph.read_datain()),
-            0x18..0x1c => Ok(emulator_types::RvData::from(
+            0x18..0x1c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_execute().reg.get(),
             )),
-            0x1c..0x20 => Ok(emulator_types::RvData::from(
+            0x1c..0x20 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_status().reg.get(),
             )),
             0x20..0x60 => Ok(self.periph.read_digest()),
-            0x60..0x64 => Ok(emulator_types::RvData::from(
+            0x60..0x64 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_control().reg.get(),
             )),
-            0x800..0x804 => Ok(emulator_types::RvData::from(
+            0x800..0x804 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_intr_block_rf_global_intr_en_r().reg.get(),
             )),
-            0x804..0x808 => Ok(emulator_types::RvData::from(
+            0x804..0x808 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_intr_block_rf_error_intr_en_r().reg.get(),
             )),
-            0x808..0x80c => Ok(emulator_types::RvData::from(
+            0x808..0x80c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_intr_block_rf_notif_intr_en_r().reg.get(),
             )),
-            0x80c..0x810 => Ok(emulator_types::RvData::from(
+            0x80c..0x810 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_global_intr_r()
                     .reg
                     .get(),
             )),
-            0x810..0x814 => Ok(emulator_types::RvData::from(
+            0x810..0x814 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_global_intr_r()
                     .reg
                     .get(),
             )),
-            0x814..0x818 => Ok(emulator_types::RvData::from(
+            0x814..0x818 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_internal_intr_r()
                     .reg
                     .get(),
             )),
-            0x818..0x81c => Ok(emulator_types::RvData::from(
+            0x818..0x81c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_internal_intr_r()
                     .reg
                     .get(),
             )),
-            0x81c..0x820 => Ok(emulator_types::RvData::from(
+            0x81c..0x820 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_intr_block_rf_error_intr_trig_r().reg.get(),
             )),
-            0x820..0x824 => Ok(emulator_types::RvData::from(
+            0x820..0x824 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_intr_block_rf_notif_intr_trig_r().reg.get(),
             )),
             0x900..0x904 => Ok(self.periph.read_intr_block_rf_error0_intr_count_r()),
@@ -345,31 +349,31 @@ impl emulator_bus::Bus for Sha512AccBus {
             0x908..0x90c => Ok(self.periph.read_intr_block_rf_error2_intr_count_r()),
             0x90c..0x910 => Ok(self.periph.read_intr_block_rf_error3_intr_count_r()),
             0x980..0x984 => Ok(self.periph.read_intr_block_rf_notif_cmd_done_intr_count_r()),
-            0xa00..0xa04 => Ok(emulator_types::RvData::from(
+            0xa00..0xa04 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error0_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0xa04..0xa08 => Ok(emulator_types::RvData::from(
+            0xa04..0xa08 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error1_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0xa08..0xa0c => Ok(emulator_types::RvData::from(
+            0xa08..0xa0c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error2_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0xa0c..0xa10 => Ok(emulator_types::RvData::from(
+            0xa0c..0xa10 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error3_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0xa10..0xa14 => Ok(emulator_types::RvData::from(
+            0xa10..0xa14 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_cmd_done_intr_count_incr_r()
                     .reg
@@ -380,11 +384,11 @@ impl emulator_bus::Bus for Sha512AccBus {
     }
     fn write(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-        val: emulator_types::RvData,
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+        val: caliptra_emu_types::RvData,
     ) -> Result<(), emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::StoreAddrMisaligned);
         }
         match addr {

@@ -50,9 +50,9 @@ impl AutoRootBus {
 impl emulator_bus::Bus for AutoRootBus {
     fn read(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-    ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
         let result = match addr {
             0x5000_0000..=0x5000_3fff => self.dccm.read(size, addr - 0x5000_0000),
             0x2000_4000..=0x2000_5987 => {
@@ -133,9 +133,9 @@ impl emulator_bus::Bus for AutoRootBus {
     }
     fn write(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-        val: emulator_types::RvData,
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+        val: caliptra_emu_types::RvData,
     ) -> Result<(), emulator_bus::BusError> {
         let result = match addr {
             0x5000_0000..=0x5000_3fff => self.dccm.write(size, addr - 0x5000_0000, val),

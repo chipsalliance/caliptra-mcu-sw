@@ -77,10 +77,10 @@ pub trait El2PicPeripheral {
         >,
     ) {
     }
-    fn read_meigwclr(&mut self) -> emulator_types::RvData {
+    fn read_meigwclr(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_meigwclr(&mut self, _val: emulator_types::RvData) {}
+    fn write_meigwclr(&mut self, _val: caliptra_emu_types::RvData) {}
 }
 pub struct El2PicBus {
     pub periph: Box<dyn El2PicPeripheral>,
@@ -88,26 +88,26 @@ pub struct El2PicBus {
 impl emulator_bus::Bus for El2PicBus {
     fn read(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-    ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
-            0..0x400 => Ok(emulator_types::RvData::from(
+            0..0x400 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_meipl().reg.get(),
             )),
-            0x1000..0x1400 => Ok(emulator_types::RvData::from(
+            0x1000..0x1400 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_meip().reg.get(),
             )),
-            0x2000..0x2400 => Ok(emulator_types::RvData::from(
+            0x2000..0x2400 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_meie().reg.get(),
             )),
-            0x3000..0x3004 => Ok(emulator_types::RvData::from(
+            0x3000..0x3004 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mpiccfg().reg.get(),
             )),
-            0x4000..0x4400 => Ok(emulator_types::RvData::from(
+            0x4000..0x4400 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_meigwctrl().reg.get(),
             )),
             0x5000..0x5400 => Ok(self.periph.read_meigwclr()),
@@ -116,11 +116,11 @@ impl emulator_bus::Bus for El2PicBus {
     }
     fn write(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-        val: emulator_types::RvData,
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+        val: caliptra_emu_types::RvData,
     ) -> Result<(), emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::StoreAddrMisaligned);
         }
         match addr {

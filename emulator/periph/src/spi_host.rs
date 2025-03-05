@@ -15,12 +15,12 @@ Abstract:
 use std::collections::VecDeque;
 use std::convert::TryInto;
 
+use caliptra_emu_types::{RvData, RvSize};
 use emulator_bus::ReadWriteRegisterArray;
 use emulator_bus::{
     ActionHandle, BusError, Clock, ReadOnlyRegister, ReadWriteRegister, Timer, WriteOnlyRegister,
 };
 use emulator_derive::Bus;
-use emulator_types::{RvData, RvSize};
 use tock_registers::fields::FieldValue;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use tock_registers::register_bitfields;

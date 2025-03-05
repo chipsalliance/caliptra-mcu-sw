@@ -12,7 +12,7 @@ Abstract:
 
 --*/
 use crate::{testing::Log, Bus, BusError};
-use emulator_types::{RvAddr, RvData, RvSize};
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use std::fmt::Write;
 
 /// A Bus implementation that logs all calls, and allows the user to override
@@ -22,7 +22,7 @@ use std::fmt::Write;
 ///
 /// ```
 /// use emulator_bus::{Bus, testing::FakeBus};
-/// use emulator_types::RvSize;
+/// use caliptra_emu_types::RvSize;
 ///
 /// let mut fake_bus = FakeBus::new();
 /// fake_bus.read_result = Ok(35);

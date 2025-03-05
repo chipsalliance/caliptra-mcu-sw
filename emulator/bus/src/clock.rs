@@ -30,7 +30,7 @@ use std::{
 ///
 /// ```
 /// use emulator_bus::{Bus, BusError, Timer, ActionHandle};
-/// use emulator_types::{RvAddr, RvData, RvSize};
+/// use caliptra_emu_types::{RvAddr, RvData, RvSize};
 /// struct MyPeriph {
 ///     timer: Timer,
 ///     action0: Option<ActionHandle>,

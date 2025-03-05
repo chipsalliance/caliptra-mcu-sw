@@ -17,8 +17,8 @@ use std::rc::Rc;
 use crate::internal_timers::InternalTimers;
 use crate::types::{RvMIE, RvMPMC, RvMStatus, RvPmpAddrMode, RvPmpCfgi, RvPmpiCfg, RvPrivMode};
 use crate::Pic;
+use caliptra_emu_types::{RvAddr, RvData, RvException};
 use emulator_bus::{Clock, Timer, TimerAction};
-use emulator_types::{RvAddr, RvData, RvException};
 
 /// Configuration & Status Register
 #[derive(Copy, Clone, Default)]

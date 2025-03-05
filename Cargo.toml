@@ -9,10 +9,10 @@ members = [
     "emulator/bus",
     "emulator/caliptra",
     "emulator/compliance-test",
+    "emulator/consts",
     "emulator/cpu",
     "emulator/derive",
     "emulator/periph",
-    "emulator/types",
     "registers/generated-emulator",
     "registers/generated-firmware",
     "registers/generator",
@@ -123,11 +123,11 @@ capsules-runtime = { path = "runtime/capsules" }
 emulator-bmc = { path = "emulator/bmc" }
 emulator-bus = { path = "emulator/bus" }
 emulator-caliptra = { "path" = "emulator/caliptra" }
+emulator-consts = { "path" = "emulator/consts" }
 emulator-cpu = { path = "emulator/cpu" }
 emulator-derive = { path = "emulator/derive" }
 emulator-periph = { path = "emulator/periph" }
 emulator-registers-generated = { path = "registers/generated-emulator" }
-emulator-types = { path = "emulator/types" }
 flash-driver = { path = "runtime/flash" }
 i3c-driver = { path = "runtime/i3c" }
 libtockasync = { path = "runtime/apps/libtockasync" }
@@ -186,8 +186,6 @@ opt-level = 3
 [profile.test.package.emulator-cpu]
 opt-level = 3
 [profile.test.package.emulator-periph]
-opt-level = 3
-[profile.test.package.emulator-types]
 opt-level = 3
 [profile.test.package.tock-registers]
 opt-level = 3

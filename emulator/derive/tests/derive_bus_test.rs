@@ -2,12 +2,12 @@
 
 use std::fmt::Write;
 
+use caliptra_emu_types::{RvData, RvSize};
 use emulator_bus::{
     testing::{FakeBus, Log},
     Bus, BusError, Ram,
 };
 use emulator_derive::Bus;
-use emulator_types::{RvData, RvSize};
 
 struct MyCustomField(RvData);
 impl From<RvData> for MyCustomField {

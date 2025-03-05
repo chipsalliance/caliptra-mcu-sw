@@ -14,7 +14,7 @@ Abstract:
 --*/
 
 use crate::BusError;
-use emulator_types::{RvAddr, RvData, RvSize};
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
 
 /// Memory Exception
 #[allow(dead_code)]

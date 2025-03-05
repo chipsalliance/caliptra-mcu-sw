@@ -15,8 +15,8 @@ Abstract:
 use crate::cpu::Cpu;
 use crate::types::{RvInstr32I, RvInstr32OpFunct7, RvInstr32OpImmFunct7, RvInstr32R};
 use crate::xreg_file::XReg;
+use caliptra_emu_types::RvData;
 use emulator_bus::Bus;
-use emulator_types::RvData;
 
 /// Carry-less multiply, low part
 fn clmul(a: u32, b: u32) -> u32 {

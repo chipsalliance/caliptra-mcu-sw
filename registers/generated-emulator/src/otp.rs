@@ -135,18 +135,18 @@ pub trait OtpPeripheral {
         >,
     ) {
     }
-    fn read_check_timeout(&mut self) -> emulator_types::RvData {
+    fn read_check_timeout(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_check_timeout(&mut self, _val: emulator_types::RvData) {}
-    fn read_integrity_check_period(&mut self) -> emulator_types::RvData {
+    fn write_check_timeout(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_integrity_check_period(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_integrity_check_period(&mut self, _val: emulator_types::RvData) {}
-    fn read_consistency_check_period(&mut self) -> emulator_types::RvData {
+    fn write_integrity_check_period(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_consistency_check_period(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_consistency_check_period(&mut self, _val: emulator_types::RvData) {}
+    fn write_consistency_check_period(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_vendor_test_read_lock(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
@@ -355,54 +355,54 @@ pub trait OtpPeripheral {
     > {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> emulator_types::RvData {
+    fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_dai_wdata_rf_direct_access_wdata_0(&mut self, _val: emulator_types::RvData) {}
-    fn read_dai_wdata_rf_direct_access_wdata_1(&mut self) -> emulator_types::RvData {
+    fn write_dai_wdata_rf_direct_access_wdata_0(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_dai_wdata_rf_direct_access_wdata_1(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_dai_wdata_rf_direct_access_wdata_1(&mut self, _val: emulator_types::RvData) {}
-    fn read_dai_rdata_rf_direct_access_rdata_0(&mut self) -> emulator_types::RvData {
+    fn write_dai_wdata_rf_direct_access_wdata_1(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_dai_rdata_rf_direct_access_rdata_0(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_dai_rdata_rf_direct_access_rdata_1(&mut self) -> emulator_types::RvData {
+    fn read_dai_rdata_rf_direct_access_rdata_1(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_vendor_test_digest_digest_0(&mut self) -> emulator_types::RvData {
+    fn read_vendor_test_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_vendor_test_digest_digest_1(&mut self) -> emulator_types::RvData {
+    fn read_vendor_test_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_non_secret_fuses_digest_digest_0(&mut self) -> emulator_types::RvData {
+    fn read_non_secret_fuses_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_non_secret_fuses_digest_digest_1(&mut self) -> emulator_types::RvData {
+    fn read_non_secret_fuses_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_secret0_digest_digest_0(&mut self) -> emulator_types::RvData {
+    fn read_secret0_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_secret0_digest_digest_1(&mut self) -> emulator_types::RvData {
+    fn read_secret0_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_secret1_digest_digest_0(&mut self) -> emulator_types::RvData {
+    fn read_secret1_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_secret1_digest_digest_1(&mut self) -> emulator_types::RvData {
+    fn read_secret1_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_secret2_digest_digest_0(&mut self) -> emulator_types::RvData {
+    fn read_secret2_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_secret2_digest_digest_1(&mut self) -> emulator_types::RvData {
+    fn read_secret2_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_secret3_digest_digest_0(&mut self) -> emulator_types::RvData {
+    fn read_secret3_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_secret3_digest_digest_1(&mut self) -> emulator_types::RvData {
+    fn read_secret3_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
         0
     }
 }
@@ -412,89 +412,89 @@ pub struct OtpBus {
 impl emulator_bus::Bus for OtpBus {
     fn read(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-    ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
-            0..4 => Ok(emulator_types::RvData::from(
+            0..4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_interrupt_state().reg.get(),
             )),
-            4..8 => Ok(emulator_types::RvData::from(
+            4..8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_interrupt_enable().reg.get(),
             )),
-            0x10..0x14 => Ok(emulator_types::RvData::from(
+            0x10..0x14 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_status().reg.get(),
             )),
-            0x38..0x3c => Ok(emulator_types::RvData::from(
+            0x38..0x3c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_direct_access_regwen().reg.get(),
             )),
-            0x40..0x44 => Ok(emulator_types::RvData::from(
+            0x40..0x44 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_direct_access_address().reg.get(),
             )),
-            0x54..0x58 => Ok(emulator_types::RvData::from(
+            0x54..0x58 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_check_trigger_regwen().reg.get(),
             )),
             0x60..0x64 => Ok(self.periph.read_check_timeout()),
             0x64..0x68 => Ok(self.periph.read_integrity_check_period()),
             0x68..0x6c => Ok(self.periph.read_consistency_check_period()),
-            0x6c..0x70 => Ok(emulator_types::RvData::from(
+            0x6c..0x70 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_vendor_test_read_lock().reg.get(),
             )),
-            0x70..0x74 => Ok(emulator_types::RvData::from(
+            0x70..0x74 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_non_secret_fuses_read_lock().reg.get(),
             )),
-            0xa4..0xa8 => Ok(emulator_types::RvData::from(
+            0xa4..0xa8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_csr0().reg.get(),
             )),
-            0xa8..0xac => Ok(emulator_types::RvData::from(
+            0xa8..0xac => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_csr1().reg.get(),
             )),
-            0xac..0xb0 => Ok(emulator_types::RvData::from(
+            0xac..0xb0 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_csr2().reg.get(),
             )),
-            0xb0..0xb4 => Ok(emulator_types::RvData::from(
+            0xb0..0xb4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_csr3().reg.get(),
             )),
-            0xb4..0xb8 => Ok(emulator_types::RvData::from(
+            0xb4..0xb8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_csr4().reg.get(),
             )),
-            0xb8..0xbc => Ok(emulator_types::RvData::from(
+            0xb8..0xbc => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_csr5().reg.get(),
             )),
-            0xbc..0xc0 => Ok(emulator_types::RvData::from(
+            0xbc..0xc0 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_csr6().reg.get(),
             )),
-            0xc0..0xc4 => Ok(emulator_types::RvData::from(
+            0xc0..0xc4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_csr7().reg.get(),
             )),
-            0x14..0x18 => Ok(emulator_types::RvData::from(
+            0x14..0x18 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_0().reg.get(),
             )),
-            0x18..0x1c => Ok(emulator_types::RvData::from(
+            0x18..0x1c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_1().reg.get(),
             )),
-            0x1c..0x20 => Ok(emulator_types::RvData::from(
+            0x1c..0x20 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_2().reg.get(),
             )),
-            0x20..0x24 => Ok(emulator_types::RvData::from(
+            0x20..0x24 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_3().reg.get(),
             )),
-            0x24..0x28 => Ok(emulator_types::RvData::from(
+            0x24..0x28 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_4().reg.get(),
             )),
-            0x28..0x2c => Ok(emulator_types::RvData::from(
+            0x28..0x2c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_5().reg.get(),
             )),
-            0x2c..0x30 => Ok(emulator_types::RvData::from(
+            0x2c..0x30 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_6().reg.get(),
             )),
-            0x30..0x34 => Ok(emulator_types::RvData::from(
+            0x30..0x34 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_7().reg.get(),
             )),
-            0x34..0x38 => Ok(emulator_types::RvData::from(
+            0x34..0x38 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_8().reg.get(),
             )),
             0x44..0x48 => Ok(self.periph.read_dai_wdata_rf_direct_access_wdata_0()),
@@ -518,11 +518,11 @@ impl emulator_bus::Bus for OtpBus {
     }
     fn write(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-        val: emulator_types::RvData,
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+        val: caliptra_emu_types::RvData,
     ) -> Result<(), emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::StoreAddrMisaligned);
         }
         match addr {

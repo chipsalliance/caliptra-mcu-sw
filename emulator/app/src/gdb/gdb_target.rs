@@ -12,11 +12,11 @@ Abstract:
 
 --*/
 
+use caliptra_emu_types::RvSize;
 use emulator_bus::Bus;
 use emulator_cpu::xreg_file::XReg;
 use emulator_cpu::StepAction;
 use emulator_cpu::{Cpu, WatchPtrKind};
-use emulator_types::RvSize;
 use gdbstub::arch::SingleStepGdbBehavior;
 use gdbstub::common::Signal;
 use gdbstub::stub::SingleThreadStopReason;

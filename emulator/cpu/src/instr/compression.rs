@@ -19,7 +19,7 @@ use crate::{
     },
     xreg_file::XReg,
 };
-use emulator_types::RvException;
+use caliptra_emu_types::RvException;
 
 const OP_MASK_5: u16 = 0xe003;
 const OP_MASK_6: u16 = 0xf003;

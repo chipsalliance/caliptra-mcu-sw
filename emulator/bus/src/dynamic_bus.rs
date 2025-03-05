@@ -12,10 +12,9 @@ Abstract:
 
 --*/
 
-use std::{io::ErrorKind, ops::RangeInclusive};
-
 use crate::{Bus, BusError};
-use emulator_types::{RvAddr, RvData, RvSize};
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
+use std::{io::ErrorKind, ops::RangeInclusive};
 
 struct MappedDevice {
     name: String,
@@ -100,7 +99,7 @@ impl Bus for DynamicBus {
 mod test {
     use super::*;
     use crate::{testing::FakeBus, BusError, Ram, Rom};
-    use emulator_types::RvSize;
+    use caliptra_emu_types::RvSize;
 
     #[test]
     fn test_dynamic_bus_read() {

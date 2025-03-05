@@ -41,18 +41,18 @@ pub trait RecoveryFlashPeripheral {
         >,
     ) {
     }
-    fn read_page_size(&mut self) -> emulator_types::RvData {
+    fn read_page_size(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_page_size(&mut self, _val: emulator_types::RvData) {}
-    fn read_page_num(&mut self) -> emulator_types::RvData {
+    fn write_page_size(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_page_num(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_page_num(&mut self, _val: emulator_types::RvData) {}
-    fn read_page_addr(&mut self) -> emulator_types::RvData {
+    fn write_page_num(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_page_addr(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_page_addr(&mut self, _val: emulator_types::RvData) {}
+    fn write_page_addr(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_fl_control(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
@@ -100,29 +100,29 @@ pub struct RecoveryFlashBus {
 impl emulator_bus::Bus for RecoveryFlashBus {
     fn read(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-    ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
-            0..4 => Ok(emulator_types::RvData::from(
+            0..4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_fl_interrupt_state().reg.get(),
             )),
-            4..8 => Ok(emulator_types::RvData::from(
+            4..8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_fl_interrupt_enable().reg.get(),
             )),
             8..0xc => Ok(self.periph.read_page_size()),
             0xc..0x10 => Ok(self.periph.read_page_num()),
             0x10..0x14 => Ok(self.periph.read_page_addr()),
-            0x14..0x18 => Ok(emulator_types::RvData::from(
+            0x14..0x18 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_fl_control().reg.get(),
             )),
-            0x18..0x1c => Ok(emulator_types::RvData::from(
+            0x18..0x1c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_op_status().reg.get(),
             )),
-            0x1c..0x20 => Ok(emulator_types::RvData::from(
+            0x1c..0x20 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_ctrl_regwen().reg.get(),
             )),
             _ => Err(emulator_bus::BusError::LoadAccessFault),
@@ -130,11 +130,11 @@ impl emulator_bus::Bus for RecoveryFlashBus {
     }
     fn write(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-        val: emulator_types::RvData,
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+        val: caliptra_emu_types::RvData,
     ) -> Result<(), emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::StoreAddrMisaligned);
         }
         match addr {

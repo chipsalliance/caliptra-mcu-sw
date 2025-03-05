@@ -5,7 +5,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use emulator_types::{RvAddr, RvData, RvSize};
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use tock_registers::{LocalRegisterCopy, RegisterLongName, UIntLike};
 
 use crate::{Bus, BusError, Register};

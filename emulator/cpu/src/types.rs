@@ -16,7 +16,7 @@ Abstract:
 
 use crate::xreg_file::XReg;
 use bitfield::{bitfield, BitRange, BitRangeMut};
-use emulator_types::emu_enum;
+use caliptra_emu_types::emu_enum;
 
 emu_enum! {
     /// RISCV 32-bit instruction opcodes

@@ -97,12 +97,12 @@ pub fn derive_bus(input: TokenStream) -> TokenStream {
 
     quote! {
         impl emulator_bus::Bus for #struct_name {
-            fn read(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr) -> Result<emulator_types::RvData, emulator_bus::BusError> {
+            fn read(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
                 #read_reg_match_tokens
                 #read_bus_match_tokens
                 Err(emulator_bus::BusError::LoadAccessFault)
             }
-            fn write(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr, val: emulator_types::RvData) -> Result<(), emulator_bus::BusError> {
+            fn write(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr, val: caliptra_emu_types::RvData) -> Result<(), emulator_bus::BusError> {
                 #write_reg_match_tokens
                 #write_bus_match_tokens
                 Err(emulator_bus::BusError::StoreAccessFault)
@@ -407,7 +407,7 @@ fn gen_register_match_tokens(registers: &[RegisterField], access_type: AccessTyp
                         let array_index = array_index();
                         quote! {
                             #pattern => return std::result::Result::Ok(
-                                std::convert::Into::<emulator_types::RvAddr>::into(
+                                std::convert::Into::<caliptra_emu_types::RvAddr>::into(
                                     self.#read_fn(size, #array_index)?
                                 )
                             ),
@@ -415,7 +415,7 @@ fn gen_register_match_tokens(registers: &[RegisterField], access_type: AccessTyp
                     } else {
                         quote! {
                             #offset => return std::result::Result::Ok(
-                                std::convert::Into::<emulator_types::RvAddr>::into(
+                                std::convert::Into::<caliptra_emu_types::RvAddr>::into(
                                     self.#read_fn(size)?
                                 )
                             ),
@@ -445,11 +445,11 @@ fn gen_register_match_tokens(registers: &[RegisterField], access_type: AccessTyp
                         let pattern = array_match_pattern();
                         let array_index = array_index();
                         quote! {
-                            #pattern => return self.#write_fn(size, #array_index, std::convert::From::<emulator_types::RvAddr>::from(val)),
+                            #pattern => return self.#write_fn(size, #array_index, std::convert::From::<caliptra_emu_types::RvAddr>::from(val)),
                         }
                     } else {
                         quote! {
-                            #offset => return self.#write_fn(size, std::convert::From::<emulator_types::RvAddr>::from(val)),
+                            #offset => return self.#write_fn(size, std::convert::From::<caliptra_emu_types::RvAddr>::from(val)),
                         }
                     }
                 } else if let Some(ref reg_name) = reg.name {
@@ -632,10 +632,10 @@ mod tests {
         assert_eq!(tokens.to_string(),
             quote! {
                 impl emulator_bus::Bus for MyBus {
-                    fn read(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr) -> Result<emulator_types::RvData, emulator_bus::BusError> {
+                    fn read(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
                         Err(emulator_bus::BusError::LoadAccessFault)
                     }
-                    fn write(&mut self, size: emulator_types::RvSize, addr: emulator_types::RvAddr, val: emulator_types::RvData) -> Result<(), emulator_bus::BusError> {
+                    fn write(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr, val: caliptra_emu_types::RvData) -> Result<(), emulator_bus::BusError> {
                         Err(emulator_bus::BusError::StoreAccessFault)
                     }
                     fn poll(&mut self) {

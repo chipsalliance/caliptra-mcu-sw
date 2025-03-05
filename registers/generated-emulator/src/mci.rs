@@ -21,20 +21,20 @@ pub trait MciPeripheral {
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn read_fw_rev_id(&mut self) -> emulator_types::RvData {
+    fn read_fw_rev_id(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_fw_rev_id(&mut self, _val: emulator_types::RvData) {}
+    fn write_fw_rev_id(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_hw_config(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig::Register>
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn read_boot_status(&mut self) -> emulator_types::RvData {
+    fn read_boot_status(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_boot_status(&mut self, _val: emulator_types::RvData) {}
+    fn write_boot_status(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_flow_status(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::FlowStatus::Register>
@@ -129,26 +129,26 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_fw_error_fatal(&mut self) -> emulator_types::RvData {
+    fn read_fw_error_fatal(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_fw_error_fatal(&mut self, _val: emulator_types::RvData) {}
-    fn read_fw_error_non_fatal(&mut self) -> emulator_types::RvData {
+    fn write_fw_error_fatal(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_fw_error_non_fatal(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_fw_error_non_fatal(&mut self, _val: emulator_types::RvData) {}
-    fn read_hw_error_enc(&mut self) -> emulator_types::RvData {
+    fn write_fw_error_non_fatal(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_hw_error_enc(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_hw_error_enc(&mut self, _val: emulator_types::RvData) {}
-    fn read_fw_error_enc(&mut self) -> emulator_types::RvData {
+    fn write_hw_error_enc(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_fw_error_enc(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_fw_error_enc(&mut self, _val: emulator_types::RvData) {}
-    fn read_fw_extended_error_info(&mut self) -> emulator_types::RvData {
+    fn write_fw_error_enc(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_fw_extended_error_info(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_fw_extended_error_info(&mut self, _val: emulator_types::RvData) {}
+    fn write_fw_extended_error_info(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_internal_hw_error_fatal_mask(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
@@ -213,14 +213,14 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_internal_fw_error_fatal_mask(&mut self) -> emulator_types::RvData {
+    fn read_internal_fw_error_fatal_mask(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_internal_fw_error_fatal_mask(&mut self, _val: emulator_types::RvData) {}
-    fn read_internal_fw_error_non_fatal_mask(&mut self) -> emulator_types::RvData {
+    fn write_internal_fw_error_fatal_mask(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_internal_fw_error_non_fatal_mask(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_internal_fw_error_non_fatal_mask(&mut self, _val: emulator_types::RvData) {}
+    fn write_internal_fw_error_non_fatal_mask(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_wdt_timer1_en(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtTimer1En::Register>
@@ -249,10 +249,10 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_wdt_timer1_timeout_period(&mut self) -> emulator_types::RvData {
+    fn read_wdt_timer1_timeout_period(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_wdt_timer1_timeout_period(&mut self, _val: emulator_types::RvData) {}
+    fn write_wdt_timer1_timeout_period(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_wdt_timer2_en(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtTimer2En::Register>
@@ -281,10 +281,10 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_wdt_timer2_timeout_period(&mut self) -> emulator_types::RvData {
+    fn read_wdt_timer2_timeout_period(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_wdt_timer2_timeout_period(&mut self, _val: emulator_types::RvData) {}
+    fn write_wdt_timer2_timeout_period(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_wdt_status(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtStatus::Register>
@@ -299,30 +299,30 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_wdt_cfg(&mut self) -> emulator_types::RvData {
+    fn read_wdt_cfg(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_wdt_cfg(&mut self, _val: emulator_types::RvData) {}
-    fn read_mcu_timer_config(&mut self) -> emulator_types::RvData {
+    fn write_wdt_cfg(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_mcu_timer_config(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mcu_timer_config(&mut self, _val: emulator_types::RvData) {}
-    fn read_mcu_rv_mtime_l(&mut self) -> emulator_types::RvData {
+    fn write_mcu_timer_config(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_mcu_rv_mtime_l(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mcu_rv_mtime_l(&mut self, _val: emulator_types::RvData) {}
-    fn read_mcu_rv_mtime_h(&mut self) -> emulator_types::RvData {
+    fn write_mcu_rv_mtime_l(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_mcu_rv_mtime_h(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mcu_rv_mtime_h(&mut self, _val: emulator_types::RvData) {}
-    fn read_mcu_rv_mtimecmp_l(&mut self) -> emulator_types::RvData {
+    fn write_mcu_rv_mtime_h(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_mcu_rv_mtimecmp_l(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mcu_rv_mtimecmp_l(&mut self, _val: emulator_types::RvData) {}
-    fn read_mcu_rv_mtimecmp_h(&mut self) -> emulator_types::RvData {
+    fn write_mcu_rv_mtimecmp_l(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_mcu_rv_mtimecmp_h(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mcu_rv_mtimecmp_h(&mut self, _val: emulator_types::RvData) {}
+    fn write_mcu_rv_mtimecmp_h(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_reset_request(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::ResetRequest::Register>
@@ -369,18 +369,18 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_mcu_nmi_vector(&mut self) -> emulator_types::RvData {
+    fn read_mcu_nmi_vector(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mcu_nmi_vector(&mut self, _val: emulator_types::RvData) {}
-    fn read_mcu_reset_vector(&mut self) -> emulator_types::RvData {
+    fn write_mcu_nmi_vector(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_mcu_reset_vector(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mcu_reset_vector(&mut self, _val: emulator_types::RvData) {}
-    fn read_mbox0_valid_axi_id(&mut self) -> emulator_types::RvData {
+    fn write_mcu_reset_vector(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_mbox0_valid_axi_id(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mbox0_valid_axi_id(&mut self, _val: emulator_types::RvData) {}
+    fn write_mbox0_valid_axi_id(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_mbox0_valid_axi_id_lock(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
@@ -397,10 +397,10 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_mbox1_valid_axi_id(&mut self) -> emulator_types::RvData {
+    fn read_mbox1_valid_axi_id(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mbox1_valid_axi_id(&mut self, _val: emulator_types::RvData) {}
+    fn write_mbox1_valid_axi_id(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_mbox1_valid_axi_id_lock(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
@@ -417,13 +417,13 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_generic_input_wires(&mut self) -> emulator_types::RvData {
+    fn read_generic_input_wires(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_generic_output_wires(&mut self) -> emulator_types::RvData {
+    fn read_generic_output_wires(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_generic_output_wires(&mut self, _val: emulator_types::RvData) {}
+    fn write_generic_output_wires(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_debug_in(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
@@ -470,10 +470,10 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_prod_debug_unlock_pk_hash_reg(&mut self) -> emulator_types::RvData {
+    fn read_prod_debug_unlock_pk_hash_reg(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_prod_debug_unlock_pk_hash_reg(&mut self, _val: emulator_types::RvData) {}
+    fn write_prod_debug_unlock_pk_hash_reg(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_sticky_data_vault_ctrl(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::DataVaultCtrl::Register>
@@ -550,10 +550,10 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_sticky_lockable_scratch_reg(&mut self) -> emulator_types::RvData {
+    fn read_sticky_lockable_scratch_reg(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_sticky_lockable_scratch_reg(&mut self, _val: emulator_types::RvData) {}
+    fn write_sticky_lockable_scratch_reg(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_lockable_scratch_reg_ctrl(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
@@ -570,14 +570,14 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_lockable_scratch_reg(&mut self) -> emulator_types::RvData {
+    fn read_lockable_scratch_reg(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_lockable_scratch_reg(&mut self, _val: emulator_types::RvData) {}
-    fn read_non_sticky_generic_scratch_reg(&mut self) -> emulator_types::RvData {
+    fn write_lockable_scratch_reg(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn read_non_sticky_generic_scratch_reg(&mut self) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_non_sticky_generic_scratch_reg(&mut self, _val: emulator_types::RvData) {}
+    fn write_non_sticky_generic_scratch_reg(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_intr_block_rf_global_intr_en_r(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::GlobalIntrEnT::Register>
@@ -782,660 +782,682 @@ pub trait MciPeripheral {
     }
     fn read_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_intr_block_rf_error_agg_error_fatal0_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn read_intr_block_rf_error_agg_error_fatal0_intr_count_r(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal0_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_intr_block_rf_error_agg_error_fatal1_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn read_intr_block_rf_error_agg_error_fatal1_intr_count_r(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal1_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_intr_block_rf_error_agg_error_fatal2_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn read_intr_block_rf_error_agg_error_fatal2_intr_count_r(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal2_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_intr_block_rf_error_agg_error_fatal3_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn read_intr_block_rf_error_agg_error_fatal3_intr_count_r(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal3_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_intr_block_rf_error_agg_error_fatal4_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn read_intr_block_rf_error_agg_error_fatal4_intr_count_r(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal4_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_intr_block_rf_error_agg_error_fatal5_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn read_intr_block_rf_error_agg_error_fatal5_intr_count_r(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal5_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_intr_block_rf_error_agg_error_fatal6_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn read_intr_block_rf_error_agg_error_fatal6_intr_count_r(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal6_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_intr_block_rf_error_agg_error_fatal7_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn read_intr_block_rf_error_agg_error_fatal7_intr_count_r(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal7_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_intr_block_rf_error_agg_error_fatal8_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn read_intr_block_rf_error_agg_error_fatal8_intr_count_r(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal8_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_intr_block_rf_error_agg_error_fatal9_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn read_intr_block_rf_error_agg_error_fatal9_intr_count_r(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal9_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal10_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal10_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal11_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal11_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal12_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal12_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal13_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal13_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal14_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal14_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal15_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal15_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal16_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal16_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal17_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal17_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal18_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal18_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal19_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal19_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal20_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal20_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal21_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal21_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal22_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal22_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal23_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal23_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal24_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal24_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal25_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal25_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal26_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal26_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal27_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal27_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal28_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal28_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal29_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal29_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal30_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal30_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_agg_error_fatal31_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_error_agg_error_fatal31_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
-    fn read_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r(&mut self) -> emulator_types::RvData {
+    fn read_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_clpra_mcu_reset_req_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_clpra_mcu_reset_req_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r(
         &mut self,
-    ) -> emulator_types::RvData {
+    ) -> caliptra_emu_types::RvData {
         0
     }
     fn write_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r(
         &mut self,
-        _val: emulator_types::RvData,
+        _val: caliptra_emu_types::RvData,
     ) {
     }
     fn read_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r(
@@ -1989,43 +2011,43 @@ pub struct MciBus {
 impl emulator_bus::Bus for MciBus {
     fn read(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-    ) -> Result<emulator_types::RvData, emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
-            0..4 => Ok(emulator_types::RvData::from(
+            0..4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_capabilities().reg.get(),
             )),
-            4..8 => Ok(emulator_types::RvData::from(
+            4..8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_hw_rev_id().reg.get(),
             )),
             8..0x10 => Ok(self.periph.read_fw_rev_id()),
-            0x10..0x14 => Ok(emulator_types::RvData::from(
+            0x10..0x14 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_hw_config().reg.get(),
             )),
             0x20..0x24 => Ok(self.periph.read_boot_status()),
-            0x24..0x28 => Ok(emulator_types::RvData::from(
+            0x24..0x28 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_flow_status().reg.get(),
             )),
-            0x28..0x2c => Ok(emulator_types::RvData::from(
+            0x28..0x2c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_reset_reason().reg.get(),
             )),
-            0x2c..0x30 => Ok(emulator_types::RvData::from(
+            0x2c..0x30 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_reset_status().reg.get(),
             )),
-            0x40..0x44 => Ok(emulator_types::RvData::from(
+            0x40..0x44 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_hw_error_fatal().reg.get(),
             )),
-            0x44..0x48 => Ok(emulator_types::RvData::from(
+            0x44..0x48 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_agg_error_fatal().reg.get(),
             )),
-            0x48..0x4c => Ok(emulator_types::RvData::from(
+            0x48..0x4c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_hw_error_non_fatal().reg.get(),
             )),
-            0x4c..0x50 => Ok(emulator_types::RvData::from(
+            0x4c..0x50 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_agg_error_non_fatal().reg.get(),
             )),
             0x50..0x54 => Ok(self.periph.read_fw_error_fatal()),
@@ -2033,19 +2055,19 @@ impl emulator_bus::Bus for MciBus {
             0x58..0x5c => Ok(self.periph.read_hw_error_enc()),
             0x5c..0x60 => Ok(self.periph.read_fw_error_enc()),
             0x60..0x80 => Ok(self.periph.read_fw_extended_error_info()),
-            0x80..0x84 => Ok(emulator_types::RvData::from(
+            0x80..0x84 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_internal_hw_error_fatal_mask().reg.get(),
             )),
-            0x84..0x88 => Ok(emulator_types::RvData::from(
+            0x84..0x88 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_internal_hw_error_non_fatal_mask()
                     .reg
                     .get(),
             )),
-            0x88..0x8c => Ok(emulator_types::RvData::from(
+            0x88..0x8c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_internal_agg_error_fatal_mask().reg.get(),
             )),
-            0x8c..0x90 => Ok(emulator_types::RvData::from(
+            0x8c..0x90 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_internal_agg_error_non_fatal_mask()
                     .reg
@@ -2053,21 +2075,21 @@ impl emulator_bus::Bus for MciBus {
             )),
             0x90..0x94 => Ok(self.periph.read_internal_fw_error_fatal_mask()),
             0x94..0x98 => Ok(self.periph.read_internal_fw_error_non_fatal_mask()),
-            0xa0..0xa4 => Ok(emulator_types::RvData::from(
+            0xa0..0xa4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_wdt_timer1_en().reg.get(),
             )),
-            0xa4..0xa8 => Ok(emulator_types::RvData::from(
+            0xa4..0xa8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_wdt_timer1_ctrl().reg.get(),
             )),
             0xa8..0xb0 => Ok(self.periph.read_wdt_timer1_timeout_period()),
-            0xb0..0xb4 => Ok(emulator_types::RvData::from(
+            0xb0..0xb4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_wdt_timer2_en().reg.get(),
             )),
-            0xb4..0xb8 => Ok(emulator_types::RvData::from(
+            0xb4..0xb8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_wdt_timer2_ctrl().reg.get(),
             )),
             0xb8..0xc0 => Ok(self.periph.read_wdt_timer2_timeout_period()),
-            0xc0..0xc4 => Ok(emulator_types::RvData::from(
+            0xc0..0xc4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_wdt_status().reg.get(),
             )),
             0xd0..0xd8 => Ok(self.periph.read_wdt_cfg()),
@@ -2076,131 +2098,131 @@ impl emulator_bus::Bus for MciBus {
             0xe8..0xec => Ok(self.periph.read_mcu_rv_mtime_h()),
             0xec..0xf0 => Ok(self.periph.read_mcu_rv_mtimecmp_l()),
             0xf0..0xf4 => Ok(self.periph.read_mcu_rv_mtimecmp_h()),
-            0x100..0x104 => Ok(emulator_types::RvData::from(
+            0x100..0x104 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_reset_request().reg.get(),
             )),
-            0x104..0x108 => Ok(emulator_types::RvData::from(
+            0x104..0x108 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_caliptra_boot_go().reg.get(),
             )),
-            0x108..0x10c => Ok(emulator_types::RvData::from(
+            0x108..0x10c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_fw_sram_exec_region_size().reg.get(),
             )),
             0x10c..0x110 => Ok(self.periph.read_mcu_nmi_vector()),
             0x110..0x114 => Ok(self.periph.read_mcu_reset_vector()),
             0x180..0x194 => Ok(self.periph.read_mbox0_valid_axi_id()),
-            0x1a0..0x1b4 => Ok(emulator_types::RvData::from(
+            0x1a0..0x1b4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mbox0_valid_axi_id_lock().reg.get(),
             )),
             0x1c0..0x1d4 => Ok(self.periph.read_mbox1_valid_axi_id()),
-            0x1e0..0x1f4 => Ok(emulator_types::RvData::from(
+            0x1e0..0x1f4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mbox1_valid_axi_id_lock().reg.get(),
             )),
             0x400..0x408 => Ok(self.periph.read_generic_input_wires()),
             0x408..0x410 => Ok(self.periph.read_generic_output_wires()),
-            0x410..0x414 => Ok(emulator_types::RvData::from(
+            0x410..0x414 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_debug_in().reg.get(),
             )),
-            0x414..0x418 => Ok(emulator_types::RvData::from(
+            0x414..0x418 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_debug_out().reg.get(),
             )),
-            0x440..0x444 => Ok(emulator_types::RvData::from(
+            0x440..0x444 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_fuse_wr_done().reg.get(),
             )),
             0x480..0x600 => Ok(self.periph.read_prod_debug_unlock_pk_hash_reg()),
-            0x800..0x828 => Ok(emulator_types::RvData::from(
+            0x800..0x828 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_sticky_data_vault_ctrl().reg.get(),
             )),
-            0x828..0xa08 => Ok(emulator_types::RvData::from(
+            0x828..0xa08 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_sticky_data_vault_entry().reg.get(),
             )),
-            0xa08..0xa30 => Ok(emulator_types::RvData::from(
+            0xa08..0xa30 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_data_vault_ctrl().reg.get(),
             )),
-            0xa30..0xc10 => Ok(emulator_types::RvData::from(
+            0xa30..0xc10 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_data_vault_entry().reg.get(),
             )),
-            0xc10..0xc30 => Ok(emulator_types::RvData::from(
+            0xc10..0xc30 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_sticky_lockable_scratch_reg_ctrl()
                     .reg
                     .get(),
             )),
             0xc30..0xc50 => Ok(self.periph.read_sticky_lockable_scratch_reg()),
-            0xc50..0xc78 => Ok(emulator_types::RvData::from(
+            0xc50..0xc78 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_lockable_scratch_reg_ctrl().reg.get(),
             )),
             0xc78..0xca0 => Ok(self.periph.read_lockable_scratch_reg()),
             0xca0..0xcc0 => Ok(self.periph.read_non_sticky_generic_scratch_reg()),
-            0x1000..0x1004 => Ok(emulator_types::RvData::from(
+            0x1000..0x1004 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_intr_block_rf_global_intr_en_r().reg.get(),
             )),
-            0x1004..0x1008 => Ok(emulator_types::RvData::from(
+            0x1004..0x1008 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_intr_block_rf_error0_intr_en_r().reg.get(),
             )),
-            0x1008..0x100c => Ok(emulator_types::RvData::from(
+            0x1008..0x100c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_intr_block_rf_error1_intr_en_r().reg.get(),
             )),
-            0x100c..0x1010 => Ok(emulator_types::RvData::from(
+            0x100c..0x1010 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_intr_block_rf_notif0_intr_en_r().reg.get(),
             )),
-            0x1010..0x1014 => Ok(emulator_types::RvData::from(
+            0x1010..0x1014 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_intr_block_rf_notif1_intr_en_r().reg.get(),
             )),
-            0x1014..0x1018 => Ok(emulator_types::RvData::from(
+            0x1014..0x1018 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_global_intr_r()
                     .reg
                     .get(),
             )),
-            0x1018..0x101c => Ok(emulator_types::RvData::from(
+            0x1018..0x101c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_global_intr_r()
                     .reg
                     .get(),
             )),
-            0x101c..0x1020 => Ok(emulator_types::RvData::from(
+            0x101c..0x1020 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error0_internal_intr_r()
                     .reg
                     .get(),
             )),
-            0x1020..0x1024 => Ok(emulator_types::RvData::from(
+            0x1020..0x1024 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error1_internal_intr_r()
                     .reg
                     .get(),
             )),
-            0x1024..0x1028 => Ok(emulator_types::RvData::from(
+            0x1024..0x1028 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif0_internal_intr_r()
                     .reg
                     .get(),
             )),
-            0x1028..0x102c => Ok(emulator_types::RvData::from(
+            0x1028..0x102c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif1_internal_intr_r()
                     .reg
                     .get(),
             )),
-            0x102c..0x1030 => Ok(emulator_types::RvData::from(
+            0x102c..0x1030 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error0_intr_trig_r()
                     .reg
                     .get(),
             )),
-            0x1030..0x1034 => Ok(emulator_types::RvData::from(
+            0x1030..0x1034 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error1_intr_trig_r()
                     .reg
                     .get(),
             )),
-            0x1034..0x1038 => Ok(emulator_types::RvData::from(
+            0x1034..0x1038 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif0_intr_trig_r()
                     .reg
                     .get(),
             )),
-            0x1038..0x103c => Ok(emulator_types::RvData::from(
+            0x1038..0x103c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif1_intr_trig_r()
                     .reg
@@ -2410,409 +2432,409 @@ impl emulator_bus::Bus for MciBus {
             0x1284..0x1288 => Ok(self
                 .periph
                 .read_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r()),
-            0x1300..0x1304 => Ok(emulator_types::RvData::from(
+            0x1300..0x1304 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1304..0x1308 => Ok(emulator_types::RvData::from(
+            0x1304..0x1308 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1308..0x130c => Ok(emulator_types::RvData::from(
+            0x1308..0x130c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x130c..0x1310 => Ok(emulator_types::RvData::from(
+            0x130c..0x1310 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1310..0x1314 => Ok(emulator_types::RvData::from(
+            0x1310..0x1314 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1314..0x1318 => Ok(emulator_types::RvData::from(
+            0x1314..0x1318 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1318..0x131c => Ok(emulator_types::RvData::from(
+            0x1318..0x131c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x131c..0x1320 => Ok(emulator_types::RvData::from(
+            0x131c..0x1320 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1320..0x1324 => Ok(emulator_types::RvData::from(
+            0x1320..0x1324 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1324..0x1328 => Ok(emulator_types::RvData::from(
+            0x1324..0x1328 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1328..0x132c => Ok(emulator_types::RvData::from(
+            0x1328..0x132c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x132c..0x1330 => Ok(emulator_types::RvData::from(
+            0x132c..0x1330 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1330..0x1334 => Ok(emulator_types::RvData::from(
+            0x1330..0x1334 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1334..0x1338 => Ok(emulator_types::RvData::from(
+            0x1334..0x1338 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1338..0x133c => Ok(emulator_types::RvData::from(
+            0x1338..0x133c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x133c..0x1340 => Ok(emulator_types::RvData::from(
+            0x133c..0x1340 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1340..0x1344 => Ok(emulator_types::RvData::from(
+            0x1340..0x1344 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1344..0x1348 => Ok(emulator_types::RvData::from(
+            0x1344..0x1348 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1348..0x134c => Ok(emulator_types::RvData::from(
+            0x1348..0x134c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x134c..0x1350 => Ok(emulator_types::RvData::from(
+            0x134c..0x1350 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1350..0x1354 => Ok(emulator_types::RvData::from(
+            0x1350..0x1354 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1354..0x1358 => Ok(emulator_types::RvData::from(
+            0x1354..0x1358 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1358..0x135c => Ok(emulator_types::RvData::from(
+            0x1358..0x135c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x135c..0x1360 => Ok(emulator_types::RvData::from(
+            0x135c..0x1360 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1360..0x1364 => Ok(emulator_types::RvData::from(
+            0x1360..0x1364 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1364..0x1368 => Ok(emulator_types::RvData::from(
+            0x1364..0x1368 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1368..0x136c => Ok(emulator_types::RvData::from(
+            0x1368..0x136c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x136c..0x1370 => Ok(emulator_types::RvData::from(
+            0x136c..0x1370 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1370..0x1374 => Ok(emulator_types::RvData::from(
+            0x1370..0x1374 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1374..0x1378 => Ok(emulator_types::RvData::from(
+            0x1374..0x1378 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1378..0x137c => Ok(emulator_types::RvData::from(
+            0x1378..0x137c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x137c..0x1380 => Ok(emulator_types::RvData::from(
+            0x137c..0x1380 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1380..0x1384 => Ok(emulator_types::RvData::from(
+            0x1380..0x1384 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1384..0x1388 => Ok(emulator_types::RvData::from(
+            0x1384..0x1388 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1388..0x138c => Ok(emulator_types::RvData::from(
+            0x1388..0x138c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x138c..0x1390 => Ok(emulator_types::RvData::from(
+            0x138c..0x1390 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_clpra_mcu_reset_req_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1390..0x1394 => Ok(emulator_types::RvData::from(
+            0x1390..0x1394 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1394..0x1398 => Ok(emulator_types::RvData::from(
+            0x1394..0x1398 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1398..0x139c => Ok(emulator_types::RvData::from(
+            0x1398..0x139c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x139c..0x13a0 => Ok(emulator_types::RvData::from(
+            0x139c..0x13a0 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13a0..0x13a4 => Ok(emulator_types::RvData::from(
+            0x13a0..0x13a4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13a4..0x13a8 => Ok(emulator_types::RvData::from(
+            0x13a4..0x13a8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13a8..0x13ac => Ok(emulator_types::RvData::from(
+            0x13a8..0x13ac => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13ac..0x13b0 => Ok(emulator_types::RvData::from(
+            0x13ac..0x13b0 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13b0..0x13b4 => Ok(emulator_types::RvData::from(
+            0x13b0..0x13b4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13b4..0x13b8 => Ok(emulator_types::RvData::from(
+            0x13b4..0x13b8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13b8..0x13bc => Ok(emulator_types::RvData::from(
+            0x13b8..0x13bc => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13bc..0x13c0 => Ok(emulator_types::RvData::from(
+            0x13bc..0x13c0 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13c0..0x13c4 => Ok(emulator_types::RvData::from(
+            0x13c0..0x13c4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13c4..0x13c8 => Ok(emulator_types::RvData::from(
+            0x13c4..0x13c8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13c8..0x13cc => Ok(emulator_types::RvData::from(
+            0x13c8..0x13cc => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13cc..0x13d0 => Ok(emulator_types::RvData::from(
+            0x13cc..0x13d0 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13d0..0x13d4 => Ok(emulator_types::RvData::from(
+            0x13d0..0x13d4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13d4..0x13d8 => Ok(emulator_types::RvData::from(
+            0x13d4..0x13d8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13d8..0x13dc => Ok(emulator_types::RvData::from(
+            0x13d8..0x13dc => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13dc..0x13e0 => Ok(emulator_types::RvData::from(
+            0x13dc..0x13e0 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13e0..0x13e4 => Ok(emulator_types::RvData::from(
+            0x13e0..0x13e4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13e4..0x13e8 => Ok(emulator_types::RvData::from(
+            0x13e4..0x13e8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13e8..0x13ec => Ok(emulator_types::RvData::from(
+            0x13e8..0x13ec => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13ec..0x13f0 => Ok(emulator_types::RvData::from(
+            0x13ec..0x13f0 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13f0..0x13f4 => Ok(emulator_types::RvData::from(
+            0x13f0..0x13f4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13f4..0x13f8 => Ok(emulator_types::RvData::from(
+            0x13f4..0x13f8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13f8..0x13fc => Ok(emulator_types::RvData::from(
+            0x13f8..0x13fc => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13fc..0x1400 => Ok(emulator_types::RvData::from(
+            0x13fc..0x1400 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1400..0x1404 => Ok(emulator_types::RvData::from(
+            0x1400..0x1404 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1404..0x1408 => Ok(emulator_types::RvData::from(
+            0x1404..0x1408 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1408..0x140c => Ok(emulator_types::RvData::from(
+            0x1408..0x140c => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x140c..0x1410 => Ok(emulator_types::RvData::from(
+            0x140c..0x1410 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r()
                     .reg
@@ -2823,11 +2845,11 @@ impl emulator_bus::Bus for MciBus {
     }
     fn write(
         &mut self,
-        size: emulator_types::RvSize,
-        addr: emulator_types::RvAddr,
-        val: emulator_types::RvData,
+        size: caliptra_emu_types::RvSize,
+        addr: caliptra_emu_types::RvAddr,
+        val: caliptra_emu_types::RvData,
     ) -> Result<(), emulator_bus::BusError> {
-        if addr & 0x3 != 0 || size != emulator_types::RvSize::Word {
+        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(emulator_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
