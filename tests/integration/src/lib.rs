@@ -77,12 +77,14 @@ mod test {
         output
     }
 
+    #[allow(unused)]
     fn write_soc_manifest() -> PathBuf {
         let path = PROJECT_ROOT.join("target").join("soc-manifest");
         std::fs::write(&path, [1, 2, 3]).unwrap();
         path
     }
 
+    #[allow(unused)]
     fn compile_caliptra_rom() -> PathBuf {
         let rom_bytes = caliptra_builder::rom_for_fw_integration_tests().unwrap();
         let path = PROJECT_ROOT.join("target").join("caliptra-rom.bin");
@@ -90,6 +92,7 @@ mod test {
         path
     }
 
+    #[allow(unused)]
     fn compile_caliptra_fw() -> (PathBuf, String) {
         let bundle = caliptra_builder::build_and_sign_image(
             &caliptra_builder::firmware::FMC_WITH_UART,
@@ -216,6 +219,7 @@ mod test {
     /// This tests a full active mode boot run through with Caliptra, including
     /// loading MCU's firmware from Caliptra over the recovery interface.
     //#[test] // temporarily disabled while waiting for SoC manifest PR
+    #[allow(unused)]
     fn test_active_mode_recovery_with_caliptra() {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

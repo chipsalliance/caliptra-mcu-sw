@@ -23,7 +23,7 @@ pub fn rom_build() -> Result<(), DynError> {
         .join("target")
         .join(TARGET)
         .join("release")
-        .join("rom");
+        .join("mcu-rom-emulator");
 
     let rom_binary = PROJECT_ROOT
         .join("target")
