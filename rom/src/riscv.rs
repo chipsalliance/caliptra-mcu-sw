@@ -4,11 +4,11 @@ Licensed under the Apache-2.0 license.
 
 File Name:
 
-    main.rs
+    riscv.rs
 
 Abstract:
 
-    File contains main RISC-V entry point for MCU ROM
+    File contains the common RISC-V code for MCU ROM
 
 --*/
 

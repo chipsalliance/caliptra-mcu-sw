@@ -4,11 +4,11 @@ Licensed under the Apache-2.0 license.
 
 File Name:
 
-    main.rs
+    lib.rs
 
 Abstract:
 
-    File contains main entry point for MCU ROM
+    Common libraries for MCU ROM.
 
 --*/
 
