@@ -1,11 +1,10 @@
 // Licensed under the Apache-2.0 license
 
-use crate::io::HexWord;
-use crate::{error::McuError, static_ref::StaticRef};
 use core::fmt::Write;
 use registers_generated::fuses;
 use registers_generated::fuses::Fuses;
 use registers_generated::otp_ctrl;
+use romtime::{HexWord, McuError, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
 // TODO: use the Lifecycle controller to read the Lifecycle state

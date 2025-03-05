@@ -8,15 +8,12 @@ pub fn rom_build() -> Result<(), DynError> {
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
         .args([
-            "rustc",
+            "build",
             "-p",
-            "rom",
+            "mcu-rom-emulator",
             "--release",
             "--target",
             TARGET,
-            "--",
-            "-C",
-            "link-arg=-Trom/layout.ld",
         ])
         .status()?;
     if !status.success() {
@@ -26,7 +23,7 @@ pub fn rom_build() -> Result<(), DynError> {
         .join("target")
         .join(TARGET)
         .join("release")
-        .join("rom");
+        .join("mcu-rom-emulator");
 
     let rom_binary = PROJECT_ROOT
         .join("target")

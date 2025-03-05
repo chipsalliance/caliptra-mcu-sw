@@ -2114,6 +2114,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
+name = "mcu-rom-common"
+version = "0.1.0"
+dependencies = [
+ "registers-generated",
+ "riscv-csr",
+ "romtime",
+ "rv32i",
+ "tock-registers",
+ "zeroize",
+]
+
+[[package]]
+name = "mcu-rom-emulator"
+version = "0.1.0"
+dependencies = [
+ "mcu-rom-common",
+ "registers-generated",
+ "riscv-csr",
+ "romtime",
+ "rv32i",
+ "tock-registers",
+ "zeroize",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2616,18 +2641,6 @@ version = "0.1.0"
 source = "git+https://github.com/tock/tock.git?rev=b128ae817b86706c8c4e39d27fae5c54b98659f1#b128ae817b86706c8c4e39d27fae5c54b98659f1"
 dependencies = [
  "tock-registers",
-]
-
-[[package]]
-name = "rom"
-version = "0.1.0"
-dependencies = [
- "registers-generated",
- "riscv-csr",
- "romtime",
- "rv32i",
- "tock-registers",
- "zeroize",
 ]
 
 [[package]]

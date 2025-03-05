@@ -74,7 +74,7 @@ fn test_panic_missing() -> Result<(), DynError> {
         .join("target")
         .join(TARGET)
         .join("release")
-        .join("rom");
+        .join("mcu-rom-emulator");
     let rom_elf = std::fs::read(rom_elf)?;
     let symbols = elf_symbols(&rom_elf)?;
     if symbols.iter().any(|s| s.contains("panic_is_possible")) {

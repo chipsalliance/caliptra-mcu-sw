@@ -182,6 +182,27 @@ impl KernelResources<VeeRChip> for VeeR {
     }
 }
 
+// TODO: remove this dependence on the emulator when the emulator-specific
+// pieces are moved to platform/emulator/runtime
+pub(crate) struct EmulatorWriter {}
+pub(crate) static mut EMULATOR_WRITER: EmulatorWriter = EmulatorWriter {};
+
+impl core::fmt::Write for EmulatorWriter {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        print_to_console(s);
+        Ok(())
+    }
+}
+
+pub(crate) fn print_to_console(buf: &str) {
+    for b in buf.bytes() {
+        // Print to this address for emulator output
+        unsafe {
+            core::ptr::write_volatile(0x1000_1041 as *mut u8, b);
+        }
+    }
+}
+
 /// Main function called after RAM initialized.
 ///
 /// # Safety
@@ -189,6 +210,13 @@ impl KernelResources<VeeRChip> for VeeR {
 pub unsafe fn main() {
     // only machine mode
     rv32i::configure_trap_handler();
+
+    // TODO: remove this when the emulator-specific pieces are moved to
+    // platform/emulator/runtime
+    unsafe {
+        #[allow(static_mut_refs)]
+        romtime::set_printer(&mut EMULATOR_WRITER);
+    }
 
     // Set up memory protection immediately after setting the trap handler, to
     // ensure that much of the board initialization routine runs with ePMP
