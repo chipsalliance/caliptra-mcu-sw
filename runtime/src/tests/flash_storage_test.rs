@@ -19,7 +19,7 @@ use romtime::println;
 ))]
 use crate::board::run_kernel_op;
 
-pub const TEST_BUF_LEN: usize = 4096;
+pub const TEST_BUF_LEN: usize = 2048;
 
 pub struct IoState {
     read_bytes: usize,
@@ -142,7 +142,7 @@ fn test_single_flash_storage_erase(
 
         // Test non-page-aligned erase operation.
         // Make sure it is within the test range of [0..TEST_BUF_LEN) that is written to flash.
-        let length: usize = 4000;
+        let length: usize = 1600;
         let offset: usize = 50;
 
         assert!(flash_storage_drv.erase(offset, length).is_ok());

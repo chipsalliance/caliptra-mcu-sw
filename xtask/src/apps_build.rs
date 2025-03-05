@@ -16,6 +16,11 @@ pub const APPS: &[App] = &[
         permissions: vec![],
         minimum_ram: 16384,
     },
+    App {
+        name: "pldm-app",
+        permissions: vec![],
+        minimum_ram: 8192,
+    },
 ];
 
 pub struct App {
@@ -53,7 +58,7 @@ pub fn apps_build_flat_tbf(
     let mut ram_start = ram_start;
     for app in APPS.iter() {
         println!("Building TBF for app {}", app.name);
-        let app_bin = app_build_tbf(app, offset, ram_start, features)?;
+        let app_bin = app_build_tbf(app, offset, ram_start, app.minimum_ram as usize, features)?;
         bin.extend_from_slice(&app_bin);
         offset += app_bin.len();
         ram_start += app.minimum_ram as usize;
@@ -66,6 +71,7 @@ fn app_build_tbf(
     app: &App,
     start: usize,
     ram_start: usize,
+    ram_length: usize,
     features: &[&str],
 ) -> Result<Vec<u8>, DynError> {
     // start the TBF header
@@ -86,7 +92,14 @@ fn app_build_tbf(
     tbf.set_binary_end_offset(0); // temporary just to get the size of the header
     let tbf_header_size = tbf.generate()?.get_ref().len();
 
-    app_build(app.name, start, ram_start, tbf_header_size, features)?;
+    app_build(
+        app.name,
+        start,
+        ram_start,
+        ram_length,
+        tbf_header_size,
+        features,
+    )?;
     let objcopy = objcopy()?;
 
     let app_bin = target_binary(&format!("{}.bin", app.name));
@@ -123,6 +136,7 @@ fn app_build(
     app_name: &str,
     offset: usize,
     ram_start: usize,
+    ram_length: usize,
     tbf_header_size: usize,
     features: &[&str],
 ) -> Result<(), DynError> {
@@ -142,9 +156,9 @@ TBF_HEADER_SIZE = 0x{:x};
 FLASH_START = 0x{:x};
 FLASH_LENGTH = 0x10000;
 RAM_START = 0x{:x};
-RAM_LENGTH = 0x4000;
+RAM_LENGTH = 0x{:x};
 INCLUDE runtime/apps/app_layout.ld",
-            tbf_header_size, offset, ram_start
+            tbf_header_size, offset, ram_start, ram_length,
         ),
     )?;
 
