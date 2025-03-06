@@ -2,6 +2,7 @@
 
 /// This module tests the PLDM request/response interaction between the emulator and the device.
 /// The emulator sends out different PLDM requests and expects a corresponding response for those requests.
+use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -10,7 +11,7 @@ use pldm_common::codec::PldmCodec;
 use pldm_common::message::control::*;
 use pldm_common::protocol::base::*;
 use pldm_common::protocol::firmware_update::*;
-use pldm_ua::transport::{PldmSocket, PldmTransportError};
+use pldm_ua::transport::PldmSocket;
 
 pub struct PldmRequestResponseTest {
     test_messages: Vec<PldmExpectedMessagePair>,
@@ -68,16 +69,15 @@ impl PldmRequestResponseTest {
         test_messages.push(PldmExpectedMessagePair { request, response });
     }
 
-    pub fn test_send_receive(&mut self) -> Result<(), PldmTransportError> {
-        self.socket.connect()?;
+    pub fn test_send_receive(&mut self) -> Result<(), ()> {
+        self.socket.connect().map_err(|_| ())?;
 
         for message_pair in &self.test_messages {
-            self.socket.send(&message_pair.request)?;
-            let rx_pkt = self.socket.receive(None)?;
-            assert_eq!(
-                rx_pkt.payload.data[..rx_pkt.payload.len],
-                message_pair.response
-            );
+            self.socket.send(&message_pair.request).map_err(|_| ())?;
+            let rx_pkt = self.socket.receive(None).map_err(|_| ())?;
+            if rx_pkt.payload.data[..rx_pkt.payload.len] != message_pair.response {
+                return Err(());
+            }
         }
         Ok(())
     }
@@ -88,6 +88,7 @@ impl PldmRequestResponseTest {
             let mut test = PldmRequestResponseTest::new(socket, running);
             if test.test_send_receive().is_err() {
                 println!("Failed");
+                exit(-1);
             } else {
                 println!("Passed");
             }
