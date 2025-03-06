@@ -52,6 +52,7 @@ impl<'a, S: Syscalls> PldmService<'a, S> {
         self.running.store(true, Ordering::SeqCst);
         let mut msg_buffer = [0; MAX_MCTP_PLDM_MSG_SIZE];
         while self.running.load(Ordering::SeqCst) {
+            // TODO: add a timeout to avoid blocking indefinitely
             let _ = self.cmd_interface.handle_msg(&mut msg_buffer).await;
         }
         Ok(())

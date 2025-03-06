@@ -12,12 +12,13 @@ use pldm_common::protocol::base::{
 use pldm_common::protocol::firmware_update::FwUpdateCmd;
 use pldm_common::util::mctp_transport::PLDM_MSG_OFFSET;
 
+pub const PLDM_PROTOCOL_CAP_COUNT: usize = 2;
 pub type PldmCompletionErrorCode = u8;
 
-pub static PLDM_PROTOCOL_CAPABILITIES: [ProtocolCapability<'static>; 2] = [
+pub static PLDM_PROTOCOL_CAPABILITIES: [ProtocolCapability<'static>; PLDM_PROTOCOL_CAP_COUNT] = [
     ProtocolCapability {
         pldm_type: PldmSupportedType::Base,
-        protocol_version: 0xF1F1F000, //"1.1.0""
+        protocol_version: 0xF1F1F000, //"1.1.0"
         supported_commands: &[
             PldmControlCmd::SetTid as u8,
             PldmControlCmd::GetTid as u8,
@@ -28,7 +29,7 @@ pub static PLDM_PROTOCOL_CAPABILITIES: [ProtocolCapability<'static>; 2] = [
     },
     ProtocolCapability {
         pldm_type: PldmSupportedType::FwUpdate,
-        protocol_version: 0xF1F3F000, // 1.3.0
+        protocol_version: 0xF1F3F000, // "1.3.0"
         supported_commands: &[
             FwUpdateCmd::QueryDeviceIdentifiers as u8,
             FwUpdateCmd::GetFirmwareParameters as u8,

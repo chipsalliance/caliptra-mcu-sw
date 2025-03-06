@@ -130,9 +130,9 @@ impl<'a> ControlContext<'a> {
         pldm_type: PldmSupportedType,
         protocol_version: Ver32,
     ) -> bool {
-        let mut versions = [0; 4];
-        let count = self.get_protocol_versions(pldm_type, &mut versions);
-        versions[..count].contains(&protocol_version)
+        self.capabilities
+            .iter()
+            .any(|cap| cap.pldm_type == pldm_type && cap.protocol_version == protocol_version)
     }
 
     pub fn is_supported_command(&self, pldm_type: PldmSupportedType, cmd: u8) -> bool {
