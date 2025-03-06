@@ -18,7 +18,7 @@ use spdm_lib::protocol::{
 use spdm_lib::transport::MctpTransport;
 
 // Calitra Crypto timeout exponent (2^20 us)
-pub const CALIPTRA_SPDM_CT_EXPONENT: u8 = 0x20;
+pub const CALIPTRA_SPDM_CT_EXPONENT: u8 = 20;
 
 #[cfg(target_arch = "riscv32")]
 mod riscv;
