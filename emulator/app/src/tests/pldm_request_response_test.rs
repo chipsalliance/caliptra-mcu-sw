@@ -89,7 +89,6 @@ impl PldmRequestResponseTest {
             if test.test_send_receive().is_err() {
                 println!("Failed");
                 exit(-1);
-                exit(-1);
             } else {
                 println!("Passed");
             }
