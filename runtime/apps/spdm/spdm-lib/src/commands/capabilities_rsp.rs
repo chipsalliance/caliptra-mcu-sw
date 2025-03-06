@@ -62,12 +62,12 @@ impl CommonCodec for GetCapabilitiesV12 {
 fn req_flag_compatible(version: SpdmVersion, flags: &CapabilityFlags) -> bool {
     // Checks common to 1.1 and higher
     if version >= SpdmVersion::V11 {
-        // Illgal to return reserved values (2 and 3)
+        // Illegal to return reserved values (2 and 3)
         if flags.psk_cap() >= PskCapability::PskWithContext as u8 {
             return false;
         }
 
-        // Checks that originate from key exhange capabilities
+        // Checks that originate from key exchange capabilities
         if flags.key_ex_cap() == 1 || flags.psk_cap() != PskCapability::NoPsk as u8 {
             if flags.mac_cap() == 0 && flags.encrypt_cap() == 0 {
                 return false;
@@ -94,7 +94,7 @@ fn req_flag_compatible(version: SpdmVersion, flags: &CapabilityFlags) -> bool {
             return false;
         }
 
-        // Checks that orginate from certiticate or public key capabilities
+        // Checks that originate from certificate or public key capabilities
         if flags.cert_cap() == 1 || flags.pub_key_id_cap() == 1 {
             // Certificate capabilities and public key capabilities can not both be set
             if flags.cert_cap() == 1 && flags.pub_key_id_cap() == 1 {

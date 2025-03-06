@@ -23,7 +23,6 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         supported_versions: &'a [SpdmVersion],
         spdm_transport: &'a mut MctpTransport<S>,
         local_capabilities: DeviceCapabilities,
-        // cw: &'a mut ConsoleWriter<S>,
     ) -> SpdmResult<Self> {
         if supported_versions.is_empty()
             || supported_versions.len() > MAX_NUM_SUPPORTED_SPDM_VERSIONS
@@ -37,7 +36,6 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             transport: spdm_transport,
             state: State::new(),
             local_capabilities,
-            // cw,
         })
     }
 
