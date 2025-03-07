@@ -12,6 +12,7 @@ pub const PLDM_FWUP_BASELINE_TRANSFER_SIZE: usize = 32;
 pub const PLDM_FWUP_MAX_PADDING_SIZE: usize = PLDM_FWUP_BASELINE_TRANSFER_SIZE;
 pub const PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN: usize = 255;
 pub const DESCRIPTOR_DATA_MAX_LEN: usize = 64; // Arbitrary limit for static storage
+pub const MAX_COMPONENT_COUNT: usize = 8; // Arbitrary limit, change as needed
 
 #[repr(u8)]
 pub enum FwUpdateCmd {
@@ -270,6 +271,16 @@ pub struct Descriptor {
     pub descriptor_data: [u8; DESCRIPTOR_DATA_MAX_LEN],
 }
 
+impl Default for Descriptor {
+    fn default() -> Self {
+        Descriptor {
+            descriptor_type: 0,
+            descriptor_length: 0,
+            descriptor_data: [0; DESCRIPTOR_DATA_MAX_LEN],
+        }
+    }
+}
+
 impl Descriptor {
     pub fn new_empty() -> Self {
         Descriptor {
@@ -360,7 +371,7 @@ impl PldmCodec for Descriptor {
 }
 
 bitfield! {
-    #[derive(Clone, Copy, FromBytes, IntoBytes, Immutable, PartialEq, Eq)]
+    #[derive(Clone, Copy, FromBytes, IntoBytes, Immutable, PartialEq, Eq, Default)]
     pub struct FirmwareDeviceCapability(u32);
     impl Debug;
     pub u32, reserved, _: 31, 10;
@@ -481,7 +492,7 @@ impl<'a> PldmFirmwareVersion<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, FromBytes, IntoBytes, Immutable)]
+#[derive(Debug, Clone, PartialEq, Eq, FromBytes, IntoBytes, Immutable, Copy)]
 #[repr(C, packed)]
 pub struct ComponentParameterEntryFixed {
     pub comp_classification: u16,
@@ -499,12 +510,36 @@ pub struct ComponentParameterEntryFixed {
     pub capabilities_during_update: FirmwareDeviceCapability,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 #[repr(C)]
 pub struct ComponentParameterEntry {
     pub comp_param_entry_fixed: ComponentParameterEntryFixed,
     pub active_comp_ver_str: [u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN],
     pub pending_comp_ver_str: Option<[u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN]>,
+}
+
+impl Default for ComponentParameterEntry {
+    fn default() -> Self {
+        ComponentParameterEntry {
+            comp_param_entry_fixed: ComponentParameterEntryFixed {
+                comp_classification: 0,
+                comp_identifier: 0,
+                comp_classification_index: 0,
+                active_comp_comparison_stamp: 0,
+                active_comp_ver_str_type: 0,
+                active_comp_ver_str_len: 0,
+                active_comp_release_date: [0; PLDM_FWUP_COMPONENT_RELEASE_DATA_LEN],
+                pending_comp_comparison_stamp: 0,
+                pending_comp_ver_str_type: 0,
+                pending_comp_ver_str_len: 0,
+                pending_comp_release_date: [0; PLDM_FWUP_COMPONENT_RELEASE_DATA_LEN],
+                comp_activation_methods: ComponentActivationMethods(0),
+                capabilities_during_update: FirmwareDeviceCapability(0),
+            },
+            active_comp_ver_str: [0; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN],
+            pending_comp_ver_str: None,
+        }
+    }
 }
 
 impl ComponentParameterEntry {

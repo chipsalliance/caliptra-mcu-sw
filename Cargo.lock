@@ -2437,6 +2437,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "pldm-common",
+ "pldm-fw-pkg",
  "simple_logger",
  "smlang 0.8.0",
 ]

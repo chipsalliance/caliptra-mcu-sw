@@ -9,6 +9,7 @@ authors.workspace = true
 [dependencies]
 log.workspace = true
 pldm-common.workspace = true
+pldm-fw-pkg.workspace = true
 smlang.workspace = true
 
 [dev-dependencies]

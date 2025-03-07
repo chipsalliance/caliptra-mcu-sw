@@ -2,6 +2,7 @@
 
 use crate::events::PldmEvents;
 use crate::transport::{PldmSocket, RxPacket, MAX_PLDM_PAYLOAD_SIZE};
+use crate::update_sm;
 use log::{debug, error};
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::control::{self as pldm_packet, is_bit_set, GetPldmCommandsRequest};
@@ -12,6 +13,7 @@ use pldm_common::protocol::base::{
 use pldm_common::protocol::firmware_update::FwUpdateCmd;
 use pldm_common::protocol::version::{PLDM_BASE_PROTOCOL_VERSION, PLDM_FW_UPDATE_PROTOCOL_VERSION};
 use smlang::statemachine;
+use std::sync::mpsc::Sender;
 
 // Define the state machine for PLDM Discovery Requester
 statemachine! {
@@ -144,9 +146,12 @@ pub trait StateMachineActions {
     }
     fn on_pldm_commands_response_type5(
         &self,
-        _ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket>,
         _response: pldm_packet::GetPldmCommandsResponse,
     ) -> Result<(), ()> {
+        ctx.event_queue
+            .send(PldmEvents::Update(update_sm::Events::StartUpdate))
+            .map_err(|_| ())?;
         Ok(())
     }
     fn on_cancel_discovery(&self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
@@ -285,6 +290,9 @@ pub fn process_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
         error!("Invalid header version!");
         return Err(());
     }
+    if header.pldm_type() != PldmSupportedType::Base as u8 {
+        return Err(());
+    }
 
     // Convert packet to state machine event
     match PldmControlCmd::try_from(header.cmd_code()) {
@@ -309,8 +317,9 @@ pub struct DefaultActions;
 impl StateMachineActions for DefaultActions {}
 
 pub struct InnerContext<S: PldmSocket> {
-    socket: S,
-    instance_id: InstanceId,
+    pub socket: S,
+    pub event_queue: Sender<PldmEvents>,
+    pub instance_id: InstanceId,
     fd_tid: u8,
 }
 
@@ -320,11 +329,12 @@ pub struct Context<T: StateMachineActions, S: PldmSocket> {
 }
 
 impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
-    pub fn new(context: T, socket: S, fd_tid: u8) -> Self {
+    pub fn new(context: T, socket: S, fd_tid: u8, event_queue: Sender<PldmEvents>) -> Self {
         Self {
             inner: context,
             inner_ctx: InnerContext {
                 socket,
+                event_queue,
                 instance_id: 0,
                 fd_tid,
             },

@@ -6,7 +6,7 @@ use crate::protocol::base::{
 };
 use crate::protocol::firmware_update::{
     ComponentParameterEntry, FirmwareDeviceCapability, FwUpdateCmd, PldmFirmwareString,
-    PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN,
+    MAX_COMPONENT_COUNT, PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN,
 };
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
@@ -41,12 +41,26 @@ pub struct FirmwareParamFixed {
     pub active_comp_image_set_ver_str: [u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN],
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl Default for FirmwareParamFixed {
+    fn default() -> Self {
+        FirmwareParamFixed {
+            capabilities_during_update: FirmwareDeviceCapability(0),
+            comp_count: 0,
+            active_comp_image_set_ver_str_type: 0,
+            active_comp_image_set_ver_str_len: 0,
+            pending_comp_image_set_ver_str_type: 0,
+            pending_comp_image_set_ver_str_len: 0,
+            active_comp_image_set_ver_str: [0; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 #[repr(C)]
 pub struct FirmwareParameters {
     pub params_fixed: FirmwareParamFixed,
     pub pending_comp_image_set_ver_str: Option<[u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN]>,
-    pub comp_param_table: ComponentParameterEntry,
+    pub comp_param_table: [ComponentParameterEntry; MAX_COMPONENT_COUNT],
 }
 
 impl FirmwareParameters {
@@ -55,7 +69,7 @@ impl FirmwareParameters {
         comp_count: u16,
         active_comp_image_set_version: &PldmFirmwareString,
         pending_comp_image_set_version: &PldmFirmwareString,
-        comp_param_table: &ComponentParameterEntry,
+        comp_param_table: &[ComponentParameterEntry],
     ) -> Self {
         FirmwareParameters {
             params_fixed: FirmwareParamFixed {
@@ -80,7 +94,12 @@ impl FirmwareParameters {
             } else {
                 None
             },
-            comp_param_table: comp_param_table.clone(),
+            comp_param_table: {
+                let mut arr = [ComponentParameterEntry::default(); MAX_COMPONENT_COUNT];
+                let count = comp_param_table.len().min(MAX_COMPONENT_COUNT);
+                arr[..count].copy_from_slice(&comp_param_table[..count]);
+                arr
+            },
         }
     }
 
@@ -89,7 +108,9 @@ impl FirmwareParameters {
         if self.pending_comp_image_set_ver_str.is_some() {
             bytes += self.params_fixed.pending_comp_image_set_ver_str_len as usize;
         }
-        bytes += self.comp_param_table.codec_size_in_bytes();
+        for i in 0..self.params_fixed.comp_count as usize {
+            bytes += self.comp_param_table[i].codec_size_in_bytes();
+        }
         bytes
     }
 }
@@ -112,8 +133,11 @@ impl PldmCodec for FirmwareParameters {
             offset += len;
         }
 
-        let bytes = self.comp_param_table.encode(&mut buffer[offset..])?;
-        offset += bytes;
+        for i in 0..self.params_fixed.comp_count as usize {
+            let bytes = self.comp_param_table[i].encode(&mut buffer[offset..])?;
+            offset += bytes;
+        }
+
         Ok(offset)
     }
 
@@ -143,7 +167,15 @@ impl PldmCodec for FirmwareParameters {
         };
         offset += params_fixed.pending_comp_image_set_ver_str_len as usize;
 
-        let comp_param_table = ComponentParameterEntry::decode(&buffer[offset..])?;
+        let mut comp_param_table = [ComponentParameterEntry::default(); MAX_COMPONENT_COUNT];
+        for item in comp_param_table
+            .iter_mut()
+            .take(params_fixed.comp_count as usize)
+        {
+            let comp_param_table_entry = ComponentParameterEntry::decode(&buffer[offset..])?;
+            *item = comp_param_table_entry;
+            offset += comp_param_table_entry.codec_size_in_bytes();
+        }
 
         Ok(FirmwareParameters {
             params_fixed,
@@ -153,7 +185,7 @@ impl PldmCodec for FirmwareParameters {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 #[repr(C)]
 pub struct GetFirmwareParametersResponse {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
@@ -266,7 +298,7 @@ mod test {
             1,
             &active_firmware_string,
             &pending_firmware_string,
-            &component_parameter_entry,
+            &[component_parameter_entry],
         )
     }
 

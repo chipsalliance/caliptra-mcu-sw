@@ -5,3 +5,4 @@ pub mod daemon;
 pub mod discovery_sm;
 pub mod events;
 pub mod transport;
+pub mod update_sm;
