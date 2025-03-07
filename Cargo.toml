@@ -118,7 +118,7 @@ thiserror-no-std = "2.0.2"
 toml = "0.8.19"
 uuid = { version = "1.10.0", features = ["serde"]}
 walkdir = "2.5.0"
-zerocopy = { version = "0.8.8", features = ["derive"] }
+zerocopy = { version = "0.8.17", features = ["derive"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_derive"] }
 
 # local dependencies
