@@ -303,7 +303,7 @@ mod test {
 
     /// This tests a full active mode boot run through with Caliptra, including
     /// loading MCU's firmware from Caliptra over the recovery interface.
-    #[test] // temporarily disabled while waiting for SoC manifest PR
+    #[test]
     fn test_active_mode_recovery_with_caliptra() {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
