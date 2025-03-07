@@ -77,7 +77,7 @@ pub handshake_in_the_clear_cap, set_handshake_in_the_clear_cap: 15, 15;
 pub pub_key_id_cap, set_pub_key_id_cap: 16, 16;
 pub chunk_cap, set_chunk_cap: 17, 17;
 pub alias_cert_cap, set_alias_cert_cap: 18, 18;
-pub set_certificate_cap, set_set_certtificate_cap: 19, 19;
+pub set_certificate_cap, set_set_certificate_cap: 19, 19;
 pub csr_cap, set_csr_cap: 20, 20;
 pub cert_install_reset_cap, set_cert_install_reset_cap: 21, 21;
 pub ep_info_cap, set_ep_info_cap: 23, 22;
