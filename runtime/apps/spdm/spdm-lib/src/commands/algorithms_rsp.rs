@@ -169,27 +169,21 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
     }
 
     let req_start_offset = req_payload.data_offset() - core::mem::size_of::<SpdmMsgHdr>();
-    writeln!(ctx.cw, "SPDM_LIB: Data offset: {}", req_start_offset).unwrap();
 
     let req = NegotiateAlgorithmsReq::decode(req_payload).map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
     })?;
-
-    writeln!(ctx.cw, "SPDM_LIB: Req {:?}", req).unwrap();
 
     // check req length
     if req.length > MAX_REQUEST_LENGTH || req.length < req.min_req_len() as u16 {
         return Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None));
     }
 
-    writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
-
     // Check other parameters
     let other_params_support = req.other_param_support;
     if other_params_support.reserved1() != 0 || other_params_support.reserved2() != 0 {
         return Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None));
     }
-    writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
 
     // Extended Asym and Hash Algo size
     let ext_algo_size = req.ext_algo_size();
@@ -198,7 +192,6 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
     req_payload.pull_data(ext_algo_size as usize).map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
     })?;
-    writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
 
     let mut prev_alg_type = 0;
     let mut total_ext_alg_count = 0;
@@ -211,18 +204,18 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
         let alg_struct = AlgStructure::decode(req_payload).map_err(|_| {
             ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
         })?;
-        writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
+        // writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
 
         let alg_type = AlgType::try_from(alg_struct.alg_type()).map_err(|_| {
             ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
         })?;
-        writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
+        // writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
 
         // AlgType shall monotonically increase
         if i > 0 && prev_alg_type > alg_struct.alg_type() {
             Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
         }
-        writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
+        // writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
 
         prev_alg_type = alg_struct.alg_type();
 
@@ -230,7 +223,7 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
         if alg_struct.alg_supported() == 0 {
             Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
         }
-        writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
+        // writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
 
         match alg_type {
             AlgType::Dhe => dhe_name_group = DheNamedGroup(alg_struct.alg_supported()),
@@ -251,14 +244,14 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
         if fixed_alg_size != 2 {
             Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
         }
-        writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
+        // writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
 
         req_payload
             .pull_data(fixed_alg_size as usize)
             .map_err(|_| {
                 ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
             })?;
-        writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
+        // writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
     }
 
     // Check the total number of extended algorithms
@@ -266,22 +259,22 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
         .map_err(|_| {
             ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
         })?;
-    writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
+    // writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
 
-    writeln!(
-        ctx.cw,
-        "SPDM_LIB: current data offset {} start offset {}",
-        req_payload.data_offset(),
-        req_start_offset
-    )
-    .unwrap();
+    // writeln!(
+    //     ctx.cw,
+    //     "SPDM_LIB: current data offset {} start offset {}",
+    //     req_payload.data_offset(),
+    //     req_start_offset
+    // )
+    // .unwrap();
 
     // Check total length of the request
     let req_len = req_payload.data_offset() - req_start_offset;
     if req_len != req.length as usize {
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
-    writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
+    // writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
 
     let measurement_hash_algo = if req.measurement_specification.dmtf_measurement_spec() == 0 {
         MeasurementHashAlgo::default()
@@ -301,17 +294,17 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
         req_base_asym_algo: req_base_asym_alg,
         key_schedule: key_schedule,
     };
-    writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
+    // writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
 
     ctx.state
         .connection_info
         .set_peer_algorithms(peer_algorithms);
-    writeln!(
-        ctx.cw,
-        "SPDM_LIB: Processed request. Peer algorithms: {:?}",
-        peer_algorithms
-    )
-    .unwrap();
+    // writeln!(
+    //     ctx.cw,
+    //     "SPDM_LIB: Processed request. Peer algorithms: {:?}",
+    //     peer_algorithms
+    // )
+    // .unwrap();
     Ok(())
 }
 
@@ -509,17 +502,17 @@ pub(crate) fn handle_negotiate_algorithms<'a, S: Syscalls>(
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    writeln!(
-        ctx.cw,
-        "SPDM_LIB: Handle negotiate algorithms request. connection_state {:?}",
-        ctx.state.connection_info.state()
-    )
-    .unwrap();
+    // writeln!(
+    //     ctx.cw,
+    //     "SPDM_LIB: Handle negotiate algorithms request. connection_state {:?}",
+    //     ctx.state.connection_info.state()
+    // )
+    // .unwrap();
     // Validate the state
     if ctx.state.connection_info.state() != ConnectionState::AfterCapabilities {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
-    writeln!(ctx.cw, "SPDM_LIB: Processing request").unwrap();
+    // writeln!(ctx.cw, "SPDM_LIB: Processing request").unwrap();
 
     // process negotiate algorithms request
     process_negotiate_algorithms_request(ctx, spdm_hdr, req_payload)?;

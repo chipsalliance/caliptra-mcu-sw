@@ -114,26 +114,26 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
     let local_device_algorithms = LocalDeviceAlgorithms {
         device_algorithms,
         algorithm_priority_table: AlgorithmPriorityTable {
-            measurement_specification: &[],
-            opaque_data_format: &[],
-            base_asym_algo: &[],
-            base_hash_algo: &hash_priority_table,
-            mel_specification: &[],
-            dhe_group: &[],
-            aead_cipher_suite: &[],
-            req_base_asym_algo: &[],
-            key_schedule: &[],
+            measurement_specification: None,
+            opaque_data_format: None,
+            base_asym_algo: None,
+            base_hash_algo: Some(&hash_priority_table),
+            mel_specification: None,
+            dhe_group: None,
+            aead_cipher_suite: None,
+            req_base_asym_algo: None,
+            key_schedule: None,
         },
     };
 
-    let mut console_writer = Console::<S>::writer();
+    // let mut console_writer = Console::<S>::writer();
 
     let mut ctx = match SpdmContext::new(
         &supported_versions,
         &mut mctp_spdm_transport,
         local_capabilities,
         local_device_algorithms,
-        &mut console_writer,
+        // &mut console_writer,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
