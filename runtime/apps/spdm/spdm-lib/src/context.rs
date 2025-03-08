@@ -2,20 +2,26 @@
 
 use crate::codec::{Codec, MessageBuf};
 use crate::commands::error_rsp::{fill_error_response, ErrorCode};
-use crate::commands::{capabilities_rsp, version_rsp};
+use crate::commands::{algorithms_rsp, capabilities_rsp, version_rsp};
 use crate::error::*;
+use crate::protocol::algorithms::*;
 use crate::protocol::common::{ReqRespCode, SpdmMsgHdr};
-use crate::protocol::version::SpdmVersion;
-use crate::protocol::{DeviceCapabilities, MAX_NUM_SUPPORTED_SPDM_VERSIONS, MAX_SUPORTED_VERSION};
+use crate::protocol::version::*;
+use crate::protocol::{DeviceAlgorithms, DeviceCapabilities};
 use crate::state::State;
 use crate::transport::MctpTransport;
 use libtock_platform::Syscalls;
+
+use core::fmt::Write;
+use libtock_console::ConsoleWriter;
 
 pub struct SpdmContext<'a, S: Syscalls> {
     transport: &'a mut MctpTransport<S>,
     pub(crate) supported_versions: &'a [SpdmVersion],
     pub(crate) state: State,
     pub(crate) local_capabilities: DeviceCapabilities,
+    pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
+    pub(crate) cw: &'a mut ConsoleWriter<S>,
 }
 
 impl<'a, S: Syscalls> SpdmContext<'a, S> {
@@ -23,21 +29,20 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         supported_versions: &'a [SpdmVersion],
         spdm_transport: &'a mut MctpTransport<S>,
         local_capabilities: DeviceCapabilities,
-        // cw: &'a mut ConsoleWriter<S>,
+        local_algorithms: LocalDeviceAlgorithms<'a>,
+        cw: &'a mut ConsoleWriter<S>,
     ) -> SpdmResult<Self> {
-        if supported_versions.is_empty()
-            || supported_versions.len() > MAX_NUM_SUPPORTED_SPDM_VERSIONS
-            || supported_versions.iter().any(|v| *v > MAX_SUPORTED_VERSION)
-        {
-            Err(SpdmError::InvalidParam)?;
-        }
+        validate_supported_versions(supported_versions)?;
+
+        validate_device_algorithms(&local_algorithms)?;
 
         Ok(Self {
             supported_versions,
             transport: spdm_transport,
             state: State::new(),
             local_capabilities,
-            // cw,
+            local_algorithms,
+            cw,
         })
     }
 
@@ -84,6 +89,9 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             ReqRespCode::GetVersion => version_rsp::handle_version(self, req_msg_header, req)?,
             ReqRespCode::GetCapabilities => {
                 capabilities_rsp::handle_capabilities(self, req_msg_header, req)?
+            }
+            ReqRespCode::NegotiateAlgorithms => {
+                algorithms_rsp::handle_negotiate_algorithms(self, req_msg_header, req)?
             }
             _ => Err((false, CommandError::UnsupportedRequest))?,
         }

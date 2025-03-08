@@ -1,6 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use crate::error::SpdmError;
+use crate::error::{SpdmError, SpdmResult};
+
+const MAX_NUM_SUPPORTED_SPDM_VERSIONS: usize = 4;
+const MAX_SUPORTED_VERSION: SpdmVersion = SpdmVersion::V13;
 
 #[derive(Debug, Default, PartialEq, Clone, Copy, PartialOrd)]
 pub enum SpdmVersion {
@@ -47,4 +50,14 @@ impl SpdmVersion {
     pub fn minor(&self) -> u8 {
         self.to_u8() & 0x0F
     }
+}
+
+pub(crate) fn validate_supported_versions(supported_versions: &[SpdmVersion]) -> SpdmResult<()> {
+    if supported_versions.is_empty()
+        || supported_versions.len() > MAX_NUM_SUPPORTED_SPDM_VERSIONS
+        || supported_versions.iter().any(|v| *v > MAX_SUPORTED_VERSION)
+    {
+        Err(SpdmError::InvalidParam)?;
+    }
+    Ok(())
 }

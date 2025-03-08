@@ -5,8 +5,7 @@ use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const MAX_MCTP_SPDM_MSG_SIZE: usize = 1024;
-pub const MAX_NUM_SUPPORTED_SPDM_VERSIONS: usize = 4;
-pub const MAX_SUPORTED_VERSION: SpdmVersion = SpdmVersion::V13;
+
 pub const MIN_DATA_TRANSFER_SIZE_V12: u32 = 42;
 
 // Maximum Cryptographic processing timeout to be reported in Capabilities response

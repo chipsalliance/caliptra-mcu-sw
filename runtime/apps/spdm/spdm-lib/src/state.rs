@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::protocol::{DeviceCapabilities, SpdmVersion};
+use crate::protocol::{DeviceAlgorithms, DeviceCapabilities, SpdmVersion};
 
 pub(crate) struct State {
     pub(crate) connection_info: ConnectionInfo,
@@ -28,6 +28,7 @@ pub(crate) struct ConnectionInfo {
     version_number: SpdmVersion,
     state: ConnectionState,
     peer_capabilities: DeviceCapabilities,
+    peer_algorithms: DeviceAlgorithms,
 }
 
 impl Default for ConnectionInfo {
@@ -36,6 +37,7 @@ impl Default for ConnectionInfo {
             version_number: SpdmVersion::default(),
             state: ConnectionState::NotStarted,
             peer_capabilities: DeviceCapabilities::default(),
+            peer_algorithms: DeviceAlgorithms::default(),
         }
     }
 }
@@ -61,10 +63,23 @@ impl ConnectionInfo {
         self.peer_capabilities = peer_capabilities;
     }
 
+    pub fn peer_capabilities(&self) -> DeviceCapabilities {
+        self.peer_capabilities
+    }
+
+    pub fn set_peer_algorithms(&mut self, peer_algorithms: DeviceAlgorithms) {
+        self.peer_algorithms = peer_algorithms;
+    }
+
+    pub fn peer_algorithms(&self) -> &DeviceAlgorithms {
+        &self.peer_algorithms
+    }
+
     fn reset(&mut self) {
         self.version_number = SpdmVersion::default();
         self.state = ConnectionState::NotStarted;
         self.peer_capabilities = DeviceCapabilities::default();
+        self.peer_algorithms = DeviceAlgorithms::default();
     }
 }
 

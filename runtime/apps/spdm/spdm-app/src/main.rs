@@ -11,10 +11,10 @@ use libtock_console::{Console, ConsoleWriter};
 use libtock_platform::Syscalls;
 use spdm_lib::codec::MessageBuf;
 use spdm_lib::context::SpdmContext;
-use spdm_lib::protocol::{
-    CapabilityFlags, DeviceCapabilities, MeasCapability, PskCapability, SpdmVersion,
-    MAX_MCTP_SPDM_MSG_SIZE,
-};
+use spdm_lib::protocol::*;
+// use spdm_lib::protocol::{
+//     BaseAsymAlgo, CapabilityFlags, DeviceAlgorithms, DeviceCapabilities, MeasCapability, MeasurementSpecification, PskCapability, SpdmVersion, MAX_MCTP_SPDM_MSG_SIZE
+// };
 use spdm_lib::transport::MctpTransport;
 
 // Calitra Crypto timeout exponent (2^20 us)
@@ -103,10 +103,37 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
         max_spdm_msg_size: max_mctp_spdm_msg_size,
     };
 
+    let device_algorithms = device_algorithms();
+
+    let hash_priority_table = [
+        BaseHashAlgoType::TpmAlgSha384,
+        BaseHashAlgoType::TpmAlgSha256,
+        BaseHashAlgoType::TpmAlgSha512,
+    ];
+
+    let local_device_algorithms = LocalDeviceAlgorithms {
+        device_algorithms,
+        algorithm_priority_table: AlgorithmPriorityTable {
+            measurement_specification: &[],
+            opaque_data_format: &[],
+            base_asym_algo: &[],
+            base_hash_algo: &hash_priority_table,
+            mel_specification: &[],
+            dhe_group: &[],
+            aead_cipher_suite: &[],
+            req_base_asym_algo: &[],
+            key_schedule: &[],
+        },
+    };
+
+    let mut console_writer = Console::<S>::writer();
+
     let mut ctx = match SpdmContext::new(
         &supported_versions,
         &mut mctp_spdm_transport,
         local_capabilities,
+        local_device_algorithms,
+        &mut console_writer,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
@@ -127,5 +154,44 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
             }
         }
         writeln!(cw, "SPDM_APP: Process message finished").unwrap();
+    }
+}
+
+fn device_algorithms() -> DeviceAlgorithms {
+    let mut measurement_spec = MeasurementSpecification::default();
+    measurement_spec.set_dmtf_measurement_spec(1);
+
+    let other_param_support = OtherParamSupport::default();
+
+    let mut measurement_hash_algo = MeasurementHashAlgo::default();
+    measurement_hash_algo.set_tpm_alg_sha_384(1);
+
+    let mut base_asym_algo = BaseAsymAlgo::default();
+    base_asym_algo.set_tpm_alg_ecdsa_ecc_nist_p384(1);
+
+    let mut base_hash_algo = BaseHashAlgo::default();
+    base_hash_algo.set_tpm_alg_sha_256(1);
+    base_hash_algo.set_tpm_alg_sha_384(1);
+    base_hash_algo.set_tpm_alg_sha_512(1);
+
+    let mut mel_specification = MelSpecification::default();
+    mel_specification.set_dmtf_mel_spec(1);
+
+    let dhe_group = DheNamedGroup::default();
+    let aead_cipher_suite = AeadCipherSuite::default();
+    let req_base_asym_algo = ReqBaseAsymAlg::default();
+    let key_schedule = KeySchedule::default();
+
+    DeviceAlgorithms {
+        measurement_spec,
+        other_param_support,
+        measurement_hash_algo,
+        base_asym_algo,
+        base_hash_algo,
+        mel_specification,
+        dhe_group,
+        aead_cipher_suite,
+        req_base_asym_algo,
+        key_schedule,
     }
 }
