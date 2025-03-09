@@ -80,6 +80,7 @@ impl CommonCodec for NegotiateAlgorithmsReq {
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(packed)]
+#[allow(dead_code)]
 struct NegotiateAlgorithmsResp {
     num_alg_struct_tables: u8,
     reserved_1: u8,
@@ -179,8 +180,8 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
-    // check req length
-    if req.length > MAX_REQUEST_LENGTH || req.length < req.min_req_len() as u16 {
+    // check min req length
+    if req.length > MAX_REQUEST_LENGTH || req.length < req.min_req_len() {
         return Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None));
     }
 
@@ -192,21 +193,19 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
 
     // Extended Asym and Hash Algo size
     let ext_algo_size = req.ext_algo_size();
-
-    // Responder doesn't support any extended asym or hash algorithms. No need to process the extended algorithms.
-    req_payload.pull_data(ext_algo_size as usize).map_err(|_| {
+    req_payload.pull_data(ext_algo_size).map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
     })?;
 
     let mut prev_alg_type = 0;
     let mut total_ext_alg_count = 0;
-    let mut dhe_name_group = DheNamedGroup::default();
+    let mut dhe_group = DheNamedGroup::default();
     let mut aead_cipher_suite = AeadCipherSuite::default();
-    let mut req_base_asym_alg = ReqBaseAsymAlg::default();
+    let mut req_base_asym_algo = ReqBaseAsymAlg::default();
     let mut key_schedule = KeySchedule::default();
 
     for i in 0..req.num_alg_struct_tables as usize {
-        let alg_struct = AlgStructure::decode(req_payload).map_err(|e| {
+        let alg_struct = AlgStructure::decode(req_payload).map_err(|_| {
             ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
         })?;
 
@@ -231,12 +230,12 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
         }
 
         match alg_type {
-            AlgType::Dhe => dhe_name_group = DheNamedGroup(alg_struct.alg_supported()),
+            AlgType::Dhe => dhe_group = DheNamedGroup(alg_struct.alg_supported()),
             AlgType::AeadCipherSuite => {
                 aead_cipher_suite = AeadCipherSuite(alg_struct.alg_supported())
             }
             AlgType::ReqBaseAsymAlg => {
-                req_base_asym_alg = ReqBaseAsymAlg(alg_struct.alg_supported())
+                req_base_asym_algo = ReqBaseAsymAlg(alg_struct.alg_supported())
             }
             AlgType::KeySchedule => key_schedule = KeySchedule(alg_struct.alg_supported()),
         }
@@ -284,22 +283,16 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
         base_asym_algo: req.base_asym_algo,
         base_hash_algo: req.base_hash_algo,
         mel_specification: req.mel_specification,
-        dhe_group: dhe_name_group,
-        aead_cipher_suite: aead_cipher_suite,
-        req_base_asym_algo: req_base_asym_alg,
-        key_schedule: key_schedule,
+        dhe_group,
+        aead_cipher_suite,
+        req_base_asym_algo,
+        key_schedule,
     };
 
     ctx.state
         .connection_info
         .set_peer_algorithms(peer_algorithms);
-    // writeln!(
-    //     ctx.cw,
-    //     "SPDM_LIB: Processed request. Peer algorithms: {:?}",
-    //     peer_algorithms
-    // )
-    // .unwrap();
-    writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
+
     Ok(())
 }
 

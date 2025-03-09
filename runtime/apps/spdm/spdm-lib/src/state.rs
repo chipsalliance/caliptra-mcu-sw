@@ -63,6 +63,7 @@ impl ConnectionInfo {
         self.peer_capabilities = peer_capabilities;
     }
 
+    #[allow(dead_code)]
     pub fn peer_capabilities(&self) -> DeviceCapabilities {
         self.peer_capabilities
     }

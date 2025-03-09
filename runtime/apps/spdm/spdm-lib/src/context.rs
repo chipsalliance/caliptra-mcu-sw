@@ -12,7 +12,6 @@ use crate::state::State;
 use crate::transport::MctpTransport;
 use libtock_platform::Syscalls;
 
-use core::fmt::Write;
 use libtock_console::ConsoleWriter;
 
 pub struct SpdmContext<'a, S: Syscalls> {
