@@ -236,7 +236,8 @@ pub unsafe fn main() {
     ];
     println!(
         "PAR: Code region start: {:#x} end {:#x}",
-        _srom as usize, _eprog as usize
+        core::ptr::addr_of!(_srom) as usize,
+        core::ptr::addr_of!(_eprog) as usize
     );
 
     let epmp = VeeRProtectionMMLEPMP::new(

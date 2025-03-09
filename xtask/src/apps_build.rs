@@ -58,6 +58,10 @@ pub fn apps_build_flat_tbf(
         offset += app_bin.len();
         ram_start += app.minimum_ram as usize;
     }
+    // align to 4-byte boundary for PMP
+    while bin.len() % 4 != 0 {
+        bin.push(0);
+    }
     Ok(bin)
 }
 
