@@ -900,7 +900,7 @@ fn generate_fw_registers(
         register_types_to_crates,
         false,
     );
-    let recursion = "#![recursion_limit = \"256\"]\n";
+    let recursion = "#![recursion_limit = \"512\"]\n";
     let root_tokens = root_type_tokens;
     let defines_mod = "pub mod defines;\n";
     let fuses_tokens = "pub mod fuses;\n";

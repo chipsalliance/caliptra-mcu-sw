@@ -46,28 +46,31 @@ impl Soc {
     pub fn populate_fuses(&self, fuses: &Fuses) {
         // secret fuses are populated by a hardware state machine, so we can skip those
 
+        // TODO[cap2]: the OTP map doesn't have this value yet, so we hardcode it for now
+        self.registers.fuse_pqc_key_type.set(3); // LMS
+
         // TODO: vendor-specific fuses when those are supported
         self.registers
             .fuse_fmc_key_manifest_svn
             .set(fuses.fmc_key_manifest_svn());
 
-        romtime::print!("[mcu-fuse-write] Writing fuse key manifest PK hash: ");
-        if fuses.key_manifest_pk_hash().len() != self.registers.fuse_key_manifest_pk_hash.len() {
+        romtime::print!("[mcu-fuse-write] Writing fuse key vendor PK hash: ");
+        if fuses.key_manifest_pk_hash().len() != self.registers.fuse_vendor_pk_hash.len() {
             romtime::println!("[mcu-fuse-write] Key manifest PK hash length mismatch");
             fatal_error(1);
         }
         for i in 0..fuses.key_manifest_pk_hash().len() {
             romtime::print!("{}", HexWord(fuses.key_manifest_pk_hash()[i]));
-            self.registers.fuse_key_manifest_pk_hash[i].set(fuses.key_manifest_pk_hash()[i]);
+            self.registers.fuse_vendor_pk_hash[i].set(fuses.key_manifest_pk_hash()[i]);
         }
         romtime::println!("");
 
-        // TODO: this seems to be bigger in the SoC registers than in the fuses
-        self.registers.fuse_key_manifest_pk_hash_mask[0].set(fuses.key_manifest_pk_hash_mask());
-        if fuses.owner_pk_hash().len() != self.registers.cptra_owner_pk_hash.len() {
-            romtime::println!("[mcu-fuse-write] Owner PK hash length mismatch");
-            fatal_error(1);
-        }
+        // TODO: this seems to not exist any more
+        // self.registers.fuse_key_manifest_pk_hash_mask[0].set(fuses.key_manifest_pk_hash_mask());
+        // if fuses.owner_pk_hash().len() != self.registers.cptra_owner_pk_hash.len() {
+        //     romtime::println!("[mcu-fuse-write] Owner PK hash length mismatch");
+        //     fatal_error();
+        // }
         romtime::print!("[mcu-fuse-write] Writing Owner PK hash from fuses: ");
         for (i, f) in fuses.owner_pk_hash().iter().enumerate() {
             romtime::print!("{}", HexWord(*f));
@@ -141,14 +144,12 @@ impl Mci {
     }
 
     pub fn caliptra_boot_go(&self) {
-        self.registers.caliptra_boot_go.set(1);
+        self.registers.cptra_boot_go.set(1);
     }
 
     #[allow(dead_code)]
     pub fn flow_status(&self) -> u32 {
-        self.registers
-            .flow_status
-            .read(mci::bits::FlowStatus::Status)
+        self.registers.fw_flow_status.get()
     }
 }
 

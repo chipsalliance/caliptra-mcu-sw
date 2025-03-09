@@ -118,7 +118,7 @@ thiserror-no-std = "2.0.2"
 toml = "0.8.19"
 uuid = { version = "1.10.0", features = ["serde"]}
 walkdir = "2.5.0"
-zerocopy = { version = "0.8.8", features = ["derive"] }
+zerocopy = { version = "0.8.17", features = ["derive"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_derive"] }
 
 # local dependencies
@@ -158,18 +158,38 @@ libapi-caliptra = { path = "runtime/apps/api" }
 
 
 # caliptra dependencies; keep git revs in sync
-caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "aec9434c1b42ebe77ae553c884006f9449ad5eb5" }
-caliptra-builder = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "aec9434c1b42ebe77ae553c884006f9449ad5eb5" }
-caliptra-emu-bus = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "aec9434c1b42ebe77ae553c884006f9449ad5eb5" }
-caliptra-emu-cpu = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "aec9434c1b42ebe77ae553c884006f9449ad5eb5" }
-caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "aec9434c1b42ebe77ae553c884006f9449ad5eb5" }
-caliptra-emu-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "aec9434c1b42ebe77ae553c884006f9449ad5eb5" }
-caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "aec9434c1b42ebe77ae553c884006f9449ad5eb5" }
-caliptra-image-crypto = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "aec9434c1b42ebe77ae553c884006f9449ad5eb5", default-features = false, features = ["rustcrypto"] }
-caliptra-image-gen = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "aec9434c1b42ebe77ae553c884006f9449ad5eb5" }
-caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "aec9434c1b42ebe77ae553c884006f9449ad5eb5" }
-caliptra-image-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "aec9434c1b42ebe77ae553c884006f9449ad5eb5" }
-caliptra-test = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "aec9434c1b42ebe77ae553c884006f9449ad5eb5" }
+caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-auth-man-gen = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-auth-man-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-builder = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-emu-bus = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-emu-cpu = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-emu-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-image-crypto = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea", default-features = false, features = ["rustcrypto"] }
+caliptra-image-fake-keys = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-image-gen = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-image-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-test = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+
+# local caliptra dependency; useful when developing
+# caliptra-api-types = { path = "../caliptra-sw/api/types" }
+# caliptra-auth-man-gen = { path = "../caliptra-sw/auth-manifest/gen", default-features = false }
+# caliptra-auth-man-types = { path = "../caliptra-sw/auth-manifest/types", default-features = false }
+# caliptra-builder = { path = "../caliptra-sw/builder" }
+# caliptra-emu-bus = { path = "../caliptra-sw/sw-emulator/lib/bus" }
+# caliptra-emu-cpu = { path = "../caliptra-sw/sw-emulator/lib/cpu" }
+# caliptra-emu-periph = { path = "../caliptra-sw/sw-emulator/lib/periph" }
+# caliptra-emu-types = { path = "../caliptra-sw/sw-emulator/lib/types" }
+# caliptra-hw-model = { path = "../caliptra-sw/hw-model" }
+# caliptra-image-crypto = { path = "../caliptra-sw/image/crypto", default-features = false, features = ["rustcrypto"] }
+# caliptra-image-fake-keys = { path = "../caliptra-sw/image/fake-keys" }
+# caliptra-image-gen = { path = "../caliptra-sw/image/gen" }
+# caliptra-image-types = { path = "../caliptra-sw/image/types" }
+# caliptra-registers = { path = "../caliptra-sw/registers" }
+# caliptra-test = { path = "../caliptra-sw/test" }
 
 # tock dependencies; keep git revs in sync
 capsules-core = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
