@@ -52,7 +52,7 @@ pub struct RequestFirmwareDataResponse<'a> {
     pub data: &'a [u8],
 }
 
-impl<'a> RequestFirmwareDataResponse<'a> {
+impl RequestFirmwareDataResponse<'_> {
     pub fn new(
         instance_id: InstanceId,
         completion_code: u8,
@@ -77,7 +77,7 @@ impl<'a> RequestFirmwareDataResponse<'a> {
     }
 }
 
-impl<'a> PldmCodec for RequestFirmwareDataResponse<'a> {
+impl PldmCodec for RequestFirmwareDataResponse<'_> {
     fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
         if buffer.len() < self.codec_size_in_bytes() {
             return Err(PldmCodecError::BufferTooShort);

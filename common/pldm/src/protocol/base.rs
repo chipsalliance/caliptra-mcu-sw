@@ -186,7 +186,7 @@ impl TryFrom<u8> for TransferRespFlag {
 
 bitfield! {
     #[repr(C)]
-    #[derive(Copy, Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
+    #[derive(Copy, Clone, FromBytes, IntoBytes, Immutable, PartialEq, Default)]
     pub struct PldmMsgHeader([u8]);
     impl Debug;
     pub u8, instance_id, set_instance_id: 4, 0;

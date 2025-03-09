@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use crc::{Crc, CRC_32_ISO_HDLC};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct FirmwareManifest {
     pub package_header_information: PackageHeaderInformation,
     pub firmware_device_id_records: Vec<FirmwareDeviceIdRecord>,
@@ -27,7 +27,7 @@ pub struct FirmwareManifest {
     pub component_image_information: Vec<ComponentImageInformation>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct PackageHeaderInformation {
     pub package_header_identifier: Uuid,
     pub package_header_format_revision: u8,
@@ -38,7 +38,7 @@ pub struct PackageHeaderInformation {
     pub package_header_size: u16,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct FirmwareDeviceIdRecord {
     pub firmware_device_package_data: Option<Vec<u8>>,
     pub device_update_option_flags: u32,
@@ -50,7 +50,7 @@ pub struct FirmwareDeviceIdRecord {
     pub reference_manifest_data: Option<Vec<u8>>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct DownstreamDeviceIdRecord {
     pub update_option_flags: u32, // bitfield32
     pub self_contained_activation_min_version_string_type: StringType,
@@ -62,7 +62,7 @@ pub struct DownstreamDeviceIdRecord {
     pub reference_manifest_data: Option<Vec<u8>>, // Optional reference manifest
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ComponentImageInformation {
     pub image_location: String,
     pub classification: u16,
@@ -121,7 +121,7 @@ fn get_pldm_version(uuid: Uuid) -> PldmVersion {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, FromPrimitive, ToPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, FromPrimitive, ToPrimitive, Default)]
 pub enum DescriptorType {
     PciVendorId = 0x0000,
     IanaEnterpriseId = 0x0001,
@@ -143,6 +143,7 @@ pub enum DescriptorType {
     IeeeEui64Id = 0x010A,
     PciRevisionIdRange = 0x010B,
     VendorDefined = 0x8000,
+    #[default]
     Unknown = 0xFFFF,
 }
 
@@ -230,16 +231,17 @@ impl<'de> Deserialize<'de> for DescriptorType {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
 pub struct Descriptor {
     pub descriptor_type: DescriptorType,
     pub descriptor_data: Vec<u8>, // Variable length payload
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, FromPrimitive, ToPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, FromPrimitive, ToPrimitive, Default)]
 pub enum StringType {
     Unknown = 0,
     Ascii = 1,
+    #[default]
     Utf8 = 2,
     Utf16 = 3,
     Utf16Le = 4,

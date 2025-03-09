@@ -136,6 +136,7 @@ i3c-driver = { path = "runtime/i3c" }
 libtockasync = { path = "runtime/apps/libtockasync" }
 mcu-rom-common = { path = "rom" }
 pldm-common = { path = "common/pldm"}
+pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
 pldm-ua = {path = "emulator/bmc/pldm-ua"}
 registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }

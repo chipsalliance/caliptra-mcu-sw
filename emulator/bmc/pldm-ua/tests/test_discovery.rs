@@ -9,11 +9,13 @@ use pldm_common::protocol::base::{
 };
 use pldm_common::protocol::firmware_update::FwUpdateCmd;
 use pldm_common::protocol::version::{PLDM_BASE_PROTOCOL_VERSION, PLDM_FW_UPDATE_PROTOCOL_VERSION};
-use pldm_ua::discovery_sm;
+use pldm_ua::events::PldmEvents;
+use pldm_ua::{discovery_sm, update_sm};
 use simple_logger::SimpleLogger;
 
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::control::*;
+use pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::daemon::{Options, PldmDaemon};
 use pldm_ua::transport::{PldmSocket, PldmTransport};
 
@@ -46,6 +48,37 @@ fn receive_request<P: PldmCodec>(
         .map_err(|_| (error!("Error decoding packet!")))
 }
 
+/* Override the Firmware Update State Machine.
+ * When discovery is finished, verify that the Discovery State machine will kick-off the Firmware Update State machine.
+ * This can be verified by checking if the on_start_update() of the Firmware Update SM is called.
+ * To do this, we need to override the on_start_update() and on_stop_update() methods of the Firmware Update SM.
+ * The on_start_update() method will set a flag to true to indicate that the Firmware Update SM has started.
+ * When the Daemon is stopped the on_stop_update() method will be called and verify the flag is true.
+ */
+struct UpdateSmStopAfterRequest {
+    is_fw_update_started: bool,
+}
+impl update_sm::StateMachineActions for UpdateSmStopAfterRequest {
+    fn on_start_update(
+        &mut self,
+        ctx: &mut update_sm::InnerContext<impl PldmSocket>,
+    ) -> Result<(), ()> {
+        ctx.event_queue
+            .send(PldmEvents::Update(update_sm::Events::StopUpdate))
+            .map_err(|_| ())?;
+        self.is_fw_update_started = true;
+        Ok(())
+    }
+    fn on_stop_update(
+        &mut self,
+        ctx: &mut update_sm::InnerContext<impl PldmSocket>,
+    ) -> Result<(), ()> {
+        assert!(self.is_fw_update_started);
+        ctx.event_queue.send(PldmEvents::Stop).map_err(|_| ())?;
+        Ok(())
+    }
+}
+
 #[test]
 fn test_discovery() {
     // Initialize log level to info
@@ -73,10 +106,15 @@ fn test_discovery() {
     let mut daemon = PldmDaemon::run(
         ua_sock,
         Options {
+            pldm_fw_pkg: Some(FirmwareManifest::default()),
+            update_sm_actions: UpdateSmStopAfterRequest {
+                is_fw_update_started: false,
+            },
             discovery_sm_actions: discovery_sm::DefaultActions {},
             fd_tid: DEVICE_TID,
         },
-    );
+    )
+    .unwrap();
 
     // TID to be assigned to the device
     const DEVICE_TID: u8 = 0x01;
