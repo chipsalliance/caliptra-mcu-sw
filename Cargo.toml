@@ -50,6 +50,8 @@ members = [
     "runtime/apps/libtock/ufmt",
     "runtime/apps/libtock/unittest",
     "runtime/apps/libtockasync",
+    "runtime/apps/pldm/pldm-app",
+    "runtime/apps/pldm/pldm-lib",
     "runtime/apps/spdm/spdm-app",
     "runtime/apps/spdm/spdm-lib",
     "runtime/apps/syscall",
@@ -137,12 +139,14 @@ libtockasync = { path = "runtime/apps/libtockasync" }
 mcu-rom-common = { path = "rom" }
 pldm-common = { path = "common/pldm"}
 pldm-ua = {path = "emulator/bmc/pldm-ua"}
+
 registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }
 romtime = { path = "romtime" }
 
 # App related dependencies
+pldm-lib = { path = "runtime/apps/pldm/pldm-lib"}
 spdm-lib = { path = "runtime/apps/spdm/spdm-lib" }
 
 # libtock dependencies
