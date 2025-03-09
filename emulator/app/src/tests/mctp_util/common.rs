@@ -52,6 +52,8 @@ impl MctpUtil {
     }
 
     pub fn new_req(&mut self, msg_tag: u8) {
+        self.dest_eid = 0;
+        self.src_eid = LOCAL_TEST_ENDPOINT_EID;
         self.msg_tag = msg_tag;
         self.tag_owner = 1;
     }

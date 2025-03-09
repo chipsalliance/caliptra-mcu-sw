@@ -21,7 +21,7 @@ pub struct SpdmContext<'a, S: Syscalls> {
     pub(crate) state: State,
     pub(crate) local_capabilities: DeviceCapabilities,
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
-    // pub(crate) cw: &'a mut ConsoleWriter<S>,
+    pub(crate) cw: &'a mut ConsoleWriter<S>,
 }
 
 impl<'a, S: Syscalls> SpdmContext<'a, S> {
@@ -30,7 +30,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         spdm_transport: &'a mut MctpTransport<S>,
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
-        // cw: &'a mut ConsoleWriter<S>,
+        cw: &'a mut ConsoleWriter<S>,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -42,7 +42,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             state: State::new(),
             local_capabilities,
             local_algorithms,
-            // cw,
+            cw,
         })
     }
 

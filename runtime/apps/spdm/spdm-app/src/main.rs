@@ -126,14 +126,14 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
         },
     };
 
-    // let mut console_writer = Console::<S>::writer();
+    let mut console_writer = Console::<S>::writer();
 
     let mut ctx = match SpdmContext::new(
         &supported_versions,
         &mut mctp_spdm_transport,
         local_capabilities,
         local_device_algorithms,
-        // &mut console_writer,
+        &mut console_writer,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
