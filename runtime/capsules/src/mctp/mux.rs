@@ -331,19 +331,8 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
     }
 
     fn process_packet(&self, mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>, pkt_payload: &[u8]) {
-        println!(
-            "MuxMCTPDriver: Received packet with length {:?} local_eid {:?} mctp_hdr {:?}",
-            pkt_payload.len(),
-            self.local_eid.get(),
-            mctp_hdr
-        );
         if self.local_eid != mctp_hdr.dest_eid().into() {
             println!("MuxMCTPDriver: Packet not for this Endpoint. Dropping packet.");
-            println!(
-                "MuxMCTPDriver: local_eid {:?} mctp_hdr {:?}",
-                self.local_eid.get(),
-                mctp_hdr
-            );
             return;
         }
 

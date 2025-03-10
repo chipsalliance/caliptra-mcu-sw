@@ -129,47 +129,6 @@ pub tpm_alg_sm3_256, set_tpm_alg_sm3_256: 7,7;
 reserved, _: 31,8;
 }
 
-// //TODO : check why is this not needed
-// #[derive(Debug, Clone, Copy)]
-// pub enum MeasurementHashAlgoType {
-//     RawBitStream,
-//     TpmAlgSha256,
-//     TpmAlgSha384,
-//     TpmAlgSha512,
-//     TpmAlgSha3_256,
-//     TpmAlgSha3_384,
-//     TpmAlgSha3_512,
-//     TpmAlgSm3_256,
-// }
-
-// impl From<MeasurementHashAlgoType> for MeasurementHashAlgo {
-//     fn from(measurement_hash_algo_type: MeasurementHashAlgoType) -> Self {
-//         match measurement_hash_algo_type {
-//             MeasurementHashAlgoType::RawBitStream => MeasurementHashAlgo(1 << 0),
-//             MeasurementHashAlgoType::TpmAlgSha256 => MeasurementHashAlgo(1 << 1),
-//             MeasurementHashAlgoType::TpmAlgSha384 => MeasurementHashAlgo(1 << 2),
-//             MeasurementHashAlgoType::TpmAlgSha512 => MeasurementHashAlgo(1 << 3),
-//             MeasurementHashAlgoType::TpmAlgSha3_256 => MeasurementHashAlgo(1 << 4),
-//             MeasurementHashAlgoType::TpmAlgSha3_384 => MeasurementHashAlgo(1 << 5),
-//             MeasurementHashAlgoType::TpmAlgSha3_512 => MeasurementHashAlgo(1 << 6),
-//             MeasurementHashAlgoType::TpmAlgSm3_256 => MeasurementHashAlgo(1 << 7),
-//         }
-//     }
-// }
-
-// impl Prioritize<MeasurementHashAlgoType> for MeasurementHashAlgo {
-//     fn prioritize(self, peer: Self, priority_table: &[MeasurementHashAlgoType]) -> Self {
-//         let common = self.0 & peer.0;
-//         for &priority in priority_table {
-//             let priority_spec: MeasurementHashAlgo = priority.into();
-//             if common & priority_spec.0 != 0 {
-//                 return MeasurementHashAlgo(priority_spec.0);
-//             }
-//         }
-//         MeasurementHashAlgo::default()
-//     }
-// }
-
 // Base Asymmetric Algorithm field
 bitfield! {
 #[derive(FromBytes, IntoBytes, Immutable, Default, Clone, Copy)]

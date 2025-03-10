@@ -12,13 +12,25 @@ use libtock_platform::Syscalls;
 use spdm_lib::codec::MessageBuf;
 use spdm_lib::context::SpdmContext;
 use spdm_lib::protocol::*;
-// use spdm_lib::protocol::{
-//     BaseAsymAlgo, CapabilityFlags, DeviceAlgorithms, DeviceCapabilities, MeasCapability, MeasurementSpecification, PskCapability, SpdmVersion, MAX_MCTP_SPDM_MSG_SIZE
-// };
 use spdm_lib::transport::MctpTransport;
 
+// Caliptra supported SPDM versions
+const SPDM_VERSIONS: &[SpdmVersion] = &[
+    SpdmVersion::V10,
+    SpdmVersion::V11,
+    SpdmVersion::V12,
+    SpdmVersion::V13,
+];
+
 // Calitra Crypto timeout exponent (2^20 us)
-pub const CALIPTRA_SPDM_CT_EXPONENT: u8 = 20;
+const CALIPTRA_SPDM_CT_EXPONENT: u8 = 20;
+
+// Caliptra Hash Priority table
+static HASH_PRIORITY_TABLE: &[BaseHashAlgoType] = &[
+    BaseHashAlgoType::TpmAlgSha512,
+    BaseHashAlgoType::TpmAlgSha384,
+    BaseHashAlgoType::TpmAlgSha256,
+];
 
 #[cfg(target_arch = "riscv32")]
 mod riscv;
@@ -67,57 +79,24 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
 async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>) {
     let mut mctp_spdm_transport: MctpTransport<S> = MctpTransport::new(driver_num::MCTP_SPDM);
-    let supported_versions = [
-        SpdmVersion::V10,
-        SpdmVersion::V11,
-        SpdmVersion::V12,
-        SpdmVersion::V13,
-    ];
-
-    let mut capability_flags = CapabilityFlags::default();
-    capability_flags.set_cache_cap(0);
-    capability_flags.set_cert_cap(1);
-    capability_flags.set_chal_cap(1);
-    capability_flags.set_meas_cap(MeasCapability::MeasurementsWithSignature as u8);
-    capability_flags.set_meas_fresh_cap(0);
-    capability_flags.set_encrypt_cap(0);
-    capability_flags.set_mac_cap(0);
-    capability_flags.set_mut_auth_cap(0);
-    capability_flags.set_key_ex_cap(0);
-    capability_flags.set_psk_cap(PskCapability::NoPsk as u8);
-    capability_flags.set_encap_cap(0);
-    capability_flags.set_hbeat_cap(0);
-    capability_flags.set_key_upd_cap(0);
-    capability_flags.set_handshake_in_the_clear_cap(0);
-    capability_flags.set_pub_key_id_cap(0);
-    capability_flags.set_chunk_cap(0);
-    capability_flags.set_alias_cert_cap(1);
 
     let max_mctp_spdm_msg_size =
         (MAX_MCTP_SPDM_MSG_SIZE - mctp_spdm_transport.header_size()) as u32;
 
     let local_capabilities = DeviceCapabilities {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
-        flags: capability_flags,
+        flags: device_capability_flags(),
         data_transfer_size: max_mctp_spdm_msg_size,
         max_spdm_msg_size: max_mctp_spdm_msg_size,
     };
 
-    let device_algorithms = device_algorithms();
-
-    let hash_priority_table = [
-        BaseHashAlgoType::TpmAlgSha384,
-        BaseHashAlgoType::TpmAlgSha256,
-        BaseHashAlgoType::TpmAlgSha512,
-    ];
-
-    let local_device_algorithms = LocalDeviceAlgorithms {
-        device_algorithms,
+    let local_algorithms = LocalDeviceAlgorithms {
+        device_algorithms: device_algorithms(),
         algorithm_priority_table: AlgorithmPriorityTable {
             measurement_specification: None,
             opaque_data_format: None,
             base_asym_algo: None,
-            base_hash_algo: Some(&hash_priority_table),
+            base_hash_algo: Some(HASH_PRIORITY_TABLE),
             mel_specification: None,
             dhe_group: None,
             aead_cipher_suite: None,
@@ -126,14 +105,11 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
         },
     };
 
-    let mut console_writer = Console::<S>::writer();
-
     let mut ctx = match SpdmContext::new(
-        &supported_versions,
+        SPDM_VERSIONS,
         &mut mctp_spdm_transport,
         local_capabilities,
-        local_device_algorithms,
-        &mut console_writer,
+        local_algorithms,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
@@ -155,6 +131,29 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
         }
         writeln!(cw, "SPDM_APP: Process message finished").unwrap();
     }
+}
+
+fn device_capability_flags() -> CapabilityFlags {
+    let mut capability_flags = CapabilityFlags::default();
+    capability_flags.set_cache_cap(0);
+    capability_flags.set_cert_cap(1);
+    capability_flags.set_chal_cap(1);
+    capability_flags.set_meas_cap(MeasCapability::MeasurementsWithSignature as u8);
+    capability_flags.set_meas_fresh_cap(0);
+    capability_flags.set_encrypt_cap(0);
+    capability_flags.set_mac_cap(0);
+    capability_flags.set_mut_auth_cap(0);
+    capability_flags.set_key_ex_cap(0);
+    capability_flags.set_psk_cap(PskCapability::NoPsk as u8);
+    capability_flags.set_encap_cap(0);
+    capability_flags.set_hbeat_cap(0);
+    capability_flags.set_key_upd_cap(0);
+    capability_flags.set_handshake_in_the_clear_cap(0);
+    capability_flags.set_pub_key_id_cap(0);
+    capability_flags.set_chunk_cap(0);
+    capability_flags.set_alias_cert_cap(1);
+
+    capability_flags
 }
 
 fn device_algorithms() -> DeviceAlgorithms {

@@ -13,8 +13,6 @@ use bitfield::bitfield;
 use libtock_platform::Syscalls;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use core::fmt::Write;
-
 // Max request length shall be 128 bytes (SPDM1.3 10.4, Table 10.4)
 const MAX_REQUEST_LENGTH: u16 = 128;
 const MAX_SPDM_EXT_ALG_COUNT_V10: u8 = 8;
@@ -176,22 +174,23 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
         ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None)
     })?;
 
+    // Reserved fields check
     if req.param2 != 0 || req.reserved_1 != [0; 12] || req.reserved_2 != 0 {
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
-    // check min req length
+    // min req length check
     if req.length > MAX_REQUEST_LENGTH || req.length < req.min_req_len() {
         return Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None));
     }
 
-    // Check other parameters
+    // other parameters support check
     let other_params_support = req.other_param_support;
     if other_params_support.reserved1() != 0 || other_params_support.reserved2() != 0 {
         return Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None));
     }
 
-    // Extended Asym and Hash Algo size
+    // Extended Asym and Hash Algo (not supported)
     let ext_algo_size = req.ext_algo_size();
     req_payload.pull_data(ext_algo_size).map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
@@ -204,27 +203,24 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
     let mut req_base_asym_algo = ReqBaseAsymAlg::default();
     let mut key_schedule = KeySchedule::default();
 
+    // Process algorithm structures
     for i in 0..req.num_alg_struct_tables as usize {
         let alg_struct = AlgStructure::decode(req_payload).map_err(|_| {
             ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
         })?;
 
-        writeln!(ctx.cw, "SPDM_LIB: Alg structure {:?}", alg_struct).unwrap();
-
         let alg_type = AlgType::try_from(alg_struct.alg_type()).map_err(|_| {
             ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
         })?;
-        writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
 
         // AlgType shall monotonically increase
         if i > 0 && prev_alg_type > alg_struct.alg_type() {
             Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
         }
-        writeln!(ctx.cw, "SPDM_LIB: {}", line!()).unwrap();
 
         prev_alg_type = alg_struct.alg_type();
 
-        // Process fixed algorithms supported by Requester for the alg_type
+        // requester supported fixed algorithms check
         if alg_struct.alg_supported() == 0 {
             Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
         }
@@ -240,7 +236,6 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
             AlgType::KeySchedule => key_schedule = KeySchedule(alg_struct.alg_supported()),
         }
 
-        // Process extended algorithms supported by Requester
         let ext_alg_count = alg_struct.ext_alg_count();
         total_ext_alg_count += ext_alg_count;
 
@@ -250,21 +245,13 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
         }
     }
 
-    // Check the total number of extended algorithms
+    // total number of extended algorithms check
     req.validate_total_ext_alg_count(connection_version, total_ext_alg_count)
         .map_err(|_| {
             ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
         })?;
 
-    writeln!(
-        ctx.cw,
-        "SPDM_LIB: current data offset {} start offset {}",
-        req_payload.data_offset(),
-        req_start_offset
-    )
-    .unwrap();
-
-    // Check total length of the request
+    // total length of the request check
     let req_len = req_payload.data_offset() - req_start_offset;
     if req_len != req.length as usize {
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
@@ -308,14 +295,7 @@ fn generate_algorithms_response<S: Syscalls>(
 
     let num_alg_struct_tables = peer_algorithms.num_alg_struct_tables();
 
-    writeln!(
-        ctx.cw,
-        "SPDM_LIB: Generating algorithms response. num alg_struct_tables: {}",
-        num_alg_struct_tables
-    )
-    .unwrap();
-
-    // No extended asymmetric key and hash algorithms response.
+    // Note: No extended asymmetric key and hash algorithms in response.
     let rsp_length = core::mem::size_of::<SpdmMsgHdr>()
         + core::mem::size_of::<NegotiateAlgorithmsResp>()
         + num_alg_struct_tables * core::mem::size_of::<AlgStructure>();
@@ -388,18 +368,11 @@ fn generate_algorithms_response<S: Syscalls>(
         .encode(rsp)
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?;
 
-    // Fill the response buffer with algorithm response structures
+    // Fill the response buffer with selected algorithm structure table
     len += fill_alg_struct_table(ctx, rsp, num_alg_struct_tables)?;
 
     rsp.push_data(len)
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?;
-    writeln!(
-        ctx.cw,
-        "SPDM_LIB: Algorithms response Completed. length: {}",
-        rsp.data_offset()
-    )
-    .unwrap();
-
     Ok(())
 }
 
@@ -451,6 +424,7 @@ fn fill_alg_struct_table<S: Syscalls>(
         i += 1;
     }
 
+    // ReqBaseAsymAlg
     if peer_algorithms.req_base_asym_algo.0 != 0 {
         let mut req_base_asym_struct = AlgStructure::default();
         req_base_asym_struct.set_alg_type(AlgType::ReqBaseAsymAlg as u8);
@@ -468,6 +442,7 @@ fn fill_alg_struct_table<S: Syscalls>(
         i += 1;
     }
 
+    // KeySchedule
     if peer_algorithms.key_schedule.0 != 0 {
         let mut key_schedule_struct = AlgStructure::default();
         key_schedule_struct.set_alg_type(AlgType::KeySchedule as u8);
@@ -498,17 +473,10 @@ pub(crate) fn handle_negotiate_algorithms<'a, S: Syscalls>(
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    writeln!(
-        ctx.cw,
-        "SPDM_LIB: Handle negotiate algorithms request. connection_state {:?}",
-        ctx.state.connection_info.state()
-    )
-    .unwrap();
     // Validate the state
     if ctx.state.connection_info.state() != ConnectionState::AfterCapabilities {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
-    writeln!(ctx.cw, "SPDM_LIB: Processing request").unwrap();
 
     // process negotiate algorithms request
     process_negotiate_algorithms_request(ctx, spdm_hdr, req_payload)?;

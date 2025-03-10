@@ -10,9 +10,6 @@ use crate::pmp::MMIORegion;
 use crate::pmp::VeeRProtectionMMLEPMP;
 use crate::timers::InternalTimers;
 
-use core::fmt::Write;
-use romtime::println;
-
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use capsules_runtime::mctp::base_protocol::MessageType;
@@ -234,11 +231,6 @@ pub unsafe fn main() {
         MMIORegion(NAPOTRegionSpec::new(0x2000_0000 as *const u8, 0x2000_0000).unwrap()),
         MMIORegion(NAPOTRegionSpec::new(0x6000_0000 as *const u8, 0x1_0000).unwrap()),
     ];
-    println!(
-        "PAR: Code region start: {:#x} end {:#x}",
-        core::ptr::addr_of!(_srom) as usize,
-        core::ptr::addr_of!(_eprog) as usize
-    );
 
     let epmp = VeeRProtectionMMLEPMP::new(
         CodeRegion(
