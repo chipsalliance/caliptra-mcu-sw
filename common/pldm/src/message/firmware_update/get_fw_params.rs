@@ -95,10 +95,14 @@ impl FirmwareParameters {
                 None
             },
             comp_param_table: {
-                let mut arr = [ComponentParameterEntry::default(); MAX_COMPONENT_COUNT];
                 let count = comp_param_table.len().min(MAX_COMPONENT_COUNT);
-                arr[..count].copy_from_slice(&comp_param_table[..count]);
-                arr
+                core::array::from_fn(|i| {
+                    if i < count {
+                        comp_param_table[i].clone()
+                    } else {
+                        ComponentParameterEntry::default()
+                    }
+                })
             },
         }
     }
@@ -167,15 +171,19 @@ impl PldmCodec for FirmwareParameters {
         };
         offset += params_fixed.pending_comp_image_set_ver_str_len as usize;
 
-        let mut comp_param_table = [ComponentParameterEntry::default(); MAX_COMPONENT_COUNT];
-        for item in comp_param_table
-            .iter_mut()
-            .take(params_fixed.comp_count as usize)
-        {
-            let comp_param_table_entry = ComponentParameterEntry::decode(&buffer[offset..])?;
-            *item = comp_param_table_entry;
-            offset += comp_param_table_entry.codec_size_in_bytes();
-        }
+        let mut index = 0;
+        let comp_param_table: [ComponentParameterEntry; MAX_COMPONENT_COUNT] =
+            core::array::from_fn(|_| {
+                if index < params_fixed.comp_count as usize {
+                    let comp_param_table_entry =
+                        ComponentParameterEntry::decode(&buffer[offset..]).unwrap();
+                    offset += comp_param_table_entry.codec_size_in_bytes();
+                    index += 1;
+                    comp_param_table_entry
+                } else {
+                    ComponentParameterEntry::default() // Fill remaining slots with default values
+                }
+            });
 
         Ok(FirmwareParameters {
             params_fixed,

@@ -492,7 +492,7 @@ impl<'a> PldmFirmwareVersion<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, FromBytes, IntoBytes, Immutable, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, FromBytes, IntoBytes, Immutable)]
 #[repr(C, packed)]
 pub struct ComponentParameterEntryFixed {
     pub comp_classification: u16,
@@ -510,7 +510,7 @@ pub struct ComponentParameterEntryFixed {
     pub capabilities_during_update: FirmwareDeviceCapability,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct ComponentParameterEntry {
     pub comp_param_entry_fixed: ComponentParameterEntryFixed,

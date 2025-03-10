@@ -1,34 +1,20 @@
 // Licensed under the Apache-2.0 license
 
 #[cfg(test)]
-mod mock_transport;
-use std::time::Duration;
+mod common;
 
-use log::{error, LevelFilter};
-use mock_transport::{MockPldmSocket, MockTransport};
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::message::firmware_update::query_devid::{
     QueryDeviceIdentifiersRequest, QueryDeviceIdentifiersResponse,
 };
-use pldm_common::protocol::base::{PldmBaseCompletionCode, PldmMsgHeader};
+use pldm_common::protocol::base::PldmBaseCompletionCode;
 use pldm_common::protocol::firmware_update::FwUpdateCmd;
 use pldm_fw_pkg::manifest::{Descriptor, DescriptorType, FirmwareDeviceIdRecord};
 use pldm_fw_pkg::FirmwareManifest;
-use pldm_ua::events::PldmEvents;
-use simple_logger::SimpleLogger;
 
-use pldm_common::codec::PldmCodec;
-use pldm_ua::daemon::{Options, PldmDaemon};
-use pldm_ua::transport::{PldmSocket, PldmTransport};
-use pldm_ua::{discovery_sm, update_sm};
-
-struct TestSetup<
-    D: discovery_sm::StateMachineActions + Send + 'static,
-    U: update_sm::StateMachineActions + Send + 'static,
-> {
-    pub fd_sock: MockPldmSocket,
-    pub daemon: PldmDaemon<MockPldmSocket, D, U>,
-}
+use pldm_ua::daemon::Options;
+use pldm_ua::transport::PldmSocket;
+use pldm_ua::update_sm;
 
 // Test UUID
 const TEST_UUID: [u8; 16] = [
@@ -42,93 +28,6 @@ const TEST_UUID2: [u8; 16] = [
 const TEST_UUID3: [u8; 16] = [
     0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0x00,
 ];
-
-fn setup<
-    D: discovery_sm::StateMachineActions + Send + 'static,
-    U: update_sm::StateMachineActions + Send + 'static,
->(
-    daemon_options: Options<D, U>,
-) -> TestSetup<D, U> {
-    // Initialize log level to info (only once)
-    let _ = SimpleLogger::new().with_level(LevelFilter::Info).init();
-
-    // Setup the PLDM transport
-    let transport = MockTransport::new();
-
-    // Define the update agent endpoint id
-    let ua_sid = pldm_ua::transport::EndpointId(0x01);
-
-    // Define the device endpoint id
-    let fd_sid = pldm_ua::transport::EndpointId(0x02);
-
-    // Create socket used by the PLDM daemon (update agent)
-    let ua_sock = transport.create_socket(ua_sid, fd_sid).unwrap();
-
-    // Create socket to be used by the device (FD)
-    let fd_sock = transport.create_socket(fd_sid, ua_sid).unwrap();
-
-    // Run the PLDM daemon
-    let daemon = PldmDaemon::run(ua_sock.clone(), daemon_options).unwrap();
-
-    TestSetup { fd_sock, daemon }
-}
-
-impl<
-        D: discovery_sm::StateMachineActions + Send + 'static,
-        U: update_sm::StateMachineActions + Send + 'static,
-    > TestSetup<D, U>
-{
-    fn wait_for_state_transition(&self, expected_state: update_sm::States) -> Result<(), ()> {
-        let timeout = Duration::from_secs(5);
-        let start_time = std::time::Instant::now();
-
-        while start_time.elapsed() < timeout {
-            if self.daemon.get_update_sm_state() == expected_state {
-                return Ok(());
-            }
-            std::thread::sleep(Duration::from_millis(100));
-        }
-        Err(())
-    }
-}
-
-/* Override the Discovery SM. Skip the discovery process by starting firmware update immediately when discovery is kicked-off */
-struct CustomDiscoverySm {}
-impl discovery_sm::StateMachineActions for CustomDiscoverySm {
-    fn on_start_discovery(
-        &self,
-        ctx: &discovery_sm::InnerContext<impl PldmSocket>,
-    ) -> Result<(), ()> {
-        ctx.event_queue
-            .send(PldmEvents::Update(update_sm::Events::StartUpdate))
-            .map_err(|_| ())?;
-        Ok(())
-    }
-}
-
-fn send_response<P: PldmCodec>(socket: &MockPldmSocket, response: &P) {
-    let mut buffer = [0u8; 512];
-    let sz = response.encode(&mut buffer).unwrap();
-    socket.send(&buffer[..sz]).unwrap();
-}
-
-fn receive_request<P: PldmCodec>(socket: &MockPldmSocket, cmd_code: u8) -> Result<P, ()> {
-    let request = socket.receive(None).unwrap();
-
-    let header = PldmMsgHeader::decode(&request.payload.data[..request.payload.len])
-        .map_err(|_| (error!("Error decoding packet!")))?;
-    if !header.is_hdr_ver_valid() {
-        error!("Invalid header version!");
-        return Err(());
-    }
-    if header.cmd_code() != cmd_code {
-        error!("Invalid command code!");
-        return Err(());
-    }
-
-    P::decode(&request.payload.data[..request.payload.len])
-        .map_err(|_| (error!("Error decoding packet!")))
-}
 
 fn encode_descriptor(
     pkg_descriptor: &pldm_fw_pkg::manifest::Descriptor,
@@ -161,16 +60,17 @@ fn test_valid_device_identifier_one_descriptor() {
     };
 
     // Setup the test environment
-    let mut setup = setup(Options {
+    let mut setup = common::setup(Options {
         pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
-        discovery_sm_actions: CustomDiscoverySm {},
+        discovery_sm_actions: common::CustomDiscoverySm {},
         update_sm_actions: update_sm::DefaultActions {},
         fd_tid: 0x02,
     });
 
     // Receive QueryDeviceIdentifiers request
-    let request: QueryDeviceIdentifiersRequest =
-        receive_request(&setup.fd_sock, FwUpdateCmd::QueryDeviceIdentifiers as u8).unwrap();
+    let request: QueryDeviceIdentifiersRequest = setup
+        .receive_request(&setup.fd_sock, FwUpdateCmd::QueryDeviceIdentifiers as u8)
+        .unwrap();
 
     let initial_descriptor =
         encode_descriptor(&pldm_fw_pkg.firmware_device_id_records[0].initial_descriptor).unwrap();
@@ -186,11 +86,9 @@ fn test_valid_device_identifier_one_descriptor() {
     .unwrap();
 
     // Send the response
-    send_response(&setup.fd_sock, &response);
+    setup.send_response(&setup.fd_sock, &response);
 
-    assert!(setup
-        .wait_for_state_transition(update_sm::States::GetFirmwareParametersSent,)
-        .is_ok());
+    setup.wait_for_state_transition(update_sm::States::GetFirmwareParametersSent);
 
     assert!(setup.daemon.get_device_id().is_some());
 
@@ -211,16 +109,17 @@ fn test_valid_device_identifier_not_matched() {
     };
 
     // Setup the test environment
-    let mut setup = setup(Options {
+    let mut setup = common::setup(Options {
         pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
-        discovery_sm_actions: CustomDiscoverySm {},
+        discovery_sm_actions: common::CustomDiscoverySm {},
         update_sm_actions: update_sm::DefaultActions {},
         fd_tid: 0x02,
     });
 
     // Receive QueryDeviceIdentifiers request
-    let request: QueryDeviceIdentifiersRequest =
-        receive_request(&setup.fd_sock, FwUpdateCmd::QueryDeviceIdentifiers as u8).unwrap();
+    let request: QueryDeviceIdentifiersRequest = setup
+        .receive_request(&setup.fd_sock, FwUpdateCmd::QueryDeviceIdentifiers as u8)
+        .unwrap();
 
     let response_id_record = FirmwareDeviceIdRecord {
         initial_descriptor: Descriptor {
@@ -242,11 +141,9 @@ fn test_valid_device_identifier_not_matched() {
     .unwrap();
 
     // Send the response
-    send_response(&setup.fd_sock, &response);
+    setup.send_response(&setup.fd_sock, &response);
 
-    setup
-        .wait_for_state_transition(update_sm::States::Done)
-        .unwrap();
+    setup.wait_for_state_transition(update_sm::States::Done);
 
     assert!(setup.daemon.get_device_id().is_none());
 
@@ -277,16 +174,17 @@ fn test_multiple_device_identifiers() {
     };
 
     // Setup the test environment
-    let mut setup = setup(Options {
+    let mut setup = common::setup(Options {
         pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
-        discovery_sm_actions: CustomDiscoverySm {},
+        discovery_sm_actions: common::CustomDiscoverySm {},
         update_sm_actions: update_sm::DefaultActions {},
         fd_tid: 0x02,
     });
 
     // Receive QueryDeviceIdentifiers request
-    let request: QueryDeviceIdentifiersRequest =
-        receive_request(&setup.fd_sock, FwUpdateCmd::QueryDeviceIdentifiers as u8).unwrap();
+    let request: QueryDeviceIdentifiersRequest = setup
+        .receive_request(&setup.fd_sock, FwUpdateCmd::QueryDeviceIdentifiers as u8)
+        .unwrap();
 
     let initial_descriptor_response = encode_descriptor(&Descriptor {
         descriptor_type: DescriptorType::Uuid,
@@ -318,11 +216,9 @@ fn test_multiple_device_identifiers() {
     .unwrap();
 
     // Send the response
-    send_response(&setup.fd_sock, &response);
+    setup.send_response(&setup.fd_sock, &response);
 
-    assert!(setup
-        .wait_for_state_transition(update_sm::States::GetFirmwareParametersSent,)
-        .is_ok());
+    setup.wait_for_state_transition(update_sm::States::GetFirmwareParametersSent);
 
     assert!(setup.daemon.get_device_id().is_some());
 
@@ -353,16 +249,17 @@ fn test_send_get_fw_parameter_after_response() {
         }
     }
 
-    let mut setup = setup(Options {
+    let mut setup = common::setup(Options {
         pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
-        discovery_sm_actions: CustomDiscoverySm {},
+        discovery_sm_actions: common::CustomDiscoverySm {},
         update_sm_actions: UpdateSmIgnoreFirmwareParamsResponse {},
         fd_tid: 0x02,
     });
 
     // Receive QueryDeviceIdentifiers request
-    let request: QueryDeviceIdentifiersRequest =
-        receive_request(&setup.fd_sock, FwUpdateCmd::QueryDeviceIdentifiers as u8).unwrap();
+    let request: QueryDeviceIdentifiersRequest = setup
+        .receive_request(&setup.fd_sock, FwUpdateCmd::QueryDeviceIdentifiers as u8)
+        .unwrap();
 
     let initial_descriptor =
         encode_descriptor(&pldm_fw_pkg.firmware_device_id_records[0].initial_descriptor).unwrap();
@@ -378,11 +275,11 @@ fn test_send_get_fw_parameter_after_response() {
     .unwrap();
 
     // Send the QueryDeviceIdentifiers response
-    send_response(&setup.fd_sock, &response);
+    setup.send_response(&setup.fd_sock, &response);
 
     // Receive the GetFwParameters request
     let request: pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersRequest =
-        receive_request(&setup.fd_sock, FwUpdateCmd::GetFirmwareParameters as u8).unwrap();
+        setup.receive_request(&setup.fd_sock, FwUpdateCmd::GetFirmwareParameters as u8).unwrap();
 
     // Send the GetFwParameters response
     let response =
@@ -393,11 +290,9 @@ fn test_send_get_fw_parameter_after_response() {
                 ..Default::default()
             },
         );
-    send_response(&setup.fd_sock, &response);
+    setup.send_response(&setup.fd_sock, &response);
 
-    assert!(setup
-        .wait_for_state_transition(update_sm::States::ReceivedFirmwareParameters,)
-        .is_ok());
+    setup.wait_for_state_transition(update_sm::States::ReceivedFirmwareParameters);
 
     setup.daemon.stop();
 }
