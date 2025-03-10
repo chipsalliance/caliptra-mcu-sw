@@ -2426,6 +2426,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "pldm-app"
+version = "0.1.0"
+dependencies = [
+ "critical-section",
+ "embassy-executor",
+ "embedded-alloc",
+ "libsyscall-caliptra",
+ "libtock",
+ "libtock_console",
+ "libtock_debug_panic",
+ "libtock_platform",
+ "libtock_runtime",
+ "libtock_unittest",
+ "libtockasync",
+ "pldm-lib",
+ "portable-atomic",
+]
+
+[[package]]
 name = "pldm-common"
 version = "0.1.0"
 dependencies = [
@@ -2445,6 +2464,18 @@ dependencies = [
  "serde",
  "toml",
  "uuid",
+]
+
+[[package]]
+name = "pldm-lib"
+version = "0.1.0"
+dependencies = [
+ "embassy-executor",
+ "embedded-alloc",
+ "libsyscall-caliptra",
+ "libtock_platform",
+ "libtock_unittest",
+ "pldm-common",
 ]
 
 [[package]]

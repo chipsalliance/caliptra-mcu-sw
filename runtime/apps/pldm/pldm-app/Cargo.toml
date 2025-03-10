@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "example-app"
+name = "pldm-app"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -10,7 +10,6 @@ edition.workspace = true
 critical-section.workspace = true
 embassy-executor.workspace = true
 libsyscall-caliptra.workspace = true
-libtock_alarm.workspace = true
 libtock_console.workspace = true
 libtock_debug_panic.workspace = true
 libtock_platform.workspace = true
@@ -18,7 +17,7 @@ libtock_runtime.workspace = true
 libtock.workspace = true
 libtockasync.workspace = true
 portable-atomic.workspace = true
-pldm-common.workspace = true
+pldm-lib.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 libtock_unittest.workspace = true

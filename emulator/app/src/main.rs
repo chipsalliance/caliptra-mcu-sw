@@ -459,8 +459,10 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         );
     }
 
-    if cfg!(feature = "test-pldm-request-response") {
-        println!("Emulator: Starting test-pldm-request-respons");
+    if cfg!(any(
+        feature = "test-pldm-request-response",
+        feature = "test-pldm-discovery"
+    )) {
         i3c_controller.start();
         let pldm_transport =
             MctpTransport::new(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
