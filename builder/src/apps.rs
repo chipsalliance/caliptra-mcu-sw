@@ -113,7 +113,12 @@ fn app_build_tbf(
     }
 
     // read the flat binary
-    let b = std::fs::read(&app_bin)?;
+    let mut b = std::fs::read(&app_bin)?;
+
+    while b.len() % 4 != 0 {
+        b.push(0);
+    }
+
     let total_size = b.len() + tbf_header_size;
 
     tbf.set_total_size(total_size as u32);
