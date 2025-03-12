@@ -1,13 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use crate::Commands;
-use crate::{
-    rom::rom_build, runtime_build::runtime_build_with_apps, DynError, PROJECT_ROOT, TARGET,
-};
-use std::process::Command as StdCommand;
+use anyhow::{bail, Result};
+use mcu_builder::{rom_build, runtime_build_with_apps, PROJECT_ROOT, TARGET};
+use std::process::Command;
 
 /// Run the Runtime Tock kernel image for RISC-V in the emulator.
-pub(crate) fn runtime_run(args: Commands) -> Result<(), DynError> {
+pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     let Commands::Runtime {
         trace,
         i3c_port,
@@ -59,7 +58,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<(), DynError> {
     }
     if let Some(caliptra_rom) = caliptra_rom.as_ref() {
         if !caliptra_rom.exists() {
-            return Err(format!("Caliptra ROM file not found: {:?}", caliptra_rom).into());
+            bail!("Caliptra ROM file not found: {:?}", caliptra_rom);
         }
         cargo_run_args.extend([
             "--caliptra",
@@ -69,9 +68,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<(), DynError> {
     }
     if let Some(caliptra_firmware) = caliptra_firmware.as_ref() {
         if !caliptra_firmware.exists() {
-            return Err(
-                format!("Caliptra runtime bundle not found: {:?}", caliptra_firmware).into(),
-            );
+            bail!("Caliptra runtime bundle not found: {:?}", caliptra_firmware);
         }
         cargo_run_args.extend(["--caliptra-firmware", caliptra_firmware.to_str().unwrap()]);
     }
@@ -87,7 +84,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<(), DynError> {
     if let Some(owner_pk_hash) = owner_pk_hash.as_ref() {
         cargo_run_args.extend(["--owner-pk-hash", owner_pk_hash]);
     }
-    StdCommand::new("cargo")
+    Command::new("cargo")
         .args(cargo_run_args)
         .current_dir(&*PROJECT_ROOT)
         .status()?;

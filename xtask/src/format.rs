@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
+use anyhow::{bail, Result};
+use mcu_builder::PROJECT_ROOT;
 use std::process::Command;
 
-use crate::{DynError, PROJECT_ROOT};
-
-pub(crate) fn format() -> Result<(), DynError> {
+pub(crate) fn format() -> Result<()> {
     println!("Running: cargo fmt");
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
@@ -13,7 +13,7 @@ pub(crate) fn format() -> Result<(), DynError> {
         .status()?;
 
     if !status.success() {
-        Err("cargo fmt failed")?;
+        bail!("cargo fmt failed");
     }
     Ok(())
 }

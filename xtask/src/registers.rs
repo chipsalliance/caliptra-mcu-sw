@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use crate::{DynError, PROJECT_ROOT};
+use anyhow::{anyhow, bail, Result};
+use mcu_builder::PROJECT_ROOT;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use registers_generator::{
@@ -37,7 +38,7 @@ pub(crate) fn autogen(
     check: bool,
     extra_files: &[PathBuf],
     extra_addrmap: &[String],
-) -> Result<(), DynError> {
+) -> Result<()> {
     let sub_dir = &PROJECT_ROOT.join("hw").join("caliptra-ss").to_path_buf();
     let registers_dest_dir = &PROJECT_ROOT
         .join("registers")
@@ -83,11 +84,10 @@ pub(crate) fn autogen(
                 let addr = s[eq + 1..].trim();
                 map += &format!("{} {} @ {};\n", typ, typ, addr);
             } else {
-                return Err(format!(
+                bail!(
                     "Invalid addrmap entry: {} (should be in the form type@address)",
                     s
-                )
-                .into());
+                );
             };
         }
         map += "};\n";
@@ -159,7 +159,7 @@ pub(crate) fn autogen(
 
     for rdl in rdl_files.iter() {
         if !rdl.exists() {
-            return Err(format!("RDL file not found: {:?} -- ensure that you have run `git submodule init` and `git submodule update --recursive`", rdl).into());
+            bail!("RDL file not found: {:?} -- ensure that you have run `git submodule init` and `git submodule update --recursive`", rdl);
         }
     }
 
@@ -203,7 +203,7 @@ pub(crate) fn autogen(
         file_source.add_patch(&patch.0, patch.1, patch.2);
     }
     let scope = registers_systemrdl::Scope::parse_root(&file_source, &rdl_files)
-        .map_err(|s| s.to_string())?;
+        .map_err(|s| anyhow!(s.to_string()))?;
     let scope = scope.as_parent();
 
     let addrmap = scope.lookup_typedef("soc").unwrap();
@@ -251,7 +251,7 @@ fn generate_emulator_types(
     dest_dir: &Path,
     header: String,
     register_types_to_crates: &HashMap<String, String>,
-) -> Result<(), DynError> {
+) -> Result<()> {
     let file_action = if check {
         file_check_contents
     } else {
@@ -369,7 +369,7 @@ fn flatten_registers(
 fn emu_make_peripheral_trait(
     block: RegisterBlock,
     register_types_to_crates: &HashMap<String, String>,
-) -> Result<TokenStream, DynError> {
+) -> Result<TokenStream> {
     let base = camel_ident(block.name.as_str());
     let periph = format_ident!("{}Peripheral", base);
     let mut fn_tokens = TokenStream::new();
@@ -457,7 +457,7 @@ fn snake_ident(s: &str) -> Ident {
 }
 
 /// Make a peripheral Bus implementation that can be hooked up to a root bus.
-fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream, DynError> {
+fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
     let base = camel_ident(block.name.as_str());
     let periph = format_ident!("{}Peripheral", base);
     let bus = format_ident!("{}Bus", base);
@@ -584,7 +584,7 @@ fn hex_literal(val: u64) -> Literal {
 fn emu_make_root_bus<'a>(
     defines: &HashMap<String, u32>,
     blocks: impl Iterator<Item = &'a ValidatedRegisterBlock>,
-) -> Result<TokenStream, DynError> {
+) -> Result<TokenStream> {
     let mut read_tokens = TokenStream::new();
     let mut write_tokens = TokenStream::new();
     let mut poll_tokens = TokenStream::new();
@@ -778,7 +778,7 @@ fn emu_make_root_bus<'a>(
     Ok(tokens)
 }
 
-fn delete_rust_files(dir: &Path) -> Result<(), DynError> {
+fn delete_rust_files(dir: &Path) -> Result<()> {
     for entry in walkdir::WalkDir::new(dir) {
         let entry = entry?;
         if entry.file_type().is_file()
@@ -803,7 +803,7 @@ fn generate_fw_registers(
     header: String,
     dest_dir: &Path,
     register_types_to_crates: &mut HashMap<String, String>,
-) -> Result<(), DynError> {
+) -> Result<()> {
     let file_action = if check {
         file_check_contents
     } else {
@@ -918,11 +918,7 @@ fn generate_fw_registers(
     Ok(())
 }
 
-fn generate_defines(
-    check: bool,
-    header: String,
-    dest_dir: &Path,
-) -> Result<HashMap<String, u32>, DynError> {
+fn generate_defines(check: bool, header: String, dest_dir: &Path) -> Result<HashMap<String, u32>> {
     let file_action = if check {
         file_check_contents
     } else {
@@ -935,7 +931,7 @@ fn generate_defines(
     let define_files: Vec<PathBuf> = define_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
     for define_file in define_files.iter() {
         if !define_file.exists() {
-            return Err(format!("Define file not found: {:?} -- ensure that you have run `git submodule init` and `git submodule update --recursive`", define_file).into());
+            bail!("Define file not found: {:?} -- ensure that you have run `git submodule init` and `git submodule update --recursive`", define_file);
         }
     }
 
@@ -989,7 +985,7 @@ fn generate_defines_from_file(source: String) -> (String, Vec<(String, u32)>) {
 }
 
 /// Run a command and return its stdout as a string.
-fn run_cmd_stdout(cmd: &mut Command, input: Option<&[u8]>) -> Result<String, DynError> {
+fn run_cmd_stdout(cmd: &mut Command, input: Option<&[u8]>) -> Result<String> {
     cmd.stdin(Stdio::piped());
     cmd.stdout(Stdio::piped());
 
@@ -1001,14 +997,13 @@ fn run_cmd_stdout(cmd: &mut Command, input: Option<&[u8]>) -> Result<String, Dyn
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into())
     } else {
-        Err(format!(
+        bail!(
             "Process {:?} {:?} exited with status code {:?} stderr {}",
             cmd.get_program(),
             cmd.get_args(),
             out.status.code(),
             String::from_utf8_lossy(&out.stderr)
         )
-        .into())
     }
 }
 
@@ -1045,7 +1040,7 @@ struct OtpPartitionItem {
 }
 
 /// Autogenerate fuse map code from hjson file used to generate OTP controller config.
-fn autogen_fuses(check: bool, dest_dir: &Path) -> Result<(), DynError> {
+fn autogen_fuses(check: bool, dest_dir: &Path) -> Result<()> {
     let file_action = if check {
         file_check_contents
     } else {
@@ -1162,7 +1157,7 @@ fn autogen_fuses(check: bool, dest_dir: &Path) -> Result<(), DynError> {
 }
 
 /// Format the given Rust code using rustfmt.
-fn rustfmt(code: &str) -> Result<String, DynError> {
+fn rustfmt(code: &str) -> Result<String> {
     run_cmd_stdout(
         Command::new("rustfmt")
             .arg("--emit=stdout")
@@ -1171,24 +1166,23 @@ fn rustfmt(code: &str) -> Result<String, DynError> {
     )
 }
 
-fn write_file(dest_file: &Path, contents: &str) -> Result<(), DynError> {
+fn write_file(dest_file: &Path, contents: &str) -> Result<()> {
     println!("Writing to {dest_file:?}");
     std::fs::write(PROJECT_ROOT.join(dest_file), contents)?;
     Ok(())
 }
 
-fn file_check_contents(dest_file: &Path, expected_contents: &str) -> Result<(), DynError> {
+fn file_check_contents(dest_file: &Path, expected_contents: &str) -> Result<()> {
     println!("Checking file {dest_file:?}");
     let actual_contents = std::fs::read(dest_file)?;
     if actual_contents != expected_contents.as_bytes() {
-        return Err(format!(
+        bail!(
             "{dest_file:?} does not match the generator output. If this is \
             unexpected, ensure that the caliptra-rtl, caliptra-ss, and i3c-core \
             submodules are pointing to the correct commits and/or run
             \"git submodule update\". Otherwise, run \
             \"cargo xtask registers-autogen\" to update this file."
-        )
-        .into());
+        );
     }
     Ok(())
 }

@@ -1,12 +1,13 @@
 // Licensed under the Apache-2.0 license
 
-use crate::{DynError, PROJECT_ROOT};
+use anyhow::{bail, Result};
+use mcu_builder::PROJECT_ROOT;
 use std::path::{Path, PathBuf};
 use toml::Table;
 
 const IGNORE_DIRS: [&str; 1] = ["libtock"];
 
-pub(crate) fn check() -> Result<(), DynError> {
+pub(crate) fn check() -> Result<()> {
     let cargo_tomls = find_cargo_tomls(&PROJECT_ROOT)?;
     let mut okay = true;
     for toml_path in cargo_tomls.iter() {
@@ -44,11 +45,11 @@ pub(crate) fn check() -> Result<(), DynError> {
     if okay {
         Ok(())
     } else {
-        Err("Dependency check failed".into())
+        bail!("Dependency check failed")
     }
 }
 
-pub(crate) fn find_cargo_tomls(dir: &Path) -> Result<Vec<PathBuf>, DynError> {
+pub(crate) fn find_cargo_tomls(dir: &Path) -> Result<Vec<PathBuf>> {
     let mut result = vec![];
     for entry in walkdir::WalkDir::new(dir) {
         let entry = entry.unwrap();

@@ -1,10 +1,11 @@
 // Licensed under the Apache-2.0 license
 
-use crate::{DynError, PROJECT_ROOT};
+use anyhow::{anyhow, bail, Result};
+use mcu_builder::PROJECT_ROOT;
 use std::path::Path;
 use std::process::Command;
 
-pub fn fpga_install_kernel_modules() -> Result<(), DynError> {
+pub fn fpga_install_kernel_modules() -> Result<()> {
     let dir = &PROJECT_ROOT.join("hw").join("fpga").join("kernel-modules");
 
     // need to wrap it in bash so that the current_dir is propagated to make correctly
@@ -15,18 +16,18 @@ pub fn fpga_install_kernel_modules() -> Result<(), DynError> {
         .expect("Failed to build modules")
         .success()
     {
-        return Err("Failed to build modules".into());
+        bail!("Failed to build modules");
     }
 
     if !is_module_loaded("uio")? {
-        sudo::escalate_if_needed()?;
+        sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
         if !Command::new("modprobe")
             .arg("uio")
             .status()
             .expect("Could not load uio kernel module")
             .success()
         {
-            return Err("Could not load uio kernel module".into());
+            bail!("Could not load uio kernel module");
         }
     }
 
@@ -38,20 +39,20 @@ pub fn fpga_install_kernel_modules() -> Result<(), DynError> {
     ] {
         let module_path = dir.join(format!("{}.ko", module));
         if !module_path.exists() {
-            return Err(format!("Module {} not found", module_path.display()).into());
+            bail!("Module {} not found", module_path.display());
         }
         if is_module_loaded(module)? {
             println!("Module {} already loaded", module);
             continue;
         }
 
-        sudo::escalate_if_needed()?;
+        sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
         if !Command::new("insmod")
             .arg(module_path.to_str().unwrap())
             .status()?
             .success()
         {
-            return Err(format!("Failed to insert module {}", module_path.display()).into());
+            bail!("Failed to insert module {}", module_path.display());
         }
     }
 
@@ -60,23 +61,23 @@ pub fn fpga_install_kernel_modules() -> Result<(), DynError> {
     Ok(())
 }
 
-fn fix_permissions() -> Result<(), DynError> {
+fn fix_permissions() -> Result<()> {
     let uio_path = Path::new("/dev/uio0");
     if uio_path.exists() {
-        sudo::escalate_if_needed()?;
+        sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
         if !Command::new("chmod")
             .arg("666")
             .arg(uio_path)
             .status()?
             .success()
         {
-            return Err("Failed to change permissions on uio device".into());
+            bail!("Failed to change permissions on uio device");
         }
     }
     Ok(())
 }
 
-fn is_module_loaded(module: &str) -> Result<bool, DynError> {
+fn is_module_loaded(module: &str) -> Result<bool> {
     let output = Command::new("lsmod").output()?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     Ok(stdout

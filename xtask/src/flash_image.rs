@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::DynError;
+use anyhow::{anyhow, bail, Result};
 use crc32fast::Hasher;
 use std::fs::File;
 use std::io::{self, Error, ErrorKind, Read, Write};
@@ -85,9 +85,9 @@ impl<'a> FlashImage<'a> {
         }
     }
 
-    pub fn write_to_file(&self, filename: &str) -> Result<(), DynError> {
+    pub fn write_to_file(&self, filename: &str) -> Result<()> {
         let mut file = File::create(filename)
-            .map_err(|e| format!("Unable to create file {}: {}", filename, e))?;
+            .map_err(|e| anyhow!(format!("Unable to create file {}: {}", filename, e)))?;
         file.write_all(self.header.as_bytes())?;
         file.write_all(self.checksum.as_bytes())?;
         for info in self.payload.image_info {
@@ -100,67 +100,67 @@ impl<'a> FlashImage<'a> {
         Ok(())
     }
 
-    pub fn verify_flash_image(image: &[u8]) -> Result<(), DynError> {
+    pub fn verify_flash_image(image: &[u8]) -> Result<()> {
         // Parse and verify header
         if image.len() < HEADER_SIZE {
-            return Err("Image too small to contain the header.".into());
+            bail!("Image too small to contain the header.");
         }
         let header = FlashImageHeader::read_from_bytes(&image[..HEADER_SIZE])
-            .map_err(|_| "Failed to parse header: invalid format or size")?;
+            .map_err(|_| anyhow!("Failed to parse header: invalid format or size"))?;
         if header.magic_number != FLASH_IMAGE_MAGIC_NUMBER {
-            return Err("Invalid header: incorrect magic number or header version.")?;
+            bail!("Invalid header: incorrect magic number or header version.");
         }
 
         if header.header_version != HEADER_VERSION {
-            return Err("Unsupported header version")?;
+            bail!("Unsupported header version");
         }
 
         if header.image_count < 3 {
-            return Err("Expected at least 3 images")?;
+            bail!("Expected at least 3 images");
         }
 
         // Parse and verify checksums
         let checksum =
             FlashImageChecksum::read_from_bytes(&image[HEADER_SIZE..(HEADER_SIZE + CHECKSUM_SIZE)])
-                .map_err(|_| "Failed to parse checksum field")?;
+                .map_err(|_| anyhow!("Failed to parse checksum field"))?;
         let calculated_header_checksum = calculate_checksum(header.as_bytes());
         let calculated_payload_checksum = calculate_checksum(&image[16..]);
 
         if checksum.header != calculated_header_checksum {
-            return Err("Header checksum mismatch.")?;
+            bail!("Header checksum mismatch.");
         }
 
         if checksum.payload != calculated_payload_checksum {
-            return Err("Payload checksum mismatch.")?;
+            bail!("Payload checksum mismatch.");
         }
 
         // Parse and verify image info and data
         for i in 0..header.image_count as usize {
             let offset = HEADER_SIZE + CHECKSUM_SIZE + (IMAGE_INFO_SIZE * i);
             let info = FlashImageInfo::read_from_bytes(&image[offset..offset + IMAGE_INFO_SIZE])
-                .map_err(|_| "Failed to read image info")?;
+                .map_err(|_| anyhow!("Failed to read image info"))?;
             match i {
                 0 => {
                     if info.identifier != CALIPTRA_FMC_RT_IDENTIFIER {
-                        return Err("Image 0 is not Caliptra Identifier")?;
+                        bail!("Image 0 is not Caliptra Identifier");
                     }
                 }
                 1 => {
                     if info.identifier != SOC_MANIFEST_IDENTIFIER {
-                        return Err("Image 0 is not SOC Manifest Identifier")?;
+                        bail!("Image 0 is not SOC Manifest Identifier");
                     }
                 }
                 2 => {
                     if info.identifier != MCU_RT_IDENTIFIER {
-                        return Err("Image 0 is not MCU RT Identifier")?;
+                        bail!("Image 0 is not MCU RT Identifier");
                     }
                 }
                 3..255 => {
                     if info.identifier != (SOC_IMAGES_BASE_IDENTIFIER + (i as u32) - 3) {
-                        return Err("Invalid SOC image identifier")?;
+                        bail!("Invalid SOC image identifier");
                     }
                 }
-                _ => return Err("Invalid image identifier")?,
+                _ => bail!("Invalid image identifier"),
             }
         }
 
@@ -197,16 +197,16 @@ impl FlashImageChecksum {
     }
 }
 
-fn load_file(filename: &str) -> Result<Vec<u8>, DynError> {
+fn load_file(filename: &str) -> Result<Vec<u8>> {
     let mut buffer = Vec::new();
 
     // Open the file, map errors to a custom error message
-    let mut file =
-        File::open(filename).map_err(|e| format!("Cannot open file '{}': {}", filename, e))?;
+    let mut file = File::open(filename)
+        .map_err(|e| anyhow!(format!("Cannot open file '{}': {}", filename, e)))?;
 
     // Read the file into the buffer, map errors similarly
     file.read_to_end(&mut buffer)
-        .map_err(|e| format!("Cannot read file '{}': {}", filename, e))?;
+        .map_err(|e| anyhow!(format!("Cannot read file '{}': {}", filename, e)))?;
 
     let padding = buffer.len().next_multiple_of(4) - buffer.len(); // Calculate padding size
     buffer.extend(vec![0; padding]); // Append padding bytes
@@ -220,7 +220,7 @@ pub(crate) fn flash_image_create(
     mcu_runtime_path: &str,
     soc_image_paths: &Option<Vec<String>>,
     output_path: &str,
-) -> Result<(), DynError> {
+) -> Result<()> {
     let mut images: Vec<FirmwareImage> = Vec::new();
 
     let content = load_file(caliptra_fw_path)?;
@@ -272,7 +272,7 @@ pub fn generate_image_info(images: Vec<FirmwareImage>) -> Vec<FlashImageInfo> {
     info
 }
 
-pub(crate) fn flash_image_verify(image_file_path: &str) -> Result<(), DynError> {
+pub(crate) fn flash_image_verify(image_file_path: &str) -> Result<()> {
     let mut file = File::open(image_file_path).map_err(|e| {
         Error::new(
             ErrorKind::NotFound,
@@ -294,7 +294,7 @@ pub(crate) fn flash_image_verify(image_file_path: &str) -> Result<(), DynError> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::PROJECT_ROOT;
+    use mcu_builder::PROJECT_ROOT;
     use std::fs::{self, File};
     use std::io::Write;
     use tempfile::NamedTempFile;

@@ -6,10 +6,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow.workspace = true
 clap.workspace = true
 crc32fast.workspace = true
 elf.workspace = true
 emulator-consts.workspace = true
+mcu-builder.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
 registers-generator.workspace = true

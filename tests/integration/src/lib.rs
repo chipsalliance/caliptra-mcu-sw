@@ -14,7 +14,7 @@ mod test {
     use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
     use caliptra_image_types::FwVerificationPqcKeyType;
     use hex::ToHex;
-    use std::io::Write;
+    use mcu_builder::TARGET;
     use std::process::ExitStatus;
     use std::sync::atomic::AtomicU32;
     use std::sync::Mutex;
@@ -24,8 +24,6 @@ mod test {
         sync::LazyLock,
     };
     use zerocopy::IntoBytes;
-
-    const TARGET: &str = "riscv32imc-unknown-none-elf";
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
         Path::new(&env!("CARGO_MANIFEST_DIR"))
@@ -50,38 +48,17 @@ mod test {
     static TEST_LOCK: LazyLock<Mutex<AtomicU32>> = LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
 
     fn compile_rom() -> PathBuf {
+        mcu_builder::rom_build().expect("ROM build failed");
         let output = target_binary("rom.bin");
-        let mut cmd = Command::new("cargo");
-        let cmd = cmd.args(["xtask", "rom-build"]).current_dir(&*PROJECT_ROOT);
-        let cmd_output = cmd.output().unwrap();
-        if !cmd.status().unwrap().success() {
-            std::io::stdout().write_all(&cmd_output.stdout).unwrap();
-            std::io::stderr().write_all(&cmd_output.stderr).unwrap();
-            panic!("failed to compile ROM");
-        }
         assert!(output.exists());
         output
     }
 
     fn compile_runtime(feature: &str) -> PathBuf {
         let output = target_binary(&format!("runtime-{}.bin", feature));
-        let mut cmd = Command::new("cargo");
-        let cmd = cmd
-            .args([
-                "xtask",
-                "runtime-build",
-                "--features",
-                feature,
-                "--output",
-                &format!("{}", output.display()),
-            ])
-            .current_dir(&*PROJECT_ROOT);
-        let cmd_output = cmd.output().unwrap();
-        if !cmd.status().unwrap().success() {
-            std::io::stdout().write_all(&cmd_output.stdout).unwrap();
-            std::io::stderr().write_all(&cmd_output.stderr).unwrap();
-            panic!("failed to compile runtime");
-        }
+        let output_name = format!("{}", output.display());
+        mcu_builder::runtime_build_with_apps(&[feature], Some(&output_name))
+            .expect("Runtime build failed");
         assert!(output.exists());
         output
     }
