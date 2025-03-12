@@ -1,101 +1,84 @@
 // Licensed under the Apache-2.0 license
 
 #[cfg(test)]
-mod mock_transport;
-use log::{error, LevelFilter};
-use mock_transport::{MockPldmSocket, MockTransport};
-use pldm_common::protocol::base::{
-    PldmControlCmd, PldmMsgHeader, PldmSupportedType, TransferRespFlag,
-};
+mod common;
+use pldm_common::protocol::base::{PldmControlCmd, PldmSupportedType, TransferRespFlag};
 use pldm_common::protocol::firmware_update::FwUpdateCmd;
 use pldm_common::protocol::version::{PLDM_BASE_PROTOCOL_VERSION, PLDM_FW_UPDATE_PROTOCOL_VERSION};
-use pldm_ua::discovery_sm;
-use simple_logger::SimpleLogger;
+use pldm_ua::events::PldmEvents;
+use pldm_ua::{discovery_sm, update_sm};
 
-use pldm_common::codec::PldmCodec;
 use pldm_common::message::control::*;
-use pldm_ua::daemon::{Options, PldmDaemon};
-use pldm_ua::transport::{PldmSocket, PldmTransport};
+use pldm_fw_pkg::FirmwareManifest;
+use pldm_ua::daemon::Options;
+use pldm_ua::transport::PldmSocket;
 
 const COMPLETION_CODE_SUCCESSFUL: u8 = 0x00;
 
-fn send_response<P: PldmCodec>(socket: &MockPldmSocket, response: &P) {
-    let mut buffer = [0u8; 512];
-    let sz = response.encode(&mut buffer).unwrap();
-    socket.send(&buffer[..sz]).unwrap();
+/* Override the Firmware Update State Machine.
+ * When discovery is finished, verify that the Discovery State machine will kick-off the Firmware Update State machine.
+ * This can be verified by checking if the on_start_update() of the Firmware Update SM is called.
+ * To do this, we need to override the on_start_update() and on_stop_update() methods of the Firmware Update SM.
+ * The on_start_update() method will set a flag to true to indicate that the Firmware Update SM has started.
+ * When the Daemon is stopped the on_stop_update() method will be called and verify the flag is true.
+ */
+struct UpdateSmStopAfterRequest {
+    is_fw_update_started: bool,
 }
-
-fn receive_request<P: PldmCodec>(
-    socket: &MockPldmSocket,
-    cmd_code: PldmControlCmd,
-) -> Result<P, ()> {
-    let request = socket.receive(None).unwrap();
-
-    let header = PldmMsgHeader::decode(&request.payload.data[..request.payload.len])
-        .map_err(|_| (error!("Error decoding packet!")))?;
-    if !header.is_hdr_ver_valid() {
-        error!("Invalid header version!");
-        return Err(());
+impl update_sm::StateMachineActions for UpdateSmStopAfterRequest {
+    fn on_start_update(
+        &mut self,
+        ctx: &mut update_sm::InnerContext<impl PldmSocket>,
+    ) -> Result<(), ()> {
+        ctx.event_queue
+            .send(PldmEvents::Update(update_sm::Events::StopUpdate))
+            .map_err(|_| ())?;
+        self.is_fw_update_started = true;
+        Ok(())
     }
-    if header.cmd_code() != cmd_code as u8 {
-        error!("Invalid command code!");
-        return Err(());
+    fn on_stop_update(
+        &mut self,
+        ctx: &mut update_sm::InnerContext<impl PldmSocket>,
+    ) -> Result<(), ()> {
+        assert!(self.is_fw_update_started);
+        ctx.event_queue.send(PldmEvents::Stop).map_err(|_| ())?;
+        Ok(())
     }
-
-    P::decode(&request.payload.data[..request.payload.len])
-        .map_err(|_| (error!("Error decoding packet!")))
 }
 
 #[test]
 fn test_discovery() {
-    // Initialize log level to info
-    SimpleLogger::new()
-        .with_level(LevelFilter::Info)
-        .init()
-        .unwrap();
-
-    // Setup the PLDM transport
-    let transport = MockTransport::new();
-
-    // Define the update agent endpoint id
-    let ua_sid = pldm_ua::transport::EndpointId(0x01);
-
-    // Define the device endpoint id
-    let fd_sid = pldm_ua::transport::EndpointId(0x02);
-
-    // Create socket used by the PLDM daemon (update agent)
-    let ua_sock = transport.create_socket(ua_sid, fd_sid).unwrap();
-
-    // Create socket to be used by the device (FD)
-    let fd_sock = transport.create_socket(fd_sid, ua_sid).unwrap();
-
-    // Run the PLDM daemon
-    let mut daemon = PldmDaemon::run(
-        ua_sock,
-        Options {
-            discovery_sm_actions: discovery_sm::DefaultActions {},
-            fd_tid: DEVICE_TID,
+    let mut setup = common::setup(Options {
+        pldm_fw_pkg: Some(FirmwareManifest::default()),
+        discovery_sm_actions: discovery_sm::DefaultActions {},
+        update_sm_actions: UpdateSmStopAfterRequest {
+            is_fw_update_started: false,
         },
-    );
+        fd_tid: DEVICE_TID,
+    });
 
     // TID to be assigned to the device
     const DEVICE_TID: u8 = 0x01;
 
-    let request: SetTidRequest = receive_request(&fd_sock, PldmControlCmd::SetTid).unwrap();
+    let request: SetTidRequest = setup
+        .receive_request(&setup.fd_sock, PldmControlCmd::SetTid as u8)
+        .unwrap();
     assert_eq!(request.tid, DEVICE_TID);
 
     // Send SetTid response
-    send_response(
-        &fd_sock,
+    setup.send_response(
+        &setup.fd_sock,
         &SetTidResponse::new(request.hdr.instance_id(), COMPLETION_CODE_SUCCESSFUL),
     );
 
     // Receive GetTid request
-    let request: GetTidRequest = receive_request(&fd_sock, PldmControlCmd::GetTid).unwrap();
+    let request: GetTidRequest = setup
+        .receive_request(&setup.fd_sock, PldmControlCmd::GetTid as u8)
+        .unwrap();
 
     // Send GetTid response
-    send_response(
-        &fd_sock,
+    setup.send_response(
+        &setup.fd_sock,
         &GetTidResponse::new(
             request.hdr.instance_id(),
             DEVICE_TID,
@@ -104,12 +87,13 @@ fn test_discovery() {
     );
 
     // Receive GetPldmTypes
-    let request: GetPldmTypeRequest =
-        receive_request(&fd_sock, PldmControlCmd::GetPldmTypes).unwrap();
+    let request: GetPldmTypeRequest = setup
+        .receive_request(&setup.fd_sock, PldmControlCmd::GetPldmTypes as u8)
+        .unwrap();
 
     // Send GetPldmTypes response
-    send_response(
-        &fd_sock,
+    setup.send_response(
+        &setup.fd_sock,
         &GetPldmTypeResponse::new(
             request.hdr.instance_id(),
             COMPLETION_CODE_SUCCESSFUL,
@@ -121,13 +105,14 @@ fn test_discovery() {
     );
 
     // Receive GetPldmVersion for Type 0
-    let request: GetPldmVersionRequest =
-        receive_request(&fd_sock, PldmControlCmd::GetPldmVersion).unwrap();
+    let request: GetPldmVersionRequest = setup
+        .receive_request(&setup.fd_sock, PldmControlCmd::GetPldmVersion as u8)
+        .unwrap();
     assert_eq!(request.pldm_type, PldmSupportedType::Base as u8);
 
     // Send GetPldmVersion response
-    send_response(
-        &fd_sock,
+    setup.send_response(
+        &setup.fd_sock,
         &GetPldmVersionResponse::new(
             request.hdr.instance_id(),
             COMPLETION_CODE_SUCCESSFUL,
@@ -139,13 +124,14 @@ fn test_discovery() {
     );
 
     // Receive GetPldmCommands for Type 0
-    let request: GetPldmCommandsRequest =
-        receive_request(&fd_sock, PldmControlCmd::GetPldmCommands).unwrap();
+    let request: GetPldmCommandsRequest = setup
+        .receive_request(&setup.fd_sock, PldmControlCmd::GetPldmCommands as u8)
+        .unwrap();
     assert_eq!(request.pldm_type, PldmSupportedType::Base as u8);
 
     // Send GetPldmCommands response
-    send_response(
-        &fd_sock,
+    setup.send_response(
+        &setup.fd_sock,
         &GetPldmCommandsResponse::new(
             request.hdr.instance_id(),
             COMPLETION_CODE_SUCCESSFUL,
@@ -160,13 +146,14 @@ fn test_discovery() {
     );
 
     // Receive GetPldmVersion for Type 5
-    let request: GetPldmVersionRequest =
-        receive_request(&fd_sock, PldmControlCmd::GetPldmVersion).unwrap();
+    let request: GetPldmVersionRequest = setup
+        .receive_request(&setup.fd_sock, PldmControlCmd::GetPldmVersion as u8)
+        .unwrap();
     assert_eq!(request.pldm_type, PldmSupportedType::FwUpdate as u8);
 
     // Send GetPldmVersion response
-    send_response(
-        &fd_sock,
+    setup.send_response(
+        &setup.fd_sock,
         &GetPldmVersionResponse::new(
             request.hdr.instance_id(),
             COMPLETION_CODE_SUCCESSFUL,
@@ -178,13 +165,14 @@ fn test_discovery() {
     );
 
     // Receive GetPldmCommands for Type 5
-    let request: GetPldmCommandsRequest =
-        receive_request(&fd_sock, PldmControlCmd::GetPldmCommands).unwrap();
+    let request: GetPldmCommandsRequest = setup
+        .receive_request(&setup.fd_sock, PldmControlCmd::GetPldmCommands as u8)
+        .unwrap();
     assert_eq!(request.pldm_type, PldmSupportedType::FwUpdate as u8);
 
     // Send GetPldmCommands response
-    send_response(
-        &fd_sock,
+    setup.send_response(
+        &setup.fd_sock,
         &GetPldmCommandsResponse::new(
             request.hdr.instance_id(),
             COMPLETION_CODE_SUCCESSFUL,
@@ -206,5 +194,5 @@ fn test_discovery() {
         ),
     );
 
-    daemon.stop();
+    setup.daemon.stop();
 }

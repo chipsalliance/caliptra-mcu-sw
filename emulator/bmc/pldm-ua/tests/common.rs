@@ -1,14 +1,26 @@
 // Licensed under the Apache-2.0 license
-
+#![allow(clippy::result_unit_err)]
 use core::time::Duration;
+use log::{error, LevelFilter};
+use pldm_common::message::firmware_update::query_devid::{
+    QueryDeviceIdentifiersRequest, QueryDeviceIdentifiersResponse,
+};
+use pldm_common::protocol::base::PldmMsgHeader;
+use pldm_fw_pkg::FirmwareManifest;
+use pldm_ua::events::PldmEvents;
 use pldm_ua::transport::{
     EndpointId, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket, TxPacket,
     MAX_PLDM_PAYLOAD_SIZE,
 };
+use simple_logger::SimpleLogger;
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
+
+use pldm_common::codec::PldmCodec;
+use pldm_ua::daemon::{Options, PldmDaemon};
+use pldm_ua::{discovery_sm, update_sm};
 
 pub struct MockPldmSocket {
     source: EndpointId,
@@ -191,4 +203,127 @@ fn test_send_receive_same_socket() {
     // wait for h1 and h2 to finish
     h1.join().unwrap();
     h2.join().unwrap();
+}
+
+pub struct TestSetup<
+    D: discovery_sm::StateMachineActions + Send + 'static,
+    U: update_sm::StateMachineActions + Send + 'static,
+> {
+    pub fd_sock: MockPldmSocket,
+    pub daemon: PldmDaemon<MockPldmSocket, D, U>,
+}
+
+pub fn setup<
+    D: discovery_sm::StateMachineActions + Send + 'static,
+    U: update_sm::StateMachineActions + Send + 'static,
+>(
+    daemon_options: Options<D, U>,
+) -> TestSetup<D, U> {
+    // Initialize log level to info (only once)
+    let _ = SimpleLogger::new().with_level(LevelFilter::Info).init();
+
+    // Setup the PLDM transport
+    let transport = MockTransport::new();
+
+    // Define the update agent endpoint id
+    let ua_sid = pldm_ua::transport::EndpointId(0x01);
+
+    // Define the device endpoint id
+    let fd_sid = pldm_ua::transport::EndpointId(0x02);
+
+    // Create socket used by the PLDM daemon (update agent)
+    let ua_sock = transport.create_socket(ua_sid, fd_sid).unwrap();
+
+    // Create socket to be used by the device (FD)
+    let fd_sock = transport.create_socket(fd_sid, ua_sid).unwrap();
+
+    // Run the PLDM daemon
+    let daemon = PldmDaemon::run(ua_sock.clone(), daemon_options).unwrap();
+
+    TestSetup { fd_sock, daemon }
+}
+
+impl<
+        D: discovery_sm::StateMachineActions + Send + 'static,
+        U: update_sm::StateMachineActions + Send + 'static,
+    > TestSetup<D, U>
+{
+    pub fn wait_for_state_transition(&self, expected_state: update_sm::States) {
+        let timeout = Duration::from_secs(5);
+        let start_time = std::time::Instant::now();
+
+        while start_time.elapsed() < timeout {
+            if self.daemon.get_update_sm_state() == expected_state {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert_eq!(
+            self.daemon.get_update_sm_state(),
+            expected_state,
+            "Timed out waiting for state transition"
+        );
+    }
+
+    pub fn send_response<P: PldmCodec>(&self, socket: &MockPldmSocket, response: &P) {
+        let mut buffer = [0u8; 512];
+        let sz = response.encode(&mut buffer).unwrap();
+        socket.send(&buffer[..sz]).unwrap();
+    }
+
+    pub fn receive_request<P: PldmCodec>(
+        &self,
+        socket: &MockPldmSocket,
+        cmd_code: u8,
+    ) -> Result<P, ()> {
+        let request = socket.receive(None).unwrap();
+
+        let header = PldmMsgHeader::decode(&request.payload.data[..request.payload.len])
+            .map_err(|_| (error!("Error decoding packet!")))?;
+        if !header.is_hdr_ver_valid() {
+            error!("Invalid header version!");
+            return Err(());
+        }
+        if header.cmd_code() != cmd_code {
+            error!("Invalid command code!");
+            return Err(());
+        }
+
+        P::decode(&request.payload.data[..request.payload.len])
+            .map_err(|_| (error!("Error decoding packet!")))
+    }
+}
+
+/* Override the Discovery SM. Skip the discovery process by starting firmware update immediately when discovery is kicked-off */
+pub struct CustomDiscoverySm {}
+impl discovery_sm::StateMachineActions for CustomDiscoverySm {
+    fn on_start_discovery(
+        &self,
+        ctx: &discovery_sm::InnerContext<impl PldmSocket>,
+    ) -> Result<(), ()> {
+        ctx.event_queue
+            .send(PldmEvents::Update(update_sm::Events::StartUpdate))
+            .map_err(|_| ())?;
+        Ok(())
+    }
+}
+
+#[test]
+fn test_pldm_daemon_setup() {
+    let setup = setup(Options {
+        pldm_fw_pkg: Some(FirmwareManifest::default()),
+        discovery_sm_actions: CustomDiscoverySm {},
+        update_sm_actions: update_sm::DefaultActions {},
+        fd_tid: 0x02,
+    });
+
+    let _: QueryDeviceIdentifiersRequest = setup.receive_request(&setup.fd_sock, 1u8).unwrap();
+
+    let response = QueryDeviceIdentifiersResponse {
+        ..Default::default()
+    };
+
+    setup.wait_for_state_transition(update_sm::States::QueryDeviceIdentifiersSent);
+
+    setup.send_response(&setup.fd_sock, &response);
 }
