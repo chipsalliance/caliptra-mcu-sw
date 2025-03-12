@@ -40,9 +40,7 @@ jobs:
         run: |
           sudo apt-get update -qy && \
           sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup
-          rustup toolchain install \
-            $(cat rust-toolchain.toml | grep channel | cut -d'=' -f2 | cut -d'"' -f2)-unknown-linux-gnu \
-            -c clippy rust-src llvm-tools rustfmt rustc-dev
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
       - name: Restore sccache binary
         uses: actions/cache/restore@v3

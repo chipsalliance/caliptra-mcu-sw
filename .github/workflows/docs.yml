@@ -38,9 +38,7 @@ jobs:
         run: |
           sudo apt-get update -qy
           sudo apt-get install -qy rustup
-          rustup toolchain install \
-            $(cat rust-toolchain.toml | grep channel | cut -d'=' -f2 | cut -d'"' -f2)-unknown-linux-gnu \
-            -c clippy rust-src llvm-tools rustfmt rustc-dev
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
       - name: Install mdBook
         run: |
           cargo install --version ${MDBOOK_VERSION} mdbook
