@@ -3,8 +3,84 @@
 use crate::error::{SpdmError, SpdmResult};
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
-pub(crate) trait Prioritize<T> {
-    fn prioritize(self, peer: Self, priority_table: Option<&[T]>) -> Self;
+pub(crate) trait Prioritize<T>
+where
+    Self: Sized,
+    T: Copy + Into<Self>,
+{
+    fn prioritize(&self, peer: &Self, priority_table: Option<&[T]>) -> Self;
+}
+
+impl<T> Prioritize<T> for u8
+where
+    T: Copy + Into<u8>,
+{
+    fn prioritize(&self, peer: &Self, priority_table: Option<&[T]>) -> Self {
+        let common = self & peer;
+        if let Some(priority_table) = priority_table {
+            for &priority in priority_table {
+                let priority_spec: u8 = priority.into();
+                if common & priority_spec != 0 {
+                    return common & (!common + 1);
+                }
+            }
+        } else {
+            // If priority_table is None, we assume the default behavior
+            // of returning the first common algorithm.
+            if common != 0 {
+                return 1 << common.trailing_zeros();
+            }
+        }
+        0
+    }
+}
+
+impl<T> Prioritize<T> for u16
+where
+    T: Copy + Into<u16>,
+{
+    fn prioritize(&self, peer: &Self, priority_table: Option<&[T]>) -> Self {
+        let common = self & peer;
+        if let Some(priority_table) = priority_table {
+            for &priority in priority_table {
+                let priority_spec: u16 = priority.into();
+                if common & priority_spec != 0 {
+                    return common & (!common + 1);
+                }
+            }
+        } else {
+            // If priority_table is None, we assume the default behavior
+            // of returning the first common algorithm.
+            if common != 0 {
+                return 1 << common.trailing_zeros();
+            }
+        }
+        0
+    }
+}
+
+impl<T> Prioritize<T> for u32
+where
+    T: Copy + Into<u32>,
+{
+    fn prioritize(&self, peer: &Self, priority_table: Option<&[T]>) -> Self {
+        let common = self & peer;
+        if let Some(priority_table) = priority_table {
+            for &priority in priority_table {
+                let priority_spec: u32 = priority.into();
+                if common & priority_spec != 0 {
+                    return common & (!common + 1);
+                }
+            }
+        } else {
+            // If priority_table is None, we assume the default behavior
+            // of returning the first common algorithm.
+            if common != 0 {
+                return 1 << common.trailing_zeros();
+            }
+        }
+        0
+    }
 }
 
 // Measurement Specification field
@@ -23,37 +99,11 @@ pub enum MeasurementSpecificationType {
     DmtfMeasurementSpec,
 }
 
-impl From<MeasurementSpecificationType> for MeasurementSpecification {
-    fn from(measurement_specification_type: MeasurementSpecificationType) -> Self {
+impl From<MeasurementSpecificationType> for u8 {
+    fn from(measurement_specification_type: MeasurementSpecificationType) -> u8 {
         match measurement_specification_type {
-            MeasurementSpecificationType::DmtfMeasurementSpec => MeasurementSpecification(1 << 0),
+            MeasurementSpecificationType::DmtfMeasurementSpec => MeasurementSpecification(1 << 0).0,
         }
-    }
-}
-
-impl Prioritize<MeasurementSpecificationType> for MeasurementSpecification {
-    fn prioritize(
-        self,
-        peer: Self,
-        priority_table: Option<&[MeasurementSpecificationType]>,
-    ) -> Self {
-        let common = self.0 & peer.0;
-        if let Some(priority_table) = priority_table {
-            for &priority in priority_table {
-                let priority_spec: MeasurementSpecification = priority.into();
-                if common & priority_spec.0 != 0 {
-                    return MeasurementSpecification(priority_spec.0);
-                }
-            }
-        } else {
-            // If priority_table is None, we assume the default behavior
-            // of returning the first common measurement specification.
-            if common != 0 {
-                return MeasurementSpecification(common & (!common + 1));
-            }
-        }
-
-        MeasurementSpecification::default()
     }
 }
 
@@ -71,34 +121,12 @@ pub multi_key_conn, set_multi_key_conn: 4,4;
 pub reserved2, _: 7,5;
 }
 
-impl From<OpaqueDataFormatType> for OtherParamSupport {
-    fn from(other_param_support_type: OpaqueDataFormatType) -> Self {
+impl From<OpaqueDataFormatType> for u8 {
+    fn from(other_param_support_type: OpaqueDataFormatType) -> u8 {
         match other_param_support_type {
-            OpaqueDataFormatType::OpaqueDataFmt0 => OtherParamSupport(1 << 0),
-            OpaqueDataFormatType::OpaqueDataFmt1 => OtherParamSupport(1 << 1),
+            OpaqueDataFormatType::OpaqueDataFmt0 => OtherParamSupport(1 << 0).0,
+            OpaqueDataFormatType::OpaqueDataFmt1 => OtherParamSupport(1 << 1).0,
         }
-    }
-}
-
-impl Prioritize<OpaqueDataFormatType> for OtherParamSupport {
-    fn prioritize(self, peer: Self, priority_table: Option<&[OpaqueDataFormatType]>) -> Self {
-        let common = self.0 & peer.0;
-        if let Some(priority_table) = priority_table {
-            for &priority in priority_table {
-                let priority_spec: OtherParamSupport = priority.into();
-                if common & priority_spec.0 != 0 {
-                    return OtherParamSupport(priority_spec.0);
-                }
-            }
-        } else {
-            // If priority_table is None, we assume the default behavior
-            // of returning the first common other param support.
-            if common != 0 {
-                return OtherParamSupport(common & (!common + 1));
-            }
-        }
-
-        OtherParamSupport::default()
     }
 }
 
@@ -151,44 +179,22 @@ pub eddsa_ed448, set_eddsa_ed448: 11,11;
 reserved, _: 31,12;
 }
 
-impl From<BaseAsymAlgoType> for BaseAsymAlgo {
-    fn from(base_asym_algo_type: BaseAsymAlgoType) -> Self {
+impl From<BaseAsymAlgoType> for u32 {
+    fn from(base_asym_algo_type: BaseAsymAlgoType) -> u32 {
         match base_asym_algo_type {
-            BaseAsymAlgoType::TpmAlgRsassa2048 => BaseAsymAlgo(1 << 0),
-            BaseAsymAlgoType::TpmAlgRsapss2048 => BaseAsymAlgo(1 << 1),
-            BaseAsymAlgoType::TpmAlgRsassa3072 => BaseAsymAlgo(1 << 2),
-            BaseAsymAlgoType::TpmAlgRsapss3072 => BaseAsymAlgo(1 << 3),
-            BaseAsymAlgoType::TpmAlgEcdsaEccNistP256 => BaseAsymAlgo(1 << 4),
-            BaseAsymAlgoType::TpmAlgRsassa4096 => BaseAsymAlgo(1 << 5),
-            BaseAsymAlgoType::TpmAlgRsapss4096 => BaseAsymAlgo(1 << 6),
-            BaseAsymAlgoType::TpmAlgEcdsaEccNistP384 => BaseAsymAlgo(1 << 7),
-            BaseAsymAlgoType::TpmAlgEcdsaEccNistP521 => BaseAsymAlgo(1 << 8),
-            BaseAsymAlgoType::TpmAlgSm2EccSm2P256 => BaseAsymAlgo(1 << 9),
-            BaseAsymAlgoType::EddsaEd25519 => BaseAsymAlgo(1 << 10),
-            BaseAsymAlgoType::EddsaEd448 => BaseAsymAlgo(1 << 11),
+            BaseAsymAlgoType::TpmAlgRsassa2048 => BaseAsymAlgo(1 << 0).0,
+            BaseAsymAlgoType::TpmAlgRsapss2048 => BaseAsymAlgo(1 << 1).0,
+            BaseAsymAlgoType::TpmAlgRsassa3072 => BaseAsymAlgo(1 << 2).0,
+            BaseAsymAlgoType::TpmAlgRsapss3072 => BaseAsymAlgo(1 << 3).0,
+            BaseAsymAlgoType::TpmAlgEcdsaEccNistP256 => BaseAsymAlgo(1 << 4).0,
+            BaseAsymAlgoType::TpmAlgRsassa4096 => BaseAsymAlgo(1 << 5).0,
+            BaseAsymAlgoType::TpmAlgRsapss4096 => BaseAsymAlgo(1 << 6).0,
+            BaseAsymAlgoType::TpmAlgEcdsaEccNistP384 => BaseAsymAlgo(1 << 7).0,
+            BaseAsymAlgoType::TpmAlgEcdsaEccNistP521 => BaseAsymAlgo(1 << 8).0,
+            BaseAsymAlgoType::TpmAlgSm2EccSm2P256 => BaseAsymAlgo(1 << 9).0,
+            BaseAsymAlgoType::EddsaEd25519 => BaseAsymAlgo(1 << 10).0,
+            BaseAsymAlgoType::EddsaEd448 => BaseAsymAlgo(1 << 11).0,
         }
-    }
-}
-
-impl Prioritize<BaseAsymAlgoType> for BaseAsymAlgo {
-    fn prioritize(self, peer: Self, priority_table: Option<&[BaseAsymAlgoType]>) -> Self {
-        let common = self.0 & peer.0;
-        if let Some(priority_table) = priority_table {
-            for &priority in priority_table {
-                let priority_spec: BaseAsymAlgo = priority.into();
-                if common & priority_spec.0 != 0 {
-                    return BaseAsymAlgo(priority_spec.0);
-                }
-            }
-        } else {
-            // If priority_table is None, we assume the default behavior
-            // of returning the first common base asym algo.
-            if common != 0 {
-                return BaseAsymAlgo(common & (!common + 1));
-            }
-        }
-
-        BaseAsymAlgo::default()
     }
 }
 
@@ -240,7 +246,7 @@ impl From<BaseHashAlgoType> for BaseHashAlgo {
 }
 
 impl Prioritize<BaseHashAlgoType> for BaseHashAlgo {
-    fn prioritize(self, peer: Self, priority_table: Option<&[BaseHashAlgoType]>) -> Self {
+    fn prioritize(&self, peer: &Self, priority_table: Option<&[BaseHashAlgoType]>) -> Self {
         let common = self.0 & peer.0;
         if let Some(priority_table) = priority_table {
             for &priority in priority_table {
@@ -287,32 +293,11 @@ pub enum MelSpecificationType {
     DmtfMelSpec,
 }
 
-impl From<MelSpecificationType> for MelSpecification {
-    fn from(mel_specification_type: MelSpecificationType) -> Self {
+impl From<MelSpecificationType> for u8 {
+    fn from(mel_specification_type: MelSpecificationType) -> u8 {
         match mel_specification_type {
-            MelSpecificationType::DmtfMelSpec => MelSpecification(1 << 0),
+            MelSpecificationType::DmtfMelSpec => MelSpecification(1 << 0).0,
         }
-    }
-}
-
-impl Prioritize<MelSpecificationType> for MelSpecification {
-    fn prioritize(self, peer: Self, priority_table: Option<&[MelSpecificationType]>) -> Self {
-        let common = self.0 & peer.0;
-        if let Some(priority_table) = priority_table {
-            for &priority in priority_table {
-                let priority_spec: MelSpecification = priority.into();
-                if common & priority_spec.0 != 0 {
-                    return MelSpecification(priority_spec.0);
-                }
-            }
-        } else {
-            // If priority_table is None, we assume the default behavior
-            // of returning the first common mel specification.
-            if common != 0 {
-                return MelSpecification(common & (!common + 1));
-            }
-        }
-        MelSpecification::default()
     }
 }
 
@@ -333,38 +318,17 @@ pub sm2_p256, set_sm2_p256: 6,6;
 reserved, _: 15,7;
 }
 
-impl From<DheGroupType> for DheNamedGroup {
-    fn from(dhe_group_type: DheGroupType) -> Self {
+impl From<DheGroupType> for u16 {
+    fn from(dhe_group_type: DheGroupType) -> u16 {
         match dhe_group_type {
-            DheGroupType::Ffdhe2048 => DheNamedGroup(1 << 0),
-            DheGroupType::Ffdhe3072 => DheNamedGroup(1 << 1),
-            DheGroupType::Ffdhe4096 => DheNamedGroup(1 << 2),
-            DheGroupType::Secp256r1 => DheNamedGroup(1 << 3),
-            DheGroupType::Secp384r1 => DheNamedGroup(1 << 4),
-            DheGroupType::Secp521r1 => DheNamedGroup(1 << 5),
-            DheGroupType::Sm2P256 => DheNamedGroup(1 << 6),
+            DheGroupType::Ffdhe2048 => DheNamedGroup(1 << 0).0,
+            DheGroupType::Ffdhe3072 => DheNamedGroup(1 << 1).0,
+            DheGroupType::Ffdhe4096 => DheNamedGroup(1 << 2).0,
+            DheGroupType::Secp256r1 => DheNamedGroup(1 << 3).0,
+            DheGroupType::Secp384r1 => DheNamedGroup(1 << 4).0,
+            DheGroupType::Secp521r1 => DheNamedGroup(1 << 5).0,
+            DheGroupType::Sm2P256 => DheNamedGroup(1 << 6).0,
         }
-    }
-}
-
-impl Prioritize<DheGroupType> for DheNamedGroup {
-    fn prioritize(self, peer: Self, priority_table: Option<&[DheGroupType]>) -> Self {
-        let common = self.0 & peer.0;
-        if let Some(priority_table) = priority_table {
-            for &priority in priority_table {
-                let priority_spec: DheNamedGroup = priority.into();
-                if common & priority_spec.0 != 0 {
-                    return DheNamedGroup(priority_spec.0);
-                }
-            }
-        } else {
-            // If priority_table is None, we assume the default behavior
-            // of returning the first common DHE group.
-            if common != 0 {
-                return DheNamedGroup(common & (!common + 1));
-            }
-        }
-        DheNamedGroup::default()
     }
 }
 
@@ -401,35 +365,14 @@ pub aead_sm4_gcm, set_aead_sm4_gcm: 3,3;
 reserved, _: 15,4;
 }
 
-impl From<AeadCipherSuiteType> for AeadCipherSuite {
-    fn from(aead_cipher_suite_type: AeadCipherSuiteType) -> Self {
+impl From<AeadCipherSuiteType> for u16 {
+    fn from(aead_cipher_suite_type: AeadCipherSuiteType) -> u16 {
         match aead_cipher_suite_type {
-            AeadCipherSuiteType::Aes128Gcm => AeadCipherSuite(1 << 0),
-            AeadCipherSuiteType::Aes256Gcm => AeadCipherSuite(1 << 1),
-            AeadCipherSuiteType::Chacha20Poly1305 => AeadCipherSuite(1 << 2),
-            AeadCipherSuiteType::AeadSm4Gcm => AeadCipherSuite(1 << 3),
+            AeadCipherSuiteType::Aes128Gcm => AeadCipherSuite(1 << 0).0,
+            AeadCipherSuiteType::Aes256Gcm => AeadCipherSuite(1 << 1).0,
+            AeadCipherSuiteType::Chacha20Poly1305 => AeadCipherSuite(1 << 2).0,
+            AeadCipherSuiteType::AeadSm4Gcm => AeadCipherSuite(1 << 3).0,
         }
-    }
-}
-
-impl Prioritize<AeadCipherSuiteType> for AeadCipherSuite {
-    fn prioritize(self, peer: Self, priority_table: Option<&[AeadCipherSuiteType]>) -> Self {
-        let common = self.0 & peer.0;
-        if let Some(priority_table) = priority_table {
-            for &priority in priority_table {
-                let priority_spec: AeadCipherSuite = priority.into();
-                if common & priority_spec.0 != 0 {
-                    return AeadCipherSuite(priority_spec.0);
-                }
-            }
-        } else {
-            // If priority_table is None, we assume the default behavior
-            // of returning the first common AEAD cipher suite.
-            if common != 0 {
-                return AeadCipherSuite(common & (!common + 1));
-            }
-        }
-        AeadCipherSuite::default()
     }
 }
 
@@ -468,43 +411,22 @@ pub eddsa_ed448, set_eddsa_ed448: 11,11;
 reserved, _: 15,12;
 }
 
-impl From<ReqBaseAsymAlgType> for ReqBaseAsymAlg {
-    fn from(req_base_asym_alg_type: ReqBaseAsymAlgType) -> Self {
+impl From<ReqBaseAsymAlgType> for u16 {
+    fn from(req_base_asym_alg_type: ReqBaseAsymAlgType) -> u16 {
         match req_base_asym_alg_type {
-            ReqBaseAsymAlgType::TpmAlgRsaSsa2048 => ReqBaseAsymAlg(1 << 0),
-            ReqBaseAsymAlgType::TpmAlgRsaPss2048 => ReqBaseAsymAlg(1 << 1),
-            ReqBaseAsymAlgType::TpmAlgRsaSsa3072 => ReqBaseAsymAlg(1 << 2),
-            ReqBaseAsymAlgType::TpmAlgRsaPss3072 => ReqBaseAsymAlg(1 << 3),
-            ReqBaseAsymAlgType::TpmAlgEcdsaEccNistP256 => ReqBaseAsymAlg(1 << 4),
-            ReqBaseAsymAlgType::TpmAlgRsaSsa4096 => ReqBaseAsymAlg(1 << 5),
-            ReqBaseAsymAlgType::TpmAlgRsaPss4096 => ReqBaseAsymAlg(1 << 6),
-            ReqBaseAsymAlgType::TpmAlgEcdsaEccNistP384 => ReqBaseAsymAlg(1 << 7),
-            ReqBaseAsymAlgType::TpmAlgEcdsaEccNistP521 => ReqBaseAsymAlg(1 << 8),
-            ReqBaseAsymAlgType::TpmAlgSm2EccSm2P256 => ReqBaseAsymAlg(1 << 9),
-            ReqBaseAsymAlgType::EddsaEd25519 => ReqBaseAsymAlg(1 << 10),
-            ReqBaseAsymAlgType::EddsaEd448 => ReqBaseAsymAlg(1 << 11),
+            ReqBaseAsymAlgType::TpmAlgRsaSsa2048 => ReqBaseAsymAlg(1 << 0).0,
+            ReqBaseAsymAlgType::TpmAlgRsaPss2048 => ReqBaseAsymAlg(1 << 1).0,
+            ReqBaseAsymAlgType::TpmAlgRsaSsa3072 => ReqBaseAsymAlg(1 << 2).0,
+            ReqBaseAsymAlgType::TpmAlgRsaPss3072 => ReqBaseAsymAlg(1 << 3).0,
+            ReqBaseAsymAlgType::TpmAlgEcdsaEccNistP256 => ReqBaseAsymAlg(1 << 4).0,
+            ReqBaseAsymAlgType::TpmAlgRsaSsa4096 => ReqBaseAsymAlg(1 << 5).0,
+            ReqBaseAsymAlgType::TpmAlgRsaPss4096 => ReqBaseAsymAlg(1 << 6).0,
+            ReqBaseAsymAlgType::TpmAlgEcdsaEccNistP384 => ReqBaseAsymAlg(1 << 7).0,
+            ReqBaseAsymAlgType::TpmAlgEcdsaEccNistP521 => ReqBaseAsymAlg(1 << 8).0,
+            ReqBaseAsymAlgType::TpmAlgSm2EccSm2P256 => ReqBaseAsymAlg(1 << 9).0,
+            ReqBaseAsymAlgType::EddsaEd25519 => ReqBaseAsymAlg(1 << 10).0,
+            ReqBaseAsymAlgType::EddsaEd448 => ReqBaseAsymAlg(1 << 11).0,
         }
-    }
-}
-
-impl Prioritize<ReqBaseAsymAlgType> for ReqBaseAsymAlg {
-    fn prioritize(self, peer: Self, priority_table: Option<&[ReqBaseAsymAlgType]>) -> Self {
-        let common = self.0 & peer.0;
-        if let Some(priority_table) = priority_table {
-            for &priority in priority_table {
-                let priority_spec: ReqBaseAsymAlg = priority.into();
-                if common & priority_spec.0 != 0 {
-                    return ReqBaseAsymAlg(priority_spec.0);
-                }
-            }
-        } else {
-            // If priority_table is None, we assume the default behavior
-            // of returning the first common request base asym algorithm.
-            if common != 0 {
-                return ReqBaseAsymAlg(common & (!common + 1));
-            }
-        }
-        ReqBaseAsymAlg::default()
     }
 }
 
@@ -548,32 +470,11 @@ pub spdm_key_schedule, set_spdm_key_schedule: 0,0;
 pub reserved, _: 15,1;
 }
 
-impl From<KeyScheduleType> for KeySchedule {
-    fn from(key_schedule_type: KeyScheduleType) -> Self {
+impl From<KeyScheduleType> for u16 {
+    fn from(key_schedule_type: KeyScheduleType) -> u16 {
         match key_schedule_type {
-            KeyScheduleType::SpdmKeySchedule => KeySchedule(1 << 0),
+            KeyScheduleType::SpdmKeySchedule => KeySchedule(1 << 0).0,
         }
-    }
-}
-
-impl Prioritize<KeyScheduleType> for KeySchedule {
-    fn prioritize(self, peer: Self, priority_table: Option<&[KeyScheduleType]>) -> Self {
-        let common = self.0 & peer.0;
-        if let Some(priority_table) = priority_table {
-            for &priority in priority_table {
-                let priority_spec: KeySchedule = priority.into();
-                if common & priority_spec.0 != 0 {
-                    return KeySchedule(priority_spec.0);
-                }
-            }
-        } else {
-            // If priority_table is None, we assume the default behavior
-            // of returning the first common key schedule.
-            if common != 0 {
-                return KeySchedule(common & (!common + 1));
-            }
-        }
-        KeySchedule::default()
     }
 }
 
@@ -583,7 +484,7 @@ pub enum KeyScheduleType {
     SpdmKeySchedule,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct DeviceAlgorithms {
     pub measurement_spec: MeasurementSpecification,
     pub other_param_support: OtherParamSupport,
@@ -600,16 +501,16 @@ pub struct DeviceAlgorithms {
 impl DeviceAlgorithms {
     pub fn num_alg_struct_tables(&self) -> usize {
         let mut num = 0;
-        if self.dhe_group.0.count_ones() > 0 {
+        if self.dhe_group.0 != 0 {
             num += 1;
         }
-        if self.aead_cipher_suite.0.count_ones() > 0 {
+        if self.aead_cipher_suite.0 != 0 {
             num += 1;
         }
-        if self.req_base_asym_algo.0.count_ones() > 0 {
+        if self.req_base_asym_algo.0 != 0 {
             num += 1;
         }
-        if self.key_schedule.0.count_ones() > 0 {
+        if self.key_schedule.0 != 0 {
             num += 1;
         }
         num

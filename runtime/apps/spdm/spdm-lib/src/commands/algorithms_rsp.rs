@@ -185,7 +185,7 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
     }
 
     // other parameters support check
-    let other_params_support = req.other_param_support;
+    let other_params_support = &req.other_param_support;
     if other_params_support.reserved1() != 0 || other_params_support.reserved2() != 0 {
         return Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None));
     }
@@ -306,19 +306,21 @@ fn generate_algorithms_response<S: Syscalls>(
         || (local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithNoSignature as u8
             || local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithSignature as u8)
     {
-        measurement_specification_sel = local_algorithms.measurement_spec.prioritize(
-            peer_algorithms.measurement_spec,
-            algorithm_priority_table.measurement_specification,
-        );
+        measurement_specification_sel =
+            MeasurementSpecification(local_algorithms.measurement_spec.0.prioritize(
+                &peer_algorithms.measurement_spec.0,
+                algorithm_priority_table.measurement_specification,
+            ));
     }
 
     // OtherParamsSelection (Responder doesn't set the multi asymmetric key use flag)
     let mut other_params_selection = OtherParamSupport::default();
     if connection_version >= SpdmVersion::V12 {
-        other_params_selection = local_algorithms.other_param_support.prioritize(
-            peer_algorithms.other_param_support,
-            algorithm_priority_table.opaque_data_format,
-        );
+        other_params_selection =
+            OtherParamSupport(local_algorithms.other_param_support.0.prioritize(
+                &peer_algorithms.other_param_support.0,
+                algorithm_priority_table.opaque_data_format,
+            ));
     }
 
     // MeasurementHashAlgo
@@ -330,22 +332,22 @@ fn generate_algorithms_response<S: Syscalls>(
     }
 
     // BaseAsymSel
-    let base_asym_sel = local_algorithms.base_asym_algo.prioritize(
-        peer_algorithms.base_asym_algo,
+    let base_asym_sel = BaseAsymAlgo(local_algorithms.base_asym_algo.0.prioritize(
+        &peer_algorithms.base_asym_algo.0,
         algorithm_priority_table.base_asym_algo,
-    );
+    ));
 
     // BaseHashSel
     let base_hash_sel = local_algorithms.base_hash_algo.prioritize(
-        peer_algorithms.base_hash_algo,
+        &peer_algorithms.base_hash_algo,
         algorithm_priority_table.base_hash_algo,
     );
 
     // MelSpecificationSel
-    let mel_specification_sel = local_algorithms.mel_specification.prioritize(
-        peer_algorithms.mel_specification,
+    let mel_specification_sel = MelSpecification(local_algorithms.mel_specification.0.prioritize(
+        &peer_algorithms.mel_specification.0,
         algorithm_priority_table.mel_specification,
-    );
+    ));
 
     let algorithms_rsp = NegotiateAlgorithmsResp {
         num_alg_struct_tables: num_alg_struct_tables as u8,
@@ -393,10 +395,10 @@ fn fill_alg_struct_table<S: Syscalls>(
         dhe_alg_struct.set_alg_type(AlgType::Dhe as u8);
         dhe_alg_struct.set_fixed_alg_count(2);
         dhe_alg_struct.set_ext_alg_count(0);
-        let dhe_alg_supported = local_algorithms.dhe_group.prioritize(
-            peer_algorithms.dhe_group,
+        let dhe_alg_supported = DheNamedGroup(local_algorithms.dhe_group.0.prioritize(
+            &peer_algorithms.dhe_group.0,
             algorithm_priority_table.dhe_group,
-        );
+        ));
         dhe_alg_struct.set_alg_supported(dhe_alg_supported.0);
 
         len += dhe_alg_struct
@@ -412,10 +414,10 @@ fn fill_alg_struct_table<S: Syscalls>(
         aead_alg_struct.set_fixed_alg_count(2);
         aead_alg_struct.set_ext_alg_count(0);
 
-        let aead_cipher_suite = local_algorithms.aead_cipher_suite.prioritize(
-            peer_algorithms.aead_cipher_suite,
+        let aead_cipher_suite = AeadCipherSuite(local_algorithms.aead_cipher_suite.0.prioritize(
+            &peer_algorithms.aead_cipher_suite.0,
             algorithm_priority_table.aead_cipher_suite,
-        );
+        ));
         aead_alg_struct.set_alg_supported(aead_cipher_suite.0);
 
         len += aead_alg_struct
@@ -431,10 +433,10 @@ fn fill_alg_struct_table<S: Syscalls>(
         req_base_asym_struct.set_fixed_alg_count(2);
         req_base_asym_struct.set_ext_alg_count(0);
 
-        let req_base_asym_algo = local_algorithms.req_base_asym_algo.prioritize(
-            peer_algorithms.req_base_asym_algo,
+        let req_base_asym_algo = ReqBaseAsymAlg(local_algorithms.req_base_asym_algo.0.prioritize(
+            &peer_algorithms.req_base_asym_algo.0,
             algorithm_priority_table.req_base_asym_algo,
-        );
+        ));
         req_base_asym_struct.set_alg_supported(req_base_asym_algo.0);
         len += req_base_asym_struct
             .encode(rsp)
@@ -448,10 +450,10 @@ fn fill_alg_struct_table<S: Syscalls>(
         key_schedule_struct.set_alg_type(AlgType::KeySchedule as u8);
         key_schedule_struct.set_fixed_alg_count(2);
         key_schedule_struct.set_ext_alg_count(0);
-        let key_schedule = local_algorithms.key_schedule.prioritize(
-            peer_algorithms.key_schedule,
+        let key_schedule = KeySchedule(local_algorithms.key_schedule.0.prioritize(
+            &peer_algorithms.key_schedule.0,
             algorithm_priority_table.key_schedule,
-        );
+        ));
         key_schedule_struct.set_alg_supported(key_schedule.0);
         len += key_schedule_struct
             .encode(rsp)
