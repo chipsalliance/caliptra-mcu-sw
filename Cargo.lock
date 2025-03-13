@@ -88,9 +88,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.94"
+version = "1.0.97"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1fd03a028ef38ba2276dce7e33fcd6369c158a1bca17946c4b1b701891c1ff7"
+checksum = "dcfed56ad506cb2c684a14971b8861fdc3baaaae314b9e5f9bb532cbe3ba7a4f"
 
 [[package]]
 name = "arrayref"
@@ -2130,6 +2130,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
+name = "mcu-builder"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "elf 0.7.4",
+ "emulator-consts",
+ "semver",
+ "walkdir",
+]
+
+[[package]]
 name = "mcu-rom-common"
 version = "0.1.0"
 dependencies = [
@@ -3168,6 +3179,7 @@ dependencies = [
  "gdbstub",
  "gdbstub_arch",
  "hex",
+ "mcu-builder",
  "tock-registers",
  "zerocopy 0.8.23",
 ]
@@ -3690,10 +3702,12 @@ dependencies = [
 name = "xtask"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "clap 4.5.23",
  "crc32fast",
  "elf 0.7.4",
  "emulator-consts",
+ "mcu-builder",
  "proc-macro2",
  "quote",
  "registers-generator",

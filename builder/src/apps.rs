@@ -1,8 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use crate::runtime_build::{objcopy, target_binary, OBJCOPY_FLAGS};
 use crate::tbf::TbfHeader;
-use crate::{DynError, PROJECT_ROOT, TARGET};
+use crate::{objcopy, target_binary, OBJCOPY_FLAGS};
+use crate::{PROJECT_ROOT, TARGET};
+use anyhow::{bail, Result};
 use std::process::Command;
 
 pub const APPS: &[App] = &[
@@ -48,11 +49,7 @@ pub const BASE_PERMISSIONS: &[(u32, u32)] = &[
 ];
 
 // creates a single flat binary with all the apps built with TBF headers
-pub fn apps_build_flat_tbf(
-    start: usize,
-    ram_start: usize,
-    features: &[&str],
-) -> Result<Vec<u8>, DynError> {
+pub fn apps_build_flat_tbf(start: usize, ram_start: usize, features: &[&str]) -> Result<Vec<u8>> {
     let mut bin = vec![];
     let mut offset = start;
     let mut ram_start = ram_start;
@@ -77,7 +74,7 @@ fn app_build_tbf(
     ram_start: usize,
     ram_length: usize,
     features: &[&str],
-) -> Result<Vec<u8>, DynError> {
+) -> Result<Vec<u8>> {
     // start the TBF header
     let mut tbf = TbfHeader::new();
     let mut permissions = BASE_PERMISSIONS.to_vec();
@@ -116,11 +113,16 @@ fn app_build_tbf(
         .arg(&app_bin);
     println!("Executing {:?}", &app_cmd);
     if !app_cmd.status()?.success() {
-        Err("objcopy failed to build app")?;
+        bail!("objcopy failed to build app");
     }
 
     // read the flat binary
-    let b = std::fs::read(&app_bin)?;
+    let mut b = std::fs::read(&app_bin)?;
+
+    while b.len() % 4 != 0 {
+        b.push(0);
+    }
+
     let total_size = b.len() + tbf_header_size;
 
     tbf.set_total_size(total_size as u32);
@@ -143,7 +145,7 @@ fn app_build(
     ram_length: usize,
     tbf_header_size: usize,
     features: &[&str],
-) -> Result<(), DynError> {
+) -> Result<()> {
     let app_ld_filename = format!("{}-layout.ld", app_name);
     let layout_ld = &PROJECT_ROOT
         .join("runtime")
@@ -190,7 +192,7 @@ INCLUDE runtime/apps/app_layout.ld",
         .args(ld_flag.split(' '))
         .status()?;
     if !status.success() {
-        Err("build ROM ELF failed")?;
+        bail!("build ROM ELF failed");
     }
     println!(
         "App {} built for location {:x}, RAM start {:x}",

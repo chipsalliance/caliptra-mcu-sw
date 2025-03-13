@@ -45,9 +45,7 @@ jobs:
           z3
     - name: Rustup install
       run: |
-        rustup toolchain install \
-          $(cat rust-toolchain.toml | grep channel | cut -d'=' -f2 | cut -d'"' -f2)-unknown-linux-gnu \
-          -c clippy rust-src llvm-tools rustfmt rustc-dev
+        rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
     - name: Install RISC-V Python tools
       run: |
         pip install git+https://github.com/riscv/riscv-isac.git@dev

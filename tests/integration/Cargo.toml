@@ -29,5 +29,6 @@ emulator-registers-generated.workspace = true
 gdbstub_arch.workspace = true
 gdbstub.workspace = true
 hex.workspace = true
+mcu-builder.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true

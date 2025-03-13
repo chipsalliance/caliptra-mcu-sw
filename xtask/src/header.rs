@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
 
-use walkdir::DirEntry;
-
-use crate::{DynError, PROJECT_ROOT};
+use anyhow::{bail, Result};
+use mcu_builder::PROJECT_ROOT;
 use std::{
     fs::File,
     io::{BufRead, BufReader, Error, ErrorKind},
     path::{Path, PathBuf},
 };
+use walkdir::DirEntry;
 
 const REQUIRED_TEXT: &str = "Licensed under the Apache-2.0 license";
 const EXTENSIONS: &[&str] = &[
@@ -15,8 +15,8 @@ const EXTENSIONS: &[&str] = &[
 ];
 const IGNORED_PATHS: &[&str] = &[
     ".github/dependabot.yml",
+    "builder/src/tbf.rs",
     "emulator/app/src/dis.rs",
-    "xtask/src/tbf.rs",
 ];
 const IGNORED_DIRS: &[&str] = &[
     ".git",
@@ -29,7 +29,7 @@ const IGNORED_DIRS: &[&str] = &[
     "target",
 ];
 
-pub(crate) fn fix() -> Result<(), DynError> {
+pub(crate) fn fix() -> Result<()> {
     println!("Running: license header fix");
 
     let files = find_files(&PROJECT_ROOT, EXTENSIONS, false).unwrap();
@@ -45,12 +45,12 @@ pub(crate) fn fix() -> Result<(), DynError> {
         }
     }
     if failed {
-        Err("License header fix failed; please fix the above files manually.")?;
+        bail!("License header fix failed; please fix the above files manually.");
     }
     Ok(())
 }
 
-pub(crate) fn check() -> Result<(), DynError> {
+pub(crate) fn check() -> Result<()> {
     println!("Running: license header check");
     let files = find_files(&PROJECT_ROOT, EXTENSIONS, false).unwrap();
     let mut failed = false;
@@ -61,7 +61,7 @@ pub(crate) fn check() -> Result<(), DynError> {
         }
     }
     if failed {
-        Err("Some files failed to have the correct license header; to fix, run \"cargo xtask header-fix\" from the repo root")?;
+        bail!("Some files failed to have the correct license header; to fix, run \"cargo xtask header-fix\" from the repo root");
     }
     Ok(())
 }

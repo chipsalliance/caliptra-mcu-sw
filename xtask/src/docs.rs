@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
+use anyhow::{bail, Result};
+use mcu_builder::PROJECT_ROOT;
 use std::process::{Command, Stdio};
 
-use crate::{DynError, PROJECT_ROOT};
-
-pub(crate) fn docs() -> Result<(), DynError> {
+pub(crate) fn docs() -> Result<()> {
     check_mdbook()?;
     check_mermaid()?;
     println!("Running: mdbook");
@@ -18,7 +18,7 @@ pub(crate) fn docs() -> Result<(), DynError> {
         .status()?;
 
     if !status.success() {
-        Err("mdbook failed")?;
+        bail!("mdbook failed");
     }
     println!(
         "Docs built successfully: view at {}/book/index.html",
@@ -27,7 +27,7 @@ pub(crate) fn docs() -> Result<(), DynError> {
     Ok(())
 }
 
-fn check_mdbook() -> Result<(), DynError> {
+fn check_mdbook() -> Result<()> {
     let status = Command::new("mdbook")
         .args(["--help"])
         .stdout(Stdio::null())
@@ -42,12 +42,12 @@ fn check_mdbook() -> Result<(), DynError> {
         .args(["install", "mdbook"])
         .status()?;
     if !status.success() {
-        Err("mdbook installation failed")?;
+        bail!("mdbook installation failed");
     }
     Ok(())
 }
 
-fn check_mermaid() -> Result<(), DynError> {
+fn check_mermaid() -> Result<()> {
     let status = Command::new("mdbook-mermaid")
         .args(["--help"])
         .stdout(Stdio::null())
@@ -62,7 +62,7 @@ fn check_mermaid() -> Result<(), DynError> {
         .args(["install", "mdbook-mermaid"])
         .status()?;
     if !status.success() {
-        Err("mdbook-mermaid installation failed")?;
+        bail!("mdbook-mermaid installation failed");
     }
     Ok(())
 }

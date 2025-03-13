@@ -1,97 +1,26 @@
 // Licensed under the Apache-2.0 license
 
 //! Build the Runtime Tock kernel image for VeeR RISC-V.
-
 // Based on the tock board Makefile.common.
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-use crate::apps_build::apps_build_flat_tbf;
-use crate::{DynError, PROJECT_ROOT, TARGET};
+use crate::apps::apps_build_flat_tbf;
+use crate::{objcopy, target_binary, OBJCOPY_FLAGS, PROJECT_ROOT, SYSROOT, TARGET};
+use anyhow::{anyhow, bail, Result};
 use elf::endian::AnyEndian;
 use elf::ElfBytes;
 use emulator_consts::{RAM_OFFSET, RAM_SIZE};
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::LazyLock;
 
 const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
 const INTERRUPT_TABLE_SIZE: usize = 128;
 // amount to reserve for data RAM at the end of RAM
 const DATA_RAM_SIZE: usize = 80 * 1024;
 
-static SYSROOT: LazyLock<String> = LazyLock::new(|| {
-    // cache this in the target directory as it seems to be very slow to call rustc
-    let sysroot_file = PROJECT_ROOT.join("target").join("sysroot.txt");
-    if sysroot_file.exists() {
-        let root = std::fs::read_to_string(&sysroot_file).unwrap();
-        if PathBuf::from(&root).exists() {
-            return root;
-        }
-    }
-    // slow path
-    let tock_dir = &PROJECT_ROOT.join("runtime");
-    let root = String::from_utf8(
-        Command::new("cargo")
-            .args(["rustc", "--", "--print", "sysroot"])
-            .current_dir(tock_dir)
-            .output()
-            .unwrap()
-            .stdout,
-    )
-    .unwrap()
-    .trim()
-    .to_string();
-    if root.is_empty() {
-        panic!("Failed to get sysroot");
-    }
-    // write to target directory as a cache
-    std::fs::write(sysroot_file, root.as_bytes()).unwrap();
-    root
-});
-
-pub fn target_binary(name: &str) -> PathBuf {
-    PROJECT_ROOT
-        .join("target")
-        .join(TARGET)
-        .join("release")
-        .join(name)
-}
-
-// Set additional flags to produce binary from .elf.
-//
-// - `--strip-sections`: Prevents enormous binaries when SRAM is below flash.
-// - `--strip-all`: Remove non-allocated sections outside segments.
-//   `.gnu.warning*` and `.ARM.attribute` sections are not removed.
-// - `--remove-section .apps`: Prevents the .apps section from being included in
-//   the base kernel binary file. This section is a placeholder for optionally
-//   including application binaries, and only needs to exist in the .elf. By
-//   removing it, we prevent the kernel binary from overwriting applications.
-pub const OBJCOPY_FLAGS: &str = "--strip-sections --strip-all";
-
-fn find_file(dir: &str, name: &str) -> Option<PathBuf> {
-    for entry in walkdir::WalkDir::new(dir) {
-        let entry = entry.unwrap();
-        if entry.file_name() == name {
-            return Some(entry.path().to_path_buf());
-        }
-    }
-    None
-}
-
-pub fn objcopy() -> Result<String, DynError> {
-    std::env::var("OBJCOPY").map(Ok).unwrap_or_else(|_| {
-        // We need to get the full path to llvm-objcopy, if it is installed.
-        if let Some(llvm_size) = find_file(&SYSROOT, "llvm-objcopy") {
-            Ok(llvm_size.to_str().unwrap().to_string())
-        } else {
-            Err("Could not find llvm-objcopy; perhaps you need to run `rustup component add llvm-tools` or set the OBJCOPY environment variable to where to find objcopy".into())
-        }
-    })
-}
-
-fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize, DynError> {
+fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize> {
     let elf_bytes = std::fs::read(&elf_file)?;
     let elf_file = ElfBytes::<AnyEndian>::minimal_parse(&elf_bytes)?;
     let x = elf_file
@@ -104,20 +33,21 @@ fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize, DynError> {
                 .find(|p| string_table.get(p.st_name as usize).unwrap_or_default() == "_sappmem")
                 .map(|symbol| symbol.st_value as usize)
         });
-    x.ok_or("error finding _sappmem symbol".into())
+    x.ok_or(anyhow!("error finding _sappmem symbol"))
 }
 
 /// Build the runtime kernel binary without any applications.
 /// If parameters are not provided with the offsets and sizes for the kernel and apps, then placeholders
 /// will be used.
+///
 /// Returns the kernel size and the apps memory offset.
-fn runtime_build_no_apps(
+pub fn runtime_build_no_apps(
     kernel_size: Option<usize>,
     apps_offset: Option<usize>,
     apps_size: Option<usize>,
     features: &[&str],
     output_name: &str,
-) -> Result<(usize, usize), DynError> {
+) -> Result<(usize, usize)> {
     let tock_dir = &PROJECT_ROOT.join("runtime");
     let sysr = SYSROOT.clone();
     let ld_file_path = tock_dir.join("layout.ld");
@@ -189,7 +119,7 @@ INCLUDE runtime/kernel_layout.ld
     if rustup_version < minimum_rustup_version {
         println!("WARNING: Required tool `rustup` is out-of-date. Attempting to update.");
         if !Command::new("rustup").arg("update").status()?.success() {
-            Err("Failed to update rustup. Please update manually with `rustup update`.")?;
+            bail!("Failed to update rustup. Please update manually with `rustup update`.");
         }
     }
 
@@ -214,7 +144,7 @@ INCLUDE runtime/kernel_layout.ld
             .status()?
             .success()
         {
-            Err(format!("Failed to install target {}", TARGET))?;
+            bail!(format!("Failed to install target {}", TARGET));
         }
     }
 
@@ -265,7 +195,7 @@ INCLUDE runtime/kernel_layout.ld
 
     println!("Executing {:?}", cmd);
     if !cmd.status()?.success() {
-        Err("cargo rustc failed to build runtime")?;
+        bail!("cargo rustc failed to build runtime");
     }
 
     let mut cmd = Command::new(&objcopy);
@@ -276,7 +206,7 @@ INCLUDE runtime/kernel_layout.ld
         .arg(target_binary(output_name));
     println!("Executing {:?}", cmd);
     if !cmd.status()?.success() {
-        Err("objcopy failed to build runtime")?;
+        bail!("objcopy failed to build runtime");
     }
 
     let kernel_size = std::fs::metadata(target_binary(output_name)).unwrap().len() as usize;
@@ -284,10 +214,7 @@ INCLUDE runtime/kernel_layout.ld
     get_apps_memory_offset(target_binary("runtime")).map(|apps_offset| (kernel_size, apps_offset))
 }
 
-pub fn runtime_build_with_apps(
-    features: &[&str],
-    output_name: Option<&str>,
-) -> Result<(), DynError> {
+pub fn runtime_build_with_apps(features: &[&str], output_name: Option<&str>) -> Result<()> {
     let mut app_offset = RAM_OFFSET as usize;
     let output_name = output_name.unwrap_or(DEFAULT_RUNTIME_NAME);
     let runtime_bin = target_binary(output_name);

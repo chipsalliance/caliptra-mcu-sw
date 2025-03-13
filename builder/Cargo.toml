@@ -1,0 +1,12 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-builder"
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+elf.workspace = true
+emulator-consts.workspace = true
+semver.workspace = true
+walkdir.workspace = true

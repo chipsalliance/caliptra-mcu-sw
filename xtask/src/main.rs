@@ -1,13 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use std::{
-    path::{Path, PathBuf},
-    sync::LazyLock,
-};
-
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
-mod apps_build;
 mod cargo_lock;
 mod clippy;
 mod deps;
@@ -20,8 +15,6 @@ mod precheckin;
 mod registers;
 mod rom;
 mod runtime;
-mod runtime_build;
-mod tbf;
 mod test;
 
 #[derive(Parser)]
@@ -159,26 +152,16 @@ enum FlashImageCommands {
     },
 }
 
-pub type DynError = Box<dyn std::error::Error>;
-pub const TARGET: &str = "riscv32imc-unknown-none-elf";
-
-static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
-    Path::new(&env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .to_path_buf()
-});
-
 fn main() {
     let cli = Xtask::parse();
     let result = match &cli.xtask {
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),
         Commands::RuntimeBuild { features, output } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            runtime_build::runtime_build_with_apps(&features, output.as_deref())
+            mcu_builder::runtime_build_with_apps(&features, output.as_deref())
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
-        Commands::RomBuild => rom::rom_build(),
+        Commands::RomBuild => mcu_builder::rom_build(),
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
                 caliptra_fw,
