@@ -11,6 +11,8 @@ pub(crate) enum ReqRespCode {
     Version = 0x04,
     GetCapabilities = 0xE1,
     Capabilities = 0x61,
+    NegotiateAlgorithms = 0xE3,
+    Algorithmes = 0x63,
     Error = 0x7F,
 }
 
@@ -22,6 +24,8 @@ impl TryFrom<u8> for ReqRespCode {
             0x04 => Ok(ReqRespCode::Version),
             0xE1 => Ok(ReqRespCode::GetCapabilities),
             0x61 => Ok(ReqRespCode::Capabilities),
+            0xE3 => Ok(ReqRespCode::NegotiateAlgorithms),
+            0x63 => Ok(ReqRespCode::Algorithmes),
             0x7F => Ok(ReqRespCode::Error),
             _ => Err(SpdmError::UnsupportedRequest),
         }
@@ -39,6 +43,7 @@ impl ReqRespCode {
         match self {
             ReqRespCode::GetVersion => Ok(ReqRespCode::Version),
             ReqRespCode::GetCapabilities => Ok(ReqRespCode::Capabilities),
+            ReqRespCode::NegotiateAlgorithms => Ok(ReqRespCode::Algorithmes),
             ReqRespCode::Error => Ok(ReqRespCode::Error),
             _ => Err(SpdmError::UnsupportedRequest),
         }
