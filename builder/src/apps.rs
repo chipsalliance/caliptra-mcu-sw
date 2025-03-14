@@ -20,7 +20,7 @@ pub const APPS: &[App] = &[
     App {
         name: "pldm-app",
         permissions: vec![],
-        minimum_ram: 8192,
+        minimum_ram: 20480, //0x5000
     },
 ];
 
