@@ -680,7 +680,7 @@ pub enum ComponentResponse {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ComponentResponseCode {
     CompCanBeUpdated = 0x00,
     CompComparisonStampIdentical = 0x01,

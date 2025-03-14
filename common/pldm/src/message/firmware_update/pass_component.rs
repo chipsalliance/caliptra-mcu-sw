@@ -119,7 +119,7 @@ impl PldmCodec for PassComponentTableRequest {
         })
     }
 }
-#[derive(Debug, Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
+#[derive(Debug, Clone, FromBytes, IntoBytes, Immutable, PartialEq, Default)]
 #[repr(C, packed)]
 pub struct PassComponentTableResponse {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
