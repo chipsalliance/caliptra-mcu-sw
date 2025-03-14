@@ -278,6 +278,7 @@ mod test {
     run_test!(test_pldm_request_response);
     run_test!(test_spdm_validator);
     run_test!(test_pldm_discovery);
+    run_test!(test_pldm_fw_update);
 
     /// This tests a full active mode boot run through with Caliptra, including
     /// loading MCU's firmware from Caliptra over the recovery interface.

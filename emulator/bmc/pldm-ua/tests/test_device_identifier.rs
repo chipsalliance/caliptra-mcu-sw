@@ -78,8 +78,6 @@ fn test_valid_device_identifier_one_descriptor() {
     let response = QueryDeviceIdentifiersResponse::new(
         request.hdr.instance_id(),
         PldmBaseCompletionCode::Success as u8,
-        std::mem::size_of::<pldm_common::protocol::firmware_update::Descriptor>() as u32,
-        1,
         &initial_descriptor,
         None,
     )
@@ -133,8 +131,6 @@ fn test_valid_device_identifier_not_matched() {
     let response = QueryDeviceIdentifiersResponse::new(
         request.hdr.instance_id(),
         PldmBaseCompletionCode::Success as u8,
-        std::mem::size_of::<pldm_common::protocol::firmware_update::Descriptor>() as u32,
-        1,
         &initial_descriptor,
         None,
     )
@@ -205,8 +201,6 @@ fn test_multiple_device_identifiers() {
     let response = QueryDeviceIdentifiersResponse::new(
         request.hdr.instance_id(),
         PldmBaseCompletionCode::Success as u8,
-        std::mem::size_of::<pldm_common::protocol::firmware_update::Descriptor>() as u32,
-        3,
         &initial_descriptor_response,
         Some(&[
             additional_descriptor_response1,
@@ -267,8 +261,6 @@ fn test_send_get_fw_parameter_after_response() {
     let response = QueryDeviceIdentifiersResponse::new(
         request.hdr.instance_id(),
         PldmBaseCompletionCode::Success as u8,
-        std::mem::size_of::<pldm_common::protocol::firmware_update::Descriptor>() as u32,
-        1,
         &initial_descriptor,
         None,
     )

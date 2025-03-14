@@ -7,10 +7,13 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-pldm-common.workspace = true
+async-trait.workspace = true
+libapi-caliptra.workspace = true
 libsyscall-caliptra.workspace = true
 libtock_platform.workspace = true
 embassy-executor.workspace = true
+embassy-sync.workspace = true
+pldm-common.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 libtock_unittest.workspace = true
@@ -18,3 +21,6 @@ libtock_unittest.workspace = true
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
 embedded-alloc.workspace = true
+
+[features]
+pldm-lib-use-static-config = []

@@ -46,7 +46,10 @@ pub(crate) async fn async_main<S: Syscalls>() {
     let mut console_writer = Console::<S>::writer();
     writeln!(console_writer, "PLDM_APP: Hello PLDM async world!").unwrap();
 
-    if cfg!(feature = "test-pldm-discovery") {
+    if cfg!(any(
+        feature = "test-pldm-discovery",
+        feature = "test-pldm-fw-update",
+    )) {
         let mut pldm_service = PldmService::<S>::init();
         writeln!(
             console_writer,

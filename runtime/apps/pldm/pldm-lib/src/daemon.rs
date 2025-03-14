@@ -1,6 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use crate::cmd_interface::{CmdInterface, PLDM_PROTOCOL_CAPABILITIES};
+use crate::cmd_interface::CmdInterface;
+use crate::config;
+use crate::firmware_device::fd_context::FirmwareDeviceContext;
+
 use core::sync::atomic::{AtomicBool, Ordering};
 use libsyscall_caliptra::mctp::driver_num;
 use libtock_platform::Syscalls;
@@ -37,7 +40,11 @@ pub struct PldmService<'a, S: Syscalls> {
 // It will be extended and refactored to support additional PLDM commands in both responder and requester modes.
 impl<'a, S: Syscalls> PldmService<'a, S> {
     pub fn init() -> Self {
-        let cmd_interface = CmdInterface::new(driver_num::MCTP_PLDM, &PLDM_PROTOCOL_CAPABILITIES);
+        let cmd_interface = CmdInterface::new(
+            driver_num::MCTP_PLDM,
+            config::PLDM_PROTOCOL_CAPABILITIES.get(),
+            FirmwareDeviceContext::new(),
+        );
         Self {
             cmd_interface,
             running: AtomicBool::new(false),

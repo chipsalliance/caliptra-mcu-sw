@@ -461,7 +461,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
     if cfg!(any(
         feature = "test-pldm-request-response",
-        feature = "test-pldm-discovery"
+        feature = "test-pldm-discovery",
+        feature = "test-pldm-fw-update",
     )) {
         i3c_controller.start();
         let pldm_transport =

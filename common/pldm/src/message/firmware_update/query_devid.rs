@@ -44,12 +44,12 @@ impl QueryDeviceIdentifiersResponse {
     pub fn new(
         instance_id: InstanceId,
         completion_code: u8,
-        device_identifiers_len: u32,
-        descriptor_count: u8,
         initial_descriptor: &Descriptor,
         additional_descriptors: Option<&[Descriptor]>,
     ) -> Result<Self, PldmError> {
-        if descriptor_count as usize > ADDITIONAL_DESCRIPTORS_MAX_COUNT + 1 {
+        let descriptor_count =
+            1 + additional_descriptors.map_or(0, |descriptors| descriptors.len());
+        if descriptor_count > ADDITIONAL_DESCRIPTORS_MAX_COUNT + 1 {
             return Err(PldmError::InvalidDescriptorCount);
         }
 
@@ -61,14 +61,19 @@ impl QueryDeviceIdentifiersResponse {
                 FwUpdateCmd::QueryDeviceIdentifiers as u8,
             ),
             completion_code,
-            device_identifiers_len,
-            descriptor_count,
+            device_identifiers_len: {
+                let mut len = initial_descriptor.codec_size_in_bytes();
+                if let Some(additional) = additional_descriptors {
+                    for descriptor in additional.iter() {
+                        len += descriptor.codec_size_in_bytes();
+                    }
+                }
+                len as u32
+            },
+            descriptor_count: descriptor_count as u8,
             initial_descriptor: *initial_descriptor,
             additional_descriptors: if descriptor_count > 1 {
                 if let Some(additional) = additional_descriptors {
-                    if additional.len() > ADDITIONAL_DESCRIPTORS_MAX_COUNT {
-                        return Err(PldmError::InvalidDescriptorCount);
-                    }
                     let mut descriptors =
                         [Descriptor::new_empty(); ADDITIONAL_DESCRIPTORS_MAX_COUNT];
                     descriptors[..additional.len()].copy_from_slice(additional);
@@ -212,8 +217,6 @@ mod test {
     fn test_query_device_identifiers_resp() {
         let instance_id = 0;
         let completion_code = 0;
-        let device_identifiers_len = 10;
-        let descriptor_count = 2;
 
         let test_uid = [
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
@@ -225,12 +228,17 @@ mod test {
         let resp = QueryDeviceIdentifiersResponse::new(
             instance_id,
             completion_code,
-            device_identifiers_len,
-            descriptor_count,
             &initial_descriptor,
             Some(&[additional_descriptor]),
         )
         .unwrap();
+
+        assert_eq!(resp.descriptor_count, 2);
+        assert_eq!(
+            resp.device_identifiers_len,
+            (initial_descriptor.codec_size_in_bytes() + additional_descriptor.codec_size_in_bytes())
+                as u32
+        );
 
         let mut buffer: [u8; 256] = [0; 256];
         let resp_len = resp.encode(&mut buffer).unwrap();
