@@ -127,7 +127,7 @@ impl PldmCodec for RequestUpdateRequest {
     }
 }
 
-#[derive(Debug, Copy, Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
+#[derive(Debug, Copy, Clone, FromBytes, IntoBytes, Immutable, PartialEq, Default)]
 #[repr(C, packed)]
 pub struct RequestUpdateResponseFixed {
     pub hdr: PldmMsgHeader<[u8; PLDM_MSG_HEADER_LEN]>,
@@ -136,7 +136,7 @@ pub struct RequestUpdateResponseFixed {
     pub fd_will_send_pkg_data_cmd: u8,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct RequestUpdateResponse {
     pub fixed: RequestUpdateResponseFixed,
     // This field is only present if FDWillSendGetPackageDataCommand is set to 0x02.

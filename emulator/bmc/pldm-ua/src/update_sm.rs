@@ -8,9 +8,11 @@ use pldm_common::codec::PldmCodec;
 use pldm_common::message::firmware_update as pldm_packet;
 use pldm_common::protocol::base::{
     InstanceId, PldmBaseCompletionCode, PldmMsgHeader, PldmMsgType, PldmSupportedType,
+    TransferRespFlag,
 };
 use pldm_common::protocol::firmware_update::{
-    ComponentParameterEntry, FwUpdateCmd, PldmFirmwareString, VersionStringType,
+    ComponentClassification, ComponentCompatibilityResponse, ComponentParameterEntry,
+    ComponentResponseCode, FwUpdateCmd, PldmFirmwareString, UpdateOptionFlags, VersionStringType,
     PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN,
 };
 use pldm_fw_pkg::manifest::{ComponentImageInformation, FirmwareDeviceIdRecord};
@@ -31,13 +33,15 @@ statemachine! {
         ReceivedQueryDeviceIdentifiers + SendGetFirmwareParameters / on_send_get_firmware_parameters = GetFirmwareParametersSent,
         GetFirmwareParametersSent + GetFirmwareParametersResponse(pldm_packet::get_fw_params::GetFirmwareParametersResponse)  / on_get_firmware_parameters_response = ReceivedFirmwareParameters,
         ReceivedFirmwareParameters + SendRequestUpdate / on_send_request_update = RequestUpdateSent,
-        RequestUpdateSent + RequestUpdateResponse(pldm_packet::request_update::RequestUpdateResponse) / on_request_update_response = ReceivedRequestUpdateResponse,
-        ReceivedRequestUpdateResponse + SendPassComponentRequest / on_send_pass_component_request = LearnComponents,
-        LearnComponents + PassComponentResponse(pldm_packet::pass_component::PassComponentTableResponse) [!are_all_components_passed] / on_pass_component_response = LearnComponents,
-        LearnComponents + PassComponentResponse(pldm_packet::pass_component::PassComponentTableResponse) [are_all_components_passed] / on_pass_component_response = ReadyXfer,
+        RequestUpdateSent + RequestUpdateResponse(pldm_packet::request_update::RequestUpdateResponse) / on_request_update_response = LearnComponents,
+        LearnComponents + SendPassComponentRequest [!are_all_components_passed] / on_send_pass_component_request = LearnComponents,
+        LearnComponents + SendPassComponentRequest [are_all_components_passed]  / on_all_components_passed = ReadyXfer,
+        LearnComponents + PassComponentResponse(pldm_packet::pass_component::PassComponentTableResponse) / on_pass_component_response = LearnComponents,
         LearnComponents + CancelUpdateOrTimeout  / on_stop_update = Idle,
 
-        ReadyXfer + UpdateComponent / on_update_component = Download,
+        ReadyXfer + SendUpdateComponent / on_send_update_component = ReadyXfer,
+        ReadyXfer + UpdateComponentResponse(pldm_packet::update_component::UpdateComponentResponse) / on_update_component_response = ReadyXfer,
+        ReadyXfer + StartDownload / on_start_download = Download,
         ReadyXfer + CancelUpdateComponent  / on_stop_update = Idle,
 
         Download + RequestFirmwareData / on_request_firmware = Download,
@@ -139,12 +143,12 @@ fn is_pkg_device_id_in_response(
 }
 pub trait StateMachineActions {
     // Guards
-    fn are_all_components_passed(
-        &self,
-        _ctx: &InnerContext<impl PldmSocket>,
-        _response: &pldm_packet::pass_component::PassComponentTableResponse,
-    ) -> Result<bool, ()> {
-        Ok(true)
+    fn are_all_components_passed(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
+        if ctx.component_response_codes.len() >= ctx.components.len() {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     // Actions
@@ -179,10 +183,158 @@ pub trait StateMachineActions {
 
     fn on_send_pass_component_request(
         &mut self,
-        _ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket>,
     ) -> Result<(), ()> {
-        // TODO
+        let num_of_components_to_pass = ctx.components.len();
+        let num_components_passed = ctx.component_response_codes.len();
+
+        if num_components_passed >= num_of_components_to_pass {
+            info!("All components passed");
+            return Ok(());
+        }
+
+        let component_idx: usize;
+        let pass_component_flag: TransferRespFlag;
+
+        if num_of_components_to_pass == 0 {
+            error!("No components to pass");
+            return Err(());
+        } else if num_of_components_to_pass == 1 {
+            component_idx = 0;
+            pass_component_flag = TransferRespFlag::StartAndEnd;
+        } else if num_components_passed == 0 {
+            component_idx = 0;
+            pass_component_flag = TransferRespFlag::Start;
+        } else if num_components_passed < num_of_components_to_pass - 1 {
+            component_idx = 0;
+            pass_component_flag = TransferRespFlag::Middle;
+        } else if num_components_passed == num_of_components_to_pass - 1 {
+            component_idx = 0;
+            pass_component_flag = TransferRespFlag::End;
+        } else {
+            // This should never happen
+            error!("Unhandled case");
+            return Err(());
+        }
+        debug!(
+            "Passing component: {} Flag: {:?}",
+            component_idx, pass_component_flag
+        );
+        let component = &ctx.components[component_idx];
+        let component_version_string = component.version_string.clone().unwrap_or("".to_string());
+        let request = pldm_packet::pass_component::PassComponentTableRequest::new(
+            ctx.instance_id,
+            PldmMsgType::Request,
+            pass_component_flag,
+            ComponentClassification::try_from(component.classification).map_err(|_| ())?,
+            component.identifier,
+            0, // todo: support classification index
+            component.comparison_stamp.unwrap(),
+            &PldmFirmwareString {
+                str_type: component.version_string_type as u8,
+                str_len: component_version_string.len() as u8,
+                str_data: {
+                    let mut arr = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
+                    arr[..component_version_string.len()]
+                        .copy_from_slice(component_version_string.as_bytes());
+                    arr
+                },
+            },
+        );
+        send_request_helper(&ctx.socket, &request)
+    }
+
+    fn on_next_component(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+        ctx.current_component_index = self.find_next_component_to_update(ctx);
+        if ctx.current_component_index.is_none() {
+            error!("No component to update");
+            // TODO, send Activate
+            return Err(());
+        } else {
+            ctx.event_queue
+                .send(PldmEvents::Update(Events::SendUpdateComponent))
+                .map_err(|_| ())?;
+        }
         Ok(())
+    }
+
+    fn on_all_components_passed(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket>,
+    ) -> Result<(), ()> {
+        self.on_next_component(ctx)
+    }
+
+    fn find_next_component_to_update(&self, ctx: &InnerContext<impl PldmSocket>) -> Option<usize> {
+        // Find the next component to update
+        for (i, item) in ctx.component_response_codes.iter().enumerate() {
+            if *item == ComponentResponseCode::CompCanBeUpdated {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    fn on_send_update_component(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket>,
+    ) -> Result<(), ()> {
+        if ctx.current_component_index.is_none() {
+            error!("No component to update");
+            return Err(());
+        }
+        let component = &ctx.components[ctx.current_component_index.unwrap()];
+        let request = pldm_packet::update_component::UpdateComponentRequest::new(
+            ctx.instance_id,
+            PldmMsgType::Request,
+            ComponentClassification::try_from(component.classification).map_err(|_| ())?,
+            component.identifier,
+            0, // not supported
+            component.comparison_stamp.unwrap_or(0),
+            component.size,
+            UpdateOptionFlags(component.options as u32),
+            &PldmFirmwareString {
+                str_type: component.version_string_type as u8,
+                str_len: component
+                    .version_string
+                    .clone()
+                    .unwrap_or("".to_string())
+                    .len() as u8,
+                str_data: {
+                    let mut arr = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
+                    if let Some(ref component) = component.version_string {
+                        arr[..component.len()].copy_from_slice(component.as_bytes());
+                    }
+                    arr
+                },
+            },
+        );
+        send_request_helper(&ctx.socket, &request)
+    }
+
+    fn on_update_component_response(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket>,
+        response: pldm_packet::update_component::UpdateComponentResponse,
+    ) -> Result<(), ()> {
+        if response.completion_code == PldmBaseCompletionCode::Success as u8
+            && response.comp_compatibility_resp
+                == ComponentCompatibilityResponse::CompCanBeUpdated as u8
+        {
+            info!("UpdateComponent response success, start download");
+            ctx.event_queue
+                .send(PldmEvents::Update(Events::StartDownload))
+                .map_err(|_| ())?;
+
+            Ok(())
+        } else {
+            error!("UpdateComponent response failed, continuing to next component");
+            // Mark the component as can not be updated
+            if let Some(index) = ctx.current_component_index {
+                ctx.component_response_codes[index] = ComponentResponseCode::CompNotSupported;
+            }
+            self.on_next_component(ctx)
+        }
     }
 
     fn on_query_device_identifiers_response(
@@ -371,14 +523,31 @@ pub trait StateMachineActions {
 
     fn on_pass_component_response(
         &mut self,
-        _ctx: &mut InnerContext<impl PldmSocket>,
-        _response: pldm_packet::pass_component::PassComponentTableResponse,
+        ctx: &mut InnerContext<impl PldmSocket>,
+        response: pldm_packet::pass_component::PassComponentTableResponse,
     ) -> Result<(), ()> {
-        // TODO
+        // If unsuccessful, stop the update
+        if response.completion_code != PldmBaseCompletionCode::Success as u8 {
+            error!("PassComponent response failed");
+            ctx.event_queue
+                .send(PldmEvents::Update(Events::StopUpdate))
+                .map_err(|_| ())?;
+            return Err(());
+        }
+
+        // Record the response code
+        ctx.component_response_codes
+            .push(ComponentResponseCode::try_from(response.comp_resp_code).map_err(|_| ())?);
+
+        // Send the next component info
+        ctx.event_queue
+            .send(PldmEvents::Update(Events::SendPassComponentRequest))
+            .map_err(|_| ())?;
+
         Ok(())
     }
 
-    fn on_update_component(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_start_download(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
         // TODO
         Ok(())
     }
@@ -486,6 +655,9 @@ pub fn process_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
             FwUpdateCmd::PassComponentTable => {
                 packet_to_event(&header, packet, true, Events::PassComponentResponse)
             }
+            FwUpdateCmd::UpdateComponent => {
+                packet_to_event(&header, packet, true, Events::UpdateComponentResponse)
+            }
             _ => {
                 debug!("Unknown firmware update command");
                 Err(())
@@ -508,6 +680,11 @@ pub struct InnerContext<S: PldmSocket> {
     pub device_id: Option<FirmwareDeviceIdRecord>,
     // The components that need to be updated
     pub components: Vec<ComponentImageInformation>,
+    // The device responses to the component info passed
+    pub component_response_codes: Vec<ComponentResponseCode>,
+    // The current component being updated
+    // This an index to the components vector
+    pub current_component_index: Option<usize>,
 }
 
 pub struct Context<T: StateMachineActions, S: PldmSocket> {
@@ -531,6 +708,8 @@ impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
                 instance_id: 0,
                 device_id: None,
                 components: Vec::new(),
+                component_response_codes: Vec::new(),
+                current_component_index: None,
             },
         }
     }
@@ -570,8 +749,11 @@ impl<T: StateMachineActions, S: PldmSocket> StateMachineContext for Context<T, S
         on_get_firmware_parameters_response(response : pldm_packet::get_fw_params::GetFirmwareParametersResponse) -> Result<(), ()>,
         on_request_update_response(response: pldm_packet::request_update::RequestUpdateResponse) -> Result<(),()>,
         on_send_pass_component_request() -> Result<(),()>,
+        on_all_components_passed() -> Result<(),()>,
+        on_send_update_component() -> Result<(),()>,
         on_pass_component_response(response : pldm_packet::pass_component::PassComponentTableResponse) -> Result<(),()>,
-        on_update_component() -> Result<(),()>,
+        on_start_download() -> Result<(),()>,
+        on_update_component_response(response : pldm_packet::update_component::UpdateComponentResponse) -> Result<(),()>,
         on_request_firmware() -> Result<(),()>,
         on_transfer_fail() -> Result<(),()>,
         on_transfer_success() -> Result<(),()>,
@@ -587,6 +769,6 @@ impl<T: StateMachineActions, S: PldmSocket> StateMachineContext for Context<T, S
 
     // Guards
     delegate_to_inner_guard! {
-        are_all_components_passed(response : &pldm_packet::pass_component::PassComponentTableResponse) -> Result<bool, ()>,
+        are_all_components_passed() -> Result<bool, ()>,
     }
 }
