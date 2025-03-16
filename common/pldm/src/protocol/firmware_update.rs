@@ -14,6 +14,7 @@ pub const PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN: usize = 32;
 pub const DESCRIPTOR_DATA_MAX_LEN: usize = 64; // Arbitrary limit for static storage
 pub const MAX_COMPONENT_COUNT: usize = 8; // Arbitrary limit, change as needed
 pub const MAX_DESCRIPTORS_COUNT: usize = 4; // Arbitrary limit, change as needed
+pub type PldmFdTime = u64; // Milliseconds
 
 #[repr(u8)]
 pub enum FwUpdateCmd {
@@ -109,6 +110,7 @@ impl TryFrom<u8> for FwUpdateCompletionCode {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 #[repr(u8)]
 pub enum FirmwareDeviceState {
     Idle = 0,
@@ -446,7 +448,7 @@ impl TryFrom<u16> for ComponentClassification {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PldmFirmwareString {
     pub str_type: u8,
     pub str_len: u8,
@@ -460,6 +462,12 @@ impl Default for PldmFirmwareString {
             str_len: 0,
             str_data: [0; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN],
         }
+    }
+}
+
+impl PartialOrd for PldmFirmwareString {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.str_data.cmp(&other.str_data))
     }
 }
 
@@ -624,6 +632,14 @@ impl ComponentParameterEntry {
         }
         bytes
     }
+
+    pub fn get_active_fw_ver(&self) -> PldmFirmwareString {
+        PldmFirmwareString {
+            str_type: self.comp_param_entry_fixed.active_comp_ver_str_type,
+            str_len: self.comp_param_entry_fixed.active_comp_ver_str_len,
+            str_data: self.active_comp_ver_str,
+        }
+    }
 }
 
 impl PldmCodec for ComponentParameterEntry {
@@ -708,7 +724,7 @@ pub enum ComponentResponse {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ComponentResponseCode {
     CompCanBeUpdated = 0x00,
     CompComparisonStampIdentical = 0x01,
@@ -855,5 +871,10 @@ mod test {
         component_parameter_entry.encode(&mut buffer).unwrap();
         let decoded_component_parameter_entry = ComponentParameterEntry::decode(&buffer).unwrap();
         assert_eq!(component_parameter_entry, decoded_component_parameter_entry);
+
+        let active_fw_ver = component_parameter_entry.get_active_fw_ver();
+        assert_eq!(active_firmware_string, active_fw_ver);
+
+        assert!(active_firmware_string < pending_firmware_string);
     }
 }

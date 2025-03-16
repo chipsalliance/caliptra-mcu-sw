@@ -129,17 +129,35 @@ impl<'a, S: Syscalls> CmdInterface<'a, S> {
         payload: &mut [u8],
     ) -> Result<usize, MsgHandlerError> {
         match FwUpdateCmd::try_from(cmd_opcode) {
-            Ok(cmd) => match cmd {
-                FwUpdateCmd::QueryDeviceIdentifiers => self.fd_ctx.query_devid_rsp(payload).await,
-                FwUpdateCmd::GetFirmwareParameters => {
-                    self.fd_ctx.get_firmware_parameters_rsp(payload).await
+            Ok(cmd) => {
+                // Update timeout for specific commands
+                match cmd {
+                    FwUpdateCmd::RequestUpdate
+                    | FwUpdateCmd::PassComponentTable
+                    | FwUpdateCmd::UpdateComponent
+                    | FwUpdateCmd::CancelUpdate => self.fd_ctx.set_update_timestamp().await,
+                    _ => {}
                 }
-                // Add more cmd handlers here
-                _ => generate_failure_response(
-                    payload,
-                    PldmBaseCompletionCode::UnsupportedPldmCmd as u8,
-                ),
-            },
+
+                match cmd {
+                    FwUpdateCmd::QueryDeviceIdentifiers => {
+                        self.fd_ctx.query_devid_rsp(payload).await
+                    }
+                    FwUpdateCmd::GetFirmwareParameters => {
+                        self.fd_ctx.get_firmware_parameters_rsp(payload).await
+                    }
+                    FwUpdateCmd::RequestUpdate => self.fd_ctx.request_update_rsp(payload).await,
+                    FwUpdateCmd::PassComponentTable => {
+                        self.fd_ctx.pass_component_rsp(payload).await
+                    }
+                    FwUpdateCmd::UpdateComponent => self.fd_ctx.update_component_rsp(payload).await,
+                    // Add more cmd handlers here
+                    _ => generate_failure_response(
+                        payload,
+                        PldmBaseCompletionCode::UnsupportedPldmCmd as u8,
+                    ),
+                }
+            }
             Err(_) => {
                 generate_failure_response(payload, PldmBaseCompletionCode::UnsupportedPldmCmd as u8)
             }

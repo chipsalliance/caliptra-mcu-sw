@@ -301,12 +301,16 @@ mod test {
             comp_activation_methods,
             capabilities_during_update,
         );
+
+        const COMP_COUNT: usize = 8;
+        let comp_param_table: [ComponentParameterEntry; COMP_COUNT] =
+            core::array::from_fn(|_| component_parameter_entry.clone());
         FirmwareParameters::new(
             capabilities_during_update,
-            1,
+            COMP_COUNT as u16,
             &active_firmware_string,
             &pending_firmware_string,
-            &[component_parameter_entry],
+            &comp_param_table,
         )
     }
 
@@ -322,7 +326,7 @@ mod test {
     #[test]
     fn test_get_firmware_parameters() {
         let firmware_parameters = construct_firmware_params();
-        let mut buffer = [0u8; 512];
+        let mut buffer = [0u8; 1024];
         let size = firmware_parameters.encode(&mut buffer).unwrap();
         assert_eq!(size, firmware_parameters.codec_size_in_bytes());
         let decoded_firmware_parameters = FirmwareParameters::decode(&buffer[..size]).unwrap();
@@ -333,7 +337,7 @@ mod test {
     fn test_get_firmware_parameters_response() {
         let firmware_parameters = construct_firmware_params();
         let response = GetFirmwareParametersResponse::new(0, 0, &firmware_parameters);
-        let mut buffer = [0u8; 512];
+        let mut buffer = [0u8; 1024];
         let size = response.encode(&mut buffer).unwrap();
         assert_eq!(size, response.codec_size_in_bytes());
         let decoded_response = GetFirmwareParametersResponse::decode(&buffer[..size]).unwrap();
