@@ -101,7 +101,7 @@ impl PldmSocket for MctpPldmSocket {
             if context.state == MctpPldmSocketState::FirstResponse
                 || context.state == MctpPldmSocketState::Idle
             {
-                if context.first_response.is_none() {
+                while context.first_response.is_none() {
                     // Wait for the first response from the responder in the sending thread
                     context = cvar.wait(context).unwrap();
                 }
