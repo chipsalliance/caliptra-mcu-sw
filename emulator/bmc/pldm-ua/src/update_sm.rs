@@ -213,8 +213,7 @@ pub trait StateMachineActions {
             pass_component_flag = TransferRespFlag::End;
         } else {
             // This should never happen
-            error!("Unhandled case");
-            return Err(());
+            panic!("Unhandled case");
         }
         debug!(
             "Passing component: {} Flag: {:?}",
