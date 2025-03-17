@@ -8,27 +8,4 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-caliptra-auth-man-gen.workspace = true
-caliptra-auth-man-types.workspace = true
-caliptra-builder.workspace = true
-caliptra-emu-cpu.workspace = true
-caliptra-emu-periph.workspace = true
-caliptra-emu-types.workspace = true
-caliptra-image-crypto.workspace = true
-caliptra-image-fake-keys.workspace = true
-caliptra-image-gen.workspace = true
-caliptra-image-types.workspace = true
-clap.workspace = true
-ctrlc.workspace = true
-elf.workspace = true
-emulator-bus.workspace = true
-emulator-caliptra.workspace = true
-emulator-cpu.workspace = true
-emulator-periph.workspace = true
-emulator-registers-generated.workspace = true
-gdbstub_arch.workspace = true
-gdbstub.workspace = true
-hex.workspace = true
 mcu-builder.workspace = true
-tock-registers.workspace = true
-zerocopy.workspace = true

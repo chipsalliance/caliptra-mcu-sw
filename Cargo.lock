@@ -2193,10 +2193,19 @@ name = "mcu-builder"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "caliptra-auth-man-gen",
+ "caliptra-auth-man-types",
+ "caliptra-builder",
+ "caliptra-image-crypto",
+ "caliptra-image-fake-keys",
+ "caliptra-image-gen",
+ "caliptra-image-types",
  "elf 0.7.4",
  "emulator-consts",
+ "hex",
  "semver",
  "walkdir",
+ "zerocopy 0.8.23",
 ]
 
 [[package]]
@@ -3226,30 +3235,7 @@ version = "0.1.0"
 name = "tests-integration"
 version = "0.1.0"
 dependencies = [
- "caliptra-auth-man-gen",
- "caliptra-auth-man-types",
- "caliptra-builder",
- "caliptra-emu-cpu",
- "caliptra-emu-periph",
- "caliptra-emu-types",
- "caliptra-image-crypto",
- "caliptra-image-fake-keys",
- "caliptra-image-gen",
- "caliptra-image-types",
- "clap 4.5.23",
- "ctrlc",
- "elf 0.7.4",
- "emulator-bus",
- "emulator-caliptra",
- "emulator-cpu",
- "emulator-periph",
- "emulator-registers-generated",
- "gdbstub",
- "gdbstub_arch",
- "hex",
  "mcu-builder",
- "tock-registers",
- "zerocopy 0.8.23",
 ]
 
 [[package]]

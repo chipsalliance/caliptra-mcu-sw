@@ -24,6 +24,23 @@ cargo xtask precheckin
 
 Commands such as `cargo b` and `cargo t` will also work, but won't execute the extra tests and RISC-V firmware builds.
 
+## Running the emulators
+
+Both the Caliptra Core and MCU emulator will run if you use the `runtime` xtask:
+
+```shell
+cargo xtask runtime
+```
+
+By default, Caliptra runs in passive mode, but active mode is also support via a command-line flag:
+
+```shell
+cargo xtask runtime --active-mode
+```
+
+This uses the full [active, or subsystem, mode boot flow](https://chipsalliance.github.io/caliptra-mcu-sw/rom.html#cold-boot-flow).
+
+
 ## Documentation
 
 The specification is published [here](https://chipsalliance.github.io/caliptra-mcu-sw/).

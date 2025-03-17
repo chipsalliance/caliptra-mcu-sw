@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use crate::Commands;
-use anyhow::{bail, Result};
-use mcu_builder::{rom_build, runtime_build_with_apps, PROJECT_ROOT, TARGET};
+use anyhow::Result;
+use mcu_builder::{rom_build, runtime_build_with_apps, CaliptraBuilder, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
 /// Run the Runtime Tock kernel image for RISC-V in the emulator.
@@ -17,11 +17,11 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         soc_manifest,
         active_mode,
         vendor_pk_hash,
-        owner_pk_hash,
     } = args
     else {
         panic!("Must call runtime_run with Commands::Runtime");
     };
+
     let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
     rom_build()?;
     runtime_build_with_apps(&features, None)?;
@@ -35,16 +35,39 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         .join(TARGET)
         .join("release")
         .join("runtime.bin");
+
+    let mut caliptra_builder = CaliptraBuilder::new(
+        active_mode,
+        caliptra_rom,
+        caliptra_firmware,
+        soc_manifest,
+        vendor_pk_hash,
+        Some(tock_binary.clone()),
+    );
+
+    let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
+    let caliptra_firmware = caliptra_builder.get_caliptra_fw()?;
+    let soc_manifest = caliptra_builder.get_soc_manifest()?;
+    let vendor_pk_hash = caliptra_builder.get_vendor_pk_hash()?;
     let mut cargo_run_args = vec![
         "run",
         "-p",
         "emulator",
         "--release",
         "--",
+        "--caliptra",
         "--rom",
         rom_binary.to_str().unwrap(),
         "--firmware",
         tock_binary.to_str().unwrap(),
+        "--caliptra-rom",
+        caliptra_rom.to_str().unwrap(),
+        "--caliptra-firmware",
+        caliptra_firmware.to_str().unwrap(),
+        "--soc-manifest",
+        soc_manifest.to_str().unwrap(),
+        "--vendor-pk-hash",
+        vendor_pk_hash,
     ];
     if no_stdin {
         cargo_run_args.push("--no-stdin-uart");
@@ -56,33 +79,8 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     if trace {
         cargo_run_args.extend(["-t", "-l", PROJECT_ROOT.to_str().unwrap()]);
     }
-    if let Some(caliptra_rom) = caliptra_rom.as_ref() {
-        if !caliptra_rom.exists() {
-            bail!("Caliptra ROM file not found: {:?}", caliptra_rom);
-        }
-        cargo_run_args.extend([
-            "--caliptra",
-            "--caliptra-rom",
-            caliptra_rom.to_str().unwrap(),
-        ]);
-    }
-    if let Some(caliptra_firmware) = caliptra_firmware.as_ref() {
-        if !caliptra_firmware.exists() {
-            bail!("Caliptra runtime bundle not found: {:?}", caliptra_firmware);
-        }
-        cargo_run_args.extend(["--caliptra-firmware", caliptra_firmware.to_str().unwrap()]);
-    }
-    if let Some(soc_manifest) = soc_manifest.as_ref() {
-        cargo_run_args.extend(["--soc-manifest", soc_manifest.to_str().unwrap()]);
-    }
     if active_mode {
         cargo_run_args.extend(["--active-mode"]);
-    }
-    if let Some(vendor_pk_hash) = vendor_pk_hash.as_ref() {
-        cargo_run_args.extend(["--vendor-pk-hash", vendor_pk_hash]);
-    }
-    if let Some(owner_pk_hash) = owner_pk_hash.as_ref() {
-        cargo_run_args.extend(["--owner-pk-hash", owner_pk_hash]);
     }
     Command::new("cargo")
         .args(cargo_run_args)

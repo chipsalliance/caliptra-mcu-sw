@@ -57,9 +57,6 @@ enum Commands {
 
         #[arg(long)]
         vendor_pk_hash: Option<String>,
-
-        #[arg(long)]
-        owner_pk_hash: Option<String>,
     },
     /// Build Runtime image
     RuntimeBuild {

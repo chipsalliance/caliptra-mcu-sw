@@ -6,7 +6,16 @@ edition = "2021"
 
 [dependencies]
 anyhow.workspace = true
+caliptra-auth-man-gen.workspace = true
+caliptra-auth-man-types.workspace = true
+caliptra-builder.workspace = true
+caliptra-image-crypto.workspace = true
+caliptra-image-fake-keys.workspace = true
+caliptra-image-gen.workspace = true
+caliptra-image-types.workspace = true
 elf.workspace = true
 emulator-consts.workspace = true
+hex.workspace = true
 semver.workspace = true
 walkdir.workspace = true
+zerocopy.workspace = true

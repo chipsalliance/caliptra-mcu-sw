@@ -323,6 +323,11 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             rom: cli.caliptra_rom.unwrap(),
             device_lifecycle: Some("production".into()),
             active_mode,
+            firmware: if active_mode {
+                None
+            } else {
+                cli.caliptra_firmware.clone()
+            },
             ..Default::default()
         })
         .expect("Failed to start Caliptra CPU");

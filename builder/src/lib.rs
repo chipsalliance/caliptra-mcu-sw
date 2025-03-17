@@ -1,10 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 mod apps;
+mod caliptra;
 mod rom;
 mod runtime;
 mod tbf;
 
+pub use caliptra::CaliptraBuilder;
 pub use rom::rom_build;
 pub use runtime::{runtime_build_no_apps, runtime_build_with_apps};
 
