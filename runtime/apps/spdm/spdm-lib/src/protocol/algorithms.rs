@@ -17,21 +17,22 @@ where
 {
     fn prioritize(&self, peer: &Self, priority_table: Option<&[T]>) -> Self {
         let common = self & peer;
-        if let Some(priority_table) = priority_table {
-            for &priority in priority_table {
-                let priority_spec: u8 = priority.into();
-                if common & priority_spec != 0 {
-                    return 1 << (common & priority_spec).trailing_zeros();
+        match common {
+            0 => 0,
+            _ => {
+                if let Some(priority_table) = priority_table {
+                    for &priority in priority_table {
+                        let priority_alg: u8 = priority.into();
+                        if common & priority_alg != 0 {
+                            return priority_alg;
+                        }
+                    }
                 }
-            }
-        } else {
-            // If priority_table is None, we assume the default behavior
-            // of returning the first common algorithm.
-            if common != 0 {
-                return 1 << common.trailing_zeros();
+                // If priority_table is None or the values in the priority table do not match the common algorithms,
+                // we will default to returning the first common algorithm (First common bit from LSB).
+                1 << common.trailing_zeros()
             }
         }
-        0
     }
 }
 
@@ -41,21 +42,22 @@ where
 {
     fn prioritize(&self, peer: &Self, priority_table: Option<&[T]>) -> Self {
         let common = self & peer;
-        if let Some(priority_table) = priority_table {
-            for &priority in priority_table {
-                let priority_spec: u16 = priority.into();
-                if common & priority_spec != 0 {
-                    return common & (!common + 1);
+        match common {
+            0 => 0,
+            _ => {
+                if let Some(priority_table) = priority_table {
+                    for &priority in priority_table {
+                        let priority_alg: u16 = priority.into();
+                        if common & priority_alg != 0 {
+                            return priority_alg;
+                        }
+                    }
                 }
-            }
-        } else {
-            // If priority_table is None, we assume the default behavior
-            // of returning the first common algorithm.
-            if common != 0 {
-                return 1 << common.trailing_zeros();
+                // If priority_table is None or the values in the priority table do not match the common algorithms,
+                // we will default to returning the first common algorithm (First common bit from LSB).
+                1 << common.trailing_zeros()
             }
         }
-        0
     }
 }
 
@@ -65,21 +67,22 @@ where
 {
     fn prioritize(&self, peer: &Self, priority_table: Option<&[T]>) -> Self {
         let common = self & peer;
-        if let Some(priority_table) = priority_table {
-            for &priority in priority_table {
-                let priority_spec: u32 = priority.into();
-                if common & priority_spec != 0 {
-                    return common & (!common + 1);
+        match common {
+            0 => 0,
+            _ => {
+                if let Some(priority_table) = priority_table {
+                    for &priority in priority_table {
+                        let priority_alg: u32 = priority.into();
+                        if common & priority_alg != 0 {
+                            return priority_alg;
+                        }
+                    }
                 }
-            }
-        } else {
-            // If priority_table is None, we assume the default behavior
-            // of returning the first common algorithm.
-            if common != 0 {
-                return 1 << common.trailing_zeros();
+                // If priority_table is None or the values in the priority table do not match the common algorithms,
+                // we will default to returning the first common algorithm (First common bit from LSB).
+                1 << common.trailing_zeros()
             }
         }
-        0
     }
 }
 
@@ -250,9 +253,9 @@ impl Prioritize<BaseHashAlgoType> for BaseHashAlgo {
         let common = self.0 & peer.0;
         if let Some(priority_table) = priority_table {
             for &priority in priority_table {
-                let priority_spec: BaseHashAlgo = priority.into();
-                if common & priority_spec.0 != 0 {
-                    return BaseHashAlgo(priority_spec.0);
+                let priority_alg: BaseHashAlgo = priority.into();
+                if common & priority_alg.0 != 0 {
+                    return BaseHashAlgo(priority_alg.0);
                 }
             }
         } else {
@@ -544,7 +547,7 @@ pub(crate) fn validate_device_algorithms(
     // If responder supports the measurements, then exactly one bit should be set in the MeasurementHashAlgo
     let measurement_hash_algo = local_algorithms.measurement_hash_algo;
     if measurement_hash_algo.0.count_ones() > 1 {
-        return Err(SpdmError::InvalidParam);
+        Err(SpdmError::InvalidParam)?;
     }
 
     Ok(())

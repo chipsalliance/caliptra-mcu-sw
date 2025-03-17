@@ -51,7 +51,7 @@ where
                 buffer.put_data(len)?;
 
                 if buffer.data_len() < len {
-                    return Err(CodecError::BufferTooSmall);
+                    Err(CodecError::BufferTooSmall)?;
                 }
                 let payload = buffer.data_mut(len)?;
                 self.write_to(payload).map_err(|_| CodecError::WriteError)?;
@@ -65,7 +65,7 @@ where
     fn decode(buffer: &mut MessageBuf) -> CodecResult<T> {
         let len = core::mem::size_of::<T>();
         if buffer.data_len() < len {
-            return Err(CodecError::BufferTooSmall);
+            Err(CodecError::BufferTooSmall)?;
         }
         let data = buffer.data(len)?;
         let data = T::read_from_bytes(data).map_err(|_| CodecError::ReadError)?;
@@ -97,7 +97,7 @@ impl<'a> MessageBuf<'a> {
     /// Reserve space for the header at the start of the message buffer
     pub fn reserve(&mut self, header_len: usize) -> CodecResult<()> {
         if self.tail + header_len > self.buffer.len() {
-            return Err(CodecError::BufferTooSmall);
+            Err(CodecError::BufferTooSmall)?;
         }
         self.data += header_len;
         self.tail += header_len;
@@ -114,7 +114,7 @@ impl<'a> MessageBuf<'a> {
     /// example usage
     pub fn put_data(&mut self, len: usize) -> CodecResult<()> {
         if self.tail + len > self.buffer.len() {
-            return Err(CodecError::BufferTooSmall);
+            Err(CodecError::BufferTooSmall)?;
         }
         self.tail += len;
         Ok(())
@@ -126,7 +126,7 @@ impl<'a> MessageBuf<'a> {
     /// example usage
     pub fn push_data(&mut self, len: usize) -> CodecResult<()> {
         if self.data < len {
-            return Err(CodecError::BufferUnderflow);
+            Err(CodecError::BufferUnderflow)?;
         }
         self.data -= len;
         Ok(())
@@ -137,7 +137,7 @@ impl<'a> MessageBuf<'a> {
     /// after processing it.
     pub fn pull_data(&mut self, len: usize) -> CodecResult<()> {
         if self.data + len > self.tail {
-            return Err(CodecError::BufferOverflow);
+            Err(CodecError::BufferOverflow)?;
         }
         self.data += len;
         Ok(())
@@ -147,7 +147,7 @@ impl<'a> MessageBuf<'a> {
     /// This is used to resize the buffer length.
     pub fn trim(&mut self, len: usize) -> CodecResult<()> {
         if self.tail < len {
-            return Err(CodecError::BufferUnderflow);
+            Err(CodecError::BufferUnderflow)?;
         }
         self.tail = self.data + len;
 
@@ -157,7 +157,7 @@ impl<'a> MessageBuf<'a> {
     // Returns the data slice in the message buffer of specified length
     pub fn data(&self, len: usize) -> CodecResult<&[u8]> {
         if self.data + len > self.tail {
-            return Err(CodecError::BufferOverflow);
+            Err(CodecError::BufferOverflow)?;
         }
         Ok(&self.buffer[self.data..self.data + len])
     }
@@ -165,7 +165,7 @@ impl<'a> MessageBuf<'a> {
     // Returns the mutable data slice in the message buffer of specified length
     pub fn data_mut(&mut self, len: usize) -> CodecResult<&mut [u8]> {
         if self.data + len > self.tail {
-            return Err(CodecError::BufferOverflow);
+            Err(CodecError::BufferOverflow)?;
         }
         Ok(&mut self.buffer[self.data..self.data + len])
     }

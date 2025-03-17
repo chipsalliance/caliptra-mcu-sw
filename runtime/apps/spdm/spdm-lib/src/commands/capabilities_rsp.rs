@@ -157,12 +157,7 @@ fn process_get_capabilities<S: Syscalls>(
     let version = match spdm_hdr.version() {
         Ok(v) => v,
         Err(_) => {
-            return Err(ctx.generate_error_response(
-                req_payload,
-                ErrorCode::VersionMismatch,
-                0,
-                None,
-            ));
+            Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?
         }
     };
 
@@ -172,14 +167,7 @@ fn process_get_capabilities<S: Syscalls>(
             ctx.state.connection_info.set_version_number(v);
             v
         }
-        None => {
-            return Err(ctx.generate_error_response(
-                req_payload,
-                ErrorCode::VersionMismatch,
-                0,
-                None,
-            ));
-        }
+        None => Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?,
     };
 
     let base_req = GetCapabilitiesBase::decode(req_payload).map_err(|_| {
@@ -201,21 +189,11 @@ fn process_get_capabilities<S: Syscalls>(
 
         let flags = req_11.flags;
         if !req_flag_compatible(version, &flags) {
-            return Err(ctx.generate_error_response(
-                req_payload,
-                ErrorCode::InvalidRequest,
-                0,
-                None,
-            ));
+            Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
         }
 
         if req_11.ct_exponent > MAX_CT_EXPONENT {
-            return Err(ctx.generate_error_response(
-                req_payload,
-                ErrorCode::UnexpectedRequest,
-                0,
-                None,
-            ));
+            Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
         }
 
         if version >= SpdmVersion::V12 {
@@ -243,12 +221,7 @@ fn process_get_capabilities<S: Syscalls>(
         if version >= SpdmVersion::V11 {
             // Check ct_exponent
             if req_11.ct_exponent > MAX_CT_EXPONENT {
-                return Err(ctx.generate_error_response(
-                    req_payload,
-                    ErrorCode::InvalidRequest,
-                    0,
-                    None,
-                ));
+                Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
             }
         }
 

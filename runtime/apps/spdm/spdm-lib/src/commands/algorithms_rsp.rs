@@ -10,11 +10,12 @@ use crate::protocol::common::SpdmMsgHdr;
 use crate::protocol::SpdmVersion;
 use crate::state::ConnectionState;
 use bitfield::bitfield;
+use core::mem::size_of;
 use libtock_platform::Syscalls;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 // Max request length shall be 128 bytes (SPDM1.3 10.4, Table 10.4)
-const MAX_REQUEST_LENGTH: u16 = 128;
+const MAX_SPDM_REQUEST_LENGTH: u16 = 128;
 const MAX_SPDM_EXT_ALG_COUNT_V10: u8 = 8;
 const MAX_SPDM_EXT_ALG_COUNT_V11: u8 = 20;
 
@@ -37,13 +38,10 @@ struct NegotiateAlgorithmsReq {
 
 impl NegotiateAlgorithmsReq {
     fn min_req_len(&self) -> u16 {
-        let total_alg_struct_len =
-            core::mem::size_of::<AlgStructure>() * self.num_alg_struct_tables as usize;
-        let total_ext_asym_len =
-            core::mem::size_of::<ExtendedAlgo>() * self.ext_asyn_count as usize;
-        let total_ext_hash_len =
-            core::mem::size_of::<ExtendedAlgo>() * self.ext_hash_count as usize;
-        (core::mem::size_of::<NegotiateAlgorithmsReq>()
+        let total_alg_struct_len = size_of::<AlgStructure>() * self.num_alg_struct_tables as usize;
+        let total_ext_asym_len = size_of::<ExtendedAlgo>() * self.ext_asyn_count as usize;
+        let total_ext_hash_len = size_of::<ExtendedAlgo>() * self.ext_hash_count as usize;
+        (size_of::<NegotiateAlgorithmsReq>()
             + total_alg_struct_len
             + total_ext_asym_len
             + total_ext_hash_len) as u16
@@ -51,7 +49,7 @@ impl NegotiateAlgorithmsReq {
 
     fn ext_algo_size(&self) -> usize {
         let ext_algo_count = self.ext_asyn_count as usize + self.ext_hash_count as usize;
-        core::mem::size_of::<ExtendedAlgo>() * ext_algo_count
+        size_of::<ExtendedAlgo>() * ext_algo_count
     }
 
     fn validate_total_ext_alg_count(
@@ -158,17 +156,10 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
     let connection_version = ctx.state.connection_info.version_number();
     match spdm_hdr.version() {
         Ok(version) if version == connection_version => {}
-        _ => {
-            return Err(ctx.generate_error_response(
-                req_payload,
-                ErrorCode::VersionMismatch,
-                0,
-                None,
-            ))
-        }
+        _ => Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?,
     }
 
-    let req_start_offset = req_payload.data_offset() - core::mem::size_of::<SpdmMsgHdr>();
+    let req_start_offset = req_payload.data_offset() - size_of::<SpdmMsgHdr>();
 
     let req = NegotiateAlgorithmsReq::decode(req_payload).map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None)
@@ -179,15 +170,15 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
-    // min req length check
-    if req.length > MAX_REQUEST_LENGTH || req.length < req.min_req_len() {
-        return Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None));
+    // Min req length check
+    if req.length > MAX_SPDM_REQUEST_LENGTH || req.length < req.min_req_len() {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
-    // other parameters support check
+    // Other parameters support check
     let other_params_support = &req.other_param_support;
     if other_params_support.reserved1() != 0 || other_params_support.reserved2() != 0 {
-        return Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None));
+        Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
     // Extended Asym and Hash Algo (not supported)
@@ -220,7 +211,7 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
 
         prev_alg_type = alg_struct.alg_type();
 
-        // requester supported fixed algorithms check
+        // Requester supported fixed algorithms check
         if alg_struct.alg_supported() == 0 {
             Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
         }
@@ -245,13 +236,13 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
         }
     }
 
-    // total number of extended algorithms check
+    // Total number of extended algorithms check
     req.validate_total_ext_alg_count(connection_version, total_ext_alg_count)
         .map_err(|_| {
             ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
         })?;
 
-    // total length of the request check
+    // Total length of the request check
     let req_len = req_payload.data_offset() - req_start_offset;
     if req_len != req.length as usize {
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
@@ -296,9 +287,9 @@ fn generate_algorithms_response<S: Syscalls>(
     let num_alg_struct_tables = peer_algorithms.num_alg_struct_tables();
 
     // Note: No extended asymmetric key and hash algorithms in response.
-    let rsp_length = core::mem::size_of::<SpdmMsgHdr>()
-        + core::mem::size_of::<NegotiateAlgorithmsResp>()
-        + num_alg_struct_tables * core::mem::size_of::<AlgStructure>();
+    let rsp_length = size_of::<SpdmMsgHdr>()
+        + size_of::<NegotiateAlgorithmsResp>()
+        + num_alg_struct_tables * size_of::<AlgStructure>();
 
     // MeasurementSpecificationSel
     let mut measurement_specification_sel = MeasurementSpecification::default();
@@ -480,10 +471,10 @@ pub(crate) fn handle_negotiate_algorithms<'a, S: Syscalls>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
-    // process negotiate algorithms request
+    // Process negotiate algorithms request
     process_negotiate_algorithms_request(ctx, spdm_hdr, req_payload)?;
 
-    // generate algorithms response
+    // Generate algorithms response
     ctx.prepare_response_buffer(req_payload)?;
     generate_algorithms_response(ctx, req_payload)?;
 
