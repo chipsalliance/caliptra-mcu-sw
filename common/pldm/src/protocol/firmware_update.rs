@@ -10,9 +10,10 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 pub const PLDM_FWUP_COMPONENT_RELEASE_DATA_LEN: usize = 8;
 pub const PLDM_FWUP_BASELINE_TRANSFER_SIZE: usize = 32;
 pub const PLDM_FWUP_MAX_PADDING_SIZE: usize = PLDM_FWUP_BASELINE_TRANSFER_SIZE;
-pub const PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN: usize = 255;
+pub const PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN: usize = 32;
 pub const DESCRIPTOR_DATA_MAX_LEN: usize = 64; // Arbitrary limit for static storage
 pub const MAX_COMPONENT_COUNT: usize = 8; // Arbitrary limit, change as needed
+pub const MAX_DESCRIPTORS_COUNT: usize = 4; // Arbitrary limit, change as needed
 
 #[repr(u8)]
 pub enum FwUpdateCmd {
@@ -164,7 +165,7 @@ impl VersionStringType {
             VersionStringType::Utf16 => "UTF-16",
             VersionStringType::Utf16Le => "UTF-16LE",
             VersionStringType::Utf16Be => "UTF-16BE",
-            _ => "UNKNOWN",
+            VersionStringType::Unspecified => "UNSPECIFIED",
         }
     }
 }
@@ -184,6 +185,7 @@ impl TryFrom<&str> for VersionStringType {
             "UTF-16" | "utf-16" => Ok(VersionStringType::Utf16),
             "UTF-16LE" | "utf-16le" => Ok(VersionStringType::Utf16Le),
             "UTF-16BE" | "utf-16be" => Ok(VersionStringType::Utf16Be),
+            "UNSPECIFIED" | "unspecified" => Ok(VersionStringType::Unspecified),
             _ => Err(PldmError::InvalidVersionStringType),
         }
     }
@@ -400,6 +402,7 @@ bitfield! {
 }
 
 #[repr(u16)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ComponentClassification {
     Unspecified = 0x0000,
     Other = 0x0001,
@@ -450,6 +453,16 @@ pub struct PldmFirmwareString {
     pub str_data: [u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN],
 }
 
+impl Default for PldmFirmwareString {
+    fn default() -> Self {
+        PldmFirmwareString {
+            str_type: 0,
+            str_len: 0,
+            str_data: [0; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN],
+        }
+    }
+}
+
 impl PldmFirmwareString {
     pub fn new(str_type: &str, fw_str: &str) -> Result<Self, PldmError> {
         let str_type = VersionStringType::try_from(str_type)?;
@@ -476,6 +489,21 @@ pub struct PldmFirmwareVersion<'a> {
     pub date: [u8; PLDM_FWUP_COMPONENT_RELEASE_DATA_LEN],
 }
 
+impl Default for PldmFirmwareVersion<'_> {
+    fn default() -> Self {
+        static DEFAULT_FW_STRING: PldmFirmwareString = PldmFirmwareString {
+            str_type: 0,
+            str_len: 0,
+            str_data: [0; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN],
+        };
+        PldmFirmwareVersion {
+            comparison_stamp: 0,
+            str: &DEFAULT_FW_STRING,
+            date: [0; PLDM_FWUP_COMPONENT_RELEASE_DATA_LEN],
+        }
+    }
+}
+
 impl<'a> PldmFirmwareVersion<'a> {
     pub fn new(comparison_stamp: u32, str: &'a PldmFirmwareString, date_str: Option<&str>) -> Self {
         let mut date_array = [0u8; PLDM_FWUP_COMPONENT_RELEASE_DATA_LEN];
@@ -492,7 +520,7 @@ impl<'a> PldmFirmwareVersion<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, FromBytes, IntoBytes, Immutable)]
+#[derive(Debug, Clone, PartialEq, Eq, FromBytes, IntoBytes, Immutable, Copy)]
 #[repr(C, packed)]
 pub struct ComponentParameterEntryFixed {
     pub comp_classification: u16,

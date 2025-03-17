@@ -2,6 +2,7 @@
 
 use crate::control_context::{ControlContext, CtrlCmdResponder, ProtocolCapability};
 use crate::error::MsgHandlerError;
+use crate::firmware_device::fd_context::FirmwareDeviceContext;
 use crate::transport::MctpTransport;
 use core::sync::atomic::{AtomicBool, Ordering};
 use libtock_platform::Syscalls;
@@ -12,40 +13,7 @@ use pldm_common::protocol::base::{
 use pldm_common::protocol::firmware_update::FwUpdateCmd;
 use pldm_common::util::mctp_transport::PLDM_MSG_OFFSET;
 
-pub const PLDM_PROTOCOL_CAP_COUNT: usize = 2;
 pub type PldmCompletionErrorCode = u8;
-
-pub static PLDM_PROTOCOL_CAPABILITIES: [ProtocolCapability<'static>; PLDM_PROTOCOL_CAP_COUNT] = [
-    ProtocolCapability {
-        pldm_type: PldmSupportedType::Base,
-        protocol_version: 0xF1F1F000, //"1.1.0"
-        supported_commands: &[
-            PldmControlCmd::SetTid as u8,
-            PldmControlCmd::GetTid as u8,
-            PldmControlCmd::GetPldmCommands as u8,
-            PldmControlCmd::GetPldmVersion as u8,
-            PldmControlCmd::GetPldmTypes as u8,
-        ],
-    },
-    ProtocolCapability {
-        pldm_type: PldmSupportedType::FwUpdate,
-        protocol_version: 0xF1F3F000, // "1.3.0"
-        supported_commands: &[
-            FwUpdateCmd::QueryDeviceIdentifiers as u8,
-            FwUpdateCmd::GetFirmwareParameters as u8,
-            FwUpdateCmd::RequestUpdate as u8,
-            FwUpdateCmd::PassComponentTable as u8,
-            FwUpdateCmd::UpdateComponent as u8,
-            FwUpdateCmd::RequestFirmwareData as u8,
-            FwUpdateCmd::TransferComplete as u8,
-            FwUpdateCmd::VerifyComplete as u8,
-            FwUpdateCmd::ApplyComplete as u8,
-            FwUpdateCmd::ActivateFirmware as u8,
-            FwUpdateCmd::GetStatus as u8,
-            FwUpdateCmd::CancelUpdate as u8,
-        ],
-    },
-];
 
 // Helper function to write a failure response message into payload
 pub(crate) fn generate_failure_response(
@@ -63,15 +31,22 @@ pub(crate) fn generate_failure_response(
 pub struct CmdInterface<'a, S: Syscalls> {
     transport: MctpTransport<S>,
     ctrl_ctx: ControlContext<'a>,
+    fd_ctx: FirmwareDeviceContext<S>,
     busy: AtomicBool,
 }
 
 impl<'a, S: Syscalls> CmdInterface<'a, S> {
-    pub fn new(drv_num: u32, capabilities: &'a [ProtocolCapability<'a>]) -> Self {
-        let ctrl_ctx = ControlContext::new(capabilities);
-        CmdInterface {
-            transport: MctpTransport::<S>::new(drv_num),
+    pub fn new(
+        driver_num: u32,
+        protocol_capabilities: &'a [ProtocolCapability],
+        fd_ctx: FirmwareDeviceContext<S>,
+    ) -> Self {
+        let transport = MctpTransport::new(driver_num);
+        let ctrl_ctx = ControlContext::new(protocol_capabilities);
+        Self {
+            transport,
             ctrl_ctx,
+            fd_ctx,
             busy: AtomicBool::new(false),
         }
     }
@@ -115,10 +90,7 @@ impl<'a, S: Syscalls> CmdInterface<'a, S> {
 
         let resp_len = match pldm_type {
             PldmSupportedType::Base => self.process_control_cmd(cmd_opcode, payload),
-            PldmSupportedType::FwUpdate => {
-                // Placeholder for firmware update command handling logic
-                Ok(0)
-            }
+            PldmSupportedType::FwUpdate => self.process_fw_update_cmd(cmd_opcode, payload).await,
             _ => {
                 unreachable!()
             }
@@ -144,6 +116,29 @@ impl<'a, S: Syscalls> CmdInterface<'a, S> {
                 PldmControlCmd::GetPldmTypes => self.ctrl_ctx.get_pldm_types_rsp(payload),
                 PldmControlCmd::GetPldmCommands => self.ctrl_ctx.get_pldm_commands_rsp(payload),
                 PldmControlCmd::GetPldmVersion => self.ctrl_ctx.get_pldm_version_rsp(payload),
+            },
+            Err(_) => {
+                generate_failure_response(payload, PldmBaseCompletionCode::UnsupportedPldmCmd as u8)
+            }
+        }
+    }
+
+    async fn process_fw_update_cmd(
+        &self,
+        cmd_opcode: u8,
+        payload: &mut [u8],
+    ) -> Result<usize, MsgHandlerError> {
+        match FwUpdateCmd::try_from(cmd_opcode) {
+            Ok(cmd) => match cmd {
+                FwUpdateCmd::QueryDeviceIdentifiers => self.fd_ctx.query_devid_rsp(payload).await,
+                FwUpdateCmd::GetFirmwareParameters => {
+                    self.fd_ctx.get_firmware_parameters_rsp(payload).await
+                }
+                // Add more cmd handlers here
+                _ => generate_failure_response(
+                    payload,
+                    PldmBaseCompletionCode::UnsupportedPldmCmd as u8,
+                ),
             },
             Err(_) => {
                 generate_failure_response(payload, PldmBaseCompletionCode::UnsupportedPldmCmd as u8)

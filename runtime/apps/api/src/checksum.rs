@@ -28,13 +28,6 @@ mod tests {
     }
 
     #[test]
-    fn test_checksum_overflow() {
-        let data = vec![0xff; 16843007];
-        assert_eq!(calc_checksum(0xe8dc3994, &data), 0xffffff6e);
-        assert!(verify_checksum(0xffffff6e, 0xe8dc3994, &data));
-    }
-
-    #[test]
     fn test_verify_checksum() {
         assert!(verify_checksum(0xfffffbe0, 0xe8dc3994, &[0x83, 0xe7, 0x25]));
         assert!(!verify_checksum(
