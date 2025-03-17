@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(("decode", sub_matches)) => {
             let package_path = sub_matches.get_one("package").unwrap();
             let output_dir = sub_matches.get_one("dir").unwrap();
-            FirmwareManifest::decode_firmware_package(package_path, output_dir)
+            FirmwareManifest::decode_firmware_package(package_path, Some(output_dir))
                 .expect("Failed to decode the firmware package");
             println!("Decoded FirmwarePackage to directory: {}", output_dir);
         }

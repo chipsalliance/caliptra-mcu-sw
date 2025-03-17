@@ -6,21 +6,24 @@ use crate::transport::{PldmSocket, RxPacket};
 use log::{debug, error, info};
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::firmware_update as pldm_packet;
+use pldm_common::message::firmware_update::transfer_complete::TransferResult;
 use pldm_common::protocol::base::{
     InstanceId, PldmBaseCompletionCode, PldmMsgHeader, PldmMsgType, PldmSupportedType,
     TransferRespFlag,
 };
 use pldm_common::protocol::firmware_update::{
     ComponentClassification, ComponentCompatibilityResponse, ComponentParameterEntry,
-    ComponentResponseCode, FwUpdateCmd, PldmFirmwareString, UpdateOptionFlags, VersionStringType,
-    PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN,
+    ComponentResponseCode, FwUpdateCmd, FwUpdateCompletionCode, PldmFirmwareString,
+    UpdateOptionFlags, VersionStringType, PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN,
 };
 use pldm_fw_pkg::manifest::{ComponentImageInformation, FirmwareDeviceIdRecord};
 use pldm_fw_pkg::FirmwareManifest;
 use smlang::statemachine;
+use std::cmp::{max, min};
 use std::sync::mpsc::Sender;
 
-const MAX_TRANSFER_SIZE: u32 = 64;
+const MAX_TRANSFER_SIZE: u32 = 64; // Maximum bytes to transfer in one request
+const BASELINE_TRANSFER_SIZE: u32 = 32; // Minimum bytes to transfer in one request
 const MAX_OUTSTANDING_TRANSFER_REQ: u8 = 1;
 
 // Define the state machine
@@ -44,7 +47,8 @@ statemachine! {
         ReadyXfer + StartDownload / on_start_download = Download,
         ReadyXfer + CancelUpdateComponent  / on_stop_update = Idle,
 
-        Download + RequestFirmwareData / on_request_firmware = Download,
+        Download + RequestFirmwareData(pldm_packet::request_fw_data::RequestFirmwareDataRequest) / on_request_firmware = Download,
+        Download + TransferComplete(pldm_packet::transfer_complete::TransferCompleteRequest) / on_transfer_complete_request = Download,
         Download + TransferCompleteFail / on_transfer_fail = Idle,
         Download + TransferCompletePass / on_transfer_success = Verify,
         Download + CancelUpdate  / on_stop_update = Idle,
@@ -551,18 +555,100 @@ pub trait StateMachineActions {
         Ok(())
     }
 
-    fn on_request_firmware(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        // TODO
-        Ok(())
+    fn on_request_firmware(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket>,
+        request: pldm_packet::request_fw_data::RequestFirmwareDataRequest,
+    ) -> Result<(), ()> {
+        if request.length > MAX_TRANSFER_SIZE || request.length < BASELINE_TRANSFER_SIZE {
+            error!("RequestFirmwareDataRequest length is invalid");
+            let response = pldm_packet::request_fw_data::RequestFirmwareDataResponse::new(
+                request.hdr.instance_id(),
+                PldmBaseCompletionCode::InvalidLength as u8,
+                &[],
+            );
+            return send_request_helper(&ctx.socket, &response);
+        }
+
+        let component = &ctx.components[ctx.current_component_index.unwrap()];
+        if let Some(data) = &component.image_data {
+            if (request.offset + request.length) as usize
+                >= data.len() + BASELINE_TRANSFER_SIZE as usize
+            {
+                error!("RequestFirmwareDataRequest offset is out of bounds");
+                let response = pldm_packet::request_fw_data::RequestFirmwareDataResponse::new(
+                    request.hdr.instance_id(),
+                    FwUpdateCompletionCode::DataOutOfRange as u8,
+                    &[],
+                );
+                return send_request_helper(&ctx.socket, &response);
+            }
+            let mut buffer = [0u8; MAX_TRANSFER_SIZE as usize];
+            let mut to_copy = min(
+                data.len() as i32 - request.offset as i32,
+                request.length as i32,
+            );
+            to_copy = max(to_copy, 0); // Ensure to_copy is not negative
+            let mut to_pad = min(
+                0,
+                request.length as i32 - (data.len() as i32 - request.offset as i32),
+            );
+            to_pad = max(to_pad, 0); // Ensure to_pad is not negative
+
+            if to_copy > 0 {
+                buffer[..to_copy as usize].copy_from_slice(
+                    &data[request.offset as usize..(request.offset as usize + to_copy as usize)],
+                );
+            }
+            if to_pad > 0 {
+                buffer[to_copy as usize..(to_copy + to_pad) as usize].fill(0);
+            }
+
+            let response = pldm_packet::request_fw_data::RequestFirmwareDataResponse::new(
+                request.hdr.instance_id(),
+                PldmBaseCompletionCode::Success as u8,
+                &buffer[..request.length as usize],
+            );
+            send_request_helper(&ctx.socket, &response)
+        } else {
+            error!("No image data found, make sure the image is decoded correctly");
+            Err(())
+        }
     }
 
-    fn on_transfer_fail(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        // TODO
+    fn on_transfer_complete_request(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket>,
+        request: pldm_packet::transfer_complete::TransferCompleteRequest,
+    ) -> Result<(), ()> {
+        let response = pldm_packet::transfer_complete::TransferCompleteResponse::new(
+            request.hdr.instance_id(),
+            PldmBaseCompletionCode::Success as u8,
+        );
+        send_request_helper(&ctx.socket, &response)?;
+
+        if request.tranfer_result == TransferResult::TransferSuccess as u8 {
+            info!("Transfer complete success");
+            ctx.event_queue
+                .send(PldmEvents::Update(Events::TransferCompletePass))
+                .map_err(|_| ())?;
+        } else {
+            error!("Transfer complete failed");
+            ctx.event_queue
+                .send(PldmEvents::Update(Events::TransferCompleteFail))
+                .map_err(|_| ())?;
+        }
+        Ok(())
+    }
+    fn on_transfer_fail(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+        let request =
+            pldm_packet::request_cancel::CancelUpdateComponentRequest::new(0, PldmMsgType::Request);
+        send_request_helper(&ctx.socket, &request)?;
         Ok(())
     }
 
     fn on_transfer_success(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        // TODO
+        // No action, wait for VerifyComplete from device
         Ok(())
     }
 
@@ -656,6 +742,12 @@ pub fn process_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
             }
             FwUpdateCmd::UpdateComponent => {
                 packet_to_event(&header, packet, true, Events::UpdateComponentResponse)
+            }
+            FwUpdateCmd::RequestFirmwareData => {
+                packet_to_event(&header, packet, false, Events::RequestFirmwareData)
+            }
+            FwUpdateCmd::TransferComplete => {
+                packet_to_event(&header, packet, false, Events::TransferComplete)
             }
             _ => {
                 debug!("Unknown firmware update command");
@@ -753,7 +845,8 @@ impl<T: StateMachineActions, S: PldmSocket> StateMachineContext for Context<T, S
         on_pass_component_response(response : pldm_packet::pass_component::PassComponentTableResponse) -> Result<(),()>,
         on_start_download() -> Result<(),()>,
         on_update_component_response(response : pldm_packet::update_component::UpdateComponentResponse) -> Result<(),()>,
-        on_request_firmware() -> Result<(),()>,
+        on_request_firmware(request: pldm_packet::request_fw_data::RequestFirmwareDataRequest) -> Result<(),()>,
+        on_transfer_complete_request(request: pldm_packet::transfer_complete::TransferCompleteRequest) -> Result<(),()>,
         on_transfer_fail() -> Result<(),()>,
         on_transfer_success() -> Result<(),()>,
         on_get_status() -> Result<(),()>,

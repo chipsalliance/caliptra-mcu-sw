@@ -193,7 +193,10 @@ fn test_parse_valid_manifest_all_fields_present() {
 
     // Verify component_image_information (First component)
     let component_1 = &parsed_manifest.component_image_information[0];
-    assert_eq!(component_1.image_location, "tests/manifests/img_128.bin");
+    assert_eq!(
+        component_1.image_location.as_ref().unwrap(),
+        "tests/manifests/img_128.bin"
+    );
     assert_eq!(component_1.classification, 0x0001);
     assert_eq!(component_1.identifier, 0x0010);
     assert_eq!(component_1.comparison_stamp.unwrap(), 12345);
@@ -208,7 +211,10 @@ fn test_parse_valid_manifest_all_fields_present() {
 
     // Verify component_image_information (Second component)
     let component_2 = &parsed_manifest.component_image_information[1];
-    assert_eq!(component_2.image_location, "tests/manifests/img_512.bin");
+    assert_eq!(
+        component_2.image_location.as_ref().unwrap(),
+        "tests/manifests/img_512.bin"
+    );
     assert_eq!(component_2.classification, 0xFFFF);
     assert_eq!(component_2.identifier, 0x0020);
     assert_eq!(component_2.comparison_stamp.unwrap(), 54321);
@@ -361,7 +367,10 @@ fn test_parse_valid_manifest_no_downstream_one_component() {
     // Verify component_image_information (First component)
     assert_eq!(parsed_manifest.component_image_information.len(), 1);
     let component_1 = &parsed_manifest.component_image_information[0];
-    assert_eq!(component_1.image_location, "tests/manifests/img_128.bin");
+    assert_eq!(
+        component_1.image_location.as_ref().unwrap(),
+        "tests/manifests/img_128.bin"
+    );
     assert_eq!(component_1.classification, 0x0001);
     assert_eq!(component_1.identifier, 0x0010);
     assert_eq!(component_1.comparison_stamp.unwrap(), 12345);

@@ -64,7 +64,7 @@ pub struct DownstreamDeviceIdRecord {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ComponentImageInformation {
-    pub image_location: String,
+    pub image_location: Option<String>,
     pub classification: u16,
     pub identifier: u16,
     pub comparison_stamp: Option<u32>, // Optional uint32 based on ComponentOptions
@@ -77,6 +77,8 @@ pub struct ComponentImageInformation {
     pub offset: u32,  // Offset to the start of the image
     #[serde(skip)]
     pub size: u32,    // Size of the image
+    #[serde(skip)]
+    pub image_data: Option<Vec<u8>>, // Optional image data, to be filled when package is decoded
 }
 
 #[derive(Debug, PartialEq)]
@@ -462,10 +464,22 @@ impl FirmwareManifest {
 
         // For each component, read the image data from the file and append to the image_data buffer
         for component in &self.component_image_information {
-            let mut file = File::open(&component.image_location)?;
-            let mut data = Vec::new();
-            file.read_to_end(&mut data)?;
-            image_data.append(&mut data);
+            if let Some(location) = &component.image_location {
+                // Read the image data from the file
+                let mut file = File::open(location)?;
+                let mut data = Vec::new();
+                file.read_to_end(&mut data)?;
+                image_data.append(&mut data);
+            } else if let Some(data) = &component.image_data {
+                // If image_data is provided, use it directly
+                let mut data = data.clone();
+                image_data.append(&mut data);
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "No image data or location provided for component",
+                ));
+            }
         }
 
         // Calculate the checksum of the package header
@@ -501,24 +515,27 @@ impl FirmwareManifest {
 
     pub fn decode_firmware_package(
         fw_package_file_path: &String,
-        output_dir_path: &String,
+        output_dir_path: Option<&String>,
     ) -> io::Result<Self> {
-        match fs::metadata(output_dir_path) {
-            Ok(metadata) => {
-                if !metadata.is_dir() {
+        if let Some(output_dir_path) = output_dir_path {
+            match fs::metadata(output_dir_path) {
+                Ok(metadata) => {
+                    if !metadata.is_dir() {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!("{} is not a directory", output_dir_path),
+                        ));
+                    }
+                }
+                Err(_) => {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
-                        format!("{} is not a directory", output_dir_path),
+                        format!("{} does not exist", output_dir_path),
                     ));
                 }
             }
-            Err(_) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("{} does not exist", output_dir_path),
-                ));
-            }
         }
+
         let bin_file = File::open(fw_package_file_path)?;
         let mut reader = BufReader::new(bin_file);
 
@@ -603,12 +620,16 @@ impl FirmwareManifest {
             let mut image_data = vec![0u8; size];
             // Read the image data from the reader
             reader.read_exact(&mut image_data)?;
-            // Write the image data to a file, the filename has a prefix of img_xx where xx is the component identifier
-            let file_path = format!("{}/img_{:02}.bin", output_dir_path, component_idx);
-            let mut file = File::create(&file_path)?;
-            file.write_all(&image_data)?;
-            // Update the image location of the component to the filename
-            component.image_location = file_path;
+            if output_dir_path.is_some() {
+                // Write the image data to a file, the filename has a prefix of img_xx where xx is the component identifier
+                let file_path =
+                    format!("{}/img_{:02}.bin", output_dir_path.unwrap(), component_idx);
+                let mut file = File::create(&file_path)?;
+                file.write_all(&image_data)?;
+                // Update the image location of the component to the filename
+                component.image_location = Some(file_path);
+            }
+            component.image_data = Some(image_data);
         }
 
         let manifest = FirmwareManifest {
@@ -618,10 +639,12 @@ impl FirmwareManifest {
             component_image_information,
         };
 
-        let manifest_data = toml::to_string(&manifest).expect("Failed to encode TOML");
-        let file_path = format!("{}/manifest.toml", output_dir_path);
-        let mut file = File::create(&file_path)?;
-        file.write_all(manifest_data.as_bytes())?;
+        if let Some(output_dir_path) = output_dir_path {
+            let manifest_data = toml::to_string(&manifest).expect("Failed to encode TOML");
+            let file_path = format!("{}/manifest.toml", output_dir_path);
+            let mut file = File::create(&file_path)?;
+            file.write_all(manifest_data.as_bytes())?;
+        }
 
         Ok(manifest)
     }
@@ -1396,8 +1419,12 @@ impl ComponentImageInformation {
         writer.write_all(&offset.to_le_bytes())?;
 
         // Encode size (u32)
-        let metadata = std::fs::metadata(&self.image_location)?;
-        let file_size = metadata.len() as u32;
+        let mut file_size = 0u32;
+        if let Some(image_location) = &self.image_location {
+            file_size = image_location.len() as u32;
+        } else if let Some(image_data) = &self.image_data {
+            file_size = image_data.len() as u32;
+        }
         writer.write_all(&file_size.to_le_bytes())?;
 
         // Encode version_string_type (u8)
@@ -1506,10 +1533,8 @@ impl ComponentImageInformation {
             None
         };
 
-        let image_location = String::from("");
-
         Ok(ComponentImageInformation {
-            image_location,
+            image_location: None,
             classification,
             identifier,
             comparison_stamp,
@@ -1520,6 +1545,7 @@ impl ComponentImageInformation {
             opaque_data,
             offset,
             size,
+            image_data: None,
         })
     }
 
@@ -1552,12 +1578,16 @@ impl ComponentImageInformation {
     }
 
     fn verify(&self) -> Result<(), String> {
-        // Verify image_location exists
-        if fs::metadata(&self.image_location).is_err() {
-            return Err(format!(
-                "Component image file does not exist: {}",
-                self.image_location
-            ));
+        if let Some(image_location) = &self.image_location {
+            // Verify image_location length is less than 255
+            if fs::metadata(image_location).is_err() {
+                return Err(format!(
+                    "Component image file does not exist: {}",
+                    image_location
+                ));
+            }
+        } else if self.image_data.is_none() {
+            return Err("Component image location or image data must be provided.".to_string());
         }
         // Verify version_string length is less than 255
         if let Some(ref version_string) = self.version_string {

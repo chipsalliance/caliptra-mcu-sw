@@ -13,6 +13,8 @@ pldm-fw-pkg.workspace = true
 smlang.workspace = true
 
 [dev-dependencies]
+chrono.workspace = true
 simple_logger.workspace = true
+uuid.workspace = true
 
 
