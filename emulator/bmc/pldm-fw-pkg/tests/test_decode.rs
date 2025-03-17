@@ -1,11 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use chrono::Utc;
-/*++
-
-Licensed under the Apache-2.0 license.
-
---*/
 use pldm_fw_pkg::{
     manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
