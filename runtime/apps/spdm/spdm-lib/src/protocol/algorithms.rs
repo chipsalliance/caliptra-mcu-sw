@@ -21,7 +21,7 @@ where
             for &priority in priority_table {
                 let priority_spec: u8 = priority.into();
                 if common & priority_spec != 0 {
-                    return common & (!common + 1);
+                    return 1 << (common & priority_spec).trailing_zeros();
                 }
             }
         } else {
