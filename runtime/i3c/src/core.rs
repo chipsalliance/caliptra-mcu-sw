@@ -189,7 +189,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // enable the PHY connection to the bus
         self.registers
             .i3c_base_hc_control
-            .modify(ModeSelector::SET + BusEnable::SET);
+            .modify(ModeSelector::SET + BusEnable::CLEAR); // clear is enabled, set is suspended
     }
 
     pub fn enable_interrupts(&self) {
