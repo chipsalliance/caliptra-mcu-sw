@@ -1579,7 +1579,7 @@ impl ComponentImageInformation {
 
     fn verify(&self) -> Result<(), String> {
         if let Some(image_location) = &self.image_location {
-            // Verify image_location length is less than 255
+            // Verify file exists in the image location
             if fs::metadata(image_location).is_err() {
                 return Err(format!(
                     "Component image file does not exist: {}",

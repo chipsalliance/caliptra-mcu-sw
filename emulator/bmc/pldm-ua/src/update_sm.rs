@@ -590,7 +590,7 @@ pub trait StateMachineActions {
             );
             to_copy = max(to_copy, 0); // Ensure to_copy is not negative
             let mut to_pad = min(
-                0,
+                request.length as i32,
                 request.length as i32 - (data.len() as i32 - request.offset as i32),
             );
             to_pad = max(to_pad, 0); // Ensure to_pad is not negative
