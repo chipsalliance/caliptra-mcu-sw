@@ -11,6 +11,7 @@ mod flash_image;
 mod format;
 mod fpga;
 mod header;
+mod pldm_fw_pkg;
 mod precheckin;
 mod registers;
 mod rom;
@@ -57,6 +58,10 @@ enum Commands {
 
         #[arg(long)]
         vendor_pk_hash: Option<String>,
+
+        /// Path to the PLDM Firmware package to be used in streaming boot
+        #[arg(long)]
+        streaming_boot: Option<PathBuf>,
     },
     /// Build Runtime image
     RuntimeBuild {
@@ -115,6 +120,11 @@ enum Commands {
     Deps,
     /// Build and install the FPGA kernel modules for uio and the ROM backdoors
     FpgaInstallKernelModules,
+    /// Utility to create and parse PLDM firmware packages
+    PldmFirmware {
+        #[command(subcommand)]
+        subcommand: PldmFirmwareCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -146,6 +156,30 @@ enum FlashImageCommands {
         /// Path to the flash image file
         #[arg(value_name = "FILE")]
         file: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum PldmFirmwareCommands {
+    /// Encode a manifest TOML file to a firmware package
+    Create {
+        /// Path to the manifest TOML file
+        #[arg(short, long, value_name = "MANIFEST", required = true)]
+        manifest: String,
+
+        /// Output file for the firmware package
+        #[arg(short, long, value_name = "FILE", required = true)]
+        file: String,
+    },
+    /// Decode a firmware package to a manifest and components
+    Decode {
+        /// Path to the firmware package file
+        #[arg(short, long, value_name = "PACKAGE", required = true)]
+        package: String,
+
+        /// Output directory for manifest and components
+        #[arg(short, long, value_name = "DIRECTORY", required = true)]
+        dir: String,
     },
 }
 
@@ -190,6 +224,10 @@ fn main() {
         } => registers::autogen(*check, files, addrmap),
         Commands::Deps => deps::check(),
         Commands::FpgaInstallKernelModules => fpga::fpga_install_kernel_modules(),
+        Commands::PldmFirmware { subcommand } => match subcommand {
+            PldmFirmwareCommands::Create { manifest, file } => pldm_fw_pkg::create(manifest, file),
+            PldmFirmwareCommands::Decode { package, dir } => pldm_fw_pkg::decode(package, dir),
+        },
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {}", e);

@@ -42,6 +42,7 @@ tempfile.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
 pldm-common.workspace = true
+pldm-fw-pkg.workspace = true
 pldm-ua.workspace = true
 
 [features]

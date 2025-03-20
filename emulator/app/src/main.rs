@@ -38,6 +38,8 @@ use emulator_registers_generated::soc::SocPeripheral;
 use gdb::gdb_state;
 use gdb::gdb_target::GdbTarget;
 use mctp_transport::MctpTransport;
+use pldm_fw_pkg::FirmwareManifest;
+use pldm_ua::daemon::PldmDaemon;
 use pldm_ua::transport::{EndpointId, PldmTransport};
 use std::cell::RefCell;
 use std::fs::File;
@@ -112,6 +114,10 @@ struct Emulator {
 
     #[arg(long)]
     owner_pk_hash: Option<String>,
+
+    /// Path to the streaming boot PLDM firmware package
+    #[arg(long)]
+    streaming_boot: Option<PathBuf>,
 }
 
 //const EXPECTED_CALIPTRA_BOOT_TIME_IN_CYCLES: u64 = 20_000_000; // 20 million cycles
@@ -407,6 +413,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         i3c_error_irq,
         i3c_notif_irq,
     );
+    let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
 
     if cfg!(feature = "test-mctp-ctrl-cmds") {
         i3c_controller.start();
@@ -612,6 +619,40 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         bmc.push_recovery_image(mcu_firmware);
         println!("Active mode enabled with 3 recovery images");
         // TODO: set caliptra SoC registers if active mode
+    }
+
+    if cli.streaming_boot.is_some() {
+        let pldm_fw_pkg_path = cli.streaming_boot.as_ref().unwrap();
+        println!(
+            "Starting streaming boot using PLDM package {}",
+            pldm_fw_pkg_path.display()
+        );
+
+        // Parse PLDM Firmware Package
+        let pldm_fw_pkg = FirmwareManifest::decode_firmware_package(
+            &pldm_fw_pkg_path.to_str().unwrap().to_string(),
+            None,
+        );
+        if pldm_fw_pkg.is_err() {
+            println!("Failed to parse PLDM firmware package");
+            exit(-1);
+        }
+
+        // Start the PLDM Daemon
+        i3c_controller.start();
+        let pldm_transport = MctpTransport::new(cli.i3c_port.unwrap(), i3c_dynamic_address);
+        let pldm_socket = pldm_transport
+            .create_socket(EndpointId(0), EndpointId(1))
+            .unwrap();
+        let _ = PldmDaemon::run(
+            pldm_socket,
+            pldm_ua::daemon::Options {
+                pldm_fw_pkg: Some(pldm_fw_pkg.unwrap()),
+                discovery_sm_actions: pldm_ua::discovery_sm::DefaultActions {},
+                update_sm_actions: pldm_ua::update_sm::DefaultActions {},
+                fd_tid: 0x01,
+            },
+        );
     }
 
     // Check if Optional GDB Port is passed

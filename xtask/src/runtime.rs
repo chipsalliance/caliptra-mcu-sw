@@ -17,6 +17,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         soc_manifest,
         active_mode,
         vendor_pk_hash,
+        streaming_boot,
     } = args
     else {
         panic!("Must call runtime_run with Commands::Runtime");
@@ -81,6 +82,17 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     }
     if active_mode {
         cargo_run_args.extend(["--active-mode"]);
+    }
+    if streaming_boot.as_ref().is_some() {
+        cargo_run_args.extend([
+            "--streaming-boot",
+            streaming_boot.as_ref().unwrap().to_str().unwrap(),
+        ]);
+
+        // Streaming boot requires i3c port to be set
+        if i3c_port.is_none() {
+            cargo_run_args.extend(["--i3c-port", "65534"]);
+        }
     }
     Command::new("cargo")
         .args(cargo_run_args)
