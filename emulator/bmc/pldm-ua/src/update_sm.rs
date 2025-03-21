@@ -1,30 +1,36 @@
 // Licensed under the Apache-2.0 license
 
 use crate::events::PldmEvents;
-use crate::transport::MAX_PLDM_PAYLOAD_SIZE;
-use crate::transport::{PldmSocket, RxPacket};
+use crate::timer::Timer;
+use crate::transport::{PldmSocket, RxPacket, MAX_PLDM_PAYLOAD_SIZE};
 use log::{debug, error, info};
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::firmware_update as pldm_packet;
+use pldm_common::message::firmware_update::activate_fw::SelfContainedActivationRequest;
 use pldm_common::message::firmware_update::transfer_complete::TransferResult;
+use pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use pldm_common::protocol::base::{
     InstanceId, PldmBaseCompletionCode, PldmMsgHeader, PldmMsgType, PldmSupportedType,
     TransferRespFlag,
 };
 use pldm_common::protocol::firmware_update::{
     ComponentClassification, ComponentCompatibilityResponse, ComponentParameterEntry,
-    ComponentResponseCode, FwUpdateCmd, FwUpdateCompletionCode, PldmFirmwareString,
-    UpdateOptionFlags, VersionStringType, PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN,
+    ComponentResponseCode, FirmwareDeviceState, FwUpdateCmd, FwUpdateCompletionCode,
+    PldmFirmwareString, UpdateOptionFlags, VersionStringType, PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN,
 };
 use pldm_fw_pkg::manifest::{ComponentImageInformation, FirmwareDeviceIdRecord};
 use pldm_fw_pkg::FirmwareManifest;
 use smlang::statemachine;
 use std::cmp::{max, min};
 use std::sync::mpsc::Sender;
+use std::time::{Duration, Instant};
 
 const MAX_TRANSFER_SIZE: u32 = 64; // Maximum bytes to transfer in one request
 const BASELINE_TRANSFER_SIZE: u32 = 32; // Minimum bytes to transfer in one request
 const MAX_OUTSTANDING_TRANSFER_REQ: u8 = 1;
+const GET_STATUS_ACTIVATION_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const SELF_ACTIVATION_FIELD_BIT: u16 = 0x0001;
+const SELF_ACTIVATION_FIELD_MASK: u16 = 0x0001;
 
 // Define the state machine
 statemachine! {
@@ -46,6 +52,8 @@ statemachine! {
         ReadyXfer + UpdateComponentResponse(pldm_packet::update_component::UpdateComponentResponse) / on_update_component_response = ReadyXfer,
         ReadyXfer + StartDownload / on_start_download = Download,
         ReadyXfer + CancelUpdateComponent  / on_stop_update = Idle,
+        ReadyXfer + ActivateFirmware / on_activate_firmware = Activate,
+
 
         Download + RequestFirmwareData(pldm_packet::request_fw_data::RequestFirmwareDataRequest) / on_request_firmware = Download,
         Download + TransferComplete(pldm_packet::transfer_complete::TransferCompleteRequest) / on_transfer_complete_request = Download,
@@ -53,30 +61,31 @@ statemachine! {
         Download + TransferCompletePass / on_transfer_success = Verify,
         Download + CancelUpdate  / on_stop_update = Idle,
 
-        Verify + GetStatus / on_get_status = Verify,
+        Verify + VerifyComplete(pldm_packet::verify_complete::VerifyCompleteRequest) / on_verify_complete_request = Verify,
         Verify + VerifyCompletePass / on_verify_success = Apply,
         Verify + VerifyCompleteFail / on_verify_fail = Idle,
         Verify + CancelUpdate  / on_stop_update = Idle,
 
-        Apply + GetStatus / on_get_status = Apply,
+        Apply + ApplyComplete(pldm_packet::apply_complete::ApplyCompleteRequest) / on_apply_complete_request = Apply,
         Apply + ApplyCompleteFail / on_apply_fail = Idle,
-        Apply + ApplyCompletePass / on_apply_success = Activate,
+        Apply + ApplyCompletePass / on_apply_success = ReadyXfer,
         Apply + CancelUpdateComponent  / on_stop_update = Idle,
 
+        Activate + ActivateFirmwareResponse(pldm_packet::activate_fw::ActivateFirmwareResponse) / on_activate_firmware_response = Activate,
         Activate + GetStatus / on_get_status = Activate,
-        Activate + GetMetaData / on_get_metadata = Activate,
-        Activate + ActivateFirmware / on_activate_firmware = Idle,
+        Activate + GetStatusResponse(pldm_packet::get_status::GetStatusResponse) / on_get_status_response = Activate,
         Activate + CancelUpdate  / on_stop_update = Idle,
 
+        _ + CancelUpdateComponentResponse(pldm_packet::request_cancel::CancelUpdateComponentResponse) / on_cancel_update_component_response = Idle,
         _ + StopUpdate / on_stop_update = Done
     }
 }
 
-fn send_request_helper<S: PldmSocket, P: PldmCodec>(socket: &S, message: &P) -> Result<(), ()> {
+fn send_message_helper<S: PldmSocket, P: PldmCodec>(socket: &S, message: &P) -> Result<(), ()> {
     let mut buffer = [0u8; MAX_PLDM_PAYLOAD_SIZE];
     let sz = message.encode(&mut buffer).map_err(|_| ())?;
     socket.send(&buffer[..sz]).map_err(|_| ())?;
-    debug!("Sent request: {:?}", std::any::type_name::<P>());
+    debug!("Sent message: {:?}", std::any::type_name::<P>());
     Ok(())
 }
 
@@ -157,7 +166,7 @@ pub trait StateMachineActions {
 
     // Actions
     fn on_start_update(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        send_request_helper(
+        send_message_helper(
             &ctx.socket,
             &pldm_packet::query_devid::QueryDeviceIdentifiersRequest::new(
                 ctx.instance_id,
@@ -170,6 +179,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket>,
         response: pldm_packet::request_update::RequestUpdateResponse,
     ) -> Result<(), ()> {
+        ctx.instance_id += 1; // Response received, increment instance id
         if response.fixed.completion_code == PldmBaseCompletionCode::Success as u8 {
             info!("RequestUpdate response success");
             ctx.event_queue
@@ -244,15 +254,16 @@ pub trait StateMachineActions {
                 },
             },
         );
-        send_request_helper(&ctx.socket, &request)
+        send_message_helper(&ctx.socket, &request)
     }
 
     fn on_next_component(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
         ctx.current_component_index = self.find_next_component_to_update(ctx);
         if ctx.current_component_index.is_none() {
-            error!("No component to update");
-            // TODO, send Activate
-            return Err(());
+            info!("No more component to update");
+            ctx.event_queue
+                .send(PldmEvents::Update(Events::ActivateFirmware))
+                .map_err(|_| ())?;
         } else {
             ctx.event_queue
                 .send(PldmEvents::Update(Events::SendUpdateComponent))
@@ -269,13 +280,14 @@ pub trait StateMachineActions {
     }
 
     fn find_next_component_to_update(&self, ctx: &InnerContext<impl PldmSocket>) -> Option<usize> {
+        let start_idx = if let Some(index) = ctx.current_component_index {
+            index + 1
+        } else {
+            0
+        };
         // Find the next component to update
-        for (i, item) in ctx.component_response_codes.iter().enumerate() {
-            if *item == ComponentResponseCode::CompCanBeUpdated {
-                return Some(i);
-            }
-        }
-        None
+        (start_idx..ctx.components.len())
+            .find(|&i| ctx.component_response_codes[i] == ComponentResponseCode::CompCanBeUpdated)
     }
 
     fn on_send_update_component(
@@ -312,7 +324,7 @@ pub trait StateMachineActions {
                 },
             },
         );
-        send_request_helper(&ctx.socket, &request)
+        send_message_helper(&ctx.socket, &request)
     }
 
     fn on_update_component_response(
@@ -320,6 +332,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket>,
         response: pldm_packet::update_component::UpdateComponentResponse,
     ) -> Result<(), ()> {
+        ctx.instance_id += 1; // Response received, increment instance id
         if response.completion_code == PldmBaseCompletionCode::Success as u8
             && response.comp_compatibility_resp
                 == ComponentCompatibilityResponse::CompCanBeUpdated as u8
@@ -332,10 +345,6 @@ pub trait StateMachineActions {
             Ok(())
         } else {
             error!("UpdateComponent response failed, continuing to next component");
-            // Mark the component as can not be updated
-            if let Some(index) = ctx.current_component_index {
-                ctx.component_response_codes[index] = ComponentResponseCode::CompNotSupported;
-            }
             self.on_next_component(ctx)
         }
     }
@@ -369,7 +378,7 @@ pub trait StateMachineActions {
         &mut self,
         ctx: &mut InnerContext<impl PldmSocket>,
     ) -> Result<(), ()> {
-        send_request_helper(
+        send_message_helper(
             &ctx.socket,
             &pldm_packet::get_fw_params::GetFirmwareParametersRequest::new(
                 ctx.instance_id,
@@ -400,7 +409,7 @@ pub trait StateMachineActions {
                         str_data: [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN],
                     },
                 };
-            send_request_helper(
+            send_message_helper(
                 &ctx.socket,
                 &pldm_packet::request_update::RequestUpdateRequest::new(
                     ctx.instance_id,
@@ -480,6 +489,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket>,
         response: pldm_packet::get_fw_params::GetFirmwareParametersResponse,
     ) -> Result<(), ()> {
+        ctx.instance_id += 1; // Response received, increment instance id
         for i in 0..response.parms.params_fixed.comp_count {
             if let Ok(comp_idx) = Self::find_component_in_package(
                 &ctx.pldm_fw_pkg.component_image_information,
@@ -529,7 +539,8 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket>,
         response: pldm_packet::pass_component::PassComponentTableResponse,
     ) -> Result<(), ()> {
-        // If unsuccessful, stop the update
+        ctx.instance_id += 1; // Response received, increment instance id
+                              // If unsuccessful, stop the update
         if response.completion_code != PldmBaseCompletionCode::Success as u8 {
             error!("PassComponent response failed");
             ctx.event_queue
@@ -567,7 +578,7 @@ pub trait StateMachineActions {
                 PldmBaseCompletionCode::InvalidLength as u8,
                 &[],
             );
-            return send_request_helper(&ctx.socket, &response);
+            return send_message_helper(&ctx.socket, &response);
         }
 
         let component = &ctx.components[ctx.current_component_index.unwrap()];
@@ -581,7 +592,7 @@ pub trait StateMachineActions {
                     FwUpdateCompletionCode::DataOutOfRange as u8,
                     &[],
                 );
-                return send_request_helper(&ctx.socket, &response);
+                return send_message_helper(&ctx.socket, &response);
             }
             let mut buffer = [0u8; MAX_TRANSFER_SIZE as usize];
             let mut to_copy = min(
@@ -609,7 +620,7 @@ pub trait StateMachineActions {
                 PldmBaseCompletionCode::Success as u8,
                 &buffer[..request.length as usize],
             );
-            send_request_helper(&ctx.socket, &response)
+            send_message_helper(&ctx.socket, &response)
         } else {
             error!("No image data found, make sure the image is decoded correctly");
             Err(())
@@ -625,7 +636,7 @@ pub trait StateMachineActions {
             request.hdr.instance_id(),
             PldmBaseCompletionCode::Success as u8,
         );
-        send_request_helper(&ctx.socket, &response)?;
+        send_message_helper(&ctx.socket, &response)?;
 
         if request.tranfer_result == TransferResult::TransferSuccess as u8 {
             info!("Transfer complete success");
@@ -641,9 +652,11 @@ pub trait StateMachineActions {
         Ok(())
     }
     fn on_transfer_fail(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        let request =
-            pldm_packet::request_cancel::CancelUpdateComponentRequest::new(0, PldmMsgType::Request);
-        send_request_helper(&ctx.socket, &request)?;
+        let request = pldm_packet::request_cancel::CancelUpdateComponentRequest::new(
+            ctx.instance_id,
+            PldmMsgType::Request,
+        );
+        send_message_helper(&ctx.socket, &request)?;
         Ok(())
     }
 
@@ -652,44 +665,265 @@ pub trait StateMachineActions {
         Ok(())
     }
 
-    fn on_get_status(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        // TODO
+    fn on_verify_complete_request(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket>,
+        request: pldm_packet::verify_complete::VerifyCompleteRequest,
+    ) -> Result<(), ()> {
+        let response = pldm_packet::verify_complete::VerifyCompleteResponse::new(
+            request.hdr.instance_id(),
+            PldmBaseCompletionCode::Success as u8,
+        );
+        send_message_helper(&ctx.socket, &response)?;
+
+        if request.verify_result == VerifyResult::VerifySuccess as u8 {
+            ctx.event_queue
+                .send(PldmEvents::Update(Events::VerifyCompletePass))
+                .map_err(|_| ())?;
+        } else {
+            ctx.event_queue
+                .send(PldmEvents::Update(Events::VerifyCompleteFail))
+                .map_err(|_| ())?;
+        }
         Ok(())
+    }
+
+    fn on_get_status(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+        if ctx.activation_time.is_some() && (Instant::now() < ctx.activation_time.unwrap()) {
+            // If the activation time is not yet reached, continue scheduling another get status request, this will be automatically cancelled
+            // when the expected status is received or a activation timeout occurs
+            ctx.timer.schedule(
+                GET_STATUS_ACTIVATION_POLL_INTERVAL,
+                ctx.event_queue.clone(),
+                |event_queue| Self::poll_activation_status(event_queue),
+            );
+        }
+
+        // Send get status request
+        let request =
+            pldm_packet::get_status::GetStatusRequest::new(ctx.instance_id, PldmMsgType::Request);
+        send_message_helper(&ctx.socket, &request)
+    }
+
+    fn on_get_status_response(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket>,
+        response: pldm_packet::get_status::GetStatusResponse,
+    ) -> Result<(), ()> {
+        ctx.instance_id += 1; // Response received, increment instance id
+        if response.completion_code == PldmBaseCompletionCode::Success as u8 {
+            info!("GetStatus response success");
+
+            if ctx.activation_time.is_some() {
+                // Currently waiting for activation
+                if response.current_state == FirmwareDeviceState::Idle as u8 {
+                    // Activation is done
+                    info!("Activation is done");
+                    ctx.activation_time = None;
+                    ctx.timer.cancel();
+                    ctx.event_queue
+                        .send(PldmEvents::Update(Events::StopUpdate))
+                        .map_err(|_| ())?;
+                } else {
+                    // Still waiting for activation
+                    info!(
+                        "Still waiting for activation. Current state: {:?}",
+                        response.current_state
+                    );
+                    let current_time = Instant::now();
+                    if current_time > ctx.activation_time.unwrap() {
+                        // Activation timeout
+                        error!("Activation timer timed out");
+                        ctx.event_queue
+                            .send(PldmEvents::Update(Events::StopUpdate))
+                            .map_err(|_| ())?;
+                        ctx.timer.cancel();
+                    }
+                }
+            } else {
+                info!(
+                    "Getstatus response current state: {:?}",
+                    response.current_state
+                );
+            }
+            Ok(())
+        } else {
+            error!("GetStatus response failed");
+            Err(())
+        }
     }
 
     fn on_verify_success(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        // TODO
+        info!("Verify success");
         Ok(())
     }
 
-    fn on_verify_fail(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        // TODO
+    fn on_verify_fail(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+        error!("Verify failed");
+        let request = pldm_packet::request_cancel::CancelUpdateComponentRequest::new(
+            ctx.instance_id,
+            PldmMsgType::Request,
+        );
+        send_message_helper(&ctx.socket, &request)?;
         Ok(())
     }
 
-    fn on_apply_success(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        // TODO
+    fn on_apply_complete_request(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket>,
+        request: pldm_packet::apply_complete::ApplyCompleteRequest,
+    ) -> Result<(), ()> {
+        let response = pldm_packet::apply_complete::ApplyCompleteResponse::new(
+            request.hdr.instance_id(),
+            PldmBaseCompletionCode::Success as u8,
+        );
+        send_message_helper(&ctx.socket, &response)?;
+
+        let apply_result = pldm_packet::apply_complete::ApplyResult::try_from(request.apply_result)
+            .map_err(|_| {
+                error!("Unsupported apply result");
+            })?;
+
+        match apply_result {
+            pldm_packet::apply_complete::ApplyResult::ApplySuccess => {
+                ctx.event_queue
+                    .send(PldmEvents::Update(Events::ApplyCompletePass))
+                    .map_err(|_| ())?;
+            }
+            pldm_packet::apply_complete::ApplyResult::ApplySuccessWithActivationMethod => {
+                // Update the activation method
+                ctx.components[ctx.current_component_index.unwrap()].requested_activation_method =
+                    request.comp_activation_methods_modification;
+                ctx.event_queue
+                    .send(PldmEvents::Update(Events::ApplyCompletePass))
+                    .map_err(|_| ())?;
+            }
+            pldm_packet::apply_complete::ApplyResult::ApplyFailureMemoryIssue => {
+                ctx.event_queue
+                    .send(PldmEvents::Update(Events::ApplyCompleteFail))
+                    .map_err(|_| ())?;
+            }
+            pldm_packet::apply_complete::ApplyResult::VendorDefined => {
+                error!("Vendor defined apply result, not supported");
+                ctx.event_queue
+                    .send(PldmEvents::Update(Events::ApplyCompleteFail))
+                    .map_err(|_| ())?;
+            }
+        }
         Ok(())
     }
 
-    fn on_apply_fail(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        // TODO
+    fn on_apply_success(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+        info!("Apply success");
+        self.on_next_component(ctx)
+    }
+
+    fn on_apply_fail(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+        error!("Apply failed");
+        let request =
+            pldm_packet::request_cancel::CancelUpdateComponentRequest::new(0, PldmMsgType::Request);
+        send_message_helper(&ctx.socket, &request)?;
         Ok(())
     }
 
-    fn on_activate_firmware(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        // TODO
+    fn on_activate_firmware(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+        let mut is_activation_needed = false;
+        for (i, item) in ctx.component_response_codes.iter().enumerate() {
+            if *item != ComponentResponseCode::CompCanBeUpdated {
+                continue;
+            }
+            if (ctx.components[i].requested_activation_method >> SELF_ACTIVATION_FIELD_BIT)
+                & SELF_ACTIVATION_FIELD_MASK
+                == SELF_ACTIVATION_FIELD_BIT
+            {
+                // Option for self-activation is set
+                is_activation_needed = true;
+                break;
+            }
+        }
+        if is_activation_needed {
+            let request = pldm_packet::activate_fw::ActivateFirmwareRequest::new(
+                ctx.instance_id,
+                PldmMsgType::Request,
+                SelfContainedActivationRequest::ActivateSelfContainedComponents,
+            );
+            send_message_helper(&ctx.socket, &request)?;
+        } else {
+            info!("No activation needed");
+            let request = pldm_packet::activate_fw::ActivateFirmwareRequest::new(
+                ctx.instance_id,
+                PldmMsgType::Request,
+                SelfContainedActivationRequest::NotActivateSelfContainedComponents,
+            );
+            send_message_helper(&ctx.socket, &request)?;
+
+            ctx.event_queue
+                .send(PldmEvents::Update(Events::StopUpdate))
+                .map_err(|_| ())?;
+        }
         Ok(())
     }
 
-    fn on_get_metadata(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        // TODO
-        Ok(())
+    fn poll_activation_status(event_queue: Sender<PldmEvents>) {
+        event_queue
+            .send(PldmEvents::Update(Events::GetStatus))
+            .unwrap();
+    }
+
+    fn on_activate_firmware_response(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket>,
+        response: pldm_packet::activate_fw::ActivateFirmwareResponse,
+    ) -> Result<(), ()> {
+        ctx.instance_id += 1; // Response received, increment instance id
+        if response.completion_code == PldmBaseCompletionCode::Success as u8 {
+            info!("ActivateFirmware response success");
+
+            if response.estimated_time_activation > 0 {
+                // Record the expected activation time
+                ctx.activation_time = Some(
+                    Instant::now() + Duration::from_secs(response.estimated_time_activation as u64),
+                );
+
+                ctx.timer.schedule(
+                    GET_STATUS_ACTIVATION_POLL_INTERVAL,
+                    ctx.event_queue.clone(),
+                    |event_queue| Self::poll_activation_status(event_queue),
+                );
+            } else {
+                info!("ActivateFirmware response success, no activation needed");
+                ctx.event_queue
+                    .send(PldmEvents::Update(Events::StopUpdate))
+                    .map_err(|_| ())?;
+            }
+
+            Ok(())
+        } else {
+            error!("ActivateFirmware response failed");
+            ctx.event_queue
+                .send(PldmEvents::Update(Events::StopUpdate))
+                .map_err(|_| ())?;
+            Err(())
+        }
     }
 
     fn on_stop_update(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
-        // TODO
+        info!("Stopping update");
         Ok(())
+    }
+    fn on_cancel_update_component_response(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket>,
+        response: pldm_packet::request_cancel::CancelUpdateComponentResponse,
+    ) -> Result<(), ()> {
+        ctx.instance_id += 1; // Response received, increment instance id
+        if response.completion_code == PldmBaseCompletionCode::Success as u8 {
+            info!("CancelUpdateComponent response success");
+            Ok(())
+        } else {
+            error!("CancelUpdateComponent response failed");
+            Err(())
+        }
     }
 }
 
@@ -749,6 +983,21 @@ pub fn process_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
             FwUpdateCmd::TransferComplete => {
                 packet_to_event(&header, packet, false, Events::TransferComplete)
             }
+            FwUpdateCmd::VerifyComplete => {
+                packet_to_event(&header, packet, false, Events::VerifyComplete)
+            }
+            FwUpdateCmd::ApplyComplete => {
+                packet_to_event(&header, packet, false, Events::ApplyComplete)
+            }
+            FwUpdateCmd::ActivateFirmware => {
+                packet_to_event(&header, packet, true, Events::ActivateFirmwareResponse)
+            }
+            FwUpdateCmd::GetStatus => {
+                packet_to_event(&header, packet, true, Events::GetStatusResponse)
+            }
+            FwUpdateCmd::CancelUpdateComponent => {
+                packet_to_event(&header, packet, true, Events::CancelUpdateComponentResponse)
+            }
             _ => {
                 debug!("Unknown firmware update command");
                 Err(())
@@ -776,6 +1025,8 @@ pub struct InnerContext<S: PldmSocket> {
     // The current component being updated
     // This an index to the components vector
     pub current_component_index: Option<usize>,
+    timer: Timer,
+    activation_time: Option<Instant>,
 }
 
 pub struct Context<T: StateMachineActions, S: PldmSocket> {
@@ -801,6 +1052,8 @@ impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
                 components: Vec::new(),
                 component_response_codes: Vec::new(),
                 current_component_index: None,
+                timer: Timer::new(),
+                activation_time: None,
             },
         }
     }
@@ -849,14 +1102,18 @@ impl<T: StateMachineActions, S: PldmSocket> StateMachineContext for Context<T, S
         on_transfer_complete_request(request: pldm_packet::transfer_complete::TransferCompleteRequest) -> Result<(),()>,
         on_transfer_fail() -> Result<(),()>,
         on_transfer_success() -> Result<(),()>,
+        on_verify_complete_request(request: pldm_packet::verify_complete::VerifyCompleteRequest) -> Result<(),()>,
         on_get_status() -> Result<(),()>,
+        on_get_status_response(response: pldm_packet::get_status::GetStatusResponse) -> Result<(),()>,
         on_stop_update() -> Result<(),()>,
+        on_cancel_update_component_response(response: pldm_packet::request_cancel::CancelUpdateComponentResponse) -> Result<(),()>,
         on_verify_success() -> Result<(),()>,
         on_verify_fail() -> Result<(),()>,
+        on_apply_complete_request(request: pldm_packet::apply_complete::ApplyCompleteRequest) -> Result<(),()>,
         on_apply_success() -> Result<(),()>,
         on_apply_fail() -> Result<(),()>,
         on_activate_firmware() -> Result<(),()>,
-        on_get_metadata() -> Result<(),()>,
+        on_activate_firmware_response(response : pldm_packet::activate_fw::ActivateFirmwareResponse) -> Result<(),()>,
     }
 
     // Guards
