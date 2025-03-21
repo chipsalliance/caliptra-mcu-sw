@@ -51,6 +51,7 @@ use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use tests::pldm_request_response_test::PldmRequestResponseTest;
+use tests::pldm_request_response_test2::PldmRequestResponseTest2;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None, name = "Caliptra MCU Emulator")]
@@ -482,7 +483,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         let pldm_socket = pldm_transport
             .create_socket(EndpointId(0), EndpointId(1))
             .unwrap();
-        PldmRequestResponseTest::run(pldm_socket, running.clone());
+        PldmRequestResponseTest2::run(pldm_socket, running.clone());
     }
 
     let create_flash_controller = |default_path: &str, error_irq: u8, event_irq: u8| {
