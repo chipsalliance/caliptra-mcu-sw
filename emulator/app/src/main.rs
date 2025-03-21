@@ -474,7 +474,6 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     if cfg!(any(
         feature = "test-pldm-request-response",
         feature = "test-pldm-discovery",
-        feature = "test-pldm-fw-update",
     )) {
         i3c_controller.start();
         let pldm_transport =
@@ -483,6 +482,16 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             .create_socket(EndpointId(0), EndpointId(1))
             .unwrap();
         PldmRequestResponseTest::run(pldm_socket, running.clone());
+    }
+
+    if cfg!(feature = "test-pldm-fw-update") {
+        i3c_controller.start();
+        let pldm_transport =
+            MctpTransport::new(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
+        let pldm_socket = pldm_transport
+            .create_socket(EndpointId(0), EndpointId(1))
+            .unwrap();
+        tests::pldm_fw_update_test::PldmFwUpdateTest::run(pldm_socket, running.clone());
     }
 
     let create_flash_controller = |default_path: &str, error_irq: u8, event_irq: u8| {
