@@ -3099,11 +3099,13 @@ dependencies = [
 name = "spdm-lib"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "bitfield",
  "libsyscall-caliptra",
  "libtock_console",
  "libtock_platform",
  "rand",
+ "sha2",
  "thiserror-no-std",
  "zerocopy 0.8.23",
 ]

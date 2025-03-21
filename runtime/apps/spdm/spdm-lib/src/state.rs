@@ -84,10 +84,12 @@ impl ConnectionInfo {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub enum ConnectionState {
     NotStarted,
     AfterVersion,
     AfterCapabilities,
     AfterNegotiateAlgorithms,
+    AfterDigest,
+    AfterCertificate,
 }

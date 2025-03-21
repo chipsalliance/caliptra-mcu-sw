@@ -20,3 +20,12 @@ pub mod state;
 
 // Transport layer handling
 pub mod transport;
+
+// DICE key and device certificate management
+pub mod cert_mgr;
+
+// Hash operations
+pub mod hash_op;
+
+// Configuration
+pub mod config;
