@@ -8,10 +8,13 @@ edition.workspace = true
 
 [dependencies]
 bitfield.workspace = true
-capsules-extra.workspace = true
+caliptra-api.workspace = true
 capsules-core.workspace = true
+capsules-extra.workspace = true
 flash-driver.workspace = true
 i3c-driver.workspace = true
 kernel.workspace = true
+registers-generated.workspace = true
 romtime.workspace = true
+ureg.workspace = true
 zerocopy.workspace = true

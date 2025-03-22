@@ -55,10 +55,6 @@ mod test {
         rom_path: PathBuf,
         runtime_path: PathBuf,
         i3c_port: String,
-        soc_manifest: Option<PathBuf>,
-        caliptra_rom: Option<PathBuf>,
-        caliptra_fw: Option<PathBuf>,
-        vendor_pk_hash: Option<&str>,
         active_mode: bool,
     ) -> ExitStatus {
         let mut cargo_run_args = vec![
@@ -76,35 +72,48 @@ mod test {
             "--i3c-port",
             i3c_port.as_str(),
         ];
+
+        let mut caliptra_builder =
+            CaliptraBuilder::new(true, None, None, None, None, Some(runtime_path.clone()));
+
         if active_mode {
             cargo_run_args.push("--active-mode");
-        }
-        if let Some(soc_manifest) = soc_manifest.as_ref() {
-            cargo_run_args.push("--soc-manifest");
-            cargo_run_args.push(soc_manifest.to_str().unwrap());
-        }
-        if let Some(caliptra_rom) = caliptra_rom.as_ref() {
+            let caliptra_rom = caliptra_builder
+                .get_caliptra_rom()
+                .expect("Failed to build Caliptra ROM");
             cargo_run_args.push("--caliptra");
             cargo_run_args.push("--caliptra-rom");
             cargo_run_args.push(caliptra_rom.to_str().unwrap());
-        }
-        if let Some(caliptra_fw) = caliptra_fw.as_ref() {
+            let caliptra_fw = caliptra_builder
+                .get_caliptra_fw()
+                .expect("Failed to build Caliptra firmware");
             cargo_run_args.push("--caliptra-firmware");
             cargo_run_args.push(caliptra_fw.to_str().unwrap());
-        }
-        if let Some(vendor_pk_hash) = vendor_pk_hash.as_ref() {
+            let soc_manifest = caliptra_builder
+                .get_soc_manifest()
+                .expect("Failed to build SoC manifest");
+            cargo_run_args.push("--soc-manifest");
+            cargo_run_args.push(soc_manifest.to_str().unwrap());
+            let vendor_pk_hash = caliptra_builder
+                .get_vendor_pk_hash()
+                .expect("Failed to get vendor PK hash");
             cargo_run_args.push("--vendor-pk-hash");
             cargo_run_args.push(vendor_pk_hash);
+            println!("Running test firmware {}", feature.replace("_", "-"));
+            let mut cmd = Command::new("cargo");
+            let cmd = cmd.args(&cargo_run_args).current_dir(&*PROJECT_ROOT);
+            cmd.status().unwrap()
+        } else {
+            println!("Running test firmware {}", feature.replace("_", "-"));
+            let mut cmd = Command::new("cargo");
+            let cmd = cmd.args(&cargo_run_args).current_dir(&*PROJECT_ROOT);
+            cmd.status().unwrap()
         }
-        println!("Running test firmware {}", feature.replace("_", "-"));
-        let mut cmd = Command::new("cargo");
-        let cmd = cmd.args(&cargo_run_args).current_dir(&*PROJECT_ROOT);
-        cmd.status().unwrap()
     }
 
     #[macro_export]
-    macro_rules! run_test {
-        ($test:ident) => {
+    macro_rules! run_test_options {
+        ($test:ident, $active:expr) => {
             #[test]
             fn $test() {
                 let lock = TEST_LOCK.lock().unwrap();
@@ -114,22 +123,22 @@ mod test {
                 let feature = stringify!($test).replace("_", "-");
                 let test_runtime = compile_runtime(&feature);
                 let i3c_port = "65534".to_string();
-                let test = run_runtime(
-                    &feature,
-                    ROM.to_path_buf(),
-                    test_runtime,
-                    i3c_port,
-                    None,
-                    None,
-                    None,
-                    None,
-                    false,
-                );
+                let test =
+                    run_runtime(&feature, ROM.to_path_buf(), test_runtime, i3c_port, $active);
                 assert_eq!(0, test.code().unwrap_or_default());
 
                 // force the compiler to keep the lock
                 lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
+        };
+    }
+    #[macro_export]
+    macro_rules! run_test {
+        ($test:ident) => {
+            run_test_options!($test, false);
+        };
+        ($test:ident, caliptra) => {
+            run_test_options!($test, true);
         };
     }
 
@@ -138,6 +147,7 @@ mod test {
     // * add the feature to the emulator and use it to implement any behavior needed
     // * add the feature to the runtime and use it in board.rs at the end of the main function to call your test
     // These use underscores but will be converted to dashes in the feature flags
+    run_test!(test_caliptra_mailbox, caliptra);
     run_test!(test_i3c_simple);
     run_test!(test_i3c_constant_writes);
     run_test!(test_flash_ctrl_init);
@@ -166,33 +176,7 @@ mod test {
         println!("Compiling test firmware {}", &feature);
         let test_runtime = compile_runtime(&feature);
         let i3c_port = "65534".to_string();
-
-        let mut caliptra_builder =
-            CaliptraBuilder::new(true, None, None, None, None, Some(test_runtime.clone()));
-
-        let caliptra_rom = caliptra_builder
-            .get_caliptra_rom()
-            .expect("Failed to build Caliptra ROM");
-        let caliptra_fw = caliptra_builder
-            .get_caliptra_fw()
-            .expect("Failed to build Caliptra firmware");
-        let soc_manifest = caliptra_builder
-            .get_soc_manifest()
-            .expect("Failed to build SoC manifest");
-        let vendor_pk_hash = caliptra_builder
-            .get_vendor_pk_hash()
-            .expect("Failed to get vendor PK hash");
-        let test = run_runtime(
-            &feature,
-            ROM.to_path_buf(),
-            test_runtime,
-            i3c_port,
-            Some(soc_manifest),
-            Some(caliptra_rom),
-            Some(caliptra_fw),
-            Some(vendor_pk_hash),
-            true,
-        );
+        let test = run_runtime(&feature, ROM.to_path_buf(), test_runtime, i3c_port, true);
         assert_eq!(0, test.code().unwrap_or_default());
 
         // force the compiler to keep the lock

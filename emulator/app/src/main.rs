@@ -34,7 +34,6 @@ use emulator_periph::{
     CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, I3c, I3cController, Mci, Otp,
 };
 use emulator_registers_generated::root_bus::AutoRootBus;
-use emulator_registers_generated::soc::SocPeripheral;
 use gdb::gdb_state;
 use gdb::gdb_target::GdbTarget;
 use mctp_transport::MctpTransport;
@@ -326,7 +325,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             exit(-1);
         }
         let (caliptra_cpu, soc_to_caliptra) = start_caliptra(&StartCaliptraArgs {
-            rom: cli.caliptra_rom.unwrap(),
+            rom: cli.caliptra_rom,
             device_lifecycle: Some("production".into()),
             active_mode,
             firmware: if active_mode {
@@ -337,9 +336,16 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             ..Default::default()
         })
         .expect("Failed to start Caliptra CPU");
-        (Some(caliptra_cpu), Some(soc_to_caliptra))
+        assert!(caliptra_cpu.is_some());
+        (caliptra_cpu, soc_to_caliptra)
     } else {
-        (None, None)
+        // still create the external bus for the mailbox and SoC interfaces
+        let (caliptra_cpu, soc_to_caliptra) = start_caliptra(&StartCaliptraArgs {
+            ..Default::default()
+        })
+        .expect("Failed to start Caliptra CPU");
+        assert!(caliptra_cpu.is_none());
+        (None, soc_to_caliptra)
     };
 
     let rom_buffer = read_binary(args_rom, 0)?;
@@ -536,14 +542,10 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         CaliptraRootBus::RECOVERY_FLASH_CTRL_EVENT_IRQ,
     );
 
-    let mut delegates: Vec<Box<dyn Bus>> = vec![Box::new(root_bus)];
-    let soc_periph = if let Some(soc_to_caliptra) = soc_to_caliptra {
-        delegates.push(Box::new(BusConverter::new(Box::new(soc_to_caliptra))));
-        None
-    } else {
-        // pass an empty SoC interface that returns 0 for everything
-        Some(Box::new(FakeSoc {}) as Box<dyn SocPeripheral>)
-    };
+    let delegates: Vec<Box<dyn Bus>> = vec![
+        Box::new(root_bus),
+        Box::new(BusConverter::new(Box::new(soc_to_caliptra))),
+    ];
 
     let vendor_pk_hash = cli.vendor_pk_hash.map(|hash| {
         let v = hex::decode(hash).unwrap();
@@ -565,7 +567,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         Some(Box::new(mci)),
         None,
         None,
-        soc_periph,
+        None,
         None,
     );
 
@@ -695,7 +697,3 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
     Ok(uart_output.map(|o| o.borrow().clone()).unwrap_or_default())
 }
-
-struct FakeSoc {}
-
-impl SocPeripheral for FakeSoc {}

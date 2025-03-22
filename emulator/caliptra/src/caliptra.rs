@@ -51,7 +51,7 @@ fn words_from_bytes_le(arr: &[u8; 48]) -> [u32; 12] {
 
 #[derive(Default)]
 pub struct StartCaliptraArgs {
-    pub rom: PathBuf,
+    pub rom: Option<PathBuf>,
     pub active_mode: bool,
     pub firmware: Option<PathBuf>,
     pub update_firmware: Option<PathBuf>,
@@ -69,7 +69,7 @@ pub struct StartCaliptraArgs {
 /// Creates and returns an initialized a Caliptra emulator CPU.
 pub fn start_caliptra(
     args: &StartCaliptraArgs,
-) -> io::Result<(Cpu<CaliptraRootBus>, SocToCaliptraBus)> {
+) -> io::Result<(Option<Cpu<CaliptraRootBus>>, SocToCaliptraBus)> {
     let args_rom = &args.rom;
     let args_current_fw = &args.firmware;
     let args_update_fw = &args.update_firmware;
@@ -101,11 +101,13 @@ pub fn start_caliptra(
     };
     let unprovisioned = String::from("unprovisioned");
     let args_device_lifecycle = args.device_lifecycle.as_ref().unwrap_or(&unprovisioned);
-    if !Path::new(&args_rom).exists() {
-        Err(io::Error::new(
-            ErrorKind::NotFound,
-            format!("ROM File {:?} does not exist", args_rom),
-        ))?;
+    if let Some(args_rom) = args_rom.as_ref() {
+        if !Path::new(args_rom).exists() {
+            Err(io::Error::new(
+                ErrorKind::NotFound,
+                format!("ROM File {:?} does not exist", args_rom),
+            ))?;
+        }
     }
 
     if (!mfg_pk_hash.is_empty() && mfg_pk_hash.len() != 48)
@@ -125,9 +127,11 @@ pub fn start_caliptra(
     let req_idevid_csr = args.req_idevid_csr.unwrap_or(false);
     let req_ldevid_cert = args.req_ldevid_cert.unwrap_or(false);
 
-    let mut rom = File::open(args_rom)?;
     let mut rom_buffer = Vec::new();
-    rom.read_to_end(&mut rom_buffer)?;
+    if let Some(args_rom) = args_rom {
+        let mut rom = File::open(args_rom)?;
+        rom.read_to_end(&mut rom_buffer)?;
+    }
 
     if rom_buffer.len() > CaliptraRootBus::ROM_SIZE {
         Err(io::Error::new(
@@ -319,7 +323,13 @@ pub fn start_caliptra(
     }
 
     let ext_soc_ifc = root_bus.soc_to_caliptra_bus();
-    Ok((Cpu::new(root_bus, clock), ext_soc_ifc))
+
+    // only return a full CPU if we have a firmware to run
+    if args_rom.is_some() {
+        Ok((Some(Cpu::new(root_bus, clock)), ext_soc_ifc))
+    } else {
+        Ok((None, ext_soc_ifc))
+    }
 }
 
 fn change_dword_endianess(data: &mut [u8]) {

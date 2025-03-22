@@ -17,6 +17,8 @@ use libtockasync::TockSubscribe;
 #[cfg(feature = "test-pldm-request-response")]
 mod test_pldm_request_response;
 
+mod test_caliptra_mailbox;
+
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
@@ -150,6 +152,11 @@ pub(crate) async fn async_main<S: Syscalls>() {
     {
         test_pldm_request_response::test::test_pldm_request_response::<S>().await;
     }
+    #[cfg(feature = "test-caliptra-mailbox")]
+    {
+        test_caliptra_mailbox::test_caliptra_mailbox::<S>().await;
+    }
+
     writeln!(console_writer, "app finished").unwrap();
 }
 

@@ -10,17 +10,17 @@ pub const APPS: &[App] = &[
     App {
         name: "example-app",
         permissions: vec![],
-        minimum_ram: 16384,
+        minimum_ram: 20 * 1024,
     },
     App {
         name: "spdm-app",
         permissions: vec![],
-        minimum_ram: 16384,
+        minimum_ram: 16 * 1024,
     },
     App {
         name: "pldm-app",
         permissions: vec![],
-        minimum_ram: 20480, //0x5000
+        minimum_ram: 20 * 1024,
     },
 ];
 

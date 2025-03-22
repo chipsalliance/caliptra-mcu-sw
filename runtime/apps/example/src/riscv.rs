@@ -16,7 +16,49 @@ static HEAP: Heap = Heap::empty();
 stack_size! {0x3000}
 set_main! {main}
 
+// TODO: remove this dependence on the emulator when the emulator-specific
+// pieces are moved to platform/emulator/runtime
+pub(crate) struct EmulatorWriter {}
+pub(crate) static mut EMULATOR_WRITER: EmulatorWriter = EmulatorWriter {};
+
+impl core::fmt::Write for EmulatorWriter {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        print_to_console(s);
+        Ok(())
+    }
+}
+
+pub(crate) fn print_to_console(buf: &str) {
+    for b in buf.bytes() {
+        // Print to this address for emulator output
+        unsafe {
+            core::ptr::write_volatile(0x1000_1041 as *mut u8, b);
+        }
+    }
+}
+
+pub(crate) struct EmulatorExiter {}
+pub(crate) static mut EMULATOR_EXITER: EmulatorExiter = EmulatorExiter {};
+impl romtime::Exit for EmulatorExiter {
+    fn exit(&mut self, code: u32) {
+        // Safety: This is a safe memory address to write to for exiting the emulator.
+        unsafe {
+            // By writing to this address we can exit the emulator.
+            core::ptr::write_volatile(0x1000_2000 as *mut u32, code);
+        }
+    }
+}
+
 fn main() {
+    // TODO: remove this when the emulator-specific pieces are moved to
+    // platform/emulator/runtime
+    unsafe {
+        #[allow(static_mut_refs)]
+        romtime::set_printer(&mut EMULATOR_WRITER);
+        #[allow(static_mut_refs)]
+        romtime::set_exiter(&mut EMULATOR_EXITER);
+    }
+
     // setup the global allocator for futures
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
     // Safety: HEAP_MEM is a valid array of MaybeUninit, so we can safely initialize it.

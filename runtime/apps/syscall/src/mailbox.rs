@@ -2,8 +2,9 @@
 
 //! # Mailbox Interface
 
+use caliptra_api::mailbox::MailboxReqHeader;
 use core::marker::PhantomData;
-use libtock_platform::{share, AllowRo, AllowRw, DefaultConfig, ErrorCode, Syscalls};
+use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
 /// Mailbox interface user interface.
@@ -11,7 +12,7 @@ use libtockasync::TockSubscribe;
 /// # Generics
 /// - `S`: The syscall implementation.
 pub struct Mailbox<S: Syscalls> {
-    syscall: PhantomData<S>,
+    _syscall: PhantomData<S>,
     driver_num: u32,
 }
 
@@ -21,12 +22,35 @@ impl<S: Syscalls> Default for Mailbox<S> {
     }
 }
 
+// Populate the checksum for a mailbox request.
+pub fn populate_checksum(cmd: u32, data: &mut [u8]) {
+    // Calc checksum, use the size override if provided
+    let checksum = caliptra_api::calc_checksum(cmd, data);
+
+    if data.len() < size_of::<MailboxReqHeader>() {
+        // this should be impossible
+        return;
+    }
+    data[..size_of::<MailboxReqHeader>()].copy_from_slice(&checksum.to_le_bytes());
+}
+
 impl<S: Syscalls> Mailbox<S> {
     pub fn new() -> Self {
         Self {
-            syscall: PhantomData,
+            _syscall: PhantomData,
             driver_num: MAILBOX_DRIVER_NUM,
         }
+    }
+
+    // Populate the checksum for a mailbox request.
+    pub fn populate_checksum(&self, cmd: u32, data: &mut [u8]) {
+        let checksum = caliptra_api::calc_checksum(cmd, data);
+
+        if data.len() < size_of::<MailboxReqHeader>() {
+            // this should be impossible
+            return;
+        }
+        data[..size_of::<MailboxReqHeader>()].copy_from_slice(&checksum.to_le_bytes());
     }
 
     /// Executes a mailbox command and returns the response.
@@ -50,32 +74,26 @@ impl<S: Syscalls> Mailbox<S> {
         response_buffer: &mut [u8],
     ) -> Result<usize, ErrorCode> {
         // Subscribe to the asynchronous notification for when the command is processed
-        let async_command =
-            TockSubscribe::subscribe::<S>(self.driver_num, mailbox_subscribe::COMMAND_DONE);
-
-        share::scope::<
-            (
-                AllowRo<_, MAILBOX_DRIVER_NUM, { mailbox_ro_buffer::INPUT }>,
-                AllowRw<_, MAILBOX_DRIVER_NUM, { mailbox_rw_buffer::RESPONSE }>,
-            ),
-            _,
-            _,
-        >(|handle| {
-            let (allow_ro, allow_rw) = handle.split();
-            S::allow_ro::<DefaultConfig, MAILBOX_DRIVER_NUM, { mailbox_ro_buffer::INPUT }>(
-                allow_ro, input_data,
-            )?;
-            S::allow_rw::<DefaultConfig, MAILBOX_DRIVER_NUM, { mailbox_rw_buffer::RESPONSE }>(
-                allow_rw,
+        let result = share::scope::<(), _, _>(|_handle| {
+            let sub = TockSubscribe::subscribe_allow_ro_rw::<S, DefaultConfig>(
+                self.driver_num,
+                mailbox_subscribe::COMMAND_DONE,
+                mailbox_ro_buffer::INPUT,
+                input_data,
+                mailbox_rw_buffer::RESPONSE,
                 response_buffer,
-            )?;
+            );
+
             // Issue the command to the kernel
             S::command(self.driver_num, mailbox_cmd::EXECUTE_COMMAND, command, 0)
                 .to_result::<(), ErrorCode>()?;
-            Ok(())
-        })?;
+            Ok(sub)
+        })?
+        .await;
 
-        async_command.await.map(|res| res.0 as usize)
+        S::unallow_ro(self.driver_num, mailbox_ro_buffer::INPUT);
+        S::unallow_rw(self.driver_num, mailbox_rw_buffer::RESPONSE);
+        result.map(|(bytes, _, _)| bytes as usize)
     }
 }
 
@@ -88,6 +106,7 @@ pub const MAILBOX_DRIVER_NUM: u32 = 0x8000_0009;
 
 /// Command IDs for mailbox operations.
 mod mailbox_cmd {
+    pub const _STATUS: u32 = 0;
     /// Execute a command with input and response buffers.
     pub const EXECUTE_COMMAND: u32 = 1;
 }

@@ -207,7 +207,7 @@ impl<'a> hil::uart::Receive<'a> for SemihostUart<'a> {
         // called from another call stack. Hence simply enable interrupts here.
         self.rx_buffer.replace(rx_buffer);
         self.rx_len.set(rx_len);
-        self.set_alarm(1);
+        self.set_alarm(self.alarm.minimum_dt().into_u64());
         Ok(())
     }
     fn receive_word(&self) -> Result<(), ErrorCode> {

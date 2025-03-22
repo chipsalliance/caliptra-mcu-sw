@@ -8,6 +8,7 @@
 use core::fmt::Write;
 use libtock_console::Console;
 use libtock_platform::Syscalls;
+#[allow(unused)]
 use pldm_lib::daemon::PldmService;
 
 #[cfg(target_arch = "riscv32")]
@@ -46,11 +47,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
     let mut console_writer = Console::<S>::writer();
     writeln!(console_writer, "PLDM_APP: Hello PLDM async world!").unwrap();
 
-    if cfg!(any(
+    #[cfg(any(
         feature = "test-pldm-discovery",
         feature = "test-pldm-fw-update",
         feature = "test-pldm-fw-update-e2e"
-    )) {
+    ))]
+    {
         let mut pldm_service = PldmService::<S>::init();
         writeln!(
             console_writer,

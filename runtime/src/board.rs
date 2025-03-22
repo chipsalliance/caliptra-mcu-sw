@@ -16,12 +16,18 @@ use capsules_runtime::mctp::base_protocol::MessageType;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
 use kernel::component::Component;
+use kernel::errorcode;
 use kernel::hil;
+use kernel::hil::time::Alarm;
 use kernel::platform::scheduler_timer::VirtualSchedulerTimer;
+use kernel::platform::SyscallFilter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
+use kernel::process;
 use kernel::scheduler::cooperative::CooperativeSched;
+use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
+use romtime::CaliptraSoC;
 use rv32i::csr;
 use rv32i::pmp::{NAPOTRegionSpec, TORRegionSpec};
 
@@ -121,6 +127,10 @@ struct VeeR {
     mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     active_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
     recovery_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
+    mailbox: &'static capsules_runtime::mailbox::Mailbox<
+        'static,
+        VirtualMuxAlarm<'static, InternalTimers<'static>>,
+    >,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -145,14 +155,29 @@ impl SyscallDriverLookup for VeeR {
             capsules_runtime::flash_partition::RECOVERY_IMAGE_PAR_DRIVER_NUM => {
                 f(Some(self.recovery_image_par))
             }
+            capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             _ => f(None),
         }
     }
 }
 
+struct Filter {}
+
+impl SyscallFilter for Filter {
+    fn filter_syscall(
+        &self,
+        _process: &dyn process::Process,
+        _syscall: &syscall::Syscall,
+    ) -> Result<(), errorcode::ErrorCode> {
+        // Uncomment this to enable syscall logging
+        //romtime::println!("Syscall: {:?}", syscall);
+        Ok(())
+    }
+}
+
 impl KernelResources<VeeRChip> for VeeR {
     type SyscallDriverLookup = Self;
-    type SyscallFilter = ();
+    type SyscallFilter = Filter;
     type ProcessFault = ();
     type Scheduler = CooperativeSched<'static>;
     type SchedulerTimer = VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>;
@@ -163,7 +188,7 @@ impl KernelResources<VeeRChip> for VeeR {
         self
     }
     fn syscall_filter(&self) -> &Self::SyscallFilter {
-        &()
+        &Filter {}
     }
     fn process_fault(&self) -> &Self::ProcessFault {
         &()
@@ -203,6 +228,14 @@ pub(crate) fn print_to_console(buf: &str) {
     }
 }
 
+pub(crate) struct EmulatorExiter {}
+pub(crate) static mut EMULATOR_EXITER: EmulatorExiter = EmulatorExiter {};
+impl romtime::Exit for EmulatorExiter {
+    fn exit(&mut self, code: u32) {
+        crate::io::exit_emulator(code);
+    }
+}
+
 /// Main function called after RAM initialized.
 ///
 /// # Safety
@@ -216,6 +249,8 @@ pub unsafe fn main() {
     unsafe {
         #[allow(static_mut_refs)]
         romtime::set_printer(&mut EMULATOR_WRITER);
+        #[allow(static_mut_refs)]
+        romtime::set_exiter(&mut EMULATOR_EXITER);
     }
 
     // Set up memory protection immediately after setting the trap handler, to
@@ -286,6 +321,14 @@ pub unsafe fn main() {
         )
     );
     hil::time::Alarm::set_alarm_client(virtual_alarm_user, alarm);
+
+    let mailbox = runtime_components::mailbox::MailboxComponent::new(
+        board_kernel,
+        capsules_runtime::mailbox::DRIVER_NUM,
+        mux_alarm,
+    )
+    .finalize(crate::mailbox_component_static!(InternalTimers<'static>));
+    mailbox.alarm.set_alarm_client(mailbox);
 
     let peripherals = static_init!(
         VeeRDefaultPeripherals,
@@ -460,6 +503,7 @@ pub unsafe fn main() {
             mctp_caliptra,
             active_image_par,
             recovery_image_par,
+            mailbox,
         }
     );
 

@@ -358,7 +358,7 @@ mod test {
     }
 
     fn validate_response<T: PldmCodec + PartialEq>(buf: &mut [u8], expected_rsp_msg: T) {
-        let rsp = T::decode(&buf).unwrap();
+        let rsp = T::decode(buf).unwrap();
         assert_eq!(rsp, expected_rsp_msg);
     }
 

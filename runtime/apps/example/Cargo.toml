@@ -7,6 +7,7 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+caliptra-api.workspace = true
 critical-section.workspace = true
 embassy-executor.workspace = true
 libsyscall-caliptra.workspace = true
@@ -17,8 +18,10 @@ libtock_platform.workspace = true
 libtock_runtime.workspace = true
 libtock.workspace = true
 libtockasync.workspace = true
-portable-atomic.workspace = true
 pldm-common.workspace = true
+portable-atomic.workspace = true
+romtime.workspace = true
+zerocopy.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 libtock_unittest.workspace = true
@@ -29,6 +32,7 @@ embedded-alloc.workspace = true
 
 [features]
 default = []
+test-caliptra-mailbox = []
 test-exit-immediately = []
 test-i3c-simple = []
 test-i3c-constant-writes = []
@@ -41,7 +45,7 @@ test-mctp-ctrl-cmds = []
 test-mctp-capsule-loopback = []
 test-mctp-user-loopback = []
 test-flash-usermode = []
-test-pldm-request-response = [ ]
+test-pldm-request-response = []
 test-pldm-discovery = []
 test-pldm-fw-update = []
 test-pldm-fw-update-e2e = []

@@ -29,6 +29,7 @@ embedded-alloc.workspace = true
 [features]
 default = []
 test-exit-immediately = []
+test-caliptra-mailbox = []
 test-i3c-simple = []
 test-i3c-constant-writes = []
 test-flash-ctrl-init = []
