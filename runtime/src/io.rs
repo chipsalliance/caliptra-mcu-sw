@@ -108,6 +108,11 @@ impl<'a> SemihostUart<'a> {
         }
     }
 
+    pub fn init(&'static self) {
+        self.alarm.setup();
+        self.alarm.set_alarm_client(self);
+    }
+
     fn set_alarm(&self, ticks: u64) {
         self.alarm.set_alarm(
             self.alarm.now(),

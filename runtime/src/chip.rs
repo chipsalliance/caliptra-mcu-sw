@@ -67,6 +67,7 @@ impl<'a> VeeRDefaultPeripherals<'a> {
 
     pub fn init(&'static self) {
         kernel::deferred_call::DeferredCallClient::register(&self.uart);
+        self.uart.init();
         self.i3c.init();
         self.main_flash_ctrl.init();
         self.recovery_flash_ctrl.init();

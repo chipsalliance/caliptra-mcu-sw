@@ -133,9 +133,11 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         );
     }
 
-    pub fn init(&self) {
+    pub fn init(&'static self) {
         // Run the initialization steps for the primary and secondary controller from:
         // https://chipsalliance.github.io/i3c-core/initialization.html
+        self.alarm.setup();
+        self.alarm.set_alarm_client(self);
 
         // Verify the value of the HCI_VERSION register at the I3CBase address. The controller is compliant with MIPI HCI v1.2 and therefore the HCI_VERSION should read 0x120
         if self.registers.i3c_base_hci_version.get() != 0x120 {

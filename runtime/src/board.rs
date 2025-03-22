@@ -289,7 +289,7 @@ pub unsafe fn main() {
 
     let peripherals = static_init!(
         VeeRDefaultPeripherals,
-        VeeRDefaultPeripherals::new(&*mux_alarm)
+        VeeRDefaultPeripherals::new(mux_alarm)
     );
 
     let chip = static_init!(VeeRChip, crate::chip::VeeR::new(peripherals, epmp));
