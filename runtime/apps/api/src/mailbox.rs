@@ -2,7 +2,7 @@
 
 use crate::checksum;
 use core::mem;
-use libsyscall_caliptra::mailbox::Mailbox as MailboxSyscall;
+use libsyscall_caliptra::mailbox::{Mailbox as MailboxSyscall, MailboxError};
 use libtock_platform::{ErrorCode, Syscalls};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Ref, TryFromBytes};
 
@@ -16,6 +16,10 @@ impl<S: Syscalls> Default for Mailbox<S> {
         Self::new()
     }
 }
+
+// TODO: this is redudant with the caliptra_api mailbox, though we don't
+// want to support all of the caliptra_api mailbox commands, since some of those are
+// large and they are too big for our stack.
 
 impl<S: Syscalls> Mailbox<S> {
     /// Creates a new instance of the Mailbox API.
@@ -33,13 +37,19 @@ impl<S: Syscalls> Mailbox<S> {
     ) -> Result<MailboxResponse, ErrorCode> {
         let mut buffer = [0u8; mem::size_of::<MailboxResponse>()];
 
-        let response_size = self
+        match self
             .syscall
             .execute(request.command_id(), request.as_bytes(), &mut buffer)
-            .await?;
-        let mut response = request.parse_response(&buffer[..response_size])?;
-        response.verify()?;
-        Ok(response)
+            .await
+        {
+            Ok(response_size) => {
+                let mut response = request.parse_response(&buffer[..response_size])?;
+                response.verify()?;
+                Ok(response)
+            }
+            Err(MailboxError::ErrorCode(err)) => Err(err),
+            Err(MailboxError::MailboxError(_)) => Err(ErrorCode::Fail),
+        }
     }
 }
 

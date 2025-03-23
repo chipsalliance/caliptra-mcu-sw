@@ -196,5 +196,5 @@ pub fn recovery_flow(_mci: &mut Mci) {
     //     // wait for us to get the signal to boot
     // }
     // hack until we have MCI hooked up: just look for a non-zero firmware value somewhere
-    while unsafe { core::ptr::read_volatile(0x4000_ffff as *const u32) } == 0 {}
+    while unsafe { core::ptr::read_volatile(0x4000_fff0 as *const u32) } == 0 {}
 }

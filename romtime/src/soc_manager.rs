@@ -157,9 +157,24 @@ pub struct CaliptraMailboxResponse<'a> {
 }
 
 impl CaliptraMailboxResponse<'_> {
-    pub fn verify_checksum(&self) -> bool {
+    pub fn verify_checksum(&self) -> Result<(), CaliptraApiError> {
         let checksum = 0u32.wrapping_sub(self.checksum);
-        checksum == self.expected_checksum
+        if checksum == self.expected_checksum {
+            Ok(())
+        } else {
+            Err(CaliptraApiError::MailboxRespInvalidChecksum {
+                expected: self.expected_checksum,
+                actual: checksum,
+            })
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.dlen_words * 4
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.dlen_words == 0
     }
 }
 

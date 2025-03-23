@@ -3,6 +3,7 @@
 //! This provides the mailbox capsule that calls the underlying mailbox driver to
 //! communicate with Caliptra.
 
+use caliptra_api::CaliptraApiError;
 use core::cell::Cell;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::hil::time::{Alarm, AlarmClient};
@@ -145,8 +146,12 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         }
     }
 
-    /// Returns true if the response was copied to the app.
-    fn copy_from_mailbox(&self, driver: &mut CaliptraSoC, output: &WriteableProcessSlice) -> bool {
+    /// Returns number of bytes in response  if the response was copied to the app.
+    fn copy_from_mailbox(
+        &self,
+        driver: &mut CaliptraSoC,
+        output: &WriteableProcessSlice,
+    ) -> Result<usize, CaliptraApiError> {
         match driver.finish_mailbox_resp(self.resp_min_size.get(), self.resp_size.get()) {
             Ok(resp_option) => {
                 if let Some(mut resp) = resp_option {
@@ -155,49 +160,57 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                             out.copy_from_slice(&word.to_le_bytes());
                         }
                     }
-                    resp.verify_checksum()
+                    resp.verify_checksum().map(|_| resp.len())
                 } else {
                     // no response, so we don't need to copy anything
-                    true
+                    Ok(0)
                 }
             }
             Err(err) => {
                 debug!("Error copying from mailbox: {:?}", err);
-                false
+                Err(err)
             }
         }
     }
 
-    /// Returns true if the request was completed and the response was copied to the app.
-    fn try_complete_request(&self, driver: &mut CaliptraSoC) -> bool {
+    /// Completes the request by copying the response or error from the mailbox.
+    fn try_complete_request(&self, driver: &mut CaliptraSoC) {
         // response is ready, do the dance to pass it to the app
         if let Some(process_id) = self.current_app.take() {
-            self.apps
-                .enter(process_id, |_app, kernel_data| {
-                    if let Ok(rw_buffer) =
-                        kernel_data.get_readwrite_processbuffer(rw_allow::RESPONSE)
+            let enter_result = self.apps.enter(process_id, |_app, kernel_data| {
+                if let Ok(rw_buffer) = kernel_data.get_readwrite_processbuffer(rw_allow::RESPONSE) {
+                    match rw_buffer
+                        .mut_enter(|app_buffer| self.copy_from_mailbox(driver, app_buffer))
                     {
-                        let result = rw_buffer
-                            .mut_enter(|app_buffer| self.copy_from_mailbox(driver, app_buffer))
-                            .map_err(|err| {
-                                debug!("Error accessing writable buffer {:?}", err);
-                                ErrorCode::FAIL
-                            });
-
-                        kernel_data
-                            .schedule_upcall(
-                                upcall::COMMAND_DONE,
-                                (kernel::errorcode::into_statuscode(result.map(|_| ())), 0, 0),
-                            )
-                            .is_ok()
-                            && result.unwrap_or_default()
-                    } else {
-                        false
+                        Err(err) => {
+                            debug!("Error accessing writable buffer {:?}", err);
+                        }
+                        Ok(Err(err)) => {
+                            // Error from Caliptra
+                            let err = match err {
+                                CaliptraApiError::MailboxCmdFailed(err) => err,
+                                CaliptraApiError::MailboxRespInvalidChecksum { .. } => 0xffff_ffff,
+                                _ => 0xffff_fffe,
+                            };
+                            if let Err(err) = kernel_data
+                                .schedule_upcall(upcall::COMMAND_DONE, (0, err as usize, 0))
+                            {
+                                debug!("Error scheduling upcall: {:?}", err);
+                            }
+                        }
+                        Ok(Ok(len)) => {
+                            if let Err(err) =
+                                kernel_data.schedule_upcall(upcall::COMMAND_DONE, (len, 0, 0))
+                            {
+                                debug!("Error scheduling upcall: {:?}", err);
+                            }
+                        }
                     }
-                })
-                .unwrap_or_default()
-        } else {
-            false
+                }
+            });
+            if let Err(err) = enter_result {
+                debug!("Error entering app: {:?}", err);
+            }
         }
     }
 
@@ -216,7 +229,8 @@ impl<'a, A: Alarm<'a>> AlarmClient for Mailbox<'a, A> {
                 if driver.is_mailbox_busy() {
                     true
                 } else {
-                    !self.try_complete_request(driver)
+                    self.try_complete_request(driver);
+                    false
                 }
             })
             .unwrap_or_default();

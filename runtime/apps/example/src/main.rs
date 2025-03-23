@@ -155,6 +155,9 @@ pub(crate) async fn async_main<S: Syscalls>() {
     #[cfg(feature = "test-caliptra-mailbox")]
     {
         test_caliptra_mailbox::test_caliptra_mailbox::<S>().await;
+        test_caliptra_mailbox::test_caliptra_mailbox_bad_command::<S>().await;
+        test_caliptra_mailbox::test_caliptra_mailbox_fail::<S>().await;
+        romtime::test_exit(0);
     }
 
     writeln!(console_writer, "app finished").unwrap();

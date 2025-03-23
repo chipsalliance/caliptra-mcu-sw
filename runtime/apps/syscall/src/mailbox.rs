@@ -72,9 +72,9 @@ impl<S: Syscalls> Mailbox<S> {
         command: u32,
         input_data: &[u8],
         response_buffer: &mut [u8],
-    ) -> Result<usize, ErrorCode> {
+    ) -> Result<usize, MailboxError> {
         // Subscribe to the asynchronous notification for when the command is processed
-        let result = share::scope::<(), _, _>(|_handle| {
+        let result: Result<(u32, u32, u32), ErrorCode> = share::scope::<(), _, _>(|_handle| {
             let sub = TockSubscribe::subscribe_allow_ro_rw::<S, DefaultConfig>(
                 self.driver_num,
                 mailbox_subscribe::COMMAND_DONE,
@@ -85,15 +85,32 @@ impl<S: Syscalls> Mailbox<S> {
             );
 
             // Issue the command to the kernel
-            S::command(self.driver_num, mailbox_cmd::EXECUTE_COMMAND, command, 0)
-                .to_result::<(), ErrorCode>()?;
-            Ok(sub)
+            match S::command(self.driver_num, mailbox_cmd::EXECUTE_COMMAND, command, 0)
+                .to_result::<(), ErrorCode>()
+            {
+                Ok(()) => Ok(sub),
+                Err(err) => {
+                    S::unallow_ro(self.driver_num, mailbox_ro_buffer::INPUT);
+                    S::unallow_rw(self.driver_num, mailbox_rw_buffer::RESPONSE);
+                    Err(MailboxError::ErrorCode(err))
+                }
+            }
         })?
         .await;
 
         S::unallow_ro(self.driver_num, mailbox_ro_buffer::INPUT);
         S::unallow_rw(self.driver_num, mailbox_rw_buffer::RESPONSE);
-        result.map(|(bytes, _, _)| bytes as usize)
+
+        match result {
+            Ok((bytes, error_code, _)) => {
+                if error_code != 0 {
+                    Err(MailboxError::MailboxError(error_code))
+                } else {
+                    Ok(bytes as usize)
+                }
+            }
+            Err(err) => Err(MailboxError::ErrorCode(err)),
+        }
     }
 }
 
@@ -127,4 +144,10 @@ mod mailbox_rw_buffer {
 mod mailbox_subscribe {
     /// Subscription ID for the `COMMAND_DONE` event.
     pub const COMMAND_DONE: u32 = 0;
+}
+
+#[derive(Debug)]
+pub enum MailboxError {
+    ErrorCode(ErrorCode),
+    MailboxError(u32),
 }

@@ -8,6 +8,7 @@ edition.workspace = true
 
 [dependencies]
 caliptra-api.workspace = true
+caliptra-error.workspace = true
 critical-section.workspace = true
 embassy-executor.workspace = true
 libsyscall-caliptra.workspace = true

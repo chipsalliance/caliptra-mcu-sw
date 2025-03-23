@@ -179,6 +179,7 @@ caliptra-emu-bus = { git = "https://github.com/chipsalliance/caliptra-sw", rev =
 caliptra-emu-cpu = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
 caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
 caliptra-emu-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
+caliptra-error = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea", default-features = false }
 caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
 caliptra-image-crypto = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea", default-features = false, features = ["rustcrypto"] }
 caliptra-image-fake-keys = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291e61a8ea81e969fa26b709480a8e5ea" }
@@ -198,6 +199,7 @@ ureg = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "d12dbf5291
 # caliptra-emu-cpu = { path = "../caliptra-sw/sw-emulator/lib/cpu" }
 # caliptra-emu-periph = { path = "../caliptra-sw/sw-emulator/lib/periph" }
 # caliptra-emu-types = { path = "../caliptra-sw/sw-emulator/lib/types" }
+# caliptra-error = { path = "../caliptra-sw/error", default-features = false }
 # caliptra-hw-model = { path = "../caliptra-sw/hw-model" }
 # caliptra-image-crypto = { path = "../caliptra-sw/image/crypto", default-features = false, features = ["rustcrypto"] }
 # caliptra-image-fake-keys = { path = "../caliptra-sw/image/fake-keys" }
