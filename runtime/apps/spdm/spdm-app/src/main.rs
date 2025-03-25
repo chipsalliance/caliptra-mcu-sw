@@ -108,7 +108,7 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
     };
 
     let device_certs_mgr = DeviceCertsManagerImpl::default();
-    let hash_engine = HashEngineImpl::default();
+    let mut hash_engine = HashEngineImpl::default();
 
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
@@ -116,7 +116,7 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
         local_capabilities,
         local_algorithms,
         &device_certs_mgr,
-        &hash_engine,
+        &mut hash_engine,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {

@@ -20,8 +20,8 @@ pub struct SpdmContext<'a, S: Syscalls> {
     pub(crate) state: State,
     pub(crate) local_capabilities: DeviceCapabilities,
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
-    device_certs_manager: &'a dyn DeviceCertsManager,
-    hash_engine: &'a dyn HashEngine,
+    pub device_certs_manager: &'a dyn DeviceCertsManager,
+    pub hash_engine: &'a mut dyn HashEngine,
 }
 
 impl<'a, S: Syscalls> SpdmContext<'a, S> {
@@ -31,7 +31,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
         device_certs_manager: &'a dyn DeviceCertsManager,
-        hash_engine: &'a dyn HashEngine,
+        hash_engine: &'a mut dyn HashEngine,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 

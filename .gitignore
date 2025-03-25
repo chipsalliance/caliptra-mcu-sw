@@ -26,3 +26,6 @@ recovery_flash
 
 # Protocol validator test logs
 test.log
+
+# Ignore test_certs folder
+test_certs
