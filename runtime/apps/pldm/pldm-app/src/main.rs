@@ -49,6 +49,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
     if cfg!(any(
         feature = "test-pldm-discovery",
         feature = "test-pldm-fw-update",
+        feature = "test-pldm-fw-update-e2e"
     )) {
         let mut pldm_service = PldmService::<S>::init();
         writeln!(

@@ -45,6 +45,7 @@ pub static PLDM_PROTOCOL_CAPABILITIES: LazyLock<
                 FwUpdateCmd::ApplyComplete as u8,
                 FwUpdateCmd::ActivateFirmware as u8,
                 FwUpdateCmd::GetStatus as u8,
+                FwUpdateCmd::CancelUpdateComponent as u8,
                 FwUpdateCmd::CancelUpdate as u8,
             ],
         },
