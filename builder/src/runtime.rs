@@ -55,7 +55,7 @@ pub fn runtime_build_no_apps(
     // placeholder values
     let runtime_size = kernel_size.unwrap_or(128 * 1024);
     let apps_offset = apps_offset.unwrap_or(RAM_OFFSET as usize + 192 * 1024);
-    let apps_size = apps_size.unwrap_or(80 * 1024);
+    let apps_size = apps_size.unwrap_or(82 * 1024);
 
     let ram_start = RAM_OFFSET as usize + RAM_SIZE as usize - DATA_RAM_SIZE;
     assert!(

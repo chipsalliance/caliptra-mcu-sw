@@ -5,6 +5,7 @@ use crate::cert_mgr;
 use crate::codec::{Codec, CodecError, CodecResult, CommonCodec, DataKind, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
+use crate::error::CommandError;
 use crate::error::{CommandResult, SpdmError};
 use crate::protocol::algorithms::{
     BaseHashAlgoType, Prioritize, SPDM_MAX_HASH_SIZE, SPDM_MAX_SLOT_NUMBER,
@@ -14,6 +15,8 @@ use crate::protocol::common::SpdmMsgHdr;
 use crate::state::ConnectionState;
 use libtock_platform::Syscalls;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+use core::fmt::Write;
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C)]
@@ -131,6 +134,7 @@ impl Codec for GetDigestsResp {
         for digest in self.digests.iter().take(slot_cnt) {
             len += digest.encode(buffer)?;
         }
+
         Ok(len)
     }
 
@@ -145,8 +149,11 @@ pub(crate) fn handle_digests<'a, S: Syscalls>(
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
+    //println!("[xs debug] handle_digests start");
+    writeln!(ctx.cw, "[xs debug] handle_digests start").unwrap();
+
     // Validate the state
-    if ctx.state.connection_info.state() < ConnectionState::AfterNegotiateAlgorithms {
+    if ctx.state.connection_info.state() != ConnectionState::AfterNegotiateAlgorithms {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
@@ -186,20 +193,35 @@ pub(crate) fn handle_digests<'a, S: Syscalls>(
         .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
 
     let slot_mask = 1u8; // Only 1 slot is supported
-                         // Construct the response
+
+    // Construct the response
     let resp = GetDigestsResp::new(slot_mask, &[digest]);
+
+    writeln!(ctx.cw, "[xs debug] handle_digests: prepare_response_buffer").unwrap();
 
     // Prepare the response buffer
     ctx.prepare_response_buffer(req_payload)?;
 
-    resp.encode(req_payload).map_err(|_| {
+    let payload_len = resp.encode(req_payload).map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
     })?;
+
+    // Push data offset up by total payload length
+    req_payload
+        .push_data(payload_len)
+        .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
     // Set the connection state to AfterAlgorithms
     ctx.state
         .connection_info
         .set_state(ConnectionState::AfterDigest);
+
+    writeln!(
+        ctx.cw,
+        "[xs debug] handle_digests end, payload_len: {:?}",
+        payload_len
+    )
+    .unwrap();
 
     Ok(())
 }
@@ -226,9 +248,6 @@ fn get_hash_algo_from_context<'a, S: Syscalls>(ctx: &SpdmContext<'a, S>) -> Base
         .expect("Invalid selected hash algorithm");
 
     hash_algo
-
-    // Get digest size
-    //hash_algo.hash_size()
 }
 
 fn get_certificate_chain_digest<'a, S: Syscalls>(
@@ -276,6 +295,11 @@ fn get_certificate_chain_digest<'a, S: Syscalls>(
         .finish(digest)
         .map_err(SpdmError::HashEngine)?;
 
+    writeln!(
+        ctx.cw,
+        "[xs debug] get_certificate_chain_digest: {:?}",
+        digest
+    )
+    .unwrap();
     Ok(())
-
 }

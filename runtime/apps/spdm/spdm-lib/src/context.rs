@@ -14,6 +14,11 @@ use crate::state::State;
 use crate::transport::MctpTransport;
 use libtock_platform::Syscalls;
 
+// Debug usage
+use core::fmt::Write;
+use libtock_console::Console;
+use libtock_console::ConsoleWriter;
+
 pub struct SpdmContext<'a, S: Syscalls> {
     transport: &'a mut MctpTransport<S>,
     pub(crate) supported_versions: &'a [SpdmVersion],
@@ -22,6 +27,9 @@ pub struct SpdmContext<'a, S: Syscalls> {
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
     pub device_certs_manager: &'a dyn DeviceCertsManager,
     pub hash_engine: &'a mut dyn HashEngine,
+
+    // For debugging
+    pub cw: ConsoleWriter<S>,
 }
 
 impl<'a, S: Syscalls> SpdmContext<'a, S> {
@@ -45,6 +53,9 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             local_algorithms,
             device_certs_manager,
             hash_engine,
+
+            // For debugging
+            cw: Console::<S>::writer(),
         })
     }
 
