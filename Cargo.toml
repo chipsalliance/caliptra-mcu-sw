@@ -24,30 +24,17 @@ members = [
     "runtime",
     "runtime/apps/api",
     "runtime/apps/example",
-    "runtime/apps/libtock/apis/interface/buttons",
-    "runtime/apps/libtock/apis/interface/buzzer",
     "runtime/apps/libtock/apis/interface/console",
-    "runtime/apps/libtock/apis/interface/leds",
     "runtime/apps/libtock/apis/kernel/low_level_debug",
-    "runtime/apps/libtock/apis/peripherals/adc",
     "runtime/apps/libtock/apis/peripherals/alarm",
-    "runtime/apps/libtock/apis/peripherals/gpio",
-    "runtime/apps/libtock/apis/peripherals/i2c_master",
-    "runtime/apps/libtock/apis/peripherals/i2c_master_slave",
     "runtime/apps/libtock/apis/peripherals/rng",
-    "runtime/apps/libtock/apis/sensors/air_quality",
-    "runtime/apps/libtock/apis/sensors/ambient_light",
-    "runtime/apps/libtock/apis/sensors/ninedof",
-    "runtime/apps/libtock/apis/sensors/proximity",
-    "runtime/apps/libtock/apis/sensors/temperature",
-    "runtime/apps/libtock/apis/storage/key_value",
     "runtime/apps/libtock/panic_handlers/debug_panic",
     "runtime/apps/libtock/panic_handlers/small_panic",
     "runtime/apps/libtock/platform",
-    "runtime/apps/libtock/runner",
+    # "runtime/apps/libtock/runner",
     "runtime/apps/libtock/runtime",
     "runtime/apps/libtock/syscalls_tests",
-    "runtime/apps/libtock/tools/print_sizes",
+    # "runtime/apps/libtock/tools/print_sizes",
     "runtime/apps/libtock/ufmt",
     "runtime/apps/libtock/unittest",
     "runtime/apps/libtockasync",
@@ -95,6 +82,7 @@ ecdsa = { version = "0.16.9", features = ["pem"]}
 embassy-executor = { version = "0.6.3", features = ["nightly"] }
 embassy-sync = "0.6.2"
 embedded-alloc = "0.5.1"
+embedded-hal = "1.0"
 futures = "0.3.31"
 gdbstub = "0.6.3"
 gdbstub_arch = "0.2.4"
@@ -146,7 +134,8 @@ mcu-builder = { path = "builder" }
 mcu-rom-common = { path = "rom" }
 pldm-common = { path = "common/pldm"}
 pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
-pldm-ua = {path = "emulator/bmc/pldm-ua"}
+pldm-ua = { path = "emulator/bmc/pldm-ua"}
+
 
 registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }
@@ -156,17 +145,20 @@ romtime = { path = "romtime" }
 # App related dependencies
 pldm-lib = { path = "runtime/apps/pldm/pldm-lib", features = ["pldm-lib-use-static-config"] }
 spdm-lib = { path = "runtime/apps/spdm/spdm-lib" }
+libsyscall-caliptra = { path = "runtime/apps/syscall" }
+libapi-caliptra = { path = "runtime/apps/api" }
 
 # libtock dependencies
 libtock = { path = "runtime/apps/libtock" }
 libtock_alarm = { path = "runtime/apps/libtock/apis/peripherals/alarm" }
 libtock_console = { path = "runtime/apps/libtock/apis/interface/console" }
 libtock_debug_panic = { path = "runtime/apps/libtock/panic_handlers/debug_panic" }
+libtock_low_level_debug = { path = "runtime/apps/libtock/apis/kernel/low_level_debug" }
 libtock_platform = { path = "runtime/apps/libtock/platform" }
+libtock_rng = { path = "runtime/apps/libtock/apis/peripherals/rng" }
 libtock_runtime = { path = "runtime/apps/libtock/runtime" }
+libtock_small_panic = { path = "runtime/apps/libtock/panic_handlers/small_panic" }
 libtock_unittest = { path = "runtime/apps/libtock/unittest" }
-libsyscall-caliptra = { path = "runtime/apps/syscall" }
-libapi-caliptra = { path = "runtime/apps/api" }
 
 
 # caliptra dependencies; keep git revs in sync

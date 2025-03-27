@@ -13,33 +13,15 @@ version = "0.1.0"
 rust_embedded = [
     "embedded-hal",
     "libtock_platform/rust_embedded",
-    "libtock_gpio/rust_embedded",
 ]
 
 [dependencies]
-libtock_adc = { path = "apis/peripherals/adc" }
-libtock_air_quality = { path = "apis/sensors/air_quality" }
-libtock_alarm = { path = "apis/peripherals/alarm" }
-libtock_ambient_light = { path = "apis/sensors/ambient_light" }
-libtock_buttons = { path = "apis/interface/buttons" }
-libtock_buzzer = { path = "apis/interface/buzzer" }
-libtock_console = { path = "apis/interface/console" }
-libtock_debug_panic = { path = "panic_handlers/debug_panic" }
-libtock_gpio = { path = "apis/peripherals/gpio" }
-libtock_i2c_master = { path = "apis/peripherals/i2c_master" }
-libtock_ieee802154 = { path = "apis/net/ieee802154" }
-libtock_i2c_master_slave = { path = "apis/peripherals/i2c_master_slave" }
-libtock_key_value = { path = "apis/storage/key_value" }
-libtock_leds = { path = "apis/interface/leds" }
-libtock_low_level_debug = { path = "apis/kernel/low_level_debug" }
-libtock_ninedof = { path = "apis/sensors/ninedof" }
-libtock_platform = { path = "platform" }
-libtock_proximity = { path = "apis/sensors/proximity" }
-libtock_rng = { path = "apis/peripherals/rng" }
-libtock_runtime = { path = "runtime" }
-libtock_small_panic = { path = "panic_handlers/small_panic" }
-libtock_sound_pressure = { path = "apis/sensors/sound_pressure" }
-libtock_spi_controller = { path = "apis/peripherals/spi_controller" }
-libtock_temperature = { path = "apis/sensors/temperature" }
-
-embedded-hal = { version = "1.0", optional = true }
+embedded-hal = { workspace = true, optional = true }
+libtock_alarm.workspace = true
+libtock_console.workspace = true
+libtock_debug_panic.workspace = true
+libtock_low_level_debug.workspace = true
+libtock_platform.workspace = true
+libtock_rng.workspace = true
+libtock_runtime.workspace = true
+libtock_small_panic.workspace = true
