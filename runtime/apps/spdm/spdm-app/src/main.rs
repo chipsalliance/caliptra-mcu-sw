@@ -107,8 +107,8 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
         },
     };
 
-    let device_certs_mgr = DeviceCertsManagerImpl::default();
-    let mut hash_engine = HashEngineImpl::default();
+    let device_certs_mgr = DeviceCertsManagerImpl::new();
+    let mut hash_engine = HashEngineImpl::new();
 
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,

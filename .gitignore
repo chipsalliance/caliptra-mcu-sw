@@ -27,5 +27,5 @@ recovery_flash
 # Protocol validator test logs
 test.log
 
-# Ignore test_certs folder
-test_certs
+# Test certificates for spdm libary
+/tests/test_certs

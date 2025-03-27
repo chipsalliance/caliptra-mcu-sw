@@ -2,7 +2,6 @@
 
 pub mod algorithms;
 pub mod capabilities;
-pub mod cert;
 pub(crate) mod common;
 pub mod version;
 

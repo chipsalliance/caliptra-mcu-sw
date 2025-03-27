@@ -15,7 +15,6 @@ use crate::transport::MctpTransport;
 use libtock_platform::Syscalls;
 
 // Debug usage
-use core::fmt::Write;
 use libtock_console::Console;
 use libtock_console::ConsoleWriter;
 
