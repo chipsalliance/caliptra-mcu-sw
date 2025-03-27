@@ -52,23 +52,7 @@ pub(crate) fn autogen(
         .to_path_buf();
 
     let rdl_files = [
-        "hw/caliptra-ss/src/fuse_ctrl/data/entropy_src.rdl",
-        "hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl.rdl",
-        "hw/caliptra-ss/third_party/caliptra-rtl/src/csrng/data/csrng.rdl",
-        "hw/caliptra-ss/third_party/caliptra-rtl/src/keyvault/rtl/kv_def.rdl",
-        "hw/caliptra-ss/third_party/caliptra-rtl/src/hmac/rtl/hmac_reg.rdl",
-        "hw/caliptra-ss/third_party/caliptra-rtl/src/sha256/rtl/sha256_reg.rdl",
-        "hw/caliptra-ss/third_party/caliptra-rtl/src/sha512/rtl/sha512_reg.rdl",
-        "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/mbox_csr.rdl",
-        "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/sha512_acc_csr.rdl",
-        "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/soc_ifc_reg.rdl",
-        "hw/caliptra-ss/third_party/caliptra-rtl/src/spi_host/data/spi_host.rdl",
-        "hw/caliptra-ss/third_party/caliptra-rtl/src/uart/data/uart.rdl",
-        "hw/caliptra-ss/third_party/i3c-core/src/rdl/registers.rdl",
-        "hw/caliptra-ss/src/mci/rtl/mci_reg.rdl",
         "hw/caliptra-ss/src/integration/rtl/soc_address_map.rdl",
-        "hw/el2_pic_ctrl.rdl",
-        "hw/flash_ctrl.rdl",
         "hw/mcu.rdl",
     ];
     let mut rdl_files: Vec<PathBuf> = rdl_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
@@ -98,6 +82,17 @@ pub(crate) fn autogen(
 
     // eliminate duplicate type names
     let patches = [
+        (
+            PROJECT_ROOT.join("hw/caliptra-ss/src/mci/rtl/mci_top.rdl"),
+            // this is legal but our parser doesn't understand it
+            r#"mem {name="MCU SRAM";"#,
+            r#"external mem {name="MCU SRAM";"#,
+        ),
+        (
+            PROJECT_ROOT.join("hw/caliptra-ss/src/mci/rtl/mci_top.rdl"),
+            r"external mcu_sram @ 0xC0_0000;",
+            r"mcu_sram @ 0xC0_0000;",
+        ),
         (
             PROJECT_ROOT.join(
                 "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
@@ -134,26 +129,14 @@ pub(crate) fn autogen(
             "TTI_RESET_CONTROL",
         ),
         (
-            PROJECT_ROOT.join("hw/caliptra-ss/src/fuse_ctrl/data/entropy_src.rdl"),
-            "INTERRUPT_ENABLE",
-            "ENTROPY_INTERRUPT_ENABLE",
-        ),
-        (
-            PROJECT_ROOT.join("hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl.rdl"),
+            PROJECT_ROOT.join("hw/caliptra-ss/src/fuse_ctrl/rtl/otp_ctrl.rdl"),
             "INTERRUPT_ENABLE",
             "OTP_INTERRUPT_ENABLE",
         ),
         (
-            PROJECT_ROOT.join("hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl.rdl"),
-            // this field should be writable by firmware
-            r#"default sw = r; // field prperty
-            default hw = w; // field prperty
-
-            field { desc = "wdata.";}"#,
-            r#"default sw = rw; // field prperty
-            default hw = w; // field prperty
-
-            field { desc = "wdata.";}"#,
+            PROJECT_ROOT.join("hw/caliptra-ss/src/fuse_ctrl/rtl/otp_ctrl.rdl"),
+            "STATUS",
+            "OTP_STATUS",
         ),
     ];
 
@@ -269,14 +252,15 @@ fn generate_emulator_types(
         if block.name.starts_with("caliptra_") {
             block.name = block.name[9..].to_string();
         }
-        if block.name.ends_with("_reg") || block.name.ends_with("_csr") {
+        while block.name.ends_with("_reg")
+            || block.name.ends_with("_csr")
+            || block.name.ends_with("_top")
+            || block.name.ends_with("_ifc")
+        {
             block.name = block.name[0..block.name.len() - 4].to_string();
         }
         if block.name.ends_with("_ctrl") {
             block.name = block.name[0..block.name.len() - 5].to_string();
-        }
-        if block.name.ends_with("_ifc") {
-            block.name = block.name[0..block.name.len() - 4].to_string();
         }
         if block.name == "I3CCSR" {
             block.name = "i3c".to_string();
@@ -284,10 +268,6 @@ fn generate_emulator_types(
         if SKIP_TYPES.contains(block.name.as_str()) {
             continue;
         }
-        remove_reg_prefixes(
-            &mut block.registers,
-            &format!("{}_", block.name.to_ascii_lowercase()),
-        );
         let block = block.clone().validate_and_dedup()?;
         validated_blocks.push(block);
     }
@@ -411,6 +391,15 @@ fn emu_make_peripheral_trait(
                 });
             }
         } else {
+            if register_types_to_crates
+                .get(ty.name.as_ref().unwrap())
+                .is_none()
+            {
+                println!("Finding type {} {}", base, ty.name.as_ref().unwrap());
+                let mut i: Vec<_> = register_types_to_crates.keys().collect();
+                i.sort();
+                println!("types {:?}", i);
+            }
             let rcrate = format_ident!(
                 "{}",
                 register_types_to_crates
@@ -567,12 +556,14 @@ fn whole_width(block: &RegisterBlock) -> u64 {
         .registers
         .iter()
         .map(|r| r.offset + r.ty.width.in_bytes() * r.array_dimensions.iter().product::<u64>())
-        .sum::<u64>();
+        .max()
+        .unwrap_or_default();
     let b = block
         .sub_blocks
         .iter()
         .map(|sb| sb.start_offset() + whole_width(sb.block()))
-        .sum::<u64>();
+        .max()
+        .unwrap_or_default();
     a.max(b)
 }
 
@@ -820,7 +811,10 @@ fn generate_fw_registers(
         if block.name.starts_with("caliptra_") {
             block.name = block.name[9..].to_string();
         }
-        if block.name.ends_with("_reg") || block.name.ends_with("_csr") {
+        if block.name.ends_with("_reg")
+            || block.name.ends_with("_csr")
+            || block.name.ends_with("_top")
+        {
             block.name = block.name[0..block.name.len() - 4].to_string();
         }
         if block.name.ends_with("_ifc") {
@@ -832,10 +826,6 @@ fn generate_fw_registers(
         if SKIP_TYPES.contains(block.name.as_str()) {
             continue;
         }
-        remove_reg_prefixes(
-            &mut block.registers,
-            &format!("{}_", block.name.to_ascii_lowercase()),
-        );
         if block.name == "soc_ifc" {
             block.rename_enum_variants(&[
                 ("DEVICE_UNPROVISIONED", "UNPROVISIONED"),
@@ -900,7 +890,7 @@ fn generate_fw_registers(
         register_types_to_crates,
         false,
     );
-    let recursion = "#![recursion_limit = \"512\"]\n";
+    let recursion = "#![recursion_limit = \"2048\"]\n";
     let root_tokens = root_type_tokens;
     let defines_mod = "pub mod defines;\n";
     let fuses_tokens = "pub mod fuses;\n";
@@ -1007,16 +997,6 @@ fn run_cmd_stdout(cmd: &mut Command, input: Option<&[u8]>) -> Result<String> {
     }
 }
 
-/// Remove the given prefix from the register names, if present.
-fn remove_reg_prefixes(registers: &mut [Rc<Register>], prefix: &str) {
-    for reg in registers.iter_mut() {
-        if reg.name.to_ascii_lowercase().starts_with(prefix) {
-            let reg = Rc::make_mut(reg);
-            reg.name = reg.name[prefix.len()..].to_string();
-        }
-    }
-}
-
 #[derive(Debug, Deserialize)]
 struct OtpMmap {
     partitions: Vec<OtpPartition>,
@@ -1087,50 +1067,64 @@ fn autogen_fuses(check: bool, dest_dir: &Path) -> Result<()> {
             .items
             .iter()
             .map(|i| i.size.parse::<usize>().unwrap())
-            .sum::<usize>()
-            + digest_size;
+            .sum::<usize>();
+
+        let calculated_size = if digest_size == 8 {
+            // digests need to be aligned to 8-byte boundary
+            calculated_size.next_multiple_of(8) + digest_size
+        } else {
+            // partitions need to be aligned to 4-byte boundary
+            calculated_size.next_multiple_of(4)
+        };
+
         let size = partition
             .size
             .as_ref()
             .map(|s| s.parse::<usize>().unwrap())
             .unwrap_or(calculated_size);
-        assert_eq!(calculated_size, size);
 
-        assert_eq!(size % 4, 0);
-        let size_words = size / 4;
+        // TODO: this one seems to be incorrect in the hjson file
+        // https://github.com/chipsalliance/caliptra-ss/issues/193
+        if name != "vendor_test_partition" {
+            assert_eq!(calculated_size, size);
+        }
+
         output += &format!("/// {}\n", &partition.desc.replace("\n", "\n/// "));
         if !partition.secret {
             output += "#[zeroize(skip)]\n";
         }
-        output += &format!("pub {}: [u32; {}],\n", name, size_words);
-        default_impl_output += &format!("{}: [0; {}],\n", name, size_words);
+        output += &format!("pub {}: [u8; {}],\n", name, size);
+        default_impl_output += &format!("{}: [0; {}],\n", name, size);
         const_output += &format!(
-            "pub const {}_WORD_OFFSET: usize = {};\n",
+            "pub const {}_BYTE_OFFSET: usize = {};\n",
             name.to_uppercase(),
-            offset / 4
+            offset
         );
         const_output += &format!(
-            "pub const {}_WORD_SIZE: usize = {};\n",
+            "pub const {}_BYTE_SIZE: usize = {};\n",
             name.to_uppercase(),
-            size_words,
+            size,
         );
 
-        let mut item_offset = offset;
+        let mut item_offset: usize = offset;
         partition.items.iter().for_each(|item| {
-            assert_eq!(item_offset % 4, 0);
             let item_name = snake_case(&item.name);
             let item_size = item.size.parse::<usize>().unwrap();
-            if item_size <= 4 {
-                impl_output += &format!("pub fn {}(&self) -> u32 {{\n", item_name);
-                impl_output += &format!("    self.{}[{}]\n", name, (item_offset - offset) / 4);
+            // digests need to be 8-byte aligned
+            if item_name.to_ascii_lowercase().ends_with("digest") {
+                item_offset = item_offset.next_multiple_of(8);
+            }
+            if item_size == 1 {
+                impl_output += &format!("pub fn {}(&self) -> u8 {{\n", item_name);
+                impl_output += &format!("    self.{}[{}]\n", name, item_offset - offset);
                 impl_output += "}\n";
             } else {
-                impl_output += &format!("pub fn {}(&self) -> &[u32] {{\n", item_name);
+                impl_output += &format!("pub fn {}(&self) -> &[u8] {{\n", item_name);
                 impl_output += &format!(
                     "    &self.{}[{}..{}]\n",
                     name,
-                    (item_offset - offset) / 4,
-                    (item_offset + item_size - offset) / 4
+                    (item_offset - offset),
+                    (item_offset + item_size - offset)
                 );
                 impl_output += "}\n";
             }

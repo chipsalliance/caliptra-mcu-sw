@@ -5,7 +5,7 @@ use registers_generated::mci;
 use tock_registers::interfaces::{Readable, Writeable};
 
 pub const MCI_BASE: StaticRef<mci::regs::Mci> =
-    unsafe { StaticRef::new(mci::MCI_REG_ADDR as *const mci::regs::Mci) };
+    unsafe { StaticRef::new(mci::MCI_TOP_ADDR as *const mci::regs::Mci) };
 
 pub struct Mci {
     registers: StaticRef<mci::regs::Mci>,
@@ -17,10 +17,10 @@ impl Mci {
     }
 
     pub fn caliptra_boot_go(&self) {
-        self.registers.cptra_boot_go.set(1);
+        self.registers.mci_reg_cptra_boot_go.set(1);
     }
 
     pub fn flow_status(&self) -> u32 {
-        self.registers.fw_flow_status.get()
+        self.registers.mci_reg_fw_flow_status.get()
     }
 }

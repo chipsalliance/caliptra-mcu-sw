@@ -15,8 +15,8 @@ Abstract:
 use crate::otp_digest;
 use caliptra_emu_types::{RvAddr, RvData};
 use emulator_bus::{Clock, ReadWriteRegister, Timer};
-use registers_generated::fuses::{self, NON_SECRET_FUSES_WORD_OFFSET, SECRET3_WORD_OFFSET};
-use registers_generated::otp_ctrl::bits::{DirectAccessCmd, Status};
+use registers_generated::fuses::{self};
+use registers_generated::otp_ctrl::bits::{DirectAccessCmd, OtpStatus};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::File;
@@ -30,18 +30,70 @@ const DIGEST_CONST: u128 = 0xfc2f4d648d4a45b482924470b96f0cee;
 /// OTP Digest IV, randomly generated. Usually read from configuration file.
 const DIGEST_IV: u64 = 0x25b5e5a1627a3557;
 
-#[allow(dead_code)]
-enum Partitions {
-    VendorTest = 0,
-    NonSecret = 1,
-    Secret0 = 2,
-    Secret1 = 3,
-    Secret2 = 4,
-    Secret3 = 5,
-    LifeCycle = 6,
-}
+const TOTAL_SIZE: usize = fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE;
 
-const TOTAL_SIZE: usize = (fuses::LIFE_CYCLE_WORD_OFFSET + fuses::LIFE_CYCLE_WORD_SIZE) * 4;
+const PARTITIONS: [(usize, usize); 15] = [
+    (
+        fuses::SECRET_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
+        fuses::SECRET_TEST_UNLOCK_PARTITION_BYTE_SIZE,
+    ),
+    (
+        fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET,
+        fuses::SECRET_MANUF_PARTITION_BYTE_SIZE,
+    ),
+    (
+        fuses::SECRET_PROD_PARTITION_0_BYTE_OFFSET,
+        fuses::SECRET_PROD_PARTITION_0_BYTE_SIZE,
+    ),
+    (
+        fuses::SECRET_PROD_PARTITION_1_BYTE_OFFSET,
+        fuses::SECRET_PROD_PARTITION_1_BYTE_SIZE,
+    ),
+    (
+        fuses::SECRET_PROD_PARTITION_2_BYTE_OFFSET,
+        fuses::SECRET_PROD_PARTITION_2_BYTE_SIZE,
+    ),
+    (
+        fuses::SECRET_PROD_PARTITION_3_BYTE_OFFSET,
+        fuses::SECRET_PROD_PARTITION_3_BYTE_SIZE,
+    ),
+    (
+        fuses::SW_MANUF_PARTITION_BYTE_OFFSET,
+        fuses::SW_MANUF_PARTITION_BYTE_SIZE,
+    ),
+    (
+        fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET,
+        fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_SIZE,
+    ),
+    (
+        fuses::SVN_PARTITION_BYTE_OFFSET,
+        fuses::SVN_PARTITION_BYTE_SIZE,
+    ),
+    (
+        fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET,
+        fuses::VENDOR_TEST_PARTITION_BYTE_SIZE,
+    ),
+    (
+        fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET,
+        fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE,
+    ),
+    (
+        fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET,
+        fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
+    ),
+    (
+        fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,
+        fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
+    ),
+    (
+        fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET,
+        fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE,
+    ),
+    (
+        fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
+        fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE,
+    ),
+];
 
 /// Used to hold the state that is saved between emulator runs.
 #[derive(Deserialize, Serialize)]
@@ -59,10 +111,10 @@ pub struct Otp {
     direct_access_address: u32,
     direct_access_buffer: u32,
     direct_access_cmd: ReadWriteRegister<u32, DirectAccessCmd::Register>,
-    status: ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Status::Register>,
+    status: ReadWriteRegister<u32, OtpStatus::Register>,
     timer: Timer,
     partitions: Vec<u8>,
-    digests: [u32; 12],
+    digests: [u32; PARTITIONS.len() * 2],
     /// Partitions to calculate digests for on reset.
     calculate_digests_on_reset: HashSet<usize>,
 }
@@ -82,7 +134,7 @@ impl Otp {
     pub fn new(
         clock: &Clock,
         file_name: Option<PathBuf>,
-        owner_pk_hash: Option<[u8; 48]>,
+        _owner_pk_hash: Option<[u8; 48]>,
         vendor_pk_hash: Option<[u8; 48]>,
     ) -> Result<Self, std::io::Error> {
         let file = if let Some(path) = file_name {
@@ -103,22 +155,17 @@ impl Otp {
             direct_access_address: 0,
             direct_access_buffer: 0,
             direct_access_cmd: 0u32.into(),
-            status: 0b100_0000_0000_0000u32.into(), // DAI idle state
+            status: 0b100_0000_0000_0000_0000_0000u32.into(), // DAI idle state
             calculate_digests_on_reset: HashSet::new(),
             timer: Timer::new(clock),
             partitions: vec![0u8; TOTAL_SIZE],
-            digests: [0; 12],
+            digests: [0; PARTITIONS.len() * 2],
         };
         otp.read_from_file()?;
-        if let Some(mut owner_pk_hash) = owner_pk_hash {
-            swap_endianness(&mut owner_pk_hash);
-            otp.partitions
-                [(NON_SECRET_FUSES_WORD_OFFSET + 8) * 4..(NON_SECRET_FUSES_WORD_OFFSET + 20) * 4]
-                .copy_from_slice(&owner_pk_hash);
-        }
         if let Some(mut vendor_pk_hash) = vendor_pk_hash {
             swap_endianness(&mut vendor_pk_hash);
-            otp.partitions[SECRET3_WORD_OFFSET * 4..(SECRET3_WORD_OFFSET + 12) * 4]
+            otp.partitions[fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET
+                ..fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48]
                 .copy_from_slice(&vendor_pk_hash);
         }
         // if there were digests that were pending a reset, then calculate them now
@@ -141,20 +188,10 @@ impl Otp {
     }
 
     fn calculate_digest(&mut self, partition: usize) {
-        let (word_addr, word_size) = match partition {
-            0 => (fuses::VENDOR_TEST_WORD_OFFSET, fuses::VENDOR_TEST_WORD_SIZE),
-            1 => (
-                fuses::NON_SECRET_FUSES_WORD_OFFSET,
-                fuses::NON_SECRET_FUSES_WORD_SIZE,
-            ),
-            2 => (fuses::SECRET0_WORD_OFFSET, fuses::SECRET0_WORD_SIZE),
-            3 => (fuses::SECRET1_WORD_OFFSET, fuses::SECRET1_WORD_SIZE),
-            4 => (fuses::SECRET2_WORD_OFFSET, fuses::SECRET2_WORD_SIZE),
-            5 => (fuses::SECRET3_WORD_OFFSET, fuses::SECRET3_WORD_SIZE),
-            _ => unreachable!(),
-        };
-        let addr = word_addr * 4;
-        let size = word_size * 4;
+        if partition >= PARTITIONS.len() - 1 {
+            return;
+        }
+        let (addr, size) = PARTITIONS[partition];
         let digest =
             otp_digest::otp_digest(&self.partitions[addr..addr + size], DIGEST_IV, DIGEST_CONST);
         self.digests[partition * 2] = (digest & 0xffff_ffff) as u32;
@@ -204,10 +241,7 @@ impl Otp {
 }
 
 impl emulator_registers_generated::otp::OtpPeripheral for Otp {
-    fn read_status(
-        &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Status::Register>
-    {
+    fn read_otp_status(&mut self) -> emulator_bus::ReadWriteRegister<u32, OtpStatus::Register> {
         self.status.clone()
     }
 
@@ -241,7 +275,7 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
         };
         self.direct_access_cmd.reg.set(val);
         self.timer.schedule_poll_in(2);
-        self.status.reg.set(Status::DailIdle::CLEAR.value);
+        self.status.reg.set(OtpStatus::DaiIdle::CLEAR.value);
     }
 
     fn read_dai_rdata_rf_direct_access_rdata_0(&mut self) -> RvData {
@@ -287,23 +321,21 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
         } else if self.direct_access_cmd.reg.read(DirectAccessCmd::Digest) == 1 {
             // clear bottom two bits
             let addr = (self.direct_access_address & 0xffff_fffc) as usize;
-            let partition = match addr / 4 {
-                fuses::VENDOR_TEST_WORD_OFFSET => 0,
-                fuses::NON_SECRET_FUSES_WORD_OFFSET => 1,
-                fuses::SECRET0_WORD_OFFSET => 2,
-                fuses::SECRET1_WORD_OFFSET => 3,
-                fuses::SECRET2_WORD_OFFSET => 4,
-                fuses::SECRET3_WORD_OFFSET => 5,
-                _ => 6,
-            };
+            let mut partition = PARTITIONS.len() - 1;
+            for (i, p) in PARTITIONS.iter().enumerate() {
+                if addr == p.0 {
+                    partition = i;
+                    break;
+                }
+            }
             // cowardly refuse to calculate digests for the lifecycle partition
-            if partition != 6 {
+            if partition != PARTITIONS.len() - 1 {
                 self.calculate_digests_on_reset.insert(partition);
             }
         }
 
         // set idle status so that users know operations have completed
-        self.status.reg.set(Status::DailIdle::SET.value);
+        self.status.reg.set(OtpStatus::DaiIdle::SET.value);
     }
 
     /// Called by Bus::warm_reset() to reset the device.
@@ -331,7 +363,7 @@ mod test {
         let clock = Clock::new();
         let mut otp = Otp::new(&clock, None, None, None).unwrap();
         // simulate post-bootup flow
-        assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
+        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         otp.write_integrity_check_period(0x3_FFFFu32);
         otp.write_consistency_check_period(0x3FF_FFFFu32);
         otp.write_check_timeout(0b10_0000u32);
@@ -346,7 +378,7 @@ mod test {
         // disable integrity checks
         otp.write_check_trigger_regwen(0u32.into());
         // block read access to the SW managed partitions
-        otp.write_vendor_test_read_lock(0u32.into());
+        otp.write_vendor_test_partition_read_lock(0u32.into());
     }
 
     #[test]
@@ -354,38 +386,42 @@ mod test {
         let clock = Clock::new();
         let mut otp = Otp::new(&clock, None, None, None).unwrap();
         // write the vendor partition
-        assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
-        for i in 0..fuses::VENDOR_TEST_WORD_SIZE {
+        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
+        for i in 0..fuses::VENDOR_TEST_PARTITION_BYTE_SIZE {
             otp.write_dai_wdata_rf_direct_access_wdata_0(i as u32);
-            otp.write_direct_access_address(((i * 4) as u32).into());
+            otp.write_direct_access_address(
+                ((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
+            );
             otp.write_direct_access_cmd(2u32.into());
             // wait for idle
-            assert_eq!(otp.status.reg.get(), Status::DailIdle::CLEAR.value);
+            assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::CLEAR.value);
             for _ in 0..1000 {
-                if otp.status.reg.read(Status::DailIdle) != 0 {
+                if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
                     break;
                 }
                 otp.poll();
             }
             // check that we are idle with no errors
-            assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
+            assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         }
 
         // read the vendor partition
-        assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
-        for i in 0..fuses::VENDOR_TEST_WORD_SIZE {
-            otp.write_direct_access_address(((i * 4) as u32).into());
+        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
+        for i in 0..fuses::VENDOR_TEST_PARTITION_BYTE_SIZE {
+            otp.write_direct_access_address(
+                ((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
+            );
             otp.write_direct_access_cmd(1u32.into());
             // wait for idle
-            assert_eq!(otp.status.reg.get(), Status::DailIdle::CLEAR.value);
+            assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::CLEAR.value);
             for _ in 0..1000 {
-                if otp.status.reg.read(Status::DailIdle) != 0 {
+                if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
                     break;
                 }
                 otp.poll();
             }
             // check that we are idle with no errors
-            assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
+            assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
             // read the data
             let data = otp.read_dai_rdata_rf_direct_access_rdata_0();
             assert_eq!(data, i as u32);
@@ -397,43 +433,45 @@ mod test {
         let clock = Clock::new();
         let mut otp = Otp::new(&clock, None, None, None).unwrap();
         // write the vendor partition
-        assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
-        for i in 0..fuses::VENDOR_TEST_WORD_SIZE {
+        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
+        for i in 0..fuses::VENDOR_TEST_PARTITION_BYTE_SIZE {
             otp.write_dai_wdata_rf_direct_access_wdata_0(i as u32);
-            otp.write_direct_access_address(((i * 4) as u32).into());
+            otp.write_direct_access_address(
+                ((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
+            );
             otp.write_direct_access_cmd(2u32.into());
             // wait for idle
-            assert_eq!(otp.status.reg.get(), Status::DailIdle::CLEAR.value);
+            assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::CLEAR.value);
             for _ in 0..1000 {
-                if otp.status.reg.read(Status::DailIdle) != 0 {
+                if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
                     break;
                 }
                 otp.poll();
             }
             // check that we are idle with no errors
-            assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
+            assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         }
 
         // trigger a digest
-        otp.write_direct_access_address(0u32.into());
+        otp.write_direct_access_address((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET as u32).into());
         otp.write_direct_access_cmd(4u32.into());
         // wait for idle
-        assert_eq!(otp.status.reg.get(), Status::DailIdle::CLEAR.value);
+        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::CLEAR.value);
         for _ in 0..1000 {
-            if otp.status.reg.read(Status::DailIdle) != 0 {
+            if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
                 break;
             }
             otp.poll();
         }
         // check that we are idle with no errors
-        assert_eq!(otp.status.reg.get(), Status::DailIdle::SET.value);
+        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         // check that the digest is invalid
-        assert_ne!(otp.digests[0], 0xd7e4a117);
-        assert_ne!(otp.digests[1], 0x421763fd);
+        assert_ne!(otp.digests[18], 0xd7e4a117);
+        assert_ne!(otp.digests[19], 0x421763fd);
         // reset
         otp.warm_reset();
         // check that the digest is valid
-        assert_eq!(otp.digests[0], 0xd7e4a117);
-        assert_eq!(otp.digests[1], 0x421763fd);
+        assert_eq!(otp.digests[18], 0xd7e4a117);
+        assert_eq!(otp.digests[19], 0x421763fd);
     }
 }

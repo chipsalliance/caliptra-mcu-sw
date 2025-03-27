@@ -622,117 +622,6 @@ impl ValidatedRegisterBlock {
             .filter(|(_, ty)| pred(ty))
             .collect();
     }
-
-    pub fn extract_subblock_array(
-        &mut self,
-        block_name: &str,
-        register_prefixes: &[&str],
-        type_index: usize,
-    ) {
-        struct MyRegInstance {
-            index: usize,
-            reg: Rc<Register>,
-        }
-        let register_prefixes: HashSet<String> = register_prefixes
-            .iter()
-            .cloned()
-            .map(str::to_ascii_lowercase)
-            .collect();
-        let mut instances_by_name: HashMap<String, Vec<MyRegInstance>> = HashMap::new();
-        self.block.registers.retain_mut(|reg| {
-            let reg_name = reg
-                .name
-                .trim_end_matches(|c: char| c.is_ascii_digit())
-                .to_ascii_lowercase();
-            if !register_prefixes.contains(&reg_name) {
-                // Keep this register in self.registers
-                return true;
-            }
-            let Ok(index) = reg.name[reg_name.len()..].parse::<usize>() else {
-                return true;
-            };
-
-            let reg_name = reg_name.trim_start_matches(block_name);
-            instances_by_name
-                .entry(reg_name.to_string())
-                .or_default()
-                .push(MyRegInstance {
-                    index,
-                    reg: reg.clone(),
-                });
-            // Remove this register from self.registers, as it will be part
-            // of the new subblock array
-            false
-        });
-        struct MyRegisterSpec {
-            name: String,
-            default_val: u64,
-            min_offset: u64,
-            stride: u64,
-            count: usize,
-            array_dimensions: Vec<u64>,
-            ty: Rc<RegisterType>,
-            comment: String,
-        }
-        let mut reg_specs: Vec<MyRegisterSpec> = instances_by_name
-            .into_iter()
-            .map(|(name, mut instances)| {
-                instances.sort_by_key(|reg_inst| reg_inst.index);
-                let stride = instances[1].reg.offset - instances[0].reg.offset;
-                for (prev_inst, next_inst) in instances.iter().zip(instances[1..].iter()) {
-                    if next_inst.reg.offset - prev_inst.reg.offset != stride {
-                        panic!("Stride not consistent for register {:?}", name);
-                    }
-                    if next_inst.reg.default_val != prev_inst.reg.default_val {
-                        panic!("default_val not consistent for register {:?}", name);
-                    }
-                    if next_inst.reg.array_dimensions != prev_inst.reg.array_dimensions {
-                        panic!("array_dimensions not consistent for register {:?}", name);
-                    }
-                }
-                MyRegisterSpec {
-                    name,
-                    default_val: instances[0].reg.default_val,
-                    min_offset: instances
-                        .iter()
-                        .map(|reg_inst| reg_inst.reg.offset)
-                        .min()
-                        .unwrap(),
-                    stride,
-                    count: instances.len(),
-                    array_dimensions: instances[0].reg.array_dimensions.clone(),
-                    ty: instances[type_index].reg.ty.clone(),
-                    comment: instances[type_index].reg.comment.clone(),
-                }
-            })
-            .collect();
-        reg_specs.sort_by_key(|reg| reg.min_offset);
-        let start_offset = reg_specs[0].min_offset;
-        let block_array = RegisterSubBlock::Array {
-            start_offset,
-            stride: reg_specs[0].stride,
-            len: reg_specs[0].count,
-            block: RegisterBlock {
-                name: block_name.to_string(),
-                registers: reg_specs
-                    .into_iter()
-                    .map(|reg_spec| {
-                        Rc::new(Register {
-                            name: reg_spec.name.to_string(),
-                            default_val: reg_spec.default_val,
-                            comment: reg_spec.comment,
-                            array_dimensions: reg_spec.array_dimensions,
-                            offset: reg_spec.min_offset - start_offset,
-                            ty: reg_spec.ty,
-                        })
-                    })
-                    .collect(),
-                ..Default::default()
-            },
-        };
-
-        self.block.sub_blocks.push(block_array);
-    }
 }
 
 pub struct ValidatedRegisterBlockTransformer<'a>(&'a mut ValidatedRegisterBlock);
@@ -1019,6 +908,12 @@ fn sort_registers(block: &mut RegisterBlock) {
 
 impl RegisterBlock {
     pub fn validate_and_dedup(mut self) -> Result<ValidatedRegisterBlock, ValidationError> {
+        let names = self
+            .registers
+            .iter()
+            .map(|r| r.name.as_str())
+            .collect::<Vec<_>>();
+        println!("Register names {:?}", names);
         sort_registers(&mut self);
 
         let mut enum_types: HashMap<String, Rc<Enum>> = HashMap::new();
@@ -1114,6 +1009,9 @@ impl RegisterBlock {
                 });
             }
             next_free_offset = reg.offset + reg.ty.width.in_bytes();
+            if reg.name.to_lowercase().contains("lock") {
+                println!("dedupe reg name {}", reg.name);
+            }
             if !used_names.insert(reg.name.clone()) {
                 return Err(ValidationError::DuplicateRegisterName {
                     block_name: self.name,
@@ -1133,11 +1031,20 @@ impl RegisterBlock {
         for (reg_type, regs) in regs_by_type.into_iter() {
             let mut new_type = reg_type.clone();
             let reg_names: Vec<&str> = regs.iter().map(|r| r.name.as_str()).collect();
+            let pre_name = new_type.name.clone();
             if new_type.name.is_none() {
                 new_type.name = compute_common_name(&reg_names).map(Into::into);
             }
             if new_type.name.is_none() {
                 new_type.name = Some(format!("Field{:016x}", hash_u64(&new_type)));
+            }
+            if new_type.name.as_ref().unwrap() == "STATE" {
+                println!(
+                    "Register type: {:?} {}",
+                    pre_name,
+                    new_type.name.as_ref().unwrap()
+                );
+                println!("reg_type {:?}, regs: {:?}", reg_type, regs);
             }
             new_types.insert(reg_type.clone(), Rc::new(new_type));
         }

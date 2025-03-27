@@ -142,6 +142,9 @@ impl<'a> Iterator for Lexer<'a> {
                     next_while(&mut iter, |ch| ch.is_ascii_alphabetic() || ch == '_');
                     match str_between(&keyword_start, &iter) {
                         "include" => Some(Token::PreprocInclude),
+                        "ifndef" => Some(Token::PreprocIfndef),
+                        "define" => Some(Token::PreprocDefine),
+                        "endif" => Some(Token::PreprocEndif),
                         _ => Some(Token::Error),
                     }
                 }

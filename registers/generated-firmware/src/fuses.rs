@@ -5,36 +5,57 @@ use zeroize::Zeroize;
 /// Fuses contains the data in the OTP controller laid out as described in the controller configuration.
 #[derive(Zeroize)]
 pub struct Fuses {
+    /// Secret manufacturing partition.
+    pub secret_test_unlock_partition: [u8; 72],
+
+    /// Secret manufacturing partition.
+    pub secret_manuf_partition: [u8; 72],
+
+    /// Secret production partition 0.
+    pub secret_prod_partition_0: [u8; 16],
+
+    /// Secret production partition 1.
+    pub secret_prod_partition_1: [u8; 16],
+
+    /// Secret production partition 2.
+    pub secret_prod_partition_2: [u8; 16],
+
+    /// Secret production partition 3.
+    pub secret_prod_partition_3: [u8; 16],
+
+    /// Software manufacturing partition.
+    #[zeroize(skip)]
+    pub sw_manuf_partition: [u8; 512],
+
+    /// Secret life-cycle unlock token partition.
+    pub secret_lc_transition_partition: [u8; 184],
+
+    /// SVN Partition.
+    #[zeroize(skip)]
+    pub svn_partition: [u8; 40],
+
     /// Vendor test partition.
-    /// This is reserved for manufacturing smoke checks. The OTP wrapper
-    /// control logic inside prim_otp is allowed to read/write to this
-    /// region. ECC uncorrectable errors seen on the functional prim_otp
-    /// interface will not lead to an alert for this partition.
-    /// Instead, such errors will be reported as correctable ECC errors.
     #[zeroize(skip)]
-    pub vendor_test: [u32; 16],
+    pub vendor_test_partition: [u8; 64],
 
-    /// Non Secret Fuses partition.
-    /// This contains data such IDEVID, public key hash mask, owner
-    /// key hash, SoC Stepping ID etc.
+    /// Vendor hashes manufacturing partition.
     #[zeroize(skip)]
-    pub non_secret_fuses: [u32; 51],
+    pub vendor_hashes_manuf_partition: [u8; 64],
 
-    /// Secret partition 0.
-    /// This contains TEST lifecycle unlock tokens.
-    pub secret0: [u32; 10],
+    /// Vendor hashes production partition.
+    #[zeroize(skip)]
+    pub vendor_hashes_prod_partition: [u8; 752],
 
-    /// Secret partition 1.
-    /// This contains Obfuscated UDS seed.
-    pub secret1: [u32; 14],
+    /// Vendor revocations production partition.
+    #[zeroize(skip)]
+    pub vendor_revocations_prod_partition: [u8; 152],
 
-    /// Secret partition 2.
-    /// This contains obfuscated field entropy.
-    pub secret2: [u32; 10],
+    /// Vendor secret production partition.
+    pub vendor_secret_prod_partition: [u8; 520],
 
-    /// Secret partition 3.
-    /// This contains public key hash and RMA unlock token.
-    pub secret3: [u32; 18],
+    /// Vendor non-secret production partition.
+    #[zeroize(skip)]
+    pub vendor_non_secret_prod_partition: [u8; 520],
 
     /// Lifecycle partition.
     /// This contains lifecycle transition count and state. This partition
@@ -46,88 +67,508 @@ pub struct Fuses {
     /// form, since that encoding is considered a netlist secret. The LC
     /// controller only exposes a decoded version of this state.
     #[zeroize(skip)]
-    pub life_cycle: [u32; 22],
+    pub life_cycle: [u8; 88],
 }
 impl Fuses {
-    pub fn scratch(&self) -> &[u32] {
-        &self.vendor_test[0..14]
+    pub fn cptra_core_manuf_debug_unlock_token(&self) -> &[u8] {
+        &self.secret_test_unlock_partition[0..64]
     }
-    pub fn fmc_key_manifest_svn(&self) -> u32 {
-        self.non_secret_fuses[0]
+    pub fn cptra_core_uds_seed(&self) -> &[u8] {
+        &self.secret_manuf_partition[0..64]
     }
-    pub fn runtime_svn(&self) -> &[u32] {
-        &self.non_secret_fuses[1..5]
+    pub fn cptra_core_field_entropy_0(&self) -> &[u8] {
+        &self.secret_prod_partition_0[0..8]
     }
-    pub fn lms_verify(&self) -> u32 {
-        self.non_secret_fuses[5]
+    pub fn cptra_core_field_entropy_1(&self) -> &[u8] {
+        &self.secret_prod_partition_1[0..8]
     }
-    pub fn lms_revocation(&self) -> u32 {
-        self.non_secret_fuses[6]
+    pub fn cptra_core_field_entropy_2(&self) -> &[u8] {
+        &self.secret_prod_partition_2[0..8]
     }
-    pub fn key_manifest_pk_hash_mask(&self) -> u32 {
-        self.non_secret_fuses[7]
+    pub fn cptra_core_field_entropy_3(&self) -> &[u8] {
+        &self.secret_prod_partition_3[0..8]
     }
-    pub fn owner_pk_hash(&self) -> &[u32] {
-        &self.non_secret_fuses[8..20]
+    pub fn cptra_core_anti_rollback_disable(&self) -> u8 {
+        self.sw_manuf_partition[0]
     }
-    pub fn idevid_cert_attr(&self) -> &[u32] {
-        &self.non_secret_fuses[20..44]
+    pub fn cptra_core_idevid_cert_idevid_attr(&self) -> &[u8] {
+        &self.sw_manuf_partition[1..97]
     }
-    pub fn idevid_manuf_hsm_id(&self) -> &[u32] {
-        &self.non_secret_fuses[44..48]
+    pub fn cptra_core_idevid_manuf_hsm_identifier(&self) -> &[u8] {
+        &self.sw_manuf_partition[97..113]
     }
-    pub fn soc_stepping_id(&self) -> u32 {
-        self.non_secret_fuses[48]
+    pub fn cptra_core_soc_stepping_id(&self) -> &[u8] {
+        &self.sw_manuf_partition[113..115]
     }
-    pub fn test_unlock_token(&self) -> &[u32] {
-        &self.secret0[0..4]
+    pub fn cptra_ss_prod_debug_unlock_pks_0(&self) -> &[u8] {
+        &self.sw_manuf_partition[115..163]
     }
-    pub fn test_exit_token(&self) -> &[u32] {
-        &self.secret0[4..8]
+    pub fn cptra_ss_prod_debug_unlock_pks_1(&self) -> &[u8] {
+        &self.sw_manuf_partition[163..211]
     }
-    pub fn uds_seed(&self) -> &[u32] {
-        &self.secret1[0..12]
+    pub fn cptra_ss_prod_debug_unlock_pks_2(&self) -> &[u8] {
+        &self.sw_manuf_partition[211..259]
     }
-    pub fn field_entropy(&self) -> &[u32] {
-        &self.secret2[0..8]
+    pub fn cptra_ss_prod_debug_unlock_pks_3(&self) -> &[u8] {
+        &self.sw_manuf_partition[259..307]
     }
-    pub fn key_manifest_pk_hash(&self) -> &[u32] {
-        &self.secret3[0..12]
+    pub fn cptra_ss_prod_debug_unlock_pks_4(&self) -> &[u8] {
+        &self.sw_manuf_partition[307..355]
     }
-    pub fn rma_token(&self) -> &[u32] {
-        &self.secret3[12..16]
+    pub fn cptra_ss_prod_debug_unlock_pks_5(&self) -> &[u8] {
+        &self.sw_manuf_partition[355..403]
     }
-    pub fn lc_transition_cnt(&self) -> &[u32] {
-        &self.life_cycle[0..12]
+    pub fn cptra_ss_prod_debug_unlock_pks_6(&self) -> &[u8] {
+        &self.sw_manuf_partition[403..451]
     }
-    pub fn lc_state(&self) -> &[u32] {
-        &self.life_cycle[12..22]
+    pub fn cptra_ss_prod_debug_unlock_pks_7(&self) -> &[u8] {
+        &self.sw_manuf_partition[451..499]
+    }
+    pub fn cptra_ss_test_unlock_token_0(&self) -> &[u8] {
+        &self.secret_lc_transition_partition[0..16]
+    }
+    pub fn cptra_ss_test_unlock_token_1(&self) -> &[u8] {
+        &self.secret_lc_transition_partition[16..32]
+    }
+    pub fn cptra_ss_test_unlock_token_2(&self) -> &[u8] {
+        &self.secret_lc_transition_partition[32..48]
+    }
+    pub fn cptra_ss_test_unlock_token_3(&self) -> &[u8] {
+        &self.secret_lc_transition_partition[48..64]
+    }
+    pub fn cptra_ss_test_unlock_token_4(&self) -> &[u8] {
+        &self.secret_lc_transition_partition[64..80]
+    }
+    pub fn cptra_ss_test_unlock_token_5(&self) -> &[u8] {
+        &self.secret_lc_transition_partition[80..96]
+    }
+    pub fn cptra_ss_test_unlock_token_6(&self) -> &[u8] {
+        &self.secret_lc_transition_partition[96..112]
+    }
+    pub fn cptra_ss_test_unlock_token_7(&self) -> &[u8] {
+        &self.secret_lc_transition_partition[112..128]
+    }
+    pub fn cptra_ss_test_exit_to_manuf_token(&self) -> &[u8] {
+        &self.secret_lc_transition_partition[128..144]
+    }
+    pub fn cptra_ss_manuf_to_prod_token(&self) -> &[u8] {
+        &self.secret_lc_transition_partition[144..160]
+    }
+    pub fn cptra_ss_prod_to_prod_end_token(&self) -> &[u8] {
+        &self.secret_lc_transition_partition[160..176]
+    }
+    pub fn cptra_core_fmc_key_manifest_svn(&self) -> &[u8] {
+        &self.svn_partition[0..4]
+    }
+    pub fn cptra_core_runtime_svn(&self) -> &[u8] {
+        &self.svn_partition[4..20]
+    }
+    pub fn cptra_core_soc_manifest_svn(&self) -> &[u8] {
+        &self.svn_partition[20..36]
+    }
+    pub fn cptra_core_soc_manifest_max_svn(&self) -> u8 {
+        self.svn_partition[36]
+    }
+    pub fn vendor_test(&self) -> &[u8] {
+        &self.vendor_test_partition[0..32]
+    }
+    pub fn cptra_core_vendor_pk_hash_0(&self) -> &[u8] {
+        &self.vendor_hashes_manuf_partition[0..48]
+    }
+    pub fn cptra_core_pqc_key_type_0(&self) -> u8 {
+        self.vendor_hashes_manuf_partition[48]
+    }
+    pub fn cptra_core_vendor_pk_hash_1(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[0..48]
+    }
+    pub fn cptra_core_pqc_key_type_1(&self) -> u8 {
+        self.vendor_hashes_prod_partition[48]
+    }
+    pub fn cptra_core_vendor_pk_hash_2(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[49..97]
+    }
+    pub fn cptra_core_pqc_key_type_2(&self) -> u8 {
+        self.vendor_hashes_prod_partition[97]
+    }
+    pub fn cptra_core_vendor_pk_hash_3(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[98..146]
+    }
+    pub fn cptra_core_pqc_key_type_3(&self) -> u8 {
+        self.vendor_hashes_prod_partition[146]
+    }
+    pub fn cptra_core_vendor_pk_hash_4(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[147..195]
+    }
+    pub fn cptra_core_pqc_key_type_4(&self) -> u8 {
+        self.vendor_hashes_prod_partition[195]
+    }
+    pub fn cptra_core_vendor_pk_hash_5(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[196..244]
+    }
+    pub fn cptra_core_pqc_key_type_5(&self) -> u8 {
+        self.vendor_hashes_prod_partition[244]
+    }
+    pub fn cptra_core_vendor_pk_hash_6(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[245..293]
+    }
+    pub fn cptra_core_pqc_key_type_6(&self) -> u8 {
+        self.vendor_hashes_prod_partition[293]
+    }
+    pub fn cptra_core_vendor_pk_hash_7(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[294..342]
+    }
+    pub fn cptra_core_pqc_key_type_7(&self) -> u8 {
+        self.vendor_hashes_prod_partition[342]
+    }
+    pub fn cptra_core_vendor_pk_hash_8(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[343..391]
+    }
+    pub fn cptra_core_pqc_key_type_8(&self) -> u8 {
+        self.vendor_hashes_prod_partition[391]
+    }
+    pub fn cptra_core_vendor_pk_hash_9(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[392..440]
+    }
+    pub fn cptra_core_pqc_key_type_9(&self) -> u8 {
+        self.vendor_hashes_prod_partition[440]
+    }
+    pub fn cptra_core_vendor_pk_hash_10(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[441..489]
+    }
+    pub fn cptra_core_pqc_key_type_10(&self) -> u8 {
+        self.vendor_hashes_prod_partition[489]
+    }
+    pub fn cptra_core_vendor_pk_hash_11(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[490..538]
+    }
+    pub fn cptra_core_pqc_key_type_11(&self) -> u8 {
+        self.vendor_hashes_prod_partition[538]
+    }
+    pub fn cptra_core_vendor_pk_hash_12(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[539..587]
+    }
+    pub fn cptra_core_pqc_key_type_12(&self) -> u8 {
+        self.vendor_hashes_prod_partition[587]
+    }
+    pub fn cptra_core_vendor_pk_hash_13(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[588..636]
+    }
+    pub fn cptra_core_pqc_key_type_13(&self) -> u8 {
+        self.vendor_hashes_prod_partition[636]
+    }
+    pub fn cptra_core_vendor_pk_hash_14(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[637..685]
+    }
+    pub fn cptra_core_pqc_key_type_14(&self) -> u8 {
+        self.vendor_hashes_prod_partition[685]
+    }
+    pub fn cptra_core_vendor_pk_hash_15(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[686..734]
+    }
+    pub fn cptra_core_pqc_key_type_15(&self) -> u8 {
+        self.vendor_hashes_prod_partition[734]
+    }
+    pub fn cptra_core_vendor_pk_hash_valid(&self) -> &[u8] {
+        &self.vendor_hashes_prod_partition[735..737]
+    }
+    pub fn cptra_core_ecc_revocation_0(&self) -> u8 {
+        self.vendor_revocations_prod_partition[0]
+    }
+    pub fn cptra_core_lms_revocation_0(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[1..5]
+    }
+    pub fn cptra_core_mldsa_revocation_0(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[5..9]
+    }
+    pub fn cptra_core_ecc_revocation_1(&self) -> u8 {
+        self.vendor_revocations_prod_partition[9]
+    }
+    pub fn cptra_core_lms_revocation_1(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[10..14]
+    }
+    pub fn cptra_core_mldsa_revocation_1(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[14..18]
+    }
+    pub fn cptra_core_ecc_revocation_2(&self) -> u8 {
+        self.vendor_revocations_prod_partition[18]
+    }
+    pub fn cptra_core_lms_revocation_2(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[19..23]
+    }
+    pub fn cptra_core_mldsa_revocation_2(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[23..27]
+    }
+    pub fn cptra_core_ecc_revocation_3(&self) -> u8 {
+        self.vendor_revocations_prod_partition[27]
+    }
+    pub fn cptra_core_lms_revocation_3(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[28..32]
+    }
+    pub fn cptra_core_mldsa_revocation_3(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[32..36]
+    }
+    pub fn cptra_core_ecc_revocation_4(&self) -> u8 {
+        self.vendor_revocations_prod_partition[36]
+    }
+    pub fn cptra_core_lms_revocation_4(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[37..41]
+    }
+    pub fn cptra_core_mldsa_revocation_4(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[41..45]
+    }
+    pub fn cptra_core_ecc_revocation_5(&self) -> u8 {
+        self.vendor_revocations_prod_partition[45]
+    }
+    pub fn cptra_core_lms_revocation_5(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[46..50]
+    }
+    pub fn cptra_core_mldsa_revocation_5(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[50..54]
+    }
+    pub fn cptra_core_ecc_revocation_6(&self) -> u8 {
+        self.vendor_revocations_prod_partition[54]
+    }
+    pub fn cptra_core_lms_revocation_6(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[55..59]
+    }
+    pub fn cptra_core_mldsa_revocation_6(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[59..63]
+    }
+    pub fn cptra_core_ecc_revocation_7(&self) -> u8 {
+        self.vendor_revocations_prod_partition[63]
+    }
+    pub fn cptra_core_lms_revocation_7(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[64..68]
+    }
+    pub fn cptra_core_mldsa_revocation_7(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[68..72]
+    }
+    pub fn cptra_core_ecc_revocation_8(&self) -> u8 {
+        self.vendor_revocations_prod_partition[72]
+    }
+    pub fn cptra_core_lms_revocation_8(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[73..77]
+    }
+    pub fn cptra_core_mldsa_revocation_8(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[77..81]
+    }
+    pub fn cptra_core_ecc_revocation_9(&self) -> u8 {
+        self.vendor_revocations_prod_partition[81]
+    }
+    pub fn cptra_core_lms_revocation_9(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[82..86]
+    }
+    pub fn cptra_core_mldsa_revocation_9(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[86..90]
+    }
+    pub fn cptra_core_ecc_revocation_10(&self) -> u8 {
+        self.vendor_revocations_prod_partition[90]
+    }
+    pub fn cptra_core_lms_revocation_10(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[91..95]
+    }
+    pub fn cptra_core_mldsa_revocation_10(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[95..99]
+    }
+    pub fn cptra_core_ecc_revocation_11(&self) -> u8 {
+        self.vendor_revocations_prod_partition[99]
+    }
+    pub fn cptra_core_lms_revocation_11(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[100..104]
+    }
+    pub fn cptra_core_mldsa_revocation_11(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[104..108]
+    }
+    pub fn cptra_core_ecc_revocation_12(&self) -> u8 {
+        self.vendor_revocations_prod_partition[108]
+    }
+    pub fn cptra_core_lms_revocation_12(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[109..113]
+    }
+    pub fn cptra_core_mldsa_revocation_12(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[113..117]
+    }
+    pub fn cptra_core_ecc_revocation_13(&self) -> u8 {
+        self.vendor_revocations_prod_partition[117]
+    }
+    pub fn cptra_core_lms_revocation_13(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[118..122]
+    }
+    pub fn cptra_core_mldsa_revocation_13(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[122..126]
+    }
+    pub fn cptra_core_ecc_revocation_14(&self) -> u8 {
+        self.vendor_revocations_prod_partition[126]
+    }
+    pub fn cptra_core_lms_revocation_14(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[127..131]
+    }
+    pub fn cptra_core_mldsa_revocation_14(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[131..135]
+    }
+    pub fn cptra_core_ecc_revocation_15(&self) -> u8 {
+        self.vendor_revocations_prod_partition[135]
+    }
+    pub fn cptra_core_lms_revocation_15(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[136..140]
+    }
+    pub fn cptra_core_mldsa_revocation_15(&self) -> &[u8] {
+        &self.vendor_revocations_prod_partition[140..144]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_0(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[0..32]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_1(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[32..64]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_2(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[64..96]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_3(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[96..128]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_4(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[128..160]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_5(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[160..192]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_6(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[192..224]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_7(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[224..256]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_8(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[256..288]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_9(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[288..320]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_10(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[320..352]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_11(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[352..384]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_12(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[384..416]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_13(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[416..448]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_14(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[448..480]
+    }
+    pub fn cptra_ss_vendor_specific_secret_fuse_15(&self) -> &[u8] {
+        &self.vendor_secret_prod_partition[480..512]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_0(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[0..32]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_1(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[32..64]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_2(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[64..96]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_3(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[96..128]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_4(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[128..160]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_5(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[160..192]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_6(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[192..224]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_7(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[224..256]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_8(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[256..288]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_9(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[288..320]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_10(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[320..352]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_11(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[352..384]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_12(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[384..416]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_13(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[416..448]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_14(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[448..480]
+    }
+    pub fn cptra_ss_vendor_specific_non_secret_fuse_15(&self) -> &[u8] {
+        &self.vendor_non_secret_prod_partition[480..512]
+    }
+    pub fn lc_transition_cnt(&self) -> &[u8] {
+        &self.life_cycle[0..48]
+    }
+    pub fn lc_state(&self) -> &[u8] {
+        &self.life_cycle[48..88]
     }
 }
 impl Default for Fuses {
     fn default() -> Self {
         Self {
-            vendor_test: [0; 16],
-            non_secret_fuses: [0; 51],
-            secret0: [0; 10],
-            secret1: [0; 14],
-            secret2: [0; 10],
-            secret3: [0; 18],
-            life_cycle: [0; 22],
+            secret_test_unlock_partition: [0; 72],
+            secret_manuf_partition: [0; 72],
+            secret_prod_partition_0: [0; 16],
+            secret_prod_partition_1: [0; 16],
+            secret_prod_partition_2: [0; 16],
+            secret_prod_partition_3: [0; 16],
+            sw_manuf_partition: [0; 512],
+            secret_lc_transition_partition: [0; 184],
+            svn_partition: [0; 40],
+            vendor_test_partition: [0; 64],
+            vendor_hashes_manuf_partition: [0; 64],
+            vendor_hashes_prod_partition: [0; 752],
+            vendor_revocations_prod_partition: [0; 152],
+            vendor_secret_prod_partition: [0; 520],
+            vendor_non_secret_prod_partition: [0; 520],
+            life_cycle: [0; 88],
         }
     }
 }
-pub const VENDOR_TEST_WORD_OFFSET: usize = 0;
-pub const VENDOR_TEST_WORD_SIZE: usize = 16;
-pub const NON_SECRET_FUSES_WORD_OFFSET: usize = 16;
-pub const NON_SECRET_FUSES_WORD_SIZE: usize = 51;
-pub const SECRET0_WORD_OFFSET: usize = 67;
-pub const SECRET0_WORD_SIZE: usize = 10;
-pub const SECRET1_WORD_OFFSET: usize = 77;
-pub const SECRET1_WORD_SIZE: usize = 14;
-pub const SECRET2_WORD_OFFSET: usize = 91;
-pub const SECRET2_WORD_SIZE: usize = 10;
-pub const SECRET3_WORD_OFFSET: usize = 101;
-pub const SECRET3_WORD_SIZE: usize = 18;
-pub const LIFE_CYCLE_WORD_OFFSET: usize = 119;
-pub const LIFE_CYCLE_WORD_SIZE: usize = 22;
+pub const SECRET_TEST_UNLOCK_PARTITION_BYTE_OFFSET: usize = 0;
+pub const SECRET_TEST_UNLOCK_PARTITION_BYTE_SIZE: usize = 72;
+pub const SECRET_MANUF_PARTITION_BYTE_OFFSET: usize = 72;
+pub const SECRET_MANUF_PARTITION_BYTE_SIZE: usize = 72;
+pub const SECRET_PROD_PARTITION_0_BYTE_OFFSET: usize = 144;
+pub const SECRET_PROD_PARTITION_0_BYTE_SIZE: usize = 16;
+pub const SECRET_PROD_PARTITION_1_BYTE_OFFSET: usize = 160;
+pub const SECRET_PROD_PARTITION_1_BYTE_SIZE: usize = 16;
+pub const SECRET_PROD_PARTITION_2_BYTE_OFFSET: usize = 176;
+pub const SECRET_PROD_PARTITION_2_BYTE_SIZE: usize = 16;
+pub const SECRET_PROD_PARTITION_3_BYTE_OFFSET: usize = 192;
+pub const SECRET_PROD_PARTITION_3_BYTE_SIZE: usize = 16;
+pub const SW_MANUF_PARTITION_BYTE_OFFSET: usize = 208;
+pub const SW_MANUF_PARTITION_BYTE_SIZE: usize = 512;
+pub const SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET: usize = 720;
+pub const SECRET_LC_TRANSITION_PARTITION_BYTE_SIZE: usize = 184;
+pub const SVN_PARTITION_BYTE_OFFSET: usize = 904;
+pub const SVN_PARTITION_BYTE_SIZE: usize = 40;
+pub const VENDOR_TEST_PARTITION_BYTE_OFFSET: usize = 944;
+pub const VENDOR_TEST_PARTITION_BYTE_SIZE: usize = 64;
+pub const VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET: usize = 1008;
+pub const VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE: usize = 64;
+pub const VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET: usize = 1072;
+pub const VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE: usize = 752;
+pub const VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET: usize = 1824;
+pub const VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE: usize = 152;
+pub const VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET: usize = 1976;
+pub const VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE: usize = 520;
+pub const VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET: usize = 2496;
+pub const VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE: usize = 520;
+pub const LIFE_CYCLE_BYTE_OFFSET: usize = 3016;
+pub const LIFE_CYCLE_BYTE_SIZE: usize = 88;

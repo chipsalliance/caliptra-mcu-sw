@@ -160,14 +160,14 @@ mod camel_case_tests {
 
 pub fn hex_const(val: u64) -> String {
     if val > 9 {
-        let mut x = "0x".to_owned();
-        for (i, c) in format!("{val:x}").chars().enumerate() {
+        let mut x = String::new();
+        for (i, c) in format!("{val:x}").chars().rev().enumerate() {
             if i % 4 == 0 && i != 0 {
                 x.push('_');
             }
             x.push(c);
         }
-        x
+        "0x".to_string() + &x.chars().rev().collect::<String>()
     } else {
         format!("{val}")
     }
@@ -302,7 +302,7 @@ fn flatten_registers(
         assert!(reg.ty.name.is_some() || has_single_32_bit_field(&reg.ty));
         let mut r = reg.as_ref().clone();
         // don't add a prefix to the top level as that would be redundant
-        if level > 0 && !prefix_name.is_empty() {
+        if level > 0 && !prefix_name.is_empty() && prefix_name != r.name {
             r.name = format!("{}_{}", prefix_name, r.name);
         }
         r.offset += offset;
@@ -343,11 +343,17 @@ fn generate_reg_structs(crate_prefix: &str, block: &RegisterBlock) -> String {
         let offset = reg.offset;
         if offset == last_offset {
             println!(
-                "Warning: Register {}.{} overlaps with previous register; ignoring it",
-                block.name, reg.name
+                "Warning: Register {}.{} overlaps with previous registers; ignoring it ({:x} == {:x})",
+                block.name, reg.name, offset, last_offset
             );
             continue;
+        } else if offset < next_offset {
+            panic!(
+                "Warning: Register {}.{} is before previous registers ({:x} < {:x})",
+                block.name, reg.name, offset, next_offset
+            );
         }
+
         last_offset = offset;
         let row = if reg.can_read() && reg.can_write() {
             "ReadWrite"
@@ -404,10 +410,11 @@ fn generate_bitfields(
     let mut tokens64 = String::new();
     let mut tokens128 = String::new();
 
-    let mut register_types = register_types.collect::<Vec<_>>();
+    let register_types = register_types.collect::<HashSet<_>>();
+    let mut register_types = register_types.iter().collect::<Vec<_>>();
     register_types.sort_by_key(|rt| rt.name.clone().unwrap());
     for rt in register_types {
-        if has_single_32_bit_field(&rt) {
+        if has_single_32_bit_field(rt) {
             continue;
         }
         let raw_name = rt.name.clone().unwrap();

@@ -1,6 +1,8 @@
+`include "el2_pic_ctrl.rdl"
+`include "flash_ctrl.rdl"
+
 addrmap mcu {
     el2_pic_ctrl el2_pic_ctrl @ 0x6000_0000;
     flash_ctrl main_flash_ctrl @ 0x2000_8000;
     flash_ctrl recovery_flash_ctrl @ 0x2000_8800;
-    caliptra_otp_ctrl caliptra_otp_ctrl @ 0x2000_b000;
 };

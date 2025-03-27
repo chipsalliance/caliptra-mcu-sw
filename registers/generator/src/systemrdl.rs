@@ -448,7 +448,7 @@ fn calculate_mem_size(iref: systemrdl::InstanceRef) -> u64 {
     bits / 8 * entries
 }
 
-fn translate_block(iref: InstanceRef) -> Result<RegisterBlock, Error> {
+fn translate_block(iref: InstanceRef) -> Result<Option<RegisterBlock>, Error> {
     let wrap_err = |err: Error| Error::BlockError {
         block_name: iref.instance.name.clone(),
         err: Box::new(err),
@@ -471,12 +471,34 @@ fn translate_block(iref: InstanceRef) -> Result<RegisterBlock, Error> {
                 .push(translate_register_ty(Some(name.into()), ty).map_err(wrap_err)?);
         }
     }
+
+    // special cases: this is a single memory or register instance
+    if iref.instance.scope.ty == ComponentType::Mem.into() {
+        let start_offset = iref.instance.offset.unwrap_or(0);
+        block.registers.push(Rc::new(
+            translate_mem(iref, start_offset).map_err(wrap_err)?,
+        ));
+        return Ok(Some(block));
+    } else if iref.instance.scope.ty == ComponentType::Reg.into() {
+        let child = iref;
+        let mut reg = translate_register(child).map_err(wrap_err)?;
+        if inst.offset.is_some() {
+            reg.offset = 0; // the offset will be built into the block
+        }
+        block.registers.push(Rc::new(reg));
+        return Ok(Some(block));
+    }
+
     let mut next_offset = Some(0u64);
     for child in iref.scope.instance_iter() {
         if child.instance.scope.ty == ComponentType::Reg.into() {
-            block
-                .registers
-                .push(Rc::new(translate_register(child).map_err(wrap_err)?));
+            let reg = translate_register(child).map_err(wrap_err)?;
+            block.registers.push(Rc::new(reg));
+            next_offset = Some(
+                child.instance.offset.unwrap()
+                    + (child.instance.element_size()
+                        * child.instance.dimension_sizes.iter().product::<u64>()),
+            );
         } else if child.instance.scope.ty == ComponentType::Mem.into() {
             let mem_size = calculate_mem_size(child);
             let start_offset = child
@@ -492,7 +514,7 @@ fn translate_block(iref: InstanceRef) -> Result<RegisterBlock, Error> {
                 translate_mem(child, start_offset).map_err(wrap_err)?,
             ));
         } else if child.instance.scope.ty == ComponentType::RegFile.into() {
-            let next_block = translate_block(child)?;
+            let next_block = translate_block(child)?.expect("Register file must have registers");
             let next_block_size = calculate_reg_size(&next_block);
             let start_offset = child
                 .instance
@@ -514,22 +536,48 @@ fn translate_block(iref: InstanceRef) -> Result<RegisterBlock, Error> {
                 start_offset,
             });
         } else if child.instance.scope.ty == ComponentType::Signal.into()
-            || child.instance.scope.ty == ComponentType::Mem.into()
+            || child.instance.scope.ty == ComponentType::Field.into()
         {
             // ignore
-            next_offset = None;
+            //next_offset = None;
+        } else if child.instance.scope.ty == ComponentType::AddrMap.into() {
+            let next_block = translate_block(child)?.expect("Addrmap must have registers");
+            let next_block_size = calculate_reg_size(&next_block);
+            let start_offset = child
+                .instance
+                .offset
+                .or(next_offset.map(|o| {
+                    if let Some(size) = next_block_size {
+                        // align according to RDL spec
+                        o.next_multiple_of(size.next_power_of_two())
+                    } else {
+                        o
+                    }
+                }))
+                .expect("Offset not defined for addrmap and could not calculate automatically");
+            next_offset = next_block_size.map(|size| start_offset + size);
+            block.sub_blocks.push(RegisterSubBlock::Single {
+                block: next_block,
+                start_offset,
+            });
         } else {
             panic!("Unknown component scope {:?}", child.instance.scope.ty);
         }
     }
-    Ok(block)
+    if block.registers.is_empty() && block.sub_blocks.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(block))
+    }
 }
 
 pub fn translate_addrmap(addrmap: systemrdl::ParentScope) -> Result<Vec<RegisterBlock>, Error> {
     expect_instance_type(addrmap, ComponentType::AddrMap.into())?;
     let mut blocks = vec![];
     for iref in addrmap.instance_iter() {
-        blocks.push(translate_block(iref)?);
+        if let Some(b) = translate_block(iref)? {
+            blocks.push(b);
+        }
     }
     Ok(blocks)
 }

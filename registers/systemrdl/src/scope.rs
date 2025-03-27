@@ -195,7 +195,34 @@ impl Scope {
         // Set reg offsets
         let mut next_offset = 0;
         for instance in self.instances.iter_mut() {
-            if instance.scope.ty != ComponentType::Reg.into() {
+            if instance.scope.ty == ComponentType::Mem.into() {
+                // need to account for memory when computing offsets
+                let mementries: u64 = instance
+                    .scope
+                    .property_val_opt("mementries")
+                    .ok()
+                    .flatten()
+                    .unwrap();
+                let memsize = instance
+                    .scope
+                    .property_val_opt("memwidth")
+                    .ok()
+                    .flatten()
+                    .unwrap_or(32u64);
+
+                let size = mementries * memsize / 8;
+
+                if instance.offset.is_none() {
+                    instance.offset = Some(next_offset);
+                }
+                if let Some(offset) = instance.offset {
+                    next_offset = offset + size;
+                }
+                continue;
+            }
+            if instance.scope.ty != ComponentType::Reg.into()
+                && instance.scope.ty != ComponentType::Mem.into()
+            {
                 continue;
             }
             let reg_width = instance
@@ -515,7 +542,7 @@ pub struct ParameterScope<'a> {
 
 #[derive(Copy, Clone)]
 pub struct ParentScope<'a> {
-    parent: Option<&'a ParentScope<'a>>,
+    pub parent: Option<&'a ParentScope<'a>>,
     pub scope: &'a Scope,
 }
 impl<'a> ParentScope<'a> {
@@ -771,6 +798,7 @@ impl Instance {
                 result.next_alignment = Some(expect_number(i, parameters)?);
             }
         }
+        println!("Instance name {:?} {}", result.scope.ty, result.name);
         Ok(result)
     }
 }
