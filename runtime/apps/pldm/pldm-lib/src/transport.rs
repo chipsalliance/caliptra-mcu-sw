@@ -10,6 +10,8 @@ pub enum PldmTransportType {
     Mctp,
 }
 
+pub const MCTP_TAG_MASK: u8 = 0x07;
+
 #[derive(Debug)]
 pub enum TransportError {
     DriverError,
@@ -62,7 +64,7 @@ impl<S: Syscalls> MctpTransport<S> {
         rsp.fill(0);
         let (rsp_len, _msg_info) = if let Some(tag) = self.cur_req_ctx {
             self.mctp
-                .receive_response(rsp, tag)
+                .receive_response(rsp, tag & MCTP_TAG_MASK)
                 .await
                 .map_err(|_| TransportError::ReceiveError)
         } else {
