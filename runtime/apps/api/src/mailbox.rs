@@ -17,7 +17,7 @@ impl<S: Syscalls> Default for Mailbox<S> {
     }
 }
 
-// TODO: this is redudant with the caliptra_api mailbox, though we don't
+// TODO: this is redundant with the caliptra_api mailbox, though we don't
 // want to support all of the caliptra_api mailbox commands, since some of those are
 // large and they are too big for our stack.
 

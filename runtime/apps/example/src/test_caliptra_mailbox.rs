@@ -18,7 +18,9 @@ pub(crate) async fn test_caliptra_mailbox<S: Syscalls>() {
         nonce: [0x34; 32],
     };
     let req_data = req.as_mut_bytes();
-    mailbox.populate_checksum(QuotePcrsReq::ID.into(), req_data);
+    mailbox
+        .populate_checksum(QuotePcrsReq::ID.into(), req_data)
+        .unwrap();
 
     let response_buffer = &mut [0u8; core::mem::size_of::<QuotePcrsResp>()];
 
@@ -68,7 +70,7 @@ pub(crate) async fn test_caliptra_mailbox_bad_command<S: Syscalls>() {
         nonce: [0x34; 32],
     };
     let req_data = req.as_mut_bytes();
-    mailbox.populate_checksum(0xffff_ffff, req_data);
+    mailbox.populate_checksum(0xffff_ffff, req_data).unwrap();
 
     let response_buffer = &mut [0u8; core::mem::size_of::<QuotePcrsResp>()];
 
@@ -104,7 +106,9 @@ pub(crate) async fn test_caliptra_mailbox_fail<S: Syscalls>() {
     let len = req_data.len();
     // send a command that is too short, but has the correct checksum
     let req_data = &mut req_data[..len - 4];
-    mailbox.populate_checksum(QuotePcrsReq::ID.into(), req_data);
+    mailbox
+        .populate_checksum(QuotePcrsReq::ID.into(), req_data)
+        .unwrap();
 
     let response_buffer = &mut [0u8; core::mem::size_of::<QuotePcrsResp>()];
 

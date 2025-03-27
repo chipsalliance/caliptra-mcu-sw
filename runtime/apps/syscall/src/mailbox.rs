@@ -23,15 +23,15 @@ impl<S: Syscalls> Default for Mailbox<S> {
 }
 
 // Populate the checksum for a mailbox request.
-pub fn populate_checksum(cmd: u32, data: &mut [u8]) {
+pub fn populate_checksum(cmd: u32, data: &mut [u8]) -> Result<(), ErrorCode> {
     // Calc checksum, use the size override if provided
     let checksum = caliptra_api::calc_checksum(cmd, data);
 
     if data.len() < size_of::<MailboxReqHeader>() {
-        // this should be impossible
-        return;
+        Err(ErrorCode::Invalid)?;
     }
     data[..size_of::<MailboxReqHeader>()].copy_from_slice(&checksum.to_le_bytes());
+    Ok(())
 }
 
 impl<S: Syscalls> Mailbox<S> {
@@ -43,14 +43,8 @@ impl<S: Syscalls> Mailbox<S> {
     }
 
     // Populate the checksum for a mailbox request.
-    pub fn populate_checksum(&self, cmd: u32, data: &mut [u8]) {
-        let checksum = caliptra_api::calc_checksum(cmd, data);
-
-        if data.len() < size_of::<MailboxReqHeader>() {
-            // this should be impossible
-            return;
-        }
-        data[..size_of::<MailboxReqHeader>()].copy_from_slice(&checksum.to_le_bytes());
+    pub fn populate_checksum(&self, cmd: u32, data: &mut [u8]) -> Result<(), ErrorCode> {
+        populate_checksum(cmd, data)
     }
 
     /// Executes a mailbox command and returns the response.
