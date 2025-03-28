@@ -2,5 +2,6 @@
 
 pub mod algorithms_rsp;
 pub mod capabilities_rsp;
+pub mod digests_rsp;
 pub mod error_rsp;
 pub mod version_rsp;

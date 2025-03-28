@@ -1,9 +1,11 @@
 // Licensed under the Apache-2.0 license
 
+use crate::cert_mgr::DeviceCertsManager;
 use crate::codec::{Codec, MessageBuf};
 use crate::commands::error_rsp::{fill_error_response, ErrorCode};
-use crate::commands::{algorithms_rsp, capabilities_rsp, version_rsp};
+use crate::commands::{algorithms_rsp, capabilities_rsp, digests_rsp, version_rsp};
 use crate::error::*;
+use crate::hash_op::HashEngine;
 use crate::protocol::algorithms::*;
 use crate::protocol::common::{ReqRespCode, SpdmMsgHdr};
 use crate::protocol::version::*;
@@ -18,6 +20,8 @@ pub struct SpdmContext<'a, S: Syscalls> {
     pub(crate) state: State,
     pub(crate) local_capabilities: DeviceCapabilities,
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
+    pub device_certs_manager: &'a dyn DeviceCertsManager,
+    pub hash_engine: &'a mut dyn HashEngine,
 }
 
 impl<'a, S: Syscalls> SpdmContext<'a, S> {
@@ -26,6 +30,8 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         spdm_transport: &'a mut MctpTransport<S>,
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
+        device_certs_manager: &'a dyn DeviceCertsManager,
+        hash_engine: &'a mut dyn HashEngine,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -37,6 +43,8 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             state: State::new(),
             local_capabilities,
             local_algorithms,
+            device_certs_manager,
+            hash_engine,
         })
     }
 
@@ -87,6 +95,7 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             ReqRespCode::NegotiateAlgorithms => {
                 algorithms_rsp::handle_negotiate_algorithms(self, req_msg_header, req)?
             }
+            ReqRespCode::GetDigests => digests_rsp::handle_digests(self, req_msg_header, req)?,
             _ => Err((false, CommandError::UnsupportedRequest))?,
         }
         Ok(resp_code)

@@ -20,3 +20,12 @@ pub mod state;
 
 // Transport layer handling
 pub mod transport;
+
+// Device certificate management
+pub mod cert_mgr;
+
+// Hash operations
+pub mod hash_op;
+
+// Configuration
+pub mod config;

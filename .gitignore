@@ -26,3 +26,6 @@ recovery_flash
 
 # Protocol validator test logs
 test.log
+
+# Test certificates to support spdm lib development
+test_certs
