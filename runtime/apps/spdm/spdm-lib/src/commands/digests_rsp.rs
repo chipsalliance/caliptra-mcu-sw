@@ -1,14 +1,15 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cert_mgr::{
-    SpdmCertChainBaseBuffer, SpdmCertChainData, SPDM_MAX_CERT_CHAIN_SLOTS, SPDM_MAX_HASH_SIZE,
+    SpdmCertChainBaseBuffer, SpdmCertChainData, SpdmDigest, SPDM_MAX_CERT_CHAIN_SLOTS,
+    SPDM_MAX_HASH_SIZE,
 };
 use crate::codec::{Codec, CodecError, CodecResult, CommonCodec, DataKind, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::config;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult, SpdmError, SpdmResult};
-use crate::protocol::algorithms::{BaseHashAlgoType, Prioritize};
+use crate::protocol::algorithms::BaseHashAlgoType;
 use crate::protocol::common::SpdmMsgHdr;
 use crate::state::ConnectionState;
 use libtock_platform::Syscalls;
@@ -34,63 +35,6 @@ pub struct GetDigestsRespCommon {
 
 impl CommonCodec for GetDigestsRespCommon {
     const DATA_KIND: DataKind = DataKind::Payload;
-}
-
-#[derive(Debug, Clone)]
-pub struct SpdmDigest {
-    pub data: [u8; SPDM_MAX_HASH_SIZE],
-    pub length: u8,
-}
-
-impl Default for SpdmDigest {
-    fn default() -> Self {
-        Self {
-            data: [0u8; SPDM_MAX_HASH_SIZE],
-            length: 0u8,
-        }
-    }
-}
-impl AsRef<[u8]> for SpdmDigest {
-    fn as_ref(&self) -> &[u8] {
-        &self.data[..self.length as usize]
-    }
-}
-
-impl SpdmDigest {
-    pub fn new(digest: &[u8]) -> Self {
-        let mut data = [0u8; SPDM_MAX_HASH_SIZE];
-        let length = digest.len().min(SPDM_MAX_HASH_SIZE);
-        data[..length].copy_from_slice(&digest[..length]);
-        Self {
-            data,
-            length: length as u8,
-        }
-    }
-}
-
-impl Codec for SpdmDigest {
-    fn encode(&self, buffer: &mut MessageBuf) -> CodecResult<usize> {
-        let hash_len = self.length.min(SPDM_MAX_HASH_SIZE as u8);
-        // iterates over the data and encode into the buffer
-        buffer.put_data(hash_len.into())?;
-
-        if buffer.data_len() < hash_len.into() {
-            Err(CodecError::BufferTooSmall)?;
-        }
-
-        let payload = buffer.data_mut(hash_len.into())?;
-
-        self.data[..hash_len as usize]
-            .write_to(payload)
-            .map_err(|_| CodecError::WriteError)?;
-        buffer.pull_data(hash_len.into())?;
-        Ok(hash_len.into())
-    }
-
-    fn decode(_data: &mut MessageBuf) -> CodecResult<Self> {
-        // Decoding is not required for SPDM responder
-        unimplemented!()
-    }
 }
 
 pub struct GetDigestsResp {
@@ -135,13 +79,38 @@ impl Codec for GetDigestsResp {
     }
 }
 
+impl Codec for SpdmDigest {
+    fn encode(&self, buffer: &mut MessageBuf) -> CodecResult<usize> {
+        let hash_len = self.length.min(SPDM_MAX_HASH_SIZE as u8);
+        // iterates over the data and encode into the buffer
+        buffer.put_data(hash_len.into())?;
+
+        if buffer.data_len() < hash_len.into() {
+            Err(CodecError::BufferTooSmall)?;
+        }
+
+        let payload = buffer.data_mut(hash_len.into())?;
+
+        self.data[..hash_len as usize]
+            .write_to(payload)
+            .map_err(|_| CodecError::WriteError)?;
+        buffer.pull_data(hash_len.into())?;
+        Ok(hash_len.into())
+    }
+
+    fn decode(_data: &mut MessageBuf) -> CodecResult<Self> {
+        // Decoding is not required for SPDM responder
+        unimplemented!()
+    }
+}
+
 pub(crate) fn handle_digests<'a, S: Syscalls>(
     ctx: &mut SpdmContext<'a, S>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Validate the state
-    if ctx.state.connection_info.state() != ConnectionState::AfterNegotiateAlgorithms {
+    if ctx.state.connection_info.state() < ConnectionState::AfterNegotiateAlgorithms {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
@@ -168,7 +137,8 @@ pub(crate) fn handle_digests<'a, S: Syscalls>(
 
     // TODO: transcript manager and session support
 
-    let hash_algo = get_select_hash_algo(ctx)
+    let hash_algo = ctx
+        .get_select_hash_algo()
         .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
 
     let slot_mask = config::CERT_CHAIN_SLOT_MASK;
@@ -184,9 +154,11 @@ pub(crate) fn handle_digests<'a, S: Syscalls>(
     // Fill the response buffer
     fill_digests_response(ctx, slot_mask, &[digest], req_payload)?;
 
-    ctx.state
-        .connection_info
-        .set_state(ConnectionState::AfterDigest);
+    if ctx.state.connection_info.state() < ConnectionState::AfterDigest {
+        ctx.state
+            .connection_info
+            .set_state(ConnectionState::AfterDigest);
+    }
 
     Ok(())
 }
@@ -209,25 +181,6 @@ fn fill_digests_response<S: Syscalls>(
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
     Ok(())
-}
-
-fn get_select_hash_algo<S: Syscalls>(ctx: &SpdmContext<S>) -> SpdmResult<BaseHashAlgoType> {
-    let peer_algorithms = ctx.state.connection_info.peer_algorithms();
-    let local_algorithms = &ctx.local_algorithms.device_algorithms;
-    let algorithm_priority_table = &ctx.local_algorithms.algorithm_priority_table;
-
-    let base_hash_sel = local_algorithms.base_hash_algo.prioritize(
-        &peer_algorithms.base_hash_algo,
-        algorithm_priority_table.base_hash_algo,
-    );
-
-    // Ensure BaseHashSel has exactly one bit set
-    if base_hash_sel.0.count_ones() != 1 {
-        return Err(SpdmError::InvalidParam);
-    }
-
-    BaseHashAlgoType::try_from(base_hash_sel.0.trailing_zeros() as u8)
-        .map_err(|_| SpdmError::InvalidParam)
 }
 
 fn get_certificate_chain_digest<S: Syscalls>(

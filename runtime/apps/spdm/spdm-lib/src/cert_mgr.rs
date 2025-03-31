@@ -39,6 +39,38 @@ impl DerCert {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SpdmDigest {
+    pub data: [u8; SPDM_MAX_HASH_SIZE],
+    pub length: u8,
+}
+
+impl Default for SpdmDigest {
+    fn default() -> Self {
+        Self {
+            data: [0u8; SPDM_MAX_HASH_SIZE],
+            length: 0u8,
+        }
+    }
+}
+impl AsRef<[u8]> for SpdmDigest {
+    fn as_ref(&self) -> &[u8] {
+        &self.data[..self.length as usize]
+    }
+}
+
+impl SpdmDigest {
+    pub fn new(digest: &[u8]) -> Self {
+        let mut data = [0u8; SPDM_MAX_HASH_SIZE];
+        let length = digest.len().min(SPDM_MAX_HASH_SIZE);
+        data[..length].copy_from_slice(&digest[..length]);
+        Self {
+            data,
+            length: length as u8,
+        }
+    }
+}
+
 pub struct SpdmCertChainData {
     pub data: [u8; config::MAX_CERT_CHAIN_DATA_SIZE],
     pub length: u16,
@@ -132,6 +164,64 @@ impl SpdmCertChainBaseBuffer {
         cert_chain_base_buf.length = pos as u16;
 
         Ok(cert_chain_base_buf)
+    }
+}
+
+pub struct SpdmCertChainBuffer {
+    pub data: [u8; 4 + SPDM_MAX_HASH_SIZE + config::MAX_CERT_CHAIN_DATA_SIZE],
+    pub length: u16,
+}
+
+impl Default for SpdmCertChainBuffer {
+    fn default() -> Self {
+        SpdmCertChainBuffer {
+            data: [0u8; 4 + SPDM_MAX_HASH_SIZE + config::MAX_CERT_CHAIN_DATA_SIZE],
+            length: 0u16,
+        }
+    }
+}
+
+impl AsRef<[u8]> for SpdmCertChainBuffer {
+    fn as_ref(&self) -> &[u8] {
+        &self.data[..self.length as usize]
+    }
+}
+
+impl SpdmCertChainBuffer {
+    pub fn new(cert_chain_data: &[u8], root_hash: &[u8]) -> Result<Self, SpdmError> {
+        if cert_chain_data.len() > config::MAX_CERT_CHAIN_DATA_SIZE
+            || root_hash.len() > SPDM_MAX_HASH_SIZE
+        {
+            return Err(SpdmError::InvalidParam);
+        }
+
+        let total_len = (cert_chain_data.len() + root_hash.len() + 4) as u16;
+        let mut cert_chain_buf = SpdmCertChainBuffer::default();
+        let mut pos = 0;
+
+        // Length
+        let len = 2;
+        cert_chain_buf.data[pos..(pos + len)].copy_from_slice(&total_len.to_le_bytes());
+        pos += len;
+
+        // Reserved
+        cert_chain_buf.data[pos] = 0;
+        cert_chain_buf.data[pos + 1] = 0;
+        pos += 2;
+
+        // Root certificate hash
+        let len = root_hash.len();
+        cert_chain_buf.data[pos..(pos + len)].copy_from_slice(root_hash);
+        pos += len;
+
+        // Certificate chain data
+        let len = cert_chain_data.len();
+        cert_chain_buf.data[pos..(pos + len)].copy_from_slice(cert_chain_data);
+        pos += len;
+
+        cert_chain_buf.length = pos as u16;
+
+        Ok(cert_chain_buf)
     }
 }
 

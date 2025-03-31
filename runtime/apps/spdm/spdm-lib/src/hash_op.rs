@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::commands::digests_rsp::SpdmDigest;
+use crate::cert_mgr::SpdmDigest;
 use crate::protocol::algorithms::BaseHashAlgoType;
 use sha2::{Digest, Sha256, Sha384, Sha512};
 
