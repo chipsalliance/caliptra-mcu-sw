@@ -73,8 +73,8 @@ impl<S: Syscalls> Mctp<S> {
         let (recv_len, _, info) = share::scope::<(), _, _>(|_handle| {
             let sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
                 self.driver_num,
-                subscribe::MESSAGE_RECEIVED,
-                allow_rw::MESSAGE_READ,
+                subscribe::MESSAGE_RECEIVED_REQUEST,
+                allow_rw::MESSAGE_READ_REQUEST,
                 req,
             );
 
@@ -107,8 +107,8 @@ impl<S: Syscalls> Mctp<S> {
         let ro_sub = share::scope::<(), _, _>(|_handle| {
             let ro_sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
                 self.driver_num,
-                subscribe::MESSAGE_TRANSMITTED,
-                allow_ro::MESSAGE_WRITE,
+                subscribe::MESSAGE_TRANSMITTED_RESPONSE,
+                allow_ro::MESSAGE_WRITE_RESPONSE,
                 resp,
             );
 
@@ -150,8 +150,8 @@ impl<S: Syscalls> Mctp<S> {
         let (result, _, info) = share::scope::<(), _, _>(|_handle| {
             let sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
                 self.driver_num,
-                subscribe::MESSAGE_TRANSMITTED,
-                allow_ro::MESSAGE_WRITE,
+                subscribe::MESSAGE_TRANSMITTED_REQUEST,
+                allow_ro::MESSAGE_WRITE_REQUEST,
                 req,
             );
 
@@ -191,8 +191,8 @@ impl<S: Syscalls> Mctp<S> {
         let (recv_len, _, info) = share::scope::<(), _, _>(|_handle| {
             let sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
                 self.driver_num,
-                subscribe::MESSAGE_RECEIVED,
-                allow_rw::MESSAGE_READ,
+                subscribe::MESSAGE_RECEIVED_RESPONSE,
+                allow_rw::MESSAGE_READ_RESPONSE,
                 resp,
             );
 
@@ -250,17 +250,21 @@ mod command {
 
 mod subscribe {
     /// Message received
-    pub const MESSAGE_RECEIVED: u32 = 0;
+    pub const MESSAGE_RECEIVED_REQUEST: u32 = 0;
+    pub const MESSAGE_RECEIVED_RESPONSE: u32 = 1;
     /// Message transmitted
-    pub const MESSAGE_TRANSMITTED: u32 = 1;
+    pub const MESSAGE_TRANSMITTED_REQUEST: u32 = 2;
+    pub const MESSAGE_TRANSMITTED_RESPONSE: u32 = 3;
 }
 
 mod allow_ro {
     /// Write buffer for the message payload to be transmitted
-    pub const MESSAGE_WRITE: u32 = 0;
+    pub const MESSAGE_WRITE_REQUEST: u32 = 0;
+    pub const MESSAGE_WRITE_RESPONSE: u32 = 1;
 }
 
 mod allow_rw {
     /// Read buffer for the message payload received
-    pub const MESSAGE_READ: u32 = 0;
+    pub const MESSAGE_READ_REQUEST: u32 = 0;
+    pub const MESSAGE_READ_RESPONSE: u32 = 1;
 }
