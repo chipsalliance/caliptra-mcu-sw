@@ -104,7 +104,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: parvathib/spdm-emu
-          ref: pbhogaraju/get-algorithms
+          ref: pbhogaraju/get-digests
           path: spdm-emu
           submodules: recursive
 
