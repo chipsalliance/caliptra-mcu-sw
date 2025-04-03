@@ -2,7 +2,9 @@
 
 use crate::error::{SpdmError, SpdmResult};
 use bitfield::bitfield;
+use core::convert::TryFrom;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
+
 pub(crate) trait Prioritize<T>
 where
     Self: Sized,
@@ -278,6 +280,23 @@ pub enum BaseHashAlgoType {
     TpmAlgSha3_384,
     TpmAlgSha3_512,
     TpmAlgSm3_256,
+}
+
+impl TryFrom<u8> for BaseHashAlgoType {
+    type Error = SpdmError;
+
+    fn try_from(value: u8) -> Result<Self, SpdmError> {
+        match value {
+            0 => Ok(BaseHashAlgoType::TpmAlgSha256),
+            1 => Ok(BaseHashAlgoType::TpmAlgSha384),
+            2 => Ok(BaseHashAlgoType::TpmAlgSha512),
+            3 => Ok(BaseHashAlgoType::TpmAlgSha3_256),
+            4 => Ok(BaseHashAlgoType::TpmAlgSha3_384),
+            5 => Ok(BaseHashAlgoType::TpmAlgSha3_512),
+            6 => Ok(BaseHashAlgoType::TpmAlgSm3_256),
+            _ => Err(SpdmError::InvalidParam),
+        }
+    }
 }
 
 // Measurement Extension Log Specification field

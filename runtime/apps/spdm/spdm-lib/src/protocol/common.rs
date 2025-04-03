@@ -13,6 +13,10 @@ pub(crate) enum ReqRespCode {
     Capabilities = 0x61,
     NegotiateAlgorithms = 0xE3,
     Algorithmes = 0x63,
+    GetDigests = 0x81,
+    Digests = 0x01,
+    GetCertificate = 0x82,
+    Certificate = 0x02,
     Error = 0x7F,
 }
 
@@ -26,6 +30,10 @@ impl TryFrom<u8> for ReqRespCode {
             0x61 => Ok(ReqRespCode::Capabilities),
             0xE3 => Ok(ReqRespCode::NegotiateAlgorithms),
             0x63 => Ok(ReqRespCode::Algorithmes),
+            0x81 => Ok(ReqRespCode::GetDigests),
+            0x01 => Ok(ReqRespCode::Digests),
+            0x82 => Ok(ReqRespCode::GetCertificate),
+            0x02 => Ok(ReqRespCode::Certificate),
             0x7F => Ok(ReqRespCode::Error),
             _ => Err(SpdmError::UnsupportedRequest),
         }
@@ -44,6 +52,8 @@ impl ReqRespCode {
             ReqRespCode::GetVersion => Ok(ReqRespCode::Version),
             ReqRespCode::GetCapabilities => Ok(ReqRespCode::Capabilities),
             ReqRespCode::NegotiateAlgorithms => Ok(ReqRespCode::Algorithmes),
+            ReqRespCode::GetDigests => Ok(ReqRespCode::Digests),
+            ReqRespCode::GetCertificate => Ok(ReqRespCode::Certificate),
             ReqRespCode::Error => Ok(ReqRespCode::Error),
             _ => Err(SpdmError::UnsupportedRequest),
         }

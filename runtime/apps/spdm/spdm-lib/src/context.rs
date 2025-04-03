@@ -1,9 +1,13 @@
 // Licensed under the Apache-2.0 license
 
+use crate::cert_mgr::DeviceCertsManager;
 use crate::codec::{Codec, MessageBuf};
 use crate::commands::error_rsp::{fill_error_response, ErrorCode};
-use crate::commands::{algorithms_rsp, capabilities_rsp, version_rsp};
+use crate::commands::{
+    algorithms_rsp, capabilities_rsp, certificate_rsp, digests_rsp, version_rsp,
+};
 use crate::error::*;
+use crate::hash_op::HashEngine;
 use crate::protocol::algorithms::*;
 use crate::protocol::common::{ReqRespCode, SpdmMsgHdr};
 use crate::protocol::version::*;
@@ -18,6 +22,8 @@ pub struct SpdmContext<'a, S: Syscalls> {
     pub(crate) state: State,
     pub(crate) local_capabilities: DeviceCapabilities,
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
+    pub device_certs_manager: &'a dyn DeviceCertsManager,
+    pub hash_engine: &'a mut dyn HashEngine,
 }
 
 impl<'a, S: Syscalls> SpdmContext<'a, S> {
@@ -26,6 +32,8 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
         spdm_transport: &'a mut MctpTransport<S>,
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
+        device_certs_manager: &'a dyn DeviceCertsManager,
+        hash_engine: &'a mut dyn HashEngine,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -37,6 +45,8 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             state: State::new(),
             local_capabilities,
             local_algorithms,
+            device_certs_manager,
+            hash_engine,
         })
     }
 
@@ -87,6 +97,11 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             ReqRespCode::NegotiateAlgorithms => {
                 algorithms_rsp::handle_negotiate_algorithms(self, req_msg_header, req)?
             }
+            ReqRespCode::GetDigests => digests_rsp::handle_digests(self, req_msg_header, req)?,
+
+            ReqRespCode::GetCertificate => {
+                certificate_rsp::handle_certificates(self, req_msg_header, req)?
+            }
             _ => Err((false, CommandError::UnsupportedRequest))?,
         }
         Ok(resp_code)
@@ -126,5 +141,24 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             .prepare_response_buffer(msg_buf)
             .map_err(|_| (false, CommandError::BufferTooSmall));
         fill_error_response(msg_buf, error_code, error_data, extended_data)
+    }
+
+    pub fn get_select_hash_algo(&self) -> SpdmResult<BaseHashAlgoType> {
+        let peer_algorithms = self.state.connection_info.peer_algorithms();
+        let local_algorithms = &self.local_algorithms.device_algorithms;
+        let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
+
+        let base_hash_sel = local_algorithms.base_hash_algo.prioritize(
+            &peer_algorithms.base_hash_algo,
+            algorithm_priority_table.base_hash_algo,
+        );
+
+        // Ensure BaseHashSel has exactly one bit set
+        if base_hash_sel.0.count_ones() != 1 {
+            return Err(SpdmError::InvalidParam);
+        }
+
+        BaseHashAlgoType::try_from(base_hash_sel.0.trailing_zeros() as u8)
+            .map_err(|_| SpdmError::InvalidParam)
     }
 }
