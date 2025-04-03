@@ -9,8 +9,8 @@ use pldm_common::{
         apply_complete::{ApplyCompleteRequest, ApplyCompleteResponse, ApplyResult},
         get_fw_params::GetFirmwareParametersResponse,
         get_status::{
-            AuxState, AuxStateStatus, GetStatusRequest, GetStatusResponse, ProgressPercent,
-            ReasonCode, UpdateOptionResp,
+            AuxState, AuxStateStatus, GetStatusReasonCode, GetStatusRequest, GetStatusResponse,
+            ProgressPercent, UpdateOptionResp,
         },
         pass_component::PassComponentTableResponse,
         query_devid::QueryDeviceIdentifiersResponse,
@@ -244,7 +244,7 @@ fn test_one_component_activate() {
         AuxState::OperationInProgress,
         AuxStateStatus::AuxStateInProgressOrSuccess,
         ProgressPercent::new(80).unwrap(),
-        ReasonCode::ActivateFw,
+        GetStatusReasonCode::ActivateFw,
         UpdateOptionResp::NoForceUpdate,
     );
 
@@ -267,7 +267,7 @@ fn test_one_component_activate() {
         AuxState::OperationSuccessful,
         AuxStateStatus::AuxStateInProgressOrSuccess,
         ProgressPercent::new(100).unwrap(),
-        ReasonCode::ActivateFw,
+        GetStatusReasonCode::ActivateFw,
         UpdateOptionResp::NoForceUpdate,
     );
 
@@ -631,7 +631,7 @@ fn test_two_components_activate() {
         AuxState::OperationInProgress,
         AuxStateStatus::AuxStateInProgressOrSuccess,
         ProgressPercent::new(80).unwrap(),
-        ReasonCode::ActivateFw,
+        GetStatusReasonCode::ActivateFw,
         UpdateOptionResp::NoForceUpdate,
     );
 
@@ -654,7 +654,7 @@ fn test_two_components_activate() {
         AuxState::OperationSuccessful,
         AuxStateStatus::AuxStateInProgressOrSuccess,
         ProgressPercent::new(100).unwrap(),
-        ReasonCode::ActivateFw,
+        GetStatusReasonCode::ActivateFw,
         UpdateOptionResp::NoForceUpdate,
     );
 
@@ -922,7 +922,7 @@ fn test_two_components_one_activate() {
         AuxState::OperationInProgress,
         AuxStateStatus::AuxStateInProgressOrSuccess,
         ProgressPercent::new(80).unwrap(),
-        ReasonCode::ActivateFw,
+        GetStatusReasonCode::ActivateFw,
         UpdateOptionResp::NoForceUpdate,
     );
 
@@ -945,7 +945,7 @@ fn test_two_components_one_activate() {
         AuxState::OperationSuccessful,
         AuxStateStatus::AuxStateInProgressOrSuccess,
         ProgressPercent::new(100).unwrap(),
-        ReasonCode::ActivateFw,
+        GetStatusReasonCode::ActivateFw,
         UpdateOptionResp::NoForceUpdate,
     );
 

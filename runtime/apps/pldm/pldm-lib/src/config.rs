@@ -14,6 +14,13 @@ use embassy_sync::lazy_lock::LazyLock;
 pub const PLDM_PROTOCOL_CAP_COUNT: usize = 2;
 pub const FD_DESCRIPTORS_COUNT: usize = 1;
 pub const FD_FW_COMPONENTS_COUNT: usize = 1;
+pub const FD_MAX_TRANSFER_SIZE: usize = 256; // Arbitrary limit. Change as needed. Min baseline transfer size is 32 bytes
+
+// FD_T1 Update mode idle timeout, 120 seconds (range [60s, 120s])
+pub const DEFAULT_FD_T1_TIMEOUT: u64 = 120000; // 120 seconds
+
+// FD_T2 "Retry request for firmware data", 1 second (range [1s, 5s]) */
+pub const DEFAULT_FD_T2_RETRY_TIME: u64 = 1000; // 1 second
 
 pub static PLDM_PROTOCOL_CAPABILITIES: LazyLock<
     [ProtocolCapability<'static>; PLDM_PROTOCOL_CAP_COUNT],

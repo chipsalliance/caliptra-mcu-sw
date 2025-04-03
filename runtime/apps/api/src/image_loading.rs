@@ -68,7 +68,7 @@ impl<S: Syscalls> ImageLoaderAPI<S> {
     }
 
     /// Fetches the load address of the image.
-    async fn get_image_load_address(&self, image_id: u32) -> Result<u64, ErrorCode> {
+    pub async fn get_image_load_address(&self, image_id: u32) -> Result<u64, ErrorCode> {
         let mut request = GetImageLoadAddressRequest {
             fw_id: image_id.to_be_bytes(),
             ..Default::default()

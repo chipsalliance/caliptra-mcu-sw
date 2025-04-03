@@ -8,15 +8,20 @@ use embassy_sync::mutex::Mutex;
 use libapi_caliptra::image_loading::ImageLoaderAPI;
 use libapi_caliptra::mailbox::Mailbox;
 use libtock_platform::Syscalls;
+use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_common::{
     message::firmware_update::get_fw_params::FirmwareParameters,
-    protocol::firmware_update::Descriptor,
+    protocol::firmware_update::{
+        ComponentResponseCode, Descriptor, PldmFdTime, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
+    },
 };
 
 #[derive(Debug)]
 pub enum FdOpsError {
     DeviceIdentifiersError,
     FirmwareParametersError,
+    TransferSizeError,
+    UpdateComponentError,
 }
 
 /// Thread-safe object for firmware device operations (FdOps).
@@ -35,12 +40,9 @@ pub struct FdOpsObject<S: Syscalls> {
 ///
 /// # Fields
 /// - `mailbox`: An instance of `Mailbox<S>`, used for communication.
-/// - `image_loader`: An instance of `ImageLoaderAPI<S>`, used for loading
-///   firmware images.
 #[allow(dead_code)]
 struct FdOpsInner<S: Syscalls> {
     mailbox: Mailbox<S>,
-    image_loader: ImageLoaderAPI<S>,
     // Add more fields or APIs as needed
 }
 
@@ -55,7 +57,6 @@ impl<S: Syscalls> FdOpsObject<S> {
         Self {
             inner: Mutex::new(FdOpsInner {
                 mailbox: Mailbox::new(),
-                image_loader: ImageLoaderAPI::new(),
             }),
         }
     }
@@ -91,6 +92,20 @@ pub trait FdOps {
         &self,
         firmware_params: &mut FirmwareParameters,
     ) -> Result<(), FdOpsError>;
+
+    // Get the transfer size for the firmware update operation
+    async fn get_transfer_size(&self, ua_transfer_size: usize) -> Result<usize, FdOpsError>;
+
+    // Handle pass_component and update_component operations. Update flag is used to differentiate between the two operations.
+    async fn update_component(
+        &self,
+        component: &FirmwareComponent,
+        fw_params: &FirmwareParameters,
+        update: bool,
+    ) -> Result<ComponentResponseCode, FdOpsError>;
+
+    // Return the current timestamp in u64 miliseconds
+    async fn now(&self) -> PldmFdTime;
 }
 
 #[async_trait(?Send)]
@@ -126,5 +141,48 @@ impl<S: Syscalls> FdOps for FdOpsObject<S> {
 
         // TODO: Implement the actual firmware parameters retrieval via mailbox commands
         todo!()
+    }
+
+    async fn get_transfer_size(&self, ua_transfer_size: usize) -> Result<usize, FdOpsError> {
+        self.inner.lock().await;
+
+        if cfg!(feature = "pldm-lib-use-static-config") {
+            return Ok(PLDM_FWUP_BASELINE_TRANSFER_SIZE
+                .max(ua_transfer_size.min(crate::config::FD_MAX_TRANSFER_SIZE)));
+        }
+
+        // TODO: Implement the actual transfer size retrieval logic
+        todo!()
+    }
+
+    async fn update_component(
+        &self,
+        component: &FirmwareComponent,
+        fw_params: &FirmwareParameters,
+        update: bool,
+    ) -> Result<ComponentResponseCode, FdOpsError> {
+        //let ops = self.inner.lock().await;
+        let comp_resp_code = component.evaluate_update_eligibility(fw_params);
+        if !update || comp_resp_code != ComponentResponseCode::CompCanBeUpdated {
+            return Ok(comp_resp_code);
+        }
+
+        if cfg!(feature = "pldm-lib-use-static-config") {
+            // Just return success for now
+            return Ok(comp_resp_code);
+        }
+
+        // TODO: device specific component update logic is extended from here
+        todo!()
+    }
+
+    async fn now(&self) -> PldmFdTime {
+        if cfg!(feature = "pldm-lib-use-static-config") {
+            // Just return success for now
+            return PldmFdTime::default();
+        } else {
+            // TODO: Implement the actual timestamp retrieval logic
+            todo!()
+        }
     }
 }

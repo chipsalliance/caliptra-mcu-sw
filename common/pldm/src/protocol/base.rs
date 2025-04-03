@@ -161,7 +161,7 @@ impl TryFrom<u8> for TransferOperationFlag {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
 pub enum TransferRespFlag {
     Start = 0x01,
