@@ -23,6 +23,76 @@ Custom SOC elements:
     <img src="images/image_loading_sample.svg" alt="flash_config" width="80%">
 </p>
 
+## Supported Topologies
+
+### Definitions
+* Image Component : The binary data (e.g. firmware, configuration) identified uniquely by a component_id.
+* Image Location : The location where the image component is loaded (e.g. an instruction or data memory) identified by an image_id. The location should have an associated AXI address.
+
+### Image and Instance Mapping
+* Each image location will be associated to an image component in the SOC Manifest.
+
+### Topology 1: One Image Component per Image Location
+
+In this topology, each image location has its own component.
+For example, 2 MCUs with their own instruction memories running 2 different firmware images.
+
+```mermaid
+flowchart TD
+        img1a["Image Component (component_id=1)"]
+        mem1a["Instruction Memory 1 (image_id=1)"]
+        mcu1a["Vendor MCU 1"]
+        img1a --> mem1a --> mcu1a
+
+        img2["Image Component (component_id=2)"]
+        mem2["Instruction Memory 2 (image_id=2)"]
+        mcu2["Vendor MCU 2"]
+        img2 --> mem2 --> mcu2
+
+```
+
+Another configuration for this topology is when the component is shared across multiple processing elements.
+
+
+```mermaid
+flowchart TD
+
+
+        img1b["Image Component (component_id=1)"]
+        mem1b["Instruction Memory 1 (image_id=1)"]
+        mcu1b["Vendor MCU 1"]
+        mcu2b["Vendor MCU 2"]
+        img1b --> mem1b
+        mem1b --> mcu1b
+        mem1b --> mcu2b
+
+```
+
+### Topology 2: One Image for multiple instances
+```mermaid
+flowchart TD
+
+%% Image
+img["Image Component(component_id=1)"]
+
+%% Instruction Memories
+mem1["Instruction Memory 1 (image_id=1)"]
+mem2["Instruction Memory 2 (image_id=2)"]
+mem3["Instruction Memory 3 (image_id=3)"]
+
+%% Vendor MCUs
+mcu1["Vendor MCU 1"]
+mcu2["Vendor MCU 2"]
+mcu3["Vendor MCU 3"]
+
+%% Connections
+img --> mem1 --> mcu1
+img --> mem2 --> mcu2
+img --> mem3 --> mcu3
+```
+
+Image Loader supports architectures with a combination of these topologies.
+
 ## Image Loading Steps
 
 The sequence diagram below shows the high level steps of loading MCU RT image and SOC images.
@@ -40,9 +110,10 @@ The sequence diagram below shows the high level steps of loading MCU RT image an
 The following steps are done for every SOC image:
 
 <p align="center">
-    <!--- https://www.plantuml.com/plantuml/uml/ZLHjRzCm4FxkNt4R4e8FPAoyxyEq4ZQ6H0MYT23HgVAIIshXs95zOMo_7iU9brcaNLkfzUMUv_pSo-N44ZVKL9BjqHehX8eRoshtJ6IYvefWF-LIr6JuFd0BmOWXy_CfJBFC8znvd0ypBkIL_jkYmZb6pjA5Txf_ncBNryyVPd3s0vPgKUUS4AObAlBerXM3poItQ-_pfzXvWIhN1b9TrLg565cmcFj8hMie70R_eBc1-PSKHCLBPCm9U_RhqPLiyFAup-083jyaK2AjF6QbYy8YFUaCaJzbZqEkZcamlpmEzJY2XwWiG0DrkFDj0ZlSrojD5_ypDYNphbCaDSzNFCyDMhjRCjkesvEPF4_WFcayXH5Srwd9OGBV3LUsGDEb2491jcxKRykuf6v0zch3oue3eRu5CWsozd5yWOlKVk5J6-GWBSek2aDfiHyb_pl2ceomL1xL-6x6F2KY30neKnflpSHHU4DhRSGjxjAJpPGxAO7YbjQXNzpJ5BShZleoWGiqehY1SrUDjjhz2m2MwbhGsg_CZ2jHe2MFMIg_K471I3SsJyUh1BuXDKQ1RR9iotpCU_TGlKZrwmJcI73wypGz-AZXlI3GnR3vIvLfOz0wAnUg1DA3t5XSt4gtmYxQjJ085cdeuOaxDPNy1m00 -->
-    <img src="images/image_loading_sequence_loop.svg" alt="flash_config" width="80%">
-</p>  
+    <!--- https://www.plantuml.com/plantuml/svg/bLP_Rzis4FrVd-BM0OEDTLhafSaoe4K31ra3B5WszySVIn4mqiac9fCQIQNBXdtt7IbHDaELIL4qbiZtxXrvzoY-reOfqssRx2kpmIt2bYcTjJJ6IzuoOU3PaZMyDOez0wR1luIGrPjJE2rBXw3dQJvSCjxSohyjoZ-7oClbEpT9l-74rIzdbt3-0Qx5kxPY1k5qZS8uh9qAmUSDqnitvvx2oVSeAgbWARUj53v6wT-oZAI_--FhswR3Zw_e-ISeZdEu4DnmMiK_27pBrdZJI5QXcjrAQMwqx5I9yonZZO7YnnpsHk5bdny0G1IPi0NzWvMjWCF12jKTBp6p13SomLZay5k7wluCBVIYehHvpL5fW4Z7XXXeF-GGCP8wXpdyZEQSg-qdfl2AARP5ywZCYnmYIbhdA8VVyQyEjUbhcuv__01DRvfgfzDxHbMvObgFLP-D5P-dvKuU49ycLnpaqAVtvOf54N9ZqKRArc4NTY-CudY7yFRN9THARa7MjKO31mwQq25sCUwbBzaPCsn8BxMyXMr2XvsHxjpXoLSkiop3HcDiXDwC3kgUehXkDQpQhQHs18gRPVsIgHZdKW4jLzt3Yc3EZ33hFSch-RJFY5VaWN5p-tF31Ftlp4OgClPUa3XAVrQvI9Jb6itDW1Qr78c-hj_0W2U-mkhZAt_-fVbUsADxTYXE7juHuLykj66YjEJdq2-fgXHg_Nntej7SVt5YuVQ4SRFFxkAXXmqzzd9SYX-oxH2Apwz53z2qoIF33qpWztlyn1udRnKJkaOrL9iBA3UT-5F3pASHP9Nd-s_VxhJcOrkpnlInY-aUzRZfNlLK8b_OuDylwtMVqaXq3d2mnMS_1mbxziHfTmwBzisMS6eVPP78KbIJXyHOZY48TSS7nGq-30H61bqN7WD95ntb43llKGCbgBtScBbdqbt4aOxtTY6oMQn1PzTxLBo-XpTKVTjommK7hiKdRZRkyBbaWjUeZSDS2wYb0f_FurO-SMTtfmJehYnHwvH9FMFLGxFT9aSsNHpOxpoVlh30hER23llhogAOxi_9lYHmuJV6VfiQz1_hgFqSU162es_rf08rssdRDayIE0omKVn9pWlYb8RVfIuQ13loi6JMFYYrryh8Dhp3MNkzfZ_sRlq_ -->
+    <img src="images/image_loading_sequence_loop.svg" alt="flash_config" width="100%">
+</p>
+
 The following outlines the steps carried out by the MCU RT during the SOC boot process:
 
 1. MCU ROM reads a SOC Configuration register (implementation specific) to determine the source of the images to load (Flash/PLDM).
@@ -70,21 +141,90 @@ The following outlines the steps carried out by the MCU RT during the SOC boot p
 
 For every image that needs to be loaded, user initiates a call to load an image identified by an image_id:
 
-17. MCU RT issues a mailbox command to get the offset of the image (with respect to the start of the SOC manifest).
-18. Caliptra RT responds with the image offset.
-19. MCU RT issues a mailbox command to get the load address of the image with the given image_id
-20. Caliptra RT responds with the load address if it exists
-21. MCU RT reads a chunk of the image into a local buffer and writes it directly the image to the target load address. (In the example custom SOC design, this will be the Vendor RAM or Vendor Cfg Storage). This is done until all chunks are copied to the destination.
-22. MCU RT sends a Caliptra mailbox command to authorize the image in the SHA Acc identified by the image_id in the image metadata.
-23. Caliptra RT sends the image to the SHA Acc.
-24. Caliptra RT verifies the computed hash in SHA acc versus the one in the SOC manifest corresponding to the image_id given.
-25. Once verified, Caliptra RT returns Success response to MCU via the mailbox.
+17. MCU RT application initializes the image loader based on the boot_source. The application need to specify the boot_source as Flash or PLDM.
+18. Retrieve TOC
+18.1 If boot_source = PLDM:
+18.1.1 MCU starts the PLDM service.
+18.1.2–18.1.3 PLDM Update agent queries device identifiers and receives a response.
+Device Identifier is vendor specific and should correspond to the device identifier in the PLDM Package in the Update Agent.
+18.1.4–18.1.5 PLDM Update agent requests and receives firmware parameters. The PLDM firmware parameter to be used should be for the streaming boot component (refer to the [PLDM Package documentation](./pldm_package.md))
 
-Steps 26-27, are SOC design-specific options One option is to use the Caliptra 'Go' register to set the corresponding 'Go' wire to allow the target component to process the loaded image.
-26. MCU RT sets the corresponding Go bit in Caliptra register corresponding to the image component.
-27. The Go bit sets the corresponding wire that indicates the component can process the loaded image.
+| Field Name                                      | Description                                                                       | Value to Use                         |
+| ----------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------ |
+| `ComponentActivationMethods`                  | Defines activation methods supported by the FD.                                   | `0x0000` (Automatic)               |
+| `CapabilitiesDuringUpdate`                    | Capabilities of the firmware component during update.                             | `0x00000002` (Downgrade permitted) |
+| `ActiveComponentVersionString`                | Describes the currently active version of the component.                          | None                                 |
+| `PendingComponentVersionString`               | Describes the version of the component that is pending activation.                | None                                 |
+| `ComponentIdentifier`                         | Unique ID for the component.                                                      | `0xFFFF`                           |
+| `ComponentClassificationIndex`                | Used to distinguish identical component classifications with different instances. | `0x00`                             |
+| `ActiveComponentComparisonStamp`              | Comparison stamp for active version.                                              | `0x00000000`                       |
+| `ActiveComponentVersionStringType`            | String type for active version string.                                            | `0x01` (ASCII)                     |
+| `ActiveComponentVersionStringLength`          | Length of the active version string.                                              | 0x00                                 |
+| `ActiveComponentReleaseDate`                  | Release date of the active component in YYYYMMDD format.                          | `"00000000"`                       |
+| `PendingComponentComparisonStamp`             | Comparison stamp for pending version.                                             | None                                 |
+| `PendingComponentVersionStringType`           | String type for pending version string.                                           | `0x01` (ASCII)                     |
+| `PendingComponentVersionStringLength`         | Length of the pending version string.                                             | 0x00                                 |
+| `PendingComponentReleaseDate`                 | Release date of the pending version in YYYYMMDD format.                           | `"00000000"`                       |
+| `ComponentCount`                              | Number of components on the FD.                                                   | `0x0001`                           |
+| `ActiveComponentImageSetVersionStringType`    | Type for image set version string (active).                                       | `0x01` (ASCII)                     |
+| `ActiveComponentImageSetVersionStringLength`  | Length of image set version string (active).                                      | `0x00`                             |
+| `PendingComponentImageSetVersionStringType`   | Type for image set version string (pending).                                      | `0x01` (ASCII)                     |
+| `PendingComponentImageSetVersionStringLength` | Length of image set version string (pending).                                     | `0x00`                             |
+| `ActiveComponentImageSetVersionString`        | Version string of the active image set.                                           | None                                 |
+| `PendingComponentImageSetVersionString`       | Version string of the pending image set.                                          | None                                 |
+18.1.6–18.1.7 PLDM sends a RequestUpdate, MCU responds with approval.
+18.1.8–18.1.9 PLDM sends component information using PassTableComponent request, MCU responds with success.
+18.1.10–18.1.11 PLDM sends an UpdateComponent, MCU acknowledges.
 
-Refer to [Streaming Boot](./firmware_update_and_streaming_boot.md) specification for detailed steps on PLDM T5 message exchanges.
+18.1.12. Retrieve TOC (Table of Contents) via PLDM starting from offset 0 until the end of TOC
+18.1.12.1 MCU send RequestFirmwareData
+18.1.12.2 PLDM responds with the TOC chunk
+
+
+18.2 If boot_source = Flash:
+18.2.1 MCU reads the TOC directly from Flash.
+
+
+
+For each SOC instance to be loaded and authorized:
+
+19.1 MCU RT initiates to load the an image component for location for image_id=1 by executing image_loader.load_and_authorize(image_id).
+
+19.2–19.3 MCU retrieves the image_info using Caliptra mailbox for the provided image_id. This should return the load_address and the corresponding component_id associated to the image_id.
+
+19.4 MCU determines the image offset and length using the TOC and component_id.
+
+19.5. Transfer image in chunks (from image_offset to image_offset + image_size):
+19.5.1.1 If from Flash: Flash sends the image chunk to MCU.
+
+19.5.2.1–19.5.2.2 If from PLDM:
+
+MCU requests firmware data from PLDM.
+
+PLDM responds with the image chunk.
+
+19.5.3 MCU writes the image chunk to the appropriate component destination (e.g., Vendor RAM or Config) identified by the load_address.
+
+19.6 After download is completed, MCU sends an authorize(instance_id) command to Caliptra via Mailbox.
+
+19.7 Caliptra forwards the image to the SHA Accelerator.
+
+19.8 Caliptra verifies the image hash in SHA Acc against the value in the SOC manifest.
+
+19.9 On successful verification, Caliptra returns a success response via the Mailbox to the MCU
+
+20 After all SOC instances' images are loaded, MCU RT application deinitializes the image loader.
+
+21 If boot_source = PLDM, MCU finalizes the PLDM firmware update sequence.
+
+21.1–21.2 MCU sends VerifyComplete, and PLDM Update agent responds.
+
+21.3–21.4 MCU sends ApplyComplete, and PLDM Update agent responds.
+
+21.5–21.6 PLDM Update agent issues an Activate, and MCU confirms.
+
+21.7 MCU stops the PLDM service.
+
 
 ## Architecture
 
@@ -106,74 +246,63 @@ The APIs are presented as methods of the ImageLoader trait.
 
 
 /// Trait defining the Image Loading module
-pub trait ImageLoader {
+pub trait ImageLoaderAPI {
     /// Loads the specified SoC image to a storage mapped to the AXI bus memory map.
     ///
     /// # Parameters
-    /// image_id: The unsigned integer identifier of the image.
+    /// image_id: The unsigned integer identifier for the image location
     ///
     /// # Returns
     /// - `Ok()`: Image has been loaded and authorized succesfully.
     /// - `Err(ErrorCode)`: Indication of the failure to load or authorize the image.
     async fn load_and_authorize(&self, image_id: u32) -> Result<(), ErrorCode>;
 
-    /// Loads the specified image to a storage mapped to the AXI bus memory map.
-    ///
-    /// # Parameters
-    /// image_id: The unsigned integer identifier of the image.
-    /// location: Location of the image (in staging or load address)
-    ///
-    /// # Returns
-    /// - `Ok()`: Image has been authorized succesfully.
-    /// - `Err(ErrorCode)`: Indication of the failure to authorize the image.ErrorCode
-    async fn authorize(&self, image_id: u32, location: ImageLocation) -> Result<(), ErrorCode>;
 
-    /// This sends out a mailbox command retrieve the number of image components active in the device
-    /// that are defined in the SoC Manifest.
-    ///
-    /// # Returns
-    /// - `Ok(u32)`: The number of image components in the device
-    /// - `Err(DynError)`: Indication of the failure to retrieve the number of componebts
-    async fn get_component_count(&self);
-
-    /// This sends out a mailbox command to retrieve the metadata of an image.
-    ///
-    /// # Parameters
-    /// index: The index of the image as defined in the SoC Manifest
-    ///
-    /// # Returns
-    /// - `Ok(ImageMetadata)`: The image metadata
-    /// - `Err(DynError)`: An error has occurred.
-    async fn get_component_metadata(&self, index: u32);
-
-    /// This sends out a mailbox command to activate the image
-    ///
-    /// # Parameters
-    /// index: The index of the image as defined in the SoC Manifest
-    ///
-    /// # Returns
-    /// - `Ok(ImageMetadata)`: The image metadata
-    /// - `Err(DynError)`: An error has occurred.
-    async fn activate(&self, index: u32);
+    /// Releases any resources held by ImageLoader
+    /// Finalizes the PLDM Update and stops the PLDM service if started
+    async fn finalize();
 
 }
 
-pub enum ImageLocation {
-   // Image is in the Load Address
-   Load,
-   // Image is in the Staging Area Address
-   Staging,
+
+/// ImageLoader Implementation
+pub struct ImageLoader {
+    pub fn new(boot_source: ImageSource) -> Result<(), ErrorCode> {
+        // if boot_source = Flash, read TOC from flash
+        // if boot_source = PLDM, start PLDM service, and download TOC from offset 0
+    }
 }
 
-// The metadata of the image as described in the Soc Manifest (https://github.com/chipsalliance/caliptra-sw/blob/main-2.x/auth-manifest/README.md)
-pub struct ImageMetadata {
-	image_id: u32,
-	flags: u32,
-	load_address: u64,
-	staging_address: u64,
-	classication, u32,
-	version_number: u32,
-	version_string: [u8;32],
-	size
+impl ImageLoaderAPI for ImageLoader {
+    // API Implementation
 }
+
+pub enum ImageSource {
+   // Image is located in Flash
+   Flash,
+   // Image is retrieved via PLDM
+   // The PLDM DeviceID to be used should be specified
+   Pldm(DeviceId),
+}
+
+
+
+
+Example Usage:
+
+/// Load image for instances 1 and 2 from flash
+let image_loader = ImageLoader::new(ImageSource::Flash)?;
+image_loader.load_and_authorize(1).await?;
+image_loader.load_and_authorize(2).await?;
+image_loader.finalize();
+
+/// Load image for instances 3 and 4 from PLDM
+let image_loader = ImageLoader::new(ImageSource::Pldm(DEVICE_ID))?;
+image_loader.load_and_authorize(3).await?;
+image_loader.load_and_authorize(4).await?;
+image_loader.finalize();
+
+
+
+
 ```
