@@ -68,7 +68,7 @@ lazy_static! {
             options: 0x0,
             requested_activation_method: 0x0,
             version_string_type: StringType::Utf8,
-            version_string: Some("soc-1.2.0".to_string()),
+            version_string: Some("soc-fw-1.2".to_string()),
 
             // Define the firmware image binary data of size 256 bytes
             // First 128 bytes are 0x55, next 128 bytes are 0xAA
@@ -152,7 +152,7 @@ impl PldmFwUpdateTest {
         // Device will not send the RequestUpdate response so UA will stop at RequestUpdateSent state.
         // Modify this as more commands are supported by the device.
         // Note that the UA state machine will not progress if it receives an unexpected response from the device.
-        let res = self.wait_for_state_transition(update_sm::States::RequestUpdateSent);
+        let res = self.wait_for_state_transition(update_sm::States::Download);
 
         self.daemon.as_mut().unwrap().stop();
 
