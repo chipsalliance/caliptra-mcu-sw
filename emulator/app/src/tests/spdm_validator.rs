@@ -150,7 +150,10 @@ impl Test {
         target_addr: u8,
     ) {
         i3c_stream.set_nonblocking(true).unwrap();
-        println!("SPDM_SERVER: Sending message to target {:x?}", self.cur_req_msg);
+        println!(
+            "SPDM_SERVER: Sending message to target {:x?}",
+            self.cur_req_msg
+        );
         self.mctp_test_state = MctpTestState::Start;
 
         while running.load(Ordering::Relaxed) {
@@ -182,7 +185,9 @@ impl Test {
                         println!("SPDM_SERVER: no response received from target");
                         self.cmd_retry_count -= 1;
                         if self.cmd_retry_count == 0 {
-                            println!("SPDM_SERVER: no response received from target, marking finished");
+                            println!(
+                                "SPDM_SERVER: no response received from target, marking finished"
+                            );
                             self.mctp_test_state = MctpTestState::Finish;
                         } else {
                             println!("SPDM_SERVER: retrying command");

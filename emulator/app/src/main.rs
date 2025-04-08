@@ -422,8 +422,6 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
     let test_running = Arc::new(AtomicBool::new(true));
 
-
-
     if cfg!(feature = "test-mctp-ctrl-cmds") {
         i3c_controller.start();
         println!(
@@ -505,7 +503,11 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         let pldm_socket = pldm_transport
             .create_socket(EndpointId(0), EndpointId(1))
             .unwrap();
-        tests::pldm_fw_update_test::PldmFwUpdateTest::run(pldm_socket, running.clone(), test_running.clone());
+        tests::pldm_fw_update_test::PldmFwUpdateTest::run(
+            pldm_socket,
+            running.clone(),
+            test_running.clone(),
+        );
     }
 
     let create_flash_controller = |default_path: &str, error_irq: u8, event_irq: u8| {
@@ -703,8 +705,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     }
 
     while test_running.load(std::sync::atomic::Ordering::Relaxed) {
-       
-        std::thread::sleep(std::time::Duration::from_millis(500));  
+        std::thread::sleep(std::time::Duration::from_millis(500));
     }
 
     Ok(uart_output.map(|o| o.borrow().clone()).unwrap_or_default())
