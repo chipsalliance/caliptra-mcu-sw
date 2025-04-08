@@ -5,7 +5,8 @@ use libtock_platform::Syscalls;
 use pldm_common::util::mctp_transport::{
     MctpCommonHeader, MCTP_COMMON_HEADER_OFFSET, MCTP_PLDM_MSG_TYPE,
 };
-
+use libtock_console::Console;
+use core::fmt::Write;
 pub enum PldmTransportType {
     Mctp,
 }
@@ -54,13 +55,18 @@ impl<S: Syscalls> MctpTransport<S> {
 
         self.cur_req_ctx = Some(tag);
 
+        writeln!(Console::<S>::writer(), "Initiator: Send Request tag {}", tag).unwrap();
+
         Ok(())
     }
 
     pub async fn receive_response<'a>(&mut self, rsp: &'a mut [u8]) -> Result<(), TransportError> {
         // Reset msg buffer
         rsp.fill(0);
+
+        
         let (rsp_len, _msg_info) = if let Some(tag) = self.cur_req_ctx {
+            writeln!(Console::<S>::writer(), "Initiator: Receive Response tag {}", tag).unwrap();
             self.mctp
                 .receive_response(rsp, tag)
                 .await

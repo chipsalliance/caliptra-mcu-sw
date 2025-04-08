@@ -185,7 +185,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MCTPTxState<'a, A, M> {
             if let Some(msg_payload) = self.msg_payload.take() {
                 let msg_tag = self.msg_tag.get()
                     | if self.tag_owner.get() {
-                        MCTP_TAG_OWNER
+                        0
                     } else {
                         0
                     };

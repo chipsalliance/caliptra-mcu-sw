@@ -14,6 +14,7 @@ libtock_platform.workspace = true
 embassy-executor.workspace = true
 embassy-sync.workspace = true
 pldm-common.workspace = true
+libtock_console.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 libtock_unittest.workspace = true
