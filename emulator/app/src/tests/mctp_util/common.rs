@@ -308,12 +308,21 @@ impl MctpUtil {
         let mut i3c_state = I3cControllerState::WaitForIbi;
         let mut pkts: VecDeque<Vec<u8>> = VecDeque::new();
         stream.set_nonblocking(true).unwrap();
+        let retry_limit = 10;
+        let mut retry = retry_limit;
 
         while running.load(Ordering::Relaxed) {
             match i3c_state {
                 I3cControllerState::WaitForIbi => {
                     if receive_ibi(stream, target_addr) {
                         i3c_state = I3cControllerState::ReceivePrivateRead;
+                    } else {
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                        retry -= 1;
+                        if retry == 0 {
+                            println!("MCTP_UTIL: IBI not received. Exiting...");
+                            break;
+                        }
                     }
                 }
                 I3cControllerState::ReceivePrivateRead => {

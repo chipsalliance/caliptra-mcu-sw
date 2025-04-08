@@ -174,10 +174,12 @@ pub(crate) trait TestTrait {
 
 pub(crate) fn run_tests(
     running: Arc<AtomicBool>,
+    test_running: Arc<AtomicBool>,
     port: u16,
     target_addr: DynamicI3cAddress,
     tests: Vec<Box<dyn TestTrait + Send>>,
 ) {
+    test_running.store(true, Ordering::Relaxed);
     let running_clone = running.clone();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let stream = TcpStream::connect(addr).unwrap();
@@ -190,6 +192,7 @@ pub(crate) fn run_tests(
     std::thread::spawn(move || {
         let mut test_runner = MctpTestRunner::new(stream, target_addr.into(), running_clone, tests);
         test_runner.run_tests();
+        test_running.store(false, Ordering::Relaxed);
     });
 
     if cfg!(feature = "test-spdm-validator") {
@@ -243,6 +246,8 @@ impl MctpTestRunner {
             self.passed,
             self.tests.len()
         );
+        println!("MctpTestRunner: Stopping Emulator");
+
         self.running.store(false, Ordering::Relaxed);
         if self.passed == self.tests.len() {
             exit(0);

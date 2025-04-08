@@ -91,7 +91,8 @@ impl PldmRequestResponseTest {
         Ok(())
     }
 
-    pub fn run(socket: MctpPldmSocket, running: Arc<AtomicBool>) {
+    pub fn run(socket: MctpPldmSocket, running: Arc<AtomicBool>, test_running: Arc<AtomicBool>) {
+        test_running.store(true, Ordering::Relaxed);
         std::thread::spawn(move || {
             print!("Emulator: Running PLDM Loopback Test: ",);
             let mut test = PldmRequestResponseTest::new(socket, running);
@@ -101,6 +102,7 @@ impl PldmRequestResponseTest {
             } else {
                 println!("Passed");
             }
+            test_running.store(false, Ordering::Relaxed);
             test.running.store(false, Ordering::Relaxed);
         });
     }

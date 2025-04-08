@@ -420,6 +420,9 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         i3c_notif_irq,
     );
     let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
+    let test_running = Arc::new(AtomicBool::new(true));
+
+
 
     if cfg!(feature = "test-mctp-ctrl-cmds") {
         i3c_controller.start();
@@ -431,6 +434,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         let tests = tests::mctp_ctrl_cmd::MCTPCtrlCmdTests::generate_tests();
         i3c_socket::run_tests(
             running.clone(),
+            test_running.clone(),
             cli.i3c_port.unwrap(),
             i3c.get_dynamic_address().unwrap(),
             tests,
@@ -445,6 +449,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         let tests = tests::mctp_loopback::generate_tests();
         i3c_socket::run_tests(
             running.clone(),
+            test_running.clone(),
             cli.i3c_port.unwrap(),
             i3c.get_dynamic_address().unwrap(),
             tests,
@@ -462,6 +467,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
         i3c_socket::run_tests(
             running.clone(),
+            test_running.clone(),
             cli.i3c_port.unwrap(),
             i3c.get_dynamic_address().unwrap(),
             spdm_loopback_tests,
@@ -471,6 +477,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         let spdm_validator_tests = tests::spdm_validator::generate_tests();
         i3c_socket::run_tests(
             running.clone(),
+            test_running.clone(),
             cli.i3c_port.unwrap(),
             i3c.get_dynamic_address().unwrap(),
             spdm_validator_tests,
@@ -488,7 +495,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         let pldm_socket = pldm_transport
             .create_socket(EndpointId(0), EndpointId(1))
             .unwrap();
-        PldmRequestResponseTest::run(pldm_socket, running.clone());
+        PldmRequestResponseTest::run(pldm_socket, running.clone(), test_running.clone());
     }
 
     if cfg!(feature = "test-pldm-fw-update-e2e") {
@@ -498,7 +505,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         let pldm_socket = pldm_transport
             .create_socket(EndpointId(0), EndpointId(1))
             .unwrap();
-        tests::pldm_fw_update_test::PldmFwUpdateTest::run(pldm_socket, running.clone());
+        tests::pldm_fw_update_test::PldmFwUpdateTest::run(pldm_socket, running.clone(), test_running.clone());
     }
 
     let create_flash_controller = |default_path: &str, error_irq: u8, event_irq: u8| {
@@ -693,6 +700,11 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
                 bmc,
             );
         }
+    }
+
+    while test_running.load(std::sync::atomic::Ordering::Relaxed) {
+       
+        std::thread::sleep(std::time::Duration::from_millis(500));  
     }
 
     Ok(uart_output.map(|o| o.borrow().clone()).unwrap_or_default())
