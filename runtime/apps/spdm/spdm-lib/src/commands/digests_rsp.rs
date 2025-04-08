@@ -1,8 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::cert_mgr::{
-    SpdmCertChainBaseBuffer, SpdmCertChainData, SPDM_MAX_CERT_CHAIN_SLOTS, SPDM_MAX_HASH_SIZE,
-};
+use crate::cert_mgr::{SPDM_MAX_CERT_CHAIN_SLOTS, SPDM_MAX_HASH_SIZE};
 use crate::codec::{Codec, CodecError, CodecResult, CommonCodec, DataKind, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::config;
@@ -28,8 +26,8 @@ impl CommonCodec for GetDigestsReq {
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C)]
 pub struct GetDigestsRespCommon {
-    pub param1: u8,
-    pub slot_mask: u8,
+    pub supported_slot_mask: u8,   // param1: introduced in v13
+    pub provisioned_slot_mask: u8, // param2
 }
 
 impl CommonCodec for GetDigestsRespCommon {
@@ -108,10 +106,12 @@ impl Default for GetDigestsResp {
 }
 
 impl GetDigestsResp {
-    pub fn new(slot_mask: u8, digests: &[SpdmDigest]) -> Self {
+    pub fn new(supported_slot_mask: u8, provisioned_slot_mask: u8, digests: &[SpdmDigest]) -> Self {
         let mut resp = Self::default();
-        resp.common.slot_mask = slot_mask;
-        let slot_cnt = slot_mask.count_ones() as usize;
+        resp.common.supported_slot_mask = supported_slot_mask;
+        resp.common.provisioned_slot_mask = provisioned_slot_mask;
+
+        let slot_cnt = provisioned_slot_mask.count_ones() as usize;
         for (i, digest) in digests.iter().enumerate().take(slot_cnt) {
             resp.digests[i] = digest.clone();
         }
@@ -122,7 +122,7 @@ impl GetDigestsResp {
 impl Codec for GetDigestsResp {
     fn encode(&self, buffer: &mut MessageBuf) -> CodecResult<usize> {
         let mut len = self.common.encode(buffer)?;
-        let slot_cnt = self.common.slot_mask.count_ones() as usize;
+        let slot_cnt = self.common.provisioned_slot_mask.count_ones() as usize;
         for digest in self.digests.iter().take(slot_cnt) {
             len += digest.encode(buffer)?;
         }
@@ -171,18 +171,37 @@ pub(crate) fn handle_digests<'a, S: Syscalls>(
     let hash_algo = get_select_hash_algo(ctx)
         .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
 
-    let slot_mask = config::CERT_CHAIN_SLOT_MASK;
-    let mut digest = SpdmDigest::default();
-
-    // Get the digest of the certificate chain 0
-    get_certificate_chain_digest(ctx, hash_algo, &mut digest)
+    // Get the supported and provisioned slot masks.
+    let (supported_mask, provisioned_mask) = ctx
+        .device_certs_manager
+        .get_cert_chain_slot_mask()
         .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
+
+    let slot_cnt = provisioned_mask.count_ones() as usize;
+    // Check if the slot count is supported. This is a temporary check based on static configuration.
+    if slot_cnt > config::CERT_CHAIN_SLOT_COUNT_SUPPORTED as usize {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
+    }
+
+    let mut digests = [SpdmDigest::default(); config::CERT_CHAIN_SLOT_COUNT_SUPPORTED as usize];
+    for (slot_id, digest) in digests.iter_mut().take(slot_cnt).enumerate() {
+        ctx.get_certificate_chain_digest(slot_id as u8, hash_algo, digest)
+            .map_err(|_| {
+                ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None)
+            })?;
+    }
 
     // Prepare the response buffer
     ctx.prepare_response_buffer(req_payload)?;
 
     // Fill the response buffer
-    fill_digests_response(ctx, slot_mask, &[digest], req_payload)?;
+    fill_digests_response(
+        ctx,
+        supported_mask,
+        provisioned_mask,
+        &digests[..slot_cnt],
+        req_payload,
+    )?;
 
     ctx.state
         .connection_info
@@ -193,12 +212,13 @@ pub(crate) fn handle_digests<'a, S: Syscalls>(
 
 fn fill_digests_response<S: Syscalls>(
     ctx: &SpdmContext<S>,
-    slot_mask: u8,
+    supported_slot_mask: u8,
+    provisioned_slot_mask: u8,
     digests: &[SpdmDigest],
     rsp: &mut MessageBuf,
 ) -> CommandResult<()> {
     // Construct the response
-    let resp = GetDigestsResp::new(slot_mask, digests);
+    let resp = GetDigestsResp::new(supported_slot_mask, provisioned_slot_mask, digests);
 
     let payload_len = resp
         .encode(rsp)
@@ -230,54 +250,6 @@ fn get_select_hash_algo<S: Syscalls>(ctx: &SpdmContext<S>) -> SpdmResult<BaseHas
         .map_err(|_| SpdmError::InvalidParam)
 }
 
-fn get_certificate_chain_digest<S: Syscalls>(
-    ctx: &mut SpdmContext<S>,
-    hash_type: BaseHashAlgoType,
-    digest: &mut SpdmDigest,
-) -> SpdmResult<()> {
-    let mut cert_chain_data = SpdmCertChainData::default();
-    let mut root_hash = SpdmDigest::default();
-
-    let root_cert_len = ctx
-        .device_certs_manager
-        .get_certificate_chain_data(&mut cert_chain_data)?;
-
-    // Get the hash of root_cert
-    ctx.hash_engine
-        .hash_all(
-            &cert_chain_data.as_ref()[..root_cert_len],
-            hash_type,
-            &mut root_hash,
-        )
-        .map_err(SpdmError::HashEngine)?;
-
-    // Construct the cert chain base buffer
-    let cert_chain_base_buf =
-        SpdmCertChainBaseBuffer::new(cert_chain_data.length as usize, root_hash.as_ref())?;
-
-    // Start the hash operation
-    ctx.hash_engine
-        .start(hash_type)
-        .map_err(SpdmError::HashEngine)?;
-
-    // Hash the cert chain base
-    ctx.hash_engine
-        .update(cert_chain_base_buf.as_ref())
-        .map_err(SpdmError::HashEngine)?;
-
-    // Hash the cert chain data
-    ctx.hash_engine
-        .update(cert_chain_data.as_ref())
-        .map_err(SpdmError::HashEngine)?;
-
-    // Finalize the hash operation
-    ctx.hash_engine
-        .finish(digest)
-        .map_err(SpdmError::HashEngine)?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -289,7 +261,7 @@ mod test {
         let digest2 = SpdmDigest::new(&[0xBB; SPDM_MAX_HASH_SIZE]);
         let digests = [digest1, digest2];
 
-        let resp = GetDigestsResp::new(slot_mask, &digests);
+        let resp = GetDigestsResp::new(slot_mask, slot_mask, &digests);
         let mut bytes = [0u8; 1024];
         let mut buffer = MessageBuf::new(&mut bytes);
         let encode_result = resp.encode(&mut buffer);
@@ -304,7 +276,7 @@ mod test {
         assert_eq!(encoded_len, expected_len);
 
         // Verify the contents in the message buffer
-        assert_eq!(buffer.total_message()[0], 0); // param1
+        assert_eq!(buffer.total_message()[0], slot_mask); // param1
         assert_eq!(buffer.total_message()[1], slot_mask); // slot_mask
         assert_eq!(
             buffer.total_message()[2..2 + SPDM_MAX_HASH_SIZE],

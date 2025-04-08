@@ -1,14 +1,16 @@
 // Licensed under the Apache-2.0 license
 
-pub const MAX_CERT_COUNT_IN_CHAIN: usize = 4;
+pub const MAX_CERT_COUNT_PER_CHAIN: usize = 4;
 
 // Maximum size of a DER certificate in bytes. Adjust as needed.
 pub const MAX_DER_CERT_LENGTH: usize = 1024;
 
-pub const MAX_CERT_CHAIN_DATA_SIZE: usize = MAX_DER_CERT_LENGTH * MAX_CERT_COUNT_IN_CHAIN;
+pub const MAX_CERT_CHAIN_DATA_SIZE: usize = MAX_DER_CERT_LENGTH * MAX_CERT_COUNT_PER_CHAIN;
 
 // Only support slot 0 for now. Adjust this when we support multiple slots.
 pub const CERT_CHAIN_SLOT_MASK: u8 = 0x01;
+
+pub const CERT_CHAIN_SLOT_COUNT_SUPPORTED: u8 = 1;
 
 // This is a hard-coded test device ID cert for development and testing.
 // Refactor out when we have real mechanism to retrieve the certificate chain.

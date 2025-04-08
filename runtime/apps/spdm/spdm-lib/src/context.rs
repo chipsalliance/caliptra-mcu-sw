@@ -1,7 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cert_mgr::DeviceCertsManager;
+use crate::cert_mgr::{SpdmCertChainBaseBuffer, SpdmCertChainData};
 use crate::codec::{Codec, MessageBuf};
+use crate::commands::digests_rsp::SpdmDigest;
 use crate::commands::error_rsp::{fill_error_response, ErrorCode};
 use crate::commands::{algorithms_rsp, capabilities_rsp, digests_rsp, version_rsp};
 use crate::error::*;
@@ -20,7 +22,7 @@ pub struct SpdmContext<'a, S: Syscalls> {
     pub(crate) state: State,
     pub(crate) local_capabilities: DeviceCapabilities,
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
-    pub device_certs_manager: &'a dyn DeviceCertsManager,
+    pub(crate) device_certs_manager: &'a dyn DeviceCertsManager,
     pub hash_engine: &'a mut dyn HashEngine,
 }
 
@@ -135,5 +137,53 @@ impl<'a, S: Syscalls> SpdmContext<'a, S> {
             .prepare_response_buffer(msg_buf)
             .map_err(|_| (false, CommandError::BufferTooSmall));
         fill_error_response(msg_buf, error_code, error_data, extended_data)
+    }
+
+    pub fn get_certificate_chain_digest(
+        &mut self,
+        slot_id: u8,
+        hash_type: BaseHashAlgoType,
+        digest: &mut SpdmDigest,
+    ) -> SpdmResult<()> {
+        let mut cert_chain_data = SpdmCertChainData::default();
+        let mut root_hash = SpdmDigest::default();
+        let root_cert_len = self
+            .device_certs_manager
+            .construct_cert_chain_data(slot_id, &mut cert_chain_data)?;
+
+        // Get the hash of root_cert
+        self.hash_engine
+            .hash_all(
+                &cert_chain_data.as_ref()[..root_cert_len],
+                hash_type,
+                &mut root_hash,
+            )
+            .map_err(SpdmError::HashEngine)?;
+
+        // Construct the cert chain base buffer
+        let cert_chain_base_buf =
+            SpdmCertChainBaseBuffer::new(cert_chain_data.length as usize, root_hash.as_ref())?;
+
+        // Start the hash operation
+        self.hash_engine
+            .start(hash_type)
+            .map_err(SpdmError::HashEngine)?;
+
+        // Hash the cert chain base
+        self.hash_engine
+            .update(cert_chain_base_buf.as_ref())
+            .map_err(SpdmError::HashEngine)?;
+
+        // Hash the cert chain data
+        self.hash_engine
+            .update(cert_chain_data.as_ref())
+            .map_err(SpdmError::HashEngine)?;
+
+        // Finalize the hash operation
+        self.hash_engine
+            .finish(digest)
+            .map_err(SpdmError::HashEngine)?;
+
+        Ok(())
     }
 }
