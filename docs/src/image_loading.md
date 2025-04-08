@@ -172,6 +172,7 @@ Device Identifier is vendor specific and should correspond to the device identif
 | `PendingComponentImageSetVersionStringLength` | Length of image set version string (pending).                                     | `0x00`                             |
 | `ActiveComponentImageSetVersionString`        | Version string of the active image set.                                           | None                                 |
 | `PendingComponentImageSetVersionString`       | Version string of the pending image set.                                          | None                                 |
+
 18.1.6–18.1.7 PLDM sends a RequestUpdate, MCU responds with approval.
 18.1.8–18.1.9 PLDM sends component information using PassTableComponent request, MCU responds with success.
 18.1.10–18.1.11 PLDM sends an UpdateComponent, MCU acknowledges.
