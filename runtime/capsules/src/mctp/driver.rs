@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use crate::mctp::base_protocol::{valid_eid, valid_msg_tag, MessageType, MCTP_TAG_OWNER};
+use crate::mctp::base_protocol::{
+    valid_eid, valid_msg_tag, MessageType, MCTP_TAG_MASK, MCTP_TAG_OWNER,
+};
 use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
 use core::cell::Cell;
@@ -392,7 +394,7 @@ impl<'a> MCTPTxClient for MCTPDriver<'a> {
             }
 
             app.pending_tx = None;
-            let msg_info = (msg_type as usize) << 8 | (msg_tag as usize);
+            let msg_info = (msg_type as usize) << 8 | ((msg_tag & MCTP_TAG_MASK) as usize);
             up_calls
                 .schedule_upcall(
                     upcall::MESSAGE_TRANSMITTED,
