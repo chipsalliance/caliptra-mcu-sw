@@ -49,12 +49,16 @@ impl Otp {
         if data.len() < len || len % 4 != 0 {
             return Err(McuError::InvalidDataError);
         }
-        for i in 0..len / 4 {
-            data[i..i + 3].copy_from_slice(&self.read_word(addr * 4 + i * 4)?.to_le_bytes());
+        for (i, chunk) in (&mut data[..len]).chunks_exact_mut(4).enumerate() {
+            let word = self.read_word(addr + i)?;
+            let word_bytes = word.to_le_bytes();
+            chunk.copy_from_slice(&word_bytes[..chunk.len()]);
         }
         Ok(())
     }
 
+    /// Reads a word from the OTP controller.
+    /// word_addr is in words
     fn read_word(&self, word_addr: usize) -> Result<u32, McuError> {
         // OTP DAI status should be idle
         while !self
