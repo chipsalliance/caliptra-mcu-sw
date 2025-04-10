@@ -105,7 +105,7 @@ impl CaliptraBuilder {
         let crypto = Crypto::default();
         let digest = from_hw_format(&crypto.sha384_digest(&data)?);
         let metadata = vec![AuthManifestImageMetadata {
-            fw_id: 0,
+            fw_id: 2,
             flags: flags.0,
             digest,
         }];

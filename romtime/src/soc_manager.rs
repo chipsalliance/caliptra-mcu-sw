@@ -20,8 +20,6 @@ impl SocManager for CaliptraSoC {
     /// Address of the SoC TRNG interface
     const SOC_IFC_TRNG_ADDR: u32 = soc::SOC_IFC_REG_ADDR;
 
-    const SOC_SHA512_ACC_ADDR: u32 = soc::SOC_IFC_REG_ADDR; // TODO: remove this
-
     /// Maximum number of wait cycles.
     const MAX_WAIT_CYCLES: u32 = 400_000;
 

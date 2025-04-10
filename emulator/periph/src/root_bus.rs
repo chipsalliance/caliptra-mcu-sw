@@ -13,7 +13,7 @@ Abstract:
 --*/
 
 use crate::{spi_host::SpiHost, EmuCtrl, Uart};
-use caliptra_emu_bus::{Device, EventData};
+use caliptra_emu_bus::{Device, Event, EventData};
 use emulator_bus::{Bus, Clock, Ram, Rom};
 use emulator_consts::RAM_SIZE;
 use emulator_cpu::{Pic, PicMmioRegisters};
@@ -22,7 +22,7 @@ use std::{
     cell::RefCell,
     path::PathBuf,
     rc::Rc,
-    sync::{Arc, Mutex},
+    sync::{mpsc, Arc, Mutex},
 };
 
 /// Caliptra Root Bus Arguments
@@ -38,6 +38,7 @@ pub struct CaliptraRootBusArgs {
 
 #[derive(Bus)]
 #[incoming_event_fn(handle_incoming_event)]
+#[register_outgoing_events_fn(register_outgoing_events)]
 pub struct CaliptraRootBus {
     #[peripheral(offset = 0x0000_0000, len = 0xc000)]
     pub rom: Rom,
@@ -56,6 +57,8 @@ pub struct CaliptraRootBus {
 
     #[peripheral(offset = 0x6000_0000, len = 0x507d)]
     pub pic_regs: PicMmioRegisters,
+
+    event_sender: Option<mpsc::Sender<Event>>,
 }
 
 impl CaliptraRootBus {
@@ -80,6 +83,7 @@ impl CaliptraRootBus {
             uart: Uart::new(args.uart_output, args.uart_rx, uart_irq, &clock.clone()),
             ctrl: EmuCtrl::new(),
             pic_regs: pic.mmio_regs(clock.clone()),
+            event_sender: None,
         })
     }
 
@@ -90,13 +94,57 @@ impl CaliptraRootBus {
         self.ram.borrow_mut().data_mut()[offset..offset + data.len()].copy_from_slice(data);
     }
 
-    fn handle_incoming_event(&mut self, event: Rc<caliptra_emu_bus::Event>) {
+    fn register_outgoing_events(&mut self, sender: mpsc::Sender<Event>) {
+        self.rom.register_outgoing_events(sender.clone());
+        self.uart.register_outgoing_events(sender.clone());
+        self.ctrl.register_outgoing_events(sender.clone());
+        self.spi.register_outgoing_events(sender.clone());
+        self.ram
+            .borrow_mut()
+            .register_outgoing_events(sender.clone());
+        self.pic_regs.register_outgoing_events(sender.clone());
+        self.event_sender = Some(sender);
+    }
+
+    fn handle_incoming_event(&mut self, event: Rc<Event>) {
         self.rom.incoming_event(event.clone());
         self.uart.incoming_event(event.clone());
         self.ctrl.incoming_event(event.clone());
         self.spi.incoming_event(event.clone());
         self.ram.borrow_mut().incoming_event(event.clone());
         self.pic_regs.incoming_event(event.clone());
+
+        if let (Device::MCU, EventData::MemoryRead { start_addr, len }) =
+            (event.dest, event.event.clone())
+        {
+            // TODO: we need to adjust the interrupt vector table to be at the end or rewrite our LD script to add it automatically
+            let start = (start_addr + 0x80) as usize;
+            let len = len as usize;
+            if start >= RAM_SIZE as usize || start + len >= RAM_SIZE as usize {
+                println!(
+                    "Ignoring invalid MCU RAM read from {}..{}",
+                    start,
+                    start + len
+                );
+            } else {
+                let ram = self.ram.borrow();
+                let ram_size = ram.len() as usize;
+                let len = len.min(ram_size - start);
+
+                if let Some(event_sender) = self.event_sender.as_ref() {
+                    event_sender
+                        .send(Event {
+                            src: Device::MCU,
+                            dest: event.src,
+                            event: EventData::MemoryReadResponse {
+                                start_addr,
+                                data: ram.data()[start..start + len].to_vec(),
+                            },
+                        })
+                        .unwrap();
+                }
+            }
+        }
 
         if let (Device::MCU, EventData::MemoryWrite { start_addr, data }) =
             (event.dest, event.event.clone())

@@ -17,8 +17,8 @@ use caliptra_emu_bus::Clock;
 use caliptra_emu_cpu::Cpu;
 use caliptra_emu_periph::soc_reg::DebugManufService;
 use caliptra_emu_periph::{
-    CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal, ReadyForFwCb,
-    SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
+    CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal, MailboxRequester,
+    ReadyForFwCb, SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
 };
 use caliptra_hw_model::BusMmio;
 use std::fs::File;
@@ -35,6 +35,8 @@ use tock_registers::registers::InMemoryRegister;
 const FW_LOAD_CMD_OPCODE: u32 = 0x4657_4C44;
 /// Start firmware download
 const RI_DOWNLOAD_FIRMWARE: u32 = 0x5249_4644;
+/// Mailbox user for accessing Caliptra mailbox.
+const MAILBOX_USER: MailboxRequester = MailboxRequester::SocUser(1);
 
 /// The number of CPU clock cycles it takes to write the firmware to the mailbox.
 const FW_WRITE_TICKS: u64 = 1000;
@@ -189,7 +191,7 @@ pub fn start_caliptra(
         // TODO: this needs to be moved to the MCU ROM when that has a mailbox driver
         ReadyForFwCb::new(move |args| {
             args.schedule_later(FW_WRITE_TICKS, move |mailbox: &mut MailboxInternal| {
-                let soc_mbox = mailbox.as_external().regs();
+                let soc_mbox = mailbox.as_external(MAILBOX_USER).regs();
                 // Write the cmd to mailbox.
                 assert!(!soc_mbox.lock().read().lock());
                 soc_mbox.cmd().write(|_| RI_DOWNLOAD_FIRMWARE);
@@ -236,7 +238,7 @@ pub fn start_caliptra(
     let soc_ifc = unsafe {
         caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
             0x3003_0000 as *mut u32,
-            BusMmio::new(root_bus.soc_to_caliptra_bus()),
+            BusMmio::new(root_bus.soc_to_caliptra_bus(MAILBOX_USER)),
         )
     };
 
@@ -322,7 +324,7 @@ pub fn start_caliptra(
             .write(|_| (wdt_timeout >> 32) as u32);
     }
 
-    let ext_soc_ifc = root_bus.soc_to_caliptra_bus();
+    let ext_soc_ifc = root_bus.soc_to_caliptra_bus(MAILBOX_USER);
 
     // only return a full CPU if we have a firmware to run
     if args_rom.is_some() {
@@ -340,7 +342,7 @@ fn change_dword_endianess(data: &mut [u8]) {
 }
 
 fn upload_fw_to_mailbox(mailbox: &mut MailboxInternal, firmware_buffer: Rc<Vec<u8>>) {
-    let soc_mbox = mailbox.as_external().regs();
+    let soc_mbox = mailbox.as_external(MAILBOX_USER).regs();
     // Write the cmd to mailbox.
 
     assert!(!soc_mbox.lock().read().lock());
@@ -384,7 +386,7 @@ fn download_idev_id_csr(
 
     let mut file = std::fs::File::create(path).unwrap();
 
-    let soc_mbox = mailbox.as_external().regs();
+    let soc_mbox = mailbox.as_external(MAILBOX_USER).regs();
 
     let byte_count = soc_mbox.dlen().read() as usize;
     let remainder = byte_count % core::mem::size_of::<u32>();

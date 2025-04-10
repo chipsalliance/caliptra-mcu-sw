@@ -30,7 +30,7 @@ statemachine! {
 
         // activate the recovery image after it has been processed
         WaitForRecoveryPending + DeviceStatus(DeviceStatusBlock) [check_device_status_recovery_pending]
-            = Activate,
+            / activate = Activate,
 
         // check if we need to send another recovery image (if awaiting image is set and running recovery)
         Activate + DeviceStatus(DeviceStatusBlock) [check_device_status_recovery_running_recovery]
@@ -205,6 +205,22 @@ impl StateMachineContext for Context {
                     target_addr: 0,
                     command_code: RecoveryCommandCode::RecoveryCtrl,
                     payload: vec![0, 0, 0],
+                },
+            ))
+            .unwrap();
+        Ok(())
+    }
+
+    fn activate(&mut self, _: DeviceStatusBlock) -> Result<(), ()> {
+        self.events_to_caliptra
+            .send(Event::new(
+                Device::BMC,
+                Device::CaliptraCore,
+                EventData::RecoveryBlockWrite {
+                    source_addr: 0,
+                    target_addr: 0,
+                    command_code: RecoveryCommandCode::RecoveryCtrl,
+                    payload: vec![0, 0, 0xf], // activate
                 },
             ))
             .unwrap();
