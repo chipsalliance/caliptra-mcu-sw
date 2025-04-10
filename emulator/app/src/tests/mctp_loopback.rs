@@ -48,6 +48,11 @@ impl TestTrait for Test {
                     self.loopback_msg =
                         self.mctp_util
                             .receive_request(running.clone(), stream, target_addr, None);
+
+                    if self.loopback_msg.len() == 1 && self.loopback_msg[0] == 0x70 {
+                        println!("Received End of test : {:?}", self.loopback_msg);
+                        self.test_state = MctpTestState::Finish;
+                    }
                     self.test_state = MctpTestState::SendResp;
                 }
                 MctpTestState::SendResp => {

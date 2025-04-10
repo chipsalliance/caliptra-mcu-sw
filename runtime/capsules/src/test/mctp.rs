@@ -71,6 +71,23 @@ impl<'a> MockMctp<'a> {
             )
             .unwrap();
     }
+
+    fn send_end_of_test_msg(&self) {
+        assert!(self.mctp_msg_buf.map(|buf| buf.len()).unwrap() >= 1);
+        self.mctp_msg_buf.map(|buf| {
+            buf.reset();
+            buf[0] = MCTP_TEST_MSG_TYPE;
+            buf.slice(0..1)
+        });
+        self.mctp_sender
+            .send_msg(
+                self.msg_type as u8,
+                MCTP_TEST_REMOTE_EID,
+                MCTP_TAG_OWNER,
+                self.mctp_msg_buf.take().unwrap(),
+            )
+            .unwrap();
+    }
 }
 
 impl<'a> MCTPRxClient for MockMctp<'a> {
@@ -111,6 +128,7 @@ impl<'a> MCTPRxClient for MockMctp<'a> {
         );
 
         if self.cur_idx.get() == TEST_MSG_LEN_ARR.len() - 1 {
+            self.send_end_of_test_msg();
             self.test_client.map(|client| {
                 client.test_result(true, self.cur_idx.get() + 1, TEST_MSG_LEN_ARR.len());
             });
