@@ -704,9 +704,9 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         }
     }
 
-    // while test_running.load(std::sync::atomic::Ordering::Relaxed) {
-    //     std::thread::sleep(std::time::Duration::from_millis(500));
-    // }
+    while test_running.load(std::sync::atomic::Ordering::Relaxed) {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
 
     Ok(uart_output.map(|o| o.borrow().clone()).unwrap_or_default())
 }
