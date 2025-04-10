@@ -316,14 +316,12 @@ impl MctpUtil {
                 I3cControllerState::WaitForIbi => {
                     if receive_ibi(stream, target_addr) {
                         i3c_state = I3cControllerState::ReceivePrivateRead;
-                    } else {
-                        if retry_count > 0 {
-                            std::thread::sleep(std::time::Duration::from_millis(300));
-                            retry -= 1;
-                            if retry == 0 {
-                                println!("MCTP_UTIL: IBI not received. Exiting...");
-                                break;
-                            }
+                    } else if retry_count > 0 {
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        retry -= 1;
+                        if retry == 0 {
+                            println!("MCTP_UTIL: IBI not received. Exiting...");
+                            break;
                         }
                     }
                 }
