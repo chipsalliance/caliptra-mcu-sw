@@ -248,7 +248,7 @@ impl MctpUtil {
     ) -> Vec<u8> {
         self.new_resp();
         let mut message_identifier = MessageIdentifier::default();
-        let pkts = self.receive_packets(running, stream, target_addr, &mut message_identifier);
+        let pkts = self.receive_packets(running, stream, target_addr, &mut message_identifier, 20);
         assert_eq!(message_identifier.tag_owner, 0);
         self.assemble(pkts, &message_identifier)
     }
@@ -272,7 +272,7 @@ impl MctpUtil {
         // Msg tag will be assigned by the sender (device in this case)
         self.new_req(8);
         let mut message_identifier = MessageIdentifier::default();
-        let pkts = self.receive_packets(running, stream, target_addr, &mut message_identifier);
+        let pkts = self.receive_packets(running, stream, target_addr, &mut message_identifier, 20);
         assert_eq!(message_identifier.tag_owner, 1);
         self.assemble(pkts, &message_identifier)
     }
@@ -294,7 +294,7 @@ impl MctpUtil {
         target_addr: u8,
     ) -> Vec<u8> {
         let mut message_identifier = MessageIdentifier::default();
-        let pkts = self.receive_packets(running, stream, target_addr, &mut message_identifier);
+        let pkts = self.receive_packets(running, stream, target_addr, &mut message_identifier, 20);
         self.assemble(pkts, &message_identifier)
     }
 
@@ -304,12 +304,12 @@ impl MctpUtil {
         stream: &mut TcpStream,
         target_addr: u8,
         message_identifier: &mut MessageIdentifier,
+        retry_count: usize,
     ) -> VecDeque<Vec<u8>> {
         let mut i3c_state = I3cControllerState::WaitForIbi;
         let mut pkts: VecDeque<Vec<u8>> = VecDeque::new();
         stream.set_nonblocking(true).unwrap();
-        let retry_limit = 10;
-        let mut retry = retry_limit;
+        let mut retry = retry_count;
 
         while running.load(Ordering::Relaxed) {
             match i3c_state {
@@ -317,11 +317,13 @@ impl MctpUtil {
                     if receive_ibi(stream, target_addr) {
                         i3c_state = I3cControllerState::ReceivePrivateRead;
                     } else {
-                        std::thread::sleep(std::time::Duration::from_millis(200));
-                        retry -= 1;
-                        if retry == 0 {
-                            println!("MCTP_UTIL: IBI not received. Exiting...");
-                            break;
+                        if retry_count > 0 {
+                            std::thread::sleep(std::time::Duration::from_millis(300));
+                            retry -= 1;
+                            if retry == 0 {
+                                println!("MCTP_UTIL: IBI not received. Exiting...");
+                                break;
+                            }
                         }
                     }
                 }
