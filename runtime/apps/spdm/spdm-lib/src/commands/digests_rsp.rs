@@ -4,8 +4,7 @@ use crate::cert_mgr::{SPDM_MAX_CERT_CHAIN_SLOTS, SPDM_MAX_HASH_SIZE};
 use crate::codec::{Codec, CodecError, CodecResult, CommonCodec, DataKind, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
-use crate::error::{CommandError, CommandResult, SpdmError, SpdmResult};
-use crate::protocol::algorithms::{BaseHashAlgoType, Prioritize};
+use crate::error::{CommandError, CommandResult};
 use crate::protocol::common::SpdmMsgHdr;
 use crate::state::ConnectionState;
 use libtock_platform::Syscalls;
@@ -161,7 +160,8 @@ pub(crate) fn handle_digests<'a, S: Syscalls>(
 
     // TODO: transcript manager and session support
 
-    let hash_algo = get_select_hash_algo(ctx)
+    let hash_algo = ctx
+        .get_select_hash_algo()
         .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
 
     // Get the supported and provisioned slot masks.
@@ -225,25 +225,6 @@ fn fill_digests_response<S: Syscalls>(
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
     Ok(())
-}
-
-fn get_select_hash_algo<S: Syscalls>(ctx: &SpdmContext<S>) -> SpdmResult<BaseHashAlgoType> {
-    let peer_algorithms = ctx.state.connection_info.peer_algorithms();
-    let local_algorithms = &ctx.local_algorithms.device_algorithms;
-    let algorithm_priority_table = &ctx.local_algorithms.algorithm_priority_table;
-
-    let base_hash_sel = local_algorithms.base_hash_algo.prioritize(
-        &peer_algorithms.base_hash_algo,
-        algorithm_priority_table.base_hash_algo,
-    );
-
-    // Ensure BaseHashSel has exactly one bit set
-    if base_hash_sel.0.count_ones() != 1 {
-        return Err(SpdmError::InvalidParam);
-    }
-
-    BaseHashAlgoType::try_from(base_hash_sel.0.trailing_zeros() as u8)
-        .map_err(|_| SpdmError::InvalidParam)
 }
 
 #[cfg(test)]

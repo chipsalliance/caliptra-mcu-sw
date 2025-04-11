@@ -106,6 +106,64 @@ impl SpdmCertChainBaseBuffer {
     }
 }
 
+pub struct SpdmCertChainBuffer {
+    pub data: [u8; 4 + SPDM_MAX_HASH_SIZE + config::MAX_CERT_CHAIN_DATA_SIZE],
+    pub length: u16,
+}
+
+impl Default for SpdmCertChainBuffer {
+    fn default() -> Self {
+        SpdmCertChainBuffer {
+            data: [0u8; 4 + SPDM_MAX_HASH_SIZE + config::MAX_CERT_CHAIN_DATA_SIZE],
+            length: 0u16,
+        }
+    }
+}
+
+impl AsRef<[u8]> for SpdmCertChainBuffer {
+    fn as_ref(&self) -> &[u8] {
+        &self.data[..self.length as usize]
+    }
+}
+
+impl SpdmCertChainBuffer {
+    pub fn new(cert_chain_data: &[u8], root_hash: &[u8]) -> Result<Self, SpdmError> {
+        if cert_chain_data.len() > config::MAX_CERT_CHAIN_DATA_SIZE
+            || root_hash.len() > SPDM_MAX_HASH_SIZE
+        {
+            return Err(SpdmError::InvalidParam);
+        }
+
+        let total_len = (cert_chain_data.len() + root_hash.len() + 4) as u16;
+        let mut cert_chain_buf = SpdmCertChainBuffer::default();
+        let mut pos = 0;
+
+        // Length
+        let len = 2;
+        cert_chain_buf.data[pos..(pos + len)].copy_from_slice(&total_len.to_le_bytes());
+        pos += len;
+
+        // Reserved
+        cert_chain_buf.data[pos] = 0;
+        cert_chain_buf.data[pos + 1] = 0;
+        pos += 2;
+
+        // Root certificate hash
+        let len = root_hash.len();
+        cert_chain_buf.data[pos..(pos + len)].copy_from_slice(root_hash);
+        pos += len;
+
+        // Certificate chain data
+        let len = cert_chain_data.len();
+        cert_chain_buf.data[pos..(pos + len)].copy_from_slice(cert_chain_data);
+        pos += len;
+
+        cert_chain_buf.length = pos as u16;
+
+        Ok(cert_chain_buf)
+    }
+}
+
 #[derive(Debug)]
 pub enum DeviceCertsMgrError {
     UnsupportedSlotId,
