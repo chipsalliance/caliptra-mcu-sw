@@ -5,6 +5,7 @@ use crate::error::SpdmError;
 
 pub const SPDM_MAX_CERT_CHAIN_SLOTS: usize = 8;
 pub const SPDM_MAX_HASH_SIZE: usize = 64;
+pub const SPDM_CERT_CHAIN_HEADER_SIZE: usize = core::mem::size_of::<SpdmCertChainHeader>();
 
 pub type SupportedSlotMask = u8;
 pub type ProvisionedSlotMask = u8;
@@ -51,17 +52,23 @@ impl AsRef<[u8]> for SpdmCertChainData {
     }
 }
 
+#[repr(C, packed)]
+pub struct SpdmCertChainHeader {
+    pub length: u16,
+    pub reserved: u16,
+}
+
 // Represents the buffer for the SPDM certificate chain base format as defined in SPDM Specification 1.3.2 Table 33.
 // This buffer contains the total length of the certificate chain (2 bytes), reserved bytes (2 bytes) and the root certificate hash.
 pub struct SpdmCertChainBaseBuffer {
-    pub data: [u8; 4 + SPDM_MAX_HASH_SIZE],
+    pub data: [u8; SPDM_CERT_CHAIN_HEADER_SIZE + SPDM_MAX_HASH_SIZE],
     pub length: u16,
 }
 
 impl Default for SpdmCertChainBaseBuffer {
     fn default() -> Self {
         SpdmCertChainBaseBuffer {
-            data: [0u8; 4 + SPDM_MAX_HASH_SIZE],
+            data: [0u8; SPDM_CERT_CHAIN_HEADER_SIZE + SPDM_MAX_HASH_SIZE],
             length: 0u16,
         }
     }
@@ -81,7 +88,8 @@ impl SpdmCertChainBaseBuffer {
             return Err(SpdmError::InvalidParam);
         }
 
-        let total_len = (cert_chain_data_len + root_hash.len() + 4) as u16;
+        let total_len =
+            (cert_chain_data_len + root_hash.len() + SPDM_CERT_CHAIN_HEADER_SIZE) as u16;
         let mut cert_chain_base_buf = SpdmCertChainBaseBuffer::default();
         let mut pos = 0;
 
@@ -107,14 +115,17 @@ impl SpdmCertChainBaseBuffer {
 }
 
 pub struct SpdmCertChainBuffer {
-    pub data: [u8; 4 + SPDM_MAX_HASH_SIZE + config::MAX_CERT_CHAIN_DATA_SIZE],
+    pub data:
+        [u8; SPDM_CERT_CHAIN_HEADER_SIZE + SPDM_MAX_HASH_SIZE + config::MAX_CERT_CHAIN_DATA_SIZE],
     pub length: u16,
 }
 
 impl Default for SpdmCertChainBuffer {
     fn default() -> Self {
         SpdmCertChainBuffer {
-            data: [0u8; 4 + SPDM_MAX_HASH_SIZE + config::MAX_CERT_CHAIN_DATA_SIZE],
+            data: [0u8; SPDM_CERT_CHAIN_HEADER_SIZE
+                + SPDM_MAX_HASH_SIZE
+                + config::MAX_CERT_CHAIN_DATA_SIZE],
             length: 0u16,
         }
     }
@@ -131,10 +142,11 @@ impl SpdmCertChainBuffer {
         if cert_chain_data.len() > config::MAX_CERT_CHAIN_DATA_SIZE
             || root_hash.len() > SPDM_MAX_HASH_SIZE
         {
-            return Err(SpdmError::InvalidParam);
+            Err(SpdmError::InvalidParam)?;
         }
 
-        let total_len = (cert_chain_data.len() + root_hash.len() + 4) as u16;
+        let total_len =
+            (cert_chain_data.len() + root_hash.len() + SPDM_CERT_CHAIN_HEADER_SIZE) as u16;
         let mut cert_chain_buf = SpdmCertChainBuffer::default();
         let mut pos = 0;
 
@@ -438,10 +450,13 @@ mod test {
         let root_hash = [0xAAu8; SPDM_MAX_HASH_SIZE];
         let cert_chain_base_buf =
             SpdmCertChainBaseBuffer::new(root_cert_len, root_hash.as_ref()).unwrap();
-        assert_eq!(cert_chain_base_buf.length, 4 + root_hash.len() as u16);
+        assert_eq!(
+            cert_chain_base_buf.length,
+            (SPDM_CERT_CHAIN_HEADER_SIZE + root_hash.len()) as u16
+        );
         assert_eq!(
             cert_chain_base_buf.as_ref()[..2],
-            ((root_cert_len + 4 + root_hash.len()) as u16).to_le_bytes()
+            ((root_cert_len + SPDM_CERT_CHAIN_HEADER_SIZE + root_hash.len()) as u16).to_le_bytes()
         );
         assert_eq!(cert_chain_base_buf.as_ref()[2..4], [0, 0]);
         assert_eq!(&cert_chain_base_buf.as_ref()[4..], &root_hash[..]);

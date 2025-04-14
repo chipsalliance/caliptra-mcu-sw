@@ -121,9 +121,8 @@ pub(crate) fn handle_certificates<'a, S: Syscalls>(
 
     // Validate the version
     let connection_version = ctx.state.connection_info.version_number();
-    match spdm_hdr.version() {
-        Ok(version) if version == connection_version => {}
-        _ => Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?,
+    if spdm_hdr.version().ok() != Some(connection_version) {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
     }
 
     // Check if the certificate capability is supported.
