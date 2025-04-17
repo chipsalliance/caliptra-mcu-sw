@@ -66,7 +66,7 @@ lazy_static! {
             // Comparison stamp should be greater than the device's comparison stamp
             comparison_stamp: Some(0x12345679),
             options: 0x0,
-            requested_activation_method: 0x0,
+            requested_activation_method: 0x0002,
             version_string_type: StringType::Utf8,
             version_string: Some("soc-fw-1.2".to_string()),
 
@@ -74,8 +74,8 @@ lazy_static! {
             // First 128 bytes are 0x55, next 128 bytes are 0xAA
             size: 256,
             image_data: {
-                let mut data = vec![0x55u8, 128];
-                data.extend(vec![0xAAu8, 128]);
+                let mut data = vec![0x55u8; 128];
+                data.extend(vec![0xAAu8; 128]);
                 Some(data)
             },
             ..Default::default()
@@ -100,7 +100,7 @@ impl PldmFwUpdateTest {
         }
     }
     pub fn wait_for_state_transition(&self, expected_state: update_sm::States) -> Result<(), ()> {
-        let timeout = Duration::from_secs(5);
+        let timeout = Duration::from_secs(20);
         let start_time = std::time::Instant::now();
 
         while start_time.elapsed() < timeout {
@@ -152,7 +152,7 @@ impl PldmFwUpdateTest {
         // Device will not send the RequestUpdate response so UA will stop at RequestUpdateSent state.
         // Modify this as more commands are supported by the device.
         // Note that the UA state machine will not progress if it receives an unexpected response from the device.
-        let res = self.wait_for_state_transition(update_sm::States::Download);
+        let res = self.wait_for_state_transition(update_sm::States::Activate);
 
         self.daemon.as_mut().unwrap().stop();
 

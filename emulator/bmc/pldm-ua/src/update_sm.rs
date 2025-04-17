@@ -798,7 +798,10 @@ pub trait StateMachineActions {
                     .send(PldmEvents::Update(Events::ApplyCompletePass))
                     .map_err(|_| ())?;
             }
-            pldm_packet::apply_complete::ApplyResult::ApplyFailureMemoryIssue => {
+            pldm_packet::apply_complete::ApplyResult::ApplyFailureMemoryIssue
+            | pldm_packet::apply_complete::ApplyResult::ApplyTimeOut
+            | pldm_packet::apply_complete::ApplyResult::ApplyGenericError => {
+                error!("Apply failed");
                 ctx.event_queue
                     .send(PldmEvents::Update(Events::ApplyCompleteFail))
                     .map_err(|_| ())?;

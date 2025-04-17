@@ -14,8 +14,8 @@ type Tag = u8;
 
 #[derive(Debug, Clone)]
 pub struct MessageInfo {
-    eid: EndpointId,
-    tag: Tag,
+    pub eid: EndpointId,
+    pub tag: Tag,
 }
 
 impl From<u32> for MessageInfo {
@@ -176,6 +176,7 @@ impl<S: Syscalls> Mctp<S> {
     /// # Arguments
     /// * `resp` - The buffer to store the received response payload from the endpoint
     /// * `tag` - The message tag to match against the response message
+    /// * `src_eid` - The source EID from which the response is expected
     ///
     /// # Returns
     /// * `(u32, MessageInfo)` - On success, returns tuple containing length of the response received and the message information containing the source EID, message tag
@@ -184,6 +185,7 @@ impl<S: Syscalls> Mctp<S> {
         &self,
         resp: &mut [u8],
         tag: Tag,
+        src_eid: u8,
     ) -> Result<(u32, MessageInfo), ErrorCode> {
         if resp.is_empty() || tag > 0x7 {
             Err(ErrorCode::Invalid)?;
@@ -196,9 +198,13 @@ impl<S: Syscalls> Mctp<S> {
                 allow_rw::READ_RESPONSE,
                 resp,
             );
-
-            S::command(self.driver_num, command::RECEIVE_RESPONSE, 0, tag as u32)
-                .to_result::<(), ErrorCode>()?;
+            S::command(
+                self.driver_num,
+                command::RECEIVE_RESPONSE,
+                src_eid as u32,
+                tag as u32,
+            )
+            .to_result::<(), ErrorCode>()?;
 
             Ok(sub)
         })?

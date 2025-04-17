@@ -6,10 +6,15 @@
 #![allow(static_mut_refs)]
 
 use core::fmt::Write;
+use libtock::alarm::Milliseconds;
 use libtock_console::Console;
 use libtock_platform::Syscalls;
+use pldm_lib::timer::AsyncAlarm;
+
 #[allow(unused)]
 use pldm_lib::daemon::PldmService;
+#[allow(unused)]
+use pldm_lib::firmware_device::fd_ops_mock::FdOpsObject;
 
 #[cfg(target_arch = "riscv32")]
 mod riscv;
@@ -47,13 +52,30 @@ pub(crate) async fn async_main<S: Syscalls>() {
     let mut console_writer = Console::<S>::writer();
     writeln!(console_writer, "PLDM_APP: Hello PLDM async world!").unwrap();
 
+    writeln!(
+        console_writer,
+        "PLDM_APP: Alarm: {:?}",
+        AsyncAlarm::<S>::exists()
+    )
+    .unwrap();
+    writeln!(
+        console_writer,
+        "PLDM_APP: Alarm frequency: {:?}",
+        AsyncAlarm::<S>::get_frequency()
+    )
+    .unwrap();
+
+    // sleep for 1 second
+    AsyncAlarm::<S>::sleep(Milliseconds(1000)).await;
+
     #[cfg(any(
         feature = "test-pldm-discovery",
         feature = "test-pldm-fw-update",
         feature = "test-pldm-fw-update-e2e"
     ))]
     {
-        let mut pldm_service = PldmService::init();
+        let fdops = FdOpsObject::new();
+        let mut pldm_service = PldmService::init(&fdops);
         writeln!(
             console_writer,
             "PLDM_APP: Starting PLDM service for testing..."

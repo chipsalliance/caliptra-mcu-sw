@@ -3,15 +3,14 @@
 extern crate alloc;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::mutex::Mutex;
-use libapi_caliptra::mailbox::Mailbox;
+use pldm_common::message::firmware_update::apply_complete::ApplyResult;
+use pldm_common::message::firmware_update::get_status::ProgressPercent;
+use pldm_common::message::firmware_update::transfer_complete::TransferResult;
+use pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_common::{
     message::firmware_update::get_fw_params::FirmwareParameters,
-    protocol::firmware_update::{
-        ComponentResponseCode, Descriptor, PldmFdTime, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
-    },
+    protocol::firmware_update::{ComponentResponseCode, Descriptor, PldmFdTime},
 };
 
 #[derive(Debug)]
@@ -20,6 +19,7 @@ pub enum FdOpsError {
     FirmwareParametersError,
     TransferSizeError,
     ComponentError,
+    FwDownloadError,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,47 +28,13 @@ pub enum ComponentOperation {
     UpdateComponent,
 }
 
-/// Thread-safe object for firmware device operations (FdOps).
-pub struct FdOpsObject {
-    inner: Mutex<NoopRawMutex, FdOpsInner>,
-}
-
-/// A structure representing the operations for firmware device (FdOps).
+/// Trait for firmware device-specific operations.
 ///
-/// This structure encapsulates the necessary components for performing
-/// firmware device operations, including a mailbox and an image loader.
-///
-/// # Fields
-/// - `mailbox`: An instance of `Mailbox`, used for communication.
-#[allow(dead_code)]
-struct FdOpsInner {
-    mailbox: Mailbox,
-    // Add more fields or APIs as needed
-}
-
-impl Default for FdOpsObject {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl FdOpsObject {
-    pub fn new() -> Self {
-        Self {
-            inner: Mutex::new(FdOpsInner {
-                mailbox: Mailbox::new(),
-            }),
-        }
-    }
-}
-
-/// Trait representing firmware device specific operations that can be performed by interacting with mailbox API etc.
+/// This trait defines asynchronous methods for performing various firmware device operations,
+/// including retrieving device identifiers, firmware parameters, and transfer sizes. It also
+/// provides methods for handling firmware components, managing firmware data downloads, verifying
+/// and applying firmware, activating new firmware, and obtaining the current timestamp.
 #[async_trait(?Send)]
-/// A trait defining operations for firmware devices.
-///
-/// This trait provides asynchronous methods for interacting with firmware devices,
-/// including retrieving device identifiers, firmware parameters, transfer sizes,
-/// handling firmware components, and obtaining the current timestamp.
 pub trait FdOps {
     /// Asynchronously retrieves device identifiers.
     ///
@@ -130,93 +96,110 @@ pub trait FdOps {
         op: ComponentOperation,
     ) -> Result<ComponentResponseCode, FdOpsError>;
 
+    /// Queries the download offset and length for a given firmware component.
+    ///
+    /// # Arguments
+    ///
+    /// * `component` - A reference to the `FirmwareComponent` for which the download offset and length are queried.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(usize, usize), FdOpsError>` - On success, returns a tuple containing the offset and length in bytes.
+    ///   On failure, returns an `FdOpsError`.
+    async fn query_download_offset_and_length(
+        &self,
+        component: &FirmwareComponent,
+    ) -> Result<(usize, usize), FdOpsError>;
+
+    /// Handles firmware data downloading operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `offset` - The offset in bytes where the firmware data should be written or processed.
+    /// * `data` - A slice of bytes representing the firmware data to be handled.
+    /// * `component` - A reference to the `FirmwareComponent` associated with the firmware data.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<TransferResult, FdOpsError>` - On success, returns a `TransferResult` indicating the outcome of the operation.
+    ///   On failure, returns an `FdOpsError`.
+    async fn download_fw_data(
+        &self,
+        offset: usize,
+        data: &[u8],
+        component: &FirmwareComponent,
+    ) -> Result<TransferResult, FdOpsError>;
+
+    /// Checks if the firmware download for a given component is complete.
+    ///
+    /// # Arguments
+    ///
+    /// * `component` - A reference to the `FirmwareComponent` for which the download completion status is checked.
+    ///
+    /// # Returns
+    ///
+    /// * `bool` - Returns `true` if the download is complete, otherwise `false`.
+    async fn is_download_complete(&self, component: &FirmwareComponent) -> bool;
+
+    /// Verifies the firmware component.
+    ///
+    /// # Arguments
+    ///
+    /// * `component` - A reference to the `FirmwareComponent` to be verified.
+    /// * `progress_percent` - A mutable reference to `ProgressPercent` to track the verification progress.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<VerifyResult, FdOpsError>` - On success, returns a `VerifyResult` indicating the outcome of the verification.
+    /// *   On failure, returns an `FdOpsError`.
+    async fn verify(
+        &self,
+        component: &FirmwareComponent,
+        progress_percent: &mut ProgressPercent,
+    ) -> Result<VerifyResult, FdOpsError>;
+
+    /// Applies the firmware component.
+    ///
+    /// # Arguments
+    ///
+    /// * `component` - A reference to the `FirmwareComponent` to be applied.
+    /// * `progress_percent` - A mutable reference to `ProgressPercent` to track the application progress.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<ApplyResult, FdOpsError>` - On success, returns an `ApplyResult` indicating the outcome of the application.
+    /// *   On failure, returns an `FdOpsError`.
+    async fn apply(
+        &self,
+        component: &FirmwareComponent,
+        progress_percent: &mut ProgressPercent,
+    ) -> Result<ApplyResult, FdOpsError>;
+
+    /// Activates new firmware.
+    ///
+    /// # Arguments
+    ///
+    /// * `self_contained_activation` - Indicates if self-contained activation is requested.
+    /// * `estimated_time` - A mutable reference to store the estimated time (in seconds)
+    ///   required to perform self-activation. This may be left as `None` if not needed.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<u8, FdOpsError>` - On success, returns a PLDM completion code.
+    ///   On failure, returns an `FdOpsError`.
+    ///
+    /// The device implementation is responsible for verifying that the expected components
+    /// have been updated. If not, it should return `PLDM_FWUP_INCOMPLETE_UPDATE`.
+    async fn activate(
+        &self,
+        self_contained_activation: u8,
+        estimated_time: &mut u16,
+    ) -> Result<u8, FdOpsError>;
+
     /// Retrieves the current timestamp in milliseconds.
     ///
     /// # Returns
     ///
     /// * `PldmFdTime` - The current timestamp in milliseconds.
     async fn now(&self) -> PldmFdTime;
-}
-
-#[async_trait(?Send)]
-impl FdOps for FdOpsObject {
-    async fn get_device_identifiers(
-        &self,
-        device_identifiers: &mut [Descriptor],
-    ) -> Result<usize, FdOpsError> {
-        let _guard = self.inner.lock().await;
-        if cfg!(feature = "pldm-lib-use-static-config") {
-            let dev_id = crate::config::DESCRIPTORS.get();
-            if device_identifiers.len() < dev_id.len() {
-                return Err(FdOpsError::DeviceIdentifiersError);
-            }
-            device_identifiers[..dev_id.len()].copy_from_slice(dev_id);
-            return Ok(dev_id.len());
-        }
-
-        // TODO: Implement the actual device identifiers retrieval logic
-        todo!()
-    }
-
-    async fn get_firmware_parms(
-        &self,
-        firmware_params: &mut FirmwareParameters,
-    ) -> Result<(), FdOpsError> {
-        let _guard = self.inner.lock().await;
-        if cfg!(feature = "pldm-lib-use-static-config") {
-            let fw_params = crate::config::FIRMWARE_PARAMS.get();
-            *firmware_params = (*fw_params).clone();
-            return Ok(());
-        }
-
-        // TODO: Implement the actual firmware parameters retrieval via mailbox commands
-        todo!()
-    }
-
-    async fn get_xfer_size(&self, ua_transfer_size: usize) -> Result<usize, FdOpsError> {
-        let _guard = self.inner.lock().await;
-        if cfg!(feature = "pldm-lib-use-static-config") {
-            return Ok(PLDM_FWUP_BASELINE_TRANSFER_SIZE
-                .max(ua_transfer_size.min(crate::config::FD_MAX_XFER_SIZE)));
-        }
-
-        // TODO: Implement the actual transfer size retrieval logic
-        todo!()
-    }
-
-    async fn handle_component(
-        &self,
-        component: &FirmwareComponent,
-        fw_params: &FirmwareParameters,
-        op: ComponentOperation,
-    ) -> Result<ComponentResponseCode, FdOpsError> {
-        let _guard = self.inner.lock().await;
-        let comp_resp_code = component.evaluate_update_eligibility(fw_params);
-        if op == ComponentOperation::PassComponent
-            || comp_resp_code != ComponentResponseCode::CompCanBeUpdated
-        {
-            return Ok(comp_resp_code);
-        }
-
-        // For the `UpdateComponent` operation, additional device-specific logic can be implemented here.
-        // Currently, the method simply returns `comp_resp_code` as `CompCanBeUpdated` if the component passes the evaluation.
-        if cfg!(feature = "pldm-lib-use-static-config") {
-            return Ok(comp_resp_code);
-        }
-
-        // For `UpdateComponent` operation, device specific logic might be extended from here.
-        todo!()
-    }
-
-    async fn now(&self) -> PldmFdTime {
-        let _guard = self.inner.lock().await;
-        if cfg!(feature = "pldm-lib-use-static-config") {
-            let current_time = crate::config::get_test_fw_update_timestamp();
-            crate::config::update_test_fw_update_timestamp();
-            return current_time;
-        }
-
-        // TODO: Implement the actual logic to return the platform timestamp.
-        todo!()
-    }
 }

@@ -496,7 +496,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         let pldm_transport =
             MctpTransport::new(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
         let pldm_socket = pldm_transport
-            .create_socket(EndpointId(0), EndpointId(1))
+            .create_socket(EndpointId(8), EndpointId(0))
             .unwrap();
         tests::pldm_fw_update_test::PldmFwUpdateTest::run(pldm_socket, running.clone());
     }

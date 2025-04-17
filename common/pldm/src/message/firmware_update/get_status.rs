@@ -7,7 +7,7 @@ use crate::protocol::base::{
 use crate::protocol::firmware_update::{FirmwareDeviceState, FwUpdateCmd, UpdateOptionFlags};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct ProgressPercent(u8);
 
 impl ProgressPercent {
@@ -21,6 +21,15 @@ impl ProgressPercent {
 
     pub fn value(&self) -> u8 {
         self.0
+    }
+
+    pub fn set_value(&mut self, value: u8) -> Result<(), PldmError> {
+        if value > 100 {
+            Err(PldmError::InvalidData)
+        } else {
+            self.0 = value;
+            Ok(())
+        }
     }
 }
 

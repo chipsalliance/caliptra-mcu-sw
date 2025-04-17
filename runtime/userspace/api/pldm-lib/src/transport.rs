@@ -23,7 +23,7 @@ pub enum TransportError {
 pub struct MctpTransport {
     mctp: Mctp,
     cur_resp_ctx: Option<MessageInfo>,
-    cur_req_ctx: Option<u8>,
+    cur_req_ctx: Option<MessageInfo>,
 }
 
 impl MctpTransport {
@@ -51,7 +51,7 @@ impl MctpTransport {
             .await
             .map_err(|_| TransportError::SendError)?;
 
-        self.cur_req_ctx = Some(tag);
+        self.cur_req_ctx = Some(MessageInfo { eid: dest_eid, tag });
 
         Ok(())
     }
@@ -59,9 +59,9 @@ impl MctpTransport {
     pub async fn receive_response<'a>(&mut self, rsp: &'a mut [u8]) -> Result<(), TransportError> {
         // Reset msg buffer
         rsp.fill(0);
-        let (rsp_len, _msg_info) = if let Some(tag) = self.cur_req_ctx {
+        let (rsp_len, _msg_info) = if let Some(msg_info) = &self.cur_req_ctx {
             self.mctp
-                .receive_response(rsp, tag)
+                .receive_response(rsp, msg_info.tag, msg_info.eid)
                 .await
                 .map_err(|_| TransportError::ReceiveError)
         } else {

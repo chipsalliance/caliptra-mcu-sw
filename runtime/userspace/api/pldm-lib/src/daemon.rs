@@ -3,7 +3,8 @@
 use crate::cmd_interface::CmdInterface;
 use crate::config;
 use crate::firmware_device::fd_context::FirmwareDeviceContext;
-
+use crate::firmware_device::fd_ops::FdOps;
+use crate::transport::MctpTransport;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
@@ -32,20 +33,19 @@ pub enum PldmServiceError {
 /// * `cmd_interface` - The command interface used by the PLDM service.
 /// * `running` - An atomic boolean indicating whether the PLDM service is currently running.
 /// * `initiator_signal` - A signal used to activate the PLDM initiator task.
-pub struct PldmService {
-    cmd_interface: CmdInterface<'static>,
+pub struct PldmService<'a> {
+    cmd_interface: CmdInterface<'a>,
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 }
 
 // Note: This implementation is a starting point for integration testing.
 // It will be extended and refactored to support additional PLDM commands in both responder and requester modes.
-impl PldmService {
-    pub fn init() -> Self {
+impl<'a> PldmService<'a> {
+    pub fn init(fdops: &'a dyn FdOps) -> Self {
         let cmd_interface = CmdInterface::new(
-            driver_num::MCTP_PLDM,
             config::PLDM_PROTOCOL_CAPABILITIES.get(),
-            FirmwareDeviceContext::new(),
+            FirmwareDeviceContext::new(fdops),
         );
         Self {
             cmd_interface,
@@ -70,8 +70,10 @@ impl PldmService {
         let mut responder_executor = TockExecutor::new();
         let responder_executor: &'static mut TockExecutor =
             unsafe { core::mem::transmute(&mut responder_executor) };
-        let cmd_interface: &'static mut CmdInterface<'static> =
-            unsafe { core::mem::transmute(&mut self.cmd_interface) };
+
+        let cmd_interface: &'static CmdInterface<'static> =
+            unsafe { core::mem::transmute(&self.cmd_interface) };
+
         responder_executor
             .spawner()
             .spawn(pldm_responder_task(
@@ -86,7 +88,11 @@ impl PldmService {
             unsafe { core::mem::transmute(&mut initiator_executor) };
         initiator_executor
             .spawner()
-            .spawn(pldm_initiator_task(self.running, self.initiator_signal))
+            .spawn(pldm_initiator_task(
+                cmd_interface,
+                self.running,
+                self.initiator_signal,
+            ))
             .unwrap();
 
         loop {
@@ -100,38 +106,18 @@ impl PldmService {
     }
 }
 
-#[cfg(target_arch = "riscv32")]
 #[embassy_executor::task]
 pub async fn pldm_initiator_task(
+    cmd_interface: &'static CmdInterface<'static>,
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
-    pldm_initiator(running, initiator_signal).await;
+    pldm_initiator(cmd_interface, running, initiator_signal).await;
 }
 
-#[cfg(target_arch = "riscv32")]
 #[embassy_executor::task]
 pub async fn pldm_responder_task(
-    cmd_interface: &'static mut CmdInterface<'static>,
-    running: &'static AtomicBool,
-    initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
-) {
-    pldm_responder(cmd_interface, running, initiator_signal).await;
-}
-
-#[cfg(not(target_arch = "riscv32"))]
-#[embassy_executor::task]
-async fn pldm_initiator_task(
-    running: &'static AtomicBool,
-    initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
-) {
-    pldm_initiator(running, initiator_signal).await;
-}
-
-#[cfg(not(target_arch = "riscv32"))]
-#[embassy_executor::task]
-async fn pldm_responder_task(
-    cmd_interface: &'static mut CmdInterface<'static>,
+    cmd_interface: &'static CmdInterface<'static>,
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
@@ -139,28 +125,40 @@ async fn pldm_responder_task(
 }
 
 pub async fn pldm_initiator(
+    cmd_interface: &'static CmdInterface<'static>,
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
     // Wait for signal from responder before starting the loop
     initiator_signal.wait().await;
 
+    let mut msg_buffer = [0; MAX_MCTP_PLDM_MSG_SIZE];
+    let mut transport = MctpTransport::new(driver_num::MCTP_PLDM);
+
     while running.load(Ordering::SeqCst) {
-        // TODO: Implement the PLDM initiator logic here
+        let _ = cmd_interface
+            .handle_initiator_msg(&mut transport, &mut msg_buffer)
+            .await;
     }
 }
 
 pub async fn pldm_responder(
-    cmd_interface: &'static mut CmdInterface<'static>,
+    cmd_interface: &'static CmdInterface<'static>,
     running: &'static AtomicBool,
-    _initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
+    initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
-    let mut msg_buffer = [0; MAX_MCTP_PLDM_MSG_SIZE];
-    while running.load(Ordering::SeqCst) {
-        // TODO: add a timeout to avoid blocking indefinitely
-        let _ = cmd_interface.handle_msg(&mut msg_buffer).await;
+    let mut transport = MctpTransport::new(driver_num::MCTP_PLDM);
 
-        // TODO: signal the initiator task to start
-        // initiator_signal.signal(initiator_signal).unwrap();
+    let mut msg_buffer = [0; MAX_MCTP_PLDM_MSG_SIZE];
+
+    while running.load(Ordering::SeqCst) {
+        let _ = cmd_interface
+            .handle_responder_msg(&mut transport, &mut msg_buffer)
+            .await;
+
+        // When FD state is download state, signal the initiator task
+        if cmd_interface.should_start_initiator_mode().await && !initiator_signal.signaled() {
+            initiator_signal.signal(());
+        }
     }
 }

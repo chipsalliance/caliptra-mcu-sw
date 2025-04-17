@@ -7,7 +7,7 @@ use crate::protocol::base::{
 use crate::protocol::firmware_update::FwUpdateCmd;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum VerifyResult {
     VerifySuccess = 0x00,
@@ -15,6 +15,9 @@ pub enum VerifyResult {
     VerifyErrorVersionMismatch = 0x02,
     VerifyFailedFdSecurityChecks = 0x03,
     VerifyErrorImageIncomplete = 0x04,
+    VerifyTimeOut = 0x09,
+    #[default]
+    VerifyGenericError = 0x0a,
     VendorDefined,
 }
 
@@ -28,6 +31,8 @@ impl TryFrom<u8> for VerifyResult {
             0x02 => Ok(VerifyResult::VerifyErrorVersionMismatch),
             0x03 => Ok(VerifyResult::VerifyFailedFdSecurityChecks),
             0x04 => Ok(VerifyResult::VerifyErrorImageIncomplete),
+            0x09 => Ok(VerifyResult::VerifyTimeOut),
+            0x0a => Ok(VerifyResult::VerifyGenericError),
             0x90..=0xaf => Ok(VerifyResult::VendorDefined),
             _ => Err(PldmError::InvalidVerifyResult),
         }

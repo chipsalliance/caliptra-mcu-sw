@@ -7,13 +7,16 @@ use crate::protocol::base::{
 use crate::protocol::firmware_update::FwUpdateCmd;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TransferResult {
     TransferSuccess = 0x00,
     TransferErrorImageCorrupt = 0x01,
     TransferErrorVersionMismatch = 0x02,
     FdAbortedTransfer = 0x03,
+    TransferTimeOut = 0x09,
+    #[default]
+    TransferGenericError = 0x0a,
     FdAbortedTransferLowPowerState = 0x0b,
     FdAbortedTransferResetNeeded = 0x0c,
     FdAbortedTransferStorageIssue = 0x0d,
@@ -32,6 +35,8 @@ impl TryFrom<u8> for TransferResult {
             0x01 => Ok(TransferResult::TransferErrorImageCorrupt),
             0x02 => Ok(TransferResult::TransferErrorVersionMismatch),
             0x03 => Ok(TransferResult::FdAbortedTransfer),
+            0x09 => Ok(TransferResult::TransferTimeOut),
+            0x0a => Ok(TransferResult::TransferGenericError),
             0x0b => Ok(TransferResult::FdAbortedTransferLowPowerState),
             0x0c => Ok(TransferResult::FdAbortedTransferResetNeeded),
             0x0d => Ok(TransferResult::FdAbortedTransferStorageIssue),

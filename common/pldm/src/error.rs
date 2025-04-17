@@ -30,7 +30,7 @@ pub enum PldmError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TransportError {
+pub enum UtilError {
     InvalidMctpPayloadLength,
     InvalidMctpMsgType,
 }
