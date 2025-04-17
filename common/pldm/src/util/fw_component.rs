@@ -6,7 +6,7 @@ use crate::protocol::firmware_update::{
 };
 
 // An entry for Pass Component Table or Update Component
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq)]
 pub struct FirmwareComponent {
     pub comp_classification: u16,
     pub comp_identifier: u16,

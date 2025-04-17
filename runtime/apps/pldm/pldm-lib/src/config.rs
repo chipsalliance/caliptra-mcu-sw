@@ -1,7 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use crate::control_context::ProtocolCapability;
-use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_sync::lazy_lock::LazyLock;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::protocol::base::{PldmControlCmd, PldmSupportedType};
@@ -14,9 +13,11 @@ use pldm_common::protocol::firmware_update::{ComponentParameterEntry, Descriptor
 pub const PLDM_PROTOCOL_CAP_COUNT: usize = 2;
 pub const FD_DESCRIPTORS_COUNT: usize = 1;
 pub const FD_FW_COMPONENTS_COUNT: usize = 1;
-pub const FD_MAX_XFER_SIZE: usize = 256; // Arbitrary limit and change as needed.
+pub const FD_MAX_XFER_SIZE: usize = 512; // Arbitrary limit and change as needed.
 pub const DEFAULT_FD_T1_TIMEOUT: PldmFdTime = 120000; // FD_T1 update mode idle timeout, range is [60s, 120s].
 pub const DEFAULT_FD_T2_RETRY_TIME: PldmFdTime = 5000; // FD_T2 retry request for firmware data, range is [1s, 5s].
+pub const INSTANCE_ID_COUNT: u8 = 32;
+pub const UA_EID: u8 = 8; // Update Agent Endpoint ID for testing.
 
 pub static PLDM_PROTOCOL_CAPABILITIES: LazyLock<
     [ProtocolCapability<'static>; PLDM_PROTOCOL_CAP_COUNT],
@@ -92,15 +93,5 @@ pub static FIRMWARE_PARAMS: LazyLock<FirmwareParameters> = LazyLock::new(|| {
     )
 });
 
-pub static TEST_FW_UPDATE_TIMESTAMP: AtomicU32 = AtomicU32::new(0);
-
-// Function to increment the global firmware update timestamp by 1000 milliseconds for testing purposes.
-pub fn update_test_fw_update_timestamp() {
-    let mut current_timestamp = TEST_FW_UPDATE_TIMESTAMP.load(Ordering::SeqCst);
-    current_timestamp = current_timestamp.wrapping_add(1000);
-    TEST_FW_UPDATE_TIMESTAMP.store(current_timestamp, Ordering::SeqCst);
-}
-
-pub fn get_test_fw_update_timestamp() -> u64 {
-    TEST_FW_UPDATE_TIMESTAMP.load(Ordering::SeqCst) as u64
-}
+// This is the maximum time in seconds that UA will wait for self-activation. It is a test value for development.
+pub static TEST_SELF_ACTIVATION_MAX_TIME_IN_SECONDS: u16 = 20;

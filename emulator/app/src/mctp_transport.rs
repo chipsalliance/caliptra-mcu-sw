@@ -87,6 +87,8 @@ impl PldmSocket for MctpPldmSocket {
             );
         } else {
             let msg_tag = *self.response_msg_tag.lock().unwrap();
+            mctp_util.set_src_eid(self.dest.0);
+            mctp_util.set_dest_eid(self.source.0);
             mctp_util.set_msg_tag(msg_tag & MCTP_TAG_MASK);
             mctp_util.send_response(
                 mctp_payload.as_mut_slice(),
@@ -149,9 +151,7 @@ impl PldmSocket for MctpPldmSocket {
         // Skip the first byte containing the MCTP common header
         // and only return the PLDM payload
         data[..len].copy_from_slice(&raw_pkt[1..]);
-        if data[1] & 0x80 == 0x80 {
-            *self.response_msg_tag.lock().unwrap() = mctp_util.get_msg_tag();
-        }
+        *self.response_msg_tag.lock().unwrap() = mctp_util.get_msg_tag();
         Ok(RxPacket {
             src: self.dest,
             payload: Payload { data, len },

@@ -9,4 +9,5 @@ pub mod control_context;
 pub mod daemon;
 pub mod error;
 pub mod firmware_device;
+pub mod timer;
 pub mod transport;

@@ -195,8 +195,8 @@ impl<S: Syscalls> Mctp<S> {
                 allow_rw::READ_RESPONSE,
                 resp,
             );
-
-            S::command(self.driver_num, command::RECEIVE_RESPONSE, 0, tag as u32)
+            // Should be receiving from EID 8 of UA
+            S::command(self.driver_num, command::RECEIVE_RESPONSE, 8, tag as u32)
                 .to_result::<(), ErrorCode>()?;
 
             Ok(sub)

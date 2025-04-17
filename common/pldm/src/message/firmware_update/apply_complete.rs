@@ -7,12 +7,15 @@ use crate::protocol::base::{
 use crate::protocol::firmware_update::{ComponentActivationMethods, FwUpdateCmd};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ApplyResult {
     ApplySuccess = 0x00,
     ApplySuccessWithActivationMethod = 0x01,
     ApplyFailureMemoryIssue = 0x02,
+    ApplyTimeOut = 0x09,
+    #[default]
+    ApplyGenericError = 0x0a,
     VendorDefined,
 }
 
@@ -24,6 +27,8 @@ impl TryFrom<u8> for ApplyResult {
             0x00 => Ok(ApplyResult::ApplySuccess),
             0x01 => Ok(ApplyResult::ApplySuccessWithActivationMethod),
             0x02 => Ok(ApplyResult::ApplyFailureMemoryIssue),
+            0x09 => Ok(ApplyResult::ApplyTimeOut),
+            0x0a => Ok(ApplyResult::ApplyGenericError),
             0xb0..=0xcf => Ok(ApplyResult::VendorDefined),
             _ => Err(PldmError::InvalidApplyResult),
         }
