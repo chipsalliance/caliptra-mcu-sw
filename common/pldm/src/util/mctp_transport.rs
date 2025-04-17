@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::error::TransportError;
+use crate::error::UtilError;
 use crate::protocol::base::PLDM_MSG_HEADER_LEN;
 use bitfield::bitfield;
 
@@ -25,12 +25,12 @@ bitfield! {
 ///
 /// # Returns
 ///
-/// * `Result<&mut [u8], TransportError>` - A result containing a mutable reference to the PLDM message slice
-///   if successful, or a `TransportError` if the payload length is invalid or the message type is incorrect.
-pub fn extract_pldm_msg(mctp_payload: &mut [u8]) -> Result<&mut [u8], TransportError> {
+/// * `Result<&mut [u8], UtilError>` - A result containing a mutable reference to the PLDM message slice
+///   if successful, or a `UtilError` if the payload length is invalid or the message type is incorrect.
+pub fn extract_pldm_msg(mctp_payload: &mut [u8]) -> Result<&mut [u8], UtilError> {
     // Check if the payload length is sufficient to contain the MCTP common header and PLDM message header.
     if mctp_payload.len() < 1 + PLDM_MSG_HEADER_LEN {
-        return Err(TransportError::InvalidMctpPayloadLength);
+        return Err(UtilError::InvalidMctpPayloadLength);
     }
 
     // Extract the MCTP common header from the payload.
@@ -38,7 +38,7 @@ pub fn extract_pldm_msg(mctp_payload: &mut [u8]) -> Result<&mut [u8], TransportE
 
     // Validate the integrity check (IC) and message type fields.
     if mctp_common_header.ic() != 0 || mctp_common_header.msg_type() != MCTP_PLDM_MSG_TYPE {
-        return Err(TransportError::InvalidMctpMsgType);
+        return Err(UtilError::InvalidMctpMsgType);
     }
 
     // Return a mutable reference to the PLDM message slice.
@@ -53,12 +53,12 @@ pub fn extract_pldm_msg(mctp_payload: &mut [u8]) -> Result<&mut [u8], TransportE
 ///
 /// # Returns
 ///
-/// * `Result<&mut [u8], TransportError>` - A result containing a mutable reference to the PLDM message slice
-///   if successful, or a `TransportError` if the payload length is invalid.
-pub fn construct_mctp_pldm_msg(mctp_payload: &mut [u8]) -> Result<&mut [u8], TransportError> {
+/// * `Result<&mut [u8], UtilError>` - A result containing a mutable reference to the PLDM message slice
+///   if successful, or a `UtilError` if the payload length is invalid.
+pub fn construct_mctp_pldm_msg(mctp_payload: &mut [u8]) -> Result<&mut [u8], UtilError> {
     // Check if the payload length is sufficient to contain the MCTP common header and PLDM message header.
     if mctp_payload.len() < 1 + PLDM_MSG_HEADER_LEN {
-        return Err(TransportError::InvalidMctpPayloadLength);
+        return Err(UtilError::InvalidMctpPayloadLength);
     }
 
     // Initialize the MCTP common header.
@@ -82,14 +82,14 @@ mod test {
         let mut mctp_payload = [0u8; 8];
         assert_eq!(
             extract_pldm_msg(&mut mctp_payload),
-            Err(TransportError::InvalidMctpMsgType)
+            Err(UtilError::InvalidMctpMsgType)
         );
         mctp_payload[0] = 0x01;
         assert_eq!(extract_pldm_msg(&mut mctp_payload).unwrap(), &mut [0u8; 7]);
         let mut mctp_payload = [0u8; 3];
         assert_eq!(
             extract_pldm_msg(&mut mctp_payload),
-            Err(TransportError::InvalidMctpPayloadLength)
+            Err(UtilError::InvalidMctpPayloadLength)
         );
     }
 
@@ -104,7 +104,7 @@ mod test {
         let mut mctp_payload = [0u8; 3];
         assert_eq!(
             construct_mctp_pldm_msg(&mut mctp_payload),
-            Err(TransportError::InvalidMctpPayloadLength)
+            Err(UtilError::InvalidMctpPayloadLength)
         );
     }
 }
