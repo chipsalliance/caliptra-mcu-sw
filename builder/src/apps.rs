@@ -49,7 +49,8 @@ pub const BASE_PERMISSIONS: &[(u32, u32)] = &[
     (8, 3), // Low-level debug
 ];
 
-// creates a single flat binary with all the apps built with TBF headers
+// Generates a single flat binary containing the apps built with their TBF headers.
+// If `example_app` is true, only the example app is included; otherwise, all other apps are included.
 pub fn apps_build_flat_tbf(
     start: usize,
     ram_start: usize,
