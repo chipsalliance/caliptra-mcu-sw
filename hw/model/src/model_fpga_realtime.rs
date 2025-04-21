@@ -45,25 +45,30 @@ fn fmt_uio_error(err: UioError) -> String {
 const FPGA_ITRNG_FIFO_SIZE: usize = 1024;
 
 // FPGA wrapper register offsets
-const _FPGA_WRAPPER_GENERIC_INPUT_OFFSET: isize = 0x0000 / 4;
-const _FPGA_WRAPPER_GENERIC_OUTPUT_OFFSET: isize = 0x0008 / 4;
-const FPGA_WRAPPER_DEOBF_KEY_OFFSET: isize = 0x0010 / 4;
-const FPGA_WRAPPER_CONTROL_OFFSET: isize = 0x0030 / 4;
-const FPGA_WRAPPER_STATUS_OFFSET: isize = 0x0034 / 4;
-const FPGA_WRAPPER_PAUSER_OFFSET: isize = 0x0038 / 4;
-const FPGA_WRAPPER_ITRNG_DIV_OFFSET: isize = 0x003C / 4;
-const FPGA_WRAPPER_CYCLE_COUNT_OFFSET: isize = 0x0040 / 4;
-const _FPGA_WRAPPER_FPGA_VERSION_OFFSET: isize = 0x0044 / 4;
-const _FPGA_WRAPPER_LSU_USER_OFFSET: isize = 0x0048 / 4;
-const _FPGA_WRAPPER_IFU_USER_OFFSET: isize = 0x004C / 4;
-const _FPGA_WRAPPER_CLP_USER_OFFSET: isize = 0x0050 / 4;
-const _FPGA_WRAPPER_MCU_RESET_VECTOR_OFFSET: isize = 0x0054 / 4;
-const _FPGA_WRAPPER_MCI_ERROR: isize = 0x0058 / 4;
-const _FPGA_WRAPPER_MCU_CONFIG: isize = 0x005C / 4;
-const _FPGA_WRAPPER_GENERIC_INPUT_WIRES_0_OFFSET: isize = 0x0060 / 4;
-const _FPGA_WRAPPER_GENERIC_INPUT_WIRES_1_OFFSET: isize = 0x0064 / 4;
-const _FPGA_WRAPPER_GENERIC_INPUT_WIRES_2_OFFSET: isize = 0x0068 / 4;
-const _FPGA_WRAPPER_GENERIC_INPUT_WIRES_3_OFFSET: isize = 0x006C / 4;
+const FPGA_WRAPPER_MAGIC_OFFSET: isize = 0x0000 / 4;
+const FPGA_WRAPPER_VERSION_OFFSET: isize = 0x0004 / 4;
+const FPGA_WRAPPER_CONTROL_OFFSET: isize = 0x0008 / 4;
+const FPGA_WRAPPER_STATUS_OFFSET: isize = 0x000C / 4;
+const FPGA_WRAPPER_PAUSER_OFFSET: isize = 0x0010 / 4;
+const FPGA_WRAPPER_ITRNG_DIV_OFFSET: isize = 0x0014 / 4;
+const FPGA_WRAPPER_CYCLE_COUNT_OFFSET: isize = 0x0018 / 4;
+const _FPGA_WRAPPER_GENERIC_INPUT_OFFSET: isize = 0x0030 / 4;
+const _FPGA_WRAPPER_GENERIC_OUTPUT_OFFSET: isize = 0x0038 / 4;
+const FPGA_WRAPPER_DEOBF_KEY_OFFSET: isize = 0x0040 / 4;
+const FPGA_WRAPPER_CSR_HMAC_KEY_OFFSET: isize = 0x0060 / 4;
+
+const _FPGA_WRAPPER_LSU_USER_OFFSET: isize = 0x0100 / 4;
+const _FPGA_WRAPPER_IFU_USER_OFFSET: isize = 0x0104 / 4;
+const _FPGA_WRAPPER_CLP_USER_OFFSET: isize = 0x0108 / 4;
+const _FPGA_WRAPPER_SOC_CFG_USER_OFFSET: isize = 0x010C / 4;
+const _FPGA_WRAPPER_SRAM_CFG_USER_OFFSET: isize = 0x0110 / 4;
+const FPGA_WRAPPER_MCU_RESET_VECTOR_OFFSET: isize = 0x0114 / 4;
+const _FPGA_WRAPPER_MCI_ERROR: isize = 0x0118 / 4;
+const _FPGA_WRAPPER_MCU_CONFIG: isize = 0x011C / 4;
+const _FPGA_WRAPPER_MCI_GENERIC_INPUT_WIRES_0_OFFSET: isize = 0x0120 / 4;
+const _FPGA_WRAPPER_MCI_GENERIC_INPUT_WIRES_1_OFFSET: isize = 0x0124 / 4;
+const FPGA_WRAPPER_MCI_GENERIC_OUTPUT_WIRES_0_OFFSET: isize = 0x0128 / 4;
+const FPGA_WRAPPER_MCI_GENERIC_OUTPUT_WIRES_1_OFFSET: isize = 0x012C / 4;
 const FPGA_WRAPPER_LOG_FIFO_DATA_OFFSET: isize = 0x1000 / 4;
 const FPGA_WRAPPER_LOG_FIFO_STATUS_OFFSET: isize = 0x1004 / 4;
 const FPGA_WRAPPER_ITRNG_FIFO_DATA_OFFSET: isize = 0x1008 / 4;
@@ -494,6 +499,20 @@ impl McuHwModel for ModelFpgaRealtime {
             recovery_images,
             i3c_controller,
         };
+        writeln!(m.output().logger(), "breadcrumb {}", line!())?;
+        // Check if the FPGA image is valid
+        if 0x52545043 == unsafe { wrapper.offset(FPGA_WRAPPER_MAGIC_OFFSET).read_volatile() } {
+            writeln!(m.output().logger(), "breadcrumb {}", line!())?;
+            let fpga_version = unsafe {
+                m.wrapper
+                    .offset(FPGA_WRAPPER_VERSION_OFFSET)
+                    .read_volatile()
+            };
+            writeln!(m.output().logger(), "FPGA built from {fpga_version:x}")?;
+        } else {
+            panic!("FPGA image invalid");
+        }
+        writeln!(m.output().logger(), "breadcrumb {}", line!())?;
 
         // Set pwrgood and rst_b to 0 to boot from scratch
         m.set_cptra_pwrgood(false);
@@ -757,7 +776,7 @@ impl<'a> Bus for FpgaRealtimeBus<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::model_fpga_realtime::FifoData;
+    use crate::model_fpga_realtime::{FifoData, FPGA_WRAPPER_CONTROL_OFFSET, FPGA_WRAPPER_STATUS_OFFSET, FPGA_WRAPPER_CYCLE_COUNT_OFFSET, FPGA_WRAPPER_MCI_GENERIC_OUTPUT_WIRES_0_OFFSET, FPGA_WRAPPER_MCI_GENERIC_OUTPUT_WIRES_1_OFFSET, FPGA_WRAPPER_MCU_RESET_VECTOR_OFFSET, FPGA_WRAPPER_PAUSER_OFFSET, FPGA_WRAPPER_VERSION_OFFSET};
     use crate::xi3c::{self, Ccc};
     use bitfield::bitfield;
     use caliptra_emu_bus::{Device, Event, EventData, RecoveryCommandCode};
@@ -1013,13 +1032,13 @@ mod test {
         let empty_wait_time = Some(Duration::from_millis(1)); // sleep this much before emptying the rx queue
         let use_dynamic_addr = false;
 
-        let fpga_version = unsafe { core::ptr::read_volatile(wrapper.offset(0x44 / 4)) };
+        let fpga_version = unsafe { core::ptr::read_volatile(wrapper.offset(FPGA_WRAPPER_VERSION_OFFSET)) };
         println!("FPGA version: {:08x}", fpga_version);
 
         println!("Bring SS out of reset");
         unsafe {
-            core::ptr::write_volatile(wrapper.offset(0x30 / 4), 0);
-            core::ptr::write_volatile(wrapper.offset(0x30 / 4), 0x3);
+            core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_CONTROL_OFFSET), 0);
+            core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_CONTROL_OFFSET), 0x3);
         }
         println!("Configuring I3C target");
         configure_i3c_target(i3c_target, I3C_TARGET_ADDR, false);
@@ -1279,13 +1298,13 @@ mod test {
         const I3C_TARGET_ADDR: u8 = 0x5a;
         let use_dynamic_addr = false;
 
-        let fpga_version = unsafe { core::ptr::read_volatile(wrapper.offset(0x44 / 4)) };
+        let fpga_version = unsafe { core::ptr::read_volatile(wrapper.offset(FPGA_WRAPPER_VERSION_OFFSET)) };
         println!("FPGA version: {:08x}", fpga_version);
 
         println!("Bring SS out of reset");
         unsafe {
-            core::ptr::write_volatile(wrapper.offset(0x30 / 4), 0);
-            core::ptr::write_volatile(wrapper.offset(0x30 / 4), 0x3);
+            core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_CONTROL_OFFSET), 0);
+            core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_CONTROL_OFFSET), 0x3);
         }
         println!("Configuring I3C target");
         configure_i3c_target(i3c_target, I3C_TARGET_ADDR, false);
@@ -1430,13 +1449,13 @@ mod test {
         let i3c_target: &I3c = unsafe { &*(i3c_target_raw as *const I3c) };
         const I3C_TARGET_ADDR: u8 = 0x5a;
 
-        let fpga_version = unsafe { core::ptr::read_volatile(wrapper.offset(0x44 / 4)) };
+        let fpga_version = unsafe { core::ptr::read_volatile(wrapper.offset(FPGA_WRAPPER_VERSION_OFFSET)) };
         println!("FPGA version: {:08x}", fpga_version);
 
         println!("Bring SS out of reset");
         unsafe {
-            core::ptr::write_volatile(wrapper.offset(0x30 / 4), 0);
-            core::ptr::write_volatile(wrapper.offset(0x30 / 4), 0x3);
+            core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_CONTROL_OFFSET), 0);
+            core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_CONTROL_OFFSET), 0x3);
         }
         println!("Configuring I3C target");
         configure_i3c_target(i3c_target, I3C_TARGET_ADDR, true);
@@ -1897,13 +1916,13 @@ mod test {
 
         println!("Check FPGA version");
         println!("FPGA version: {:x}", unsafe {
-            core::ptr::read_volatile(wrapper.offset(0x44 / 4))
+            core::ptr::read_volatile(wrapper.offset(FPGA_WRAPPER_VERSION_OFFSET))
         });
         let rom_backdoor = dev1.map_mapping(1).unwrap() as *mut u8;
         let rom_frontdoor = dev1.map_mapping(4).unwrap() as *mut u8;
         println!("Reset");
         unsafe {
-            core::ptr::write_volatile(wrapper.offset(0x30 / 4), 0x0);
+            core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_CONTROL_OFFSET), 0x0);
         }
 
         let mut rom_data =
@@ -1926,13 +1945,13 @@ mod test {
         let mci = dev1.map_mapping(3).unwrap() as *mut u32;
         unsafe {
             println!("Write reset vector");
-            core::ptr::write_volatile(wrapper.offset(0x54 / 4), 0xB002_0000); // address of ROM backdoor in AXI
+            core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_MCU_RESET_VECTOR_OFFSET), 0xB002_0000); // address of ROM backdoor in AXI
                                                                               // bring out of reset
             println!("Bring SS out of reset");
-            core::ptr::write_volatile(wrapper.offset(0x30 / 4), 0x3);
+            core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_CONTROL_OFFSET), 0x3);
             println!("Write PAUSER");
             // write pauser that is used for all accesses (this behavior will need to change in the future)
-            core::ptr::write_volatile(wrapper.offset(0x38 / 4), 0xAAAAAAAA);
+            core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_PAUSER_OFFSET), 0xAAAAAAAA);
             println!("Write SOC user");
             // echo write soc user so that the MCI sees we have elevated permissions
             // core::ptr::write_volatile(wrapper.offset(0x54 / 4), 0xAAAAAAAA);
@@ -2030,14 +2049,14 @@ mod test {
             }
         }
 
-        let status = unsafe { core::ptr::read_volatile(wrapper.offset(0x34 / 4)) };
+        let status = unsafe { core::ptr::read_volatile(wrapper.offset(FPGA_WRAPPER_STATUS_OFFSET)) };
         println!("Checking status: {:x}", status);
         let start = std::time::Instant::now();
-        let cycle_count0 = unsafe { core::ptr::read_volatile(wrapper.offset(0x40 / 4)) };
+        let cycle_count0 = unsafe { core::ptr::read_volatile(wrapper.offset(FPGA_WRAPPER_CYCLE_COUNT_OFFSET)) };
         println!("Checking cycle count: {}", cycle_count0);
         std::thread::sleep(Duration::from_secs(1));
         let end = std::time::Instant::now();
-        let cycle_count1 = unsafe { core::ptr::read_volatile(wrapper.offset(0x40 / 4)) };
+        let cycle_count1 = unsafe { core::ptr::read_volatile(wrapper.offset(FPGA_WRAPPER_CYCLE_COUNT_OFFSET)) };
         let dur = end - start;
         let cycles = (cycle_count1 - cycle_count0) as f64;
         let seconds = dur.as_secs_f64();
@@ -2046,9 +2065,9 @@ mod test {
             "MCU RISC-V Frequency: {:.6} MHz",
             cycles / seconds / 1000000.0
         );
-        let output0 = unsafe { core::ptr::read_volatile(wrapper.offset(0x70 / 4)) };
+        let output0 = unsafe { core::ptr::read_volatile(wrapper.offset(FPGA_WRAPPER_MCI_GENERIC_OUTPUT_WIRES_0_OFFSET)) };
         println!("Checking generic output wire 0: {:x}", output0);
-        let output1 = unsafe { core::ptr::read_volatile(wrapper.offset(0x74 / 4)) };
+        let output1 = unsafe { core::ptr::read_volatile(wrapper.offset(FPGA_WRAPPER_MCI_GENERIC_OUTPUT_WIRES_1_OFFSET)) };
         println!("Checking generic output wire 1: {:x}", output1);
 
         let fsm = unsafe { core::ptr::read_volatile(mci.offset(0x24 / 4)) };
