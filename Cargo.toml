@@ -23,29 +23,27 @@ members = [
     "rom",
     "romtime",
     "platforms/emulator/runtime",
-    "runtime/apps/api",
+    "runtime/userspace/api/caliptra-api",
     "runtime/apps/example",
-    "runtime/apps/libtock/apis/interface/console",
-    "runtime/apps/libtock/apis/kernel/low_level_debug",
-    "runtime/apps/libtock/apis/peripherals/alarm",
-    "runtime/apps/libtock/apis/peripherals/rng",
-    "runtime/apps/libtock/panic_handlers/debug_panic",
-    "runtime/apps/libtock/panic_handlers/small_panic",
-    "runtime/apps/libtock/platform",
-    # "runtime/apps/libtock/runner",
-    "runtime/apps/libtock/runtime",
-    "runtime/apps/libtock/syscalls_tests",
-    # "runtime/apps/libtock/tools/print_sizes",
-    "runtime/apps/libtock/ufmt",
-    "runtime/apps/libtock/unittest",
-    "runtime/apps/libtockasync",
+    "runtime/userspace/libtock/apis/interface/console",
+    "runtime/userspace/libtock/apis/kernel/low_level_debug",
+    "runtime/userspace/libtock/apis/peripherals/alarm",
+    "runtime/userspace/libtock/apis/peripherals/rng",
+    "runtime/userspace/libtock/panic_handlers/debug_panic",
+    "runtime/userspace/libtock/panic_handlers/small_panic",
+    "runtime/userspace/libtock/platform",
+    # "runtime/userspace/libtock/runner",
+    "runtime/userspace/libtock/runtime",
+    "runtime/userspace/libtock/syscalls_tests",
+    # "runtime/userspace/libtock/tools/print_sizes",
+    "runtime/userspace/libtock/ufmt",
+    "runtime/userspace/libtock/unittest",
+    "runtime/userspace/libtockasync",
     "runtime/apps/pldm/pldm-app",
-    "runtime/apps/pldm/pldm-lib",
-    "runtime/apps/pldm/pldm-app",
-    "runtime/apps/pldm/pldm-lib",
+    "runtime/userspace/api/pldm-lib",
     "runtime/apps/spdm/spdm-app",
-    "runtime/apps/spdm/spdm-lib",
-    "runtime/apps/syscall",
+    "runtime/userspace/api/spdm-lib",
+    "runtime/userspace/syscall",
     "runtime/kernel/capsules",
     "runtime/kernel/drivers/i3c",
     "tests/hello",
@@ -133,7 +131,7 @@ emulator-periph = { path = "emulator/periph" }
 emulator-registers-generated = { path = "registers/generated-emulator" }
 flash-driver = { path = "runtime/kernel/drivers/flash" }
 i3c-driver = { path = "runtime/kernel/drivers/i3c" }
-libtockasync = { path = "runtime/apps/libtockasync" }
+libtockasync = { path = "runtime/userspace/libtockasync" }
 mcu-builder = { path = "builder" }
 mcu-rom-common = { path = "rom" }
 pldm-common = { path = "common/pldm"}
@@ -148,22 +146,22 @@ registers-systemrdl-new = { path = "registers/systemrdl-new" }
 romtime = { path = "romtime" }
 
 # App related dependencies
-pldm-lib = { path = "runtime/apps/pldm/pldm-lib", features = ["pldm-lib-use-static-config"] }
-spdm-lib = { path = "runtime/apps/spdm/spdm-lib" }
-libsyscall-caliptra = { path = "runtime/apps/syscall" }
-libapi-caliptra = { path = "runtime/apps/api" }
+pldm-lib = { path = "runtime/userspace/api/pldm-lib", features = ["pldm-lib-use-static-config"] }
+spdm-lib = { path = "runtime/userspace/api/spdm-lib" }
+libsyscall-caliptra = { path = "runtime/userspace/syscall" }
+libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }
 
 # libtock dependencies
-libtock = { path = "runtime/apps/libtock" }
-libtock_alarm = { path = "runtime/apps/libtock/apis/peripherals/alarm" }
-libtock_console = { path = "runtime/apps/libtock/apis/interface/console" }
-libtock_debug_panic = { path = "runtime/apps/libtock/panic_handlers/debug_panic" }
-libtock_low_level_debug = { path = "runtime/apps/libtock/apis/kernel/low_level_debug" }
-libtock_platform = { path = "runtime/apps/libtock/platform" }
-libtock_rng = { path = "runtime/apps/libtock/apis/peripherals/rng" }
-libtock_runtime = { path = "runtime/apps/libtock/runtime" }
-libtock_small_panic = { path = "runtime/apps/libtock/panic_handlers/small_panic" }
-libtock_unittest = { path = "runtime/apps/libtock/unittest" }
+libtock = { path = "runtime/userspace/libtock" }
+libtock_alarm = { path = "runtime/userspace/libtock/apis/peripherals/alarm" }
+libtock_console = { path = "runtime/userspace/libtock/apis/interface/console" }
+libtock_debug_panic = { path = "runtime/userspace/libtock/panic_handlers/debug_panic" }
+libtock_low_level_debug = { path = "runtime/userspace/libtock/apis/kernel/low_level_debug" }
+libtock_platform = { path = "runtime/userspace/libtock/platform" }
+libtock_rng = { path = "runtime/userspace/libtock/apis/peripherals/rng" }
+libtock_runtime = { path = "runtime/userspace/libtock/runtime" }
+libtock_small_panic = { path = "runtime/userspace/libtock/panic_handlers/small_panic" }
+libtock_unittest = { path = "runtime/userspace/libtock/unittest" }
 
 
 # caliptra dependencies; keep git revs in sync
