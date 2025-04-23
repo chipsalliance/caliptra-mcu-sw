@@ -14,7 +14,7 @@ riscv-arch-test
 .vscode
 
 # dynamically calculated
-runtime/layout.ld
+platforms/emulator/runtime/layout.ld
 runtime/apps/*.ld
 
 # mdbook

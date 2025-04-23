@@ -22,7 +22,7 @@ members = [
     "platforms/emulator/rom",
     "rom",
     "romtime",
-    "runtime",
+    "platforms/emulator/runtime",
     "runtime/apps/api",
     "runtime/apps/example",
     "runtime/apps/libtock/apis/interface/console",
@@ -46,8 +46,8 @@ members = [
     "runtime/apps/spdm/spdm-app",
     "runtime/apps/spdm/spdm-lib",
     "runtime/apps/syscall",
-    "runtime/capsules",
-    "runtime/i3c",
+    "runtime/kernel/capsules",
+    "runtime/kernel/drivers/i3c",
     "tests/hello",
     "tests/integration",
     "xtask",
@@ -122,7 +122,7 @@ zerocopy = { version = "0.8.17", features = ["derive"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_derive"] }
 
 # local dependencies
-capsules-runtime = { path = "runtime/capsules" }
+capsules-runtime = { path = "runtime/kernel/capsules" }
 emulator-bmc = { path = "emulator/bmc" }
 emulator-bus = { path = "emulator/bus" }
 emulator-caliptra = { "path" = "emulator/caliptra" }
@@ -131,8 +131,8 @@ emulator-cpu = { path = "emulator/cpu" }
 emulator-derive = { path = "emulator/derive" }
 emulator-periph = { path = "emulator/periph" }
 emulator-registers-generated = { path = "registers/generated-emulator" }
-flash-driver = { path = "runtime/flash" }
-i3c-driver = { path = "runtime/i3c" }
+flash-driver = { path = "runtime/kernel/drivers/flash" }
+i3c-driver = { path = "runtime/kernel/drivers/i3c" }
 libtockasync = { path = "runtime/apps/libtockasync" }
 mcu-builder = { path = "builder" }
 mcu-rom-common = { path = "rom" }

@@ -36,7 +36,10 @@ pub(crate) static SYSROOT: LazyLock<String> = LazyLock::new(|| {
         }
     }
     // slow path
-    let tock_dir = &PROJECT_ROOT.join("runtime");
+    let tock_dir = &PROJECT_ROOT
+        .join("platforms")
+        .join("emulator")
+        .join("runtime");
     let root = String::from_utf8(
         Command::new("cargo")
             .args(["rustc", "--", "--print", "sysroot"])

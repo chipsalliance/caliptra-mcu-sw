@@ -48,7 +48,10 @@ pub fn runtime_build_no_apps(
     features: &[&str],
     output_name: &str,
 ) -> Result<(usize, usize)> {
-    let tock_dir = &PROJECT_ROOT.join("runtime");
+    let tock_dir = &PROJECT_ROOT
+        .join("platforms")
+        .join("emulator")
+        .join("runtime");
     let sysr = SYSROOT.clone();
     let ld_file_path = tock_dir.join("layout.ld");
 
@@ -84,7 +87,7 @@ MEMORY
     ram (rwx) : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
 }}
 
-INCLUDE runtime/kernel_layout.ld
+INCLUDE platforms/emulator/runtime/kernel_layout.ld
 ",
             RAM_OFFSET + INTERRUPT_TABLE_SIZE as u32,
             runtime_size,
