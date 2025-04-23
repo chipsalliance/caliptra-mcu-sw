@@ -7,7 +7,6 @@ use crate::protocol::capabilities::*;
 use crate::protocol::common::SpdmMsgHdr;
 use crate::protocol::SpdmVersion;
 use crate::state::ConnectionState;
-use libtock_platform::Syscalls;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
@@ -149,8 +148,8 @@ fn req_flag_compatible(version: SpdmVersion, flags: &CapabilityFlags) -> bool {
     true
 }
 
-fn process_get_capabilities<S: Syscalls>(
-    ctx: &mut SpdmContext<S>,
+fn process_get_capabilities(
+    ctx: &mut SpdmContext,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf,
 ) -> CommandResult<()> {
@@ -275,8 +274,8 @@ fn generate_capabilities_response(
         .map_err(|_| (false, CommandError::BufferTooSmall))
 }
 
-pub(crate) fn handle_capabilities<'a, S: Syscalls>(
-    ctx: &mut SpdmContext<'a, S>,
+pub(crate) fn handle_capabilities<'a>(
+    ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {

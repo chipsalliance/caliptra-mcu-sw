@@ -3,7 +3,6 @@
 #[cfg(feature = "test-pldm-request-response")]
 pub mod test {
     use libsyscall_caliptra::mctp::{driver_num, Mctp};
-    use libtock_platform::Syscalls;
     use pldm_common::codec::PldmCodec;
     use pldm_common::message::control::{
         GetTidRequest, GetTidResponse, SetTidRequest, SetTidResponse,
@@ -71,7 +70,7 @@ pub mod test {
         }
     }
 
-    pub async fn test_pldm_request_response<S: Syscalls>() {
+    pub async fn test_pldm_request_response() {
         let mut test_messages = TestMessages::<2>::default();
 
         test_messages.add(
@@ -84,7 +83,7 @@ pub mod test {
             SetTidResponse::new(2u8, COMPLETION_CODE_SUCCESSFUL),
         );
 
-        let mctp_pldm = Mctp::<S>::new(driver_num::MCTP_PLDM);
+        let mctp_pldm: Mctp = Mctp::new(driver_num::MCTP_PLDM);
         let mut msg_buffer: [u8; MAX_MCTP_PACKET_SIZE] = [0; MAX_MCTP_PACKET_SIZE];
 
         assert!(mctp_pldm.exists());

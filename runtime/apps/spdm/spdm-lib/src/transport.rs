@@ -6,7 +6,6 @@ use crate::codec::MessageBuf;
 use crate::codec::{Codec, CodecError, CommonCodec, DataKind};
 use bitfield::bitfield;
 use libsyscall_caliptra::mctp::{Mctp, MessageInfo};
-use libtock_platform::Syscalls;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub type TransportResult<T> = Result<T, TransportError>;
@@ -62,16 +61,16 @@ impl MctpMsgHdr<[u8; 1]> {
 impl CommonCodec for MctpMsgHdr<[u8; 1]> {
     const DATA_KIND: DataKind = DataKind::Header;
 }
-pub struct MctpTransport<S: Syscalls> {
-    mctp: Mctp<S>,
+pub struct MctpTransport {
+    mctp: Mctp,
     cur_resp_ctx: Option<MessageInfo>,
     cur_req_ctx: Option<u8>,
 }
 
-impl<S: Syscalls> MctpTransport<S> {
+impl MctpTransport {
     pub fn new(drv_num: u32) -> Self {
         Self {
-            mctp: Mctp::<S>::new(drv_num),
+            mctp: Mctp::new(drv_num),
             cur_resp_ctx: None,
             cur_req_ctx: None,
         }

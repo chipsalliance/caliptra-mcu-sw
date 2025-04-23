@@ -2,6 +2,7 @@
 
 //! # Mailbox Interface
 
+use crate::DefaultSyscalls;
 use caliptra_api::mailbox::MailboxReqHeader;
 use core::marker::PhantomData;
 use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
@@ -11,7 +12,7 @@ use libtockasync::TockSubscribe;
 ///
 /// # Generics
 /// - `S`: The syscall implementation.
-pub struct Mailbox<S: Syscalls> {
+pub struct Mailbox<S: Syscalls = DefaultSyscalls> {
     _syscall: PhantomData<S>,
     driver_num: u32,
 }

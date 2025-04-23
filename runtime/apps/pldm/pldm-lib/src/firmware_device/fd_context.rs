@@ -4,7 +4,6 @@ use crate::cmd_interface::generate_failure_response;
 use crate::error::MsgHandlerError;
 use crate::firmware_device::fd_internal::{FdInternal, FdReqState};
 use crate::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsObject};
-use libtock_platform::Syscalls;
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::firmware_update::get_fw_params::{
     FirmwareParameters, GetFirmwareParametersRequest, GetFirmwareParametersResponse,
@@ -29,12 +28,12 @@ use pldm_common::protocol::firmware_update::{
 };
 use pldm_common::util::fw_component::FirmwareComponent;
 
-pub struct FirmwareDeviceContext<S: Syscalls> {
-    ops: FdOpsObject<S>,
+pub struct FirmwareDeviceContext {
+    ops: FdOpsObject,
     internal: FdInternal,
 }
 
-impl<S: Syscalls> FirmwareDeviceContext<S> {
+impl FirmwareDeviceContext {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {

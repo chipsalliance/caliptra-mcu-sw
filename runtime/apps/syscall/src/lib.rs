@@ -6,3 +6,9 @@ pub mod dma;
 pub mod flash;
 pub mod mailbox;
 pub mod mctp;
+
+#[cfg(target_arch = "riscv32")]
+pub type DefaultSyscalls = libtock_runtime::TockSyscalls;
+
+#[cfg(not(target_arch = "riscv32"))]
+pub type DefaultSyscalls = libtock_unittest::fake::Syscalls;

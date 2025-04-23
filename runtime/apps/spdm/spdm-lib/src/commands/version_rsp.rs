@@ -8,7 +8,6 @@ use crate::protocol::common::SpdmMsgHdr;
 use crate::protocol::SpdmVersion;
 use crate::state::ConnectionState;
 use bitfield::bitfield;
-use libtock_platform::Syscalls;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 const VERSION_ENTRY_SIZE: usize = 2;
@@ -98,8 +97,8 @@ pub fn fill_version_response(
         .map_err(|_| (false, CommandError::BufferTooSmall))
 }
 
-pub(crate) fn handle_version<'a, S: Syscalls>(
-    ctx: &mut SpdmContext<'a, S>,
+pub(crate) fn handle_version<'a>(
+    ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {

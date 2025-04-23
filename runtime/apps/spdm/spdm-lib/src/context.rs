@@ -13,10 +13,9 @@ use crate::protocol::version::*;
 use crate::protocol::DeviceCapabilities;
 use crate::state::State;
 use crate::transport::MctpTransport;
-use libtock_platform::Syscalls;
 
-pub struct SpdmContext<'a, S: Syscalls> {
-    transport: &'a mut MctpTransport<S>,
+pub struct SpdmContext<'a> {
+    transport: &'a mut MctpTransport,
     pub(crate) supported_versions: &'a [SpdmVersion],
     pub(crate) state: State,
     pub(crate) local_capabilities: DeviceCapabilities,
@@ -24,10 +23,10 @@ pub struct SpdmContext<'a, S: Syscalls> {
     pub(crate) device_certs_manager: &'a DeviceCertsManager,
 }
 
-impl<'a, S: Syscalls> SpdmContext<'a, S> {
+impl<'a> SpdmContext<'a> {
     pub fn new(
         supported_versions: &'a [SpdmVersion],
-        spdm_transport: &'a mut MctpTransport<S>,
+        spdm_transport: &'a mut MctpTransport,
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
         device_certs_manager: &'a DeviceCertsManager,

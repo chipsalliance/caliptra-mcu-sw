@@ -1,7 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use libsyscall_caliptra::mctp::{Mctp, MessageInfo};
-use libtock_platform::Syscalls;
 use pldm_common::util::mctp_transport::{
     MctpCommonHeader, MCTP_COMMON_HEADER_OFFSET, MCTP_PLDM_MSG_TYPE,
 };
@@ -21,16 +20,16 @@ pub enum TransportError {
     NoRequestInFlight,
 }
 
-pub struct MctpTransport<S: Syscalls> {
-    mctp: Mctp<S>,
+pub struct MctpTransport {
+    mctp: Mctp,
     cur_resp_ctx: Option<MessageInfo>,
     cur_req_ctx: Option<u8>,
 }
 
-impl<S: Syscalls> MctpTransport<S> {
+impl MctpTransport {
     pub fn new(drv_num: u32) -> Self {
         Self {
-            mctp: Mctp::<S>::new(drv_num),
+            mctp: Mctp::new(drv_num),
             cur_resp_ctx: None,
             cur_req_ctx: None,
         }

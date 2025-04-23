@@ -9,7 +9,6 @@ use crate::error::{CommandError, CommandResult, SpdmError, SpdmResult};
 use crate::protocol::common::SpdmMsgHdr;
 use crate::protocol::version::SpdmVersion;
 use crate::state::ConnectionState;
-use libtock_platform::Syscalls;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 const GET_CERTIFICATE_REQUEST_ATTRIBUTES_SLOT_SIZE_REQUESTED: u8 = 0x01;
@@ -105,8 +104,8 @@ impl<'a> Codec for GetCertificateResp<'a> {
     }
 }
 
-pub(crate) async fn handle_certificates<'a, S: Syscalls>(
-    ctx: &mut SpdmContext<'a, S>,
+pub(crate) async fn handle_certificates<'a>(
+    ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
@@ -151,7 +150,7 @@ pub(crate) async fn handle_certificates<'a, S: Syscalls>(
 
     let cert_chain_buffer = ctx
         .device_certs_manager
-        .construct_cert_chain_buffer::<S>(hash_type, slot_id)
+        .construct_cert_chain_buffer(hash_type, slot_id)
         .await
         .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
 
@@ -228,8 +227,8 @@ pub(crate) async fn handle_certificates<'a, S: Syscalls>(
     Ok(())
 }
 
-fn fill_certificate_response<S: Syscalls>(
-    ctx: &SpdmContext<S>,
+fn fill_certificate_response(
+    ctx: &SpdmContext,
     slot_id: u8,
     param2: u8,
     cert_chain_portion: &[u8],

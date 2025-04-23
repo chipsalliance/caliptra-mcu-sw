@@ -11,7 +11,6 @@ use crate::protocol::SpdmVersion;
 use crate::state::ConnectionState;
 use bitfield::bitfield;
 use core::mem::size_of;
-use libtock_platform::Syscalls;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 // Max request length shall be 128 bytes (SPDM1.3 10.4, Table 10.4)
@@ -147,8 +146,8 @@ impl CommonCodec for AlgStructure {
     const DATA_KIND: DataKind = DataKind::Payload;
 }
 
-fn process_negotiate_algorithms_request<S: Syscalls>(
-    ctx: &mut SpdmContext<S>,
+fn process_negotiate_algorithms_request(
+    ctx: &mut SpdmContext,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf,
 ) -> CommandResult<()> {
@@ -274,10 +273,7 @@ fn process_negotiate_algorithms_request<S: Syscalls>(
     Ok(())
 }
 
-fn generate_algorithms_response<S: Syscalls>(
-    ctx: &mut SpdmContext<S>,
-    rsp: &mut MessageBuf,
-) -> CommandResult<()> {
+fn generate_algorithms_response(ctx: &mut SpdmContext, rsp: &mut MessageBuf) -> CommandResult<()> {
     let connection_version = ctx.state.connection_info.version_number();
     let peer_algorithms = ctx.state.connection_info.peer_algorithms();
     let local_algorithms = &ctx.local_algorithms.device_algorithms;
@@ -369,8 +365,8 @@ fn generate_algorithms_response<S: Syscalls>(
     Ok(())
 }
 
-fn fill_alg_struct_table<S: Syscalls>(
-    ctx: &mut SpdmContext<S>,
+fn fill_alg_struct_table(
+    ctx: &mut SpdmContext,
     rsp: &mut MessageBuf,
     num_alg_struct_tables: usize,
 ) -> CommandResult<usize> {
@@ -461,8 +457,8 @@ fn fill_alg_struct_table<S: Syscalls>(
     Ok(len)
 }
 
-pub(crate) fn handle_negotiate_algorithms<'a, S: Syscalls>(
-    ctx: &mut SpdmContext<'a, S>,
+pub(crate) fn handle_negotiate_algorithms<'a>(
+    ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {

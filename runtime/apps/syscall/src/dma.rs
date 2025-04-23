@@ -5,11 +5,12 @@
 //! This library provides an abstraction for performing asynchronous Direct Memory Access (DMA)
 //! transfers between AXI source and AXI destination addresses.
 
+use crate::DefaultSyscalls;
 use core::marker::PhantomData;
 use libtock_platform::{share, AllowRo, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 /// DMA interface.
-pub struct DMA<S: Syscalls> {
+pub struct DMA<S: Syscalls = DefaultSyscalls> {
     syscall: PhantomData<S>,
     driver_num: u32,
 }

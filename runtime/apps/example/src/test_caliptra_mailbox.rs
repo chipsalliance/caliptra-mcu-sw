@@ -5,15 +5,14 @@ use caliptra_api::mailbox::{
 };
 use core::fmt::Write;
 use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
-use libtock_platform::Syscalls;
 use romtime::{println, test_exit};
 use zerocopy::{FromBytes, IntoBytes};
 
 #[allow(unused)]
-pub(crate) async fn test_caliptra_mailbox<S: Syscalls>() {
+pub(crate) async fn test_caliptra_mailbox() {
     println!("Starting mailbox test");
 
-    let mailbox = Mailbox::<S>::new();
+    let mailbox: Mailbox = Mailbox::new();
 
     let mut req = QuotePcrsReq {
         hdr: MailboxReqHeader::default(),
@@ -63,10 +62,10 @@ pub(crate) async fn test_caliptra_mailbox<S: Syscalls>() {
 }
 
 #[allow(unused)]
-pub(crate) async fn test_caliptra_mailbox_bad_command<S: Syscalls>() {
+pub(crate) async fn test_caliptra_mailbox_bad_command() {
     println!("Starting mailbox bad command test");
 
-    let mailbox = Mailbox::<S>::new();
+    let mailbox: Mailbox = Mailbox::new();
 
     let mut req = QuotePcrsReq {
         hdr: MailboxReqHeader::default(),
@@ -97,10 +96,10 @@ pub(crate) async fn test_caliptra_mailbox_bad_command<S: Syscalls>() {
 }
 
 #[allow(unused)]
-pub(crate) async fn test_caliptra_mailbox_fail<S: Syscalls>() {
+pub(crate) async fn test_caliptra_mailbox_fail() {
     println!("Starting mailbox failure test");
 
-    let mailbox = Mailbox::<S>::new();
+    let mailbox: Mailbox = Mailbox::new();
 
     let mut req = QuotePcrsReq {
         hdr: MailboxReqHeader::default(),

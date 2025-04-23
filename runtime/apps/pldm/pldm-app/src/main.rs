@@ -53,7 +53,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         feature = "test-pldm-fw-update-e2e"
     ))]
     {
-        let mut pldm_service = PldmService::<S>::init();
+        let mut pldm_service = PldmService::init();
         writeln!(
             console_writer,
             "PLDM_APP: Starting PLDM service for testing..."

@@ -11,3 +11,7 @@ caliptra-api.workspace = true
 libtock_console.workspace = true
 libtock_platform.workspace = true
 libtockasync.workspace = true
+libtock_runtime.workspace = true
+
+[target.'cfg(not(target_arch = "riscv32"))'.dependencies]
+libtock_unittest.workspace = true

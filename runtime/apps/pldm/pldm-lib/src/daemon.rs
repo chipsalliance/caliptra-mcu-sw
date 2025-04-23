@@ -8,7 +8,6 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use libsyscall_caliptra::mctp::driver_num;
-use libtock_platform::Syscalls;
 use libtockasync::{self, TockExecutor};
 
 pub const MAX_MCTP_PLDM_MSG_SIZE: usize = 1024;
@@ -27,23 +26,21 @@ pub enum PldmServiceError {
 /// # Type Parameters
 ///
 /// * `'a` - A lifetime parameter for the command interface.
-/// * `S` - A type that implements the `Syscalls` trait, representing the system calls
-///   used by the command interface.
 ///
 /// # Fields
 ///
 /// * `cmd_interface` - The command interface used by the PLDM service.
 /// * `running` - An atomic boolean indicating whether the PLDM service is currently running.
 /// * `initiator_signal` - A signal used to activate the PLDM initiator task.
-pub struct PldmService<S: Syscalls> {
-    cmd_interface: CmdInterface<'static, S>,
+pub struct PldmService {
+    cmd_interface: CmdInterface<'static>,
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 }
 
 // Note: This implementation is a starting point for integration testing.
 // It will be extended and refactored to support additional PLDM commands in both responder and requester modes.
-impl<S: Syscalls> PldmService<S> {
+impl PldmService {
     pub fn init() -> Self {
         let cmd_interface = CmdInterface::new(
             driver_num::MCTP_PLDM,
@@ -73,7 +70,7 @@ impl<S: Syscalls> PldmService<S> {
         let mut responder_executor = TockExecutor::new();
         let responder_executor: &'static mut TockExecutor =
             unsafe { core::mem::transmute(&mut responder_executor) };
-        let cmd_interface: &'static mut CmdInterface<'static, libtock_runtime::TockSyscalls> =
+        let cmd_interface: &'static mut CmdInterface<'static> =
             unsafe { core::mem::transmute(&mut self.cmd_interface) };
         responder_executor
             .spawner()
@@ -109,17 +106,17 @@ pub async fn pldm_initiator_task(
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
-    pldm_initiator::<libtock_runtime::TockSyscalls>(running, initiator_signal).await;
+    pldm_initiator(running, initiator_signal).await;
 }
 
 #[cfg(target_arch = "riscv32")]
 #[embassy_executor::task]
 pub async fn pldm_responder_task(
-    cmd_interface: &'static mut CmdInterface<'static, libtock_runtime::TockSyscalls>,
+    cmd_interface: &'static mut CmdInterface<'static>,
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
-    pldm_responder::<libtock_runtime::TockSyscalls>(cmd_interface, running, initiator_signal).await;
+    pldm_responder(cmd_interface, running, initiator_signal).await;
 }
 
 #[cfg(not(target_arch = "riscv32"))]
@@ -128,21 +125,20 @@ async fn pldm_initiator_task(
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
-    pldm_initiator::<libtock_unittest::fake::Syscalls>(running, initiator_signal).await;
+    pldm_initiator(running, initiator_signal).await;
 }
 
 #[cfg(not(target_arch = "riscv32"))]
 #[embassy_executor::task]
 async fn pldm_responder_task(
-    cmd_interface: &'static mut CmdInterface<'static, libtock_runtime::TockSyscalls>,
+    cmd_interface: &'static mut CmdInterface<'static>,
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
-    pldm_responder::<libtock_unittest::fake::Syscalls>(cmd_interface, running, initiator_signal)
-        .await;
+    pldm_responder(cmd_interface, running, initiator_signal).await;
 }
 
-pub async fn pldm_initiator<S: Syscalls>(
+pub async fn pldm_initiator(
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
@@ -154,8 +150,8 @@ pub async fn pldm_initiator<S: Syscalls>(
     }
 }
 
-pub async fn pldm_responder<S: Syscalls>(
-    cmd_interface: &'static mut CmdInterface<'static, libtock_runtime::TockSyscalls>,
+pub async fn pldm_responder(
+    cmd_interface: &'static mut CmdInterface<'static>,
     running: &'static AtomicBool,
     _initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {

@@ -6,7 +6,6 @@ use async_trait::async_trait;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
 use libapi_caliptra::mailbox::Mailbox;
-use libtock_platform::Syscalls;
 use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_common::{
     message::firmware_update::get_fw_params::FirmwareParameters,
@@ -30,8 +29,8 @@ pub enum ComponentOperation {
 }
 
 /// Thread-safe object for firmware device operations (FdOps).
-pub struct FdOpsObject<S: Syscalls> {
-    inner: Mutex<NoopRawMutex, FdOpsInner<S>>,
+pub struct FdOpsObject {
+    inner: Mutex<NoopRawMutex, FdOpsInner>,
 }
 
 /// A structure representing the operations for firmware device (FdOps).
@@ -39,25 +38,21 @@ pub struct FdOpsObject<S: Syscalls> {
 /// This structure encapsulates the necessary components for performing
 /// firmware device operations, including a mailbox and an image loader.
 ///
-/// # Type Parameters
-/// - `S`: A type that implements the `Syscalls` trait, which provides
-///   the necessary system call interfaces.
-///
 /// # Fields
-/// - `mailbox`: An instance of `Mailbox<S>`, used for communication.
+/// - `mailbox`: An instance of `Mailbox`, used for communication.
 #[allow(dead_code)]
-struct FdOpsInner<S: Syscalls> {
-    mailbox: Mailbox<S>,
+struct FdOpsInner {
+    mailbox: Mailbox,
     // Add more fields or APIs as needed
 }
 
-impl<S: Syscalls> Default for FdOpsObject<S> {
+impl Default for FdOpsObject {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<S: Syscalls> FdOpsObject<S> {
+impl FdOpsObject {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(FdOpsInner {
@@ -144,7 +139,7 @@ pub trait FdOps {
 }
 
 #[async_trait(?Send)]
-impl<S: Syscalls> FdOps for FdOpsObject<S> {
+impl FdOps for FdOpsObject {
     async fn get_device_identifiers(
         &self,
         device_identifiers: &mut [Descriptor],

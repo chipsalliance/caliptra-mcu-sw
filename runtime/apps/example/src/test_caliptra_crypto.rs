@@ -3,7 +3,6 @@
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 
 use core::fmt::write;
-use libtock_platform::Syscalls;
 use romtime::{println, test_exit};
 
 const expected_hashes_384: [[u8; 48]; 1] = [[
@@ -21,25 +20,25 @@ const expected_hashes_512: [[u8; 64]; 1] = [[
     0x11, 0xd8, 0x0d, 0x6b, 0x05, 0x67, 0x77, 0xd8, 0x36, 0x13, 0x2f, 0x46, 0x9f, 0x6c, 0x68, 0xd3,
 ]];
 
-pub async fn test_caliptra_sha<S: Syscalls>() {
+pub async fn test_caliptra_sha() {
     println!("Starting Caliptra mailbox SHA test");
 
     let data1 = b"Hello from Caliptra! This is a test of the SHA algorithm.";
     let expected_sha_384 = expected_hashes_384[0];
     let expected_sha_512 = expected_hashes_512[0];
 
-    test_sha::<S>(data1, HashAlgoType::SHA384, &expected_sha_384).await;
-    test_sha::<S>(data1, HashAlgoType::SHA512, &expected_sha_512).await;
+    test_sha(data1, HashAlgoType::SHA384, &expected_sha_384).await;
+    test_sha(data1, HashAlgoType::SHA512, &expected_sha_512).await;
 
     println!("SHA test completed successfully");
     test_exit(0);
 }
 
-async fn test_sha<S: Syscalls>(data: &[u8], algo: HashAlgoType, expected_hash: &[u8]) {
+async fn test_sha(data: &[u8], algo: HashAlgoType, expected_hash: &[u8]) {
     println!("Testing SHA algorithm: {:?}", algo);
 
     let hash_size = algo.hash_size();
-    let mut hash_context = HashContext::<S>::new();
+    let mut hash_context = HashContext::new();
 
     let mut hash = [0u8; 64];
 

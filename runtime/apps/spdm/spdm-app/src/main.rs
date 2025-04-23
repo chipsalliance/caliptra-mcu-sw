@@ -82,7 +82,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
 }
 
 async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>) {
-    let mut mctp_spdm_transport: MctpTransport<S> = MctpTransport::new(driver_num::MCTP_SPDM);
+    let mut mctp_spdm_transport: MctpTransport = MctpTransport::new(driver_num::MCTP_SPDM);
 
     let max_mctp_spdm_msg_size =
         (MAX_MCTP_SPDM_MSG_SIZE - mctp_spdm_transport.header_size()) as u32;

@@ -5,7 +5,7 @@ mod tests {
     use libapi_caliptra::image_loading::ImageLoaderAPI;
     use libapi_caliptra::mailbox::*;
     use libtock_unittest::fake::{
-        wait_for_future_ready, FakeDMADriver, FakeFlashDriver, FakeMailboxDriver, Kernel, Syscalls,
+        wait_for_future_ready, FakeDMADriver, FakeFlashDriver, FakeMailboxDriver, Kernel,
     };
     use std::rc::Rc;
 
@@ -93,7 +93,7 @@ mod tests {
             },
         );
 
-        let image_loader: ImageLoaderAPI<Syscalls> = ImageLoaderAPI::new();
+        let image_loader: ImageLoaderAPI = ImageLoaderAPI::new();
 
         // Load and authorize the image
         let image_id = 1;
@@ -185,7 +185,7 @@ mod tests {
             },
         );
 
-        let image_loader: ImageLoaderAPI<Syscalls> = ImageLoaderAPI::new();
+        let image_loader: ImageLoaderAPI = ImageLoaderAPI::new();
 
         // Load and authorize the image
         let image_id = 1;
@@ -306,7 +306,7 @@ mod tests {
             },
         );
 
-        let image_loader: ImageLoaderAPI<Syscalls> = ImageLoaderAPI::new();
+        let image_loader: ImageLoaderAPI = ImageLoaderAPI::new();
 
         // Load and authorize the image 1
         let image_id = 1;

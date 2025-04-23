@@ -8,7 +8,6 @@ use crate::error::{CommandError, CommandResult};
 use crate::protocol::common::SpdmMsgHdr;
 use crate::state::ConnectionState;
 use libapi_caliptra::crypto::hash::HashAlgoType;
-use libtock_platform::Syscalls;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
@@ -128,8 +127,8 @@ impl<'a> Codec for GetDigestsResp<'a> {
     }
 }
 
-pub(crate) async fn handle_digests<'a, S: Syscalls>(
-    ctx: &mut SpdmContext<'a, S>,
+pub(crate) async fn handle_digests<'a>(
+    ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
@@ -187,7 +186,7 @@ pub(crate) async fn handle_digests<'a, S: Syscalls>(
     for (slot_id, digest) in digests.iter_mut().take(slot_cnt).enumerate() {
         digest.length = caliptra_hash_algo.hash_size() as u8;
         ctx.device_certs_manager
-            .cert_chain_digest::<S>(slot_id as u8, hash_algo, &mut digest.data)
+            .cert_chain_digest(slot_id as u8, hash_algo, &mut digest.data)
             .await
             .map_err(|_| {
                 ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None)
@@ -215,8 +214,8 @@ pub(crate) async fn handle_digests<'a, S: Syscalls>(
     Ok(())
 }
 
-fn fill_digests_response<S: Syscalls>(
-    ctx: &SpdmContext<S>,
+fn fill_digests_response(
+    ctx: &SpdmContext,
     supported_slot_mask: u8,
     provisioned_slot_mask: u8,
     digests: &[SpdmDigest],

@@ -5,7 +5,6 @@ use crate::error::MsgHandlerError;
 use crate::firmware_device::fd_context::FirmwareDeviceContext;
 use crate::transport::MctpTransport;
 use core::sync::atomic::{AtomicBool, Ordering};
-use libtock_platform::Syscalls;
 use pldm_common::codec::PldmCodec;
 use pldm_common::protocol::base::{
     PldmBaseCompletionCode, PldmControlCmd, PldmFailureResponse, PldmMsgHeader, PldmSupportedType,
@@ -28,18 +27,18 @@ pub(crate) fn generate_failure_response(
     resp.encode(payload).map_err(MsgHandlerError::Codec)
 }
 
-pub struct CmdInterface<'a, S: Syscalls> {
-    transport: MctpTransport<S>,
+pub struct CmdInterface<'a> {
+    transport: MctpTransport,
     ctrl_ctx: ControlContext<'a>,
-    fd_ctx: FirmwareDeviceContext<S>,
+    fd_ctx: FirmwareDeviceContext,
     busy: AtomicBool,
 }
 
-impl<'a, S: Syscalls> CmdInterface<'a, S> {
+impl<'a> CmdInterface<'a> {
     pub fn new(
         driver_num: u32,
         protocol_capabilities: &'a [ProtocolCapability],
-        fd_ctx: FirmwareDeviceContext<S>,
+        fd_ctx: FirmwareDeviceContext,
     ) -> Self {
         let transport = MctpTransport::new(driver_num);
         let ctrl_ctx = ControlContext::new(protocol_capabilities);

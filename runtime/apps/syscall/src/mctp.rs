@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::DefaultSyscalls;
 use core::marker::PhantomData;
 use libtock_platform::share;
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
@@ -26,7 +27,7 @@ impl From<u32> for MessageInfo {
     }
 }
 
-pub struct Mctp<S: Syscalls> {
+pub struct Mctp<S: Syscalls = DefaultSyscalls> {
     syscall: PhantomData<S>,
     driver_num: u32,
 }

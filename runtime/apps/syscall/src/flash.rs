@@ -2,11 +2,12 @@
 
 // Flash userspace library
 
+use crate::DefaultSyscalls;
 use core::marker::PhantomData;
 use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
-pub struct SpiFlash<S: Syscalls> {
+pub struct SpiFlash<S: Syscalls = DefaultSyscalls> {
     syscall: PhantomData<S>,
     driver_num: u32,
 }

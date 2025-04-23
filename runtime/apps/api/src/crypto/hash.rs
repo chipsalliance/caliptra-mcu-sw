@@ -6,7 +6,6 @@ use caliptra_api::mailbox::{
 };
 use core::mem::size_of;
 use libsyscall_caliptra::mailbox::Mailbox;
-use libtock_platform::Syscalls;
 use zerocopy::{FromBytes, IntoBytes};
 
 use crate::crypto::error::{CryptoError, CryptoResult};
@@ -37,24 +36,24 @@ impl HashAlgoType {
     }
 }
 
-pub struct HashContext<S: Syscalls> {
+pub struct HashContext {
     algo: Option<HashAlgoType>,
     ctx: Option<[u8; CMB_SHA_CONTEXT_SIZE]>,
-    mbox: Mailbox<S>,
+    mbox: Mailbox,
 }
 
-impl<S: Syscalls> Default for HashContext<S> {
+impl Default for HashContext {
     fn default() -> Self {
         HashContext::new()
     }
 }
 
-impl<S: Syscalls> HashContext<S> {
+impl HashContext {
     pub fn new() -> Self {
         HashContext {
             algo: None,
             ctx: None,
-            mbox: Mailbox::<S>::new(),
+            mbox: Mailbox::new(),
         }
     }
 
@@ -63,7 +62,7 @@ impl<S: Syscalls> HashContext<S> {
         data: &[u8],
         hash: &mut [u8],
     ) -> CryptoResult<()> {
-        let mut ctx = HashContext::<S>::new();
+        let mut ctx = HashContext::new();
         if hash.len() < hash_algo.hash_size() {
             Err(CryptoError::InvalidArgument("Hash buffer too small"))?;
         }

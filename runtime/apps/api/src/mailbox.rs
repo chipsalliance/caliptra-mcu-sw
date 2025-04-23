@@ -3,11 +3,12 @@
 use crate::checksum;
 use core::mem;
 use libsyscall_caliptra::mailbox::{Mailbox as MailboxSyscall, MailboxError};
+use libsyscall_caliptra::DefaultSyscalls;
 use libtock_platform::{ErrorCode, Syscalls};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Ref, TryFromBytes};
 
 /// API for interacting with the mailbox.
-pub struct Mailbox<S: Syscalls> {
+pub struct Mailbox<S: Syscalls = DefaultSyscalls> {
     syscall: MailboxSyscall<S>,
 }
 

@@ -93,7 +93,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         )
         .unwrap();
 
-        test_mctp_loopback::<S>().await;
+        test_mctp_loopback().await;
     }
 
     #[cfg(feature = "test-flash-usermode")]
@@ -120,7 +120,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
             w_buf: &user_w_buf,
             r_buf: &mut user_r_buf,
         };
-        flash_test::simple_test::<S>(&mut test_cfg_1).await;
+        flash_test::simple_test(&mut test_cfg_1).await;
         writeln!(
             console_writer,
             "flash usermode test on active image par succeeds"
@@ -138,7 +138,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
             w_buf: &user_w_buf,
             r_buf: &mut user_r_buf,
         };
-        flash_test::simple_test::<S>(&mut test_cfg_2).await;
+        flash_test::simple_test(&mut test_cfg_2).await;
         writeln!(
             console_writer,
             "flash usermode test on recovery image par succeeds"
@@ -153,43 +153,43 @@ pub(crate) async fn async_main<S: Syscalls>() {
     }
     #[cfg(feature = "test-pldm-request-response")]
     {
-        test_pldm_request_response::test::test_pldm_request_response::<S>().await;
+        test_pldm_request_response::test::test_pldm_request_response().await;
     }
     #[cfg(feature = "test-caliptra-mailbox")]
     {
-        test_caliptra_mailbox::test_caliptra_mailbox::<S>().await;
-        test_caliptra_mailbox::test_caliptra_mailbox_bad_command::<S>().await;
-        test_caliptra_mailbox::test_caliptra_mailbox_fail::<S>().await;
+        test_caliptra_mailbox::test_caliptra_mailbox().await;
+        test_caliptra_mailbox::test_caliptra_mailbox_bad_command().await;
+        test_caliptra_mailbox::test_caliptra_mailbox_fail().await;
         romtime::test_exit(0);
     }
 
     #[cfg(feature = "test-caliptra-crypto")]
     {
-        test_caliptra_crypto::test_caliptra_sha::<S>().await;
+        test_caliptra_crypto::test_caliptra_sha().await;
     }
 
     writeln!(console_writer, "app finished").unwrap();
 }
 
 #[allow(dead_code)]
-async fn test_mctp_loopback<S: Syscalls>() {
+async fn test_mctp_loopback() {
     use libsyscall_caliptra::mctp::{driver_num, Mctp};
-    let mctp_spdm = Mctp::<S>::new(driver_num::MCTP_CALIPTRA);
+    let mctp_caliptra: Mctp = Mctp::new(driver_num::MCTP_CALIPTRA);
     loop {
         let mut msg_buffer: [u8; 1024] = [0; 1024];
 
-        assert!(mctp_spdm.exists());
-        let max_msg_size = mctp_spdm.max_message_size();
+        assert!(mctp_caliptra.exists());
+        let max_msg_size = mctp_caliptra.max_message_size();
         assert!(max_msg_size.is_ok());
         assert!(max_msg_size.unwrap() > 0);
 
-        let result = mctp_spdm.receive_request(&mut msg_buffer).await;
+        let result = mctp_caliptra.receive_request(&mut msg_buffer).await;
         assert!(result.is_ok());
         let (msg_len, msg_info) = result.unwrap();
         let msg_len = msg_len as usize;
         assert!(msg_len <= msg_buffer.len());
 
-        let result = mctp_spdm
+        let result = mctp_caliptra
             .send_response(&msg_buffer[..msg_len], msg_info)
             .await;
         assert!(result.is_ok());
@@ -215,8 +215,8 @@ pub mod flash_test {
         pub r_buf: &'a mut [u8],
     }
 
-    pub async fn simple_test<'a, S: Syscalls>(test_cfg: &'a mut FlashTestConfig<'a>) {
-        let flash_par = SpiFlash::<S>::new(test_cfg.drv_num);
+    pub async fn simple_test<'a>(test_cfg: &'a mut FlashTestConfig<'a>) {
+        let flash_par: SpiFlash = SpiFlash::new(test_cfg.drv_num);
         assert_eq!(
             flash_par.get_capacity().unwrap(),
             test_cfg.expected_capacity

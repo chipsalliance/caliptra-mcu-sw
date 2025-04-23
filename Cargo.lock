@@ -1897,6 +1897,8 @@ dependencies = [
  "caliptra-api",
  "libtock_console",
  "libtock_platform",
+ "libtock_runtime",
+ "libtock_unittest",
  "libtockasync",
 ]
 

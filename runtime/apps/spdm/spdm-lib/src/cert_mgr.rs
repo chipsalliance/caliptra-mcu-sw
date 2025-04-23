@@ -4,7 +4,6 @@ use crate::error::SpdmError;
 use crate::protocol::BaseHashAlgoType;
 use libapi_caliptra::crypto::error::CryptoError;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
-use libtock_platform::Syscalls;
 use thiserror_no_std::Error;
 
 pub const SPDM_MAX_CERT_CHAIN_SLOTS: usize = 8;
@@ -392,7 +391,7 @@ impl DeviceCertsManager {
         Ok(root_cert_len)
     }
 
-    pub async fn cert_chain_digest<S: Syscalls>(
+    pub async fn cert_chain_digest(
         &self,
         slot_id: u8,
         hash_type: BaseHashAlgoType,
@@ -411,7 +410,7 @@ impl DeviceCertsManager {
         }
 
         // Get the hash of root_cert
-        HashContext::<S>::hash_all(
+        HashContext::hash_all(
             hash_algo,
             &cert_chain_data.as_ref()[..root_cert_len],
             &mut root_hash,
@@ -424,7 +423,7 @@ impl DeviceCertsManager {
             SpdmCertChainBaseBuffer::new(cert_chain_data.length as usize, root_hash.as_ref())?;
 
         // Start the hash operation
-        let mut hash_ctx = HashContext::<S>::new();
+        let mut hash_ctx = HashContext::new();
 
         // Hash the cert chain base
         hash_ctx
@@ -440,7 +439,7 @@ impl DeviceCertsManager {
         Ok(())
     }
 
-    pub async fn construct_cert_chain_buffer<S: Syscalls>(
+    pub async fn construct_cert_chain_buffer(
         &self,
         hash_type: BaseHashAlgoType,
         slot_id: u8,
@@ -458,7 +457,7 @@ impl DeviceCertsManager {
         }
 
         // Get the hash of root_cert
-        HashContext::<S>::hash_all(
+        HashContext::hash_all(
             hash_algo,
             &cert_chain_data.as_ref()[..root_cert_len],
             &mut root_hash,
