@@ -166,6 +166,7 @@ fn app_build(
     let app_ld_filename = format!("{}-layout.ld", app_name);
     let layout_ld = &PROJECT_ROOT
         .join("runtime")
+        .join("userspace")
         .join("apps")
         .join(app_ld_filename);
 
@@ -180,7 +181,7 @@ FLASH_START = 0x{:x};
 FLASH_LENGTH = 0x17000;
 RAM_START = 0x{:x};
 RAM_LENGTH = 0x{:x};
-INCLUDE runtime/apps/app_layout.ld",
+INCLUDE runtime/userspace/apps/app_layout.ld",
             tbf_header_size, offset, ram_start, ram_length,
         ),
     )?;

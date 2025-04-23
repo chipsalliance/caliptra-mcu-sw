@@ -15,7 +15,7 @@ riscv-arch-test
 
 # dynamically calculated
 platforms/emulator/runtime/layout.ld
-runtime/apps/*.ld
+runtime/userspace/apps/*.ld
 
 # mdbook
 book
