@@ -1,21 +1,15 @@
 // Licensed under the Apache-2.0 license
 
-use thiserror_no_std::Error;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub type CodecResult<T> = Result<T, CodecError>;
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum CodecError {
-    #[error("Buffer too small")]
     BufferTooSmall,
-    #[error("Read from buffer bytes error")]
     ReadError,
-    #[error("Write to buffer bytes error")]
     WriteError,
-    #[error("Buffer overflow")]
     BufferOverflow,
-    #[error("Buffer underflow")]
     BufferUnderflow,
 }
 

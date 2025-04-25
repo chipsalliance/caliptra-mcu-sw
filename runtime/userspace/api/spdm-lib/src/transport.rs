@@ -1,38 +1,43 @@
 // Licensed under the Apache-2.0 license
 
-use thiserror_no_std::Error;
-
+extern crate alloc;
 use crate::codec::MessageBuf;
 use crate::codec::{Codec, CodecError, CommonCodec, DataKind};
+use alloc::boxed::Box;
+use async_trait::async_trait;
 use bitfield::bitfield;
 use libsyscall_caliptra::mctp::{Mctp, MessageInfo};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub type TransportResult<T> = Result<T, TransportError>;
 
-pub enum SpdmTransportType {
-    Mctp,
+#[async_trait]
+pub trait SpdmTransport {
+    async fn send_request<'a>(
+        &mut self,
+        dest_eid: u8,
+        req: &mut MessageBuf<'a>,
+    ) -> TransportResult<()>;
+    async fn receive_response<'a>(&mut self, rsp: &mut MessageBuf<'a>) -> TransportResult<()>;
+    async fn receive_request<'a>(&mut self, req: &mut MessageBuf<'a>) -> TransportResult<()>;
+    async fn send_response<'a>(&mut self, resp: &mut MessageBuf<'a>) -> TransportResult<()>;
+    fn max_message_size(&self) -> TransportResult<usize>;
+    fn header_size(&self) -> usize;
 }
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum TransportError {
-    #[error("Driver Error")]
     DriverError,
-    #[error("Buffer too small")]
     BufferTooSmall,
-    #[error("Codec error")]
-    Codec(#[from] CodecError),
-    #[error("Unexpected message type received")]
+    Codec(CodecError),
     UnexpectedMessageType,
-    #[error("Message receive error")]
     ReceiveError,
-    #[error("Message send error")]
     SendError,
-    #[error("Response is not expected")]
     ResponseNotExpected,
-    #[error("No request in flight")]
     NoRequestInFlight,
 }
+
+// MCTP Transport Implementation
 
 bitfield! {
 #[repr(C)]
@@ -75,8 +80,11 @@ impl MctpTransport {
             cur_req_ctx: None,
         }
     }
+}
 
-    pub async fn send_request<'a>(
+#[async_trait]
+impl SpdmTransport for MctpTransport {
+    async fn send_request<'a>(
         &mut self,
         dest_eid: u8,
         req: &mut MessageBuf<'a>,
@@ -86,7 +94,7 @@ impl MctpTransport {
             .msg_type()
             .map_err(|_| TransportError::UnexpectedMessageType)?;
         let header = MctpMsgHdr::new(0, msg_type);
-        header.encode(req)?;
+        header.encode(req).map_err(TransportError::Codec)?;
         let req_len = req.data_len();
         let req_buf = req
             .data(req_len)
@@ -103,7 +111,7 @@ impl MctpTransport {
         Ok(())
     }
 
-    pub async fn receive_response<'a>(&mut self, rsp: &mut MessageBuf<'a>) -> TransportResult<()> {
+    async fn receive_response<'a>(&mut self, rsp: &mut MessageBuf<'a>) -> TransportResult<()> {
         rsp.reset();
 
         let max_len = rsp.capacity();
@@ -131,7 +139,7 @@ impl MctpTransport {
             .map_err(|_| TransportError::BufferTooSmall)?;
 
         // Process the transport message header
-        let header = MctpMsgHdr::decode(rsp)?;
+        let header = MctpMsgHdr::decode(rsp).map_err(TransportError::Codec)?;
         if header.msg_type()
             != self
                 .mctp
@@ -145,7 +153,7 @@ impl MctpTransport {
         Ok(())
     }
 
-    pub async fn receive_request<'a>(&mut self, req: &mut MessageBuf<'a>) -> TransportResult<()> {
+    async fn receive_request<'a>(&mut self, req: &mut MessageBuf<'a>) -> TransportResult<()> {
         req.reset();
 
         let max_len = req.capacity();
@@ -171,7 +179,7 @@ impl MctpTransport {
             .map_err(|_| TransportError::BufferTooSmall)?;
 
         // Process the transport message header
-        let header = MctpMsgHdr::decode(req)?;
+        let header = MctpMsgHdr::decode(req).map_err(TransportError::Codec)?;
 
         if header.msg_type()
             != self
@@ -187,13 +195,13 @@ impl MctpTransport {
         Ok(())
     }
 
-    pub async fn send_response<'a>(&mut self, resp: &mut MessageBuf<'a>) -> TransportResult<()> {
+    async fn send_response<'a>(&mut self, resp: &mut MessageBuf<'a>) -> TransportResult<()> {
         let msg_type = self
             .mctp
             .msg_type()
             .map_err(|_| TransportError::UnexpectedMessageType)?;
         let header = MctpMsgHdr::new(0, msg_type);
-        header.encode(resp)?;
+        header.encode(resp).map_err(TransportError::Codec)?;
 
         let msg_len = resp.msg_len();
         let rsp_buf = resp
@@ -214,7 +222,7 @@ impl MctpTransport {
         Ok(())
     }
 
-    pub fn max_message_size(&self) -> TransportResult<usize> {
+    fn max_message_size(&self) -> TransportResult<usize> {
         let max_size = self
             .mctp
             .max_message_size()
@@ -222,7 +230,7 @@ impl MctpTransport {
         Ok(max_size as usize - self.header_size())
     }
 
-    pub fn header_size(&self) -> usize {
+    fn header_size(&self) -> usize {
         1
     }
 }

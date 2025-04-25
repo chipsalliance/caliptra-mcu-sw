@@ -13,7 +13,7 @@ use spdm_lib::cert_mgr::DeviceCertsManager;
 use spdm_lib::codec::MessageBuf;
 use spdm_lib::context::SpdmContext;
 use spdm_lib::protocol::*;
-use spdm_lib::transport::MctpTransport;
+use spdm_lib::transport::{MctpTransport, SpdmTransport};
 
 // Caliptra supported SPDM versions
 const SPDM_VERSIONS: &[SpdmVersion] = &[

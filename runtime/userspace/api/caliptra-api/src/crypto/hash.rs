@@ -93,13 +93,16 @@ impl HashContext {
         }
 
         let req_bytes = init_req.as_mut_bytes();
-        self.mbox.populate_checksum(CmShaInitReq::ID.0, req_bytes)?;
+        self.mbox
+            .populate_checksum(CmShaInitReq::ID.0, req_bytes)
+            .map_err(CryptoError::SyscallError)?;
 
         let init_rsp_bytes = &mut [0u8; size_of::<CmShaInitResp>()];
 
         self.mbox
             .execute(CmShaInitReq::ID.0, init_req.as_bytes(), init_rsp_bytes)
-            .await?;
+            .await
+            .map_err(CryptoError::MailboxError)?;
 
         let init_rsp = CmShaInitResp::ref_from_bytes(init_rsp_bytes)
             .map_err(|_| CryptoError::InvalidResponse)?;
@@ -136,7 +139,8 @@ impl HashContext {
 
             let req_bytes = update_req.as_mut_bytes();
             self.mbox
-                .populate_checksum(CmShaUpdateReq::ID.0, req_bytes)?;
+                .populate_checksum(CmShaUpdateReq::ID.0, req_bytes)
+                .map_err(CryptoError::SyscallError)?;
 
             let update_rsp_bytes = &mut [0u8; size_of::<CmShaInitResp>()];
 
@@ -146,7 +150,8 @@ impl HashContext {
                     update_req.as_bytes(),
                     update_rsp_bytes,
                 )
-                .await?;
+                .await
+                .map_err(CryptoError::MailboxError)?;
 
             let update_rsp = CmShaInitResp::ref_from_bytes(update_rsp_bytes)
                 .map_err(|_| CryptoError::InvalidResponse)?;
@@ -183,13 +188,15 @@ impl HashContext {
 
         let req_bytes = final_req.as_mut_bytes();
         self.mbox
-            .populate_checksum(CmShaFinalReq::ID.0, req_bytes)?;
+            .populate_checksum(CmShaFinalReq::ID.0, req_bytes)
+            .map_err(CryptoError::SyscallError)?;
 
         let final_rsp_bytes = &mut [0u8; size_of::<CmShaFinalResp>()];
 
         self.mbox
             .execute(CmShaFinalReq::ID.0, final_req.as_bytes(), final_rsp_bytes)
-            .await?;
+            .await
+            .map_err(CryptoError::MailboxError)?;
 
         let final_rsp = CmShaFinalResp::ref_from_bytes(final_rsp_bytes)
             .map_err(|_| CryptoError::InvalidResponse)?;

@@ -4,7 +4,6 @@ use crate::error::SpdmError;
 use crate::protocol::BaseHashAlgoType;
 use libapi_caliptra::crypto::error::CryptoError;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
-use thiserror_no_std::Error;
 
 pub const SPDM_MAX_CERT_CHAIN_SLOTS: usize = 8;
 pub const SPDM_MAX_HASH_SIZE: usize = 64;
@@ -179,17 +178,12 @@ impl SpdmCertChainBuffer {
     }
 }
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum DeviceCertsMgrError {
-    #[error("Unsupported slot ID")]
     UnsupportedSlotId,
-    #[error("Unprovisioned slot ID")]
     UnprovisionedSlotId,
-    #[error("Buffer too small")]
     CertDataBufferTooSmall,
-    #[error("Cryto error")]
-    CryptoError(#[from] CryptoError),
-    #[error("Invalid parameter {0}")]
+    CryptoError(CryptoError),
     InvalidParam(&'static str),
 }
 
@@ -428,13 +422,20 @@ impl DeviceCertsManager {
         // Hash the cert chain base
         hash_ctx
             .init(hash_algo, Some(cert_chain_base_buf.as_ref()))
-            .await?;
+            .await
+            .map_err(DeviceCertsMgrError::CryptoError)?;
 
         // Hash the cert chain data
-        hash_ctx.update(cert_chain_data.as_ref()).await?;
+        hash_ctx
+            .update(cert_chain_data.as_ref())
+            .await
+            .map_err(DeviceCertsMgrError::CryptoError)?;
 
         // Finalize the hash operation
-        hash_ctx.finalize(digest).await?;
+        hash_ctx
+            .finalize(digest)
+            .await
+            .map_err(DeviceCertsMgrError::CryptoError)?;
 
         Ok(())
     }

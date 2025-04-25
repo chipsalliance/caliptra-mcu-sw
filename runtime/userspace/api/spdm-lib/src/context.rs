@@ -12,10 +12,10 @@ use crate::protocol::common::{ReqRespCode, SpdmMsgHdr};
 use crate::protocol::version::*;
 use crate::protocol::DeviceCapabilities;
 use crate::state::State;
-use crate::transport::MctpTransport;
+use crate::transport::SpdmTransport;
 
 pub struct SpdmContext<'a> {
-    transport: &'a mut MctpTransport,
+    transport: &'a mut dyn SpdmTransport,
     pub(crate) supported_versions: &'a [SpdmVersion],
     pub(crate) state: State,
     pub(crate) local_capabilities: DeviceCapabilities,
@@ -26,7 +26,7 @@ pub struct SpdmContext<'a> {
 impl<'a> SpdmContext<'a> {
     pub fn new(
         supported_versions: &'a [SpdmVersion],
-        spdm_transport: &'a mut MctpTransport,
+        spdm_transport: &'a mut dyn SpdmTransport,
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
         device_certs_manager: &'a DeviceCertsManager,
@@ -49,14 +49,12 @@ impl<'a> SpdmContext<'a> {
         self.transport
             .receive_request(msg_buf)
             .await
-            .inspect_err(|_| {})?;
+            .map_err(SpdmError::Transport)?;
 
         // Process message
         match self.handle_request(msg_buf).await {
             Ok(resp_code) => {
-                self.send_response(resp_code, msg_buf)
-                    .await
-                    .inspect_err(|_| {})?;
+                self.send_response(resp_code, msg_buf).await?;
             }
             Err((rsp, command_error)) => {
                 if rsp {
@@ -110,7 +108,7 @@ impl<'a> SpdmContext<'a> {
     ) -> SpdmResult<()> {
         let spdm_version = self.state.connection_info.version_number();
         let spdm_resp_hdr = SpdmMsgHdr::new(spdm_version, resp_code);
-        spdm_resp_hdr.encode(resp)?;
+        spdm_resp_hdr.encode(resp).map_err(SpdmError::Codec)?;
 
         self.transport
             .send_response(resp)
