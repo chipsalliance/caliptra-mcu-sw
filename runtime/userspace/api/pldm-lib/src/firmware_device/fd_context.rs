@@ -4,7 +4,6 @@ use crate::cmd_interface::generate_failure_response;
 use crate::error::MsgHandlerError;
 use crate::firmware_device::fd_internal::{FdInternal, FdReqState};
 use crate::firmware_device::fd_ops::{ComponentOperation, FdOps};
-//use libtock_platform::Syscalls;
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::firmware_update::activate_fw::{
     ActivateFirmwareRequest, ActivateFirmwareResponse,
@@ -54,7 +53,6 @@ use crate::firmware_device::fd_internal::{
 pub struct FirmwareDeviceContext<'a> {
     ops: &'a dyn FdOps,
     internal: FdInternal,
-    //_marker: core::marker::PhantomData<S>,
 }
 
 impl<'a> FirmwareDeviceContext<'a> {
@@ -63,7 +61,6 @@ impl<'a> FirmwareDeviceContext<'a> {
         Self {
             ops,
             internal: FdInternal::default(),
-            // _marker: core::marker::PhantomData,
         }
     }
 
