@@ -792,7 +792,6 @@ dependencies = [
  "caliptra-api",
  "capsules-core",
  "capsules-extra",
- "dma-driver",
  "flash-driver",
  "i3c-driver",
  "kernel",

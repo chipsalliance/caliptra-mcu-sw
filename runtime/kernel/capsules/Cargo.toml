@@ -11,7 +11,6 @@ bitfield.workspace = true
 caliptra-api.workspace = true
 capsules-core.workspace = true
 capsules-extra.workspace = true
-dma-driver.workspace = true
 flash-driver.workspace = true
 i3c-driver.workspace = true
 kernel.workspace = true
