@@ -35,6 +35,9 @@ hex.workspace = true
 log.workspace = true
 lazy_static.workspace = true
 p384.workspace = true
+pldm-common.workspace = true
+pldm-fw-pkg.workspace = true
+pldm-ua.workspace = true
 rand.workspace = true
 sec1.workspace = true
 sha2.workspace = true
@@ -44,11 +47,8 @@ strum_macros.workspace = true
 strum.workspace = true
 tempfile.workspace = true
 tock-registers.workspace = true
-zerocopy.workspace = true
-pldm-common.workspace = true
-pldm-fw-pkg.workspace = true
-pldm-ua.workspace = true
 uuid.workspace = true
+zerocopy.workspace = true
 
 [features]
 default = []
@@ -72,4 +72,5 @@ test-pldm-request-response = []
 test-pldm-discovery = []
 test-pldm-fw-update = []
 test-pldm-fw-update-e2e = []
-
+test-flash-streaming-boot = []
+test-pldm-streaming-boot = []

@@ -19,7 +19,7 @@ pub const APPS: &[App] = &[
         minimum_ram: 52 * 1024,
     },
     App {
-        name: "pldm-app",
+        name: "image-loader-app",
         permissions: vec![],
         minimum_ram: 20 * 1024,
     },

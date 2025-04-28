@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "pldm-app"
+name = "image-loader-app"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -9,6 +9,8 @@ edition.workspace = true
 [dependencies]
 critical-section.workspace = true
 embassy-executor.workspace = true
+embassy-sync.workspace = true
+libapi-caliptra.workspace = true
 libsyscall-caliptra.workspace = true
 libtock_console.workspace = true
 libtock_debug_panic.workspace = true
@@ -17,7 +19,9 @@ libtock_runtime.workspace = true
 libtock.workspace = true
 libtockasync.workspace = true
 portable-atomic.workspace = true
+pldm-common.workspace = true
 pldm-lib.workspace = true
+romtime.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 libtock_unittest.workspace = true
@@ -41,9 +45,11 @@ test-flash-storage-erase = []
 test-mctp-ctrl-cmds = []
 test-mctp-capsule-loopback = []
 test-mctp-user-loopback = []
+test-flash-streaming-boot = []
 test-flash-usermode = []
 test-pldm-request-response = []
 test-pldm-discovery = []
 test-pldm-fw-update = []
 test-pldm-fw-update-e2e = []
+test-pldm-streaming-boot = []
 test-spdm-validator = []

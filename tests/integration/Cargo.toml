@@ -8,4 +8,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chrono.workspace = true
 mcu-builder.workspace = true
+pldm-fw-pkg.workspace = true
+tempfile.workspace = true
+uuid.workspace = true
