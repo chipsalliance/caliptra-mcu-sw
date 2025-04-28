@@ -7,7 +7,6 @@ mod cargo_lock;
 mod clippy;
 mod deps;
 mod docs;
-mod flash_image;
 mod format;
 mod fpga;
 mod header;
@@ -62,6 +61,13 @@ enum Commands {
         /// Path to the PLDM Firmware package to be used in streaming boot
         #[arg(long)]
         streaming_boot: Option<PathBuf>,
+
+        /// Paths to the optional SoC images to be used in streaming boot
+        soc_images: Option<Vec<PathBuf>>,
+
+        /// Path to the Flash image to be used in streaming boot
+        #[arg(long)]
+        flash_image: Option<PathBuf>,
     },
     /// Build Runtime image
     RuntimeBuild {
@@ -133,15 +139,15 @@ enum FlashImageCommands {
     Create {
         /// Path to the Caliptra firmware file
         #[arg(long, value_name = "CALIPTRA_FW", required = true)]
-        caliptra_fw: String,
+        caliptra_fw: Option<String>,
 
         /// Path to the SoC manifest file
         #[arg(long, value_name = "SOC_MANIFEST", required = true)]
-        soc_manifest: String,
+        soc_manifest: Option<String>,
 
         /// Path to the MCU runtime file
         #[arg(long, value_name = "MCU_RUNTIME", required = true)]
-        mcu_runtime: String,
+        mcu_runtime: Option<String>,
 
         /// Paths to optional SoC images
         #[arg(long, value_name = "SOC_IMAGE", num_args=1.., required = false)]
@@ -200,14 +206,16 @@ fn main() {
                 mcu_runtime,
                 soc_images,
                 output,
-            } => flash_image::flash_image_create(
+            } => mcu_builder::flash_image::flash_image_create(
                 caliptra_fw,
                 soc_manifest,
                 mcu_runtime,
                 soc_images,
                 output,
             ),
-            FlashImageCommands::Verify { file } => flash_image::flash_image_verify(file),
+            FlashImageCommands::Verify { file } => {
+                mcu_builder::flash_image::flash_image_verify(file)
+            }
         },
         Commands::Clippy => clippy::clippy(),
         Commands::Docs => docs::docs(),

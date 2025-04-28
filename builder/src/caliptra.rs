@@ -9,8 +9,8 @@ use caliptra_auth_man_gen::{
     AuthManifestGenerator, AuthManifestGeneratorConfig, AuthManifestGeneratorKeyConfig,
 };
 use caliptra_auth_man_types::{
-    AuthManifestFlags, AuthManifestImageMetadata, AuthManifestPrivKeys, AuthManifestPubKeys,
-    AuthorizationManifest, ImageMetadataFlags,
+    Addr64, AuthManifestFlags, AuthManifestImageMetadata, AuthManifestPrivKeys,
+    AuthManifestPubKeys, AuthorizationManifest, ImageMetadataFlags,
 };
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_fake_keys::*;
@@ -27,6 +27,7 @@ pub struct CaliptraBuilder {
     soc_manifest: Option<PathBuf>,
     vendor_pk_hash: Option<String>,
     mcu_firmware: Option<PathBuf>,
+    soc_images: Option<Vec<PathBuf>>,
 }
 
 impl CaliptraBuilder {
@@ -37,6 +38,7 @@ impl CaliptraBuilder {
         soc_manifest: Option<PathBuf>,
         vendor_pk_hash: Option<String>,
         mcu_firmware: Option<PathBuf>,
+        soc_images: Option<Vec<PathBuf>>,
     ) -> Self {
         Self {
             active_mode,
@@ -45,6 +47,7 @@ impl CaliptraBuilder {
             soc_manifest,
             vendor_pk_hash,
             mcu_firmware,
+            soc_images,
         }
     }
 
@@ -75,6 +78,29 @@ impl CaliptraBuilder {
         Ok(self.caliptra_firmware.clone().unwrap())
     }
 
+    fn get_soc_images_metadata(&self) -> Result<Vec<AuthManifestImageMetadata>> {
+        if self.soc_images.is_none() {
+            return Ok(vec![]);
+        }
+        let mut metadata = Vec::new();
+        const SOC_FW_ID_START: u32 = 0x00001000; // Arbitrary starting point for SOC FW IDs
+        const SOC_FW_LOAD_ADDRESS_START: Addr64 = Addr64 {
+            lo: 0x8000_0000,
+            hi: 0,
+        }; // Arbitrary starting point for SOC FW load addresses in the external SRAM (Caliptra core's perspective)
+        let mut fw_id = SOC_FW_ID_START;
+        let mut load_address = SOC_FW_LOAD_ADDRESS_START;
+        if let Some(soc_images) = &self.soc_images {
+            for soc_image in soc_images {
+                let soc_metadata = Self::get_soc_manifest_metadata(soc_image, fw_id, load_address)?;
+                metadata.push(soc_metadata);
+                fw_id += 1;
+                load_address.lo += 2048; // Increment the load address for the next image, allocate 2048 bytes for each image
+            }
+        }
+        Ok(metadata)
+    }
+
     pub fn get_soc_manifest(&mut self) -> Result<PathBuf> {
         if self.soc_manifest.is_none() {
             let _ = self.get_caliptra_fw()?;
@@ -84,7 +110,13 @@ impl CaliptraBuilder {
             if self.mcu_firmware.is_none() {
                 bail!("MCU firmware is required to build SoC manifest");
             }
-            let path = Self::write_soc_manifest(self.mcu_firmware.as_ref().unwrap())?;
+            let mcu_fw_metadata =
+                Self::get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
+            let soc_images_metadata = self.get_soc_images_metadata()?;
+            let mut metadata = vec![mcu_fw_metadata];
+            metadata.extend(soc_images_metadata);
+
+            let path = Self::write_soc_manifest(metadata)?;
             self.soc_manifest = Some(path);
         }
         Ok(self.soc_manifest.clone().unwrap())
@@ -97,19 +129,45 @@ impl CaliptraBuilder {
         Ok(self.vendor_pk_hash.as_ref().unwrap())
     }
 
-    fn write_soc_manifest(runtime_path: &PathBuf) -> Result<PathBuf> {
+    fn get_mcu_manifest_metadata(runtime_path: &PathBuf) -> Result<AuthManifestImageMetadata> {
         const IMAGE_SOURCE_IN_REQUEST: u32 = 1;
         let data = std::fs::read(runtime_path).unwrap();
         let mut flags = ImageMetadataFlags(0);
         flags.set_image_source(IMAGE_SOURCE_IN_REQUEST);
         let crypto = Crypto::default();
         let digest = from_hw_format(&crypto.sha384_digest(&data)?);
-        let metadata = vec![AuthManifestImageMetadata {
+
+        Ok(AuthManifestImageMetadata {
             fw_id: 2,
             flags: flags.0,
             digest,
             ..Default::default()
-        }];
+        })
+    }
+
+    fn get_soc_manifest_metadata(
+        runtime_path: &PathBuf,
+        fw_id: u32,
+        load_address: Addr64,
+    ) -> Result<AuthManifestImageMetadata> {
+        const IMAGE_SOURCE_LOAD_ADDRESS: u32 = 2;
+        let data = std::fs::read(runtime_path).unwrap();
+        let mut flags = ImageMetadataFlags(0);
+        flags.set_ignore_auth_check(false);
+        flags.set_image_source(IMAGE_SOURCE_LOAD_ADDRESS);
+        let crypto = Crypto::default();
+        let digest = from_hw_format(&crypto.sha384_digest(&data)?);
+
+        Ok(AuthManifestImageMetadata {
+            fw_id,
+            flags: flags.0,
+            digest,
+            image_load_address: load_address,
+            ..Default::default()
+        })
+    }
+
+    fn write_soc_manifest(metadata: Vec<AuthManifestImageMetadata>) -> Result<PathBuf> {
         let manifest = Self::create_auth_manifest_with_metadata(metadata);
 
         let path = PROJECT_ROOT.join("target").join("soc-manifest");

@@ -50,6 +50,7 @@ use std::process::exit;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
+use tests::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
 use tests::pldm_request_response_test::PldmRequestResponseTest;
 
 #[derive(Parser)]
@@ -118,6 +119,9 @@ struct Emulator {
     /// Path to the streaming boot PLDM firmware package
     #[arg(long)]
     streaming_boot: Option<PathBuf>,
+
+    #[arg(long)]
+    flash_image: Option<PathBuf>,
 }
 
 //const EXPECTED_CALIPTRA_BOOT_TIME_IN_CYCLES: u64 = 20_000_000; // 20 million cycles
@@ -646,7 +650,31 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         // TODO: set caliptra SoC registers if active mode
     }
 
+    if cli.flash_image.is_some() {
+        const MAIN_FLASH_IMAGE_SIZE: usize = 1048576;
+        let flash_image_path = cli.flash_image.as_ref().unwrap();
+        println!("Loading flash image from {}", flash_image_path.display());
+
+        // Read the flash image file until the end or until MAIN_FLASH_IMAGE_SIZE bytes
+        let mut flash_image = vec![0; MAIN_FLASH_IMAGE_SIZE];
+        let mut file = File::open(flash_image_path)?;
+        let bytes_read = file.read(&mut flash_image)?;
+        if bytes_read > MAIN_FLASH_IMAGE_SIZE {
+            println!("Flash image size exceeds {} bytes", MAIN_FLASH_IMAGE_SIZE);
+            exit(-1);
+        }
+
+        // Write the flash image to the main flash controller file
+        let main_flash_file = "main_flash";
+
+        // open the file in write mode and dump the contents of the flash image, it should already exist
+        std::fs::write(main_flash_file, &flash_image[..bytes_read])?;
+    }
+
     if cli.streaming_boot.is_some() {
+        let _ = simple_logger::SimpleLogger::new()
+            .with_level(log::LevelFilter::Debug)
+            .init();
         let pldm_fw_pkg_path = cli.streaming_boot.as_ref().unwrap();
         println!(
             "Starting streaming boot using PLDM package {}",
@@ -667,7 +695,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         i3c_controller.start();
         let pldm_transport = MctpTransport::new(cli.i3c_port.unwrap(), i3c_dynamic_address);
         let pldm_socket = pldm_transport
-            .create_socket(EndpointId(0), EndpointId(1))
+            .create_socket(EndpointId(LOCAL_TEST_ENDPOINT_EID), EndpointId(1))
             .unwrap();
         let _ = PldmDaemon::run(
             pldm_socket,

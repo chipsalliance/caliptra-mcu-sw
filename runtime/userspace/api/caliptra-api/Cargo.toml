@@ -7,11 +7,29 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 caliptra-api.workspace = true
+caliptra-auth-man-types.workspace = true
 caliptra-error.workspace = true
-libtock_platform.workspace = true
-zerocopy.workspace = true
+embassy-executor.workspace = true
+embassy-sync.workspace = true
+libtockasync.workspace = true
 libsyscall-caliptra.workspace = true
+libtock_console.workspace = true
+libtock_platform.workspace = true
+libtock_runtime.workspace = true
+pldm-common.workspace = true
+pldm-lib.workspace = true
+zerocopy.workspace = true
+
+
+[target.'cfg(not(target_arch = "riscv32"))'.dependencies]
+libtock_unittest.workspace = true
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
+embedded-alloc.workspace = true
+
 
 [dev-dependencies]
 libtock_unittest.workspace = true

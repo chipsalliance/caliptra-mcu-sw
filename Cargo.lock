@@ -792,6 +792,7 @@ dependencies = [
  "caliptra-api",
  "capsules-core",
  "capsules-extra",
+ "dma-driver",
  "flash-driver",
  "i3c-driver",
  "kernel",
@@ -1516,6 +1517,7 @@ name = "example-app"
 version = "0.1.0"
 dependencies = [
  "caliptra-api",
+ "caliptra-auth-man-types",
  "caliptra-error",
  "critical-section",
  "embassy-executor",
@@ -1860,6 +1862,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
+name = "image-loader-app"
+version = "0.1.0"
+dependencies = [
+ "critical-section",
+ "embassy-executor",
+ "embassy-sync",
+ "embedded-alloc",
+ "libapi-caliptra",
+ "libsyscall-caliptra",
+ "libtock",
+ "libtock_console",
+ "libtock_debug_panic",
+ "libtock_platform",
+ "libtock_runtime",
+ "libtock_unittest",
+ "libtockasync",
+ "pldm-common",
+ "pldm-lib",
+ "portable-atomic",
+ "romtime",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1940,12 +1965,22 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 name = "libapi-caliptra"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "caliptra-api",
+ "caliptra-auth-man-types",
  "caliptra-error",
+ "embassy-executor",
+ "embassy-sync",
+ "embedded-alloc",
  "futures",
  "libsyscall-caliptra",
+ "libtock_console",
  "libtock_platform",
+ "libtock_runtime",
  "libtock_unittest",
+ "libtockasync",
+ "pldm-common",
+ "pldm-lib",
  "zerocopy 0.8.23",
 ]
 
@@ -2133,10 +2168,12 @@ dependencies = [
  "caliptra-image-fake-keys",
  "caliptra-image-gen",
  "caliptra-image-types",
+ "crc32fast",
  "elf",
  "emulator-consts",
  "hex",
  "semver",
+ "tempfile",
  "walkdir",
  "zerocopy 0.8.23",
 ]
@@ -2444,25 +2481,6 @@ dependencies = [
  "arrayvec",
  "cfg-if",
  "ufmt 0.2.0",
-]
-
-[[package]]
-name = "pldm-app"
-version = "0.1.0"
-dependencies = [
- "critical-section",
- "embassy-executor",
- "embedded-alloc",
- "libsyscall-caliptra",
- "libtock",
- "libtock_console",
- "libtock_debug_panic",
- "libtock_platform",
- "libtock_runtime",
- "libtock_unittest",
- "libtockasync",
- "pldm-lib",
- "portable-atomic",
 ]
 
 [[package]]
@@ -3194,7 +3212,11 @@ version = "0.1.0"
 name = "tests-integration"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "mcu-builder",
+ "pldm-fw-pkg",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]

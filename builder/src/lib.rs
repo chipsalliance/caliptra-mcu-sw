@@ -2,6 +2,7 @@
 
 mod apps;
 mod caliptra;
+pub mod flash_image;
 mod rom;
 mod runtime;
 mod tbf;
