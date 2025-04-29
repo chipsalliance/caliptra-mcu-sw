@@ -44,7 +44,7 @@ pub struct FlashImagePayload<'a> {
 }
 
 #[repr(C, packed)]
-#[derive(IntoBytes, FromBytes, Immutable)]
+#[derive(IntoBytes, FromBytes, Immutable, Debug)]
 pub struct FlashImageInfo {
     identifier: u32,
     image_offset: u32, // Location of the image in the flash as an offset from the header
@@ -114,11 +114,6 @@ impl<'a> FlashImage<'a> {
         if header.header_version != HEADER_VERSION {
             bail!("Unsupported header version");
         }
-
-        if header.image_count < 3 {
-            bail!("Expected at least 3 images");
-        }
-
         // Parse and verify checksums
         let checksum =
             FlashImageChecksum::read_from_bytes(&image[HEADER_SIZE..(HEADER_SIZE + CHECKSUM_SIZE)])
@@ -139,29 +134,7 @@ impl<'a> FlashImage<'a> {
             let offset = HEADER_SIZE + CHECKSUM_SIZE + (IMAGE_INFO_SIZE * i);
             let info = FlashImageInfo::read_from_bytes(&image[offset..offset + IMAGE_INFO_SIZE])
                 .map_err(|_| anyhow!("Failed to read image info"))?;
-            match i {
-                0 => {
-                    if info.identifier != CALIPTRA_FMC_RT_IDENTIFIER {
-                        bail!("Image 0 is not Caliptra Identifier");
-                    }
-                }
-                1 => {
-                    if info.identifier != SOC_MANIFEST_IDENTIFIER {
-                        bail!("Image 0 is not SOC Manifest Identifier");
-                    }
-                }
-                2 => {
-                    if info.identifier != MCU_RT_IDENTIFIER {
-                        bail!("Image 0 is not MCU RT Identifier");
-                    }
-                }
-                3..255 => {
-                    if info.identifier != (SOC_IMAGES_BASE_IDENTIFIER + (i as u32) - 3) {
-                        bail!("Invalid SOC image identifier");
-                    }
-                }
-                _ => bail!("Invalid image identifier"),
-            }
+            println!("{:?}", info);
         }
 
         println!("Image is valid!");
@@ -214,23 +187,32 @@ fn load_file(filename: &str) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
-pub(crate) fn flash_image_create(
-    caliptra_fw_path: &str,
-    soc_manifest_path: &str,
-    mcu_runtime_path: &str,
+pub fn flash_image_create(
+    caliptra_fw_path: &Option<String>,
+    soc_manifest_path: &Option<String>,
+    mcu_runtime_path: &Option<String>,
     soc_image_paths: &Option<Vec<String>>,
     output_path: &str,
 ) -> Result<()> {
     let mut images: Vec<FirmwareImage> = Vec::new();
 
-    let content = load_file(caliptra_fw_path)?;
-    images.push(FirmwareImage::new(CALIPTRA_FMC_RT_IDENTIFIER, &content)?);
+    let content;
+    if let Some(caliptra_fw_path) = caliptra_fw_path {
+        content = load_file(caliptra_fw_path)?;
+        images.push(FirmwareImage::new(CALIPTRA_FMC_RT_IDENTIFIER, &content)?);
+    }
 
-    let content = load_file(soc_manifest_path)?;
-    images.push(FirmwareImage::new(SOC_MANIFEST_IDENTIFIER, &content)?);
+    let content;
+    if let Some(soc_manifest_path) = soc_manifest_path {
+        content = load_file(soc_manifest_path)?;
+        images.push(FirmwareImage::new(SOC_MANIFEST_IDENTIFIER, &content)?);
+    }
 
-    let content = load_file(mcu_runtime_path)?;
-    images.push(FirmwareImage::new(MCU_RT_IDENTIFIER, &content)?);
+    let content;
+    if let Some(mcu_runtime_path) = mcu_runtime_path {
+        content = load_file(mcu_runtime_path)?;
+        images.push(FirmwareImage::new(MCU_RT_IDENTIFIER, &content)?);
+    }
 
     // Load SOC images into a buffer
     let mut soc_img_buffers: Vec<Vec<u8>> = Vec::new();
@@ -272,7 +254,7 @@ pub fn generate_image_info(images: Vec<FirmwareImage>) -> Vec<FlashImageInfo> {
     info
 }
 
-pub(crate) fn flash_image_verify(image_file_path: &str) -> Result<()> {
+pub fn flash_image_verify(image_file_path: &str) -> Result<()> {
     let mut file = File::open(image_file_path).map_err(|e| {
         Error::new(
             ErrorKind::NotFound,
@@ -294,7 +276,7 @@ pub(crate) fn flash_image_verify(image_file_path: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mcu_builder::PROJECT_ROOT;
+    use crate::PROJECT_ROOT;
     use std::fs::{self, File};
     use std::io::Write;
     use tempfile::NamedTempFile;
@@ -335,17 +317,14 @@ mod tests {
         ]);
 
         // Specify the output file path
-        let output_path = PROJECT_ROOT
-            .join("target")
-            .join("tmp")
-            .join("flash_image.bin");
-        let output_path = output_path.to_str().unwrap();
+        let output_file = NamedTempFile::new().expect("Failed to create temp file");
+        let output_path = output_file.path().to_str().unwrap();
 
         // Build the flash image
         flash_image_create(
-            caliptra_fw.path().to_str().unwrap(),
-            soc_manifest.path().to_str().unwrap(),
-            mcu_runtime.path().to_str().unwrap(),
+            &Some(caliptra_fw.path().to_str().unwrap().to_string()),
+            &Some(soc_manifest.path().to_str().unwrap().to_string()),
+            &Some(mcu_runtime.path().to_str().unwrap().to_string()),
             &soc_image_paths,
             output_path,
         )

@@ -94,14 +94,24 @@ impl DummyFlashCtrl {
     /// I/O processing delay in ticks
     pub const IO_START_DELAY: u64 = 200;
 
-    fn initialize_flash_storage(file: &mut File, size: usize) -> std::io::Result<()> {
-        let chunk = vec![0xFF; 1048576]; // 1MB chunk
+    fn initialize_flash_storage(
+        file: &mut File,
+        size: usize,
+        initial_content: Option<&[u8]>,
+    ) -> std::io::Result<()> {
         let mut remaining = size;
+        if let Some(content) = initial_content {
+            let write_size = std::cmp::min(size, content.len());
+            file.write_all(&content[..write_size])?;
+            remaining -= write_size;
+        }
+        let chunk = vec![0xff; 1048576]; // 1MB chunk
         while remaining > 0 {
             let write_size = std::cmp::min(remaining, chunk.len());
             file.write_all(&chunk[..write_size])?;
             remaining -= write_size;
         }
+
         Ok(())
     }
 
@@ -110,6 +120,7 @@ impl DummyFlashCtrl {
         file_name: Option<PathBuf>,
         error_irq: Irq,
         event_irq: Irq,
+        initial_content: Option<&[u8]>,
     ) -> Result<Self, std::io::Error> {
         let timer = Timer::new(clock);
         let file = if let Some(path) = file_name {
@@ -121,8 +132,8 @@ impl DummyFlashCtrl {
                 .open(&path)?;
 
             let capacity = DummyFlashCtrl::PAGE_SIZE * DummyFlashCtrl::MAX_PAGES as usize;
-            if file.metadata()?.len() < capacity as u64 {
-                DummyFlashCtrl::initialize_flash_storage(&mut file, capacity)?;
+            if file.metadata()?.len() < capacity as u64 || initial_content.is_some() {
+                DummyFlashCtrl::initialize_flash_storage(&mut file, capacity, initial_content)?;
             }
             Some(file)
         } else {
@@ -734,7 +745,14 @@ mod test {
         let file = file_path;
 
         let mut flash_controller = Box::new(
-            DummyFlashCtrl::new(clock, file, flash_ctrl_error_irq, flash_ctrl_event_irq).unwrap(),
+            DummyFlashCtrl::new(
+                clock,
+                file,
+                flash_ctrl_error_irq,
+                flash_ctrl_event_irq,
+                None,
+            )
+            .unwrap(),
         );
 
         if let Some(dma_ram) = dma_ram {

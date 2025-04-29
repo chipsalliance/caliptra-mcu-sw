@@ -18,6 +18,8 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         active_mode,
         vendor_pk_hash,
         streaming_boot,
+        soc_images,
+        flash_image,
     } = args
     else {
         panic!("Must call runtime_run with Commands::Runtime");
@@ -44,6 +46,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         soc_manifest,
         vendor_pk_hash,
         Some(tock_binary.clone()),
+        soc_images,
     );
 
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
@@ -93,6 +96,12 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         if i3c_port.is_none() {
             cargo_run_args.extend(["--i3c-port", "65534"]);
         }
+    }
+    if flash_image.as_ref().is_some() {
+        cargo_run_args.extend([
+            "--flash-image",
+            flash_image.as_ref().unwrap().to_str().unwrap(),
+        ]);
     }
     Command::new("cargo")
         .args(cargo_run_args)
