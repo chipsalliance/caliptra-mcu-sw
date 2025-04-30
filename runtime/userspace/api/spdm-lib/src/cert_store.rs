@@ -10,6 +10,8 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 use libapi_caliptra::error::CaliptraApiError;
 
+use core::fmt::Debug;
+
 pub const MAX_CERT_SLOTS_SUPPORTED: u8 = 2;
 pub const SPDM_CERT_CHAIN_METADATA_LEN: u16 =
     size_of::<SpdmCertChainHeader>() as u16 + SHA384_HASH_SIZE as u16;
@@ -26,7 +28,7 @@ pub enum CertStoreError {
 }
 pub type CertStoreResult<T> = Result<T, CertStoreError>;
 
-#[async_trait]
+#[async_trait(?Send)]
 pub trait SpdmCertStore {
     /// Get supported certificate slot count
     /// The supported slots are consecutive from 0 to slot_count - 1.
@@ -94,14 +96,14 @@ pub trait SpdmCertStore {
         cert_hash: &'a mut [u8; SHA384_HASH_SIZE],
     ) -> CertStoreResult<()>;
 
-    /// Get the leaf certificate key label
-    ///
-    /// # Arguments
-    /// * `slot_id` - The slot ID of the certificate chain.
-    ///
-    /// # Returns
-    /// * `Option<[u8; SHA384_HASH_SIZE]>` - The leaf certificate key label or None if not supported or not found.
-    fn leaf_cert_key_label(&self, slot_id: u8) -> Option<[u8; SHA384_HASH_SIZE]>;
+    // /// Get the leaf certificate key label
+    // ///
+    // /// # Arguments
+    // /// * `slot_id` - The slot ID of the certificate chain.
+    // ///
+    // /// # Returns
+    // /// * `Option<[u8; SHA384_HASH_SIZE]>` - The leaf certificate key label or None if not supported or not found.
+    // fn leaf_cert_key_label(&self, slot_id: u8) -> Option<[u8; SHA384_HASH_SIZE]>;
 
     /// Get the KeyPairID associated with the certificate chain if SPDM responder supports
     /// multiple assymmetric keys in connection.

@@ -18,6 +18,8 @@ use spdm_lib::context::SpdmContext;
 use spdm_lib::protocol::*;
 use spdm_lib::transport::{MctpTransport, SpdmTransport};
 
+use libsyscall_caliptra::DefaultSyscalls;
+
 // Caliptra supported SPDM versions
 const SPDM_VERSIONS: &[SpdmVersion] = &[
     SpdmVersion::V10,
@@ -109,6 +111,7 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
         },
     };
 
+    let mut app_console = Console::<DefaultSyscalls>::writer();
     let slot0_cert_chain = match DeviceCertChain::new(0).await {
         Ok(chain) => chain,
         Err(e) => {
@@ -119,7 +122,9 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
 
     let mut device_cert_store = DeviceCertStore {
         cert_chains: [Some(slot0_cert_chain), None],
+        cw: &mut app_console,
     };
+    let mut console = Console::<DefaultSyscalls>::writer();
 
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
@@ -127,6 +132,7 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
         local_capabilities,
         local_algorithms,
         &mut device_cert_store,
+        &mut console,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {

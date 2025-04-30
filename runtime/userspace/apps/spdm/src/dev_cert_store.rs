@@ -12,6 +12,11 @@ use spdm_lib::cert_store::{
 };
 use spdm_lib::protocol::{AsymAlgo, CertificateInfo, KeyPairID, KeyUsageMask, SHA384_HASH_SIZE};
 
+use core::fmt::Write;
+use libsyscall_caliptra::DefaultSyscalls;
+use libtock_console::ConsoleWriter;
+use romtime::println;
+
 const MAX_ROOT_CERT_CHAIN_LEN: usize = 1;
 
 #[derive(Debug)]
@@ -25,10 +30,13 @@ pub enum DevCertStoreError {
 
 pub type DevCertStoreResult<T> = Result<T, DevCertStoreError>;
 
+// #[derive(Debug)]
 pub struct DeviceCertStore<'a> {
     pub(crate) cert_chains: [Option<DeviceCertChain<'a>>; MAX_CERT_SLOTS_SUPPORTED as usize],
+    pub(crate) cw: &'a mut ConsoleWriter<DefaultSyscalls>,
 }
 
+#[derive(Debug)]
 pub struct CertBuf {
     pub buf: [u8; MAX_CERT_SIZE],
     pub size: usize,
@@ -39,6 +47,7 @@ pub struct CertState {
     dev_cert_chain_len: usize,
 }
 
+#[derive(Debug)]
 pub struct DeviceCertChain<'b> {
     slot_id: u8,
     root_cert_chain: &'b [&'b [u8]],
@@ -47,10 +56,14 @@ pub struct DeviceCertChain<'b> {
     // cert_state: CertState,
     leaf_cert: Option<CertBuf>,
     device_cert_chain_len: Option<usize>,
+    // cw: &'b mut ConsoleWriter<DefaultSyscalls>,
 }
 
 impl<'b> DeviceCertChain<'b> {
-    pub async fn new(slot_id: u8) -> DevCertStoreResult<Self> {
+    pub async fn new(
+        slot_id: u8,
+        // cw: &'b mut ConsoleWriter<DefaultSyscalls>,
+    ) -> DevCertStoreResult<Self> {
         if slot_id >= MAX_CERT_SLOTS_SUPPORTED {
             Err(DevCertStoreError::InvalidSlotId)?;
         }
@@ -63,10 +76,20 @@ impl<'b> DeviceCertChain<'b> {
             root_cert_chain_len += cert.len();
         }
 
+        // writeln!(
+        //     cw,
+        //     "CERT_STORE: root_cert_chain_len = {}",
+        //     root_cert_chain_len
+        // ).unwrap();
+
         let mut root_hash = [0; SHA384_HASH_SIZE];
         HashContext::hash_all(HashAlgoType::SHA384, &root_cert_chain[0], &mut root_hash)
             .await
             .map_err(DevCertStoreError::CaliptraApi)?;
+        // writeln!(
+        //     cw,
+        //     "CERT_STORE: root_hash computed",
+        // ).unwrap();
 
         if DPE_LEAF_CERT_LABELS[slot_id as usize].is_none() {
             return Err(DevCertStoreError::DpeLeafCertError);
@@ -77,12 +100,11 @@ impl<'b> DeviceCertChain<'b> {
         Ok(Self {
             slot_id,
             root_cert_chain,
-            // refresh_leaf_cert: true,
-            // leaf_cert: [0; MAX_CERT_SIZE],
             root_cert_hash: root_hash,
             root_cert_chain_len,
             leaf_cert: None,
             device_cert_chain_len: None,
+            // cw,
         })
     }
 
@@ -125,6 +147,11 @@ impl<'b> DeviceCertChain<'b> {
         let mut cert_chain_len = 0;
         let mut offset = 0;
         loop {
+            // writeln!(
+            //     self.cw,
+            //     "CERT_STORE: device_cert_chain_len = {}",
+            //     cert_chain_len
+            // ).unwrap();
             let size = self
                 .read_device_ecc_cert_chain(offset, &mut [0; MAX_CERT_SIZE])
                 .await?;
@@ -170,6 +197,7 @@ impl<'b> DeviceCertChain<'b> {
 
     async fn refresh_ecc_cert_chain(&mut self) -> CertStoreResult<(usize, usize, usize)> {
         let root_cert_chain_len = self.root_cert_chain_len;
+        // writeln!(self.cw, "CERT_STORE: root_cert_chain_len = {}", root_cert_chain_len).unwrap();
         let device_cert_chain_len = self.device_certchain_len().await?;
         let dpe_leaf_cert_len = self.refresh_dpe_leaf_cert().await?;
         Ok((
@@ -197,7 +225,7 @@ impl<'b> DeviceCertChain<'b> {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl<'b> SpdmCertStore for DeviceCertStore<'b> {
     fn slot_count(&self) -> u8 {
         MAX_CERT_SLOTS_SUPPORTED
@@ -210,7 +238,18 @@ impl<'b> SpdmCertStore for DeviceCertStore<'b> {
         self.cert_chains[slot_id as usize].is_some()
     }
 
-    async fn cert_chain_len(&mut self, asym_algo: AsymAlgo, slot_id: u8) -> CertStoreResult<usize> {
+    async fn cert_chain_len(
+        &mut self,
+        _asym_algo: AsymAlgo,
+        slot_id: u8,
+    ) -> CertStoreResult<usize> {
+        // writeln!(
+        //     self.cw,
+        //     "CERT_STORE: found cert_chain for slot {:?}",
+        //     slot_id
+        // )
+        // .unwrap();
+
         if slot_id >= self.slot_count() {
             return Err(CertStoreError::InvalidSlotId);
         }
@@ -220,6 +259,7 @@ impl<'b> SpdmCertStore for DeviceCertStore<'b> {
 
         let (root_cert_chain_len, device_cert_chain_len, dpe_leaf_cert_len) =
             cert_chain.refresh_ecc_cert_chain().await?;
+        // // println!("CERT_STORE: refreshed cert_chain for slot {:?}", slot_id);
 
         Ok(root_cert_chain_len + device_cert_chain_len + dpe_leaf_cert_len)
     }
@@ -309,20 +349,20 @@ impl<'b> SpdmCertStore for DeviceCertStore<'b> {
         Ok(())
     }
 
-    fn leaf_cert_key_label(&self, slot_id: u8) -> Option<[u8; SHA384_HASH_SIZE]> {
-        if slot_id >= self.slot_count() {
-            return None;
-        }
-        DPE_LEAF_CERT_LABELS
-            .get(slot_id as usize)
-            .and_then(|&label| {
-                label.map(|l_buf| {
-                    let mut key_label = [0; SHA384_HASH_SIZE];
-                    key_label.copy_from_slice(&l_buf[..SHA384_HASH_SIZE]);
-                    key_label
-                })
-            })
-    }
+    // fn leaf_cert_key_label(&self, slot_id: u8) -> Option<[u8; SHA384_HASH_SIZE]> {
+    //     if slot_id >= self.slot_count() {
+    //         return None;
+    //     }
+    //     DPE_LEAF_CERT_LABELS
+    //         .get(slot_id as usize)
+    //         .and_then(|&label| {
+    //             label.map(|l_buf| {
+    //                 let mut key_label = [0; SHA384_HASH_SIZE];
+    //                 key_label.copy_from_slice(&l_buf[..SHA384_HASH_SIZE]);
+    //                 key_label
+    //             })
+    //         })
+    // }
 
     fn key_pair_id(&self, slot_id: u8) -> Option<KeyPairID> {
         None

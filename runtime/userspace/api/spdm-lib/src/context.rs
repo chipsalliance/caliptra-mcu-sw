@@ -15,6 +15,9 @@ use crate::protocol::DeviceCapabilities;
 use crate::state::State;
 use crate::transport::SpdmTransport;
 
+use libsyscall_caliptra::DefaultSyscalls;
+use libtock_console::ConsoleWriter;
+
 pub struct SpdmContext<'a> {
     transport: &'a mut dyn SpdmTransport,
     pub(crate) supported_versions: &'a [SpdmVersion],
@@ -22,6 +25,7 @@ pub struct SpdmContext<'a> {
     pub(crate) local_capabilities: DeviceCapabilities,
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
     pub(crate) device_certs_store: &'a mut dyn SpdmCertStore,
+    pub(crate) cw: &'a mut ConsoleWriter<DefaultSyscalls>,
 }
 
 impl<'a> SpdmContext<'a> {
@@ -31,6 +35,7 @@ impl<'a> SpdmContext<'a> {
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
         device_certs_store: &'a mut dyn SpdmCertStore,
+        cw: &'a mut ConsoleWriter<DefaultSyscalls>,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -45,6 +50,7 @@ impl<'a> SpdmContext<'a> {
             local_capabilities,
             local_algorithms,
             device_certs_store,
+            cw,
         })
     }
 

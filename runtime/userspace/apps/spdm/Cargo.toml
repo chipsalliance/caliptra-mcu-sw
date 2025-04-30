@@ -20,6 +20,7 @@ libtock.workspace = true
 libtockasync.workspace = true
 portable-atomic.workspace = true
 spdm-lib.workspace = true
+romtime.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 libtock_unittest.workspace = true

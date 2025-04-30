@@ -3056,6 +3056,7 @@ dependencies = [
  "libtock_unittest",
  "libtockasync",
  "portable-atomic",
+ "romtime",
  "spdm-lib",
 ]
 

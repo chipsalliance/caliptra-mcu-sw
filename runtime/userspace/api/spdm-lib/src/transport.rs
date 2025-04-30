@@ -11,7 +11,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub type TransportResult<T> = Result<T, TransportError>;
 
-#[async_trait]
+#[async_trait(?Send)]
 pub trait SpdmTransport {
     async fn send_request<'a>(
         &mut self,
@@ -82,7 +82,7 @@ impl MctpTransport {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl SpdmTransport for MctpTransport {
     async fn send_request<'a>(
         &mut self,

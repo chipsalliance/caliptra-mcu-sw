@@ -9,7 +9,9 @@ use embedded_alloc::Heap;
 use libtock::console::Console;
 use libtock::runtime::{set_main, stack_size};
 
-const HEAP_SIZE: usize = 0xC0;
+use core::future::Future;
+
+const HEAP_SIZE: usize = 0x1000;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 

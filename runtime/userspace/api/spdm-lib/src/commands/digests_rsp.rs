@@ -39,14 +39,26 @@ impl CommonCodec for GetDigestsRespCommon {
 }
 
 async fn encode_cert_chain_digest<'a>(
+    ctx: &mut SpdmContext<'a>,
     slot_id: u8,
-    cert_store: &mut dyn SpdmCertStore,
+    // cert_store: &mut dyn SpdmCertStore,
     asym_algo: AsymAlgo,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<usize> {
-    let cert_chain_format_len = total_cert_chain_len(cert_store, asym_algo, slot_id)
+    let cert_store = &mut ctx.device_certs_store;
+    writeln!(
+        ctx.cw,
+        "SPDM_LIB: encode cert chain digest slot_id {} ",
+        slot_id
+    )
+    .unwrap();
+    let crt_chain_len = cert_store
+        .cert_chain_len(asym_algo, slot_id)
         .await
         .map_err(|e| (false, CommandError::CertStore(e)))?;
+
+    let cert_chain_format_len = crt_chain_len + 52; // 52 bytes for the header and root hash
+    writeln!(ctx.cw, "SPDM_LIB: encode cert chain digest {}", line!()).unwrap();
 
     let header = SpdmCertChainHeader {
         length: cert_chain_format_len as u16,
@@ -82,6 +94,7 @@ async fn encode_cert_chain_digest<'a>(
             .get_cert_chain(slot_id, asym_algo, offset, &mut cert_portion)
             .await
             .map_err(|e| (false, CommandError::CertStore(e)))?;
+        writeln!(ctx.cw, "SPDM_LIB: encode cert chain digest {}", line!()).unwrap();
 
         hash_ctx
             .update(&cert_portion[..bytes_read])
@@ -146,12 +159,13 @@ async fn fill_digests_response<'a>(
         .encode(rsp)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
+    // writeln!(ctx.cw, "SPDM_LIB: fill digests response slot mask {:x}", supported_slot_mask).unwrap();
+
     // Encode the certificate chain digests for each provisioned slot
     for slot_id in 0..slot_cnt {
-        payload_len +=
-            encode_cert_chain_digest(slot_id as u8, ctx.device_certs_store, asym_algo, rsp)
-                .await
-                .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
+        payload_len += encode_cert_chain_digest(ctx, slot_id as u8, asym_algo, rsp)
+            .await
+            .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
     }
 
     // Fill the multi-key connection response data if applicable
