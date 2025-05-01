@@ -5,7 +5,6 @@ extern crate alloc;
 use crate::error::{SpdmError, SpdmResult};
 use crate::protocol::algorithms::{AsymAlgo, SHA384_HASH_SIZE};
 use crate::protocol::certs::{CertificateInfo, KeyUsageMask};
-use crate::protocol::SpdmCertChainHeader;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use libapi_caliptra::error::CaliptraApiError;
@@ -13,8 +12,6 @@ use libapi_caliptra::error::CaliptraApiError;
 use core::fmt::Debug;
 
 pub const MAX_CERT_SLOTS_SUPPORTED: u8 = 2;
-pub const SPDM_CERT_CHAIN_METADATA_LEN: u16 =
-    size_of::<SpdmCertChainHeader>() as u16 + SHA384_HASH_SIZE as u16;
 
 #[derive(Debug)]
 pub enum CertStoreError {
@@ -155,13 +152,13 @@ pub(crate) fn cert_slot_mask(cert_store: &dyn SpdmCertStore) -> (u8, u8) {
     (supported_slot_mask, provisioned_slot_mask)
 }
 
-pub(crate) async fn total_cert_chain_len(
-    cert_store: &mut dyn SpdmCertStore,
-    asym_algo: AsymAlgo,
-    slot_id: u8,
-) -> CertStoreResult<u16> {
-    cert_store
-        .cert_chain_len(asym_algo, slot_id)
-        .await
-        .map(|len| len as u16 + SPDM_CERT_CHAIN_METADATA_LEN)
-}
+// pub(crate) async fn total_cert_chain_len(
+//     cert_store: &mut dyn SpdmCertStore,
+//     asym_algo: AsymAlgo,
+//     slot_id: u8,
+// ) -> CertStoreResult<u16> {
+//     cert_store
+//         .cert_chain_len(asym_algo, slot_id)
+//         .await
+//         .map(|len| len as u16 + SPDM_CERT_CHAIN_METADATA_LEN)
+// }

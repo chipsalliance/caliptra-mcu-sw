@@ -16,13 +16,13 @@ pub const APPS: &[App] = &[
     App {
         name: "spdm-app",
         permissions: vec![],
-        minimum_ram: 60 * 1024,
+        minimum_ram: 82 * 1024,
     },
-    App {
-        name: "pldm-app",
-        permissions: vec![],
-        minimum_ram: 20 * 1024,
-    },
+    // App {
+    //     name: "pldm-app",
+    //     permissions: vec![],
+    //     minimum_ram: 20 * 1024,
+    // },
 ];
 
 pub struct App {
@@ -178,7 +178,7 @@ fn app_build(
 /* Licensed under the Apache-2.0 license */
 TBF_HEADER_SIZE = 0x{:x};
 FLASH_START = 0x{:x};
-FLASH_LENGTH = 0x1B000;
+FLASH_LENGTH = 0x22000;
 RAM_START = 0x{:x};
 RAM_LENGTH = 0x{:x};
 INCLUDE runtime/userspace/apps/app_layout.ld",

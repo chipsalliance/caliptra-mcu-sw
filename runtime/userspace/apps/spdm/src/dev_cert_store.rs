@@ -42,28 +42,18 @@ pub struct CertBuf {
     pub size: usize,
 }
 
-pub struct CertState {
-    refresh_leaf_cert: bool,
-    dev_cert_chain_len: usize,
-}
-
 #[derive(Debug)]
-pub struct DeviceCertChain<'b> {
+pub struct DeviceCertChain<'a> {
     slot_id: u8,
-    root_cert_chain: &'b [&'b [u8]],
+    root_cert_chain: &'a [&'a [u8]],
     root_cert_hash: [u8; SHA384_HASH_SIZE],
     root_cert_chain_len: usize,
-    // cert_state: CertState,
     leaf_cert: Option<CertBuf>,
     device_cert_chain_len: Option<usize>,
-    // cw: &'b mut ConsoleWriter<DefaultSyscalls>,
 }
 
-impl<'b> DeviceCertChain<'b> {
-    pub async fn new(
-        slot_id: u8,
-        // cw: &'b mut ConsoleWriter<DefaultSyscalls>,
-    ) -> DevCertStoreResult<Self> {
+impl<'a> DeviceCertChain<'a> {
+    pub async fn new(slot_id: u8) -> DevCertStoreResult<Self> {
         if slot_id >= MAX_CERT_SLOTS_SUPPORTED {
             Err(DevCertStoreError::InvalidSlotId)?;
         }
@@ -76,20 +66,10 @@ impl<'b> DeviceCertChain<'b> {
             root_cert_chain_len += cert.len();
         }
 
-        // writeln!(
-        //     cw,
-        //     "CERT_STORE: root_cert_chain_len = {}",
-        //     root_cert_chain_len
-        // ).unwrap();
-
         let mut root_hash = [0; SHA384_HASH_SIZE];
         HashContext::hash_all(HashAlgoType::SHA384, &root_cert_chain[0], &mut root_hash)
             .await
             .map_err(DevCertStoreError::CaliptraApi)?;
-        // writeln!(
-        //     cw,
-        //     "CERT_STORE: root_hash computed",
-        // ).unwrap();
 
         if DPE_LEAF_CERT_LABELS[slot_id as usize].is_none() {
             return Err(DevCertStoreError::DpeLeafCertError);
@@ -104,7 +84,6 @@ impl<'b> DeviceCertChain<'b> {
             root_cert_chain_len,
             leaf_cert: None,
             device_cert_chain_len: None,
-            // cw,
         })
     }
 
@@ -147,11 +126,6 @@ impl<'b> DeviceCertChain<'b> {
         let mut cert_chain_len = 0;
         let mut offset = 0;
         loop {
-            // writeln!(
-            //     self.cw,
-            //     "CERT_STORE: device_cert_chain_len = {}",
-            //     cert_chain_len
-            // ).unwrap();
             let size = self
                 .read_device_ecc_cert_chain(offset, &mut [0; MAX_CERT_SIZE])
                 .await?;
@@ -197,7 +171,6 @@ impl<'b> DeviceCertChain<'b> {
 
     async fn refresh_ecc_cert_chain(&mut self) -> CertStoreResult<(usize, usize, usize)> {
         let root_cert_chain_len = self.root_cert_chain_len;
-        // writeln!(self.cw, "CERT_STORE: root_cert_chain_len = {}", root_cert_chain_len).unwrap();
         let device_cert_chain_len = self.device_certchain_len().await?;
         let dpe_leaf_cert_len = self.refresh_dpe_leaf_cert().await?;
         Ok((
@@ -205,23 +178,6 @@ impl<'b> DeviceCertChain<'b> {
             device_cert_chain_len,
             dpe_leaf_cert_len,
         ))
-    }
-
-    async fn total_cert_chain_len(&mut self) -> CertStoreResult<usize> {
-        let root_cert_chain_len = self.root_cert_chain_len;
-        let device_cert_chain_len = self.device_certchain_len().await?;
-        let dpe_leaf_cert_len = self.refresh_dpe_leaf_cert().await?;
-
-        let (device_cert_chain_len, dpe_leaf_cert_len) =
-            match (self.device_cert_chain_len, self.leaf_cert.as_ref()) {
-                (Some(device_cert_len), Some(leaf_cert)) => (device_cert_len, leaf_cert.size),
-                _ => {
-                    let (_, device_cert_len, leaf_cert_len) = self.refresh_ecc_cert_chain().await?;
-                    (device_cert_len, leaf_cert_len)
-                }
-            };
-
-        Ok(root_cert_chain_len + device_cert_chain_len + dpe_leaf_cert_len)
     }
 }
 
@@ -243,13 +199,6 @@ impl<'b> SpdmCertStore for DeviceCertStore<'b> {
         _asym_algo: AsymAlgo,
         slot_id: u8,
     ) -> CertStoreResult<usize> {
-        // writeln!(
-        //     self.cw,
-        //     "CERT_STORE: found cert_chain for slot {:?}",
-        //     slot_id
-        // )
-        // .unwrap();
-
         if slot_id >= self.slot_count() {
             return Err(CertStoreError::InvalidSlotId);
         }
@@ -259,7 +208,6 @@ impl<'b> SpdmCertStore for DeviceCertStore<'b> {
 
         let (root_cert_chain_len, device_cert_chain_len, dpe_leaf_cert_len) =
             cert_chain.refresh_ecc_cert_chain().await?;
-        // // println!("CERT_STORE: refreshed cert_chain for slot {:?}", slot_id);
 
         Ok(root_cert_chain_len + device_cert_chain_len + dpe_leaf_cert_len)
     }
@@ -291,6 +239,12 @@ impl<'b> SpdmCertStore for DeviceCertStore<'b> {
                 (device_cert_len, leaf_cert_len)
             }
         };
+        writeln!(
+            self.cw,
+            "CERT_STORE: root_cert_chain_len {} device_cert_chain_len {} dpe_leaf_cert_len {} ",
+            root_cert_chain_len, device_cert_chain_len, dpe_leaf_cert_len
+        )
+        .unwrap();
 
         let total_cert_chain_len = root_cert_chain_len + device_cert_chain_len + dpe_leaf_cert_len;
 
@@ -302,8 +256,11 @@ impl<'b> SpdmCertStore for DeviceCertStore<'b> {
         let mut cert_chain_offset = offset;
         let mut pos = 0;
 
+        let mut cert_type = 0;
+
         while to_read > 0 {
             if cert_chain_offset < root_cert_chain_len {
+                cert_type = 1;
                 let cert_offset = cert_chain_offset;
                 let len = cert_chain
                     .read_root_cert_chain(cert_offset, &mut cert_portion[pos..pos + to_read])?;
@@ -311,6 +268,7 @@ impl<'b> SpdmCertStore for DeviceCertStore<'b> {
                 cert_chain_offset += len;
                 pos += len;
             } else if cert_chain_offset < root_cert_chain_len + device_cert_chain_len {
+                cert_type = 2;
                 let cert_offset = cert_chain_offset - root_cert_chain_len;
                 let len = cert_chain
                     .read_device_ecc_cert_chain(cert_offset, &mut cert_portion[pos..pos + to_read])
@@ -319,6 +277,7 @@ impl<'b> SpdmCertStore for DeviceCertStore<'b> {
                 cert_chain_offset += len;
                 pos += len;
             } else {
+                cert_type = 3;
                 let cert_offset = cert_chain_offset - root_cert_chain_len - device_cert_chain_len;
                 let len = cert_chain
                     .read_dpe_leaf_cert(cert_offset, &mut cert_portion[pos..pos + to_read])?;
@@ -326,6 +285,12 @@ impl<'b> SpdmCertStore for DeviceCertStore<'b> {
                 cert_chain_offset += len;
                 pos += len;
             }
+            writeln!(
+                self.cw,
+                "CERT_STORE: offset {} buf len {} cert_chain_offset:{} cert_type {} to_read {:?} pos {:?}", offset, cert_portion.len(),
+                cert_chain_offset, cert_type, to_read, pos
+            )
+            .unwrap();
         }
 
         Ok(pos)
@@ -334,7 +299,7 @@ impl<'b> SpdmCertStore for DeviceCertStore<'b> {
     async fn root_cert_hash<'a>(
         &mut self,
         slot_id: u8,
-        asym_algo: AsymAlgo,
+        _asym_algo: AsymAlgo,
         cert_hash: &'a mut [u8; SHA384_HASH_SIZE],
     ) -> CertStoreResult<()> {
         if slot_id >= self.slot_count() {

@@ -11,11 +11,11 @@ use libtock::runtime::{set_main, stack_size};
 
 use core::future::Future;
 
-const HEAP_SIZE: usize = 0x1000;
+const HEAP_SIZE: usize = 0x9000;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-stack_size! {0x9000}
+stack_size! {0x8000}
 set_main! {main}
 
 fn main() {

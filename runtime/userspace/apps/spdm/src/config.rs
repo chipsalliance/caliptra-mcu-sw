@@ -85,12 +85,12 @@ pub static SLOT0_ECC_DEVID_CERT_DER: [u8; 542] = [
     0xbe, 0xc7, 0xe1, 0xbd, 0xd5, 0xdf, 0x1a, 0x16, 0xeb, 0xbe, 0xf2, 0xd0, 0x89, 0xe1,
 ];
 
-pub const SLOT0_ECC_ROOT_CERT_CHAIN: &[&[u8]] = &[&SLOT0_ECC_TEST_ROOT_CA_CERT_DER];
-pub const ROOT_CERT_CHAINS: [Option<&[&[u8]]>; MAX_CERT_SLOTS_SUPPORTED as usize] =
+pub static SLOT0_ECC_ROOT_CERT_CHAIN: &[&[u8]] = &[&SLOT0_ECC_TEST_ROOT_CA_CERT_DER];
+pub static ROOT_CERT_CHAINS: [Option<&[&[u8]]>; MAX_CERT_SLOTS_SUPPORTED as usize] =
     [Some(SLOT0_ECC_ROOT_CERT_CHAIN), None];
 
-pub const IDEV_CERTS: [Option<&[u8]>; MAX_CERT_SLOTS_SUPPORTED as usize] =
+pub static IDEV_CERTS: [Option<&[u8]>; MAX_CERT_SLOTS_SUPPORTED as usize] =
     [Some(&SLOT0_ECC_DEVID_CERT_DER), None];
 
-pub const DPE_LEAF_CERT_LABELS: [Option<&[u8]>; MAX_CERT_SLOTS_SUPPORTED as usize] =
+pub static DPE_LEAF_CERT_LABELS: [Option<&[u8]>; MAX_CERT_SLOTS_SUPPORTED as usize] =
     [Some(&SLOT0_DPE_LEAF_CERT_LABEL), None];

@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::cert_store::{cert_slot_mask, total_cert_chain_len, SpdmCertStore};
+use crate::cert_store::cert_slot_mask;
 use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
@@ -8,6 +8,7 @@ use crate::error::{CommandError, CommandResult};
 use crate::protocol::common::SpdmMsgHdr;
 use crate::protocol::{
     AsymAlgo, CertificateInfo, KeyUsageMask, SpdmCertChainHeader, SpdmVersion, SHA384_HASH_SIZE,
+    SPDM_CERT_CHAIN_METADATA_LEN, SPDM_MAX_CERT_CHAIN_PORTION_LEN,
 };
 use crate::state::ConnectionState;
 use core::mem::size_of;
@@ -46,19 +47,18 @@ async fn encode_cert_chain_digest<'a>(
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<usize> {
     let cert_store = &mut ctx.device_certs_store;
-    writeln!(
-        ctx.cw,
-        "SPDM_LIB: encode cert chain digest slot_id {} ",
-        slot_id
-    )
-    .unwrap();
     let crt_chain_len = cert_store
         .cert_chain_len(asym_algo, slot_id)
         .await
         .map_err(|e| (false, CommandError::CertStore(e)))?;
 
-    let cert_chain_format_len = crt_chain_len + 52; // 52 bytes for the header and root hash
-    writeln!(ctx.cw, "SPDM_LIB: encode cert chain digest {}", line!()).unwrap();
+    let cert_chain_format_len = crt_chain_len + SPDM_CERT_CHAIN_METADATA_LEN as usize;
+    writeln!(
+        ctx.cw,
+        "SPDM_LIB: DGST cert chain len {}",
+        cert_chain_format_len
+    )
+    .unwrap();
 
     let header = SpdmCertChainHeader {
         length: cert_chain_format_len as u16,
@@ -67,6 +67,7 @@ async fn encode_cert_chain_digest<'a>(
 
     // Length and reserved fields
     let header_bytes = header.as_bytes();
+    writeln!(ctx.cw, "SPDM_LIB: DGST header bytes {:?}", header_bytes).unwrap();
     let mut hash_ctx = HashContext::new();
     hash_ctx
         .init(HashAlgoType::SHA384, Some(header_bytes))
@@ -80,13 +81,15 @@ async fn encode_cert_chain_digest<'a>(
         .root_cert_hash(slot_id, asym_algo, &mut root_hash)
         .await
         .map_err(|e| (false, CommandError::CertStore(e)))?;
+    writeln!(ctx.cw, "SPDM_LIB: DGST root hash {:?}", root_hash).unwrap();
+    // Hash the root certificate
     hash_ctx
         .update(&root_hash)
         .await
         .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
 
     // Hash the certificate chain
-    let mut cert_portion = [0u8; 1024];
+    let mut cert_portion = [0u8; SPDM_MAX_CERT_CHAIN_PORTION_LEN as usize];
     let mut offset = 0;
 
     loop {
@@ -94,7 +97,6 @@ async fn encode_cert_chain_digest<'a>(
             .get_cert_chain(slot_id, asym_algo, offset, &mut cert_portion)
             .await
             .map_err(|e| (false, CommandError::CertStore(e)))?;
-        writeln!(ctx.cw, "SPDM_LIB: encode cert chain digest {}", line!()).unwrap();
 
         hash_ctx
             .update(&cert_portion[..bytes_read])
@@ -147,6 +149,7 @@ async fn fill_digests_response<'a>(
     }
 
     // Start filling the response payload
+    let exp_payload_len = size_of::<GetDigestsRespCommon>() + (slot_cnt * SHA384_HASH_SIZE);
     let mut payload_len = 0;
 
     // Fill the response header with param1 and param2
@@ -158,8 +161,6 @@ async fn fill_digests_response<'a>(
     payload_len += dgst_rsp_common
         .encode(rsp)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
-
-    // writeln!(ctx.cw, "SPDM_LIB: fill digests response slot mask {:x}", supported_slot_mask).unwrap();
 
     // Encode the certificate chain digests for each provisioned slot
     for slot_id in 0..slot_cnt {
@@ -177,9 +178,9 @@ async fn fill_digests_response<'a>(
     rsp.push_data(payload_len)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
-    // if exp_payload_len != payload_len {
-    //     Err(ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
-    // }
+    if exp_payload_len != payload_len {
+        Err(ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
+    }
 
     Ok(())
 }
