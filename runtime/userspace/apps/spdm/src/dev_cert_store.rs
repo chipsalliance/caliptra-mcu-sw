@@ -15,15 +15,10 @@ use spdm_lib::protocol::{AsymAlgo, CertificateInfo, KeyPairID, KeyUsageMask, SHA
 use core::fmt::Write;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::ConsoleWriter;
-use romtime::println;
-
-const MAX_ROOT_CERT_CHAIN_LEN: usize = 1;
 
 #[derive(Debug)]
 pub enum DevCertStoreError {
     InvalidSlotId,
-    InvalidCertChain,
-    RootCertChainError,
     DpeLeafCertError,
     CaliptraApi(CaliptraApiError),
 }
@@ -127,10 +122,10 @@ impl<'a> DeviceCertChain<'a> {
         let mut offset = 0;
         loop {
             let size = self
-                .read_device_ecc_cert_chain(offset, &mut [0; MAX_CERT_SIZE])
+                .read_device_ecc_cert_chain(offset, &mut [0; 512])
                 .await?;
             offset += size;
-            if size < MAX_CERT_SIZE {
+            if size < 512 {
                 cert_chain_len += offset;
                 break;
             }

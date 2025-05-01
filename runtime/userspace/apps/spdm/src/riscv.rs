@@ -11,7 +11,7 @@ use libtock::runtime::{set_main, stack_size};
 
 use core::future::Future;
 
-const HEAP_SIZE: usize = 0x9000;
+const HEAP_SIZE: usize = 0x6000;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 

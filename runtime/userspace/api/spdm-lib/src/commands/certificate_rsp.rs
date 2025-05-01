@@ -204,22 +204,22 @@ async fn encode_certchain_metadata<'a>(
 
     // Read the root cert hash next
     let mut root_hash_buf = [0u8; SHA384_HASH_SIZE];
-    // let root_hash_buf: &mut [u8; SHA384_HASH_SIZE] = &mut certchain_metadata
-    //     [cert_chain_hdr_bytes.len()..]
-    //     .try_into()
-    //     .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
     let _ = cert_store
         .root_cert_hash(slot_id, asym_algo, &mut root_hash_buf)
         .await
         .map_err(|e| (false, CommandError::CertStore(e)))?;
 
-    certchain_metadata[cert_chain_hdr_bytes.len()..]
-        .copy_from_slice(&root_hash_buf[..]);
+    certchain_metadata[cert_chain_hdr_bytes.len()..].copy_from_slice(&root_hash_buf[..]);
 
     let write_len = (SPDM_CERT_CHAIN_METADATA_LEN - offset as u16).min(length as u16) as usize;
 
-    writeln!(ctx.cw, "SPDM_LIB: CERT root_hash_buf: {:x?} certchain_metadata {:x?} write len {}", root_hash_buf,  certchain_metadata, write_len).unwrap();
+    writeln!(
+        ctx.cw,
+        "SPDM_LIB: CERT root_hash_buf: {:x?} certchain_metadata {:x?} write len {}",
+        root_hash_buf, certchain_metadata, write_len
+    )
+    .unwrap();
 
     rsp.put_data(write_len)
         .map_err(|e| (false, CommandError::Codec(e)))?;
