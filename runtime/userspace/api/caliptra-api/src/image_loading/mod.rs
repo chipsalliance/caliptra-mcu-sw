@@ -1,4 +1,5 @@
 // Licensed under the Apache-2.0 license
+
 extern crate alloc;
 mod flash_client;
 mod pldm_client;
@@ -12,11 +13,12 @@ use caliptra_api::mailbox::{
 };
 use caliptra_auth_man_types::ImageMetadataFlags;
 use embassy_executor::Spawner;
-use libsyscall_caliptra::flash::{driver_num, SpiFlash as FlashSyscall};
+use libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
 use libsyscall_caliptra::{dma::AXIAddr, mailbox::Mailbox};
 use libtock_platform::ErrorCode;
 use libtockasync::TockExecutor;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
+use pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use pldm_common::protocol::firmware_update::Descriptor;
 use pldm_lib::daemon::PldmService;
 use zerocopy::{FromBytes, IntoBytes};
@@ -28,7 +30,7 @@ pub struct PldmInstance<'a> {
     pub executor: TockExecutor,
 }
 
-pub struct ImageLoaderAPI {
+pub struct ImageLoader {
     mailbox: Mailbox,
     flash: FlashSyscall,
     source: ImageSource,
@@ -36,7 +38,7 @@ pub struct ImageLoaderAPI {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PldmDeviceParams {
+pub struct PldmFirmwareDeviceParams {
     pub descriptors: &'static [Descriptor],
     pub fw_params: &'static FirmwareParameters,
 }
@@ -47,23 +49,24 @@ pub enum ImageSource {
     Flash,
     // Image is retrieved via PLDM
     // PLDM Descriptors should be specified.
-    Pldm(PldmDeviceParams),
+    Pldm(PldmFirmwareDeviceParams),
 }
 
-impl ImageLoaderAPI {
-    /// Creates a new instance of the ImageLoaderAPI.
+impl ImageLoader {
+    /// Creates a new instance of the ImageLoader.
     ///
     /// # Parameters
-    /// image_id: The unsigned integer identifier of the image to be loaded.
+    /// source: The source of the image to be loaded. It can be either Flash or PLDM.
+    /// flash_syscall: The syscall interface for the flash partition.
     /// spawner: The executor's spawner to be used to spawn tasks.
     ///
     /// # Returns
     /// - `Ok()`: Image has been loaded and authorized succesfully.
     /// - `Err(ErrorCode)`: Indication of the failure to load or authorize the image.
-    pub fn new(source: ImageSource, spawner: Spawner) -> Self {
+    pub fn new(source: ImageSource, flash_syscall: FlashSyscall, spawner: Spawner) -> Self {
         Self {
             mailbox: Mailbox::new(),
-            flash: FlashSyscall::new(driver_num::ACTIVE_IMAGE_PARTITION),
+            flash: flash_syscall,
             source,
             spawner,
         }
@@ -97,11 +100,21 @@ impl ImageLoaderAPI {
             }
 
             ImageSource::Pldm(params) => {
-                pldm_client::initialize_pldm(self.spawner, params.descriptors, params.fw_params)
+                let result = {
+                    pldm_client::initialize_pldm(
+                        self.spawner,
+                        params.descriptors,
+                        params.fw_params,
+                    )
                     .await?;
-                let (offset, size) = pldm_client::pldm_download_toc(image_id).await?;
-                pldm_client::pldm_download_image(load_address, offset, size).await?;
-                self.authorize_image(image_id, size).await?;
+                    let (offset, size) = pldm_client::pldm_download_toc(image_id).await?;
+                    pldm_client::pldm_download_image(load_address, offset, size).await?;
+                    self.authorize_image(image_id, size).await
+                };
+                if result.is_err() {
+                    self.finalize().await?;
+                    return Err(ErrorCode::Fail);
+                }
             }
         }
         Ok(())
@@ -171,7 +184,7 @@ impl ImageLoaderAPI {
 
     pub async fn finalize(&self) -> Result<(), ErrorCode> {
         if let ImageSource::Pldm(_) = self.source {
-            return pldm_client::finalize().await;
+            return pldm_client::finalize(VerifyResult::VerifySuccess).await;
         }
         Ok(())
     }

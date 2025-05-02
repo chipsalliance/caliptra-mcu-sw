@@ -63,7 +63,9 @@ enum Commands {
         #[arg(long)]
         streaming_boot: Option<PathBuf>,
 
-        #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = true)]
+        /// List of SoC images with format: <path>,<load_addr>,<image_id>
+        /// Example: --soc_image image1.bin,0x80000000,2
+        #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
         soc_images: Option<Vec<SocImage>>,
 
         /// Path to the Flash image to be used in streaming boot

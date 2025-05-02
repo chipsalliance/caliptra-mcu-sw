@@ -8,6 +8,8 @@
 mod config;
 
 use core::fmt::Write;
+#[allow(unused)]
+use libsyscall_caliptra::flash::{driver_num, SpiFlash};
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
 use libtockasync::TockExecutor;
@@ -19,7 +21,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 #[allow(unused)]
-use libapi_caliptra::image_loading::{ImageLoaderAPI, ImageSource, PldmDeviceParams};
+use libapi_caliptra::image_loading::{ImageLoader, ImageSource, PldmFirmwareDeviceParams};
 use libsyscall_caliptra::DefaultSyscalls;
 #[allow(unused)]
 use pldm_lib::firmware_device::fd_ops_mock::FdOpsObject;
@@ -94,12 +96,16 @@ pub async fn image_loading() -> Result<(), ErrorCode> {
     writeln!(console_writer, "IMAGE_LOADER_APP: Hello async world!").unwrap();
     #[cfg(feature = "test-pldm-streaming-boot")]
     {
-        let fw_params = PldmDeviceParams {
+        let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::streaming_boot_consts::DESCRIPTOR.get()[..],
             fw_params: config::streaming_boot_consts::STREAMING_BOOT_FIRMWARE_PARAMS.get(),
         };
-        let pldm_image_loader: ImageLoaderAPI =
-            ImageLoaderAPI::new(ImageSource::Pldm(fw_params), EXECUTOR.get().spawner());
+        let flash_syscall = SpiFlash::new(driver_num::ACTIVE_IMAGE_PARTITION);
+        let pldm_image_loader: ImageLoader = ImageLoader::new(
+            ImageSource::Pldm(fw_params),
+            flash_syscall,
+            EXECUTOR.get().spawner(),
+        );
         pldm_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
             .await?;
@@ -108,10 +114,11 @@ pub async fn image_loading() -> Result<(), ErrorCode> {
             .await?;
         pldm_image_loader.finalize().await?;
     }
-    #[cfg(feature = "test-flash-streaming-boot")]
+    #[cfg(feature = "test-flash-based-boot")]
     {
-        let flash_image_loader: ImageLoaderAPI =
-            ImageLoaderAPI::new(ImageSource::Flash, EXECUTOR.get().spawner());
+        let flash_syscall = SpiFlash::new(driver_num::ACTIVE_IMAGE_PARTITION);
+        let flash_image_loader: ImageLoader =
+            ImageLoader::new(ImageSource::Flash, flash_syscall, EXECUTOR.get().spawner());
         flash_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
             .await?;

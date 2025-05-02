@@ -3,6 +3,7 @@
 extern crate alloc;
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use libsyscall_caliptra::DefaultSyscalls;
 use pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use pldm_common::message::firmware_update::get_status::ProgressPercent;
 use pldm_common::message::firmware_update::transfer_complete::TransferResult;
@@ -12,6 +13,8 @@ use pldm_common::{
     message::firmware_update::get_fw_params::FirmwareParameters,
     protocol::firmware_update::{ComponentResponseCode, Descriptor, PldmFdTime},
 };
+
+use crate::timer::AsyncAlarm;
 
 #[derive(Debug)]
 pub enum FdOpsError {
@@ -201,5 +204,7 @@ pub trait FdOps {
     /// # Returns
     ///
     /// * `PldmFdTime` - The current timestamp in milliseconds.
-    async fn now(&self) -> PldmFdTime;
+    async fn now(&self) -> PldmFdTime {
+        AsyncAlarm::<DefaultSyscalls>::get_milliseconds().unwrap()
+    }
 }

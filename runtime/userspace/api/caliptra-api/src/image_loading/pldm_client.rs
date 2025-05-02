@@ -1,4 +1,5 @@
 // Licensed under the Apache-2.0 license
+
 extern crate alloc;
 use crate::flash_image::{FlashChecksums, FlashHeader, ImageHeader};
 use crate::image_loading::pldm_context::State;
@@ -13,6 +14,7 @@ use libsyscall_caliptra::dma::AXIAddr;
 use libtock_platform::ErrorCode;
 
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
+use pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use pldm_common::protocol::firmware_update::Descriptor;
 use pldm_lib::daemon::PldmService;
 use pldm_lib::firmware_device::fd_ops::FdOps;
@@ -197,10 +199,11 @@ pub async fn initialize_pldm(
     Ok(())
 }
 
-pub async fn finalize() -> Result<(), ErrorCode> {
+pub async fn finalize(verify_result: VerifyResult) -> Result<(), ErrorCode> {
     DOWNLOAD_CTX.lock(|ctx| {
         let mut ctx = ctx.borrow_mut();
         ctx.download_complete = true;
+        ctx.verify_result = verify_result;
     });
     PLDM_TASK_YIELD.signal(());
     Ok(())

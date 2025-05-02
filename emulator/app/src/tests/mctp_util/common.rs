@@ -135,7 +135,7 @@ impl MctpUtil {
         let mut i3c_state = I3cControllerState::Start;
         let msg_type = msg[0];
 
-        let mut retry = 20;
+        let mut retry = 30;
 
         while running.load(Ordering::Relaxed) && retry > 0 {
             match i3c_state {

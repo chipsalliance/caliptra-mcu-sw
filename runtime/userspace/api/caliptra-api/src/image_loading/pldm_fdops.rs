@@ -4,6 +4,7 @@ extern crate alloc;
 
 use super::pldm_client::{IMAGE_LOADING_TASK_YIELD, PLDM_TASK_YIELD};
 use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
+use crate::flash_image::{FlashChecksums, FlashHeader, ImageHeader};
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use libsyscall_caliptra::dma::{AXIAddr, DMASource, DMATransaction, DMA as DMASyscall};
@@ -14,7 +15,7 @@ use pldm_common::message::firmware_update::request_fw_data::RequestFirmwareDataR
 use pldm_common::message::firmware_update::transfer_complete::TransferResult;
 use pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use pldm_common::protocol::firmware_update::{
-    ComponentResponseCode, Descriptor, PldmFdTime, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
+    ComponentResponseCode, Descriptor, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
 };
 use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
@@ -118,17 +119,47 @@ impl FdOps for StreamingFdOps {
 
     async fn handle_component(
         &self,
-        _component: &FirmwareComponent,
+        component: &FirmwareComponent,
         _fw_params: &FirmwareParameters,
         _op: ComponentOperation,
     ) -> Result<ComponentResponseCode, FdOpsError> {
-        // Always return success response code for stub
-        Ok(ComponentResponseCode::CompCanBeUpdated)
-    }
+        if self.fw_params.params_fixed.comp_count < 1 {
+            return Err(FdOpsError::ComponentError);
+        }
+        // For streaming boot, there's only one component
+        let expected_comp = &self.fw_params.comp_param_table[0];
+        if component.comp_classification != expected_comp.comp_param_entry_fixed.comp_classification
+        {
+            return Err(FdOpsError::ComponentError);
+        }
+        if component.comp_identifier != expected_comp.comp_param_entry_fixed.comp_identifier {
+            return Err(FdOpsError::ComponentError);
+        }
+        if component.comp_classification_index
+            != expected_comp
+                .comp_param_entry_fixed
+                .comp_classification_index
+        {
+            return Err(FdOpsError::ComponentError);
+        }
+        if component.comp_comparison_stamp
+            < expected_comp
+                .comp_param_entry_fixed
+                .active_comp_comparison_stamp
+        {
+            return Err(FdOpsError::ComponentError);
+        }
+        if let Some(size) = component.comp_image_size {
+            if size
+                < (core::mem::size_of::<ImageHeader>()
+                    + core::mem::size_of::<FlashChecksums>()
+                    + core::mem::size_of::<FlashHeader>()) as u32
+            {
+                return Err(FdOpsError::ComponentError);
+            }
+        }
 
-    async fn now(&self) -> PldmFdTime {
-        // Return a dummy timestamp (e.g., 123456 ms)
-        PldmFdTime::from_le(123_456)
+        Ok(ComponentResponseCode::CompCanBeUpdated)
     }
 
     async fn query_download_offset_and_length(
@@ -219,8 +250,12 @@ impl FdOps for StreamingFdOps {
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
     ) -> Result<VerifyResult, FdOpsError> {
+        // For streaming boot, the firmware images are verified during DOWNLOAD state.
+        // This verify function is called when the device is in the VERIFY PLDM state (after DOWNLOAD state).
+        // Therefore, since images have already been verified, at this stage, we return 100% progress.
         *progress_percent = ProgressPercent::new(100).unwrap();
-        Ok(VerifyResult::VerifySuccess)
+        let verify_result = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().verify_result);
+        Ok(verify_result)
     }
 
     async fn apply(
@@ -228,6 +263,7 @@ impl FdOps for StreamingFdOps {
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
     ) -> Result<ApplyResult, FdOpsError> {
+        // For streaming boot, apply is not applicable, so we return 100% progress.
         *progress_percent = ProgressPercent::new(100).unwrap();
         Ok(ApplyResult::ApplySuccess)
     }
@@ -238,6 +274,7 @@ impl FdOps for StreamingFdOps {
         estimated_time: &mut u16,
     ) -> Result<u8, FdOpsError> {
         *estimated_time = 0;
+        // Activate is not applicable for streaming boot, so we return success.
         Ok(0) // PLDM completion code for success
     }
 }

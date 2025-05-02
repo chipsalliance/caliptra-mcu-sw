@@ -244,7 +244,7 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let feature = if is_flash {
-            "test-flash-streaming-boot".to_string()
+            "test-flash-based-boot".to_string()
         } else {
             "test-pldm-streaming-boot".to_string()
         };
@@ -417,7 +417,7 @@ mod test {
     }
 
     #[test]
-    fn test_flash_streaming_boot() {
+    fn test_flash_based_boot() {
         test_streaming_boot(true);
     }
 }
