@@ -120,46 +120,21 @@ impl FdOps for StreamingFdOps {
     async fn handle_component(
         &self,
         component: &FirmwareComponent,
-        _fw_params: &FirmwareParameters,
+        fw_params: &FirmwareParameters,
         _op: ComponentOperation,
     ) -> Result<ComponentResponseCode, FdOpsError> {
-        if self.fw_params.params_fixed.comp_count < 1 {
-            return Err(FdOpsError::ComponentError);
-        }
-        // For streaming boot, there's only one component
-        let expected_comp = &self.fw_params.comp_param_table[0];
-        if component.comp_classification != expected_comp.comp_param_entry_fixed.comp_classification
-        {
-            return Err(FdOpsError::ComponentError);
-        }
-        if component.comp_identifier != expected_comp.comp_param_entry_fixed.comp_identifier {
-            return Err(FdOpsError::ComponentError);
-        }
-        if component.comp_classification_index
-            != expected_comp
-                .comp_param_entry_fixed
-                .comp_classification_index
-        {
-            return Err(FdOpsError::ComponentError);
-        }
-        if component.comp_comparison_stamp
-            < expected_comp
-                .comp_param_entry_fixed
-                .active_comp_comparison_stamp
-        {
-            return Err(FdOpsError::ComponentError);
-        }
         if let Some(size) = component.comp_image_size {
             if size
                 < (core::mem::size_of::<ImageHeader>()
                     + core::mem::size_of::<FlashChecksums>()
                     + core::mem::size_of::<FlashHeader>()) as u32
             {
+                // Image size is too small
                 return Err(FdOpsError::ComponentError);
             }
         }
 
-        Ok(ComponentResponseCode::CompCanBeUpdated)
+        Ok(component.evaluate_update_eligibility(fw_params))
     }
 
     async fn query_download_offset_and_length(
