@@ -5,4 +5,3 @@ pub mod checksum;
 pub mod crypto;
 pub mod flash_image;
 pub mod image_loading;
-pub mod mailbox;
