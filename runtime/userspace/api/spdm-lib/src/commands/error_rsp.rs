@@ -1,7 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
+use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::error::CommandError;
+use crate::protocol::{ReqRespCode, SpdmMsgHdr, SpdmVersion};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 // SPDM error codes
@@ -55,19 +56,25 @@ impl ErrorResponse {
     }
 }
 
-impl CommonCodec for ErrorResponse {
-    const DATA_KIND: DataKind = DataKind::Payload;
-}
+impl CommonCodec for ErrorResponse {}
 
-pub fn fill_error_response(
+pub fn encode_error_response(
     rsp_buf: &mut MessageBuf,
+    spdm_version: SpdmVersion,
     error_code: ErrorCode,
     error_data: u8,
     extended_data: Option<&[u8]>,
 ) -> (bool, CommandError) {
+    let spdm_hdr = SpdmMsgHdr::new(spdm_version, ReqRespCode::Error);
+    // Encode SPDM header first
+    let mut total_len = match spdm_hdr.encode(rsp_buf) {
+        Ok(len) => len,
+        Err(e) => return (false, CommandError::Codec(e)),
+    };
+
     // SPDM Error response payload
     let fixed_payload = ErrorResponse::new(error_code, error_data);
-    let mut total_len = match fixed_payload.encode(rsp_buf) {
+    total_len += match fixed_payload.encode(rsp_buf) {
         Ok(len) => len,
         Err(e) => return (false, CommandError::Codec(e)),
     };
@@ -108,7 +115,7 @@ pub fn fill_error_response(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::codec::MessageBuf;
+    use crate::{codec::MessageBuf, protocol::SpdmVersion};
 
     #[test]
     fn test_fill_error_response() {
@@ -118,7 +125,7 @@ mod test {
         let error_data = 0x01;
 
         assert!(
-            fill_error_response(&mut buf, error_code, error_data, None)
+            encode_error_response(&mut buf, SpdmVersion::V10, error_code, error_data, None)
                 == (true, CommandError::ErrorCode(error_code))
         );
         assert_eq!(buf.data_len(), 2);
@@ -128,7 +135,7 @@ mod test {
 
     #[test]
     fn test_fill_error_response_with_extended_data() {
-        let mut raw_buf = [0u8; 64];
+        let mut raw_buf: [u8; 64] = [0u8; 64];
         let mut buf = MessageBuf::new(&mut raw_buf);
         let error_code = ErrorCode::InvalidRequest;
         let error_data = 0x01;
@@ -136,8 +143,13 @@ mod test {
         let extended_data = Some(&extended_raw_data[..]);
 
         assert!(
-            fill_error_response(&mut buf, error_code, error_data, extended_data)
-                == (true, CommandError::ErrorCode(error_code))
+            encode_error_response(
+                &mut buf,
+                SpdmVersion::V10,
+                error_code,
+                error_data,
+                extended_data
+            ) == (true, CommandError::ErrorCode(error_code))
         );
         assert_eq!(buf.data_len(), 34);
         assert!(raw_buf[0] == error_code.into());
@@ -155,8 +167,13 @@ mod test {
         let extended_data = Some(&extended_raw_data[..]);
 
         assert!(
-            fill_error_response(&mut buf, error_code, error_data, extended_data)
-                == (false, CommandError::BufferTooSmall)
+            encode_error_response(
+                &mut buf,
+                SpdmVersion::V10,
+                error_code,
+                error_data,
+                extended_data
+            ) == (false, CommandError::BufferTooSmall)
         );
         assert_eq!(buf.data_len(), 0);
     }

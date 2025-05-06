@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
-use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
+use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
-use crate::protocol::capabilities::*;
-use crate::protocol::common::SpdmMsgHdr;
-use crate::protocol::SpdmVersion;
+use crate::protocol::*;
 use crate::state::ConnectionState;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+use core::fmt::Write;
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C)]
@@ -16,9 +16,7 @@ pub(crate) struct GetCapabilitiesBase {
     param2: u8,
 }
 
-impl CommonCodec for GetCapabilitiesBase {
-    const DATA_KIND: DataKind = DataKind::Payload;
-}
+impl CommonCodec for GetCapabilitiesBase {}
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(packed)]
@@ -43,9 +41,7 @@ impl GetCapabilitiesV11 {
     }
 }
 
-impl CommonCodec for GetCapabilitiesV11 {
-    const DATA_KIND: DataKind = DataKind::Payload;
-}
+impl CommonCodec for GetCapabilitiesV11 {}
 
 #[derive(IntoBytes, FromBytes, Immutable)]
 #[repr(packed)]
@@ -54,9 +50,7 @@ pub(crate) struct GetCapabilitiesV12 {
     max_spdm_msg_size: u32,
 }
 
-impl CommonCodec for GetCapabilitiesV12 {
-    const DATA_KIND: DataKind = DataKind::Payload;
-}
+impl CommonCodec for GetCapabilitiesV12 {}
 
 fn req_flag_compatible(version: SpdmVersion, flags: &CapabilityFlags) -> bool {
     // Checks common to 1.1 and higher
@@ -148,10 +142,10 @@ fn req_flag_compatible(version: SpdmVersion, flags: &CapabilityFlags) -> bool {
     true
 }
 
-fn process_get_capabilities(
-    ctx: &mut SpdmContext,
+async fn process_get_capabilities<'a>(
+    ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
-    req_payload: &mut MessageBuf,
+    req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     let version = match spdm_hdr.version() {
         Ok(v) => v,
@@ -236,26 +230,43 @@ fn process_get_capabilities(
             .connection_info
             .set_peer_capabilities(peer_capabilities);
     }
+    // Append Capabilities request to the transcript VCA context
+    let req_msg = req_payload
+        .message_data()
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+
+    writeln!(ctx.cw, "SPDM_LIB: Capabilies request: {:X?}", req_msg).unwrap();
+
+    ctx.transcript_mgr
+        .append(crate::transcript::TranscriptContext::Vca, req_msg)
+        .await
+        .map_err(|e| (false, CommandError::Transcript(e)))?;
     Ok(())
 }
 
-fn generate_capabilities_response(
-    rsp_buf: &mut MessageBuf,
-    version: SpdmVersion,
-    local_capabilities: &DeviceCapabilities,
+async fn generate_capabilities_response<'a>(
+    ctx: &mut SpdmContext<'a>,
+    rsp_buf: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    let rsp_common = GetCapabilitiesBase::default();
-    let mut payload_len = rsp_common
+    let version = ctx.state.connection_info.version_number();
+    let local_capabilities = ctx.local_capabilities;
+
+    // Fill SPDM common header
+    let spdm_resp_hdr = SpdmMsgHdr::new(version, ReqRespCode::Capabilities);
+    let mut payload_len = spdm_resp_hdr
         .encode(rsp_buf)
-        .map_err(|_| (false, CommandError::BufferTooSmall))
-        .unwrap();
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+
+    let rsp_common = GetCapabilitiesBase::default();
+    payload_len += rsp_common
+        .encode(rsp_buf)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
 
     let rsp_11 = GetCapabilitiesV11::new(local_capabilities.ct_exponent, local_capabilities.flags);
 
     payload_len += rsp_11
         .encode(rsp_buf)
-        .map_err(|_| (false, CommandError::BufferTooSmall))
-        .unwrap();
+        .map_err(|e| (false, CommandError::Codec(e)))?;
 
     if version >= SpdmVersion::V12 {
         let rsp_12 = GetCapabilitiesV12 {
@@ -265,16 +276,27 @@ fn generate_capabilities_response(
 
         payload_len += rsp_12
             .encode(rsp_buf)
-            .map_err(|_| (false, CommandError::BufferTooSmall))
-            .unwrap();
+            .map_err(|e| (false, CommandError::Codec(e)))?;
     }
 
     rsp_buf
         .push_data(payload_len)
-        .map_err(|_| (false, CommandError::BufferTooSmall))
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+
+    // Append Capabilities response to the transcript VCA context
+    let resp_msg = rsp_buf
+        .message_data()
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+    writeln!(ctx.cw, "SPDM_LIB: Capabilities response: {:X?}", resp_msg).unwrap();
+
+    ctx.transcript_mgr
+        .append(crate::transcript::TranscriptContext::Vca, resp_msg)
+        .await
+        .map_err(|e| (false, CommandError::Transcript(e)))?;
+    Ok(())
 }
 
-pub(crate) fn handle_capabilities<'a>(
+pub(crate) async fn handle_capabilities<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
@@ -283,16 +305,12 @@ pub(crate) fn handle_capabilities<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
-    // Process request
-    process_get_capabilities(ctx, spdm_hdr, req_payload)?;
+    // Process GET_CAPABILITIES request
+    process_get_capabilities(ctx, spdm_hdr, req_payload).await?;
 
-    // Generate response
+    // Generate CAPABILITIES response
     ctx.prepare_response_buffer(req_payload)?;
-    generate_capabilities_response(
-        req_payload,
-        ctx.state.connection_info.version_number(),
-        &ctx.local_capabilities,
-    )?;
+    generate_capabilities_response(ctx, req_payload).await?;
 
     // Set state to AfterCapabilities
     ctx.state

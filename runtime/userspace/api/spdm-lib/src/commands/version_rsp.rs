@@ -1,25 +1,36 @@
 // Licensed under the Apache-2.0 license
 
-use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
+use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
-use crate::protocol::common::SpdmMsgHdr;
-use crate::protocol::SpdmVersion;
+use crate::protocol::{ReqRespCode, SpdmMsgHdr, SpdmVersion};
 use crate::state::ConnectionState;
+use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+use core::fmt::Write;
 
 const VERSION_ENTRY_SIZE: usize = 2;
 
 #[allow(dead_code)]
 #[derive(FromBytes, IntoBytes, Immutable)]
-pub struct VersionRespCommon {
+struct VersionReqPayload {
+    param1: u8,
+    param2: u8,
+}
+
+#[allow(dead_code)]
+#[derive(FromBytes, IntoBytes, Immutable)]
+struct VersionRespCommon {
     param1: u8,
     param2: u8,
     reserved: u8,
     version_num_entry_count: u8,
 }
+
+impl CommonCodec for VersionReqPayload {}
 
 impl Default for VersionRespCommon {
     fn default() -> Self {
@@ -38,9 +49,7 @@ impl VersionRespCommon {
     }
 }
 
-impl CommonCodec for VersionRespCommon {
-    const DATA_KIND: DataKind = DataKind::Payload;
-}
+impl CommonCodec for VersionRespCommon {}
 
 bitfield! {
 #[repr(C)]
@@ -69,18 +78,23 @@ impl VersionNumberEntry<[u8; VERSION_ENTRY_SIZE]> {
     }
 }
 
-impl CommonCodec for VersionNumberEntry<[u8; VERSION_ENTRY_SIZE]> {
-    const DATA_KIND: DataKind = DataKind::Payload;
-}
+impl CommonCodec for VersionNumberEntry<[u8; VERSION_ENTRY_SIZE]> {}
 
-pub fn fill_version_response(
-    rsp_buf: &mut MessageBuf,
+async fn generate_version_response<'a>(
+    ctx: &mut SpdmContext<'a>,
+    rsp_buf: &mut MessageBuf<'a>,
     supported_versions: &[SpdmVersion],
 ) -> CommandResult<()> {
     let entry_count = supported_versions.len() as u8;
-    // Fill the response in buffer
+    // Fill SpdmHeader first
+    let spdm_resp_hdr = SpdmMsgHdr::new(SpdmVersion::V10, ReqRespCode::Version);
+    let mut payload_len = spdm_resp_hdr
+        .encode(rsp_buf)
+        .map_err(|_| (false, CommandError::BufferTooSmall))?;
+
+    // Fill VersionRespCommon
     let resp_common = VersionRespCommon::new(entry_count);
-    let mut payload_len = resp_common
+    payload_len += resp_common
         .encode(rsp_buf)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
@@ -94,10 +108,21 @@ pub fn fill_version_response(
     // Push data offset up by total payload length
     rsp_buf
         .push_data(payload_len)
-        .map_err(|_| (false, CommandError::BufferTooSmall))
+        .map_err(|_| (false, CommandError::BufferTooSmall))?;
+
+    let resp_msg = rsp_buf
+        .message_data()
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+
+    writeln!(ctx.cw, "SPDM_LIB: Version response: {:X?}", resp_msg).unwrap();
+    ctx.transcript_mgr
+        .append(TranscriptContext::Vca, resp_msg)
+        .await
+        .map_err(|e| (false, CommandError::Transcript(e)))?;
+    Ok(())
 }
 
-pub(crate) fn handle_version<'a>(
+async fn process_get_version<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
@@ -109,11 +134,38 @@ pub(crate) fn handle_version<'a>(
         }
     }
 
-    let rsp_buf = req_payload;
+    VersionReqPayload::decode(req_payload).map_err(|e| (false, CommandError::Codec(e)))?;
 
-    ctx.prepare_response_buffer(rsp_buf)?;
-    fill_version_response(rsp_buf, ctx.supported_versions)?;
+    // Reset Transcript
+    ctx.transcript_mgr.reset();
 
+    // Append request to VCA transcript
+    let req_msg = req_payload
+        .message_data()
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+
+    writeln!(ctx.cw, "SPDM_LIB: Version request: {:X?}", req_msg).unwrap();
+
+    ctx.transcript_mgr
+        .append(TranscriptContext::Vca, req_msg)
+        .await
+        .map_err(|e| (false, CommandError::Transcript(e)))?;
+    Ok(())
+}
+
+pub(crate) async fn handle_version<'a>(
+    ctx: &mut SpdmContext<'a>,
+    spdm_hdr: SpdmMsgHdr,
+    req_payload: &mut MessageBuf<'a>,
+) -> CommandResult<()> {
+    // Process GET_VERSION request
+    process_get_version(ctx, spdm_hdr, req_payload).await?;
+
+    // Generate VERSION response
+    ctx.prepare_response_buffer(req_payload)?;
+    generate_version_response(ctx, req_payload, ctx.supported_versions).await?;
+
+    // Set connection state
     ctx.state.reset();
     ctx.state
         .connection_info

@@ -4,6 +4,7 @@
 use crate::cert_store::CertStoreError;
 use crate::codec::CodecError;
 use crate::commands::error_rsp::ErrorCode;
+use crate::transcript::TranscriptError;
 use crate::transport::TransportError;
 use libapi_caliptra::error::CaliptraApiError;
 
@@ -31,4 +32,5 @@ pub enum CommandError {
     UnsupportedRequest,
     CertStore(CertStoreError),
     CaliptraApi(CaliptraApiError),
+    Transcript(TranscriptError),
 }

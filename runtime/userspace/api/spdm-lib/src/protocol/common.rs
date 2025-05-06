@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::codec::{CommonCodec, DataKind};
+use crate::codec::CommonCodec;
 use crate::error::{SpdmError, SpdmResult};
 use crate::protocol::version::SpdmVersion;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -12,7 +12,7 @@ pub(crate) enum ReqRespCode {
     GetCapabilities = 0xE1,
     Capabilities = 0x61,
     NegotiateAlgorithms = 0xE3,
-    Algorithmes = 0x63,
+    Algorithms = 0x63,
     GetDigests = 0x81,
     Digests = 0x01,
     GetCertificate = 0x82,
@@ -29,7 +29,7 @@ impl TryFrom<u8> for ReqRespCode {
             0xE1 => Ok(ReqRespCode::GetCapabilities),
             0x61 => Ok(ReqRespCode::Capabilities),
             0xE3 => Ok(ReqRespCode::NegotiateAlgorithms),
-            0x63 => Ok(ReqRespCode::Algorithmes),
+            0x63 => Ok(ReqRespCode::Algorithms),
             0x81 => Ok(ReqRespCode::GetDigests),
             0x01 => Ok(ReqRespCode::Digests),
             0x82 => Ok(ReqRespCode::GetCertificate),
@@ -51,7 +51,7 @@ impl ReqRespCode {
         match self {
             ReqRespCode::GetVersion => Ok(ReqRespCode::Version),
             ReqRespCode::GetCapabilities => Ok(ReqRespCode::Capabilities),
-            ReqRespCode::NegotiateAlgorithms => Ok(ReqRespCode::Algorithmes),
+            ReqRespCode::NegotiateAlgorithms => Ok(ReqRespCode::Algorithms),
             ReqRespCode::GetDigests => Ok(ReqRespCode::Digests),
             ReqRespCode::GetCertificate => Ok(ReqRespCode::Certificate),
             ReqRespCode::Error => Ok(ReqRespCode::Error),
@@ -85,5 +85,5 @@ impl SpdmMsgHdr {
 }
 
 impl CommonCodec for SpdmMsgHdr {
-    const DATA_KIND: DataKind = DataKind::Header;
+    // const DATA_KIND: DataKind = DataKind::Header;
 }

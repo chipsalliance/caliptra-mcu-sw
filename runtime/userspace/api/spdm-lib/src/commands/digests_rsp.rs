@@ -1,19 +1,18 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cert_store::{cert_slot_mask, SpdmCertStore};
-use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
+use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
-use crate::protocol::common::SpdmMsgHdr;
-use crate::protocol::{
-    AsymAlgo, CertificateInfo, KeyUsageMask, SpdmCertChainHeader, SpdmVersion, SHA384_HASH_SIZE,
-    SPDM_CERT_CHAIN_METADATA_LEN, SPDM_MAX_CERT_CHAIN_PORTION_LEN,
-};
+use crate::protocol::*;
 use crate::state::ConnectionState;
+use crate::transcript::TranscriptContext;
 use core::mem::size_of;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+use core::fmt::Write;
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C)]
@@ -22,9 +21,7 @@ pub struct GetDigestsReq {
     param2: u8,
 }
 
-impl CommonCodec for GetDigestsReq {
-    const DATA_KIND: DataKind = DataKind::Payload;
-}
+impl CommonCodec for GetDigestsReq {}
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C)]
@@ -33,9 +30,7 @@ pub struct GetDigestsRespCommon {
     pub provisioned_slot_mask: u8, // param2
 }
 
-impl CommonCodec for GetDigestsRespCommon {
-    const DATA_KIND: DataKind = DataKind::Payload;
-}
+impl CommonCodec for GetDigestsRespCommon {}
 
 async fn encode_cert_chain_digest<'a>(
     slot_id: u8,
@@ -113,9 +108,8 @@ async fn encode_cert_chain_digest<'a>(
     Ok(SHA384_HASH_SIZE)
 }
 
-async fn fill_digests_response<'a>(
+async fn generate_digests_response<'a>(
     ctx: &mut SpdmContext<'a>,
-    connection_version: SpdmVersion,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Ensure the selected hash algorithm is SHA384 and retrieve the asymmetric algorithm (currently only ECC-P384 is supported)
@@ -134,8 +128,13 @@ async fn fill_digests_response<'a>(
         Err(ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
     }
 
+    let connection_version = ctx.state.connection_info.version_number();
+
     // Start filling the response payload
-    let mut payload_len = 0;
+    let spdm_resp_hdr = SpdmMsgHdr::new(connection_version, ReqRespCode::Digests);
+    let mut payload_len = spdm_resp_hdr
+        .encode(rsp)
+        .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
     // Fill the response header with param1 and param2
     let dgst_rsp_common = GetDigestsRespCommon {
@@ -164,6 +163,19 @@ async fn fill_digests_response<'a>(
     rsp.push_data(payload_len)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
+    // Append the response message to the transcript
+    let rsp_msg = rsp
+        .message_data()
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+
+    writeln!(ctx.cw, "SPDM_LIB: Digests response: {:X?}", rsp_msg).unwrap();
+
+    let ret = ctx
+        .transcript_mgr
+        .append(TranscriptContext::M1, rsp_msg)
+        .await
+        .map_err(|e| (false, CommandError::Transcript(e)))?;
+    writeln!(ctx.cw, "SPDM_LIB: Digests response line {}", line!()).unwrap();
     Ok(())
 }
 
@@ -228,16 +240,11 @@ fn encode_multi_key_conn_rsp_data(
     Ok(total_size)
 }
 
-pub(crate) async fn handle_digests<'a>(
+async fn process_get_digests<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    // Validate the connection state
-    if ctx.state.connection_info.state() < ConnectionState::AlgorithmsNegotiated {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
-    }
-
     // Validate the version
     let connection_version = ctx.state.connection_info.version_number();
     match spdm_hdr.version() {
@@ -254,20 +261,44 @@ pub(crate) async fn handle_digests<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
+    // Reset the transcript manager
+    ctx.reset_transcript_via_req_code(ReqRespCode::GetDigests);
+
+    let req_msg = req_payload
+        .message_data()
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+    writeln!(ctx.cw, "SPDM_LIB: GetDigests request: {:X?}", req_msg).unwrap();
+    // let ret = ctx
+    //     .transcript_mgr
+    //     .append(TranscriptContext::M1, req_msg)
+    //     .await
+    //     .map_err(|e| (false, CommandError::Transcript(e)))?;
+    // writeln!(ctx.cw, "SPDM_LIB: GetDigests request ret  {}", ret).unwrap();
+    writeln!(ctx.cw, "SPDM_LIB: GetDigests line {}", line!()).unwrap();
+    Ok(())
+}
+
+pub(crate) async fn handle_digests<'a>(
+    ctx: &mut SpdmContext<'a>,
+    spdm_hdr: SpdmMsgHdr,
+    req_payload: &mut MessageBuf<'a>,
+) -> CommandResult<()> {
+    // Validate the connection state
+    if ctx.state.connection_info.state() < ConnectionState::AlgorithmsNegotiated {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
+    }
+
     // Check if the certificate capability is supported
     if ctx.local_capabilities.flags.cert_cap() == 0 {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnsupportedRequest, 0, None))?;
     }
 
-    // TODO: transcript manager and session support
+    // Process GET_DIGESTS request
+    process_get_digests(ctx, spdm_hdr, req_payload).await?;
 
-    // Prepare the response buffer
+    // Generate DIGESTS response
     ctx.prepare_response_buffer(req_payload)?;
-
-    // Fill the response buffer
-    fill_digests_response(ctx, connection_version, req_payload).await?;
-
-    // TODO: transcript manager and session support
+    generate_digests_response(ctx, req_payload).await?;
 
     if ctx.state.connection_info.state() < ConnectionState::AfterDigest {
         ctx.state
