@@ -85,9 +85,18 @@ pub(crate) async fn async_main() {
 
 #[embassy_executor::task]
 async fn image_loading_task() {
-    match image_loading().await {
-        Ok(_) => romtime::test_exit(0),
-        Err(_) => romtime::test_exit(1),
+    #[cfg(any(
+        feature = "test-pldm-streaming-boot",
+        feature = "test-flash-based-boot",
+        feature = "test-pldm-discovery",
+        feature = "test-pldm-fw-update",
+        feature = "test-pldm-fw-update-e2e",
+    ))]
+    {
+        match image_loading().await {
+            Ok(_) => romtime::test_exit(0),
+            Err(_) => romtime::test_exit(1),
+        }
     }
 }
 
