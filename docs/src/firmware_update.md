@@ -336,8 +336,8 @@ These scenarios are designed to maintain system integrity and ensure seamless up
 3. The PLDM stack notifies the API which component is being downloaded using the UpdateComponent notification. If the image is an MCU RT or SoC Image, the staging address is retrieved from the SoC Manifest stored in the Caliptra Core using a mailbox command.
     For Caliptra FMC+RT and the SoC Manifest, if it is flash boot system, staging address should be provided. Otherwise,the mailbox lock is acquired since these images are streamed directly through the mailbox interface. The lock is released after all chunks of the image have been transferred.
 4. The PLDM stack sends a FirmwareData notification to the API for each received firmware chunk, including the data, size, and chunk offset.
-   1. If the component is a SoC Manifest, it is streamed to the mailbox via the SET_AUTH_MANIFEST mailbox command.If it is flash boot system, it is also written to staging area.
-   2. If the component is Caliptra FMC+RT,it is streamed to the Caliptra core using the CALIPTRA_FW_UPLOAD mailbox command. If it is flash boto system, it is also written to staging area.
+   1. If the component is a SoC Manifest, it is streamed to the mailbox via the SET_AUTH_MANIFEST mailbox command. If it is flash boot system, it is also written to staging area.
+   2. If the component is Caliptra FMC+RT,it is streamed to the Caliptra core using the CALIPTRA_FW_UPLOAD mailbox command. If it is flash boot system, it is also written to staging area.
    3. If the component is an MCU RT or SoC Image, it is written to a staging area determined in step 3.
 5. Once all firmware chunks are downloaded, the PLDM stack notifies the API to verify the component.
    1. If the component is a SoC Manifest, the MCU waits for the SET_AUTH_MANIFEST mailbox command response, which indicates the authenticity and correctness of the manifest.
