@@ -1,5 +1,7 @@
 // Licensed under the Apache-2.0 license
 
+use crate::error::{CaliptraApiError, CaliptraApiResult};
+use crate::mailbox_api::{ShaFinalReq, ShaInitReq, ShaUpdateReq, MAX_CRYPTO_MBOX_DATA_SIZE};
 use caliptra_api::mailbox::{
     CmHashAlgorithm, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq,
     MailboxReqHeader, Request, CMB_SHA_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
@@ -7,10 +9,6 @@ use caliptra_api::mailbox::{
 use core::mem::size_of;
 use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
-
-use crate::error::{CaliptraApiError, CaliptraApiResult};
-
-pub const MAX_HASH_SIZE: usize = 64; // SHA512
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HashAlgoType {
@@ -57,6 +55,16 @@ impl HashContext {
         }
     }
 
+    /// Hashes the input data using the specified hash algorithm and returns the hash.
+    /// The hash is written to the provided buffer. This can be used for one-shot hashing.
+    ///
+    /// # Arguments
+    /// `hash_algo` - The hash algorithm to use.
+    /// `data` - The input data to hash. Data size must be less than `MAX_CMB_DATA_SIZE`.
+    /// `hash` - The buffer to store the resulting hash.
+    ///
+    /// # Returns
+    /// A `CaliptraApiResult` indicating success or failure.
     pub async fn hash_all(
         hash_algo: HashAlgoType,
         data: &[u8],
@@ -81,17 +89,20 @@ impl HashContext {
     ) -> CaliptraApiResult<()> {
         self.algo = Some(hash_algo);
 
-        let mut init_req = CmShaInitReq {
+        let mut init_req = ShaInitReq {
             hdr: MailboxReqHeader::default(),
             hash_algorithm: hash_algo.into(),
             input_size: 0,
-            ..Default::default()
+            input: [0; MAX_CRYPTO_MBOX_DATA_SIZE],
         };
 
-        let mut data_size = 0;
-
         if let Some(data) = data {
-            data_size = data.len().min(MAX_CMB_DATA_SIZE);
+            if data.len() > MAX_CRYPTO_MBOX_DATA_SIZE {
+                return Err(CaliptraApiError::InvalidArgument(
+                    "Data size exceeds maximum limit",
+                ));
+            }
+            let data_size = data.len();
             init_req.input_size = data_size as u32;
             init_req.input[..data_size].copy_from_slice(&data[..data_size]);
         }
@@ -113,12 +124,6 @@ impl HashContext {
 
         self.ctx = Some(init_rsp.context);
 
-        if let Some(data) = data {
-            if data_size < data.len() {
-                self.update(&data[data_size..]).await?;
-            }
-        }
-
         Ok(())
     }
 
@@ -130,10 +135,11 @@ impl HashContext {
                 "Context not initialized",
             ))?;
 
-            let mut update_req = CmShaUpdateReq {
+            let mut update_req = ShaUpdateReq {
                 hdr: MailboxReqHeader::default(),
                 context: ctx,
-                ..Default::default()
+                input_size: 0,
+                input: [0; MAX_CRYPTO_MBOX_DATA_SIZE],
             };
 
             let remaining_data = &data[data_offset..];
@@ -184,10 +190,11 @@ impl HashContext {
             return Err(CaliptraApiError::InvalidArgument("Hash buffer too small"));
         }
 
-        let mut final_req = CmShaFinalReq {
+        let mut final_req = ShaFinalReq {
             hdr: MailboxReqHeader::default(),
             context: ctx,
-            ..Default::default()
+            input_size: 0,
+            input: [0; 0],
         };
 
         let req_bytes = final_req.as_mut_bytes();

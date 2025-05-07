@@ -80,6 +80,12 @@ pub async fn test_get_idev_csr() {
 pub async fn test_populate_idev_ecc384_cert() {
     println!("Starting Caliptra mailbox populate idev cert test");
 
+    println!(
+        "Populating idev certificate with size: {}",
+        SIGNED_IDEV_CERT_DER.len()
+    );
+    println!("Signed idev certificate data: {:?}", &SIGNED_IDEV_CERT_DER);
+
     let mut cert_mgr = CertContext::new();
     let result = cert_mgr
         .populate_idev_ecc384_cert(&SIGNED_IDEV_CERT_DER)
