@@ -268,12 +268,12 @@ async fn process_get_digests<'a>(
         .message_data()
         .map_err(|e| (false, CommandError::Codec(e)))?;
     writeln!(ctx.cw, "SPDM_LIB: GetDigests request: {:X?}", req_msg).unwrap();
-    // let ret = ctx
-    //     .transcript_mgr
-    //     .append(TranscriptContext::M1, req_msg)
-    //     .await
-    //     .map_err(|e| (false, CommandError::Transcript(e)))?;
-    // writeln!(ctx.cw, "SPDM_LIB: GetDigests request ret  {}", ret).unwrap();
+    let ret = ctx
+        .transcript_mgr
+        .append(TranscriptContext::M1, req_msg)
+        .await
+        .map_err(|e| (false, CommandError::Transcript(e)))?;
+    writeln!(ctx.cw, "SPDM_LIB: GetDigests request ret  {}", ret).unwrap();
     writeln!(ctx.cw, "SPDM_LIB: GetDigests line {}", line!()).unwrap();
     Ok(())
 }
