@@ -7,7 +7,7 @@ use crate::protocol::*;
 use crate::state::ConnectionState;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use core::fmt::Write;
+// use core::fmt::Write;
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C)]
@@ -235,13 +235,12 @@ async fn process_get_capabilities<'a>(
         .message_data()
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    writeln!(ctx.cw, "SPDM_LIB: Capabilies request: {:X?}", req_msg).unwrap();
+    // writeln!(ctx.cw, "SPDM_LIB: Capabilies request: {:X?}", req_msg).unwrap();
 
     ctx.transcript_mgr
         .append(crate::transcript::TranscriptContext::Vca, req_msg)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))?;
-    Ok(())
+        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
 async fn generate_capabilities_response<'a>(
@@ -287,13 +286,12 @@ async fn generate_capabilities_response<'a>(
     let resp_msg = rsp_buf
         .message_data()
         .map_err(|e| (false, CommandError::Codec(e)))?;
-    writeln!(ctx.cw, "SPDM_LIB: Capabilities response: {:X?}", resp_msg).unwrap();
+    // writeln!(ctx.cw, "SPDM_LIB: Capabilities response: {:X?}", resp_msg).unwrap();
 
     ctx.transcript_mgr
         .append(crate::transcript::TranscriptContext::Vca, resp_msg)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))?;
-    Ok(())
+        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
 pub(crate) async fn handle_capabilities<'a>(

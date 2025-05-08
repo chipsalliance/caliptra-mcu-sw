@@ -11,7 +11,7 @@ use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use core::fmt::Write;
+// use core::fmt::Write;
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
@@ -182,7 +182,7 @@ async fn generate_certificate_response<'a>(
     let slot_id_struct = SlotId(slot_id);
     let certificate_rsp_common =
         CertificateRespCommon::new(slot_id_struct, resp_attr, portion_len, remainder_len);
-    payload_len = certificate_rsp_common
+    payload_len += certificate_rsp_common
         .encode(rsp)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
@@ -234,12 +234,11 @@ async fn generate_certificate_response<'a>(
     let rsp_msg = rsp
         .message_data()
         .map_err(|e| (false, CommandError::Codec(e)))?;
-    writeln!(ctx.cw, "SPDM_LIB: Certificate response: {:X?}", rsp_msg).unwrap();
+    // writeln!(ctx.cw, "SPDM_LIB: Certificate response: {:X?}", rsp_msg).unwrap();
     ctx.transcript_mgr
         .append(TranscriptContext::M1, rsp_msg)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))?;
-    Ok(())
+        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
 async fn process_get_certificate<'a>(
@@ -287,7 +286,7 @@ async fn process_get_certificate<'a>(
     let req_msg = req_payload
         .message_data()
         .map_err(|e| (false, CommandError::Codec(e)))?;
-    writeln!(ctx.cw, "SPDM_LIB: GetCertificate request: {:X?}", req_msg).unwrap();
+    // writeln!(ctx.cw, "SPDM_LIB: GetCertificate request: {:X?}", req_msg).unwrap();
     ctx.transcript_mgr
         .append(TranscriptContext::M1, req_msg)
         .await

@@ -185,7 +185,7 @@ pub(crate) fn run_tests(
     // cancel the test after 120 seconds
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_secs(600));
-        println!("Test timed out");
+        println!("INTEGRATION TEST TIMED OUT");
         running_clone_stop.store(false, Ordering::Relaxed);
     });
     std::thread::spawn(move || {

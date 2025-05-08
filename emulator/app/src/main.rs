@@ -751,9 +751,10 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
                 stdin_uart,
                 bmc,
             );
-            println!("Free run complete");
+            println!("FREE RUN HALTED");
         }
     }
+    println!("EMULATOR EXITING");
 
     Ok(uart_output.map(|o| o.borrow().clone()).unwrap_or_default())
 }

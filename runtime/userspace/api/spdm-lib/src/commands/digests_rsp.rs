@@ -12,7 +12,7 @@ use core::mem::size_of;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use core::fmt::Write;
+// use core::fmt::Write;
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C)]
@@ -168,15 +168,12 @@ async fn generate_digests_response<'a>(
         .message_data()
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    writeln!(ctx.cw, "SPDM_LIB: Digests response: {:X?}", rsp_msg).unwrap();
+    // writeln!(ctx.cw, "SPDM_LIB: Digests response: {:X?}", rsp_msg).unwrap();
 
-    let ret = ctx
-        .transcript_mgr
+    ctx.transcript_mgr
         .append(TranscriptContext::M1, rsp_msg)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))?;
-    writeln!(ctx.cw, "SPDM_LIB: Digests response line {}", line!()).unwrap();
-    Ok(())
+        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
 fn encode_multi_key_conn_rsp_data(
@@ -267,15 +264,11 @@ async fn process_get_digests<'a>(
     let req_msg = req_payload
         .message_data()
         .map_err(|e| (false, CommandError::Codec(e)))?;
-    writeln!(ctx.cw, "SPDM_LIB: GetDigests request: {:X?}", req_msg).unwrap();
-    let ret = ctx
-        .transcript_mgr
+    // writeln!(ctx.cw, "SPDM_LIB: GetDigests request: {:X?}", req_msg).unwrap();
+    ctx.transcript_mgr
         .append(TranscriptContext::M1, req_msg)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))?;
-    writeln!(ctx.cw, "SPDM_LIB: GetDigests request ret  {}", ret).unwrap();
-    writeln!(ctx.cw, "SPDM_LIB: GetDigests line {}", line!()).unwrap();
-    Ok(())
+        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
 pub(crate) async fn handle_digests<'a>(

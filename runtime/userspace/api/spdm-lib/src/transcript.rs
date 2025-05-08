@@ -125,9 +125,9 @@ impl TranscriptManager {
         &mut self,
         context: TranscriptContext,
         data: &[u8],
-    ) -> TranscriptResult<usize> {
+    ) -> TranscriptResult<()> {
         match context {
-            TranscriptContext::Vca => self.append_vca(data),
+            TranscriptContext::Vca => self.vca_buf.append(data),
             TranscriptContext::M1 => self.append_m1(data).await,
             TranscriptContext::L1 => self.append_l1(self.spdm_version, data).await,
         }
@@ -169,38 +169,27 @@ impl TranscriptManager {
         Ok(())
     }
 
-    fn append_vca(&mut self, data: &[u8]) -> TranscriptResult<usize> {
-        self.vca_buf.append(data)?;
-        Ok(self.vca_buf.size)
-    }
+    // fn append_vca(&mut self, data: &[u8]) -> TranscriptResult<usize> {
+    //     self.vca_buf.append(data)
+    //     Ok(self.vca_buf.size)
+    // }
 
-    async fn append_m1(&mut self, data: &[u8]) -> TranscriptResult<usize> {
+    async fn append_m1(&mut self, data: &[u8]) -> TranscriptResult<()> {
         if let Some(ctx) = &mut self.hash_ctx_m1 {
-            ctx.update(data)
-                .await
-                .map_err(TranscriptError::CaliptraApi)?;
-            return Ok(self.vca_buf.size);
+            ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
         } else {
             let vca_data = self.vca_buf.data();
             let mut ctx = HashContext::new();
             ctx.init(HashAlgoType::SHA384, Some(vca_data))
                 .await
                 .map_err(TranscriptError::CaliptraApi)?;
-            return Ok(self.vca_buf.size);
-            // ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
+            ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
         }
     }
 
-    async fn append_l1(
-        &mut self,
-        spdm_version: SpdmVersion,
-        data: &[u8],
-    ) -> TranscriptResult<usize> {
+    async fn append_l1(&mut self, spdm_version: SpdmVersion, data: &[u8]) -> TranscriptResult<()> {
         if let Some(ctx) = &mut self.hash_ctx_l1 {
-            ctx.update(data)
-                .await
-                .map_err(TranscriptError::CaliptraApi)?;
-            return Ok(self.vca_buf.size);
+            ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
         } else {
             let vca_data = if spdm_version >= SpdmVersion::V12 {
                 Some(self.vca_buf.data())
@@ -211,10 +200,7 @@ impl TranscriptManager {
             ctx.init(HashAlgoType::SHA384, vca_data)
                 .await
                 .map_err(TranscriptError::CaliptraApi)?;
-            ctx.update(data)
-                .await
-                .map_err(TranscriptError::CaliptraApi)?;
-            return Ok(self.vca_buf.size);
+            ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
         }
     }
 }

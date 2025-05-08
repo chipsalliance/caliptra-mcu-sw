@@ -10,7 +10,7 @@ use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use core::fmt::Write;
+// use core::fmt::Write;
 
 const VERSION_ENTRY_SIZE: usize = 2;
 
@@ -114,12 +114,11 @@ async fn generate_version_response<'a>(
         .message_data()
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    writeln!(ctx.cw, "SPDM_LIB: Version response: {:X?}", resp_msg).unwrap();
+    // writeln!(ctx.cw, "SPDM_LIB: Version response: {:X?}", resp_msg).unwrap();
     ctx.transcript_mgr
         .append(TranscriptContext::Vca, resp_msg)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))?;
-    Ok(())
+        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
 async fn process_get_version<'a>(
@@ -144,13 +143,12 @@ async fn process_get_version<'a>(
         .message_data()
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    writeln!(ctx.cw, "SPDM_LIB: Version request: {:X?}", req_msg).unwrap();
+    // writeln!(ctx.cw, "SPDM_LIB: Version request: {:X?}", req_msg).unwrap();
 
     ctx.transcript_mgr
         .append(TranscriptContext::Vca, req_msg)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))?;
-    Ok(())
+        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
 pub(crate) async fn handle_version<'a>(

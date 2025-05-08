@@ -10,7 +10,7 @@ use bitfield::bitfield;
 use core::mem::size_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use core::fmt::Write;
+// use core::fmt::Write;
 
 // Max request length shall be 128 bytes (SPDM1.3 Table 10.4)
 const MAX_SPDM_REQUEST_LENGTH: u16 = 128;
@@ -266,21 +266,12 @@ async fn process_negotiate_algorithms_request<'a>(
         .message_data()
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    writeln!(ctx.cw, "SPDM_LIB: Algorithms request: {:X?}", req_msg).unwrap();
+    // writeln!(ctx.cw, "SPDM_LIB: Algorithms request: {:X?}", req_msg).unwrap();
 
-    let vca_size = ctx
-        .transcript_mgr
+    ctx.transcript_mgr
         .append(crate::transcript::TranscriptContext::Vca, req_msg)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))?;
-    writeln!(
-        ctx.cw,
-        "SPDM_LIB: Algorithms request vca transcript size: {}",
-        vca_size
-    )
-    .unwrap();
-
-    Ok(())
+        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
 async fn generate_algorithms_response<'a>(
@@ -386,20 +377,11 @@ async fn generate_algorithms_response<'a>(
     let rsp_msg = rsp
         .message_data()
         .map_err(|e| (false, CommandError::Codec(e)))?;
-    writeln!(ctx.cw, "SPDM_LIB: Algorithms response: {:X?}", rsp_msg).unwrap();
-    let vca_size = ctx
-        .transcript_mgr
+    // writeln!(ctx.cw, "SPDM_LIB: Algorithms response: {:X?}", rsp_msg).unwrap();
+    ctx.transcript_mgr
         .append(crate::transcript::TranscriptContext::Vca, rsp_msg)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))?;
-
-    writeln!(
-        ctx.cw,
-        "SPDM_LIB: Algorithms resp vca transcript size: {}",
-        vca_size
-    )
-    .unwrap();
-    Ok(())
+        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
 fn encode_alg_struct_table(
