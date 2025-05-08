@@ -128,6 +128,10 @@ pub struct Register {
 }
 
 impl Register {
+    pub fn is_array(&self) -> bool {
+        self.array_dimensions.iter().product::<u64>() > 1
+    }
+
     pub fn can_read(&self) -> bool {
         self.ty.fields.is_empty() || self.ty.fields.iter().any(|f| f.ty.can_read())
     }

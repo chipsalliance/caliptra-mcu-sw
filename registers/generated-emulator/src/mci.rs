@@ -9,10 +9,10 @@ pub trait MciPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
-    fn read_mcu_sram(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_sram(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mcu_sram(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mcu_sram(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
     fn read_mci_reg_hw_capabilities(&mut self) -> caliptra_emu_types::RvData {
         0
     }
@@ -41,10 +41,10 @@ pub trait MciPeripheral {
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn read_mci_reg_fw_rev_id(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_rev_id(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mci_reg_fw_rev_id(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mci_reg_fw_rev_id(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
     fn read_mci_reg_hw_config0(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig0::Register>
@@ -161,10 +161,15 @@ pub trait MciPeripheral {
         0
     }
     fn write_mci_reg_fw_error_enc(&mut self, _val: caliptra_emu_types::RvData) {}
-    fn read_mci_reg_fw_extended_error_info(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_extended_error_info(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mci_reg_fw_extended_error_info(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mci_reg_fw_extended_error_info(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+        _index: usize,
+    ) {
+    }
     fn read_mci_reg_internal_hw_error_fatal_mask(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
@@ -266,10 +271,18 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_mci_reg_wdt_timer1_timeout_period(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_wdt_timer1_timeout_period(
+        &mut self,
+        _index: usize,
+    ) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mci_reg_wdt_timer1_timeout_period(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mci_reg_wdt_timer1_timeout_period(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+        _index: usize,
+    ) {
+    }
     fn read_mci_reg_wdt_timer2_en(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtTimer2En::Register>
@@ -298,20 +311,28 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_mci_reg_wdt_timer2_timeout_period(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_wdt_timer2_timeout_period(
+        &mut self,
+        _index: usize,
+    ) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mci_reg_wdt_timer2_timeout_period(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mci_reg_wdt_timer2_timeout_period(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+        _index: usize,
+    ) {
+    }
     fn read_mci_reg_wdt_status(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtStatus::Register>
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn read_mci_reg_wdt_cfg(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_wdt_cfg(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mci_reg_wdt_cfg(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mci_reg_wdt_cfg(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
     fn read_mci_reg_mcu_timer_config(&mut self) -> caliptra_emu_types::RvData {
         0
     }
@@ -390,12 +411,18 @@ pub trait MciPeripheral {
         0
     }
     fn write_mci_reg_mcu_reset_vector(&mut self, _val: caliptra_emu_types::RvData) {}
-    fn read_mci_reg_mbox0_valid_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mbox0_valid_axi_user(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mci_reg_mbox0_valid_axi_user(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mci_reg_mbox0_valid_axi_user(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+        _index: usize,
+    ) {
+    }
     fn read_mci_reg_mbox0_axi_user_lock(
         &mut self,
+        _index: usize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxxAxiUserLock::Register,
@@ -408,14 +435,21 @@ pub trait MciPeripheral {
             u32,
             registers_generated::mci::bits::MboxxAxiUserLock::Register,
         >,
+        _index: usize,
     ) {
     }
-    fn read_mci_reg_mbox1_valid_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mbox1_valid_axi_user(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mci_reg_mbox1_valid_axi_user(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mci_reg_mbox1_valid_axi_user(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+        _index: usize,
+    ) {
+    }
     fn read_mci_reg_mbox1_axi_user_lock(
         &mut self,
+        _index: usize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxxAxiUserLock::Register,
@@ -428,31 +462,42 @@ pub trait MciPeripheral {
             u32,
             registers_generated::mci::bits::MboxxAxiUserLock::Register,
         >,
+        _index: usize,
     ) {
     }
-    fn read_mci_reg_soc_dft_en(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_soc_dft_en(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mci_reg_soc_dft_en(&mut self, _val: caliptra_emu_types::RvData) {}
-    fn read_mci_reg_soc_hw_debug_en(&mut self) -> caliptra_emu_types::RvData {
+    fn write_mci_reg_soc_dft_en(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
+    fn read_mci_reg_soc_hw_debug_en(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mci_reg_soc_hw_debug_en(&mut self, _val: caliptra_emu_types::RvData) {}
-    fn read_mci_reg_soc_prod_debug_state(&mut self) -> caliptra_emu_types::RvData {
+    fn write_mci_reg_soc_hw_debug_en(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
+    fn read_mci_reg_soc_prod_debug_state(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mci_reg_soc_prod_debug_state(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mci_reg_soc_prod_debug_state(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+        _index: usize,
+    ) {
+    }
     fn read_mci_reg_fc_fips_zerozation(&mut self) -> caliptra_emu_types::RvData {
         0
     }
     fn write_mci_reg_fc_fips_zerozation(&mut self, _val: caliptra_emu_types::RvData) {}
-    fn read_mci_reg_generic_input_wires(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_generic_input_wires(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn read_mci_reg_generic_output_wires(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_generic_output_wires(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mci_reg_generic_output_wires(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mci_reg_generic_output_wires(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+        _index: usize,
+    ) {
+    }
     fn read_mci_reg_debug_in(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Debug::Register> {
@@ -507,10 +552,18 @@ pub trait MciPeripheral {
         >,
     ) {
     }
-    fn read_mci_reg_prod_debug_unlock_pk_hash_reg(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_prod_debug_unlock_pk_hash_reg(
+        &mut self,
+        _index: usize,
+    ) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mci_reg_prod_debug_unlock_pk_hash_reg(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mci_reg_prod_debug_unlock_pk_hash_reg(
+        &mut self,
+        _val: caliptra_emu_types::RvData,
+        _index: usize,
+    ) {
+    }
     fn read_mci_reg_intr_block_rf_global_intr_en_r(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
@@ -2250,10 +2303,10 @@ pub trait MciPeripheral {
         0
     }
     fn write_mcu_trace_buffer_csr_read_ptr(&mut self, _val: caliptra_emu_types::RvData) {}
-    fn read_mcu_mbox0_csr_mbox_sram(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox0_csr_mbox_sram(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mcu_mbox0_csr_mbox_sram(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mcu_mbox0_csr_mbox_sram(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
     fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
@@ -2341,10 +2394,10 @@ pub trait MciPeripheral {
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn read_mcu_mbox1_csr_mbox_sram(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox1_csr_mbox_sram(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_mcu_mbox1_csr_mbox_sram(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mcu_mbox1_csr_mbox_sram(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
     fn read_mcu_mbox1_csr_mbox_lock(
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
@@ -2446,7 +2499,7 @@ impl emulator_bus::Bus for MciBus {
             return Err(emulator_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
-            0xc0_0000..0xe0_0000 => Ok(self.periph.read_mcu_sram()),
+            0xc0_0000..0xe0_0000 => Ok(self.periph.read_mcu_sram((addr as usize - 0xc0_0000) / 4)),
             0..4 => Ok(self.periph.read_mci_reg_hw_capabilities()),
             4..8 => Ok(self.periph.read_mci_reg_fw_capabilities()),
             8..0xc => Ok(caliptra_emu_types::RvData::from(
@@ -2455,7 +2508,9 @@ impl emulator_bus::Bus for MciBus {
             0xc..0x10 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_hw_rev_id().reg.get(),
             )),
-            0x10..0x18 => Ok(self.periph.read_mci_reg_fw_rev_id()),
+            0x10..0x18 => Ok(self
+                .periph
+                .read_mci_reg_fw_rev_id((addr as usize - 0x10) / 4)),
             0x18..0x1c => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_hw_config0().reg.get(),
             )),
@@ -2491,7 +2546,9 @@ impl emulator_bus::Bus for MciBus {
             0x54..0x58 => Ok(self.periph.read_mci_reg_fw_error_non_fatal()),
             0x58..0x5c => Ok(self.periph.read_mci_reg_hw_error_enc()),
             0x5c..0x60 => Ok(self.periph.read_mci_reg_fw_error_enc()),
-            0x60..0x80 => Ok(self.periph.read_mci_reg_fw_extended_error_info()),
+            0x60..0x80 => Ok(self
+                .periph
+                .read_mci_reg_fw_extended_error_info((addr as usize - 0x60) / 4)),
             0x80..0x84 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_internal_hw_error_fatal_mask()
@@ -2524,18 +2581,22 @@ impl emulator_bus::Bus for MciBus {
             0xa4..0xa8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_wdt_timer1_ctrl().reg.get(),
             )),
-            0xa8..0xb0 => Ok(self.periph.read_mci_reg_wdt_timer1_timeout_period()),
+            0xa8..0xb0 => Ok(self
+                .periph
+                .read_mci_reg_wdt_timer1_timeout_period((addr as usize - 0xa8) / 4)),
             0xb0..0xb4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_wdt_timer2_en().reg.get(),
             )),
             0xb4..0xb8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_wdt_timer2_ctrl().reg.get(),
             )),
-            0xb8..0xc0 => Ok(self.periph.read_mci_reg_wdt_timer2_timeout_period()),
+            0xb8..0xc0 => Ok(self
+                .periph
+                .read_mci_reg_wdt_timer2_timeout_period((addr as usize - 0xb8) / 4)),
             0xc0..0xc4 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_wdt_status().reg.get(),
             )),
-            0xd0..0xd8 => Ok(self.periph.read_mci_reg_wdt_cfg()),
+            0xd0..0xd8 => Ok(self.periph.read_mci_reg_wdt_cfg((addr as usize - 0xd0) / 4)),
             0xe0..0xe4 => Ok(self.periph.read_mci_reg_mcu_timer_config()),
             0xe4..0xe8 => Ok(self.periph.read_mci_reg_mcu_rv_mtime_l()),
             0xe8..0xec => Ok(self.periph.read_mci_reg_mcu_rv_mtime_h()),
@@ -2558,20 +2619,40 @@ impl emulator_bus::Bus for MciBus {
             )),
             0x110..0x114 => Ok(self.periph.read_mci_reg_mcu_nmi_vector()),
             0x114..0x118 => Ok(self.periph.read_mci_reg_mcu_reset_vector()),
-            0x180..0x194 => Ok(self.periph.read_mci_reg_mbox0_valid_axi_user()),
+            0x180..0x194 => Ok(self
+                .periph
+                .read_mci_reg_mbox0_valid_axi_user((addr as usize - 0x180) / 4)),
             0x1a0..0x1b4 => Ok(caliptra_emu_types::RvData::from(
-                self.periph.read_mci_reg_mbox0_axi_user_lock().reg.get(),
+                self.periph
+                    .read_mci_reg_mbox0_axi_user_lock((addr as usize - 0x1a0) / 4)
+                    .reg
+                    .get(),
             )),
-            0x1c0..0x1d4 => Ok(self.periph.read_mci_reg_mbox1_valid_axi_user()),
+            0x1c0..0x1d4 => Ok(self
+                .periph
+                .read_mci_reg_mbox1_valid_axi_user((addr as usize - 0x1c0) / 4)),
             0x1e0..0x1f4 => Ok(caliptra_emu_types::RvData::from(
-                self.periph.read_mci_reg_mbox1_axi_user_lock().reg.get(),
+                self.periph
+                    .read_mci_reg_mbox1_axi_user_lock((addr as usize - 0x1e0) / 4)
+                    .reg
+                    .get(),
             )),
-            0x300..0x308 => Ok(self.periph.read_mci_reg_soc_dft_en()),
-            0x308..0x310 => Ok(self.periph.read_mci_reg_soc_hw_debug_en()),
-            0x310..0x318 => Ok(self.periph.read_mci_reg_soc_prod_debug_state()),
+            0x300..0x308 => Ok(self
+                .periph
+                .read_mci_reg_soc_dft_en((addr as usize - 0x300) / 4)),
+            0x308..0x310 => Ok(self
+                .periph
+                .read_mci_reg_soc_hw_debug_en((addr as usize - 0x308) / 4)),
+            0x310..0x318 => Ok(self
+                .periph
+                .read_mci_reg_soc_prod_debug_state((addr as usize - 0x310) / 4)),
             0x318..0x31c => Ok(self.periph.read_mci_reg_fc_fips_zerozation()),
-            0x400..0x408 => Ok(self.periph.read_mci_reg_generic_input_wires()),
-            0x408..0x410 => Ok(self.periph.read_mci_reg_generic_output_wires()),
+            0x400..0x408 => Ok(self
+                .periph
+                .read_mci_reg_generic_input_wires((addr as usize - 0x400) / 4)),
+            0x408..0x410 => Ok(self
+                .periph
+                .read_mci_reg_generic_output_wires((addr as usize - 0x408) / 4)),
             0x410..0x414 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_debug_in().reg.get(),
             )),
@@ -2587,7 +2668,9 @@ impl emulator_bus::Bus for MciBus {
             0x444..0x448 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_ss_config_done().reg.get(),
             )),
-            0x480..0x600 => Ok(self.periph.read_mci_reg_prod_debug_unlock_pk_hash_reg()),
+            0x480..0x600 => Ok(self
+                .periph
+                .read_mci_reg_prod_debug_unlock_pk_hash_reg((addr as usize - 0x480) / 4)),
             0x1000..0x1004 => Ok(caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_global_intr_en_r()
@@ -3441,7 +3524,9 @@ impl emulator_bus::Bus for MciBus {
             0x1_0008..0x1_000c => Ok(self.periph.read_mcu_trace_buffer_csr_data()),
             0x1_000c..0x1_0010 => Ok(self.periph.read_mcu_trace_buffer_csr_write_ptr()),
             0x1_0010..0x1_0014 => Ok(self.periph.read_mcu_trace_buffer_csr_read_ptr()),
-            0x40_0000..0x60_0000 => Ok(self.periph.read_mcu_mbox0_csr_mbox_sram()),
+            0x40_0000..0x60_0000 => Ok(self
+                .periph
+                .read_mcu_mbox0_csr_mbox_sram((addr as usize - 0x40_0000) / 4)),
             0x60_0000..0x60_0004 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mcu_mbox0_csr_mbox_lock().reg.get(),
             )),
@@ -3470,7 +3555,9 @@ impl emulator_bus::Bus for MciBus {
             0x60_0024..0x60_0028 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mcu_mbox0_csr_mbox_hw_status().reg.get(),
             )),
-            0x80_0000..0xa0_0000 => Ok(self.periph.read_mcu_mbox1_csr_mbox_sram()),
+            0x80_0000..0xa0_0000 => Ok(self
+                .periph
+                .read_mcu_mbox1_csr_mbox_sram((addr as usize - 0x80_0000) / 4)),
             0xa0_0000..0xa0_0004 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mcu_mbox1_csr_mbox_lock().reg.get(),
             )),
@@ -3513,7 +3600,8 @@ impl emulator_bus::Bus for MciBus {
         }
         match addr {
             0xc0_0000..0xe0_0000 => {
-                self.periph.write_mcu_sram(val);
+                self.periph
+                    .write_mcu_sram(val, (addr as usize - 0xc0_0000) / 4);
                 Ok(())
             }
             0..4 => {
@@ -3530,7 +3618,8 @@ impl emulator_bus::Bus for MciBus {
                 Ok(())
             }
             0x10..0x18 => {
-                self.periph.write_mci_reg_fw_rev_id(val);
+                self.periph
+                    .write_mci_reg_fw_rev_id(val, (addr as usize - 0x10) / 4);
                 Ok(())
             }
             0x20..0x24 => {
@@ -3574,7 +3663,8 @@ impl emulator_bus::Bus for MciBus {
                 Ok(())
             }
             0x60..0x80 => {
-                self.periph.write_mci_reg_fw_extended_error_info(val);
+                self.periph
+                    .write_mci_reg_fw_extended_error_info(val, (addr as usize - 0x60) / 4);
                 Ok(())
             }
             0x80..0x84 => {
@@ -3621,7 +3711,8 @@ impl emulator_bus::Bus for MciBus {
                 Ok(())
             }
             0xa8..0xb0 => {
-                self.periph.write_mci_reg_wdt_timer1_timeout_period(val);
+                self.periph
+                    .write_mci_reg_wdt_timer1_timeout_period(val, (addr as usize - 0xa8) / 4);
                 Ok(())
             }
             0xb0..0xb4 => {
@@ -3635,11 +3726,13 @@ impl emulator_bus::Bus for MciBus {
                 Ok(())
             }
             0xb8..0xc0 => {
-                self.periph.write_mci_reg_wdt_timer2_timeout_period(val);
+                self.periph
+                    .write_mci_reg_wdt_timer2_timeout_period(val, (addr as usize - 0xb8) / 4);
                 Ok(())
             }
             0xd0..0xd8 => {
-                self.periph.write_mci_reg_wdt_cfg(val);
+                self.periph
+                    .write_mci_reg_wdt_cfg(val, (addr as usize - 0xd0) / 4);
                 Ok(())
             }
             0xe0..0xe4 => {
@@ -3692,33 +3785,42 @@ impl emulator_bus::Bus for MciBus {
                 Ok(())
             }
             0x180..0x194 => {
-                self.periph.write_mci_reg_mbox0_valid_axi_user(val);
+                self.periph
+                    .write_mci_reg_mbox0_valid_axi_user(val, (addr as usize - 0x180) / 4);
                 Ok(())
             }
             0x1a0..0x1b4 => {
-                self.periph
-                    .write_mci_reg_mbox0_axi_user_lock(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_mbox0_axi_user_lock(
+                    emulator_bus::ReadWriteRegister::new(val),
+                    (addr as usize - 0x1a0) / 4,
+                );
                 Ok(())
             }
             0x1c0..0x1d4 => {
-                self.periph.write_mci_reg_mbox1_valid_axi_user(val);
+                self.periph
+                    .write_mci_reg_mbox1_valid_axi_user(val, (addr as usize - 0x1c0) / 4);
                 Ok(())
             }
             0x1e0..0x1f4 => {
-                self.periph
-                    .write_mci_reg_mbox1_axi_user_lock(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_mbox1_axi_user_lock(
+                    emulator_bus::ReadWriteRegister::new(val),
+                    (addr as usize - 0x1e0) / 4,
+                );
                 Ok(())
             }
             0x300..0x308 => {
-                self.periph.write_mci_reg_soc_dft_en(val);
+                self.periph
+                    .write_mci_reg_soc_dft_en(val, (addr as usize - 0x300) / 4);
                 Ok(())
             }
             0x308..0x310 => {
-                self.periph.write_mci_reg_soc_hw_debug_en(val);
+                self.periph
+                    .write_mci_reg_soc_hw_debug_en(val, (addr as usize - 0x308) / 4);
                 Ok(())
             }
             0x310..0x318 => {
-                self.periph.write_mci_reg_soc_prod_debug_state(val);
+                self.periph
+                    .write_mci_reg_soc_prod_debug_state(val, (addr as usize - 0x310) / 4);
                 Ok(())
             }
             0x318..0x31c => {
@@ -3726,7 +3828,8 @@ impl emulator_bus::Bus for MciBus {
                 Ok(())
             }
             0x408..0x410 => {
-                self.periph.write_mci_reg_generic_output_wires(val);
+                self.periph
+                    .write_mci_reg_generic_output_wires(val, (addr as usize - 0x408) / 4);
                 Ok(())
             }
             0x410..0x414 => {
@@ -3750,7 +3853,8 @@ impl emulator_bus::Bus for MciBus {
                 Ok(())
             }
             0x480..0x600 => {
-                self.periph.write_mci_reg_prod_debug_unlock_pk_hash_reg(val);
+                self.periph
+                    .write_mci_reg_prod_debug_unlock_pk_hash_reg(val, (addr as usize - 0x480) / 4);
                 Ok(())
             }
             0x1000..0x1004 => {
@@ -4260,7 +4364,8 @@ impl emulator_bus::Bus for MciBus {
                 Ok(())
             }
             0x40_0000..0x60_0000 => {
-                self.periph.write_mcu_mbox0_csr_mbox_sram(val);
+                self.periph
+                    .write_mcu_mbox0_csr_mbox_sram(val, (addr as usize - 0x40_0000) / 4);
                 Ok(())
             }
             0x60_0008..0x60_000c => {
@@ -4298,7 +4403,8 @@ impl emulator_bus::Bus for MciBus {
                 Ok(())
             }
             0x80_0000..0xa0_0000 => {
-                self.periph.write_mcu_mbox1_csr_mbox_sram(val);
+                self.periph
+                    .write_mcu_mbox1_csr_mbox_sram(val, (addr as usize - 0x80_0000) / 4);
                 Ok(())
             }
             0xa0_0008..0xa0_000c => {
