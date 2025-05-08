@@ -593,7 +593,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     });
 
     let otp = Otp::new(&clock.clone(), cli.otp, owner_pk_hash, vendor_pk_hash)?;
-    let mci = Mci::default();
+    let mci = Mci::new(&clock.clone());
     let mut auto_root_bus = AutoRootBus::new(
         delegates,
         Some(Box::new(i3c)),
