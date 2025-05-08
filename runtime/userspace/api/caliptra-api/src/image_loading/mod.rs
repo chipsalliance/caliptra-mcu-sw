@@ -14,6 +14,7 @@ use caliptra_api::mailbox::{
 use caliptra_auth_man_types::ImageMetadataFlags;
 use embassy_executor::Spawner;
 use libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
+use libsyscall_caliptra::mailbox::MailboxError;
 use libsyscall_caliptra::{dma::AXIAddr, mailbox::Mailbox};
 use libtock_platform::ErrorCode;
 use libtockasync::TockExecutor;
@@ -132,10 +133,17 @@ impl ImageLoader {
 
         let response_buffer = &mut [0u8; core::mem::size_of::<GetImageInfoResp>()];
 
-        self.mailbox
-            .execute(GetImageInfoReq::ID.0, req_data, response_buffer)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
+        loop {
+            let result = self
+                .mailbox
+                .execute(GetImageInfoReq::ID.0, req_data, response_buffer)
+                .await;
+            match result {
+                Ok(_) => break,
+                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
+                Err(_) => return Err(ErrorCode::Fail),
+            }
+        }
 
         match GetImageInfoResp::ref_from_bytes(response_buffer) {
             Ok(resp) => {
@@ -169,10 +177,17 @@ impl ImageLoader {
 
         let response_buffer = &mut [0u8; core::mem::size_of::<AuthorizeAndStashResp>()];
 
-        self.mailbox
-            .execute(AuthorizeAndStashReq::ID.0, req_data, response_buffer)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
+        loop {
+            let result = self
+                .mailbox
+                .execute(AuthorizeAndStashReq::ID.0, req_data, response_buffer)
+                .await;
+            match result {
+                Ok(_) => break,
+                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
+                Err(_) => return Err(ErrorCode::Fail),
+            }
+        }
 
         let resp =
             AuthorizeAndStashResp::ref_from_bytes(response_buffer).map_err(|_| ErrorCode::Fail)?;
