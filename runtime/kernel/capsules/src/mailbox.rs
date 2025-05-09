@@ -123,8 +123,6 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         app_buffer: &ReadableProcessSlice,
     ) -> Result<(), ErrorCode> {
         self.current_app.set(processid);
-        self.resp_size.set(app_buffer.len());
-        self.resp_min_size.set(app_buffer.len());
 
         match driver.start_mailbox_req(
             command,
@@ -179,9 +177,11 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         if let Some(process_id) = self.current_app.take() {
             let enter_result = self.apps.enter(process_id, |_app, kernel_data| {
                 if let Ok(rw_buffer) = kernel_data.get_readwrite_processbuffer(rw_allow::RESPONSE) {
-                    match rw_buffer
-                        .mut_enter(|app_buffer| self.copy_from_mailbox(driver, app_buffer))
-                    {
+                    match rw_buffer.mut_enter(|app_buffer| {
+                        self.resp_size.set(app_buffer.len());
+                        self.resp_min_size.set(app_buffer.len());
+                        self.copy_from_mailbox(driver, app_buffer)
+                    }) {
                         Err(err) => {
                             debug!("Error accessing writable buffer {:?}", err);
                         }

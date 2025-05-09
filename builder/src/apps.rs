@@ -11,12 +11,12 @@ pub const APPS: &[App] = &[
         // Make sure this is the first app in the list
         name: "example-app",
         permissions: vec![],
-        minimum_ram: 24 * 1024,
+        minimum_ram: 44 * 1024,
     },
     App {
         name: "spdm-app",
         permissions: vec![],
-        minimum_ram: 52 * 1024,
+        minimum_ram: 36 * 1024,
     },
     App {
         name: "image-loader-app",

@@ -13,7 +13,7 @@ use bitfield::bitfield;
 use core::mem::size_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-// Max request length shall be 128 bytes (SPDM1.3 10.4, Table 10.4)
+// Max request length shall be 128 bytes (SPDM1.3 Table 10.4)
 const MAX_SPDM_REQUEST_LENGTH: u16 = 128;
 const MAX_SPDM_EXT_ALG_COUNT_V10: u8 = 8;
 const MAX_SPDM_EXT_ALG_COUNT_V11: u8 = 20;
@@ -477,7 +477,7 @@ pub(crate) fn handle_negotiate_algorithms<'a>(
     // Set the connection state to AfterAlgorithms
     ctx.state
         .connection_info
-        .set_state(ConnectionState::AfterNegotiateAlgorithms);
+        .set_state(ConnectionState::AlgorithmsNegotiated);
 
     Ok(())
 }

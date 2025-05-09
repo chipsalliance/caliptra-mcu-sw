@@ -16,6 +16,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         caliptra_firmware,
         soc_manifest,
         active_mode,
+        manufacturing_mode,
         vendor_pk_hash,
         streaming_boot,
         soc_images,
@@ -85,6 +86,9 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     }
     if active_mode {
         cargo_run_args.extend(["--active-mode"]);
+    }
+    if manufacturing_mode {
+        cargo_run_args.extend(["--manufacturing-mode"]);
     }
     if streaming_boot.as_ref().is_some() {
         cargo_run_args.extend([

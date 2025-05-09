@@ -3,13 +3,14 @@
 use libsyscall_caliptra::mailbox::MailboxError;
 use libtock_platform::ErrorCode;
 
-pub type CryptoResult<T> = Result<T, CryptoError>;
+pub type CaliptraApiResult<T> = Result<T, CaliptraApiError>;
 
-#[derive(Debug)]
-pub enum CryptoError {
-    MailboxError(MailboxError),
-    SyscallError(ErrorCode),
+#[derive(Debug, PartialEq)]
+pub enum CaliptraApiError {
+    Mailbox(MailboxError),
+    Syscall(ErrorCode),
     InvalidArgument(&'static str),
     InvalidOperation(&'static str),
     InvalidResponse,
+    UnprovisionedCsr,
 }

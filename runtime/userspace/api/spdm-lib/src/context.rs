@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use crate::cert_mgr::DeviceCertsManager;
+// use crate::cert_mgr::DeviceCertsManager;
+use crate::cert_store::*;
 use crate::codec::{Codec, MessageBuf};
 use crate::commands::error_rsp::{fill_error_response, ErrorCode};
 use crate::commands::{
@@ -20,7 +21,7 @@ pub struct SpdmContext<'a> {
     pub(crate) state: State,
     pub(crate) local_capabilities: DeviceCapabilities,
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
-    pub(crate) device_certs_manager: &'a DeviceCertsManager,
+    pub(crate) device_certs_store: &'a mut dyn SpdmCertStore,
 }
 
 impl<'a> SpdmContext<'a> {
@@ -29,11 +30,13 @@ impl<'a> SpdmContext<'a> {
         spdm_transport: &'a mut dyn SpdmTransport,
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
-        device_certs_manager: &'a DeviceCertsManager,
+        device_certs_store: &'a mut dyn SpdmCertStore,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
         validate_device_algorithms(&local_algorithms)?;
+
+        validate_cert_store(device_certs_store)?;
 
         Ok(Self {
             supported_versions,
@@ -41,7 +44,7 @@ impl<'a> SpdmContext<'a> {
             state: State::new(),
             local_capabilities,
             local_algorithms,
-            device_certs_manager,
+            device_certs_store,
         })
     }
 
@@ -124,20 +127,7 @@ impl<'a> SpdmContext<'a> {
         Ok(())
     }
 
-    pub fn generate_error_response(
-        &self,
-        msg_buf: &mut MessageBuf,
-        error_code: ErrorCode,
-        error_data: u8,
-        extended_data: Option<&[u8]>,
-    ) -> (bool, CommandError) {
-        let _ = self
-            .prepare_response_buffer(msg_buf)
-            .map_err(|_| (false, CommandError::BufferTooSmall));
-        fill_error_response(msg_buf, error_code, error_data, extended_data)
-    }
-
-    pub fn get_select_hash_algo(&self) -> SpdmResult<BaseHashAlgoType> {
+    pub(crate) fn verify_selected_hash_algo(&mut self) -> SpdmResult<()> {
         let peer_algorithms = self.state.connection_info.peer_algorithms();
         let local_algorithms = &self.local_algorithms.device_algorithms;
         let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
@@ -152,7 +142,41 @@ impl<'a> SpdmContext<'a> {
             return Err(SpdmError::InvalidParam);
         }
 
-        BaseHashAlgoType::try_from(base_hash_sel.0.trailing_zeros() as u8)
-            .map_err(|_| SpdmError::InvalidParam)
+        if base_hash_sel.tpm_alg_sha_384() != 1 {
+            return Err(SpdmError::InvalidParam);
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn selected_asym_algo(&self) -> SpdmResult<AsymAlgo> {
+        let peer_algorithms = self.state.connection_info.peer_algorithms();
+        let local_algorithms = &self.local_algorithms.device_algorithms;
+        let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
+
+        let base_asym_sel = BaseAsymAlgo(local_algorithms.base_asym_algo.0.prioritize(
+            &peer_algorithms.base_asym_algo.0,
+            algorithm_priority_table.base_asym_algo,
+        ));
+
+        // Ensure AsymAlgoSel has exactly one bit set
+        if base_asym_sel.0.count_ones() != 1 || base_asym_sel.tpm_alg_ecdsa_ecc_nist_p384() != 1 {
+            return Err(SpdmError::InvalidParam);
+        }
+
+        Ok(AsymAlgo::EccP384)
+    }
+
+    pub fn generate_error_response(
+        &self,
+        msg_buf: &mut MessageBuf,
+        error_code: ErrorCode,
+        error_data: u8,
+        extended_data: Option<&[u8]>,
+    ) -> (bool, CommandError) {
+        let _ = self
+            .prepare_response_buffer(msg_buf)
+            .map_err(|_| (false, CommandError::BufferTooSmall));
+        fill_error_response(msg_buf, error_code, error_data, extended_data)
     }
 }

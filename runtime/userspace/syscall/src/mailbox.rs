@@ -70,7 +70,7 @@ impl<S: Syscalls> Mailbox<S> {
     ) -> Result<usize, MailboxError> {
         // Subscribe to the asynchronous notification for when the command is processed
         let result: Result<(u32, u32, u32), ErrorCode> = share::scope::<(), _, _>(|_handle| {
-            let sub = TockSubscribe::subscribe_allow_ro_rw::<S, DefaultConfig>(
+            let mut sub = TockSubscribe::subscribe_allow_ro_rw::<S, DefaultConfig>(
                 self.driver_num,
                 mailbox_subscribe::COMMAND_DONE,
                 mailbox_ro_buffer::INPUT,
@@ -83,10 +83,12 @@ impl<S: Syscalls> Mailbox<S> {
             match S::command(self.driver_num, mailbox_cmd::EXECUTE_COMMAND, command, 0)
                 .to_result::<(), ErrorCode>()
             {
-                Ok(()) => Ok(sub),
+                Ok(()) => Ok(TockSubscribe::subscribe_finish(sub)),
                 Err(err) => {
                     S::unallow_ro(self.driver_num, mailbox_ro_buffer::INPUT);
                     S::unallow_rw(self.driver_num, mailbox_rw_buffer::RESPONSE);
+                    // If command returned error immediately, cancel the future
+                    sub.cancel();
                     Err(MailboxError::ErrorCode(err))
                 }
             }
@@ -141,7 +143,7 @@ mod mailbox_subscribe {
     pub const COMMAND_DONE: u32 = 0;
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum MailboxError {
     ErrorCode(ErrorCode),
     MailboxError(u32),

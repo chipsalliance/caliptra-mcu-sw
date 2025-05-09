@@ -126,20 +126,12 @@ impl CaliptraSoC {
 
         let dlen_bytes = self.soc_mbox().dlen().read();
 
-        if dlen_bytes % 4 != 0 {
-            return Err(CaliptraApiError::MailboxUnexpectedResponseLen {
-                expected_min: dlen_bytes.next_multiple_of(4),
-                expected_max: dlen_bytes.next_multiple_of(4),
-                actual: dlen_bytes,
-            });
-        }
-
         let expected_checksum = self.soc_mbox().dataout().read();
 
         Ok(Some(CaliptraMailboxResponse {
             soc_mbox: self.soc_mbox(),
             idx: 0,
-            dlen_words: dlen_bytes as usize / 4,
+            dlen_bytes: dlen_bytes as usize,
             checksum: 0,
             expected_checksum,
         }))
@@ -149,7 +141,7 @@ impl CaliptraSoC {
 pub struct CaliptraMailboxResponse<'a> {
     soc_mbox: caliptra_registers::mbox::RegisterBlock<RealMmioMut<'a>>,
     idx: usize,
-    dlen_words: usize,
+    dlen_bytes: usize,
     checksum: u32,
     expected_checksum: u32,
 }
@@ -168,11 +160,11 @@ impl CaliptraMailboxResponse<'_> {
     }
 
     pub fn len(&self) -> usize {
-        self.dlen_words * 4
+        self.dlen_bytes
     }
 
     pub fn is_empty(&self) -> bool {
-        self.dlen_words == 0
+        self.dlen_bytes == 0
     }
 }
 
@@ -180,7 +172,7 @@ impl Iterator for CaliptraMailboxResponse<'_> {
     type Item = u32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.idx >= self.dlen_words {
+        if self.idx >= self.dlen_bytes.div_ceil(4) {
             None
         } else if self.idx == 0 {
             self.idx += 1;
@@ -188,10 +180,23 @@ impl Iterator for CaliptraMailboxResponse<'_> {
         } else {
             self.idx += 1;
             let data = self.soc_mbox.dataout().read();
-            for x in data.to_le_bytes() {
-                self.checksum = self.checksum.wrapping_add(x as u32);
+
+            // Calculate the remaining bytes to process
+            let remaining_bytes = self.dlen_bytes.saturating_sub((self.idx - 1) * 4);
+
+            // Mask invalid bytes if this is the last chunk and not a full 4 bytes
+            let valid_data = if remaining_bytes < 4 {
+                data & ((1 << (remaining_bytes * 8)) - 1) // Mask only the valid bytes
+            } else {
+                data
+            };
+
+            // Update the checksum with only the valid bytes
+            for x in valid_data.to_le_bytes().iter().take(remaining_bytes) {
+                self.checksum = self.checksum.wrapping_add(*x as u32);
             }
-            Some(data)
+
+            Some(valid_data)
         }
     }
 }

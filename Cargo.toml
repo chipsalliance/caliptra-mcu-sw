@@ -186,6 +186,7 @@ caliptra-image-types = { git = "https://github.com/chipsalliance/caliptra-sw", r
 caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2c0c6a81f569e72622001fab3732a21a1be4c78a" }
 caliptra-test = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2c0c6a81f569e72622001fab3732a21a1be4c78a" }
 ureg = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2c0c6a81f569e72622001fab3732a21a1be4c78a" }
+dpe = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2c0c6a81f569e72622001fab3732a21a1be4c78a", default-features = false, features = ["dpe_profile_p384_sha384"] }
 
 # local caliptra dependency; useful when developing
 # caliptra-api = { path = "../caliptra-sw/api" }
@@ -212,7 +213,7 @@ capsules-core = { git = "https://github.com/tock/tock.git", rev = "b128ae817b867
 capsules-extra = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
 capsules-system = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
 components = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
-kernel = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1", features = ["debug_load_processes"]}
+kernel = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
 riscv = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
 riscv-csr = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
 rv32i = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }

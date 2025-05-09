@@ -25,6 +25,9 @@ mod test_caliptra_crypto;
 #[cfg(feature = "test-dma")]
 mod test_dma;
 
+#[cfg(feature = "test-caliptra-certs")]
+mod test_caliptra_certs;
+
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
@@ -169,6 +172,20 @@ pub(crate) async fn async_main<S: Syscalls>() {
     #[cfg(feature = "test-caliptra-crypto")]
     {
         test_caliptra_crypto::test_caliptra_sha().await;
+        romtime::test_exit(0);
+    }
+
+    #[cfg(feature = "test-caliptra-certs")]
+    {
+        // test_caliptra_certs::test_get_idev_csr().await;
+        test_caliptra_certs::test_populate_idev_ecc384_cert().await;
+        test_caliptra_certs::test_get_ldev_ecc384_cert().await;
+        test_caliptra_certs::test_get_fmc_alias_ecc384cert().await;
+        test_caliptra_certs::test_get_rt_alias_ecc384cert().await;
+        test_caliptra_certs::test_get_cert_chain().await;
+        test_caliptra_certs::test_certify_key().await;
+        test_caliptra_certs::test_sign_with_test_key().await;
+        romtime::test_exit(0);
     }
     #[cfg(feature = "test-dma")]
     {

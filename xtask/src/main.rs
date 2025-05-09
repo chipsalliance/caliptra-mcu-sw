@@ -53,6 +53,9 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         active_mode: bool,
 
+        #[clap(long, default_value_t = false)]
+        manufacturing_mode: bool,
+
         #[arg(long)]
         soc_manifest: Option<PathBuf>,
 

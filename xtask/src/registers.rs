@@ -381,14 +381,26 @@ fn emu_make_peripheral_trait(
         );
         if has_single_32_bit_field(&r.ty) {
             if r.can_read() {
-                fn_tokens.extend(quote! {
-                    fn #read_name(&mut self) -> caliptra_emu_types::RvData { 0 }
-                });
+                if r.is_array() {
+                    fn_tokens.extend(quote! {
+                        fn #read_name(&mut self, _index: usize) -> caliptra_emu_types::RvData { 0 }
+                    });
+                } else {
+                    fn_tokens.extend(quote! {
+                        fn #read_name(&mut self) -> caliptra_emu_types::RvData { 0 }
+                    });
+                }
             }
             if r.can_write() {
-                fn_tokens.extend(quote! {
-                    fn #write_name(&mut self, _val: caliptra_emu_types::RvData) {}
-                });
+                if r.is_array() {
+                    fn_tokens.extend(quote! {
+                        fn #write_name(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
+                    });
+                } else {
+                    fn_tokens.extend(quote! {
+                        fn #write_name(&mut self, _val: caliptra_emu_types::RvData) {}
+                    });
+                }
             }
         } else {
             if register_types_to_crates
@@ -411,16 +423,30 @@ fn emu_make_peripheral_trait(
             let prim = format_ident!("{}", ty.width.rust_primitive_name());
             let fulltyn = quote! { emulator_bus::ReadWriteRegister::<#prim, #read_val> };
             if r.can_read() {
-                fn_tokens.extend(quote! {
-                    fn #read_name(&mut self) -> #fulltyn {
-                        emulator_bus::ReadWriteRegister :: new(0)
-                    }
-                });
+                if r.is_array() {
+                    fn_tokens.extend(quote! {
+                        fn #read_name(&mut self, _index: usize) -> #fulltyn {
+                            emulator_bus::ReadWriteRegister :: new(0)
+                        }
+                    });
+                } else {
+                    fn_tokens.extend(quote! {
+                        fn #read_name(&mut self) -> #fulltyn {
+                            emulator_bus::ReadWriteRegister :: new(0)
+                        }
+                    });
+                }
             }
             if r.can_write() {
-                fn_tokens.extend(quote! {
-                    fn #write_name(&mut self, _val: #fulltyn) {}
-                });
+                if r.is_array() {
+                    fn_tokens.extend(quote! {
+                        fn #write_name(&mut self, _val: #fulltyn, _index: usize) {}
+                    });
+                } else {
+                    fn_tokens.extend(quote! {
+                        fn #write_name(&mut self, _val: #fulltyn) {}
+                    });
+                }
             }
         }
     });
@@ -483,31 +509,91 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
         assert_eq!(r.ty.width, RegisterWidth::_32);
         if has_single_32_bit_field(&r.ty) {
             if r.ty.fields[0].ty.can_read() {
-                read_tokens.extend(quote! {
-                    #a..#b => Ok(self.periph.#read_name()),
-                });
+                if r.is_array() {
+                    if offset + r.offset == 0 {
+                        read_tokens.extend(quote! {
+                            #a..#b => Ok(self.periph.#read_name(addr as usize / 4)),
+                        });
+                    } else {
+                        read_tokens.extend(quote! {
+                            #a..#b => Ok(self.periph.#read_name((addr as usize - #a) / 4)),
+                        });
+                    }
+                } else {
+                    read_tokens.extend(quote! {
+                        #a..#b => Ok(self.periph.#read_name()),
+                    });
+                }
             }
             if r.ty.fields[0].ty.can_write() {
-                write_tokens.extend(quote! {
-                    #a..#b => {
-                        self.periph.#write_name(val);
-                        Ok(())
+                if r.is_array() {
+                    if offset + r.offset == 0 {
+                        write_tokens.extend(quote! {
+                            #a..#b => {
+                                self.periph.#write_name(val, addr as usize / 4);
+                                Ok(())
+                            }
+                        });
+                    } else {
+                       write_tokens.extend(quote! {
+                            #a..#b => {
+                                self.periph.#write_name(val, (addr as usize - #a) / 4);
+                                Ok(())
+                            }
+                        });
                     }
-                });
+                } else {
+                    write_tokens.extend(quote! {
+                        #a..#b => {
+                            self.periph.#write_name(val);
+                            Ok(())
+                        }
+                    });
+                }
             }
         } else {
             if r.can_read() {
-                read_tokens.extend(quote! {
-                    #a..#b => Ok(caliptra_emu_types::RvData::from(self.periph.#read_name().reg.get())),
-                });
+                if r.is_array() {
+                    if offset + r.offset == 0 {
+                        read_tokens.extend(quote! {
+                            #a..#b => Ok(caliptra_emu_types::RvData::from(self.periph.#read_name(addr as usize / 4).reg.get())),
+                        });
+                    } else {
+                        read_tokens.extend(quote! {
+                            #a..#b => Ok(caliptra_emu_types::RvData::from(self.periph.#read_name((addr as usize - #a) / 4).reg.get())),
+                        });
+                    }
+                } else {
+                    read_tokens.extend(quote! {
+                        #a..#b => Ok(caliptra_emu_types::RvData::from(self.periph.#read_name().reg.get())),
+                    });
+                }
             }
             if r.can_write() {
-                write_tokens.extend(quote! {
-                    #a..#b => {
-                        self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val));
-                        Ok(())
+                if r.is_array() {
+                    if offset + r.offset == 0 {
+                        write_tokens.extend(quote! {
+                            #a..#b => {
+                                self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val), addr as usize / 4);
+                                Ok(())
+                            }
+                        });
+                    } else {
+                        write_tokens.extend(quote! {
+                            #a..#b => {
+                                self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val), (addr as usize - #a) / 4);
+                                Ok(())
+                            }
+                        });
                     }
-                });
+                } else {
+                    write_tokens.extend(quote! {
+                        #a..#b => {
+                            self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val));
+                            Ok(())
+                        }
+                    });
+                }
             }
         }
     });

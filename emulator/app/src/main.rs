@@ -110,6 +110,10 @@ struct Emulator {
     #[arg(long)]
     active_mode: bool,
 
+    /// This is only needed if the IDevID CSR needed to be generated in the Caliptra Core.
+    #[arg(long)]
+    manufacturing_mode: bool,
+
     #[arg(long)]
     vendor_pk_hash: Option<String>,
 
@@ -329,9 +333,23 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             println!("Caliptra ROM File is required if Caliptra is enabled");
             exit(-1);
         }
+
+        let device_lifecycle: Option<String> = if cli.manufacturing_mode {
+            Some("manufacturing".into())
+        } else {
+            Some("production".into())
+        };
+
+        let req_idevid_csr: Option<bool> = if cli.manufacturing_mode {
+            Some(true)
+        } else {
+            None
+        };
+
         let (caliptra_cpu, soc_to_caliptra) = start_caliptra(&StartCaliptraArgs {
             rom: cli.caliptra_rom,
-            device_lifecycle: Some("production".into()),
+            device_lifecycle,
+            req_idevid_csr,
             active_mode,
             firmware: if active_mode {
                 None

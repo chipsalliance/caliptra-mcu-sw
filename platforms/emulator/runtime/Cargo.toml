@@ -28,6 +28,7 @@ rv32i.workspace = true
 
 [features]
 default = []
+test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []
 test-dma = []

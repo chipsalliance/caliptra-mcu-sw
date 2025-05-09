@@ -1,13 +1,18 @@
 // Licensed under the Apache-2.0 license
 
-use crate::cert_mgr::{SPDM_MAX_CERT_CHAIN_SLOTS, SPDM_MAX_HASH_SIZE};
-use crate::codec::{Codec, CodecError, CodecResult, CommonCodec, DataKind, MessageBuf};
+use crate::cert_store::{cert_slot_mask, SpdmCertStore};
+use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
 use crate::protocol::common::SpdmMsgHdr;
+use crate::protocol::{
+    AsymAlgo, CertificateInfo, KeyUsageMask, SpdmCertChainHeader, SpdmVersion, SHA384_HASH_SIZE,
+    SPDM_CERT_CHAIN_METADATA_LEN, SPDM_MAX_CERT_CHAIN_PORTION_LEN,
+};
 use crate::state::ConnectionState;
-use libapi_caliptra::crypto::hash::HashAlgoType;
+use core::mem::size_of;
+use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
@@ -32,99 +37,195 @@ impl CommonCodec for GetDigestsRespCommon {
     const DATA_KIND: DataKind = DataKind::Payload;
 }
 
-#[derive(Debug, Clone)]
-pub struct SpdmDigest {
-    pub data: [u8; SPDM_MAX_HASH_SIZE],
-    pub length: u8,
-}
+async fn encode_cert_chain_digest<'a>(
+    slot_id: u8,
+    cert_store: &mut dyn SpdmCertStore,
+    asym_algo: AsymAlgo,
+    rsp: &mut MessageBuf<'a>,
+) -> CommandResult<usize> {
+    let crt_chain_len = cert_store
+        .cert_chain_len(asym_algo, slot_id)
+        .await
+        .map_err(|e| (false, CommandError::CertStore(e)))?;
+    let cert_chain_format_len = crt_chain_len + SPDM_CERT_CHAIN_METADATA_LEN as usize;
 
-impl Default for SpdmDigest {
-    fn default() -> Self {
-        Self {
-            data: [0u8; SPDM_MAX_HASH_SIZE],
-            length: 0u8,
+    let header = SpdmCertChainHeader {
+        length: cert_chain_format_len as u16,
+        reserved: 0,
+    };
+
+    // Length and reserved fields
+    let header_bytes = header.as_bytes();
+    let mut hash_ctx = HashContext::new();
+    hash_ctx
+        .init(HashAlgoType::SHA384, Some(header_bytes))
+        .await
+        .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
+
+    // Root certificate hash
+    let mut root_hash = [0u8; SHA384_HASH_SIZE];
+
+    cert_store
+        .root_cert_hash(slot_id, asym_algo, &mut root_hash)
+        .await
+        .map_err(|e| (false, CommandError::CertStore(e)))?;
+    hash_ctx
+        .update(&root_hash)
+        .await
+        .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
+
+    // Hash the certificate chain
+    let mut cert_portion = [0u8; SPDM_MAX_CERT_CHAIN_PORTION_LEN as usize];
+    let mut offset = 0;
+
+    loop {
+        let bytes_read = cert_store
+            .get_cert_chain(slot_id, asym_algo, offset, &mut cert_portion)
+            .await
+            .map_err(|e| (false, CommandError::CertStore(e)))?;
+
+        hash_ctx
+            .update(&cert_portion[..bytes_read])
+            .await
+            .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
+
+        offset += bytes_read;
+
+        // If the bytes read is less than the length of the cert portion, it indicates the end of the chain
+        if bytes_read < cert_portion.len() {
+            break;
         }
     }
-}
-impl AsRef<[u8]> for SpdmDigest {
-    fn as_ref(&self) -> &[u8] {
-        &self.data[..self.length as usize]
-    }
-}
 
-impl SpdmDigest {
-    pub fn new(digest: &[u8]) -> Self {
-        let mut data = [0u8; SPDM_MAX_HASH_SIZE];
-        let length = digest.len().min(SPDM_MAX_HASH_SIZE);
-        data[..length].copy_from_slice(&digest[..length]);
-        Self {
-            data,
-            length: length as u8,
-        }
-    }
+    // Fill the response buffer with the certificate chain digest
+    rsp.put_data(SHA384_HASH_SIZE)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+    let cert_chain_digest_buf = rsp
+        .data_mut(SHA384_HASH_SIZE)
+        .map_err(|_| (false, CommandError::BufferTooSmall))?;
+    hash_ctx
+        .finalize(cert_chain_digest_buf)
+        .await
+        .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
+    rsp.pull_data(SHA384_HASH_SIZE)
+        .map_err(|_| (false, CommandError::BufferTooSmall))?;
+
+    Ok(SHA384_HASH_SIZE)
 }
 
-impl Codec for SpdmDigest {
-    fn encode(&self, buffer: &mut MessageBuf) -> CodecResult<usize> {
-        let hash_len = self.length.min(SPDM_MAX_HASH_SIZE as u8);
-        // iterates over the data and encode into the buffer
-        buffer.put_data(hash_len.into())?;
+async fn fill_digests_response<'a>(
+    ctx: &mut SpdmContext<'a>,
+    connection_version: SpdmVersion,
+    rsp: &mut MessageBuf<'a>,
+) -> CommandResult<()> {
+    // Ensure the selected hash algorithm is SHA384 and retrieve the asymmetric algorithm (currently only ECC-P384 is supported)
+    ctx.verify_selected_hash_algo()
+        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
+    let asym_algo = ctx
+        .selected_asym_algo()
+        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
 
-        if buffer.data_len() < hash_len.into() {
-            Err(CodecError::BufferTooSmall)?;
-        }
+    // Get the supported and provisioned slot masks.
+    let (supported_slot_mask, provisioned_slot_mask) = cert_slot_mask(ctx.device_certs_store);
 
-        let payload = buffer.data_mut(hash_len.into())?;
-
-        self.data[..hash_len as usize]
-            .write_to(payload)
-            .map_err(|_| CodecError::WriteError)?;
-        buffer.pull_data(hash_len.into())?;
-        Ok(hash_len.into())
+    // No slots provisioned with certificates
+    let slot_cnt = provisioned_slot_mask.count_ones() as usize;
+    if slot_cnt == 0 {
+        Err(ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
     }
 
-    fn decode(_data: &mut MessageBuf) -> CodecResult<Self> {
-        // Decoding is not required for SPDM responder
-        unimplemented!()
+    // Start filling the response payload
+    let mut payload_len = 0;
+
+    // Fill the response header with param1 and param2
+    let dgst_rsp_common = GetDigestsRespCommon {
+        supported_slot_mask,
+        provisioned_slot_mask,
+    };
+
+    payload_len += dgst_rsp_common
+        .encode(rsp)
+        .map_err(|_| (false, CommandError::BufferTooSmall))?;
+
+    // Encode the certificate chain digests for each provisioned slot
+    for slot_id in 0..slot_cnt {
+        payload_len +=
+            encode_cert_chain_digest(slot_id as u8, ctx.device_certs_store, asym_algo, rsp)
+                .await
+                .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
     }
+
+    // Fill the multi-key connection response data if applicable
+    if connection_version >= SpdmVersion::V13 && ctx.state.connection_info.multi_key_conn_rsp() {
+        payload_len += encode_multi_key_conn_rsp_data(ctx, provisioned_slot_mask, rsp)?;
+    }
+
+    // Push data offset up by total payload length
+    rsp.push_data(payload_len)
+        .map_err(|_| (false, CommandError::BufferTooSmall))?;
+
+    Ok(())
 }
 
-// TODO: Add key_pair_id, cert_info, and key_usage_bit_mask if needed
-pub struct GetDigestsResp<'a> {
-    pub common: GetDigestsRespCommon,
-    pub digests: &'a [SpdmDigest],
-}
+fn encode_multi_key_conn_rsp_data(
+    ctx: &mut SpdmContext,
+    provisioned_slot_mask: u8,
+    rsp: &mut MessageBuf,
+) -> CommandResult<usize> {
+    let slot_cnt = provisioned_slot_mask.count_ones() as usize;
 
-impl<'a> GetDigestsResp<'a> {
-    pub fn new(
-        supported_slot_mask: u8,
-        provisioned_slot_mask: u8,
-        digests: &'a [SpdmDigest],
-    ) -> Self {
-        Self {
-            common: GetDigestsRespCommon {
-                supported_slot_mask,
-                provisioned_slot_mask,
-            },
-            digests,
-        }
-    }
-}
+    let key_pair_ids_size = size_of::<u8>() * slot_cnt;
+    let cert_infos_size = size_of::<CertificateInfo>() * slot_cnt;
+    let key_usage_masks_size = size_of::<KeyUsageMask>() * slot_cnt;
+    let total_size = key_pair_ids_size + cert_infos_size + key_usage_masks_size;
 
-impl<'a> Codec for GetDigestsResp<'a> {
-    fn encode(&self, buffer: &mut MessageBuf) -> CodecResult<usize> {
-        let mut len = self.common.encode(buffer)?;
-        let slot_cnt = self.common.provisioned_slot_mask.count_ones() as usize;
-        for digest in self.digests.iter().take(slot_cnt) {
-            len += digest.encode(buffer)?;
-        }
-        Ok(len)
-    }
+    rsp.put_data(total_size)
+        .map_err(|_| (false, CommandError::BufferTooSmall))?;
+    let data_buf = rsp
+        .data_mut(total_size)
+        .map_err(|_| (false, CommandError::BufferTooSmall))?;
+    data_buf.fill(0);
 
-    fn decode(_data: &mut MessageBuf) -> CodecResult<Self> {
-        // Decoding is not required for SPDM responder
-        unimplemented!()
+    let (key_pair_buf, rest) = data_buf.split_at_mut(key_pair_ids_size);
+    let (cert_info_buf, key_usage_mask_buf) = rest.split_at_mut(cert_infos_size);
+
+    let mut key_pair_offset = 0;
+    let mut key_usage_offset = 0;
+    let mut cert_info_offset = 0;
+
+    for slot_id in 0..slot_cnt {
+        let key_pair_id = ctx
+            .device_certs_store
+            .key_pair_id(slot_id as u8)
+            .unwrap_or_default();
+        let cert_info = ctx
+            .device_certs_store
+            .cert_info(slot_id as u8)
+            .unwrap_or_default();
+        let key_usage_mask = ctx
+            .device_certs_store
+            .key_usage_mask(slot_id as u8)
+            .unwrap_or_default();
+
+        // Fill the KeyPairIDs
+        key_pair_buf[key_pair_offset..key_pair_offset + size_of::<u8>()]
+            .copy_from_slice(key_pair_id.as_bytes());
+        key_pair_offset += size_of::<u8>();
+
+        // Fill the CertificateInfos
+        cert_info_buf[cert_info_offset..cert_info_offset + size_of::<CertificateInfo>()]
+            .copy_from_slice(cert_info.as_bytes());
+        cert_info_offset += size_of::<CertificateInfo>();
+
+        // Fill the KeyUsageMasks
+        key_usage_mask_buf[key_usage_offset..key_usage_offset + size_of::<KeyUsageMask>()]
+            .copy_from_slice(key_usage_mask.as_bytes());
+        key_usage_offset += size_of::<KeyUsageMask>();
     }
+    rsp.pull_data(total_size)
+        .map_err(|_| (false, CommandError::BufferTooSmall))?;
+
+    Ok(total_size)
 }
 
 pub(crate) async fn handle_digests<'a>(
@@ -132,8 +233,8 @@ pub(crate) async fn handle_digests<'a>(
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    // Validate the state
-    if ctx.state.connection_info.state() < ConnectionState::AfterNegotiateAlgorithms {
+    // Validate the connection state
+    if ctx.state.connection_info.state() < ConnectionState::AlgorithmsNegotiated {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
@@ -160,50 +261,13 @@ pub(crate) async fn handle_digests<'a>(
 
     // TODO: transcript manager and session support
 
-    let hash_algo = ctx
-        .get_select_hash_algo()
-        .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
-
-    // Get the supported and provisioned slot masks.
-    let (supported_mask, provisioned_mask) = ctx
-        .device_certs_manager
-        .get_cert_chain_slot_mask()
-        .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
-
-    // No slots provisioned
-    let slot_cnt = provisioned_mask.count_ones() as usize;
-    if slot_cnt == 0 {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
-    }
-
-    let mut digests: [SpdmDigest; SPDM_MAX_CERT_CHAIN_SLOTS] =
-        core::array::from_fn(|_| SpdmDigest::default());
-
-    let caliptra_hash_algo: HashAlgoType = hash_algo
-        .try_into()
-        .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
-
-    for (slot_id, digest) in digests.iter_mut().take(slot_cnt).enumerate() {
-        digest.length = caliptra_hash_algo.hash_size() as u8;
-        ctx.device_certs_manager
-            .cert_chain_digest(slot_id as u8, hash_algo, &mut digest.data)
-            .await
-            .map_err(|_| {
-                ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None)
-            })?;
-    }
-
     // Prepare the response buffer
     ctx.prepare_response_buffer(req_payload)?;
 
     // Fill the response buffer
-    fill_digests_response(
-        ctx,
-        supported_mask,
-        provisioned_mask,
-        &digests[..slot_cnt],
-        req_payload,
-    )?;
+    fill_digests_response(ctx, connection_version, req_payload).await?;
+
+    // TODO: transcript manager and session support
 
     if ctx.state.connection_info.state() < ConnectionState::AfterDigest {
         ctx.state
@@ -212,64 +276,4 @@ pub(crate) async fn handle_digests<'a>(
     }
 
     Ok(())
-}
-
-fn fill_digests_response(
-    ctx: &SpdmContext,
-    supported_slot_mask: u8,
-    provisioned_slot_mask: u8,
-    digests: &[SpdmDigest],
-    rsp: &mut MessageBuf,
-) -> CommandResult<()> {
-    // Construct the response
-    let resp = GetDigestsResp::new(supported_slot_mask, provisioned_slot_mask, digests);
-
-    let payload_len = resp
-        .encode(rsp)
-        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?;
-
-    // Push data offset up by total payload length
-    rsp.push_data(payload_len)
-        .map_err(|_| (false, CommandError::BufferTooSmall))?;
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_get_encode_digests_response() {
-        let slot_mask = 0b00000011; // Two slots enabled
-        let digest1 = SpdmDigest::new(&[0xAA; SPDM_MAX_HASH_SIZE]);
-        let digest2 = SpdmDigest::new(&[0xBB; SPDM_MAX_HASH_SIZE]);
-        let digests = [digest1, digest2];
-
-        let resp = GetDigestsResp::new(slot_mask, slot_mask, &digests);
-        let mut bytes = [0u8; 1024];
-        let mut buffer = MessageBuf::new(&mut bytes);
-        let encode_result = resp.encode(&mut buffer);
-
-        assert!(encode_result.is_ok());
-        let encoded_len = encode_result.unwrap();
-        assert_eq!(encoded_len, buffer.msg_len());
-        assert_eq!(encoded_len, buffer.data_offset());
-
-        // Verify the encoded data
-        let expected_len = 2 + (SPDM_MAX_HASH_SIZE * 2);
-        assert_eq!(encoded_len, expected_len);
-
-        // Verify the contents in the message buffer
-        assert_eq!(buffer.total_message()[0], slot_mask); // param1
-        assert_eq!(buffer.total_message()[1], slot_mask); // slot_mask
-        assert_eq!(
-            buffer.total_message()[2..2 + SPDM_MAX_HASH_SIZE],
-            [0xAA; SPDM_MAX_HASH_SIZE]
-        ); // digest1
-        assert_eq!(
-            buffer.total_message()[2 + SPDM_MAX_HASH_SIZE..],
-            [0xBB; SPDM_MAX_HASH_SIZE]
-        ); // digest2
-    }
 }

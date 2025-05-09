@@ -1968,6 +1968,7 @@ dependencies = [
  "caliptra-api",
  "caliptra-auth-man-types",
  "caliptra-error",
+ "dpe",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
@@ -3058,9 +3059,11 @@ dependencies = [
 name = "spdm-app"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
+ "libapi-caliptra",
  "libsyscall-caliptra",
  "libtock",
  "libtock_console",

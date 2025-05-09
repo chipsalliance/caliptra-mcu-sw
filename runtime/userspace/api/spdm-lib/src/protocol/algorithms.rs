@@ -5,6 +5,17 @@ use bitfield::bitfield;
 use libapi_caliptra::crypto::hash::HashAlgoType;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
+pub const SHA384_HASH_SIZE: usize = 48;
+pub const ECC_P384_SIGNATURE_SIZE: usize = 96;
+
+// Type of Asymmetric Algorithm selected by the responder.
+// Currently only ECC P384 is supported.
+// This can be extended to support PQC algorithms in the future.
+#[derive(Debug, Clone, Copy)]
+pub enum AsymAlgo {
+    EccP384,
+}
+
 pub(crate) trait Prioritize<T>
 where
     Self: Sized,

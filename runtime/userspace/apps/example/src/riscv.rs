@@ -13,7 +13,7 @@ const HEAP_SIZE: usize = 0x40;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-stack_size! {0x3000}
+stack_size! {0x6400}
 set_main! {main}
 
 // TODO: remove this dependence on the emulator when the emulator-specific

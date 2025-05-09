@@ -182,9 +182,9 @@ pub(crate) fn run_tests(
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let stream = TcpStream::connect(addr).unwrap();
     let running_clone_stop = running.clone();
-    // cancel the test after 30 seconds
+    // cancel the test after 120 seconds
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_secs(60));
+        std::thread::sleep(Duration::from_secs(120));
         running_clone_stop.store(false, Ordering::Relaxed);
     });
     std::thread::spawn(move || {

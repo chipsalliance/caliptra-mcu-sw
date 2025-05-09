@@ -31,7 +31,6 @@ pub async fn test_caliptra_sha() {
     test_sha(data1, HashAlgoType::SHA512, &expected_sha_512).await;
 
     println!("SHA test completed successfully");
-    test_exit(0);
 }
 
 async fn test_sha(data: &[u8], algo: HashAlgoType, expected_hash: &[u8]) {

@@ -29,6 +29,7 @@ pub(crate) struct ConnectionInfo {
     state: ConnectionState,
     peer_capabilities: DeviceCapabilities,
     peer_algorithms: DeviceAlgorithms,
+    multi_key_conn_rsp: bool,
 }
 
 impl Default for ConnectionInfo {
@@ -38,6 +39,7 @@ impl Default for ConnectionInfo {
             state: ConnectionState::NotStarted,
             peer_capabilities: DeviceCapabilities::default(),
             peer_algorithms: DeviceAlgorithms::default(),
+            multi_key_conn_rsp: false,
         }
     }
 }
@@ -76,6 +78,15 @@ impl ConnectionInfo {
         &self.peer_algorithms
     }
 
+    #[allow(dead_code)]
+    pub fn set_multi_key_conn_rsp(&mut self, multi_key_conn_rsp: bool) {
+        self.multi_key_conn_rsp = multi_key_conn_rsp;
+    }
+
+    pub fn multi_key_conn_rsp(&self) -> bool {
+        self.multi_key_conn_rsp
+    }
+
     fn reset(&mut self) {
         self.version_number = SpdmVersion::default();
         self.state = ConnectionState::NotStarted;
@@ -89,7 +100,7 @@ pub enum ConnectionState {
     NotStarted,
     AfterVersion,
     AfterCapabilities,
-    AfterNegotiateAlgorithms,
+    AlgorithmsNegotiated,
     AfterDigest,
     AfterCertificate,
 }
