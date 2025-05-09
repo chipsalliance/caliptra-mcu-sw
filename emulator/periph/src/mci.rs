@@ -55,9 +55,8 @@ impl MciPeripheral for Mci {
         self.cptra_wdt_timer1_ctrl.clone()
     }
 
-    fn read_mci_reg_wdt_timer1_timeout_period(&mut self) -> RvData {
-        // FIXME
-        0
+    fn read_mci_reg_wdt_timer1_timeout_period(&mut self, index: usize) -> RvData {
+        self.cptra_wdt_timer1_timeout_period[index]
     }
 
     fn read_mci_reg_wdt_timer2_en(&mut self) -> ReadWriteRegister<u32, WdtTimer2En::Register> {
@@ -68,18 +67,16 @@ impl MciPeripheral for Mci {
         self.cptra_wdt_timer2_ctrl.clone()
     }
 
-    fn read_mci_reg_wdt_timer2_timeout_period(&mut self) -> RvData {
-        // FIXME
-        0
+    fn read_mci_reg_wdt_timer2_timeout_period(&mut self, index: usize) -> RvData {
+        self.cptra_wdt_timer2_timeout_period[index]
     }
 
     fn read_mci_reg_wdt_status(&mut self) -> ReadWriteRegister<u32, WdtStatus::Register> {
         self.cptra_wdt_status.clone()
     }
 
-    fn read_mci_reg_wdt_cfg(&mut self) -> RvData {
-        // FIXME
-        0
+    fn read_mci_reg_wdt_cfg(&mut self, index: usize) -> RvData {
+        self.cptra_wdt_cfg[index]
     }
 
     fn write_mci_reg_wdt_timer1_en(&mut self, val: ReadWriteRegister<u32, WdtTimer1En::Register>) {
@@ -123,9 +120,8 @@ impl MciPeripheral for Mci {
         }
     }
 
-    fn write_mci_reg_wdt_timer1_timeout_period(&mut self, val: RvData) {
-        // FIXME
-        self.cptra_wdt_timer1_timeout_period[0] = val;
+    fn write_mci_reg_wdt_timer1_timeout_period(&mut self, val: RvData, index: usize) {
+        self.cptra_wdt_timer1_timeout_period[index] = val;
     }
 
     fn write_mci_reg_wdt_timer2_en(&mut self, val: ReadWriteRegister<u32, WdtTimer2En::Register>) {
@@ -169,9 +165,8 @@ impl MciPeripheral for Mci {
         }
     }
 
-    fn write_mci_reg_wdt_timer2_timeout_period(&mut self, val: RvData) {
-        // FIXME
-        self.cptra_wdt_timer2_timeout_period[0] = val;
+    fn write_mci_reg_wdt_timer2_timeout_period(&mut self, val: RvData, index: usize) {
+        self.cptra_wdt_timer2_timeout_period[index] = val;
     }
 
     fn poll(&mut self) {
