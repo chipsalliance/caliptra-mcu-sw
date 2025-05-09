@@ -5,6 +5,10 @@ use crate::error::{SpdmError, SpdmResult};
 use crate::protocol::version::SpdmVersion;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
+pub const NONCE_LEN: usize = 32;
+
+pub const REQUESTER_CONTEXT_LEN: usize = 8;
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ReqRespCode {
     GetVersion = 0x84,
@@ -17,6 +21,8 @@ pub(crate) enum ReqRespCode {
     Digests = 0x01,
     GetCertificate = 0x82,
     Certificate = 0x02,
+    Challenge = 0x83,
+    ChallengeAuth = 0x03,
     Error = 0x7F,
 }
 
@@ -34,6 +40,8 @@ impl TryFrom<u8> for ReqRespCode {
             0x01 => Ok(ReqRespCode::Digests),
             0x82 => Ok(ReqRespCode::GetCertificate),
             0x02 => Ok(ReqRespCode::Certificate),
+            0x83 => Ok(ReqRespCode::Challenge),
+            0x03 => Ok(ReqRespCode::ChallengeAuth),
             0x7F => Ok(ReqRespCode::Error),
             _ => Err(SpdmError::UnsupportedRequest),
         }
@@ -43,20 +51,6 @@ impl TryFrom<u8> for ReqRespCode {
 impl From<ReqRespCode> for u8 {
     fn from(code: ReqRespCode) -> Self {
         code as u8
-    }
-}
-
-impl ReqRespCode {
-    pub fn response_code(&self) -> SpdmResult<ReqRespCode> {
-        match self {
-            ReqRespCode::GetVersion => Ok(ReqRespCode::Version),
-            ReqRespCode::GetCapabilities => Ok(ReqRespCode::Capabilities),
-            ReqRespCode::NegotiateAlgorithms => Ok(ReqRespCode::Algorithms),
-            ReqRespCode::GetDigests => Ok(ReqRespCode::Digests),
-            ReqRespCode::GetCertificate => Ok(ReqRespCode::Certificate),
-            ReqRespCode::Error => Ok(ReqRespCode::Error),
-            _ => Err(SpdmError::UnsupportedRequest),
-        }
     }
 }
 

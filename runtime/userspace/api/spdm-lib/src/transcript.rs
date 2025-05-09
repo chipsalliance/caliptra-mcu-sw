@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use crate::protocol::{SpdmVersion, SHA384_HASH_SIZE};
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 use libapi_caliptra::error::CaliptraApiError;

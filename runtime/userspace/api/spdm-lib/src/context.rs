@@ -5,7 +5,7 @@ use crate::cert_store::*;
 use crate::codec::{Codec, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
-    algorithms_rsp, capabilities_rsp, certificate_rsp, digests_rsp, version_rsp,
+    algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, digests_rsp, version_rsp,
 };
 use crate::error::*;
 use crate::protocol::algorithms::*;
@@ -65,14 +65,12 @@ impl<'a> SpdmContext<'a> {
 
         // Process message
         match self.handle_request(msg_buf).await {
-            Ok(resp_code) => {
-                self.send_response(resp_code, msg_buf).await?;
+            Ok(()) => {
+                self.send_response(msg_buf).await?;
             }
             Err((rsp, command_error)) => {
                 if rsp {
-                    self.send_response(ReqRespCode::Error, msg_buf)
-                        .await
-                        .inspect_err(|_| {})?;
+                    self.send_response(msg_buf).await.inspect_err(|_| {})?;
                 }
                 Err(SpdmError::Command(command_error))?;
             }
@@ -81,7 +79,7 @@ impl<'a> SpdmContext<'a> {
         Ok(())
     }
 
-    async fn handle_request(&mut self, buf: &mut MessageBuf<'a>) -> CommandResult<ReqRespCode> {
+    async fn handle_request(&mut self, buf: &mut MessageBuf<'a>) -> CommandResult<()> {
         let req = buf;
 
         let req_msg_header: SpdmMsgHdr =
@@ -89,9 +87,6 @@ impl<'a> SpdmContext<'a> {
 
         let req_code = req_msg_header
             .req_resp_code()
-            .map_err(|_| (false, CommandError::UnsupportedRequest))?;
-        let resp_code = req_code
-            .response_code()
             .map_err(|_| (false, CommandError::UnsupportedRequest))?;
 
         match req_code {
@@ -110,20 +105,15 @@ impl<'a> SpdmContext<'a> {
             ReqRespCode::GetCertificate => {
                 certificate_rsp::handle_certificates(self, req_msg_header, req).await?
             }
+            ReqRespCode::Challenge => {
+                challenge_auth_rsp::handle_challenge(self, req_msg_header, req).await?
+            }
             _ => Err((false, CommandError::UnsupportedRequest))?,
         }
-        Ok(resp_code)
+        Ok(())
     }
 
-    async fn send_response(
-        &mut self,
-        _resp_code: ReqRespCode,
-        resp: &mut MessageBuf<'a>,
-    ) -> SpdmResult<()> {
-        // let spdm_version = self.state.connection_info.version_number();
-        // let spdm_resp_hdr = SpdmMsgHdr::new(spdm_version, resp_code);
-        // spdm_resp_hdr.encode(resp).map_err(SpdmError::Codec)?;
-
+    async fn send_response(&mut self, resp: &mut MessageBuf<'a>) -> SpdmResult<()> {
         self.transport
             .send_response(resp)
             .await

@@ -137,6 +137,26 @@ bitfield! {
 
 impl CommonCodec for AlgStructure {}
 
+pub(crate) fn selected_measurement_specification(ctx: &SpdmContext) -> MeasurementSpecification {
+    let local_cap_flags = &ctx.local_capabilities.flags;
+    let local_algorithms = &ctx.local_algorithms.device_algorithms;
+    let peer_algorithms = ctx.state.connection_info.peer_algorithms();
+    let algorithm_priority_table = &ctx.local_algorithms.algorithm_priority_table;
+
+    let mut measurement_specification_sel = MeasurementSpecification::default();
+    if local_cap_flags.mel_cap() == 1
+        || (local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithNoSignature as u8
+            || local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithSignature as u8)
+    {
+        measurement_specification_sel =
+            MeasurementSpecification(local_algorithms.measurement_spec.0.prioritize(
+                &peer_algorithms.measurement_spec.0,
+                algorithm_priority_table.measurement_specification,
+            ));
+    }
+    measurement_specification_sel
+}
+
 async fn process_negotiate_algorithms_request<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
@@ -298,17 +318,18 @@ async fn generate_algorithms_response<'a>(
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?;
 
     // MeasurementSpecificationSel
-    let mut measurement_specification_sel = MeasurementSpecification::default();
-    if local_cap_flags.mel_cap() == 1
-        || (local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithNoSignature as u8
-            || local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithSignature as u8)
-    {
-        measurement_specification_sel =
-            MeasurementSpecification(local_algorithms.measurement_spec.0.prioritize(
-                &peer_algorithms.measurement_spec.0,
-                algorithm_priority_table.measurement_specification,
-            ));
-    }
+    let measurement_specification_sel = selected_measurement_specification(ctx);
+    // MeasurementSpecification::default();
+    // if local_cap_flags.mel_cap() == 1
+    //     || (local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithNoSignature as u8
+    //         || local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithSignature as u8)
+    // {
+    //     measurement_specification_sel =
+    //         MeasurementSpecification(local_algorithms.measurement_spec.0.prioritize(
+    //             &peer_algorithms.measurement_spec.0,
+    //             algorithm_priority_table.measurement_specification,
+    //         ));
+    // }
 
     // OtherParamsSelection (Responder doesn't set the multi asymmetric key use flag)
     let mut other_params_selection = OtherParamSupport::default();
