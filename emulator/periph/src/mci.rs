@@ -28,14 +28,22 @@ pub struct Mci {
 }
 
 impl Mci {
+    pub const CPTRA_WDT_TIMER1_EN_START: u32 = 0xa0;
+    pub const CPTRA_WDT_TIMER1_CTRL_START: u32 = 0xa4;
+    pub const CPTRA_WDT_TIMER1_TIMEOUT_PERIOD_START: u32 = 0xa8;
+    pub const CPTRA_WDT_TIMER2_EN_START: u32 = 0xb0;
+    pub const CPTRA_WDT_TIMER2_CTRL_START: u32 = 0xb4;
+    pub const CPTRA_WDT_TIMER2_TIMEOUT_PERIOD_START: u32 = 0xb8;
+    pub const CPTRA_WDT_STATUS_START: u32 = 0xc0;
+
     pub fn new(clock: &Clock) -> Self {
         Self {
             cptra_wdt_timer1_en: ReadWriteRegister::new(0),
             cptra_wdt_timer1_ctrl: ReadWriteRegister::new(0),
-            cptra_wdt_timer1_timeout_period: [0x0; 2],
+            cptra_wdt_timer1_timeout_period: [0xffff_ffff; 2],
             cptra_wdt_timer2_en: ReadWriteRegister::new(0),
             cptra_wdt_timer2_ctrl: ReadWriteRegister::new(0),
-            cptra_wdt_timer2_timeout_period: [0x0; 2],
+            cptra_wdt_timer2_timeout_period: [0xffff_ffff; 2],
             cptra_wdt_status: ReadWriteRegister::new(0),
             cptra_wdt_cfg: [0x0; 2],
             error0_internal_intr_r: ReadWriteRegister::new(0),
@@ -217,5 +225,64 @@ impl MciPeripheral for Mci {
                 },
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use emulator_bus::Bus;
+    use caliptra_emu_types::RvSize;
+    use tock_registers::registers::InMemoryRegister;
+    use emulator_registers_generated::mci::MciBus;
+
+    fn next_action(clock: &Clock) -> Option<TimerAction> {
+        let mut actions = clock.increment(4);
+        match actions.len() {
+            0 => None,
+            1 => actions.drain().next(),
+            _ => panic!("More than one action scheduled; unexpected"),
+        }
+    }
+
+    #[test]
+    fn test_wdt() {
+        let clock = Clock::new();
+
+        let mci_reg: Mci = Mci::new(&clock);
+        let mut mci_bus = MciBus { periph: Box::new(mci_reg) };
+        mci_bus
+            .write(RvSize::Word, Mci::CPTRA_WDT_TIMER1_TIMEOUT_PERIOD_START, 4)
+            .unwrap();
+        mci_bus
+            .write(RvSize::Word, Mci::CPTRA_WDT_TIMER1_TIMEOUT_PERIOD_START + 4, 0)
+            .unwrap();
+        mci_bus
+            .write(RvSize::Word, Mci::CPTRA_WDT_TIMER2_TIMEOUT_PERIOD_START, 1)
+            .unwrap();
+        mci_bus
+            .write(RvSize::Word, Mci::CPTRA_WDT_TIMER2_TIMEOUT_PERIOD_START + 4, 0)
+            .unwrap();
+        mci_bus
+            .write(RvSize::Word, Mci::CPTRA_WDT_TIMER1_EN_START, 1)
+            .unwrap();
+
+        loop {
+            let status = InMemoryRegister::<u32, WdtStatus::Register>::new(
+                mci_bus.read(RvSize::Word, Mci::CPTRA_WDT_STATUS_START).unwrap(),
+            );
+            if status.is_set(WdtStatus::T2Timeout) {
+                break;
+            }
+
+            clock.increment_and_process_timer_actions(1, &mut mci_bus);
+        }
+
+        assert_eq!(
+            next_action(&clock),
+            Some(TimerAction::Nmi {
+                mcause: 0x0000_0000,
+            })
+        );
     }
 }
