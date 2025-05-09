@@ -13,7 +13,12 @@ use libtock_platform::*;
 ///
 /// When the future is ready, it will contain arguments the upcall was called with.
 ///
-/// Use like: `TockSubscribe::<TockSyscalls>::subscribe(driver_num, subscribe_num).await`.
+/// Use like:
+/// ```rust
+/// let sub = TockSubscribe::<TockSyscalls>::subscribe(driver_num, subscribe_num).await;
+/// sub.finish_subscribe();
+/// ```
+///
 pub struct TockSubscribe {
     result: Cell<Option<(u32, u32, u32)>>,
     waker: Cell<Option<Waker>>,
@@ -38,7 +43,7 @@ impl TockSubscribe {
         subscribe_num: u32,
         buffer_num: u32,
         buffer: &mut [u8],
-    ) -> impl Future<Output = Result<(u32, u32, u32), ErrorCode>> {
+    ) -> Pin<Box<TockSubscribe>> {
         // Pinning is necessary since we are passing a pointer to the TockSubscribe to the kernel.
         let mut f = Pin::new(Box::new(TockSubscribe::new()));
         let upcall_fcn = (kernel_upcall::<S> as *const ()) as usize;
@@ -99,7 +104,7 @@ impl TockSubscribe {
         subscribe_num: u32,
         buffer_num: u32,
         buffer: &[u8],
-    ) -> impl Future<Output = Result<(u32, u32, u32), ErrorCode>> {
+    ) -> Pin<Box<TockSubscribe>> {
         // Pinning is necessary since we are passing a pointer to the TockSubscribe to the kernel.
         let mut f = Pin::new(Box::new(TockSubscribe::new()));
         let upcall_fcn = (kernel_upcall::<S> as *const ()) as usize;
@@ -153,19 +158,6 @@ impl TockSubscribe {
             }
         }
         f
-    }
-
-    /// This function should be called to turn the TockSubscribe into impl Future/async fn.
-    pub fn subscribe_finish(
-        f: Pin<Box<TockSubscribe>>,
-    ) -> impl Future<Output = Result<(u32, u32, u32), ErrorCode>> {
-        f
-    }
-
-    /// Cancel the TockSubscribe future.
-    /// This sets error so that the future is gracefully dropped.
-    pub fn cancel(&mut self) {
-        self.set_err(ErrorCode::Fail);
     }
 
     pub fn subscribe_allow_ro_rw<S: Syscalls, C: allow_rw::Config>(
@@ -260,10 +252,7 @@ impl TockSubscribe {
         f
     }
 
-    pub fn subscribe<S: Syscalls>(
-        driver_num: u32,
-        subscribe_num: u32,
-    ) -> impl Future<Output = Result<(u32, u32, u32), ErrorCode>> {
+    pub fn subscribe<S: Syscalls>(driver_num: u32, subscribe_num: u32) -> Pin<Box<TockSubscribe>> {
         // Pinning is necessary since we are passing a pointer to the TockSubscribe to the kernel.
         let mut f = Pin::new(Box::new(TockSubscribe::new()));
         let upcall_fcn = (kernel_upcall::<S> as *const ()) as usize;
@@ -290,6 +279,19 @@ impl TockSubscribe {
             }
         }
         f
+    }
+
+    /// This function should be called to turn the TockSubscribe into impl Future/async fn.
+    pub fn subscribe_finish(
+        f: Pin<Box<TockSubscribe>>,
+    ) -> impl Future<Output = Result<(u32, u32, u32), ErrorCode>> {
+        f
+    }
+
+    /// Cancel the TockSubscribe future.
+    /// This sets error so that the future is gracefully dropped.
+    pub fn cancel(&mut self) {
+        self.set_err(ErrorCode::Fail);
     }
 }
 

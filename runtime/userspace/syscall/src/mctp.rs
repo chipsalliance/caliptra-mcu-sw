@@ -72,17 +72,22 @@ impl<S: Syscalls> Mctp<S> {
         }
 
         let (recv_len, _, info) = share::scope::<(), _, _>(|_handle| {
-            let sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
+            let mut sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
                 self.driver_num,
                 subscribe::RECEIVED_REQUEST,
                 allow_rw::READ_REQUEST,
                 req,
             );
 
-            S::command(self.driver_num, command::RECEIVE_REQUEST, 0, 0)
-                .to_result::<(), ErrorCode>()?;
+            if let Err(e) = S::command(self.driver_num, command::RECEIVE_REQUEST, 0, 0)
+                .to_result::<(), ErrorCode>()
+            {
+                // Cancel the future if the command fails
+                sub.cancel();
+                Err(e)?;
+            }
 
-            Ok(sub)
+            Ok(TockSubscribe::subscribe_finish(sub))
         })?
         .await?;
 
@@ -106,22 +111,27 @@ impl<S: Syscalls> Mctp<S> {
         }
 
         let ro_sub = share::scope::<(), _, _>(|_handle| {
-            let ro_sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
+            let mut ro_sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
                 self.driver_num,
                 subscribe::MESSAGE_TRANSMITTED,
                 allow_ro::MESSAGE_WRITE,
                 resp,
             );
 
-            S::command(
+            if let Err(e) = S::command(
                 self.driver_num,
                 command::SEND_RESPONSE,
                 info.eid as u32,
                 (info.tag & 0x7) as u32,
             )
-            .to_result::<(), ErrorCode>()?;
+            .to_result::<(), ErrorCode>()
+            {
+                // Cancel the future if the command fails
+                ro_sub.cancel();
+                Err(e)?;
+            }
 
-            Ok(ro_sub)
+            Ok(TockSubscribe::subscribe_finish(ro_sub))
         })?;
 
         ro_sub.await.map(|(result, _, _)| match result {
@@ -149,17 +159,22 @@ impl<S: Syscalls> Mctp<S> {
         }
 
         let (result, _, info) = share::scope::<(), _, _>(|_handle| {
-            let sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
+            let mut sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
                 self.driver_num,
                 subscribe::MESSAGE_TRANSMITTED,
                 allow_ro::MESSAGE_WRITE,
                 req,
             );
 
-            S::command(self.driver_num, command::SEND_REQUEST, dest_eid as u32, 0)
-                .to_result::<(), ErrorCode>()?;
+            if let Err(e) = S::command(self.driver_num, command::SEND_REQUEST, dest_eid as u32, 0)
+                .to_result::<(), ErrorCode>()
+            {
+                // Cancel the future if the command fails
+                sub.cancel();
+                Err(e)?;
+            }
 
-            Ok(sub)
+            Ok(TockSubscribe::subscribe_finish(sub))
         })?
         .await?;
 
@@ -192,21 +207,27 @@ impl<S: Syscalls> Mctp<S> {
         }
 
         let (recv_len, _, info) = share::scope::<(), _, _>(|_handle| {
-            let sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
+            let mut sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
                 self.driver_num,
                 subscribe::RECEIVED_RESPONSE,
                 allow_rw::READ_RESPONSE,
                 resp,
             );
-            S::command(
+            if let Err(e) = S::command(
                 self.driver_num,
                 command::RECEIVE_RESPONSE,
                 src_eid as u32,
                 tag as u32,
             )
-            .to_result::<(), ErrorCode>()?;
+            .to_result::<(), ErrorCode>()
+            {
+                // Cancel the future if the command fails
+                sub.cancel();
+                Err(e)?;
+            }
 
-            Ok(sub)
+            // The command was successful, so we can finish the subscription
+            Ok(TockSubscribe::subscribe_finish(sub))
         })?
         .await?;
 

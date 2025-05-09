@@ -1,7 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use crate::error::{CaliptraApiError, CaliptraApiResult};
-use crate::mailbox_api::{ShaFinalReq, ShaInitReq, ShaUpdateReq, MAX_CRYPTO_MBOX_DATA_SIZE};
+use crate::mailbox_api::{
+    execute_mailbox_cmd, ShaFinalReq, ShaInitReq, ShaUpdateReq, MAX_CRYPTO_MBOX_DATA_SIZE,
+};
 use caliptra_api::mailbox::{
     CmHashAlgorithm, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq,
     MailboxReqHeader, Request, CMB_SHA_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
@@ -108,16 +110,9 @@ impl HashContext {
         }
 
         let req_bytes = init_req.as_mut_bytes();
-        self.mbox
-            .populate_checksum(CmShaInitReq::ID.0, req_bytes)
-            .map_err(CaliptraApiError::Syscall)?;
-
         let init_rsp_bytes = &mut [0u8; size_of::<CmShaInitResp>()];
 
-        self.mbox
-            .execute(CmShaInitReq::ID.0, init_req.as_bytes(), init_rsp_bytes)
-            .await
-            .map_err(CaliptraApiError::Mailbox)?;
+        execute_mailbox_cmd(&self.mbox, CmShaInitReq::ID.0, req_bytes, init_rsp_bytes).await?;
 
         let init_rsp = CmShaInitResp::ref_from_bytes(init_rsp_bytes)
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
@@ -148,20 +143,15 @@ impl HashContext {
             update_req.input[..data_size].copy_from_slice(&remaining_data[..data_size]);
 
             let req_bytes = update_req.as_mut_bytes();
-            self.mbox
-                .populate_checksum(CmShaUpdateReq::ID.0, req_bytes)
-                .map_err(CaliptraApiError::Syscall)?;
-
             let update_rsp_bytes = &mut [0u8; size_of::<CmShaInitResp>()];
 
-            self.mbox
-                .execute(
-                    CmShaUpdateReq::ID.0,
-                    update_req.as_bytes(),
-                    update_rsp_bytes,
-                )
-                .await
-                .map_err(CaliptraApiError::Mailbox)?;
+            execute_mailbox_cmd(
+                &self.mbox,
+                CmShaUpdateReq::ID.0,
+                req_bytes,
+                update_rsp_bytes,
+            )
+            .await?;
 
             let update_rsp = CmShaInitResp::ref_from_bytes(update_rsp_bytes)
                 .map_err(|_| CaliptraApiError::InvalidResponse)?;
@@ -198,16 +188,9 @@ impl HashContext {
         };
 
         let req_bytes = final_req.as_mut_bytes();
-        self.mbox
-            .populate_checksum(CmShaFinalReq::ID.0, req_bytes)
-            .map_err(CaliptraApiError::Syscall)?;
-
         let final_rsp_bytes = &mut [0u8; size_of::<CmShaFinalResp>()];
 
-        self.mbox
-            .execute(CmShaFinalReq::ID.0, final_req.as_bytes(), final_rsp_bytes)
-            .await
-            .map_err(CaliptraApiError::Mailbox)?;
+        execute_mailbox_cmd(&self.mbox, CmShaFinalReq::ID.0, req_bytes, final_rsp_bytes).await?;
 
         let final_rsp = CmShaFinalResp::ref_from_bytes(final_rsp_bytes)
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
