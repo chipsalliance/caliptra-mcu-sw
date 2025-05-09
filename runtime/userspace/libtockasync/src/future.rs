@@ -14,10 +14,7 @@ use libtock_platform::*;
 /// When the future is ready, it will contain arguments the upcall was called with.
 ///
 /// Use like:
-/// ```rust
-/// let sub = TockSubscribe::<TockSyscalls>::subscribe(driver_num, subscribe_num).await;
-/// sub.finish_subscribe();
-/// ```
+/// `TockSubscribe::<TockSyscalls>::subscribe(driver_num, subscribe_num).await`.
 ///
 pub struct TockSubscribe {
     result: Cell<Option<(u32, u32, u32)>>,
