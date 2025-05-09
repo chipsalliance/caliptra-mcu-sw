@@ -130,7 +130,9 @@ impl FdOps for StreamingFdOps {
                     + core::mem::size_of::<FlashHeader>()) as u32
             {
                 // Image size is too small
-                return Err(FdOpsError::ComponentError);
+                // Return Ok with response code here to allow PLDM lib to pass it to UA
+                // Returning an Err is considered fatal and will cause PLDM lib to halt PLDM process
+                return Ok(ComponentResponseCode::CompPrerequisitesNotMet);
             }
         }
 
