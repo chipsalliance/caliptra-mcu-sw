@@ -9,14 +9,14 @@ pub trait I3cPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
-    fn read_dat(&mut self) -> caliptra_emu_types::RvData {
+    fn read_dat(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_dat(&mut self, _val: caliptra_emu_types::RvData) {}
-    fn read_dct(&mut self) -> caliptra_emu_types::RvData {
+    fn write_dat(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
+    fn read_dct(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_dct(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_dct(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
     fn read_i3c_base_hci_version(&mut self) -> caliptra_emu_types::RvData {
         0
     }
@@ -1170,8 +1170,8 @@ impl emulator_bus::Bus for I3cBus {
             return Err(emulator_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
-            0x400..0x800 => Ok(self.periph.read_dat()),
-            0x800..0x1000 => Ok(self.periph.read_dct()),
+            0x400..0x800 => Ok(self.periph.read_dat((addr as usize - 0x400) / 4)),
+            0x800..0x1000 => Ok(self.periph.read_dct((addr as usize - 0x800) / 4)),
             0..4 => Ok(self.periph.read_i3c_base_hci_version()),
             4..8 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_hc_control().reg.get(),
@@ -1564,11 +1564,11 @@ impl emulator_bus::Bus for I3cBus {
         }
         match addr {
             0x400..0x800 => {
-                self.periph.write_dat(val);
+                self.periph.write_dat(val, (addr as usize - 0x400) / 4);
                 Ok(())
             }
             0x800..0x1000 => {
-                self.periph.write_dct(val);
+                self.periph.write_dct(val, (addr as usize - 0x800) / 4);
                 Ok(())
             }
             4..8 => {

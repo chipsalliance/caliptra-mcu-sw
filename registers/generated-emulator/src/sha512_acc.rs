@@ -74,7 +74,7 @@ pub trait Sha512AccPeripheral {
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
-    fn read_digest(&mut self) -> caliptra_emu_types::RvData {
+    fn read_digest(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
     fn read_control(
@@ -315,7 +315,7 @@ impl emulator_bus::Bus for Sha512AccBus {
             0x1c..0x20 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_status().reg.get(),
             )),
-            0x20..0x60 => Ok(self.periph.read_digest()),
+            0x20..0x60 => Ok(self.periph.read_digest((addr as usize - 0x20) / 4)),
             0x60..0x64 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_control().reg.get(),
             )),

@@ -11,6 +11,7 @@ pub trait El2PicPeripheral {
     fn update_reset(&mut self) {}
     fn read_meipl(
         &mut self,
+        _index: usize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meipl::Register,
@@ -23,16 +24,19 @@ pub trait El2PicPeripheral {
             u32,
             registers_generated::el2_pic_ctrl::bits::Meipl::Register,
         >,
+        _index: usize,
     ) {
     }
     fn read_meip(
         &mut self,
+        _index: usize,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::el2_pic_ctrl::bits::Meip::Register>
     {
         emulator_bus::ReadWriteRegister::new(0)
     }
     fn read_meie(
         &mut self,
+        _index: usize,
     ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::el2_pic_ctrl::bits::Meie::Register>
     {
         emulator_bus::ReadWriteRegister::new(0)
@@ -43,6 +47,7 @@ pub trait El2PicPeripheral {
             u32,
             registers_generated::el2_pic_ctrl::bits::Meie::Register,
         >,
+        _index: usize,
     ) {
     }
     fn read_mpiccfg(
@@ -63,6 +68,7 @@ pub trait El2PicPeripheral {
     }
     fn read_meigwctrl(
         &mut self,
+        _index: usize,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
@@ -75,12 +81,13 @@ pub trait El2PicPeripheral {
             u32,
             registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
         >,
+        _index: usize,
     ) {
     }
-    fn read_meigwclr(&mut self) -> caliptra_emu_types::RvData {
+    fn read_meigwclr(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
-    fn write_meigwclr(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_meigwclr(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
 }
 pub struct El2PicBus {
     pub periph: Box<dyn El2PicPeripheral>,
@@ -96,21 +103,30 @@ impl emulator_bus::Bus for El2PicBus {
         }
         match addr {
             0..0x400 => Ok(caliptra_emu_types::RvData::from(
-                self.periph.read_meipl().reg.get(),
+                self.periph.read_meipl(addr as usize / 4).reg.get(),
             )),
             0x1000..0x1400 => Ok(caliptra_emu_types::RvData::from(
-                self.periph.read_meip().reg.get(),
+                self.periph
+                    .read_meip((addr as usize - 0x1000) / 4)
+                    .reg
+                    .get(),
             )),
             0x2000..0x2400 => Ok(caliptra_emu_types::RvData::from(
-                self.periph.read_meie().reg.get(),
+                self.periph
+                    .read_meie((addr as usize - 0x2000) / 4)
+                    .reg
+                    .get(),
             )),
             0x3000..0x3004 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mpiccfg().reg.get(),
             )),
             0x4000..0x4400 => Ok(caliptra_emu_types::RvData::from(
-                self.periph.read_meigwctrl().reg.get(),
+                self.periph
+                    .read_meigwctrl((addr as usize - 0x4000) / 4)
+                    .reg
+                    .get(),
             )),
-            0x5000..0x5400 => Ok(self.periph.read_meigwclr()),
+            0x5000..0x5400 => Ok(self.periph.read_meigwclr((addr as usize - 0x5000) / 4)),
             _ => Err(emulator_bus::BusError::LoadAccessFault),
         }
     }
@@ -126,12 +142,14 @@ impl emulator_bus::Bus for El2PicBus {
         match addr {
             0..0x400 => {
                 self.periph
-                    .write_meipl(emulator_bus::ReadWriteRegister::new(val));
+                    .write_meipl(emulator_bus::ReadWriteRegister::new(val), addr as usize / 4);
                 Ok(())
             }
             0x2000..0x2400 => {
-                self.periph
-                    .write_meie(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_meie(
+                    emulator_bus::ReadWriteRegister::new(val),
+                    (addr as usize - 0x2000) / 4,
+                );
                 Ok(())
             }
             0x3000..0x3004 => {
@@ -140,12 +158,15 @@ impl emulator_bus::Bus for El2PicBus {
                 Ok(())
             }
             0x4000..0x4400 => {
-                self.periph
-                    .write_meigwctrl(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_meigwctrl(
+                    emulator_bus::ReadWriteRegister::new(val),
+                    (addr as usize - 0x4000) / 4,
+                );
                 Ok(())
             }
             0x5000..0x5400 => {
-                self.periph.write_meigwclr(val);
+                self.periph
+                    .write_meigwclr(val, (addr as usize - 0x5000) / 4);
                 Ok(())
             }
             _ => Err(emulator_bus::BusError::StoreAccessFault),
