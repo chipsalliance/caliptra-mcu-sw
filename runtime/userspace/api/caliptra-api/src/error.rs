@@ -7,6 +7,7 @@ pub type CaliptraApiResult<T> = Result<T, CaliptraApiError>;
 
 #[derive(Debug, PartialEq)]
 pub enum CaliptraApiError {
+    MailboxBusy,
     Mailbox(MailboxError),
     Syscall(ErrorCode),
     InvalidArgument(&'static str),

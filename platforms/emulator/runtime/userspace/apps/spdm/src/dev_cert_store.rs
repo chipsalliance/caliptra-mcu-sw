@@ -73,9 +73,14 @@ impl<'b> DeviceCertChain<'b> {
         }
 
         let mut root_hash = [0; SHA384_HASH_SIZE];
-        HashContext::hash_all(HashAlgoType::SHA384, root_cert_chain[0], &mut root_hash)
-            .await
-            .map_err(DevCertStoreError::CaliptraApi)?;
+        while let Err(e) =
+            HashContext::hash_all(HashAlgoType::SHA384, root_cert_chain[0], &mut root_hash).await
+        {
+            match e {
+                CaliptraApiError::MailboxBusy => continue, // Retry if the mailbox is busy
+                _ => Err(DevCertStoreError::CaliptraApi(e))?,
+            }
+        }
 
         if DPE_LEAF_CERT_LABELS[slot_id as usize].is_none() {
             return Err(DevCertStoreError::DpeLeafCertError);
@@ -338,10 +343,14 @@ impl<'b> SpdmCertStore for DeviceCertStore<'b> {
 async fn populate_idev_ecc384_cert(slot_id: u8) -> DevCertStoreResult<()> {
     if let Some(idev_cert) = IDEV_CERTS[slot_id as usize] {
         let mut cert_ctx = CertContext::new();
-        cert_ctx
-            .populate_idev_ecc384_cert(idev_cert)
-            .await
-            .map_err(DevCertStoreError::CaliptraApi)?;
+
+        while let Err(e) = cert_ctx.populate_idev_ecc384_cert(idev_cert).await {
+            match e {
+                CaliptraApiError::MailboxBusy => continue, // Retry if the mailbox is busy
+                _ => Err(DevCertStoreError::CaliptraApi(e))?,
+            }
+        }
+
         Ok(())
     } else {
         Err(DevCertStoreError::InvalidSlotId)

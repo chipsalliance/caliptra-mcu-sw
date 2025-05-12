@@ -788,6 +788,21 @@ impl<TBus: Bus> Cpu<TBus> {
             const NON_RAM_NMI: u32 = 0xF000_1002;
             return self.handle_nmi(NON_RAM_NMI, 0);
         }
+        // Elevate to M Mode before reading the vector table
+        let mut status = match self.read_csr_machine(Csr::MSTATUS) {
+            Ok(value) => RvMStatus(value),
+            Err(_) => return StepAction::Fatal,
+        };
+        match self.priv_mode {
+            RvPrivMode::U => {
+                self.priv_mode = RvPrivMode::M;
+                status.set_mpp(RvPrivMode::U);
+            }
+            RvPrivMode::M => {
+                status.set_mpp(RvPrivMode::M);
+            }
+            _ => unreachable!(),
+        }
         let next_pc_ptr = vec_table + REDIRECT_ENTRY_SIZE * u32::from(irq);
         let Ok(next_pc) = self.read_bus(RvSize::Word, next_pc_ptr) else {
             return StepAction::Fatal;

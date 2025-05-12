@@ -83,22 +83,28 @@ impl<S: Syscalls> SpiFlash<S> {
         }
 
         let result = share::scope::<(), _, _>(|_handle| {
-            let sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
+            let mut sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
                 self.driver_num,
                 subscribe::READ_DONE,
                 rw_allow::READ,
                 buf,
             );
 
-            S::command(
+            if let Err(e) = S::command(
                 self.driver_num,
                 flash_storage_cmd::READ,
                 address as u32,
                 len as u32,
             )
-            .to_result::<(), ErrorCode>()?;
+            .to_result::<(), ErrorCode>()
+            {
+                S::unallow_rw(self.driver_num, rw_allow::READ);
+                // Cancel the future if the command fails
+                sub.cancel();
+                Err(e)?;
+            }
 
-            Ok(sub)
+            Ok(TockSubscribe::subscribe_finish(sub))
         })?
         .await;
 
@@ -146,22 +152,28 @@ impl<S: Syscalls> SpiFlash<S> {
         }
 
         let result = share::scope::<(), _, _>(|_handle| {
-            let sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
+            let mut sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
                 self.driver_num,
                 subscribe::WRITE_DONE,
                 ro_allow::WRITE,
                 buf,
             );
 
-            S::command(
+            if let Err(e) = S::command(
                 self.driver_num,
                 flash_storage_cmd::WRITE,
                 address as u32,
                 len as u32,
             )
-            .to_result::<(), ErrorCode>()?;
+            .to_result::<(), ErrorCode>()
+            {
+                S::unallow_ro(self.driver_num, ro_allow::WRITE);
+                // Cancel the future if the command fails
+                sub.cancel();
+                Err(e)?;
+            }
 
-            Ok(sub)
+            Ok(TockSubscribe::subscribe_finish(sub))
         })?
         .await;
 

@@ -2,7 +2,8 @@
 
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::{
-    CertificateChainResp, CertifyEcKeyResp, DpeEcResp, DpeResponse, MAX_DPE_RESP_DATA_SIZE,
+    execute_mailbox_cmd, CertificateChainResp, CertifyEcKeyResp, DpeEcResp, DpeResponse,
+    MAX_DPE_RESP_DATA_SIZE,
 };
 use caliptra_api::mailbox::{
     CommandId, GetFmcAliasEcc384CertReq, GetIdevCsrReq, GetIdevCsrResp, GetLdevCertResp,
@@ -59,14 +60,8 @@ impl CertContext {
         let req_bytes = req.as_mut_bytes();
         let resp_bytes = resp.as_mut_bytes();
 
-        self.mbox
-            .populate_checksum(GetIdevCsrReq::ID.0, req_bytes)
-            .map_err(CaliptraApiError::Syscall)?;
+        execute_mailbox_cmd(&self.mbox, GetIdevCsrReq::ID.0, req_bytes, resp_bytes).await?;
 
-        self.mbox
-            .execute(GetIdevCsrReq::ID.0, req_bytes, resp_bytes)
-            .await
-            .map_err(CaliptraApiError::Mailbox)?;
         let resp = GetIdevCsrResp::ref_from_bytes(resp_bytes)
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
         if resp.data_size == u32::MAX {
@@ -96,14 +91,7 @@ impl CertContext {
         let mut resp = MailboxRespHeader::default();
         let resp_bytes = resp.as_mut_bytes();
 
-        self.mbox
-            .populate_checksum(cmd, req_bytes)
-            .map_err(CaliptraApiError::Syscall)?;
-
-        self.mbox
-            .execute(cmd, req_bytes, &mut resp_bytes[..])
-            .await
-            .map_err(CaliptraApiError::Mailbox)?;
+        execute_mailbox_cmd(&self.mbox, cmd, req_bytes, resp_bytes).await?;
         Ok(())
     }
 
@@ -281,15 +269,7 @@ impl CertContext {
         let req_bytes = req.as_mut_bytes();
         // let resp_bytes = resp.as_mut_bytes();
         let cmd = R::ID.into();
-
-        self.mbox
-            .populate_checksum(cmd, req_bytes)
-            .map_err(CaliptraApiError::Syscall)?;
-
-        self.mbox
-            .execute(cmd, req_bytes, resp_bytes)
-            .await
-            .map_err(CaliptraApiError::Mailbox)?;
+        execute_mailbox_cmd(&self.mbox, cmd, req_bytes, resp_bytes).await?;
 
         let mut resp = R::Resp::new_zeroed();
         resp.as_mut_bytes()[..].copy_from_slice(&resp_bytes[..]);
@@ -322,17 +302,14 @@ impl CertContext {
 
         let mut mbox_resp = DpeEcResp::default();
 
-        self.mbox
-            .populate_checksum(InvokeDpeReq::ID.0, mbox_req.as_mut_bytes())
-            .map_err(CaliptraApiError::Syscall)?;
-        self.mbox
-            .execute(
-                InvokeDpeReq::ID.0,
-                mbox_req.as_mut_bytes(),
-                mbox_resp.as_mut_bytes(),
-            )
-            .await
-            .map_err(CaliptraApiError::Mailbox)?;
+        execute_mailbox_cmd(
+            &self.mbox,
+            InvokeDpeReq::ID.0,
+            mbox_req.as_mut_bytes(),
+            mbox_resp.as_mut_bytes(),
+        )
+        .await?;
+
         let mut resp = DpeEcResp::new_zeroed();
         let resp_size = size_of::<DpeEcResp>();
         resp.as_mut_bytes()[..].copy_from_slice(&mbox_resp.as_mut_bytes()[..resp_size]);

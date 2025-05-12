@@ -31,6 +31,8 @@
 //! These structures and constants are intended for use in the Caliptra subsystem's mailbox
 //! API, particularly for cryptographic and DPE-related operations.
 
+use crate::error::CaliptraApiError;
+use crate::error::CaliptraApiResult;
 use caliptra_api::mailbox::{
     InvokeDpeResp, MailboxReqHeader, MailboxRespHeader, CMB_SHA_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
 };
@@ -38,6 +40,8 @@ use core::mem::size_of;
 use dpe::context::ContextHandle;
 use dpe::response::{CertifyKeyResp, GetCertificateChainResp, ResponseHdr, SignResp};
 use dpe::DPE_PROFILE;
+use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
+use libtock_platform::ErrorCode;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const MAX_CRYPTO_MBOX_DATA_SIZE: usize = 1024;
@@ -138,4 +142,20 @@ pub struct CertificateChainResp {
     pub resp_hdr: ResponseHdr,
     pub certificate_size: u32,
     pub certificate_chain: [u8; MAX_CERT_CHUNK_SIZE],
+}
+
+pub(crate) async fn execute_mailbox_cmd(
+    mailbox: &Mailbox,
+    cmd: u32,
+    req_bytes: &mut [u8],
+    resp_bytes: &mut [u8],
+) -> CaliptraApiResult<usize> {
+    mailbox
+        .populate_checksum(cmd, req_bytes)
+        .map_err(CaliptraApiError::Syscall)?;
+    match mailbox.execute(cmd, req_bytes, &mut resp_bytes[..]).await {
+        Ok(size) => Ok(size),
+        Err(MailboxError::ErrorCode(ErrorCode::Busy)) => Err(CaliptraApiError::MailboxBusy)?,
+        Err(e) => Err(CaliptraApiError::Mailbox(e))?,
+    }
 }

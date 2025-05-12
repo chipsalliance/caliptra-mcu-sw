@@ -715,15 +715,29 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         let pldm_socket = pldm_transport
             .create_socket(EndpointId(LOCAL_TEST_ENDPOINT_EID), EndpointId(1))
             .unwrap();
-        let _ = PldmDaemon::run(
-            pldm_socket,
-            pldm_ua::daemon::Options {
-                pldm_fw_pkg: Some(pldm_fw_pkg.unwrap()),
-                discovery_sm_actions: pldm_ua::discovery_sm::DefaultActions {},
-                update_sm_actions: pldm_ua::update_sm::DefaultActions {},
-                fd_tid: 0x01,
-            },
-        );
+        if cfg!(feature = "test-pldm-streaming-boot") {
+            // If we are running the PLDM daemon from an integration test,
+            // we need to set the update state machine to exit on error
+            let _ = PldmDaemon::run(
+                pldm_socket,
+                pldm_ua::daemon::Options {
+                    pldm_fw_pkg: Some(pldm_fw_pkg.unwrap()),
+                    discovery_sm_actions: pldm_ua::discovery_sm::DefaultActions {},
+                    update_sm_actions: pldm_ua::update_sm::DefaultActionsExitOnError {},
+                    fd_tid: 0x01,
+                },
+            );
+        } else {
+            let _ = PldmDaemon::run(
+                pldm_socket,
+                pldm_ua::daemon::Options {
+                    pldm_fw_pkg: Some(pldm_fw_pkg.unwrap()),
+                    discovery_sm_actions: pldm_ua::discovery_sm::DefaultActions {},
+                    update_sm_actions: pldm_ua::update_sm::DefaultActions {},
+                    fd_tid: 0x01,
+                },
+            );
+        };
     }
 
     // Check if Optional GDB Port is passed
