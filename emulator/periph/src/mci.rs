@@ -231,10 +231,10 @@ impl MciPeripheral for Mci {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use emulator_bus::Bus;
     use caliptra_emu_types::RvSize;
-    use tock_registers::registers::InMemoryRegister;
+    use emulator_bus::Bus;
     use emulator_registers_generated::mci::MciBus;
+    use tock_registers::registers::InMemoryRegister;
 
     fn next_action(clock: &Clock) -> Option<TimerAction> {
         let mut actions = clock.increment(4);
@@ -250,18 +250,28 @@ mod tests {
         let clock = Clock::new();
 
         let mci_reg: Mci = Mci::new(&clock);
-        let mut mci_bus = MciBus { periph: Box::new(mci_reg) };
+        let mut mci_bus = MciBus {
+            periph: Box::new(mci_reg),
+        };
         mci_bus
             .write(RvSize::Word, Mci::CPTRA_WDT_TIMER1_TIMEOUT_PERIOD_START, 4)
             .unwrap();
         mci_bus
-            .write(RvSize::Word, Mci::CPTRA_WDT_TIMER1_TIMEOUT_PERIOD_START + 4, 0)
+            .write(
+                RvSize::Word,
+                Mci::CPTRA_WDT_TIMER1_TIMEOUT_PERIOD_START + 4,
+                0,
+            )
             .unwrap();
         mci_bus
             .write(RvSize::Word, Mci::CPTRA_WDT_TIMER2_TIMEOUT_PERIOD_START, 1)
             .unwrap();
         mci_bus
-            .write(RvSize::Word, Mci::CPTRA_WDT_TIMER2_TIMEOUT_PERIOD_START + 4, 0)
+            .write(
+                RvSize::Word,
+                Mci::CPTRA_WDT_TIMER2_TIMEOUT_PERIOD_START + 4,
+                0,
+            )
             .unwrap();
         mci_bus
             .write(RvSize::Word, Mci::CPTRA_WDT_TIMER1_EN_START, 1)
@@ -269,7 +279,9 @@ mod tests {
 
         loop {
             let status = InMemoryRegister::<u32, WdtStatus::Register>::new(
-                mci_bus.read(RvSize::Word, Mci::CPTRA_WDT_STATUS_START).unwrap(),
+                mci_bus
+                    .read(RvSize::Word, Mci::CPTRA_WDT_STATUS_START)
+                    .unwrap(),
             );
             if status.is_set(WdtStatus::T2Timeout) {
                 break;
