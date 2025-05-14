@@ -78,7 +78,7 @@ Command Code: `0x4D46_5756` ("MFWV")
 | **Name**   | **Type**       | **Description**                         |
 | ---------- | -------------- | --------------------------------------- |
 | chksum     |  u32           |                                         |
-| index      |  u8            | - `00h` = Caliptra core firmware       |
+| index      |  u32           | - `00h` = Caliptra core firmware       |
 |            |                | - `01h` = MCU runtime firmware         |
 |            |                | - `02h` = SoC firmware                 |
 |            |                |Additional indexes are firmware-specific |
@@ -144,7 +144,7 @@ Command Code: `0x4D44_494E` ("MDIN")
 | **Name**   | **Type** | **Description**                         |
 | ---------- | -------- | --------------------------------------- |
 | chksum     | u32      |                                         |
-| index      | u8       | Information Index:                     |
+| index      | u32      | Information Index:                     |
 |            |          | - `00h` = Unique Chip Identifier       |
 |            |          | Additional indexes are firmware-specific |
 
@@ -166,7 +166,7 @@ Command Code: `0x4D49_4352` ("MICR")
 | **Name**   | **Type** | **Description**                         |
 | ---------- | -------- | --------------------------------------- |
 | chksum     | u32      |                                         |
-| index      | u8       | Information Index:                     |
+| index      | u32      | Information Index:                     |
 |            |          | - `00h` = IDEVID ECC CSR               |
 |            |          | - `01h` = IDEVID MLDSA CSR             |
 
@@ -207,7 +207,7 @@ Command Code: `0x4D47_4C47` ("MGLG")
 | **Name**   | **Type** | **Description**          |
 |------------|----------|--------------------------|
 | chksum     | u32      | Checksum over input data |
-| log type   | u8       | Type of log to retrieve: |
+| log type   | u32      | Type of log to retrieve: |
 |            |          | - `0` = Debug Log        |
 |            |          | - `1` = Attestation Log  |
 
@@ -243,7 +243,7 @@ Command Code: `0x4D43_4C47` ("MCLG")
 | **Name**   | **Type** | **Description**          |
 |------------|----------|--------------------------|
 | chksum     | u32      | Checksum over input data |
-| log type   | u8       | Type of log to retrieve: |
+| log type   | u32      | Type of log to retrieve: |
 |            |          | - `0` = Debug Log        |
 |            |          | - `1` = Attestation Log  |
 
@@ -252,507 +252,6 @@ Command Code: `0x4D43_4C47` ("MCLG")
 |-------------|----------------|----------------------------|
 | chksum      | u32            |                            |
 | fips_status | u32            | FIPS approved or an error. |
-
-### MC_SHA_INIT
-
-This starts the computation of a SHA hash of data, which may be larger than a single mailbox command allows. It also supports additional algorithms.
-
-The sequence to use these are:
-* 1 `MC_SHA_INIT` command
-* 0 or more `MC_SHA_UPDATE` commands
-* 1 `MC_SHA_FINAL` command
-
-For each command, the context from the previous command's output must be passed as an input.
-The maximum supported data size for the SHA commands is 4096 bytes.
-
-Command Code: `0x4D43_5349` ("MCSI")
-
-*Table: `MC_SHA_INIT` input arguments*
-| **Name**       | **Type**      | **Description**    |
-| -------------- | ------------- | ------------------ |
-| chksum         | u32           |                    |
-| hash algorithm | u32           | Enum.              |
-|                |               | Value 0 = reserved |
-|                |               | Value 1 = SHA2-384 |
-|                |               | Value 2 = SHA2-512 |
-| data size      | u32           |                    |
-| data           | u8[data size] | Data to hash       |
-
-*Table: `MC_SHA_INIT` output arguments*
-| **Name**     | **Type**             | **Description**                            |
-| ------------ | -------------------- | ------------------------------------------ |
-| chksum       | u32                  |                                            |
-| fips_status  | u32                  | FIPS approved or an error                  |
-| context      | u8[SHA_CONTEXT_SIZE] | Passed to `MC_SHA_UPDATE` / `MC_SHA_FINAL` |
-
-### MC_SHA_UPDATE
-
-This continues a SHA computation started by `MC_SHA_INIT` or from another `MC_SHA_UPDATE`.
-
-The context MUST be passed in from `MC_SHA_INIT` or `MC_SHA_UPDATE`.
-
-Command Code: `0x4D43_5355` ("MCSU")
-
-*Table: `MC_SHA_UPDATE` input arguments*
-| **Name**     | **Type**             | **Description**                      |
-| ------------ | -------------------- | ------------------------------------ |
-| chksum       | u32                  |                                      |
-| context      | u8[SHA_CONTEXT_SIZE] | From `MC_SHA_INIT` / `MC_SHA_UPDATE` |
-| data size    | u32                  |                                      |
-| data         | u8[data size]        | Data to hash                         |
-
-*Table: `MC_SHA_UPDATE` output arguments*
-| **Name**     | **Type**             | **Description**                            |
-| ------------ | -------------------- | ------------------------------------------ |
-| chksum       | u32                  |                                            |
-| fips_status  | u32                  | FIPS approved or an error                  |
-| context      | u8[SHA_CONTEXT_SIZE] | Passed to `MC_SHA_UPDATE` / `MC_SHA_FINAL` |
-
-### MC_SHA_FINAL
-
-This finalizes the computation of a SHA and produces the hash of all of the data.
-
-The context MUST be passed in from `MC_SHA_INIT` or `MC_SHA_UPDATE`.
-
-Command Code: `0x4D43_5346` ("MCSF")
-
-*Table: `MC_SHA_FINAL` input arguments*
-| **Name**     | **Type**             | **Description**                      |
-| ------------ | -------------------- | ------------------------------------ |
-| chksum       | u32                  |                                      |
-| context      | u8[SHA_CONTEXT_SIZE] | From `MC_SHA_INIT` / `MC_SHA_UPDATE` |
-| data size    | u32                  | May be 0                             |
-| data         | u8[data size]        | Data to hash                         |
-
-*Table: `MC_SHA_FINAL` output arguments*
-| **Name**    | **Type**      | **Description**           |
-| ----------- | ------------- | ------------------------- |
-| chksum      | u32           |                           |
-| fips_status | u32           | FIPS approved or an error |
-| hash size   | u32           |                           |
-| hash        | u8[hash size] |                           |
-
-### MC_AES_ENCRYPT_INIT
-
-Generic AES operation for unauthenticated AES operations. AES GCM operations use separate commands elsewhere.
-
-Currently only supports AES-256-CBC with a random 128-bit IV. For block modes, such as CBC, the size must be a multiple of 16 bytes.
-The CMK must have been created for AES usage.
-
-Command Code: `0x4D43_4349` ("MCCI")
-
-*Table: `MC_AES_ENCRYPT_INIT` input arguments*
-| **Name**       | **Type**           | **Description**                       |
-| -------------- | ------------------ | ------------------------------------- |
-| chksum         | u32                |                                       |
-| CMK            | CMK                | CMK of the key to use to encrypt      |
-| mode/flags     | u32                | Requested mode and flags.             |
-|                |                    | 0 = Reserved                          |
-|                |                    | 1 = CBC                               |
-| plaintext size | u32                | MUST be non-zero                      |
-| plaintext      | u8[plaintext size] | Data to encrypt                       |
-
-*Table: `MC_AES_ENCRYPT_INIT` output arguments*
-| **Name**        | **Type**            | **Description**                  |
-| --------------- | ------------------- | -------------------------------- |
-| chksum          | u32                 |                                  |
-| fips_status     | u32                 | FIPS approved or an error        |
-| context         | AES_CONTEXT         |                                  |
-| iv              | u8[16]              |                                  |
-| ciphertext size | u32                 |                                  |
-| ciphertext      | u8[ciphertext size] | Output encrypted data            |
-
-### MC_AES_ENCRYPT_UPDATE
-
-This continues (or finishes) an AES computation started by `MC_AES_ENCRYPT_INIT` or from another `MC_AES_ENCRYPT_UPDATE`.
-There is no `MC_AES_ENCRYPT_FINISH` since unauthenticated AES modes do not output a final tag.
-The context MUST be passed in from `MC_AES_ENCRYPT_INIT` or `MC_AES_ENCRYPT_UPDATE`.
-For block modes, such as CBC, the size must be a multiple of 16 bytes.
-
-Command Code: `0x4D43_4355` ("MCMU")
-
-*Table: `MC_AES_ENCRYPT_UPDATE` input arguments*
-| **Name**       | **Type**           | **Description**  |
-| -------------- | ------------------ | ---------------- |
-| chksum         | u32                |                  |
-| context        | AES_CONTEXT        |                  |
-| plaintext size | u32                | MUST be non-zero |
-| plaintext      | u8[plaintext size] | Data to encrypt  |
-
-*Table: `MC_AES_ENCRYPT_UPDATE` output arguments*
-| **Name**       | **Type**            | **Description**           |
-| -------------- | ------------------- | ------------------------- |
-| chksum         | u32                 |                           |
-| fips_status    | u32                 | FIPS approved or an error |
-| context        | AES_CONTEXT         |                           |
-| cipertext size | u32                 |                           |
-| ciphertext     | u8[ciphertext size] |                           |
-
-### MC_AES_DECRYPT_INIT
-
-Starts an AES-256 unauthenaticed decryption computation.
-
-The CMK must have been created for AES usage.
-
-For block modes, such as CBC, the size must be a multiple of 16 bytes.
-
-The IV must match what was passed and returned from the initial encryption operation.
-
-Command Code: `0x4D43_414A` ("MCAJ")
-
-*Table: `MC_AES_DECRYPT_INIT` input arguments*
-| **Name**        | **Type**            | **Description**           |
-| --------------- | ------------------- | ------------------------- |
-| chksum          | u32                 |                           |
-| CMK             | CMK                 | CMK to use for decryption |
-| mode/flags      | u32                 | Requested mode and flags. |
-|                 |                     | 0 = Reserved              |
-|                 |                     | 1 = CBC                   |
-| iv              | u8[16]              |                           |
-| ciphertext size | u32                 | MUST be non-zero          |
-| ciphertext      | u8[ciphertext size] | Data to decrypt           |
-
-*Table: `MC_AES_DECRYPT_INIT` output arguments*
-| **Name**       | **Type**           | **Description**           |
-| -------------- | ------------------ | ------------------------- |
-| chksum         | u32                |                           |
-| fips_status    | u32                | FIPS approved or an error |
-| context        | AES_CONTEXT        |                           |
-| plaintext size | u32                |                           |
-| plaintext      | u8[plaintext size] | Decrypted data            |
-
-### MC_AES_DECRYPT_UPDATE
-
-This continues an AES computation started by `MC_AES_DECRYPT_INIT` or from another `MC_AES_DECRYPT_UPDATE`.
-
-There is no `MC_AES_DECRYPT_FINISH` since unauthenticated modes do not output a final tag.
-
-The context MUST be passed in from `MC_AES_DECRYPT_INIT` or `MC_AES_DECRYPT_UPDATE`.
-
-For block modes, such as CBC, the size must be a multiple of 16 bytes.
-
-Command Code: `0x4D43_4155` ("MCAU")
-
-*Table: `MC_AES_DECRYPT_UPDATE` input arguments*
-| **Name**        | **Type**            | **Description**  |
-| --------------- | ------------------- | ---------------- |
-| chksum          | u32                 |                  |
-| context         | AES_CONTEXT         |                  |
-| ciphertext size | u32                 | MUST be non-zero |
-| ciphertext      | u8[ciphertext size] | Data to decrypt  |
-
-*Table: `MC_AES_DECRYPT_UPDATE` output arguments*
-| **Name**       | **Type**           | **Description**           |
-| -------------- | ------------------ | ------------------------- |
-| chksum         | u32                |                           |
-| fips_status    | u32                | FIPS approved or an error |
-| context        | AES_CONTEXT        |                           |
-| plaintext size | u32                |                           |
-| plaintext      | u8[plaintext size] | Decrypted data            |
-
-### MC_AES_GCM_ENCRYPT_INIT
-
-Currently only supports AES-256-GCM with a random 96-bit IV.
-
-The CMK must have been created for AES usage.
-
-Additional authenticated data (AAD) can only be passed during the `INIT` command, so is limited to the maximum cryptographic mailbox data size (4096 bytes).
-
-Command Code: `0x4D43_4749` ("MCGI")
-
-*Table: `MC_AES_GCM_ENCRYPT_INIT` input arguments*
-| **Name**       | **Type**           | **Description**                  |
-| -------------- | ------------------ | -------------------------------- |
-| chksum         | u32                |                                  |
-| CMK            | CMK                | CMK of the key to use to encrypt |
-| aad size       | u32                |                                  |
-| aad            | u8[aad size]       | Additional authenticated data    |
-
-*Table: `MC_AES_GCM_ENCRYPT_INIT` output arguments*
-| **Name**       | **Type**            | **Description**                  |
-| -------------- | ------------------- | -------------------------------- |
-| chksum         | u32                 |                                  |
-| fips_status    | u32                 | FIPS approved or an error        |
-| context        | AES_GCM_CONTEXT     |                                  |
-| iv             | u8[12]              |                                  |
-
-### MC_AES_GCM_ENCRYPT_UPDATE
-
-This continues an AES computation started by `MC_AES_GCM_ENCRYPT_INIT` or from another `MC_AES_GCM_ENCRYPT_UPDATE`.
-
-The context MUST be passed in from `MC_AES_GCM_ENCRYPT_INIT` or `MC_AES_GCM_ENCRYPT_UPDATE`.
-
-Command Code: `0x4D43_4755` ("MCGU")
-
-*Table: `MC_AES_GCM_ENCRYPT_UPDATE` input arguments*
-| **Name**       | **Type**           | **Description**  |
-| -------------- | ------------------ | ---------------- |
-| chksum         | u32                |                  |
-| context        | AES_GCM_CONTEXT    |                  |
-| plaintext size | u32                | MUST be non-zero |
-| plaintext      | u8[plaintext size] | Data to encrypt  |
-
-*Table: `MC_AES_GCM_ENCRYPT_UPDATE` output arguments*
-| **Name**       | **Type**            | **Description**                 |
-| -------------- | ------------------- | ------------------------------- |
-| chksum         | u32                 |                                 |
-| fips_status    | u32                 | FIPS approved or an error       |
-| context        | AES_GCM_CONTEXT     |                                 |
-| cipertext size | u32                 | could be greater than plaintext by 16 bytes |
-| ciphertext     | u8[ciphertext size] |                                 |
-
-### MC_AES_GCM_ENCRYPT_FINAL
-
-This finalizes the computation of the AES GCM encryption and produces the final ciphertext and tag.
-
-The context MUST be passed in from `MC_AES_GCM_ENCRYPT_INIT` or `MC_AES_GCM_ENCRYPT_UPDATE`.
-
-Command Code: `0x4D43_4746` ("MCGF")
-
-*Table: `MC_AES_GCM_ENCRYPT_FINAL` input arguments*
-| **Name**       | **Type**           | **Description** |
-| -------------- | ------------------ | --------------- |
-| chksum         | u32                |                 |
-| context        | AES_GCM_CONTEXT    |                  |
-| plaintext size | u32                | MAY be 0        |
-| plaintext      | u8[plaintext size] | Data to encrypt |
-
-*Table: `MC_AES_GCM_ENCRYPT_FINAL` output arguments*
-| **Name**       | **Type**            | **Description**                  |
-| -------------- | ------------------- | -------------------------------- |
-| chksum         | u32                 |                                  |
-| fips_status    | u32                 | FIPS approved or an error        |
-| tag            | u8[16]              |                                  |
-| cipertext size | u32                 | could be greater than plaintext by 16 bytes |
-| ciphertext     | u8[ciphertext size] |                                  |
-
-The tag returned will always be 16 bytes. Shorter tags can be constructed by truncating.
-
-### MC_AES_GCM_DECRYPT_INIT
-
-Starts an AES-256-GCM decryption computation.
-
-Currently only supports AES-256-GCM with a 96-bit IV.
-
-The CMK must have been created for AES usage.
-
-Additional authenticated data (AAD) can only be passed during the `INIT` command, so is limited to the maximum cryptographic mailbox data size (4096 bytes).
-
-The AAD and IV must match what was passed and returned from the encryption operation.
-
-Command Code: `0x4D43_4449` ("MCDI")
-
-*Table: `MC_AES_GCM_DECRYPT_INIT` input arguments*
-| **Name**        | **Type**            | **Description**               |
-| --------------- | ------------------- | ----------------------------- |
-| chksum          | u32                 |                               |
-| CMK             | CMK                 | CMK to use for decryption     |
-| iv              | u8[12]              |                               |
-| aad size        | u32                 |                               |
-| aad             | u8[aad size]        | Additional authenticated data |
-
-*Table: `MC_AES_GCM_DECRYPT_INIT` output arguments*
-| **Name**       | **Type**           | **Description**           |
-| -------------- | ------------------ | ------------------------- |
-| chksum         | u32                |                           |
-| fips_status    | u32                | FIPS approved or an error |
-| context        | AES_GCM_CONTEXT    |                           |
-
-The encrypted and authenticated context's internal structure will be the same as for encryption.
-
-### MC_AES_GCM_DECRYPT_UPDATE
-
-This continues an AES computation started by `MC_AES_GCM_DECRYPT_INIT` or from another `MC_AES_GCM_DECRYPT_UPDATE`.
-
-The context MUST be passed in from `MC_AES_GCM_DECRYPT_INIT` or `MC_AES_GCM_DECRYPT_UPDATE`.
-
-Command Code: `0x4D43_4455` ("MCDU")
-
-*Table: `MC_AES_GCM_DECRYPT_UPDATE` input arguments*
-| **Name**        | **Type**            | **Description**  |
-| --------------- | ------------------- | ---------------- |
-| chksum          | u32                 |                  |
-| context         | AES_GCM_CONTEXT     |                  |
-| ciphertext size | u32                 | MUST be non-zero |
-| ciphertext      | u8[ciphertext size] | Data to decrypt  |
-
-*Table: `MC_AES_GCM_DECRYPT_UPDATE` output arguments*
-| **Name**       | **Type**           | **Description**           |
-| -------------- | ------------------ | ------------------------- |
-| chksum         | u32                |                           |
-| fips_status    | u32                | FIPS approved or an error |
-| context        | AES_GCM_CONTEXT    |                           |
-| plaintext size | u32                | MAY be 0                  |
-| plaintext      | u8[plaintext size] |                           |
-
-### MC_AES_GCM_DECRYPT_FINAL
-
-This finalizes the computation of the AES GCM decryption and produces the final ciphertext.
-
-The context MUST be passed in from `MC_AES_GCM_DECRYPT_INIT` or `MC_AES_GCM_DECRYPT_UPDATE`.
-
-Tags between 0 and 16 bytes are supported but must be passed (on the right) with zeroes to 16 bytes.
-
-The caller MUST verify that the tag verified field is set to 1 before using the result.
-
-Command Code: `0x4D43_4446` ("MCDF")
-
-*Table: `MC_AES_GCM_DECRYPT_FINAL` input arguments*
-| **Name**        | **Type**            | **Description**                   |
-| --------------- | ------------------- | --------------------------------- |
-| chksum          | u32                 |                                   |
-| context         | AES_GCM_CONTEXT     |                                   |
-| tag size        | u32                 | Can be 0, 1, ..., 16              |
-| tag             | u8[16]              | Right-padded with zeroes          |
-| ciphertext size | u32                 | MAY be 0                          |
-| ciphertext      | u8[ciphertext size] | Data to decrypt                   |
-
-*Table: `MC_AES_GCM_DECRYPT_FINAL` output arguments*
-| **Name**       | **Type**           | **Description**                      |
-| -------------- | ------------------ | ------------------------------------ |
-| chksum         | u32                |                                      |
-| fips_status    | u32                | FIPS approved or an error            |
-| tag verified   | u32                | 1 if tags matched, 0 if they did not |
-| tag            | u8[16]             | Computed tag                         |
-| plaintext size | u32                | MAY be 0                             |
-| plaintext      | u8[plaintext size] |                                      |
-
-### MC_ECDH_GENERATE
-
-This computes the first half of an Elliptic Curve Diffie-Hellman exchange to compute an ephemeral shared key pair with another party.
-
-Currently only supports the NIST P-384 curve.
-
-The returned context must be passed to the `MC_ECDH_FINISH` command. The context contains the (encrypted) secret coefficient.
-
-The returned exchange data format is the concatenation of the x- and y-coordinates of the public point encoded as big-endian integers, padded to 48 bytes each.
-
-Command Code: `0x4D43_4547` ("MCEG")
-
-*Table: `MC_ECDH_GENERATE` input arguments*
-| **Name**    | **Type** | **Description**      |
-| ----------- | -------- | -------------------- |
-| chksum      | u32      |                      |
-
-*Table: `MC_ECDH_GENERATE` output arguments*
-| **Name**      | **Type** | **Description**                       |
-| ------------- | -------- | ------------------------------------- |
-| chksum        | u32      |                                       |
-| fips_status   | u32      | FIPS approved or an error             |
-| context       | u8[76]   | Used as the input to `MC_ECDH_FINISH` |
-| exchange data | u8[96]   | i.e., the public point                |
-
-### MC_ECDH_FINISH
-
-This computes the second half of an Elliptic Curve Diffie-Hellman exchange.
-
-Currently only supports the NIST P-384 curve.
-
-The context must be passed from the `MC_ECDH_GENERATE` command.
-
-The incoming exchange data MUST be the concatenation of the x- and y- coordinates of the other side's public point, encoded as big-endian integers, padded to 48 bytes each.
-
-The produced shared secret is 384 bits.
-
-Command Code: `0x4D43_4546` ("MCEF")
-
-*Table: `MC_ECDH_FINISH` input arguments*
-| **Name**               | **Type** | **Description**                                          |
-| ---------------------- | -------- | -------------------------------------------------------- |
-| chksum                 |          |                                                          |
-| context                | u8[76]   | This MUST come from the output of the `MC_ECDH_GENERATE` |
-| key usage              | u32      | usage tag of the kind of key that will be output         |
-| incoming exchange data | u8[96]   | the other side's public point                            |
-
-The context used as an input is the same as the output context from `MC_ECDH_GENERATE` above.
-
-*Table: `MC_ECDH_FINISH` output arguments*
-| **Name**    | **Type** | **Description**                 |
-| ----------- | -------- | ------------------------------- |
-| chksum      | u32      |                                 |
-| fips_status | u32      | FIPS approved or an error       |
-| output CMK  | CMK      | Output CMK of the shared secret |
-
-### MC_RANDOM_STIR
-
-This allows additional entropy to be added to the underlying deterministic random bit generator, if the hardware is using a CSRNG DRBG.
-
-Command Code: `0x4D43_5253` ("MCRS")
-
-*Table: `MC_RANDOM_STIR` input arguments*
-
-| **Name**   | **Type**       | **Description** |
-| ---------- | -------------- | --------------- |
-| chksum     | u32            |                 |
-| input size | u32            |                 |
-| input      | u8[input size] |                 |
-
-*Table: `MC_RANDOM_STIR` output arguments*
-| **Name**    | **Type** | **Description**           |
-| ----------- | -------- | ------------------------- |
-| chksum      | u32      |                           |
-| fips_status | u32      | FIPS approved or an error |
-
-### MC_RANDOM_GENERATE
-
-This generates random bytes that are returned from the internal RNG.
-
-Command Code: `0x4D43_5247` ("MCRG")
-
-*Table: `MC_RANDOM_GENERATE` input arguments*
-| **Name**            | **Type** | **Description** |
-| ------------------- | -------- | --------------- |
-| chksum              | u32      |                 |
-| data size to return | u32      |                 |
-
-
-*Table: `MC_RANDOM_GENERATE` output arguments*
-| **Name**    | **Type**        | **Description**           |
-| ----------- | --------------- | ------------------------- |
-| chksum      | u32             |                           |
-| fips_status | u32             | FIPS approved or an error |
-| output size | u32             | size of output            |
-| output      | u8[output size] |                           |
-
-### MC_IMPORT
-
-Imports the specified key and returns a CMK for it.
-Usage information is required so that the key can be verified and used appropriately.
-
-Command Code: `0x4D43_494D` ("MCIM")
-
-*Table: `MC_IMPORT` input arguments*
-| **Name**   | **Type**       | **Description**                         |
-| ---------- | -------------- | --------------------------------------- |
-| chksum     | u32            |                                         |
-| key usage  | u32            | Tag to specify how the data can be used |
-| input size | u32            | This MUST agree with the key usage      |
-| input      | u8[input size] |                                         |
-
-*Table: `MC_IMPORT` output arguments*
-| **Name**    | **Type** | **Description**             |
-| ----------- | -------- | --------------------------- |
-| chksum      | u32      |                             |
-| fips_status | u32      | FIPS approved or an error   |
-| CMK         | CMK      | CMK containing imported key |
-
-### MC_DELETE
-
-Deletes the object stored with the given mailbox ID.
-
-Command Code: `0x4D43_444C` ("MCDL")
-
-*Table: `MC_DELETE` input arguments*
-| **Name** | **Type** | **Description** |
-|----------|----------|-----------------|
-| chksum   | u32      |                 |
-| CMK      | CMK      | CMK to delete   |
-
-*Table: `MC_DELETE` output arguments*
-| **Name**     | **Type** | **Description**           |
-|--------------|----------|---------------------------|
-| chksum       | u32      |                           |
-| fips_status  | u32      | FIPS approved or an error |
 
 ### MC_ECDSA384_SIG_VERIFY
 
@@ -899,3 +398,30 @@ Command Code: `0x4D44_5554` ("MDUT")
 |--------------------------|----------------|---------------------------------------------------------------------------------|
 | chksum                   | u32            |                                                                                 |
 | fips_status              | u32            | FIPS approved or an error                                                      |
+
+### Cryptographic Command Format
+
+The MCI mailbox cryptographic commands are mapped to their corresponding Caliptra Mailbox Cryptographic commands. The mapping is detailed in the table below. For the specific format of each command, refer to the [Mailbox Commands: Cryptographic Mailbox (2.0)](https://github.com/chipsalliance/caliptra-sw/blob/main-2.x/runtime/README.md#mailbox-commands-cryptographic-mailbox-20).
+
+*Table: mapping MCI Mailbox Crypto Commands to Caliptra Crypto Mailbox Commands*
+| **MCI Mailbox Crypto Commands** | **Caliptra Mailbox Crypto Commands**         |
+|--------------------------------|---------------------------------------------|
+| `MC_SHA_INIT`                 | `CM_SHA_INIT`                               |
+| `MC_SHA_UPDATE`               | `CM_SHA_UPDATE`                             |
+| `MC_SHA_FINAL`                | `CM_SHA_FINAL`                              |
+| `MC_AES_ENCRYPT_INIT`         | `CM_AES_ENCRYPT_INIT`                       |
+| `MC_AES_ENCRYPT_UPDATE`       | `CM_AES_ENCRYPT_UPDATE`                     |
+| `MC_AES_DECRYPT_INIT`         | `CM_AES_DECRYPT_INIT`                       |
+| `MC_AES_DECRYPT_UPDATE`       | `CM_AES_DECRYPT_UPDATE`                     |
+| `MC_AES_GCM_ENCRYPT_INIT`     | `CM_AES_GCM_ENCRYPT_INIT`                   |
+| `MC_AES_GCM_ENCRYPT_UPDATE`   | `CM_AES_GCM_ENCRYPT_UPDATE`                 |
+| `MC_AES_GCM_ENCRYPT_FINAL`    | `CM_AES_GCM_ENCRYPT_FINAL`                  |
+| `MC_AES_GCM_DECRYPT_INIT`     | `CM_AES_GCM_DECRYPT_INIT`                   |
+| `MC_AES_GCM_DECRYPT_UPDATE`   | `CM_AES_GCM_DECRYPT_UPDATE`                 |
+| `MC_AES_GCM_DECRYPT_FINAL`    | `CM_AES_GCM_DECRYPT_FINAL`                  |
+| `MC_ECDH_GENERATE`            | `CM_ECDH_GENERATE`                          |
+| `MC_ECDH_FINISH`              | `CM_ECDH_FINISH`                            |
+| `MC_RANDOM_STIR`              | `CM_RANDOM_STIR`                            |
+| `MC_RANDOM_GENERATE`          | `CM_RANDOM_GENERATE`                        |
+| `MC_IMPORT`                   | `CM_IMPORT`                                 |
+| `MC_DELETE`                   | `CM_DELETE`                                 |
