@@ -214,7 +214,7 @@ sequenceDiagram
 
 ## Firmware Update Flow
 
-### Full image update for flash boot system
+### Full Image Update for Flash Boot System
 
 **Option 1: Updating the full flash image as a single PLDM firmware component**
 
@@ -271,8 +271,8 @@ Ideally, the staging memory should be accessible by the Caliptra DMA engine to r
     - For the Caliptra FMC + RT subcomponent, the MCU sends it to the Caliptra core using the `CALIPTRA_FW_UPLOAD` mailbox command.
     - For the SoC Manifest subcomponent, the MCU sends it to the Caliptra core using the `SET_AUTH_MANIFEST` mailbox command. The mailbox response confirms the authenticity and correctness of the manifest.
     - For MCU RT or SoC Image subcomponents, the MCU sends the `AUTHORIZE_AND_STASH` mailbox command, indicating that the image to be verified resides in the staging area.
-6. After verification, the PLDM stack notifies the API to apply the image. The MCU writes the images from the temporary staging area to the active flash partition.
-7. When the Update Agent issues the `ActivateFirmware` command, the API may provide a handler to initiate a soft reset, enabling the new image to execute from flash.
+6. After verification, the PLDM stack notifies the API to apply the image. The MCU writes the images from the temporary staging area to the inactive flash partition. Refer to [A/B Partition Mechanism](#a-b-partition-mechanism) for more details.
+7. When the Update Agent issues the `ActivateFirmware` command, the API updates the partition table to mark the inactive partition as active. The API may provide a handler to initiate a soft reset, enabling the new image to execute from flash.
 
 **Option 2: Updating the full flash image as multiple PLDM firmware components**
 
@@ -307,9 +307,66 @@ In this approach, the full flash image is divided into 1 to N distinct firmware 
     - If the component is Caliptra FMC+RT, MCU sends it to Caliptra core using the CALIPTRA_FW_UPLOAD mailbox command.
     - If the component is a SoC Manifest,  the mailbox via the SET_AUTH_MANIFEST mailbox command.
     - If the component is an MCU RT or SoC Image, it is written to a staging area determined in step 3.
-6. After verification, the PLDM stack notifies the API to apply the image. The MCU writes the images from the temporary staging area to the active flash partition.
-7. Repeat step 3-6 for Component 2, 3, 4 .. N
-8. After all firmware components have been transferred and applied, Update Agent issues `ActivateFirmware` command to inform the device to prepare all successfully applied components to become active at the next activation. The API may provide a handler to initiate a soft reset, enabling the new image to execute from flash.
+6. After verification, the PLDM stack notifies the API to apply the image. The MCU writes the images from the temporary staging area to the inactive flash partition. Refer to [A/B Partition Mechanism](#a-b-partition-mechanism) for more details.
+7. Repeat steps [3](#partial-firmware-update) through [6](#partial-firmware-update) for Component 2, 3, 4 ... N.
+8. After all firmware components have been transferred and applied, Update Agent issues `ActivateFirmware` command to inform the device to prepare all successfully applied components to become active at the next activation. The API updates the partition table to mark the inactive partition as active. The API may provide a handler to initiate a soft reset, enabling the new image to execute from flash.
+
+### A/B Partition Mechanism
+
+The A/B partition mechanism is a robust approach to ensure seamless and reliable firmware updates for flash boot systems.
+When partition A is active, it contains the currently running firmware, while partition B remains inactive and is used as the target for firmware updates. This ensures that the system can always revert to the previous active partition in case of an update failure.
+
+#### Partition Layout
+
+The location of A/B partitions can either reside on a single flash device or be distributed across separate flash devices. In a single flash device setup, both partitions share the same physical storage, simplifying design and reducing costs. However, this approach may introduce performance bottlenecks during simultaneous read/write operations and poses a single point of failure. On the other hand, using separate flash devices for A/B partitions enhances redundancy and reliability, allowing parallel operations that improve update performance. This configuration, while more expensive and complex, is ideal for systems requiring high reliability and scalability. The choice between these configurations depends on the specific requirements of the system, such as cost constraints, performance needs, and reliability expectations.
+
+| Partition A (Active)           | Partition B (Inactive)         |
+| -------------------------------| -------------------------------|
+| Flash header                   | Flash header                  |
+| Checksum                       | Checksum                       |
+| Image Info (Caliptra FMC + RT) | Image Info (Caliptra FMC + RT) |
+| Image Info (SoC Manifest)      | Image Info (SoC Manifest)      |
+| Image Info (MCU RT)            | Image Info (MCU RT)            |
+| Image Info (SoC Image 1)       | Image Info (SoC Image 1)       |
+| ...                            | ...                            |
+| Image Info (SoC Image N - 3)   | Image Info (SoC Image N - 3)   |
+| Caliptra FMC + RT              | Caliptra FMC + RT              |
+| SoC Manifest                   | SoC Manifest                   |
+| MCU RT                         | MCU RT                         |
+| SoC Image 1                    | SoC Image 1                    |
+| ...                            | ...                            |
+| SoC Image N - 3                | SoC Image N - 3                |
+
+#### Partition Selection
+
+- **Partition Table**
+
+For the A/B partition mechanism, the bootloader (MCU ROM) determines which partition to load the firmware image from by using a partition selection mechanism. The implementation of partition selection is system-specific. A common approach involves using a partition table stored in a reserved area of flash. The table below shows an example partition table format:
+
+| Field Name         | Size   | Description                                 |
+|---------------------|--------|--------------------------------------------|
+| Active Partition    | 1 byte | Indicates the active partition (A or B).   |
+| Partition A Valid   | 1 byte | Flag indicating if Partition A is valid.   |
+| Partition B Valid   | 1 byte | Flag indicating if Partition B is valid.   |
+| Rollback Flag       | 1 byte | Indicates if rollback is required.         |
+| Reserved            | 4 byte | Reserved                                   |
+| CheckSum            | 4 byte |                                            |
+
+- **Partition Table Usage**
+    - During Normal Boot
+        - The  MCU ROM reads the partition table to determine:
+            - The active partition to boot from.
+            - Whether the active partition is valid and bootable.
+        - If the active partition is valid, the bootloader loads the firmware image from it and boots the system.
+        - If the firmware in the active partition fails to boot (e.g., due to corruption or verification failure), the bootloader:
+            - Checks the Rollback Flag.
+            - Switches to the other partition if rollback is required.
+    - During Firmware Update
+        - In the `ActivateFirmware` phase, the partition table or status flags are updated to mark the inactive partition as the new active partition.
+        - Steps to Update:
+            1. Set the `Active Partition` field to the inactive partition (A or B).
+            2. Optionally mark the previously active partition as inactive or valid for rollback.
+            3. Write the updated partition table or status flags back to the reserved area in non-volatile memory.
 
 ### Partial firmware update
 
