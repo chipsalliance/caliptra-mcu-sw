@@ -218,7 +218,7 @@ sequenceDiagram
 
 **Option 1: Updating the full flash image as a single PLDM firmware component**
 
-PLDM update packages natively support selecting applicable components using the `ApplicableComponents` bitfield in the package header. For the case of `Component N + 1`, it is treated as a single component by the PLDM Update Agent. Actually, this component encapsulates multiple embedded images, each with its corresponding image information entry, checksum and flash header. The structure and layout of `Component N + 1` align with the flash layout definition in [flash_layout.md](https://github.com/chipsalliance/caliptra-mcu-sw/blob/main/docs/src/flash_layout.md).
+PLDM update packages natively support selecting applicable components using the `ApplicableComponents` bitfield in the package header. For the case of `Component N + 1`, it is treated as a single component by the PLDM Update Agent. This component can encapsulate multiple embedded images each with its corresponding image information entry, checksum and flash header. The structure and layout of `Component N + 1` align with the flash layout definition in [flash_layout.md](https://github.com/chipsalliance/caliptra-mcu-sw/blob/main/docs/src/flash_layout.md).
 
 
 | PLDM FW Update Package                                |
