@@ -256,23 +256,22 @@ PLDM update packages natively support selecting applicable components using the 
 | ...                            |
 | SoC Image N - 3                |
 
-To support full image update, a SoC-defined staging memory should be provided to store the incoming payload. For enhanced security, it is recommended to include this staging memory configuration as part of the authenticated SoC manifest.
 
-Ideally, the staging memory should be accessible by the Caliptra DMA engine to read and hash the image directly. If the staging memory (e.g., a staging partition on flash) does not meet this requirement, the MCU would need to perform the cryptographic operations to calculate the hash and then send a mailbox command for authorization. However, this approach is not recommended due to potential security and performance concerns.
+To support full image updates, a SoC-defined staging memory must be provided to store the incoming payload. The designated staging area for Component 1 must be accessible by the Caliptra ROM to fetch and authorize the image. This staging area could be located in MCU SRAM or MCI mailbox SRAM, as defined in Caliptra 2.1. If the SoC-defined staging memory does not meet this requirement, the image must be copied to the compliant region, which may slightly impact performance. For other components, if the staging memory (e.g., a staging partition on flash) is not directly accessible by the Caliptra core's DMA engine for reading and hashing the image, the MCU must perform the cryptographic operations to compute the hash. The computed hash is then sent via a mailbox command for authorization.
 
 **Detailed steps**:
 *Note: Actions below are performed by MCU RT Firmware*
 
 1. An initiator, such as a custom user application, starts the firmware update service through the Firmware Update API. This action initializes the responder loop in the PLDM stack, enabling it to listen for incoming PLDM messages from the PLDM agent. The API queries firmware component metadata from the Caliptra core (e.g., component version numbers, classifications, etc.) using a mailbox command. This metadata is used to construct the Device Identifiers and Firmware Parameters, as specified in the DMTF DSP0267 1.3.0 standard. *(**TBD**: Confirm if the mailbox command can provide metadata for the full image.)*
 2. The PLDM stack notifies the API when a firmware image becomes available for update.
-3. The PLDM stack notifies the API which component is being downloaded using the UpdateComponent notification. The staging memory address is retrieved from the SoC Manifest stored in the Caliptra core using a mailbox command.
+3. The PLDM stack notifies the API which component is being downloaded using the UpdateComponent notification.
 4. The PLDM stack sends a FirmwareData notification to the API for each received firmware chunk, including the data, size, and chunk offset. The API's download handler writes the received firmware data to the staging memory.
-5. Once all firmware chunks are downloaded, the PLDM stack notifies the API to verify the component. The API parses the component to identify individual embedded images, referred to as subcomponents:
-    - For the Caliptra FMC + RT subcomponent, the MCU sends it to the Caliptra core using the `CALIPTRA_FW_UPLOAD` mailbox command.
-    - For the SoC Manifest subcomponent, the MCU sends it to the Caliptra core using the `SET_AUTH_MANIFEST` mailbox command. The mailbox response confirms the authenticity and correctness of the manifest.
-    - For MCU RT or SoC Image subcomponents, the MCU sends the `AUTHORIZE_AND_STASH` mailbox command, indicating that the image to be verified resides in the staging area.
+5. Once all firmware chunks are downloaded, the PLDM stack notifies the API to verify the component. The API processes the component to extract and identify individual embedded images, referred to as subcomponents. The verification process is performed sequentially for each subcomponent:
+    a. For the Caliptra FMC + RT subcomponent, the MCU sends it to the Caliptra core using the `CALIPTRA_FW_UPLOAD` mailbox command. When this command is executed, Caliptra core firmware is authorized and activated in one shot. The new core image is taken into effect after core reset.
+    b. For the SoC Manifest subcomponent, the MCU sends it to the Caliptra core using the `SET_AUTH_MANIFEST` mailbox command. The mailbox response confirms the authenticity and correctness of the manifest.
+    c. For MCU RT or SoC Image subcomponents, the MCU sends the `AUTHORIZE_AND_STASH` mailbox command, indicating that the image to be verified resides in the staging area.
 6. After verification, the PLDM stack notifies the API to apply the image. The MCU writes the images from the temporary staging area to the inactive flash partition. Refer to [A/B Partition Mechanism](#a-b-partition-mechanism) for more details.
-7. When the Update Agent issues the `ActivateFirmware` command, the API updates the partition table to mark the inactive partition as active. The API may provide a handler to initiate a soft reset, enabling the new image to execute from flash.
+7. When the Update Agent issues the `ActivateFirmware` command, the API updates the partition table to mark the inactive partition as active. The API may provide a handler to initiate a warm reset, enabling the new image to execute from flash.
 
 **Option 2: Updating the full flash image as multiple PLDM firmware components**
 
@@ -300,16 +299,16 @@ In this approach, the full flash image is divided into 1 to N distinct firmware 
 
 1. An initiator, such as a custom user application, starts the firmware update service through the Firmware Update API. This action initializes the responder loop in the PLDM stack, enabling it to listen for incoming PLDM messages from the PLDM agent. The API queries firmware component metadata from the Caliptra core (e.g., component version numbers, classifications, etc.) using a mailbox command. This metadata is used to construct the Device Identifiers and Firmware Parameters, as specified in the DMTF DSP0267 1.3.0 standard. (**TBD**: Confirm if the mailbox command can provide metadata for the full image.)
 2. The PLDM stack notifies the API when a firmware image becomes available for update.
-3. The PLDM stack notifies the API which component is being downloaded using the UpdateComponent notification. The staging memory address is retrieved from the SoC Manifest stored in the Caliptra core using a mailbox command.
+3. The PLDM stack notifies the API which component is being downloaded using the UpdateComponent notification.
     The 1st firmware component received to update should be Caliptra FMC + RT.
 4. The PLDM stack sends a FirmwareData notification to the API for each received firmware chunk, including the data, size, and chunk offset. The API's download handler writes the received firmware data to the staging memory.
 5. Once all firmware chunks are downloaded, the PLDM stack notifies the API to verify the component.
-    - If the component is Caliptra FMC+RT, MCU sends it to Caliptra core using the CALIPTRA_FW_UPLOAD mailbox command.
-    - If the component is a SoC Manifest,  the mailbox via the SET_AUTH_MANIFEST mailbox command.
-    - If the component is an MCU RT or SoC Image, it is written to a staging area determined in step 3.
+    a. If the component is Caliptra FMC+RT, MCU sends it to Caliptra core using the `CALIPTRA_FW_UPLOAD` mailbox command.
+    b. If the component is a SoC Manifest,  the mailbox via the `SET_AUTH_MANIFEST` mailbox command.
+    c. If the component is an MCU RT or SoC Image, it is written to a staging area defined in SoC manifest.
 6. After verification, the PLDM stack notifies the API to apply the image. The MCU writes the images from the temporary staging area to the inactive flash partition. Refer to [A/B Partition Mechanism](#a-b-partition-mechanism) for more details.
 7. Repeat steps [3](#partial-firmware-update) through [6](#partial-firmware-update) for Component 2, 3, 4 ... N.
-8. After all firmware components have been transferred and applied, Update Agent issues `ActivateFirmware` command to inform the device to prepare all successfully applied components to become active at the next activation. The API updates the partition table to mark the inactive partition as active. The API may provide a handler to initiate a soft reset, enabling the new image to execute from flash.
+8. After all firmware components have been transferred and applied, Update Agent issues `ActivateFirmware` command to inform the device to prepare all successfully applied components to become active at the next activation. The API updates the partition table to mark the inactive partition as active. The API may provide a handler to initiate a warm reset, enabling the new image to execute from flash.
 
 ### A/B Partition Mechanism
 
