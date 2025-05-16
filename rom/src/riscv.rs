@@ -16,7 +16,8 @@ Abstract:
 
 use crate::fatal_error;
 use crate::fuses::Otp;
-use core::fmt::Write;
+use caliptra_api::mailbox::CommandId;
+use core::{fmt::Write, hint::black_box};
 use registers_generated::{fuses::Fuses, i3c, mbox, mci, otp_ctrl, soc};
 use romtime::{HexWord, Mci, StaticRef, MCI_BASE};
 use tock_registers::interfaces::{Readable, Writeable};
@@ -131,6 +132,9 @@ pub const OTP_BASE: StaticRef<otp_ctrl::regs::OtpCtrl> =
 pub const I3C_BASE: StaticRef<i3c::regs::I3c> =
     unsafe { StaticRef::new(i3c::I3C_CSR_ADDR as *const i3c::regs::I3c) };
 
+pub const MBOX_BASE: StaticRef<mbox::regs::Mbox> =
+    unsafe { StaticRef::new(mbox::MBOX_CSR_ADDR as *const mbox::regs::Mbox) };
+
 pub fn rom_start() {
     romtime::println!("[mcu-rom] Hello from ROM");
 
@@ -169,6 +173,22 @@ pub fn rom_start() {
     mci.caliptra_boot_go();
 
     // tell Caliptra to download firmware from the recovery interface
+    let mut soc = romtime::CaliptraSoC::new();
+    romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command");
+    if let Err(err) =
+        soc.start_mailbox_req(CommandId::RI_DOWNLOAD_FIRMWARE.into(), 0, [].into_iter())
+    {
+        romtime::println!("[mcu-rom] Error sending mailbox command: {:?}", err);
+        fatal_error(4);
+    }
+    romtime::println!("[mcu-rom] Done sending RI_DOWNLOAD_FIRMWARE command");
+    {
+        // drop this to release the lock
+        if let Err(err) = soc.finish_mailbox_resp(8, 8) {
+            romtime::println!("[mcu-rom] Error waiting for mailbox response: {:?}", err);
+            fatal_error(5);
+        }
+    }
 
     romtime::println!("[mcu-rom] Starting recovery flow");
     recovery_flow(&mut mci);

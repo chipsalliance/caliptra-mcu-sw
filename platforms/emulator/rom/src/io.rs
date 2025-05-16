@@ -28,7 +28,7 @@ pub(crate) struct EmulatorFatalErrorHandler {}
 pub(crate) static mut FATAL_ERROR_HANDLER: EmulatorFatalErrorHandler = EmulatorFatalErrorHandler {};
 impl FatalErrorHandler for EmulatorFatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> ! {
-        let _ = writeln!(EmulatorWriter {}, "Fatal error: {}", HexWord(code));
+        let _ = writeln!(EmulatorWriter {}, "MCU fatal error: {}", HexWord(code));
         exit_emulator(code);
     }
 }

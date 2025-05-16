@@ -2191,6 +2191,7 @@ dependencies = [
 name = "mcu-rom-common"
 version = "0.1.0"
 dependencies = [
+ "caliptra-api",
  "registers-generated",
  "riscv-csr",
  "romtime",
