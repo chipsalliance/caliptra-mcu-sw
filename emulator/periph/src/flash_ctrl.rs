@@ -763,6 +763,7 @@ mod test {
             FlashType::Main => AutoRootBus::new(
                 vec![],
                 None,
+                None,
                 Some(flash_controller),
                 None,
                 None,
@@ -776,6 +777,7 @@ mod test {
             ),
             FlashType::Recovery => AutoRootBus::new(
                 vec![],
+                None,
                 None,
                 None,
                 Some(flash_controller),

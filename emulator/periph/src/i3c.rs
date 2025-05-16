@@ -365,6 +365,7 @@ mod tests {
 
         let mut bus = AutoRootBus::new(
             vec![],
+            None,
             Some(i3c),
             None,
             None,

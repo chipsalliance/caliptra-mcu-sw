@@ -30,9 +30,7 @@ use emulator_bus::{Bus, BusConverter, Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_consts::{RAM_OFFSET, ROM_SIZE};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
-use emulator_periph::{
-    CaliptraRootBus, CaliptraRootBusArgs, DummyFlashCtrl, I3c, I3cController, Mci, Otp,
-};
+use emulator_periph::{DummyFlashCtrl, I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp};
 use emulator_registers_generated::dma::DmaPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
 use gdb::gdb_state;
@@ -409,15 +407,16 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     };
     let pic = Rc::new(Pic::new());
 
-    let bus_args = CaliptraRootBusArgs {
+    let bus_args = McuRootBusArgs {
         rom: rom_buffer,
         log_dir: args_log_dir.clone(),
         uart_output: uart_output.clone(),
         uart_rx: stdin_uart.clone(),
         pic: pic.clone(),
         clock: clock.clone(),
+        ..Default::default()
     };
-    let mut root_bus = CaliptraRootBus::new(bus_args).unwrap();
+    let mut root_bus = McuRootBus::new(bus_args).unwrap();
 
     if !active_mode {
         root_bus.load_ram(0x80, &mcu_firmware);
@@ -425,8 +424,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
     let dma_ram = root_bus.ram.clone();
 
-    let i3c_error_irq = pic.register_irq(CaliptraRootBus::I3C_ERROR_IRQ);
-    let i3c_notif_irq = pic.register_irq(CaliptraRootBus::I3C_NOTIF_IRQ);
+    let i3c_error_irq = pic.register_irq(McuRootBus::I3C_ERROR_IRQ);
+    let i3c_notif_irq = pic.register_irq(McuRootBus::I3C_NOTIF_IRQ);
 
     println!("Starting I3C Socket, port {}", cli.i3c_port.unwrap_or(0));
 
@@ -574,22 +573,22 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
     let main_flash_controller = create_flash_controller(
         "main_flash",
-        CaliptraRootBus::MAIN_FLASH_CTRL_ERROR_IRQ,
-        CaliptraRootBus::MAIN_FLASH_CTRL_EVENT_IRQ,
+        McuRootBus::MAIN_FLASH_CTRL_ERROR_IRQ,
+        McuRootBus::MAIN_FLASH_CTRL_EVENT_IRQ,
         main_flash_initial_content.as_deref(),
     );
 
     let recovery_flash_controller = create_flash_controller(
         "recovery_flash",
-        CaliptraRootBus::RECOVERY_FLASH_CTRL_ERROR_IRQ,
-        CaliptraRootBus::RECOVERY_FLASH_CTRL_EVENT_IRQ,
+        McuRootBus::RECOVERY_FLASH_CTRL_ERROR_IRQ,
+        McuRootBus::RECOVERY_FLASH_CTRL_EVENT_IRQ,
         None,
     );
 
     let mut dma_ctrl = emulator_periph::DummyDmaCtrl::new(
         &clock.clone(),
-        pic.register_irq(CaliptraRootBus::DMA_ERROR_IRQ),
-        pic.register_irq(CaliptraRootBus::DMA_EVENT_IRQ),
+        pic.register_irq(McuRootBus::DMA_ERROR_IRQ),
+        pic.register_irq(McuRootBus::DMA_EVENT_IRQ),
         Some(root_bus.external_test_sram.clone()),
     )
     .unwrap();
@@ -614,6 +613,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     let mci = Mci::new(&clock.clone());
     let mut auto_root_bus = AutoRootBus::new(
         delegates,
+        None,
         Some(Box::new(i3c)),
         Some(Box::new(main_flash_controller)),
         Some(Box::new(recovery_flash_controller)),
