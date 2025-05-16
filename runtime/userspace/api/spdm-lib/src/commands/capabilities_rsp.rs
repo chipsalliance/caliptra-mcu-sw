@@ -230,6 +230,14 @@ async fn process_get_capabilities<'a>(
             .connection_info
             .set_peer_capabilities(peer_capabilities);
     }
+
+    // Reset the transcript depending on request code
+    ctx.reset_transcript_via_req_code(ReqRespCode::GetCapabilities);
+
+    // Set the SPDM version in the transcript manager
+    ctx.transcript_mgr
+        .set_spdm_version(ctx.state.connection_info.version_number());
+
     // Append Capabilities request to the transcript VCA context
     let req_msg = req_payload
         .message_data()

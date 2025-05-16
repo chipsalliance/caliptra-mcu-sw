@@ -8,6 +8,7 @@ use crate::commands::{
     algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, digests_rsp, version_rsp,
 };
 use crate::error::*;
+use crate::measurements::{common::SpdmMeasurements, freeform_manifest::FreeformManifest};
 use crate::protocol::algorithms::*;
 use crate::protocol::common::{ReqRespCode, SpdmMsgHdr};
 use crate::protocol::version::*;
@@ -27,6 +28,7 @@ pub struct SpdmContext<'a> {
     pub(crate) local_capabilities: DeviceCapabilities,
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
     pub(crate) device_certs_store: &'a mut dyn SpdmCertStore,
+    pub(crate) measurements: &'a mut dyn SpdmMeasurements,
     pub(crate) cw: &'a mut ConsoleWriter<DefaultSyscalls>,
 }
 
@@ -37,6 +39,7 @@ impl<'a> SpdmContext<'a> {
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
         device_certs_store: &'a mut dyn SpdmCertStore,
+        measurements: &'a mut dyn SpdmMeasurements,
         cw: &'a mut ConsoleWriter<DefaultSyscalls>,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
@@ -53,6 +56,7 @@ impl<'a> SpdmContext<'a> {
             local_capabilities,
             local_algorithms,
             device_certs_store,
+            measurements,
             cw,
         })
     }

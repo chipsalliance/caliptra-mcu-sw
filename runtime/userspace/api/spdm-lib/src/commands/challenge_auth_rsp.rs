@@ -1,12 +1,20 @@
 // Licensed under the Apache-2.0 license
+use crate::cert_store::MAX_CERT_SLOTS_SUPPORTED;
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::algorithms_rsp::selected_measurement_specification;
+use crate::commands::digests_rsp::compute_cert_chain_hash;
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
-use crate::error::CommandResult;
-use crate::protocol::*;
+use crate::error::{CommandError, CommandResult};
 use crate::state::ConnectionState;
+use crate::transcript::TranscriptContext;
+use crate::{measurements, protocol::*};
+use bitfield::bitfield;
+use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
+use libapi_caliptra::crypto::rng::Rng;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+use core::fmt::Write;
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
@@ -22,11 +30,42 @@ impl CommonCodec for ChallengeReqBase {}
 struct RequesterContext([u8; REQUESTER_CONTEXT_LEN]);
 impl CommonCodec for RequesterContext {}
 
+#[derive(FromBytes, IntoBytes, Immutable)]
+#[repr(C)]
+struct ChallengeAuthRspBase {
+    challenge_auth_attr: ChallengeAuthAttr,
+    slot_mask: u8,
+    cert_chain_hash: [u8; SHA384_HASH_SIZE],
+    nonce: [u8; NONCE_LEN],
+}
+impl CommonCodec for ChallengeAuthRspBase {}
+
+impl ChallengeAuthRspBase {
+    fn new(slot_id: u8) -> Self {
+        Self {
+            challenge_auth_attr: ChallengeAuthAttr(slot_id),
+            slot_mask: 1 << slot_id,
+            cert_chain_hash: [0; SHA384_HASH_SIZE],
+            nonce: [0; NONCE_LEN],
+        }
+    }
+}
+
+bitfield! {
+    #[derive(FromBytes, IntoBytes, Immutable)]
+    #[repr(C)]
+    struct ChallengeAuthAttr(u8);
+    impl Debug;
+    u8;
+    pub slot_id, set_slot_id: 3, 0;
+    reserved, _: 7, 4;
+}
+
 async fn process_challenge<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
-) -> CommandResult<()> {
+) -> CommandResult<(u8, u8, Option<RequesterContext>)> {
     // Validate the version
     let connection_version = ctx.state.connection_info.version_number();
     if spdm_hdr.version().ok() != Some(connection_version) {
@@ -42,26 +81,252 @@ async fn process_challenge<'a>(
         ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
     })?;
 
+    let mut requester_context = None;
+
     if connection_version >= SpdmVersion::V13 {
         // Decode the RequesterContext if present
-        let requester_context = RequesterContext::decode(req_payload).map_err(|_| {
+        requester_context = Some(RequesterContext::decode(req_payload).map_err(|_| {
             ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
-        })?;
+        })?);
     }
 
     if challenge_req.slot_id > 0 && selected_measurement_specification(ctx).0 == 0 {
-        // Handle slot ID
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
-    todo!("Process CHALLENGE request");
+    // Note: Pubkey of the responder will not be pre-provisioned to Requester. So slot ID 0xFF is invalid.
+    if challenge_req.slot_id >= MAX_CERT_SLOTS_SUPPORTED
+        || !ctx.device_certs_store.is_provisioned(challenge_req.slot_id)
+    {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
+    }
+
+    // If multi-key connection response is supported, validate the key supports challenge usage
+    if connection_version >= SpdmVersion::V13 && ctx.state.connection_info.multi_key_conn_rsp() {
+        match ctx.device_certs_store.key_usage_mask(challenge_req.slot_id) {
+            Some(key_usage_mask) if key_usage_mask.challenge_usage() != 0 => {}
+            _ => Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?,
+        }
+    }
+
+    writeln!(
+        ctx.cw,
+        "Measurement summary hash {} slot ID {} nonce: {:?}",
+        challenge_req.measurement_hash_type, challenge_req.slot_id, challenge_req.nonce
+    )
+    .unwrap();
+    // Append the CHALLENGE request to the transcript
+    let req_msg = req_payload
+        .message_data()
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+    ctx.transcript_mgr
+        .append(TranscriptContext::M1, req_msg)
+        .await
+        .map_err(|e| (false, CommandError::Transcript(e)))?;
+
+    Ok((
+        challenge_req.slot_id,
+        challenge_req.measurement_hash_type,
+        requester_context,
+    ))
+}
+
+async fn encode_m1_signature<'a>(
+    ctx: &mut SpdmContext<'a>,
+    slot_id: u8,
+    asym_algo: AsymAlgo,
+    rsp: &mut MessageBuf<'a>,
+) -> CommandResult<usize> {
+    let spdm_version = ctx.state.connection_info.version_number();
+
+    // Get the M1 transcript hash
+    let mut m1_transcript_hash = [0u8; SHA384_HASH_SIZE];
+    ctx.transcript_mgr
+        .hash(TranscriptContext::M1, &mut m1_transcript_hash)
+        .await
+        .map_err(|e| (false, CommandError::Transcript(e)))?;
+
+    let signing_context = if spdm_version >= SpdmVersion::V12 {
+        Some(
+            create_responder_signing_context(spdm_version, ReqRespCode::ChallengeAuth)
+                .map_err(|_| (false, CommandError::InvalidSigngingContext))?,
+        )
+    } else {
+        None
+    };
+
+    let context = signing_context.as_ref().map(|x| &x[..]);
+
+    let mut hash_ctx = HashContext::new();
+    let tbs = if let Some(context) = context {
+        // If the signing context is present, use it to compute the TBS hash
+        let mut tbs = [0u8; SHA384_HASH_SIZE];
+        let mut message = [0u8; SPDM_SIGNING_CONTEXT_LEN + SHA384_HASH_SIZE];
+        message[..SPDM_SIGNING_CONTEXT_LEN].copy_from_slice(context);
+        message[SPDM_SIGNING_CONTEXT_LEN..]
+            .copy_from_slice(&m1_transcript_hash[..SHA384_HASH_SIZE]);
+        hash_ctx
+            .init(HashAlgoType::SHA384, Some(&message[..]))
+            .await
+            .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
+        hash_ctx
+            .finalize(&mut tbs)
+            .await
+            .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
+        tbs
+    } else {
+        m1_transcript_hash
+    };
+
+    writeln!(
+        ctx.cw,
+        "SPDM_LIB: SPDM_CHALLENGE_AUTH: M1 transcript hash: {:x?} signing context: {:x?} TBS hash: {:x?}",
+        m1_transcript_hash, context, tbs).unwrap();
+
+    let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
+
+    ctx.device_certs_store
+        .sign_hash(slot_id, &tbs, &mut signature)
+        .await
+        .map_err(|e| (false, CommandError::CertStore(e)))?;
+
+    // Encode the signature
+    let sig_len = asym_algo.signature_size();
+    rsp.put_data(sig_len)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+    let sig_buf = rsp
+        .data_mut(sig_len)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+    sig_buf.copy_from_slice(&signature[..sig_len]);
+    rsp.pull_data(sig_len)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+    // Append the signature to the transcript
+
+    Ok(sig_len)
+}
+
+async fn encode_challenge_auth_rsp_base<'a>(
+    ctx: &mut SpdmContext<'a>,
+    slot_id: u8,
+    asym_algo: AsymAlgo,
+    rsp: &mut MessageBuf<'a>,
+) -> CommandResult<usize> {
+    let mut challenge_auth_rsp = ChallengeAuthRspBase::new(slot_id);
+
+    // Get the certificate chain hash
+    compute_cert_chain_hash(
+        slot_id,
+        ctx.device_certs_store,
+        asym_algo,
+        &mut challenge_auth_rsp.cert_chain_hash,
+    )
+    .await?;
+
+    // Get the nonce
+    Rng::generate_random_number(&mut challenge_auth_rsp.nonce)
+        .await
+        .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
+
+    // Encode the response
+    challenge_auth_rsp
+        .encode(rsp)
+        .map_err(|e| (false, CommandError::Codec(e)))
+}
+
+async fn encode_measurement_summary_hash<'a>(
+    ctx: &mut SpdmContext<'a>,
+    meas_summary_hash_type: u8,
+    rsp: &mut MessageBuf<'a>,
+) -> CommandResult<usize> {
+    let mut meas_summary_hash = [0u8; SHA384_HASH_SIZE];
+    ctx.measurements
+        .measurement_summary_hash(meas_summary_hash_type, &mut meas_summary_hash)
+        .await
+        .map_err(|e| (false, CommandError::Measurement(e)))?;
+
+    let hash_len = meas_summary_hash.len();
+    rsp.put_data(hash_len)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+    let hash_buf = rsp
+        .data_mut(hash_len)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+    hash_buf.copy_from_slice(&meas_summary_hash[..hash_len]);
+    rsp.pull_data(hash_len)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+
+    Ok(hash_len)
+}
+
+fn encode_opaque_data<'a>(rsp: &mut MessageBuf<'a>) -> CommandResult<usize> {
+    let opaque_data_len: u16 = 0;
+    let len = size_of::<u16>();
+    rsp.put_data(len)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+    rsp.pull_data(len)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+
+    Ok(len)
 }
 
 async fn generate_challenge_auth_response<'a>(
     ctx: &mut SpdmContext<'a>,
+    slot_id: u8,
+    meas_summary_hash_type: u8,
+    requester_context: Option<RequesterContext>,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    todo!("Generate CHALLENGE_AUTH response");
+    // Get the selected asymmetric algorithm
+    let asym_algo = ctx
+        .selected_asym_algo()
+        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
+
+    // Prepare the response buffer
+    // Spdm Header first
+    let connection_version = ctx.state.connection_info.version_number();
+    let spdm_hdr = SpdmMsgHdr::new(connection_version, ReqRespCode::ChallengeAuth);
+    let mut payload_len = spdm_hdr
+        .encode(rsp)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+
+    // Encode the CHALLENGE_AUTH response fixed fields
+    payload_len += encode_challenge_auth_rsp_base(ctx, slot_id, asym_algo, rsp).await?;
+
+    // Get the measurement summary hash
+    if meas_summary_hash_type != 0 {
+        payload_len += encode_measurement_summary_hash(ctx, meas_summary_hash_type, rsp).await?;
+    }
+
+    // Encode the Opaque data length = 0
+    payload_len += encode_opaque_data(rsp)?;
+
+    // if requester context is present, encode it
+    if let Some(context) = requester_context {
+        payload_len += context
+            .encode(rsp)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+    }
+
+    // Add the resp to the ranscript
+    let rsp_msg = rsp
+        .message_data()
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+    ctx.transcript_mgr
+        .append(TranscriptContext::M1, rsp_msg)
+        .await
+        .map_err(|e| (false, CommandError::Transcript(e)))?;
+
+    // Generate the signature and encode it in the response
+
+    payload_len += encode_m1_signature(ctx, slot_id, asym_algo, rsp).await?;
+
+    writeln!(
+        ctx.cw,
+        "Generated CHALLENGE_AUTH response len {}",
+        payload_len
+    )
+    .unwrap();
+    rsp.push_data(payload_len)
+        .map_err(|e| (false, CommandError::Codec(e)))
 }
 
 pub(crate) async fn handle_challenge<'a>(
@@ -80,11 +345,24 @@ pub(crate) async fn handle_challenge<'a>(
     }
 
     // Process CHALLENGE request
-    process_challenge(ctx, spdm_hdr, req_payload).await?;
+    let (slot_id, meas_summary_hash_type, req_context) =
+        process_challenge(ctx, spdm_hdr, req_payload).await?;
 
     // Generate CHALLENGE_AUTH response
     ctx.prepare_response_buffer(req_payload)?;
-    generate_challenge_auth_response(ctx, req_payload).await?;
+    generate_challenge_auth_response(
+        ctx,
+        slot_id,
+        meas_summary_hash_type,
+        req_context,
+        req_payload,
+    )
+    .await?;
+
+    // Change the connection state to Authenticated
+    ctx.state
+        .connection_info
+        .set_state(ConnectionState::Authenticated);
 
     Ok(())
 }

@@ -15,6 +15,7 @@ use libtock_console::{Console, ConsoleWriter};
 use libtock_platform::Syscalls;
 use spdm_lib::codec::MessageBuf;
 use spdm_lib::context::SpdmContext;
+use spdm_lib::measurements::{common::SpdmMeasurements, freeform_manifest::FreeformManifest};
 use spdm_lib::protocol::*;
 use spdm_lib::transport::{MctpTransport, SpdmTransport, TransportResult};
 
@@ -123,6 +124,8 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
         cert_chains: [Some(slot0_cert_chain), None],
     };
 
+    let mut measurements = FreeformManifest::default();
+
     let mut console = Console::<DefaultSyscalls>::writer();
 
     let mut ctx = match SpdmContext::new(
@@ -131,6 +134,7 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
         local_capabilities,
         local_algorithms,
         &mut device_cert_store,
+        &mut measurements,
         &mut console,
     ) {
         Ok(ctx) => ctx,

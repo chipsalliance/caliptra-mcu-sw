@@ -73,7 +73,7 @@ impl CommonCodec for NegotiateAlgorithmsReq {}
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(packed)]
 #[allow(dead_code)]
-struct NegotiateAlgorithmsResp {
+struct AlgorithmsResp {
     num_alg_struct_tables: u8,
     reserved_1: u8,
     length: u16,
@@ -89,7 +89,7 @@ struct NegotiateAlgorithmsResp {
     reserved_3: [u8; 2],
 }
 
-impl CommonCodec for NegotiateAlgorithmsResp {}
+impl CommonCodec for AlgorithmsResp {}
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C)]
@@ -308,7 +308,7 @@ async fn generate_algorithms_response<'a>(
 
     // Note: No extended asymmetric key and hash algorithms in response.
     let rsp_length = size_of::<SpdmMsgHdr>()
-        + size_of::<NegotiateAlgorithmsResp>()
+        + size_of::<AlgorithmsResp>()
         + num_alg_struct_tables * size_of::<AlgStructure>();
 
     // SPDM header first
@@ -367,7 +367,7 @@ async fn generate_algorithms_response<'a>(
         algorithm_priority_table.mel_specification,
     ));
 
-    let algorithms_rsp = NegotiateAlgorithmsResp {
+    let algorithms_rsp = AlgorithmsResp {
         num_alg_struct_tables: num_alg_struct_tables as u8,
         reserved_1: 0,
         length: rsp_length as u16,

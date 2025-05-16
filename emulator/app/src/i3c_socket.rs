@@ -184,7 +184,7 @@ pub(crate) fn run_tests(
     let running_clone_stop = running.clone();
     // cancel the test after 120 seconds
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_secs(600));
+        std::thread::sleep(Duration::from_secs(1200));
         println!("INTEGRATION TEST TIMED OUT");
         running_clone_stop.store(false, Ordering::Relaxed);
     });

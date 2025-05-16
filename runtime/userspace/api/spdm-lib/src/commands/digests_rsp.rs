@@ -32,12 +32,16 @@ pub struct GetDigestsRespCommon {
 
 impl CommonCodec for GetDigestsRespCommon {}
 
-async fn encode_cert_chain_digest<'a>(
+pub(crate) async fn compute_cert_chain_hash<'a>(
     slot_id: u8,
     cert_store: &mut dyn SpdmCertStore,
     asym_algo: AsymAlgo,
-    rsp: &mut MessageBuf<'a>,
-) -> CommandResult<usize> {
+    hash: &mut [u8],
+) -> CommandResult<()> {
+    if hash.len() != SHA384_HASH_SIZE {
+        Err((false, CommandError::BufferTooSmall))?;
+    }
+
     let crt_chain_len = cert_store
         .cert_chain_len(asym_algo, slot_id)
         .await
@@ -91,6 +95,71 @@ async fn encode_cert_chain_digest<'a>(
             break;
         }
     }
+    hash_ctx
+        .finalize(hash)
+        .await
+        .map_err(|e| (false, CommandError::CaliptraApi(e)))
+}
+
+async fn encode_cert_chain_digest<'a>(
+    slot_id: u8,
+    cert_store: &mut dyn SpdmCertStore,
+    asym_algo: AsymAlgo,
+    rsp: &mut MessageBuf<'a>,
+) -> CommandResult<usize> {
+    // let crt_chain_len = cert_store
+    //     .cert_chain_len(asym_algo, slot_id)
+    //     .await
+    //     .map_err(|e| (false, CommandError::CertStore(e)))?;
+    // let cert_chain_format_len = crt_chain_len + SPDM_CERT_CHAIN_METADATA_LEN as usize;
+
+    // let header = SpdmCertChainHeader {
+    //     length: cert_chain_format_len as u16,
+    //     reserved: 0,
+    // };
+
+    // // Length and reserved fields
+    // let header_bytes = header.as_bytes();
+    // let mut hash_ctx = HashContext::new();
+    // hash_ctx
+    //     .init(HashAlgoType::SHA384, Some(header_bytes))
+    //     .await
+    //     .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
+
+    // // Root certificate hash
+    // let mut root_hash = [0u8; SHA384_HASH_SIZE];
+
+    // cert_store
+    //     .root_cert_hash(slot_id, asym_algo, &mut root_hash)
+    //     .await
+    //     .map_err(|e| (false, CommandError::CertStore(e)))?;
+    // hash_ctx
+    //     .update(&root_hash)
+    //     .await
+    //     .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
+
+    // // Hash the certificate chain
+    // let mut cert_portion = [0u8; SPDM_MAX_CERT_CHAIN_PORTION_LEN as usize];
+    // let mut offset = 0;
+
+    // loop {
+    //     let bytes_read = cert_store
+    //         .get_cert_chain(slot_id, asym_algo, offset, &mut cert_portion)
+    //         .await
+    //         .map_err(|e| (false, CommandError::CertStore(e)))?;
+
+    //     hash_ctx
+    //         .update(&cert_portion[..bytes_read])
+    //         .await
+    //         .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
+
+    //     offset += bytes_read;
+
+    //     // If the bytes read is less than the length of the cert portion, it indicates the end of the chain
+    //     if bytes_read < cert_portion.len() {
+    //         break;
+    //     }
+    // }
 
     // Fill the response buffer with the certificate chain digest
     rsp.put_data(SHA384_HASH_SIZE)
@@ -98,10 +167,12 @@ async fn encode_cert_chain_digest<'a>(
     let cert_chain_digest_buf = rsp
         .data_mut(SHA384_HASH_SIZE)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
-    hash_ctx
-        .finalize(cert_chain_digest_buf)
-        .await
-        .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
+
+    compute_cert_chain_hash(slot_id, cert_store, asym_algo, cert_chain_digest_buf).await?;
+    // hash_ctx
+    //     .finalize(cert_chain_digest_buf)
+    //     .await
+    //     .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
     rsp.pull_data(SHA384_HASH_SIZE)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
 

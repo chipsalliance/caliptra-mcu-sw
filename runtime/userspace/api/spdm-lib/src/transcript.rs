@@ -65,7 +65,7 @@ pub(crate) struct TranscriptManager {
     // M1 = Concatenate(A, B, C)
     // where
     // B = Concatenate (GET_DIGESTS, DIGESTS, GET_CERTIFICATE, CERTIFICATE)
-    // C = Concatenate (CHALLENGE, CHALLENGE_AUTH\signature)
+    // C = Concatenate (CHALLENGE, CHALLENGE_AUTH excluding signature)
     hash_ctx_m1: Option<HashContext>,
     // Hash Context for `L1``
     // L1 = Concatenate(A, M) if SPDM_VERSION >= 1.2 or L1 = Concatenate(M) if SPDM_VERSION < 1.2
@@ -103,7 +103,7 @@ impl TranscriptManager {
         self.hash_ctx_l1 = None;
     }
 
-    /// Reset a transcript
+    /// Reset a transcript context.
     ///
     /// # Arguments
     /// * `context` - The context to reset. If `None`, all contexts are reset.
@@ -185,7 +185,11 @@ impl TranscriptManager {
             ctx.init(HashAlgoType::SHA384, Some(vca_data))
                 .await
                 .map_err(TranscriptError::CaliptraApi)?;
-            ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
+            ctx.update(data)
+                .await
+                .map_err(TranscriptError::CaliptraApi)?;
+            self.hash_ctx_m1 = Some(ctx);
+            Ok(())
         }
     }
 
@@ -202,7 +206,11 @@ impl TranscriptManager {
             ctx.init(HashAlgoType::SHA384, vca_data)
                 .await
                 .map_err(TranscriptError::CaliptraApi)?;
-            ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
+            ctx.update(data)
+                .await
+                .map_err(TranscriptError::CaliptraApi)?;
+            self.hash_ctx_l1 = Some(ctx);
+            Ok(())
         }
     }
 }

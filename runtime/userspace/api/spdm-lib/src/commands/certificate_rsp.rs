@@ -11,7 +11,7 @@ use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-// use core::fmt::Write;
+use core::fmt::Write;
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
@@ -234,7 +234,7 @@ async fn generate_certificate_response<'a>(
     let rsp_msg = rsp
         .message_data()
         .map_err(|e| (false, CommandError::Codec(e)))?;
-    // writeln!(ctx.cw, "SPDM_LIB: Certificate response: {:X?}", rsp_msg).unwrap();
+    // writeln!(ctx.cw, "SPDM_LIB: Certificate response: {:?}", rsp_msg).unwrap();
     ctx.transcript_mgr
         .append(TranscriptContext::M1, rsp_msg)
         .await
