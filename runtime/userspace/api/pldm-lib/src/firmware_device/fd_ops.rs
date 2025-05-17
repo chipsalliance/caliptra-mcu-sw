@@ -6,6 +6,9 @@ use async_trait::async_trait;
 use libsyscall_caliptra::DefaultSyscalls;
 use pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use pldm_common::message::firmware_update::get_status::ProgressPercent;
+use pldm_common::message::firmware_update::request_cancel::{
+    NonFunctioningComponentBitmap, NonFunctioningComponentIndication,
+};
 use pldm_common::message::firmware_update::transfer_complete::TransferResult;
 use pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use pldm_common::util::fw_component::FirmwareComponent;
@@ -23,6 +26,10 @@ pub enum FdOpsError {
     TransferSizeError,
     ComponentError,
     FwDownloadError,
+    VerifyError,
+    ApplyError,
+    ActivateError,
+    CancelUpdateError,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -144,6 +151,22 @@ pub trait FdOps {
     /// * `bool` - Returns `true` if the download is complete, otherwise `false`.
     async fn is_download_complete(&self, component: &FirmwareComponent) -> bool;
 
+    /// Queries the download progress for a given firmware component.
+    ///
+    /// # Arguments
+    ///
+    /// * `component` - A reference to the `FirmwareComponent` for which the download progress is queried.
+    /// * `progress_percent` - A mutable reference to `ProgressPercent` to track the download progress.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), FdOpsError>` - On success, returns `Ok(())`. On failure, returns an `FdOpsError`.
+    async fn query_download_progress(
+        &self,
+        component: &FirmwareComponent,
+        progress_percent: &mut ProgressPercent,
+    ) -> Result<(), FdOpsError>;
+
     /// Verifies the firmware component.
     ///
     /// # Arguments
@@ -198,6 +221,45 @@ pub trait FdOps {
         self_contained_activation: u8,
         estimated_time: &mut u16,
     ) -> Result<u8, FdOpsError>;
+
+    /// Cancels the update operation for a specific firmware component.
+    ///
+    /// # Arguments
+    ///
+    /// * `component` - A reference to the `FirmwareComponent` for which the update operation should be canceled.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), FdOpsError>` - On success, returns `Ok(())`. On failure, returns an `FdOpsError`.
+    async fn cancel_update_component(
+        &self,
+        component: &FirmwareComponent,
+    ) -> Result<(), FdOpsError>;
+
+    /// Indicates which components will be in a non-functioning state upon exiting update mode
+    /// due to cancel update request from UA.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(NonFunctioningComponentIndication, NonFunctioningComponentBitmap), FdOpsError>` -
+    ///   On success, returns a tuple containing:
+    ///     - `NonFunctioningComponentIndication`: Indicates whether components are functioning or not.
+    ///     - `NonFunctioningComponentBitmap`: A bitmap representing non-functioning components.
+    ///   On failure, returns an `FdOpsError`.
+    async fn get_non_functional_component_info(
+        &self,
+    ) -> Result<
+        (
+            NonFunctioningComponentIndication,
+            NonFunctioningComponentBitmap,
+        ),
+        FdOpsError,
+    > {
+        Ok((
+            NonFunctioningComponentIndication::ComponentsFunctioning,
+            NonFunctioningComponentBitmap::new(0),
+        ))
+    }
 
     /// Retrieves the current timestamp in milliseconds.
     ///

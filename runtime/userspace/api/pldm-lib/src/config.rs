@@ -2,17 +2,10 @@
 
 use crate::control_context::ProtocolCapability;
 use embassy_sync::lazy_lock::LazyLock;
-use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::protocol::base::{PldmControlCmd, PldmSupportedType};
-use pldm_common::protocol::firmware_update::{
-    ComponentActivationMethods, ComponentClassification, FirmwareDeviceCapability, FwUpdateCmd,
-    PldmFdTime, PldmFirmwareString, PldmFirmwareVersion,
-};
-use pldm_common::protocol::firmware_update::{ComponentParameterEntry, Descriptor, DescriptorType};
+use pldm_common::protocol::firmware_update::{FwUpdateCmd, PldmFdTime};
 
 pub const PLDM_PROTOCOL_CAP_COUNT: usize = 2;
-pub const FD_DESCRIPTORS_COUNT: usize = 1;
-pub const FD_FW_COMPONENTS_COUNT: usize = 1;
 pub const FD_MAX_XFER_SIZE: usize = 512; // Arbitrary limit and change as needed.
 pub const DEFAULT_FD_T1_TIMEOUT: PldmFdTime = 120000; // FD_T1 update mode idle timeout, range is [60s, 120s].
 pub const DEFAULT_FD_T2_RETRY_TIME: PldmFdTime = 5000; // FD_T2 retry request for firmware data, range is [1s, 5s].
@@ -55,43 +48,3 @@ pub static PLDM_PROTOCOL_CAPABILITIES: LazyLock<
         },
     ]
 });
-
-// This is a dummy UUID for development. The actual UUID is assigned by the vendor.
-pub const UUID: [u8; 16] = [
-    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
-];
-
-pub static DESCRIPTORS: LazyLock<[Descriptor; FD_DESCRIPTORS_COUNT]> =
-    LazyLock::new(|| [Descriptor::new(DescriptorType::Uuid, &UUID).unwrap()]);
-
-// This is dummy firmware parameter for development. The actual firmware parameters are
-// retrieved from the SoC manifest via mailbox commands.
-pub static FIRMWARE_PARAMS: LazyLock<FirmwareParameters> = LazyLock::new(|| {
-    let active_firmware_string = PldmFirmwareString::new("UTF-8", "soc-fw-1.0").unwrap();
-    let active_firmware_version =
-        PldmFirmwareVersion::new(0x12345678, &active_firmware_string, Some("20250210"));
-    let pending_firmware_string = PldmFirmwareString::new("UTF-8", "soc-fw-1.1").unwrap();
-    let pending_firmware_version =
-        PldmFirmwareVersion::new(0x87654321, &pending_firmware_string, Some("20250213"));
-    let comp_activation_methods = ComponentActivationMethods(0x0001);
-    let capabilities_during_update = FirmwareDeviceCapability(0x0010);
-    let component_parameter_entry = ComponentParameterEntry::new(
-        ComponentClassification::Firmware,
-        0x0001,
-        0,
-        &active_firmware_version,
-        &pending_firmware_version,
-        comp_activation_methods,
-        capabilities_during_update,
-    );
-    FirmwareParameters::new(
-        capabilities_during_update,
-        FD_FW_COMPONENTS_COUNT as u16,
-        &active_firmware_string,
-        &pending_firmware_string,
-        &[component_parameter_entry],
-    )
-});
-
-// This is the maximum time in seconds that UA will wait for self-activation. It is a test value for development.
-pub static TEST_SELF_ACTIVATION_MAX_TIME_IN_SECONDS: u16 = 20;

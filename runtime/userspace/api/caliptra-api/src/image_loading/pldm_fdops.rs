@@ -222,6 +222,15 @@ impl FdOps for StreamingFdOps {
         DOWNLOAD_CTX.lock(|ctx| ctx.borrow().download_complete)
     }
 
+    async fn query_download_progress(
+        &self,
+        _component: &FirmwareComponent,
+        progress_percent: &mut ProgressPercent,
+    ) -> Result<(), FdOpsError> {
+        *progress_percent = ProgressPercent::default();
+        Ok(())
+    }
+
     async fn verify(
         &self,
         _component: &FirmwareComponent,
@@ -243,6 +252,14 @@ impl FdOps for StreamingFdOps {
         // For streaming boot, apply is not applicable, so we return 100% progress.
         *progress_percent = ProgressPercent::new(100).unwrap();
         Ok(ApplyResult::ApplySuccess)
+    }
+
+    async fn cancel_update_component(
+        &self,
+        _component: &FirmwareComponent,
+    ) -> Result<(), FdOpsError> {
+        // TODO: Implement cancel update component logic if needed
+        Ok(())
     }
 
     async fn activate(

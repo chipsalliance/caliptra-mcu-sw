@@ -7,6 +7,13 @@
 
 mod config;
 
+#[cfg(any(
+    feature = "test-pldm-discovery",
+    feature = "test-pldm-fw-update",
+    feature = "test-pldm-fw-update-e2e"
+))]
+mod pldm_fdops_mock;
+
 use core::fmt::Write;
 #[allow(unused)]
 use libsyscall_caliptra::flash::{driver_num, SpiFlash};
@@ -23,8 +30,6 @@ use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 #[allow(unused)]
 use libapi_caliptra::image_loading::{ImageLoader, ImageSource, PldmFirmwareDeviceParams};
 use libsyscall_caliptra::DefaultSyscalls;
-#[allow(unused)]
-use pldm_lib::firmware_device::fd_ops_mock::FdOpsObject;
 
 #[cfg(target_arch = "riscv32")]
 mod riscv;
@@ -143,7 +148,7 @@ pub async fn image_loading() -> Result<(), ErrorCode> {
         feature = "test-pldm-fw-update-e2e"
     ))]
     {
-        let fdops = FdOpsObject::new();
+        let fdops = pldm_fdops_mock::FdOpsObject::new();
         let mut pldm_service = PldmService::init(&fdops, EXECUTOR.get().spawner());
         writeln!(
             console_writer,

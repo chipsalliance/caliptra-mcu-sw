@@ -23,6 +23,3 @@ libtock_unittest.workspace = true
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
 embedded-alloc.workspace = true
-
-[features]
-pldm-lib-use-static-config = []

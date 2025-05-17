@@ -1,24 +1,69 @@
 // Licensed under the Apache-2.0 license
 
 extern crate alloc;
-use crate::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
-use crate::timer::AsyncAlarm;
+
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use core::cell::RefCell;
+use embassy_sync::lazy_lock::LazyLock;
 use libsyscall_caliptra::DefaultSyscalls;
 use pldm_common::message::firmware_update::apply_complete::ApplyResult;
+use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::message::firmware_update::get_status::ProgressPercent;
 use pldm_common::message::firmware_update::transfer_complete::TransferResult;
 use pldm_common::message::firmware_update::verify_complete::VerifyResult;
-use pldm_common::util::fw_component::FirmwareComponent;
-use pldm_common::{
-    message::firmware_update::get_fw_params::FirmwareParameters,
-    protocol::firmware_update::{
-        ComponentResponseCode, Descriptor, PldmFdTime, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
-        PLDM_FWUP_MAX_PADDING_SIZE,
-    },
+use pldm_common::protocol::firmware_update::{
+    ComponentActivationMethods, ComponentClassification, ComponentParameterEntry,
+    ComponentResponseCode, Descriptor, DescriptorType, FirmwareDeviceCapability, PldmFdTime,
+    PldmFirmwareString, PldmFirmwareVersion, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
+    PLDM_FWUP_MAX_PADDING_SIZE,
 };
+use pldm_common::util::fw_component::FirmwareComponent;
+use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
+use pldm_lib::timer::AsyncAlarm;
+
+const FD_DESCRIPTORS_COUNT: usize = 1;
+const FD_FW_COMPONENTS_COUNT: usize = 1;
+
+// This is a dummy UUID for development. The actual UUID is assigned by the vendor.
+const UUID: [u8; 16] = [
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+];
+
+static DESCRIPTORS: LazyLock<[Descriptor; FD_DESCRIPTORS_COUNT]> =
+    LazyLock::new(|| [Descriptor::new(DescriptorType::Uuid, &UUID).unwrap()]);
+
+// This is dummy firmware parameter for development. The actual firmware parameters are
+// retrieved from the SoC manifest via mailbox commands.
+static FIRMWARE_PARAMS: LazyLock<FirmwareParameters> = LazyLock::new(|| {
+    let active_firmware_string = PldmFirmwareString::new("UTF-8", "soc-fw-1.0").unwrap();
+    let active_firmware_version =
+        PldmFirmwareVersion::new(0x12345678, &active_firmware_string, Some("20250210"));
+    let pending_firmware_string = PldmFirmwareString::new("UTF-8", "soc-fw-1.1").unwrap();
+    let pending_firmware_version =
+        PldmFirmwareVersion::new(0x87654321, &pending_firmware_string, Some("20250213"));
+    let comp_activation_methods = ComponentActivationMethods(0x0001);
+    let capabilities_during_update = FirmwareDeviceCapability(0x0010);
+    let component_parameter_entry = ComponentParameterEntry::new(
+        ComponentClassification::Firmware,
+        0x0001,
+        0,
+        &active_firmware_version,
+        &pending_firmware_version,
+        comp_activation_methods,
+        capabilities_during_update,
+    );
+    FirmwareParameters::new(
+        capabilities_during_update,
+        FD_FW_COMPONENTS_COUNT as u16,
+        &active_firmware_string,
+        &pending_firmware_string,
+        &[component_parameter_entry],
+    )
+});
+
+// This is the maximum time in seconds that UA will wait for self-activation. It is a test value for development.
+static TEST_SELF_ACTIVATION_MAX_TIME_IN_SECONDS: u16 = 20;
 
 pub struct FdOpsObject {
     download_ctx: RefCell<DownloadCtx>,
@@ -56,7 +101,7 @@ impl FdOps for FdOpsObject {
         &self,
         device_identifiers: &mut [Descriptor],
     ) -> Result<usize, FdOpsError> {
-        let dev_id = crate::config::DESCRIPTORS.get();
+        let dev_id = DESCRIPTORS.get();
         if device_identifiers.len() < dev_id.len() {
             Err(FdOpsError::DeviceIdentifiersError)
         } else {
@@ -69,14 +114,14 @@ impl FdOps for FdOpsObject {
         &self,
         firmware_params: &mut FirmwareParameters,
     ) -> Result<(), FdOpsError> {
-        let fw_params = crate::config::FIRMWARE_PARAMS.get();
+        let fw_params = FIRMWARE_PARAMS.get();
         *firmware_params = (*fw_params).clone();
         Ok(())
     }
 
     async fn get_xfer_size(&self, ua_transfer_size: usize) -> Result<usize, FdOpsError> {
         Ok(PLDM_FWUP_BASELINE_TRANSFER_SIZE
-            .max(ua_transfer_size.min(crate::config::FD_MAX_XFER_SIZE)))
+            .max(ua_transfer_size.min(pldm_lib::config::FD_MAX_XFER_SIZE)))
     }
 
     async fn handle_component(
@@ -147,6 +192,15 @@ impl FdOps for FdOpsObject {
         }
     }
 
+    async fn query_download_progress(
+        &self,
+        _component: &FirmwareComponent,
+        progress_percent: &mut ProgressPercent,
+    ) -> Result<(), FdOpsError> {
+        *progress_percent = ProgressPercent::default();
+        Ok(())
+    }
+
     async fn verify(
         &self,
         _component: &FirmwareComponent,
@@ -188,12 +242,24 @@ impl FdOps for FdOpsObject {
         estimated_time: &mut u16,
     ) -> Result<u8, FdOpsError> {
         if self_contained_activation == 1 {
-            *estimated_time = crate::config::TEST_SELF_ACTIVATION_MAX_TIME_IN_SECONDS;
+            *estimated_time = TEST_SELF_ACTIVATION_MAX_TIME_IN_SECONDS;
         }
         Ok(0) // PLDM completion code for success
     }
 
-    async fn now(&self) -> PldmFdTime {
-        AsyncAlarm::<DefaultSyscalls>::get_milliseconds().unwrap()
+    async fn cancel_update_component(
+        &self,
+        _component: &FirmwareComponent,
+    ) -> Result<(), FdOpsError> {
+        // Clean up download, verify, and apply contexts
+        let mut download_ctx = self.download_ctx.borrow_mut();
+        download_ctx.offset = 0;
+        download_ctx.length = 0;
+        let mut verify_ctx = self.verify_ctx.borrow_mut();
+        verify_ctx.set_value(0).ok();
+        let mut apply_ctx = self.apply_ctx.borrow_mut();
+        apply_ctx.set_value(0).ok();
+
+        Ok(())
     }
 }

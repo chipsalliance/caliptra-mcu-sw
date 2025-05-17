@@ -146,13 +146,9 @@ impl PldmFwUpdateTest {
             .map_err(|_| ())?,
         );
 
-        // Currently the device supports QueryIdentifiers and GetFirmwareParameters commands
-        // The update state machine should settle at RequestUpdate state
-        // after receiving the QueryDeviceIdentifiers and GetFirmwareParameters responses from the device.
-        // Device will not send the RequestUpdate response so UA will stop at RequestUpdateSent state.
-        // Modify this as more commands are supported by the device.
+        // Modify the expected state to the one that the test will reach.
         // Note that the UA state machine will not progress if it receives an unexpected response from the device.
-        let res = self.wait_for_state_transition(update_sm::States::Activate);
+        let res = self.wait_for_state_transition(update_sm::States::Done);
 
         self.daemon.as_mut().unwrap().stop();
 
