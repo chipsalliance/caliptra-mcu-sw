@@ -2179,6 +2179,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-hw-model"
+version = "0.1.0"
+dependencies = [
+ "tock-registers",
+]
+
+[[package]]
 name = "mcu-registers-systemrdl-new"
 version = "0.1.0"
 dependencies = [

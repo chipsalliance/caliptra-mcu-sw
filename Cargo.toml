@@ -14,6 +14,7 @@ members = [
     "emulator/cpu",
     "emulator/derive",
     "emulator/periph",
+    "hw/model",
     "registers/generated-emulator",
     "registers/generated-firmware",
     "registers/generator",
