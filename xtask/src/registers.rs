@@ -672,6 +672,8 @@ fn emu_make_root_bus<'a>(
     let mut field_tokens = TokenStream::new();
     let mut constructor_tokens = TokenStream::new();
     let mut constructor_params_tokens = TokenStream::new();
+    let mut offset_fields = TokenStream::new();
+    let mut offset_defaults = TokenStream::new();
 
     let mut blocks_sorted = blocks.collect::<Vec<_>>();
     blocks_sorted.sort_by_key(|b| b.block().instances[0].address);
@@ -687,16 +689,25 @@ fn emu_make_root_bus<'a>(
                 dccm: emulator_bus::Ram::new(vec![0; #ram_size as usize]),
             });
 
-            let a = hex_literal(*dccm_offset as u64);
-            let b = hex_literal((*dccm_offset + ram_size - 1) as u64);
+            offset_fields.extend(quote! {
+                dccm_offset: u32,
+                dccm_size: u32,
+            });
+            let offset = hex_literal(*dccm_offset as u64);
+            let size = hex_literal(ram_size as u64);
+            offset_defaults.extend(quote! {
+                dccm_offset: #offset,
+                dccm_size: #size,
+            });
+
             read_tokens.extend(quote! {
-                #a..=#b => {
-                    self.dccm.read(size, addr - #a)
+                if addr >= self.offsets.dccm_offset && addr < self.offsets.dccm_offset + self.offsets.dccm_size {
+                    return self.dccm.read(size, addr - self.offsets.dccm_offset);
                 }
             });
             write_tokens.extend(quote! {
-                #a..=#b => {
-                    self.dccm.write(size, addr - #a, val)
+                if addr >= self.offsets.dccm_offset && addr < self.offsets.dccm_offset + self.offsets.dccm_size {
+                    return self.dccm.write(size, addr - self.offsets.dccm_offset, val);
                 }
             });
         }
@@ -710,6 +721,8 @@ fn emu_make_root_bus<'a>(
         assert_eq!(rblock.instances.len(), 1);
         let snake_base = snake_ident(rblock.name.as_str());
         let periph_field = format_ident!("{}_periph", snake_base);
+        let offset_field = format_ident!("{}_offset", snake_base);
+        let size_field = format_ident!("{}_size", snake_base);
         let camel_base = camel_ident(rblock.name.as_str());
         let crate_name = format_ident!("{}", rblock.name);
         let periph = format_ident!("{}Peripheral", camel_base);
@@ -723,23 +736,29 @@ fn emu_make_root_bus<'a>(
         field_tokens.extend(quote! {
             pub #periph_field: Option<crate::#crate_name::#bus>,
         });
-        let a = hex_literal(rblock.instances[0].address as u64);
-        let b = hex_literal(rblock.instances[0].address as u64 + whole_width(rblock) - 1);
+        let addr = hex_literal(rblock.instances[0].address as u64);
+        let size = hex_literal(whole_width(rblock));
+
+        offset_fields.extend(quote! {
+            #offset_field: u32,
+            #size_field: u32,
+        });
+        offset_defaults.extend(quote! {
+            #offset_field: #addr,
+            #size_field: #size,
+        });
+
         read_tokens.extend(quote! {
-            #a..=#b => {
+            if addr >= self.offsets.#offset_field && addr < self.offsets.#offset_field + self.offsets.#size_field {
                 if let Some(periph) = self.#periph_field.as_mut() {
-                    periph.read(size, addr - #a)
-                } else {
-                    Err(emulator_bus::BusError::LoadAccessFault)
+                    return periph.read(size, addr - self.offsets.#offset_field);
                 }
             }
         });
         write_tokens.extend(quote! {
-            #a..=#b => {
+            if addr >= self.offsets.#offset_field && addr < self.offsets.#offset_field + self.offsets.#size_field {
                 if let Some(periph) = self.#periph_field.as_mut() {
-                    periph.write(size, addr - #a, val)
-                } else {
-                    Err(emulator_bus::BusError::StoreAccessFault)
+                    return periph.write(size, addr - self.offsets.#offset_field, val);
                 }
             }
         });
@@ -771,54 +790,59 @@ fn emu_make_root_bus<'a>(
     }
     let mut tokens = TokenStream::new();
     tokens.extend(quote! {
+        /// Offsets for peripherals mounted to the root bus.
+        #[derive(Clone, Debug)]
+        pub struct AutoRootBusOffsets {
+            #offset_fields
+        }
+
+        impl Default for AutoRootBusOffsets {
+            fn default() -> Self {
+                Self {
+                    #offset_defaults
+                }
+            }
+        }
+
         pub struct AutoRootBus {
             delegates: Vec<Box<dyn emulator_bus::Bus>>,
+            offsets: AutoRootBusOffsets,
             #field_tokens
         }
         impl AutoRootBus {
             #[allow(clippy::too_many_arguments)]
             pub fn new(
                 delegates: Vec<Box<dyn emulator_bus::Bus>>,
+                offsets: Option<AutoRootBusOffsets>,
                 #constructor_params_tokens
             ) -> Self {
                 Self {
                     delegates,
+                    offsets: offsets.unwrap_or_default(),
                     #constructor_tokens
                 }
             }
         }
         impl emulator_bus::Bus for AutoRootBus {
             fn read(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
-                let result = match addr {
-                    #read_tokens
-                    _ => Err(emulator_bus::BusError::LoadAccessFault),
-                };
-                if !matches!(result, Err(emulator_bus::BusError::LoadAccessFault)) {
-                    return result;
-                }
+                #read_tokens
                 for delegate in self.delegates.iter_mut() {
                     let result = delegate.read(size, addr);
                     if !matches!(result, Err(emulator_bus::BusError::LoadAccessFault)) {
                         return result;
                     }
                 }
-                result
+                Err(emulator_bus::BusError::LoadAccessFault)
             }
             fn write(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr, val: caliptra_emu_types::RvData) -> Result<(), emulator_bus::BusError> {
-                let result = match addr {
-                    #write_tokens
-                    _ => Err(emulator_bus::BusError::StoreAccessFault),
-                };
-                if !matches!(result, Err(emulator_bus::BusError::StoreAccessFault)) {
-                    return result;
-                }
+                #write_tokens
                 for delegate in self.delegates.iter_mut() {
                     let result = delegate.write(size, addr, val);
                     if !matches!(result, Err(emulator_bus::BusError::StoreAccessFault)) {
                         return result;
                     }
                 }
-                result
+                Err(emulator_bus::BusError::StoreAccessFault)
             }
             fn poll(&mut self) {
                 #poll_tokens

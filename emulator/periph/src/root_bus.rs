@@ -14,10 +14,10 @@ Abstract:
 
 use crate::{spi_host::SpiHost, EmuCtrl, Uart};
 use caliptra_emu_bus::{Device, Event, EventData};
-use emulator_bus::{Bus, Clock, Ram, Rom};
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
+use emulator_bus::{Bus, BusError, Clock, Ram, Rom};
 use emulator_consts::{EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE};
 use emulator_cpu::{Pic, PicMmioRegisters};
-use emulator_derive::Bus;
 use std::{
     cell::RefCell,
     path::PathBuf,
@@ -25,46 +25,69 @@ use std::{
     sync::{mpsc, Arc, Mutex},
 };
 
+pub struct McuRootBusOffsets {
+    pub rom_offset: u32,
+    pub rom_len: u32,
+    pub uart_offset: u32,
+    pub uart_len: u32,
+    pub ctrl_offset: u32,
+    pub ctrl_len: u32,
+    pub spi_offset: u32,
+    pub spi_len: u32,
+    pub ram_offset: u32,
+    pub ram_len: u32,
+    pub pic_offset: u32,
+    pub pic_len: u32,
+    pub external_test_sram_offset: u32,
+    pub external_test_sram_len: u32,
+}
+
+impl Default for McuRootBusOffsets {
+    fn default() -> Self {
+        Self {
+            rom_offset: 0,
+            rom_len: 0xc000,
+            uart_offset: 0x1000_1000,
+            uart_len: 0x100,
+            ctrl_offset: 0x1000_2000,
+            ctrl_len: 0x4,
+            spi_offset: 0x2000_0000,
+            spi_len: 0x40,
+            ram_offset: 0x4000_0000,
+            ram_len: 0x60000,
+            pic_offset: 0x6000_0000,
+            pic_len: 0x507d,
+            external_test_sram_offset: 0x8000_0000,
+            external_test_sram_len: 0x1000,
+        }
+    }
+}
+
 /// Caliptra Root Bus Arguments
 #[derive(Default)]
-pub struct CaliptraRootBusArgs {
+pub struct McuRootBusArgs {
     pub pic: Rc<Pic>,
     pub clock: Rc<Clock>,
     pub rom: Vec<u8>,
     pub log_dir: PathBuf,
     pub uart_output: Option<Rc<RefCell<Vec<u8>>>>,
     pub uart_rx: Option<Arc<Mutex<Option<u8>>>>,
+    pub offsets: McuRootBusOffsets,
 }
 
-#[derive(Bus)]
-#[incoming_event_fn(handle_incoming_event)]
-#[register_outgoing_events_fn(register_outgoing_events)]
-pub struct CaliptraRootBus {
-    #[peripheral(offset = 0x0000_0000, len = 0xc000)]
+pub struct McuRootBus {
     pub rom: Rom,
-
-    #[peripheral(offset = 0x1000_1000, len = 0x100)]
     pub uart: Uart,
-
-    #[peripheral(offset = 0x1000_2000, len = 0x4)]
     pub ctrl: EmuCtrl,
-
-    #[peripheral(offset = 0x2000_0000, len = 0x40)]
     pub spi: SpiHost,
-
-    #[peripheral(offset = 0x4000_0000, len = 0x60000)]
     pub ram: Rc<RefCell<Ram>>,
-
-    #[peripheral(offset = 0x6000_0000, len = 0x507d)]
     pub pic_regs: PicMmioRegisters,
-
-    #[peripheral(offset = 0x8000_0000, len = 0x1000)]
     pub external_test_sram: Rc<RefCell<Ram>>,
-
     event_sender: Option<mpsc::Sender<Event>>,
+    offsets: McuRootBusOffsets,
 }
 
-impl CaliptraRootBus {
+impl McuRootBus {
     pub const UART_NOTIF_IRQ: u8 = 16;
     pub const I3C_ERROR_IRQ: u8 = 17;
     pub const I3C_NOTIF_IRQ: u8 = 18;
@@ -75,7 +98,7 @@ impl CaliptraRootBus {
     pub const DMA_ERROR_IRQ: u8 = 23;
     pub const DMA_EVENT_IRQ: u8 = 24;
 
-    pub fn new(mut args: CaliptraRootBusArgs) -> Result<Self, std::io::Error> {
+    pub fn new(mut args: McuRootBusArgs) -> Result<Self, std::io::Error> {
         let clock = args.clock;
         let pic = args.pic;
         let rom = Rom::new(std::mem::take(&mut args.rom));
@@ -91,6 +114,7 @@ impl CaliptraRootBus {
             pic_regs: pic.mmio_regs(clock.clone()),
             event_sender: None,
             external_test_sram: Rc::new(RefCell::new(external_test_sram)),
+            offsets: args.offsets,
         })
     }
 
@@ -107,6 +131,123 @@ impl CaliptraRootBus {
         }
         self.ram.borrow_mut().data_mut()[offset..offset + data.len()].copy_from_slice(data);
     }
+}
+
+impl Bus for McuRootBus {
+    fn read(&mut self, size: RvSize, addr: RvAddr) -> Result<RvData, BusError> {
+        if addr >= self.offsets.rom_offset && addr < self.offsets.rom_offset + self.offsets.rom_len
+        {
+            return self.rom.read(size, addr - self.offsets.rom_offset);
+        }
+        if addr >= self.offsets.uart_offset
+            && addr < self.offsets.uart_offset + self.offsets.uart_len
+        {
+            return self.uart.read(size, addr - self.offsets.uart_offset);
+        }
+        if addr >= self.offsets.ctrl_offset
+            && addr < self.offsets.ctrl_offset + self.offsets.ctrl_len
+        {
+            return self.ctrl.read(size, addr - self.offsets.ctrl_offset);
+        }
+        if addr >= self.offsets.spi_offset && addr < self.offsets.spi_offset + self.offsets.spi_len
+        {
+            return self.spi.read(size, addr - self.offsets.spi_offset);
+        }
+        if addr >= self.offsets.ram_offset && addr < self.offsets.ram_offset + self.offsets.ram_len
+        {
+            return self
+                .ram
+                .borrow_mut()
+                .read(size, addr - self.offsets.ram_offset);
+        }
+        if addr >= self.offsets.pic_offset && addr < self.offsets.pic_offset + self.offsets.pic_len
+        {
+            return self.pic_regs.read(size, addr - self.offsets.pic_offset);
+        }
+        if addr >= self.offsets.external_test_sram_offset
+            && addr < self.offsets.external_test_sram_offset + self.offsets.external_test_sram_len
+        {
+            return self
+                .external_test_sram
+                .borrow_mut()
+                .read(size, addr - self.offsets.external_test_sram_offset);
+        }
+        Err(BusError::LoadAccessFault)
+    }
+
+    fn write(&mut self, size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
+        if addr >= self.offsets.rom_offset && addr < self.offsets.rom_offset + self.offsets.rom_len
+        {
+            return self.rom.write(size, addr - self.offsets.rom_offset, val);
+        }
+        if addr >= self.offsets.uart_offset
+            && addr < self.offsets.uart_offset + self.offsets.uart_len
+        {
+            return self.uart.write(size, addr - self.offsets.uart_offset, val);
+        }
+        if addr >= self.offsets.ctrl_offset
+            && addr < self.offsets.ctrl_offset + self.offsets.ctrl_len
+        {
+            return self.ctrl.write(size, addr - self.offsets.ctrl_offset, val);
+        }
+        if addr >= self.offsets.spi_offset && addr < self.offsets.spi_offset + self.offsets.spi_len
+        {
+            return self.spi.write(size, addr - self.offsets.spi_offset, val);
+        }
+        if addr >= self.offsets.ram_offset && addr < self.offsets.ram_offset + self.offsets.ram_len
+        {
+            return self
+                .ram
+                .borrow_mut()
+                .write(size, addr - self.offsets.ram_offset, val);
+        }
+        if addr >= self.offsets.pic_offset && addr < self.offsets.pic_offset + self.offsets.pic_len
+        {
+            return self
+                .pic_regs
+                .write(size, addr - self.offsets.pic_offset, val);
+        }
+        if addr >= self.offsets.external_test_sram_offset
+            && addr < self.offsets.external_test_sram_offset + self.offsets.external_test_sram_len
+        {
+            return self.external_test_sram.borrow_mut().write(
+                size,
+                addr - self.offsets.external_test_sram_offset,
+                val,
+            );
+        }
+        Err(BusError::StoreAccessFault)
+    }
+
+    fn poll(&mut self) {
+        self.rom.poll();
+        self.uart.poll();
+        self.ctrl.poll();
+        self.spi.poll();
+        self.ram.borrow_mut().poll();
+        self.pic_regs.poll();
+        self.external_test_sram.borrow_mut().poll();
+    }
+
+    fn warm_reset(&mut self) {
+        self.rom.warm_reset();
+        self.uart.warm_reset();
+        self.ctrl.warm_reset();
+        self.spi.warm_reset();
+        self.ram.borrow_mut().warm_reset();
+        self.pic_regs.warm_reset();
+        self.external_test_sram.borrow_mut().warm_reset();
+    }
+
+    fn update_reset(&mut self) {
+        self.rom.update_reset();
+        self.uart.update_reset();
+        self.ctrl.update_reset();
+        self.spi.update_reset();
+        self.ram.borrow_mut().update_reset();
+        self.pic_regs.update_reset();
+        self.external_test_sram.borrow_mut().update_reset();
+    }
 
     fn register_outgoing_events(&mut self, sender: mpsc::Sender<Event>) {
         self.rom.register_outgoing_events(sender.clone());
@@ -120,7 +261,7 @@ impl CaliptraRootBus {
         self.event_sender = Some(sender);
     }
 
-    fn handle_incoming_event(&mut self, event: Rc<Event>) {
+    fn incoming_event(&mut self, event: Rc<Event>) {
         self.rom.incoming_event(event.clone());
         self.uart.incoming_event(event.clone());
         self.ctrl.incoming_event(event.clone());
