@@ -423,6 +423,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     }
 
     let dma_ram = root_bus.ram.clone();
+    let dma_ram_for_rom = root_bus.rom_sram.clone();
 
     let i3c_error_irq = pic.register_irq(McuRootBus::I3C_ERROR_IRQ);
     let i3c_notif_irq = pic.register_irq(McuRootBus::I3C_NOTIF_IRQ);
@@ -635,6 +636,14 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         .periph
         .set_dma_ram(dma_ram.clone());
 
+    // Set DMA RAM for ROM access to Main Flash Controller
+    auto_root_bus
+        .main_flash_periph
+        .as_mut()
+        .unwrap()
+        .periph
+        .set_dma_ram_for_rom(dma_ram_for_rom.clone());
+
     // Set the DMA RAM for Recovery Flash Controller
     auto_root_bus
         .recovery_flash_periph
@@ -642,6 +651,14 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         .unwrap()
         .periph
         .set_dma_ram(dma_ram);
+
+    // Set the DMA RAM for ROM access to Recovery Flash Controller
+    auto_root_bus
+        .recovery_flash_periph
+        .as_mut()
+        .unwrap()
+        .periph
+        .set_dma_ram_for_rom(dma_ram_for_rom.clone());
 
     let mut cpu = Cpu::new(auto_root_bus, clock, pic);
     cpu.register_events();

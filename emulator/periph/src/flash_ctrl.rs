@@ -15,7 +15,7 @@ Abstract:
 use caliptra_emu_types::{RvData, RvSize};
 use core::convert::TryInto;
 use emulator_bus::{ActionHandle, Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
-use emulator_consts::{RAM_OFFSET, RAM_SIZE};
+use emulator_consts::{RAM_OFFSET, RAM_SIZE, SRAM_FOR_MCU_ROM_OFFSET, SRAM_FOR_MCU_ROM_SIZE};
 use emulator_cpu::Irq;
 use emulator_registers_generated::main_flash::MainFlashPeripheral;
 use emulator_registers_generated::recovery_flash::RecoveryFlashPeripheral;
@@ -75,6 +75,7 @@ pub struct DummyFlashCtrl {
     op_status: ReadWriteRegister<u32, OpStatus::Register>,
     ctrl_regwen: ReadOnlyRegister<u32, CtrlRegwen::Register>,
     dma_ram: Option<Rc<RefCell<Ram>>>,
+    dma_ram_for_rom: Option<Rc<RefCell<Ram>>>,
     timer: Timer,
     file: Option<File>,
     buffer: Vec<u8>,
@@ -142,6 +143,7 @@ impl DummyFlashCtrl {
 
         Ok(Self {
             dma_ram: None,
+            dma_ram_for_rom: None,
             interrupt_state: ReadWriteRegister::new(0x0000_0000),
             interrupt_enable: ReadWriteRegister::new(0x0000_0000),
             page_size: ReadWriteRegister::new(0x0000_0000),
@@ -223,19 +225,30 @@ impl DummyFlashCtrl {
         addr >= RAM_OFFSET && addr + Self::PAGE_SIZE as u32 <= RAM_OFFSET + RAM_SIZE
     }
 
+    fn dma_ram_for_rom_access_check(&self, addr: u32) -> bool {
+        addr >= SRAM_FOR_MCU_ROM_OFFSET
+            && addr + Self::PAGE_SIZE as u32 <= SRAM_FOR_MCU_ROM_OFFSET + SRAM_FOR_MCU_ROM_SIZE
+    }
+
     fn read_page(&mut self) -> Result<(), FlashOpError> {
-        if self.dma_ram.is_none() {
+        if self.dma_ram.is_none() || self.dma_ram_for_rom.is_none() {
             panic!("DMA Ram must have been set before calling read_page")
         }
 
         // Get the page number from the register
         let page_num = self.page_num.reg.get();
 
+        // Get the address from the register
+        let page_addr = self.page_addr.reg.get();
+
+        let mcu_rt_access_flash = self.dma_ram_access_check(page_addr);
+        let mcu_rom_access_flash = self.dma_ram_for_rom_access_check(page_addr);
+
         // Sanity check for the page number, page size and file
         if page_num >= Self::MAX_PAGES
             || self.page_size.reg.get() < Self::PAGE_SIZE as u32
             || self.file.is_none()
-            || !self.dma_ram_access_check(self.page_addr.reg.get())
+            || !(mcu_rom_access_flash || mcu_rt_access_flash)
         {
             return Err(FlashOpError::ReadError);
         }
@@ -252,9 +265,20 @@ impl DummyFlashCtrl {
         }
 
         // Write the entire page from the buffer to the DMA ram
-        let dma_start_addr = self.page_addr.reg.get() - RAM_OFFSET;
+        let dma_start_addr = if mcu_rt_access_flash {
+            self.page_addr.reg.get() - RAM_OFFSET
+        } else {
+            self.page_addr.reg.get() - SRAM_FOR_MCU_ROM_OFFSET
+        };
+
+        let dma_ram = if mcu_rt_access_flash {
+            self.dma_ram.clone().unwrap()
+        } else {
+            self.dma_ram_for_rom.clone().unwrap()
+        };
+
         for i in 0..Self::PAGE_SIZE {
-            if let Err(err) = self.dma_ram.clone().unwrap().borrow_mut().write(
+            if let Err(err) = dma_ram.borrow_mut().write(
                 RvSize::Byte,
                 dma_start_addr + i as u32,
                 self.buffer[i] as u32,
@@ -268,27 +292,43 @@ impl DummyFlashCtrl {
     }
 
     fn write_page(&mut self) -> Result<(), FlashOpError> {
-        if self.dma_ram.is_none() {
+        if self.dma_ram.is_none() || self.dma_ram_for_rom.is_none() {
             panic!("DMA ram must have been set before calling write_page")
         }
         // Get the page number from the register
         let page_num = self.page_num.reg.get();
 
+        // Get the address from the register
+        let page_addr = self.page_addr.reg.get();
+
+        let mcu_rt_access_flash = self.dma_ram_access_check(page_addr);
+        let mcu_rom_access_flash = self.dma_ram_for_rom_access_check(page_addr);
+
+        println!("[xs debug]FlashCtrl in emulator: write_page: access_from_rom {:?}, access_from_rt {:?}, page_addr = {:02x}", mcu_rom_access_flash, mcu_rt_access_flash, page_addr);
+
         // Sanity check for the page number, page size and file
         if page_num >= Self::MAX_PAGES
             || self.page_size.reg.get() < Self::PAGE_SIZE as u32
             || self.file.is_none()
-            || !self.dma_ram_access_check(self.page_addr.reg.get())
+            || !(mcu_rom_access_flash || mcu_rt_access_flash)
         {
             return Err(FlashOpError::WriteError);
         }
 
-        let dma_start_addr = self.page_addr.reg.get() - RAM_OFFSET;
+        let dma_start_addr = if mcu_rt_access_flash {
+            self.page_addr.reg.get() - RAM_OFFSET
+        } else {
+            self.page_addr.reg.get() - SRAM_FOR_MCU_ROM_OFFSET
+        };
+
+        let dma_ram = if mcu_rt_access_flash {
+            self.dma_ram.clone().unwrap()
+        } else {
+            self.dma_ram_for_rom.clone().unwrap()
+        };
+
         for i in 0..Self::PAGE_SIZE {
-            self.buffer[i] = match self
-                .dma_ram
-                .clone()
-                .unwrap()
+            self.buffer[i] = match dma_ram
                 .borrow_mut()
                 .read(RvSize::Byte, dma_start_addr + i as u32)
             {
@@ -365,6 +405,10 @@ impl DummyFlashCtrl {
 impl MainFlashPeripheral for DummyFlashCtrl {
     fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {
         self.dma_ram = Some(ram);
+    }
+
+    fn set_dma_ram_for_rom(&mut self, ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {
+        self.dma_ram_for_rom = Some(ram);
     }
 
     fn poll(&mut self) {
@@ -529,6 +573,10 @@ impl MainFlashPeripheral for DummyFlashCtrl {
 impl RecoveryFlashPeripheral for DummyFlashCtrl {
     fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {
         self.dma_ram = Some(ram);
+    }
+
+    fn set_dma_ram_for_rom(&mut self, ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {
+        self.dma_ram_for_rom = Some(ram);
     }
 
     fn poll(&mut self) {
