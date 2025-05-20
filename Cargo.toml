@@ -3,6 +3,7 @@
 [workspace]
 members = [
     "builder",
+    "common/config",
     "common/pldm",
     "emulator/app",
     "emulator/bmc/pldm-ua",
@@ -20,6 +21,7 @@ members = [
     "registers/generator",
     "registers/systemrdl",
     "registers/systemrdl-new",
+    "platforms/emulator/config",
     "platforms/emulator/rom",
     "platforms/emulator/runtime",
     "platforms/emulator/kernel/capsules",
@@ -74,6 +76,7 @@ clap = { version = "4.5.23", features = [
     "unicode",
     "wrap_help",
 ] }
+clap-num = "1.2.0"
 crc = "3.2.1"
 crc32fast = "1.4.2"
 critical-section = "1.1.2"
@@ -110,6 +113,7 @@ serde-hjson = "1.1.0"
 sha2 = { version = "0.10.8", default-features = false }
 simple_logger = "5.0.0"
 smlang = "0.8.0"
+subst = "0.3.8"
 sudo = "0.6.0"
 strum = "0.24"
 strum_macros = "0.24"
@@ -137,12 +141,12 @@ flash-driver = { path = "runtime/kernel/drivers/flash" }
 i3c-driver = { path = "runtime/kernel/drivers/i3c" }
 libtockasync = { path = "runtime/userspace/libtockasync" }
 mcu-builder = { path = "builder" }
+mcu-config = { path = "common/config" }
+mcu-config-emulator = { path = "platforms/emulator/config" }
 mcu-rom-common = { path = "rom" }
 pldm-common = { path = "common/pldm"}
 pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
 pldm-ua = { path = "emulator/bmc/pldm-ua"}
-
-
 registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }

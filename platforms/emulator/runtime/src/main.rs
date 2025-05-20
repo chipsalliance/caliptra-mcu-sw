@@ -33,6 +33,13 @@ mod timers;
 #[cfg(target_arch = "riscv32")]
 pub use board::*;
 
+use mcu_config::McuMemoryMap;
+
+// re-export this so the common runtime code can use it
+#[no_mangle]
+#[used]
+pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_emulator::EMULATOR_MEMORY_MAP;
+
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 /// # Safety

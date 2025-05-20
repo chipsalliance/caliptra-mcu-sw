@@ -8,8 +8,10 @@
 #![allow(static_mut_refs)]
 
 use crate::io::SemihostUart;
+use crate::pic::Pic;
 use crate::pmp::{VeeRPMP, VeeRProtectionMMLEPMP};
 use crate::timers::{InternalTimers, TimerInterrupts};
+use crate::MCU_MEMORY_MAP;
 use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
 use core::fmt::Write;
 use core::ptr::addr_of;
@@ -17,16 +19,12 @@ use kernel::debug;
 use kernel::platform::chip::{Chip, InterruptService};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::StaticRef;
+use registers_generated::i3c::regs::I3c;
 use rv32i::csr::{mcause, mie::mie, CSR};
 use rv32i::syscall::SysCall;
 
-use crate::pic::Pic;
-use crate::pic::PicRegisters;
+pub static mut PIC: Pic = Pic::new();
 
-pub const PIC_BASE: StaticRef<PicRegisters> =
-    unsafe { StaticRef::new(0x6000_0000 as *const PicRegisters) };
-
-pub static mut PIC: Pic = Pic::new(PIC_BASE);
 pub static mut TIMERS: InternalTimers<'static> = InternalTimers::new();
 pub const UART_IRQ: u8 = 0x10;
 pub const I3C_ERROR_IRQ: u8 = 0x11;
@@ -40,7 +38,7 @@ pub const DMA_ERROR_IRQ: u8 = 0x18;
 
 pub struct VeeR<'a, I: InterruptService + 'a> {
     userspace_kernel_boundary: SysCall,
-    pic: &'a Pic,
+    pic: &'static Pic,
     timers: &'static InternalTimers<'static>,
     pub peripherals: &'a I,
     pmp: VeeRPMP,
@@ -58,7 +56,10 @@ impl<'a> VeeRDefaultPeripherals<'a> {
     pub fn new(alarm: &'a MuxAlarm<'a, InternalTimers<'a>>) -> Self {
         Self {
             uart: SemihostUart::new(alarm),
-            i3c: i3c_driver::core::I3CCore::new(i3c_driver::core::I3C_BASE, alarm),
+            i3c: i3c_driver::core::I3CCore::new(
+                unsafe { StaticRef::new(MCU_MEMORY_MAP.i3c_offset as *const I3c) },
+                alarm,
+            ),
             main_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
                 flash_driver::flash_ctrl::MAIN_FLASH_CTRL_BASE,
             ),
@@ -111,7 +112,7 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
 
 impl<'a, I: InterruptService + 'a> VeeR<'a, I> {
     /// # Safety
-    /// Accesses memory<-mapped registers.
+    /// Accesses memory-mapped registers.
     pub unsafe fn new(pic_interrupt_service: &'a I, epmp: VeeRProtectionMMLEPMP) -> Self {
         Self {
             userspace_kernel_boundary: SysCall::new(),

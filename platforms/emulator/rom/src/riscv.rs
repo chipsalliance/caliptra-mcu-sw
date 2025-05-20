@@ -18,6 +18,14 @@ use core::fmt::Write;
 #[cfg(target_arch = "riscv32")]
 core::arch::global_asm!(include_str!("start.s"));
 
+use mcu_config::McuMemoryMap;
+use romtime::HexWord;
+
+// re-export this so the common ROM can use it
+#[no_mangle]
+#[used]
+pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_emulator::EMULATOR_MEMORY_MAP;
+
 pub extern "C" fn rom_entry() -> ! {
     unsafe {
         #[allow(static_mut_refs)]
@@ -30,7 +38,10 @@ pub extern "C" fn rom_entry() -> ! {
 
     mcu_rom_common::rom_start();
 
-    romtime::println!("[mcu-rom] Jumping to firmware");
+    romtime::println!(
+        "[mcu-rom] Jumping to firmware at {}",
+        HexWord((MCU_MEMORY_MAP.sram_offset as u32) + 0x80)
+    );
     exit_rom();
 }
 

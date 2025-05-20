@@ -25,43 +25,44 @@ use std::{
     sync::{mpsc, Arc, Mutex},
 };
 
+#[derive(Debug, Clone)]
 pub struct McuRootBusOffsets {
     pub rom_offset: u32,
-    pub rom_len: u32,
+    pub rom_size: u32,
     pub uart_offset: u32,
-    pub uart_len: u32,
+    pub uart_size: u32,
     pub ctrl_offset: u32,
-    pub ctrl_len: u32,
+    pub ctrl_size: u32,
     pub spi_offset: u32,
-    pub spi_len: u32,
+    pub spi_size: u32,
     pub ram_offset: u32,
-    pub ram_len: u32,
+    pub ram_size: u32,
     pub pic_offset: u32,
-    pub pic_len: u32,
     pub external_test_sram_offset: u32,
-    pub external_test_sram_len: u32,
+    pub external_test_sram_size: u32,
 }
 
 impl Default for McuRootBusOffsets {
     fn default() -> Self {
         Self {
             rom_offset: 0,
-            rom_len: 0xc000,
+            rom_size: 0xc000,
             uart_offset: 0x1000_1000,
-            uart_len: 0x100,
+            uart_size: 0x100,
             ctrl_offset: 0x1000_2000,
-            ctrl_len: 0x4,
+            ctrl_size: 0x4,
             spi_offset: 0x2000_0000,
-            spi_len: 0x40,
+            spi_size: 0x40,
             ram_offset: 0x4000_0000,
-            ram_len: 0x60000,
+            ram_size: 0x60000,
             pic_offset: 0x6000_0000,
-            pic_len: 0x507d,
             external_test_sram_offset: 0x8000_0000,
-            external_test_sram_len: 0x1000,
+            external_test_sram_size: 0x1000,
         }
     }
 }
+
+const PIC_SIZE: u32 = 0x5400;
 
 /// Caliptra Root Bus Arguments
 #[derive(Default)]
@@ -135,37 +136,36 @@ impl McuRootBus {
 
 impl Bus for McuRootBus {
     fn read(&mut self, size: RvSize, addr: RvAddr) -> Result<RvData, BusError> {
-        if addr >= self.offsets.rom_offset && addr < self.offsets.rom_offset + self.offsets.rom_len
+        if addr >= self.offsets.rom_offset && addr < self.offsets.rom_offset + self.offsets.rom_size
         {
             return self.rom.read(size, addr - self.offsets.rom_offset);
         }
         if addr >= self.offsets.uart_offset
-            && addr < self.offsets.uart_offset + self.offsets.uart_len
+            && addr < self.offsets.uart_offset + self.offsets.uart_size
         {
             return self.uart.read(size, addr - self.offsets.uart_offset);
         }
         if addr >= self.offsets.ctrl_offset
-            && addr < self.offsets.ctrl_offset + self.offsets.ctrl_len
+            && addr < self.offsets.ctrl_offset + self.offsets.ctrl_size
         {
             return self.ctrl.read(size, addr - self.offsets.ctrl_offset);
         }
-        if addr >= self.offsets.spi_offset && addr < self.offsets.spi_offset + self.offsets.spi_len
+        if addr >= self.offsets.spi_offset && addr < self.offsets.spi_offset + self.offsets.spi_size
         {
             return self.spi.read(size, addr - self.offsets.spi_offset);
         }
-        if addr >= self.offsets.ram_offset && addr < self.offsets.ram_offset + self.offsets.ram_len
+        if addr >= self.offsets.ram_offset && addr < self.offsets.ram_offset + self.offsets.ram_size
         {
             return self
                 .ram
                 .borrow_mut()
                 .read(size, addr - self.offsets.ram_offset);
         }
-        if addr >= self.offsets.pic_offset && addr < self.offsets.pic_offset + self.offsets.pic_len
-        {
+        if addr >= self.offsets.pic_offset && addr < self.offsets.pic_offset + PIC_SIZE {
             return self.pic_regs.read(size, addr - self.offsets.pic_offset);
         }
         if addr >= self.offsets.external_test_sram_offset
-            && addr < self.offsets.external_test_sram_offset + self.offsets.external_test_sram_len
+            && addr < self.offsets.external_test_sram_offset + self.offsets.external_test_sram_size
         {
             return self
                 .external_test_sram
@@ -176,39 +176,38 @@ impl Bus for McuRootBus {
     }
 
     fn write(&mut self, size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
-        if addr >= self.offsets.rom_offset && addr < self.offsets.rom_offset + self.offsets.rom_len
+        if addr >= self.offsets.rom_offset && addr < self.offsets.rom_offset + self.offsets.rom_size
         {
             return self.rom.write(size, addr - self.offsets.rom_offset, val);
         }
         if addr >= self.offsets.uart_offset
-            && addr < self.offsets.uart_offset + self.offsets.uart_len
+            && addr < self.offsets.uart_offset + self.offsets.uart_size
         {
             return self.uart.write(size, addr - self.offsets.uart_offset, val);
         }
         if addr >= self.offsets.ctrl_offset
-            && addr < self.offsets.ctrl_offset + self.offsets.ctrl_len
+            && addr < self.offsets.ctrl_offset + self.offsets.ctrl_size
         {
             return self.ctrl.write(size, addr - self.offsets.ctrl_offset, val);
         }
-        if addr >= self.offsets.spi_offset && addr < self.offsets.spi_offset + self.offsets.spi_len
+        if addr >= self.offsets.spi_offset && addr < self.offsets.spi_offset + self.offsets.spi_size
         {
             return self.spi.write(size, addr - self.offsets.spi_offset, val);
         }
-        if addr >= self.offsets.ram_offset && addr < self.offsets.ram_offset + self.offsets.ram_len
+        if addr >= self.offsets.ram_offset && addr < self.offsets.ram_offset + self.offsets.ram_size
         {
             return self
                 .ram
                 .borrow_mut()
                 .write(size, addr - self.offsets.ram_offset, val);
         }
-        if addr >= self.offsets.pic_offset && addr < self.offsets.pic_offset + self.offsets.pic_len
-        {
+        if addr >= self.offsets.pic_offset && addr < self.offsets.pic_offset + PIC_SIZE {
             return self
                 .pic_regs
                 .write(size, addr - self.offsets.pic_offset, val);
         }
         if addr >= self.offsets.external_test_sram_offset
-            && addr < self.offsets.external_test_sram_offset + self.offsets.external_test_sram_len
+            && addr < self.offsets.external_test_sram_offset + self.offsets.external_test_sram_size
         {
             return self.external_test_sram.borrow_mut().write(
                 size,

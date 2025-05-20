@@ -18,6 +18,7 @@ caliptra-image-types.workspace = true
 caliptra-test.workspace = true
 chrono.workspace = true
 clap.workspace = true
+clap-num.workspace = true
 crc.workspace = true
 crossterm.workspace = true
 ctrlc.workspace = true

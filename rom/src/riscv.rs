@@ -18,13 +18,14 @@ use crate::fatal_error;
 use crate::fuses::Otp;
 use caliptra_api::mailbox::CommandId;
 use caliptra_api::CaliptraApiError;
-use core::{fmt::Write, hint::black_box};
+use core::{fmt::Write, hint::black_box, ptr::addr_of};
 use registers_generated::{fuses::Fuses, i3c, mbox, mci, otp_ctrl, soc};
-use romtime::{HexWord, Mci, StaticRef, MCI_BASE};
+use romtime::{HexWord, Mci, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
-pub const SOC_BASE: StaticRef<soc::regs::Soc> =
-    unsafe { StaticRef::new(soc::SOC_IFC_REG_ADDR as *const soc::regs::Soc) };
+extern "C" {
+    pub static MCU_MEMORY_MAP: mcu_config::McuMemoryMap;
+}
 
 pub struct Soc {
     registers: StaticRef<soc::regs::Soc>,
@@ -127,16 +128,19 @@ impl Soc {
     }
 }
 
-pub const OTP_BASE: StaticRef<otp_ctrl::regs::OtpCtrl> =
-    unsafe { StaticRef::new(otp_ctrl::OTP_CTRL_ADDR as *const otp_ctrl::regs::OtpCtrl) };
-
-pub const I3C_BASE: StaticRef<i3c::regs::I3c> =
-    unsafe { StaticRef::new(i3c::I3C_CSR_ADDR as *const i3c::regs::I3c) };
-
 pub fn rom_start() {
     romtime::println!("[mcu-rom] Hello from ROM");
 
-    let otp = Otp::new(OTP_BASE);
+    let otp_base: StaticRef<otp_ctrl::regs::OtpCtrl> =
+        unsafe { StaticRef::new(MCU_MEMORY_MAP.otp_offset as *const otp_ctrl::regs::OtpCtrl) };
+    let i3c_base: StaticRef<i3c::regs::I3c> =
+        unsafe { StaticRef::new(MCU_MEMORY_MAP.i3c_offset as *const i3c::regs::I3c) };
+    let soc_base: StaticRef<soc::regs::Soc> =
+        unsafe { StaticRef::new(MCU_MEMORY_MAP.soc_offset as *const soc::regs::Soc) };
+    let mci_base: StaticRef<mci::regs::Mci> =
+        unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
+
+    let otp = Otp::new(otp_base);
     if let Err(err) = otp.init() {
         romtime::println!("Error initializing OTP: {}", HexWord(err as u32));
         fatal_error(1);
@@ -149,7 +153,7 @@ pub fn rom_start() {
         }
     };
 
-    let soc = Soc::new(SOC_BASE);
+    let soc = Soc::new(soc_base);
     let flow_status = soc.flow_status();
     romtime::println!("[mcu-rom] Caliptra flow status {}", HexWord(flow_status));
     if flow_status == 0 {
@@ -167,7 +171,7 @@ pub fn rom_start() {
     romtime::println!("[mcu-rom] Fuses written to Caliptra");
 
     // De-assert caliptra reset
-    let mut mci = Mci::new(MCI_BASE);
+    let mut mci = Mci::new(mci_base);
     mci.caliptra_boot_go();
 
     // tell Caliptra to download firmware from the recovery interface
@@ -206,7 +210,8 @@ pub fn rom_start() {
     }
 
     romtime::println!("[mcu-rom] Starting recovery flow");
-    recovery_flow(&mut mci);
+    let mut i3c = I3c::new(i3c_base);
+    recovery_flow(&mut mci, &mut i3c);
     romtime::println!("[mcu-rom] Recovery flow complete");
 
     // Check that the firmware was actually loaded before jumping to it
@@ -229,10 +234,8 @@ impl I3c {
     }
 }
 
-pub fn recovery_flow(_mci: &mut Mci) {
+pub fn recovery_flow(_mci: &mut Mci, i3c: &mut I3c) {
     // TODO: implement Caliptra boot flow
-    let i3c = I3c::new(I3C_BASE);
-
     // TODO: read this value from the fuses (according to the spec)?
     i3c.registers.sec_fw_recovery_if_device_id_0.set(0x3a); // placeholder address for now
     i3c.registers.stdby_ctrl_mode_stby_cr_device_addr.set(0x3a);

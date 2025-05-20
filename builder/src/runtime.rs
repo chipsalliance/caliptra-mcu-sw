@@ -12,6 +12,7 @@ use anyhow::{anyhow, bail, Result};
 use elf::endian::AnyEndian;
 use elf::ElfBytes;
 use emulator_consts::{RAM_OFFSET, RAM_SIZE};
+use mcu_config::McuMemoryMap;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -69,34 +70,17 @@ pub fn runtime_build_no_apps(
         apps_size
     );
 
-    std::fs::write(
-        &ld_file_path,
-        format!(
-            "
-/* Licensed under the Apache-2.0 license. */
-
-/* Based on the Tock board layouts, which are: */
-/* Licensed under the Apache License, Version 2.0 or the MIT License. */
-/* SPDX-License-Identifier: Apache-2.0 OR MIT                         */
-/* Copyright Tock Contributors 2023.                                  */
-
-MEMORY
-{{
-    rom (rx)  : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
-    prog (rx) : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
-    ram (rwx) : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
-}}
-
-INCLUDE platforms/emulator/runtime/kernel_layout.ld
-",
-            RAM_OFFSET + INTERRUPT_TABLE_SIZE as u32,
-            runtime_size,
-            apps_offset,
-            apps_size,
-            ram_start,
-            DATA_RAM_SIZE,
-        ),
+    let ld_string = runtime_ld_script(
+        &mcu_config_emulator::EMULATOR_MEMORY_MAP,
+        RAM_OFFSET + INTERRUPT_TABLE_SIZE as u32,
+        runtime_size as u32,
+        apps_offset as u32,
+        apps_size as u32,
+        ram_start as u32,
+        DATA_RAM_SIZE as u32,
     )?;
+
+    std::fs::write(&ld_file_path, ld_string)?;
 
     // The following flags should only be passed to the board's binary crate, but
     // not to any of its dependencies (the kernel, capsules, chips, etc.). The
@@ -286,3 +270,49 @@ pub fn runtime_build_with_apps(
 
     Ok(())
 }
+
+pub fn runtime_ld_script(
+    memory_map: &McuMemoryMap,
+    runtime_offset: u32,
+    runtime_size: u32,
+    apps_offset: u32,
+    apps_size: u32,
+    data_ram_offset: u32,
+    data_ram_size: u32,
+) -> Result<String> {
+    let mut map = memory_map.hash_map();
+    map.insert(
+        "RUNTIME_OFFSET".to_string(),
+        format!("0x{:x}", runtime_offset),
+    );
+    map.insert("RUNTIME_SIZE".to_string(), format!("0x{:x}", runtime_size));
+    map.insert("APPS_OFFSET".to_string(), format!("0x{:x}", apps_offset));
+    map.insert("APPS_SIZE".to_string(), format!("0x{:x}", apps_size));
+    map.insert(
+        "DATA_RAM_OFFSET".to_string(),
+        format!("0x{:x}", data_ram_offset),
+    );
+    map.insert(
+        "DATA_RAM_SIZE".to_string(),
+        format!("0x{:x}", data_ram_size),
+    );
+    Ok(subst::substitute(RUNTIME_LD_TEMPLATE, &map)?)
+}
+
+const RUNTIME_LD_TEMPLATE: &str = r#"
+/* Licensed under the Apache-2.0 license. */
+
+/* Based on the Tock board layouts, which are: */
+/* Licensed under the Apache License, Version 2.0 or the MIT License. */
+/* SPDX-License-Identifier: Apache-2.0 OR MIT                         */
+/* Copyright Tock Contributors 2023.                                  */
+
+MEMORY
+{
+    rom (rx)  : ORIGIN = $RUNTIME_OFFSET, LENGTH = $RUNTIME_SIZE
+    prog (rx) : ORIGIN = $APPS_OFFSET, LENGTH = $APPS_SIZE
+    ram (rwx) : ORIGIN = $DATA_RAM_OFFSET, LENGTH = $DATA_RAM_SIZE
+}
+
+INCLUDE platforms/emulator/runtime/kernel_layout.ld
+"#;

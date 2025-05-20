@@ -17,11 +17,9 @@ use registers_generated::i3c::bits::{
     StbyCrControl, StbyCrDeviceAddr, StbyCrDeviceChar, TtiQueueThldCtrl,
 };
 use registers_generated::i3c::regs::I3c;
-use registers_generated::i3c::I3C_CSR_ADDR;
 use tock_registers::register_bitfields;
 use tock_registers::LocalRegisterCopy;
 
-pub const I3C_BASE: StaticRef<I3c> = unsafe { StaticRef::new(I3C_CSR_ADDR as *const I3c) };
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
 pub const MAX_READ_WRITE_SIZE: usize = 250;
 
