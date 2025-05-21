@@ -94,19 +94,19 @@ impl<'a> SpdmContext<'a> {
 
         match req_code {
             ReqRespCode::GetVersion => {
-                version_rsp::handle_version(self, req_msg_header, req).await?
+                version_rsp::handle_get_version(self, req_msg_header, req).await?
             }
             ReqRespCode::GetCapabilities => {
-                capabilities_rsp::handle_capabilities(self, req_msg_header, req).await?
+                capabilities_rsp::handle_get_capabilities(self, req_msg_header, req).await?
             }
             ReqRespCode::NegotiateAlgorithms => {
                 algorithms_rsp::handle_negotiate_algorithms(self, req_msg_header, req).await?
             }
             ReqRespCode::GetDigests => {
-                digests_rsp::handle_digests(self, req_msg_header, req).await?
+                digests_rsp::handle_get_digests(self, req_msg_header, req).await?
             }
             ReqRespCode::GetCertificate => {
-                certificate_rsp::handle_certificates(self, req_msg_header, req).await?
+                certificate_rsp::handle_get_certificate(self, req_msg_header, req).await?
             }
             ReqRespCode::Challenge => {
                 challenge_auth_rsp::handle_challenge(self, req_msg_header, req).await?
@@ -190,5 +190,20 @@ impl<'a> SpdmContext<'a> {
         if let ReqRespCode::GetDigests = req_code {
             self.transcript_mgr.reset_context(TranscriptContext::M1);
         }
+    }
+
+    pub(crate) async fn append_message_to_transcript(
+        &mut self,
+        msg_buf: &mut MessageBuf<'_>,
+        transcript_context: TranscriptContext,
+    ) -> CommandResult<()> {
+        let msg = msg_buf
+            .message_data()
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+
+        self.transcript_mgr
+            .append(transcript_context, msg)
+            .await
+            .map_err(|e| (false, CommandError::Transcript(e)))
     }
 }

@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_api::mailbox::{
-    MailboxReqHeader, MailboxRespHeader, QuotePcrsFlags, QuotePcrsReq, QuotePcrsResp, Request,
+    MailboxReqHeader, QuotePcrsFlags, QuotePcrsReq, QuotePcrsResp, Request,
 };
 use core::fmt::Write;
 use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
@@ -54,21 +54,6 @@ pub(crate) async fn test_caliptra_mailbox() {
                 );
                 test_exit(1);
             }
-            for (i, pcr) in resp.pcrs.iter().enumerate() {
-                println!(
-                    "PCR[{}]: {:x?}  Reset counter [{}]",
-                    i, pcr, resp.reset_ctrs[i]
-                );
-            }
-            println!(
-                "Size of Resp {}",
-                size_of::<QuotePcrsResp>() - size_of::<MailboxRespHeader>()
-            );
-            println!("Nonce: {:x?}", resp.nonce);
-            println!("Digest: {:x?}", resp.digest);
-            println!("ECC Signature_r: {:x?}", resp.ecc_signature_r);
-            println!("ECC Signature_s: {:x?}", resp.ecc_signature_s);
-            println!("MLDSA Signature: {:x?}", resp.mldsa_signature);
         }
         Err(err) => {
             println!("Failed to parse response: {:?}", err);
@@ -76,29 +61,6 @@ pub(crate) async fn test_caliptra_mailbox() {
         }
     }
     println!("Test passed");
-}
-
-#[allow(unused)]
-pub(crate) async fn test_caliptra_evidence() {
-    println!("Starting mailbox evidence test");
-
-    let mut pcr_quote = [0u8; PCR_QUOTE_SIZE];
-
-    match Evidence::pcr_quote(&mut pcr_quote).await {
-        Ok(size) => {
-            if size != PCR_QUOTE_SIZE {
-                println!("Invalid size: expected {}, got {}", PCR_QUOTE_SIZE, size);
-                test_exit(1);
-            }
-            println!("PCR quote: {:x?}  Size: {}", &pcr_quote[..size], size);
-        }
-        Err(err) => {
-            println!("Failed to get PCR quote: {:?}", err);
-            test_exit(1);
-        }
-    }
-
-    println!("Mailbox command success");
 }
 
 #[allow(unused)]
@@ -172,4 +134,32 @@ pub(crate) async fn test_caliptra_mailbox_fail() {
             test_exit(1);
         }
     }
+}
+
+#[allow(unused)]
+pub(crate) async fn test_caliptra_evidence() {
+    println!("Starting mailbox evidence test");
+
+    test_pcr_quote().await;
+}
+
+async fn test_pcr_quote() {
+    println!("Starting PCR quote test");
+    let mut pcr_quote = [0u8; PCR_QUOTE_SIZE];
+
+    match Evidence::pcr_quote(&mut pcr_quote).await {
+        Ok(size) => {
+            if size != PCR_QUOTE_SIZE {
+                println!("Invalid size: expected {}, got {}", PCR_QUOTE_SIZE, size);
+                test_exit(1);
+            }
+            println!("PCR quote: {:x?}  Size: {}", &pcr_quote[..size], size);
+        }
+        Err(err) => {
+            println!("Failed to get PCR quote: {:?}", err);
+            test_exit(1);
+        }
+    }
+
+    println!("PCR Quote test success");
 }

@@ -230,15 +230,9 @@ async fn generate_certificate_response<'a>(
     rsp.push_data(payload_len)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    // Append the response to the transcript
-    let rsp_msg = rsp
-        .message_data()
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-    // writeln!(ctx.cw, "SPDM_LIB: Certificate response: {:?}", rsp_msg).unwrap();
-    ctx.transcript_mgr
-        .append(TranscriptContext::M1, rsp_msg)
+    // Append the response message to the M1 transcript
+    ctx.append_message_to_transcript(rsp, TranscriptContext::M1)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
 async fn process_get_certificate<'a>(
@@ -283,19 +277,14 @@ async fn process_get_certificate<'a>(
     // Reset the transcript context
     ctx.reset_transcript_via_req_code(ReqRespCode::GetCertificate);
 
-    let req_msg = req_payload
-        .message_data()
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-    // writeln!(ctx.cw, "SPDM_LIB: GetCertificate request: {:X?}", req_msg).unwrap();
-    ctx.transcript_mgr
-        .append(TranscriptContext::M1, req_msg)
-        .await
-        .map_err(|e| (false, CommandError::Transcript(e)))?;
+    // Append the request to the M1 transcript
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1)
+        .await?;
 
     Ok((slot_id, offset, length))
 }
 
-pub(crate) async fn handle_certificates<'a>(
+pub(crate) async fn handle_get_certificate<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,

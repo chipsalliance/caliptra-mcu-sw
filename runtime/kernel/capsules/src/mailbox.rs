@@ -192,7 +192,6 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                                 CaliptraApiError::MailboxRespInvalidChecksum { .. } => 0xffff_ffff,
                                 _ => 0xffff_fffe,
                             };
-                            // debug!("Error from mailbox: {:?}", err);
                             if let Err(err) = kernel_data
                                 .schedule_upcall(upcall::COMMAND_DONE, (0, err as usize, 0))
                             {
@@ -200,10 +199,6 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                             }
                         }
                         Ok(Ok(len)) => {
-                            // debug!(
-                            //     "Success!! Mailbox response size: {}. Scheduling upcall process id {:?}",
-                            //     len, process_id
-                            // );
                             if let Err(err) =
                                 kernel_data.schedule_upcall(upcall::COMMAND_DONE, (len, 0, 0))
                             {
@@ -232,10 +227,8 @@ impl<'a, A: Alarm<'a>> AlarmClient for Mailbox<'a, A> {
             .driver
             .map(|driver| {
                 if driver.is_mailbox_busy() {
-                    // debug!("Mailbox is busy, rescheduling alarm");
                     true
                 } else {
-                    // debug!("Mailbox is not busy, completing request");
                     self.try_complete_request(driver);
                     false
                 }

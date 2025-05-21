@@ -14,7 +14,7 @@ use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 use libapi_caliptra::crypto::rng::Rng;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use core::fmt::Write;
+// use core::fmt::Write;
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
@@ -109,20 +109,16 @@ async fn process_challenge<'a>(
         }
     }
 
-    writeln!(
-        ctx.cw,
-        "Measurement summary hash {} slot ID {} nonce: {:?}",
-        challenge_req.measurement_hash_type, challenge_req.slot_id, challenge_req.nonce
-    )
-    .unwrap();
-    // Append the CHALLENGE request to the transcript
-    let req_msg = req_payload
-        .message_data()
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-    ctx.transcript_mgr
-        .append(TranscriptContext::M1, req_msg)
-        .await
-        .map_err(|e| (false, CommandError::Transcript(e)))?;
+    // writeln!(
+    //     ctx.cw,
+    //     "Measurement summary hash {} slot ID {} nonce: {:?}",
+    //     challenge_req.measurement_hash_type, challenge_req.slot_id, challenge_req.nonce
+    // )
+    // .unwrap();
+
+    // Append the CHALLENGE request to the M1 transcript
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1)
+        .await?;
 
     Ok((
         challenge_req.slot_id,
@@ -305,25 +301,19 @@ async fn generate_challenge_auth_response<'a>(
             .map_err(|e| (false, CommandError::Codec(e)))?;
     }
 
-    // Add the resp to the ranscript
-    let rsp_msg = rsp
-        .message_data()
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-    ctx.transcript_mgr
-        .append(TranscriptContext::M1, rsp_msg)
-        .await
-        .map_err(|e| (false, CommandError::Transcript(e)))?;
+    // Append CHALLENGE_AUTH to the M1 transcript
+    ctx.append_message_to_transcript(rsp, TranscriptContext::M1)
+        .await?;
 
     // Generate the signature and encode it in the response
-
     payload_len += encode_m1_signature(ctx, slot_id, asym_algo, rsp).await?;
 
-    writeln!(
-        ctx.cw,
-        "Generated CHALLENGE_AUTH response len {}",
-        payload_len
-    )
-    .unwrap();
+    // writeln!(
+    //     ctx.cw,
+    //     "Generated CHALLENGE_AUTH response len {}",
+    //     payload_len
+    // )
+    // .unwrap();
     rsp.push_data(payload_len)
         .map_err(|e| (false, CommandError::Codec(e)))
 }

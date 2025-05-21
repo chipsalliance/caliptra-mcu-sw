@@ -158,16 +158,12 @@ struct DmtfSpecMeasurementValueType(u8);
     meas_val_repr, set_meas_val_repr: 7, 7; // [7] - digest/raw bit stream
 }
 
-// impl CommonCodec for DmtfSpecMeasurementValueType {}
-
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C, packed)]
 struct DmtfSpecMeasurementValueHeader {
     value_type: DmtfSpecMeasurementValueType,
     value_size: u16, // [23:8] - size of the measurement value
 }
-
-// impl CommonCodec for DmtfSpecMeasurementValueHeader {}
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C, packed)]
@@ -177,8 +173,6 @@ pub struct DmtfMeasurementBlockMetadata {
     meas_size: u16,
     meas_val_hdr: DmtfSpecMeasurementValueHeader,
 }
-
-// impl CommonCodec for DmtfMeasurementBlockMetadata {}
 
 impl DmtfMeasurementBlockMetadata {
     pub fn new(

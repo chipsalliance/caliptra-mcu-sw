@@ -110,15 +110,9 @@ async fn generate_version_response<'a>(
         .push_data(payload_len)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
-    let resp_msg = rsp_buf
-        .message_data()
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-
-    // writeln!(ctx.cw, "SPDM_LIB: Version response: {:X?}", resp_msg).unwrap();
-    ctx.transcript_mgr
-        .append(TranscriptContext::Vca, resp_msg)
+    // Append response to VCA transcript
+    ctx.append_message_to_transcript(rsp_buf, TranscriptContext::Vca)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
 async fn process_get_version<'a>(
@@ -139,19 +133,11 @@ async fn process_get_version<'a>(
     ctx.transcript_mgr.reset();
 
     // Append request to VCA transcript
-    let req_msg = req_payload
-        .message_data()
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-
-    // writeln!(ctx.cw, "SPDM_LIB: Version request: {:X?}", req_msg).unwrap();
-
-    ctx.transcript_mgr
-        .append(TranscriptContext::Vca, req_msg)
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::Vca)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
-pub(crate) async fn handle_version<'a>(
+pub(crate) async fn handle_get_version<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,

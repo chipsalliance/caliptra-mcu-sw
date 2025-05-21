@@ -148,6 +148,16 @@ impl<'a> MessageBuf<'a> {
         Ok(())
     }
 
+    /// Decrements the head pointer (pushes up) by specified number of bytes.
+    /// This is used to remove the headspace of the message buffer
+    pub fn push_head(&mut self, len: usize) -> CodecResult<()> {
+        if self.head < len {
+            Err(CodecError::BufferUnderflow)?;
+        }
+        self.head -= len;
+        Ok(())
+    }
+
     /// Increments the head pointer (pulls down) by specified number of bytes.
     /// This is used to set the headspace of the message buffer while processing
     pub fn pull_head(&mut self, len: usize) -> CodecResult<()> {
@@ -155,14 +165,6 @@ impl<'a> MessageBuf<'a> {
             Err(CodecError::BufferOverflow)?;
         }
         self.head += len;
-        Ok(())
-    }
-
-    pub fn push_head(&mut self, len: usize) -> CodecResult<()> {
-        if self.head < len {
-            Err(CodecError::BufferUnderflow)?;
-        }
-        self.head -= len;
         Ok(())
     }
 

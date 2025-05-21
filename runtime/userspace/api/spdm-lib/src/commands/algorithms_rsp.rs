@@ -3,9 +3,10 @@
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
-use crate::error::{CommandError, CommandResult, SpdmError};
+use crate::error::{CommandResult, SpdmError};
 use crate::protocol::*;
 use crate::state::ConnectionState;
+use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
 use core::mem::size_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -281,17 +282,9 @@ async fn process_negotiate_algorithms_request<'a>(
         .connection_info
         .set_peer_algorithms(peer_algorithms);
 
-    // Append Capabilities request to the transcript VCA context
-    let req_msg = req_payload
-        .message_data()
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-
-    // writeln!(ctx.cw, "SPDM_LIB: Algorithms request: {:X?}", req_msg).unwrap();
-
-    ctx.transcript_mgr
-        .append(crate::transcript::TranscriptContext::Vca, req_msg)
+    // Append GET_CAPABILITIES to the transcript VCA context
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::Vca)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
 async fn generate_algorithms_response<'a>(
@@ -319,17 +312,6 @@ async fn generate_algorithms_response<'a>(
 
     // MeasurementSpecificationSel
     let measurement_specification_sel = selected_measurement_specification(ctx);
-    // MeasurementSpecification::default();
-    // if local_cap_flags.mel_cap() == 1
-    //     || (local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithNoSignature as u8
-    //         || local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithSignature as u8)
-    // {
-    //     measurement_specification_sel =
-    //         MeasurementSpecification(local_algorithms.measurement_spec.0.prioritize(
-    //             &peer_algorithms.measurement_spec.0,
-    //             algorithm_priority_table.measurement_specification,
-    //         ));
-    // }
 
     // OtherParamsSelection (Responder doesn't set the multi asymmetric key use flag)
     let mut other_params_selection = OtherParamSupport::default();
@@ -394,15 +376,9 @@ async fn generate_algorithms_response<'a>(
     rsp.push_data(payload_len)
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?;
 
-    // Add the response to the transcript VCA context
-    let rsp_msg = rsp
-        .message_data()
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-    // writeln!(ctx.cw, "SPDM_LIB: Algorithms response: {:X?}", rsp_msg).unwrap();
-    ctx.transcript_mgr
-        .append(crate::transcript::TranscriptContext::Vca, rsp_msg)
+    // Add the ALGORITHMS to the transcript VCA context
+    ctx.append_message_to_transcript(rsp, TranscriptContext::Vca)
         .await
-        .map_err(|e| (false, CommandError::Transcript(e)))
 }
 
 fn encode_alg_struct_table(
@@ -514,7 +490,7 @@ pub(crate) async fn handle_negotiate_algorithms<'a>(
     ctx.prepare_response_buffer(req_payload)?;
     generate_algorithms_response(ctx, req_payload).await?;
 
-    // Set the connection state to AfterAlgorithms
+    // Set the connection state to AlgorithmsNegotiated
     ctx.state
         .connection_info
         .set_state(ConnectionState::AlgorithmsNegotiated);
