@@ -1,8 +1,6 @@
 // Licensed under the Apache-2.0 license
-extern crate alloc;
+use crate::measurements::freeform_manifest::FreeformManifest;
 use crate::protocol::{MeasurementSpecification, SHA384_HASH_SIZE};
-use alloc::boxed::Box;
-use async_trait::async_trait;
 use bitfield::bitfield;
 use libapi_caliptra::error::CaliptraApiError;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -19,13 +17,27 @@ pub enum MeasurementsError {
 }
 pub type MeasurementsResult<T> = Result<T, MeasurementsError>;
 
-#[async_trait]
-pub trait SpdmMeasurements {
+pub(crate) enum SpdmMeasurements {
+    FreeformManifest(FreeformManifest),
+}
+
+impl Default for SpdmMeasurements {
+    fn default() -> Self {
+        SpdmMeasurements::FreeformManifest(FreeformManifest::default())
+    }
+}
+
+#[allow(dead_code)]
+impl SpdmMeasurements {
     /// Returns the total number of measurement blocks.
     ///
     /// # Returns
     /// The total number of measurement blocks.
-    fn total_measurement_count(&self) -> usize;
+    pub(crate) fn total_measurement_count(&self) -> usize {
+        match self {
+            SpdmMeasurements::FreeformManifest(manifest) => manifest.total_measurement_count(),
+        }
+    }
 
     /// Returns the measurement block size for the given index.
     /// valid index is 1 to 0xFF.
@@ -37,19 +49,37 @@ pub trait SpdmMeasurements {
     ///
     /// # Returns
     /// The size of the measurement block.
-    async fn measurement_block_size(&mut self, index: u8, raw_bit_stream: bool) -> usize;
+    pub(crate) async fn measurement_block_size(
+        &mut self,
+        index: u8,
+        raw_bit_stream: bool,
+    ) -> usize {
+        match self {
+            SpdmMeasurements::FreeformManifest(manifest) => {
+                manifest.measurement_block_size(index, raw_bit_stream).await
+            }
+        }
+    }
 
     /// Returns all measurement blocks.
     ///
     /// # Arguments
     /// * `raw_bit_stream` - If true, returns the raw bit stream.
     /// * `offset` - The offset to start reading from.
-    async fn measurement_record(
+    pub(crate) async fn measurement_record(
         &mut self,
         raw_bit_stream: bool,
         offset: usize,
         measurement_chunk: &mut [u8],
-    ) -> MeasurementsResult<()>;
+    ) -> MeasurementsResult<()> {
+        match self {
+            SpdmMeasurements::FreeformManifest(manifest) => {
+                manifest
+                    .measurement_record(raw_bit_stream, offset, measurement_chunk)
+                    .await
+            }
+        }
+    }
 
     /// Returns the measurement block for the given index.
     ///
@@ -61,13 +91,21 @@ pub trait SpdmMeasurements {
     ///
     /// # Returns
     /// A result indicating success or failure.
-    async fn measurement_block(
+    pub(crate) async fn measurement_block(
         &mut self,
         index: u8,
         raw_bit_stream: bool,
         offset: usize,
         measurement_chunk: &mut [u8],
-    ) -> MeasurementsResult<()>;
+    ) -> MeasurementsResult<()> {
+        match self {
+            SpdmMeasurements::FreeformManifest(manifest) => {
+                manifest
+                    .measurement_block(index, raw_bit_stream, offset, measurement_chunk)
+                    .await
+            }
+        }
+    }
 
     /// Returns the measurement summary hash.
     /// This is a hash of all the measurement blocks
@@ -75,16 +113,24 @@ pub trait SpdmMeasurements {
     /// # Arguments
     /// * `hash` - The buffer to store the hash.
     /// * `measurement_summary_hash_type` - The type of the measurement summary hash to be calculated.
-    /// 1 - TCB measurements only
-    /// 0xFF - All measurements
+    ///   1 - TCB measurements only
+    ///   0xFF - All measurements
     ///
     /// # Returns
     /// A result indicating success or failure.
-    async fn measurement_summary_hash(
+    pub(crate) async fn measurement_summary_hash(
         &mut self,
         measurement_summary_hash_type: u8,
         hash: &mut [u8; SHA384_HASH_SIZE],
-    ) -> MeasurementsResult<()>;
+    ) -> MeasurementsResult<()> {
+        match self {
+            SpdmMeasurements::FreeformManifest(manifest) => {
+                manifest
+                    .measurement_summary_hash(measurement_summary_hash_type, hash)
+                    .await
+            }
+        }
+    }
 }
 
 // From table 55 (SPDM 1.3.2) - DMTFSpecMeasurementValueType

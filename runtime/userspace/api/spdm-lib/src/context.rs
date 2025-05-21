@@ -28,7 +28,7 @@ pub struct SpdmContext<'a> {
     pub(crate) local_capabilities: DeviceCapabilities,
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
     pub(crate) device_certs_store: &'a mut dyn SpdmCertStore,
-    pub(crate) measurements: &'a mut dyn SpdmMeasurements,
+    pub(crate) measurements: SpdmMeasurements,
     pub(crate) cw: &'a mut ConsoleWriter<DefaultSyscalls>,
 }
 
@@ -39,7 +39,6 @@ impl<'a> SpdmContext<'a> {
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
         device_certs_store: &'a mut dyn SpdmCertStore,
-        measurements: &'a mut dyn SpdmMeasurements,
         cw: &'a mut ConsoleWriter<DefaultSyscalls>,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
@@ -56,7 +55,7 @@ impl<'a> SpdmContext<'a> {
             local_capabilities,
             local_algorithms,
             device_certs_store,
-            measurements,
+            measurements: SpdmMeasurements::default(),
             cw,
         })
     }

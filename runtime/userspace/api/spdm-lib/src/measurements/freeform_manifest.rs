@@ -1,13 +1,10 @@
 // Licensed under the Apache-2.0 license
-extern crate alloc;
 
 use crate::measurements::common::{
     DmtfMeasurementBlockMetadata, MeasurementValueType, MeasurementsError, MeasurementsResult,
-    SpdmMeasurements, SPDM_MEASUREMENT_MANIFEST_INDEX,
+    SPDM_MEASUREMENT_MANIFEST_INDEX,
 };
 use crate::protocol::SHA384_HASH_SIZE;
-use alloc::boxed::Box;
-use async_trait::async_trait;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 use libapi_caliptra::evidence::{Evidence, PCR_QUOTE_SIZE};
 use libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
@@ -39,36 +36,17 @@ impl Default for FreeformManifest {
     }
 }
 
+#[allow(dead_code)]
 impl FreeformManifest {
-    async fn refresh_measurement_record(&mut self) -> MeasurementsResult<()> {
-        let measurement_record = &mut self.measurement_record;
-        measurement_record.fill(0);
-        let metadata = DmtfMeasurementBlockMetadata::new(
-            SPDM_MEASUREMENT_MANIFEST_INDEX,
-            PCR_QUOTE_SIZE as u16,
-            false,
-            MeasurementValueType::FreeformManifest,
-        )?;
-
-        const METADATA_SIZE: usize = size_of::<DmtfMeasurementBlockMetadata>();
-
-        measurement_record[0..METADATA_SIZE].copy_from_slice(metadata.as_bytes());
-
-        Evidence::pcr_quote(&mut measurement_record[METADATA_SIZE..])
-            .await
-            .map_err(MeasurementsError::CaliptraApi)?;
-
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl SpdmMeasurements for FreeformManifest {
-    fn total_measurement_count(&self) -> usize {
+    pub(crate) fn total_measurement_count(&self) -> usize {
         1
     }
 
-    async fn measurement_block_size(&mut self, index: u8, raw_bit_stream: bool) -> usize {
+    pub(crate) async fn measurement_block_size(
+        &mut self,
+        index: u8,
+        raw_bit_stream: bool,
+    ) -> usize {
         if index != SPDM_MEASUREMENT_MANIFEST_INDEX {
             return 0;
         }
@@ -78,7 +56,7 @@ impl SpdmMeasurements for FreeformManifest {
         PCR_QUOTE_SIZE + size_of::<DmtfMeasurementBlockMetadata>()
     }
 
-    async fn measurement_record(
+    pub(crate) async fn measurement_record(
         &mut self,
         _raw_bit_stream: bool,
         _offset: usize,
@@ -87,7 +65,7 @@ impl SpdmMeasurements for FreeformManifest {
         todo!("Implement all measurement blocks");
     }
 
-    async fn measurement_block(
+    pub(crate) async fn measurement_block(
         &mut self,
         index: u8,
         raw_bit_stream: bool,
@@ -103,7 +81,7 @@ impl SpdmMeasurements for FreeformManifest {
         todo!("Implement measurement block");
     }
 
-    async fn measurement_summary_hash(
+    pub(crate) async fn measurement_summary_hash(
         &mut self,
         _measurement_summary_hash_type: u8,
         hash: &mut [u8; SHA384_HASH_SIZE],
@@ -139,5 +117,26 @@ impl SpdmMeasurements for FreeformManifest {
             .finalize(hash)
             .await
             .map_err(MeasurementsError::CaliptraApi)
+    }
+
+    async fn refresh_measurement_record(&mut self) -> MeasurementsResult<()> {
+        let measurement_record = &mut self.measurement_record;
+        measurement_record.fill(0);
+        let metadata = DmtfMeasurementBlockMetadata::new(
+            SPDM_MEASUREMENT_MANIFEST_INDEX,
+            PCR_QUOTE_SIZE as u16,
+            false,
+            MeasurementValueType::FreeformManifest,
+        )?;
+
+        const METADATA_SIZE: usize = size_of::<DmtfMeasurementBlockMetadata>();
+
+        measurement_record[0..METADATA_SIZE].copy_from_slice(metadata.as_bytes());
+
+        Evidence::pcr_quote(&mut measurement_record[METADATA_SIZE..])
+            .await
+            .map_err(MeasurementsError::CaliptraApi)?;
+
+        Ok(())
     }
 }

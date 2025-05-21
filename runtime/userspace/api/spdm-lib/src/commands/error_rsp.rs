@@ -128,9 +128,11 @@ mod test {
             encode_error_response(&mut buf, SpdmVersion::V10, error_code, error_data, None)
                 == (true, CommandError::ErrorCode(error_code))
         );
-        assert_eq!(buf.data_len(), 2);
-        assert!(raw_buf[0] == error_code.into());
-        assert!(raw_buf[1] == error_data);
+        assert_eq!(buf.data_len(), 4);
+        assert!(raw_buf[0] == SpdmVersion::V10.into());
+        assert!(raw_buf[1] == ReqRespCode::Error.into());
+        assert!(raw_buf[2] == error_code.into());
+        assert!(raw_buf[3] == error_data);
     }
 
     #[test]
@@ -151,10 +153,12 @@ mod test {
                 extended_data
             ) == (true, CommandError::ErrorCode(error_code))
         );
-        assert_eq!(buf.data_len(), 34);
-        assert!(raw_buf[0] == error_code.into());
-        assert!(raw_buf[1] == error_data);
-        assert_eq!(&raw_buf[2..34], extended_raw_data);
+        assert_eq!(buf.data_len(), 36);
+        assert!(raw_buf[0] == SpdmVersion::V10.into());
+        assert!(raw_buf[1] == ReqRespCode::Error.into());
+        assert!(raw_buf[2] == error_code.into());
+        assert!(raw_buf[3] == error_data);
+        assert_eq!(&raw_buf[4..36], extended_raw_data);
     }
 
     #[test]
