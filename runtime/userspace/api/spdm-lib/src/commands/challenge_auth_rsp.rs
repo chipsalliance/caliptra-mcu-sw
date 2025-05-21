@@ -178,10 +178,10 @@ async fn encode_m1_signature<'a>(
         m1_transcript_hash
     };
 
-    writeln!(
-        ctx.cw,
-        "SPDM_LIB: SPDM_CHALLENGE_AUTH: M1 transcript hash: {:x?} signing context: {:x?} TBS hash: {:x?}",
-        m1_transcript_hash, context, tbs).unwrap();
+    // writeln!(
+    //     ctx.cw,
+    //     "SPDM_LIB: SPDM_CHALLENGE_AUTH: M1 transcript hash: {:x?} signing context: {:x?} TBS hash: {:x?}",
+    //     m1_transcript_hash, context, tbs).unwrap();
 
     let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
 
