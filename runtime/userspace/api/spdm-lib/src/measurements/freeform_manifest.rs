@@ -80,9 +80,9 @@ impl SpdmMeasurements for FreeformManifest {
 
     async fn measurement_record(
         &mut self,
-        raw_bit_stream: bool,
-        offset: usize,
-        measurement_chunk: &mut [u8],
+        _raw_bit_stream: bool,
+        _offset: usize,
+        _measurement_chunk: &mut [u8],
     ) -> MeasurementsResult<()> {
         todo!("Implement all measurement blocks");
     }
@@ -91,8 +91,8 @@ impl SpdmMeasurements for FreeformManifest {
         &mut self,
         index: u8,
         raw_bit_stream: bool,
-        offset: usize,
-        measurement_chunk: &mut [u8],
+        _offset: usize,
+        _measurement_chunk: &mut [u8],
     ) -> MeasurementsResult<()> {
         if index != SPDM_MEASUREMENT_MANIFEST_INDEX {
             return Err(MeasurementsError::InvalidIndex);

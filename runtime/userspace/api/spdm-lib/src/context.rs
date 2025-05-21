@@ -8,7 +8,7 @@ use crate::commands::{
     algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, digests_rsp, version_rsp,
 };
 use crate::error::*;
-use crate::measurements::{common::SpdmMeasurements, freeform_manifest::FreeformManifest};
+use crate::measurements::common::SpdmMeasurements;
 use crate::protocol::algorithms::*;
 use crate::protocol::common::{ReqRespCode, SpdmMsgHdr};
 use crate::protocol::version::*;
@@ -188,11 +188,8 @@ impl<'a> SpdmContext<'a> {
     }
 
     pub(crate) fn reset_transcript_via_req_code(&mut self, req_code: ReqRespCode) {
-        match req_code {
-            ReqRespCode::GetDigests => {
-                self.transcript_mgr.reset_context(TranscriptContext::M1);
-            }
-            _ => {}
+        if let ReqRespCode::GetDigests = req_code {
+            self.transcript_mgr.reset_context(TranscriptContext::M1);
         }
     }
 }

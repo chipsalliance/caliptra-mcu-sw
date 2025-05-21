@@ -4,10 +4,10 @@ use crate::crypto::rng::Rng;
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::execute_mailbox_cmd;
 use caliptra_api::mailbox::{
-    self, MailboxReqHeader, MailboxRespHeader, QuotePcrsFlags, QuotePcrsReq, QuotePcrsResp, Request,
+    MailboxReqHeader, MailboxRespHeader, QuotePcrsFlags, QuotePcrsReq, QuotePcrsResp, Request,
 };
 use core::mem::size_of;
-use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
+use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
 
 const PCR_QUOTE_RSP_START: usize = size_of::<MailboxRespHeader>();

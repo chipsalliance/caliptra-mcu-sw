@@ -141,7 +141,6 @@ pub(crate) enum DpeResponse {
     CertifyKey(CertifyEcKeyResp),
     Sign(SignResp),
     GetCertificateChain(CertificateChainResp),
-    Error(ResponseHdr),
 }
 
 #[repr(C)]

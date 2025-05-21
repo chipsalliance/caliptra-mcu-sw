@@ -15,9 +15,9 @@ use libtock_console::{Console, ConsoleWriter};
 use libtock_platform::Syscalls;
 use spdm_lib::codec::MessageBuf;
 use spdm_lib::context::SpdmContext;
-use spdm_lib::measurements::{common::SpdmMeasurements, freeform_manifest::FreeformManifest};
+use spdm_lib::measurements::freeform_manifest::FreeformManifest;
 use spdm_lib::protocol::*;
-use spdm_lib::transport::{MctpTransport, SpdmTransport, TransportResult};
+use spdm_lib::transport::{MctpTransport, SpdmTransport};
 
 use libsyscall_caliptra::DefaultSyscalls;
 

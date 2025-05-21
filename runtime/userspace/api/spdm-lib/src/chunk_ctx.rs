@@ -24,10 +24,12 @@ pub struct ChunkInfo<'a> {
     large_msg: Option<&'a dyn LargeMsgResponse>,
 }
 
+#[allow(dead_code)]
 pub(crate) struct ChunkContext<'a> {
     chunk_get: ChunkInfo<'a>,
 }
 
+#[allow(dead_code)]
 impl<'a> ChunkContext<'a> {
     pub fn new() -> Self {
         Self {
@@ -41,6 +43,12 @@ impl<'a> ChunkContext<'a> {
 
     pub fn init_chunk_get(&mut self, large_msg: &'a dyn LargeMsgResponse) -> ChunkResult<()> {
         self.chunk_get.init(large_msg)
+    }
+}
+
+impl<'a> Default for ChunkInfo<'a> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -1,9 +1,11 @@
 #![forbid(unsafe_code)]
 #![no_std]
 
-#[cfg(debug_assertions)]
-extern crate libtock_debug_panic;
+// #[cfg(debug_assertions)]
 #[cfg(not(debug_assertions))]
+extern crate libtock_debug_panic;
+// #[cfg(not(debug_assertions))]
+#[cfg(debug_assertions)]
 extern crate libtock_small_panic;
 
 pub use libtock_platform as platform;

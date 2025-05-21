@@ -6,9 +6,9 @@ use crate::commands::digests_rsp::compute_cert_chain_hash;
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
+use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
-use crate::{measurements, protocol::*};
 use bitfield::bitfield;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 use libapi_caliptra::crypto::rng::Rng;
@@ -257,8 +257,7 @@ async fn encode_measurement_summary_hash<'a>(
     Ok(hash_len)
 }
 
-fn encode_opaque_data<'a>(rsp: &mut MessageBuf<'a>) -> CommandResult<usize> {
-    let opaque_data_len: u16 = 0;
+fn encode_opaque_data(rsp: &mut MessageBuf<'_>) -> CommandResult<usize> {
     let len = size_of::<u16>();
     rsp.put_data(len)
         .map_err(|e| (false, CommandError::Codec(e)))?;

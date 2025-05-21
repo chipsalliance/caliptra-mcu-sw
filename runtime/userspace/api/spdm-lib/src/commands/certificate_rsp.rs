@@ -11,7 +11,7 @@ use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use core::fmt::Write;
+// use core::fmt::Write;
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]

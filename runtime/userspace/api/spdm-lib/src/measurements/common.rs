@@ -145,8 +145,10 @@ impl DmtfMeasurementBlockMetadata {
             return Err(MeasurementsError::InvalidIndex);
         }
 
-        let mut meas_block_common = DmtfMeasurementBlockMetadata::default();
-        meas_block_common.index = index;
+        let mut meas_block_common = DmtfMeasurementBlockMetadata {
+            index,
+            ..Default::default()
+        };
         meas_block_common
             .meas_specification
             .set_dmtf_measurement_spec(1);
@@ -162,7 +164,7 @@ impl DmtfMeasurementBlockMetadata {
             .meas_val_hdr
             .value_type
             .set_meas_val_type(meas_value_type as u8);
-        meas_block_common.meas_val_hdr.value_size = meas_value_size as u16;
+        meas_block_common.meas_val_hdr.value_size = meas_value_size;
 
         Ok(meas_block_common)
     }
