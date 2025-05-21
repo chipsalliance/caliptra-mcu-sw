@@ -166,12 +166,14 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_mailbox::test_caliptra_mailbox().await;
         test_caliptra_mailbox::test_caliptra_mailbox_bad_command().await;
         test_caliptra_mailbox::test_caliptra_mailbox_fail().await;
+        test_caliptra_mailbox::test_caliptra_evidence().await;
         romtime::test_exit(0);
     }
 
     #[cfg(feature = "test-caliptra-crypto")]
     {
         test_caliptra_crypto::test_caliptra_sha().await;
+        test_caliptra_crypto::test_caliptra_rng().await;
         romtime::test_exit(0);
     }
 

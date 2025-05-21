@@ -104,7 +104,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: parvathib/spdm-emu
-          ref: pbhogaraju/get-certificate
+          ref: pbhogaraju/challenge
           path: spdm-emu
           submodules: recursive
 
@@ -114,7 +114,7 @@ jobs:
           git submodule update --init --recursive
           mkdir build
           pushd build
-          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=mbedtls ..
+          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=openssl ..
           make copy_sample_key
           make
           popd

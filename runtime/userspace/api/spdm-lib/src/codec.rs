@@ -20,13 +20,14 @@ pub trait Codec {
         Self: Sized;
 }
 
+#[derive(PartialEq)]
 pub enum DataKind {
     Header,
     Payload,
 }
 
 pub trait CommonCodec: FromBytes + IntoBytes + Immutable {
-    const DATA_KIND: DataKind;
+    const DATA_KIND: DataKind = DataKind::Payload;
 }
 
 impl<T> Codec for T
@@ -37,9 +38,11 @@ where
         let len = core::mem::size_of::<T>();
         match T::DATA_KIND {
             DataKind::Header => {
-                buffer.push_data(core::mem::size_of::<Self>())?;
+                let len = core::mem::size_of::<Self>();
+                buffer.push_data(len)?;
                 let header = buffer.data_mut(len)?;
                 self.write_to(header).map_err(|_| CodecError::WriteError)?;
+                buffer.push_head(len)?;
             }
             DataKind::Payload => {
                 buffer.put_data(len)?;
@@ -64,6 +67,10 @@ where
         let data = buffer.data(len)?;
         let data = T::read_from_bytes(data).map_err(|_| CodecError::ReadError)?;
         buffer.pull_data(len)?;
+
+        if Self::DATA_KIND == DataKind::Header {
+            buffer.pull_head(len)?;
+        }
         Ok(data)
     }
 }
@@ -73,6 +80,8 @@ where
 pub struct MessageBuf<'a> {
     /// Message buffer
     buffer: &'a mut [u8],
+    /// Headspace of the message buffer
+    head: usize,
     /// Start of the payload
     data: usize,
     /// End of the payload. Represents the length of the message
@@ -83,6 +92,7 @@ impl<'a> MessageBuf<'a> {
     pub fn new(buffer: &'a mut [u8]) -> Self {
         Self {
             buffer,
+            head: 0,
             tail: 0,
             data: 0,
         }
@@ -95,6 +105,7 @@ impl<'a> MessageBuf<'a> {
         }
         self.data += header_len;
         self.tail += header_len;
+        self.head = header_len;
         Ok(())
     }
 
@@ -137,6 +148,26 @@ impl<'a> MessageBuf<'a> {
         Ok(())
     }
 
+    /// Decrements the head pointer (pushes up) by specified number of bytes.
+    /// This is used to remove the headspace of the message buffer
+    pub fn push_head(&mut self, len: usize) -> CodecResult<()> {
+        if self.head < len {
+            Err(CodecError::BufferUnderflow)?;
+        }
+        self.head -= len;
+        Ok(())
+    }
+
+    /// Increments the head pointer (pulls down) by specified number of bytes.
+    /// This is used to set the headspace of the message buffer while processing
+    pub fn pull_head(&mut self, len: usize) -> CodecResult<()> {
+        if self.head + len > self.tail || self.head + len > self.data {
+            Err(CodecError::BufferOverflow)?;
+        }
+        self.head += len;
+        Ok(())
+    }
+
     /// Remove data from the end of the buffer by the specified number of bytes
     /// This is used to resize the buffer length.
     pub fn trim(&mut self, len: usize) -> CodecResult<()> {
@@ -174,6 +205,14 @@ impl<'a> MessageBuf<'a> {
         self.buffer.fill(0);
         self.data = 0;
         self.tail = 0;
+    }
+
+    /// Returns the message buffer from the data pointer to the tail pointer
+    pub fn message_data(&self) -> CodecResult<&[u8]> {
+        if self.head > self.tail || self.head > self.data {
+            Err(CodecError::BufferUnderflow)?;
+        }
+        Ok(&self.buffer[self.head..self.tail])
     }
 
     /// For debug purposes

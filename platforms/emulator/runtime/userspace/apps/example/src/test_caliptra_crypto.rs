@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
+use libapi_caliptra::crypto::rng::Rng;
+use libapi_caliptra::mailbox_api::{MAX_RANDOM_NUM_SIZE, MAX_RANDOM_STIR_SIZE};
 
 use core::fmt::write;
 use romtime::{println, test_exit};
@@ -65,4 +67,96 @@ async fn test_sha(data: &[u8], algo: HashAlgoType, expected_hash: &[u8]) {
     }
 
     println!("SHA test for {:?} passed", algo);
+}
+
+pub async fn test_caliptra_rng() {
+    println!("Starting Caliptra mailbox RNG test");
+    // test_add_random_stir().await;
+    test_generate_random_number().await;
+    println!("RNG test completed successfully");
+}
+
+async fn test_add_random_stir() {
+    println!("Testing RNG add stir");
+
+    let mut random_stir = [1u8; MAX_RANDOM_STIR_SIZE];
+
+    // Add random stir of max allowed size
+    let result = Rng::add_random_stir(&random_stir).await;
+
+    if result.is_err() {
+        println!("Failed to add random stir: {:?}", result);
+        test_exit(1);
+    }
+
+    println!(
+        "Random stir of size {} added successfully: {:?}",
+        random_stir.len(),
+        random_stir
+    );
+}
+
+async fn test_generate_random_number() {
+    println!("Testing RNG");
+
+    let mut random_number = [0u8; MAX_RANDOM_NUM_SIZE];
+
+    // Generate random number of max allowed size
+    let result = Rng::generate_random_number(&mut random_number).await;
+
+    if result.is_err() {
+        println!("Failed to generate random number: {:?}", result);
+        test_exit(1);
+    }
+
+    println!(
+        "Random number of size {} generated successfully: {:?}",
+        random_number.len(),
+        random_number
+    );
+
+    // Generate random number of size 0
+    let result = Rng::generate_random_number(&mut []).await;
+    if result.is_err() {
+        println!("Failed to generate random number of size 0: {:?}", result);
+        test_exit(1);
+    }
+
+    println!("Random number of size 0 generated successfully");
+
+    random_number.fill(0);
+
+    // Generate random number of size 1
+    let result = Rng::generate_random_number(&mut random_number[..1]).await;
+    if result.is_err() {
+        println!("Failed to generate random number of size 1: {:?}", result);
+        test_exit(1);
+    }
+    println!(
+        "Random number of size 1 generated successfully: {:?}",
+        random_number
+    );
+
+    // Generate random number of size 31
+    random_number.fill(0);
+    let result = Rng::generate_random_number(&mut random_number[..31]).await;
+    if result.is_err() {
+        println!("Failed to generate random number of size 31: {:?}", result);
+        test_exit(1);
+    }
+    println!(
+        "Random number of size 31 generated successfully: {:?}",
+        random_number
+    );
+    // Generate random number of size 33
+    let mut invalid_random_number = [0u8; 33];
+    let result = Rng::generate_random_number(&mut invalid_random_number).await;
+    if !result.is_err() {
+        println!("Failed!!. Generate random number of size 33: {:?}", result);
+        test_exit(1);
+    }
+    println!(
+        "Generate random number of size 33 failed as expected: {:?}",
+        result
+    );
 }

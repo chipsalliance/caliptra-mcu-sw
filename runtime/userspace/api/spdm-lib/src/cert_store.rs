@@ -50,7 +50,7 @@ pub trait SpdmCertStore {
     ///
     /// # Arguments
     /// * `slot_id` - The slot ID of the certificate chain.
-    /// * `asym_algo` - The asymmetric algorithm to indicate the type of Certificate chain.
+    /// * `asym_algo` - The asymmetric algorithm to indicate the type of certificate chain.
     ///
     /// # Returns
     /// * `usize` - The length of the certificate chain in bytes or error.
@@ -120,8 +120,9 @@ pub trait SpdmCertStore {
     /// * u8 - The KeyPairID associated with the certificate chain or None if not supported or not found.
     fn key_pair_id(&self, slot_id: u8) -> Option<u8>;
 
-    /// Get CertificateInfo associated with the certificate chain if SPDM responder supports
-    /// multiple assymmetric keys in connection.
+    /// Retrieve the `CertificateInfo` associated with the certificate chain for the given slot.
+    /// The `CertificateInfo` structure specifies the certificate model (such as DeviceID, Alias, or General),
+    /// and includes reserved bits for future extensions.
     ///
     /// # Arguments
     /// * `slot_id` - The slot ID of the certificate chain.
@@ -131,7 +132,7 @@ pub trait SpdmCertStore {
     fn cert_info(&self, slot_id: u8) -> Option<CertificateInfo>;
 
     /// Get the KeyUsageMask associated with the certificate chain if SPDM responder supports
-    /// multiple assymmetric keys in connection.
+    /// multiple asymmetric keys in connection.
     ///
     /// # Arguments
     /// * `slot_id` - The slot ID of the certificate chain.

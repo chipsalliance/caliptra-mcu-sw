@@ -23,3 +23,12 @@ pub mod transport;
 
 // Device certificate management
 pub mod cert_store;
+
+// Transcript management
+pub mod transcript;
+
+// Large message transfer management
+pub mod chunk_ctx;
+
+// Spdm measurements management
+pub mod measurements;

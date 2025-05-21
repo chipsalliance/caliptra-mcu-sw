@@ -8,6 +8,8 @@ use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use romtime::{println, test_exit};
 use zerocopy::{FromBytes, IntoBytes};
 
+use libapi_caliptra::evidence::{Evidence, PCR_QUOTE_SIZE};
+
 #[allow(unused)]
 pub(crate) async fn test_caliptra_mailbox() {
     println!("Starting mailbox test");
@@ -132,4 +134,32 @@ pub(crate) async fn test_caliptra_mailbox_fail() {
             test_exit(1);
         }
     }
+}
+
+#[allow(unused)]
+pub(crate) async fn test_caliptra_evidence() {
+    println!("Starting mailbox evidence test");
+
+    test_pcr_quote().await;
+}
+
+async fn test_pcr_quote() {
+    println!("Starting PCR quote test");
+    let mut pcr_quote = [0u8; PCR_QUOTE_SIZE];
+
+    match Evidence::pcr_quote(&mut pcr_quote).await {
+        Ok(size) => {
+            if size != PCR_QUOTE_SIZE {
+                println!("Invalid size: expected {}, got {}", PCR_QUOTE_SIZE, size);
+                test_exit(1);
+            }
+            println!("PCR quote: {:x?}  Size: {}", &pcr_quote[..size], size);
+        }
+        Err(err) => {
+            println!("Failed to get PCR quote: {:?}", err);
+            test_exit(1);
+        }
+    }
+
+    println!("PCR Quote test success");
 }

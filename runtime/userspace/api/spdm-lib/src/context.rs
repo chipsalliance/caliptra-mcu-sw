@@ -3,25 +3,29 @@
 // use crate::cert_mgr::DeviceCertsManager;
 use crate::cert_store::*;
 use crate::codec::{Codec, MessageBuf};
-use crate::commands::error_rsp::{fill_error_response, ErrorCode};
+use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
-    algorithms_rsp, capabilities_rsp, certificate_rsp, digests_rsp, version_rsp,
+    algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, digests_rsp, version_rsp,
 };
 use crate::error::*;
+use crate::measurements::common::SpdmMeasurements;
 use crate::protocol::algorithms::*;
 use crate::protocol::common::{ReqRespCode, SpdmMsgHdr};
 use crate::protocol::version::*;
 use crate::protocol::DeviceCapabilities;
 use crate::state::State;
+use crate::transcript::{TranscriptContext, TranscriptManager};
 use crate::transport::SpdmTransport;
 
 pub struct SpdmContext<'a> {
     transport: &'a mut dyn SpdmTransport,
     pub(crate) supported_versions: &'a [SpdmVersion],
     pub(crate) state: State,
+    pub(crate) transcript_mgr: TranscriptManager,
     pub(crate) local_capabilities: DeviceCapabilities,
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
     pub(crate) device_certs_store: &'a mut dyn SpdmCertStore,
+    pub(crate) measurements: SpdmMeasurements,
 }
 
 impl<'a> SpdmContext<'a> {
@@ -42,9 +46,11 @@ impl<'a> SpdmContext<'a> {
             supported_versions,
             transport: spdm_transport,
             state: State::new(),
+            transcript_mgr: TranscriptManager::new(),
             local_capabilities,
             local_algorithms,
             device_certs_store,
+            measurements: SpdmMeasurements::default(),
         })
     }
 
@@ -56,14 +62,12 @@ impl<'a> SpdmContext<'a> {
 
         // Process message
         match self.handle_request(msg_buf).await {
-            Ok(resp_code) => {
-                self.send_response(resp_code, msg_buf).await?;
+            Ok(()) => {
+                self.send_response(msg_buf).await?;
             }
             Err((rsp, command_error)) => {
                 if rsp {
-                    self.send_response(ReqRespCode::Error, msg_buf)
-                        .await
-                        .inspect_err(|_| {})?;
+                    self.send_response(msg_buf).await.inspect_err(|_| {})?;
                 }
                 Err(SpdmError::Command(command_error))?;
             }
@@ -72,7 +76,7 @@ impl<'a> SpdmContext<'a> {
         Ok(())
     }
 
-    async fn handle_request(&mut self, buf: &mut MessageBuf<'a>) -> CommandResult<ReqRespCode> {
+    async fn handle_request(&mut self, buf: &mut MessageBuf<'a>) -> CommandResult<()> {
         let req = buf;
 
         let req_msg_header: SpdmMsgHdr =
@@ -81,38 +85,32 @@ impl<'a> SpdmContext<'a> {
         let req_code = req_msg_header
             .req_resp_code()
             .map_err(|_| (false, CommandError::UnsupportedRequest))?;
-        let resp_code = req_code
-            .response_code()
-            .map_err(|_| (false, CommandError::UnsupportedRequest))?;
 
         match req_code {
-            ReqRespCode::GetVersion => version_rsp::handle_version(self, req_msg_header, req)?,
+            ReqRespCode::GetVersion => {
+                version_rsp::handle_get_version(self, req_msg_header, req).await?
+            }
             ReqRespCode::GetCapabilities => {
-                capabilities_rsp::handle_capabilities(self, req_msg_header, req)?
+                capabilities_rsp::handle_get_capabilities(self, req_msg_header, req).await?
             }
             ReqRespCode::NegotiateAlgorithms => {
-                algorithms_rsp::handle_negotiate_algorithms(self, req_msg_header, req)?
+                algorithms_rsp::handle_negotiate_algorithms(self, req_msg_header, req).await?
             }
             ReqRespCode::GetDigests => {
-                digests_rsp::handle_digests(self, req_msg_header, req).await?
+                digests_rsp::handle_get_digests(self, req_msg_header, req).await?
             }
             ReqRespCode::GetCertificate => {
-                certificate_rsp::handle_certificates(self, req_msg_header, req).await?
+                certificate_rsp::handle_get_certificate(self, req_msg_header, req).await?
+            }
+            ReqRespCode::Challenge => {
+                challenge_auth_rsp::handle_challenge(self, req_msg_header, req).await?
             }
             _ => Err((false, CommandError::UnsupportedRequest))?,
         }
-        Ok(resp_code)
+        Ok(())
     }
 
-    async fn send_response(
-        &mut self,
-        resp_code: ReqRespCode,
-        resp: &mut MessageBuf<'a>,
-    ) -> SpdmResult<()> {
-        let spdm_version = self.state.connection_info.version_number();
-        let spdm_resp_hdr = SpdmMsgHdr::new(spdm_version, resp_code);
-        spdm_resp_hdr.encode(resp).map_err(SpdmError::Codec)?;
-
+    async fn send_response(&mut self, resp: &mut MessageBuf<'a>) -> SpdmResult<()> {
         self.transport
             .send_response(resp)
             .await
@@ -122,7 +120,7 @@ impl<'a> SpdmContext<'a> {
     pub(crate) fn prepare_response_buffer(&self, rsp_buf: &mut MessageBuf) -> CommandResult<()> {
         rsp_buf.reset();
         rsp_buf
-            .reserve(self.transport.header_size() + core::mem::size_of::<SpdmMsgHdr>())
+            .reserve(self.transport.header_size())
             .map_err(|_| (false, CommandError::BufferTooSmall))?;
         Ok(())
     }
@@ -167,7 +165,7 @@ impl<'a> SpdmContext<'a> {
         Ok(AsymAlgo::EccP384)
     }
 
-    pub fn generate_error_response(
+    pub(crate) fn generate_error_response(
         &self,
         msg_buf: &mut MessageBuf,
         error_code: ErrorCode,
@@ -177,6 +175,29 @@ impl<'a> SpdmContext<'a> {
         let _ = self
             .prepare_response_buffer(msg_buf)
             .map_err(|_| (false, CommandError::BufferTooSmall));
-        fill_error_response(msg_buf, error_code, error_data, extended_data)
+        let spdm_version = self.state.connection_info.version_number();
+
+        encode_error_response(msg_buf, spdm_version, error_code, error_data, extended_data)
+    }
+
+    pub(crate) fn reset_transcript_via_req_code(&mut self, req_code: ReqRespCode) {
+        if let ReqRespCode::GetDigests = req_code {
+            self.transcript_mgr.reset_context(TranscriptContext::M1);
+        }
+    }
+
+    pub(crate) async fn append_message_to_transcript(
+        &mut self,
+        msg_buf: &mut MessageBuf<'_>,
+        transcript_context: TranscriptContext,
+    ) -> CommandResult<()> {
+        let msg = msg_buf
+            .message_data()
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+
+        self.transcript_mgr
+            .append(transcript_context, msg)
+            .await
+            .map_err(|e| (false, CommandError::Transcript(e)))
     }
 }

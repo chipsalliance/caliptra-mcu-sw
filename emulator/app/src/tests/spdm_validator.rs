@@ -244,7 +244,7 @@ impl Test {
                         target_addr,
                     );
                     if let Some(resp_msg) = result {
-                        println!("SPDM_SERVER: Received response from target {:?}", resp_msg);
+                        println!("SPDM_SERVER: Received response from target {:X?}", resp_msg);
                         assert_eq!(resp_msg[0], self.cur_req_msg[0]);
                         self.cur_resp_msg = resp_msg;
                         self.responder_ready = true;
