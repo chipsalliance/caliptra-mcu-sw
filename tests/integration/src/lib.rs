@@ -144,7 +144,7 @@ mod test {
 
     #[macro_export]
     macro_rules! run_test_options {
-        ($test:ident, $example_app:expr, $active:expr) => {
+        ($test:ident, $example_app:expr) => {
             #[test]
             fn $test() {
                 let lock = TEST_LOCK.lock().unwrap();
@@ -159,7 +159,7 @@ mod test {
                     ROM.to_path_buf(),
                     test_runtime,
                     i3c_port,
-                    $active,
+                    true,  // active mode is always true
                     false, //set this to true if you want to run in manufacturing mode
                     None,
                     None,
@@ -175,16 +175,10 @@ mod test {
     #[macro_export]
     macro_rules! run_test {
         ($test:ident) => {
-            run_test_options!($test, false, false);
+            run_test_options!($test, false);
         };
         ($test:ident, example_app) => {
-            run_test_options!($test, true, false);
-        };
-        ($test:ident, example_app, caliptra) => {
-            run_test_options!($test, true, true);
-        };
-        ($test:ident, caliptra) => {
-            run_test_options!($test, false, true);
+            run_test_options!($test, true);
         };
     }
 
@@ -193,9 +187,9 @@ mod test {
     // * add the feature to the emulator and use it to implement any behavior needed
     // * add the feature to the runtime and use it in board.rs at the end of the main function to call your test
     // These use underscores but will be converted to dashes in the feature flags
-    run_test!(test_caliptra_certs, example_app, caliptra);
-    run_test!(test_caliptra_crypto, example_app, caliptra);
-    run_test!(test_caliptra_mailbox, example_app, caliptra);
+    run_test!(test_caliptra_certs, example_app);
+    run_test!(test_caliptra_crypto, example_app);
+    run_test!(test_caliptra_mailbox, example_app);
     run_test!(test_dma, example_app);
     run_test!(test_i3c_simple);
     run_test!(test_i3c_constant_writes);
@@ -211,7 +205,7 @@ mod test {
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);
     run_test!(test_pldm_fw_update_e2e);
-    run_test!(test_spdm_validator, caliptra);
+    run_test!(test_spdm_validator);
 
     /// This tests a full active mode boot run through with Caliptra, including
     /// loading MCU's firmware from Caliptra over the recovery interface.

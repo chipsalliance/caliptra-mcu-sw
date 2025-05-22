@@ -14,6 +14,7 @@ members = [
     "emulator/cpu",
     "emulator/derive",
     "emulator/periph",
+    "hw/model",
     "registers/generated-emulator",
     "registers/generated-firmware",
     "registers/generator",
@@ -149,7 +150,7 @@ registers-systemrdl-new = { path = "registers/systemrdl-new" }
 romtime = { path = "romtime" }
 
 # App related dependencies
-pldm-lib = { path = "runtime/userspace/api/pldm-lib", features = ["pldm-lib-use-static-config"] }
+pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
 spdm-lib = { path = "runtime/userspace/api/spdm-lib" }
 libsyscall-caliptra = { path = "runtime/userspace/syscall" }
 libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }

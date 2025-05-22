@@ -1,0 +1,9 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-hw-model"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tock-registers.workspace = true

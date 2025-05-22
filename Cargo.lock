@@ -1864,6 +1864,7 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 name = "image-loader-app"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "critical-section",
  "embassy-executor",
  "embassy-sync",
@@ -2179,6 +2180,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-hw-model"
+version = "0.1.0"
+dependencies = [
+ "tock-registers",
+]
+
+[[package]]
 name = "mcu-registers-systemrdl-new"
 version = "0.1.0"
 dependencies = [
@@ -2191,6 +2199,7 @@ dependencies = [
 name = "mcu-rom-common"
 version = "0.1.0"
 dependencies = [
+ "caliptra-api",
  "registers-generated",
  "riscv-csr",
  "romtime",

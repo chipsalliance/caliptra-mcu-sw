@@ -8,6 +8,7 @@ use ureg::RealMmioMut;
 
 pub struct CaliptraSoC {
     _private: (), // ensure that this struct cannot be instantiated directly except through new
+    counter: u64,
 }
 
 impl SocManager for CaliptraSoC {
@@ -32,13 +33,18 @@ impl SocManager for CaliptraSoC {
     }
 
     /// Provides a delay function to be invoked when polling mailbox status.
-    fn delay(&mut self) {}
+    fn delay(&mut self) {
+        self.counter = core::hint::black_box(self.counter) + 1;
+    }
 }
 
 impl CaliptraSoC {
     #[allow(clippy::new_without_default)] // we don't want people to create new ones with Default
     pub const fn new() -> Self {
-        CaliptraSoC { _private: () }
+        CaliptraSoC {
+            _private: (),
+            counter: 0,
+        }
     }
 
     pub fn is_mailbox_busy(&mut self) -> bool {

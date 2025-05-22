@@ -73,6 +73,7 @@ The `cargo xtask` commands will default to the `emulator` platform (for now).
 ## Directory structure
 
 * `emulator/`: Emulator to run the ROM and RT firmware
+* `hw/model`: Abstraction for running different platforms for tests.
 * `rom/`: ROM code
 * `runtime/`: runtime firmware
 * `romtime/`: Shared code between ROM and runtime
