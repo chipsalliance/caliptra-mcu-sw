@@ -137,9 +137,9 @@ async fn test_generate_random_number() {
         random_number
     );
 
-    // Generate random number of size 31
+    // Generate random number of size less than max size
     random_number.fill(0);
-    let result = Rng::generate_random_number(&mut random_number[..31]).await;
+    let result = Rng::generate_random_number(&mut random_number[..(MAX_RANDOM_NUM_SIZE - 1)]).await;
     if result.is_err() {
         println!("Failed to generate random number of size 31: {:?}", result);
         test_exit(1);
@@ -148,8 +148,8 @@ async fn test_generate_random_number() {
         "Random number of size 31 generated successfully: {:?}",
         random_number
     );
-    // Generate random number of size 33
-    let mut invalid_random_number = [0u8; 33];
+    // Generate random number of size greater than max size
+    let mut invalid_random_number = [0u8; MAX_RANDOM_NUM_SIZE + 1];
     let result = Rng::generate_random_number(&mut invalid_random_number).await;
     if !result.is_err() {
         println!("Failed!!. Generate random number of size 33: {:?}", result);
