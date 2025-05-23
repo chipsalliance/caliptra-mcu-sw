@@ -1,7 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-use crate::components::mock_mctp::MockMctpComponent;
-use crate::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use capsules_runtime::mctp::mux::MuxMCTPDriver;
 use capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
@@ -11,6 +9,9 @@ use core::fmt::Write;
 use kernel::component::Component;
 use kernel::hil::time::Alarm;
 use kernel::static_init;
+use mcu_components::mock_mctp::MockMctpComponent;
+use mcu_components::mock_mctp_component_static;
+use mcu_tock_veer::timers::InternalTimers;
 use romtime::println;
 
 pub fn test_mctp_capsule_loopback(
@@ -22,8 +23,7 @@ pub fn test_mctp_capsule_loopback(
 ) -> Option<u32> {
     // set local EID here if needed.
     let mock_mctp = unsafe {
-        MockMctpComponent::new(mux_mctp)
-            .finalize(crate::mock_mctp_component_static!(InternalTimers))
+        MockMctpComponent::new(mux_mctp).finalize(mock_mctp_component_static!(InternalTimers))
     };
     let mctp_tester = unsafe { static_init!(TestMctp<'static>, TestMctp::new(mock_mctp)) };
     mock_mctp.set_test_client(mctp_tester);
