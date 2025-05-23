@@ -4,9 +4,6 @@ use crate::static_ref::StaticRef;
 use registers_generated::mci;
 use tock_registers::interfaces::{Readable, Writeable};
 
-pub const MCI_BASE: StaticRef<mci::regs::Mci> =
-    unsafe { StaticRef::new(mci::MCI_TOP_ADDR as *const mci::regs::Mci) };
-
 pub struct Mci {
     registers: StaticRef<mci::regs::Mci>,
 }

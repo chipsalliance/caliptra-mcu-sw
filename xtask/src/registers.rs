@@ -690,8 +690,8 @@ fn emu_make_root_bus<'a>(
             });
 
             offset_fields.extend(quote! {
-                dccm_offset: u32,
-                dccm_size: u32,
+                pub dccm_offset: u32,
+                pub dccm_size: u32,
             });
             let offset = hex_literal(*dccm_offset as u64);
             let size = hex_literal(ram_size as u64);
@@ -740,8 +740,8 @@ fn emu_make_root_bus<'a>(
         let size = hex_literal(whole_width(rblock));
 
         offset_fields.extend(quote! {
-            #offset_field: u32,
-            #size_field: u32,
+            pub #offset_field: u32,
+            pub #size_field: u32,
         });
         offset_defaults.extend(quote! {
             #offset_field: #addr,

@@ -8,8 +8,8 @@ mod runtime;
 mod tbf;
 
 pub use caliptra::{CaliptraBuilder, SocImage};
-pub use rom::rom_build;
-pub use runtime::{runtime_build_no_apps, runtime_build_with_apps};
+pub use rom::{rom_build, rom_ld_script};
+pub use runtime::{runtime_build_no_apps, runtime_build_with_apps, runtime_ld_script};
 
 use anyhow::{anyhow, Result};
 use std::{

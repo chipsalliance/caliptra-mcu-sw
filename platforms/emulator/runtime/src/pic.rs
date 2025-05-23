@@ -4,7 +4,7 @@
 
 //! Platform Level Interrupt Control peripheral driver for VeeR.
 
-use crate::_pic_vector_table;
+use crate::{_pic_vector_table, MCU_MEMORY_MAP};
 use core::ptr::write_volatile;
 use kernel::utilities::cells::VolatileCell;
 use kernel::utilities::registers::interfaces::{Readable, Writeable};
@@ -104,9 +104,9 @@ pub struct Pic {
 }
 
 impl Pic {
-    pub const fn new(base: StaticRef<PicRegisters>) -> Self {
+    pub const fn new() -> Self {
         Pic {
-            registers: base,
+            registers: unsafe { StaticRef::new(MCU_MEMORY_MAP.pic_offset as *const PicRegisters) },
             saved: [
                 VolatileCell::new(LocalRegisterCopy::new(0)),
                 VolatileCell::new(LocalRegisterCopy::new(0)),

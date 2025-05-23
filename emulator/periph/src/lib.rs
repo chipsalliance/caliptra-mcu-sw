@@ -31,6 +31,6 @@ pub use i3c::I3c;
 pub use i3c_protocol::*;
 pub use mci::Mci;
 pub use otp::Otp;
-pub use root_bus::{McuRootBus, McuRootBusArgs};
+pub use root_bus::{McuRootBus, McuRootBusArgs, McuRootBusOffsets};
 pub use spi_flash::IoMode;
 pub use uart::Uart;

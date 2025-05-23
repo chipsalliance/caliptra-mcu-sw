@@ -24,15 +24,18 @@ use crate::i3c_socket::start_i3c_socket;
 use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use clap::{ArgAction, Parser};
+use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_bmc::Bmc;
 use emulator_bus::{Bus, BusConverter, Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_consts::{RAM_OFFSET, ROM_SIZE};
 use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
-use emulator_periph::{DummyFlashCtrl, I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp};
+use emulator_periph::{
+    DummyFlashCtrl, I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp,
+};
 use emulator_registers_generated::dma::DmaPeripheral;
-use emulator_registers_generated::root_bus::AutoRootBus;
+use emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
 use gdb::gdb_state;
 use gdb::gdb_target::GdbTarget;
 use mctp_transport::MctpTransport;
@@ -124,9 +127,107 @@ struct Emulator {
 
     #[arg(long)]
     flash_image: Option<PathBuf>,
-}
 
-//const EXPECTED_CALIPTRA_BOOT_TIME_IN_CYCLES: u64 = 20_000_000; // 20 million cycles
+    /// Override ROM offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    rom_offset: Option<u32>,
+    /// Override ROM size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    rom_size: Option<u32>,
+    /// Override UART offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    uart_offset: Option<u32>,
+    /// Override UART size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    uart_size: Option<u32>,
+    /// Override emulator control offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    ctrl_offset: Option<u32>,
+    /// Override emulator control size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    ctrl_size: Option<u32>,
+    /// Override SPI offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    spi_offset: Option<u32>,
+    /// Override SPI size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    spi_size: Option<u32>,
+    /// Override SRAM offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    sram_offset: Option<u32>,
+    /// Override SRAM size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    sram_size: Option<u32>,
+    /// Override PIC offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    pic_offset: Option<u32>,
+    /// Override external test SRAM offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    external_test_sram_offset: Option<u32>,
+    /// Override external test SRAM size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    external_test_sram_size: Option<u32>,
+    /// Override DCCM offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    dccm_offset: Option<u32>,
+    /// Override DCCM size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    dccm_size: Option<u32>,
+    /// Override I3C offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    i3c_offset: Option<u32>,
+    /// Override I3C size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    i3c_size: Option<u32>,
+    /// Override main flash offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    main_flash_offset: Option<u32>,
+    /// Override main flash size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    main_flash_size: Option<u32>,
+    /// Override recovery flash offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    recovery_flash_offset: Option<u32>,
+    /// Override recovery flash size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    recovery_flash_size: Option<u32>,
+    /// Override MCI offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    mci_offset: Option<u32>,
+    /// Override MCI size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    mci_size: Option<u32>,
+    /// Override DMA offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    dma_offset: Option<u32>,
+    /// Override DMA size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    dma_size: Option<u32>,
+    /// Override Caliptra mailbox offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    mbox_offset: Option<u32>,
+    /// Override Caliptra mailbox size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    mbox_size: Option<u32>,
+    /// Override Caliptra SoC interface offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    soc_offset: Option<u32>,
+    /// Override Caliptra SoC interface size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    soc_size: Option<u32>,
+    /// Override OTP offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    otp_offset: Option<u32>,
+    /// Override OTP size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    otp_size: Option<u32>,
+    /// Override LC offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    lc_offset: Option<u32>,
+    /// Override LC size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    lc_size: Option<u32>,
+}
 
 fn disassemble(pc: u32, instr: u32) -> String {
     let mut out = vec![];
@@ -407,14 +508,118 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     };
     let pic = Rc::new(Pic::new());
 
+    let mut mcu_root_bus_offsets = McuRootBusOffsets::default();
+    let mut auto_root_bus_offsets = AutoRootBusOffsets::default();
+
+    if let Some(rom_offset) = cli.rom_offset {
+        mcu_root_bus_offsets.rom_offset = rom_offset;
+    }
+    if let Some(rom_size) = cli.rom_size {
+        mcu_root_bus_offsets.rom_size = rom_size;
+    }
+    if let Some(sram_offset) = cli.sram_offset {
+        mcu_root_bus_offsets.ram_offset = sram_offset;
+    }
+    if let Some(uart_offset) = cli.uart_offset {
+        mcu_root_bus_offsets.uart_offset = uart_offset;
+    }
+    if let Some(uart_size) = cli.uart_size {
+        mcu_root_bus_offsets.uart_size = uart_size;
+    }
+    if let Some(ctrl_offset) = cli.ctrl_offset {
+        mcu_root_bus_offsets.ctrl_offset = ctrl_offset;
+    }
+    if let Some(ctrl_size) = cli.ctrl_size {
+        mcu_root_bus_offsets.ctrl_size = ctrl_size;
+    }
+    if let Some(spi_offset) = cli.spi_offset {
+        mcu_root_bus_offsets.spi_offset = spi_offset;
+    }
+    if let Some(spi_size) = cli.spi_size {
+        mcu_root_bus_offsets.spi_size = spi_size;
+    }
+    if let Some(pic_offset) = cli.pic_offset {
+        mcu_root_bus_offsets.pic_offset = pic_offset;
+        auto_root_bus_offsets.el2_pic_offset = pic_offset;
+    }
+    if let Some(external_test_sram_offset) = cli.external_test_sram_offset {
+        mcu_root_bus_offsets.external_test_sram_offset = external_test_sram_offset;
+    }
+    if let Some(external_test_sram_size) = cli.external_test_sram_size {
+        mcu_root_bus_offsets.external_test_sram_size = external_test_sram_size;
+    }
+    if let Some(sram_size) = cli.sram_size {
+        mcu_root_bus_offsets.ram_size = sram_size;
+    }
+    if let Some(dccm_offset) = cli.dccm_offset {
+        auto_root_bus_offsets.dccm_offset = dccm_offset;
+    }
+    if let Some(dccm_size) = cli.dccm_size {
+        auto_root_bus_offsets.dccm_size = dccm_size;
+    }
+    if let Some(i3c_offset) = cli.i3c_offset {
+        auto_root_bus_offsets.i3c_offset = i3c_offset;
+    }
+    if let Some(i3c_size) = cli.i3c_size {
+        auto_root_bus_offsets.i3c_size = i3c_size;
+    }
+    if let Some(main_flash_offset) = cli.main_flash_offset {
+        auto_root_bus_offsets.main_flash_offset = main_flash_offset;
+    }
+    if let Some(main_flash_size) = cli.main_flash_size {
+        auto_root_bus_offsets.main_flash_size = main_flash_size;
+    }
+    if let Some(recovery_flash_offset) = cli.recovery_flash_offset {
+        auto_root_bus_offsets.recovery_flash_offset = recovery_flash_offset;
+    }
+    if let Some(recovery_flash_size) = cli.recovery_flash_size {
+        auto_root_bus_offsets.recovery_flash_size = recovery_flash_size;
+    }
+    if let Some(mci_offset) = cli.mci_offset {
+        auto_root_bus_offsets.mci_offset = mci_offset;
+    }
+    if let Some(mci_size) = cli.mci_size {
+        auto_root_bus_offsets.mci_size = mci_size;
+    }
+    if let Some(dma_offset) = cli.dma_offset {
+        auto_root_bus_offsets.dma_offset = dma_offset;
+    }
+    if let Some(dma_size) = cli.dma_size {
+        auto_root_bus_offsets.dma_size = dma_size;
+    }
+    if let Some(mbox_offset) = cli.mbox_offset {
+        auto_root_bus_offsets.mbox_offset = mbox_offset;
+    }
+    if let Some(mbox_size) = cli.mbox_size {
+        auto_root_bus_offsets.mbox_size = mbox_size;
+    }
+    if let Some(soc_offset) = cli.soc_offset {
+        auto_root_bus_offsets.soc_offset = soc_offset;
+    }
+    if let Some(soc_size) = cli.soc_size {
+        auto_root_bus_offsets.soc_size = soc_size;
+    }
+    if let Some(otp_offset) = cli.otp_offset {
+        auto_root_bus_offsets.otp_offset = otp_offset;
+    }
+    if let Some(otp_size) = cli.otp_size {
+        auto_root_bus_offsets.otp_size = otp_size;
+    }
+    if let Some(lc_offset) = cli.lc_offset {
+        auto_root_bus_offsets.lc_offset = lc_offset;
+    }
+    if let Some(lc_size) = cli.lc_size {
+        auto_root_bus_offsets.lc_size = lc_size;
+    }
+
     let bus_args = McuRootBusArgs {
+        offsets: mcu_root_bus_offsets.clone(),
         rom: rom_buffer,
         log_dir: args_log_dir.clone(),
         uart_output: uart_output.clone(),
         uart_rx: stdin_uart.clone(),
         pic: pic.clone(),
         clock: clock.clone(),
-        ..Default::default()
     };
     let mut root_bus = McuRootBus::new(bus_args).unwrap();
 
@@ -617,7 +822,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     let mci = Mci::new(&clock.clone());
     let mut auto_root_bus = AutoRootBus::new(
         delegates,
-        None,
+        Some(auto_root_bus_offsets),
         Some(Box::new(i3c)),
         Some(Box::new(main_flash_controller)),
         Some(Box::new(recovery_flash_controller)),
@@ -648,6 +853,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         .set_dma_ram(dma_ram);
 
     let mut cpu = Cpu::new(auto_root_bus, clock, pic);
+    cpu.write_pc(mcu_root_bus_offsets.rom_offset);
     cpu.register_events();
 
     let mut bmc = match caliptra_cpu.as_mut() {

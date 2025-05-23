@@ -8,6 +8,7 @@ edition.workspace = true
 
 [dependencies]
 caliptra-api.workspace = true
+mcu-config.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true
 tock-registers.workspace = true

@@ -3,6 +3,7 @@
 use crate::objcopy;
 use crate::{PROJECT_ROOT, TARGET};
 use anyhow::{bail, Result};
+use mcu_config::McuMemoryMap;
 use std::process::Command;
 
 pub fn rom_build() -> Result<()> {
@@ -51,3 +52,72 @@ pub fn rom_build() -> Result<()> {
     );
     Ok(())
 }
+
+pub fn rom_ld_script(memory_map: &McuMemoryMap) -> String {
+    subst::substitute(ROM_LD_TEMPLATE, &memory_map.hash_map()).unwrap()
+}
+
+const ROM_LD_TEMPLATE: &str = r#"
+/* Licensed under the Apache-2.0 license. */
+
+ENTRY(_start)
+OUTPUT_ARCH( "riscv" )
+
+MEMORY
+{
+  ROM   (rx) : ORIGIN = $ROM_OFFSET, LENGTH = $ROM_SIZE
+  RAM  (rwx) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_SIZE /* dedicated SRAM for the ROM stack */
+}
+
+SECTIONS
+{
+    .text :
+    {
+        *(.text.init )
+        *(.text*)
+        *(.rodata*)
+    } > ROM
+
+    ROM_DATA = .;
+
+    .data : AT(ROM_DATA)
+    {
+        . = ALIGN(4);
+        *(.data*);
+        *(.sdata*);
+        KEEP(*(.eh_frame))
+        . = ALIGN(4);
+        PROVIDE( GLOBAL_POINTER = . + 0x800 );
+        . = ALIGN(4);
+    } > RAM
+
+    .bss (NOLOAD) :
+    {
+        . = ALIGN(4);
+        *(.bss*)
+        *(.sbss*)
+        *(COMMON)
+        . = ALIGN(4);
+    } > RAM
+
+    .stack (NOLOAD):
+    {
+        . = ALIGN(4);
+        . = . + STACK_SIZE;
+        . = ALIGN(4);
+        PROVIDE(STACK_START = . );
+    } > RAM
+
+    _end = . ;
+}
+
+BSS_START = ADDR(.bss);
+BSS_END = BSS_START + SIZEOF(.bss);
+DATA_START = ADDR(.data);
+DATA_END = DATA_START + SIZEOF(.data);
+ROM_DATA_START = LOADADDR(.data);
+STACK_SIZE = $ROM_STACK_SIZE;
+STACK_TOP = ORIGIN(RAM) + LENGTH(RAM);
+STACK_ORIGIN = STACK_TOP - STACK_SIZE;
+
+"#;

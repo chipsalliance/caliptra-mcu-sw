@@ -9,6 +9,7 @@ use crate::pmp::KernelTextRegion;
 use crate::pmp::MMIORegion;
 use crate::pmp::VeeRProtectionMMLEPMP;
 use crate::timers::InternalTimers;
+use crate::MCU_MEMORY_MAP;
 
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
@@ -249,40 +250,39 @@ pub unsafe fn main() {
 
     // TODO: remove this when the emulator-specific pieces are moved to
     // platform/emulator/runtime
-    unsafe {
-        #[allow(static_mut_refs)]
-        romtime::set_printer(&mut EMULATOR_WRITER);
-        #[allow(static_mut_refs)]
-        romtime::set_exiter(&mut EMULATOR_EXITER);
-    }
+    #[allow(static_mut_refs)]
+    romtime::set_printer(&mut EMULATOR_WRITER);
+    #[allow(static_mut_refs)]
+    romtime::set_exiter(&mut EMULATOR_EXITER);
 
     // Set up memory protection immediately after setting the trap handler, to
     // ensure that much of the board initialization routine runs with ePMP
     // protection.
 
     // fixed regions to allow user mode direct access to emulator control and UART
+    // TODO: fix these
     let user_mmio = [MMIORegion(
         NAPOTRegionSpec::new(0x1000_0000 as *const u8, 0x1000_0000).unwrap(),
     )];
     // additional MMIO for machine only peripherals
     let machine_mmio = [
         MMIORegion(NAPOTRegionSpec::new(0x2000_0000 as *const u8, 0x2000_0000).unwrap()),
-        MMIORegion(NAPOTRegionSpec::new(0x6000_0000 as *const u8, 0x1_0000).unwrap()),
+        // PIC
+        MMIORegion(
+            NAPOTRegionSpec::new(MCU_MEMORY_MAP.pic_offset as u32 as *const u8, 0x1_0000).unwrap(),
+        ),
+        // and the rest of memory is reserved for the kernel
+        // we're done with the ROM so we can mask include that as well
+        MMIORegion(NAPOTRegionSpec::new(0x8000_0000 as *const u8, 0x8000_0000).unwrap()),
     ];
 
     let epmp = VeeRProtectionMMLEPMP::new(
-        CodeRegion(
-            TORRegionSpec::new(core::ptr::addr_of!(_srom), core::ptr::addr_of!(_eprog)).unwrap(),
-        ),
-        DataRegion(
-            TORRegionSpec::new(core::ptr::addr_of!(_ssram), core::ptr::addr_of!(_esram)).unwrap(),
-        ),
+        CodeRegion(TORRegionSpec::new(addr_of!(_srom), addr_of!(_eprog)).unwrap()),
+        DataRegion(TORRegionSpec::new(addr_of!(_ssram), addr_of!(_esram)).unwrap()),
         // use the MMIO for the PIC
         &user_mmio[..],
         &machine_mmio[..],
-        KernelTextRegion(
-            TORRegionSpec::new(core::ptr::addr_of!(_stext), core::ptr::addr_of!(_etext)).unwrap(),
-        ),
+        KernelTextRegion(TORRegionSpec::new(addr_of!(_stext), addr_of!(_etext)).unwrap()),
     )
     .unwrap();
 
@@ -522,12 +522,12 @@ pub unsafe fn main() {
         board_kernel,
         chip,
         core::slice::from_raw_parts(
-            core::ptr::addr_of!(_sapps),
-            core::ptr::addr_of!(_eapps) as usize - core::ptr::addr_of!(_sapps) as usize,
+            addr_of!(_sapps),
+            addr_of!(_eapps) as usize - addr_of!(_sapps) as usize,
         ),
         core::slice::from_raw_parts_mut(
-            core::ptr::addr_of_mut!(_sappmem),
-            core::ptr::addr_of!(_eappmem) as usize - core::ptr::addr_of!(_sappmem) as usize,
+            addr_of_mut!(_sappmem),
+            addr_of!(_eappmem) as usize - addr_of!(_sappmem) as usize,
         ),
         &mut *addr_of_mut!(PROCESSES),
         &FAULT_RESPONSE,
