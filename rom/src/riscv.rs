@@ -140,38 +140,42 @@ pub fn rom_start() {
     let mci_base: StaticRef<mci::regs::Mci> =
         unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
 
-    let otp = Otp::new(otp_base);
-    if let Err(err) = otp.init() {
-        romtime::println!("Error initializing OTP: {}", HexWord(err as u32));
-        fatal_error(1);
-    }
-    let fuses = match otp.read_fuses() {
-        Ok(fuses) => fuses,
-        Err(e) => {
-            romtime::println!("Error reading fuses: {}", HexWord(e as u32));
+    let soc = Soc::new(soc_base);
+
+    // only do these on the emulator for now
+    if unsafe { MCU_MEMORY_MAP.rom_offset } == 0x8000_0000 {
+        let otp = Otp::new(otp_base);
+        if let Err(err) = otp.init() {
+            romtime::println!("Error initializing OTP: {}", HexWord(err as u32));
             fatal_error(1);
         }
-    };
+        let fuses = match otp.read_fuses() {
+            Ok(fuses) => fuses,
+            Err(e) => {
+                romtime::println!("Error reading fuses: {}", HexWord(e as u32));
+                fatal_error(1);
+            }
+        };
+        let flow_status = soc.flow_status();
+        romtime::println!("[mcu-rom] Caliptra flow status {}", HexWord(flow_status));
+        if flow_status == 0 {
+            romtime::println!("Caliptra not detected; skipping common Caliptra boot flow");
+            return;
+        }
 
-    let soc = Soc::new(soc_base);
-    let flow_status = soc.flow_status();
-    romtime::println!("[mcu-rom] Caliptra flow status {}", HexWord(flow_status));
-    if flow_status == 0 {
-        romtime::println!("Caliptra not detected; skipping common Caliptra boot flow");
-        return;
+        romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for fuses");
+        while !soc.ready_for_fuses() {}
+        romtime::println!("[mcu-rom] Writing fuses to Caliptra");
+        soc.populate_fuses(&fuses);
+        soc.fuse_write_done();
+        while soc.ready_for_fuses() {}
     }
-
-    romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for fuses");
-    while !soc.ready_for_fuses() {}
-    romtime::println!("[mcu-rom] Writing fuses to Caliptra");
-    soc.populate_fuses(&fuses);
-    soc.fuse_write_done();
-    while soc.ready_for_fuses() {}
 
     romtime::println!("[mcu-rom] Fuses written to Caliptra");
 
     // De-assert caliptra reset
     let mut mci = Mci::new(mci_base);
+    romtime::println!("[mcu-rom] Setting Caliptra boot go");
     mci.caliptra_boot_go();
 
     // tell Caliptra to download firmware from the recovery interface
@@ -215,7 +219,7 @@ pub fn rom_start() {
     romtime::println!("[mcu-rom] Recovery flow complete");
 
     // Check that the firmware was actually loaded before jumping to it
-    let firmware_ptr = 0x4000_0080u32 as *const u32;
+    let firmware_ptr = unsafe { (MCU_MEMORY_MAP.sram_offset + 0x80) as *const u32 };
     // Safety: this address is valid
     if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
         romtime::println!("Invalid firmware detected; halting");
@@ -234,16 +238,19 @@ impl I3c {
     }
 }
 
-pub fn recovery_flow(_mci: &mut Mci, i3c: &mut I3c) {
+pub fn recovery_flow(mci: &mut Mci, i3c: &mut I3c) {
     // TODO: implement Caliptra boot flow
+
     // TODO: read this value from the fuses (according to the spec)?
+    romtime::println!("[mcu-rom] Initialize I3C");
     i3c.registers.sec_fw_recovery_if_device_id_0.set(0x3a); // placeholder address for now
     i3c.registers.stdby_ctrl_mode_stby_cr_device_addr.set(0x3a);
 
+    romtime::println!("[mcu-rom] MCI flow status: {:x}", mci.flow_status());
+
     // TODO: what value are we looking for
-    // while mci.flow_status() != 123 {
-    //     // wait for us to get the signal to boot
-    // }
-    // hack until we have MCI hooked up: just look for a non-zero firmware value somewhere
-    while unsafe { core::ptr::read_volatile(0x4000_fff0 as *const u32) } == 0 {}
+    romtime::println!("[mcu-rom] Waiting for firmware to be loaded");
+    let firmware_ptr = unsafe { (MCU_MEMORY_MAP.sram_offset + 0xfff0) as *const u32 };
+    while unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {}
+    romtime::println!("[mcu-rom] Firmware load detected");
 }

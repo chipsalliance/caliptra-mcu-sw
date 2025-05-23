@@ -5,7 +5,7 @@ use mcu_builder::{PROJECT_ROOT, TARGET};
 use std::process::Command;
 
 pub(crate) fn rom_run(trace: bool) -> Result<()> {
-    mcu_builder::rom_build()?;
+    mcu_builder::rom_build(None)?;
     let rom_binary = PROJECT_ROOT
         .join("target")
         .join(TARGET)

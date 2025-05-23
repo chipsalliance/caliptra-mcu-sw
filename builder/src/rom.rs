@@ -6,13 +6,16 @@ use anyhow::{bail, Result};
 use mcu_config::McuMemoryMap;
 use std::process::Command;
 
-pub fn rom_build() -> Result<()> {
+pub fn rom_build(platform: Option<&str>) -> Result<String> {
+    let platform = platform.unwrap_or("emulator");
+    let platform_pkg = format!("mcu-rom-{}", platform);
+    let platform_bin = format!("mcu-rom-{}.bin", platform);
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
         .args([
             "build",
             "-p",
-            "mcu-rom-emulator",
+            &platform_pkg,
             "--release",
             "--target",
             TARGET,
@@ -25,13 +28,13 @@ pub fn rom_build() -> Result<()> {
         .join("target")
         .join(TARGET)
         .join("release")
-        .join("mcu-rom-emulator");
+        .join(&platform_pkg);
 
     let rom_binary = PROJECT_ROOT
         .join("target")
         .join(TARGET)
         .join("release")
-        .join("rom.bin");
+        .join(&platform_bin);
 
     let objcopy = objcopy()?;
     let objcopy_flags = "--strip-sections --strip-all".to_string();
@@ -46,11 +49,12 @@ pub fn rom_build() -> Result<()> {
         bail!("objcopy failed to build ROM");
     }
     println!(
-        "ROM binary is at {:?} ({} bytes)",
+        "ROM binary ({}) is at {:?} ({} bytes)",
+        platform,
         &rom_binary,
         std::fs::metadata(&rom_binary)?.len()
     );
-    Ok(())
+    Ok(rom_binary.to_string_lossy().to_string())
 }
 
 pub fn rom_ld_script(memory_map: &McuMemoryMap) -> String {

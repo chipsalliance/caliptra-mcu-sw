@@ -15,14 +15,9 @@
 #[cfg(target_arch = "riscv32")]
 mod board;
 #[cfg(target_arch = "riscv32")]
-mod components;
-#[cfg(target_arch = "riscv32")]
 mod interrupts;
 #[cfg(target_arch = "riscv32")]
 pub mod io;
-#[cfg(target_arch = "riscv32")]
-#[allow(unused_imports)]
-mod tests;
 
 #[cfg(target_arch = "riscv32")]
 pub use board::*;
@@ -32,7 +27,7 @@ use mcu_config::McuMemoryMap;
 // re-export this so the common runtime code can use it
 #[no_mangle]
 #[used]
-pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_emulator::EMULATOR_MEMORY_MAP;
+pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_fpga::FPGA_MEMORY_MAP;
 
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]

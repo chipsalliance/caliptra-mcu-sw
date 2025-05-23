@@ -1,10 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use crate::components as runtime_components;
-use crate::interrupts::EmulatorPeripherals;
+use crate::interrupts::FpgaPeripherals;
 use crate::MCU_MEMORY_MAP;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
-use capsules_core::virtualizers::virtual_flash;
 use capsules_runtime::mctp::base_protocol::MessageType;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
@@ -20,8 +18,8 @@ use kernel::scheduler::cooperative::CooperativeSched;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
+use mcu_components::mctp_driver_component_static;
 use mcu_components::mctp_mux_component_static;
-use mcu_components::{mailbox_component_static, mctp_driver_component_static};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
 use mcu_tock_veer::pmp::{
@@ -69,7 +67,7 @@ pub type VeeRChip = mcu_tock_veer::chip::VeeR<'static, VeeRDefaultPeripherals<'s
 
 // Reference to the chip and peripherals for panic dumps and tests.
 pub static mut CHIP: Option<&'static VeeRChip> = None;
-pub static mut EMULATOR_PERIPHERALS: Option<&'static EmulatorPeripherals> = None;
+
 // Static reference to process printer for panic dumps.
 pub static mut PROCESS_PRINTER: Option<
     &'static capsules_system::process_printer::ProcessPrinterText,
@@ -107,7 +105,6 @@ const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
 #[no_mangle]
 #[link_section = ".stack_buffer"]
 pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
-
 #[no_mangle]
 pub static mut PIC: Pic = Pic::new(MCU_MEMORY_MAP.pic_offset);
 
@@ -130,13 +127,13 @@ struct VeeR {
     mctp_secure_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    active_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
-    recovery_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
+    // active_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
+    // recovery_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
     mailbox: &'static capsules_runtime::mailbox::Mailbox<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
-    dma: &'static capsules_emulator::dma::Dma<'static>,
+    //dma: &'static capsules_emulator::dma::Dma<'static>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -155,15 +152,14 @@ impl SyscallDriverLookup for VeeR {
             }
             capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
             capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
-            capsules_runtime::flash_partition::ACTIVE_IMAGE_PAR_DRIVER_NUM => {
-                f(Some(self.active_image_par))
-            }
-            capsules_runtime::flash_partition::RECOVERY_IMAGE_PAR_DRIVER_NUM => {
-                f(Some(self.recovery_image_par))
-            }
+            // capsules_runtime::flash_partition::ACTIVE_IMAGE_PAR_DRIVER_NUM => {
+            //     f(Some(self.active_image_par))
+            // }
+            // capsules_runtime::flash_partition::RECOVERY_IMAGE_PAR_DRIVER_NUM => {
+            //     f(Some(self.recovery_image_par))
+            // }
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
-            capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
-
+            //capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
             _ => f(None),
         }
     }
@@ -231,7 +227,7 @@ pub(crate) fn print_to_console(buf: &str) {
     for b in buf.bytes() {
         // Print to this address for emulator output
         unsafe {
-            core::ptr::write_volatile(0x1000_1041 as *mut u8, b);
+            core::ptr::write_volatile(0xa401_1014 as *mut u32, b as u32 | 0x100);
         }
     }
 }
@@ -249,6 +245,7 @@ impl romtime::Exit for EmulatorExiter {
 /// # Safety
 /// Accesses memory, memory-mapped registers and CSRs.
 pub unsafe fn main() {
+    print_to_console("[mcu-runtime] Hello from MCU runtime\n");
     // only machine mode
     rv32i::configure_trap_handler();
 
@@ -280,6 +277,7 @@ pub unsafe fn main() {
         MMIORegion(NAPOTRegionSpec::new(0x8000_0000 as *const u8, 0x8000_0000).unwrap()),
     ];
 
+    romtime::println!("[mcu-runtime] Set PMP");
     let epmp = VeeRProtectionMMLEPMP::new(
         CodeRegion(TORRegionSpec::new(addr_of!(_srom), addr_of!(_eprog)).unwrap()),
         DataRegion(TORRegionSpec::new(addr_of!(_ssram), addr_of!(_esram)).unwrap()),
@@ -289,23 +287,29 @@ pub unsafe fn main() {
         KernelTextRegion(TORRegionSpec::new(addr_of!(_stext), addr_of!(_etext)).unwrap()),
     )
     .unwrap();
+    romtime::println!("[mcu-runtime] Set PMP done");
 
     // initialize capabilities
     let process_mgmt_cap = create_capability!(capabilities::ProcessManagementCapability);
     let memory_allocation_cap = create_capability!(capabilities::MemoryAllocationCapability);
 
     let main_loop_cap = create_capability!(capabilities::MainLoopCapability);
+    romtime::println!("[mcu-runtime] Capabilities created");
     let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(&*addr_of!(PROCESSES)));
+    romtime::println!("[mcu-runtime] Kernel created");
 
     // Configure kernel debug gpios as early as possible
     kernel::debug::assign_gpios(None, None, None);
+    romtime::println!("[mcu-runtime] GPIOs assigned");
 
     let timers = &*addr_of!(TIMERS);
+    romtime::println!("[mcu-runtime] Timers created");
 
     // Create a shared virtualization mux layer on top of a single hardware
     // alarm.
     let mux_alarm = static_init!(MuxAlarm<'static, InternalTimers>, MuxAlarm::new(timers));
     hil::time::Alarm::set_alarm_client(timers, mux_alarm);
+    romtime::println!("[mcu-runtime] MuxAlarm created");
 
     // Alarm
     let virtual_alarm_user = static_init!(
@@ -313,12 +317,14 @@ pub unsafe fn main() {
         VirtualMuxAlarm::new(mux_alarm)
     );
     virtual_alarm_user.setup();
+    romtime::println!("[mcu-runtime] VirtualMuxAlarm created");
 
     let systick_virtual_alarm = static_init!(
         VirtualMuxAlarm<'static, InternalTimers>,
         VirtualMuxAlarm::new(mux_alarm)
     );
     systick_virtual_alarm.setup();
+    romtime::println!("[mcu-runtime] SystickMuxAlarm created");
 
     let alarm = static_init!(
         capsules_core::alarm::AlarmDriver<'static, VirtualMuxAlarm<'static, InternalTimers>>,
@@ -328,36 +334,42 @@ pub unsafe fn main() {
         )
     );
     hil::time::Alarm::set_alarm_client(virtual_alarm_user, alarm);
+    romtime::println!("[mcu-runtime] Alarm initialized");
 
     let mailbox = mcu_components::mailbox::MailboxComponent::new(
         board_kernel,
         capsules_runtime::mailbox::DRIVER_NUM,
         mux_alarm,
     )
-    .finalize(mailbox_component_static!(InternalTimers<'static>));
+    .finalize(mcu_components::mailbox_component_static!(
+        InternalTimers<'static>
+    ));
     mailbox.alarm.set_alarm_client(mailbox);
+    romtime::println!("[mcu-runtime] Mailbox initialized");
 
-    let emulator_peripherals =
-        static_init!(EmulatorPeripherals, EmulatorPeripherals::new(mux_alarm),);
-    emulator_peripherals.init();
-    EMULATOR_PERIPHERALS = Some(emulator_peripherals);
-
+    let fpga_peripherals = static_init!(FpgaPeripherals, FpgaPeripherals::new(mux_alarm));
+    fpga_peripherals.init();
     let peripherals = static_init!(
         VeeRDefaultPeripherals,
-        VeeRDefaultPeripherals::new(emulator_peripherals, mux_alarm, &MCU_MEMORY_MAP)
+        VeeRDefaultPeripherals::new(fpga_peripherals, mux_alarm, &MCU_MEMORY_MAP)
     );
+    romtime::println!("[mcu-runtime] Peripherals initialized");
 
     let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
-    chip.init(addr_of!(_pic_vector_table) as u32);
+    chip.init(_pic_vector_table as u32);
     CHIP = Some(chip);
+    romtime::println!("[mcu-runtime] Chip initialized");
 
     // Create a shared UART channel for the console and for kernel debug.
-    let uart_mux = components::console::UartMuxComponent::new(&emulator_peripherals.uart, 115200)
+    // TODO: add a new UART for the FPGA
+    let uart_mux = components::console::UartMuxComponent::new(&fpga_peripherals.uart, 115200)
         .finalize(components::uart_mux_component_static!());
+    romtime::println!("[mcu-runtime] UART initialized");
 
     // Create the debugger object that handles calls to `debug!()`.
     components::debug_writer::DebugWriterComponent::new(uart_mux)
         .finalize(components::debug_writer_component_static!());
+    romtime::println!("[mcu-runtime] DebugWriter initialized");
 
     let lldb = components::lldb::LowLevelDebugComponent::new(
         board_kernel,
@@ -365,6 +377,7 @@ pub unsafe fn main() {
         uart_mux,
     )
     .finalize(components::low_level_debug_component_static!());
+    romtime::println!("[mcu-runtime] LowLevelDebugComponent initialized");
 
     // Setup the console.
     let console = components::console::ConsoleComponent::new(
@@ -373,11 +386,13 @@ pub unsafe fn main() {
         uart_mux,
     )
     .finalize(components::console_component_static!());
+    romtime::println!("[mcu-runtime] Console initialized");
 
     // Create a process printer for panic.
     let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
         .finalize(components::process_printer_text_component_static!());
     PROCESS_PRINTER = Some(process_printer);
+    romtime::println!("[mcu-runtime] ProcessPrinter initialized");
 
     let process_console = components::process_console::ProcessConsoleComponent::new(
         board_kernel,
@@ -390,9 +405,11 @@ pub unsafe fn main() {
         InternalTimers
     ));
     let _ = process_console.start();
+    romtime::println!("[mcu-runtime] ProcessConsole initialized");
 
     let mux_mctp = mcu_components::mux_mctp::MCTPMuxComponent::new(&peripherals.i3c, mux_alarm)
         .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding));
+    romtime::println!("[mcu-runtime] MCTP mux initialized");
 
     let mctp_spdm = mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
@@ -401,6 +418,7 @@ pub unsafe fn main() {
         MessageType::Spdm,
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
+    romtime::println!("[mcu-runtime] MCTP SPDM driver component initialized");
 
     let mctp_secure_spdm = mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
@@ -409,6 +427,7 @@ pub unsafe fn main() {
         MessageType::SecureSpdm,
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
+    romtime::println!("[mcu-runtime] MCTP Secure SPDM driver component initialized");
 
     let mctp_pldm = mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
@@ -417,6 +436,7 @@ pub unsafe fn main() {
         MessageType::Pldm,
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
+    romtime::println!("[mcu-runtime] MCTP PLDM driver component initialized");
 
     let mctp_caliptra = mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
@@ -425,65 +445,10 @@ pub unsafe fn main() {
         MessageType::Caliptra,
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
+    romtime::println!("[mcu-runtime] MCTP Caliptra driver component initialized");
 
     peripherals.init();
-
-    // Create a mux for the physical flash controller
-    let mux_main_flash =
-        components::flash::FlashMuxComponent::new(&emulator_peripherals.main_flash_ctrl).finalize(
-            components::flash_mux_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
-        );
-
-    // Instantiate a flashUser for image partition driver
-    let image_par_fl_user = components::flash::FlashUserComponent::new(mux_main_flash).finalize(
-        components::flash_user_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
-    );
-
-    // Instantiate flash partition driver that is connected to mux flash via flashUser
-    // TODO: Replace the start address and length with actual values from flash configuration.
-    let active_image_par = runtime_components::flash_partition::FlashPartitionComponent::new(
-        board_kernel,
-        capsules_runtime::flash_partition::ACTIVE_IMAGE_PAR_DRIVER_NUM, // Driver number
-        image_par_fl_user,
-        0x0,        // Start address of the partition. Place holder for testing
-        0x200_0000, // Length of the partition. Place holder for testing
-    )
-    .finalize(crate::flash_partition_component_static!(
-        virtual_flash::FlashUser<'static, flash_driver::flash_ctrl::EmulatedFlashCtrl>,
-        capsules_runtime::flash_partition::BUF_LEN
-    ));
-
-    // Create a mux for the recovery flash controller
-    let mux_recovery_flash =
-        components::flash::FlashMuxComponent::new(&emulator_peripherals.recovery_flash_ctrl)
-            .finalize(components::flash_mux_component_static!(
-                flash_driver::flash_ctrl::EmulatedFlashCtrl
-            ));
-
-    // Instantiate a flashUser for recovery image partition driver
-    let recovery_image_par_fl_user = components::flash::FlashUserComponent::new(mux_recovery_flash)
-        .finalize(components::flash_user_component_static!(
-            flash_driver::flash_ctrl::EmulatedFlashCtrl
-        ));
-
-    let recovery_image_par = runtime_components::flash_partition::FlashPartitionComponent::new(
-        board_kernel,
-        capsules_runtime::flash_partition::RECOVERY_IMAGE_PAR_DRIVER_NUM, // Driver number
-        recovery_image_par_fl_user,
-        0x0,        // Start address of the partition. Place holder for testing
-        0x200_0000, // Length of the partition. Place holder for testing
-    )
-    .finalize(crate::flash_partition_component_static!(
-        virtual_flash::FlashUser<'static, flash_driver::flash_ctrl::EmulatedFlashCtrl>,
-        capsules_runtime::flash_partition::BUF_LEN
-    ));
-
-    let dma = runtime_components::dma::DmaComponent::new(
-        &emulator_peripherals.dma,
-        board_kernel,
-        capsules_emulator::dma::DMA_CTRL_DRIVER_NUM,
-    )
-    .finalize(kernel::static_buf!(capsules_emulator::dma::Dma<'static>));
+    romtime::println!("[mcu-runtime] Peripherals initialized");
 
     // Need to enable all interrupts for Tock Kernel
     chip.enable_pic_interrupts();
@@ -519,10 +484,10 @@ pub unsafe fn main() {
             mctp_secure_spdm,
             mctp_pldm,
             mctp_caliptra,
-            active_image_par,
-            recovery_image_par,
+            //active_image_par,
+            //recovery_image_par,
             mailbox,
-            dma,
+            //dma,
         }
     );
 
@@ -564,25 +529,12 @@ pub unsafe fn main() {
         Some(0)
     } else if cfg!(feature = "test-i3c-simple") {
         debug!("Executing test-i3c-simple");
-        crate::tests::i3c_target_test::test_i3c_simple()
+        //crate::tests::i3c_target_test::test_i3c_simple()
+        None
     } else if cfg!(feature = "test-i3c-constant-writes") {
         debug!("Executing test-i3c-constant-writes");
-        crate::tests::i3c_target_test::test_i3c_constant_writes()
-    } else if cfg!(feature = "test-flash-ctrl-init") {
-        debug!("Executing test-flash-ctrl-init");
-        crate::tests::flash_ctrl_test::test_flash_ctrl_init()
-    } else if cfg!(feature = "test-flash-ctrl-read-write-page") {
-        debug!("Executing test-flash-ctrl-read-write-page");
-        crate::tests::flash_ctrl_test::test_flash_ctrl_read_write_page()
-    } else if cfg!(feature = "test-flash-ctrl-erase-page") {
-        debug!("Executing test-flash-ctrl-erase-page");
-        crate::tests::flash_ctrl_test::test_flash_ctrl_erase_page()
-    } else if cfg!(feature = "test-flash-storage-read-write") {
-        debug!("Executing test-flash-storage-read-write");
-        crate::tests::flash_storage_test::test_flash_storage_read_write()
-    } else if cfg!(feature = "test-flash-storage-erase") {
-        debug!("Executing test-flash-storage-erase");
-        crate::tests::flash_storage_test::test_flash_storage_erase()
+        //crate::tests::i3c_target_test::test_i3c_constant_writes()
+        None
     } else {
         None
     };

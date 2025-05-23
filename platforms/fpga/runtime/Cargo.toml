@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "mcu-runtime-emulator"
+name = "mcu-runtime-fpga"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -19,11 +19,12 @@ i3c-driver.workspace = true
 kernel.workspace = true
 mcu-components.workspace = true
 mcu-config.workspace = true
-mcu-config-emulator.workspace = true
+mcu-config-fpga.workspace = true
 mcu-tock-veer.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true
 tock-registers.workspace = true
+
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 riscv-csr.workspace = true
