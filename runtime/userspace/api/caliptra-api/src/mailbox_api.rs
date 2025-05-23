@@ -54,7 +54,7 @@ pub const MAX_DPE_RESP_DATA_SIZE: usize = 1536;
 pub const MAX_ECC_CERT_SIZE: usize = 1024;
 pub const MAX_CERT_CHUNK_SIZE: usize = 1024;
 pub const MAX_RANDOM_STIR_SIZE: usize = 48;
-pub const MAX_RANDOM_NUM_SIZE: usize = 32;
+pub const MAX_RANDOM_NUM_SIZE: usize = 48;
 
 const _: () = assert!(MAX_CRYPTO_MBOX_DATA_SIZE <= MAX_CMB_DATA_SIZE);
 const _: () = assert!(size_of::<DpeEcResp>() <= size_of::<InvokeDpeResp>());
