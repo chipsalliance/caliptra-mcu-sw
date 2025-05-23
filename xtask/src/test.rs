@@ -68,7 +68,7 @@ fn test_hello() -> Result<()> {
     Ok(())
 }
 
-fn test_panic_missing() -> Result<()> {
+pub(crate) fn test_panic_missing() -> Result<()> {
     rom_build(None)?;
     let rom_elf = PROJECT_ROOT
         .join("target")

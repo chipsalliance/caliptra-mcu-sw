@@ -246,7 +246,7 @@ pub fn recovery_flow(mci: &mut Mci, i3c: &mut I3c) {
     i3c.registers.sec_fw_recovery_if_device_id_0.set(0x3a); // placeholder address for now
     i3c.registers.stdby_ctrl_mode_stby_cr_device_addr.set(0x3a);
 
-    romtime::println!("[mcu-rom] MCI flow status: {:x}", mci.flow_status());
+    romtime::println!("[mcu-rom] MCI flow status: {}", HexWord(mci.flow_status()));
 
     // TODO: what value are we looking for
     romtime::println!("[mcu-rom] Waiting for firmware to be loaded");

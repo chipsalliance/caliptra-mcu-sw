@@ -16,5 +16,6 @@ pub(crate) fn precheckin() -> Result<()> {
         Some("fpga"),
         Some(&mcu_config_fpga::FPGA_MEMORY_MAP),
     )?;
+    crate::test::test_panic_missing()?;
     Ok(())
 }
