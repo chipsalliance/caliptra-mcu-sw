@@ -16,6 +16,14 @@ pub enum AsymAlgo {
     EccP384,
 }
 
+impl AsymAlgo {
+    pub fn signature_size(&self) -> usize {
+        match self {
+            AsymAlgo::EccP384 => ECC_P384_SIGNATURE_SIZE,
+        }
+    }
+}
+
 pub(crate) trait Prioritize<T>
 where
     Self: Sized,

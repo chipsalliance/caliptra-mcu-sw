@@ -4,6 +4,8 @@
 use crate::cert_store::CertStoreError;
 use crate::codec::CodecError;
 use crate::commands::error_rsp::ErrorCode;
+use crate::measurements::common::MeasurementsError;
+use crate::transcript::TranscriptError;
 use crate::transport::TransportError;
 use libapi_caliptra::error::CaliptraApiError;
 
@@ -29,6 +31,9 @@ pub enum CommandError {
     Codec(CodecError),
     ErrorCode(ErrorCode),
     UnsupportedRequest,
+    InvalidSigngingContext,
     CertStore(CertStoreError),
     CaliptraApi(CaliptraApiError),
+    Transcript(TranscriptError),
+    Measurement(MeasurementsError),
 }

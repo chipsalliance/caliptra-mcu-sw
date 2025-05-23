@@ -1,17 +1,13 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cert_store::{cert_slot_mask, SpdmCertStore, MAX_CERT_SLOTS_SUPPORTED};
-use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
+use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
-use crate::protocol::common::SpdmMsgHdr;
-use crate::protocol::version::SpdmVersion;
-use crate::protocol::{
-    AsymAlgo, SpdmCertChainHeader, SHA384_HASH_SIZE, SPDM_CERT_CHAIN_METADATA_LEN,
-    SPDM_MAX_CERT_CHAIN_PORTION_LEN,
-};
+use crate::protocol::*;
 use crate::state::ConnectionState;
+use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
@@ -44,9 +40,7 @@ bitfield! {
     reserved, _: 7,1;
 }
 
-impl CommonCodec for GetCertificateReq {
-    const DATA_KIND: DataKind = DataKind::Payload;
-}
+impl CommonCodec for GetCertificateReq {}
 
 #[derive(IntoBytes, FromBytes, Immutable)]
 #[repr(packed)]
@@ -57,9 +51,7 @@ pub struct CertificateRespCommon {
     pub remainder_length: u16,
 }
 
-impl CommonCodec for CertificateRespCommon {
-    const DATA_KIND: DataKind = DataKind::Payload;
-}
+impl CommonCodec for CertificateRespCommon {}
 
 impl CertificateRespCommon {
     pub fn new(
@@ -85,80 +77,6 @@ bitfield! {
     u8;
     pub certificate_info, set_certificate_info: 2,0;
     reserved, _: 7,3;
-}
-
-pub(crate) async fn handle_certificates<'a>(
-    ctx: &mut SpdmContext<'a>,
-    spdm_hdr: SpdmMsgHdr,
-    req_payload: &mut MessageBuf<'a>,
-) -> CommandResult<()> {
-    // Validate the state
-    if ctx.state.connection_info.state() < ConnectionState::AlgorithmsNegotiated {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
-    }
-
-    // Validate the version
-    let connection_version = ctx.state.connection_info.version_number();
-    if spdm_hdr.version().ok() != Some(connection_version) {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
-    }
-
-    // Check if the certificate capability is supported.
-    if ctx.local_capabilities.flags.cert_cap() == 0 {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::UnsupportedRequest, 0, None))?;
-    }
-
-    let req = GetCertificateReq::decode(req_payload).map_err(|_| {
-        ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
-    })?;
-
-    let slot_id = req.slot_id.slot_id();
-    if slot_id >= MAX_CERT_SLOTS_SUPPORTED {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
-    }
-
-    // Check if the slot is provisioned. Otherwise, return an InvalidRequest error.
-    let slot_mask = 1 << slot_id;
-    let (_, provisioned_slot_mask) = cert_slot_mask(ctx.device_certs_store);
-
-    if provisioned_slot_mask & slot_mask == 0 {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
-    }
-
-    let mut offset = req.offset;
-    let mut length = req.length;
-
-    // When SlotSizeRequested=1b in the GET_CERTIFICATE request, the Responder shall return
-    // the number of bytes available for certificate chain storage in the RemainderLength field of the response.
-    if connection_version >= SpdmVersion::V13 && req.param2.slot_size_requested() != 0 {
-        offset = 0;
-        length = 0;
-    }
-
-    // Prepare response buffer
-    ctx.prepare_response_buffer(req_payload)?;
-
-    // Fill the response with the certificate chain portion
-    fill_certificate_response(
-        ctx,
-        connection_version,
-        slot_id,
-        offset,
-        length,
-        req_payload,
-    )
-    .await?;
-
-    // TODO: transcript manager and session support
-
-    // Set the connection state to AfterCertificate
-    if ctx.state.connection_info.state() < ConnectionState::AfterCertificate {
-        ctx.state
-            .connection_info
-            .set_state(ConnectionState::AfterCertificate);
-    }
-
-    Ok(())
 }
 
 async fn encode_certchain_metadata<'a>(
@@ -204,9 +122,8 @@ async fn encode_certchain_metadata<'a>(
     Ok(write_len)
 }
 
-async fn fill_certificate_response<'a>(
+async fn generate_certificate_response<'a>(
     ctx: &mut SpdmContext<'a>,
-    connection_version: SpdmVersion,
     slot_id: u8,
     offset: u16,
     length: u16,
@@ -219,8 +136,13 @@ async fn fill_certificate_response<'a>(
         .selected_asym_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
 
+    let connection_version = ctx.state.connection_info.version_number();
+
     // Start filling the response payload
-    let mut payload_len: usize;
+    let spdm_hdr = SpdmMsgHdr::new(connection_version, ReqRespCode::Certificate);
+    let mut payload_len = spdm_hdr
+        .encode(rsp)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
 
     let mut resp_attr = CertificateRespAttributes::default();
     if connection_version >= SpdmVersion::V13 && ctx.state.connection_info.multi_key_conn_rsp() {
@@ -257,7 +179,7 @@ async fn fill_certificate_response<'a>(
     let slot_id_struct = SlotId(slot_id);
     let certificate_rsp_common =
         CertificateRespCommon::new(slot_id_struct, resp_attr, portion_len, remainder_len);
-    payload_len = certificate_rsp_common
+    payload_len += certificate_rsp_common
         .encode(rsp)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
@@ -304,6 +226,97 @@ async fn fill_certificate_response<'a>(
 
     rsp.push_data(payload_len)
         .map_err(|e| (false, CommandError::Codec(e)))?;
+
+    // Append the response message to the M1 transcript
+    ctx.append_message_to_transcript(rsp, TranscriptContext::M1)
+        .await
+}
+
+async fn process_get_certificate<'a>(
+    ctx: &mut SpdmContext<'a>,
+    spdm_hdr: SpdmMsgHdr,
+    req_payload: &mut MessageBuf<'a>,
+) -> CommandResult<(u8, u16, u16)> {
+    // Validate the version
+    let connection_version = ctx.state.connection_info.version_number();
+    if spdm_hdr.version().ok() != Some(connection_version) {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
+    }
+
+    // Decode the GET_CERTIFICATE request payload
+    let req = GetCertificateReq::decode(req_payload).map_err(|_| {
+        ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
+    })?;
+
+    let slot_id = req.slot_id.slot_id();
+    if slot_id >= MAX_CERT_SLOTS_SUPPORTED {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
+    }
+
+    // Check if the slot is provisioned. Otherwise, return an InvalidRequest error.
+    let slot_mask = 1 << slot_id;
+    let (_, provisioned_slot_mask) = cert_slot_mask(ctx.device_certs_store);
+
+    if provisioned_slot_mask & slot_mask == 0 {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
+    }
+
+    let mut offset = req.offset;
+    let mut length = req.length;
+
+    // When SlotSizeRequested=1b in the GET_CERTIFICATE request, the Responder shall return
+    // the number of bytes available for certificate chain storage in the RemainderLength field of the response.
+    if connection_version >= SpdmVersion::V13 && req.param2.slot_size_requested() != 0 {
+        offset = 0;
+        length = 0;
+    }
+
+    // Reset the transcript context
+    ctx.reset_transcript_via_req_code(ReqRespCode::GetCertificate);
+
+    // Append the request to the M1 transcript
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1)
+        .await?;
+
+    Ok((slot_id, offset, length))
+}
+
+pub(crate) async fn handle_get_certificate<'a>(
+    ctx: &mut SpdmContext<'a>,
+    spdm_hdr: SpdmMsgHdr,
+    req_payload: &mut MessageBuf<'a>,
+) -> CommandResult<()> {
+    // Validate the state
+    if ctx.state.connection_info.state() < ConnectionState::AlgorithmsNegotiated {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
+    }
+
+    // Check if the certificate capability is supported.
+    if ctx.local_capabilities.flags.cert_cap() == 0 {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::UnsupportedRequest, 0, None))?;
+    }
+
+    // Process the GET_CERTIFICATE request
+    let (slot_id, offset, length) = process_get_certificate(ctx, spdm_hdr, req_payload).await?;
+
+    // Generate the CERTIFICATE response
+    ctx.prepare_response_buffer(req_payload)?;
+    generate_certificate_response(
+        ctx,
+        // connection_version,
+        slot_id,
+        offset,
+        length,
+        req_payload,
+    )
+    .await?;
+
+    // Set the connection state to AfterCertificate
+    if ctx.state.connection_info.state() < ConnectionState::AfterCertificate {
+        ctx.state
+            .connection_info
+            .set_state(ConnectionState::AfterCertificate);
+    }
 
     Ok(())
 }

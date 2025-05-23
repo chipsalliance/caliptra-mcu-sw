@@ -177,6 +177,7 @@ pub(crate) fn run_tests(
     port: u16,
     target_addr: DynamicI3cAddress,
     tests: Vec<Box<dyn TestTrait + Send>>,
+    test_timeout_seconds: Option<Duration>,
 ) {
     let running_clone = running.clone();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -184,7 +185,9 @@ pub(crate) fn run_tests(
     let running_clone_stop = running.clone();
     // cancel the test after 120 seconds
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_secs(120));
+        let timeout = test_timeout_seconds.unwrap_or(Duration::from_secs(120));
+        std::thread::sleep(timeout);
+        println!("INTEGRATION TEST TIMED OUT AFTER {:?} SECONDS", timeout);
         running_clone_stop.store(false, Ordering::Relaxed);
     });
     std::thread::spawn(move || {

@@ -14,6 +14,17 @@ pub enum SpdmVersion {
     V13,
 }
 
+impl SpdmVersion {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            SpdmVersion::V10 => "1.0.*",
+            SpdmVersion::V11 => "1.1.*",
+            SpdmVersion::V12 => "1.2.*",
+            SpdmVersion::V13 => "1.3.*",
+        }
+    }
+}
+
 impl TryFrom<u8> for SpdmVersion {
     type Error = SpdmError;
     fn try_from(value: u8) -> Result<Self, SpdmError> {
