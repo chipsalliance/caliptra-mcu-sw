@@ -149,7 +149,7 @@ impl<'a> MessageBuf<'a> {
     }
 
     /// Decrements the head pointer (pushes up) by specified number of bytes.
-    /// This is used to remove the headspace of the message buffer
+    /// This is used to increase the length of the message buffer
     pub fn push_head(&mut self, len: usize) -> CodecResult<()> {
         if self.head < len {
             Err(CodecError::BufferUnderflow)?;
