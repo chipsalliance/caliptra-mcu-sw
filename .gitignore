@@ -30,3 +30,6 @@ test.log
 
 # Test certificates to support spdm lib development
 test_certs
+
+# ld scripts
+layout.ld

@@ -8,6 +8,8 @@ use std::process::Command;
 pub fn fpga_install_kernel_modules() -> Result<()> {
     let dir = &PROJECT_ROOT.join("hw").join("fpga").join("kernel-modules");
 
+    disable_all_cpus_idle()?;
+
     // need to wrap it in bash so that the current_dir is propagated to make correctly
     if !Command::new("bash")
         .args(["-c", "make"])
@@ -61,8 +63,47 @@ pub fn fpga_install_kernel_modules() -> Result<()> {
     Ok(())
 }
 
+fn disable_all_cpus_idle() -> Result<()> {
+    println!("Disabling idle on CPUs");
+    let mut cpu = 0;
+    while disable_cpu_idle(cpu).is_ok() {
+        cpu += 1;
+    }
+    Ok(())
+}
+
+fn disable_cpu_idle(cpu: usize) -> Result<()> {
+    sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
+    let cpu_sysfs = format!("/sys/devices/system/cpu/cpu{}/cpuidle/state1/disable", cpu);
+    let cpu_path = Path::new(&cpu_sysfs);
+    if !cpu_path.exists() {
+        bail!("cpu[{}] does not exist", cpu);
+    }
+    std::fs::write(cpu_path, b"1")?;
+    println!("    |- cpu[{}]", cpu);
+
+    // verify options were set
+    let value = std::fs::read_to_string(&cpu_sysfs)?.trim().to_string();
+    if value != "1" {
+        bail!("[-] error setting cpu[{}] into idle state", cpu);
+    }
+    Ok(())
+}
+
 fn fix_permissions() -> Result<()> {
     let uio_path = Path::new("/dev/uio0");
+    if uio_path.exists() {
+        sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
+        if !Command::new("chmod")
+            .arg("666")
+            .arg(uio_path)
+            .status()?
+            .success()
+        {
+            bail!("Failed to change permissions on uio device");
+        }
+    }
+    let uio_path = Path::new("/dev/uio1");
     if uio_path.exists() {
         sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
         if !Command::new("chmod")

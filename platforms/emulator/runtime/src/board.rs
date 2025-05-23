@@ -1,16 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use crate::chip::VeeRDefaultPeripherals;
-use crate::chip::TIMERS;
 use crate::components as runtime_components;
-use crate::pmp::CodeRegion;
-use crate::pmp::DataRegion;
-use crate::pmp::KernelTextRegion;
-use crate::pmp::MMIORegion;
-use crate::pmp::VeeRProtectionMMLEPMP;
-use crate::timers::InternalTimers;
+use crate::interrupts::EmulatorPeripherals;
 use crate::MCU_MEMORY_MAP;
-
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use capsules_runtime::mctp::base_protocol::MessageType;
@@ -28,6 +20,14 @@ use kernel::scheduler::cooperative::CooperativeSched;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
+use mcu_components::mctp_mux_component_static;
+use mcu_components::{mailbox_component_static, mctp_driver_component_static};
+use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
+use mcu_tock_veer::pic::Pic;
+use mcu_tock_veer::pmp::{
+    CodeRegion, DataRegion, KernelTextRegion, MMIORegion, VeeRProtectionMMLEPMP,
+};
+use mcu_tock_veer::timers::InternalTimers;
 use romtime::CaliptraSoC;
 use rv32i::csr;
 use rv32i::pmp::{NAPOTRegionSpec, TORRegionSpec};
@@ -65,10 +65,11 @@ pub const NUM_PROCS: usize = 4;
 pub static mut PROCESSES: [Option<&'static dyn kernel::process::Process>; NUM_PROCS] =
     [None; NUM_PROCS];
 
-pub type VeeRChip = crate::chip::VeeR<'static, VeeRDefaultPeripherals<'static>>;
+pub type VeeRChip = mcu_tock_veer::chip::VeeR<'static, VeeRDefaultPeripherals<'static>>;
 
-// Reference to the chip for panic dumps.
+// Reference to the chip and peripherals for panic dumps and tests.
 pub static mut CHIP: Option<&'static VeeRChip> = None;
+pub static mut EMULATOR_PERIPHERALS: Option<&'static EmulatorPeripherals> = None;
 // Static reference to process printer for panic dumps.
 pub static mut PROCESS_PRINTER: Option<
     &'static capsules_system::process_printer::ProcessPrinterText,
@@ -106,6 +107,9 @@ const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
 #[no_mangle]
 #[link_section = ".stack_buffer"]
 pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
+
+#[no_mangle]
+pub static mut PIC: Pic = Pic::new(MCU_MEMORY_MAP.pic_offset);
 
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
@@ -325,25 +329,30 @@ pub unsafe fn main() {
     );
     hil::time::Alarm::set_alarm_client(virtual_alarm_user, alarm);
 
-    let mailbox = runtime_components::mailbox::MailboxComponent::new(
+    let mailbox = mcu_components::mailbox::MailboxComponent::new(
         board_kernel,
         capsules_runtime::mailbox::DRIVER_NUM,
         mux_alarm,
     )
-    .finalize(crate::mailbox_component_static!(InternalTimers<'static>));
+    .finalize(mailbox_component_static!(InternalTimers<'static>));
     mailbox.alarm.set_alarm_client(mailbox);
+
+    let emulator_peripherals =
+        static_init!(EmulatorPeripherals, EmulatorPeripherals::new(mux_alarm),);
+    emulator_peripherals.init();
+    EMULATOR_PERIPHERALS = Some(emulator_peripherals);
 
     let peripherals = static_init!(
         VeeRDefaultPeripherals,
-        VeeRDefaultPeripherals::new(mux_alarm)
+        VeeRDefaultPeripherals::new(emulator_peripherals, mux_alarm, &MCU_MEMORY_MAP)
     );
 
-    let chip = static_init!(VeeRChip, crate::chip::VeeR::new(peripherals, epmp));
-    chip.init();
+    let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
+    chip.init(addr_of!(_pic_vector_table) as u32);
     CHIP = Some(chip);
 
     // Create a shared UART channel for the console and for kernel debug.
-    let uart_mux = components::console::UartMuxComponent::new(&peripherals.uart, 115200)
+    let uart_mux = components::console::UartMuxComponent::new(&emulator_peripherals.uart, 115200)
         .finalize(components::uart_mux_component_static!());
 
     // Create the debugger object that handles calls to `debug!()`.
@@ -382,50 +391,48 @@ pub unsafe fn main() {
     ));
     let _ = process_console.start();
 
-    let mux_mctp =
-        runtime_components::mux_mctp::MCTPMuxComponent::new(&peripherals.i3c, mux_alarm).finalize(
-            crate::mctp_mux_component_static!(InternalTimers, MCTPI3CBinding),
-        );
+    let mux_mctp = mcu_components::mux_mctp::MCTPMuxComponent::new(&peripherals.i3c, mux_alarm)
+        .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding));
 
-    let mctp_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
+    let mctp_spdm = mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
         mux_mctp,
         MessageType::Spdm,
     )
-    .finalize(crate::mctp_driver_component_static!(InternalTimers));
+    .finalize(mctp_driver_component_static!(InternalTimers));
 
-    let mctp_secure_spdm = runtime_components::mctp_driver::MCTPDriverComponent::new(
+    let mctp_secure_spdm = mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM,
         mux_mctp,
         MessageType::SecureSpdm,
     )
-    .finalize(crate::mctp_driver_component_static!(InternalTimers));
+    .finalize(mctp_driver_component_static!(InternalTimers));
 
-    let mctp_pldm = runtime_components::mctp_driver::MCTPDriverComponent::new(
+    let mctp_pldm = mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM,
         mux_mctp,
         MessageType::Pldm,
     )
-    .finalize(crate::mctp_driver_component_static!(InternalTimers));
+    .finalize(mctp_driver_component_static!(InternalTimers));
 
-    let mctp_caliptra = runtime_components::mctp_driver::MCTPDriverComponent::new(
+    let mctp_caliptra = mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM,
         mux_mctp,
         MessageType::Caliptra,
     )
-    .finalize(crate::mctp_driver_component_static!(InternalTimers));
+    .finalize(mctp_driver_component_static!(InternalTimers));
 
     peripherals.init();
 
     // Create a mux for the physical flash controller
-    let mux_main_flash = components::flash::FlashMuxComponent::new(&peripherals.main_flash_ctrl)
-        .finalize(components::flash_mux_component_static!(
-            flash_driver::flash_ctrl::EmulatedFlashCtrl
-        ));
+    let mux_main_flash =
+        components::flash::FlashMuxComponent::new(&emulator_peripherals.main_flash_ctrl).finalize(
+            components::flash_mux_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
+        );
 
     // Instantiate a flashUser for image partition driver
     let image_par_fl_user = components::flash::FlashUserComponent::new(mux_main_flash).finalize(
@@ -448,9 +455,10 @@ pub unsafe fn main() {
 
     // Create a mux for the recovery flash controller
     let mux_recovery_flash =
-        components::flash::FlashMuxComponent::new(&peripherals.recovery_flash_ctrl).finalize(
-            components::flash_mux_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
-        );
+        components::flash::FlashMuxComponent::new(&emulator_peripherals.recovery_flash_ctrl)
+            .finalize(components::flash_mux_component_static!(
+                flash_driver::flash_ctrl::EmulatedFlashCtrl
+            ));
 
     // Instantiate a flashUser for recovery image partition driver
     let recovery_image_par_fl_user = components::flash::FlashUserComponent::new(mux_recovery_flash)
@@ -471,7 +479,7 @@ pub unsafe fn main() {
     ));
 
     let dma = runtime_components::dma::DmaComponent::new(
-        &peripherals.dma,
+        &emulator_peripherals.dma,
         board_kernel,
         capsules_emulator::dma::DMA_CTRL_DRIVER_NUM,
     )

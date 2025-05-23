@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use clap::{Parser, Subcommand};
+use core::panic;
 use mcu_builder::SocImage;
 use std::path::PathBuf;
 
@@ -83,9 +84,17 @@ enum Commands {
 
         #[arg(long)]
         output: Option<String>,
+
+        /// Platform to build for. Default: emulator
+        #[arg(long)]
+        platform: Option<String>,
     },
     /// Build ROM
-    RomBuild,
+    RomBuild {
+        /// Platform to build for. Default: emulator
+        #[arg(long)]
+        platform: Option<String>,
+    },
     /// Build and Run ROM image
     Rom {
         /// Run with tracing options
@@ -200,12 +209,27 @@ fn main() {
     let cli = Xtask::parse();
     let result = match &cli.xtask {
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),
-        Commands::RuntimeBuild { features, output } => {
+        Commands::RuntimeBuild {
+            features,
+            output,
+            platform,
+        } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            mcu_builder::runtime_build_with_apps(&features, output.as_deref(), false)
+            mcu_builder::runtime_build_with_apps(
+                &features,
+                output.as_deref(),
+                false,
+                platform.as_deref(),
+                match platform.as_deref() {
+                    None | Some("emulator") => Some(&mcu_config_emulator::EMULATOR_MEMORY_MAP),
+                    Some("fpga") => Some(&mcu_config_fpga::FPGA_MEMORY_MAP),
+                    _ => panic!("Unsupported platform"),
+                },
+            )
+            .map(|_| ())
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
-        Commands::RomBuild => mcu_builder::rom_build(),
+        Commands::RomBuild { platform } => mcu_builder::rom_build(platform.as_deref()).map(|_| ()),
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
                 caliptra_fw,
