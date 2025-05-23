@@ -10,15 +10,17 @@
 //!
 //! Usage
 //! -----
-//! ```rust
+//! ```ignore
+//! use mcu_components::mctp_driver_component_static;
+//! use mcu_components::mctp_driver::MCTPDriverComponent;
+//! use kernel::component::Component;
+//! use mcu_tock_veer::timers::InternalTimers;
 //! let spdm_mctp_driver = MCTPDriverComponent::new(
 //!     board_kernel,
 //!     capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
 //!     mux_mctp,
-//!     mctp_spdm_msg_types,
-//!     mux_alarm,
-//!     )
-//!     .finalize(mctp_driver_component_static!());
+//!     mctp_spdm_msg_types)
+//!     .finalize(mctp_driver_component_static!(InternalTimers));
 //! ```
 
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;

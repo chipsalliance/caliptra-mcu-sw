@@ -36,8 +36,9 @@ mod test {
         LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
 
     fn compile_rom() -> PathBuf {
-        mcu_builder::rom_build().expect("ROM build failed");
-        let output = target_binary("rom.bin");
+        let output: PathBuf = mcu_builder::rom_build(None)
+            .expect("ROM build failed")
+            .into();
         assert!(output.exists());
         output
     }
@@ -45,8 +46,14 @@ mod test {
     pub fn compile_runtime(feature: &str, example_app: bool) -> PathBuf {
         let output = target_binary(&format!("runtime-{}.bin", feature));
         let output_name = format!("{}", output.display());
-        mcu_builder::runtime_build_with_apps(&[feature], Some(&output_name), example_app)
-            .expect("Runtime build failed");
+        mcu_builder::runtime_build_with_apps(
+            &[feature],
+            Some(&output_name),
+            example_app,
+            None,
+            None,
+        )
+        .expect("Runtime build failed");
         assert!(output.exists());
         output
     }

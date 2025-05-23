@@ -2,8 +2,8 @@
 
 use crate::Commands;
 use anyhow::Result;
-use mcu_builder::{rom_build, runtime_build_with_apps, CaliptraBuilder, PROJECT_ROOT, TARGET};
-use std::process::Command;
+use mcu_builder::{rom_build, runtime_build_with_apps, CaliptraBuilder, PROJECT_ROOT};
+use std::{path::PathBuf, process::Command};
 
 /// Run the Runtime Tock kernel image for RISC-V in the emulator.
 pub(crate) fn runtime_run(args: Commands) -> Result<()> {
@@ -27,18 +27,8 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     };
 
     let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-    rom_build()?;
-    runtime_build_with_apps(&features, None, false)?;
-    let rom_binary = PROJECT_ROOT
-        .join("target")
-        .join(TARGET)
-        .join("release")
-        .join("rom.bin");
-    let tock_binary = PROJECT_ROOT
-        .join("target")
-        .join(TARGET)
-        .join("release")
-        .join("runtime.bin");
+    let rom_binary: PathBuf = rom_build(None)?.into();
+    let tock_binary: PathBuf = runtime_build_with_apps(&features, None, false, None, None)?.into();
 
     let mut caliptra_builder = CaliptraBuilder::new(
         active_mode,

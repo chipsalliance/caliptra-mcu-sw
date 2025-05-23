@@ -1,0 +1,23 @@
+# Licensed under the Apache-2.0 license.
+
+[package]
+name = "mcu-tock-veer"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+capsules-core.workspace = true
+capsules-extra.workspace = true
+capsules-runtime.workspace = true
+capsules-system.workspace = true
+components.workspace = true
+i3c-driver.workspace = true
+kernel.workspace = true
+mcu-config.workspace = true
+registers-generated.workspace = true
+riscv-csr.workspace = true
+riscv.workspace = true
+romtime.workspace = true
+rv32i.workspace = true
+tock-registers.workspace = true

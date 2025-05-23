@@ -2193,11 +2193,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-components"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "capsules-emulator",
+ "capsules-extra",
+ "capsules-runtime",
+ "capsules-system",
+ "components",
+ "dma-driver",
+ "flash-driver",
+ "i3c-driver",
+ "kernel",
+ "mcu-config",
+ "mcu-config-emulator",
+ "mcu-tock-veer",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
 name = "mcu-config"
 version = "0.1.0"
 
 [[package]]
 name = "mcu-config-emulator"
+version = "0.1.0"
+dependencies = [
+ "mcu-config",
+]
+
+[[package]]
+name = "mcu-config-fpga"
 version = "0.1.0"
 dependencies = [
  "mcu-config",
@@ -2247,6 +2276,94 @@ dependencies = [
  "rv32i",
  "tock-registers",
  "zeroize",
+]
+
+[[package]]
+name = "mcu-rom-fpga"
+version = "0.1.0"
+dependencies = [
+ "mcu-builder",
+ "mcu-config",
+ "mcu-config-fpga",
+ "mcu-rom-common",
+ "registers-generated",
+ "riscv-csr",
+ "romtime",
+ "rv32i",
+ "tock-registers",
+ "zeroize",
+]
+
+[[package]]
+name = "mcu-runtime-emulator"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "capsules-emulator",
+ "capsules-extra",
+ "capsules-runtime",
+ "capsules-system",
+ "components",
+ "dma-driver",
+ "flash-driver",
+ "i3c-driver",
+ "kernel",
+ "mcu-components",
+ "mcu-config",
+ "mcu-config-emulator",
+ "mcu-tock-veer",
+ "registers-generated",
+ "riscv 0.1.0",
+ "riscv-csr",
+ "romtime",
+ "rv32i",
+ "tock-registers",
+]
+
+[[package]]
+name = "mcu-runtime-fpga"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "capsules-emulator",
+ "capsules-extra",
+ "capsules-runtime",
+ "capsules-system",
+ "components",
+ "dma-driver",
+ "flash-driver",
+ "i3c-driver",
+ "kernel",
+ "mcu-components",
+ "mcu-config",
+ "mcu-config-fpga",
+ "mcu-tock-veer",
+ "registers-generated",
+ "riscv 0.1.0",
+ "riscv-csr",
+ "romtime",
+ "rv32i",
+ "tock-registers",
+]
+
+[[package]]
+name = "mcu-tock-veer"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "capsules-extra",
+ "capsules-runtime",
+ "capsules-system",
+ "components",
+ "i3c-driver",
+ "kernel",
+ "mcu-config",
+ "registers-generated",
+ "riscv 0.1.0",
+ "riscv-csr",
+ "romtime",
+ "rv32i",
+ "tock-registers",
 ]
 
 [[package]]
@@ -2808,30 +2925,6 @@ dependencies = [
  "tock-registers",
  "ureg",
  "zerocopy 0.8.23",
-]
-
-[[package]]
-name = "runtime"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "capsules-emulator",
- "capsules-extra",
- "capsules-runtime",
- "capsules-system",
- "components",
- "dma-driver",
- "flash-driver",
- "i3c-driver",
- "kernel",
- "mcu-config",
- "mcu-config-emulator",
- "registers-generated",
- "riscv 0.1.0",
- "riscv-csr",
- "romtime",
- "rv32i",
- "tock-registers",
 ]
 
 [[package]]
@@ -3835,6 +3928,7 @@ dependencies = [
  "emulator-consts",
  "mcu-builder",
  "mcu-config-emulator",
+ "mcu-config-fpga",
  "pldm-fw-pkg",
  "proc-macro2",
  "quote",

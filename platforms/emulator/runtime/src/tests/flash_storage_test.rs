@@ -178,16 +178,17 @@ fn test_single_flash_storage_erase(
 }
 
 pub fn test_flash_storage_erase() -> Option<u32> {
-    let chip = unsafe { crate::CHIP.unwrap() };
+    let peripherals: &'static crate::interrupts::EmulatorPeripherals<'static> =
+        unsafe { crate::EMULATOR_PERIPHERALS.unwrap() };
     println!("Starting flash storage erase test on main flash controller");
-    let main_flash_ctrl = &chip.peripherals.main_flash_ctrl;
+    let main_flash_ctrl = &peripherals.main_flash_ctrl;
     let (fs_drv_main, test_cb_main) =
         unsafe { static_init_fs_test!(main_flash_ctrl, TEST_BUF_LEN) };
     main_flash_ctrl.set_client(fs_drv_main);
     test_single_flash_storage_erase(fs_drv_main, test_cb_main);
 
     println!("Starting flash storage erase test on recovery flash controller");
-    let recovery_flash_ctrl = &chip.peripherals.recovery_flash_ctrl;
+    let recovery_flash_ctrl = &peripherals.recovery_flash_ctrl;
     let (fs_drv_recovery, test_cb_recovery) =
         unsafe { static_init_fs_test!(recovery_flash_ctrl, TEST_BUF_LEN) };
     recovery_flash_ctrl.set_client(fs_drv_recovery);
@@ -264,16 +265,16 @@ fn test_single_flash_storage_read_write(
 }
 
 pub(crate) fn test_flash_storage_read_write() -> Option<u32> {
-    let chip = unsafe { crate::CHIP.unwrap() };
+    let peripherals = unsafe { crate::EMULATOR_PERIPHERALS.unwrap() };
     println!("Starting flash storage read write test on main flash controller");
-    let main_flash_ctrl = &chip.peripherals.main_flash_ctrl;
+    let main_flash_ctrl = &peripherals.main_flash_ctrl;
     let (fs_drv_main, test_cb_main) =
         unsafe { static_init_fs_test!(main_flash_ctrl, TEST_BUF_LEN) };
     main_flash_ctrl.set_client(fs_drv_main);
     test_single_flash_storage_read_write(fs_drv_main, test_cb_main);
 
     println!("Starting flash storage read write test on recovery flash controller");
-    let recovery_flash_ctrl = &chip.peripherals.recovery_flash_ctrl;
+    let recovery_flash_ctrl = &peripherals.recovery_flash_ctrl;
     let (fs_drv_recovery, test_cb_recovery) =
         unsafe { static_init_fs_test!(recovery_flash_ctrl, TEST_BUF_LEN) };
     recovery_flash_ctrl.set_client(fs_drv_recovery);

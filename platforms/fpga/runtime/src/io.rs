@@ -12,8 +12,8 @@ use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use core::fmt::Write;
 use core::panic::PanicInfo;
+use core::ptr::write_volatile;
 use core::ptr::{addr_of, addr_of_mut};
-use core::ptr::{read_volatile, write_volatile};
 use kernel::debug;
 use kernel::debug::IoWrite;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
@@ -67,9 +67,9 @@ impl Write for Writer {
 impl IoWrite for Writer {
     fn write(&mut self, buf: &[u8]) -> usize {
         for b in buf {
-            // Print to this address for emulator output
+            // Print to this address for FPGA output
             unsafe {
-                write_volatile(0x1000_1041 as *mut u8, *b);
+                core::ptr::write_volatile(0xa401_1014 as *mut u32, *b as u32 | 0x100);
             }
         }
         buf.len()
@@ -77,7 +77,7 @@ impl IoWrite for Writer {
 }
 
 fn read_byte() -> u8 {
-    unsafe { read_volatile(0x1000_1041 as *mut u8) }
+    0
 }
 
 pub struct SemihostUart<'a> {

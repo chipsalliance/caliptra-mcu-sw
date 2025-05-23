@@ -25,6 +25,7 @@ use core::ptr::NonNull;
 /// will always fail to compile since `0x1000` doesn't have an allocation at
 /// compile time, even if it's known to be a valid MMIO address.
 #[derive(Debug)]
+#[repr(C)]
 pub struct StaticRef<T> {
     ptr: NonNull<T>,
 }

@@ -4,15 +4,14 @@
 
 //! Platform Level Interrupt Control peripheral driver for VeeR.
 
-use crate::{_pic_vector_table, MCU_MEMORY_MAP};
 use core::ptr::write_volatile;
 use kernel::utilities::cells::VolatileCell;
 use kernel::utilities::registers::interfaces::{Readable, Writeable};
 use kernel::utilities::registers::{
     register_bitfields, register_structs, LocalRegisterCopy, ReadWrite,
 };
-use kernel::utilities::StaticRef;
 use riscv_csr::csr::ReadWriteRiscvCsr;
+use romtime::StaticRef;
 
 register_structs! {
     pub PicRegisters {
@@ -104,9 +103,9 @@ pub struct Pic {
 }
 
 impl Pic {
-    pub const fn new() -> Self {
+    pub const fn new(pic_addr: u32) -> Self {
         Pic {
-            registers: unsafe { StaticRef::new(MCU_MEMORY_MAP.pic_offset as *const PicRegisters) },
+            registers: unsafe { StaticRef::new(pic_addr as *const PicRegisters) },
             saved: [
                 VolatileCell::new(LocalRegisterCopy::new(0)),
                 VolatileCell::new(LocalRegisterCopy::new(0)),
@@ -121,12 +120,12 @@ impl Pic {
         }
     }
 
-    pub fn init(&self) {
+    pub fn init(&self, pic_vector_table_addr: u32) {
         self.registers.mpiccfg.write(MPICCFG::PRIORD::STANDARD);
 
         self.disable_all();
 
-        let meivt_base = core::ptr::addr_of!(_pic_vector_table) as u32;
+        let meivt_base = pic_vector_table_addr;
 
         // redirect all PIC interrupts to _start_trap
         for irq in 0..31 {
