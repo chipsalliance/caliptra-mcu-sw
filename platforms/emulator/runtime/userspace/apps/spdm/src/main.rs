@@ -146,7 +146,6 @@ async fn spdm_loop<S: Syscalls>(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<S>
                 writeln!(cw, "SPDM_APP: Process message failed: {:?}", e).unwrap();
             }
         }
-        writeln!(cw, "SPDM_APP: Process message finished").unwrap();
     }
 }
 
