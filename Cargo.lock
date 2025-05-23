@@ -727,6 +727,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-test-harness-types"
+version = "0.1.0"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=2c0c6a81f569e72622001fab3732a21a1be4c78a#2c0c6a81f569e72622001fab3732a21a1be4c78a"
+
+[[package]]
 name = "caliptra-x509"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=2c0c6a81f569e72622001fab3732a21a1be4c78a#2c0c6a81f569e72622001fab3732a21a1be4c78a"
@@ -1608,6 +1613,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2236,7 +2251,38 @@ dependencies = [
 name = "mcu-hw-model"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "bit-vec",
+ "bitfield",
+ "caliptra-api",
+ "caliptra-api-types",
+ "caliptra-builder",
+ "caliptra-emu-bus",
+ "caliptra-emu-cpu",
+ "caliptra-emu-periph",
+ "caliptra-emu-types",
+ "caliptra-hw-model",
+ "caliptra-hw-model-types",
+ "caliptra-image-types",
+ "caliptra-registers",
+ "caliptra-test-harness-types",
+ "emulator-bmc",
+ "emulator-bus",
+ "emulator-cpu",
+ "emulator-periph",
+ "emulator-registers-generated",
+ "libc",
+ "mcu-builder",
+ "mcu-config",
+ "mcu-config-fpga",
+ "nix 0.26.4",
+ "rand",
+ "registers-generated",
+ "sha2",
  "tock-registers",
+ "uio",
+ "ureg",
+ "zerocopy 0.8.23",
 ]
 
 [[package]]
@@ -3565,6 +3611,17 @@ version = "0.1.0"
 name = "ufmt-write"
 version = "0.1.0"
 source = "git+https://github.com/korran/ufmt.git?rev=1d0743c1ffffc68bc05ca8eeb81c166192863f33#1d0743c1ffffc68bc05ca8eeb81c166192863f33"
+
+[[package]]
+name = "uio"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe6429670644060fac2d02d8d284c7f9369a1e71948a654d7f064dbba07fb508"
+dependencies = [
+ "fs2",
+ "libc",
+ "nix 0.26.4",
+]
 
 [[package]]
 name = "unicase"

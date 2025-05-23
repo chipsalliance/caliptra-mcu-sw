@@ -179,38 +179,41 @@ pub fn rom_start() {
     mci.caliptra_boot_go();
 
     // tell Caliptra to download firmware from the recovery interface
-    let mut soc = romtime::CaliptraSoC::new();
-    romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command");
-    if let Err(err) =
-        soc.start_mailbox_req(CommandId::RI_DOWNLOAD_FIRMWARE.into(), 0, [].into_iter())
-    {
-        match err {
-            CaliptraApiError::MailboxCmdFailed(code) => {
-                romtime::println!("[mcu-rom] Error sending mailbox command: {}", HexWord(code));
-            }
-            _ => {
-                romtime::println!("[mcu-rom] Error sending mailbox command");
-            }
-        }
-        fatal_error(4);
-    }
-    romtime::println!("[mcu-rom] Done sending RI_DOWNLOAD_FIRMWARE command");
-    {
-        // drop this to release the lock
-        if let Err(err) = soc.finish_mailbox_resp(8, 8) {
+    // only on emulator for now
+    if unsafe { MCU_MEMORY_MAP.rom_offset } == 0x8000_0000 {
+        let mut soc = romtime::CaliptraSoC::new();
+        romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command");
+        if let Err(err) =
+            soc.start_mailbox_req(CommandId::RI_DOWNLOAD_FIRMWARE.into(), 0, [].into_iter())
+        {
             match err {
                 CaliptraApiError::MailboxCmdFailed(code) => {
-                    romtime::println!(
-                        "[mcu-rom] Error finishing mailbox command: {}",
-                        HexWord(code)
-                    );
+                    romtime::println!("[mcu-rom] Error sending mailbox command: {}", HexWord(code));
                 }
                 _ => {
-                    romtime::println!("[mcu-rom] Error finishing mailbox command");
+                    romtime::println!("[mcu-rom] Error sending mailbox command");
                 }
             }
-            fatal_error(5);
+            fatal_error(4);
         }
+        romtime::println!("[mcu-rom] Done sending RI_DOWNLOAD_FIRMWARE command");
+        {
+            // drop this to release the lock
+            if let Err(err) = soc.finish_mailbox_resp(8, 8) {
+                match err {
+                    CaliptraApiError::MailboxCmdFailed(code) => {
+                        romtime::println!(
+                            "[mcu-rom] Error finishing mailbox command: {}",
+                            HexWord(code)
+                        );
+                    }
+                    _ => {
+                        romtime::println!("[mcu-rom] Error finishing mailbox command");
+                    }
+                }
+                fatal_error(5);
+            }
+        };
     }
 
     romtime::println!("[mcu-rom] Starting recovery flow");
