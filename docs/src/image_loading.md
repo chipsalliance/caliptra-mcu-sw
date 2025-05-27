@@ -312,7 +312,7 @@ image_loader.finalize();
 
 During system initialization, the recovery boot flow ensures that valid firmware is successfully loaded into the Caliptra core, MCU, and other SoC elements.
 
-In flash-based systems, an A/B partitioning mechanism is used to enhance reliability by allowing fallback to a working firmware image in case of boot failure.
+In flash-based systems, an [A/B partitioning](firmware_update.md#ab-partition-mechanism) mechanism is used to enhance reliability by allowing fallback to a working firmware image in case of boot failure.
 
 The method of selecting which partition to boot from is system-specific. For example, the active partition may be determined by a hardware pin, a soft fuse or register, or an entry in the flash partition table.
 
@@ -352,9 +352,9 @@ flowchart TD
     StartMCURT --> Done_cptra([Done])
 ```
 
-### MCU Boot Flow
+### MCU ROM Boot Flow
 
-This section describes how the MCU handles failures during the loading of Caliptra firmware and MCU Runtime firmware.
+This section describes how the MCU ROM handles failures during the loading of Caliptra firmware and MCU Runtime firmware.
 
 To avoid infinite reboot loops caused by a faulty firmware image, each partition maintains a boot count, which tracks how many times the system has attempted to boot from it.
 
@@ -395,13 +395,10 @@ flowchart TD
 
     StreamMCURT--> WaitMCURTBoot[Wait for MCU<br>Exec/Go Bit<br>to be set]
 
-    WaitMCURTBoot-->|Exec Go/Bit<br>set|MCURTStart[Execute MCU<br>Runtime FW]
+    WaitMCURTBoot-->|Exec Go/Bit<br>set|MCURTStart([MCU Runtime Boot Flow])
 
-    MCURTStart-->LoadAndAuthorizeSocImage[Load and<br>Authorize SOC<br>Images]
 
     Recover([MCU Recovery Flow])
-    LoadAndAuthorizeSocImage --> |Auth Pass| SUCCESSFUL_BOOT[Set Partition <br>Status as <br>'Boot Successful'] --> Done([Done])
-    LoadAndAuthorizeSocImage --> |Auth Fail| UserDefinedOption[User Defined<br>Logic - e.g.<br>Switch to other<br>partition or Hang]
 
 ```
 ### MCU Recovery Flow
@@ -416,6 +413,26 @@ flowchart TD
         --> SetNewActivePartition[Set other valid<br>partition, if any,<br>as Active]
         --> Reset[Assert Caliptra Reset]
         --> MCUReboot[MCU Reboot]
+```
+
+### MCU Runtime and SoC Image(s) Boot Flow
+
+When the MCU ROM hands off execution to the MCU Runtime firmware, it keeps the MCU watchdog timer active. If the watchdog expires at any point—indicating a hang or prolonged stall—the MCU will be reset. Upon reset, the MCU ROM will evaluate the boot count and initiate the recovery flow if necessary (e.g., if the boot count exceeds the defined threshold).
+
+The MCU Runtime firmware is responsible for loading and authorizing the remaining SoC images. If all SoC images are successfully loaded, authenticated, and booted, the partition's boot status can be marked as "Boot Successful." However, if any of the images fail to load or validate, the system behavior is left to user-defined policy. For example, the user may choose to trigger the recovery flow to fall back to a previous version of the SoC images or halt execution entirely to prevent further operation under an unstable configuration.
+
+```mermaid
+flowchart TD
+    Start([MCU Runtime<br>Boot Flow])-->MCURuntime
+    MCURuntime[Execute MCU<br>Runtime FW]
+    MCURuntime-->StartWatchdog[Start MCU<br>Watchdog]
+    StartWatchdog-->LoadAndAuthorizeSocImage[Load and<br>Authorize SOC<br>Images]
+
+    LoadAndAuthorizeSocImage --> |Auth Pass| SUCCESSFUL_BOOT[Set Partition <br>Status as <br>'Boot Successful'] --> Done([Done])
+    LoadAndAuthorizeSocImage --> |Auth Fail| UserDefinedOption[User Defined<br>Logic - e.g.<br>Switch to other<br>partition or Hang]
+
+    TIMEOUT([MCU  Watchdog<br>Timeout])-->MCURESET[MCU Reset]-->MCUROM([MCU ROM])
+
 ```
 
 References:<br>
