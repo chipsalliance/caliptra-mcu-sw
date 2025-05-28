@@ -27,7 +27,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     };
 
     let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-    let rom_binary: PathBuf = rom_build(None)?.into();
+    let rom_binary: PathBuf = rom_build(None, "")?.into();
     let tock_binary: PathBuf = runtime_build_with_apps(&features, None, false, None, None)?.into();
 
     let mut caliptra_builder = CaliptraBuilder::new(

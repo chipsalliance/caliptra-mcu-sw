@@ -30,13 +30,18 @@ mod test {
     }
 
     // only build the ROM once
-    pub static ROM: LazyLock<PathBuf> = LazyLock::new(compile_rom);
+    pub static ROM: LazyLock<PathBuf> = LazyLock::new(|| compile_rom(""));
 
     pub static TEST_LOCK: LazyLock<Mutex<AtomicU32>> =
         LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
 
-    fn compile_rom() -> PathBuf {
-        let output: PathBuf = mcu_builder::rom_build(None)
+    // Compile the ROM for a given feature flag (empty string for default ROM).
+    pub fn get_rom_with_feature(feature: &str) -> PathBuf {
+        compile_rom(feature)
+    }
+
+    fn compile_rom(feature: &str) -> PathBuf {
+        let output: PathBuf = mcu_builder::rom_build(None, feature)
             .expect("ROM build failed")
             .into();
         assert!(output.exists());
@@ -295,6 +300,32 @@ mod test {
         let test = run_runtime(
             &feature,
             ROM.to_path_buf(),
+            test_runtime,
+            i3c_port,
+            true,
+            false,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(0, test.code().unwrap_or_default());
+
+        // force the compiler to keep the lock
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_mcu_rom_flash_access() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let feature = "test-mcu-rom-flash-access".to_string();
+        println!("Compiling test firmware {}", &feature);
+        let test_runtime = compile_runtime(&feature, false);
+        let i3c_port = "65534".to_string();
+        let test = run_runtime(
+            &feature,
+            get_rom_with_feature(&feature),
             test_runtime,
             i3c_port,
             true,

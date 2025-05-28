@@ -6,21 +6,29 @@ use anyhow::{bail, Result};
 use mcu_config::McuMemoryMap;
 use std::process::Command;
 
-pub fn rom_build(platform: Option<&str>) -> Result<String> {
+pub fn rom_build(platform: Option<&str>, feature: &str) -> Result<String> {
     let platform = platform.unwrap_or("emulator");
     let platform_pkg = format!("mcu-rom-{}", platform);
-    let platform_bin = format!("mcu-rom-{}.bin", platform);
-    let status = Command::new("cargo")
-        .current_dir(&*PROJECT_ROOT)
-        .args([
-            "build",
-            "-p",
-            &platform_pkg,
-            "--release",
-            "--target",
-            TARGET,
-        ])
-        .status()?;
+    let feature_suffix = if feature.is_empty() {
+        "".to_string()
+    } else {
+        format!("-{}", feature)
+    };
+
+    let platform_bin = format!("mcu-rom-{}{}.bin", platform, feature_suffix);
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(&*PROJECT_ROOT).args([
+        "build",
+        "-p",
+        &platform_pkg,
+        "--release",
+        "--target",
+        TARGET,
+    ]);
+    if !feature.is_empty() {
+        cmd.args(["--features", feature]);
+    }
+    let status = cmd.status()?;
     if !status.success() {
         bail!("build ROM binary failed");
     }
@@ -37,15 +45,15 @@ pub fn rom_build(platform: Option<&str>) -> Result<String> {
         .join(&platform_bin);
 
     let objcopy = objcopy()?;
-    let objcopy_flags = "--strip-sections --strip-all".to_string();
-    let mut cmd = Command::new(objcopy);
-    let cmd = cmd
+    let objcopy_flags = "--strip-sections --strip-all";
+    let mut objcopy_cmd = Command::new(objcopy);
+    objcopy_cmd
         .arg("--output-target=binary")
         .args(objcopy_flags.split(' '))
         .arg(&rom_elf)
         .arg(&rom_binary);
-    println!("Executing {:?}", &cmd);
-    if !cmd.status()?.success() {
+    println!("Executing {:?}", &objcopy_cmd);
+    if !objcopy_cmd.status()?.success() {
         bail!("objcopy failed to build ROM");
     }
     println!(

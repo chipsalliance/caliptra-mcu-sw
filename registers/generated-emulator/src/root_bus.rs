@@ -33,7 +33,7 @@ pub struct AutoRootBusOffsets {
 impl Default for AutoRootBusOffsets {
     fn default() -> Self {
         Self {
-            dccm_offset: 0x5000_0000,
+            dccm_offset: 0x5000_8000, // Remap to 0x5000_8000 to avoid overlapping with ROM SRAM hooked to McuRootBus
             dccm_size: 0x4000,
             i3c_offset: 0x2000_4000,
             i3c_size: 0x1000,

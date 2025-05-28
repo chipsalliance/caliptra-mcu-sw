@@ -551,12 +551,18 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     if let Some(sram_size) = cli.sram_size {
         mcu_root_bus_offsets.ram_size = sram_size;
     }
-    if let Some(dccm_offset) = cli.dccm_offset {
-        auto_root_bus_offsets.dccm_offset = dccm_offset;
+
+    // Don't override default DCCM offset and size when the ROM flash driver feature is enabled.
+    #[cfg(not(feature = "test-mcu-rom-flash-access"))]
+    {
+        if let Some(dccm_offset) = cli.dccm_offset {
+            auto_root_bus_offsets.dccm_offset = dccm_offset;
+        }
+        if let Some(dccm_size) = cli.dccm_size {
+            auto_root_bus_offsets.dccm_size = dccm_size;
+        }
     }
-    if let Some(dccm_size) = cli.dccm_size {
-        auto_root_bus_offsets.dccm_size = dccm_size;
-    }
+
     if let Some(i3c_offset) = cli.i3c_offset {
         auto_root_bus_offsets.i3c_offset = i3c_offset;
     }
@@ -628,6 +634,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     }
 
     let dma_ram = root_bus.ram.clone();
+    let dma_rom_sram = root_bus.rom_sram.clone();
 
     let i3c_error_irq = pic.register_irq(McuRootBus::I3C_ERROR_IRQ);
     let i3c_notif_irq = pic.register_irq(McuRootBus::I3C_NOTIF_IRQ);
@@ -738,6 +745,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
                 feature = "test-flash-storage-read-write",
                 feature = "test-flash-storage-erase",
                 feature = "test-flash-usermode",
+                feature = "test-mcu-rom-flash-access",
             )) {
                 Some(
                     tempfile::NamedTempFile::new()
@@ -840,6 +848,14 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         .periph
         .set_dma_ram(dma_ram.clone());
 
+    // Set DMA RAM for ROM access to Main Flash Controller
+    auto_root_bus
+        .main_flash_periph
+        .as_mut()
+        .unwrap()
+        .periph
+        .set_dma_rom_sram(dma_rom_sram.clone());
+
     // Set the DMA RAM for Recovery Flash Controller
     auto_root_bus
         .recovery_flash_periph
@@ -847,6 +863,14 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         .unwrap()
         .periph
         .set_dma_ram(dma_ram);
+
+    // Set the DMA RAM for ROM access to Recovery Flash Controller
+    auto_root_bus
+        .recovery_flash_periph
+        .as_mut()
+        .unwrap()
+        .periph
+        .set_dma_rom_sram(dma_rom_sram.clone());
 
     let mut cpu = Cpu::new(auto_root_bus, clock, pic);
     cpu.write_pc(mcu_root_bus_offsets.rom_offset);
