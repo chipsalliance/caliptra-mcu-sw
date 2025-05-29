@@ -7,12 +7,14 @@
 
 use core::fmt::Write;
 #[cfg(feature = "test-flash-usermode")]
-use libsyscall_caliptra::flash::{driver_num as par_driver_num, FlashCapacity, SpiFlash};
+use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash};
 use libtock::alarm::*;
 use libtock_console::Console;
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
+#[cfg(feature = "test-flash-usermode")]
+use mcu_config_emulator::flash::{IMAGE_A_PARTITION, IMAGE_B_PARTITION};
 
 #[cfg(feature = "test-pldm-request-response")]
 mod test_pldm_request_response;
@@ -116,7 +118,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         };
 
         let mut test_cfg_1 = flash_test::FlashTestConfig {
-            drv_num: par_driver_num::ACTIVE_IMAGE_PARTITION,
+            drv_num: IMAGE_A_PARTITION.driver_num,
             expected_capacity: flash_test::EXPECTED_CAPACITY,
             expected_chunk_size: flash_test::EXPECTED_CHUNK_SIZE,
             e_offset: 0,
@@ -134,7 +136,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         .unwrap();
 
         let mut test_cfg_2 = flash_test::FlashTestConfig {
-            drv_num: par_driver_num::RECOVERY_IMAGE_PARTITION,
+            drv_num: IMAGE_B_PARTITION.driver_num,
             expected_capacity: flash_test::EXPECTED_CAPACITY,
             expected_chunk_size: flash_test::EXPECTED_CHUNK_SIZE,
             e_offset: 0,

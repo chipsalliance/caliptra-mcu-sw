@@ -17,10 +17,10 @@ use core::convert::TryInto;
 use emulator_bus::{ActionHandle, Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
 use emulator_consts::{RAM_OFFSET, RAM_SIZE};
 use emulator_cpu::Irq;
-use emulator_registers_generated::main_flash::MainFlashPeripheral;
-use emulator_registers_generated::recovery_flash::RecoveryFlashPeripheral;
-use registers_generated::main_flash_ctrl;
-use registers_generated::main_flash_ctrl::bits::{
+use emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
+use emulator_registers_generated::secondary_flash::SecondaryFlashPeripheral;
+use registers_generated::primary_flash_ctrl;
+use registers_generated::primary_flash_ctrl::bits::{
     CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
 };
 use std::cell::RefCell;
@@ -362,7 +362,7 @@ impl DummyFlashCtrl {
     }
 }
 
-impl MainFlashPeripheral for DummyFlashCtrl {
+impl PrimaryFlashPeripheral for DummyFlashCtrl {
     fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {
         self.dma_ram = Some(ram);
     }
@@ -377,7 +377,7 @@ impl MainFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
+        registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.interrupt_state.reg.get())
     }
@@ -386,19 +386,19 @@ impl MainFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
+            registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
         // Interrupt state register: SW write 1 to clear
         if val
             .reg
-            .is_set(registers_generated::main_flash_ctrl::bits::FlInterruptState::Error)
+            .is_set(registers_generated::primary_flash_ctrl::bits::FlInterruptState::Error)
         {
             self.clear_interrupt(FlashCtrlIntType::Error);
         }
         if val
             .reg
-            .is_set(registers_generated::main_flash_ctrl::bits::FlInterruptState::Event)
+            .is_set(registers_generated::primary_flash_ctrl::bits::FlInterruptState::Event)
         {
             self.clear_interrupt(FlashCtrlIntType::Event);
         }
@@ -408,7 +408,7 @@ impl MainFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
+        registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
     }
@@ -417,13 +417,13 @@ impl MainFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
+            registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
         if self.interrupt_state.reg.is_set(FlInterruptState::Error)
             && val
                 .reg
-                .is_set(registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Error)
+                .is_set(registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Error)
         {
             self.error_irq.set_level(true);
             self.timer.schedule_poll_in(1);
@@ -432,7 +432,7 @@ impl MainFlashPeripheral for DummyFlashCtrl {
         if self.interrupt_state.reg.is_set(FlInterruptState::Event)
             && val
                 .reg
-                .is_set(registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Event)
+                .is_set(registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Event)
         {
             self.event_irq.set_level(true);
             self.timer.schedule_poll_in(1);
@@ -470,7 +470,7 @@ impl MainFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::main_flash_ctrl::bits::FlControl::Register,
+        registers_generated::primary_flash_ctrl::bits::FlControl::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.control.reg.get())
     }
@@ -479,7 +479,7 @@ impl MainFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::main_flash_ctrl::bits::FlControl::Register,
+            registers_generated::primary_flash_ctrl::bits::FlControl::Register,
         >,
     ) {
         if !self.ctrl_regwen.reg.is_set(CtrlRegwen::En) {
@@ -501,7 +501,7 @@ impl MainFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::main_flash_ctrl::bits::OpStatus::Register,
+        registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.op_status.reg.get())
     }
@@ -510,7 +510,7 @@ impl MainFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::main_flash_ctrl::bits::OpStatus::Register,
+            registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
         >,
     ) {
         self.op_status.reg.set(val.reg.get());
@@ -520,13 +520,13 @@ impl MainFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::main_flash_ctrl::bits::CtrlRegwen::Register,
+        registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.ctrl_regwen.reg.get())
     }
 }
 
-impl RecoveryFlashPeripheral for DummyFlashCtrl {
+impl SecondaryFlashPeripheral for DummyFlashCtrl {
     fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {
         self.dma_ram = Some(ram);
     }
@@ -544,7 +544,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
+        registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.interrupt_state.reg.get())
     }
@@ -553,19 +553,19 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::main_flash_ctrl::bits::FlInterruptState::Register,
+            registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
         // Interrupt state register: SW write 1 to clear
         if val
             .reg
-            .is_set(main_flash_ctrl::bits::FlInterruptState::Error)
+            .is_set(primary_flash_ctrl::bits::FlInterruptState::Error)
         {
             self.clear_interrupt(FlashCtrlIntType::Error);
         }
         if val
             .reg
-            .is_set(main_flash_ctrl::bits::FlInterruptState::Event)
+            .is_set(primary_flash_ctrl::bits::FlInterruptState::Event)
         {
             self.clear_interrupt(FlashCtrlIntType::Event);
         }
@@ -575,7 +575,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
+        registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
     }
@@ -584,13 +584,13 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::main_flash_ctrl::bits::FlInterruptEnable::Register,
+            registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
         if self.interrupt_state.reg.is_set(FlInterruptState::Error)
             && val
                 .reg
-                .is_set(main_flash_ctrl::bits::FlInterruptEnable::Error)
+                .is_set(primary_flash_ctrl::bits::FlInterruptEnable::Error)
         {
             self.error_irq.set_level(true);
             self.timer.schedule_poll_in(1);
@@ -599,7 +599,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         if self.interrupt_state.reg.is_set(FlInterruptState::Event)
             && val
                 .reg
-                .is_set(main_flash_ctrl::bits::FlInterruptEnable::Event)
+                .is_set(primary_flash_ctrl::bits::FlInterruptEnable::Event)
         {
             self.event_irq.set_level(true);
             self.timer.schedule_poll_in(1);
@@ -637,7 +637,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::main_flash_ctrl::bits::FlControl::Register,
+        registers_generated::primary_flash_ctrl::bits::FlControl::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.control.reg.get())
     }
@@ -646,7 +646,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::main_flash_ctrl::bits::FlControl::Register,
+            registers_generated::primary_flash_ctrl::bits::FlControl::Register,
         >,
     ) {
         if !self.ctrl_regwen.reg.is_set(CtrlRegwen::En) {
@@ -668,7 +668,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::main_flash_ctrl::bits::OpStatus::Register,
+        registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.op_status.reg.get())
     }
@@ -677,7 +677,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: emulator_bus::ReadWriteRegister<
             u32,
-            registers_generated::main_flash_ctrl::bits::OpStatus::Register,
+            registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
         >,
     ) {
         self.op_status.reg.set(val.reg.get());
@@ -687,7 +687,7 @@ impl RecoveryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> emulator_bus::ReadWriteRegister<
         u32,
-        registers_generated::main_flash_ctrl::bits::CtrlRegwen::Register,
+        registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
     > {
         emulator_bus::ReadWriteRegister::new(self.ctrl_regwen.reg.get())
     }
@@ -703,11 +703,11 @@ mod test {
     use emulator_consts::{RAM_OFFSET, RAM_SIZE};
     use emulator_cpu::Pic;
     use emulator_registers_generated::root_bus::AutoRootBus;
-    use registers_generated::main_flash_ctrl::bits::{
+    use registers_generated::primary_flash_ctrl::bits::{
         FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
     };
-    use registers_generated::main_flash_ctrl::MAIN_FLASH_CTRL_ADDR;
-    use registers_generated::recovery_flash_ctrl::RECOVERY_FLASH_CTRL_ADDR;
+    use registers_generated::primary_flash_ctrl::PRIMARY_FLASH_CTRL_ADDR;
+    use registers_generated::secondary_flash_ctrl::SECONDARY_FLASH_CTRL_ADDR;
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -721,8 +721,8 @@ mod test {
 
     #[derive(Clone, Copy, PartialEq)]
     pub enum FlashType {
-        Main,
-        Recovery,
+        ImagePartitionA,
+        ImagePartitionB,
     }
 
     // Dummy DMA RAM
@@ -738,8 +738,8 @@ mod test {
     ) -> AutoRootBus {
         let pic = Pic::new();
         let (flash_ctrl_error_irq, flash_ctrl_event_irq) = match fl_type {
-            FlashType::Main => (pic.register_irq(19), pic.register_irq(20)),
-            FlashType::Recovery => (pic.register_irq(21), pic.register_irq(22)),
+            FlashType::ImagePartitionA => (pic.register_irq(19), pic.register_irq(20)),
+            FlashType::ImagePartitionB => (pic.register_irq(21), pic.register_irq(22)),
         };
 
         let file = file_path;
@@ -756,11 +756,11 @@ mod test {
         );
 
         if let Some(dma_ram) = dma_ram {
-            MainFlashPeripheral::set_dma_ram(&mut *flash_controller, dma_ram);
+            PrimaryFlashPeripheral::set_dma_ram(&mut *flash_controller, dma_ram);
         }
 
         match fl_type {
-            FlashType::Main => AutoRootBus::new(
+            FlashType::ImagePartitionA => AutoRootBus::new(
                 vec![],
                 None,
                 None,
@@ -775,7 +775,7 @@ mod test {
                 None,
                 None,
             ),
-            FlashType::Recovery => AutoRootBus::new(
+            FlashType::ImagePartitionB => AutoRootBus::new(
                 vec![],
                 None,
                 None,
@@ -851,8 +851,8 @@ mod test {
         let mut bus = test_helper_setup_autobus(None, fl_type, &dummy_clock, None);
 
         let flash_ctrl_base_addr: u32 = match fl_type {
-            FlashType::Main => MAIN_FLASH_CTRL_ADDR,
-            FlashType::Recovery => RECOVERY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionA => PRIMARY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionB => SECONDARY_FLASH_CTRL_ADDR,
         };
 
         // Write to the interrupt enable register and read it back
@@ -978,8 +978,8 @@ mod test {
         );
 
         let flash_ctrl_base_addr: u32 = match fl_type {
-            FlashType::Main => MAIN_FLASH_CTRL_ADDR,
-            FlashType::Recovery => RECOVERY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionA => PRIMARY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionB => SECONDARY_FLASH_CTRL_ADDR,
         };
 
         // Prepare the page buffer for write operation
@@ -1076,8 +1076,8 @@ mod test {
         );
 
         let flash_ctrl_base_addr: u32 = match fl_type {
-            FlashType::Main => MAIN_FLASH_CTRL_ADDR,
-            FlashType::Recovery => RECOVERY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionA => PRIMARY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionB => SECONDARY_FLASH_CTRL_ADDR,
         };
 
         // Prepare the page buffer for write operation
@@ -1161,8 +1161,8 @@ mod test {
         );
 
         let flash_ctrl_base_addr: u32 = match fl_type {
-            FlashType::Main => MAIN_FLASH_CTRL_ADDR,
-            FlashType::Recovery => RECOVERY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionA => PRIMARY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionB => SECONDARY_FLASH_CTRL_ADDR,
         };
 
         // Fill the test page with test data
@@ -1256,8 +1256,8 @@ mod test {
         );
 
         let flash_ctrl_base_addr: u32 = match fl_type {
-            FlashType::Main => MAIN_FLASH_CTRL_ADDR,
-            FlashType::Recovery => RECOVERY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionA => PRIMARY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionB => SECONDARY_FLASH_CTRL_ADDR,
         };
 
         // Prepare the page buffer for read operation
@@ -1334,8 +1334,8 @@ mod test {
             test_helper_setup_autobus(Some(test_file.clone()), fl_type, &dummy_clock, None);
 
         let flash_ctrl_base_addr: u32 = match fl_type {
-            FlashType::Main => MAIN_FLASH_CTRL_ADDR,
-            FlashType::Recovery => RECOVERY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionA => PRIMARY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionB => SECONDARY_FLASH_CTRL_ADDR,
         };
 
         // write to the page number register
@@ -1398,8 +1398,8 @@ mod test {
             test_helper_setup_autobus(Some(test_file.clone()), fl_type, &dummy_clock, None);
 
         let flash_ctrl_base_addr: u32 = match fl_type {
-            FlashType::Main => MAIN_FLASH_CTRL_ADDR,
-            FlashType::Recovery => RECOVERY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionA => PRIMARY_FLASH_CTRL_ADDR,
+            FlashType::ImagePartitionB => SECONDARY_FLASH_CTRL_ADDR,
         };
 
         // write to the page number register
@@ -1449,72 +1449,72 @@ mod test {
 
     /// TEST CASE STARTED HERE
     #[test]
-    fn test_main_flash_regs_access() {
-        test_flash_ctrl_regs_access(FlashType::Main);
+    fn test_primary_flash_regs_access() {
+        test_flash_ctrl_regs_access(FlashType::ImagePartitionA);
     }
 
     #[test]
-    fn test_main_flash_write_page_success() {
-        test_write_page_success(FlashType::Main);
+    fn test_primary_flash_write_page_success() {
+        test_write_page_success(FlashType::ImagePartitionA);
     }
 
     #[test]
-    fn test_main_flash_write_page_error() {
-        test_write_page_error(FlashType::Main);
+    fn test_primary_flash_write_page_error() {
+        test_write_page_error(FlashType::ImagePartitionA);
     }
 
     #[test]
-    fn test_main_flash_read_page_success() {
-        test_read_page_success(FlashType::Main);
+    fn test_primary_flash_read_page_success() {
+        test_read_page_success(FlashType::ImagePartitionA);
     }
 
     #[test]
-    fn test_main_flash_read_page_error() {
-        test_read_page_error(FlashType::Main);
+    fn test_primary_flash_read_page_error() {
+        test_read_page_error(FlashType::ImagePartitionA);
     }
 
     #[test]
-    fn test_main_flash_erase_page_success() {
-        test_erase_page_success(FlashType::Main);
+    fn test_primary_flash_erase_page_success() {
+        test_erase_page_success(FlashType::ImagePartitionA);
     }
 
     #[test]
-    fn test_main_flash_erase_page_error() {
-        test_erase_page_error(FlashType::Main);
+    fn test_primary_flash_erase_page_error() {
+        test_erase_page_error(FlashType::ImagePartitionA);
     }
 
     #[test]
-    fn test_recovery_flash_regs_access() {
-        test_flash_ctrl_regs_access(FlashType::Recovery);
+    fn test_secondary_flash_regs_access() {
+        test_flash_ctrl_regs_access(FlashType::ImagePartitionB);
     }
 
     #[test]
-    fn test_recovery_flash_write_page_success() {
-        test_write_page_success(FlashType::Recovery);
+    fn test_secondary_flash_write_page_success() {
+        test_write_page_success(FlashType::ImagePartitionB);
     }
 
     #[test]
-    fn test_recovery_flash_write_page_error() {
-        test_write_page_error(FlashType::Recovery);
+    fn test_secondary_flash_write_page_error() {
+        test_write_page_error(FlashType::ImagePartitionB);
     }
 
     #[test]
-    fn test_recovery_flash_read_page_success() {
-        test_read_page_success(FlashType::Recovery);
+    fn test_secondary_flash_read_page_success() {
+        test_read_page_success(FlashType::ImagePartitionB);
     }
 
     #[test]
-    fn test_recovery_flash_read_page_error() {
-        test_read_page_error(FlashType::Recovery);
+    fn test_secondary_flash_read_page_error() {
+        test_read_page_error(FlashType::ImagePartitionB);
     }
 
     #[test]
-    fn test_recovery_flash_erase_page_success() {
-        test_erase_page_success(FlashType::Recovery);
+    fn test_secondary_flash_erase_page_success() {
+        test_erase_page_success(FlashType::ImagePartitionB);
     }
 
     #[test]
-    fn test_recovery_flash_erase_page_error() {
-        test_erase_page_error(FlashType::Recovery);
+    fn test_secondary_flash_erase_page_error() {
+        test_erase_page_error(FlashType::ImagePartitionB);
     }
 }

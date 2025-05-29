@@ -977,7 +977,7 @@ fn generate_fw_registers(
 
     for block in validated_blocks {
         // Only generate addresses for this since the types are covered elsewhere
-        let addr_only = block.block().name == "recovery_flash_ctrl";
+        let addr_only = block.block().name == "secondary_flash_ctrl";
         let module_ident = block.block().name.clone();
         let dest_file = dest_dir.join(format!("{}.rs", block.block().name));
         let tokens = registers_generator::generate_code(

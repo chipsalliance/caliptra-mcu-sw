@@ -21,6 +21,7 @@ libtock_platform.workspace = true
 libtock_runtime.workspace = true
 libtock.workspace = true
 libtockasync.workspace = true
+mcu-config-emulator.workspace = true
 pldm-common.workspace = true
 portable-atomic.workspace = true
 romtime.workspace = true

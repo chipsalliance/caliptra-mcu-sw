@@ -9,10 +9,10 @@ pub struct AutoRootBusOffsets {
     pub dccm_size: u32,
     pub i3c_offset: u32,
     pub i3c_size: u32,
-    pub main_flash_offset: u32,
-    pub main_flash_size: u32,
-    pub recovery_flash_offset: u32,
-    pub recovery_flash_size: u32,
+    pub primary_flash_offset: u32,
+    pub primary_flash_size: u32,
+    pub secondary_flash_offset: u32,
+    pub secondary_flash_size: u32,
     pub mci_offset: u32,
     pub mci_size: u32,
     pub dma_offset: u32,
@@ -37,10 +37,10 @@ impl Default for AutoRootBusOffsets {
             dccm_size: 0x4000,
             i3c_offset: 0x2000_4000,
             i3c_size: 0x1000,
-            main_flash_offset: 0x2000_8000,
-            main_flash_size: 0x20,
-            recovery_flash_offset: 0x2000_8800,
-            recovery_flash_size: 0x20,
+            primary_flash_offset: 0x2000_8000,
+            primary_flash_size: 0x20,
+            secondary_flash_offset: 0x2000_8800,
+            secondary_flash_size: 0x20,
             mci_offset: 0x2100_0000,
             mci_size: 0xe0_0000,
             dma_offset: 0x3000_0000,
@@ -65,8 +65,8 @@ pub struct AutoRootBus {
     offsets: AutoRootBusOffsets,
     pub dccm: emulator_bus::Ram,
     pub i3c_periph: Option<crate::i3c::I3cBus>,
-    pub main_flash_periph: Option<crate::main_flash::MainFlashBus>,
-    pub recovery_flash_periph: Option<crate::recovery_flash::RecoveryFlashBus>,
+    pub primary_flash_periph: Option<crate::primary_flash::PrimaryFlashBus>,
+    pub secondary_flash_periph: Option<crate::secondary_flash::SecondaryFlashBus>,
     pub mci_periph: Option<crate::mci::MciBus>,
     pub dma_periph: Option<crate::dma::DmaBus>,
     pub mbox_periph: Option<crate::mbox::MboxBus>,
@@ -82,8 +82,8 @@ impl AutoRootBus {
         delegates: Vec<Box<dyn emulator_bus::Bus>>,
         offsets: Option<AutoRootBusOffsets>,
         i3c_periph: Option<Box<dyn crate::i3c::I3cPeripheral>>,
-        main_flash_periph: Option<Box<dyn crate::main_flash::MainFlashPeripheral>>,
-        recovery_flash_periph: Option<Box<dyn crate::recovery_flash::RecoveryFlashPeripheral>>,
+        primary_flash_periph: Option<Box<dyn crate::primary_flash::PrimaryFlashPeripheral>>,
+        secondary_flash_periph: Option<Box<dyn crate::secondary_flash::SecondaryFlashPeripheral>>,
         mci_periph: Option<Box<dyn crate::mci::MciPeripheral>>,
         dma_periph: Option<Box<dyn crate::dma::DmaPeripheral>>,
         mbox_periph: Option<Box<dyn crate::mbox::MboxPeripheral>>,
@@ -98,10 +98,10 @@ impl AutoRootBus {
             offsets: offsets.unwrap_or_default(),
             dccm: emulator_bus::Ram::new(vec![0; 16384i32 as usize]),
             i3c_periph: i3c_periph.map(|p| crate::i3c::I3cBus { periph: p }),
-            main_flash_periph: main_flash_periph
-                .map(|p| crate::main_flash::MainFlashBus { periph: p }),
-            recovery_flash_periph: recovery_flash_periph
-                .map(|p| crate::recovery_flash::RecoveryFlashBus { periph: p }),
+            primary_flash_periph: primary_flash_periph
+                .map(|p| crate::primary_flash::PrimaryFlashBus { periph: p }),
+            secondary_flash_periph: secondary_flash_periph
+                .map(|p| crate::secondary_flash::SecondaryFlashBus { periph: p }),
             mci_periph: mci_periph.map(|p| crate::mci::MciBus { periph: p }),
             dma_periph: dma_periph.map(|p| crate::dma::DmaBus { periph: p }),
             mbox_periph: mbox_periph.map(|p| crate::mbox::MboxBus { periph: p }),
@@ -131,18 +131,18 @@ impl emulator_bus::Bus for AutoRootBus {
                 return periph.read(size, addr - self.offsets.i3c_offset);
             }
         }
-        if addr >= self.offsets.main_flash_offset
-            && addr < self.offsets.main_flash_offset + self.offsets.main_flash_size
+        if addr >= self.offsets.primary_flash_offset
+            && addr < self.offsets.primary_flash_offset + self.offsets.primary_flash_size
         {
-            if let Some(periph) = self.main_flash_periph.as_mut() {
-                return periph.read(size, addr - self.offsets.main_flash_offset);
+            if let Some(periph) = self.primary_flash_periph.as_mut() {
+                return periph.read(size, addr - self.offsets.primary_flash_offset);
             }
         }
-        if addr >= self.offsets.recovery_flash_offset
-            && addr < self.offsets.recovery_flash_offset + self.offsets.recovery_flash_size
+        if addr >= self.offsets.secondary_flash_offset
+            && addr < self.offsets.secondary_flash_offset + self.offsets.secondary_flash_size
         {
-            if let Some(periph) = self.recovery_flash_periph.as_mut() {
-                return periph.read(size, addr - self.offsets.recovery_flash_offset);
+            if let Some(periph) = self.secondary_flash_periph.as_mut() {
+                return periph.read(size, addr - self.offsets.secondary_flash_offset);
             }
         }
         if addr >= self.offsets.mci_offset && addr < self.offsets.mci_offset + self.offsets.mci_size
@@ -220,18 +220,18 @@ impl emulator_bus::Bus for AutoRootBus {
                 return periph.write(size, addr - self.offsets.i3c_offset, val);
             }
         }
-        if addr >= self.offsets.main_flash_offset
-            && addr < self.offsets.main_flash_offset + self.offsets.main_flash_size
+        if addr >= self.offsets.primary_flash_offset
+            && addr < self.offsets.primary_flash_offset + self.offsets.primary_flash_size
         {
-            if let Some(periph) = self.main_flash_periph.as_mut() {
-                return periph.write(size, addr - self.offsets.main_flash_offset, val);
+            if let Some(periph) = self.primary_flash_periph.as_mut() {
+                return periph.write(size, addr - self.offsets.primary_flash_offset, val);
             }
         }
-        if addr >= self.offsets.recovery_flash_offset
-            && addr < self.offsets.recovery_flash_offset + self.offsets.recovery_flash_size
+        if addr >= self.offsets.secondary_flash_offset
+            && addr < self.offsets.secondary_flash_offset + self.offsets.secondary_flash_size
         {
-            if let Some(periph) = self.recovery_flash_periph.as_mut() {
-                return periph.write(size, addr - self.offsets.recovery_flash_offset, val);
+            if let Some(periph) = self.secondary_flash_periph.as_mut() {
+                return periph.write(size, addr - self.offsets.secondary_flash_offset, val);
             }
         }
         if addr >= self.offsets.mci_offset && addr < self.offsets.mci_offset + self.offsets.mci_size
@@ -296,10 +296,10 @@ impl emulator_bus::Bus for AutoRootBus {
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.poll();
         }
-        if let Some(periph) = self.main_flash_periph.as_mut() {
+        if let Some(periph) = self.primary_flash_periph.as_mut() {
             periph.poll();
         }
-        if let Some(periph) = self.recovery_flash_periph.as_mut() {
+        if let Some(periph) = self.secondary_flash_periph.as_mut() {
             periph.poll();
         }
         if let Some(periph) = self.mci_periph.as_mut() {
@@ -334,10 +334,10 @@ impl emulator_bus::Bus for AutoRootBus {
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.warm_reset();
         }
-        if let Some(periph) = self.main_flash_periph.as_mut() {
+        if let Some(periph) = self.primary_flash_periph.as_mut() {
             periph.warm_reset();
         }
-        if let Some(periph) = self.recovery_flash_periph.as_mut() {
+        if let Some(periph) = self.secondary_flash_periph.as_mut() {
             periph.warm_reset();
         }
         if let Some(periph) = self.mci_periph.as_mut() {
@@ -372,10 +372,10 @@ impl emulator_bus::Bus for AutoRootBus {
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.update_reset();
         }
-        if let Some(periph) = self.main_flash_periph.as_mut() {
+        if let Some(periph) = self.primary_flash_periph.as_mut() {
             periph.update_reset();
         }
-        if let Some(periph) = self.recovery_flash_periph.as_mut() {
+        if let Some(periph) = self.secondary_flash_periph.as_mut() {
             periph.update_reset();
         }
         if let Some(periph) = self.mci_periph.as_mut() {
@@ -410,10 +410,10 @@ impl emulator_bus::Bus for AutoRootBus {
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.incoming_event(event.clone());
         }
-        if let Some(periph) = self.main_flash_periph.as_mut() {
+        if let Some(periph) = self.primary_flash_periph.as_mut() {
             periph.incoming_event(event.clone());
         }
-        if let Some(periph) = self.recovery_flash_periph.as_mut() {
+        if let Some(periph) = self.secondary_flash_periph.as_mut() {
             periph.incoming_event(event.clone());
         }
         if let Some(periph) = self.mci_periph.as_mut() {
@@ -451,10 +451,10 @@ impl emulator_bus::Bus for AutoRootBus {
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.register_outgoing_events(sender.clone());
         }
-        if let Some(periph) = self.main_flash_periph.as_mut() {
+        if let Some(periph) = self.primary_flash_periph.as_mut() {
             periph.register_outgoing_events(sender.clone());
         }
-        if let Some(periph) = self.recovery_flash_periph.as_mut() {
+        if let Some(periph) = self.secondary_flash_periph.as_mut() {
             periph.register_outgoing_events(sender.clone());
         }
         if let Some(periph) = self.mci_periph.as_mut() {

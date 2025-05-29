@@ -2,6 +2,7 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
+pub mod flash;
 use mcu_config::McuMemoryMap;
 
 pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
