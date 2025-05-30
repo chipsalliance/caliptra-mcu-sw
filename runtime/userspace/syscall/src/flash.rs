@@ -244,12 +244,6 @@ impl<S: Syscalls> SpiFlash<S> {
 // Driver number and command IDs
 // -----------------------------------------------------------------------------
 
-pub mod driver_num {
-    pub const ACTIVE_IMAGE_PARTITION: u32 = 0x8000_0006;
-    pub const STAGING_PARTITION: u32 = 0x8000_0007;
-    pub const RECOVERY_IMAGE_PARTITION: u32 = 0x8000_0008;
-}
-
 mod subscribe {
     /// Read done callback.
     pub const READ_DONE: u32 = 0;

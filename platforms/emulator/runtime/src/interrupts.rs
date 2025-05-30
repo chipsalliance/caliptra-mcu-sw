@@ -15,8 +15,8 @@ pub const DMA_ERROR_IRQ: u8 = 0x18;
 
 pub struct EmulatorPeripherals<'a> {
     pub uart: SemihostUart<'a>,
-    pub main_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
-    pub recovery_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
+    pub primary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
+    pub secondary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
     pub dma: dma_driver::dma_ctrl::EmulatedDmaCtrl<'a>,
 }
 
@@ -24,11 +24,11 @@ impl<'a> EmulatorPeripherals<'a> {
     pub fn new(alarm: &'a MuxAlarm<'a, InternalTimers<'a>>) -> Self {
         Self {
             uart: SemihostUart::new(alarm),
-            main_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
-                flash_driver::flash_ctrl::MAIN_FLASH_CTRL_BASE,
+            primary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
+                flash_driver::flash_ctrl::PRIMARY_FLASH_CTRL_BASE,
             ),
-            recovery_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
-                flash_driver::flash_ctrl::RECOVERY_FLASH_CTRL_BASE,
+            secondary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
+                flash_driver::flash_ctrl::SECONDARY_FLASH_CTRL_BASE,
             ),
             dma: dma_driver::dma_ctrl::EmulatedDmaCtrl::new(dma_driver::dma_ctrl::DMA_CTRL_BASE),
         }
@@ -37,8 +37,8 @@ impl<'a> EmulatorPeripherals<'a> {
     pub fn init(&'static self) {
         kernel::deferred_call::DeferredCallClient::register(&self.uart);
         self.uart.init();
-        self.main_flash_ctrl.init();
-        self.recovery_flash_ctrl.init();
+        self.primary_flash_ctrl.init();
+        self.secondary_flash_ctrl.init();
         self.dma.init();
     }
 }
@@ -51,12 +51,12 @@ impl<'a> InterruptService for EmulatorPeripherals<'a> {
         } else if interrupt == MAIN_FLASH_CTRL_ERROR_IRQ as u32
             || interrupt == MAIN_FLASH_CTRL_EVENT_IRQ as u32
         {
-            self.main_flash_ctrl.handle_interrupt();
+            self.primary_flash_ctrl.handle_interrupt();
             return true;
         } else if interrupt == RECOVERY_FLASH_CTRL_ERROR_IRQ as u32
             || interrupt == RECOVERY_FLASH_CTRL_EVENT_IRQ as u32
         {
-            self.recovery_flash_ctrl.handle_interrupt();
+            self.secondary_flash_ctrl.handle_interrupt();
             return true;
         } else if interrupt == DMA_ERROR_IRQ as u32 || interrupt == DMA_EVENT_IRQ as u32 {
             self.dma.handle_interrupt();

@@ -130,8 +130,8 @@ struct VeeR {
     mctp_secure_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    active_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
-    recovery_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
+    flash_partitions: [Option<&'static capsules_runtime::flash_partition::FlashPartition<'static>>;
+        mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT],
     mailbox: &'static capsules_runtime::mailbox::Mailbox<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
@@ -155,14 +155,19 @@ impl SyscallDriverLookup for VeeR {
             }
             capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
             capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
-            capsules_runtime::flash_partition::ACTIVE_IMAGE_PAR_DRIVER_NUM => {
-                f(Some(self.active_image_par))
-            }
-            capsules_runtime::flash_partition::RECOVERY_IMAGE_PAR_DRIVER_NUM => {
-                f(Some(self.recovery_image_par))
-            }
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
+            mcu_config_emulator::flash::DRIVER_NUM_START
+                ..=mcu_config_emulator::flash::DRIVER_NUM_END => {
+                let index = driver_num - mcu_config_emulator::flash::DRIVER_NUM_START;
+                if index < mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT {
+                    f(core::prelude::v1::Some(
+                        self.flash_partitions[index].unwrap(),
+                    ))
+                } else {
+                    f(None)
+                }
+            }
 
             _ => f(None),
         }
@@ -429,54 +434,69 @@ pub unsafe fn main() {
     peripherals.init();
 
     // Create a mux for the physical flash controller
-    let mux_main_flash =
-        components::flash::FlashMuxComponent::new(&emulator_peripherals.main_flash_ctrl).finalize(
-            components::flash_mux_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
-        );
+    let mux_primary_flash =
+        components::flash::FlashMuxComponent::new(&emulator_peripherals.primary_flash_ctrl)
+            .finalize(components::flash_mux_component_static!(
+                flash_driver::flash_ctrl::EmulatedFlashCtrl
+            ));
 
     // Instantiate a flashUser for image partition driver
-    let image_par_fl_user = components::flash::FlashUserComponent::new(mux_main_flash).finalize(
+    let image_par_fl_user = components::flash::FlashUserComponent::new(mux_primary_flash).finalize(
         components::flash_user_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
     );
 
-    // Instantiate flash partition driver that is connected to mux flash via flashUser
-    // TODO: Replace the start address and length with actual values from flash configuration.
-    let active_image_par = runtime_components::flash_partition::FlashPartitionComponent::new(
-        board_kernel,
-        capsules_runtime::flash_partition::ACTIVE_IMAGE_PAR_DRIVER_NUM, // Driver number
-        image_par_fl_user,
-        0x0,        // Start address of the partition. Place holder for testing
-        0x200_0000, // Length of the partition. Place holder for testing
-    )
-    .finalize(crate::flash_partition_component_static!(
-        virtual_flash::FlashUser<'static, flash_driver::flash_ctrl::EmulatedFlashCtrl>,
-        capsules_runtime::flash_partition::BUF_LEN
-    ));
+    let mut flash_partitions: [Option<
+        &'static capsules_runtime::flash_partition::FlashPartition<'static>,
+    >; mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT] =
+        [None; mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT];
+    let mut flash_partition_index = 0;
+
+    for primary_flash_partition in mcu_config_emulator::flash::PRIMARY_FLASH.partitions {
+        flash_partitions[flash_partition_index] = Some(
+            runtime_components::flash_partition::FlashPartitionComponent::new(
+                board_kernel,
+                primary_flash_partition.driver_num as usize, // Driver number
+                image_par_fl_user,
+                primary_flash_partition.offset, // Start address of the partition. Place holder for testing
+                primary_flash_partition.size,   // Length of the partition. Place holder for testing
+            )
+            .finalize(crate::flash_partition_component_static!(
+                virtual_flash::FlashUser<'static, flash_driver::flash_ctrl::EmulatedFlashCtrl>,
+                capsules_runtime::flash_partition::BUF_LEN
+            )),
+        );
+        flash_partition_index += 1;
+    }
 
     // Create a mux for the recovery flash controller
-    let mux_recovery_flash =
-        components::flash::FlashMuxComponent::new(&emulator_peripherals.recovery_flash_ctrl)
+    let mux_secondary_flash =
+        components::flash::FlashMuxComponent::new(&emulator_peripherals.secondary_flash_ctrl)
             .finalize(components::flash_mux_component_static!(
                 flash_driver::flash_ctrl::EmulatedFlashCtrl
             ));
 
     // Instantiate a flashUser for recovery image partition driver
-    let recovery_image_par_fl_user = components::flash::FlashUserComponent::new(mux_recovery_flash)
-        .finalize(components::flash_user_component_static!(
-            flash_driver::flash_ctrl::EmulatedFlashCtrl
-        ));
+    let secondary_image_par_fl_user =
+        components::flash::FlashUserComponent::new(mux_secondary_flash).finalize(
+            components::flash_user_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
+        );
 
-    let recovery_image_par = runtime_components::flash_partition::FlashPartitionComponent::new(
-        board_kernel,
-        capsules_runtime::flash_partition::RECOVERY_IMAGE_PAR_DRIVER_NUM, // Driver number
-        recovery_image_par_fl_user,
-        0x0,        // Start address of the partition. Place holder for testing
-        0x200_0000, // Length of the partition. Place holder for testing
-    )
-    .finalize(crate::flash_partition_component_static!(
-        virtual_flash::FlashUser<'static, flash_driver::flash_ctrl::EmulatedFlashCtrl>,
-        capsules_runtime::flash_partition::BUF_LEN
-    ));
+    for secondary_flash_partition in mcu_config_emulator::flash::SECONDARY_FLASH.partitions {
+        flash_partitions[flash_partition_index] = Some(
+            runtime_components::flash_partition::FlashPartitionComponent::new(
+                board_kernel,
+                secondary_flash_partition.driver_num as usize, // Driver number
+                secondary_image_par_fl_user,
+                secondary_flash_partition.offset, // Start address of the partition. Place holder for testing
+                secondary_flash_partition.size, // Length of the partition. Place holder for testing
+            )
+            .finalize(crate::flash_partition_component_static!(
+                virtual_flash::FlashUser<'static, flash_driver::flash_ctrl::EmulatedFlashCtrl>,
+                capsules_runtime::flash_partition::BUF_LEN
+            )),
+        );
+        flash_partition_index += 1;
+    }
 
     let dma = runtime_components::dma::DmaComponent::new(
         &emulator_peripherals.dma,
@@ -519,8 +539,7 @@ pub unsafe fn main() {
             mctp_secure_spdm,
             mctp_pldm,
             mctp_caliptra,
-            active_image_par,
-            recovery_image_par,
+            flash_partitions,
             mailbox,
             dma,
         }

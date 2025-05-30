@@ -21,8 +21,8 @@ use romtime::println;
 pub(crate) fn test_flash_ctrl_init() -> Option<u32> {
     // Safety: this is run after the board has initialized the chip.
     let peripherals = unsafe { crate::EMULATOR_PERIPHERALS.unwrap() };
-    peripherals.main_flash_ctrl.init();
-    peripherals.recovery_flash_ctrl.init();
+    peripherals.primary_flash_ctrl.init();
+    peripherals.secondary_flash_ctrl.init();
     Some(0)
 }
 
@@ -168,11 +168,11 @@ pub fn test_flash_ctrl_erase_page() -> Option<u32> {
     let peripherals = unsafe { crate::EMULATOR_PERIPHERALS.unwrap() };
     println!("Starting erase page test on main flash controller");
     let test_cb_main = unsafe { static_init_test!() };
-    test_single_flash_ctrl_erase_page(&peripherals.main_flash_ctrl, test_cb_main);
+    test_single_flash_ctrl_erase_page(&peripherals.primary_flash_ctrl, test_cb_main);
 
     println!("Starting erase page test on recovery flash controller");
     let test_cb_recovery = unsafe { static_init_test!() };
-    test_single_flash_ctrl_erase_page(&peripherals.recovery_flash_ctrl, test_cb_recovery);
+    test_single_flash_ctrl_erase_page(&peripherals.secondary_flash_ctrl, test_cb_recovery);
     Some(0)
 }
 
@@ -224,11 +224,11 @@ pub(crate) fn test_flash_ctrl_read_write_page() -> Option<u32> {
     let peripherals = unsafe { crate::EMULATOR_PERIPHERALS.unwrap() };
     println!("Starting read write page test on main flash controller");
     let test_cb_main = unsafe { static_init_test!() };
-    test_single_flash_ctrl_read_write_page(&peripherals.main_flash_ctrl, test_cb_main);
+    test_single_flash_ctrl_read_write_page(&peripherals.primary_flash_ctrl, test_cb_main);
 
     println!("Starting read write page test on recovery flash controller");
     let test_cb_recovery = unsafe { static_init_test!() };
-    test_single_flash_ctrl_read_write_page(&peripherals.recovery_flash_ctrl, test_cb_recovery);
+    test_single_flash_ctrl_read_write_page(&peripherals.secondary_flash_ctrl, test_cb_recovery);
 
     Some(0)
 }

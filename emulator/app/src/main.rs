@@ -179,18 +179,18 @@ struct Emulator {
     /// Override I3C size
     #[arg(long, value_parser=maybe_hex::<u32>)]
     i3c_size: Option<u32>,
-    /// Override main flash offset
+    /// Override primary flash offset
     #[arg(long, value_parser=maybe_hex::<u32>)]
-    main_flash_offset: Option<u32>,
-    /// Override main flash size
+    primary_flash_offset: Option<u32>,
+    /// Override primary flash size
     #[arg(long, value_parser=maybe_hex::<u32>)]
-    main_flash_size: Option<u32>,
-    /// Override recovery flash offset
+    primary_flash_size: Option<u32>,
+    /// Override secondary flash offset
     #[arg(long, value_parser=maybe_hex::<u32>)]
-    recovery_flash_offset: Option<u32>,
-    /// Override recovery flash size
+    secondary_flash_offset: Option<u32>,
+    /// Override secondary flash size
     #[arg(long, value_parser=maybe_hex::<u32>)]
-    recovery_flash_size: Option<u32>,
+    secondary_flash_size: Option<u32>,
     /// Override MCI offset
     #[arg(long, value_parser=maybe_hex::<u32>)]
     mci_offset: Option<u32>,
@@ -569,17 +569,17 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     if let Some(i3c_size) = cli.i3c_size {
         auto_root_bus_offsets.i3c_size = i3c_size;
     }
-    if let Some(main_flash_offset) = cli.main_flash_offset {
-        auto_root_bus_offsets.main_flash_offset = main_flash_offset;
+    if let Some(primary_flash_offset) = cli.primary_flash_offset {
+        auto_root_bus_offsets.primary_flash_offset = primary_flash_offset;
     }
-    if let Some(main_flash_size) = cli.main_flash_size {
-        auto_root_bus_offsets.main_flash_size = main_flash_size;
+    if let Some(primary_flash_size) = cli.primary_flash_size {
+        auto_root_bus_offsets.primary_flash_size = primary_flash_size;
     }
-    if let Some(recovery_flash_offset) = cli.recovery_flash_offset {
-        auto_root_bus_offsets.recovery_flash_offset = recovery_flash_offset;
+    if let Some(secondary_flash_offset) = cli.secondary_flash_offset {
+        auto_root_bus_offsets.secondary_flash_offset = secondary_flash_offset;
     }
-    if let Some(recovery_flash_size) = cli.recovery_flash_size {
-        auto_root_bus_offsets.recovery_flash_size = recovery_flash_size;
+    if let Some(secondary_flash_size) = cli.secondary_flash_size {
+        auto_root_bus_offsets.secondary_flash_size = secondary_flash_size;
     }
     if let Some(mci_offset) = cli.mci_offset {
         auto_root_bus_offsets.mci_offset = mci_offset;
@@ -767,7 +767,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             .unwrap()
         };
 
-    let main_flash_initial_content = if cli.flash_image.is_some() {
+    let primary_flash_initial_content = if cli.flash_image.is_some() {
         let flash_image_path = cli.flash_image.as_ref().unwrap();
         println!("Loading flash image from {}", flash_image_path.display());
         const FLASH_SIZE: usize = DummyFlashCtrl::PAGE_SIZE * DummyFlashCtrl::MAX_PAGES as usize;
@@ -784,17 +784,17 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         None
     };
 
-    let main_flash_controller = create_flash_controller(
-        "main_flash",
-        McuRootBus::MAIN_FLASH_CTRL_ERROR_IRQ,
-        McuRootBus::MAIN_FLASH_CTRL_EVENT_IRQ,
-        main_flash_initial_content.as_deref(),
+    let primary_flash_controller = create_flash_controller(
+        "primary_flash",
+        McuRootBus::PRIMARY_FLASH_CTRL_ERROR_IRQ,
+        McuRootBus::PRIMARY_FLASH_CTRL_EVENT_IRQ,
+        primary_flash_initial_content.as_deref(),
     );
 
-    let recovery_flash_controller = create_flash_controller(
-        "recovery_flash",
-        McuRootBus::RECOVERY_FLASH_CTRL_ERROR_IRQ,
-        McuRootBus::RECOVERY_FLASH_CTRL_EVENT_IRQ,
+    let secondary_flash_controller = create_flash_controller(
+        "secondary_flash",
+        McuRootBus::SECONDARY_FLASH_CTRL_ERROR_IRQ,
+        McuRootBus::SECONDARY_FLASH_CTRL_EVENT_IRQ,
         None,
     );
 
@@ -828,8 +828,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         delegates,
         Some(auto_root_bus_offsets),
         Some(Box::new(i3c)),
-        Some(Box::new(main_flash_controller)),
-        Some(Box::new(recovery_flash_controller)),
+        Some(Box::new(primary_flash_controller)),
+        Some(Box::new(secondary_flash_controller)),
         Some(Box::new(mci)),
         Some(Box::new(dma_ctrl)),
         None,
@@ -842,7 +842,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
     // Set the DMA RAM for Main Flash Controller
     auto_root_bus
-        .main_flash_periph
+        .primary_flash_periph
         .as_mut()
         .unwrap()
         .periph
@@ -858,7 +858,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
     // Set the DMA RAM for Recovery Flash Controller
     auto_root_bus
-        .recovery_flash_periph
+        .secondary_flash_periph
         .as_mut()
         .unwrap()
         .periph
