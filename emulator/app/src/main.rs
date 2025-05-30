@@ -840,7 +840,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         None,
     );
 
-    // Set the DMA RAM for Main Flash Controller
+    // Set the DMA RAM for Primary Flash Controller
     auto_root_bus
         .primary_flash_periph
         .as_mut()
@@ -848,15 +848,15 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         .periph
         .set_dma_ram(dma_ram.clone());
 
-    // Set DMA RAM for ROM access to Main Flash Controller
+    // Set DMA RAM for ROM access to Primary Flash Controller
     auto_root_bus
-        .main_flash_periph
+        .primary_flash_periph
         .as_mut()
         .unwrap()
         .periph
         .set_dma_rom_sram(dma_rom_sram.clone());
 
-    // Set the DMA RAM for Recovery Flash Controller
+    // Set the DMA RAM for Secondary Flash Controller
     auto_root_bus
         .secondary_flash_periph
         .as_mut()
@@ -864,9 +864,9 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         .periph
         .set_dma_ram(dma_ram);
 
-    // Set the DMA RAM for ROM access to Recovery Flash Controller
+    // Set the DMA RAM for ROM access to Secondary Flash Controller
     auto_root_bus
-        .recovery_flash_periph
+        .secondary_flash_periph
         .as_mut()
         .unwrap()
         .periph

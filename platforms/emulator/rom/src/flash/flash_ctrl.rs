@@ -4,17 +4,18 @@
 
 use core::fmt::Write;
 use core::ops::{Index, IndexMut};
-use registers_generated::main_flash_ctrl::{
+use registers_generated::primary_flash_ctrl::{
     self,
     bits::{CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus},
-    regs::MainFlashCtrl,
+    regs::PrimaryFlashCtrl,
 };
 use romtime::StaticRef;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 #[allow(dead_code)]
-pub const MAIN_FLASH_CTRL_BASE: StaticRef<MainFlashCtrl> =
-    unsafe { StaticRef::new(main_flash_ctrl::MAIN_FLASH_CTRL_ADDR as *const MainFlashCtrl) };
+pub const PRIMARY_FLASH_CTRL_BASE: StaticRef<PrimaryFlashCtrl> = unsafe {
+    StaticRef::new(primary_flash_ctrl::PRIMARY_FLASH_CTRL_ADDR as *const PrimaryFlashCtrl)
+};
 
 const PAGE_SIZE: usize = 256;
 const FLASH_MAX_PAGES: usize = 64 * 1024 * 1024 / PAGE_SIZE;
@@ -154,12 +155,12 @@ impl AsMut<[u8]> for EmulatedFlashPage {
 }
 
 pub struct EmulatedFlashCtrl {
-    registers: StaticRef<MainFlashCtrl>,
+    registers: StaticRef<PrimaryFlashCtrl>,
 }
 
 #[allow(dead_code)]
 impl EmulatedFlashCtrl {
-    pub fn initialize_flash_ctrl(base: StaticRef<MainFlashCtrl>) -> EmulatedFlashCtrl {
+    pub fn initialize_flash_ctrl(base: StaticRef<PrimaryFlashCtrl>) -> EmulatedFlashCtrl {
         let ctrl = EmulatedFlashCtrl { registers: base };
         ctrl.init();
         ctrl

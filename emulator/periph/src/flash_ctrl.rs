@@ -15,7 +15,7 @@ Abstract:
 use caliptra_emu_types::{RvData, RvSize};
 use core::convert::TryInto;
 use emulator_bus::{ActionHandle, Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
-use emulator_consts::{RAM_OFFSET, RAM_SIZE, ROM_SRAM_OFFSET, ROM_SRAM_SIZE};
+use emulator_consts::{RAM_OFFSET, RAM_SIZE, ROM_DEDICATED_RAM_OFFSET, ROM_DEDICATED_RAM_SIZE};
 use emulator_cpu::Irq;
 use emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
 use emulator_registers_generated::secondary_flash::SecondaryFlashPeripheral;
@@ -232,8 +232,8 @@ impl DummyFlashCtrl {
     fn dma_ram_access_check(&self, addr: u32) -> DmaRamAccessType {
         if addr >= RAM_OFFSET && addr + Self::PAGE_SIZE as u32 <= RAM_OFFSET + RAM_SIZE {
             DmaRamAccessType::McuRt
-        } else if addr >= ROM_SRAM_OFFSET
-            && addr + Self::PAGE_SIZE as u32 <= ROM_SRAM_OFFSET + ROM_SRAM_SIZE
+        } else if addr >= ROM_DEDICATED_RAM_OFFSET
+            && addr + Self::PAGE_SIZE as u32 <= ROM_DEDICATED_RAM_OFFSET + ROM_DEDICATED_RAM_SIZE
         {
             DmaRamAccessType::McuRom
         } else {
@@ -270,7 +270,7 @@ impl DummyFlashCtrl {
                     .as_ref()
                     .expect("DMA ram for rom must be set")
                     .clone(),
-                page_addr - ROM_SRAM_OFFSET,
+                page_addr - ROM_DEDICATED_RAM_OFFSET,
             ),
             DmaRamAccessType::Invalid => return Err(FlashOpError::DmaRamAccessError),
         };
@@ -313,7 +313,7 @@ impl DummyFlashCtrl {
                     .as_ref()
                     .expect("DMA ram for rom must be set")
                     .clone(),
-                page_addr - ROM_SRAM_OFFSET,
+                page_addr - ROM_DEDICATED_RAM_OFFSET,
             ),
             DmaRamAccessType::Invalid => return Err(FlashOpError::DmaRamAccessError),
         };
@@ -397,6 +397,7 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
         self.dma_ram = Some(ram);
     }
 
+    // Assign ROM dedicated SRAM as the DMA RAM for ROM flash operations.
     fn set_dma_rom_sram(&mut self, ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {
         self.dma_rom_sram = Some(ram);
     }

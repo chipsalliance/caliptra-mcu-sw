@@ -21,7 +21,7 @@ core::arch::global_asm!(include_str!("start.s"));
 #[allow(unused_imports)]
 use crate::flash::flash_api::FlashPartition;
 #[allow(unused_imports)]
-use crate::flash::flash_ctrl::{EmulatedFlashCtrl, MAIN_FLASH_CTRL_BASE};
+use crate::flash::flash_ctrl::{EmulatedFlashCtrl, PRIMARY_FLASH_CTRL_BASE};
 use mcu_config::McuMemoryMap;
 use romtime::HexWord;
 
@@ -44,9 +44,10 @@ pub extern "C" fn rom_entry() -> ! {
 
     #[cfg(feature = "test-mcu-rom-flash-access")]
     {
-        let main_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(MAIN_FLASH_CTRL_BASE);
+        let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
         let test_par =
-            FlashPartition::new(&main_flash_ctrl, "TestPartition", 0x200_0000, 0x100_0000).unwrap();
+            FlashPartition::new(&primary_flash_ctrl, "TestPartition", 0x200_0000, 0x100_0000)
+                .unwrap();
         crate::flash::flash_test::test_rom_flash_access(&test_par);
     }
 
