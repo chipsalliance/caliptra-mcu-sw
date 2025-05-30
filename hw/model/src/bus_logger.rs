@@ -61,10 +61,6 @@ impl<TBus: Bus> BusLogger<TBus> {
         addr: RvAddr,
         result: Result<RvData, caliptra_emu_bus::BusError>,
     ) {
-        if addr < 0x1000_0000 {
-            // Don't care about memory
-            return;
-        }
         if let Some(log) = &mut self.log {
             let size = usize::from(size);
             match result {
@@ -121,18 +117,23 @@ impl<TBus: Bus> Bus for BusLogger<TBus> {
         self.log_write("UC", size, addr, val, result);
         result
     }
+
     fn poll(&mut self) {
         self.bus.poll();
     }
+
     fn warm_reset(&mut self) {
         self.bus.warm_reset();
     }
+
     fn update_reset(&mut self) {
         self.bus.update_reset();
     }
+
     fn incoming_event(&mut self, event: Rc<caliptra_emu_bus::Event>) {
         self.bus.incoming_event(event);
     }
+
     fn register_outgoing_events(
         &mut self,
         sender: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,

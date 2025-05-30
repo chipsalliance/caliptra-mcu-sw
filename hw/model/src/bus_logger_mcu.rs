@@ -49,6 +49,7 @@ impl<TBus: Bus> McuBusLogger<TBus> {
     pub fn new(bus: TBus) -> Self {
         Self { bus, log: None }
     }
+
     pub fn log_read(
         &mut self,
         bus_name: &str,
@@ -56,10 +57,6 @@ impl<TBus: Bus> McuBusLogger<TBus> {
         addr: RvAddr,
         result: Result<RvData, BusError>,
     ) {
-        if addr < 0x1000_0000 {
-            // Don't care about memory
-            return;
-        }
         if let Some(log) = &mut self.log {
             let size = usize::from(size);
             match result {
@@ -72,6 +69,7 @@ impl<TBus: Bus> McuBusLogger<TBus> {
             }
         }
     }
+
     pub fn log_write(
         &mut self,
         bus_name: &str,
@@ -80,10 +78,6 @@ impl<TBus: Bus> McuBusLogger<TBus> {
         val: RvData,
         result: Result<(), BusError>,
     ) {
-        if addr < 0x1000_0000 {
-            // Don't care about memory
-            return;
-        }
         if let Some(log) = &mut self.log {
             let size = usize::from(size);
             match result {
@@ -111,18 +105,23 @@ impl<TBus: Bus> Bus for McuBusLogger<TBus> {
         self.log_write("UC", size, addr, val, result);
         result
     }
+
     fn poll(&mut self) {
         self.bus.poll();
     }
+
     fn warm_reset(&mut self) {
         self.bus.warm_reset();
     }
+
     fn update_reset(&mut self) {
         self.bus.update_reset();
     }
+
     fn incoming_event(&mut self, event: Rc<caliptra_emu_bus::Event>) {
         self.bus.incoming_event(event);
     }
+
     fn register_outgoing_events(
         &mut self,
         sender: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,

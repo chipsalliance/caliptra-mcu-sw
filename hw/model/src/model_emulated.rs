@@ -31,6 +31,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc;
 
+const DEFAULT_AXI_PAUSER: u32 = 0xaaaa_aaaa;
+
 /// Emulated model
 pub struct ModelEmulated {
     caliptra_cpu: CaliptraCpu<BusLogger<CaliptraRootBus>>,
@@ -122,9 +124,9 @@ impl McuHwModel for ModelEmulated {
             dccm_dest.copy_from_slice(params.caliptra_dccm);
         }
         let _soc_to_caliptra_bus =
-            root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(0xaaaa_aaaa));
+            root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(DEFAULT_AXI_PAUSER));
         let soc_to_caliptra_bus2 =
-            root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(0xaaaa_aaaa));
+            root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(DEFAULT_AXI_PAUSER));
         let (events_to_caliptra, events_from_caliptra, caliptra_cpu) = {
             let mut cpu = CaliptraCpu::new(BusLogger::new(root_bus), clock);
             if let Some(stack_info) = params.stack_info {
@@ -237,6 +239,7 @@ impl McuHwModel for ModelEmulated {
         let iccm_image = &fw_image[IMAGE_MANIFEST_BYTE_SIZE..];
         self.iccm_image_tag = Some(hash_slice(iccm_image));
     }
+
     fn tracing_hint(&mut self, enable: bool) {
         if enable == self.caliptra_trace_fn.is_some() {
             // No change
