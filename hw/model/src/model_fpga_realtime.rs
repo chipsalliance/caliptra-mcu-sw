@@ -421,7 +421,7 @@ mod test {
 
     #[test]
     fn test_new_unbooted() {
-        let mcu_rom = mcu_builder::rom_build(Some("fpga")).expect("Could not build MCU ROM");
+        let mcu_rom = mcu_builder::rom_build(Some("fpga"), "").expect("Could not build MCU ROM");
         let mcu_runtime = &mcu_builder::runtime_build_with_apps(
             &[],
             Some("fpga-runtime.bin"),
