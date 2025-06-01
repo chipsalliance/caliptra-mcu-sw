@@ -12,6 +12,7 @@ pub const SPDM_DEVICE_MODE_INDEX: u8 = 0xFE;
 pub enum MeasurementsError {
     InvalidIndex,
     InvalidSize,
+    InvalidBuffer,
     InvalidOperation,
     CaliptraApi(CaliptraApiError),
 }

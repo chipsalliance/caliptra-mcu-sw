@@ -16,11 +16,7 @@ pub const PCR_QUOTE_SIZE: usize = size_of::<QuotePcrsResp>() - PCR_QUOTE_RSP_STA
 pub struct Evidence;
 
 impl Evidence {
-    pub async fn pcr_quote(buffer: &mut [u8]) -> CaliptraApiResult<usize> {
-        if buffer.len() < PCR_QUOTE_SIZE {
-            return Err(CaliptraApiError::InvalidArgument("Buffer too small"));
-        }
-
+    pub async fn pcr_quote(buffer: &mut [u8; PCR_QUOTE_SIZE]) -> CaliptraApiResult<()> {
         let mailbox: Mailbox = Mailbox::new();
 
         let mut req = QuotePcrsReq {
@@ -41,9 +37,7 @@ impl Evidence {
             Err(CaliptraApiError::InvalidResponse)?;
         }
 
-        buffer[..PCR_QUOTE_SIZE].copy_from_slice(
-            &response_bytes[PCR_QUOTE_RSP_START..PCR_QUOTE_RSP_START + PCR_QUOTE_SIZE],
-        );
-        Ok(PCR_QUOTE_SIZE)
+        buffer[..PCR_QUOTE_SIZE].copy_from_slice(&response_bytes[PCR_QUOTE_RSP_START..]);
+        Ok(())
     }
 }

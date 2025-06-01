@@ -729,7 +729,7 @@ dependencies = [
 [[package]]
 name = "caliptra-test-harness-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=2c0c6a81f569e72622001fab3732a21a1be4c78a#2c0c6a81f569e72622001fab3732a21a1be4c78a"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb1bf9dcc816bddf09d02e64138b310156954781#fb1bf9dcc816bddf09d02e64138b310156954781"
 
 [[package]]
 name = "caliptra-x509"

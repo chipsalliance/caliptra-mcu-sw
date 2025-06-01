@@ -280,7 +280,7 @@ async fn process_negotiate_algorithms_request<'a>(
         .connection_info
         .set_peer_algorithms(peer_algorithms);
 
-    // Append GET_CAPABILITIES to the transcript VCA context
+    // Append NEGOTIATE_ALGORITHMS to the transcript VCA context
     ctx.append_message_to_transcript(req_payload, TranscriptContext::Vca)
         .await
 }

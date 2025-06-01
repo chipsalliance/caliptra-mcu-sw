@@ -182,7 +182,6 @@ async fn encode_m1_signature<'a>(
     sig_buf.copy_from_slice(&signature[..sig_len]);
     rsp.pull_data(sig_len)
         .map_err(|e| (false, CommandError::Codec(e)))?;
-    // Append the signature to the transcript
 
     Ok(sig_len)
 }

@@ -148,12 +148,8 @@ async fn test_pcr_quote() {
     let mut pcr_quote = [0u8; PCR_QUOTE_SIZE];
 
     match Evidence::pcr_quote(&mut pcr_quote).await {
-        Ok(size) => {
-            if size != PCR_QUOTE_SIZE {
-                println!("Invalid size: expected {}, got {}", PCR_QUOTE_SIZE, size);
-                test_exit(1);
-            }
-            println!("PCR quote: {:x?}  Size: {}", &pcr_quote[..size], size);
+        Ok(()) => {
+            println!("PCR quote: {:x?} ", pcr_quote);
         }
         Err(err) => {
             println!("Failed to get PCR quote: {:?}", err);

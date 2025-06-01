@@ -49,7 +49,6 @@ const SIGNED_IDEV_CERT_DER: [u8; 541] = [
 ];
 
 // test get idev_csr
-#[allow(dead_code)]
 pub async fn test_get_idev_csr() {
     println!("Starting Caliptra mailbox get idev csr test");
 
