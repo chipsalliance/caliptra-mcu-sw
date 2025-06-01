@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license.
 
-use crate::timers::InternalTimers;
 use core::cell::Cell;
 use core::fmt::Write;
 use i3c_driver::{
@@ -13,6 +12,7 @@ use kernel::{
     static_buf, static_init,
     utilities::cells::{OptionalCell, TakeCell},
 };
+use mcu_tock_veer::timers::InternalTimers;
 use romtime::println;
 
 fn success() -> ! {

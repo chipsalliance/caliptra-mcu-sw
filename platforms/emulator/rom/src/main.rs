@@ -21,6 +21,9 @@ mod io;
 mod riscv;
 
 #[cfg(target_arch = "riscv32")]
+mod flash;
+
+#[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub extern "C" fn main() {
     riscv::rom_entry();

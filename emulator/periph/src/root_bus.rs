@@ -16,7 +16,9 @@ use crate::{spi_host::SpiHost, EmuCtrl, Uart};
 use caliptra_emu_bus::{Device, Event, EventData};
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use emulator_bus::{Bus, BusError, Clock, Ram, Rom};
-use emulator_consts::{EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE};
+use emulator_consts::{
+    EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE, ROM_DEDICATED_RAM_OFFSET, ROM_DEDICATED_RAM_SIZE,
+};
 use emulator_cpu::{Pic, PicMmioRegisters};
 use std::{
     cell::RefCell,
@@ -37,6 +39,8 @@ pub struct McuRootBusOffsets {
     pub spi_size: u32,
     pub ram_offset: u32,
     pub ram_size: u32,
+    pub rom_dedicated_ram_offset: u32,
+    pub rom_dedicated_ram_size: u32,
     pub pic_offset: u32,
     pub external_test_sram_offset: u32,
     pub external_test_sram_size: u32,
@@ -55,6 +59,8 @@ impl Default for McuRootBusOffsets {
             spi_size: 0x40,
             ram_offset: 0x4000_0000,
             ram_size: 0x60000,
+            rom_dedicated_ram_offset: ROM_DEDICATED_RAM_OFFSET,
+            rom_dedicated_ram_size: ROM_DEDICATED_RAM_SIZE,
             pic_offset: 0x6000_0000,
             external_test_sram_offset: 0x8000_0000,
             external_test_sram_size: 0x1000,
@@ -82,6 +88,7 @@ pub struct McuRootBus {
     pub ctrl: EmuCtrl,
     pub spi: SpiHost,
     pub ram: Rc<RefCell<Ram>>,
+    pub rom_sram: Rc<RefCell<Ram>>,
     pub pic_regs: PicMmioRegisters,
     pub external_test_sram: Rc<RefCell<Ram>>,
     event_sender: Option<mpsc::Sender<Event>>,
@@ -92,10 +99,10 @@ impl McuRootBus {
     pub const UART_NOTIF_IRQ: u8 = 16;
     pub const I3C_ERROR_IRQ: u8 = 17;
     pub const I3C_NOTIF_IRQ: u8 = 18;
-    pub const MAIN_FLASH_CTRL_ERROR_IRQ: u8 = 19;
-    pub const MAIN_FLASH_CTRL_EVENT_IRQ: u8 = 20;
-    pub const RECOVERY_FLASH_CTRL_ERROR_IRQ: u8 = 21;
-    pub const RECOVERY_FLASH_CTRL_EVENT_IRQ: u8 = 22;
+    pub const PRIMARY_FLASH_CTRL_ERROR_IRQ: u8 = 19;
+    pub const PRIMARY_FLASH_CTRL_EVENT_IRQ: u8 = 20;
+    pub const SECONDARY_FLASH_CTRL_ERROR_IRQ: u8 = 21;
+    pub const SECONDARY_FLASH_CTRL_EVENT_IRQ: u8 = 22;
     pub const DMA_ERROR_IRQ: u8 = 23;
     pub const DMA_EVENT_IRQ: u8 = 24;
 
@@ -105,10 +112,12 @@ impl McuRootBus {
         let rom = Rom::new(std::mem::take(&mut args.rom));
         let uart_irq = pic.register_irq(Self::UART_NOTIF_IRQ);
         let ram = Ram::new(vec![0; RAM_SIZE as usize]);
+        let rom_sram = Ram::new(vec![0; ROM_DEDICATED_RAM_SIZE as usize]);
         let external_test_sram = Ram::new(vec![0; EXTERNAL_TEST_SRAM_SIZE as usize]);
         Ok(Self {
             rom,
             ram: Rc::new(RefCell::new(ram)),
+            rom_sram: Rc::new(RefCell::new(rom_sram)),
             spi: SpiHost::new(&clock.clone()),
             uart: Uart::new(args.uart_output, args.uart_rx, uart_irq, &clock.clone()),
             ctrl: EmuCtrl::new(),
@@ -161,6 +170,14 @@ impl Bus for McuRootBus {
                 .borrow_mut()
                 .read(size, addr - self.offsets.ram_offset);
         }
+        if addr >= self.offsets.rom_dedicated_ram_offset
+            && addr < self.offsets.rom_dedicated_ram_offset + self.offsets.rom_dedicated_ram_size
+        {
+            return self
+                .rom_sram
+                .borrow_mut()
+                .read(size, addr - self.offsets.rom_dedicated_ram_offset);
+        }
         if addr >= self.offsets.pic_offset && addr < self.offsets.pic_offset + PIC_SIZE {
             return self.pic_regs.read(size, addr - self.offsets.pic_offset);
         }
@@ -201,6 +218,15 @@ impl Bus for McuRootBus {
                 .borrow_mut()
                 .write(size, addr - self.offsets.ram_offset, val);
         }
+        if addr >= self.offsets.rom_dedicated_ram_offset
+            && addr < self.offsets.rom_dedicated_ram_offset + self.offsets.rom_dedicated_ram_size
+        {
+            return self.rom_sram.borrow_mut().write(
+                size,
+                addr - self.offsets.rom_dedicated_ram_offset,
+                val,
+            );
+        }
         if addr >= self.offsets.pic_offset && addr < self.offsets.pic_offset + PIC_SIZE {
             return self
                 .pic_regs
@@ -224,6 +250,7 @@ impl Bus for McuRootBus {
         self.ctrl.poll();
         self.spi.poll();
         self.ram.borrow_mut().poll();
+        self.rom_sram.borrow_mut().poll();
         self.pic_regs.poll();
         self.external_test_sram.borrow_mut().poll();
     }
@@ -234,6 +261,7 @@ impl Bus for McuRootBus {
         self.ctrl.warm_reset();
         self.spi.warm_reset();
         self.ram.borrow_mut().warm_reset();
+        self.rom_sram.borrow_mut().warm_reset();
         self.pic_regs.warm_reset();
         self.external_test_sram.borrow_mut().warm_reset();
     }
@@ -244,6 +272,7 @@ impl Bus for McuRootBus {
         self.ctrl.update_reset();
         self.spi.update_reset();
         self.ram.borrow_mut().update_reset();
+        self.rom_sram.borrow_mut().update_reset();
         self.pic_regs.update_reset();
         self.external_test_sram.borrow_mut().update_reset();
     }

@@ -7,11 +7,9 @@
 
 #![allow(static_mut_refs)]
 
-use crate::io::SemihostUart;
 use crate::pic::Pic;
 use crate::pmp::{VeeRPMP, VeeRProtectionMMLEPMP};
 use crate::timers::{InternalTimers, TimerInterrupts};
-use crate::MCU_MEMORY_MAP;
 use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
 use core::fmt::Write;
 use core::ptr::addr_of;
@@ -19,22 +17,22 @@ use kernel::debug;
 use kernel::platform::chip::{Chip, InterruptService};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::StaticRef;
+use mcu_config::McuMemoryMap;
 use registers_generated::i3c::regs::I3c;
 use rv32i::csr::{mcause, mie::mie, CSR};
 use rv32i::syscall::SysCall;
 
-pub static mut PIC: Pic = Pic::new();
+extern "C" {
+    #[allow(improper_ctypes)]
+    pub static mut PIC: Pic;
+}
+
+//pub static mut PIC: Pic = Pic::new();
 
 pub static mut TIMERS: InternalTimers<'static> = InternalTimers::new();
-pub const UART_IRQ: u8 = 0x10;
+// TODO: these should be part of the memory map
 pub const I3C_ERROR_IRQ: u8 = 0x11;
 pub const I3C_NOTIF_IRQ: u8 = 0x12;
-pub const MAIN_FLASH_CTRL_ERROR_IRQ: u8 = 0x13;
-pub const MAIN_FLASH_CTRL_EVENT_IRQ: u8 = 0x14;
-pub const RECOVERY_FLASH_CTRL_EVENT_IRQ: u8 = 0x15;
-pub const RECOVERY_FLASH_CTRL_ERROR_IRQ: u8 = 0x16;
-pub const DMA_EVENT_IRQ: u8 = 0x17;
-pub const DMA_ERROR_IRQ: u8 = 0x18;
 
 pub struct VeeR<'a, I: InterruptService + 'a> {
     userspace_kernel_boundary: SysCall,
@@ -45,64 +43,42 @@ pub struct VeeR<'a, I: InterruptService + 'a> {
 }
 
 pub struct VeeRDefaultPeripherals<'a> {
-    pub uart: SemihostUart<'a>,
     pub i3c: i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
-    pub main_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
-    pub recovery_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
-    pub dma: dma_driver::dma_ctrl::EmulatedDmaCtrl<'a>,
+    pub additional_interrupt_handler: &'static dyn InterruptService,
 }
 
 impl<'a> VeeRDefaultPeripherals<'a> {
-    pub fn new(alarm: &'a MuxAlarm<'a, InternalTimers<'a>>) -> Self {
+    pub fn new(
+        additional_interrupt_handler: &'static dyn InterruptService,
+        alarm: &'a MuxAlarm<'a, InternalTimers<'a>>,
+        memory_map: &McuMemoryMap,
+    ) -> Self {
         Self {
-            uart: SemihostUart::new(alarm),
             i3c: i3c_driver::core::I3CCore::new(
-                unsafe { StaticRef::new(MCU_MEMORY_MAP.i3c_offset as *const I3c) },
+                unsafe { StaticRef::new(memory_map.i3c_offset as *const I3c) },
                 alarm,
             ),
-            main_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
-                flash_driver::flash_ctrl::MAIN_FLASH_CTRL_BASE,
-            ),
-            recovery_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
-                flash_driver::flash_ctrl::RECOVERY_FLASH_CTRL_BASE,
-            ),
-            dma: dma_driver::dma_ctrl::EmulatedDmaCtrl::new(dma_driver::dma_ctrl::DMA_CTRL_BASE),
+            additional_interrupt_handler,
         }
     }
 
     pub fn init(&'static self) {
-        kernel::deferred_call::DeferredCallClient::register(&self.uart);
-        self.uart.init();
         self.i3c.init();
-        self.main_flash_ctrl.init();
-        self.recovery_flash_ctrl.init();
-        self.dma.init();
     }
 }
 
 impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
     unsafe fn service_interrupt(&self, interrupt: u32) -> bool {
-        if interrupt == UART_IRQ as u32 {
-            self.uart.handle_interrupt();
+        if self
+            .additional_interrupt_handler
+            .service_interrupt(interrupt)
+        {
             return true;
         } else if interrupt == I3C_ERROR_IRQ as u32 {
             self.i3c.handle_error_interrupt();
             return true;
         } else if interrupt == I3C_NOTIF_IRQ as u32 {
             self.i3c.handle_notification_interrupt();
-            return true;
-        } else if interrupt == MAIN_FLASH_CTRL_ERROR_IRQ as u32
-            || interrupt == MAIN_FLASH_CTRL_EVENT_IRQ as u32
-        {
-            self.main_flash_ctrl.handle_interrupt();
-            return true;
-        } else if interrupt == RECOVERY_FLASH_CTRL_ERROR_IRQ as u32
-            || interrupt == RECOVERY_FLASH_CTRL_EVENT_IRQ as u32
-        {
-            self.recovery_flash_ctrl.handle_interrupt();
-            return true;
-        } else if interrupt == DMA_ERROR_IRQ as u32 || interrupt == DMA_EVENT_IRQ as u32 {
-            self.dma.handle_interrupt();
             return true;
         }
         debug!("Unhandled interrupt {}", interrupt);
@@ -123,8 +99,8 @@ impl<'a, I: InterruptService + 'a> VeeR<'a, I> {
         }
     }
 
-    pub fn init(&self) {
-        self.pic.init();
+    pub fn init(&self, pic_vector_table_addr: u32) {
+        self.pic.init(pic_vector_table_addr);
     }
 
     pub fn enable_pic_interrupts(&self) {

@@ -16,10 +16,12 @@ mod pldm_fdops_mock;
 
 use core::fmt::Write;
 #[allow(unused)]
-use libsyscall_caliptra::flash::{driver_num, SpiFlash};
+use libsyscall_caliptra::flash::SpiFlash;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
 use libtockasync::TockExecutor;
+#[allow(unused)]
+use mcu_config_emulator::flash::{IMAGE_A_PARTITION, IMAGE_B_PARTITION};
 #[allow(unused)]
 use pldm_lib::daemon::PldmService;
 
@@ -114,7 +116,7 @@ pub async fn image_loading() -> Result<(), ErrorCode> {
             descriptors: &config::streaming_boot_consts::DESCRIPTOR.get()[..],
             fw_params: config::streaming_boot_consts::STREAMING_BOOT_FIRMWARE_PARAMS.get(),
         };
-        let flash_syscall = SpiFlash::new(driver_num::ACTIVE_IMAGE_PARTITION);
+        let flash_syscall = SpiFlash::new(IMAGE_A_PARTITION.driver_num);
         let pldm_image_loader: ImageLoader = ImageLoader::new(
             ImageSource::Pldm(fw_params),
             flash_syscall,
@@ -130,7 +132,7 @@ pub async fn image_loading() -> Result<(), ErrorCode> {
     }
     #[cfg(feature = "test-flash-based-boot")]
     {
-        let flash_syscall = SpiFlash::new(driver_num::ACTIVE_IMAGE_PARTITION);
+        let flash_syscall = SpiFlash::new(IMAGE_A_PARTITION.driver_num);
         let flash_image_loader: ImageLoader =
             ImageLoader::new(ImageSource::Flash, flash_syscall, EXECUTOR.get().spawner());
         flash_image_loader

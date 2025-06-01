@@ -48,20 +48,24 @@ pub fn runtime_build_no_apps(
     apps_size: Option<usize>,
     features: &[&str],
     output_name: &str,
+    platform: Option<&str>,
+    memory_map: Option<&McuMemoryMap>,
 ) -> Result<(usize, usize)> {
+    let platform = platform.unwrap_or("emulator");
+    let memory_map = memory_map.unwrap_or(&mcu_config_emulator::EMULATOR_MEMORY_MAP);
     let tock_dir = &PROJECT_ROOT
         .join("platforms")
-        .join("emulator")
+        .join(platform)
         .join("runtime");
     let sysr = SYSROOT.clone();
     let ld_file_path = tock_dir.join("layout.ld");
 
     // placeholder values
     let runtime_size = kernel_size.unwrap_or(128 * 1024);
-    let apps_offset = apps_offset.unwrap_or(RAM_OFFSET as usize + 192 * 1024);
+    let apps_offset = apps_offset.unwrap_or(memory_map.sram_offset as usize + 192 * 1024);
     let apps_size = apps_size.unwrap_or(64 * 1024);
 
-    let ram_start = RAM_OFFSET as usize + RAM_SIZE as usize - DATA_RAM_SIZE;
+    let ram_start = memory_map.sram_offset as usize + RAM_SIZE as usize - DATA_RAM_SIZE;
     assert!(
         ram_start >= apps_offset + apps_size,
         "RAM must be after apps ram_start {:x} apps_offset {:x} apps_size {:x}",
@@ -71,8 +75,8 @@ pub fn runtime_build_no_apps(
     );
 
     let ld_string = runtime_ld_script(
-        &mcu_config_emulator::EMULATOR_MEMORY_MAP,
-        RAM_OFFSET + INTERRUPT_TABLE_SIZE as u32,
+        memory_map,
+        memory_map.sram_offset + INTERRUPT_TABLE_SIZE as u32,
         runtime_size as u32,
         apps_offset as u32,
         apps_size as u32,
@@ -155,10 +159,11 @@ pub fn runtime_build_no_apps(
     // - `optimize_for_size`: Sets a feature flag in the core library that aims to
     //   produce smaller implementations for certain algorithms. See
     //   https://github.com/rust-lang/rust/pull/125011 for more details.
+    let bin = format!("mcu-runtime-{}", platform);
     let cargo_flags_tock = [
         "--verbose".into(),
         format!("--target={}", TARGET),
-        format!("--package {}", "runtime"),
+        format!("--package {}", bin),
         "-Z build-std=core,compiler_builtins".into(),
         "-Z build-std-features=core/optimize_for_size".into(),
     ]
@@ -176,7 +181,7 @@ pub fn runtime_build_no_apps(
         .arg("rustc")
         .args(cargo_flags_tock.split(' '))
         .arg("--bin")
-        .arg("runtime")
+        .arg(&bin)
         .arg("--release")
         .args(features)
         .arg("--")
@@ -192,7 +197,7 @@ pub fn runtime_build_no_apps(
     let cmd = cmd
         .arg("--output-target=binary")
         .args(objcopy_flags_kernel.split(' '))
-        .arg(target_binary("runtime"))
+        .arg(target_binary(&bin))
         .arg(target_binary(output_name));
     println!("Executing {:?}", cmd);
     if !cmd.status()?.success() {
@@ -201,21 +206,30 @@ pub fn runtime_build_no_apps(
 
     let kernel_size = std::fs::metadata(target_binary(output_name)).unwrap().len() as usize;
 
-    get_apps_memory_offset(target_binary("runtime")).map(|apps_offset| (kernel_size, apps_offset))
+    get_apps_memory_offset(target_binary(&bin)).map(|apps_offset| (kernel_size, apps_offset))
 }
 
 pub fn runtime_build_with_apps(
     features: &[&str],
     output_name: Option<&str>,
     example_app: bool,
-) -> Result<()> {
-    let mut app_offset = RAM_OFFSET as usize;
+    platform: Option<&str>,
+    memory_map: Option<&McuMemoryMap>,
+) -> Result<String> {
+    let mut app_offset = memory_map.map(|m| m.sram_offset).unwrap_or(RAM_OFFSET) as usize;
     let output_name = output_name.unwrap_or(DEFAULT_RUNTIME_NAME);
     let runtime_bin = target_binary(output_name);
 
     // build once to get the size of the runtime binary without apps
-    let (kernel_size, apps_memory_offset) =
-        runtime_build_no_apps(None, None, None, features, output_name)?;
+    let (kernel_size, apps_memory_offset) = runtime_build_no_apps(
+        None,
+        None,
+        None,
+        features,
+        output_name,
+        platform,
+        memory_map,
+    )?;
 
     let runtime_bin_size = std::fs::metadata(&runtime_bin)?.len() as usize;
     app_offset += runtime_bin_size;
@@ -238,6 +252,8 @@ pub fn runtime_build_with_apps(
         Some(apps_bin_len),
         features,
         output_name,
+        platform,
+        memory_map,
     )?;
 
     assert_eq!(
@@ -268,7 +284,7 @@ pub fn runtime_build_with_apps(
     println!("Total runtime binary: {} bytes", bin.len());
     println!("Runtime binary is available at {:?}", &runtime_bin);
 
-    Ok(())
+    Ok(runtime_bin.to_string_lossy().to_string())
 }
 
 pub fn runtime_ld_script(

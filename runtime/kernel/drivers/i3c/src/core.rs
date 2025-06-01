@@ -336,13 +336,13 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let mut full = false;
         for i in (0..len.next_multiple_of(4)).step_by(4) {
             let data = self.registers.tti_rx_data_port.get().to_le_bytes();
-            for j in 0..4 {
+            for (j, data_j) in data.iter().enumerate() {
                 if buf_idx >= buf_size {
                     full = true;
                     break;
                 }
                 if let Some(x) = rx_buffer.get_mut(buf_idx) {
-                    *x = data[j];
+                    *x = *data_j;
                 } else {
                     // check if we ran out of space or if this is just the padding
                     if i + j < len {
@@ -387,8 +387,8 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 .set((size - idx) as u32);
             while idx < size {
                 let mut bytes = [0; 4];
-                for i in 0..4.min(size - idx) {
-                    bytes[i] = buf[idx];
+                for b in bytes[0..4.min(size - idx)].iter_mut() {
+                    *b = buf[idx];
                     idx += 1;
                 }
                 let word = u32::from_le_bytes(bytes);

@@ -345,11 +345,23 @@ For the A/B partition mechanism, the bootloader (MCU ROM) determines which parti
 | Field Name         | Size   | Description                                 |
 |---------------------|--------|--------------------------------------------|
 | Active Partition    | 1 byte | Indicates the active partition (A or B).   |
-| Partition A Valid   | 1 byte | Flag indicating if Partition A is valid.   |
-| Partition B Valid   | 1 byte | Flag indicating if Partition B is valid.   |
+| Partition A Status   | 1 byte | Refer to Partition Status  for values |
+| Partition B Status   | 1 byte | Refer to Partition Status  for values.   |
 | Rollback Flag       | 1 byte | Indicates if rollback is required.         |
 | Reserved            | 4 byte | Reserved                                   |
 | CheckSum            | 4 byte |                                            |
+
+- **Partition Status**
+
+Bits 7:4:  Boot Attempt Count
+
+Bits 3:0:
+| Value | Description     |
+|-------|-----------------|
+|   0   | Invalid         |
+|   1   | Valid           |
+|   2   | Boot Failed     |
+|   3   | Boot Successful |
 
 - **Partition Table Usage**
     - During Normal Boot

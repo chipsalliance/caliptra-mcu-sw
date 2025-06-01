@@ -8,5 +8,14 @@ pub(crate) fn precheckin() -> Result<()> {
     crate::clippy::clippy()?;
     crate::header::check()?;
     crate::deps::check()?;
-    mcu_builder::runtime_build_with_apps(&[], None, false)
+    mcu_builder::runtime_build_with_apps(&[], None, false, None, None)?;
+    mcu_builder::runtime_build_with_apps(
+        &[],
+        None,
+        false,
+        Some("fpga"),
+        Some(&mcu_config_fpga::FPGA_MEMORY_MAP),
+    )?;
+    crate::test::test_panic_missing()?;
+    Ok(())
 }

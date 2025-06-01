@@ -6,18 +6,29 @@ use anyhow::{bail, Result};
 use mcu_config::McuMemoryMap;
 use std::process::Command;
 
-pub fn rom_build() -> Result<()> {
-    let status = Command::new("cargo")
-        .current_dir(&*PROJECT_ROOT)
-        .args([
-            "build",
-            "-p",
-            "mcu-rom-emulator",
-            "--release",
-            "--target",
-            TARGET,
-        ])
-        .status()?;
+pub fn rom_build(platform: Option<&str>, feature: &str) -> Result<String> {
+    let platform = platform.unwrap_or("emulator");
+    let platform_pkg = format!("mcu-rom-{}", platform);
+    let feature_suffix = if feature.is_empty() {
+        "".to_string()
+    } else {
+        format!("-{}", feature)
+    };
+
+    let platform_bin = format!("mcu-rom-{}{}.bin", platform, feature_suffix);
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(&*PROJECT_ROOT).args([
+        "build",
+        "-p",
+        &platform_pkg,
+        "--release",
+        "--target",
+        TARGET,
+    ]);
+    if !feature.is_empty() {
+        cmd.args(["--features", feature]);
+    }
+    let status = cmd.status()?;
     if !status.success() {
         bail!("build ROM binary failed");
     }
@@ -25,32 +36,33 @@ pub fn rom_build() -> Result<()> {
         .join("target")
         .join(TARGET)
         .join("release")
-        .join("mcu-rom-emulator");
+        .join(&platform_pkg);
 
     let rom_binary = PROJECT_ROOT
         .join("target")
         .join(TARGET)
         .join("release")
-        .join("rom.bin");
+        .join(&platform_bin);
 
     let objcopy = objcopy()?;
-    let objcopy_flags = "--strip-sections --strip-all".to_string();
-    let mut cmd = Command::new(objcopy);
-    let cmd = cmd
+    let objcopy_flags = "--strip-sections --strip-all";
+    let mut objcopy_cmd = Command::new(objcopy);
+    objcopy_cmd
         .arg("--output-target=binary")
         .args(objcopy_flags.split(' '))
         .arg(&rom_elf)
         .arg(&rom_binary);
-    println!("Executing {:?}", &cmd);
-    if !cmd.status()?.success() {
+    println!("Executing {:?}", &objcopy_cmd);
+    if !objcopy_cmd.status()?.success() {
         bail!("objcopy failed to build ROM");
     }
     println!(
-        "ROM binary is at {:?} ({} bytes)",
+        "ROM binary ({}) is at {:?} ({} bytes)",
+        platform,
         &rom_binary,
         std::fs::metadata(&rom_binary)?.len()
     );
-    Ok(())
+    Ok(rom_binary.to_string_lossy().to_string())
 }
 
 pub fn rom_ld_script(memory_map: &McuMemoryMap) -> String {

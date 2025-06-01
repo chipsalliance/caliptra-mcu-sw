@@ -22,3 +22,6 @@ zeroize.workspace = true
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 riscv-csr.workspace = true
 rv32i.workspace = true
+
+[features]
+test-mcu-rom-flash-access = []
