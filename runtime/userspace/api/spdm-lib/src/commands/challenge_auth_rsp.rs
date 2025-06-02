@@ -6,6 +6,7 @@ use crate::commands::digests_rsp::compute_cert_chain_hash;
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
+use crate::measurements::common::SpdmMeasurements;
 use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
@@ -22,11 +23,6 @@ struct ChallengeReqBase {
     nonce: [u8; NONCE_LEN],
 }
 impl CommonCodec for ChallengeReqBase {}
-
-#[derive(FromBytes, IntoBytes, Immutable)]
-#[repr(C)]
-struct RequesterContext([u8; REQUESTER_CONTEXT_LEN]);
-impl CommonCodec for RequesterContext {}
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
@@ -257,7 +253,7 @@ async fn generate_challenge_auth_response<'a>(
 ) -> CommandResult<()> {
     // Get the selected asymmetric algorithm
     let asym_algo = ctx
-        .selected_asym_algo()
+        .selected_base_asym_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
 
     // Prepare the response buffer

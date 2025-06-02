@@ -2,6 +2,7 @@
 
 // use crate::cert_mgr::DeviceCertsMgrError;
 use crate::cert_store::CertStoreError;
+use crate::chunk_ctx::ChunkError;
 use crate::codec::CodecError;
 use crate::commands::error_rsp::ErrorCode;
 use crate::measurements::common::MeasurementsError;
@@ -19,6 +20,7 @@ pub enum SpdmError {
     BufferTooSmall,
     UnsupportedRequest,
     CertStore(CertStoreError),
+    CaliptraApi(CaliptraApiError),
 }
 
 pub type SpdmResult<T> = Result<T, SpdmError>;
@@ -32,6 +34,8 @@ pub enum CommandError {
     ErrorCode(ErrorCode),
     UnsupportedRequest,
     InvalidSigngingContext,
+    InvalidChunkContext,
+    Chunk(ChunkError),
     CertStore(CertStoreError),
     CaliptraApi(CaliptraApiError),
     Transcript(TranscriptError),

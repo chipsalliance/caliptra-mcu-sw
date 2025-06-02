@@ -29,3 +29,6 @@ pub mod transcript;
 
 // Spdm measurements management
 pub mod measurements;
+
+// Chunking context for large messages
+pub mod chunk_ctx;

@@ -128,7 +128,7 @@ async fn generate_digests_response<'a>(
     ctx.verify_selected_hash_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
     let asym_algo = ctx
-        .selected_asym_algo()
+        .selected_base_asym_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
 
     // Get the supported and provisioned slot masks.

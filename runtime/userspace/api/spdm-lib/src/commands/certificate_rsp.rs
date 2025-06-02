@@ -133,7 +133,7 @@ async fn generate_certificate_response<'a>(
     ctx.verify_selected_hash_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
     let asym_algo = ctx
-        .selected_asym_algo()
+        .selected_base_asym_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
 
     let connection_version = ctx.state.connection_info.version_number();

@@ -5,6 +5,7 @@ use bitfield::bitfield;
 use libapi_caliptra::error::CaliptraApiError;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
+pub const SPDM_MAX_MEASUREMENT_RECORD_SIZE: u32 = 0xFFFFFF;
 pub const SPDM_MEASUREMENT_MANIFEST_INDEX: u8 = 0xFD;
 pub const SPDM_DEVICE_MODE_INDEX: u8 = 0xFE;
 
@@ -14,9 +15,16 @@ pub enum MeasurementsError {
     InvalidSize,
     InvalidBuffer,
     InvalidOperation,
+    InvalidSlotId,
     CaliptraApi(CaliptraApiError),
 }
 pub type MeasurementsResult<T> = Result<T, MeasurementsError>;
+
+pub enum MeasurementChangeStatus {
+    NoDetection = 0,
+    ChangeDetected = 1,
+    DetectedNoChange = 2,
+}
 
 pub(crate) enum SpdmMeasurements {
     FreeformManifest(FreeformManifest),
@@ -55,6 +63,10 @@ impl SpdmMeasurements {
         index: u8,
         raw_bit_stream: bool,
     ) -> usize {
+        if index == 0 {
+            return 0;
+        }
+
         match self {
             SpdmMeasurements::FreeformManifest(manifest) => {
                 manifest.measurement_block_size(index, raw_bit_stream).await
@@ -72,7 +84,7 @@ impl SpdmMeasurements {
         raw_bit_stream: bool,
         offset: usize,
         measurement_chunk: &mut [u8],
-    ) -> MeasurementsResult<()> {
+    ) -> MeasurementsResult<usize> {
         match self {
             SpdmMeasurements::FreeformManifest(manifest) => {
                 manifest
@@ -98,7 +110,7 @@ impl SpdmMeasurements {
         raw_bit_stream: bool,
         offset: usize,
         measurement_chunk: &mut [u8],
-    ) -> MeasurementsResult<()> {
+    ) -> MeasurementsResult<usize> {
         match self {
             SpdmMeasurements::FreeformManifest(manifest) => {
                 manifest

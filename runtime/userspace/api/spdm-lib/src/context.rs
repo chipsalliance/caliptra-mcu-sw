@@ -2,10 +2,12 @@
 
 // use crate::cert_mgr::DeviceCertsManager;
 use crate::cert_store::*;
+use crate::chunk_ctx::LargeResponseCtx;
 use crate::codec::{Codec, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
-    algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, digests_rsp, version_rsp,
+    algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, digests_rsp,
+    measurements_rsp, version_rsp,
 };
 use crate::error::*;
 use crate::measurements::common::SpdmMeasurements;
@@ -13,9 +15,12 @@ use crate::protocol::algorithms::*;
 use crate::protocol::common::{ReqRespCode, SpdmMsgHdr};
 use crate::protocol::version::*;
 use crate::protocol::DeviceCapabilities;
-use crate::state::State;
+use crate::state::{ConnectionState, State};
 use crate::transcript::{TranscriptContext, TranscriptManager};
 use crate::transport::SpdmTransport;
+
+use libsyscall_caliptra::DefaultSyscalls;
+use libtock_console::ConsoleWriter;
 
 pub struct SpdmContext<'a> {
     transport: &'a mut dyn SpdmTransport,
@@ -26,6 +31,8 @@ pub struct SpdmContext<'a> {
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
     pub(crate) device_certs_store: &'a mut dyn SpdmCertStore,
     pub(crate) measurements: SpdmMeasurements,
+    pub(crate) large_resp_context: LargeResponseCtx,
+    pub(crate) cw: &'a mut ConsoleWriter<DefaultSyscalls>,
 }
 
 impl<'a> SpdmContext<'a> {
@@ -35,6 +42,7 @@ impl<'a> SpdmContext<'a> {
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
         device_certs_store: &'a mut dyn SpdmCertStore,
+        cw: &'a mut ConsoleWriter<DefaultSyscalls>,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -51,6 +59,8 @@ impl<'a> SpdmContext<'a> {
             local_algorithms,
             device_certs_store,
             measurements: SpdmMeasurements::default(),
+            large_resp_context: LargeResponseCtx::default(),
+            cw,
         })
     }
 
@@ -105,6 +115,9 @@ impl<'a> SpdmContext<'a> {
             ReqRespCode::Challenge => {
                 challenge_auth_rsp::handle_challenge(self, req_msg_header, req).await?
             }
+            ReqRespCode::GetMeasurements => {
+                measurements_rsp::handle_get_measurements(self, req_msg_header, req).await?
+            }
             _ => Err((false, CommandError::UnsupportedRequest))?,
         }
         Ok(())
@@ -123,6 +136,16 @@ impl<'a> SpdmContext<'a> {
             .reserve(self.transport.header_size())
             .map_err(|_| (false, CommandError::BufferTooSmall))?;
         Ok(())
+    }
+
+    /// Returns the minimum data transfer size based on local and peer capabilities.
+    pub(crate) fn min_data_transfer_size(&self) -> usize {
+        self.local_capabilities.data_transfer_size.min(
+            self.state
+                .connection_info
+                .peer_capabilities()
+                .data_transfer_size,
+        ) as usize
     }
 
     pub(crate) fn verify_selected_hash_algo(&mut self) -> SpdmResult<()> {
@@ -147,7 +170,7 @@ impl<'a> SpdmContext<'a> {
         Ok(())
     }
 
-    pub(crate) fn selected_asym_algo(&self) -> SpdmResult<AsymAlgo> {
+    pub(crate) fn selected_base_asym_algo(&self) -> SpdmResult<AsymAlgo> {
         let peer_algorithms = self.state.connection_info.peer_algorithms();
         let local_algorithms = &self.local_algorithms.device_algorithms;
         let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
@@ -181,8 +204,22 @@ impl<'a> SpdmContext<'a> {
     }
 
     pub(crate) fn reset_transcript_via_req_code(&mut self, req_code: ReqRespCode) {
-        if let ReqRespCode::GetDigests = req_code {
-            self.transcript_mgr.reset_context(TranscriptContext::M1);
+        // Any request other than GET_MEASUREMENTS resets the L1 transcript context.
+        if req_code != ReqRespCode::GetMeasurements {
+            self.transcript_mgr.reset_context(TranscriptContext::L1);
+        }
+
+        // If requester issued GET_MEASUREMENTS request and skipped CHALLENGE completion, reset M1 context.
+        match req_code {
+            ReqRespCode::GetMeasurements => {
+                if self.state.connection_info.state() < ConnectionState::Authenticated {
+                    self.transcript_mgr.reset_context(TranscriptContext::M1);
+                }
+            }
+            ReqRespCode::GetDigests => {
+                self.transcript_mgr.reset_context(TranscriptContext::M1);
+            }
+            _ => {}
         }
     }
 

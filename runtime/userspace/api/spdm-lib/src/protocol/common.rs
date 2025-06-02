@@ -2,20 +2,13 @@
 
 use crate::codec::CommonCodec;
 use crate::error::{SpdmError, SpdmResult};
-use crate::protocol::version::SpdmVersion;
+use crate::protocol::{version::SpdmVersion, REQUESTER_CONTEXT_LEN, SPDM_CONTEXT_LEN};
+use libapi_caliptra::crypto::hash::HashContext;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-pub const NONCE_LEN: usize = 32;
+use super::SHA384_HASH_SIZE;
 
-pub const REQUESTER_CONTEXT_LEN: usize = 8;
-
-// This is the `combined_spdm_prefix` length for signing context
-pub const SPDM_SIGNING_CONTEXT_LEN: usize = SPDM_PREFIX_LEN + SPDM_CONTEXT_LEN;
-
-const SPDM_PREFIX_LEN: usize = 64;
-const SPDM_CONTEXT_LEN: usize = 36;
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum ReqRespCode {
     GetVersion = 0x84,
     Version = 0x04,
@@ -29,6 +22,10 @@ pub(crate) enum ReqRespCode {
     Certificate = 0x02,
     Challenge = 0x83,
     ChallengeAuth = 0x03,
+    GetMeasurements = 0xE0,
+    Measurements = 0x60,
+    ChunkGet = 0x86,
+    ChunkResponse = 0x06,
     Error = 0x7F,
 }
 
@@ -48,6 +45,10 @@ impl TryFrom<u8> for ReqRespCode {
             0x02 => Ok(ReqRespCode::Certificate),
             0x83 => Ok(ReqRespCode::Challenge),
             0x03 => Ok(ReqRespCode::ChallengeAuth),
+            0xE0 => Ok(ReqRespCode::GetMeasurements),
+            0x60 => Ok(ReqRespCode::Measurements),
+            0x86 => Ok(ReqRespCode::ChunkGet),
+            0x06 => Ok(ReqRespCode::ChunkResponse),
             0x7F => Ok(ReqRespCode::Error),
             _ => Err(SpdmError::UnsupportedRequest),
         }
@@ -106,34 +107,8 @@ impl SpdmMsgHdr {
 
 impl CommonCodec for SpdmMsgHdr {}
 
-pub(crate) fn create_responder_signing_context(
-    spdm_version: SpdmVersion,
-    opcode: ReqRespCode,
-) -> SpdmResult<[u8; SPDM_SIGNING_CONTEXT_LEN]> {
-    if spdm_version < SpdmVersion::V12 {
-        Err(SpdmError::UnsupportedVersion)?;
-    }
-
-    let mut combined_spdm_prefix = [0u8; SPDM_SIGNING_CONTEXT_LEN];
-
-    let base_str = b"dmtf-spdm-v";
-    let version_str = spdm_version.to_str().as_bytes();
-    let mut spdm_prefix = [0u8; SPDM_PREFIX_LEN];
-
-    let mut pos = 0;
-    for _ in 0..4 {
-        spdm_prefix[pos..pos + base_str.len()].copy_from_slice(base_str);
-        pos += base_str.len();
-        spdm_prefix[pos..pos + version_str.len()].copy_from_slice(version_str);
-        pos += version_str.len();
-        if pos % 16 != 0 {
-            Err(SpdmError::BufferTooSmall)?;
-        }
-    }
-
-    let spdm_context = opcode.spdm_context_string()?;
-    combined_spdm_prefix[..SPDM_PREFIX_LEN].copy_from_slice(&spdm_prefix);
-    combined_spdm_prefix[SPDM_PREFIX_LEN..].copy_from_slice(&spdm_context);
-
-    Ok(combined_spdm_prefix)
-}
+// Requester context (used for SPDM 1.3 and later versions)
+#[derive(FromBytes, IntoBytes, Immutable, Debug)]
+#[repr(C)]
+pub(crate) struct RequesterContext([u8; REQUESTER_CONTEXT_LEN]);
+impl CommonCodec for RequesterContext {}
