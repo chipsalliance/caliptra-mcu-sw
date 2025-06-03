@@ -40,10 +40,8 @@ macro_rules! print {
 #[macro_export]
 macro_rules! println {
     ($($arg:tt)*) => {
-        unsafe {
-            if let Some(writer) = $crate::WRITER.as_mut() {
-                let _ = writeln!(writer, $($arg)*);
-            }
+        if let Some(writer) = unsafe { $crate::WRITER.as_mut() } {
+            let _ = writeln!(writer, $($arg)*);
         }
     };
 }

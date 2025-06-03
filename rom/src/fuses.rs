@@ -45,6 +45,10 @@ impl Otp {
         Ok(())
     }
 
+    pub fn status(&self) -> u32 {
+        self.registers.otp_status.get()
+    }
+
     fn read_data(&self, addr: usize, len: usize, data: &mut [u8]) -> Result<(), McuError> {
         if data.len() < len || len % 4 != 0 {
             return Err(McuError::InvalidDataError);

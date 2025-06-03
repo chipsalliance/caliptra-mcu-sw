@@ -9,17 +9,16 @@ use ureg::RealMmioMut;
 pub struct CaliptraSoC {
     _private: (), // ensure that this struct cannot be instantiated directly except through new
     counter: u64,
+    soc_ifc_addr: *mut u32,
+    soc_ifc_trng_addr: *mut u32,
+    soc_mbox_addr: *mut u32,
 }
 
 impl SocManager for CaliptraSoC {
-    /// Address of the mailbox
-    const SOC_MBOX_ADDR: u32 = mbox::MBOX_CSR_ADDR;
-
-    /// Address of the SoC interface
-    const SOC_IFC_ADDR: u32 = soc::SOC_IFC_REG_ADDR;
-
-    /// Address of the SoC TRNG interface
-    const SOC_IFC_TRNG_ADDR: u32 = soc::SOC_IFC_REG_ADDR;
+    // we override the methods that use these
+    const SOC_MBOX_ADDR: u32 = 0;
+    const SOC_IFC_ADDR: u32 = 0;
+    const SOC_IFC_TRNG_ADDR: u32 = 0;
 
     /// Maximum number of wait cycles.
     const MAX_WAIT_CYCLES: u32 = 400_000;
@@ -36,14 +35,53 @@ impl SocManager for CaliptraSoC {
     fn delay(&mut self) {
         self.counter = core::hint::black_box(self.counter) + 1;
     }
+
+    /// A register block that can be used to manipulate the soc_ifc peripheral
+    /// over the simulated SoC->Caliptra APB bus.
+    fn soc_ifc(&mut self) -> caliptra_registers::soc_ifc::RegisterBlock<Self::TMmio<'_>> {
+        unsafe {
+            caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
+                self.soc_ifc_addr,
+                self.mmio_mut(),
+            )
+        }
+    }
+
+    /// A register block that can be used to manipulate the soc_ifc peripheral TRNG registers
+    /// over the simulated SoC->Caliptra APB bus.
+    fn soc_ifc_trng(&mut self) -> caliptra_registers::soc_ifc_trng::RegisterBlock<Self::TMmio<'_>> {
+        unsafe {
+            caliptra_registers::soc_ifc_trng::RegisterBlock::new_with_mmio(
+                self.soc_ifc_trng_addr,
+                self.mmio_mut(),
+            )
+        }
+    }
+
+    /// A register block that can be used to manipulate the mbox peripheral
+    /// over the simulated SoC->Caliptra APB bus.
+    fn soc_mbox(&mut self) -> caliptra_registers::mbox::RegisterBlock<Self::TMmio<'_>> {
+        unsafe {
+            caliptra_registers::mbox::RegisterBlock::new_with_mmio(
+                self.soc_mbox_addr,
+                self.mmio_mut(),
+            )
+        }
+    }
 }
 
 impl CaliptraSoC {
-    #[allow(clippy::new_without_default)] // we don't want people to create new ones with Default
-    pub const fn new() -> Self {
+    pub fn new(
+        soc_ifc_addr: Option<u32>,
+        soc_ifc_trng_addr: Option<u32>,
+        soc_mbox_addr: Option<u32>,
+    ) -> Self {
         CaliptraSoC {
             _private: (),
             counter: 0,
+            soc_ifc_addr: soc_ifc_addr.unwrap_or(soc::SOC_IFC_REG_ADDR) as *mut u32,
+            soc_ifc_trng_addr: soc_ifc_trng_addr.unwrap_or(soc::SOC_IFC_REG_ADDR) as *mut u32,
+            soc_mbox_addr: soc_mbox_addr.unwrap_or(mbox::MBOX_CSR_ADDR) as *mut u32,
         }
     }
 

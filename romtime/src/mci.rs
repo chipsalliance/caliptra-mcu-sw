@@ -20,4 +20,8 @@ impl Mci {
     pub fn flow_status(&self) -> u32 {
         self.registers.mci_reg_fw_flow_status.get()
     }
+
+    pub fn hw_flow_status(&self) -> u32 {
+        self.registers.mci_reg_hw_flow_status.get()
+    }
 }

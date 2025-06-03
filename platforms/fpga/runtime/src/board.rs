@@ -342,7 +342,10 @@ pub unsafe fn main() {
         mux_alarm,
     )
     .finalize(mcu_components::mailbox_component_static!(
-        InternalTimers<'static>
+        InternalTimers<'static>,
+        Some(MCU_MEMORY_MAP.soc_offset),
+        Some(MCU_MEMORY_MAP.soc_offset),
+        Some(MCU_MEMORY_MAP.mbox_offset)
     ));
     mailbox.alarm.set_alarm_client(mailbox);
     romtime::println!("[mcu-runtime] Mailbox initialized");

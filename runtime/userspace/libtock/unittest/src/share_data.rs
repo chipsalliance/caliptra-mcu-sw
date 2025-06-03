@@ -114,6 +114,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unpredictable_function_pointer_comparisons)]
     fn schedule_success() {
         let mock_driver = Rc::new(MockDriver::default());
         let kernel = crate::fake::Kernel::new();
@@ -174,6 +175,7 @@ mod tests {
                     subscribe_num: 2
                 }
             );
+
             assert!(upcall_queue_entry.upcall.fn_pointer == Some(upcall_ptr));
             let data: usize = upcall_queue_entry.upcall.data.into();
             assert_eq!(data, 1111);

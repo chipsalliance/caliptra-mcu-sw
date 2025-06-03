@@ -30,7 +30,7 @@ pub struct GetDigestsRespCommon {
 
 impl CommonCodec for GetDigestsRespCommon {}
 
-pub(crate) async fn compute_cert_chain_hash<'a>(
+pub(crate) async fn compute_cert_chain_hash(
     slot_id: u8,
     cert_store: &mut dyn SpdmCertStore,
     asym_algo: AsymAlgo,
@@ -99,11 +99,11 @@ pub(crate) async fn compute_cert_chain_hash<'a>(
         .map_err(|e| (false, CommandError::CaliptraApi(e)))
 }
 
-async fn encode_cert_chain_digest<'a>(
+async fn encode_cert_chain_digest(
     slot_id: u8,
     cert_store: &mut dyn SpdmCertStore,
     asym_algo: AsymAlgo,
-    rsp: &mut MessageBuf<'a>,
+    rsp: &mut MessageBuf<'_>,
 ) -> CommandResult<usize> {
     // Fill the response buffer with the certificate chain digest
     rsp.put_data(SHA384_HASH_SIZE)

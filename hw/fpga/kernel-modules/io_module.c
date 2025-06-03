@@ -84,10 +84,10 @@ int init_module(void)
     uio_info1.name = caliptra_dev_name1;
     uio_info1.version = "1.0.0";
 
-    // SS Wrapper
-    uio_info1.mem[0].name = "ss_wrapper";
-    uio_info1.mem[0].addr = 0xA4010000;
-    uio_info1.mem[0].size = 0x00010000;
+    // LC
+    uio_info1.mem[0].name = "lc";
+    uio_info1.mem[0].addr = 0xA4040000;
+    uio_info1.mem[0].size = 0x00002000;
     uio_info1.mem[0].memtype = UIO_MEM_PHYS;
 
     // MCU ROM Backdoor
@@ -108,10 +108,10 @@ int init_module(void)
     uio_info1.mem[3].size = 0x01000000;
     uio_info1.mem[3].memtype = UIO_MEM_PHYS;
 
-    // MCU ROM Frontdoor
-    uio_info1.mem[4].name = "mcu_frontdoor_rom";
-    uio_info1.mem[4].addr = 0xB0040000;
-    uio_info1.mem[4].size = 0x00020000;
+    // OTP
+    uio_info1.mem[4].name = "otp";
+    uio_info1.mem[4].addr = 0xA4060000;
+    uio_info1.mem[4].size = 0x00002000;
     uio_info1.mem[4].memtype = UIO_MEM_PHYS;
 
 

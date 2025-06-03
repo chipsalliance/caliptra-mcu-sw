@@ -176,8 +176,8 @@ pub struct SpiFlashImpl {
     state: FlashState,
 }
 
-impl<'a> SpiFlashImpl {
-    const SUPPORTED_FLASH: &'a [FlashPartInfo] = &[FlashPartInfo {
+impl SpiFlashImpl {
+    const SUPPORTED_FLASH: &[FlashPartInfo] = &[FlashPartInfo {
         part_name: "w25q01jv",
         id: &[0xef, 0x40, 0x21],
         chip_size: 256 * 1024 * 1024,

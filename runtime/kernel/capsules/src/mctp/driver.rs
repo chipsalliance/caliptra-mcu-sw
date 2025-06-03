@@ -181,7 +181,7 @@ impl<'a> MCTPDriver<'a> {
     /// * `msg_type` - Message type
     /// * `dest_eid` - Destination EID to send the message to
     /// * `msg_tag` - Message tag of the message. It is MCTP_TAG_OWNER if the message is a request message or
-    ///               a value between 0 and 7 if it is a response message.
+    ///   a value between 0 and 7 if it is a response message.
     ///
     /// # Returns
     /// Returns Ok(()) if the message is successfully submitted to be sent to the peer EID.
@@ -295,19 +295,19 @@ impl SyscallDriver for MCTPDriver<'_> {
     ///
     /// - `1`: Receive Request Message.
     /// - `2`: Receive Response Message.
-    ///         Returns INVAL if the command arguments are invalid.
-    ///         Otherwise, replaces the pending rx operation context with the new one.
-    ///         When a new message is received from peer EID, the metadata is compared with the pending rx operation context.
-    ///         If the metadata matches, the message is copied to the process buffer and the upcall is scheduled.
+    ///   Returns INVAL if the command arguments are invalid.
+    ///   Otherwise, replaces the pending rx operation context with the new one.
+    ///   When a new message is received from peer EID, the metadata is compared with the pending rx operation context.
+    ///   If the metadata matches, the message is copied to the process buffer and the upcall is scheduled.
     ///
     ///
     /// - `3`: Send Request Message.
     /// - `4`: Send Response Message.
-    ///         Sends the message payload to the peer EID.
-    ///         Returns INVAL if the command arguments are invalid.
-    ///         Returns EBUSY if there is already a pending tx operation.
-    ///         Otherwise, returns the result of send_msg_payload(). A successful send_msg_payload() call
-    ///         will return Ok(()) and the pending tx operation context is updated. Otherwise, the result is returned immediately.
+    ///   Sends the message payload to the peer EID.
+    ///   Returns INVAL if the command arguments are invalid.
+    ///   Returns EBUSY if there is already a pending tx operation.
+    ///   Otherwise, returns the result of send_msg_payload(). A successful send_msg_payload() call
+    ///   will return Ok(()) and the pending tx operation context is updated. Otherwise, the result is returned immediately.
     ///
     /// - `5`: Get the maximum message size supported by the MCTP driver.
     fn command(

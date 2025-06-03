@@ -10,6 +10,7 @@ use crate::Output;
 use anyhow::Result;
 use caliptra_emu_bus::Clock;
 use caliptra_emu_bus::Event;
+use caliptra_emu_cpu::CpuArgs;
 use caliptra_emu_cpu::{Cpu as CaliptraCpu, InstrTracer as CaliptraInstrTracer};
 use caliptra_emu_periph::ActionCb;
 use caliptra_emu_periph::MailboxRequester;
@@ -20,7 +21,7 @@ use caliptra_hw_model_types::ErrorInjectionMode;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
 use emulator_bus::BusConverter;
 use emulator_bus::Clock as McuClock;
-use emulator_cpu::{Cpu as McuCpu, InstrTracer as McuInstrTracer, Pic};
+use emulator_cpu::{Cpu as McuCpu, InstrTracer as McuInstrTracer};
 use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp};
 use emulator_registers_generated::root_bus::AutoRootBus;
 use std::cell::Cell;
@@ -65,7 +66,8 @@ impl McuHwModel for ModelEmulated {
     where
         Self: Sized,
     {
-        let clock = Clock::new();
+        let clock = Rc::new(Clock::new());
+        let pic = Rc::new(caliptra_emu_cpu::Pic::new());
         let timer = clock.timer();
 
         let ready_for_fw = Rc::new(Cell::new(false));
@@ -99,9 +101,10 @@ impl McuHwModel for ModelEmulated {
 
             itrng_nibbles: Some(params.itrng_nibbles),
             etrng_responses: params.etrng_responses,
+            clock: clock.clone(),
             ..CaliptraRootBusArgs::default()
         };
-        let mut root_bus = CaliptraRootBus::new(&clock, bus_args);
+        let mut root_bus = CaliptraRootBus::new(bus_args);
 
         root_bus
             .soc_reg
@@ -128,7 +131,12 @@ impl McuHwModel for ModelEmulated {
         let soc_to_caliptra_bus2 =
             root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(DEFAULT_AXI_PAUSER));
         let (events_to_caliptra, events_from_caliptra, caliptra_cpu) = {
-            let mut cpu = CaliptraCpu::new(BusLogger::new(root_bus), clock);
+            let mut cpu = CaliptraCpu::new(
+                BusLogger::new(root_bus),
+                clock.clone(),
+                pic.clone(),
+                CpuArgs::default(),
+            );
             if let Some(stack_info) = params.stack_info {
                 cpu.with_stack_info(stack_info);
             }
@@ -140,11 +148,8 @@ impl McuHwModel for ModelEmulated {
         std::hash::Hash::hash_slice(params.caliptra_rom, &mut hasher);
         let image_tag = hasher.finish();
 
-        // this just immediately exits
-        let _mcu_firmware = [0xb7, 0xf6, 0x00, 0x20, 0x94, 0xc2];
-
         let clock = Rc::new(McuClock::new());
-        let pic = Rc::new(Pic::new());
+        let pic = Rc::new(emulator_cpu::Pic::new());
         let bus_args = McuRootBusArgs {
             rom: params.mcu_rom.into(),
             pic: pic.clone(),

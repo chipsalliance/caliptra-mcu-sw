@@ -9,8 +9,8 @@ use caliptra_auth_man_gen::{
     AuthManifestGenerator, AuthManifestGeneratorConfig, AuthManifestGeneratorKeyConfig,
 };
 use caliptra_auth_man_types::{
-    Addr64, AuthManifestFlags, AuthManifestImageMetadata, AuthManifestPrivKeys,
-    AuthManifestPubKeys, AuthorizationManifest, ImageMetadataFlags,
+    Addr64, AuthManifestFlags, AuthManifestImageMetadata, AuthManifestPrivKeysConfig,
+    AuthManifestPubKeysConfig, AuthorizationManifest, ImageMetadataFlags,
 };
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_fake_keys::*;
@@ -205,48 +205,56 @@ impl CaliptraBuilder {
         image_metadata_list: Vec<AuthManifestImageMetadata>,
     ) -> AuthorizationManifest {
         let vendor_fw_key_info: AuthManifestGeneratorKeyConfig = AuthManifestGeneratorKeyConfig {
-            pub_keys: AuthManifestPubKeys {
+            pub_keys: AuthManifestPubKeysConfig {
                 ecc_pub_key: VENDOR_ECC_KEY_0_PUBLIC,
                 lms_pub_key: VENDOR_LMS_KEY_0_PUBLIC,
+                mldsa_pub_key: VENDOR_MLDSA_KEY_0_PUBLIC,
             },
-            priv_keys: Some(AuthManifestPrivKeys {
+            priv_keys: Some(AuthManifestPrivKeysConfig {
                 ecc_priv_key: VENDOR_ECC_KEY_0_PRIVATE,
                 lms_priv_key: VENDOR_LMS_KEY_0_PRIVATE,
+                mldsa_priv_key: VENDOR_MLDSA_KEY_0_PRIVATE,
             }),
         };
 
         let vendor_man_key_info: AuthManifestGeneratorKeyConfig = AuthManifestGeneratorKeyConfig {
-            pub_keys: AuthManifestPubKeys {
+            pub_keys: AuthManifestPubKeysConfig {
                 ecc_pub_key: VENDOR_ECC_KEY_1_PUBLIC,
                 lms_pub_key: VENDOR_LMS_KEY_1_PUBLIC,
+                mldsa_pub_key: VENDOR_MLDSA_KEY_0_PUBLIC,
             },
-            priv_keys: Some(AuthManifestPrivKeys {
+            priv_keys: Some(AuthManifestPrivKeysConfig {
                 ecc_priv_key: VENDOR_ECC_KEY_1_PRIVATE,
                 lms_priv_key: VENDOR_LMS_KEY_1_PRIVATE,
+                mldsa_priv_key: VENDOR_MLDSA_KEY_0_PRIVATE,
             }),
         };
 
         let owner_fw_key_info: Option<AuthManifestGeneratorKeyConfig> =
             Some(AuthManifestGeneratorKeyConfig {
-                pub_keys: AuthManifestPubKeys {
+                pub_keys: AuthManifestPubKeysConfig {
                     ecc_pub_key: OWNER_ECC_KEY_PUBLIC,
                     lms_pub_key: OWNER_LMS_KEY_PUBLIC,
+                    mldsa_pub_key: OWNER_MLDSA_KEY_PUBLIC,
                 },
-                priv_keys: Some(AuthManifestPrivKeys {
+                priv_keys: Some(AuthManifestPrivKeysConfig {
                     ecc_priv_key: OWNER_ECC_KEY_PRIVATE,
                     lms_priv_key: OWNER_LMS_KEY_PRIVATE,
+                    mldsa_priv_key: OWNER_MLDSA_KEY_PRIVATE,
                 }),
             });
 
         let owner_man_key_info: Option<AuthManifestGeneratorKeyConfig> =
             Some(AuthManifestGeneratorKeyConfig {
-                pub_keys: AuthManifestPubKeys {
+                pub_keys: AuthManifestPubKeysConfig {
                     ecc_pub_key: OWNER_ECC_KEY_PUBLIC,
                     lms_pub_key: OWNER_LMS_KEY_PUBLIC,
+                    mldsa_pub_key: OWNER_MLDSA_KEY_PUBLIC,
                 },
-                priv_keys: Some(AuthManifestPrivKeys {
+                priv_keys: Some(AuthManifestPrivKeysConfig {
                     ecc_priv_key: OWNER_ECC_KEY_PRIVATE,
                     lms_priv_key: OWNER_LMS_KEY_PRIVATE,
+                    mldsa_priv_key: OWNER_MLDSA_KEY_PRIVATE,
                 }),
             });
 
@@ -258,6 +266,7 @@ impl CaliptraBuilder {
             image_metadata_list,
             version: 1,
             flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
+            pqc_key_type: FwVerificationPqcKeyType::LMS,
         };
 
         let gen = AuthManifestGenerator::new(Crypto::default());

@@ -35,11 +35,7 @@ impl MctpTransport {
         }
     }
 
-    pub async fn send_request<'a>(
-        &mut self,
-        dest_eid: u8,
-        req: &'a [u8],
-    ) -> Result<(), TransportError> {
+    pub async fn send_request(&mut self, dest_eid: u8, req: &[u8]) -> Result<(), TransportError> {
         let mctp_hdr = MctpCommonHeader(req[MCTP_COMMON_HEADER_OFFSET]);
         if mctp_hdr.ic() != 0 || mctp_hdr.msg_type() != MCTP_PLDM_MSG_TYPE {
             Err(TransportError::UnexpectedMessageType)?;
@@ -56,7 +52,7 @@ impl MctpTransport {
         Ok(())
     }
 
-    pub async fn receive_response<'a>(&mut self, rsp: &'a mut [u8]) -> Result<(), TransportError> {
+    pub async fn receive_response(&mut self, rsp: &mut [u8]) -> Result<(), TransportError> {
         // Reset msg buffer
         rsp.fill(0);
         let (rsp_len, _msg_info) = if let Some(msg_info) = &self.cur_req_ctx {
@@ -82,7 +78,7 @@ impl MctpTransport {
         Ok(())
     }
 
-    pub async fn receive_request<'a>(&mut self, req: &'a mut [u8]) -> Result<(), TransportError> {
+    pub async fn receive_request(&mut self, req: &mut [u8]) -> Result<(), TransportError> {
         // Reset msg buffer
         req.fill(0);
         let (req_len, msg_info) = self
@@ -106,7 +102,7 @@ impl MctpTransport {
         Ok(())
     }
 
-    pub async fn send_response<'a>(&mut self, resp: &'a [u8]) -> Result<(), TransportError> {
+    pub async fn send_response(&mut self, resp: &[u8]) -> Result<(), TransportError> {
         let mctp_hdr = MctpCommonHeader(resp[MCTP_COMMON_HEADER_OFFSET]);
         if mctp_hdr.ic() != 0 || mctp_hdr.msg_type() != MCTP_PLDM_MSG_TYPE {
             Err(TransportError::UnexpectedMessageType)?;

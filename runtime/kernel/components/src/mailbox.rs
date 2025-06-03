@@ -13,14 +13,14 @@ use romtime::CaliptraSoC;
 
 #[macro_export]
 macro_rules! mailbox_component_static {
-    ($A:ty) => {{
+    ($A:ty, $b:expr, $c:expr, $d:expr) => {{
         use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
         let alarm = kernel::static_buf!(VirtualMuxAlarm<'static, $A>);
         let caliptra_soc = kernel::static_buf!(CaliptraSoC);
         let mbox = kernel::static_buf!(
             capsules_runtime::mailbox::Mailbox<'static, VirtualMuxAlarm<'static, $A>>
         );
-        (alarm, mbox, caliptra_soc)
+        (alarm, mbox, caliptra_soc, $b, $c, $d)
     }};
 }
 
@@ -49,6 +49,9 @@ impl<A: Alarm<'static>> Component for MailboxComponent<A> {
         &'static mut MaybeUninit<VirtualMuxAlarm<'static, A>>,
         &'static mut MaybeUninit<Mailbox<'static, VirtualMuxAlarm<'static, A>>>,
         &'static mut MaybeUninit<CaliptraSoC>,
+        Option<u32>,
+        Option<u32>,
+        Option<u32>,
     );
 
     type Output = &'static Mailbox<'static, VirtualMuxAlarm<'static, A>>;
@@ -56,7 +59,11 @@ impl<A: Alarm<'static>> Component for MailboxComponent<A> {
     fn finalize(self, static_buffer: Self::StaticInput) -> Self::Output {
         let mux_alarm = static_buffer.0.write(VirtualMuxAlarm::new(self.mux_alarm));
         mux_alarm.setup();
-        let caliptra_soc = static_buffer.2.write(CaliptraSoC::new());
+        let caliptra_soc = static_buffer.2.write(CaliptraSoC::new(
+            static_buffer.3,
+            static_buffer.4,
+            static_buffer.5,
+        ));
 
         let grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
         let mailbox: &Mailbox<'_, VirtualMuxAlarm<'_, _>> =

@@ -58,7 +58,7 @@ pub struct DeviceCertChain<'b> {
     device_cert_chain_len: Option<usize>,
 }
 
-impl<'b> DeviceCertChain<'b> {
+impl DeviceCertChain<'_> {
     pub async fn new(slot_id: u8) -> DevCertStoreResult<Self> {
         if slot_id >= MAX_CERT_SLOTS_SUPPORTED {
             Err(DevCertStoreError::InvalidSlotId)?;
@@ -211,7 +211,7 @@ impl<'b> DeviceCertChain<'b> {
 }
 
 #[async_trait]
-impl<'b> SpdmCertStore for DeviceCertStore<'b> {
+impl SpdmCertStore for DeviceCertStore<'_> {
     fn slot_count(&self) -> u8 {
         MAX_CERT_SLOTS_SUPPORTED
     }

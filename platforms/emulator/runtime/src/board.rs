@@ -339,7 +339,12 @@ pub unsafe fn main() {
         capsules_runtime::mailbox::DRIVER_NUM,
         mux_alarm,
     )
-    .finalize(mailbox_component_static!(InternalTimers<'static>));
+    .finalize(mailbox_component_static!(
+        InternalTimers<'static>,
+        Some(MCU_MEMORY_MAP.soc_offset),
+        Some(MCU_MEMORY_MAP.soc_offset),
+        Some(MCU_MEMORY_MAP.mbox_offset)
+    ));
     mailbox.alarm.set_alarm_client(mailbox);
 
     let emulator_peripherals =

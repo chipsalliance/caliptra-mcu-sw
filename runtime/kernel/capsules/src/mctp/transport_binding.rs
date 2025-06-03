@@ -197,7 +197,7 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
     }
 }
 
-impl<'a> TxClient for MCTPI3CBinding<'a> {
+impl TxClient for MCTPI3CBinding<'_> {
     fn send_done(&self, tx_buffer: &'static mut [u8], result: Result<(), ErrorCode>) {
         self.tx_client.map(|client| {
             client.send_done(tx_buffer, result);
@@ -205,7 +205,7 @@ impl<'a> TxClient for MCTPI3CBinding<'a> {
     }
 }
 
-impl<'a> RxClient for MCTPI3CBinding<'a> {
+impl RxClient for MCTPI3CBinding<'_> {
     fn receive_write(&self, rx_buffer: &'static mut [u8], len: usize) {
         // check if len is > 0 and <= max_write_len
         // if yes, compute PEC and check if it matches with the last byte of the buffer

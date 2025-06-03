@@ -122,7 +122,7 @@ impl SyscallDriver for FakeMailboxDriver {
         buffer: RoAllowBuffer,
     ) -> Result<RoAllowBuffer, (RoAllowBuffer, ErrorCode)> {
         if allow_num == mailbox_ro_buffer::INPUT {
-            if buffer.len() != 0 {
+            if !buffer.is_empty() {
                 // Buffer len of 0 means unallow, we don't want to replace the buffer in that case
                 self.last_ro_input.replace(buffer.to_vec());
             }

@@ -14,7 +14,7 @@ Abstract:
 
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use caliptra_emu_bus::Clock;
-use caliptra_emu_cpu::Cpu;
+use caliptra_emu_cpu::{Cpu, CpuArgs, Pic};
 use caliptra_emu_periph::soc_reg::DebugManufService;
 use caliptra_emu_periph::{
     CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal, MailboxRequester,
@@ -169,7 +169,8 @@ pub fn start_caliptra(
 
     let log_dir = Rc::new(args_log_dir.to_path_buf());
 
-    let clock = Clock::new();
+    let clock = Rc::new(Clock::new());
+    let pic = Rc::new(Pic::new());
 
     let mut security_state = SecurityState::default();
     security_state.set_device_lifecycle(
@@ -197,6 +198,8 @@ pub fn start_caliptra(
     };
 
     let bus_args = CaliptraRootBusArgs {
+        clock: clock.clone(),
+        pic: pic.clone(),
         rom: rom_buffer,
         log_dir: args_log_dir.clone(),
         tb_services_cb: TbServicesCb::new(move |val| match val {
@@ -222,7 +225,7 @@ pub fn start_caliptra(
         ..Default::default()
     };
 
-    let root_bus = CaliptraRootBus::new(&clock, bus_args);
+    let root_bus = CaliptraRootBus::new(bus_args);
     let soc_ifc = unsafe {
         caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
             0x3003_0000 as *mut u32,
@@ -316,7 +319,15 @@ pub fn start_caliptra(
 
     // only return a full CPU if we have a firmware to run
     if args_rom.is_some() {
-        Ok((Some(Cpu::new(root_bus, clock)), ext_soc_ifc))
+        Ok((
+            Some(Cpu::new(
+                root_bus,
+                clock.clone(),
+                pic.clone(),
+                CpuArgs::default(),
+            )),
+            ext_soc_ifc,
+        ))
     } else {
         Ok((None, ext_soc_ifc))
     }

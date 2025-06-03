@@ -6,7 +6,6 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 use core::cell::RefCell;
 use embassy_sync::lazy_lock::LazyLock;
-use libsyscall_caliptra::DefaultSyscalls;
 use pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::message::firmware_update::get_status::ProgressPercent;
@@ -14,13 +13,12 @@ use pldm_common::message::firmware_update::transfer_complete::TransferResult;
 use pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use pldm_common::protocol::firmware_update::{
     ComponentActivationMethods, ComponentClassification, ComponentParameterEntry,
-    ComponentResponseCode, Descriptor, DescriptorType, FirmwareDeviceCapability, PldmFdTime,
+    ComponentResponseCode, Descriptor, DescriptorType, FirmwareDeviceCapability,
     PldmFirmwareString, PldmFirmwareVersion, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
     PLDM_FWUP_MAX_PADDING_SIZE,
 };
 use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
-use pldm_lib::timer::AsyncAlarm;
 
 const FD_DESCRIPTORS_COUNT: usize = 1;
 const FD_FW_COMPONENTS_COUNT: usize = 1;

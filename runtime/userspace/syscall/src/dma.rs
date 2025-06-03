@@ -62,7 +62,7 @@ impl<S: Syscalls> DMA<S> {
     /// # Returns
     /// * `Ok(())` if the transfer starts successfully.
     /// * `Err(ErrorCode)` if the transfer fails.
-    pub async fn xfer<'a>(&self, transaction: &DMATransaction<'a>) -> Result<(), ErrorCode> {
+    pub async fn xfer(&self, transaction: &DMATransaction<'_>) -> Result<(), ErrorCode> {
         self.setup(transaction)?;
 
         match transaction.source {
