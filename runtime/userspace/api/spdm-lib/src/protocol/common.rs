@@ -3,10 +3,7 @@
 use crate::codec::CommonCodec;
 use crate::error::{SpdmError, SpdmResult};
 use crate::protocol::{version::SpdmVersion, REQUESTER_CONTEXT_LEN, SPDM_CONTEXT_LEN};
-use libapi_caliptra::crypto::hash::HashContext;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
-
-use super::SHA384_HASH_SIZE;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum ReqRespCode {
@@ -64,19 +61,18 @@ impl From<ReqRespCode> for u8 {
 impl ReqRespCode {
     pub(crate) fn spdm_context_string(&self) -> SpdmResult<[u8; SPDM_CONTEXT_LEN]> {
         let mut context = [0u8; SPDM_CONTEXT_LEN];
-        match self {
-            ReqRespCode::ChallengeAuth => {
-                let ctx_str = "responder-challenge_auth signing";
-                if ctx_str.len() > SPDM_CONTEXT_LEN {
-                    Err(SpdmError::InvalidParam)?;
-                }
-                let zero_pad_size = SPDM_CONTEXT_LEN - ctx_str.len();
-                context[zero_pad_size..].copy_from_slice(ctx_str.as_bytes());
-            }
-            _ => {
-                Err(SpdmError::UnsupportedRequest)?;
-            }
+        let ctx_str = match self {
+            ReqRespCode::ChallengeAuth => "responder-challenge_auth signing",
+            ReqRespCode::Measurements => "responder-measurements signing",
+            _ => return Err(SpdmError::UnsupportedRequest),
+        };
+
+        if ctx_str.len() > SPDM_CONTEXT_LEN {
+            return Err(SpdmError::InvalidParam);
         }
+        let zero_pad_size = SPDM_CONTEXT_LEN - ctx_str.len();
+        context[zero_pad_size..].copy_from_slice(ctx_str.as_bytes());
+
         Ok(context)
     }
 }

@@ -6,6 +6,7 @@ use crate::chunk_ctx::ChunkError;
 use crate::codec::CodecError;
 use crate::commands::error_rsp::ErrorCode;
 use crate::measurements::common::MeasurementsError;
+use crate::protocol::SignCtxError;
 use crate::transcript::TranscriptError;
 use crate::transport::TransportError;
 use libapi_caliptra::error::CaliptraApiError;
@@ -33,7 +34,7 @@ pub enum CommandError {
     Codec(CodecError),
     ErrorCode(ErrorCode),
     UnsupportedRequest,
-    InvalidSigngingContext,
+    SignCtx(SignCtxError),
     InvalidChunkContext,
     Chunk(ChunkError),
     CertStore(CertStoreError),

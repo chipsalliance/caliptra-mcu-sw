@@ -6,8 +6,8 @@ use crate::chunk_ctx::LargeResponseCtx;
 use crate::codec::{Codec, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
-    algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, digests_rsp,
-    measurements_rsp, version_rsp,
+    algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, chunk_get_rsp,
+    digests_rsp, measurements_rsp, version_rsp,
 };
 use crate::error::*;
 use crate::measurements::common::SpdmMeasurements;
@@ -96,6 +96,11 @@ impl<'a> SpdmContext<'a> {
             .req_resp_code()
             .map_err(|_| (false, CommandError::UnsupportedRequest))?;
 
+        if req_code != ReqRespCode::ChunkGet && self.large_resp_context.in_progress() {
+            // Reset large response context if the request is not a CHUNK_GET
+            self.large_resp_context.reset();
+        }
+
         match req_code {
             ReqRespCode::GetVersion => {
                 version_rsp::handle_get_version(self, req_msg_header, req).await?
@@ -118,6 +123,10 @@ impl<'a> SpdmContext<'a> {
             ReqRespCode::GetMeasurements => {
                 measurements_rsp::handle_get_measurements(self, req_msg_header, req).await?
             }
+            ReqRespCode::ChunkGet => {
+                chunk_get_rsp::handle_chunk_get_rsp(self, req_msg_header, req).await?
+            }
+
             _ => Err((false, CommandError::UnsupportedRequest))?,
         }
         Ok(())

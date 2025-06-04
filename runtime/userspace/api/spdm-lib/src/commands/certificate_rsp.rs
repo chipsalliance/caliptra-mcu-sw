@@ -168,7 +168,7 @@ async fn generate_certificate_response<'a>(
     let mut remainder_len = total_cert_chain_len.saturating_sub(offset);
 
     let portion_len = if length > SPDM_MAX_CERT_CHAIN_PORTION_LEN
-        && ctx.local_capabilities.flags.chunk_cap() == 0
+    // && ctx.local_capabilities.flags.chunk_cap() == 1
     {
         SPDM_MAX_CERT_CHAIN_PORTION_LEN.min(remainder_len)
     } else {

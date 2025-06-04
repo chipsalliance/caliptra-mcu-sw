@@ -12,24 +12,13 @@ pub enum ChunkError {
 }
 
 /// Stores state and metadata for managing ongoing large message requests and responses.
+#[derive(Default)]
 struct ChunkInfo {
     chunk_in_use: bool,
     chunk_handle: u8,
     chunk_seq_num: u16,
     bytes_transferred: usize,
     large_msg_size: usize,
-}
-
-impl Default for ChunkInfo {
-    fn default() -> Self {
-        Self {
-            chunk_in_use: false,
-            chunk_handle: 0,
-            chunk_seq_num: 0,
-            bytes_transferred: 0,
-            large_msg_size: 0,
-        }
-    }
 }
 
 impl ChunkInfo {
@@ -64,27 +53,13 @@ pub(crate) enum LargeResponse {
 }
 
 /// Manages the context for ongoing large message responses
+#[derive(Default)]
 pub(crate) struct LargeResponseCtx {
     chunk_info: ChunkInfo,
     response: Option<LargeResponse>,
 }
 
-impl Default for LargeResponseCtx {
-    fn default() -> Self {
-        Self {
-            chunk_info: ChunkInfo::default(),
-            response: None,
-        }
-    }
-}
-
 impl LargeResponseCtx {
-    /// Create a new instance of LargeResponseCtx
-    /// with default values
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
     /// Reset the context to its initial state
     /// This action increments the chunk handle
     pub(crate) fn reset(&mut self) {

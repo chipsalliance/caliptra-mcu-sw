@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 use crate::measurements::freeform_manifest::FreeformManifest;
-use crate::protocol::{MeasurementSpecification, SHA384_HASH_SIZE};
+use crate::protocol::{algorithms::AsymAlgo, MeasurementSpecification, SHA384_HASH_SIZE};
 use bitfield::bitfield;
 use libapi_caliptra::error::CaliptraApiError;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -12,6 +12,7 @@ pub const SPDM_DEVICE_MODE_INDEX: u8 = 0xFE;
 #[derive(Debug, PartialEq)]
 pub enum MeasurementsError {
     InvalidIndex,
+    InvalidOffset,
     InvalidSize,
     InvalidBuffer,
     InvalidOperation,
@@ -53,6 +54,7 @@ impl SpdmMeasurements {
     /// when index is 0xFF, it returns the size of all measurement blocks.
     ///
     /// # Arguments
+    /// * `asym_algo` - The asymmetric algorithm negotiated.
     /// * `index` - The index of the measurement block.
     /// * `raw_bit_stream` - If true, returns the raw bit stream.
     ///
@@ -60,35 +62,18 @@ impl SpdmMeasurements {
     /// The size of the measurement block.
     pub(crate) async fn measurement_block_size(
         &mut self,
+        asym_algo: AsymAlgo,
         index: u8,
         raw_bit_stream: bool,
-    ) -> usize {
-        if index == 0 {
-            return 0;
-        }
-
-        match self {
-            SpdmMeasurements::FreeformManifest(manifest) => {
-                manifest.measurement_block_size(index, raw_bit_stream).await
-            }
-        }
-    }
-
-    /// Returns all measurement blocks.
-    ///
-    /// # Arguments
-    /// * `raw_bit_stream` - If true, returns the raw bit stream.
-    /// * `offset` - The offset to start reading from.
-    pub(crate) async fn measurement_record(
-        &mut self,
-        raw_bit_stream: bool,
-        offset: usize,
-        measurement_chunk: &mut [u8],
     ) -> MeasurementsResult<usize> {
+        if index == 0 {
+            return Ok(0);
+        }
+
         match self {
             SpdmMeasurements::FreeformManifest(manifest) => {
                 manifest
-                    .measurement_record(raw_bit_stream, offset, measurement_chunk)
+                    .measurement_block_size(asym_algo, index, raw_bit_stream)
                     .await
             }
         }
@@ -97,6 +82,7 @@ impl SpdmMeasurements {
     /// Returns the measurement block for the given index.
     ///
     /// # Arguments
+    /// * `asym_algo` - The asymmetric algorithm negotiated.
     /// * `index` - The index of the measurement block. Should be between 1 and 0xFE.
     /// * `raw_bit_stream` - If true, returns the raw bit stream.
     /// * `offset` - The offset to start reading from.
@@ -106,6 +92,7 @@ impl SpdmMeasurements {
     /// A result indicating success or failure.
     pub(crate) async fn measurement_block(
         &mut self,
+        asym_algo: AsymAlgo,
         index: u8,
         raw_bit_stream: bool,
         offset: usize,
@@ -114,7 +101,7 @@ impl SpdmMeasurements {
         match self {
             SpdmMeasurements::FreeformManifest(manifest) => {
                 manifest
-                    .measurement_block(index, raw_bit_stream, offset, measurement_chunk)
+                    .measurement_block(asym_algo, index, raw_bit_stream, offset, measurement_chunk)
                     .await
             }
         }
@@ -124,6 +111,7 @@ impl SpdmMeasurements {
     /// This is a hash of all the measurement blocks
     ///
     /// # Arguments
+    /// * `asym_algo` - The asymmetric algorithm negotiated.
     /// * `hash` - The buffer to store the hash.
     /// * `measurement_summary_hash_type` - The type of the measurement summary hash to be calculated.
     ///   1 - TCB measurements only
@@ -133,13 +121,14 @@ impl SpdmMeasurements {
     /// A result indicating success or failure.
     pub(crate) async fn measurement_summary_hash(
         &mut self,
+        asym_algo: AsymAlgo,
         measurement_summary_hash_type: u8,
         hash: &mut [u8; SHA384_HASH_SIZE],
     ) -> MeasurementsResult<()> {
         match self {
             SpdmMeasurements::FreeformManifest(manifest) => {
                 manifest
-                    .measurement_summary_hash(measurement_summary_hash_type, hash)
+                    .measurement_summary_hash(asym_algo, measurement_summary_hash_type, hash)
                     .await
             }
         }

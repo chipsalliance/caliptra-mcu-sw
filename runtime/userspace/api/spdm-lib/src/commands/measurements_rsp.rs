@@ -10,9 +10,9 @@ use crate::error::{CommandError, CommandResult};
 use crate::measurements::common::{
     MeasurementChangeStatus, MeasurementsError, SpdmMeasurements, SPDM_MAX_MEASUREMENT_RECORD_SIZE,
 };
+use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::{TranscriptContext, TranscriptManager};
-use crate::{cert_store, measurements, protocol::*};
 use bitfield::bitfield;
 use libapi_caliptra::crypto::rng::Rng;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -75,12 +75,6 @@ impl MeasurementsRspFixed<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {
         self.set_measurement_record_len_byte1(((len >> 8) & 0xFF) as u8);
         self.set_measurement_record_len_byte2(((len >> 16) & 0xFF) as u8);
     }
-
-    pub fn measurement_record_len(&self) -> u32 {
-        (self.measurement_record_len_byte0() as u32)
-            | ((self.measurement_record_len_byte1() as u32) << 8)
-            | ((self.measurement_record_len_byte2() as u32) << 16)
-    }
 }
 
 impl Default for MeasurementsRspFixed<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {
@@ -91,11 +85,11 @@ impl Default for MeasurementsRspFixed<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {
 
 impl CommonCodec for MeasurementsRspFixed<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {}
 
+#[derive(Debug)]
 pub(crate) struct MeasurementsResponse {
     spdm_version: SpdmVersion,
     req_attr: GetMeasurementsReqAttr,
     meas_op: u8,
-    requester_nonce: Option<[u8; NONCE_LEN]>,
     slot_id: Option<u8>,
     requester_context: Option<RequesterContext>,
     asym_algo: AsymAlgo,
@@ -111,18 +105,12 @@ impl MeasurementsResponse {
         chunk_buf: &mut [u8],
     ) -> CommandResult<usize> {
         // Calculate the size of the response
-        let mut response_size = self.response_size(measurements).await;
+        let response_size = self.response_size(measurements).await?;
 
         // Check if the offset is valid
         if offset >= response_size {
             return Err((false, CommandError::Chunk(ChunkError::InvalidMessageOffset)));
         }
-
-        let sig_len = if self.req_attr.signature_requested() == 1 {
-            self.asym_algo.signature_size()
-        } else {
-            0
-        };
 
         // Calculate the size of the chunk to return
         let mut rem_len = (response_size - offset).min(chunk_buf.len());
@@ -130,8 +118,9 @@ impl MeasurementsResponse {
         let raw_bitstream_requested = self.req_attr.raw_bitstream_requested() == 1;
 
         let measurement_record_len = measurements
-            .measurement_block_size(self.meas_op, raw_bitstream_requested)
-            .await;
+            .measurement_block_size(self.asym_algo, self.meas_op, raw_bitstream_requested)
+            .await
+            .map_err(|e| (false, CommandError::Measurement(e)))?;
         // Fill the chunk buffer with the appropriate response sections
         // Instead of a while loop, use a single-pass approach for clarity and efficiency.
         let mut copied = 0;
@@ -155,6 +144,7 @@ impl MeasurementsResponse {
             let bytes_to_copy = (measurement_record_len - meas_block_offset).min(rem_len);
             let bytes_filled = measurements
                 .measurement_block(
+                    self.asym_algo,
                     self.meas_op,
                     raw_bitstream_requested,
                     meas_block_offset,
@@ -197,7 +187,7 @@ impl MeasurementsResponse {
             chunk_buf[copied..copied + copy_len]
                 .copy_from_slice(&signature[sig_offset..sig_offset + copy_len]);
             copied += copy_len;
-            rem_len -= copy_len;
+            // rem_len -= copy_len;
         }
 
         Ok(copied)
@@ -215,14 +205,19 @@ impl MeasurementsResponse {
         Ok(fixed_rsp_fields)
     }
 
-    async fn encode_response_fixed_fields<'a>(
+    async fn encode_response_fixed_fields(
         &self,
-        buf: &mut MessageBuf<'a>,
+        buf: &mut MessageBuf<'_>,
         measurements: &mut SpdmMeasurements,
     ) -> CommandResult<usize> {
         let measurement_record_size = measurements
-            .measurement_block_size(self.meas_op, self.req_attr.raw_bitstream_requested() == 1)
-            .await;
+            .measurement_block_size(
+                self.asym_algo,
+                self.meas_op,
+                self.req_attr.raw_bitstream_requested() == 1,
+            )
+            .await
+            .map_err(|e| (false, CommandError::Measurement(e)))?;
         let total_measurement_count = measurements.total_measurement_count() as u8;
 
         let (total_meas_indices, num_of_meas_blocks_in_record, meas_record_len) = match self.meas_op
@@ -273,9 +268,9 @@ impl MeasurementsResponse {
         Ok((trailer_rsp, len))
     }
 
-    async fn encode_response_variable_fields<'a>(
+    async fn encode_response_variable_fields(
         &self,
-        buf: &mut MessageBuf<'a>,
+        buf: &mut MessageBuf<'_>,
     ) -> CommandResult<usize> {
         // Encode the nonce
         let mut nonce = [0u8; NONCE_LEN];
@@ -314,11 +309,11 @@ impl MeasurementsResponse {
         Ok(signature)
     }
 
-    async fn encode_l1_signature_ecc<'a>(
+    async fn encode_l1_signature_ecc(
         &self,
         transcript: &mut TranscriptManager,
         cert_store: &mut dyn SpdmCertStore,
-        buf: &mut MessageBuf<'a>,
+        buf: &mut MessageBuf<'_>,
     ) -> CommandResult<usize> {
         // Get the L1 transcript hash
         let mut l1_transcript_hash = [0u8; SHA384_HASH_SIZE];
@@ -335,7 +330,7 @@ impl MeasurementsResponse {
             l1_transcript_hash,
         )
         .await
-        .map_err(|e| (false, CommandError::InvalidSigngingContext))?;
+        .map_err(|e| (false, CommandError::SignCtx(e)))?;
 
         let slot_id = self.slot_id.ok_or((
             false,
@@ -360,22 +355,23 @@ impl MeasurementsResponse {
         Ok(signature.len())
     }
 
-    async fn response_size(&self, measurements: &mut SpdmMeasurements) -> usize {
+    async fn response_size(&self, measurements: &mut SpdmMeasurements) -> CommandResult<usize> {
         // Calculate the size of the response based on the request attributes
         let mut rsp_size = RESPONSE_FIXED_FIELDS_SIZE;
 
         if self.meas_op > 0 {
             // return the size of a measurement block or all measurement blocks
             rsp_size += measurements
-                .measurement_block_size(self.meas_op, false)
+                .measurement_block_size(self.asym_algo, self.meas_op, false)
                 .await
+                .map_err(|e| (false, CommandError::Measurement(e)))?;
         };
 
         // Nonce is always present
         rsp_size += NONCE_LEN;
 
-        // Only length of opaque data length field. There's no opaque data in this response.
-        rsp_size += size_of::<u32>();
+        // Only length of opaque data length field(2 bytes). There's no opaque data in this response.
+        rsp_size += size_of::<u16>();
 
         // Requester context is optional and only present for version >= 1.3
         if self.requester_context.is_some() {
@@ -385,7 +381,7 @@ impl MeasurementsResponse {
         if self.req_attr.signature_requested() == 1 {
             rsp_size += self.asym_algo.signature_size();
         }
-        rsp_size
+        Ok(rsp_size)
     }
 }
 
@@ -405,7 +401,6 @@ async fn process_get_measurements<'a>(
         "SPDM_MEASUREMENTS: Processing GET_MEASUREMENTS request..."
     )
     .unwrap();
-    writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
 
     // Decode the request
     let req_common = GetMeasurementsReqCommon::decode(req_payload).map_err(|_| {
@@ -413,8 +408,8 @@ async fn process_get_measurements<'a>(
     })?;
     writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
 
-    let (requester_nonce, slot_id) = if req_common.req_attr.signature_requested() == 0 {
-        (None, None)
+    let slot_id = if req_common.req_attr.signature_requested() == 0 {
+        None
     } else {
         // check if responder capabilities support signature
         if ctx.local_capabilities.flags.meas_cap()
@@ -428,10 +423,7 @@ async fn process_get_measurements<'a>(
             GetMeasurementsReqSignature::decode(req_payload).map_err(|_| {
                 ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
             })?;
-        (
-            Some(req_signature_fields.requester_nonce),
-            Some(req_signature_fields.slot_id),
-        )
+        Some(req_signature_fields.slot_id)
     };
     writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
 
@@ -461,7 +453,6 @@ async fn process_get_measurements<'a>(
         spdm_version: connection_version,
         req_attr: req_common.req_attr,
         meas_op: req_common.meas_op,
-        requester_nonce,
         slot_id,
         requester_context,
         asym_algo,
@@ -472,7 +463,7 @@ async fn process_get_measurements<'a>(
 
 pub(crate) async fn generate_measurements_response<'a>(
     ctx: &mut SpdmContext<'a>,
-    req_ctx: MeasurementsResponse,
+    rsp_ctx: MeasurementsResponse,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     writeln!(
@@ -481,13 +472,17 @@ pub(crate) async fn generate_measurements_response<'a>(
     )
     .unwrap();
 
-    let rsp_len = req_ctx.response_size(&mut ctx.measurements).await;
-
-    if rsp_len <= ctx.min_data_transfer_size() {}
+    let rsp_len = rsp_ctx.response_size(&mut ctx.measurements).await?;
+    writeln!(
+        ctx.cw,
+        "SPDM_MEASUREMENTS: Response size calculated as {} bytes rsp_ctx {:?}",
+        rsp_len, rsp_ctx
+    )
+    .unwrap();
 
     if rsp_len > ctx.min_data_transfer_size() {
         // If the response is larger than the minimum data transfer size, use chunked response
-        let large_rsp = LargeResponse::Measurements(req_ctx);
+        let large_rsp = LargeResponse::Measurements(rsp_ctx);
         let handle = ctx.large_resp_context.init(large_rsp, rsp_len);
         writeln!(
             ctx.cw,
@@ -506,7 +501,7 @@ pub(crate) async fn generate_measurements_response<'a>(
         let rsp_buf = rsp
             .data_mut(rsp_len)
             .map_err(|e| (false, CommandError::Codec(e)))?;
-        let payload_len = req_ctx
+        let payload_len = rsp_ctx
             .get_chunk(
                 &mut ctx.measurements,
                 &mut ctx.transcript_mgr,
@@ -551,11 +546,19 @@ pub(crate) async fn handle_get_measurements<'a>(
         "SPDM_MEASUREMENTS: Handling GET_MEASUREMENTS request..."
     )
     .unwrap();
-    writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
+    writeln!(
+        ctx.cw,
+        "SPDM_MEASUREMENTS: line {} ctx.connection_info.state() {:?}",
+        line!(),
+        ctx.state.connection_info.state()
+    )
+    .unwrap();
     // Check that the connection state is Negotiated
     if ctx.state.connection_info.state() < ConnectionState::AlgorithmsNegotiated {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
+
+    writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
 
     // Check if the measurement capability is supported
     if ctx.local_capabilities.flags.meas_cap() == MeasCapability::NoMeasurement as u8 {
@@ -566,18 +569,20 @@ pub(crate) async fn handle_get_measurements<'a>(
             None,
         ));
     }
+    writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
 
     // Verify that the DMTF measurement spec is selected and the measurement hash algorithm is SHA384
     let meas_spec_sel = selected_measurement_specification(ctx);
-    if meas_spec_sel.dmtf_measurement_spec() == 0 || !ctx.verify_selected_hash_algo().is_ok() {
+    if meas_spec_sel.dmtf_measurement_spec() == 0 || ctx.verify_selected_hash_algo().is_err() {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
+    writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
 
     // Process GET_MEASUREMENTS request
-    let req_ctx = process_get_measurements(ctx, spdm_hdr, req_payload).await?;
+    let rsp_ctx = process_get_measurements(ctx, spdm_hdr, req_payload).await?;
 
     // Generate MEASUREMENTS response
     ctx.prepare_response_buffer(req_payload)?;
-    generate_measurements_response(ctx, req_ctx, req_payload).await?;
+    generate_measurements_response(ctx, rsp_ctx, req_payload).await?;
     Ok(())
 }

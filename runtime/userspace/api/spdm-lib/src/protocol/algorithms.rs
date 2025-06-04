@@ -11,7 +11,7 @@ pub const ECC_P384_SIGNATURE_SIZE: usize = 96;
 // Type of Asymmetric Algorithm selected by the responder.
 // Currently only ECC P384 is supported.
 // This can be extended to support PQC algorithms in the future.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AsymAlgo {
     EccP384,
 }

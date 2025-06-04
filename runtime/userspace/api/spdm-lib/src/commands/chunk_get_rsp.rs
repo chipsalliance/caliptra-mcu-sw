@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 use crate::chunk_ctx::ChunkError;
-use crate::chunk_ctx::{LargeResponse, LargeResponseCtx};
+use crate::chunk_ctx::LargeResponse;
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
@@ -114,13 +114,12 @@ fn process_chunk_get<'a>(
     Ok((chunk_get_req.handle, chunk_get_req.chunk_seq_num))
 }
 
-fn encode_chunk_resp_fixed_fields<'a>(
-    ctx: &mut SpdmContext<'a>,
+fn encode_chunk_resp_fixed_fields(
     last_chunk: bool,
     handle: u8,
     chunk_seq_num: u16,
     chunk_size: usize,
-    rsp: &mut MessageBuf<'a>,
+    rsp: &mut MessageBuf,
 ) -> CommandResult<usize> {
     let chunk_sender_attr = if last_chunk {
         ChunkSenderAttr(1) // Set last_chunk bit
@@ -145,7 +144,6 @@ fn encode_chunk_resp_fixed_fields<'a>(
 
 async fn encode_chunk_data(
     ctx: &mut SpdmContext<'_>,
-    handle: u8,
     chunk_seq_num: u16,
     chunk_size: usize,
     rsp: &mut MessageBuf<'_>,
@@ -189,11 +187,6 @@ async fn generate_chunk_response<'a>(
     chunk_seq_num: u16,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    // Get the selected asymmetric algorithm
-    let asym_algo = ctx
-        .selected_base_asym_algo()
-        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
-
     // Prepare the response
     // Spdm Header first
     let spdm_hdr = SpdmMsgHdr::new(
@@ -210,7 +203,7 @@ async fn generate_chunk_response<'a>(
     }
     // Encode fixed fields of the chunk response
     payload_len +=
-        encode_chunk_resp_fixed_fields(ctx, last_chunk, handle, chunk_seq_num, chunk_size, rsp)?;
+        encode_chunk_resp_fixed_fields(last_chunk, handle, chunk_seq_num, chunk_size, rsp)?;
 
     if chunk_seq_num == 0 {
         // If this is the first chunk, we need to encapsulate the large response size
@@ -222,7 +215,7 @@ async fn generate_chunk_response<'a>(
     }
 
     // Encode chunk data of chunk size
-    payload_len += encode_chunk_data(ctx, handle, chunk_seq_num, chunk_size, rsp).await?;
+    payload_len += encode_chunk_data(ctx, chunk_seq_num, chunk_size, rsp).await?;
 
     rsp.push_data(payload_len)
         .map_err(|e| (false, CommandError::Codec(e)))
@@ -239,11 +232,10 @@ pub(crate) async fn handle_chunk_get_rsp<'a>(
     // 1. Check CHUNK_GET is sent after CAPABILITIES
     // 2. Check if chunk capabilities are enabled
     // 3. Check if a large response is in progress
-    if ctx.state.connection_info.state() < ConnectionState::AfterCapabilities {
-        error_code = Some(ErrorCode::UnexpectedRequest);
-    } else if ctx.local_capabilities.flags.chunk_cap() == 0 {
-        error_code = Some(ErrorCode::UnexpectedRequest);
-    } else if ctx.large_resp_context.in_progress() {
+    if ctx.state.connection_info.state() < ConnectionState::AfterCapabilities
+        || ctx.local_capabilities.flags.chunk_cap() == 0
+        || ctx.large_resp_context.in_progress()
+    {
         error_code = Some(ErrorCode::UnexpectedRequest);
     }
 
