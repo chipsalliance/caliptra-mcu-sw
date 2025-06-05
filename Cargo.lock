@@ -2281,6 +2281,7 @@ name = "mcu-config-emulator"
 version = "0.1.0"
 dependencies = [
  "mcu-config",
+ "zerocopy",
 ]
 
 [[package]]
