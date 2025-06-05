@@ -37,6 +37,12 @@ impl Soc {
         Soc { registers }
     }
 
+    pub fn ready_for_runtime(&self) -> bool {
+        self.registers
+            .cptra_flow_status
+            .is_set(soc::bits::CptraFlowStatus::ReadyForRuntime)
+    }
+
     pub fn flow_status(&self) -> u32 {
         self.registers.cptra_flow_status.get()
     }
@@ -256,6 +262,12 @@ pub fn rom_start() {
         romtime::println!("Invalid firmware detected; halting");
         fatal_error(1);
     }
+
+    while !soc.ready_for_runtime() {}
+    // wait for the firmware to set the ready bit
+    // this is a busy loop, but it should be very short
+    // and we don't have any other way to wait for it
+
     romtime::println!("[mcu-rom] Finished common initialization");
 }
 
