@@ -99,14 +99,14 @@ pub(crate) struct MeasurementsResponse {
 }
 
 impl MeasurementsResponse {
-    pub async fn get_chunk<'a>(
+    pub async fn get_chunk(
         &self,
         measurements: &mut SpdmMeasurements,
         transcript_mgr: &mut TranscriptManager,
         cert_store: &mut dyn SpdmCertStore,
         offset: usize,
         chunk_buf: &mut [u8],
-        cw: Option<&'a mut ConsoleWriter<DefaultSyscalls>>,
+        cw: Option<&mut ConsoleWriter<DefaultSyscalls>>,
     ) -> CommandResult<usize> {
         // Calculate the size of the response
         let response_size = self.response_size(measurements).await?;
