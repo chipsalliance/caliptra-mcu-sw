@@ -178,7 +178,7 @@ impl Test {
                         running.clone(),
                         i3c_stream,
                         target_addr,
-                        Some(5),
+                        Some(60), // timeout in seconds
                     );
                     if !resp_msg.is_empty() {
                         println!("SPDM_SERVER: response received, marking finished");

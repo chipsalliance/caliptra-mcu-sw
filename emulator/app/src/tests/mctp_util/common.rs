@@ -249,7 +249,7 @@ impl MctpUtil {
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
-        let retry_count = timeout.unwrap_or(0) * 20;
+        let retry_count = timeout.unwrap_or(0) * 5;
         self.new_resp();
         let mut message_identifier = MessageIdentifier::default();
 
@@ -283,7 +283,7 @@ impl MctpUtil {
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
-        let retry_count = timeout.unwrap_or(0) * 20;
+        let retry_count = timeout.unwrap_or(0) * 5;
         // Msg tag will be assigned by the sender (device in this case)
         self.new_req(8);
         let mut message_identifier = MessageIdentifier::default();
@@ -317,7 +317,7 @@ impl MctpUtil {
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
-        let retry_count = timeout.unwrap_or(0) * 20;
+        let retry_count = timeout.unwrap_or(0) * 5;
         let mut message_identifier = MessageIdentifier::default();
         let pkts = self.receive_packets(
             running,

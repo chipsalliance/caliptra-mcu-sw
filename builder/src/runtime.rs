@@ -19,7 +19,7 @@ use std::process::Command;
 const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
 const INTERRUPT_TABLE_SIZE: usize = 128;
 // amount to reserve for data RAM at the end of RAM
-const DATA_RAM_SIZE: usize = 116 * 1024;
+const DATA_RAM_SIZE: usize = 128 * 1024;
 
 fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize> {
     let elf_bytes = std::fs::read(&elf_file)?;
@@ -243,7 +243,6 @@ pub fn runtime_build_with_apps(
     // build the apps with the data memory at some incorrect offset
     let apps_bin_len =
         apps_build_flat_tbf(app_offset, apps_memory_offset, features, example_app)?.len();
-    println!("Apps offset is {:x}", app_offset);
     println!("Apps built: {} bytes", apps_bin_len);
 
     // re-link and place the apps and data RAM after the runtime binary
