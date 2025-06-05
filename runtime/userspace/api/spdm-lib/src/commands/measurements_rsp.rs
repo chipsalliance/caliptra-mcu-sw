@@ -17,11 +17,6 @@ use bitfield::bitfield;
 use libapi_caliptra::crypto::rng::Rng;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use libsyscall_caliptra::DefaultSyscalls;
-use libtock_console::ConsoleWriter;
-
-use core::fmt::Write;
-
 const RESPONSE_FIXED_FIELDS_SIZE: usize = 8;
 const MAX_RESPONSE_VARIABLE_FIELDS_SIZE: usize =
     NONCE_LEN + size_of::<u32>() + size_of::<RequesterContext>();
@@ -106,7 +101,6 @@ impl MeasurementsResponse {
         cert_store: &mut dyn SpdmCertStore,
         offset: usize,
         chunk_buf: &mut [u8],
-        cw: Option<&mut ConsoleWriter<DefaultSyscalls>>,
     ) -> CommandResult<usize> {
         // Calculate the size of the response
         let response_size = self.response_size(measurements).await?;
@@ -131,18 +125,10 @@ impl MeasurementsResponse {
 
         // 1. Copy from the fixed response fields
         if offset < RESPONSE_FIXED_FIELDS_SIZE {
-            let fixed_fields = self.response_fixed_fields(measurements, cw).await?;
+            let fixed_fields = self.response_fixed_fields(measurements).await?;
             let start = offset;
             let end = (RESPONSE_FIXED_FIELDS_SIZE).min(start + rem_len);
             let copy_len = end - start;
-            // if let Some(w) = &cw {
-            //     writeln!(
-            //         w,
-            //         "SPDM_MEASUREMENTS: Copying fixed fields from {} to {}",
-            //         start, end
-            //     )
-            //     .unwrap();
-            // }
             chunk_buf[copied..copied + copy_len].copy_from_slice(&fixed_fields[start..end]);
             copied += copy_len;
             rem_len -= copy_len;
@@ -208,12 +194,11 @@ impl MeasurementsResponse {
     async fn response_fixed_fields(
         &self,
         measurements: &mut SpdmMeasurements,
-        cw: Option<&mut ConsoleWriter<DefaultSyscalls>>,
     ) -> CommandResult<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {
         let mut fixed_rsp_fields = [0u8; RESPONSE_FIXED_FIELDS_SIZE];
         let mut fixed_rsp_buf = MessageBuf::new(&mut fixed_rsp_fields);
         _ = self
-            .encode_response_fixed_fields(&mut fixed_rsp_buf, measurements, cw)
+            .encode_response_fixed_fields(&mut fixed_rsp_buf, measurements)
             .await?;
         Ok(fixed_rsp_fields)
     }
@@ -222,7 +207,6 @@ impl MeasurementsResponse {
         &self,
         buf: &mut MessageBuf<'_>,
         measurements: &mut SpdmMeasurements,
-        cw: Option<&mut ConsoleWriter<DefaultSyscalls>>,
     ) -> CommandResult<usize> {
         let measurement_record_size = measurements
             .measurement_block_size(
@@ -240,15 +224,6 @@ impl MeasurementsResponse {
             0xFF => (0, total_measurement_count, measurement_record_size),
             _ => (0, 1, measurement_record_size),
         };
-
-        // if let Some(cw) = cw {
-        //     writeln!(
-        //         cw,
-        //         "SPDM_MEASUREMENTS: Encoding response fixed fields: total_meas_indices: {}, num_of_meas_blocks_in_record: {}, meas_record_len: {}",
-        //         total_meas_indices, num_of_meas_blocks_in_record, meas_record_len
-        //     )
-        //     .unwrap();
-        // }
 
         if meas_record_len > SPDM_MAX_MEASUREMENT_RECORD_SIZE as usize {
             Err((
@@ -276,14 +251,6 @@ impl MeasurementsResponse {
         let len = rsp_common
             .encode(buf)
             .map_err(|e| (false, CommandError::Codec(e)))?;
-        if let Some(cw) = cw {
-            writeln!(
-                cw,
-                "SPDM_MEASUREMENTS: Encoded response fixed fields with length {:?}",
-                rsp_common
-            )
-            .unwrap();
-        }
 
         Ok(len)
     }
@@ -427,17 +394,10 @@ async fn process_get_measurements<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
     }
 
-    writeln!(
-        ctx.cw,
-        "SPDM_MEASUREMENTS: Processing GET_MEASUREMENTS request..."
-    )
-    .unwrap();
-
     // Decode the request
     let req_common = GetMeasurementsReqCommon::decode(req_payload).map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
     })?;
-    writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
 
     let slot_id = if req_common.req_attr.signature_requested() == 0 {
         None
@@ -456,7 +416,6 @@ async fn process_get_measurements<'a>(
             })?;
         Some(req_signature_fields.slot_id)
     };
-    writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
 
     // Decode the requester context if version is >= 1.3
     let requester_context = if connection_version >= SpdmVersion::V13 {
@@ -469,12 +428,10 @@ async fn process_get_measurements<'a>(
 
     // Reset the transcript for the GET_MEASUREMENTS request
     ctx.reset_transcript_via_req_code(ReqRespCode::GetMeasurements);
-    writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
 
     // Append the request to the transcript
     ctx.append_message_to_transcript(req_payload, TranscriptContext::L1)
         .await?;
-    writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
 
     let asym_algo = ctx.selected_base_asym_algo().map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
@@ -497,30 +454,12 @@ pub(crate) async fn generate_measurements_response<'a>(
     rsp_ctx: MeasurementsResponse,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    writeln!(
-        ctx.cw,
-        "SPDM_MEASUREMENTS: Generating MEASUREMENTS response..."
-    )
-    .unwrap();
-
     let rsp_len = rsp_ctx.response_size(&mut ctx.measurements).await?;
-    writeln!(
-        ctx.cw,
-        "SPDM_MEASUREMENTS: Response size calculated as {} bytes rsp_ctx {:?}",
-        rsp_len, rsp_ctx
-    )
-    .unwrap();
 
     if rsp_len > ctx.min_data_transfer_size() {
         // If the response is larger than the minimum data transfer size, use chunked response
         let large_rsp = LargeResponse::Measurements(rsp_ctx);
         let handle = ctx.large_resp_context.init(large_rsp, rsp_len);
-        writeln!(
-            ctx.cw,
-            "SPDM_MEASUREMENTS: Large response initialized with size {} handle {}",
-            rsp_len, handle
-        )
-        .unwrap();
         Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, handle, None))?
     } else {
         // If the response fits in a single message, prepare it directly
@@ -539,16 +478,9 @@ pub(crate) async fn generate_measurements_response<'a>(
                 ctx.device_certs_store,
                 0,
                 rsp_buf,
-                Some(ctx.cw),
             )
             .await?;
         if rsp_len != payload_len {
-            writeln!(
-                ctx.cw,
-                "SPDM_MEASUREMENTS: Invalid response length: expected {}, got {}",
-                rsp_len, payload_len
-            )
-            .unwrap();
             Err((
                 false,
                 CommandError::Measurement(MeasurementsError::InvalidBuffer),
@@ -557,12 +489,6 @@ pub(crate) async fn generate_measurements_response<'a>(
         rsp.pull_data(payload_len)
             .map_err(|e| (false, CommandError::Codec(e)))?;
 
-        writeln!(
-            ctx.cw,
-            "SPDM_MEASUREMENTS: Response complete with len {} ",
-            payload_len
-        )
-        .unwrap();
         rsp.push_data(payload_len)
             .map_err(|e| (false, CommandError::Codec(e)))
     }
@@ -573,24 +499,10 @@ pub(crate) async fn handle_get_measurements<'a>(
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    writeln!(
-        ctx.cw,
-        "SPDM_MEASUREMENTS: Handling GET_MEASUREMENTS request..."
-    )
-    .unwrap();
-    writeln!(
-        ctx.cw,
-        "SPDM_MEASUREMENTS: line {} ctx.connection_info.state() {:?}",
-        line!(),
-        ctx.state.connection_info.state()
-    )
-    .unwrap();
     // Check that the connection state is Negotiated
     if ctx.state.connection_info.state() < ConnectionState::AlgorithmsNegotiated {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
-
-    writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
 
     // Check if the measurement capability is supported
     if ctx.local_capabilities.flags.meas_cap() == MeasCapability::NoMeasurement as u8 {
@@ -601,14 +513,12 @@ pub(crate) async fn handle_get_measurements<'a>(
             None,
         ));
     }
-    writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
 
     // Verify that the DMTF measurement spec is selected and the measurement hash algorithm is SHA384
     let meas_spec_sel = selected_measurement_specification(ctx);
     if meas_spec_sel.dmtf_measurement_spec() == 0 || ctx.verify_selected_hash_algo().is_err() {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
-    writeln!(ctx.cw, "SPDM_MEASUREMENTS: line {}", line!()).unwrap();
 
     // Process GET_MEASUREMENTS request
     let rsp_ctx = process_get_measurements(ctx, spdm_hdr, req_payload).await?;

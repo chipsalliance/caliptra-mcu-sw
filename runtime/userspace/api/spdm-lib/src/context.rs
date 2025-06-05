@@ -19,9 +19,6 @@ use crate::state::{ConnectionState, State};
 use crate::transcript::{TranscriptContext, TranscriptManager};
 use crate::transport::SpdmTransport;
 
-use libsyscall_caliptra::DefaultSyscalls;
-use libtock_console::ConsoleWriter;
-
 pub struct SpdmContext<'a> {
     transport: &'a mut dyn SpdmTransport,
     pub(crate) supported_versions: &'a [SpdmVersion],
@@ -32,7 +29,6 @@ pub struct SpdmContext<'a> {
     pub(crate) device_certs_store: &'a mut dyn SpdmCertStore,
     pub(crate) measurements: SpdmMeasurements,
     pub(crate) large_resp_context: LargeResponseCtx,
-    pub(crate) cw: &'a mut ConsoleWriter<DefaultSyscalls>,
 }
 
 impl<'a> SpdmContext<'a> {
@@ -42,7 +38,6 @@ impl<'a> SpdmContext<'a> {
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
         device_certs_store: &'a mut dyn SpdmCertStore,
-        cw: &'a mut ConsoleWriter<DefaultSyscalls>,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -60,7 +55,6 @@ impl<'a> SpdmContext<'a> {
             device_certs_store,
             measurements: SpdmMeasurements::default(),
             large_resp_context: LargeResponseCtx::default(),
-            cw,
         })
     }
 
