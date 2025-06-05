@@ -43,6 +43,7 @@ struct Test {
     mctp_util: MctpUtil,
     responder_ready: bool,
     passed: bool,
+    cmd_retry_count: u32,
 }
 
 #[derive(Debug, Copy, Clone, Default, FromBytes, IntoBytes, Immutable)]
@@ -65,6 +66,7 @@ impl Test {
             mctp_util: MctpUtil::new(),
             responder_ready: false,
             passed: false,
+            cmd_retry_count: 5,
         }
     }
 
@@ -148,7 +150,10 @@ impl Test {
         target_addr: u8,
     ) {
         i3c_stream.set_nonblocking(true).unwrap();
-        println!("Test: Sending message to target {:x?}", self.cur_req_msg);
+        println!(
+            "SPDM_SERVER: Sending message to target {:x?}",
+            self.cur_req_msg
+        );
         self.mctp_test_state = MctpTestState::Start;
 
         while running.load(Ordering::Relaxed) {
@@ -168,16 +173,27 @@ impl Test {
                 }
 
                 MctpTestState::ReceiveResp => {
-                    println!("Test: receive_response");
-                    let resp_msg =
-                        self.mctp_util
-                            .receive_response(running.clone(), i3c_stream, target_addr);
+                    println!("SPDM_SERVER: receive_response");
+                    let resp_msg = self.mctp_util.receive_response(
+                        running.clone(),
+                        i3c_stream,
+                        target_addr,
+                        Some(5),
+                    );
                     if !resp_msg.is_empty() {
-                        println!("Test: response received, marking finished");
+                        println!("SPDM_SERVER: response received, marking finished");
                         self.cur_resp_msg = resp_msg;
                         self.mctp_test_state = MctpTestState::Finish;
+                    } else if self.cmd_retry_count == 0 {
+                        println!("SPDM_SERVER: No response received, marking finished");
+                        self.mctp_test_state = MctpTestState::Finish;
                     } else {
-                        println!("Test: no response received");
+                        self.cmd_retry_count -= 1;
+                        println!(
+                            "SPDM_SERVER: No response received, retrying ({})",
+                            self.cmd_retry_count
+                        );
+                        self.mctp_test_state = MctpTestState::SendReq;
                     }
                 }
 
