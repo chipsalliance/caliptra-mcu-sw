@@ -168,6 +168,7 @@ async fn encode_chunk_data(
                         ctx.device_certs_store,
                         offset,
                         chunk_buf,
+                        None,
                     )
                     .await?;
             }

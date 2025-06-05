@@ -17,6 +17,9 @@ use bitfield::bitfield;
 use libapi_caliptra::crypto::rng::Rng;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
+use libsyscall_caliptra::DefaultSyscalls;
+use libtock_console::ConsoleWriter;
+
 use core::fmt::Write;
 
 const RESPONSE_FIXED_FIELDS_SIZE: usize = 8;
@@ -96,13 +99,14 @@ pub(crate) struct MeasurementsResponse {
 }
 
 impl MeasurementsResponse {
-    pub async fn get_chunk(
+    pub async fn get_chunk<'a>(
         &self,
         measurements: &mut SpdmMeasurements,
         transcript_mgr: &mut TranscriptManager,
         cert_store: &mut dyn SpdmCertStore,
         offset: usize,
         chunk_buf: &mut [u8],
+        cw: Option<&'a mut ConsoleWriter<DefaultSyscalls>>,
     ) -> CommandResult<usize> {
         // Calculate the size of the response
         let response_size = self.response_size(measurements).await?;
@@ -127,10 +131,18 @@ impl MeasurementsResponse {
 
         // 1. Copy from the fixed response fields
         if offset < RESPONSE_FIXED_FIELDS_SIZE {
-            let fixed_fields = self.response_fixed_fields(measurements).await?;
+            let fixed_fields = self.response_fixed_fields(measurements, cw).await?;
             let start = offset;
             let end = (RESPONSE_FIXED_FIELDS_SIZE).min(start + rem_len);
             let copy_len = end - start;
+            // if let Some(w) = &cw {
+            //     writeln!(
+            //         w,
+            //         "SPDM_MEASUREMENTS: Copying fixed fields from {} to {}",
+            //         start, end
+            //     )
+            //     .unwrap();
+            // }
             chunk_buf[copied..copied + copy_len].copy_from_slice(&fixed_fields[start..end]);
             copied += copy_len;
             rem_len -= copy_len;
@@ -196,11 +208,12 @@ impl MeasurementsResponse {
     async fn response_fixed_fields(
         &self,
         measurements: &mut SpdmMeasurements,
+        cw: Option<&mut ConsoleWriter<DefaultSyscalls>>,
     ) -> CommandResult<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {
         let mut fixed_rsp_fields = [0u8; RESPONSE_FIXED_FIELDS_SIZE];
         let mut fixed_rsp_buf = MessageBuf::new(&mut fixed_rsp_fields);
         _ = self
-            .encode_response_fixed_fields(&mut fixed_rsp_buf, measurements)
+            .encode_response_fixed_fields(&mut fixed_rsp_buf, measurements, cw)
             .await?;
         Ok(fixed_rsp_fields)
     }
@@ -209,6 +222,7 @@ impl MeasurementsResponse {
         &self,
         buf: &mut MessageBuf<'_>,
         measurements: &mut SpdmMeasurements,
+        cw: Option<&mut ConsoleWriter<DefaultSyscalls>>,
     ) -> CommandResult<usize> {
         let measurement_record_size = measurements
             .measurement_block_size(
@@ -226,6 +240,15 @@ impl MeasurementsResponse {
             0xFF => (0, total_measurement_count, measurement_record_size),
             _ => (0, 1, measurement_record_size),
         };
+
+        // if let Some(cw) = cw {
+        //     writeln!(
+        //         cw,
+        //         "SPDM_MEASUREMENTS: Encoding response fixed fields: total_meas_indices: {}, num_of_meas_blocks_in_record: {}, meas_record_len: {}",
+        //         total_meas_indices, num_of_meas_blocks_in_record, meas_record_len
+        //     )
+        //     .unwrap();
+        // }
 
         if meas_record_len > SPDM_MAX_MEASUREMENT_RECORD_SIZE as usize {
             Err((
@@ -253,6 +276,14 @@ impl MeasurementsResponse {
         let len = rsp_common
             .encode(buf)
             .map_err(|e| (false, CommandError::Codec(e)))?;
+        if let Some(cw) = cw {
+            writeln!(
+                cw,
+                "SPDM_MEASUREMENTS: Encoded response fixed fields with length {:?}",
+                rsp_common
+            )
+            .unwrap();
+        }
 
         Ok(len)
     }
@@ -508,6 +539,7 @@ pub(crate) async fn generate_measurements_response<'a>(
                 ctx.device_certs_store,
                 0,
                 rsp_buf,
+                Some(ctx.cw),
             )
             .await?;
         if rsp_len != payload_len {

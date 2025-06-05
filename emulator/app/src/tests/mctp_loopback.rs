@@ -47,7 +47,7 @@ impl TestTrait for Test {
                 MctpTestState::ReceiveReq => {
                     self.loopback_msg =
                         self.mctp_util
-                            .receive_request(running.clone(), stream, target_addr);
+                            .receive_request(running.clone(), stream, target_addr, None);
                     self.test_state = MctpTestState::SendResp;
                 }
                 MctpTestState::SendResp => {

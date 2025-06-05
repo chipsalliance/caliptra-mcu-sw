@@ -138,7 +138,7 @@ impl Test {
                 MctpTestState::ReceiveResp => {
                     let resp_msg =
                         self.mctp_util
-                            .receive_response(running.clone(), stream, target_addr);
+                            .receive_response(running.clone(), stream, target_addr, None);
                     if !resp_msg.is_empty() {
                         assert!(self.req_msg_buf == resp_msg);
                         self.passed = true;

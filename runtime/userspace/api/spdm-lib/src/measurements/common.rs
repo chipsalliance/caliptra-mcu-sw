@@ -17,6 +17,7 @@ pub enum MeasurementsError {
     InvalidBuffer,
     InvalidOperation,
     InvalidSlotId,
+    MeasurementSizeMismatch,
     CaliptraApi(CaliptraApiError),
 }
 pub type MeasurementsResult<T> = Result<T, MeasurementsError>;
@@ -209,5 +210,9 @@ impl DmtfMeasurementBlockMetadata {
         meas_block_common.meas_val_hdr.value_size = meas_value_size;
 
         Ok(meas_block_common)
+    }
+
+    pub fn measurement_block_value_hdr_size() -> usize {
+        size_of::<DmtfSpecMeasurementValueHeader>()
     }
 }

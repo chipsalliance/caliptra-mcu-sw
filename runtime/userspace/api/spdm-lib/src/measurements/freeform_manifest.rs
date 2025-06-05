@@ -125,16 +125,16 @@ impl FreeformManifest {
     }
 
     async fn refresh_measurement_record(&mut self, asym_algo: AsymAlgo) -> MeasurementsResult<()> {
+        let with_pqc_sig = asym_algo != AsymAlgo::EccP384;
         let measurement_record = &mut self.measurement_record;
+        let measurement_value_size = Evidence::pcr_quote_size(with_pqc_sig).await;
         measurement_record.fill(0);
         let metadata = DmtfMeasurementBlockMetadata::new(
             SPDM_MEASUREMENT_MANIFEST_INDEX,
-            PCR_QUOTE_SIZE as u16,
+            measurement_value_size as u16,
             false,
             MeasurementValueType::FreeformManifest,
         )?;
-
-        let with_pqc_sig = asym_algo != AsymAlgo::EccP384;
 
         const METADATA_SIZE: usize = size_of::<DmtfMeasurementBlockMetadata>();
 
@@ -145,9 +145,13 @@ impl FreeformManifest {
             .try_into()
             .map_err(|_| MeasurementsError::InvalidBuffer)?;
 
-        Evidence::pcr_quote(quote, with_pqc_sig)
+        let copied_len = Evidence::pcr_quote(quote, with_pqc_sig)
             .await
             .map_err(MeasurementsError::CaliptraApi)?;
+        if copied_len != measurement_value_size {
+            return Err(MeasurementsError::MeasurementSizeMismatch);
+        }
+        self.data_size = METADATA_SIZE + measurement_value_size;
 
         Ok(())
     }
