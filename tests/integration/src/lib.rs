@@ -266,24 +266,24 @@ mod test {
     // * add the feature to the emulator and use it to implement any behavior needed
     // * add the feature to the runtime and use it in board.rs at the end of the main function to call your test
     // These use underscores but will be converted to dashes in the feature flags
-    // run_test!(test_caliptra_certs, example_app);
-    // run_test!(test_caliptra_crypto, example_app);
-    // run_test!(test_caliptra_mailbox, example_app);
-    // run_test!(test_dma, example_app);
-    // run_test!(test_i3c_simple);
-    // run_test!(test_i3c_constant_writes);
-    // run_test!(test_flash_ctrl_init);
-    // run_test!(test_flash_ctrl_read_write_page);
-    // run_test!(test_flash_ctrl_erase_page);
-    // run_test!(test_flash_storage_read_write);
-    // run_test!(test_flash_storage_erase);
-    // run_test!(test_flash_usermode, example_app);
-    // run_test!(test_mctp_ctrl_cmds);
-    // run_test!(test_mctp_capsule_loopback);
-    // run_test!(test_mctp_user_loopback, example_app);
-    // run_test!(test_pldm_discovery);
-    // run_test!(test_pldm_fw_update);
-    // run_test!(test_pldm_fw_update_e2e);
+    run_test!(test_caliptra_certs, example_app);
+    run_test!(test_caliptra_crypto, example_app);
+    run_test!(test_caliptra_mailbox, example_app);
+    run_test!(test_dma, example_app);
+    run_test!(test_i3c_simple);
+    run_test!(test_i3c_constant_writes);
+    run_test!(test_flash_ctrl_init);
+    run_test!(test_flash_ctrl_read_write_page);
+    run_test!(test_flash_ctrl_erase_page);
+    run_test!(test_flash_storage_read_write);
+    run_test!(test_flash_storage_erase);
+    run_test!(test_flash_usermode, example_app);
+    run_test!(test_mctp_ctrl_cmds);
+    run_test!(test_mctp_capsule_loopback);
+    run_test!(test_mctp_user_loopback, example_app);
+    run_test!(test_pldm_discovery);
+    run_test!(test_pldm_fw_update);
+    run_test!(test_pldm_fw_update_e2e);
     run_test!(test_spdm_validator);
 
     /// This tests a full active mode boot run through with Caliptra, including
