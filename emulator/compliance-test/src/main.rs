@@ -15,7 +15,7 @@ Abstract:
 use caliptra_emu_types::RvSize;
 use clap::{arg, value_parser};
 use emulator_bus::{Bus, Clock, Ram};
-use emulator_cpu::{Cpu, Pic, StepAction};
+use emulator_cpu::{Cpu, CpuArgs, Pic, StepAction};
 use fs::TempDir;
 use std::error::Error;
 use std::io::ErrorKind;
@@ -231,7 +231,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let clock = Rc::new(Clock::new());
         let pic = Rc::new(Pic::new());
-        let mut cpu = Cpu::new(Ram::new(binary), clock, pic);
+        let args = CpuArgs::default();
+        let mut cpu = Cpu::new(Ram::new(binary), clock, pic, args);
         cpu.write_pc(0x3000);
         while !is_test_complete(&mut cpu.bus) {
             match cpu.step(None) {
@@ -265,7 +266,8 @@ mod tests {
         ram_bytes.extend(vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
         let clock = Rc::new(Clock::new());
         let pic = Rc::new(Pic::new());
-        let mut cpu = Cpu::new(Ram::new(ram_bytes), clock, pic);
+        let args = CpuArgs::default();
+        let mut cpu = Cpu::new(Ram::new(ram_bytes), clock, pic, args);
 
         check_reference_data("03020100\n07060504\n", &mut cpu.bus).unwrap();
         assert_eq!(

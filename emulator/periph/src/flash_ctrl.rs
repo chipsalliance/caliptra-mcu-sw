@@ -15,7 +15,7 @@ Abstract:
 use caliptra_emu_types::{RvData, RvSize};
 use core::convert::TryInto;
 use emulator_bus::{ActionHandle, Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
-use emulator_consts::{RAM_OFFSET, RAM_SIZE, ROM_DEDICATED_RAM_OFFSET, ROM_DEDICATED_RAM_SIZE};
+use emulator_consts::{RAM_ORG, RAM_SIZE, ROM_DEDICATED_RAM_ORG, ROM_DEDICATED_RAM_SIZE};
 use emulator_cpu::Irq;
 use emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
 use emulator_registers_generated::secondary_flash::SecondaryFlashPeripheral;
@@ -230,10 +230,10 @@ impl DummyFlashCtrl {
 
     // Checks the DMA RAM access type for the given address.
     fn dma_ram_access_check(&self, addr: u32) -> DmaRamAccessType {
-        if addr >= RAM_OFFSET && addr + Self::PAGE_SIZE as u32 <= RAM_OFFSET + RAM_SIZE {
+        if addr >= RAM_ORG && addr + Self::PAGE_SIZE as u32 <= RAM_ORG + RAM_SIZE {
             DmaRamAccessType::McuRt
-        } else if addr >= ROM_DEDICATED_RAM_OFFSET
-            && addr + Self::PAGE_SIZE as u32 <= ROM_DEDICATED_RAM_OFFSET + ROM_DEDICATED_RAM_SIZE
+        } else if addr >= ROM_DEDICATED_RAM_ORG
+            && addr + Self::PAGE_SIZE as u32 <= ROM_DEDICATED_RAM_ORG + ROM_DEDICATED_RAM_SIZE
         {
             DmaRamAccessType::McuRom
         } else {
@@ -263,14 +263,14 @@ impl DummyFlashCtrl {
         let (dma_ram, dma_start_addr) = match access_type {
             DmaRamAccessType::McuRt => (
                 self.dma_ram.as_ref().expect("DMA ram must be set").clone(),
-                page_addr - RAM_OFFSET,
+                page_addr - RAM_ORG,
             ),
             DmaRamAccessType::McuRom => (
                 self.dma_rom_sram
                     .as_ref()
                     .expect("DMA ram for rom must be set")
                     .clone(),
-                page_addr - ROM_DEDICATED_RAM_OFFSET,
+                page_addr - ROM_DEDICATED_RAM_ORG,
             ),
             DmaRamAccessType::Invalid => return Err(FlashOpError::DmaRamAccessError),
         };
@@ -306,14 +306,14 @@ impl DummyFlashCtrl {
         let (dma_ram, dma_start_addr) = match access_type {
             DmaRamAccessType::McuRt => (
                 self.dma_ram.as_ref().expect("DMA ram must be set").clone(),
-                page_addr - RAM_OFFSET,
+                page_addr - RAM_ORG,
             ),
             DmaRamAccessType::McuRom => (
                 self.dma_rom_sram
                     .as_ref()
                     .expect("DMA ram for rom must be set")
                     .clone(),
-                page_addr - ROM_DEDICATED_RAM_OFFSET,
+                page_addr - ROM_DEDICATED_RAM_ORG,
             ),
             DmaRamAccessType::Invalid => return Err(FlashOpError::DmaRamAccessError),
         };
@@ -739,7 +739,7 @@ mod test {
     use caliptra_emu_types::RvSize;
     use core::panic;
     use emulator_bus::{Bus, Clock};
-    use emulator_consts::{RAM_OFFSET, RAM_SIZE};
+    use emulator_consts::{RAM_ORG, RAM_SIZE};
     use emulator_cpu::Pic;
     use emulator_registers_generated::root_bus::AutoRootBus;
     use registers_generated::primary_flash_ctrl::bits::{
@@ -839,12 +839,12 @@ mod test {
         data: Option<&[u8]>,
     ) -> Option<u32> {
         // Check if ref_addr is within the range of DCCM
-        if ref_addr < RAM_OFFSET || ref_addr + size as u32 > RAM_OFFSET + RAM_SIZE {
+        if ref_addr < RAM_ORG || ref_addr + size as u32 > RAM_ORG + RAM_SIZE {
             return None;
         }
 
         // Allocate a page buffer from dma_ram for I/O operation
-        let addr = ref_addr - RAM_OFFSET;
+        let addr = ref_addr - RAM_ORG;
         let mut dma_ram = dma_ram.borrow_mut();
         let page_buf = &mut dma_ram.data_mut()[addr as usize..(addr + size as u32) as usize];
 
@@ -1271,7 +1271,7 @@ mod test {
         );
 
         // Read the page buffer data into a slice
-        let start_offset = (r_page_buf_addr.unwrap() - RAM_OFFSET) as usize;
+        let start_offset = (r_page_buf_addr.unwrap() - RAM_ORG) as usize;
         let r_page_buf = dummy_dma_ram.borrow_mut().data_mut()
             [start_offset..start_offset + DummyFlashCtrl::PAGE_SIZE]
             .to_vec();

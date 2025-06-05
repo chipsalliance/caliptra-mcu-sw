@@ -375,6 +375,7 @@ impl CsrFile {
         csr_val!(csrs, Csr::MEPC, 0x0000_0000, 0xFFFF_FFFF);
         csr_val!(csrs, Csr::MCAUSE, 0x0000_0000, 0xFFFF_FFFF);
         csr_val!(csrs, Csr::MTVAL, 0x0000_0000, 0xFFFF_FFFF);
+        csr_val!(csrs, Csr::MIP, 0x0000_0000, 0xFFFF_FFFF);
         csr_val!(csrs, Csr::MPMC, 0x0000_0002, 0x0000_0002);
         csr_val!(csrs, Csr::MSECCFG, 0x0000_0000, 0x0000_0003);
         csr_val!(csrs, Csr::MCYCLE, 0x0000_0000, 0xFFFF_FFFF);

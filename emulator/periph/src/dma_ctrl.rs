@@ -13,7 +13,7 @@ Abstract:
 --*/
 
 use emulator_bus::{ActionHandle, Clock, Ram, ReadWriteRegister, Timer};
-use emulator_consts::RAM_OFFSET;
+use emulator_consts::RAM_ORG;
 use emulator_cpu::Irq;
 use emulator_registers_generated::dma::DmaPeripheral;
 use registers_generated::dma_ctrl::bits::*;
@@ -182,7 +182,7 @@ impl DummyDmaCtrl {
         peripheral?;
         let peripheral = peripheral.unwrap();
         match peripheral {
-            AXIPeripheral::McuSram => Some(addr.lo - RAM_OFFSET),
+            AXIPeripheral::McuSram => Some(addr.lo - RAM_ORG),
             AXIPeripheral::ExternalSram => Some(addr.lo),
         }
     }
@@ -615,7 +615,7 @@ mod test {
 
         // Setup the source and destination addresses
         let source_axi_addr = AxiAddr {
-            lo: RAM_OFFSET,
+            lo: RAM_ORG,
             hi: MCU_SRAM_HI_OFFSET,
         };
         let dest_axi_addr = AxiAddr {

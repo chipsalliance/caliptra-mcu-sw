@@ -1183,13 +1183,15 @@ mod test {
             use std::rc::Rc;
             use $crate::cpu::Cpu;
             use $crate::pic::Pic;
+            use $crate::types::CpuArgs;
 
             let text_range = $text_addr..=u32::try_from($text_addr + $text.len() - 1).unwrap();
             let data_range = $data_addr..=u32::try_from($data_addr + $data.len() - 1).unwrap();
 
             let clock = Rc::new(Clock::new());
             let pic = Rc::new(Pic::new());
-            let mut cpu = Cpu::new(DynamicBus::new(), clock, pic);
+            let args = CpuArgs::default();
+            let mut cpu = Cpu::new(DynamicBus::new(), clock, pic, args);
             let rom = Rom::new($text.clone());
             cpu.bus
                 .attach_dev("ROM", text_range, Box::new(rom))

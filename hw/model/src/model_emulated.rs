@@ -21,7 +21,7 @@ use caliptra_hw_model_types::ErrorInjectionMode;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
 use emulator_bus::BusConverter;
 use emulator_bus::Clock as McuClock;
-use emulator_cpu::{Cpu as McuCpu, InstrTracer as McuInstrTracer};
+use emulator_cpu::{Cpu as McuCpu, CpuArgs as McuCpuArgs, InstrTracer as McuInstrTracer};
 use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp};
 use emulator_registers_generated::root_bus::AutoRootBus;
 use std::cell::Cell;
@@ -190,7 +190,9 @@ impl McuHwModel for ModelEmulated {
             None,
         );
 
-        let mut mcu_cpu = McuCpu::new(McuBusLogger::new(auto_root_bus), clock, pic);
+        let args = McuCpuArgs::default();
+
+        let mut mcu_cpu = McuCpu::new(McuBusLogger::new(auto_root_bus), clock, pic, args);
         mcu_cpu.register_events();
 
         let mut m = ModelEmulated {
