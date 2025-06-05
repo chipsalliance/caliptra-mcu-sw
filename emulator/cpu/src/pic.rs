@@ -73,10 +73,12 @@ impl Default for Pic {
 fn irq_id_from_addr(addr: u32) -> u8 {
     u8::try_from((addr & 0x7f) / 4).unwrap()
 }
+
 pub struct PicMmioRegisters {
     pic: Rc<PicImpl>,
     timer: Timer,
 }
+
 impl PicMmioRegisters {
     // priority levels
     const MEIPL_OFFSET: RvAddr = 0x0000;
@@ -368,6 +370,7 @@ impl PicImpl {
         result.refresh_order();
         result
     }
+
     fn highest_priority_irq(&self, prithresh: u8) -> Option<u8> {
         assert!(prithresh <= MAX_PRIORITY);
         match self.ordered_irq_pending.first_set_index() {
@@ -382,8 +385,10 @@ impl PicImpl {
             None => None,
         }
     }
+
     fn irq_set_level(&self, id: u8, mut is_high: bool) {
         let regs = self.regs.borrow();
+
         self.irq_levels.set(id, is_high);
         let ctrl = regs.meigwctrl[id.into()];
         is_high ^= ctrl.is_set(Meigwctrl::POLARITY);
@@ -398,6 +403,7 @@ impl PicImpl {
         regs.meip.set(id, is_high);
         self.set_ordered_irq_pending(&regs, id, is_high);
     }
+
     fn set_ordered_irq_pending(&self, regs: &PicImplRegs, id: u8, is_pending: bool) {
         let enabled = regs.meie[usize::from(id)].is_set(Meie::INTEN);
         self.ordered_irq_pending.set(
@@ -405,12 +411,15 @@ impl PicImpl {
             enabled && is_pending,
         );
     }
+
     fn refresh_gateway(&self, id: u8) {
         self.irq_set_level(id, self.irq_levels.get(id));
     }
+
     fn refresh_enabled(&self, regs: &PicImplRegs, id: u8) {
         self.set_ordered_irq_pending(regs, id, regs.meip.get(id));
     }
+
     fn refresh_order(&self) {
         let regs = self.regs.borrow();
         let priority_xor = if regs
@@ -438,6 +447,7 @@ impl PicImpl {
         for (index, p) in priorities.iter().enumerate() {
             id_to_order[usize::from(p.id)] = u8::try_from(index).unwrap();
         }
+
         self.priority_xor.set(priority_xor);
         self.priority_order.set(priorities);
         self.id_to_order.set(id_to_order);

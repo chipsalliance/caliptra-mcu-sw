@@ -17,6 +17,40 @@ Abstract:
 use crate::xreg_file::XReg;
 use bitfield::{bitfield, BitRange, BitRangeMut};
 use caliptra_emu_types::emu_enum;
+use emulator_consts::{RAM_ORG, RAM_SIZE, ROM_ORG, ROM_SIZE};
+
+/// Memory offsets for CPU
+#[derive(Debug, Copy, Clone)]
+pub struct CpuOrgArgs {
+    /// ROM offset
+    pub rom: u32,
+
+    /// ROM size,
+    pub rom_size: u32,
+
+    /// RAM offset
+    pub ram: u32,
+
+    /// RAM size
+    pub ram_size: u32,
+}
+
+impl Default for CpuOrgArgs {
+    fn default() -> Self {
+        Self {
+            rom: ROM_ORG,
+            rom_size: ROM_SIZE,
+            ram: RAM_ORG,
+            ram_size: RAM_SIZE,
+        }
+    }
+}
+
+#[derive(Default, Debug, Copy, Clone)]
+pub struct CpuArgs {
+    /// Memory offsets
+    pub org: CpuOrgArgs,
+}
 
 emu_enum! {
     /// RISCV 32-bit instruction opcodes
@@ -129,10 +163,13 @@ emu_enum! {
 
         // Bitmanip instructions
         Bitmanip = 0b011_0000,
+
         // OR-Combine byte granule
         Orc = 0b001_0100,
+
         // Bit clear
         Bclr = 0b010_0100,
+
         // Byte reverse
         Rev8 = 0b011_0100,
     };
@@ -185,7 +222,7 @@ emu_enum! {
         Four = 0b100,
 
         /// Function Five
-        Five= 0b101,
+        Five = 0b101,
 
         /// Function Six
         Six = 0b110,
@@ -647,6 +684,24 @@ emu_enum! {
     Invalid
 }
 
+emu_enum! {
+    /// Memory access types
+    #[derive(Debug, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
+    pub RvMemAccessType;
+    u8;
+    {
+        /// Read access
+        Read = 0b001,
+
+        /// Write access
+        Write = 0b010,
+
+        /// Execute access
+        Execute = 0b100,
+    };
+    Invalid
+}
+
 bitfield! {
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     /// RISCV Machine Mode Status Register
@@ -696,24 +751,6 @@ bitfield! {
 
     /// Control interrupt enable
     pub u32, haltie, _: 1, 1;
-}
-
-emu_enum! {
-    /// Memory access types
-    #[derive(Debug, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]
-    pub RvMemAccessType;
-    u8;
-    {
-        /// Read access
-        Read = 0b001,
-
-        /// Write access
-        Write = 0b010,
-
-        /// Execute access
-        Execute = 0b100,
-    };
-    Invalid
 }
 
 emu_enum! {

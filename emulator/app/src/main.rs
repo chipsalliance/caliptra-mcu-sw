@@ -29,8 +29,8 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_bmc::Bmc;
 use emulator_bus::{Bus, BusConverter, Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
-use emulator_consts::{RAM_OFFSET, ROM_SIZE};
-use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
+use emulator_consts::{RAM_ORG, ROM_SIZE};
+use emulator_cpu::{Cpu, CpuArgs, Pic, RvInstr, StepAction};
 use emulator_periph::{
     DummyFlashCtrl, I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp,
 };
@@ -876,7 +876,9 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         .periph
         .set_dma_rom_sram(dma_rom_sram.clone());
 
-    let mut cpu = Cpu::new(auto_root_bus, clock, pic);
+    let cpu_args = CpuArgs::default();
+
+    let mut cpu = Cpu::new(auto_root_bus, clock, pic, cpu_args);
     cpu.write_pc(mcu_root_bus_offsets.rom_offset);
     cpu.register_events();
 
@@ -914,7 +916,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             println!("SoC manifest file is required in active mode");
             exit(-1);
         };
-        let caliptra_firmware = read_binary(&caliptra_firmware, RAM_OFFSET).unwrap();
+        let caliptra_firmware = read_binary(&caliptra_firmware, RAM_ORG).unwrap();
         let soc_manifest = read_binary(&soc_manifest, 0).unwrap();
         bmc.push_recovery_image(caliptra_firmware);
         bmc.push_recovery_image(soc_manifest);
