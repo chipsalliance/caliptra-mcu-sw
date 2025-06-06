@@ -319,7 +319,7 @@ The method of selecting which partition to boot from is system-specific. For exa
 ###  Caliptra Boot Flow
 This section describes the actions taken by the Caliptra ROM and Caliptra FMC/Runtime (RT) during boot, particularly in handling boot failures.
 
-If a corrupted or unauthorized Caliptra FMC+RT image is loaded, the Caliptra ROM asserts an error signal to the MCU, which initiates a recovery mechanism to provide the Caliptra core with a valid firmware image on the next SOC reset.
+If a corrupted or unauthorized Caliptra FMC+RT image is downloaded, the Caliptra ROM sets the CPTRA_FW_ERROR_FATAL register. MCU then initiates a recovery mechanism to provide the Caliptra core with a valid firmware image on the next SOC reset.
 
 If the firmware image fails to execute properly (e.g., hangs), the Caliptra watchdog triggers a timeout, causing an error to be asserted to the MCU ROM, which then initiates the recovery process.
 
