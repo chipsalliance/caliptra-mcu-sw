@@ -144,12 +144,11 @@ fn encode_chunk_resp_fixed_fields(
 
 async fn encode_chunk_data(
     ctx: &mut SpdmContext<'_>,
-    chunk_seq_num: u16,
     chunk_size: usize,
     rsp: &mut MessageBuf<'_>,
 ) -> CommandResult<usize> {
     // Get the chunk data from the large response context
-    let offset = chunk_seq_num as usize * chunk_size;
+    let offset = ctx.large_resp_context.bytes_transferred();
     rsp.put_data(chunk_size)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
@@ -215,13 +214,13 @@ async fn generate_chunk_response<'a>(
     }
 
     // Encode chunk data of chunk size
-    payload_len += encode_chunk_data(ctx, chunk_seq_num, chunk_size, rsp).await?;
+    payload_len += encode_chunk_data(ctx, chunk_size, rsp).await?;
 
     rsp.push_data(payload_len)
         .map_err(|e| (false, CommandError::Codec(e)))
 }
 
-pub(crate) async fn handle_chunk_get_rsp<'a>(
+pub(crate) async fn handle_chunk_get<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,

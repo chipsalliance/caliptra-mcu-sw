@@ -111,4 +111,8 @@ impl LargeResponseCtx {
     pub fn response(&self) -> Option<&LargeResponse> {
         self.response.as_ref()
     }
+
+    pub fn bytes_transferred(&self) -> usize {
+        self.chunk_info.bytes_transferred
+    }
 }

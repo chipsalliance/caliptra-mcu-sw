@@ -118,7 +118,7 @@ impl<'a> SpdmContext<'a> {
                 measurements_rsp::handle_get_measurements(self, req_msg_header, req).await?
             }
             ReqRespCode::ChunkGet => {
-                chunk_get_rsp::handle_chunk_get_rsp(self, req_msg_header, req).await?
+                chunk_get_rsp::handle_chunk_get(self, req_msg_header, req).await?
             }
 
             _ => Err((false, CommandError::UnsupportedRequest))?,

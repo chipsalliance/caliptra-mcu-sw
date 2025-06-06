@@ -57,55 +57,11 @@ impl Evidence {
         if resp.nonce != req.nonce {
             Err(CaliptraApiError::InvalidResponse)?;
         }
-        // Only add PCRs and PCR counters in the response
+
         // Fixed fields are always present in the response
         let start = PCR_QUOTE_RSP_START;
         let end = start + PCR_QUOTE_FIXED_FIELDS_SIZE;
         buffer[..PCR_QUOTE_FIXED_FIELDS_SIZE].copy_from_slice(&response_bytes[start..end]);
-
-        // let pcr_bytes = resp.pcrs.as_bytes();
-        // let copy_size = pcr_bytes.len();
-        // buffer[..copy_size].copy_from_slice(pcr_bytes);
-
-        // let reset_ctr_bytes = resp.reset_ctrs.as_bytes();
-        // let start = copy_size;
-        // let end = start + reset_ctr_bytes.len();
-        // buffer[start..end].copy_from_slice(reset_ctr_bytes);
-
-        // if end != PCR_QUOTE_FIXED_FIELDS_SIZE {
-        //     Err(CaliptraApiError::InvalidResponse)?;
-        // }
-
-        // Copy ECC dgst and signature or MLDSA87 digest and signature
-
-        // let len = if with_pqc_sig {
-        //     let digest_bytes = resp.mldsa_digest.as_bytes();
-        //     let signature_bytes = resp.mldsa_signature.as_bytes();
-        //     let dgst_sig_start = end;
-        //     let dgst_len = digest_bytes.len();
-        //     let sig_len = signature_bytes.len();
-
-        //     buffer[dgst_sig_start..dgst_sig_start + dgst_len].copy_from_slice(digest_bytes);
-        //     buffer[dgst_sig_start + dgst_len..dgst_sig_start + dgst_len + sig_len]
-        //         .copy_from_slice(signature_bytes);
-        //     dgst_sig_start + dgst_len + sig_len
-        // } else {
-        //     let digest_bytes = resp.ecc_digest.as_bytes();
-        //     let signature_r_bytes = resp.ecc_signature_r.as_bytes();
-        //     let signature_s_bytes = resp.ecc_signature_s.as_bytes();
-        //     let dgst_sig_start = end;
-        //     let dgst_len = digest_bytes.len();
-        //     let sig_r_len = signature_r_bytes.len();
-        //     let sig_s_len = signature_s_bytes.len();
-
-        //     buffer[dgst_sig_start..dgst_sig_start + dgst_len].copy_from_slice(digest_bytes);
-        //     buffer[dgst_sig_start + dgst_len..dgst_sig_start + dgst_len + sig_r_len]
-        //         .copy_from_slice(signature_r_bytes);
-        //     buffer[dgst_sig_start + dgst_len + sig_r_len
-        //         ..dgst_sig_start + dgst_len + sig_r_len + sig_s_len]
-        //         .copy_from_slice(signature_s_bytes);
-        //     dgst_sig_start + dgst_len + sig_r_len + sig_s_len
-        // };
 
         let (dgst_sig_start, dgst_sig_size) = if with_pqc_sig {
             (end + ECC_DGST_SIG_SIZE, MLDSA87_DGST_SIG_SIZE)

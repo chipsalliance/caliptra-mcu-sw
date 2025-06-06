@@ -141,11 +141,8 @@ impl FreeformManifest {
         measurement_record[0..METADATA_SIZE].copy_from_slice(metadata.as_bytes());
 
         let quote_slice = &mut measurement_record[METADATA_SIZE..METADATA_SIZE + PCR_QUOTE_SIZE];
-        let quote: &mut [u8; PCR_QUOTE_SIZE] = quote_slice
-            .try_into()
-            .map_err(|_| MeasurementsError::InvalidBuffer)?;
 
-        let copied_len = Evidence::pcr_quote(quote, with_pqc_sig)
+        let copied_len = Evidence::pcr_quote(quote_slice, with_pqc_sig)
             .await
             .map_err(MeasurementsError::CaliptraApi)?;
         if copied_len != measurement_value_size {

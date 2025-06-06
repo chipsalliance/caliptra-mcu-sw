@@ -263,10 +263,9 @@ pub fn rom_start() {
         fatal_error(1);
     }
 
-    while !soc.ready_for_runtime() {}
-    // wait for the firmware to set the ready bit
+    // wait for the Caliptra RT to be ready
     // this is a busy loop, but it should be very short
-    // and we don't have any other way to wait for it
+    while !soc.ready_for_runtime() {}
 
     romtime::println!("[mcu-rom] Finished common initialization");
 }
