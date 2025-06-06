@@ -37,6 +37,12 @@ impl Soc {
         Soc { registers }
     }
 
+    pub fn ready_for_runtime(&self) -> bool {
+        self.registers
+            .cptra_flow_status
+            .is_set(soc::bits::CptraFlowStatus::ReadyForRuntime)
+    }
+
     pub fn flow_status(&self) -> u32 {
         self.registers.cptra_flow_status.get()
     }
@@ -256,6 +262,11 @@ pub fn rom_start() {
         romtime::println!("Invalid firmware detected; halting");
         fatal_error(1);
     }
+
+    // wait for the Caliptra RT to be ready
+    // this is a busy loop, but it should be very short
+    while !soc.ready_for_runtime() {}
+
     romtime::println!("[mcu-rom] Finished common initialization");
 }
 

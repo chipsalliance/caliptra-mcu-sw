@@ -4,7 +4,7 @@ use crate::measurements::common::{
     DmtfMeasurementBlockMetadata, MeasurementValueType, MeasurementsError, MeasurementsResult,
     SPDM_MEASUREMENT_MANIFEST_INDEX,
 };
-use crate::protocol::SHA384_HASH_SIZE;
+use crate::protocol::{algorithms::AsymAlgo, SHA384_HASH_SIZE};
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 use libapi_caliptra::evidence::{Evidence, PCR_QUOTE_SIZE};
 use libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
@@ -26,12 +26,14 @@ const MAX_MEASUREMENT_RECORD_SIZE: usize =
 /// ________________________________________________________________________________________________|
 pub struct FreeformManifest {
     measurement_record: [u8; MAX_MEASUREMENT_RECORD_SIZE],
+    data_size: usize,
 }
 
 impl Default for FreeformManifest {
     fn default() -> Self {
         FreeformManifest {
             measurement_record: [0; MAX_MEASUREMENT_RECORD_SIZE],
+            data_size: 0,
         }
     }
 }
@@ -44,49 +46,52 @@ impl FreeformManifest {
 
     pub(crate) async fn measurement_block_size(
         &mut self,
+        asym_algo: AsymAlgo,
         index: u8,
-        raw_bit_stream: bool,
-    ) -> usize {
-        if index != SPDM_MEASUREMENT_MANIFEST_INDEX {
-            return 0;
-        }
-        if raw_bit_stream {
-            return MAX_MEASUREMENT_RECORD_SIZE;
-        }
-        PCR_QUOTE_SIZE + size_of::<DmtfMeasurementBlockMetadata>()
-    }
-
-    pub(crate) async fn measurement_record(
-        &mut self,
         _raw_bit_stream: bool,
-        _offset: usize,
-        _measurement_chunk: &mut [u8],
-    ) -> MeasurementsResult<()> {
-        todo!("Implement all measurement blocks");
+    ) -> MeasurementsResult<usize> {
+        if index == SPDM_MEASUREMENT_MANIFEST_INDEX || index == 0xFF {
+            self.refresh_measurement_record(asym_algo).await?;
+            Ok(self.data_size)
+        } else {
+            Err(MeasurementsError::InvalidIndex)
+        }
     }
 
     pub(crate) async fn measurement_block(
         &mut self,
+        asym_algo: AsymAlgo,
         index: u8,
-        raw_bit_stream: bool,
-        _offset: usize,
-        _measurement_chunk: &mut [u8],
-    ) -> MeasurementsResult<()> {
-        if index != SPDM_MEASUREMENT_MANIFEST_INDEX {
-            return Err(MeasurementsError::InvalidIndex);
+        _raw_bit_stream: bool,
+        offset: usize,
+        measurement_chunk: &mut [u8],
+    ) -> MeasurementsResult<usize> {
+        if index == SPDM_MEASUREMENT_MANIFEST_INDEX || index == 0xFF {
+            self.refresh_measurement_record(asym_algo).await?;
+            if offset >= self.data_size {
+                return Err(MeasurementsError::InvalidOffset);
+            }
+
+            let end = self
+                .measurement_record
+                .len()
+                .min(offset + measurement_chunk.len());
+            let chunk_size = end - offset;
+            measurement_chunk[..chunk_size].copy_from_slice(&self.measurement_record[offset..end]);
+
+            Ok(chunk_size)
+        } else {
+            Err(MeasurementsError::InvalidIndex)
         }
-        if raw_bit_stream {
-            return Err(MeasurementsError::InvalidOperation);
-        }
-        todo!("Implement measurement block");
     }
 
     pub(crate) async fn measurement_summary_hash(
         &mut self,
+        asym_algo: AsymAlgo,
         _measurement_summary_hash_type: u8,
         hash: &mut [u8; SHA384_HASH_SIZE],
     ) -> MeasurementsResult<()> {
-        self.refresh_measurement_record().await?;
+        self.refresh_measurement_record(asym_algo).await?;
 
         let mut offset = 0;
         let mut hash_ctx = HashContext::new();
@@ -119,12 +124,14 @@ impl FreeformManifest {
             .map_err(MeasurementsError::CaliptraApi)
     }
 
-    async fn refresh_measurement_record(&mut self) -> MeasurementsResult<()> {
+    async fn refresh_measurement_record(&mut self, asym_algo: AsymAlgo) -> MeasurementsResult<()> {
+        let with_pqc_sig = asym_algo != AsymAlgo::EccP384;
         let measurement_record = &mut self.measurement_record;
+        let measurement_value_size = Evidence::pcr_quote_size(with_pqc_sig).await;
         measurement_record.fill(0);
         let metadata = DmtfMeasurementBlockMetadata::new(
             SPDM_MEASUREMENT_MANIFEST_INDEX,
-            PCR_QUOTE_SIZE as u16,
+            measurement_value_size as u16,
             false,
             MeasurementValueType::FreeformManifest,
         )?;
@@ -134,13 +141,14 @@ impl FreeformManifest {
         measurement_record[0..METADATA_SIZE].copy_from_slice(metadata.as_bytes());
 
         let quote_slice = &mut measurement_record[METADATA_SIZE..METADATA_SIZE + PCR_QUOTE_SIZE];
-        let quote: &mut [u8; PCR_QUOTE_SIZE] = quote_slice
-            .try_into()
-            .map_err(|_| MeasurementsError::InvalidBuffer)?;
 
-        Evidence::pcr_quote(quote)
+        let copied_len = Evidence::pcr_quote(quote_slice, with_pqc_sig)
             .await
             .map_err(MeasurementsError::CaliptraApi)?;
+        if copied_len != measurement_value_size {
+            return Err(MeasurementsError::MeasurementSizeMismatch);
+        }
+        self.data_size = METADATA_SIZE + measurement_value_size;
 
         Ok(())
     }

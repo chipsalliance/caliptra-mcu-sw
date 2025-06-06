@@ -75,6 +75,15 @@ where
     }
 }
 
+pub fn encode_u8_slice(data: &[u8], buffer: &mut MessageBuf) -> CodecResult<usize> {
+    let len = data.len();
+    buffer.put_data(len)?;
+    let buf = buffer.data_mut(len)?;
+    buf.copy_from_slice(data);
+    buffer.pull_data(len)?;
+    Ok(len)
+}
+
 // Generic message buffer for message encoding and decoding
 #[derive(Debug)]
 pub struct MessageBuf<'a> {

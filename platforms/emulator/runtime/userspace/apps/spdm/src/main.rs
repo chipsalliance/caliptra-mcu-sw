@@ -19,12 +19,7 @@ use spdm_lib::protocol::*;
 use spdm_lib::transport::{MctpTransport, SpdmTransport};
 
 // Caliptra supported SPDM versions
-const SPDM_VERSIONS: &[SpdmVersion] = &[
-    SpdmVersion::V10,
-    SpdmVersion::V11,
-    SpdmVersion::V12,
-    SpdmVersion::V13,
-];
+const SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12, SpdmVersion::V13];
 
 // Calitra Crypto timeout exponent (2^20 us)
 const CALIPTRA_SPDM_CT_EXPONENT: u8 = 20;
@@ -166,7 +161,7 @@ fn device_capability_flags() -> CapabilityFlags {
     capability_flags.set_key_upd_cap(0);
     capability_flags.set_handshake_in_the_clear_cap(0);
     capability_flags.set_pub_key_id_cap(0);
-    capability_flags.set_chunk_cap(0);
+    capability_flags.set_chunk_cap(1);
     capability_flags.set_alias_cert_cap(1);
 
     capability_flags

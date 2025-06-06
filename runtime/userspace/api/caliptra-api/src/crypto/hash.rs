@@ -6,7 +6,7 @@ use crate::mailbox_api::{
 };
 use caliptra_api::mailbox::{
     CmHashAlgorithm, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq,
-    MailboxReqHeader, Request, CMB_SHA_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
+    MailboxReqHeader, Request, CMB_SHA_CONTEXT_SIZE,
 };
 use core::mem::size_of;
 use libsyscall_caliptra::mailbox::Mailbox;
@@ -138,7 +138,7 @@ impl HashContext {
             };
 
             let remaining_data = &data[data_offset..];
-            let data_size = remaining_data.len().min(MAX_CMB_DATA_SIZE);
+            let data_size = remaining_data.len().min(MAX_CRYPTO_MBOX_DATA_SIZE);
             update_req.input_size = data_size as u32;
             update_req.input[..data_size].copy_from_slice(&remaining_data[..data_size]);
 

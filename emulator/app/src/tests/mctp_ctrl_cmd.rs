@@ -222,7 +222,7 @@ impl TestTrait for Test {
                 MctpTestState::ReceiveResp => {
                     let resp_msg =
                         self.mctp_util
-                            .receive_response(running.clone(), stream, target_addr);
+                            .receive_response(running.clone(), stream, target_addr, None);
 
                     if !resp_msg.is_empty() {
                         self.check_response(&resp_msg);

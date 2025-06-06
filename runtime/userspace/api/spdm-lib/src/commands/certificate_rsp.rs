@@ -133,7 +133,7 @@ async fn generate_certificate_response<'a>(
     ctx.verify_selected_hash_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
     let asym_algo = ctx
-        .selected_asym_algo()
+        .selected_base_asym_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
 
     let connection_version = ctx.state.connection_info.version_number();
@@ -168,7 +168,7 @@ async fn generate_certificate_response<'a>(
     let mut remainder_len = total_cert_chain_len.saturating_sub(offset);
 
     let portion_len = if length > SPDM_MAX_CERT_CHAIN_PORTION_LEN
-        && ctx.local_capabilities.flags.chunk_cap() == 0
+    // && ctx.local_capabilities.flags.chunk_cap() == 1
     {
         SPDM_MAX_CERT_CHAIN_PORTION_LEN.min(remainder_len)
     } else {

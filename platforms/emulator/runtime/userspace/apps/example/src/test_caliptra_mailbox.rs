@@ -140,22 +140,60 @@ pub(crate) async fn test_caliptra_mailbox_fail() {
 pub(crate) async fn test_caliptra_evidence() {
     println!("Starting mailbox evidence test");
 
-    test_pcr_quote().await;
+    println!("Starting PCR quote test");
+    test_pcr_quote_with_pqc_signature().await;
+    test_pcr_quote_with_ecc_signature().await;
+    println!("PCR Quote test success");
+
+    println!("Mailbox evidence test completed successfully");
 }
 
-async fn test_pcr_quote() {
-    println!("Starting PCR quote test");
+async fn test_pcr_quote_with_pqc_signature() {
+    println!("Starting PCR quote with PQC signature test");
     let mut pcr_quote = [0u8; PCR_QUOTE_SIZE];
 
-    match Evidence::pcr_quote(&mut pcr_quote).await {
-        Ok(()) => {
-            println!("PCR quote: {:x?} ", pcr_quote);
+    match Evidence::pcr_quote(&mut pcr_quote, true).await {
+        Ok(copy_len) if copy_len > 0 => {
+            println!(
+                "PCR quote with PQC Signature[{}]: {:x?} ",
+                copy_len,
+                &pcr_quote[..copy_len]
+            );
         }
         Err(err) => {
             println!("Failed to get PCR quote: {:?}", err);
             test_exit(1);
         }
+        _ => {
+            println!("Failed! Got empty PCR Quote");
+            test_exit(1);
+        }
     }
 
-    println!("PCR Quote test success");
+    println!("PCR Quote with PQC signature test success");
+}
+
+async fn test_pcr_quote_with_ecc_signature() {
+    println!("Starting PCR quote with ECC signature test");
+    let mut pcr_quote = [0u8; PCR_QUOTE_SIZE];
+
+    match Evidence::pcr_quote(&mut pcr_quote, false).await {
+        Ok(copy_len) if copy_len > 0 => {
+            println!(
+                "PCR quote with ECC Signature[{}]: {:x?}",
+                copy_len,
+                &pcr_quote[..copy_len]
+            );
+        }
+        Err(err) => {
+            println!("Failed to get PCR quote: {:?}", err);
+            test_exit(1);
+        }
+        _ => {
+            println!("Failed! Got empty PCR Quote");
+            test_exit(1);
+        }
+    }
+
+    println!("PCR Quote ECC signature test success");
 }

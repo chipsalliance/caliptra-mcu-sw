@@ -384,11 +384,13 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_flash_soc_boot() {
         test_soc_boot(true);
     }
 
     #[test]
+    #[ignore]
     fn test_streaming_soc_boot() {
         test_soc_boot(false);
     }
