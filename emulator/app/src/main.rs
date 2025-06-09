@@ -704,6 +704,10 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             None,
         );
     } else if cfg!(feature = "test-spdm-validator") {
+        if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
+            println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
+            exit(0);
+        }
         i3c_controller.start();
         let spdm_validator_tests = tests::spdm_validator::generate_tests();
         i3c_socket::run_tests(

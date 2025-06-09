@@ -51,7 +51,7 @@ mod test {
     pub fn compile_runtime(feature: &str, example_app: bool) -> PathBuf {
         let output = target_binary(&format!("runtime-{}.bin", feature));
         let output_name = format!("{}", output.display());
-        mcu_builder::runtime_build_with_apps(
+        mcu_builder::runtime_build_with_apps_cached(
             &[feature],
             Some(&output_name),
             example_app,

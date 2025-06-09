@@ -3,7 +3,7 @@
 //! Wrappers around the Caliptra builder library to make it easier to build
 //! the ROM, firwmare, and SoC manifest.
 
-use crate::PROJECT_ROOT;
+use crate::target_dir;
 use anyhow::{bail, Result};
 use caliptra_auth_man_gen::{
     AuthManifestGenerator, AuthManifestGeneratorConfig, AuthManifestGeneratorKeyConfig,
@@ -15,10 +15,11 @@ use caliptra_auth_man_types::{
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_fake_keys::*;
 use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
-use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_image_types::{FwVerificationPqcKeyType, ImageManifest};
+use cargo_metadata::MetadataCommand;
 use hex::ToHex;
 use std::{num::ParseIntError, path::PathBuf, str::FromStr};
-use zerocopy::IntoBytes;
+use zerocopy::{transmute, IntoBytes};
 
 pub struct CaliptraBuilder {
     active_mode: bool,
@@ -58,7 +59,7 @@ impl CaliptraBuilder {
             }
             Ok(caliptra_rom.clone())
         } else {
-            Self::compile_caliptra_rom()
+            Self::compile_caliptra_rom_cached()
         }
     }
 
@@ -71,7 +72,7 @@ impl CaliptraBuilder {
                 bail!("Vendor public key hash is required for active mode if Caliptra FW is passed as an argument");
             }
         } else {
-            let (path, vendor_pk_hash) = Self::compile_caliptra_fw()?;
+            let (path, vendor_pk_hash) = Self::compile_caliptra_fw_cached()?;
             self.vendor_pk_hash = Some(vendor_pk_hash);
             self.caliptra_firmware = Some(path);
         }
@@ -168,19 +169,97 @@ impl CaliptraBuilder {
     fn write_soc_manifest(metadata: Vec<AuthManifestImageMetadata>) -> Result<PathBuf> {
         let manifest = Self::create_auth_manifest_with_metadata(metadata);
 
-        let path = PROJECT_ROOT.join("target").join("soc-manifest");
+        let path = target_dir().join("soc-manifest");
         std::fs::write(&path, manifest.as_bytes())?;
         Ok(path)
     }
 
-    fn compile_caliptra_rom() -> Result<PathBuf> {
+    fn caliptra_version() -> Option<String> {
+        let metadata = MetadataCommand::new().exec().unwrap();
+        if let Some(caliptra) = metadata
+            .packages
+            .iter()
+            .find(|p| *p.name == "caliptra-builder")
+        {
+            if let Some(source) = caliptra.source.as_ref() {
+                if source.repr.starts_with("git") && source.repr.contains('#') {
+                    // If the source is a git repository, we can extract the commit hash
+                    return source.repr.split('#').next_back().map(|s| s.to_string());
+                }
+            }
+        }
+        println!("Could not determine Caliptra version from Cargo metadata, local checkout?");
+        None
+    }
+
+    fn compile_caliptra_rom_cached() -> Result<PathBuf> {
+        if let Some(version) = Self::caliptra_version() {
+            let path = target_dir().join(format!("caliptra-rom-{}.bin", version));
+            if path.exists() {
+                println!("Using cached Caliptra ROM at {:?}", path);
+                return Ok(path);
+            }
+            println!(
+                "Caliptra version {} not found in cache, compiling ROM...",
+                version
+            );
+            let compiled_rom = Self::compile_caliptra_rom_uncached()?;
+            std::fs::copy(compiled_rom, &path)?;
+            Ok(path)
+        } else {
+            println!("Caliptra version not found so cannot use cached ROM");
+            Self::compile_caliptra_rom_uncached()
+        }
+    }
+
+    fn compile_caliptra_rom_uncached() -> Result<PathBuf> {
         let rom_bytes = caliptra_builder::rom_for_fw_integration_tests()?;
-        let path = PROJECT_ROOT.join("target").join("caliptra-rom.bin");
+        let path = target_dir().join("caliptra-rom.bin");
         std::fs::write(&path, rom_bytes)?;
         Ok(path)
     }
 
-    fn compile_caliptra_fw() -> Result<(PathBuf, String)> {
+    fn compile_caliptra_fw_cached() -> Result<(PathBuf, String)> {
+        if let Some(version) = Self::caliptra_version() {
+            let path = target_dir().join(format!("caliptra-fw-bundle-{}.bin", version));
+            if path.exists() {
+                println!("Using cached Caliptra FW bundle at {:?}", path);
+                return Self::parse_fw_bundle(path);
+            }
+            println!(
+                "Caliptra FW bundle version {} not found in cache, compiling...",
+                version
+            );
+            let compiled_fw_bundle = Self::compile_caliptra_fw_uncached()?.0;
+            std::fs::copy(compiled_fw_bundle, &path)?;
+            Self::parse_fw_bundle(path)
+        } else {
+            println!("Caliptra version not found so cannot use cached FW bundle");
+            Self::compile_caliptra_fw_uncached()
+        }
+    }
+
+    fn parse_fw_bundle(path: PathBuf) -> Result<(PathBuf, String)> {
+        let manifest = {
+            let bundle: [u8; core::mem::size_of::<ImageManifest>()] = std::fs::read(&path)?
+                [..core::mem::size_of::<ImageManifest>()]
+                .try_into()
+                .unwrap();
+            transmute!(bundle)
+        };
+        Ok((path, Self::vendor_pk_hash(manifest)?))
+    }
+
+    fn vendor_pk_hash(manifest: ImageManifest) -> Result<String> {
+        let crypto = Crypto::default();
+        let x = from_hw_format(
+            &crypto.sha384_digest(manifest.preamble.vendor_pub_key_info.as_bytes())?,
+        )
+        .encode_hex();
+        Ok(x)
+    }
+
+    fn compile_caliptra_fw_uncached() -> Result<(PathBuf, String)> {
         let opts = caliptra_builder::ImageOptions {
             pqc_key_type: FwVerificationPqcKeyType::LMS,
             ..Default::default()
@@ -190,15 +269,10 @@ impl CaliptraBuilder {
             &caliptra_builder::firmware::APP_WITH_UART,
             opts,
         )?;
-        let crypto = Crypto::default();
-        let vendor_pk_hash = from_hw_format(
-            &crypto.sha384_digest(bundle.manifest.preamble.vendor_pub_key_info.as_bytes())?,
-        )
-        .encode_hex();
         let fw_bytes = bundle.to_bytes()?;
-        let path = PROJECT_ROOT.join("target").join("caliptra-fw-bundle.bin");
+        let path = target_dir().join("caliptra-fw-bundle.bin");
         std::fs::write(&path, fw_bytes)?;
-        Ok((path, vendor_pk_hash))
+        Ok((path, Self::vendor_pk_hash(bundle.manifest)?))
     }
 
     pub fn create_auth_manifest_with_metadata(

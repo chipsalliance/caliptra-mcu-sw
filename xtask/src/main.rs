@@ -218,7 +218,7 @@ fn main() {
             platform,
         } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            mcu_builder::runtime_build_with_apps(
+            mcu_builder::runtime_build_with_apps_cached(
                 &features,
                 output.as_deref(),
                 false,

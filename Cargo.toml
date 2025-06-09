@@ -72,7 +72,8 @@ anyhow = "1.0.97"
 async-trait = "0.1.87"
 bitfield = "0.14.0"
 bit-vec = "0.6.3"
-chrono = {version = "0.4.38", features = ["serde"]}
+cargo_metadata = "0.20.0"
+chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.23", features = [
     "cargo",
     "derive",

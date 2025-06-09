@@ -8,8 +8,8 @@ pub(crate) fn precheckin() -> Result<()> {
     crate::clippy::clippy()?;
     crate::header::check()?;
     crate::deps::check()?;
-    mcu_builder::runtime_build_with_apps(&[], None, false, None, None)?;
-    mcu_builder::runtime_build_with_apps(
+    mcu_builder::runtime_build_with_apps_cached(&[], None, false, None, None)?;
+    mcu_builder::runtime_build_with_apps_cached(
         &[],
         None,
         false,
