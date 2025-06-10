@@ -5,19 +5,21 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait Sha512AccPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {}
+    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
     fn read_lock(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::sha512_acc::bits::Lock::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::Lock::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_lock(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::Lock::Register,
         >,
@@ -28,13 +30,15 @@ pub trait Sha512AccPeripheral {
     }
     fn read_mode(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::sha512_acc::bits::Mode::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::Mode::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mode(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::Mode::Register,
         >,
@@ -54,15 +58,15 @@ pub trait Sha512AccPeripheral {
     fn write_datain(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_execute(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::Execute::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_execute(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::Execute::Register,
         >,
@@ -70,24 +74,26 @@ pub trait Sha512AccPeripheral {
     }
     fn read_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::lc_ctrl::bits::Status::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::lc_ctrl::bits::Status::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_digest(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
     }
     fn read_control(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::Control::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_control(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::Control::Register,
         >,
@@ -95,15 +101,15 @@ pub trait Sha512AccPeripheral {
     }
     fn read_intr_block_rf_global_intr_en_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_global_intr_en_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
         >,
@@ -111,15 +117,15 @@ pub trait Sha512AccPeripheral {
     }
     fn read_intr_block_rf_error_intr_en_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_error_intr_en_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
         >,
@@ -127,15 +133,15 @@ pub trait Sha512AccPeripheral {
     }
     fn read_intr_block_rf_notif_intr_en_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_notif_intr_en_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
         >,
@@ -143,31 +149,31 @@ pub trait Sha512AccPeripheral {
     }
     fn read_intr_block_rf_error_global_intr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::GlobalIntrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_notif_global_intr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::GlobalIntrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_error_internal_intr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::ErrorIntrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_error_internal_intr_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::ErrorIntrT::Register,
         >,
@@ -175,15 +181,15 @@ pub trait Sha512AccPeripheral {
     }
     fn read_intr_block_rf_notif_internal_intr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::NotifIntrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_notif_internal_intr_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::NotifIntrT::Register,
         >,
@@ -191,15 +197,15 @@ pub trait Sha512AccPeripheral {
     }
     fn read_intr_block_rf_error_intr_trig_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_error_intr_trig_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
         >,
@@ -207,15 +213,15 @@ pub trait Sha512AccPeripheral {
     }
     fn read_intr_block_rf_notif_intr_trig_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_notif_intr_trig_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
         >,
@@ -247,56 +253,56 @@ pub trait Sha512AccPeripheral {
     }
     fn read_intr_block_rf_error0_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_error1_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_error2_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_error3_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_notif_cmd_done_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
 }
 pub struct Sha512AccBus {
     pub periph: Box<dyn Sha512AccPeripheral>,
 }
-impl emulator_bus::Bus for Sha512AccBus {
+impl caliptra_emu_bus::Bus for Sha512AccBus {
     fn read(
         &mut self,
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::LoadAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
             0..4 => Ok(caliptra_emu_types::RvData::from(
@@ -393,7 +399,7 @@ impl emulator_bus::Bus for Sha512AccBus {
                     .reg
                     .get(),
             )),
-            _ => Err(emulator_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
@@ -401,19 +407,19 @@ impl emulator_bus::Bus for Sha512AccBus {
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
         val: caliptra_emu_types::RvData,
-    ) -> Result<(), emulator_bus::BusError> {
+    ) -> Result<(), caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::StoreAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             0..4 => {
                 self.periph
-                    .write_lock(emulator_bus::ReadWriteRegister::new(val));
+                    .write_lock(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             8..0xc => {
                 self.periph
-                    .write_mode(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mode(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0xc..0x10 => {
@@ -430,51 +436,53 @@ impl emulator_bus::Bus for Sha512AccBus {
             }
             0x18..0x1c => {
                 self.periph
-                    .write_execute(emulator_bus::ReadWriteRegister::new(val));
+                    .write_execute(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x60..0x64 => {
                 self.periph
-                    .write_control(emulator_bus::ReadWriteRegister::new(val));
+                    .write_control(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x800..0x804 => {
                 self.periph.write_intr_block_rf_global_intr_en_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x804..0x808 => {
-                self.periph
-                    .write_intr_block_rf_error_intr_en_r(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_intr_block_rf_error_intr_en_r(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x808..0x80c => {
-                self.periph
-                    .write_intr_block_rf_notif_intr_en_r(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_intr_block_rf_notif_intr_en_r(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x814..0x818 => {
                 self.periph.write_intr_block_rf_error_internal_intr_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x818..0x81c => {
                 self.periph.write_intr_block_rf_notif_internal_intr_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x81c..0x820 => {
                 self.periph.write_intr_block_rf_error_intr_trig_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x820..0x824 => {
                 self.periph.write_intr_block_rf_notif_intr_trig_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -499,7 +507,7 @@ impl emulator_bus::Bus for Sha512AccBus {
                     .write_intr_block_rf_notif_cmd_done_intr_count_r(val);
                 Ok(())
             }
-            _ => Err(emulator_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {

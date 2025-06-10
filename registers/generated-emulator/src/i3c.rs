@@ -5,7 +5,7 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait I3cPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {}
+    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
@@ -22,13 +22,13 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_hc_control(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HcControl::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HcControl::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_hc_control(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::HcControl::Register,
         >,
@@ -36,15 +36,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_controller_device_addr(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ControllerDeviceAddr::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_controller_device_addr(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::ControllerDeviceAddr::Register,
         >,
@@ -52,21 +52,23 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_hc_capabilities(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::HcCapabilities::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_reset_control(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ResetControl::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::ResetControl::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_reset_control(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::ResetControl::Register,
         >,
@@ -74,19 +76,23 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_present_state(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::PresentState::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::PresentState::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_intr_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::IntrStatus::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::IntrStatus::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_intr_status(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IntrStatus::Register,
         >,
@@ -94,15 +100,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_intr_status_enable(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IntrStatusEnable::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_intr_status_enable(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IntrStatusEnable::Register,
         >,
@@ -110,15 +116,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_intr_signal_enable(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IntrSignalEnable::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_intr_signal_enable(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IntrSignalEnable::Register,
         >,
@@ -126,7 +132,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_base_intr_force(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IntrForce::Register,
         >,
@@ -134,23 +140,23 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_dat_section_offset(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DatSectionOffset::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_dct_section_offset(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DctSectionOffset::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_dct_section_offset(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DctSectionOffset::Register,
         >,
@@ -158,43 +164,47 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_ring_headers_section_offset(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::RingHeadersSectionOffset::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_pio_section_offset(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PioSectionOffset::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_ext_caps_section_offset(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ExtCapsSectionOffset::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_int_ctrl_cmds_en(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::IntCtrlCmdsEn::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::IntCtrlCmdsEn::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_ibi_notify_ctrl(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::IbiNotifyCtrl::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::IbiNotifyCtrl::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_ibi_notify_ctrl(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IbiNotifyCtrl::Register,
         >,
@@ -202,15 +212,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_ibi_data_abort_ctrl(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_ibi_data_abort_ctrl(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
         >,
@@ -218,13 +228,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_dev_ctx_base_lo(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DevCtxBaseLo::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::DevCtxBaseLo::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_dev_ctx_base_lo(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DevCtxBaseLo::Register,
         >,
@@ -232,13 +244,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_dev_ctx_base_hi(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DevCtxBaseHi::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::DevCtxBaseHi::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_dev_ctx_base_hi(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DevCtxBaseHi::Register,
         >,
@@ -246,9 +260,9 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_dev_ctx_sg(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DevCtxSg::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DevCtxSg::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_piocontrol_command_port(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_piocontrol_response_port(&mut self) -> caliptra_emu_types::RvData {
@@ -263,13 +277,15 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_queue_thld_ctrl(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::QueueThldCtrl::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::QueueThldCtrl::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_piocontrol_queue_thld_ctrl(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::QueueThldCtrl::Register,
         >,
@@ -277,15 +293,15 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_data_buffer_thld_ctrl(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DataBufferThldCtrl::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_piocontrol_data_buffer_thld_ctrl(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DataBufferThldCtrl::Register,
         >,
@@ -293,25 +309,29 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_queue_size(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::QueueSize::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::QueueSize::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_piocontrol_alt_queue_size(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::AltQueueSize::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::AltQueueSize::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_piocontrol_pio_intr_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::PioIntrStatus::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::PioIntrStatus::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_piocontrol_pio_intr_status(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioIntrStatus::Register,
         >,
@@ -319,15 +339,15 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_pio_intr_status_enable(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PioIntrStatusEnable::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_piocontrol_pio_intr_status_enable(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioIntrStatusEnable::Register,
         >,
@@ -335,15 +355,15 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_pio_intr_signal_enable(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PioIntrSignalEnable::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_piocontrol_pio_intr_signal_enable(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioIntrSignalEnable::Register,
         >,
@@ -351,7 +371,7 @@ pub trait I3cPeripheral {
     }
     fn write_piocontrol_pio_intr_force(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioIntrForce::Register,
         >,
@@ -359,13 +379,15 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_pio_control(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::PioControl::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::PioControl::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_piocontrol_pio_control(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioControl::Register,
         >,
@@ -373,9 +395,11 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_extcap_header(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ExtcapHeader::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::ExtcapHeader::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_0(&mut self) -> caliptra_emu_types::RvData {
         0
@@ -385,13 +409,13 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_2(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap2::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap2::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_prot_cap_2(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::ProtCap2::Register,
         >,
@@ -399,13 +423,13 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_3(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap3::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap3::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_prot_cap_3(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::ProtCap3::Register,
         >,
@@ -413,13 +437,13 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_0(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DeviceId0::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DeviceId0::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_id_0(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DeviceId0::Register,
         >,
@@ -450,13 +474,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_status_0(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DeviceStatus0::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::DeviceStatus0::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_status_0(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DeviceStatus0::Register,
         >,
@@ -464,13 +490,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_status_1(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DeviceStatus1::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::DeviceStatus1::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_status_1(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DeviceStatus1::Register,
         >,
@@ -478,13 +506,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_reset(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DeviceReset::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::DeviceReset::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_reset(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DeviceReset::Register,
         >,
@@ -492,13 +522,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_recovery_ctrl(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::RecoveryCtrl::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::RecoveryCtrl::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_recovery_ctrl(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::RecoveryCtrl::Register,
         >,
@@ -506,15 +538,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_recovery_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::RecoveryStatus::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_recovery_status(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::RecoveryStatus::Register,
         >,
@@ -522,13 +554,13 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_hw_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HwStatus::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HwStatus::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_hw_status(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::HwStatus::Register,
         >,
@@ -536,15 +568,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
         >,
@@ -562,11 +594,11 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IndirectFifoStatus0::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1(
         &mut self,
@@ -603,19 +635,23 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_extcap_header(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ExtcapHeader::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::ExtcapHeader::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_control(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::StbyCrControl::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::StbyCrControl::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_control(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrControl::Register,
         >,
@@ -623,15 +659,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
         >,
@@ -639,15 +675,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrCapabilities::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrCapabilities::Register,
         >,
@@ -659,13 +695,15 @@ pub trait I3cPeripheral {
     fn write_i3c_ec_stdby_ctrl_mode_rsvd_0(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::StbyCrStatus::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::StbyCrStatus::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_status(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrStatus::Register,
         >,
@@ -673,15 +711,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrDeviceChar::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrDeviceChar::Register,
         >,
@@ -697,15 +735,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrIntrStatus::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrIntrStatus::Register,
         >,
@@ -717,15 +755,15 @@ pub trait I3cPeripheral {
     fn write_i3c_ec_stdby_ctrl_mode_rsvd_1(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
         >,
@@ -733,15 +771,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrIntrForce::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrIntrForce::Register,
         >,
@@ -749,15 +787,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
         >,
@@ -765,15 +803,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
         >,
@@ -781,15 +819,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
         >,
@@ -801,21 +839,23 @@ pub trait I3cPeripheral {
     fn write_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_tti_extcap_header(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ExtcapHeader::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::ExtcapHeader::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_tti_control(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::Control::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_control(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::Control::Register,
         >,
@@ -823,21 +863,23 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::lc_ctrl::bits::Status::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::lc_ctrl::bits::Status::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_tti_tti_reset_control(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::TtiResetControl::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_tti_reset_control(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TtiResetControl::Register,
         >,
@@ -845,15 +887,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_interrupt_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::InterruptStatus::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_interrupt_status(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::InterruptStatus::Register,
         >,
@@ -861,15 +903,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_interrupt_enable(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::InterruptEnable::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_interrupt_enable(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::InterruptEnable::Register,
         >,
@@ -877,15 +919,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_interrupt_force(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::InterruptForce::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_interrupt_force(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::InterruptForce::Register,
         >,
@@ -902,29 +944,31 @@ pub trait I3cPeripheral {
     fn write_i3c_ec_tti_tti_ibi_port(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_tti_tti_queue_size(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TtiQueueSize::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::TtiQueueSize::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_tti_ibi_tti_queue_size(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IbiTtiQueueSize::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_tti_tti_queue_thld_ctrl(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_tti_queue_thld_ctrl(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
         >,
@@ -932,15 +976,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_tti_data_buffer_thld_ctrl(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_tti_data_buffer_thld_ctrl(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
         >,
@@ -948,9 +992,11 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_extcap_header(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ExtcapHeader::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::ExtcapHeader::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self) -> caliptra_emu_types::RvData {
         0
@@ -978,13 +1024,15 @@ pub trait I3cPeripheral {
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_soc_mgmt_if_soc_pad_conf(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::SocPadConf::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::SocPadConf::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_soc_pad_conf(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::SocPadConf::Register,
         >,
@@ -992,13 +1040,15 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_soc_pad_attr(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::SocPadAttr::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::SocPadAttr::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_soc_pad_attr(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::SocPadAttr::Register,
         >,
@@ -1014,33 +1064,41 @@ pub trait I3cPeripheral {
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_soc_mgmt_if_t_r_reg(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TRReg::Register> {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TRReg::Register>
+    {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_r_reg(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TRReg::Register>,
+        _val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c::bits::TRReg::Register,
+        >,
     ) {
     }
     fn read_i3c_ec_soc_mgmt_if_t_f_reg(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TFReg::Register> {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TFReg::Register>
+    {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_f_reg(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TFReg::Register>,
+        _val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c::bits::TFReg::Register,
+        >,
     ) {
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_dat_reg(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuDatReg::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuDatReg::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_su_dat_reg(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TSuDatReg::Register,
         >,
@@ -1048,13 +1106,13 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_hd_dat_reg(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdDatReg::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdDatReg::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_hd_dat_reg(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::THdDatReg::Register,
         >,
@@ -1062,13 +1120,13 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_high_reg(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THighReg::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THighReg::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_high_reg(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::THighReg::Register,
         >,
@@ -1076,13 +1134,13 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_low_reg(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TLowReg::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TLowReg::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_low_reg(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TLowReg::Register,
         >,
@@ -1090,13 +1148,13 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_hd_sta_reg(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdStaReg::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdStaReg::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_hd_sta_reg(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::THdStaReg::Register,
         >,
@@ -1104,13 +1162,13 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_sta_reg(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStaReg::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStaReg::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_su_sta_reg(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TSuStaReg::Register,
         >,
@@ -1118,13 +1176,13 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_sto_reg(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStoReg::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStoReg::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_su_sto_reg(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TSuStoReg::Register,
         >,
@@ -1144,30 +1202,32 @@ pub trait I3cPeripheral {
     fn write_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_i3c_ec_ctrl_cfg_extcap_header(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ExtcapHeader::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::ExtcapHeader::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_ctrl_cfg_controller_config(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ControllerConfig::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
 }
 pub struct I3cBus {
     pub periph: Box<dyn I3cPeripheral>,
 }
-impl emulator_bus::Bus for I3cBus {
+impl caliptra_emu_bus::Bus for I3cBus {
     fn read(
         &mut self,
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::LoadAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
             0x400..0x800 => Ok(self.periph.read_dat((addr as usize - 0x400) / 4)),
@@ -1550,7 +1610,7 @@ impl emulator_bus::Bus for I3cBus {
                     .reg
                     .get(),
             )),
-            _ => Err(emulator_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
@@ -1558,9 +1618,9 @@ impl emulator_bus::Bus for I3cBus {
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
         val: caliptra_emu_types::RvData,
-    ) -> Result<(), emulator_bus::BusError> {
+    ) -> Result<(), caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::StoreAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             0x400..0x800 => {
@@ -1573,63 +1633,67 @@ impl emulator_bus::Bus for I3cBus {
             }
             4..8 => {
                 self.periph
-                    .write_i3c_base_hc_control(emulator_bus::ReadWriteRegister::new(val));
+                    .write_i3c_base_hc_control(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             8..0xc => {
                 self.periph.write_i3c_base_controller_device_addr(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x10..0x14 => {
                 self.periph
-                    .write_i3c_base_reset_control(emulator_bus::ReadWriteRegister::new(val));
+                    .write_i3c_base_reset_control(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x20..0x24 => {
                 self.periph
-                    .write_i3c_base_intr_status(emulator_bus::ReadWriteRegister::new(val));
+                    .write_i3c_base_intr_status(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x24..0x28 => {
-                self.periph
-                    .write_i3c_base_intr_status_enable(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_base_intr_status_enable(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x28..0x2c => {
-                self.periph
-                    .write_i3c_base_intr_signal_enable(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_base_intr_signal_enable(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x2c..0x30 => {
                 self.periph
-                    .write_i3c_base_intr_force(emulator_bus::ReadWriteRegister::new(val));
+                    .write_i3c_base_intr_force(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x34..0x38 => {
-                self.periph
-                    .write_i3c_base_dct_section_offset(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_base_dct_section_offset(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x58..0x5c => {
                 self.periph
-                    .write_i3c_base_ibi_notify_ctrl(emulator_bus::ReadWriteRegister::new(val));
+                    .write_i3c_base_ibi_notify_ctrl(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x5c..0x60 => {
-                self.periph
-                    .write_i3c_base_ibi_data_abort_ctrl(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_base_ibi_data_abort_ctrl(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x60..0x64 => {
                 self.periph
-                    .write_i3c_base_dev_ctx_base_lo(emulator_bus::ReadWriteRegister::new(val));
+                    .write_i3c_base_dev_ctx_base_lo(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x64..0x68 => {
                 self.periph
-                    .write_i3c_base_dev_ctx_base_hi(emulator_bus::ReadWriteRegister::new(val));
+                    .write_i3c_base_dev_ctx_base_hi(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x80..0x84 => {
@@ -1641,58 +1705,60 @@ impl emulator_bus::Bus for I3cBus {
                 Ok(())
             }
             0x90..0x94 => {
-                self.periph
-                    .write_piocontrol_queue_thld_ctrl(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_piocontrol_queue_thld_ctrl(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x94..0x98 => {
                 self.periph.write_piocontrol_data_buffer_thld_ctrl(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xa0..0xa4 => {
-                self.periph
-                    .write_piocontrol_pio_intr_status(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_piocontrol_pio_intr_status(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xa4..0xa8 => {
                 self.periph.write_piocontrol_pio_intr_status_enable(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xa8..0xac => {
                 self.periph.write_piocontrol_pio_intr_signal_enable(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xac..0xb0 => {
                 self.periph
-                    .write_piocontrol_pio_intr_force(emulator_bus::ReadWriteRegister::new(val));
+                    .write_piocontrol_pio_intr_force(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0xb0..0xb4 => {
                 self.periph
-                    .write_piocontrol_pio_control(emulator_bus::ReadWriteRegister::new(val));
+                    .write_piocontrol_pio_control(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x10c..0x110 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_prot_cap_2(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x110..0x114 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_prot_cap_3(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x114..0x118 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_device_id_0(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -1718,44 +1784,44 @@ impl emulator_bus::Bus for I3cBus {
             }
             0x130..0x134 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_device_status_0(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x134..0x138 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_device_status_1(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x138..0x13c => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_device_reset(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x13c..0x140 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_recovery_ctrl(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x140..0x144 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_recovery_status(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x144..0x148 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_hw_status(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x148..0x14c => {
                 self.periph
                     .write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(
-                        emulator_bus::ReadWriteRegister::new(val),
+                        caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -1771,21 +1837,21 @@ impl emulator_bus::Bus for I3cBus {
             }
             0x184..0x188 => {
                 self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_control(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x188..0x18c => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
-                        emulator_bus::ReadWriteRegister::new(val),
+                        caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x18c..0x190 => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
-                        emulator_bus::ReadWriteRegister::new(val),
+                        caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -1795,14 +1861,14 @@ impl emulator_bus::Bus for I3cBus {
             }
             0x194..0x198 => {
                 self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_status(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x198..0x19c => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(
-                        emulator_bus::ReadWriteRegister::new(val),
+                        caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -1814,7 +1880,7 @@ impl emulator_bus::Bus for I3cBus {
             0x1a0..0x1a4 => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
-                        emulator_bus::ReadWriteRegister::new(val),
+                        caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -1825,34 +1891,34 @@ impl emulator_bus::Bus for I3cBus {
             0x1a8..0x1ac => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
-                        emulator_bus::ReadWriteRegister::new(val),
+                        caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x1ac..0x1b0 => {
                 self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1b0..0x1b4 => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(
-                        emulator_bus::ReadWriteRegister::new(val),
+                        caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x1b4..0x1b8 => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(
-                        emulator_bus::ReadWriteRegister::new(val),
+                        caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x1b8..0x1bc => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr(
-                        emulator_bus::ReadWriteRegister::new(val),
+                        caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -1862,27 +1928,31 @@ impl emulator_bus::Bus for I3cBus {
             }
             0x1c4..0x1c8 => {
                 self.periph
-                    .write_i3c_ec_tti_control(emulator_bus::ReadWriteRegister::new(val));
+                    .write_i3c_ec_tti_control(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x1cc..0x1d0 => {
-                self.periph
-                    .write_i3c_ec_tti_tti_reset_control(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_ec_tti_tti_reset_control(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x1d0..0x1d4 => {
-                self.periph
-                    .write_i3c_ec_tti_interrupt_status(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_ec_tti_interrupt_status(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x1d4..0x1d8 => {
-                self.periph
-                    .write_i3c_ec_tti_interrupt_enable(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_ec_tti_interrupt_enable(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x1d8..0x1dc => {
-                self.periph
-                    .write_i3c_ec_tti_interrupt_force(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_ec_tti_interrupt_force(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x1e4..0x1e8 => {
@@ -1899,13 +1969,13 @@ impl emulator_bus::Bus for I3cBus {
             }
             0x1f8..0x1fc => {
                 self.periph.write_i3c_ec_tti_tti_queue_thld_ctrl(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1fc..0x200 => {
                 self.periph.write_i3c_ec_tti_tti_data_buffer_thld_ctrl(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -1935,13 +2005,13 @@ impl emulator_bus::Bus for I3cBus {
             }
             0x21c..0x220 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_soc_pad_conf(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x220..0x224 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_soc_pad_attr(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -1954,52 +2024,56 @@ impl emulator_bus::Bus for I3cBus {
                 Ok(())
             }
             0x22c..0x230 => {
-                self.periph
-                    .write_i3c_ec_soc_mgmt_if_t_r_reg(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_ec_soc_mgmt_if_t_r_reg(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x230..0x234 => {
-                self.periph
-                    .write_i3c_ec_soc_mgmt_if_t_f_reg(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_ec_soc_mgmt_if_t_f_reg(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x234..0x238 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_su_dat_reg(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x238..0x23c => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_hd_dat_reg(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x23c..0x240 => {
-                self.periph
-                    .write_i3c_ec_soc_mgmt_if_t_high_reg(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_ec_soc_mgmt_if_t_high_reg(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x240..0x244 => {
-                self.periph
-                    .write_i3c_ec_soc_mgmt_if_t_low_reg(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_ec_soc_mgmt_if_t_low_reg(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x244..0x248 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_hd_sta_reg(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x248..0x24c => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_su_sta_reg(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x24c..0x250 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_su_sto_reg(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -2015,7 +2089,7 @@ impl emulator_bus::Bus for I3cBus {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_idle_reg(val);
                 Ok(())
             }
-            _ => Err(emulator_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {

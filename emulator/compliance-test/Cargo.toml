@@ -10,6 +10,7 @@ edition = "2021"
 [dependencies]
 clap.workspace = true
 caliptra-emu-types.workspace = true
-emulator-bus.workspace = true
-emulator-cpu.workspace = true
+caliptra-emu-bus.workspace = true
+caliptra-emu-cpu.workspace = true
+emulator-consts.workspace = true
 getrandom.workspace = true

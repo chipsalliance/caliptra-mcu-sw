@@ -5,15 +5,15 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait MboxPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {}
+    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
     fn read_mbox_lock(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mbox_user(&mut self) -> caliptra_emu_types::RvData {
         0
@@ -36,13 +36,15 @@ pub trait MboxPeripheral {
     fn write_mbox_dataout(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_mbox_execute(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxExecute::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::MboxExecute::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mbox_execute(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxExecute::Register,
         >,
@@ -50,13 +52,15 @@ pub trait MboxPeripheral {
     }
     fn read_mbox_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxStatus::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::MboxStatus::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mbox_status(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxStatus::Register,
         >,
@@ -64,13 +68,15 @@ pub trait MboxPeripheral {
     }
     fn read_mbox_unlock(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxUnlock::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::MboxUnlock::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mbox_unlock(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxUnlock::Register,
         >,
@@ -78,13 +84,13 @@ pub trait MboxPeripheral {
     }
     fn read_tap_mode(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::TapMode::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::TapMode::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_tap_mode(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::TapMode::Register,
         >,
@@ -94,14 +100,14 @@ pub trait MboxPeripheral {
 pub struct MboxBus {
     pub periph: Box<dyn MboxPeripheral>,
 }
-impl emulator_bus::Bus for MboxBus {
+impl caliptra_emu_bus::Bus for MboxBus {
     fn read(
         &mut self,
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::LoadAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
             0..4 => Ok(caliptra_emu_types::RvData::from(
@@ -124,7 +130,7 @@ impl emulator_bus::Bus for MboxBus {
             0x24..0x28 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_tap_mode().reg.get(),
             )),
-            _ => Err(emulator_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
@@ -132,9 +138,9 @@ impl emulator_bus::Bus for MboxBus {
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
         val: caliptra_emu_types::RvData,
-    ) -> Result<(), emulator_bus::BusError> {
+    ) -> Result<(), caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::StoreAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             8..0xc => {
@@ -155,25 +161,25 @@ impl emulator_bus::Bus for MboxBus {
             }
             0x18..0x1c => {
                 self.periph
-                    .write_mbox_execute(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mbox_execute(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x1c..0x20 => {
                 self.periph
-                    .write_mbox_status(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mbox_status(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x20..0x24 => {
                 self.periph
-                    .write_mbox_unlock(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mbox_unlock(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x24..0x28 => {
                 self.periph
-                    .write_tap_mode(emulator_bus::ReadWriteRegister::new(val));
+                    .write_tap_mode(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
-            _ => Err(emulator_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {

@@ -21,16 +21,17 @@ mod mctp_transport;
 mod tests;
 
 use crate::i3c_socket::start_i3c_socket;
+use caliptra_emu_bus::{Bus, Clock, Timer};
+use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
 use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_bmc::Bmc;
-use emulator_bus::{Bus, BusConverter, Clock, Timer};
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
-use emulator_consts::{RAM_OFFSET, ROM_SIZE};
-use emulator_cpu::{Cpu, Pic, RvInstr, StepAction};
+use emulator_consts::DEFAULT_CPU_ARGS;
+use emulator_consts::{RAM_ORG, ROM_SIZE};
 use emulator_periph::{
     DummyFlashCtrl, I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp,
 };
@@ -816,10 +817,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
     emulator_periph::DummyDmaCtrl::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
 
-    let delegates: Vec<Box<dyn Bus>> = vec![
-        Box::new(root_bus),
-        Box::new(BusConverter::new(Box::new(soc_to_caliptra))),
-    ];
+    let delegates: Vec<Box<dyn Bus>> = vec![Box::new(root_bus), Box::new(soc_to_caliptra)];
 
     let vendor_pk_hash = cli.vendor_pk_hash.map(|hash| {
         let v = hex::decode(hash).unwrap();
@@ -880,7 +878,9 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         .periph
         .set_dma_rom_sram(dma_rom_sram.clone());
 
-    let mut cpu = Cpu::new(auto_root_bus, clock, pic);
+    let cpu_args = DEFAULT_CPU_ARGS;
+
+    let mut cpu = Cpu::new(auto_root_bus, clock, pic, cpu_args);
     cpu.write_pc(mcu_root_bus_offsets.rom_offset);
     cpu.register_events();
 
@@ -918,7 +918,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
             println!("SoC manifest file is required in active mode");
             exit(-1);
         };
-        let caliptra_firmware = read_binary(&caliptra_firmware, RAM_OFFSET).unwrap();
+        let caliptra_firmware = read_binary(&caliptra_firmware, RAM_ORG).unwrap();
         let soc_manifest = read_binary(&soc_manifest, 0).unwrap();
         bmc.push_recovery_image(caliptra_firmware);
         bmc.push_recovery_image(soc_manifest);

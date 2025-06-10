@@ -10,11 +10,10 @@ edition = "2021"
 [dependencies]
 bitfield.workspace = true
 caliptra-emu-bus.workspace = true
+caliptra-emu-cpu.workspace = true
 caliptra-emu-types.workspace = true
-emulator-bus.workspace = true
+caliptra-emu-derive.workspace = true
 emulator-consts.workspace = true
-emulator-cpu.workspace = true
-emulator-derive.workspace = true
 emulator-registers-generated.workspace = true
 lazy_static.workspace = true
 num_enum.workspace = true

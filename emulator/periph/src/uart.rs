@@ -12,9 +12,9 @@ Abstract:
 
 --*/
 
+use caliptra_emu_bus::{Bus, BusError, Clock, Timer};
+use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
-use emulator_bus::{Bus, BusError, Clock, Timer};
-use emulator_cpu::Irq;
 use std::cell::{Cell, RefCell};
 use std::io::Write;
 use std::rc::Rc;

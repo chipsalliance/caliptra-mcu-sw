@@ -12,9 +12,9 @@ Abstract:
 
 --*/
 
-use emulator_bus::{ActionHandle, Clock, Ram, ReadWriteRegister, Timer};
-use emulator_consts::RAM_OFFSET;
-use emulator_cpu::Irq;
+use caliptra_emu_bus::{ActionHandle, Clock, Ram, ReadWriteRegister, Timer};
+use caliptra_emu_cpu::Irq;
+use emulator_consts::RAM_ORG;
 use emulator_registers_generated::dma::DmaPeripheral;
 use registers_generated::dma_ctrl::bits::*;
 use std::cell::RefCell;
@@ -182,7 +182,7 @@ impl DummyDmaCtrl {
         peripheral?;
         let peripheral = peripheral.unwrap();
         match peripheral {
-            AXIPeripheral::McuSram => Some(addr.lo - RAM_OFFSET),
+            AXIPeripheral::McuSram => Some(addr.lo - RAM_ORG),
             AXIPeripheral::ExternalSram => Some(addr.lo),
         }
     }
@@ -243,7 +243,7 @@ impl DummyDmaCtrl {
 }
 
 impl DmaPeripheral for DummyDmaCtrl {
-    fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {
+    fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {
         self.mcu_sram = Some(ram);
     }
 
@@ -255,16 +255,16 @@ impl DmaPeripheral for DummyDmaCtrl {
 
     fn read_dma_interrupt_state(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::dma_ctrl::bits::DmaInterruptState::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.interrupt_state.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_state.reg.get())
     }
 
     fn write_dma_interrupt_state(
         &mut self,
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::dma_ctrl::bits::DmaInterruptState::Register,
         >,
@@ -286,16 +286,16 @@ impl DmaPeripheral for DummyDmaCtrl {
 
     fn read_dma_interrupt_enable(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::dma_ctrl::bits::DmaInterruptEnable::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
     }
 
     fn write_dma_interrupt_enable(
         &mut self,
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::dma_ctrl::bits::DmaInterruptEnable::Register,
         >,
@@ -358,15 +358,15 @@ impl DmaPeripheral for DummyDmaCtrl {
     }
     fn read_dma_control(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::dma_ctrl::bits::DmaControl::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.control.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.control.reg.get())
     }
     fn write_dma_control(
         &mut self,
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::dma_ctrl::bits::DmaControl::Register,
         >,
@@ -381,15 +381,15 @@ impl DmaPeripheral for DummyDmaCtrl {
     }
     fn read_dma_op_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::dma_ctrl::bits::DmaOpStatus::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.op_status.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.op_status.reg.get())
     }
     fn write_dma_op_status(
         &mut self,
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::dma_ctrl::bits::DmaOpStatus::Register,
         >,
@@ -402,10 +402,10 @@ impl DmaPeripheral for DummyDmaCtrl {
 mod test {
     use super::*;
 
+    use caliptra_emu_bus::{Bus, Clock};
+    use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
-    use emulator_bus::{Bus, Clock};
     use emulator_consts::{EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE};
-    use emulator_cpu::Pic;
     use emulator_registers_generated::root_bus::AutoRootBus;
     use registers_generated::dma_ctrl::bits::{
         DmaControl, DmaInterruptEnable, DmaInterruptState, DmaOpStatus,
@@ -615,7 +615,7 @@ mod test {
 
         // Setup the source and destination addresses
         let source_axi_addr = AxiAddr {
-            lo: RAM_OFFSET,
+            lo: RAM_ORG,
             hi: MCU_SRAM_HI_OFFSET,
         };
         let dest_axi_addr = AxiAddr {
