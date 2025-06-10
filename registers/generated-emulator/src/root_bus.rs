@@ -61,9 +61,9 @@ impl Default for AutoRootBusOffsets {
     }
 }
 pub struct AutoRootBus {
-    delegates: Vec<Box<dyn emulator_bus::Bus>>,
+    delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
     offsets: AutoRootBusOffsets,
-    pub dccm: emulator_bus::Ram,
+    pub dccm: caliptra_emu_bus::Ram,
     pub i3c_periph: Option<crate::i3c::I3cBus>,
     pub primary_flash_periph: Option<crate::primary_flash::PrimaryFlashBus>,
     pub secondary_flash_periph: Option<crate::secondary_flash::SecondaryFlashBus>,
@@ -79,7 +79,7 @@ pub struct AutoRootBus {
 impl AutoRootBus {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        delegates: Vec<Box<dyn emulator_bus::Bus>>,
+        delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
         offsets: Option<AutoRootBusOffsets>,
         i3c_periph: Option<Box<dyn crate::i3c::I3cPeripheral>>,
         primary_flash_periph: Option<Box<dyn crate::primary_flash::PrimaryFlashPeripheral>>,
@@ -96,7 +96,7 @@ impl AutoRootBus {
         Self {
             delegates,
             offsets: offsets.unwrap_or_default(),
-            dccm: emulator_bus::Ram::new(vec![0; 16384i32 as usize]),
+            dccm: caliptra_emu_bus::Ram::new(vec![0; 16384i32 as usize]),
             i3c_periph: i3c_periph.map(|p| crate::i3c::I3cBus { periph: p }),
             primary_flash_periph: primary_flash_periph
                 .map(|p| crate::primary_flash::PrimaryFlashBus { periph: p }),
@@ -114,12 +114,12 @@ impl AutoRootBus {
         }
     }
 }
-impl emulator_bus::Bus for AutoRootBus {
+impl caliptra_emu_bus::Bus for AutoRootBus {
     fn read(
         &mut self,
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
         if addr >= self.offsets.dccm_offset
             && addr < self.offsets.dccm_offset + self.offsets.dccm_size
         {
@@ -197,18 +197,18 @@ impl emulator_bus::Bus for AutoRootBus {
         }
         for delegate in self.delegates.iter_mut() {
             let result = delegate.read(size, addr);
-            if !matches!(result, Err(emulator_bus::BusError::LoadAccessFault)) {
+            if !matches!(result, Err(caliptra_emu_bus::BusError::LoadAccessFault)) {
                 return result;
             }
         }
-        Err(emulator_bus::BusError::LoadAccessFault)
+        Err(caliptra_emu_bus::BusError::LoadAccessFault)
     }
     fn write(
         &mut self,
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
         val: caliptra_emu_types::RvData,
-    ) -> Result<(), emulator_bus::BusError> {
+    ) -> Result<(), caliptra_emu_bus::BusError> {
         if addr >= self.offsets.dccm_offset
             && addr < self.offsets.dccm_offset + self.offsets.dccm_size
         {
@@ -286,11 +286,11 @@ impl emulator_bus::Bus for AutoRootBus {
         }
         for delegate in self.delegates.iter_mut() {
             let result = delegate.write(size, addr, val);
-            if !matches!(result, Err(emulator_bus::BusError::StoreAccessFault)) {
+            if !matches!(result, Err(caliptra_emu_bus::BusError::StoreAccessFault)) {
                 return result;
             }
         }
-        Err(emulator_bus::BusError::StoreAccessFault)
+        Err(caliptra_emu_bus::BusError::StoreAccessFault)
     }
     fn poll(&mut self) {
         if let Some(periph) = self.i3c_periph.as_mut() {

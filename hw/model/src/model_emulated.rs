@@ -2,16 +2,13 @@
 
 use crate::bus_logger::BusLogger;
 use crate::bus_logger::LogFile;
-use crate::bus_logger_mcu::McuBusLogger;
 use crate::trace_path_or_env;
 use crate::InitParams;
 use crate::McuHwModel;
 use crate::Output;
 use anyhow::Result;
-use caliptra_emu_bus::Clock;
-use caliptra_emu_bus::Event;
-use caliptra_emu_cpu::CpuArgs;
-use caliptra_emu_cpu::{Cpu as CaliptraCpu, InstrTracer as CaliptraInstrTracer};
+use caliptra_emu_bus::{Clock, Event};
+use caliptra_emu_cpu::{Cpu, CpuArgs, InstrTracer, Pic};
 use caliptra_emu_periph::ActionCb;
 use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_periph::ReadyForFwCb;
@@ -19,9 +16,6 @@ use caliptra_emu_periph::{CaliptraRootBus, CaliptraRootBusArgs, TbServicesCb};
 use caliptra_hw_model::ModelError;
 use caliptra_hw_model_types::ErrorInjectionMode;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
-use emulator_bus::BusConverter;
-use emulator_bus::Clock as McuClock;
-use emulator_cpu::{Cpu as McuCpu, InstrTracer as McuInstrTracer};
 use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp};
 use emulator_registers_generated::root_bus::AutoRootBus;
 use std::cell::Cell;
@@ -36,11 +30,9 @@ const DEFAULT_AXI_PAUSER: u32 = 0xaaaa_aaaa;
 
 /// Emulated model
 pub struct ModelEmulated {
-    caliptra_cpu: CaliptraCpu<BusLogger<CaliptraRootBus>>,
-    mcu_cpu: McuCpu<McuBusLogger<AutoRootBus>>,
+    cpu: Cpu<BusLogger<AutoRootBus>>,
     output: Output,
-    caliptra_trace_fn: Option<Box<CaliptraInstrTracer<'static>>>,
-    mcu_trace_fn: Option<Box<McuInstrTracer<'static>>>,
+    caliptra_trace_fn: Option<Box<InstrTracer<'static>>>,
     ready_for_fw: Rc<Cell<bool>>,
     cpu_enabled: Rc<Cell<bool>>,
     trace_path: Option<PathBuf>,
@@ -67,7 +59,7 @@ impl McuHwModel for ModelEmulated {
         Self: Sized,
     {
         let clock = Rc::new(Clock::new());
-        let pic = Rc::new(caliptra_emu_cpu::Pic::new());
+        let pic = Rc::new(Pic::new());
         let timer = clock.timer();
 
         let ready_for_fw = Rc::new(Cell::new(false));
@@ -126,30 +118,21 @@ impl McuHwModel for ModelEmulated {
             };
             dccm_dest.copy_from_slice(params.caliptra_dccm);
         }
+
+        root_bus
+            .soc_reg
+            .set_hw_config((1 | if params.active_mode { 1 << 5 } else { 0 }).into());
+
         let _soc_to_caliptra_bus =
             root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(DEFAULT_AXI_PAUSER));
-        let soc_to_caliptra_bus2 =
+
+        let soc_to_caliptra_bus =
             root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(DEFAULT_AXI_PAUSER));
-        let (events_to_caliptra, events_from_caliptra, caliptra_cpu) = {
-            let mut cpu = CaliptraCpu::new(
-                BusLogger::new(root_bus),
-                clock.clone(),
-                pic.clone(),
-                CpuArgs::default(),
-            );
-            if let Some(stack_info) = params.stack_info {
-                cpu.with_stack_info(stack_info);
-            }
-            let (events_to_caliptra, events_from_caliptra) = cpu.register_events();
-            (events_to_caliptra, events_from_caliptra, cpu)
-        };
 
         let mut hasher = DefaultHasher::new();
         std::hash::Hash::hash_slice(params.caliptra_rom, &mut hasher);
         let image_tag = hasher.finish();
 
-        let clock = Rc::new(McuClock::new());
-        let pic = Rc::new(emulator_cpu::Pic::new());
         let bus_args = McuRootBusArgs {
             rom: params.mcu_rom.into(),
             pic: pic.clone(),
@@ -169,10 +152,8 @@ impl McuHwModel for ModelEmulated {
         let otp = Otp::new(&clock.clone(), None, None, None)?;
         let mci = Mci::new(&clock.clone());
 
-        let delegates: Vec<Box<dyn emulator_bus::Bus>> = vec![
-            Box::new(mcu_root_bus),
-            Box::new(BusConverter::new(Box::new(soc_to_caliptra_bus2))),
-        ];
+        let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
+            vec![Box::new(mcu_root_bus), Box::new(soc_to_caliptra_bus)];
 
         let auto_root_bus = AutoRootBus::new(
             delegates,
@@ -190,15 +171,19 @@ impl McuHwModel for ModelEmulated {
             None,
         );
 
-        let mut mcu_cpu = McuCpu::new(McuBusLogger::new(auto_root_bus), clock, pic);
-        mcu_cpu.register_events();
+        let args = CpuArgs::default();
+        let mut cpu = Cpu::new(BusLogger::new(auto_root_bus), clock, pic, args);
+
+        if let Some(stack_info) = params.stack_info {
+            cpu.with_stack_info(stack_info);
+        }
+
+        let (events_to_caliptra, events_from_caliptra) = cpu.register_events();
 
         let mut m = ModelEmulated {
             output,
-            caliptra_cpu,
-            mcu_cpu,
+            cpu,
             caliptra_trace_fn: None,
-            mcu_trace_fn: None,
             ready_for_fw,
             cpu_enabled,
             trace_path: trace_path_or_env(params.trace_path),
@@ -224,11 +209,8 @@ impl McuHwModel for ModelEmulated {
 
     fn step(&mut self) {
         if self.cpu_enabled.get() {
-            self.caliptra_cpu
-                .step(self.caliptra_trace_fn.as_deref_mut());
-            self.mcu_cpu.step(self.mcu_trace_fn.as_deref_mut());
+            self.cpu.step(self.caliptra_trace_fn.as_deref_mut());
         }
-        // TODO: route events between MCU and Caliptra Core
         let events = self.events_from_caliptra.try_iter().collect::<Vec<_>>();
         self.collected_events_from_caliptra.extend(events);
     }
@@ -236,7 +218,7 @@ impl McuHwModel for ModelEmulated {
     fn output(&mut self) -> &mut Output {
         // In case the caller wants to log something, make sure the log has the
         // correct time.env::
-        self.output.sink().set_now(self.caliptra_cpu.clock.now());
+        self.output.sink().set_now(self.cpu.clock.now());
         &mut self.output
     }
 
@@ -251,7 +233,7 @@ impl McuHwModel for ModelEmulated {
             return;
         }
         self.caliptra_trace_fn = None;
-        self.caliptra_cpu.bus.log = None;
+        self.cpu.bus.log = None;
         let Some(trace_path) = &self.trace_path else {
             return;
         };
@@ -263,37 +245,14 @@ impl McuHwModel for ModelEmulated {
                 return;
             }
         };
-        self.caliptra_cpu.bus.log = Some(log.clone());
+        self.cpu.bus.log = Some(log.clone());
         self.caliptra_trace_fn = Some(Box::new(move |pc, _instr| {
             writeln!(log, "pc=0x{pc:x}").unwrap();
         }))
     }
 
-    fn ecc_error_injection(&mut self, mode: ErrorInjectionMode) {
-        match mode {
-            ErrorInjectionMode::None => {
-                self.caliptra_cpu
-                    .bus
-                    .bus
-                    .iccm
-                    .ram()
-                    .borrow_mut()
-                    .error_injection = 0;
-                self.caliptra_cpu.bus.bus.dccm.error_injection = 0;
-            }
-            ErrorInjectionMode::IccmDoubleBitEcc => {
-                self.caliptra_cpu
-                    .bus
-                    .bus
-                    .iccm
-                    .ram()
-                    .borrow_mut()
-                    .error_injection = 2;
-            }
-            ErrorInjectionMode::DccmDoubleBitEcc => {
-                self.caliptra_cpu.bus.bus.dccm.error_injection = 8;
-            }
-        }
+    fn ecc_error_injection(&mut self, _mode: ErrorInjectionMode) {
+        unimplemented!();
     }
 
     fn set_axi_user(&mut self, _axi_user: u32) {
@@ -315,9 +274,6 @@ mod test {
 
     #[test]
     fn test_new_unbooted() {
-        let mcu_rom = mcu_builder::rom_build(None, "").expect("Could not build MCU ROM");
-        let mcu_runtime = &mcu_builder::runtime_build_with_apps(&[], None, false, None, None)
-            .expect("Could not build MCU runtime");
         let mut caliptra_builder =
             mcu_builder::CaliptraBuilder::new(true, None, None, None, None, None, None);
         let caliptra_rom = caliptra_builder
@@ -332,14 +288,10 @@ mod test {
 
         let caliptra_rom = std::fs::read(caliptra_rom).unwrap();
         let caliptra_fw = std::fs::read(caliptra_fw).unwrap();
-        let mcu_rom = std::fs::read(mcu_rom).unwrap();
-        let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
 
         let mut model = DefaultHwModel::new_unbooted(InitParams {
             caliptra_rom: &caliptra_rom,
             caliptra_firmware: &caliptra_fw,
-            mcu_rom: &mcu_rom,
-            mcu_firmware: &mcu_runtime,
             ..Default::default()
         })
         .unwrap();

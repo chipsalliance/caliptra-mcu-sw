@@ -24,7 +24,6 @@ use std::str::FromStr;
 use std::sync::mpsc;
 
 mod bus_logger;
-mod bus_logger_mcu;
 mod fpga_regs;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]

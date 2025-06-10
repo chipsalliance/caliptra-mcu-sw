@@ -11,7 +11,7 @@ use crate::{objcopy, target_binary, OBJCOPY_FLAGS, PROJECT_ROOT, SYSROOT, TARGET
 use anyhow::{anyhow, bail, Result};
 use elf::endian::AnyEndian;
 use elf::ElfBytes;
-use emulator_consts::{RAM_OFFSET, RAM_SIZE};
+use emulator_consts::{RAM_ORG, RAM_SIZE};
 use mcu_config::McuMemoryMap;
 use std::path::PathBuf;
 use std::process::Command;
@@ -216,7 +216,7 @@ pub fn runtime_build_with_apps(
     platform: Option<&str>,
     memory_map: Option<&McuMemoryMap>,
 ) -> Result<String> {
-    let mut app_offset = memory_map.map(|m| m.sram_offset).unwrap_or(RAM_OFFSET) as usize;
+    let mut app_offset = memory_map.map(|m| m.sram_offset).unwrap_or(RAM_ORG) as usize;
     let output_name = output_name.unwrap_or(DEFAULT_RUNTIME_NAME);
     let runtime_bin = target_binary(output_name);
 

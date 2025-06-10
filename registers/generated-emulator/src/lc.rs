@@ -5,13 +5,13 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait LcPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {}
+    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
     fn write_alert_test(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::AlertTest::Register,
         >,
@@ -19,21 +19,23 @@ pub trait LcPeripheral {
     }
     fn read_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::lc_ctrl::bits::Status::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::lc_ctrl::bits::Status::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_claim_transition_if_regwen(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_claim_transition_if_regwen(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
         >,
@@ -41,15 +43,15 @@ pub trait LcPeripheral {
     }
     fn read_claim_transition_if(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_claim_transition_if(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
         >,
@@ -57,23 +59,23 @@ pub trait LcPeripheral {
     }
     fn read_transition_regwen(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::TransitionRegwen::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_transition_cmd(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::TransitionCmd::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_transition_cmd(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::TransitionCmd::Register,
         >,
@@ -81,15 +83,15 @@ pub trait LcPeripheral {
     }
     fn read_transition_ctrl(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_transition_ctrl(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
         >,
@@ -113,15 +115,15 @@ pub trait LcPeripheral {
     fn write_transition_token_3(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_transition_target(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::TransitionTarget::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_transition_target(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::TransitionTarget::Register,
         >,
@@ -136,36 +138,38 @@ pub trait LcPeripheral {
     }
     fn read_lc_state(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::lc_ctrl::bits::LcState::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::lc_ctrl::bits::LcState::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_lc_transition_cnt(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::LcTransitionCnt::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_lc_id_state(&mut self) -> caliptra_emu_types::RvData {
         0
     }
     fn read_hw_revision0(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::HwRevision0::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_hw_revision1(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::HwRevision1::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_device_id_0(&mut self) -> caliptra_emu_types::RvData {
         0
@@ -219,14 +223,14 @@ pub trait LcPeripheral {
 pub struct LcBus {
     pub periph: Box<dyn LcPeripheral>,
 }
-impl emulator_bus::Bus for LcBus {
+impl caliptra_emu_bus::Bus for LcBus {
     fn read(
         &mut self,
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::LoadAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
             4..8 => Ok(caliptra_emu_types::RvData::from(
@@ -285,7 +289,7 @@ impl emulator_bus::Bus for LcBus {
             0x80..0x84 => Ok(self.periph.read_manuf_state_5()),
             0x84..0x88 => Ok(self.periph.read_manuf_state_6()),
             0x88..0x8c => Ok(self.periph.read_manuf_state_7()),
-            _ => Err(emulator_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
@@ -293,34 +297,35 @@ impl emulator_bus::Bus for LcBus {
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
         val: caliptra_emu_types::RvData,
-    ) -> Result<(), emulator_bus::BusError> {
+    ) -> Result<(), caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::StoreAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             0..4 => {
                 self.periph
-                    .write_alert_test(emulator_bus::ReadWriteRegister::new(val));
+                    .write_alert_test(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             8..0xc => {
-                self.periph
-                    .write_claim_transition_if_regwen(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_claim_transition_if_regwen(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xc..0x10 => {
                 self.periph
-                    .write_claim_transition_if(emulator_bus::ReadWriteRegister::new(val));
+                    .write_claim_transition_if(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x14..0x18 => {
                 self.periph
-                    .write_transition_cmd(emulator_bus::ReadWriteRegister::new(val));
+                    .write_transition_cmd(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x18..0x1c => {
                 self.periph
-                    .write_transition_ctrl(emulator_bus::ReadWriteRegister::new(val));
+                    .write_transition_ctrl(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x1c..0x20 => {
@@ -341,14 +346,14 @@ impl emulator_bus::Bus for LcBus {
             }
             0x2c..0x30 => {
                 self.periph
-                    .write_transition_target(emulator_bus::ReadWriteRegister::new(val));
+                    .write_transition_target(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x30..0x34 => {
                 self.periph.write_otp_vendor_test_ctrl(val);
                 Ok(())
             }
-            _ => Err(emulator_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {

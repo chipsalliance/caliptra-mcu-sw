@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_emu_bus::{ActionHandle, Clock, ReadWriteRegister, Timer, TimerAction};
 use caliptra_emu_types::RvData;
-use emulator_bus::{ActionHandle, Clock, ReadWriteRegister, Timer, TimerAction};
 use emulator_registers_generated::mci::MciPeripheral;
 use registers_generated::mci::bits::{
     Error0IntrT, WdtStatus, WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
@@ -56,11 +56,11 @@ impl Mci {
 
 impl MciPeripheral for Mci {
     fn read_mci_reg_wdt_timer1_en(&mut self) -> ReadWriteRegister<u32, WdtTimer1En::Register> {
-        self.cptra_wdt_timer1_en.clone()
+        ReadWriteRegister::new(self.cptra_wdt_timer1_en.reg.get())
     }
 
     fn read_mci_reg_wdt_timer1_ctrl(&mut self) -> ReadWriteRegister<u32, WdtTimer1Ctrl::Register> {
-        self.cptra_wdt_timer1_ctrl.clone()
+        ReadWriteRegister::new(self.cptra_wdt_timer1_ctrl.reg.get())
     }
 
     fn read_mci_reg_wdt_timer1_timeout_period(&mut self, index: usize) -> RvData {
@@ -68,11 +68,11 @@ impl MciPeripheral for Mci {
     }
 
     fn read_mci_reg_wdt_timer2_en(&mut self) -> ReadWriteRegister<u32, WdtTimer2En::Register> {
-        self.cptra_wdt_timer2_en.clone()
+        ReadWriteRegister::new(self.cptra_wdt_timer2_en.reg.get())
     }
 
     fn read_mci_reg_wdt_timer2_ctrl(&mut self) -> ReadWriteRegister<u32, WdtTimer2Ctrl::Register> {
-        self.cptra_wdt_timer2_ctrl.clone()
+        ReadWriteRegister::new(self.cptra_wdt_timer2_ctrl.reg.get())
     }
 
     fn read_mci_reg_wdt_timer2_timeout_period(&mut self, index: usize) -> RvData {
@@ -80,7 +80,7 @@ impl MciPeripheral for Mci {
     }
 
     fn read_mci_reg_wdt_status(&mut self) -> ReadWriteRegister<u32, WdtStatus::Register> {
-        self.cptra_wdt_status.clone()
+        ReadWriteRegister::new(self.cptra_wdt_status.reg.get())
     }
 
     fn read_mci_reg_wdt_cfg(&mut self, index: usize) -> RvData {
@@ -231,8 +231,8 @@ impl MciPeripheral for Mci {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliptra_emu_bus::Bus;
     use caliptra_emu_types::RvSize;
-    use emulator_bus::Bus;
     use emulator_registers_generated::mci::MciBus;
     use tock_registers::registers::InMemoryRegister;
 

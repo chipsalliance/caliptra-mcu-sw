@@ -15,12 +15,12 @@ Abstract:
 use std::collections::VecDeque;
 use std::convert::TryInto;
 
-use caliptra_emu_types::{RvData, RvSize};
-use emulator_bus::ReadWriteRegisterArray;
-use emulator_bus::{
+use caliptra_emu_bus::ReadWriteRegisterArray;
+use caliptra_emu_bus::{
     ActionHandle, BusError, Clock, ReadOnlyRegister, ReadWriteRegister, Timer, WriteOnlyRegister,
 };
-use emulator_derive::Bus;
+use caliptra_emu_derive::Bus;
+use caliptra_emu_types::{RvData, RvSize};
 use tock_registers::fields::FieldValue;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use tock_registers::register_bitfields;
@@ -610,7 +610,7 @@ impl SpiHost {
 mod tests {
     use super::*;
     use bitfield::Bit;
-    use emulator_bus::Bus;
+    use caliptra_emu_bus::Bus;
     use std::fmt::write;
 
     const CONTROL_REG_OFFSET: RvData = 0x10;
