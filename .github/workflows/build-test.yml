@@ -100,26 +100,6 @@ jobs:
           cargo --config "$EXTRA_CARGO_CONFIG" xtask precheckin
           sccache --show-stats
 
-      - name: Checkout spdm-emu repository
-        uses: actions/checkout@v4
-        with:
-          repository: parvathib/spdm-emu
-          ref: pbhogaraju/get-measurements
-          path: spdm-emu
-          submodules: recursive
-
-      - name: Build spdm-emu
-        run: |
-          pushd spdm-emu
-          git submodule update --init --recursive
-          mkdir build
-          pushd build
-          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=openssl ..
-          make copy_sample_key
-          make
-          popd
-          popd
-
       - name: Run all tests
         run: |
           export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
