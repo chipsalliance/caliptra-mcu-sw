@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 extern crate alloc;
 
-use crate::config::*;
+use super::config::*;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use libapi_caliptra::certificate::CertContext;

@@ -14,5 +14,5 @@ Abstract:
 
 fn main() {
     println!("cargo:rerun-if-changed=../app_layout.ld");
-    println!("cargo:rerun-if-changed=../image-loader-app-layout.ld");
+    println!("cargo:rerun-if-changed=../user-app-layout.ld");
 }

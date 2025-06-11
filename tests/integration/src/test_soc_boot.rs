@@ -84,7 +84,7 @@ mod test {
 
     // Helper function to retrieve the streaming boot PLDM firmware manifest
     // Identifier and classification should match the device's component image information
-    // found in platforms/emulator/runtime/userspace/apps/image-loader/src/config.rs
+    // found in platforms/emulator/runtime/userspace/apps/user/image-loader/config.rs
     fn get_streaming_boot_pldm_fw_manifest(dev_uuid: &[u8], image: &[u8]) -> FirmwareManifest {
         FirmwareManifest {
             package_header_information: PackageHeaderInformation {
@@ -136,7 +136,7 @@ mod test {
     // Helper function to retrieve the device UUID
     fn get_device_uuid() -> [u8; 16] {
         // This an arbitrary UUID that should match the one used in the device's ID record
-        // found in platforms/emulator/runtime/userspace/apps/image-loader/src/config.rs
+        // found in platforms/emulator/runtime/userspace/apps/user/image-loader/config.rs
         [
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
             0x0F, 0x10,

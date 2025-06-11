@@ -2108,31 +2108,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "image-loader-app"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "critical-section",
- "embassy-executor",
- "embassy-sync",
- "embedded-alloc",
- "libapi-caliptra",
- "libsyscall-caliptra",
- "libtock",
- "libtock_console",
- "libtock_debug_panic",
- "libtock_platform",
- "libtock_runtime",
- "libtock_unittest",
- "libtockasync",
- "mcu-config-emulator",
- "pldm-common",
- "pldm-lib",
- "portable-atomic",
- "romtime",
-]
-
-[[package]]
 name = "indexmap"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3542,27 +3517,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spdm-app"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "critical-section",
- "embassy-executor",
- "embedded-alloc",
- "libapi-caliptra",
- "libsyscall-caliptra",
- "libtock",
- "libtock_console",
- "libtock_debug_panic",
- "libtock_platform",
- "libtock_runtime",
- "libtock_unittest",
- "libtockasync",
- "portable-atomic",
- "spdm-lib",
-]
-
-[[package]]
 name = "spdm-lib"
 version = "0.1.0"
 dependencies = [
@@ -4039,6 +3993,32 @@ dependencies = [
  "form_urlencoded",
  "idna",
  "percent-encoding",
+]
+
+[[package]]
+name = "user-app"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "critical-section",
+ "embassy-executor",
+ "embassy-sync",
+ "embedded-alloc",
+ "libapi-caliptra",
+ "libsyscall-caliptra",
+ "libtock",
+ "libtock_console",
+ "libtock_debug_panic",
+ "libtock_platform",
+ "libtock_runtime",
+ "libtock_unittest",
+ "libtockasync",
+ "mcu-config-emulator",
+ "pldm-common",
+ "pldm-lib",
+ "portable-atomic",
+ "romtime",
+ "spdm-lib",
 ]
 
 [[package]]

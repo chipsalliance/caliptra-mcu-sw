@@ -1,12 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-#![cfg_attr(target_arch = "riscv32", no_std)]
-#![cfg_attr(target_arch = "riscv32", no_main)]
-#![feature(impl_trait_in_assoc_type)]
-#![allow(static_mut_refs)]
-
-mod config;
-
 #[cfg(any(
     feature = "test-pldm-discovery",
     feature = "test-pldm-fw-update",
@@ -14,17 +7,20 @@ mod config;
 ))]
 mod pldm_fdops_mock;
 
+mod config;
+
 use core::fmt::Write;
 #[allow(unused)]
 use libsyscall_caliptra::flash::SpiFlash;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
-use libtockasync::TockExecutor;
 #[allow(unused)]
 use mcu_config_emulator::flash::{IMAGE_A_PARTITION, IMAGE_B_PARTITION};
 #[allow(unused)]
 use pldm_lib::daemon::PldmService;
 
+#[allow(unused)]
+use crate::EXECUTOR;
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
@@ -33,65 +29,8 @@ use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 use libapi_caliptra::image_loading::{ImageLoader, ImageSource, PldmFirmwareDeviceParams};
 use libsyscall_caliptra::DefaultSyscalls;
 
-#[cfg(target_arch = "riscv32")]
-mod riscv;
-
-pub(crate) struct EmulatorExiter {}
-pub(crate) static mut EMULATOR_EXITER: EmulatorExiter = EmulatorExiter {};
-impl romtime::Exit for EmulatorExiter {
-    fn exit(&mut self, code: u32) {
-        // Safety: This is a safe memory address to write to for exiting the emulator.
-        unsafe {
-            // By writing to this address we can exit the emulator.
-            core::ptr::write_volatile(0x1000_2000 as *mut u32, code);
-        }
-    }
-}
-
-static EXECUTOR: LazyLock<TockExecutor> = LazyLock::new(TockExecutor::new);
-
-#[cfg(not(target_arch = "riscv32"))]
-pub(crate) fn kernel() -> libtock_unittest::fake::Kernel {
-    use libtock_unittest::fake;
-    let kernel = fake::Kernel::new();
-    let console = fake::Console::new();
-    kernel.add_driver(&console);
-    kernel
-}
-
-#[cfg(not(target_arch = "riscv32"))]
-fn main() {
-    // build a fake kernel so that the app will at least start without Tock
-    let _kernel = kernel();
-    // call the main function
-    libtockasync::start_async(start());
-}
-
 #[embassy_executor::task]
-async fn start() {
-    unsafe {
-        #[allow(static_mut_refs)]
-        romtime::set_exiter(&mut EMULATOR_EXITER);
-    }
-    async_main().await;
-}
-
-pub(crate) async fn async_main() {
-    let mut console_writer = Console::<DefaultSyscalls>::writer();
-    writeln!(console_writer, "IMAGE_LOADER_APP: Hello async world!").unwrap();
-    EXECUTOR
-        .get()
-        .spawner()
-        .spawn(image_loading_task())
-        .unwrap();
-
-    loop {
-        EXECUTOR.get().poll();
-    }
-}
-
-#[embassy_executor::task]
-async fn image_loading_task() {
+pub async fn image_loading_task() {
     #[cfg(any(
         feature = "test-pldm-streaming-boot",
         feature = "test-flash-based-boot",
@@ -107,7 +46,8 @@ async fn image_loading_task() {
     }
 }
 
-pub async fn image_loading() -> Result<(), ErrorCode> {
+#[allow(dead_code)]
+async fn image_loading() -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     writeln!(console_writer, "IMAGE_LOADER_APP: Hello async world!").unwrap();
     #[cfg(feature = "test-pldm-streaming-boot")]

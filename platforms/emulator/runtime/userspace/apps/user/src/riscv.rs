@@ -9,11 +9,11 @@ use embedded_alloc::Heap;
 use libtock::console::Console;
 use libtock::runtime::{set_main, stack_size};
 
-const HEAP_SIZE: usize = 0x400;
+const HEAP_SIZE: usize = 0x1400;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-stack_size! {0x3000}
+stack_size! {0x6000}
 set_main! {main}
 
 fn main() {
@@ -23,7 +23,7 @@ fn main() {
     unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
 
     let mut console_writer = Console::writer();
-    writeln!(console_writer, "Hello world! from IMAGE_LOADER main").unwrap();
+    writeln!(console_writer, "Hello world! from SPDM main").unwrap();
 
     libtockasync::start_async(crate::start());
 }

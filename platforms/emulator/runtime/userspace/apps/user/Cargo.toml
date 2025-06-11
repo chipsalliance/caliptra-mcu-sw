@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "image-loader-app"
+name = "user-app"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -24,6 +24,7 @@ portable-atomic.workspace = true
 pldm-common.workspace = true
 pldm-lib.workspace = true
 romtime.workspace = true
+spdm-lib.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 libtock_unittest.workspace = true
@@ -46,10 +47,10 @@ test-flash-ctrl-read-write-page = []
 test-flash-ctrl-erase-page = []
 test-flash-storage-read-write = []
 test-flash-storage-erase = []
+test-flash-usermode = []
 test-mctp-ctrl-cmds = []
 test-mctp-capsule-loopback = []
 test-mctp-user-loopback = []
-test-flash-usermode = []
 test-mcu-rom-flash-access = []
 test-pldm-request-response = []
 test-pldm-discovery = []
