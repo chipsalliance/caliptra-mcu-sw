@@ -221,36 +221,52 @@ mod test {
         }
     }
 
+    fn run_test(feature: &str, example_app: bool) {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        println!("Compiling test firmware {}", feature);
+        let feature = feature.replace("_", "-");
+        let test_runtime = compile_runtime(&feature, example_app);
+        let i3c_port = "65534".to_string();
+        let test = run_runtime(
+            &feature,
+            ROM.to_path_buf(),
+            test_runtime,
+            i3c_port,
+            true,  // active mode is always true
+            false, //set this to true if you want to run in manufacturing mode
+            None,
+            None,
+            None,
+        );
+        assert_eq!(0, test.code().unwrap_or_default());
+
+        // force the compiler to keep the lock
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     #[macro_export]
     macro_rules! run_test_options {
         ($test:ident, $example_app:expr) => {
             #[test]
             fn $test() {
-                let lock = TEST_LOCK.lock().unwrap();
-                lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-                println!("Compiling test firmware {}", stringify!($test));
-                let feature = stringify!($test).replace("_", "-");
-                let test_runtime = compile_runtime(&feature, $example_app);
-                let i3c_port = "65534".to_string();
-                let test = run_runtime(
-                    &feature,
-                    ROM.to_path_buf(),
-                    test_runtime,
-                    i3c_port,
-                    true,  // active mode is always true
-                    false, //set this to true if you want to run in manufacturing mode
-                    None,
-                    None,
-                    None,
-                );
-                assert_eq!(0, test.code().unwrap_or_default());
-
-                // force the compiler to keep the lock
-                lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                run_test(stringify!($test), $example_app);
             }
         };
     }
+
+    #[macro_export]
+    macro_rules! run_test_options_nightly {
+        ($test:ident, $example_app:expr) => {
+            #[ignore]
+            #[test]
+            fn $test() {
+                run_test(stringify!($test), $example_app);
+            }
+        };
+    }
+
     #[macro_export]
     macro_rules! run_test {
         ($test:ident) => {
@@ -258,6 +274,9 @@ mod test {
         };
         ($test:ident, example_app) => {
             run_test_options!($test, true);
+        };
+        ($test:ident, nightly) => {
+            run_test_options_nightly!($test, true);
         };
     }
 
@@ -284,7 +303,7 @@ mod test {
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);
     run_test!(test_pldm_fw_update_e2e);
-    run_test!(test_spdm_validator);
+    run_test!(test_spdm_validator, nightly);
 
     /// This tests a full active mode boot run through with Caliptra, including
     /// loading MCU's firmware from Caliptra over the recovery interface.
