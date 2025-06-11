@@ -276,7 +276,7 @@ mod test {
             run_test_options!($test, true);
         };
         ($test:ident, nightly) => {
-            run_test_options_nightly!($test, true);
+            run_test_options_nightly!($test, false);
         };
     }
 
