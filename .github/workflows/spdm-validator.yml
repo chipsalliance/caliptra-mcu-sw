@@ -7,11 +7,9 @@ on:
     - cron: '0 0 * * *'
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
-  push:
-    branches: ["spdm-validator-nightly-only"]
 
 jobs:
-  build_and_test:
+  spdm_validator_tests:
     runs-on: ubuntu-24.04
 
     env:
