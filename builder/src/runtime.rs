@@ -422,6 +422,7 @@ MEMORY
     rom (rx)  : ORIGIN = $RUNTIME_OFFSET, LENGTH = $RUNTIME_SIZE
     prog (rx) : ORIGIN = $APPS_OFFSET, LENGTH = $APPS_SIZE
     ram (rwx) : ORIGIN = $DATA_RAM_OFFSET, LENGTH = $DATA_RAM_SIZE
+    dccm (rw) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_SIZE
 }
 
 INCLUDE platforms/emulator/runtime/kernel_layout.ld

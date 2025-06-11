@@ -272,6 +272,14 @@ pub unsafe fn main() {
         MMIORegion(
             NAPOTRegionSpec::new(MCU_MEMORY_MAP.pic_offset as u32 as *const u8, 0x1_0000).unwrap(),
         ),
+        // DCCM
+        MMIORegion(
+            NAPOTRegionSpec::new(
+                MCU_MEMORY_MAP.dccm_offset as u32 as *const u8,
+                MCU_MEMORY_MAP.dccm_size as usize,
+            )
+            .unwrap(),
+        ),
         // and the rest of memory is reserved for the kernel
         // we're done with the ROM so we can mask include that as well
         MMIORegion(NAPOTRegionSpec::new(0x8000_0000 as *const u8, 0x8000_0000).unwrap()),
