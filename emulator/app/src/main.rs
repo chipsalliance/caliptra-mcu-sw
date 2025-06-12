@@ -839,6 +839,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         Some(Box::new(primary_flash_controller)),
         Some(Box::new(secondary_flash_controller)),
         Some(Box::new(mci)),
+        None,
         Some(Box::new(dma_ctrl)),
         None,
         None,

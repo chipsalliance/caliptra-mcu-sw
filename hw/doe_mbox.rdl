@@ -1,0 +1,47 @@
+addrmap doe_mbox {
+    reg {
+        field {
+            sw = r;
+            onread = rset;
+            desc = "DOE Mailbox lock register for mailbox access. Reading 0 will set the lock.";
+        } LOCK[0:0];
+    } DOE_MBOX_LOCK @ 0x00;
+
+    reg {
+        field {
+            sw = rw;
+            reset = 0;
+            desc = "Data length for mailbox access in bytes. Cleared when lock is cleared.";
+        } LENGTH[31:0];
+    } DOE_MBOX_DLEN @ 0x04;
+
+    reg {
+        field {
+            sw = r;
+            desc = "Set by MCU when new data is ready for SoC to read. Cleared by SoC after data is read.";
+        } DATA_READY[0:0];
+        field {
+            sw = r;
+            desc = "Indicates mailbox error.";
+        } ERROR[1:1];
+    } DOE_MBOX_STATUS @ 0x08;
+
+    reg {
+        field {
+            sw = rw;
+            reset = 0;
+            desc = "Data ready indicator set by SoC. When set to 1, data is ready to be consumed by MCU for processing.";
+        } DATA_READY[0:0];
+    } DOE_MBOX_DATA_READY @ 0x0C;
+
+    mem { 
+        name = "DOE_MBOX_SRAM";
+        desc = "Mailbox SRAM for DOE mailbox accesses. Accessible by either SoC or MCU depending on security configuration. 
+                [br] Max size is 1MB (1 << 18 DWORDS as per the PCI-DOE specification). This is configurable by the integration team.
+                [br]MCU Access: RW*
+                [br]SOC Access: RW*";
+        memwidth = 32;
+        mementries = 262144; // 1MB / 4 bytes per entry = 262144 entries
+        sw = rw;
+    } external doe_mbox_sram @ 0x2F001000; // Define it after DOE_MBOX register block
+};

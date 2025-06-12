@@ -15,6 +15,8 @@ pub struct AutoRootBusOffsets {
     pub secondary_flash_size: u32,
     pub mci_offset: u32,
     pub mci_size: u32,
+    pub doe_mbox_offset: u32,
+    pub doe_mbox_size: u32,
     pub dma_offset: u32,
     pub dma_size: u32,
     pub mbox_offset: u32,
@@ -43,6 +45,8 @@ impl Default for AutoRootBusOffsets {
             secondary_flash_size: 0x20,
             mci_offset: 0x2100_0000,
             mci_size: 0xe0_0000,
+            doe_mbox_offset: 0x2f00_0000,
+            doe_mbox_size: 0x2f10_1000,
             dma_offset: 0x3000_0000,
             dma_size: 0x24,
             mbox_offset: 0x3002_0000,
@@ -68,6 +72,7 @@ pub struct AutoRootBus {
     pub primary_flash_periph: Option<crate::primary_flash::PrimaryFlashBus>,
     pub secondary_flash_periph: Option<crate::secondary_flash::SecondaryFlashBus>,
     pub mci_periph: Option<crate::mci::MciBus>,
+    pub doe_mbox_periph: Option<crate::doe_mbox::DoeMboxBus>,
     pub dma_periph: Option<crate::dma::DmaBus>,
     pub mbox_periph: Option<crate::mbox::MboxBus>,
     pub sha512_acc_periph: Option<crate::sha512_acc::Sha512AccBus>,
@@ -85,6 +90,7 @@ impl AutoRootBus {
         primary_flash_periph: Option<Box<dyn crate::primary_flash::PrimaryFlashPeripheral>>,
         secondary_flash_periph: Option<Box<dyn crate::secondary_flash::SecondaryFlashPeripheral>>,
         mci_periph: Option<Box<dyn crate::mci::MciPeripheral>>,
+        doe_mbox_periph: Option<Box<dyn crate::doe_mbox::DoeMboxPeripheral>>,
         dma_periph: Option<Box<dyn crate::dma::DmaPeripheral>>,
         mbox_periph: Option<Box<dyn crate::mbox::MboxPeripheral>>,
         sha512_acc_periph: Option<Box<dyn crate::sha512_acc::Sha512AccPeripheral>>,
@@ -103,6 +109,7 @@ impl AutoRootBus {
             secondary_flash_periph: secondary_flash_periph
                 .map(|p| crate::secondary_flash::SecondaryFlashBus { periph: p }),
             mci_periph: mci_periph.map(|p| crate::mci::MciBus { periph: p }),
+            doe_mbox_periph: doe_mbox_periph.map(|p| crate::doe_mbox::DoeMboxBus { periph: p }),
             dma_periph: dma_periph.map(|p| crate::dma::DmaBus { periph: p }),
             mbox_periph: mbox_periph.map(|p| crate::mbox::MboxBus { periph: p }),
             sha512_acc_periph: sha512_acc_periph
@@ -149,6 +156,13 @@ impl emulator_bus::Bus for AutoRootBus {
         {
             if let Some(periph) = self.mci_periph.as_mut() {
                 return periph.read(size, addr - self.offsets.mci_offset);
+            }
+        }
+        if addr >= self.offsets.doe_mbox_offset
+            && addr < self.offsets.doe_mbox_offset + self.offsets.doe_mbox_size
+        {
+            if let Some(periph) = self.doe_mbox_periph.as_mut() {
+                return periph.read(size, addr - self.offsets.doe_mbox_offset);
             }
         }
         if addr >= self.offsets.dma_offset && addr < self.offsets.dma_offset + self.offsets.dma_size
@@ -240,6 +254,13 @@ impl emulator_bus::Bus for AutoRootBus {
                 return periph.write(size, addr - self.offsets.mci_offset, val);
             }
         }
+        if addr >= self.offsets.doe_mbox_offset
+            && addr < self.offsets.doe_mbox_offset + self.offsets.doe_mbox_size
+        {
+            if let Some(periph) = self.doe_mbox_periph.as_mut() {
+                return periph.write(size, addr - self.offsets.doe_mbox_offset, val);
+            }
+        }
         if addr >= self.offsets.dma_offset && addr < self.offsets.dma_offset + self.offsets.dma_size
         {
             if let Some(periph) = self.dma_periph.as_mut() {
@@ -305,6 +326,9 @@ impl emulator_bus::Bus for AutoRootBus {
         if let Some(periph) = self.mci_periph.as_mut() {
             periph.poll();
         }
+        if let Some(periph) = self.doe_mbox_periph.as_mut() {
+            periph.poll();
+        }
         if let Some(periph) = self.dma_periph.as_mut() {
             periph.poll();
         }
@@ -341,6 +365,9 @@ impl emulator_bus::Bus for AutoRootBus {
             periph.warm_reset();
         }
         if let Some(periph) = self.mci_periph.as_mut() {
+            periph.warm_reset();
+        }
+        if let Some(periph) = self.doe_mbox_periph.as_mut() {
             periph.warm_reset();
         }
         if let Some(periph) = self.dma_periph.as_mut() {
@@ -381,6 +408,9 @@ impl emulator_bus::Bus for AutoRootBus {
         if let Some(periph) = self.mci_periph.as_mut() {
             periph.update_reset();
         }
+        if let Some(periph) = self.doe_mbox_periph.as_mut() {
+            periph.update_reset();
+        }
         if let Some(periph) = self.dma_periph.as_mut() {
             periph.update_reset();
         }
@@ -417,6 +447,9 @@ impl emulator_bus::Bus for AutoRootBus {
             periph.incoming_event(event.clone());
         }
         if let Some(periph) = self.mci_periph.as_mut() {
+            periph.incoming_event(event.clone());
+        }
+        if let Some(periph) = self.doe_mbox_periph.as_mut() {
             periph.incoming_event(event.clone());
         }
         if let Some(periph) = self.dma_periph.as_mut() {
@@ -458,6 +491,9 @@ impl emulator_bus::Bus for AutoRootBus {
             periph.register_outgoing_events(sender.clone());
         }
         if let Some(periph) = self.mci_periph.as_mut() {
+            periph.register_outgoing_events(sender.clone());
+        }
+        if let Some(periph) = self.doe_mbox_periph.as_mut() {
             periph.register_outgoing_events(sender.clone());
         }
         if let Some(periph) = self.dma_periph.as_mut() {
