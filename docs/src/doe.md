@@ -1,6 +1,6 @@
 # DOE Stack
 The Caliptra subsystem supports SPDM, Secure-SPDM over PCI Data Object Exchange (DOE) mailbox protocol. The following diagram gives the over view of the DOE stack.
-
+![The DOE Tock stack](images/doe_tock_stack.svg)
 
 ```mermaid
 sequenceDiagram
