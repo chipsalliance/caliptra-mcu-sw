@@ -14,19 +14,19 @@ DOE Send stack:
 sequenceDiagram
     participant Host as "Host(TSM)"
     participant SoC_PCI_DOE_FSM as "SoC PCI DOE Listener"
-    participant MCU_DOE_MBOX_DRIVER as "MCU DOE Mailbox Driver"
+    participant MCU_DOE_TRANSPORT_DRIVER as "MCU DOE Transport Driver"
     participant DOE_CAPSULE as "DOE Capsule"
     participant SPDM_APP as "SPDM App"
     SPDM_APP -->> DOE_CAPSULE: App invokes receive_message<br> for SPDM or Secure-SPDM Data Object type 
     Host ->> Host: Host waits until<br> the `DOE Busy` bit is cleared in <br>DOE Status Register
     loop While there is remaining DOE object to send
         Host ->> SoC_PCI_DOE_FSM  : Host starts sending DOE data object
-        SoC_PCI_DOE_FSM ->> SoC_PCI_DOE_FSM: Prepare the message <br>in DOE Mailbox SRAM
+        SoC_PCI_DOE_FSM ->> SoC_PCI_DOE_FSM: Prepare the message in staging area <br> (eg: Mailbox or shared memory)
         Note right of Host: Repeat until Host sets DOE Go bit
         Host ->> SoC_PCI_DOE_FSM: Host writes `DOE Go` bit <br>in DOE Control Register<br> to indicate message ready
     end
-    SoC_PCI_DOE_FSM ->> MCU_DOE_MBOX_DRIVER: Notify that a new DOE object<br> is available to consume
-    MCU_DOE_MBOX_DRIVER ->> DOE_CAPSULE: receive() callback
+    SoC_PCI_DOE_FSM ->> MCU_DOE_TRANSPORT_DRIVER: Notify that a new DOE object<br> is available to consume
+    MCU_DOE_TRANSPORT_DRIVER ->> DOE_CAPSULE: receive() callback
 
     alt if DOE object is `Data Object 0`
         DOE_CAPSULE ->> DOE_CAPSULE: Copy DOE object payload <br>into local buffer
@@ -36,11 +36,11 @@ sequenceDiagram
         DOE_CAPSULE ->> DOE_CAPSULE: Copy DOE object payload <br>into app buffer
         DOE_CAPSULE -->> SPDM_APP: Invoke upcall to userspace<br> to receive() message
     end
-    DOE_CAPSULE ->> MCU_DOE_MBOX_DRIVER: set_receive_buffer()<br> to set the receive buffer for the next DOE object
+    DOE_CAPSULE ->> MCU_DOE_TRANSPORT_DRIVER: set_receive_buffer()<br> to set the receive buffer for the next DOE object
     SPDM_APP ->> SPDM_APP: App processes message <br>and prepares DOE response
     SPDM_APP -->> DOE_CAPSULE: App invokes send_message <br>to send DOE response
-    DOE_CAPSULE ->> MCU_DOE_MBOX_DRIVER: invoke send_message()<br> to send the DOE response
-    MCU_DOE_MBOX_DRIVER ->> SoC_PCI_DOE_FSM: Notify that DOE response is ready to send
+    DOE_CAPSULE ->> MCU_DOE_TRANSPORT_DRIVER: invoke transmit()<br> to send the DOE response
+    MCU_DOE_TRANSPORT_DRIVER ->> SoC_PCI_DOE_FSM: Notify that DOE response is ready to send
     SoC_PCI_DOE_FSM ->> Host: Set `Data Object Ready` bit in<br> DOE Status Register
 ```
 ## DOE Capsule
@@ -99,7 +99,7 @@ pub struct App {
 }
 
 pub struct DoeDriver {
-    doe_mailbox: & dyn DoeMailbox,
+    doe_transport: & dyn DoeTransport,
     apps: Grant<
         App,
         UpcallCount<{ upcall::COUNT }>,
@@ -112,48 +112,48 @@ pub struct DoeDriver {
 
 ```
 
-## DOE Mailbox Trait
-The DOE mailbox trait is a standard interface to send and receive the DOE messages. The trait is implemented by the SoC specific MCU DOE Mailbox peripheral driver and is used to send and receive the DOE messages over the PCIe bus.
+## DOE Transport Trait
+The DOE Transport trait defines a platform-agnostic interface for sending and receiving DOE data objects. Integrators must provide a SoC-specific implementation of this trait to enable PCI-DOE communication with the host.
 
 ```Rust
 /// MAX PCI-DOE DATA OBJECT LENGTH
 const MAX_PCI_DOE_LEN: usize = 1 << 18; // In DWORDS
 const MAX_PCI_DOE_LEN_BYTES: usize = MAX_PCI_DOE_LEN * 4; // In Bytes
 
-pub trait DoeMailboxTxClient {
-    /// Called when the DOE message transmission is done.
+pub trait DoeTransportTxClient {
+    /// Called when the DOE data object transmission is done.
     fn send_done(&self, tx_buf: &'static mut [u8], result: Result<(), ErrorCode>);
 }
 
-pub trait DoeMailboxRxClient {
-    /// Called when a DOE message is received. 
+pub trait DoeTransportRxClient {
+    /// Called when a DOE data object is received. 
     fn receive(&self, rx_buf: &'static mut [u8], len: usize) -> Result<(), ErrorCode>;
 }
 
 
-pub trait DoeMailbox {
-    /// Sets the transmit and receive clients for the DOE mailbox.
-    fn set_tx_client(&self, client: &'static dyn DoeMailboxTxClient);
-    fn set_rx_client(&self, client: &'static dyn DoeMailboxRxClient);
+pub trait DoeTransport {
+    /// Sets the transmit and receive clients for the DOE transport instance
+    fn set_tx_client(&self, client: &'static dyn DoeTransportTxClient);
+    fn set_rx_client(&self, client: &'static dyn DoeTransportRxClient);
 
-    /// Sets the buffer used for receiving incoming DOE messages.
+    /// Sets the buffer used for receiving incoming DOE Objects.
     /// This function should be called by the Rx client upon receiving the `receive()` callback.
     fn set_receive_buffer(&self, rx_buf: &'static mut [u8]);
 
-    /// Gets the maximum size of the message that can be sent or received over DOE Mailbox.
-    fn get_max_message_size(&self) -> usize;
+    /// Gets the maximum size of the data object that can be sent or received over DOE Transport.
+    fn max_data_object_size(&self) -> usize;
 
-    /// Enable the DOE mailbox driver.
+    /// Enable the DOE transport driver instance.
     fn enable(&self) -> Result<(), ErrorCode>;
 
-    /// Disable the DOE mailbox driver.
+    /// Disable the DOE transport driver instance.
     fn disable(&self) -> Result<(), ErrorCode>;
 
-    /// Send message to be transmitted over the DOE mailbox.
+    /// Send DOE Object to be transmitted over SoC specific DOE transport.
     /// 
     /// # Arguments
-    /// * `doe_hdr` - A reference to the DOE header, this is copied into the mailbox at the start of the message.
-    /// * `doe_payload` - A reference to the DOE payload, this is copied into the mailbox after the header.
+    /// * `doe_hdr` - A reference to the DOE header
+    /// * `doe_payload` - A reference to the DOE payload
     /// * `payload_len` - The length of the payload in bytes
-    fn transmit_message(&self, doe_hdr: &'static [u8; 8], doe_payload: &'static mut [u8], payload_len: usize) -> Result<(), (ErrorCode, &'static mut [u8])>;
+    fn transmit(&self, doe_hdr: &'static [u8; 8], doe_payload: &'static mut [u8], payload_len: usize) -> Result<(), (ErrorCode, &'static mut [u8])>;
 }
