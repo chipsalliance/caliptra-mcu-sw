@@ -32,6 +32,9 @@ use romtime::CaliptraSoC;
 use rv32i::csr;
 use rv32i::pmp::{NAPOTRegionSpec, TORRegionSpec};
 
+use crate::instantiate_flash_partitions;
+use mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
+
 // These symbols are defined in the linker script.
 extern "C" {
     /// Beginning of the ROM region containing app images.
@@ -159,14 +162,14 @@ impl SyscallDriverLookup for VeeR {
             capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
             mcu_config_emulator::flash::DRIVER_NUM_START
                 ..=mcu_config_emulator::flash::DRIVER_NUM_END => {
-                let index = driver_num - mcu_config_emulator::flash::DRIVER_NUM_START;
-                if index < mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT {
-                    f(core::prelude::v1::Some(
-                        self.flash_partitions[index].unwrap(),
-                    ))
-                } else {
-                    f(None)
+                for index in 0..mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT {
+                    if let Some(partition) = self.flash_partitions[index] {
+                        if partition.get_driver_num() == driver_num {
+                            return f(Some(partition));
+                        }
+                    }
                 }
+                return f(None);
             }
 
             _ => f(None),
@@ -453,33 +456,17 @@ pub unsafe fn main() {
                 flash_driver::flash_ctrl::EmulatedFlashCtrl
             ));
 
-    // Instantiate a flashUser for image partition driver
-    let image_par_fl_user = components::flash::FlashUserComponent::new(mux_primary_flash).finalize(
-        components::flash_user_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
-    );
-
     let mut flash_partitions: [Option<
         &'static capsules_runtime::flash_partition::FlashPartition<'static>,
     >; mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT] =
         [None; mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT];
-    let mut flash_partition_index = 0;
 
-    for primary_flash_partition in mcu_config_emulator::flash::PRIMARY_FLASH.partitions {
-        flash_partitions[flash_partition_index] = Some(
-            runtime_components::flash_partition::FlashPartitionComponent::new(
-                board_kernel,
-                primary_flash_partition.driver_num as usize, // Driver number
-                image_par_fl_user,
-                primary_flash_partition.offset, // Start address of the partition. Place holder for testing
-                primary_flash_partition.size,   // Length of the partition. Place holder for testing
-            )
-            .finalize(crate::flash_partition_component_static!(
-                virtual_flash::FlashUser<'static, flash_driver::flash_ctrl::EmulatedFlashCtrl>,
-                capsules_runtime::flash_partition::BUF_LEN
-            )),
-        );
-        flash_partition_index += 1;
-    }
+    instantiate_flash_partitions!(
+        flash_partition_list_primary,
+        flash_partitions,
+        board_kernel,
+        mux_primary_flash
+    );
 
     // Create a mux for the recovery flash controller
     let mux_secondary_flash =
@@ -488,28 +475,12 @@ pub unsafe fn main() {
                 flash_driver::flash_ctrl::EmulatedFlashCtrl
             ));
 
-    // Instantiate a flashUser for recovery image partition driver
-    let secondary_image_par_fl_user =
-        components::flash::FlashUserComponent::new(mux_secondary_flash).finalize(
-            components::flash_user_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
-        );
-
-    for secondary_flash_partition in mcu_config_emulator::flash::SECONDARY_FLASH.partitions {
-        flash_partitions[flash_partition_index] = Some(
-            runtime_components::flash_partition::FlashPartitionComponent::new(
-                board_kernel,
-                secondary_flash_partition.driver_num as usize, // Driver number
-                secondary_image_par_fl_user,
-                secondary_flash_partition.offset, // Start address of the partition. Place holder for testing
-                secondary_flash_partition.size, // Length of the partition. Place holder for testing
-            )
-            .finalize(crate::flash_partition_component_static!(
-                virtual_flash::FlashUser<'static, flash_driver::flash_ctrl::EmulatedFlashCtrl>,
-                capsules_runtime::flash_partition::BUF_LEN
-            )),
-        );
-        flash_partition_index += 1;
-    }
+    instantiate_flash_partitions!(
+        flash_partition_list_secondary,
+        flash_partitions,
+        board_kernel,
+        mux_secondary_flash
+    );
 
     let dma = runtime_components::dma::DmaComponent::new(
         &emulator_peripherals.dma,

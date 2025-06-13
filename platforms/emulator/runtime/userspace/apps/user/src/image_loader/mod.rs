@@ -15,7 +15,10 @@ use libsyscall_caliptra::flash::SpiFlash;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
 #[allow(unused)]
-use mcu_config_emulator::flash::{IMAGE_A_PARTITION, IMAGE_B_PARTITION};
+use mcu_config_emulator::flash::{
+    PartitionStatus, PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION,
+    IMAGE_B_PARTITION, PARTITION_TABLE,
+};
 #[allow(unused)]
 use pldm_lib::daemon::PldmService;
 
@@ -26,8 +29,12 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 #[allow(unused)]
-use libapi_caliptra::image_loading::{ImageLoader, ImageSource, PldmFirmwareDeviceParams};
+use libapi_caliptra::image_loading::{
+    FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams, PldmImageLoader,
+};
 use libsyscall_caliptra::DefaultSyscalls;
+#[allow(unused)]
+use zerocopy::{FromBytes, IntoBytes};
 
 #[embassy_executor::task]
 pub async fn image_loading_task() {
@@ -56,12 +63,8 @@ async fn image_loading() -> Result<(), ErrorCode> {
             descriptors: &config::streaming_boot_consts::DESCRIPTOR.get()[..],
             fw_params: config::streaming_boot_consts::STREAMING_BOOT_FIRMWARE_PARAMS.get(),
         };
-        let flash_syscall = SpiFlash::new(IMAGE_A_PARTITION.driver_num);
-        let pldm_image_loader: ImageLoader = ImageLoader::new(
-            ImageSource::Pldm(fw_params),
-            flash_syscall,
-            EXECUTOR.get().spawner(),
-        );
+        let pldm_image_loader: PldmImageLoader =
+            PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner());
         pldm_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
             .await?;
@@ -72,16 +75,48 @@ async fn image_loading() -> Result<(), ErrorCode> {
     }
     #[cfg(feature = "test-flash-based-boot")]
     {
-        let flash_syscall = SpiFlash::new(IMAGE_A_PARTITION.driver_num);
-        let flash_image_loader: ImageLoader =
-            ImageLoader::new(ImageSource::Flash, flash_syscall, EXECUTOR.get().spawner());
+        let flash_partition_syscall = SpiFlash::<DefaultSyscalls>::new(PARTITION_TABLE.driver_num);
+        // Read partition table from flash
+        let mut partition_table_data: [u8; core::mem::size_of::<PartitionTable>()] =
+            [0; core::mem::size_of::<PartitionTable>()];
+        flash_partition_syscall
+            .read(
+                0,
+                core::mem::size_of::<PartitionTable>(),
+                &mut partition_table_data,
+            )
+            .await?;
+
+        let (mut partition_table, _) =
+            PartitionTable::read_from_prefix(&partition_table_data).map_err(|_| ErrorCode::Fail)?;
+        // Verify checksum
+        let checksum_calculator = StandAloneChecksumCalculator::new();
+        if !partition_table.verify_checksum(&checksum_calculator) {
+            return Err(ErrorCode::Fail);
+        }
+        let (_, active_partition) = partition_table.get_active_partition();
+        if active_partition.is_none() {
+            return Err(ErrorCode::Fail);
+        }
+
+        let flash_syscall = SpiFlash::new(active_partition.unwrap().driver_num);
+        let flash_image_loader: FlashImageLoader = FlashImageLoader::new(flash_syscall);
         flash_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
             .await?;
         flash_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2)
             .await?;
-        flash_image_loader.finalize().await?;
+
+        partition_table.set_active_partition_status(PartitionStatus::BootSuccessful);
+        partition_table.populate_checksum(&checksum_calculator);
+        flash_partition_syscall
+            .write(
+                0,
+                core::mem::size_of::<PartitionTable>(),
+                &partition_table.as_bytes(),
+            )
+            .await?;
     }
 
     #[cfg(any(
