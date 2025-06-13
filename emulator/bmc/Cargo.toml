@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 caliptra-emu-bus.workspace = true
+caliptra-emu-cpu.workspace = true
 caliptra-emu-periph.workspace = true
-emulator-bus.workspace = true
 smlang.workspace = true
 tock-registers.workspace = true

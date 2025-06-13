@@ -12,11 +12,11 @@ Abstract:
 
 --*/
 
+use caliptra_emu_bus::{ActionHandle, Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
+use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::{RvData, RvSize};
 use core::convert::TryInto;
-use emulator_bus::{ActionHandle, Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
-use emulator_consts::{RAM_OFFSET, RAM_SIZE, ROM_DEDICATED_RAM_OFFSET, ROM_DEDICATED_RAM_SIZE};
-use emulator_cpu::Irq;
+use emulator_consts::{RAM_ORG, RAM_SIZE, ROM_DEDICATED_RAM_ORG, ROM_DEDICATED_RAM_SIZE};
 use emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
 use emulator_registers_generated::secondary_flash::SecondaryFlashPeripheral;
 use registers_generated::primary_flash_ctrl;
@@ -230,10 +230,10 @@ impl DummyFlashCtrl {
 
     // Checks the DMA RAM access type for the given address.
     fn dma_ram_access_check(&self, addr: u32) -> DmaRamAccessType {
-        if addr >= RAM_OFFSET && addr + Self::PAGE_SIZE as u32 <= RAM_OFFSET + RAM_SIZE {
+        if addr >= RAM_ORG && addr + Self::PAGE_SIZE as u32 <= RAM_ORG + RAM_SIZE {
             DmaRamAccessType::McuRt
-        } else if addr >= ROM_DEDICATED_RAM_OFFSET
-            && addr + Self::PAGE_SIZE as u32 <= ROM_DEDICATED_RAM_OFFSET + ROM_DEDICATED_RAM_SIZE
+        } else if addr >= ROM_DEDICATED_RAM_ORG
+            && addr + Self::PAGE_SIZE as u32 <= ROM_DEDICATED_RAM_ORG + ROM_DEDICATED_RAM_SIZE
         {
             DmaRamAccessType::McuRom
         } else {
@@ -263,14 +263,14 @@ impl DummyFlashCtrl {
         let (dma_ram, dma_start_addr) = match access_type {
             DmaRamAccessType::McuRt => (
                 self.dma_ram.as_ref().expect("DMA ram must be set").clone(),
-                page_addr - RAM_OFFSET,
+                page_addr - RAM_ORG,
             ),
             DmaRamAccessType::McuRom => (
                 self.dma_rom_sram
                     .as_ref()
                     .expect("DMA ram for rom must be set")
                     .clone(),
-                page_addr - ROM_DEDICATED_RAM_OFFSET,
+                page_addr - ROM_DEDICATED_RAM_ORG,
             ),
             DmaRamAccessType::Invalid => return Err(FlashOpError::DmaRamAccessError),
         };
@@ -306,14 +306,14 @@ impl DummyFlashCtrl {
         let (dma_ram, dma_start_addr) = match access_type {
             DmaRamAccessType::McuRt => (
                 self.dma_ram.as_ref().expect("DMA ram must be set").clone(),
-                page_addr - RAM_OFFSET,
+                page_addr - RAM_ORG,
             ),
             DmaRamAccessType::McuRom => (
                 self.dma_rom_sram
                     .as_ref()
                     .expect("DMA ram for rom must be set")
                     .clone(),
-                page_addr - ROM_DEDICATED_RAM_OFFSET,
+                page_addr - ROM_DEDICATED_RAM_ORG,
             ),
             DmaRamAccessType::Invalid => return Err(FlashOpError::DmaRamAccessError),
         };
@@ -393,12 +393,12 @@ impl DummyFlashCtrl {
 }
 
 impl PrimaryFlashPeripheral for DummyFlashCtrl {
-    fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {
+    fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {
         self.dma_ram = Some(ram);
     }
 
     // Assign ROM dedicated SRAM as the DMA RAM for ROM flash operations.
-    fn set_dma_rom_sram(&mut self, ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {
+    fn set_dma_rom_sram(&mut self, ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {
         self.dma_rom_sram = Some(ram);
     }
 
@@ -410,16 +410,16 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
 
     fn read_fl_interrupt_state(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.interrupt_state.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_state.reg.get())
     }
 
     fn write_fl_interrupt_state(
         &mut self,
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
         >,
@@ -441,16 +441,16 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
 
     fn read_fl_interrupt_enable(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
     }
 
     fn write_fl_interrupt_enable(
         &mut self,
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
@@ -503,16 +503,16 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
 
     fn read_fl_control(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::primary_flash_ctrl::bits::FlControl::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.control.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.control.reg.get())
     }
 
     fn write_fl_control(
         &mut self,
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::primary_flash_ctrl::bits::FlControl::Register,
         >,
@@ -534,16 +534,16 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
 
     fn read_op_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.op_status.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.op_status.reg.get())
     }
 
     fn write_op_status(
         &mut self,
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
         >,
@@ -553,20 +553,20 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
 
     fn read_ctrl_regwen(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.ctrl_regwen.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.ctrl_regwen.reg.get())
     }
 }
 
 impl SecondaryFlashPeripheral for DummyFlashCtrl {
-    fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {
+    fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {
         self.dma_ram = Some(ram);
     }
 
-    fn set_dma_rom_sram(&mut self, ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {
+    fn set_dma_rom_sram(&mut self, ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {
         self.dma_rom_sram = Some(ram);
     }
 
@@ -581,16 +581,16 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
 
     fn read_fl_interrupt_state(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.interrupt_state.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_state.reg.get())
     }
 
     fn write_fl_interrupt_state(
         &mut self,
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
         >,
@@ -612,16 +612,16 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
 
     fn read_fl_interrupt_enable(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
     }
 
     fn write_fl_interrupt_enable(
         &mut self,
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
@@ -674,16 +674,16 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
 
     fn read_fl_control(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::primary_flash_ctrl::bits::FlControl::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.control.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.control.reg.get())
     }
 
     fn write_fl_control(
         &mut self,
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::primary_flash_ctrl::bits::FlControl::Register,
         >,
@@ -705,16 +705,16 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
 
     fn read_op_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.op_status.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.op_status.reg.get())
     }
 
     fn write_op_status(
         &mut self,
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
         >,
@@ -724,11 +724,11 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
 
     fn read_ctrl_regwen(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(self.ctrl_regwen.reg.get())
+        caliptra_emu_bus::ReadWriteRegister::new(self.ctrl_regwen.reg.get())
     }
 }
 
@@ -736,11 +736,11 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
 mod test {
     use super::*;
 
+    use caliptra_emu_bus::{Bus, Clock};
+    use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
     use core::panic;
-    use emulator_bus::{Bus, Clock};
-    use emulator_consts::{RAM_OFFSET, RAM_SIZE};
-    use emulator_cpu::Pic;
+    use emulator_consts::{RAM_ORG, RAM_SIZE};
     use emulator_registers_generated::root_bus::AutoRootBus;
     use registers_generated::primary_flash_ctrl::bits::{
         FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
@@ -841,12 +841,12 @@ mod test {
         data: Option<&[u8]>,
     ) -> Option<u32> {
         // Check if ref_addr is within the range of DCCM
-        if ref_addr < RAM_OFFSET || ref_addr + size as u32 > RAM_OFFSET + RAM_SIZE {
+        if ref_addr < RAM_ORG || ref_addr + size as u32 > RAM_ORG + RAM_SIZE {
             return None;
         }
 
         // Allocate a page buffer from dma_ram for I/O operation
-        let addr = ref_addr - RAM_OFFSET;
+        let addr = ref_addr - RAM_ORG;
         let mut dma_ram = dma_ram.borrow_mut();
         let page_buf = &mut dma_ram.data_mut()[addr as usize..(addr + size as u32) as usize];
 
@@ -1273,7 +1273,7 @@ mod test {
         );
 
         // Read the page buffer data into a slice
-        let start_offset = (r_page_buf_addr.unwrap() - RAM_OFFSET) as usize;
+        let start_offset = (r_page_buf_addr.unwrap() - RAM_ORG) as usize;
         let r_page_buf = dummy_dma_ram.borrow_mut().data_mut()
             [start_offset..start_offset + DummyFlashCtrl::PAGE_SIZE]
             .to_vec();

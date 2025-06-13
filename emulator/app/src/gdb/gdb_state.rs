@@ -13,7 +13,7 @@ Abstract:
 --*/
 
 use super::gdb_target::GdbTarget;
-use emulator_bus::Bus;
+use caliptra_emu_bus::Bus;
 use gdbstub::common::Signal;
 use gdbstub::conn::{Connection, ConnectionExt};
 use gdbstub::stub::SingleThreadStopReason;

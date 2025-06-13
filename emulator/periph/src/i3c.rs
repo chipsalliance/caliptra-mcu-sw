@@ -8,9 +8,9 @@ Abstract:
 
 use crate::i3c_protocol::{I3cController, I3cTarget, I3cTcriResponseXfer, ResponseDescriptor};
 use crate::{DynamicI3cAddress, I3cIncomingCommandClient, IbiDescriptor, ReguDataTransferCommand};
+use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
+use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
-use emulator_bus::{Clock, ReadWriteRegister, Timer};
-use emulator_cpu::Irq;
 use emulator_registers_generated::i3c::I3cPeripheral;
 use registers_generated::i3c::bits::{
     ExtcapHeader, InterruptEnable, InterruptStatus, StbyCrCapabilities, StbyCrDeviceAddr,
@@ -197,26 +197,26 @@ impl I3cPeripheral for I3c {
 
     fn read_i3c_ec_tti_interrupt_enable(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::InterruptEnable::Register,
     > {
-        self.interrupt_enable.clone()
+        caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
     }
 
     fn read_i3c_ec_tti_interrupt_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::InterruptStatus::Register,
     > {
-        self.interrupt_status.clone()
+        caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_status.reg.get())
     }
 
     fn write_i3c_ec_tti_interrupt_status(
         &mut self,
 
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::InterruptStatus::Register,
         >,
@@ -231,7 +231,7 @@ impl I3cPeripheral for I3c {
     fn write_i3c_ec_tti_interrupt_enable(
         &mut self,
 
-        val: emulator_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::InterruptEnable::Register,
         >,
@@ -334,9 +334,9 @@ mod tests {
     use crate::i3c_protocol::{
         DynamicI3cAddress, I3cTcriCommand, I3cTcriCommandXfer, ImmediateDataTransferCommand,
     };
+    use caliptra_emu_bus::Bus;
+    use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::{RvAddr, RvSize};
-    use emulator_bus::Bus;
-    use emulator_cpu::Pic;
     use emulator_registers_generated::root_bus::AutoRootBus;
 
     const TTI_RX_DESC_QUEUE_PORT: RvAddr = 0x1dc;

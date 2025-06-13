@@ -421,18 +421,18 @@ fn emu_make_peripheral_trait(
             let tyn = camel_ident(ty.name.as_ref().unwrap());
             let read_val = quote! { registers_generated :: #rcrate :: bits :: #tyn :: Register };
             let prim = format_ident!("{}", ty.width.rust_primitive_name());
-            let fulltyn = quote! { emulator_bus::ReadWriteRegister::<#prim, #read_val> };
+            let fulltyn = quote! { caliptra_emu_bus::ReadWriteRegister::<#prim, #read_val> };
             if r.can_read() {
                 if r.is_array() {
                     fn_tokens.extend(quote! {
                         fn #read_name(&mut self, _index: usize) -> #fulltyn {
-                            emulator_bus::ReadWriteRegister :: new(0)
+                            caliptra_emu_bus::ReadWriteRegister :: new(0)
                         }
                     });
                 } else {
                     fn_tokens.extend(quote! {
                         fn #read_name(&mut self) -> #fulltyn {
-                            emulator_bus::ReadWriteRegister :: new(0)
+                            caliptra_emu_bus::ReadWriteRegister :: new(0)
                         }
                     });
                 }
@@ -453,7 +453,7 @@ fn emu_make_peripheral_trait(
     let mut tokens = TokenStream::new();
     tokens.extend(quote! {
         pub trait #periph {
-            fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {}
+            fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
             fn poll(&mut self) {}
             fn warm_reset(&mut self) {}
             fn update_reset(&mut self) {}
@@ -574,14 +574,14 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
                     if offset + r.offset == 0 {
                         write_tokens.extend(quote! {
                             #a..#b => {
-                                self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val), addr as usize / 4);
+                                self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val), addr as usize / 4);
                                 Ok(())
                             }
                         });
                     } else {
                         write_tokens.extend(quote! {
                             #a..#b => {
-                                self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val), (addr as usize - #a) / 4);
+                                self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val), (addr as usize - #a) / 4);
                                 Ok(())
                             }
                         });
@@ -589,7 +589,7 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
                 } else {
                     write_tokens.extend(quote! {
                         #a..#b => {
-                            self.periph.#write_name(emulator_bus::ReadWriteRegister::new(val));
+                            self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val));
                             Ok(())
                         }
                     });
@@ -603,23 +603,23 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
         pub struct #bus {
             pub periph: Box<dyn #periph>,
         }
-        impl emulator_bus::Bus for #bus {
-            fn read(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+        impl caliptra_emu_bus::Bus for #bus {
+            fn read(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
                 if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-                    return Err(emulator_bus::BusError::LoadAddrMisaligned);
+                    return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
                 }
                 match addr {
                     #read_tokens
-                    _ => Err(emulator_bus::BusError::LoadAccessFault),
+                    _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
                 }
             }
-            fn write(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr, val: caliptra_emu_types::RvData) -> Result<(), emulator_bus::BusError> {
+            fn write(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr, val: caliptra_emu_types::RvData) -> Result<(), caliptra_emu_bus::BusError> {
                 if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-                    return Err(emulator_bus::BusError::StoreAddrMisaligned);
+                    return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
                 }
                 match addr {
                     #write_tokens
-                    _ => Err(emulator_bus::BusError::StoreAccessFault),
+                    _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
                 }
             }
             fn poll(&mut self) {
@@ -683,10 +683,10 @@ fn emu_make_root_bus<'a>(
         if let Some(dccm_bits) = defines.get("RV_DCCM_BITS") {
             let ram_size = 1 << *dccm_bits;
             field_tokens.extend(quote! {
-                pub dccm: emulator_bus::Ram,
+                pub dccm: caliptra_emu_bus::Ram,
             });
             constructor_tokens.extend(quote! {
-                dccm: emulator_bus::Ram::new(vec![0; #ram_size as usize]),
+                dccm: caliptra_emu_bus::Ram::new(vec![0; #ram_size as usize]),
             });
 
             offset_fields.extend(quote! {
@@ -805,14 +805,14 @@ fn emu_make_root_bus<'a>(
         }
 
         pub struct AutoRootBus {
-            delegates: Vec<Box<dyn emulator_bus::Bus>>,
+            delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
             offsets: AutoRootBusOffsets,
             #field_tokens
         }
         impl AutoRootBus {
             #[allow(clippy::too_many_arguments)]
             pub fn new(
-                delegates: Vec<Box<dyn emulator_bus::Bus>>,
+                delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
                 offsets: Option<AutoRootBusOffsets>,
                 #constructor_params_tokens
             ) -> Self {
@@ -823,26 +823,26 @@ fn emu_make_root_bus<'a>(
                 }
             }
         }
-        impl emulator_bus::Bus for AutoRootBus {
-            fn read(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+        impl caliptra_emu_bus::Bus for AutoRootBus {
+            fn read(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
                 #read_tokens
                 for delegate in self.delegates.iter_mut() {
                     let result = delegate.read(size, addr);
-                    if !matches!(result, Err(emulator_bus::BusError::LoadAccessFault)) {
+                    if !matches!(result, Err(caliptra_emu_bus::BusError::LoadAccessFault)) {
                         return result;
                     }
                 }
-                Err(emulator_bus::BusError::LoadAccessFault)
+                Err(caliptra_emu_bus::BusError::LoadAccessFault)
             }
-            fn write(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr, val: caliptra_emu_types::RvData) -> Result<(), emulator_bus::BusError> {
+            fn write(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr, val: caliptra_emu_types::RvData) -> Result<(), caliptra_emu_bus::BusError> {
                 #write_tokens
                 for delegate in self.delegates.iter_mut() {
                     let result = delegate.write(size, addr, val);
-                    if !matches!(result, Err(emulator_bus::BusError::StoreAccessFault)) {
+                    if !matches!(result, Err(caliptra_emu_bus::BusError::StoreAccessFault)) {
                         return result;
                     }
                 }
-                Err(emulator_bus::BusError::StoreAccessFault)
+                Err(caliptra_emu_bus::BusError::StoreAccessFault)
             }
             fn poll(&mut self) {
                 #poll_tokens

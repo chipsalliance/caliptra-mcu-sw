@@ -9,6 +9,5 @@ authors.workspace = true
 [dependencies]
 caliptra-emu-bus.workspace = true
 caliptra-emu-types.workspace = true
-emulator-bus.workspace = true
 registers-generated.workspace = true
 tock-registers.workspace = true

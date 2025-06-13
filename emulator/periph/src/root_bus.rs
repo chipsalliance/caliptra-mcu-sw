@@ -13,13 +13,13 @@ Abstract:
 --*/
 
 use crate::{spi_host::SpiHost, EmuCtrl, Uart};
+use caliptra_emu_bus::{Bus, BusError, Clock, Ram, Rom};
 use caliptra_emu_bus::{Device, Event, EventData};
+use caliptra_emu_cpu::{Pic, PicMmioRegisters};
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
-use emulator_bus::{Bus, BusError, Clock, Ram, Rom};
 use emulator_consts::{
-    EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE, ROM_DEDICATED_RAM_OFFSET, ROM_DEDICATED_RAM_SIZE,
+    EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE, ROM_DEDICATED_RAM_ORG, ROM_DEDICATED_RAM_SIZE,
 };
-use emulator_cpu::{Pic, PicMmioRegisters};
 use std::{
     cell::RefCell,
     path::PathBuf,
@@ -59,7 +59,7 @@ impl Default for McuRootBusOffsets {
             spi_size: 0x40,
             ram_offset: 0x4000_0000,
             ram_size: 0x60000,
-            rom_dedicated_ram_offset: ROM_DEDICATED_RAM_OFFSET,
+            rom_dedicated_ram_offset: ROM_DEDICATED_RAM_ORG,
             rom_dedicated_ram_size: ROM_DEDICATED_RAM_SIZE,
             pic_offset: 0x6000_0000,
             external_test_sram_offset: 0x8000_0000,

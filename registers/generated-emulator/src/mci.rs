@@ -5,7 +5,7 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait MciPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {}
+    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
@@ -23,13 +23,13 @@ pub trait MciPeripheral {
     fn write_mci_reg_fw_capabilities(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_mci_reg_cap_lock(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::CapLock::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::CapLock::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_cap_lock(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::CapLock::Register,
         >,
@@ -37,9 +37,9 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_hw_rev_id(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwRevId::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwRevId::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_fw_rev_id(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
@@ -47,15 +47,15 @@ pub trait MciPeripheral {
     fn write_mci_reg_fw_rev_id(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
     fn read_mci_reg_hw_config0(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig0::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig0::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_hw_config1(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig1::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig1::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_fw_flow_status(&mut self) -> caliptra_emu_types::RvData {
         0
@@ -63,37 +63,47 @@ pub trait MciPeripheral {
     fn write_mci_reg_fw_flow_status(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_mci_reg_hw_flow_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwFlowStatus::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::HwFlowStatus::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_reset_reason(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::ResetReason::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::ResetReason::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_reset_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::ResetStatus::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::ResetStatus::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_security_state(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::SecurityState::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::SecurityState::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_hw_error_fatal(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwErrorFatal::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::HwErrorFatal::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_hw_error_fatal(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::HwErrorFatal::Register,
         >,
@@ -101,13 +111,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_agg_error_fatal(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::AggErrorFatal::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::AggErrorFatal::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_agg_error_fatal(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::AggErrorFatal::Register,
         >,
@@ -115,15 +127,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_hw_error_non_fatal(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::HwErrorNonFatal::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_hw_error_non_fatal(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::HwErrorNonFatal::Register,
         >,
@@ -131,15 +143,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_agg_error_non_fatal(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::AggErrorNonFatal::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_agg_error_non_fatal(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::AggErrorNonFatal::Register,
         >,
@@ -172,15 +184,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_internal_hw_error_fatal_mask(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_internal_hw_error_fatal_mask(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
         >,
@@ -188,15 +200,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_internal_hw_error_non_fatal_mask(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_internal_hw_error_non_fatal_mask(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
         >,
@@ -204,15 +216,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_internal_agg_error_fatal_mask(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_internal_agg_error_fatal_mask(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
         >,
@@ -220,15 +232,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_internal_agg_error_non_fatal_mask(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_internal_agg_error_non_fatal_mask(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
         >,
@@ -245,13 +257,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_wdt_timer1_en(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtTimer1En::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::WdtTimer1En::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_wdt_timer1_en(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::WdtTimer1En::Register,
         >,
@@ -259,13 +273,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_wdt_timer1_ctrl(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtTimer1Ctrl::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::WdtTimer1Ctrl::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_wdt_timer1_ctrl(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::WdtTimer1Ctrl::Register,
         >,
@@ -285,13 +301,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_wdt_timer2_en(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtTimer2En::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::WdtTimer2En::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_wdt_timer2_en(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::WdtTimer2En::Register,
         >,
@@ -299,13 +317,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_wdt_timer2_ctrl(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtTimer2Ctrl::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::WdtTimer2Ctrl::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_wdt_timer2_ctrl(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::WdtTimer2Ctrl::Register,
         >,
@@ -325,9 +345,9 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_wdt_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtStatus::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtStatus::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_wdt_cfg(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
@@ -355,13 +375,15 @@ pub trait MciPeripheral {
     fn write_mci_reg_mcu_rv_mtimecmp_h(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_mci_reg_reset_request(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::ResetRequest::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::ResetRequest::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_reset_request(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::ResetRequest::Register,
         >,
@@ -369,35 +391,43 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_mci_bootfsm_go(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register> {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>
+    {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_mci_bootfsm_go(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>,
+        _val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Go::Register,
+        >,
     ) {
     }
     fn read_mci_reg_cptra_boot_go(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register> {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>
+    {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_cptra_boot_go(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>,
+        _val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Go::Register,
+        >,
     ) {
     }
     fn read_mci_reg_fw_sram_exec_region_size(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::FwSramExecRegionSize::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_fw_sram_exec_region_size(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::FwSramExecRegionSize::Register,
         >,
@@ -423,15 +453,15 @@ pub trait MciPeripheral {
     fn read_mci_reg_mbox0_axi_user_lock(
         &mut self,
         _index: usize,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxxAxiUserLock::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_mbox0_axi_user_lock(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxxAxiUserLock::Register,
         >,
@@ -450,15 +480,15 @@ pub trait MciPeripheral {
     fn read_mci_reg_mbox1_axi_user_lock(
         &mut self,
         _index: usize,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxxAxiUserLock::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_mbox1_axi_user_lock(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxxAxiUserLock::Register,
         >,
@@ -500,39 +530,51 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_debug_in(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Debug::Register> {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Debug::Register>
+    {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_debug_in(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Debug::Register>,
+        _val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Debug::Register,
+        >,
     ) {
     }
     fn read_mci_reg_debug_out(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Debug::Register> {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Debug::Register>
+    {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_debug_out(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Debug::Register>,
+        _val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Debug::Register,
+        >,
     ) {
     }
     fn read_mci_reg_ss_debug_intent(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::soc::bits::SsDebugIntent::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::soc::bits::SsDebugIntent::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_ss_config_done_sticky(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::SsConfigDone::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::SsConfigDone::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_ss_config_done_sticky(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::SsConfigDone::Register,
         >,
@@ -540,13 +582,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_ss_config_done(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::SsConfigDone::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::SsConfigDone::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_ss_config_done(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::SsConfigDone::Register,
         >,
@@ -566,15 +610,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_global_intr_en_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_global_intr_en_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
         >,
@@ -582,13 +626,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error0_intr_en_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Error0IntrEnT::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Error0IntrEnT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_error0_intr_en_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error0IntrEnT::Register,
         >,
@@ -596,13 +642,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error1_intr_en_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Error1IntrEnT::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Error1IntrEnT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_error1_intr_en_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error1IntrEnT::Register,
         >,
@@ -610,13 +658,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif0_intr_en_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Notif0IntrEnT::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Notif0IntrEnT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_notif0_intr_en_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif0IntrEnT::Register,
         >,
@@ -624,13 +674,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif1_intr_en_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Notif1IntrEnT::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Notif1IntrEnT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_notif1_intr_en_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif1IntrEnT::Register,
         >,
@@ -638,29 +690,31 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_global_intr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::GlobalIntrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_global_intr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::GlobalIntrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error0_internal_intr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Error0IntrT::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Error0IntrT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_error0_internal_intr_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error0IntrT::Register,
         >,
@@ -668,13 +722,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error1_internal_intr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Error1IntrT::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Error1IntrT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_error1_internal_intr_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error1IntrT::Register,
         >,
@@ -682,13 +738,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif0_internal_intr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Notif0IntrT::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Notif0IntrT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_notif0_internal_intr_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif0IntrT::Register,
         >,
@@ -696,13 +754,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif1_internal_intr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Notif1IntrT::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Notif1IntrT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_notif1_internal_intr_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif1IntrT::Register,
         >,
@@ -710,15 +770,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error0_intr_trig_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error0IntrTrigT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_error0_intr_trig_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error0IntrTrigT::Register,
         >,
@@ -726,15 +786,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error1_intr_trig_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error1IntrTrigT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_error1_intr_trig_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error1IntrTrigT::Register,
         >,
@@ -742,15 +802,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif0_intr_trig_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif0IntrTrigT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_notif0_intr_trig_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif0IntrTrigT::Register,
         >,
@@ -758,15 +818,15 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif1_intr_trig_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif1IntrTrigT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_notif1_intr_trig_r(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif1IntrTrigT::Register,
         >,
@@ -1614,681 +1674,683 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_internal_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_incr_r(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mcu_trace_buffer_csr_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::lc_ctrl::bits::Status::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::lc_ctrl::bits::Status::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mcu_trace_buffer_csr_config(&mut self) -> caliptra_emu_types::RvData {
         0
@@ -2309,9 +2371,9 @@ pub trait MciPeripheral {
     fn write_mcu_mbox0_csr_mbox_sram(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
     fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mcu_mbox0_csr_mbox_user(&mut self) -> caliptra_emu_types::RvData {
         0
@@ -2322,15 +2384,15 @@ pub trait MciPeripheral {
     fn write_mcu_mbox0_csr_mbox_target_user(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_mcu_mbox0_csr_mbox_target_user_valid(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox0_csr_mbox_target_user_valid(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
@@ -2346,13 +2408,15 @@ pub trait MciPeripheral {
     fn write_mcu_mbox0_csr_mbox_dlen(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_mcu_mbox0_csr_mbox_execute(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxExecute::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::MboxExecute::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox0_csr_mbox_execute(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxExecute::Register,
         >,
@@ -2360,15 +2424,15 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox0_csr_mbox_target_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox0_csr_mbox_target_status(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
@@ -2376,13 +2440,15 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox0_csr_mbox_cmd_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxCmdStatus::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxCmdStatus::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox0_csr_mbox_cmd_status(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
@@ -2390,9 +2456,11 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox0_csr_mbox_hw_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxHwStatus::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxHwStatus::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mcu_mbox1_csr_mbox_sram(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
@@ -2400,9 +2468,9 @@ pub trait MciPeripheral {
     fn write_mcu_mbox1_csr_mbox_sram(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
     fn read_mcu_mbox1_csr_mbox_lock(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
     {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mcu_mbox1_csr_mbox_user(&mut self) -> caliptra_emu_types::RvData {
         0
@@ -2413,15 +2481,15 @@ pub trait MciPeripheral {
     fn write_mcu_mbox1_csr_mbox_target_user(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_mcu_mbox1_csr_mbox_target_user_valid(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox1_csr_mbox_target_user_valid(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
@@ -2437,13 +2505,15 @@ pub trait MciPeripheral {
     fn write_mcu_mbox1_csr_mbox_dlen(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_mcu_mbox1_csr_mbox_execute(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxExecute::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::MboxExecute::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox1_csr_mbox_execute(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxExecute::Register,
         >,
@@ -2451,15 +2521,15 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox1_csr_mbox_target_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox1_csr_mbox_target_status(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
@@ -2467,13 +2537,15 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox1_csr_mbox_cmd_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxCmdStatus::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxCmdStatus::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox1_csr_mbox_cmd_status(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
@@ -2481,22 +2553,24 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox1_csr_mbox_hw_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxHwStatus::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxHwStatus::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
 }
 pub struct MciBus {
     pub periph: Box<dyn MciPeripheral>,
 }
-impl emulator_bus::Bus for MciBus {
+impl caliptra_emu_bus::Bus for MciBus {
     fn read(
         &mut self,
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::LoadAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
             0xc0_0000..0xe0_0000 => Ok(self.periph.read_mcu_sram((addr as usize - 0xc0_0000) / 4)),
@@ -3586,7 +3660,7 @@ impl emulator_bus::Bus for MciBus {
             0xa0_0024..0xa0_0028 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_mcu_mbox1_csr_mbox_hw_status().reg.get(),
             )),
-            _ => Err(emulator_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
@@ -3594,9 +3668,9 @@ impl emulator_bus::Bus for MciBus {
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
         val: caliptra_emu_types::RvData,
-    ) -> Result<(), emulator_bus::BusError> {
+    ) -> Result<(), caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::StoreAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             0xc0_0000..0xe0_0000 => {
@@ -3614,7 +3688,7 @@ impl emulator_bus::Bus for MciBus {
             }
             8..0xc => {
                 self.periph
-                    .write_mci_reg_cap_lock(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mci_reg_cap_lock(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x10..0x18 => {
@@ -3628,22 +3702,24 @@ impl emulator_bus::Bus for MciBus {
             }
             0x40..0x44 => {
                 self.periph
-                    .write_mci_reg_hw_error_fatal(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mci_reg_hw_error_fatal(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x44..0x48 => {
                 self.periph
-                    .write_mci_reg_agg_error_fatal(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mci_reg_agg_error_fatal(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x48..0x4c => {
-                self.periph
-                    .write_mci_reg_hw_error_non_fatal(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_hw_error_non_fatal(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x4c..0x50 => {
-                self.periph
-                    .write_mci_reg_agg_error_non_fatal(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_agg_error_non_fatal(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x50..0x54 => {
@@ -3669,25 +3745,25 @@ impl emulator_bus::Bus for MciBus {
             }
             0x80..0x84 => {
                 self.periph.write_mci_reg_internal_hw_error_fatal_mask(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x84..0x88 => {
                 self.periph.write_mci_reg_internal_hw_error_non_fatal_mask(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x88..0x8c => {
                 self.periph.write_mci_reg_internal_agg_error_fatal_mask(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x8c..0x90 => {
                 self.periph.write_mci_reg_internal_agg_error_non_fatal_mask(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -3702,12 +3778,12 @@ impl emulator_bus::Bus for MciBus {
             }
             0xa0..0xa4 => {
                 self.periph
-                    .write_mci_reg_wdt_timer1_en(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mci_reg_wdt_timer1_en(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0xa4..0xa8 => {
                 self.periph
-                    .write_mci_reg_wdt_timer1_ctrl(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mci_reg_wdt_timer1_ctrl(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0xa8..0xb0 => {
@@ -3717,12 +3793,12 @@ impl emulator_bus::Bus for MciBus {
             }
             0xb0..0xb4 => {
                 self.periph
-                    .write_mci_reg_wdt_timer2_en(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mci_reg_wdt_timer2_en(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0xb4..0xb8 => {
                 self.periph
-                    .write_mci_reg_wdt_timer2_ctrl(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mci_reg_wdt_timer2_ctrl(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0xb8..0xc0 => {
@@ -3757,22 +3833,22 @@ impl emulator_bus::Bus for MciBus {
             }
             0x100..0x104 => {
                 self.periph
-                    .write_mci_reg_reset_request(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mci_reg_reset_request(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x104..0x108 => {
                 self.periph
-                    .write_mci_reg_mci_bootfsm_go(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mci_reg_mci_bootfsm_go(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x108..0x10c => {
                 self.periph
-                    .write_mci_reg_cptra_boot_go(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mci_reg_cptra_boot_go(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x10c..0x110 => {
                 self.periph.write_mci_reg_fw_sram_exec_region_size(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -3791,7 +3867,7 @@ impl emulator_bus::Bus for MciBus {
             }
             0x1a0..0x1b4 => {
                 self.periph.write_mci_reg_mbox0_axi_user_lock(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                     (addr as usize - 0x1a0) / 4,
                 );
                 Ok(())
@@ -3803,7 +3879,7 @@ impl emulator_bus::Bus for MciBus {
             }
             0x1e0..0x1f4 => {
                 self.periph.write_mci_reg_mbox1_axi_user_lock(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                     (addr as usize - 0x1e0) / 4,
                 );
                 Ok(())
@@ -3834,22 +3910,23 @@ impl emulator_bus::Bus for MciBus {
             }
             0x410..0x414 => {
                 self.periph
-                    .write_mci_reg_debug_in(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mci_reg_debug_in(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x414..0x418 => {
                 self.periph
-                    .write_mci_reg_debug_out(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mci_reg_debug_out(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x440..0x444 => {
-                self.periph
-                    .write_mci_reg_ss_config_done_sticky(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_ss_config_done_sticky(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x444..0x448 => {
                 self.periph
-                    .write_mci_reg_ss_config_done(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mci_reg_ss_config_done(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x480..0x600 => {
@@ -3859,83 +3936,83 @@ impl emulator_bus::Bus for MciBus {
             }
             0x1000..0x1004 => {
                 self.periph.write_mci_reg_intr_block_rf_global_intr_en_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1004..0x1008 => {
                 self.periph.write_mci_reg_intr_block_rf_error0_intr_en_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1008..0x100c => {
                 self.periph.write_mci_reg_intr_block_rf_error1_intr_en_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x100c..0x1010 => {
                 self.periph.write_mci_reg_intr_block_rf_notif0_intr_en_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1010..0x1014 => {
                 self.periph.write_mci_reg_intr_block_rf_notif1_intr_en_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x101c..0x1020 => {
                 self.periph
                     .write_mci_reg_intr_block_rf_error0_internal_intr_r(
-                        emulator_bus::ReadWriteRegister::new(val),
+                        caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x1020..0x1024 => {
                 self.periph
                     .write_mci_reg_intr_block_rf_error1_internal_intr_r(
-                        emulator_bus::ReadWriteRegister::new(val),
+                        caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x1024..0x1028 => {
                 self.periph
                     .write_mci_reg_intr_block_rf_notif0_internal_intr_r(
-                        emulator_bus::ReadWriteRegister::new(val),
+                        caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x1028..0x102c => {
                 self.periph
                     .write_mci_reg_intr_block_rf_notif1_internal_intr_r(
-                        emulator_bus::ReadWriteRegister::new(val),
+                        caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x102c..0x1030 => {
                 self.periph.write_mci_reg_intr_block_rf_error0_intr_trig_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1030..0x1034 => {
                 self.periph.write_mci_reg_intr_block_rf_error1_intr_trig_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1034..0x1038 => {
                 self.periph.write_mci_reg_intr_block_rf_notif0_intr_trig_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1038..0x103c => {
                 self.periph.write_mci_reg_intr_block_rf_notif1_intr_trig_r(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -4374,7 +4451,7 @@ impl emulator_bus::Bus for MciBus {
             }
             0x60_000c..0x60_0010 => {
                 self.periph.write_mcu_mbox0_csr_mbox_target_user_valid(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -4387,19 +4464,21 @@ impl emulator_bus::Bus for MciBus {
                 Ok(())
             }
             0x60_0018..0x60_001c => {
-                self.periph
-                    .write_mcu_mbox0_csr_mbox_execute(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_mcu_mbox0_csr_mbox_execute(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x60_001c..0x60_0020 => {
                 self.periph.write_mcu_mbox0_csr_mbox_target_status(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x60_0020..0x60_0024 => {
-                self.periph
-                    .write_mcu_mbox0_csr_mbox_cmd_status(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_mcu_mbox0_csr_mbox_cmd_status(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x80_0000..0xa0_0000 => {
@@ -4413,7 +4492,7 @@ impl emulator_bus::Bus for MciBus {
             }
             0xa0_000c..0xa0_0010 => {
                 self.periph.write_mcu_mbox1_csr_mbox_target_user_valid(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -4426,22 +4505,24 @@ impl emulator_bus::Bus for MciBus {
                 Ok(())
             }
             0xa0_0018..0xa0_001c => {
-                self.periph
-                    .write_mcu_mbox1_csr_mbox_execute(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_mcu_mbox1_csr_mbox_execute(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xa0_001c..0xa0_0020 => {
                 self.periph.write_mcu_mbox1_csr_mbox_target_status(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xa0_0020..0xa0_0024 => {
-                self.periph
-                    .write_mcu_mbox1_csr_mbox_cmd_status(emulator_bus::ReadWriteRegister::new(val));
+                self.periph.write_mcu_mbox1_csr_mbox_cmd_status(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
-            _ => Err(emulator_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {

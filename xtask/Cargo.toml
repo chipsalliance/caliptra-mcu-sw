@@ -10,7 +10,6 @@ anyhow.workspace = true
 clap.workspace = true
 crc32fast.workspace = true
 elf.workspace = true
-emulator-consts.workspace = true
 mcu-builder.workspace = true
 mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true

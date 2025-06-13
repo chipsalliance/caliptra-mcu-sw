@@ -17,6 +17,7 @@ caliptra-registers.workspace = true
 clap.workspace = true
 ctrlc.workspace = true
 elf.workspace = true
+emulator-consts.workspace = true
 gdbstub_arch.workspace = true
 gdbstub.workspace = true
 hex.workspace = true

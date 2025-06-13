@@ -5,22 +5,22 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait El2PicPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {}
+    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
     fn read_meipl(
         &mut self,
         _index: usize,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meipl::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_meipl(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Meipl::Register,
         >,
@@ -30,20 +30,24 @@ pub trait El2PicPeripheral {
     fn read_meip(
         &mut self,
         _index: usize,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::el2_pic_ctrl::bits::Meip::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::el2_pic_ctrl::bits::Meip::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_meie(
         &mut self,
         _index: usize,
-    ) -> emulator_bus::ReadWriteRegister<u32, registers_generated::el2_pic_ctrl::bits::Meie::Register>
-    {
-        emulator_bus::ReadWriteRegister::new(0)
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::el2_pic_ctrl::bits::Meie::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_meie(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Meie::Register,
         >,
@@ -52,15 +56,15 @@ pub trait El2PicPeripheral {
     }
     fn read_mpiccfg(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mpiccfg(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
         >,
@@ -69,15 +73,15 @@ pub trait El2PicPeripheral {
     fn read_meigwctrl(
         &mut self,
         _index: usize,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_meigwctrl(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
         >,
@@ -92,14 +96,14 @@ pub trait El2PicPeripheral {
 pub struct El2PicBus {
     pub periph: Box<dyn El2PicPeripheral>,
 }
-impl emulator_bus::Bus for El2PicBus {
+impl caliptra_emu_bus::Bus for El2PicBus {
     fn read(
         &mut self,
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::LoadAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
             0..0x400 => Ok(caliptra_emu_types::RvData::from(
@@ -127,7 +131,7 @@ impl emulator_bus::Bus for El2PicBus {
                     .get(),
             )),
             0x5000..0x5400 => Ok(self.periph.read_meigwclr((addr as usize - 0x5000) / 4)),
-            _ => Err(emulator_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
@@ -135,31 +139,33 @@ impl emulator_bus::Bus for El2PicBus {
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
         val: caliptra_emu_types::RvData,
-    ) -> Result<(), emulator_bus::BusError> {
+    ) -> Result<(), caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::StoreAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             0..0x400 => {
-                self.periph
-                    .write_meipl(emulator_bus::ReadWriteRegister::new(val), addr as usize / 4);
+                self.periph.write_meipl(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    addr as usize / 4,
+                );
                 Ok(())
             }
             0x2000..0x2400 => {
                 self.periph.write_meie(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                     (addr as usize - 0x2000) / 4,
                 );
                 Ok(())
             }
             0x3000..0x3004 => {
                 self.periph
-                    .write_mpiccfg(emulator_bus::ReadWriteRegister::new(val));
+                    .write_mpiccfg(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x4000..0x4400 => {
                 self.periph.write_meigwctrl(
-                    emulator_bus::ReadWriteRegister::new(val),
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
                     (addr as usize - 0x4000) / 4,
                 );
                 Ok(())
@@ -169,7 +175,7 @@ impl emulator_bus::Bus for El2PicBus {
                     .write_meigwclr(val, (addr as usize - 0x5000) / 4);
                 Ok(())
             }
-            _ => Err(emulator_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {
