@@ -21,8 +21,8 @@ members = [
     "platforms/emulator/config",
     "platforms/emulator/rom",
     "platforms/emulator/runtime",
-    "platforms/emulator/kernel/capsules",
-    "platforms/emulator/kernel/drivers/dma",
+    "platforms/emulator/runtime/kernel/capsules",
+    "platforms/emulator/runtime/kernel/drivers/dma",
     "platforms/emulator/runtime/userspace/apps/example",
     "platforms/emulator/runtime/userspace/apps/user",
     "platforms/fpga/config",
@@ -133,9 +133,9 @@ zerocopy = { version = "0.8.17", features = ["derive"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_derive"] }
 
 # local dependencies
-capsules-emulator = { path = "platforms/emulator/kernel/capsules" }
+capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
 capsules-runtime = { path = "runtime/kernel/capsules" }
-dma-driver = { path = "platforms/emulator/kernel/drivers/dma" }
+dma-driver = { path = "platforms/emulator/runtime/kernel/drivers/dma" }
 doe-transport = { path = "runtime/kernel/drivers/doe"}
 emulator-bmc = { path = "emulator/bmc" }
 emulator-caliptra = { "path" = "emulator/caliptra" }
