@@ -17,7 +17,7 @@ pub mod bits {
                 Lock OFFSET(0) NUMBITS(1) [],
             ],
             pub DoeMboxStatus [
-                /// Set by producer (core2) when new data is ready for consumer (core1). Cleared by consumer after data is read.
+                /// Set by MCU when new data is ready for SoC to read. Cleared by SoC after data is read.
                 DataReady OFFSET(0) NUMBITS(1) [],
                 /// Indicates mailbox error.
                 Error OFFSET(1) NUMBITS(1) [],

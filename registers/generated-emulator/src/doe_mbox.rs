@@ -5,17 +5,17 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait DoeMboxPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<emulator_bus::Ram>>) {}
+    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
     fn read_doe_mbox_lock(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::doe_mbox::bits::DoeMboxLock::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_doe_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
         0
@@ -23,23 +23,23 @@ pub trait DoeMboxPeripheral {
     fn write_doe_mbox_dlen(&mut self, _val: caliptra_emu_types::RvData) {}
     fn read_doe_mbox_status(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_doe_mbox_data_ready(
         &mut self,
-    ) -> emulator_bus::ReadWriteRegister<
+    ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::doe_mbox::bits::DoeMboxDataReady::Register,
     > {
-        emulator_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_doe_mbox_data_ready(
         &mut self,
-        _val: emulator_bus::ReadWriteRegister<
+        _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::doe_mbox::bits::DoeMboxDataReady::Register,
         >,
@@ -53,14 +53,14 @@ pub trait DoeMboxPeripheral {
 pub struct DoeMboxBus {
     pub periph: Box<dyn DoeMboxPeripheral>,
 }
-impl emulator_bus::Bus for DoeMboxBus {
+impl caliptra_emu_bus::Bus for DoeMboxBus {
     fn read(
         &mut self,
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, emulator_bus::BusError> {
+    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::LoadAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
             0..4 => Ok(caliptra_emu_types::RvData::from(
@@ -76,7 +76,7 @@ impl emulator_bus::Bus for DoeMboxBus {
             0x2f00_1000..0x2f10_1000 => Ok(self
                 .periph
                 .read_doe_mbox_sram((addr as usize - 0x2f00_1000) / 4)),
-            _ => Err(emulator_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
@@ -84,9 +84,9 @@ impl emulator_bus::Bus for DoeMboxBus {
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
         val: caliptra_emu_types::RvData,
-    ) -> Result<(), emulator_bus::BusError> {
+    ) -> Result<(), caliptra_emu_bus::BusError> {
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(emulator_bus::BusError::StoreAddrMisaligned);
+            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             4..8 => {
@@ -95,7 +95,7 @@ impl emulator_bus::Bus for DoeMboxBus {
             }
             0xc..0x10 => {
                 self.periph
-                    .write_doe_mbox_data_ready(emulator_bus::ReadWriteRegister::new(val));
+                    .write_doe_mbox_data_ready(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x2f00_1000..0x2f10_1000 => {
@@ -103,7 +103,7 @@ impl emulator_bus::Bus for DoeMboxBus {
                     .write_doe_mbox_sram(val, (addr as usize - 0x2f00_1000) / 4);
                 Ok(())
             }
-            _ => Err(emulator_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {
