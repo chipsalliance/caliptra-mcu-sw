@@ -162,10 +162,10 @@ pub async fn pldm_download_image(
     Ok(())
 }
 
-pub async fn initialize_pldm(
+pub async fn initialize_pldm<'a>(
     spawner: Spawner,
-    descriptors: &'static [Descriptor],
-    fw_params: &'static FirmwareParameters,
+    descriptors: &'a [Descriptor],
+    fw_params: &'a FirmwareParameters,
 ) -> Result<(), ErrorCode> {
     let is_initialiazed = PLDM_STATE.lock(|state| {
         let mut state = state.borrow_mut();

@@ -121,9 +121,10 @@ pub(crate) async fn async_main<S: Syscalls>() {
             drv_num: IMAGE_A_PARTITION.driver_num,
             expected_capacity: flash_test::EXPECTED_CAPACITY,
             expected_chunk_size: flash_test::EXPECTED_CHUNK_SIZE,
-            e_offset: 0,
+            e_offset: IMAGE_A_PARTITION.offset,
             e_len: flash_test::BUF_LEN,
-            w_offset: 20,
+            w_offset: IMAGE_A_PARTITION.offset + 20,
+            p_offset: IMAGE_A_PARTITION.offset,
             w_len: 1000,
             w_buf: &user_w_buf,
             r_buf: &mut user_r_buf,
@@ -139,9 +140,10 @@ pub(crate) async fn async_main<S: Syscalls>() {
             drv_num: IMAGE_B_PARTITION.driver_num,
             expected_capacity: flash_test::EXPECTED_CAPACITY,
             expected_chunk_size: flash_test::EXPECTED_CHUNK_SIZE,
-            e_offset: 0,
+            e_offset: IMAGE_B_PARTITION.offset,
             e_len: flash_test::BUF_LEN,
-            w_offset: 20,
+            w_offset: IMAGE_B_PARTITION.offset + 20,
+            p_offset: IMAGE_B_PARTITION.offset,
             w_len: 1000,
             w_buf: &user_w_buf,
             r_buf: &mut user_r_buf,
@@ -241,6 +243,7 @@ pub mod flash_test {
         pub e_len: usize,
         pub w_offset: usize,
         pub w_len: usize,
+        pub p_offset: usize,
         pub w_buf: &'a [u8],
         pub r_buf: &'a mut [u8],
     }
@@ -299,21 +302,23 @@ pub mod flash_test {
 
         // Data integrity check
         {
-            for i in 0..test_cfg.w_offset.min(test_cfg.r_buf.len()) {
+            for i in 0..(test_cfg.w_offset - test_cfg.p_offset).min(test_cfg.r_buf.len()) {
                 assert_eq!(test_cfg.r_buf[i], 0xFF, "data mismatch at {}", i);
             }
+
             for i in
                 test_cfg.w_offset..(test_cfg.w_offset + test_cfg.w_len).min(test_cfg.r_buf.len())
             {
                 assert_eq!(
-                    test_cfg.r_buf[i],
+                    test_cfg.r_buf[i - test_cfg.p_offset],
                     test_cfg.w_buf[i - test_cfg.w_offset],
                     "data mismatch at {}",
                     i
                 );
             }
 
-            for i in (test_cfg.w_offset + test_cfg.w_len).min(test_cfg.r_buf.len())
+            for i in (test_cfg.w_offset - test_cfg.p_offset + test_cfg.w_len)
+                .min(test_cfg.r_buf.len())
                 ..test_cfg.e_len.min(test_cfg.r_buf.len())
             {
                 assert_eq!(test_cfg.r_buf[i], 0xFF, "data mismatch at {}", i);

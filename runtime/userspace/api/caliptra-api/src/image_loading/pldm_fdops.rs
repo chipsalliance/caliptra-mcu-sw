@@ -22,17 +22,14 @@ use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
 
 const MAX_PLDM_TRANSFER_SIZE: usize = core::mem::size_of::<RequestFirmwareDataResponseFixed>();
 
-pub struct StreamingFdOps {
-    descriptors: &'static [Descriptor],
-    fw_params: &'static FirmwareParameters,
+pub struct StreamingFdOps<'a> {
+    descriptors: &'a [Descriptor],
+    fw_params: &'a FirmwareParameters,
 }
 
-impl StreamingFdOps {
+impl<'a> StreamingFdOps<'a> {
     /// Creates a new instance of the StreamingFdOps.
-    pub const fn new(
-        descriptors: &'static [Descriptor],
-        fw_params: &'static FirmwareParameters,
-    ) -> Self {
+    pub const fn new(descriptors: &'a [Descriptor], fw_params: &'a FirmwareParameters) -> Self {
         Self {
             descriptors,
             fw_params,
@@ -87,7 +84,7 @@ impl StreamingFdOps {
 }
 
 #[async_trait(?Send)]
-impl FdOps for StreamingFdOps {
+impl FdOps for StreamingFdOps<'_> {
     async fn get_device_identifiers(
         &self,
         device_identifiers: &mut [Descriptor],

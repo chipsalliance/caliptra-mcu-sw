@@ -14,3 +14,4 @@ mcu-config-emulator.workspace = true
 pldm-fw-pkg.workspace = true
 tempfile.workspace = true
 uuid.workspace = true
+zerocopy.workspace = true
