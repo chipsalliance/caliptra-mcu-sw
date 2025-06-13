@@ -36,6 +36,7 @@ members = [
     "runtime/kernel/capsules",
     "runtime/kernel/components",
     "runtime/kernel/drivers/i3c",
+    "runtime/kernel/drivers/doe",
     "runtime/kernel/veer",
     "runtime/userspace/api/caliptra-api",
     "runtime/userspace/api/pldm-lib",
@@ -138,6 +139,7 @@ zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_de
 capsules-emulator = { path = "platforms/emulator/kernel/capsules" }
 capsules-runtime = { path = "runtime/kernel/capsules" }
 dma-driver = { path = "platforms/emulator/kernel/drivers/dma" }
+doe-transport = { path = "runtime/kernel/drivers/doe"}
 emulator-bmc = { path = "emulator/bmc" }
 emulator-bus = { path = "emulator/bus" }
 emulator-caliptra = { "path" = "emulator/caliptra" }
