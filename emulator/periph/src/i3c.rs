@@ -377,6 +377,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         for _ in 0..10000 {
             clock.increment_and_process_timer_actions(1, &mut bus);
