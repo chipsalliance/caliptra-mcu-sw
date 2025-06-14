@@ -2423,6 +2423,7 @@ name = "mcu-config-emulator"
 version = "0.1.0"
 dependencies = [
  "mcu-config",
+ "zerocopy",
 ]
 
 [[package]]
@@ -3651,6 +3652,7 @@ dependencies = [
  "pldm-fw-pkg",
  "tempfile",
  "uuid",
+ "zerocopy",
 ]
 
 [[package]]
@@ -3989,6 +3991,7 @@ dependencies = [
  "portable-atomic",
  "romtime",
  "spdm-lib",
+ "zerocopy",
 ]
 
 [[package]]

@@ -161,7 +161,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     }
     if flash_image.as_ref().is_some() {
         cargo_run_args.extend([
-            "--flash-image",
+            "--primary-flash-image",
             flash_image.as_ref().unwrap().to_str().unwrap(),
         ]);
     }

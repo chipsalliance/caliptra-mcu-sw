@@ -73,7 +73,8 @@ mod test {
         manufacturing_mode: bool,
         soc_images: Option<Vec<SocImage>>,
         streaming_boot_package_path: Option<PathBuf>,
-        flash_image_path: Option<PathBuf>,
+        primary_flash_image_path: Option<PathBuf>,
+        secondary_flash_image_path: Option<PathBuf>,
     ) -> ExitStatus {
         let mut cargo_run_args = vec![
             "run",
@@ -202,11 +203,18 @@ mod test {
                 cargo_run_args.push(streaming_boot_path.to_str().unwrap());
             }
 
-            let flash_image;
-            if let Some(path) = flash_image_path {
-                cargo_run_args.push("--flash-image");
-                flash_image = path;
-                cargo_run_args.push(flash_image.to_str().unwrap());
+            let primary_flash_image;
+            if let Some(path) = primary_flash_image_path {
+                cargo_run_args.push("--primary-flash-image");
+                primary_flash_image = path;
+                cargo_run_args.push(primary_flash_image.to_str().unwrap());
+            }
+
+            let secondary_flash_image;
+            if let Some(path) = secondary_flash_image_path {
+                cargo_run_args.push("--secondary-flash-image");
+                secondary_flash_image = path;
+                cargo_run_args.push(secondary_flash_image.to_str().unwrap());
             }
 
             println!("Running test firmware {}", feature.replace("_", "-"));
@@ -236,6 +244,7 @@ mod test {
             i3c_port,
             true,  // active mode is always true
             false, //set this to true if you want to run in manufacturing mode
+            None,
             None,
             None,
             None,
@@ -326,6 +335,7 @@ mod test {
             None,
             None,
             None,
+            None,
         );
         assert_eq!(0, test.code().unwrap_or_default());
 
@@ -349,6 +359,7 @@ mod test {
             i3c_port,
             true,
             false,
+            None,
             None,
             None,
             None,

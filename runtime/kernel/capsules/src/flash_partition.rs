@@ -67,6 +67,8 @@ impl Default for App {
 pub struct FlashPartition<'a> {
     // The underlying flash storage driver.
     driver: &'a dyn flash_driver::hil::FlashStorage<'a>,
+    // The driver number for this partition.
+    driver_num: usize,
     // Per-app state.
     apps: Grant<
         App,
@@ -87,6 +89,7 @@ pub struct FlashPartition<'a> {
 impl<'a> FlashPartition<'a> {
     pub fn new(
         driver: &'a dyn flash_driver::hil::FlashStorage<'a>,
+        driver_num: usize,
         grant: Grant<
             App,
             UpcallCount<{ upcall::COUNT }>,
@@ -99,12 +102,18 @@ impl<'a> FlashPartition<'a> {
     ) -> FlashPartition<'a> {
         FlashPartition {
             driver,
+            driver_num,
             apps: grant,
             buffer: TakeCell::new(buffer),
             current_app: OptionalCell::empty(),
             start_address,
             length,
         }
+    }
+
+    // Get the Driver number for this partition.
+    pub fn get_driver_num(&self) -> usize {
+        self.driver_num
     }
 
     // Check if any command is pending. If not, this command is executed.
