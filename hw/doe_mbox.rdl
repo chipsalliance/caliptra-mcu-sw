@@ -43,5 +43,5 @@ addrmap doe_mbox {
         memwidth = 32;
         mementries = 262144; // 1MB / 4 bytes per entry = 262144 entries
         sw = rw;
-    } external doe_mbox_sram @ 0x2F001000; // Define it after DOE_MBOX register block
+    } external doe_mbox_sram @ 0x1000; // Define it after DOE_MBOX register block
 };
