@@ -21,7 +21,7 @@ addrmap doe_mbox {
             desc = "Set by MCU when new data is ready for SoC to read. Cleared by SoC after data is read.";
         } DATA_READY[0:0];
         field {
-            sw = r;
+            sw = rw;
             desc = "Indicates mailbox error.";
         } ERROR[1:1];
     } DOE_MBOX_STATUS @ 0x08;

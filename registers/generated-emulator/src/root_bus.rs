@@ -46,7 +46,7 @@ impl Default for AutoRootBusOffsets {
             mci_offset: 0x2100_0000,
             mci_size: 0xe0_0000,
             doe_mbox_offset: 0x2f00_0000,
-            doe_mbox_size: 0x2f10_1000,
+            doe_mbox_size: 0x10_1000,
             dma_offset: 0x3000_0000,
             dma_size: 0x24,
             mbox_offset: 0x3002_0000,

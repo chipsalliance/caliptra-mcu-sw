@@ -31,11 +31,11 @@ pub mod regs {
         pub DoeMbox {
             (0x0 => pub doe_mbox_lock: tock_registers::registers::ReadOnly<u32, crate::doe_mbox::bits::DoeMboxLock::Register>),
             (0x4 => pub doe_mbox_dlen: tock_registers::registers::ReadWrite<u32>),
-            (0x8 => pub doe_mbox_status: tock_registers::registers::ReadOnly<u32, crate::doe_mbox::bits::DoeMboxStatus::Register>),
+            (0x8 => pub doe_mbox_status: tock_registers::registers::ReadWrite<u32, crate::doe_mbox::bits::DoeMboxStatus::Register>),
             (0xc => pub doe_mbox_data_ready: tock_registers::registers::ReadWrite<u32, crate::doe_mbox::bits::DoeMboxDataReady::Register>),
             (0x10 => _reserved0),
-            (0x2f001000 => pub doe_mbox_sram: [tock_registers::registers::ReadWrite<u32>; 262144]),
-            (0x2f101000 => @END),
+            (0x1000 => pub doe_mbox_sram: [tock_registers::registers::ReadWrite<u32>; 262144]),
+            (0x101000 => @END),
         }
     }
 }

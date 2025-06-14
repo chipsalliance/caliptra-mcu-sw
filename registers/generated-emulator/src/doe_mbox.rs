@@ -29,6 +29,14 @@ pub trait DoeMboxPeripheral {
     > {
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
+    fn write_doe_mbox_status(
+        &mut self,
+        _val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
+        >,
+    ) {
+    }
     fn read_doe_mbox_data_ready(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
@@ -73,9 +81,7 @@ impl caliptra_emu_bus::Bus for DoeMboxBus {
             0xc..0x10 => Ok(caliptra_emu_types::RvData::from(
                 self.periph.read_doe_mbox_data_ready().reg.get(),
             )),
-            0x2f00_1000..0x2f10_1000 => Ok(self
-                .periph
-                .read_doe_mbox_sram((addr as usize - 0x2f00_1000) / 4)),
+            0x1000..0x10_1000 => Ok(self.periph.read_doe_mbox_sram((addr as usize - 0x1000) / 4)),
             _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
@@ -93,14 +99,19 @@ impl caliptra_emu_bus::Bus for DoeMboxBus {
                 self.periph.write_doe_mbox_dlen(val);
                 Ok(())
             }
+            8..0xc => {
+                self.periph
+                    .write_doe_mbox_status(caliptra_emu_bus::ReadWriteRegister::new(val));
+                Ok(())
+            }
             0xc..0x10 => {
                 self.periph
                     .write_doe_mbox_data_ready(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
-            0x2f00_1000..0x2f10_1000 => {
+            0x1000..0x10_1000 => {
                 self.periph
-                    .write_doe_mbox_sram(val, (addr as usize - 0x2f00_1000) / 4);
+                    .write_doe_mbox_sram(val, (addr as usize - 0x1000) / 4);
                 Ok(())
             }
             _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
