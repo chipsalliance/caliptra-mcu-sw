@@ -36,12 +36,12 @@ pub trait DoeTransport {
     /// Send DOE Object to be transmitted over SoC specific DOE transport.
     ///
     /// # Arguments
-    /// * `doe_hdr` - A reference to the DOE header
+    /// * `doe_hdr` - DOE header bytes
     /// * `doe_payload` - A reference to the DOE payload
     /// * `payload_len` - The length of the payload in bytes
     fn transmit(
         &self,
-        doe_hdr: &'static [u8; 8],
+        doe_hdr: [u8; DOE_HDR_SIZE],
         doe_payload: &'static mut [u8],
         payload_len: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])>;
