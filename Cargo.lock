@@ -1312,6 +1312,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "doe-mbox-driver"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "doe-transport",
+ "kernel",
+ "registers-generated",
+]
+
+[[package]]
 name = "doe-transport"
 version = "0.1.0"
 dependencies = [

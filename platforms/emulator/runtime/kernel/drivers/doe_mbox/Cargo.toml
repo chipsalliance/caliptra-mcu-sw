@@ -1,0 +1,11 @@
+[package]
+name = "doe-mbox-driver"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+capsules-core.workspace = true
+doe-transport.workspace = true
+registers-generated.workspace = true
+kernel.workspace = true

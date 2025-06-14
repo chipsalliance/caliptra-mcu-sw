@@ -36,7 +36,7 @@ sequenceDiagram
         DOE_CAPSULE ->> DOE_CAPSULE: Copy DOE object payload <br>into app buffer
         DOE_CAPSULE -->> SPDM_APP: Invoke upcall to userspace<br> to receive() message
     end
-    DOE_CAPSULE ->> MCU_DOE_TRANSPORT_DRIVER: set_receive_buffer()<br> to set the receive buffer for the next DOE object
+    DOE_CAPSULE ->> MCU_DOE_TRANSPORT_DRIVER: set_rx_buffer()<br> to set the receive buffer for the next DOE object
     SPDM_APP ->> SPDM_APP: App processes message <br>and prepares DOE response
     SPDM_APP -->> DOE_CAPSULE: App invokes send_message <br>to send DOE response
     DOE_CAPSULE ->> MCU_DOE_TRANSPORT_DRIVER: invoke transmit()<br> to send the DOE response
@@ -138,7 +138,7 @@ pub trait DoeTransport {
 
     /// Sets the buffer used for receiving incoming DOE Objects.
     /// This function should be called by the Rx client upon receiving the `receive()` callback.
-    fn set_receive_buffer(&self, rx_buf: &'static mut [u8]);
+    fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
 
     /// Gets the maximum size of the data object that can be sent or received over DOE Transport.
     fn max_data_object_size(&self) -> usize;

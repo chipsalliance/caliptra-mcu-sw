@@ -209,7 +209,7 @@
 		<g id="shape50-66" v:mID="50" v:groupContext="shape" v:layerMember="0"
 				transform="translate(789.988,818.482) rotate(-58.418) scale(1,-1)">
 			<title>Line-curve connector.50</title>
-			<desc>2. set_receive_buffer()</desc>
+			<desc>2. set_rx_buffer()</desc>
 			<v:userDefs>
 				<v:ud v:nameU="Scale" v:val="VT0(1):26"/>
 				<v:ud v:nameU="AntiScale" v:val="VT0(1):26"/>
@@ -222,7 +222,7 @@
 			<rect v:rectContext="textBkgnd" x="-506.835" y="363.831" width="129.697" height="16.8" transform="rotate(-58.418)"
 					class="st3"/>
 			<text x="-506.84" y="-368.03" transform="rotate(-58.418) scale(1,-1)" class="st15" v:langID="1033"><v:paragraph
-						v:horizAlign="1"/><v:tabList/>2. set_receive_buffer()</text>		</g>
+						v:horizAlign="1"/><v:tabList/>2. set_rx_buffer()</text>		</g>
 		<g id="shape52-74" v:mID="52" v:groupContext="shape" transform="translate(179.853,-232.343) rotate(-16.1705)">
 			<title>Sheet.52</title>
 			<desc>copy payload</desc>

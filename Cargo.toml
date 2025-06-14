@@ -23,6 +23,7 @@ members = [
     "platforms/emulator/runtime",
     "platforms/emulator/runtime/kernel/capsules",
     "platforms/emulator/runtime/kernel/drivers/dma",
+    "platforms/emulator/runtime/kernel/drivers/doe_mbox",
     "platforms/emulator/runtime/userspace/apps/example",
     "platforms/emulator/runtime/userspace/apps/user",
     "platforms/fpga/config",
@@ -136,6 +137,7 @@ zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_de
 capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
 capsules-runtime = { path = "runtime/kernel/capsules" }
 dma-driver = { path = "platforms/emulator/runtime/kernel/drivers/dma" }
+doe-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/doe_mbox" }
 doe-transport = { path = "runtime/kernel/drivers/doe"}
 emulator-bmc = { path = "emulator/bmc" }
 emulator-caliptra = { "path" = "emulator/caliptra" }
