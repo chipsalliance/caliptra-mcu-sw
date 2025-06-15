@@ -26,6 +26,15 @@ _start:
     # Initialize the stack pointer
     la sp, STACK_TOP
 
+    # Initialize MRAC (Region Access Control Register)
+    # MRAC controls cacheability and side effects for 16 memory regions (256MB each)
+    # The value is computed from the memory map at build time
+    # CSR address 0x7c0 = MRAC register
+    # Use lui/addi to load the 32-bit constant properly
+    lui     t0, %hi(MRAC_VALUE)
+    addi    t0, t0, %lo(MRAC_VALUE)
+    csrw    0x7c0, t0
+
     # Copy BSS
     la t0, BSS_START
     la t1, BSS_END
