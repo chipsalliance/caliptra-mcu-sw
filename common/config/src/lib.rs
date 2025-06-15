@@ -53,42 +53,72 @@ impl Default for McuMemoryMap {
             rom_offset: 0x8000_0000,
             rom_size: 32 * 1024,
             rom_stack_size: 0x3000,
-            rom_properties: MemoryRegionType { side_effect: false, cacheable: true },
+            rom_properties: MemoryRegionType {
+                side_effect: false,
+                cacheable: true,
+            },
 
             dccm_offset: 0x5000_0000,
             dccm_size: 16 * 1024,
-            dccm_properties: MemoryRegionType { side_effect: false, cacheable: true },
+            dccm_properties: MemoryRegionType {
+                side_effect: false,
+                cacheable: true,
+            },
 
             sram_offset: 0x4000_0000,
             sram_size: 384 * 1024,
-            sram_properties: MemoryRegionType { side_effect: false, cacheable: true },
+            sram_properties: MemoryRegionType {
+                side_effect: false,
+                cacheable: true,
+            },
 
             pic_offset: 0x6000_0000,
-            pic_properties: MemoryRegionType { side_effect: true, cacheable: false },
+            pic_properties: MemoryRegionType {
+                side_effect: true,
+                cacheable: false,
+            },
 
             i3c_offset: 0x2000_4000,
             i3c_size: 0x1000,
-            i3c_properties: MemoryRegionType { side_effect: true, cacheable: false },
+            i3c_properties: MemoryRegionType {
+                side_effect: true,
+                cacheable: false,
+            },
 
             mci_offset: 0x2100_0000,
             mci_size: 0xe0_0000,
-            mci_properties: MemoryRegionType { side_effect: true, cacheable: false },
+            mci_properties: MemoryRegionType {
+                side_effect: true,
+                cacheable: false,
+            },
 
             mbox_offset: 0x3002_0000,
             mbox_size: 0x28,
-            mbox_properties: MemoryRegionType { side_effect: true, cacheable: false },
+            mbox_properties: MemoryRegionType {
+                side_effect: true,
+                cacheable: false,
+            },
 
             soc_offset: 0x3003_0000,
             soc_size: 0x5e0,
-            soc_properties: MemoryRegionType { side_effect: true, cacheable: false },
+            soc_properties: MemoryRegionType {
+                side_effect: true,
+                cacheable: false,
+            },
 
             otp_offset: 0x7000_0000,
             otp_size: 0x140,
-            otp_properties: MemoryRegionType { side_effect: true, cacheable: false },
+            otp_properties: MemoryRegionType {
+                side_effect: true,
+                cacheable: false,
+            },
 
             lc_offset: 0x7000_0400,
             lc_size: 0x8c,
-            lc_properties: MemoryRegionType { side_effect: true, cacheable: false },
+            lc_properties: MemoryRegionType {
+                side_effect: true,
+                cacheable: false,
+            },
         }
     }
 }
@@ -105,11 +135,20 @@ pub struct MemoryRegionType {
 
 impl MemoryRegionType {
     /// Memory regions (cacheable, no side effects)
-    pub const MEMORY: Self = Self { side_effect: false, cacheable: true };
+    pub const MEMORY: Self = Self {
+        side_effect: false,
+        cacheable: true,
+    };
     /// MMIO regions (side effects, not cacheable)
-    pub const MMIO: Self = Self { side_effect: true, cacheable: false };
+    pub const MMIO: Self = Self {
+        side_effect: true,
+        cacheable: false,
+    };
     /// Default for unmapped regions (side effects, not cacheable)
-    pub const UNMAPPED: Self = Self { side_effect: true, cacheable: false };
+    pub const UNMAPPED: Self = Self {
+        side_effect: true,
+        cacheable: false,
+    };
 }
 
 impl McuMemoryMap {
@@ -119,7 +158,12 @@ impl McuMemoryMap {
     /// Get the MRAC region index for a given address
     fn get_mrac_region(address: u32) -> usize {
         let region = (address / Self::MRAC_REGION_SIZE) as usize;
-        debug_assert!(region < 16, "MRAC region index {} out of bounds for address 0x{:08x}", region, address);
+        debug_assert!(
+            region < 16,
+            "MRAC region index {} out of bounds for address 0x{:08x}",
+            region,
+            address
+        );
         region
     }
 
@@ -148,7 +192,11 @@ impl McuMemoryMap {
 
             // Apply region type to all affected MRAC regions
             for region_idx in start_region..=end_region.min(15) {
-                match (region_assigned[region_idx], region_types[region_idx], region_type) {
+                match (
+                    region_assigned[region_idx],
+                    region_types[region_idx],
+                    region_type,
+                ) {
                     // If region not yet assigned, use the new type
                     (false, _, new_type) => {
                         region_types[region_idx] = new_type;
@@ -191,8 +239,8 @@ impl McuMemoryMap {
         // Build the 32-bit MRAC value
         let mut mrac_value = 0u32;
         for (i, region_type) in region_types.iter().enumerate() {
-            let bits = (if region_type.side_effect { 2 } else { 0 }) |
-                      (if region_type.cacheable { 1 } else { 0 });
+            let bits = (if region_type.side_effect { 2 } else { 0 })
+                | (if region_type.cacheable { 1 } else { 0 });
             mrac_value |= bits << (i * 2);
         }
 
@@ -206,13 +254,22 @@ impl McuMemoryMap {
         // Only include variables actually used in linker script templates
         map.insert("ROM_OFFSET".to_string(), format!("0x{:x}", self.rom_offset));
         map.insert("ROM_SIZE".to_string(), format!("0x{:x}", self.rom_size));
-        map.insert("ROM_STACK_SIZE".to_string(), format!("0x{:x}", self.rom_stack_size));
+        map.insert(
+            "ROM_STACK_SIZE".to_string(),
+            format!("0x{:x}", self.rom_stack_size),
+        );
 
-        map.insert("DCCM_OFFSET".to_string(), format!("0x{:x}", self.dccm_offset));
+        map.insert(
+            "DCCM_OFFSET".to_string(),
+            format!("0x{:x}", self.dccm_offset),
+        );
         map.insert("DCCM_SIZE".to_string(), format!("0x{:x}", self.dccm_size));
 
         // The computed MRAC value (derived from all memory region properties)
-        map.insert("MRAC_VALUE".to_string(), format!("0x{:x}", self.compute_mrac()));
+        map.insert(
+            "MRAC_VALUE".to_string(),
+            format!("0x{:x}", self.compute_mrac()),
+        );
 
         map
     }
@@ -235,11 +292,11 @@ mod tests {
         assert_ne!(mrac_value, 0xffffffff);
 
         // Test individual region mappings
-        assert_eq!(McuMemoryMap::get_mrac_region(0x0000_0000), 0);  // Region 0
-        assert_eq!(McuMemoryMap::get_mrac_region(0x1000_0000), 1);  // Region 1
-        assert_eq!(McuMemoryMap::get_mrac_region(0x4000_0000), 4);  // Region 4 (SRAM)
-        assert_eq!(McuMemoryMap::get_mrac_region(0x5000_0000), 5);  // Region 5 (DCCM)
-        assert_eq!(McuMemoryMap::get_mrac_region(0x8000_0000), 8);  // Region 8 (ROM)
+        assert_eq!(McuMemoryMap::get_mrac_region(0x0000_0000), 0); // Region 0
+        assert_eq!(McuMemoryMap::get_mrac_region(0x1000_0000), 1); // Region 1
+        assert_eq!(McuMemoryMap::get_mrac_region(0x4000_0000), 4); // Region 4 (SRAM)
+        assert_eq!(McuMemoryMap::get_mrac_region(0x5000_0000), 5); // Region 5 (DCCM)
+        assert_eq!(McuMemoryMap::get_mrac_region(0x8000_0000), 8); // Region 8 (ROM)
 
         // Test that the computed MRAC correctly classifies regions by checking bit patterns
         // Extract region 4 (SRAM at 0x4000_0000) - should be cacheable, no side effects (01)
@@ -256,7 +313,10 @@ mod tests {
 
         // Extract region 2 (I3C at 0x2000_4000) - should be side effects, not cacheable (10)
         let region_2_bits = (mrac_value >> (2 * 2)) & 0x3;
-        assert_eq!(region_2_bits, 0x2, "I3C region should have side effects (10)");
+        assert_eq!(
+            region_2_bits, 0x2,
+            "I3C region should have side effects (10)"
+        );
 
         // Print detailed breakdown for debugging
         println!("MRAC breakdown:");
@@ -264,8 +324,10 @@ mod tests {
             let bits = (mrac_value >> (i * 2)) & 0x3;
             let se = (bits & 0x2) != 0;
             let cache = (bits & 0x1) != 0;
-            println!("  Region {:2} (0x{:x}000_0000): SE={}, Cache={} (bits: {:02b})",
-                     i, i, se, cache, bits);
+            println!(
+                "  Region {:2} (0x{:x}000_0000): SE={}, Cache={} (bits: {:02b})",
+                i, i, se, cache, bits
+            );
         }
     }
 
@@ -281,15 +343,24 @@ mod tests {
 
         // Test that all regions are within bounds (0-15)
         let test_addresses = [
-            0x0000_0000, 0x0fff_ffff, // Region 0
-            0x1000_0000, 0x1fff_ffff, // Region 1
-            0x8000_0000, 0x8fff_ffff, // Region 8
-            0xf000_0000, 0xffff_ffff, // Region 15
+            0x0000_0000,
+            0x0fff_ffff, // Region 0
+            0x1000_0000,
+            0x1fff_ffff, // Region 1
+            0x8000_0000,
+            0x8fff_ffff, // Region 8
+            0xf000_0000,
+            0xffff_ffff, // Region 15
         ];
 
         for &addr in &test_addresses {
             let region = McuMemoryMap::get_mrac_region(addr);
-            assert!(region < 16, "Region {} for address 0x{:08x} is out of bounds", region, addr);
+            assert!(
+                region < 16,
+                "Region {} for address 0x{:08x} is out of bounds",
+                region,
+                addr
+            );
         }
     }
 }
