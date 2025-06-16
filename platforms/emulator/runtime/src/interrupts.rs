@@ -12,12 +12,14 @@ pub const RECOVERY_FLASH_CTRL_EVENT_IRQ: u8 = 0x15;
 pub const RECOVERY_FLASH_CTRL_ERROR_IRQ: u8 = 0x16;
 pub const DMA_EVENT_IRQ: u8 = 0x17;
 pub const DMA_ERROR_IRQ: u8 = 0x18;
+pub const DOE_MBOX_EVENT_IRQ: u8 = 0x19;
 
 pub struct EmulatorPeripherals<'a> {
     pub uart: SemihostUart<'a>,
     pub primary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
     pub secondary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
     pub dma: dma_driver::dma_ctrl::EmulatedDmaCtrl<'a>,
+    pub doe_transport: doe_mbox_driver::EmulatedDoeTransport<'a, InternalTimers<'a>>,
 }
 
 impl<'a> EmulatorPeripherals<'a> {
@@ -31,6 +33,10 @@ impl<'a> EmulatorPeripherals<'a> {
                 flash_driver::flash_ctrl::SECONDARY_FLASH_CTRL_BASE,
             ),
             dma: dma_driver::dma_ctrl::EmulatedDmaCtrl::new(dma_driver::dma_ctrl::DMA_CTRL_BASE),
+            doe_transport: doe_mbox_driver::EmulatedDoeTransport::new(
+                doe_mbox_driver::DOE_MBOX_BASE,
+                alarm,
+            ),
         }
     }
 
@@ -40,6 +46,7 @@ impl<'a> EmulatorPeripherals<'a> {
         self.primary_flash_ctrl.init();
         self.secondary_flash_ctrl.init();
         self.dma.init();
+        self.doe_transport.init();
     }
 }
 
@@ -60,6 +67,9 @@ impl<'a> InterruptService for EmulatorPeripherals<'a> {
             return true;
         } else if interrupt == DMA_ERROR_IRQ as u32 || interrupt == DMA_EVENT_IRQ as u32 {
             self.dma.handle_interrupt();
+            return true;
+        } else if interrupt == DOE_MBOX_EVENT_IRQ as u32 {
+            self.doe_transport.handle_interrupt();
             return true;
         }
         false

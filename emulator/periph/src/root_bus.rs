@@ -105,6 +105,7 @@ impl McuRootBus {
     pub const SECONDARY_FLASH_CTRL_EVENT_IRQ: u8 = 22;
     pub const DMA_ERROR_IRQ: u8 = 23;
     pub const DMA_EVENT_IRQ: u8 = 24;
+    pub const DOE_MBOX_EVENT_IRQ: u8 = 25;
 
     pub fn new(mut args: McuRootBusArgs) -> Result<Self, std::io::Error> {
         let clock = args.clock;

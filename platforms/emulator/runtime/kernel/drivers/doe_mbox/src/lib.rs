@@ -15,6 +15,9 @@ use registers_generated::doe_mbox::bits::{DoeMboxDataReady, DoeMboxStatus};
 use registers_generated::doe_mbox::regs::DoeMbox;
 use registers_generated::doe_mbox::DOE_MBOX_ADDR;
 
+pub const DOE_MBOX_BASE: StaticRef<DoeMbox> =
+    unsafe { StaticRef::new(DOE_MBOX_ADDR as *const DoeMbox) };
+
 const DOE_MBOX_SRAM_ADDR: u32 = DOE_MBOX_ADDR + 0x1000; // SRAM offset from DOE Mbox base address
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -86,11 +89,10 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
         }
     }
 
-    pub fn init(&'static self) -> Result<(), ErrorCode> {
+    pub fn init(&'static self) {
         self.alarm.setup();
         self.alarm.set_alarm_client(self);
         self.state.set(DoeMboxState::RxWait);
-        Ok(())
     }
 
     fn schedule_send_done(&self) {

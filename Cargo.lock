@@ -2544,6 +2544,7 @@ dependencies = [
  "capsules-system",
  "components",
  "dma-driver",
+ "doe-mbox-driver",
  "flash-driver",
  "i3c-driver",
  "kernel",
