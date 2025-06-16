@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 use core::mem::offset_of;
+use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const FLASH_PARTITIONS_COUNT: usize = 3; // Number of flash partitions
@@ -156,54 +157,6 @@ impl PartitionTable {
             &self.as_bytes()[0..offset_of!(Self, checksum)],
         )
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PartitionId {
-    None = 0x0000_0000,
-    A = 0x0000_0001,
-    B = 0x0000_0002,
-}
-
-impl core::convert::TryFrom<u32> for PartitionId {
-    type Error = ();
-
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
-        match value {
-            0x0000_0000 => Ok(PartitionId::None),
-            0x0000_0001 => Ok(PartitionId::A),
-            0x0000_0002 => Ok(PartitionId::B),
-            _ => Err(()),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PartitionStatus {
-    Invalid = 0x0000,
-    Valid = 0x0001,
-    BootFailed = 0x0002,
-    BootSuccessful = 0x0003,
-}
-
-impl core::convert::TryFrom<u16> for PartitionStatus {
-    type Error = ();
-
-    fn try_from(value: u16) -> Result<Self, Self::Error> {
-        match value {
-            0x0000 => Ok(PartitionStatus::Invalid),
-            0x0001 => Ok(PartitionStatus::Valid),
-            0x0002 => Ok(PartitionStatus::BootFailed),
-            0x0003 => Ok(PartitionStatus::BootSuccessful),
-            _ => Err(()),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RollbackEnable {
-    Disabled = 0x0000_0000,
-    Enabled = 0x0001_0000,
 }
 
 pub trait ChecksumCalculator {

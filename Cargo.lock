@@ -2181,6 +2181,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "libapi-emulated-caliptra"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "embassy-executor",
+ "embedded-alloc",
+ "libsyscall-caliptra",
+ "libtock_platform",
+ "mcu-config",
+ "mcu-config-emulator",
+ "zerocopy",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.172"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3648,6 +3662,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "mcu-builder",
+ "mcu-config",
  "mcu-config-emulator",
  "pldm-fw-pkg",
  "tempfile",
@@ -3977,6 +3992,7 @@ dependencies = [
  "embassy-sync",
  "embedded-alloc",
  "libapi-caliptra",
+ "libapi-emulated-caliptra",
  "libsyscall-caliptra",
  "libtock",
  "libtock_console",
@@ -3985,6 +4001,7 @@ dependencies = [
  "libtock_runtime",
  "libtock_unittest",
  "libtockasync",
+ "mcu-config",
  "mcu-config-emulator",
  "pldm-common",
  "pldm-lib",

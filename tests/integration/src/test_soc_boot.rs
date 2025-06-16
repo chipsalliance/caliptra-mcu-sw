@@ -5,9 +5,9 @@ mod test {
     use crate::test::{compile_runtime, run_runtime, ROM, TEST_LOCK};
     use chrono::{TimeZone, Utc};
     use mcu_builder::SocImage;
+    use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use mcu_config_emulator::flash::{
-        PartitionId, PartitionStatus, PartitionTable, RollbackEnable, StandAloneChecksumCalculator,
-        IMAGE_A_PARTITION, IMAGE_B_PARTITION,
+        PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
     use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
