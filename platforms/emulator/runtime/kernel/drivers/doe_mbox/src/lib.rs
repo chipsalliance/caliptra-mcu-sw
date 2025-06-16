@@ -13,8 +13,9 @@ use kernel::utilities::StaticRef;
 use kernel::{debug, ErrorCode};
 use registers_generated::doe_mbox::bits::{DoeMboxDataReady, DoeMboxStatus};
 use registers_generated::doe_mbox::regs::DoeMbox;
+use registers_generated::doe_mbox::DOE_MBOX_ADDR;
 
-pub const DOE_MAX_DATA_OBJECT_SIZE: usize = 256; // arbitrary, adjust as needed
+const DOE_MBOX_SRAM_ADDR: u32 = DOE_MBOX_ADDR + 0x1000; // SRAM offset from DOE Mbox base address
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum DoeMboxState {
@@ -38,6 +39,7 @@ pub struct EmulatedDoeTransport<'a, A: Alarm<'a>> {
 
     // Buffer to send/receive the DOE data object.
     doe_data_buf: TakeCell<'static, [u8]>,
+    doe_data_buf_len: usize,
 
     // Buffer to hold the client data object.
     client_buf: TakeCell<'static, [u8]>,
@@ -45,6 +47,12 @@ pub struct EmulatedDoeTransport<'a, A: Alarm<'a>> {
     state: Cell<DoeMboxState>,
     timer_mode: Cell<TimerMode>,
     alarm: VirtualMuxAlarm<'a, A>,
+}
+
+fn doe_mbox_sram_static_ref(len: usize) -> &'static mut [u8] {
+    // SAFETY: We assume the SRAM is initialized and the address is valid.
+    // The length is provided by the caller and should match the actual SRAM size.
+    unsafe { core::slice::from_raw_parts_mut(DOE_MBOX_SRAM_ADDR as *mut u8, len) }
 }
 
 impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
@@ -61,11 +69,16 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
         base: StaticRef<DoeMbox>,
         alarm: &'a MuxAlarm<'a, A>,
     ) -> EmulatedDoeTransport<'a, A> {
+        let len = base.doe_mbox_sram.len() * core::mem::size_of::<u32>();
+
+        let static_doe_data_buf = doe_mbox_sram_static_ref(len);
+
         EmulatedDoeTransport {
             registers: base,
             tx_client: OptionalCell::empty(),
             rx_client: OptionalCell::empty(),
-            doe_data_buf: TakeCell::empty(),
+            doe_data_buf: TakeCell::new(static_doe_data_buf),
+            doe_data_buf_len: len,
             client_buf: TakeCell::empty(),
             state: Cell::new(DoeMboxState::Idle),
             timer_mode: Cell::new(TimerMode::NoTimer),
@@ -184,7 +197,7 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
     }
 
     fn max_data_object_size(&self) -> usize {
-        todo!("Get max data size from configured mailbox sram size")
+        self.doe_data_buf_len
     }
 
     fn enable(&self) -> Result<(), ErrorCode> {
