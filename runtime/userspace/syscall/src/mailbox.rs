@@ -95,9 +95,6 @@ impl<S: Syscalls> Mailbox<S> {
         })?
         .await;
 
-        S::unallow_ro(self.driver_num, mailbox_ro_buffer::INPUT);
-        S::unallow_rw(self.driver_num, mailbox_rw_buffer::RESPONSE);
-
         match result {
             Ok((bytes, error_code, _)) => {
                 if error_code != 0 {
