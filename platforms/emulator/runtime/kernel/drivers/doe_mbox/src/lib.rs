@@ -11,7 +11,7 @@ use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::{debug, ErrorCode};
-use registers_generated::doe_mbox::bits::{DoeMboxDataReady, DoeMboxStatus};
+use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
 use registers_generated::doe_mbox::regs::DoeMbox;
 use registers_generated::doe_mbox::DOE_MBOX_ADDR;
 
@@ -23,9 +23,10 @@ const DOE_MBOX_SRAM_ADDR: u32 = DOE_MBOX_ADDR + 0x1000; // SRAM offset from DOE 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum DoeMboxState {
     Idle,
-    RxWait,
-    RxReceived,
-    TxDeferred,
+    RxWait, // Driver owns RX buffer, waiting for data. Driver does not own client's TX buffer.
+    RxReceived, // Client owns RX buffer, waiting for set_rx_buffer() call.
+    TxDeferred, // Driver owns the TX buffer, waiting for send_done() call.
+    PendingReset, // Waiting either set_rx_buffer() or send_done() to reset the state.
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -92,6 +93,7 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
     pub fn init(&'static self) {
         self.alarm.setup();
         self.alarm.set_alarm_client(self);
+        // Start receiving data
         self.state.set(DoeMboxState::RxWait);
     }
 
@@ -111,46 +113,76 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
         self.alarm.set_alarm(now, delta);
     }
 
+    fn reset_state(&self) {
+        // Reset the doe_box_status register
+        self.registers.doe_mbox_status.set(0);
+        self.timer_mode.set(TimerMode::NoTimer);
+        self.state.set(DoeMboxState::RxWait);
+        self.registers
+            .doe_mbox_status
+            .write(DoeMboxStatus::ResetAck::SET);
+    }
+
     pub fn handle_interrupt(&self) {
-        if self.state.get() != DoeMboxState::RxWait {
-            return;
-        }
+        let event = self.registers.doe_mbox_event.extract();
 
-        let data_ready = self.registers.doe_mbox_data_ready.extract();
-        if !data_ready.is_set(DoeMboxDataReady::DataReady) {
-            return;
-        }
-
-        // Clear any existing status flags
-        self.registers
-            .doe_mbox_status
-            .write(DoeMboxStatus::DataReady::CLEAR);
-        self.registers
-            .doe_mbox_status
-            .write(DoeMboxStatus::Error::CLEAR);
-        self.start_response_timeout();
-
-        let data_len = self.registers.doe_mbox_dlen.get() as usize;
-        if data_len > self.max_data_object_size() {
+        // 1. Handle RESET_REQ regardless of current state
+        if event.is_set(DoeMboxEvent::ResetReq) {
+            // Clear the RESET_REQ bit in the event register
             self.registers
-                .doe_mbox_status
-                .write(DoeMboxStatus::Error::SET);
-            debug!("DOE Mbox Intr: Data length exceeds maximum size");
+                .doe_mbox_event
+                .write(DoeMboxEvent::ResetReq::CLEAR);
+            if self.state.get() != DoeMboxState::RxWait {
+                // If buffer is still in use, we cannot reset.
+                // Defer the reset until set_rx_buffer is called.
+                self.state.set(DoeMboxState::PendingReset);
+            } else {
+                // Reset the DOE Mbox status and state
+                self.reset_state();
+            }
             return;
         }
 
-        match self.doe_data_buf.take() {
-            Some(rx_buf) => {
-                if let Some(client) = self.rx_client.get() {
-                    client.receive(rx_buf, data_len);
-                    self.state.set(DoeMboxState::RxReceived);
-                }
+        // 2. Only handle DATA_READY if in RxWait state
+        if event.is_set(DoeMboxEvent::DataReady) {
+            if self.state.get() != DoeMboxState::RxWait {
+                // Not currently waiting for data, ignore DATA_READY
+                return;
             }
-            None => {
+
+            // Clear the DATA_READY event
+            self.registers
+                .doe_mbox_event
+                .write(DoeMboxEvent::DataReady::CLEAR);
+
+            // Clear any existing status flags
+            self.registers.doe_mbox_status.set(0);
+
+            // Start the response timeout timer
+            self.start_response_timeout();
+
+            let data_len = self.registers.doe_mbox_dlen.get() as usize;
+            // If the data length is not valid, set error bit
+            if data_len > self.max_data_object_size() {
                 self.registers
                     .doe_mbox_status
                     .write(DoeMboxStatus::Error::SET);
-                debug!("DOE Mbox intr: No RX buffer available");
+                debug!("DOE Mbox Intr: Data length exceeds maximum size");
+                return;
+            }
+
+            match self.doe_data_buf.take() {
+                Some(rx_buf) => {
+                    if let Some(client) = self.rx_client.get() {
+                        client.receive(rx_buf, data_len);
+                        self.state.set(DoeMboxState::RxReceived);
+                    }
+                }
+                None => {
+                    // We don't have a buffer to receive data
+                    // This should not happen in normal operation
+                    panic!("DOE Mbox Intr: No RX buffer available");
+                }
             }
         }
     }
@@ -176,8 +208,13 @@ impl<'a, A: Alarm<'a>> AlarmClient for EmulatedDoeTransport<'a, A> {
                 self.tx_client.map(|client| {
                     client.send_done(self.client_buf.take().unwrap(), Ok(()));
                 });
-                // After send_done, go back to RxWait
-                self.state.set(DoeMboxState::RxWait);
+                if self.state.get() == DoeMboxState::PendingReset {
+                    // If we were in TxDeferred state, we need to reset the state
+                    self.reset_state();
+                } else {
+                    // After send_done, go back to RxWait
+                    self.state.set(DoeMboxState::RxWait);
+                }
             }
         }
         // Clear timer mode after handling
@@ -196,6 +233,13 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
 
     fn set_rx_buffer(&self, rx_buf: &'static mut [u8]) {
         self.doe_data_buf.replace(rx_buf);
+        if self.state.get() == DoeMboxState::PendingReset {
+            // If we were waiting for a reset, reset the state now
+            self.reset_state();
+        } else {
+            // Move to RxWait state
+            self.state.set(DoeMboxState::RxWait);
+        }
     }
 
     fn max_data_object_size(&self) -> usize {

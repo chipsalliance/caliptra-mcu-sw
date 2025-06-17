@@ -8,9 +8,11 @@ pub mod bits {
     use tock_registers::register_bitfields;
     register_bitfields! {
         u32,
-            pub DoeMboxDataReady [
+            pub DoeMboxEvent [
                 /// Data ready indicator set by SoC. When set to 1, data is ready to be consumed by MCU for processing.
                 DataReady OFFSET(0) NUMBITS(1) [],
+                /// Reset request set by SoC. When set to 1, requests MCU to reset its state.
+                ResetReq OFFSET(1) NUMBITS(1) [],
             ],
             pub DoeMboxLock [
                 /// DOE Mailbox lock register for mailbox access. Reading 0 will set the lock.
@@ -19,6 +21,8 @@ pub mod bits {
             pub DoeMboxStatus [
                 /// Set by MCU when new data is ready for SoC to read. Cleared by SoC after data is read.
                 DataReady OFFSET(0) NUMBITS(1) [],
+                /// Set by MCU to acknowledge RESET_REQ from SoC. Cleared by SoC after acknowledgment is received.
+                ResetAck OFFSET(1) NUMBITS(1) [],
                 /// Indicates mailbox error.
                 Error OFFSET(1) NUMBITS(1) [],
             ],
@@ -32,7 +36,7 @@ pub mod regs {
             (0x0 => pub doe_mbox_lock: tock_registers::registers::ReadOnly<u32, crate::doe_mbox::bits::DoeMboxLock::Register>),
             (0x4 => pub doe_mbox_dlen: tock_registers::registers::ReadWrite<u32>),
             (0x8 => pub doe_mbox_status: tock_registers::registers::ReadWrite<u32, crate::doe_mbox::bits::DoeMboxStatus::Register>),
-            (0xc => pub doe_mbox_data_ready: tock_registers::registers::ReadWrite<u32, crate::doe_mbox::bits::DoeMboxDataReady::Register>),
+            (0xc => pub doe_mbox_event: tock_registers::registers::ReadWrite<u32, crate::doe_mbox::bits::DoeMboxEvent::Register>),
             (0x10 => _reserved0),
             (0x1000 => pub doe_mbox_sram: [tock_registers::registers::ReadWrite<u32>; 262144]),
             (0x101000 => @END),

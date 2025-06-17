@@ -37,19 +37,19 @@ pub trait DoeMboxPeripheral {
         >,
     ) {
     }
-    fn read_doe_mbox_data_ready(
+    fn read_doe_mbox_event(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::doe_mbox::bits::DoeMboxDataReady::Register,
+        registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn write_doe_mbox_data_ready(
+    fn write_doe_mbox_event(
         &mut self,
         _val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::doe_mbox::bits::DoeMboxDataReady::Register,
+            registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
         >,
     ) {
     }
@@ -79,7 +79,7 @@ impl caliptra_emu_bus::Bus for DoeMboxBus {
                 self.periph.read_doe_mbox_status().reg.get(),
             )),
             0xc..0x10 => Ok(caliptra_emu_types::RvData::from(
-                self.periph.read_doe_mbox_data_ready().reg.get(),
+                self.periph.read_doe_mbox_event().reg.get(),
             )),
             0x1000..0x10_1000 => Ok(self.periph.read_doe_mbox_sram((addr as usize - 0x1000) / 4)),
             _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
@@ -106,7 +106,7 @@ impl caliptra_emu_bus::Bus for DoeMboxBus {
             }
             0xc..0x10 => {
                 self.periph
-                    .write_doe_mbox_data_ready(caliptra_emu_bus::ReadWriteRegister::new(val));
+                    .write_doe_mbox_event(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x1000..0x10_1000 => {
