@@ -21,6 +21,9 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         streaming_boot,
         soc_images,
         flash_image,
+        use_dccm_for_stack,
+        dccm_offset,
+        dccm_size,
     } = args
     else {
         panic!("Must call runtime_run with Commands::Runtime");
@@ -28,8 +31,17 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
 
     let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
     let rom_binary: PathBuf = rom_build(None, "")?.into();
-    let tock_binary: PathBuf =
-        runtime_build_with_apps_cached(&features, None, false, None, None)?.into();
+    let tock_binary: PathBuf = runtime_build_with_apps_cached(
+        &features,
+        None,
+        false,
+        None,
+        None,
+        use_dccm_for_stack,
+        dccm_offset,
+        dccm_size,
+    )?
+    .into();
 
     let mut caliptra_builder = CaliptraBuilder::new(
         active_mode,
@@ -75,10 +87,13 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     cargo_run_args.extend(["--rom-size", &rom_size]);
     let dccm_offset = format!(
         "0x{:x}",
-        mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset
+        dccm_offset.unwrap_or(mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset),
     );
     cargo_run_args.extend(["--dccm-offset", &dccm_offset]);
-    let dccm_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size);
+    let dccm_size = format!(
+        "0x{:x}",
+        dccm_size.unwrap_or(mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size)
+    );
     cargo_run_args.extend(["--dccm-size", &dccm_size]);
     let sram_offset = format!(
         "0x{:x}",

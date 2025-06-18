@@ -5,8 +5,6 @@
 /// Offsets for peripherals mounted to the root bus.
 #[derive(Clone, Debug)]
 pub struct AutoRootBusOffsets {
-    pub dccm_offset: u32,
-    pub dccm_size: u32,
     pub i3c_offset: u32,
     pub i3c_size: u32,
     pub primary_flash_offset: u32,
@@ -35,8 +33,6 @@ pub struct AutoRootBusOffsets {
 impl Default for AutoRootBusOffsets {
     fn default() -> Self {
         Self {
-            dccm_offset: 0x5000_8000, // Remap to 0x5000_8000 to avoid overlapping with ROM SRAM hooked to McuRootBus
-            dccm_size: 0x4000,
             i3c_offset: 0x2000_4000,
             i3c_size: 0x1000,
             primary_flash_offset: 0x2000_8000,
@@ -67,7 +63,6 @@ impl Default for AutoRootBusOffsets {
 pub struct AutoRootBus {
     delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
     offsets: AutoRootBusOffsets,
-    pub dccm: caliptra_emu_bus::Ram,
     pub i3c_periph: Option<crate::i3c::I3cBus>,
     pub primary_flash_periph: Option<crate::primary_flash::PrimaryFlashBus>,
     pub secondary_flash_periph: Option<crate::secondary_flash::SecondaryFlashBus>,
@@ -102,7 +97,6 @@ impl AutoRootBus {
         Self {
             delegates,
             offsets: offsets.unwrap_or_default(),
-            dccm: caliptra_emu_bus::Ram::new(vec![0; 16384i32 as usize]),
             i3c_periph: i3c_periph.map(|p| crate::i3c::I3cBus { periph: p }),
             primary_flash_periph: primary_flash_periph
                 .map(|p| crate::primary_flash::PrimaryFlashBus { periph: p }),
@@ -127,11 +121,6 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
     ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
-        if addr >= self.offsets.dccm_offset
-            && addr < self.offsets.dccm_offset + self.offsets.dccm_size
-        {
-            return self.dccm.read(size, addr - self.offsets.dccm_offset);
-        }
         if addr >= self.offsets.i3c_offset && addr < self.offsets.i3c_offset + self.offsets.i3c_size
         {
             if let Some(periph) = self.i3c_periph.as_mut() {
@@ -223,11 +212,6 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         addr: caliptra_emu_types::RvAddr,
         val: caliptra_emu_types::RvData,
     ) -> Result<(), caliptra_emu_bus::BusError> {
-        if addr >= self.offsets.dccm_offset
-            && addr < self.offsets.dccm_offset + self.offsets.dccm_size
-        {
-            return self.dccm.write(size, addr - self.offsets.dccm_offset, val);
-        }
         if addr >= self.offsets.i3c_offset && addr < self.offsets.i3c_offset + self.offsets.i3c_size
         {
             if let Some(periph) = self.i3c_periph.as_mut() {

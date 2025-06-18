@@ -530,6 +530,9 @@ mod test {
             false,
             Some("fpga"),
             Some(&mcu_config_fpga::FPGA_MEMORY_MAP),
+            false,
+            None,
+            None,
         )
         .expect("Could not build MCU runtime");
         let mut caliptra_builder =

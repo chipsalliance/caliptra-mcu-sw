@@ -57,6 +57,9 @@ mod test {
             example_app,
             None,
             None,
+            false,
+            None,
+            None,
         )
         .expect("Runtime build failed");
         assert!(output.exists());

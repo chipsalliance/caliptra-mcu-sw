@@ -798,7 +798,6 @@ impl Instance {
                 result.next_alignment = Some(expect_number(i, parameters)?);
             }
         }
-        println!("Instance name {:?} {}", result.scope.ty, result.name);
         Ok(result)
     }
 }
