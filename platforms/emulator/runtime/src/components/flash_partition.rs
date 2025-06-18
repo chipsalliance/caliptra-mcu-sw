@@ -10,6 +10,45 @@ use kernel::create_capability;
 use kernel::hil;
 
 #[macro_export]
+macro_rules! instantiate_flash_partitions {
+    (
+        $partition_list_macro:tt,
+        $flash_partitions:ident,
+        $kernel:expr,
+        $mux:expr
+    ) => {{
+        macro_rules! assign_partition {
+            ($index:tt, $var:ident, $partition:ident) => {
+                let image_par_fl_user = components::flash::FlashUserComponent::new($mux).finalize(
+                    components::flash_user_component_static!(
+                        flash_driver::flash_ctrl::EmulatedFlashCtrl
+                    ),
+                );
+
+                $flash_partitions[$index] = Some(
+                    runtime_components::flash_partition::FlashPartitionComponent::new(
+                        $kernel,
+                        mcu_config_emulator::flash::$partition.driver_num as usize,
+                        image_par_fl_user,
+                        mcu_config_emulator::flash::$partition.offset,
+                        mcu_config_emulator::flash::$partition.size,
+                    )
+                    .finalize(crate::flash_partition_component_static!(
+                        virtual_flash::FlashUser<
+                            'static,
+                            flash_driver::flash_ctrl::EmulatedFlashCtrl,
+                        >,
+                        capsules_runtime::flash_partition::BUF_LEN
+                    )),
+                );
+            };
+        }
+
+        $partition_list_macro!(assign_partition);
+    }};
+}
+
+#[macro_export]
 macro_rules! flash_partition_component_static {
     ($F:ty, $buf_len:expr $(,)?) => {{
         let page = kernel::static_buf!(<$F as kernel::hil::flash::Flash>::Page);
@@ -108,6 +147,7 @@ impl<
                 .2
                 .write(capsules_runtime::flash_partition::FlashPartition::new(
                     fs_to_pages,
+                    self.driver_num,
                     self.board_kernel.create_grant(self.driver_num, &grant_cap),
                     self.start_address,
                     self.length,

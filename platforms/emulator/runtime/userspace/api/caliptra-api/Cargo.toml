@@ -1,0 +1,19 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "libapi-emulated-caliptra"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+libsyscall-caliptra.workspace = true
+libtock_platform.workspace = true
+mcu-config.workspace = true
+mcu-config-emulator.workspace = true
+zerocopy.workspace = true
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
+embedded-alloc.workspace = true

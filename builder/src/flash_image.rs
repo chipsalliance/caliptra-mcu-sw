@@ -2,8 +2,9 @@
 
 use anyhow::{anyhow, bail, Result};
 use crc32fast::Hasher;
-use std::fs::File;
-use std::io::{self, Error, ErrorKind, Read, Write};
+use mcu_config_emulator::flash::PartitionTable;
+use std::fs::{File, OpenOptions};
+use std::io::{self, Error, ErrorKind, Read, Seek, Write};
 use zerocopy::{byteorder::U32, FromBytes, IntoBytes};
 use zerocopy::{Immutable, KnownLayout};
 
@@ -85,9 +86,22 @@ impl<'a> FlashImage<'a> {
         }
     }
 
-    pub fn write_to_file(&self, filename: &str) -> Result<()> {
-        let mut file = File::create(filename)
-            .map_err(|e| anyhow!(format!("Unable to create file {}: {}", filename, e)))?;
+    pub fn write_to_file(&self, offset: usize, filename: &str) -> Result<()> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(filename)
+            .map_err(|e| anyhow!(format!("Unable to open file {}: {}", filename, e)))?;
+
+        // Seek to the specified offset before writing
+        file.seek(std::io::SeekFrom::Start(offset as u64))
+            .map_err(|e| {
+                anyhow!(format!(
+                    "Unable to seek to offset {} in file {}: {}",
+                    offset, filename, e
+                ))
+            })?;
         file.write_all(self.header.as_bytes())?;
         file.write_all(self.checksum.as_bytes())?;
         for info in self.payload.image_info {
@@ -192,6 +206,7 @@ pub fn flash_image_create(
     soc_manifest_path: &Option<String>,
     mcu_runtime_path: &Option<String>,
     soc_image_paths: &Option<Vec<String>>,
+    offset: usize,
     output_path: &str,
 ) -> Result<()> {
     let mut images: Vec<FirmwareImage> = Vec::new();
@@ -233,7 +248,7 @@ pub fn flash_image_create(
     let image_info = generate_image_info(images.clone());
 
     let flash_image = FlashImage::new(&images, &image_info);
-    flash_image.write_to_file(output_path)?;
+    flash_image.write_to_file(offset, output_path)?;
 
     Ok(())
 }
@@ -271,6 +286,31 @@ pub fn flash_image_verify(image_file_path: &str) -> Result<()> {
     })?;
     file.read_to_end(&mut data)?;
     FlashImage::verify_flash_image(&data)
+}
+
+pub fn write_partition_table(
+    partition_table: &PartitionTable,
+    offset: usize,
+    filename: &str,
+) -> Result<()> {
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(filename)
+        .map_err(|e| anyhow!(format!("Unable to open file {}: {}", filename, e)))?;
+
+    // Seek to the specified offset before writing
+    file.seek(std::io::SeekFrom::Start(offset as u64))
+        .map_err(|e| {
+            anyhow!(format!(
+                "Unable to seek to offset {} in file {}: {}",
+                offset, filename, e
+            ))
+        })?;
+    file.write_all(partition_table.as_bytes())?;
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -326,6 +366,7 @@ mod tests {
             &Some(soc_manifest.path().to_str().unwrap().to_string()),
             &Some(mcu_runtime.path().to_str().unwrap().to_string()),
             &soc_image_paths,
+            0,
             output_path,
         )
         .expect("Failed to build flash image");
@@ -427,7 +468,7 @@ mod tests {
         let image_info = generate_image_info(expected_images.to_vec());
         let flash_image = FlashImage::new(&expected_images, &image_info);
         flash_image
-            .write_to_file(image_path)
+            .write_to_file(0, image_path)
             .expect("Failed to write flash image");
 
         // Verify the firmware image
@@ -463,7 +504,7 @@ mod tests {
         let image_info = generate_image_info(images.to_vec());
         let flash_image = FlashImage::new(&images, &image_info);
         flash_image
-            .write_to_file(image_path)
+            .write_to_file(0, image_path)
             .expect("Failed to write flash image");
 
         // Corrupt the file by modifying the data

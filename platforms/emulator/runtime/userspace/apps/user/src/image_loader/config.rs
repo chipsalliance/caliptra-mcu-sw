@@ -55,6 +55,8 @@ pub mod streaming_boot_consts {
         });
 
     // Image IDs as defined in the SoC manifest
+    #[allow(unused)]
     pub const IMAGE_ID1: u32 = 4096;
+    #[allow(unused)]
     pub const IMAGE_ID2: u32 = 4097;
 }
