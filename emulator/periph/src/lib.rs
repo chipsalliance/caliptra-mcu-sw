@@ -12,6 +12,7 @@ Abstract:
 
 --*/
 mod dma_ctrl;
+mod doe_mbox;
 mod emu_ctrl;
 mod flash_ctrl;
 mod i3c;
