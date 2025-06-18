@@ -11,11 +11,20 @@ mod config;
 
 use core::fmt::Write;
 #[allow(unused)]
+use libapi_emulated_caliptra::flash_boot_cfg::FlashBootConfig;
+#[allow(unused)]
 use libsyscall_caliptra::flash::SpiFlash;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
 #[allow(unused)]
-use mcu_config_emulator::flash::{IMAGE_A_PARTITION, IMAGE_B_PARTITION};
+use mcu_config::boot;
+#[allow(unused)]
+use mcu_config::boot::{BootConfig, PartitionId, PartitionStatus, RollbackEnable};
+#[allow(unused)]
+use mcu_config_emulator::flash::{
+    PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
+    PARTITION_TABLE,
+};
 #[allow(unused)]
 use pldm_lib::daemon::PldmService;
 
@@ -26,8 +35,12 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 #[allow(unused)]
-use libapi_caliptra::image_loading::{ImageLoader, ImageSource, PldmFirmwareDeviceParams};
+use libapi_caliptra::image_loading::{
+    FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams, PldmImageLoader,
+};
 use libsyscall_caliptra::DefaultSyscalls;
+#[allow(unused)]
+use zerocopy::{FromBytes, IntoBytes};
 
 #[embassy_executor::task]
 pub async fn image_loading_task() {
@@ -56,12 +69,8 @@ async fn image_loading() -> Result<(), ErrorCode> {
             descriptors: &config::streaming_boot_consts::DESCRIPTOR.get()[..],
             fw_params: config::streaming_boot_consts::STREAMING_BOOT_FIRMWARE_PARAMS.get(),
         };
-        let flash_syscall = SpiFlash::new(IMAGE_A_PARTITION.driver_num);
-        let pldm_image_loader: ImageLoader = ImageLoader::new(
-            ImageSource::Pldm(fw_params),
-            flash_syscall,
-            EXECUTOR.get().spawner(),
-        );
+        let pldm_image_loader: PldmImageLoader =
+            PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner());
         pldm_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
             .await?;
@@ -72,16 +81,26 @@ async fn image_loading() -> Result<(), ErrorCode> {
     }
     #[cfg(feature = "test-flash-based-boot")]
     {
-        let flash_syscall = SpiFlash::new(IMAGE_A_PARTITION.driver_num);
-        let flash_image_loader: ImageLoader =
-            ImageLoader::new(ImageSource::Flash, flash_syscall, EXECUTOR.get().spawner());
+        let mut boot_config = FlashBootConfig::new();
+        let active_partition_id = boot_config
+            .get_active_partition()
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
+        let active_partition = boot_config
+            .get_partition_from_id(active_partition_id)
+            .map_err(|_| ErrorCode::Fail)?;
+        let flash_syscall = SpiFlash::new(active_partition.driver_num);
+        let flash_image_loader: FlashImageLoader = FlashImageLoader::new(flash_syscall);
         flash_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
             .await?;
         flash_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2)
             .await?;
-        flash_image_loader.finalize().await?;
+        boot_config
+            .set_partition_status(active_partition_id, PartitionStatus::BootSuccessful)
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
     }
 
     #[cfg(any(

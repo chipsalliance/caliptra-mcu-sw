@@ -248,6 +248,7 @@ fn main() {
                 soc_manifest,
                 mcu_runtime,
                 soc_images,
+                0,
                 output,
             ),
             FlashImageCommands::Verify { file } => {

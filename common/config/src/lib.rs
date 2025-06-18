@@ -2,6 +2,8 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
+pub mod boot;
+
 /// Configures the memory map for the MCU.
 /// These are the defaults that can be overridden and provided to the ROM and runtime builds.
 #[repr(C)]
