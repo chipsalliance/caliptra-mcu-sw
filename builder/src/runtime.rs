@@ -6,6 +6,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use crate::apps::apps_build_flat_tbf;
 use crate::{objcopy, target_binary, target_dir, OBJCOPY_FLAGS, PROJECT_ROOT, SYSROOT, TARGET};
 use anyhow::{anyhow, bail, Result};
@@ -90,7 +94,7 @@ pub fn runtime_build_no_apps_uncached(
 
     let ld_string = runtime_ld_script(
         memory_map,
-        memory_map.sram_offset + INTERRUPT_TABLE_SIZE as u32,
+        memory_map.sram_offset, // + INTERRUPT_TABLE_SIZE as u32,
         kernel_size as u32,
         apps_offset as u32,
         apps_size as u32,
@@ -394,7 +398,7 @@ pub fn runtime_build_with_apps_cached(
     println!("Kernel binary built: {} bytes", kernel_size);
 
     bin.extend_from_slice(vec![0; padding].as_slice());
-    bin.extend_from_slice(&apps_bin);
+    // bin.extend_from_slice(&apps_bin);
     std::fs::write(&runtime_bin, &bin)?;
 
     println!("Kernel binary size: {} bytes", kernel_size);

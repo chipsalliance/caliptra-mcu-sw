@@ -20,7 +20,7 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
         cacheable: true,
     },
 
-    sram_offset: 0xb008_0000,
+    sram_offset: 0xa8c0_0000,
     sram_size: 384 * 1024,
     sram_properties: MemoryRegionType {
         side_effect: false,

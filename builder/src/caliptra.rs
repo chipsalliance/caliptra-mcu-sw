@@ -135,6 +135,8 @@ impl CaliptraBuilder {
         flags.set_image_source(IMAGE_SOURCE_IN_REQUEST);
         let crypto = Crypto::default();
         let digest = from_hw_format(&crypto.sha384_digest(&data)?);
+        let d: String = digest.clone().encode_hex();
+        println!("MCU len {} digest: {}", data.len(), d);
 
         Ok(AuthManifestImageMetadata {
             fw_id: 2,
@@ -214,6 +216,9 @@ impl CaliptraBuilder {
 
     fn compile_caliptra_rom_uncached() -> Result<PathBuf> {
         let rom_bytes = caliptra_builder::rom_for_fw_integration_tests()?;
+        // TODO: allow using FPGA ROM
+        //let rom_bytes =
+        //    caliptra_builder::build_firmware_rom(&caliptra_builder::firmware::ROM_FPGA_WITH_UART)?;
         let path = target_dir().join("caliptra-rom.bin");
         std::fs::write(&path, rom_bytes)?;
         Ok(path)
@@ -265,8 +270,8 @@ impl CaliptraBuilder {
             ..Default::default()
         };
         let bundle = caliptra_builder::build_and_sign_image(
-            &caliptra_builder::firmware::FMC_WITH_UART,
-            &caliptra_builder::firmware::APP_WITH_UART,
+            &caliptra_builder::firmware::FMC_FPGA_WITH_UART,
+            &caliptra_builder::firmware::APP_WITH_UART_FPGA,
             opts,
         )?;
         let fw_bytes = bundle.to_bytes()?;
