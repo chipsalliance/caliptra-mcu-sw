@@ -103,9 +103,9 @@ impl Otp {
     pub fn read_fuses(&self) -> Result<Fuses, McuError> {
         let mut fuses = Fuses::default();
         self.read_data(
-            fuses::SECRET_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
-            fuses::SECRET_TEST_UNLOCK_PARTITION_BYTE_SIZE,
-            &mut fuses.secret_test_unlock_partition,
+            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
+            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
+            &mut fuses.sw_test_unlock_partition,
         )?;
         self.read_data(
             fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET,

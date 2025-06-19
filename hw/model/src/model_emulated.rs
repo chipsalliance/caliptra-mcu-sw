@@ -165,10 +165,10 @@ impl McuHwModel for ModelEmulated {
             None,
             None,
             None,
-            None,
-            None,
-            None,
             Some(Box::new(otp)),
+            None,
+            None,
+            None,
             None,
         );
 

@@ -28,13 +28,13 @@ pub struct Mci {
 }
 
 impl Mci {
-    pub const CPTRA_WDT_TIMER1_EN_START: u32 = 0xa0;
-    pub const CPTRA_WDT_TIMER1_CTRL_START: u32 = 0xa4;
-    pub const CPTRA_WDT_TIMER1_TIMEOUT_PERIOD_START: u32 = 0xa8;
-    pub const CPTRA_WDT_TIMER2_EN_START: u32 = 0xb0;
-    pub const CPTRA_WDT_TIMER2_CTRL_START: u32 = 0xb4;
-    pub const CPTRA_WDT_TIMER2_TIMEOUT_PERIOD_START: u32 = 0xb8;
-    pub const CPTRA_WDT_STATUS_START: u32 = 0xc0;
+    pub const CPTRA_WDT_TIMER1_EN_START: u32 = 0xb0;
+    pub const CPTRA_WDT_TIMER1_CTRL_START: u32 = 0xb4;
+    pub const CPTRA_WDT_TIMER1_TIMEOUT_PERIOD_START: u32 = 0xb8;
+    pub const CPTRA_WDT_TIMER2_EN_START: u32 = 0xc0;
+    pub const CPTRA_WDT_TIMER2_CTRL_START: u32 = 0xc4;
+    pub const CPTRA_WDT_TIMER2_TIMEOUT_PERIOD_START: u32 = 0xc8;
+    pub const CPTRA_WDT_STATUS_START: u32 = 0xd0;
 
     pub fn new(clock: &Clock) -> Self {
         Self {

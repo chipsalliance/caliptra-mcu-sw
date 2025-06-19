@@ -34,8 +34,8 @@ const TOTAL_SIZE: usize = fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE
 
 const PARTITIONS: [(usize, usize); 15] = [
     (
-        fuses::SECRET_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
-        fuses::SECRET_TEST_UNLOCK_PARTITION_BYTE_SIZE,
+        fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
+        fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
     ),
     (
         fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET,
