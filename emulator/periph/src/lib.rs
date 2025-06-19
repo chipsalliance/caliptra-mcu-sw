@@ -26,6 +26,7 @@ mod spi_host;
 mod uart;
 
 pub use dma_ctrl::DummyDmaCtrl;
+pub use doe_mbox::{DoeMboxPeriph, DummyDoeMbox};
 pub use emu_ctrl::EmuCtrl;
 pub use flash_ctrl::DummyFlashCtrl;
 pub use i3c::I3c;

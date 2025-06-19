@@ -126,6 +126,8 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
     pub fn handle_interrupt(&self) {
         let event = self.registers.doe_mbox_event.extract();
 
+        debug!("DOE_MBOX_DRIVER: Mbox Intr: Event={:?}", event);
+
         // 1. Handle RESET_REQ regardless of current state
         if event.is_set(DoeMboxEvent::ResetReq) {
             // Clear the RESET_REQ bit in the event register
