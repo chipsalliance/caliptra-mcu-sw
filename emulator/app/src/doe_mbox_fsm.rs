@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use emulator_periph::DoeMboxPeriph;
+use rand::Rng;
+use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -8,21 +10,6 @@ use std::sync::{
 };
 use std::thread;
 use std::time::Duration;
-
-// DOE Mailbox Register Offsets (from your RDL)
-const DOE_MBOX_DLEN_OFFSET: u32 = 0x04;
-const DOE_MBOX_STATUS_OFFSET: u32 = 0x08;
-const DOE_MBOX_EVENT_OFFSET: u32 = 0x0C;
-const DOE_MBOX_SRAM_BASE: u32 = 0x1000;
-
-// Status register bit positions
-const STATUS_DATA_READY: u32 = 1 << 0;
-const STATUS_RESET_ACK: u32 = 1 << 1;
-const STATUS_ERROR: u32 = 1 << 2;
-
-// Event register bit positions
-const EVENT_DATA_READY: u32 = 1 << 0;
-const EVENT_RESET_REQ: u32 = 1 << 1;
 
 #[derive(Debug, Clone, PartialEq)]
 enum DoeMboxState {
@@ -33,16 +20,12 @@ enum DoeMboxState {
 }
 
 pub struct DoeMboxFsm {
-    state: DoeMboxState,
     doe_mbox: DoeMboxPeriph,
 }
 
 impl DoeMboxFsm {
     pub fn new(doe_mbox: DoeMboxPeriph) -> Self {
-        Self {
-            state: DoeMboxState::Idle,
-            doe_mbox,
-        }
+        Self { doe_mbox: doe_mbox }
     }
 
     pub fn start(&mut self, running: Arc<AtomicBool>) -> (Receiver<Vec<u8>>, Sender<Vec<u8>>) {
@@ -158,35 +141,69 @@ impl DoeMboxStateMachine {
     }
 }
 
+pub struct DoeTransportLoopbackTest {
+    tx: Sender<Vec<u8>>,
+    rx: Receiver<Vec<u8>>,
+    test_vectors: VecDeque<Vec<u8>>,
+}
+
+impl DoeTransportLoopbackTest {
+    const NUM_TEST_VECTORS: usize = 2;
+    const MIN_TEST_DATA_SIZE: usize = 2 * 4; // Example minimum size of test vectors
+    const MAX_TEST_DATA_SIZE: usize = 128 * 4; // Example maximum size of test vectors
+    pub fn new(tx: Sender<Vec<u8>>, rx: Receiver<Vec<u8>>) -> Self {
+        let mut rng = rand::thread_rng();
+        let mut test_vectors = VecDeque::new();
+        for _ in 0..Self::NUM_TEST_VECTORS {
+            // Generate a random size (multiple of 4 bytes)
+            let num_words =
+                rng.gen_range((Self::MIN_TEST_DATA_SIZE / 4)..=(Self::MAX_TEST_DATA_SIZE / 4));
+            let mut vector = vec![0u8; num_words * 4];
+            rng.fill(vector.as_mut_slice());
+            test_vectors.push_back(vector);
+        }
+
+        Self {
+            tx,
+            rx,
+            test_vectors,
+        }
+    }
+
+    pub fn run_tests(&mut self, running: Arc<AtomicBool>) {
+        while running.load(Ordering::Relaxed) {
+            if let Some(test_vector) = self.test_vectors.pop_front() {
+                println!("Running test with vector: {}", test_vector.len());
+                self.tx.send(test_vector.clone()).unwrap();
+
+                if let Ok(response) = self.rx.recv() {
+                    if response == test_vector {
+                        println!("Test passed: Sent and received data match.");
+                    } else {
+                        println!(
+                            "Test failed: Sent {:?}, but received {:?}.",
+                            test_vector, response
+                        );
+                    }
+                } else {
+                    println!("Test failed: No response received from FSM.");
+                }
+            } else {
+                // No more test vectors to process
+                break;
+            }
+        }
+    }
+}
+
 pub(crate) fn test_doe_transport_loopback(
     running: Arc<AtomicBool>,
     tx: Sender<Vec<u8>>,
     rx: Receiver<Vec<u8>>,
 ) {
     thread::spawn(move || {
-        // Example test vector
-        let test_vector = vec![0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x02, 0x03];
-        println!("Starting loopback test with vector: {:?}", test_vector);
-        // Send test vector to FSM
-        tx.send(test_vector.clone()).unwrap();
+        let mut test = DoeTransportLoopbackTest::new(tx, rx);
 
-        // Receive response from FSM
-        if let Ok(response) = rx.recv() {
-            // Compare sent and received data
-            let success = response == test_vector;
-            if success {
-                println!("Loopback test passed: Sent and received data match.");
-            } else {
-                println!(
-                    "Loopback test failed: Sent {:?}, but received {:?}.",
-                    test_vector, response
-                );
-            }
-        } else {
-            println!("Loopback test failed: No response received from FSM.");
-        }
-
-        // Optionally stop the running flag
-        running.store(false, Ordering::Relaxed);
+        test.run_tests(running);
     });
 }

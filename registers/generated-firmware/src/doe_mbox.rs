@@ -9,9 +9,9 @@ pub mod bits {
     register_bitfields! {
         u32,
             pub DoeMboxEvent [
-                /// Data ready indicator set by SoC. When set to 1, data is ready to be consumed by MCU for processing.
+                /// Data ready indicator set by SoC. When set to 1, data is ready to be consumed by MCU for processing. Cleared by MCU writing 1 to this bit.
                 DataReady OFFSET(0) NUMBITS(1) [],
-                /// Reset request set by SoC. When set to 1, requests MCU to reset its state.
+                /// Reset request set by SoC. When set to 1, requests MCU to reset its state. Cleared by MCU writing 1 to this bit.
                 ResetReq OFFSET(1) NUMBITS(1) [],
             ],
             pub DoeMboxLock [
@@ -19,12 +19,12 @@ pub mod bits {
                 Lock OFFSET(0) NUMBITS(1) [],
             ],
             pub DoeMboxStatus [
-                /// Set by MCU when new data is ready for SoC to read. Cleared by SoC after data is read.
+                /// Set by MCU when new data is ready for SoC to read. MCU can explicitly set/clear this bit.
                 DataReady OFFSET(0) NUMBITS(1) [],
-                /// Set by MCU to acknowledge RESET_REQ from SoC. Cleared by SoC after acknowledgment is received.
+                /// Set by MCU to acknowledge RESET_REQ from SoC. MCU can explicitly set/clear this bit.
                 ResetAck OFFSET(1) NUMBITS(1) [],
-                /// Indicates mailbox error.
-                Error OFFSET(1) NUMBITS(1) [],
+                /// Indicates mailbox error. MCU can explicitly set/clear this bit.
+                Error OFFSET(2) NUMBITS(1) [],
             ],
     }
 }

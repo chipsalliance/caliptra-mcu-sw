@@ -589,6 +589,9 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-mcu-rom-flash-access") {
         debug!("Executing test-mcu-rom-flash-access");
         Some(0)
+    } else if cfg!(feature = "test-doe-transport-loopback") {
+        debug!("Executing test-doe-transport-loopback");
+        crate::tests::doe_transport_test::test_doe_transport_loopback()
     } else {
         None
     };

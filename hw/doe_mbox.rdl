@@ -11,35 +11,40 @@ addrmap doe_mbox {
         field {
             sw = rw;
             reset = 0;
-            desc = "Data length for mailbox access in bytes. Cleared when lock is cleared.";
+            desc = "Data length for mailbox access in dwords. Cleared when lock is cleared.";
         } LENGTH[31:0];
     } DOE_MBOX_DLEN @ 0x04;
 
     reg {
         field {
             sw = rw;
-            desc = "Set by MCU when new data is ready for SoC to read. Cleared by SoC after data is read.";
+            reset = 0;
+            desc = "Set by MCU when new data is ready for SoC to read. MCU can explicitly set/clear this bit.";
         } DATA_READY[0:0];
         field {
-        sw = rw;
-        desc = "Set by MCU to acknowledge RESET_REQ from SoC. Cleared by SoC after acknowledgment is received.";
+            sw = rw;
+            reset = 0;
+            desc = "Set by MCU to acknowledge RESET_REQ from SoC. MCU can explicitly set/clear this bit.";
         } RESET_ACK[1:1];
         field {
             sw = rw;
-            desc = "Indicates mailbox error.";
-        } ERROR[1:1];
+            reset = 0;
+            desc = "Indicates mailbox error. MCU can explicitly set/clear this bit.";
+        } ERROR[2:2];
     } DOE_MBOX_STATUS @ 0x08;
 
     reg {
         field {
             sw = rw;
+            onwrite = woclr;
             reset = 0;
-            desc = "Data ready indicator set by SoC. When set to 1, data is ready to be consumed by MCU for processing.";
+            desc = "Data ready indicator set by SoC. When set to 1, data is ready to be consumed by MCU for processing. Cleared by MCU writing 1 to this bit.";
         } DATA_READY[0:0];
         field {
             sw = rw;
+            onwrite = woclr;
             reset = 0;
-            desc = "Reset request set by SoC. When set to 1, requests MCU to reset its state.";
+            desc = "Reset request set by SoC. When set to 1, requests MCU to reset its state. Cleared by MCU writing 1 to this bit.";
         } RESET_REQ[1:1];
     } DOE_MBOX_EVENT @ 0x0C;
 

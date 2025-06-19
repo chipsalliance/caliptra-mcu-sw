@@ -3,7 +3,10 @@ use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_cpu::Irq;
 use emulator_registers_generated::doe_mbox::DoeMboxPeripheral;
 use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
-use std::sync::{Arc, Mutex};
+use std::{
+    fmt::write,
+    sync::{Arc, Mutex},
+};
 use tock_registers::interfaces::{Readable, Writeable};
 
 pub struct DummyDoeMbox {
@@ -12,11 +15,33 @@ pub struct DummyDoeMbox {
     periph: DoeMboxPeriph,
 }
 
+struct PollScheduler {
+    timer: Timer,
+}
+
+impl IncomingDoeMboxWrite for PollScheduler {
+    fn incoming(&self) {
+        println!("Incoming write to DOE mailbox detected, scheduling poll.");
+        // trigger interrupt check next tick
+        self.timer.schedule_poll_in(1);
+    }
+}
+pub trait IncomingDoeMboxWrite {
+    fn incoming(&self);
+}
+
 impl DummyDoeMbox {
     const DOE_MBOX_TICKS: u64 = 1000; // Example value, adjust as needed
-    pub fn new(clock: &Clock, event_irq: Irq, periph: DoeMboxPeriph) -> Self {
+    pub fn new(clock: &Clock, event_irq: Irq, mut periph: DoeMboxPeriph) -> Self {
+        let timer = Timer::new(clock);
+        timer.schedule_poll_in(Self::DOE_MBOX_TICKS);
+        let poll_scheduler = PollScheduler {
+            timer: timer.clone(),
+        };
+        periph.set_incoming_write_client(Arc::new(poll_scheduler));
+
         DummyDoeMbox {
-            timer: Timer::new(clock),
+            timer,
             event_irq,
             periph,
         }
@@ -31,6 +56,11 @@ impl DummyDoeMbox {
 impl DoeMboxPeripheral for DummyDoeMbox {
     fn poll(&mut self) {
         let irq_status = self.periph.inner.lock().unwrap().check_interrupts();
+        // if (irq_status) {
+        //     println!("DOE mailbox interrupt triggered.");
+        // } else {
+        //     println!("DOE mailbox interrupt cleared");
+        // }
         self.event_irq.set_level(irq_status);
         self.timer.schedule_poll_in(Self::DOE_MBOX_TICKS);
     }
@@ -60,7 +90,13 @@ impl DoeMboxPeripheral for DummyDoeMbox {
             registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
         >,
     ) {
-        // Write the value to the status register.
+        println!(
+            "DOE_MBOX_BUS: Bus Writing to status register: {:#x}",
+            val.reg.get()
+        );
+
+        // Simple: STATUS register uses normal read/write semantics
+        // MCU can set and clear bits explicitly by writing the desired value
         self.periph
             .inner
             .lock()
@@ -88,7 +124,15 @@ impl DoeMboxPeripheral for DummyDoeMbox {
             registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
         >,
     ) {
-        self.periph.inner.lock().unwrap().write_to_event(val);
+        println!(
+            "DOE_MBOX_BUS: Bus Writing to event register: {:#x}",
+            val.reg.get()
+        );
+        self.periph
+            .inner
+            .lock()
+            .unwrap()
+            .write_to_event_register(val);
     }
 
     fn read_doe_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
@@ -103,9 +147,17 @@ impl DoeMboxPeripheral for DummyDoeMbox {
 #[derive(Default, Clone)]
 pub struct DoeMboxPeriph {
     inner: Arc<Mutex<DoeMboxInner>>,
+    incoming_write_client: Arc<Mutex<Option<Arc<dyn IncomingDoeMboxWrite + Send + Sync>>>>,
 }
 
 impl DoeMboxPeriph {
+    pub fn set_incoming_write_client(
+        &mut self,
+        client: Arc<dyn IncomingDoeMboxWrite + Send + Sync>,
+    ) {
+        *self.incoming_write_client.lock().unwrap() = Some(client);
+    }
+
     pub fn reset(&mut self) {
         self.inner.lock().unwrap().reset();
     }
@@ -130,13 +182,29 @@ impl DoeMboxPeriph {
         }
         let data_len = data.len() / 4;
         inner.mbox_dlen.reg.set(data_len as u32);
-        inner.write_to_event(ReadWriteRegister::new(DoeMboxEvent::DataReady::SET.value));
+        inner.set_event_data_ready();
+
+        if let Some(client) = self.incoming_write_client.lock().unwrap().clone() {
+            client.incoming();
+        }
 
         println!(
-            "DOE_MBOX_PERIPH: Data written successfully, length: {} words",
+            "DOE_MBOX_BUS: Data written successfully, length: {} words",
             data_len
         );
         Ok(())
+    }
+
+    pub fn request_reset(&mut self) {
+        let mut inner = self.inner.lock().unwrap();
+        // PERIPHERAL LOGIC: Set EVENT.RESET_REQ bit
+        inner.set_event_reset_req();
+
+        if let Some(client) = self.incoming_write_client.lock().unwrap().clone() {
+            client.incoming();
+        }
+
+        println!("DOE_MBOX_BUS: Reset request sent.");
     }
 
     pub fn read_data(&self) -> Result<Option<Vec<u8>>, String> {
@@ -149,19 +217,23 @@ impl DoeMboxPeriph {
 
         if status & DoeMboxStatus::DataReady::SET.value != 0 {
             // Data is ready to be read
-            inner
-                .mbox_status
-                .reg
-                .set(DoeMboxStatus::DataReady::CLEAR.value);
+            // NOTE: According to our protocol, SoC reads the data but MCU is responsible
+            // for clearing STATUS.DATA_READY via explicit bus write.
+            // SoC should NOT clear this bit directly.
 
             let data_len = inner.mbox_dlen.reg.get() as usize;
+            println!(
+                "DOE_MBOX_PERIPH: Reading data of length: {} words",
+                data_len
+            );
             let data = (0..data_len)
                 .flat_map(|i| inner.read_doe_sram(i).to_le_bytes())
                 .collect::<Vec<u8>>();
 
             Ok(Some(data))
         } else if status & DoeMboxStatus::Error::SET.value != 0 {
-            inner.mbox_status.reg.set(DoeMboxStatus::Error::CLEAR.value);
+            // NOTE: Similar to DATA_READY, ERROR should be cleared by MCU via bus write
+            // not by SoC peripheral logic
             Err("Doe Mailbox error occurred".to_string())
         } else {
             Ok(None)
@@ -203,14 +275,14 @@ impl DoeMboxInner {
     }
 
     fn check_interrupts(&mut self) -> bool {
-        self.mbox_event
-            .reg
-            .any_matching_bits_set(DoeMboxEvent::DataReady::SET + DoeMboxEvent::ResetReq::SET)
-    }
-
-    fn write_to_event(&mut self, val: ReadWriteRegister<u32, DoeMboxEvent::Register>) {
-        self.mbox_event.reg.set(val.reg.get());
-        self.check_interrupts();
+        // Check if any relevant bits (DataReady or ResetReq) are set in the event register
+        let event_val = self.mbox_event.reg.get();
+        // println!(
+        //     "DOE_MBOX_PERIPH: Checking interrupts, event value: {:#x}",
+        //     event_val
+        // );
+        (event_val & DoeMboxEvent::DataReady::SET.value != 0)
+            || (event_val & DoeMboxEvent::ResetReq::SET.value != 0)
     }
 
     fn read_doe_sram(&self, index: usize) -> caliptra_emu_types::RvData {
@@ -238,6 +310,41 @@ impl DoeMboxInner {
             self.mbox_sram[index] = val;
         }
     }
+
+    // Bus write operations (w1c clearing) - only for EVENT register
+    pub fn write_to_event_register(&mut self, val: ReadWriteRegister<u32, DoeMboxEvent::Register>) {
+        let current = self.mbox_event.reg.get();
+        let write_val = val.reg.get();
+        let new_val = current & !write_val; // w1c: writing 1 clears the bit
+        self.mbox_event.reg.set(new_val);
+        println!(
+            "Bus w1c EVENT: wrote {:#x}, {:#x} -> {:#x}",
+            write_val, current, new_val
+        );
+    }
+
+    // Internal peripheral logic for SETTING EVENT bits (not bus operations)
+    pub fn set_event_data_ready(&mut self) {
+        let current = self.mbox_event.reg.get();
+        self.mbox_event
+            .reg
+            .set(current | DoeMboxEvent::DataReady::SET.value);
+        println!(
+            "DOE_MBOX_PERIPH: Set EVENT.DATA_READY, new value: {:#x}",
+            self.mbox_event.reg.get()
+        );
+    }
+
+    pub fn set_event_reset_req(&mut self) {
+        let current = self.mbox_event.reg.get();
+        self.mbox_event
+            .reg
+            .set(current | DoeMboxEvent::ResetReq::SET.value);
+        println!(
+            "DOE_MBOX_PERIPH: Set EVENT.RESET_REQ, new value: {:#x}",
+            self.mbox_event.reg.get()
+        );
+    }
 }
 
 #[cfg(test)]
@@ -264,6 +371,7 @@ mod tests {
 
         let doe_periph = DoeMboxPeriph {
             inner: Arc::new(Mutex::new(DoeMboxInner::new())),
+            incoming_write_client: Arc::new(Mutex::new(None)),
         };
 
         let doe_mbox = Box::new(DummyDoeMbox::new(clock, doe_event_irq, doe_periph));

@@ -2,18 +2,22 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
-use doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient, DOE_HDR_SIZE};
+use doe_transport::hil::{
+    DoeTransport, DoeTransportRxClient, DoeTransportTxClient, DOE_HDR_SIZE_DWORDS,
+};
 
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
+use core::fmt::Write;
 use kernel::hil::time::{Alarm, AlarmClient, ConvertTicks, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
-use kernel::utilities::registers::interfaces::{Readable, Writeable};
+use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::{debug, ErrorCode};
 use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
 use registers_generated::doe_mbox::regs::DoeMbox;
 use registers_generated::doe_mbox::DOE_MBOX_ADDR;
+use romtime::println;
 
 pub const DOE_MBOX_BASE: StaticRef<DoeMbox> =
     unsafe { StaticRef::new(DOE_MBOX_ADDR as *const DoeMbox) };
@@ -42,21 +46,21 @@ pub struct EmulatedDoeTransport<'a, A: Alarm<'a>> {
     rx_client: OptionalCell<&'a dyn DoeTransportRxClient>,
 
     // Buffer to send/receive the DOE data object.
-    doe_data_buf: TakeCell<'static, [u8]>,
+    doe_data_buf: TakeCell<'static, [u32]>,
     doe_data_buf_len: usize,
 
     // Buffer to hold the client data object.
-    client_buf: TakeCell<'static, [u8]>,
+    client_buf: TakeCell<'static, [u32]>,
 
     state: Cell<DoeMboxState>,
     timer_mode: Cell<TimerMode>,
     alarm: VirtualMuxAlarm<'a, A>,
 }
 
-fn doe_mbox_sram_static_ref(len: usize) -> &'static mut [u8] {
+fn doe_mbox_sram_static_ref(len: usize) -> &'static mut [u32] {
     // SAFETY: We assume the SRAM is initialized and the address is valid.
     // The length is provided by the caller and should match the actual SRAM size.
-    unsafe { core::slice::from_raw_parts_mut(DOE_MBOX_SRAM_ADDR as *mut u8, len) }
+    unsafe { core::slice::from_raw_parts_mut(DOE_MBOX_SRAM_ADDR as *mut u32, len) }
 }
 
 impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
@@ -73,7 +77,7 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
         base: StaticRef<DoeMbox>,
         alarm: &'a MuxAlarm<'a, A>,
     ) -> EmulatedDoeTransport<'a, A> {
-        let len = base.doe_mbox_sram.len() * core::mem::size_of::<u32>();
+        let len = base.doe_mbox_sram.len();
 
         let static_doe_data_buf = doe_mbox_sram_static_ref(len);
 
@@ -115,7 +119,6 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
 
     fn reset_state(&self) {
         // Reset the doe_box_status register
-        self.registers.doe_mbox_status.set(0);
         self.timer_mode.set(TimerMode::NoTimer);
         self.state.set(DoeMboxState::RxWait);
         self.registers
@@ -126,14 +129,17 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
     pub fn handle_interrupt(&self) {
         let event = self.registers.doe_mbox_event.extract();
 
-        debug!("DOE_MBOX_DRIVER: Mbox Intr: Event={:?}", event);
+        println!("DOE_MBOX_DRIVER: Mbox Intr: Event={:?}", event);
+
+        // Clear the status register
+        self.registers.doe_mbox_status.set(0);
 
         // 1. Handle RESET_REQ regardless of current state
         if event.is_set(DoeMboxEvent::ResetReq) {
-            // Clear the RESET_REQ bit in the event register
+            // Write 1 to clear the RESET_REQ event
             self.registers
                 .doe_mbox_event
-                .write(DoeMboxEvent::ResetReq::CLEAR);
+                .modify(DoeMboxEvent::ResetReq::SET);
             if self.state.get() != DoeMboxState::RxWait {
                 // If buffer is still in use, we cannot reset.
                 // Defer the reset until set_rx_buffer is called.
@@ -152,38 +158,48 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
                 return;
             }
 
-            // Clear the DATA_READY event
+            println!("DOE_MBOX_DRIVER: Data Ready event received");
+
+            // Clear the DATA_READY event, writing 1 to the event register
             self.registers
                 .doe_mbox_event
-                .write(DoeMboxEvent::DataReady::CLEAR);
+                .modify(DoeMboxEvent::DataReady::SET);
 
-            // Clear any existing status flags
-            self.registers.doe_mbox_status.set(0);
+            println!(
+                "DOE MBOX EVENT REGISTER after cleared : {}",
+                self.registers.doe_mbox_event.get()
+            ); // Read to clear the event register
 
             // Start the response timeout timer
             self.start_response_timeout();
 
             let data_len = self.registers.doe_mbox_dlen.get() as usize;
+            println!("DOE_MBOX_DRIVER: Data length={}", data_len);
             // If the data length is not valid, set error bit
             if data_len > self.max_data_object_size() {
                 self.registers
                     .doe_mbox_status
                     .write(DoeMboxStatus::Error::SET);
-                debug!("DOE Mbox Intr: Data length exceeds maximum size");
+                println!("DOE_MBOX_DRIVER: Data length exceeds maximum size");
                 return;
             }
 
             match self.doe_data_buf.take() {
                 Some(rx_buf) => {
                     if let Some(client) = self.rx_client.get() {
+                        println!(
+                            "DOE_MBOX_DRIVER: Receiving data into buffer, len={}",
+                            data_len
+                        );
                         client.receive(rx_buf, data_len);
+                        println!("DOE_MBOX_DRIVER: Data received, completed");
                         self.state.set(DoeMboxState::RxReceived);
                     }
                 }
                 None => {
                     // We don't have a buffer to receive data
                     // This should not happen in normal operation
-                    panic!("DOE Mbox Intr: No RX buffer available");
+                    panic!("DOE_MBOX_DRIVER: No RX buffer available");
                 }
             }
         }
@@ -233,7 +249,7 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
         self.rx_client.set(client);
     }
 
-    fn set_rx_buffer(&self, rx_buf: &'static mut [u8]) {
+    fn set_rx_buffer(&self, rx_buf: &'static mut [u32]) {
         self.doe_data_buf.replace(rx_buf);
         if self.state.get() == DoeMboxState::PendingReset {
             // If we were waiting for a reset, reset the state now
@@ -260,16 +276,16 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
 
     fn transmit(
         &self,
-        doe_hdr: [u8; DOE_HDR_SIZE],
-        doe_payload: &'static mut [u8],
+        doe_hdr: Option<[u32; DOE_HDR_SIZE_DWORDS]>,
+        doe_payload: &'static mut [u32],
         payload_len: usize,
-    ) -> Result<(), (ErrorCode, &'static mut [u8])> {
+    ) -> Result<(), (ErrorCode, &'static mut [u32])> {
         if self.state.get() != DoeMboxState::RxReceived {
-            debug!("DOE Mbox: Cannot transmit, not in RxReceived state");
+            println!("DOE Mbox: Cannot transmit, not in RxReceived state");
             return Err((ErrorCode::FAIL, doe_payload));
         }
 
-        if DOE_HDR_SIZE + payload_len > self.max_data_object_size() {
+        if DOE_HDR_SIZE_DWORDS + payload_len > self.max_data_object_size() {
             return Err((ErrorCode::SIZE, doe_payload));
         }
 
@@ -280,13 +296,22 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
 
         // copy the header and payload into the tx buffer
         let tx_buf = self.doe_data_buf.take().unwrap();
-        tx_buf[..DOE_HDR_SIZE].copy_from_slice(&doe_hdr[..]);
-        tx_buf[DOE_HDR_SIZE..DOE_HDR_SIZE + payload_len].copy_from_slice(doe_payload);
+        let mut offset = 0;
+        if let Some(hdr) = doe_hdr {
+            for i in 0..DOE_HDR_SIZE_DWORDS {
+                tx_buf[i] = hdr[i];
+            }
+            offset = DOE_HDR_SIZE_DWORDS;
+        }
+        for i in 0..payload_len {
+            tx_buf[offset + i] = doe_payload[i];
+        }
+        let data_len = offset + payload_len;
+
+        println!("DOE_MBOX_DRIVER: Transmitting data, len={}", data_len);
 
         // Set data len and data ready in the status register
-        self.registers
-            .doe_mbox_dlen
-            .set((DOE_HDR_SIZE + payload_len) as u32);
+        self.registers.doe_mbox_dlen.set(data_len as u32);
         self.registers
             .doe_mbox_status
             .write(DoeMboxStatus::DataReady::SET);
