@@ -9,9 +9,12 @@ use std::{
 };
 use tock_registers::interfaces::{Readable, Writeable};
 
+use std::thread;
+
 pub struct DummyDoeMbox {
     timer: Timer,
     event_irq: Irq,
+    last_irq_status: bool,
     periph: DoeMboxPeriph,
 }
 
@@ -43,6 +46,7 @@ impl DummyDoeMbox {
         DummyDoeMbox {
             timer,
             event_irq,
+            last_irq_status: false,
             periph,
         }
     }
@@ -56,11 +60,15 @@ impl DummyDoeMbox {
 impl DoeMboxPeripheral for DummyDoeMbox {
     fn poll(&mut self) {
         let irq_status = self.periph.inner.lock().unwrap().check_interrupts();
-        // if (irq_status) {
-        //     println!("DOE mailbox interrupt triggered.");
-        // } else {
-        //     println!("DOE mailbox interrupt cleared");
-        // }
+        if self.last_irq_status != irq_status {
+            // No change in IRQ status, no need to reschedule
+            println!(
+                "DOE mailbox interrupt triggered {}. thread id: {:?}",
+                irq_status,
+                thread::current().id()
+            );
+            self.last_irq_status = irq_status;
+        }
         self.event_irq.set_level(irq_status);
         self.timer.schedule_poll_in(Self::DOE_MBOX_TICKS);
     }
@@ -133,6 +141,7 @@ impl DoeMboxPeripheral for DummyDoeMbox {
             .lock()
             .unwrap()
             .write_to_event_register(val);
+        self.timer.schedule_poll_in(1);
     }
 
     fn read_doe_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
@@ -208,18 +217,21 @@ impl DoeMboxPeriph {
     }
 
     pub fn read_data(&self) -> Result<Option<Vec<u8>>, String> {
-        let inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap();
         let status = inner.mbox_status.reg.get();
 
         if status == 0 {
             return Ok(None);
         }
+        println!("DOE_MBOX_PERIPH: Checking status: {:#x}", status);
 
         if status & DoeMboxStatus::DataReady::SET.value != 0 {
             // Data is ready to be read
-            // NOTE: According to our protocol, SoC reads the data but MCU is responsible
+            // NOTE: SoC reads the data but MCU is responsible
             // for clearing STATUS.DATA_READY via explicit bus write.
             // SoC should NOT clear this bit directly.
+            // So, use emulator peripheral logic to clear it
+            inner.clear_status_data_ready();
 
             let data_len = inner.mbox_dlen.reg.get() as usize;
             println!(
@@ -233,10 +245,24 @@ impl DoeMboxPeriph {
             Ok(Some(data))
         } else if status & DoeMboxStatus::Error::SET.value != 0 {
             // NOTE: Similar to DATA_READY, ERROR should be cleared by MCU via bus write
-            // not by SoC peripheral logic
+            // The peripheral logic will clear the bits
+            inner.clear_status_error();
             Err("Doe Mailbox error occurred".to_string())
         } else {
             Ok(None)
+        }
+    }
+
+    pub fn check_reset_ack(&self) -> bool {
+        let mut inner = self.inner.lock().unwrap();
+        let status = inner.mbox_status.reg.get();
+        if status & DoeMboxStatus::ResetAck::SET.value != 0 {
+            // Clear the RESET_ACK bit
+            inner.clear_status_reset_ack();
+            println!("DOE_MBOX_PERIPH: Reset acknowledged.");
+            true
+        } else {
+            false
         }
     }
 }
@@ -323,7 +349,7 @@ impl DoeMboxInner {
         );
     }
 
-    // Internal peripheral logic for SETTING EVENT bits (not bus operations)
+    // Internal peripheral logic for SETTING EVENT bits and clearing the STATUS bits (not bus operations)
     pub fn set_event_data_ready(&mut self) {
         let current = self.mbox_event.reg.get();
         self.mbox_event
@@ -343,6 +369,39 @@ impl DoeMboxInner {
         println!(
             "DOE_MBOX_PERIPH: Set EVENT.RESET_REQ, new value: {:#x}",
             self.mbox_event.reg.get()
+        );
+    }
+
+    pub fn clear_status_data_ready(&mut self) {
+        let current = self.mbox_status.reg.get();
+        self.mbox_status
+            .reg
+            .set(current & !DoeMboxStatus::DataReady::SET.value);
+        println!(
+            "DOE_MBOX_PERIPH: Cleared STATUS.DATA_READY, new value: {:#x}",
+            self.mbox_status.reg.get()
+        );
+    }
+
+    pub fn clear_status_error(&mut self) {
+        let current = self.mbox_status.reg.get();
+        self.mbox_status
+            .reg
+            .set(current & !DoeMboxStatus::Error::SET.value);
+        println!(
+            "DOE_MBOX_PERIPH: Cleared STATUS.ERROR, new value: {:#x}",
+            self.mbox_status.reg.get()
+        );
+    }
+
+    pub fn clear_status_reset_ack(&mut self) {
+        let current = self.mbox_status.reg.get();
+        self.mbox_status
+            .reg
+            .set(current & !DoeMboxStatus::ResetAck::SET.value);
+        println!(
+            "DOE_MBOX_PERIPH: Cleared STATUS.RESET_ACK, new value: {:#x}",
+            self.mbox_status.reg.get()
         );
     }
 }

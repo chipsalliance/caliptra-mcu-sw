@@ -73,7 +73,11 @@ impl DoeMboxStateMachine {
 
     fn handle_outgoing_message(&mut self, message: Vec<u8>) {
         if self.state == DoeMboxState::Idle {
-            println!("DOE_FSM: Handling outgoing message: {:?}", message);
+            println!(
+                "DOE_FSM: Handling outgoing message: {:?}, thread id: {:?}",
+                message,
+                thread::current().id()
+            );
             self.pending_outgoing_message = Some(message);
             self.state = DoeMboxState::SendData;
         }
@@ -171,23 +175,32 @@ impl DoeTransportLoopbackTest {
     }
 
     pub fn run_tests(&mut self, running: Arc<AtomicBool>) {
+        let mut test_num = 1;
         while running.load(Ordering::Relaxed) {
             if let Some(test_vector) = self.test_vectors.pop_front() {
-                println!("Running test with vector: {}", test_vector.len());
+                println!(
+                    "DOE_TRANSPORT_LOOPBACK_TEST: Running test {} with test vec len: {} thread_id {:?},",
+                    test_num,
+                    test_vector.len(),
+                    thread::current().id()
+                );
                 self.tx.send(test_vector.clone()).unwrap();
 
                 if let Ok(response) = self.rx.recv() {
                     if response == test_vector {
-                        println!("Test passed: Sent and received data match.");
+                        println!("DOE_TRANSPORT_LOOPBACK_TEST: Test passed: Sent and received data match.");
                     } else {
                         println!(
-                            "Test failed: Sent {:?}, but received {:?}.",
+                            "DOE_TRANSPORT_LOOPBACK_TEST: Test failed: Sent {:?}, but received {:?}.",
                             test_vector, response
                         );
                     }
                 } else {
-                    println!("Test failed: No response received from FSM.");
+                    println!(
+                        "DOE_TRANSPORT_LOOPBACK_TEST: Test failed: No response received from FSM."
+                    );
                 }
+                test_num += 1;
             } else {
                 // No more test vectors to process
                 break;
@@ -204,6 +217,8 @@ pub(crate) fn test_doe_transport_loopback(
     thread::spawn(move || {
         let mut test = DoeTransportLoopbackTest::new(tx, rx);
 
-        test.run_tests(running);
+        test.run_tests(running.clone());
+        running.store(false, Ordering::Relaxed);
+        println!("DOE_TRANSPORT_LOOPBACK_TEST: All tests completed.");
     });
 }
