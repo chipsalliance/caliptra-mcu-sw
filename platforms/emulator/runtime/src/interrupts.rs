@@ -2,8 +2,10 @@
 
 use crate::io::SemihostUart;
 use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
+use core::fmt::Write;
 use kernel::platform::chip::InterruptService;
 use mcu_tock_veer::timers::InternalTimers;
+use romtime::println;
 
 pub const UART_IRQ: u8 = 0x10;
 pub const MAIN_FLASH_CTRL_ERROR_IRQ: u8 = 0x13;
@@ -69,6 +71,7 @@ impl<'a> InterruptService for EmulatorPeripherals<'a> {
             self.dma.handle_interrupt();
             return true;
         } else if interrupt == DOE_MBOX_EVENT_IRQ as u32 {
+            println!("DOE_MBOX_EVENT_IRQ received");
             self.doe_transport.handle_interrupt();
             return true;
         }

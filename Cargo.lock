@@ -1319,6 +1319,7 @@ dependencies = [
  "doe-transport",
  "kernel",
  "registers-generated",
+ "romtime",
 ]
 
 [[package]]
@@ -2561,6 +2562,7 @@ dependencies = [
  "components",
  "dma-driver",
  "doe-mbox-driver",
+ "doe-transport",
  "flash-driver",
  "i3c-driver",
  "kernel",

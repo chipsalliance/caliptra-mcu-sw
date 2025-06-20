@@ -138,7 +138,7 @@ pub trait DoeTransport {
 
     /// Sets the buffer used for receiving incoming DOE Objects.
     /// This function should be called by the Rx client upon receiving the `receive()` callback.
-    fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
+    fn set_rx_buffer(&self, rx_buf: &'static mut [u32]);
 
     /// Gets the maximum size of the data object that can be sent or received over DOE Transport.
     fn max_data_object_size(&self) -> usize;
@@ -155,5 +155,5 @@ pub trait DoeTransport {
     /// * `doe_hdr` - DOE header bytes
     /// * `doe_payload` - A reference to the DOE payload
     /// * `payload_len` - The length of the payload in bytes
-    fn transmit(&self, doe_hdr: [u8; DOE_HDR_SIZE], doe_payload: &'static mut [u8], payload_len: usize) -> Result<(), (ErrorCode, &'static mut [u8])>;
+    fn transmit(&self, doe_hdr: [u8; DOE_HDR_SIZE_DWORDS], doe_payload: &'static mut [u8], payload_len: usize) -> Result<(), (ErrorCode, &'static mut [u8])>;
 }

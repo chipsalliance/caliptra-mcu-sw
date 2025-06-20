@@ -14,6 +14,7 @@ Abstract:
 
 mod dis;
 mod dis_test;
+mod doe_mbox_fsm;
 mod elf;
 mod gdb;
 mod i3c_socket;
@@ -33,7 +34,8 @@ use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_consts::DEFAULT_CPU_ARGS;
 use emulator_consts::{RAM_ORG, ROM_SIZE};
 use emulator_periph::{
-    DummyFlashCtrl, I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp,
+    DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, Mci, McuRootBus,
+    McuRootBusArgs, McuRootBusOffsets, Otp,
 };
 use emulator_registers_generated::dma::DmaPeripheral;
 use emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
@@ -659,6 +661,21 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     );
     let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
 
+    let doe_event_irq = pic.register_irq(McuRootBus::DOE_MBOX_EVENT_IRQ);
+    let doe_mbox_periph = DoeMboxPeriph::default();
+
+    let mut doe_mbox_fsm = doe_mbox_fsm::DoeMboxFsm::new(doe_mbox_periph.clone());
+
+    let doe_mbox = DummyDoeMbox::new(&clock.clone(), doe_event_irq, doe_mbox_periph);
+
+    println!("Starting DOE mailbox transport thread");
+
+    if cfg!(feature = "test-doe-transport-loopback") {
+        let (test_rx, test_tx) = doe_mbox_fsm.start(running.clone());
+        println!("Starting DOE transport loopback test thread");
+        let tests = tests::doe_transport_loopback::generate_tests();
+        doe_mbox_fsm::run_doe_transport_tests(running.clone(), test_tx, test_rx, tests);
+    }
     if cfg!(feature = "test-mctp-ctrl-cmds") {
         i3c_controller.start();
         println!(
@@ -856,7 +873,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         Some(Box::new(primary_flash_controller)),
         Some(Box::new(secondary_flash_controller)),
         Some(Box::new(mci)),
-        None,
+        Some(Box::new(doe_mbox)),
         Some(Box::new(dma_ctrl)),
         None,
         None,
@@ -1023,6 +1040,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
                 stdin_uart,
                 bmc,
             );
+
+            println!("EMULATOR STOPPED")
         }
     }
 
