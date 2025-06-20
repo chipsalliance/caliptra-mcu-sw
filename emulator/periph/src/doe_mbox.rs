@@ -3,10 +3,7 @@ use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_cpu::Irq;
 use emulator_registers_generated::doe_mbox::DoeMboxPeripheral;
 use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
-use std::{
-    fmt::write,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{Readable, Writeable};
 
 use std::thread;
@@ -51,6 +48,7 @@ impl DummyDoeMbox {
         }
     }
 
+    #[allow(dead_code)]
     fn reset(&mut self) {
         // Reset the mailbox registers to their initial state
         self.periph.inner.lock().unwrap().reset();

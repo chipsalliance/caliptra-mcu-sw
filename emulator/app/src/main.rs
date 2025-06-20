@@ -21,7 +21,6 @@ mod i3c_socket;
 mod mctp_transport;
 mod tests;
 
-use crate::doe_mbox_fsm::test_doe_transport_loopback;
 use crate::i3c_socket::start_i3c_socket;
 use caliptra_emu_bus::{Bus, Clock, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
@@ -674,9 +673,9 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     if cfg!(feature = "test-doe-transport-loopback") {
         let (test_rx, test_tx) = doe_mbox_fsm.start(running.clone());
         println!("Starting DOE transport loopback test thread");
-        test_doe_transport_loopback(running.clone(), test_tx, test_rx);
+        let tests = tests::doe_transport_loopback::generate_tests();
+        doe_mbox_fsm::run_doe_transport_tests(running.clone(), test_tx, test_rx, tests);
     }
-
     if cfg!(feature = "test-mctp-ctrl-cmds") {
         i3c_controller.start();
         println!(

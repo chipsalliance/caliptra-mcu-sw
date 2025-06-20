@@ -1,8 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use emulator_periph::DoeMboxPeriph;
-use rand::Rng;
-use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -25,7 +23,7 @@ pub struct DoeMboxFsm {
 
 impl DoeMboxFsm {
     pub fn new(doe_mbox: DoeMboxPeriph) -> Self {
-        Self { doe_mbox: doe_mbox }
+        Self { doe_mbox }
     }
 
     pub fn start(&mut self, running: Arc<AtomicBool>) -> (Receiver<Vec<u8>>, Sender<Vec<u8>>) {
@@ -145,80 +143,103 @@ impl DoeMboxStateMachine {
     }
 }
 
-pub struct DoeTransportLoopbackTest {
-    tx: Sender<Vec<u8>>,
-    rx: Receiver<Vec<u8>>,
-    test_vectors: VecDeque<Vec<u8>>,
+#[derive(Debug, Clone, PartialEq)]
+pub enum DoeTestState {
+    Start,
+    SendData,
+    ReceiveData,
+    Finish,
 }
 
-impl DoeTransportLoopbackTest {
-    const NUM_TEST_VECTORS: usize = 2;
-    const MIN_TEST_DATA_SIZE: usize = 2 * 4; // Example minimum size of test vectors
-    const MAX_TEST_DATA_SIZE: usize = 128 * 4; // Example maximum size of test vectors
-    pub fn new(tx: Sender<Vec<u8>>, rx: Receiver<Vec<u8>>) -> Self {
-        let mut rng = rand::thread_rng();
-        let mut test_vectors = VecDeque::new();
-        for _ in 0..Self::NUM_TEST_VECTORS {
-            // Generate a random size (multiple of 4 bytes)
-            let num_words =
-                rng.gen_range((Self::MIN_TEST_DATA_SIZE / 4)..=(Self::MAX_TEST_DATA_SIZE / 4));
-            let mut vector = vec![0u8; num_words * 4];
-            rng.fill(vector.as_mut_slice());
-            test_vectors.push_back(vector);
-        }
+pub trait DoeTransportTest {
+    fn run_test(
+        &mut self,
+        running: Arc<AtomicBool>,
+        tx: &mut Sender<Vec<u8>>,
+        rx: &mut Receiver<Vec<u8>>,
+    );
+    fn is_passed(&self) -> bool;
+}
 
+pub struct DoeTransportTestRunner {
+    tx: Sender<Vec<u8>>,
+    rx: Receiver<Vec<u8>>,
+    running: Arc<AtomicBool>,
+    test_vectors: Vec<Box<dyn DoeTransportTest + Send>>,
+    passed: usize,
+}
+
+impl DoeTransportTestRunner {
+    pub fn new(
+        tx: Sender<Vec<u8>>,
+        rx: Receiver<Vec<u8>>,
+        running: Arc<AtomicBool>,
+        tests: Vec<Box<dyn DoeTransportTest + Send>>,
+    ) -> Self {
         Self {
             tx,
             rx,
-            test_vectors,
+            running,
+            test_vectors: tests,
+            passed: 0,
         }
     }
 
-    pub fn run_tests(&mut self, running: Arc<AtomicBool>) {
-        let mut test_num = 1;
-        while running.load(Ordering::Relaxed) {
-            if let Some(test_vector) = self.test_vectors.pop_front() {
-                println!(
-                    "DOE_TRANSPORT_LOOPBACK_TEST: Running test {} with test vec len: {} thread_id {:?},",
-                    test_num,
-                    test_vector.len(),
-                    thread::current().id()
-                );
-                self.tx.send(test_vector.clone()).unwrap();
-
-                if let Ok(response) = self.rx.recv() {
-                    if response == test_vector {
-                        println!("DOE_TRANSPORT_LOOPBACK_TEST: Test passed: Sent and received data match.");
-                    } else {
-                        println!(
-                            "DOE_TRANSPORT_LOOPBACK_TEST: Test failed: Sent {:?}, but received {:?}.",
-                            test_vector, response
-                        );
-                    }
-                } else {
-                    println!(
-                        "DOE_TRANSPORT_LOOPBACK_TEST: Test failed: No response received from FSM."
-                    );
-                }
-                test_num += 1;
-            } else {
-                // No more test vectors to process
-                break;
+    pub fn run_tests(&mut self) {
+        for test in self.test_vectors.iter_mut() {
+            test.run_test(self.running.clone(), &mut self.tx, &mut self.rx);
+            if test.is_passed() {
+                self.passed += 1;
             }
         }
+        println!(
+            "DOE_TRANSPORT_TESTS: {} tests passed out of {}",
+            self.passed,
+            self.test_vectors.len()
+        );
     }
 }
 
-pub(crate) fn test_doe_transport_loopback(
+pub(crate) fn run_doe_transport_tests(
     running: Arc<AtomicBool>,
     tx: Sender<Vec<u8>>,
     rx: Receiver<Vec<u8>>,
+    tests: Vec<Box<dyn DoeTransportTest + Send>>,
 ) {
-    thread::spawn(move || {
-        let mut test = DoeTransportLoopbackTest::new(tx, rx);
+    let running_clone = running.clone();
+    let running_clone_test_timeout = running.clone();
 
-        test.run_tests(running.clone());
+    // Spawn a thread to handle the timeout for the test
+    thread::spawn(move || {
+        let timeout = Duration::from_secs(60); // 60 seconds timeout
+        std::thread::sleep(timeout);
+        println!(
+            "DOE_TRANSPORT_TESTS TIMED OUT AFTER {:?} seconds",
+            timeout.as_secs()
+        );
+        running_clone_test_timeout.store(false, Ordering::Relaxed);
+    });
+
+    // Spawn a thread to run the tests
+    thread::spawn(move || {
+        let mut test = DoeTransportTestRunner::new(tx, rx, running_clone, tests);
+
+        test.run_tests();
         running.store(false, Ordering::Relaxed);
-        println!("DOE_TRANSPORT_LOOPBACK_TEST: All tests completed.");
+        println!("DOE_TRANSPORT_TESTS: All tests completed.");
     });
 }
+
+// pub(crate) fn test_doe_transport_loopback(
+//     running: Arc<AtomicBool>,
+//     tx: Sender<Vec<u8>>,
+//     rx: Receiver<Vec<u8>>,
+// ) {
+//     thread::spawn(move || {
+//         let mut test = DoeTransportTestRunner::new(tx, rx, running.clone(), Vec::new());
+
+//         test.run_tests(running.clone());
+//         running.store(false, Ordering::Relaxed);
+//         println!("DOE_TRANSPORT_LOOPBACK_TEST: All tests completed.");
+//     });
+// }

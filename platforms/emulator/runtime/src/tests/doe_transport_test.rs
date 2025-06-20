@@ -55,7 +55,7 @@ impl<'a> DeferredCallClient for EmulatedDoeTransportTester<'a> {
 
             debug!("EMULATED_DOE_TRANSPORT_TESTER: Sending {} bytes", len);
 
-            self.doe_mbox.transmit(None, tx_buf, len);
+            _ = self.doe_mbox.transmit(None, tx_buf, len);
             self.state.set(IoState::Sent);
         }
         self.deferred_call.set();

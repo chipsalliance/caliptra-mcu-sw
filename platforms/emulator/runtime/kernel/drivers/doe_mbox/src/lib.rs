@@ -274,6 +274,7 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
         Ok(())
     }
 
+    #[allow(clippy::manual_memcpy)]
     fn transmit(
         &self,
         doe_hdr: Option<[u32; DOE_HDR_SIZE_DWORDS]>,
