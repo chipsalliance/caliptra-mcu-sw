@@ -276,9 +276,8 @@ pub fn rom_start() {
     soc.registers.cptra_trng_valid_axi_user.set(0xcccc_cccc);
     romtime::println!("[mcu-rom] Locking TRNG user");
     soc.registers.cptra_trng_axi_user_lock.set(1);
-    // TODO: fix this in Caliptra emulator
     romtime::println!("[mcu-rom] Setting DMA user");
-    //soc.registers.ss_caliptra_dma_axi_user.set(0xcccc_cccc);
+    soc.registers.ss_caliptra_dma_axi_user.set(0xcccc_cccc);
 
     romtime::println!("[mcu-rom] Initialize I3C");
     let mut i3c = I3c::new(i3c_base);
@@ -385,8 +384,6 @@ impl I3c {
 }
 
 pub fn recovery_flow(soc: &Soc, mci: &mut Mci, i3c: &mut I3c) {
-    // TODO: implement Caliptra boot flow
-
     // TODO: read this value from the fuses (according to the spec)?
     // i3c.registers.sec_fw_recovery_if_device_id_0.set(0x3a); // placeholder address for now
     // i3c.registers.stdby_ctrl_mode_stby_cr_device_addr.set(0x3a);
