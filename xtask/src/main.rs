@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use clap::{Parser, Subcommand};
+use clap_num::maybe_hex;
 use core::panic;
 use mcu_builder::SocImage;
 use std::path::PathBuf;
@@ -75,6 +76,15 @@ enum Commands {
         /// Path to the Flash image to be used in streaming boot
         #[arg(long)]
         flash_image: Option<PathBuf>,
+
+        #[arg(long, default_value_t = false)]
+        use_dccm_for_stack: bool,
+
+        #[arg(long, value_parser=maybe_hex::<u32>)]
+        dccm_offset: Option<u32>,
+
+        #[arg(long, value_parser=maybe_hex::<u32>)]
+        dccm_size: Option<u32>,
     },
     /// Build Runtime image
     RuntimeBuild {
@@ -88,6 +98,15 @@ enum Commands {
         /// Platform to build for. Default: emulator
         #[arg(long)]
         platform: Option<String>,
+
+        #[arg(long, default_value_t = false)]
+        use_dccm_for_stack: bool,
+
+        #[arg(long, value_parser=maybe_hex::<u32>)]
+        dccm_offset: Option<u32>,
+
+        #[arg(long, value_parser=maybe_hex::<u32>)]
+        dccm_size: Option<u32>,
     },
     /// Build ROM
     RomBuild {
@@ -216,6 +235,9 @@ fn main() {
             features,
             output,
             platform,
+            use_dccm_for_stack,
+            dccm_offset,
+            dccm_size,
         } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
             mcu_builder::runtime_build_with_apps_cached(
@@ -228,6 +250,9 @@ fn main() {
                     Some("fpga") => Some(&mcu_config_fpga::FPGA_MEMORY_MAP),
                     _ => panic!("Unsupported platform"),
                 },
+                *use_dccm_for_stack,
+                *dccm_offset,
+                *dccm_size,
             )
             .map(|_| ())
         }

@@ -562,10 +562,10 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     #[cfg(not(feature = "test-mcu-rom-flash-access"))]
     {
         if let Some(dccm_offset) = cli.dccm_offset {
-            auto_root_bus_offsets.dccm_offset = dccm_offset;
+            mcu_root_bus_offsets.rom_dedicated_ram_offset = dccm_offset;
         }
         if let Some(dccm_size) = cli.dccm_size {
-            auto_root_bus_offsets.dccm_size = dccm_size;
+            mcu_root_bus_offsets.rom_dedicated_ram_size = dccm_size;
         }
     }
 

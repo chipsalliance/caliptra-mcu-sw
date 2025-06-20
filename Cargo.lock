@@ -2553,6 +2553,7 @@ dependencies = [
 name = "mcu-runtime-emulator"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
  "capsules-core",
  "capsules-emulator",
  "capsules-extra",
@@ -4410,6 +4411,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap 4.5.39",
+ "clap-num",
  "crc32fast",
  "elf",
  "mcu-builder",

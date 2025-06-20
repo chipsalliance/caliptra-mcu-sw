@@ -3,6 +3,7 @@
 use crate::components as runtime_components;
 use crate::interrupts::EmulatorPeripherals;
 use crate::MCU_MEMORY_MAP;
+use arrayvec::ArrayVec;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use capsules_runtime::mctp::base_protocol::MessageType;
@@ -277,34 +278,43 @@ pub unsafe fn main() {
         NAPOTRegionSpec::new(0x1000_0000 as *const u8, 0x1000_0000).unwrap(),
     )];
     // additional MMIO for machine only peripherals
-    let machine_mmio = [
-        MMIORegion(NAPOTRegionSpec::new(0x2000_0000 as *const u8, 0x2000_0000).unwrap()),
-        // PIC
-        MMIORegion(
-            NAPOTRegionSpec::new(MCU_MEMORY_MAP.pic_offset as u32 as *const u8, 0x1_0000).unwrap(),
-        ),
-        // DCCM
-        MMIORegion(
+    let mut machine_mmio: ArrayVec<_, 4> = ArrayVec::new();
+    machine_mmio.push(MMIORegion(
+        NAPOTRegionSpec::new(0x2000_0000 as *const u8, 0x2000_0000).unwrap(),
+    ));
+    // PIC
+    machine_mmio.push(MMIORegion(
+        NAPOTRegionSpec::new(MCU_MEMORY_MAP.pic_offset as u32 as *const u8, 0x1_0000).unwrap(),
+    ));
+    // and the rest of memory is reserved for the kernel
+    // we're done with the ROM so we can mask include that as well
+    machine_mmio.push(MMIORegion(
+        NAPOTRegionSpec::new(0x8000_0000 as *const u8, 0x8000_0000).unwrap(),
+    ));
+
+    // if we are *not* using DCCM as a stack, then lock it as machine MMIO
+    if !(MCU_MEMORY_MAP.dccm_offset..MCU_MEMORY_MAP.dccm_offset + MCU_MEMORY_MAP.dccm_size)
+        .contains(&(addr_of!(_ssram) as u32))
+    {
+        machine_mmio.push(MMIORegion(
             NAPOTRegionSpec::new(
                 MCU_MEMORY_MAP.dccm_offset as u32 as *const u8,
                 MCU_MEMORY_MAP.dccm_size as usize,
             )
             .unwrap(),
-        ),
-        // and the rest of memory is reserved for the kernel
-        // we're done with the ROM so we can mask include that as well
-        MMIORegion(NAPOTRegionSpec::new(0x8000_0000 as *const u8, 0x8000_0000).unwrap()),
-    ];
+        ));
+    }
 
     let epmp = VeeRProtectionMMLEPMP::new(
         CodeRegion(TORRegionSpec::new(addr_of!(_srom), addr_of!(_eprog)).unwrap()),
-        DataRegion(TORRegionSpec::new(addr_of!(_ssram), addr_of!(_esram)).unwrap()),
+        DataRegion(TORRegionSpec::new(addr_of!(_ssram), addr_of!(_esram).offset(0x80)).unwrap()),
         // use the MMIO for the PIC
         &user_mmio[..],
         &machine_mmio[..],
         KernelTextRegion(TORRegionSpec::new(addr_of!(_stext), addr_of!(_etext)).unwrap()),
     )
     .unwrap();
+    romtime::println!("Finished setting up PMP");
 
     // initialize capabilities
     let process_mgmt_cap = create_capability!(capabilities::ProcessManagementCapability);

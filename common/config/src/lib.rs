@@ -61,7 +61,7 @@ impl Default for McuMemoryMap {
             },
 
             dccm_offset: 0x5000_0000,
-            dccm_size: 16 * 1024,
+            dccm_size: 256 * 1024,
             dccm_properties: MemoryRegionType {
                 side_effect: false,
                 cacheable: true,

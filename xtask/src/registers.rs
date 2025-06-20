@@ -214,10 +214,9 @@ pub(crate) fn autogen(
         registers_dest_dir,
         &mut register_types_to_crates,
     )?;
-    let defines = generate_defines(check, header.clone(), registers_dest_dir)?;
+    let _defines = generate_defines(check, header.clone(), registers_dest_dir)?;
     generate_emulator_types(
         check,
-        &defines,
         &scopes,
         bus_dest_dir,
         header.clone(),
@@ -229,7 +228,6 @@ pub(crate) fn autogen(
 /// Generate types used by the emulator.
 fn generate_emulator_types(
     check: bool,
-    defines: &HashMap<String, u32>,
     scopes: &[ParentScope],
     dest_dir: &Path,
     header: String,
@@ -296,7 +294,6 @@ fn generate_emulator_types(
         });
     }
     let root_bus_code = emu_make_root_bus(
-        defines,
         validated_blocks
             .iter()
             .filter(|b| !SKIP_TYPES.contains(b.block().name.as_str())),
@@ -407,10 +404,8 @@ fn emu_make_peripheral_trait(
                 .get(ty.name.as_ref().unwrap())
                 .is_none()
             {
-                println!("Finding type {} {}", base, ty.name.as_ref().unwrap());
                 let mut i: Vec<_> = register_types_to_crates.keys().collect();
                 i.sort();
-                println!("types {:?}", i);
             }
             let rcrate = format_ident!(
                 "{}",
@@ -454,6 +449,7 @@ fn emu_make_peripheral_trait(
     tokens.extend(quote! {
         pub trait #periph {
             fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
+            fn set_dma_rom_sram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
             fn poll(&mut self) {}
             fn warm_reset(&mut self) {}
             fn update_reset(&mut self) {}
@@ -659,7 +655,6 @@ fn hex_literal(val: u64) -> Literal {
 
 // Make the root bus that can be used by the emulator.
 fn emu_make_root_bus<'a>(
-    defines: &HashMap<String, u32>,
     blocks: impl Iterator<Item = &'a ValidatedRegisterBlock>,
 ) -> Result<TokenStream> {
     let mut read_tokens = TokenStream::new();
@@ -677,41 +672,6 @@ fn emu_make_root_bus<'a>(
 
     let mut blocks_sorted = blocks.collect::<Vec<_>>();
     blocks_sorted.sort_by_key(|b| b.block().instances[0].address);
-
-    // add the DCCM from the defines
-    if let Some(dccm_offset) = defines.get("RV_DCCM_SADR") {
-        if let Some(dccm_bits) = defines.get("RV_DCCM_BITS") {
-            let ram_size = 1 << *dccm_bits;
-            field_tokens.extend(quote! {
-                pub dccm: caliptra_emu_bus::Ram,
-            });
-            constructor_tokens.extend(quote! {
-                dccm: caliptra_emu_bus::Ram::new(vec![0; #ram_size as usize]),
-            });
-
-            offset_fields.extend(quote! {
-                pub dccm_offset: u32,
-                pub dccm_size: u32,
-            });
-            let offset = hex_literal(*dccm_offset as u64);
-            let size = hex_literal(ram_size as u64);
-            offset_defaults.extend(quote! {
-                dccm_offset: #offset,
-                dccm_size: #size,
-            });
-
-            read_tokens.extend(quote! {
-                if addr >= self.offsets.dccm_offset && addr < self.offsets.dccm_offset + self.offsets.dccm_size {
-                    return self.dccm.read(size, addr - self.offsets.dccm_offset);
-                }
-            });
-            write_tokens.extend(quote! {
-                if addr >= self.offsets.dccm_offset && addr < self.offsets.dccm_offset + self.offsets.dccm_size {
-                    return self.dccm.write(size, addr - self.offsets.dccm_offset, val);
-                }
-            });
-        }
-    }
 
     for block in blocks_sorted {
         let rblock = block.block();

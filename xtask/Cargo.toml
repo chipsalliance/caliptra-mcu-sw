@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+clap-num.workspace = true
 crc32fast.workspace = true
 elf.workspace = true
 mcu-builder.workspace = true

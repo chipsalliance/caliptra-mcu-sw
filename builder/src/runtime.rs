@@ -43,6 +43,7 @@ fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize> {
 /// will be used.
 ///
 /// Returns the kernel size and the apps memory offset.
+#[allow(clippy::too_many_arguments)]
 pub fn runtime_build_no_apps_uncached(
     kernel_size: usize,
     apps_offset: usize,
@@ -51,6 +52,9 @@ pub fn runtime_build_no_apps_uncached(
     output_name: &str,
     platform: &str,
     memory_map: &McuMemoryMap,
+    use_dccm_for_stack: bool,
+    dccm_offset: Option<u32>,
+    dccm_size: Option<u32>,
 ) -> Result<(usize, usize)> {
     let tock_dir = &PROJECT_ROOT
         .join("platforms")
@@ -59,14 +63,30 @@ pub fn runtime_build_no_apps_uncached(
     let sysr = SYSROOT.clone();
     let ld_file_path = tock_dir.join("layout.ld");
 
-    let ram_start = memory_map.sram_offset as usize + memory_map.sram_size as usize - DATA_RAM_SIZE;
-    assert!(
-        ram_start >= apps_offset + apps_size,
-        "RAM must be after apps ram_start {:x} apps_offset {:x} apps_size {:x}",
-        ram_start,
-        apps_offset,
-        apps_size
-    );
+    let dccm_offset = dccm_offset.unwrap_or(memory_map.dccm_offset) as usize;
+    let dccm_size = dccm_size.unwrap_or(memory_map.dccm_size) as usize;
+
+    let (ram_start, ram_size) = if use_dccm_for_stack {
+        let ram_size = dccm_size - INTERRUPT_TABLE_SIZE;
+        assert!(
+            DATA_RAM_SIZE <= ram_size,
+            "DCCM size is not large enough for data RAM"
+        );
+        (dccm_offset, ram_size)
+    } else {
+        let ram_start =
+            memory_map.sram_offset as usize + memory_map.sram_size as usize - DATA_RAM_SIZE;
+        assert!(
+            ram_start >= apps_offset + apps_size,
+            "RAM must be after apps ram_start {:x} apps_offset {:x} apps_size {:x}",
+            ram_start,
+            apps_offset,
+            apps_size
+        );
+        (ram_start, DATA_RAM_SIZE)
+    };
+
+    // TODO: print data usage after build from ELF file
 
     let ld_string = runtime_ld_script(
         memory_map,
@@ -75,7 +95,9 @@ pub fn runtime_build_no_apps_uncached(
         apps_offset as u32,
         apps_size as u32,
         ram_start as u32,
-        DATA_RAM_SIZE as u32,
+        ram_size as u32,
+        dccm_offset as u32,
+        dccm_size as u32,
     )?;
 
     std::fs::write(&ld_file_path, ld_string)?;
@@ -249,12 +271,16 @@ fn write_cached_values(platform: &str, values: &CachedValues) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn runtime_build_with_apps_cached(
     features: &[&str],
     output_name: Option<&str>,
     example_app: bool,
     platform: Option<&str>,
     memory_map: Option<&McuMemoryMap>,
+    use_dccm_for_stack: bool,
+    dccm_offset: Option<u32>,
+    dccm_size: Option<u32>,
 ) -> Result<String> {
     let memory_map = memory_map.unwrap_or(&mcu_config_emulator::EMULATOR_MEMORY_MAP);
     let mut app_offset = memory_map.sram_offset as usize;
@@ -277,6 +303,9 @@ pub fn runtime_build_with_apps_cached(
         output_name,
         platform,
         memory_map,
+        use_dccm_for_stack,
+        dccm_offset,
+        dccm_size,
     ) {
         Ok((kernel_size, apps_memory_offset)) => (kernel_size, apps_memory_offset),
         Err(_) => {
@@ -295,6 +324,9 @@ pub fn runtime_build_with_apps_cached(
                 output_name,
                 platform,
                 memory_map,
+                use_dccm_for_stack,
+                dccm_offset,
+                dccm_size,
             )?
         }
     };
@@ -327,6 +359,9 @@ pub fn runtime_build_with_apps_cached(
             output_name,
             platform,
             memory_map,
+            use_dccm_for_stack,
+            dccm_offset,
+            dccm_size,
         )?;
 
         assert_eq!(
@@ -381,6 +416,7 @@ pub fn runtime_build_with_apps_cached(
     Ok(runtime_bin.to_string_lossy().to_string())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn runtime_ld_script(
     memory_map: &McuMemoryMap,
     runtime_offset: u32,
@@ -389,8 +425,12 @@ pub fn runtime_ld_script(
     apps_size: u32,
     data_ram_offset: u32,
     data_ram_size: u32,
+    dccm_offset: u32,
+    dccm_size: u32,
 ) -> Result<String> {
     let mut map = memory_map.hash_map();
+    map.insert("DCCM_OFFSET".to_string(), format!("0x{:x}", dccm_offset));
+    map.insert("DCCM_SIZE".to_string(), format!("0x{:x}", dccm_size));
     map.insert(
         "RUNTIME_OFFSET".to_string(),
         format!("0x{:x}", runtime_offset),
