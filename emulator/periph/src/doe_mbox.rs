@@ -47,12 +47,6 @@ impl DummyDoeMbox {
             periph,
         }
     }
-
-    #[allow(dead_code)]
-    fn reset(&mut self) {
-        // Reset the mailbox registers to their initial state
-        self.periph.inner.lock().unwrap().reset();
-    }
 }
 
 impl DoeMboxPeripheral for DummyDoeMbox {
@@ -170,6 +164,7 @@ impl DoeMboxPeriph {
     }
 
     pub fn write_data(&mut self, data: Vec<u8>) -> Result<(), String> {
+        self.reset(); // Reset the mailbox before writing new data
         let mut inner = self.inner.lock().unwrap();
         if data.len() > inner.max_sram_dword_size * 4 {
             return Err(format!(
@@ -196,7 +191,7 @@ impl DoeMboxPeriph {
         }
 
         println!(
-            "DOE_MBOX_BUS: Data written successfully, length: {} words",
+            "DOE_MBOX_FSM: Data written successfully, length: {} words",
             data_len
         );
         Ok(())
@@ -211,7 +206,7 @@ impl DoeMboxPeriph {
             client.incoming();
         }
 
-        println!("DOE_MBOX_BUS: Reset request sent.");
+        println!("DOE_MBOX_FSM: Reset request sent.");
     }
 
     pub fn read_data(&self) -> Result<Option<Vec<u8>>, String> {
@@ -221,7 +216,7 @@ impl DoeMboxPeriph {
         if status == 0 {
             return Ok(None);
         }
-        println!("DOE_MBOX_PERIPH: Checking status: {:#x}", status);
+        println!("DOE_MBOX_FSM: Checking status: {:#x}", status);
 
         if status & DoeMboxStatus::DataReady::SET.value != 0 {
             // Data is ready to be read
@@ -232,10 +227,7 @@ impl DoeMboxPeriph {
             inner.clear_status_data_ready();
 
             let data_len = inner.mbox_dlen.reg.get() as usize;
-            println!(
-                "DOE_MBOX_PERIPH: Reading data of length: {} words",
-                data_len
-            );
+            println!("DOE_MBOX_FSM: Reading data of length: {} words", data_len);
             let data = (0..data_len)
                 .flat_map(|i| inner.read_doe_sram(i).to_le_bytes())
                 .collect::<Vec<u8>>();

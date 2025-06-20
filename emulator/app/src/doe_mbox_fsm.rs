@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use emulator_periph::DoeMboxPeriph;
+use std::process::exit;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -72,7 +73,7 @@ impl DoeMboxStateMachine {
     fn handle_outgoing_message(&mut self, message: Vec<u8>) {
         if self.state == DoeMboxState::Idle {
             println!(
-                "DOE_FSM: Handling outgoing message: {:?}, thread id: {:?}",
+                "DOE_MBOX_FSM: Handling outgoing message: {:?}, thread id: {:?}",
                 message,
                 thread::current().id()
             );
@@ -192,11 +193,18 @@ impl DoeTransportTestRunner {
                 self.passed += 1;
             }
         }
-        println!(
-            "DOE_TRANSPORT_TESTS: {} tests passed out of {}",
-            self.passed,
-            self.test_vectors.len()
-        );
+
+        if self.passed == self.test_vectors.len() {
+            println!("DOE_TRANSPORT_TESTS: All tests passed successfully.");
+            exit(0);
+        } else {
+            println!(
+                "DOE_TRANSPORT_TESTS: Some tests failed. Passed: {}, Total: {}",
+                self.passed,
+                self.test_vectors.len()
+            );
+            exit(1);
+        }
     }
 }
 
@@ -229,17 +237,3 @@ pub(crate) fn run_doe_transport_tests(
         println!("DOE_TRANSPORT_TESTS: All tests completed.");
     });
 }
-
-// pub(crate) fn test_doe_transport_loopback(
-//     running: Arc<AtomicBool>,
-//     tx: Sender<Vec<u8>>,
-//     rx: Receiver<Vec<u8>>,
-// ) {
-//     thread::spawn(move || {
-//         let mut test = DoeTransportTestRunner::new(tx, rx, running.clone(), Vec::new());
-
-//         test.run_tests(running.clone());
-//         running.store(false, Ordering::Relaxed);
-//         println!("DOE_TRANSPORT_LOOPBACK_TEST: All tests completed.");
-//     });
-// }

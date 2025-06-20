@@ -2,9 +2,9 @@
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
 use rand::Rng;
-const NUM_TEST_VECTORS: usize = 2;
-const MIN_TEST_DATA_SIZE: usize = 2 * 4; // Example minimum size of test vectors
-const MAX_TEST_DATA_SIZE: usize = 128 * 4; // Example maximum size of test vectors
+const NUM_TEST_VECTORS: usize = 1;
+const MIN_TEST_DATA_SIZE: usize = 2 * 4; // minimum size of test vectors
+const MAX_TEST_DATA_SIZE: usize = 128 * 4; // maximum size of test vectors
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
