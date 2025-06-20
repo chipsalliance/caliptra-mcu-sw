@@ -6,12 +6,12 @@ use crate::measurements::common::{
 };
 use crate::protocol::{algorithms::AsymAlgo, SHA384_HASH_SIZE};
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
-use libapi_caliptra::evidence::{Evidence, PCR_QUOTE_SIZE};
+use libapi_caliptra::evidence::{Evidence, PCR_QUOTE_BUFFER_SIZE, PCR_QUOTE_RSP_START};
 use libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use zerocopy::IntoBytes;
 
 const MAX_MEASUREMENT_RECORD_SIZE: usize =
-    PCR_QUOTE_SIZE + size_of::<DmtfMeasurementBlockMetadata>();
+    PCR_QUOTE_BUFFER_SIZE + size_of::<DmtfMeasurementBlockMetadata>();
 
 /// Structure to hold the Freeform manifest data
 /// The measurement record consists of 1 measurement block whose value is the PCR quote from Caliptra.
@@ -127,7 +127,7 @@ impl FreeformManifest {
     async fn refresh_measurement_record(&mut self, asym_algo: AsymAlgo) -> MeasurementsResult<()> {
         let with_pqc_sig = asym_algo != AsymAlgo::EccP384;
         let measurement_record = &mut self.measurement_record;
-        let measurement_value_size = Evidence::pcr_quote_size(with_pqc_sig).await;
+        let measurement_value_size = Evidence::pcr_quote_size(with_pqc_sig);
         measurement_record.fill(0);
         let metadata = DmtfMeasurementBlockMetadata::new(
             SPDM_MEASUREMENT_MANIFEST_INDEX,
@@ -140,7 +140,8 @@ impl FreeformManifest {
 
         measurement_record[0..METADATA_SIZE].copy_from_slice(metadata.as_bytes());
 
-        let quote_slice = &mut measurement_record[METADATA_SIZE..METADATA_SIZE + PCR_QUOTE_SIZE];
+        let quote_slice =
+            &mut measurement_record[METADATA_SIZE..METADATA_SIZE + PCR_QUOTE_BUFFER_SIZE];
 
         let copied_len = Evidence::pcr_quote(quote_slice, with_pqc_sig)
             .await
@@ -148,7 +149,10 @@ impl FreeformManifest {
         if copied_len != measurement_value_size {
             return Err(MeasurementsError::MeasurementSizeMismatch);
         }
-        self.data_size = METADATA_SIZE + measurement_value_size;
+
+        // remove the mailbox header from the quote
+        quote_slice.copy_within(METADATA_SIZE + PCR_QUOTE_RSP_START.., METADATA_SIZE);
+        self.data_size = METADATA_SIZE + measurement_value_size - PCR_QUOTE_RSP_START;
 
         Ok(())
     }

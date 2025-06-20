@@ -987,7 +987,7 @@ fn generate_defines(check: bool, header: String, dest_dir: &Path) -> Result<Hash
 
     let mut defines_map = HashMap::new();
 
-    let define_files = ["hw/caliptra-ss/src/riscv_core/veer_el2/rtl/defines/defines.h"];
+    let define_files = ["hw/caliptra-ss/src/riscv_core/veer_el2/rtl/defines/css_mcu0_defines.h"];
     let define_files: Vec<PathBuf> = define_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
     for define_file in define_files.iter() {
         if !define_file.exists() {
