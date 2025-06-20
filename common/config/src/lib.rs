@@ -55,72 +55,42 @@ impl Default for McuMemoryMap {
             rom_offset: 0x8000_0000,
             rom_size: 32 * 1024,
             rom_stack_size: 0x3000,
-            rom_properties: MemoryRegionType {
-                side_effect: false,
-                cacheable: true,
-            },
+            rom_properties: MemoryRegionType::MEMORY,
 
             dccm_offset: 0x5000_0000,
             dccm_size: 256 * 1024,
-            dccm_properties: MemoryRegionType {
-                side_effect: false,
-                cacheable: true,
-            },
+            dccm_properties: MemoryRegionType::MEMORY,
 
             sram_offset: 0x4000_0000,
             sram_size: 384 * 1024,
-            sram_properties: MemoryRegionType {
-                side_effect: false,
-                cacheable: true,
-            },
+            sram_properties: MemoryRegionType::MEMORY,
 
             pic_offset: 0x6000_0000,
-            pic_properties: MemoryRegionType {
-                side_effect: true,
-                cacheable: false,
-            },
+            pic_properties: MemoryRegionType::MMIO,
 
             i3c_offset: 0x2000_4000,
             i3c_size: 0x1000,
-            i3c_properties: MemoryRegionType {
-                side_effect: true,
-                cacheable: false,
-            },
+            i3c_properties: MemoryRegionType::MMIO,
 
             mci_offset: 0x2100_0000,
             mci_size: 0xe0_0000,
-            mci_properties: MemoryRegionType {
-                side_effect: true,
-                cacheable: false,
-            },
+            mci_properties: MemoryRegionType::MMIO,
 
             mbox_offset: 0x3002_0000,
             mbox_size: 0x28,
-            mbox_properties: MemoryRegionType {
-                side_effect: true,
-                cacheable: false,
-            },
+            mbox_properties: MemoryRegionType::MMIO,
 
             soc_offset: 0x3003_0000,
             soc_size: 0x5e0,
-            soc_properties: MemoryRegionType {
-                side_effect: true,
-                cacheable: false,
-            },
+            soc_properties: MemoryRegionType::MMIO,
 
             otp_offset: 0x7000_0000,
             otp_size: 0x140,
-            otp_properties: MemoryRegionType {
-                side_effect: true,
-                cacheable: false,
-            },
+            otp_properties: MemoryRegionType::MMIO,
 
             lc_offset: 0x7000_0400,
             lc_size: 0x8c,
-            lc_properties: MemoryRegionType {
-                side_effect: true,
-                cacheable: false,
-            },
+            lc_properties: MemoryRegionType::MMIO,
         }
     }
 }
