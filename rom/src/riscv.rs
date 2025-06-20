@@ -59,6 +59,12 @@ impl Soc {
         Soc { registers }
     }
 
+    pub fn ready_for_runtime(&self) -> bool {
+        self.registers
+            .cptra_flow_status
+            .is_set(soc::bits::CptraFlowStatus::ReadyForRuntime)
+    }
+
     pub fn fw_ready(&self) -> bool {
         self.registers.ss_generic_fw_exec_ctrl[0].get() & (1 << 2) != 0
     }
@@ -175,15 +181,6 @@ pub fn rom_start() {
     mrac.set(0xaaaa_aaaa);
 
     romtime::println!("[mcu-rom] Hello from ROM");
-    let val = 0x01020304u32;
-    let addr = unsafe { 0xa8c0_0000u32 as *mut u32 };
-    romtime::println!("[mcu-rom] Write {:08x} <= {:08x}", addr as u32, val);
-    unsafe {
-        core::ptr::write_volatile(addr, val);
-    }
-    romtime::println!("[mcu-rom] Read {:08x} => {:02x}", addr as u32, unsafe {
-        core::ptr::read_volatile(addr as *const u8)
-    });
 
     let otp_base: StaticRef<otp_ctrl::regs::OtpCtrl> =
         unsafe { StaticRef::new(MCU_MEMORY_MAP.otp_offset as *const otp_ctrl::regs::OtpCtrl) };
@@ -279,8 +276,9 @@ pub fn rom_start() {
     soc.registers.cptra_trng_valid_axi_user.set(0xcccc_cccc);
     romtime::println!("[mcu-rom] Locking TRNG user");
     soc.registers.cptra_trng_axi_user_lock.set(1);
+    // TODO: fix this in Caliptra emulator
     romtime::println!("[mcu-rom] Setting DMA user");
-    soc.registers.ss_caliptra_dma_axi_user.set(0xcccc_cccc);
+    //soc.registers.ss_caliptra_dma_axi_user.set(0xcccc_cccc);
 
     romtime::println!("[mcu-rom] Initialize I3C");
     let mut i3c = I3c::new(i3c_base);
@@ -357,7 +355,7 @@ pub fn rom_start() {
     romtime::println!("[mcu-rom] Recovery flow complete");
 
     // Check that the firmware was actually loaded before jumping to it
-    let firmware_ptr = unsafe { (MCU_MEMORY_MAP.sram_offset + 0) as *const u32 };
+    let firmware_ptr = unsafe { MCU_MEMORY_MAP.sram_offset as *const u32 };
     for i in 0..8 {
         romtime::println!("Bytes from SRAM: {}: {:02x}", i, unsafe {
             core::ptr::read_volatile((firmware_ptr as *const u8).offset(i))
@@ -505,8 +503,8 @@ fn configure_i3c(i3c: &mut I3c, addr: u8, recovery_enabled: bool) {
         regs.stdby_ctrl_mode_stby_cr_control.get()
     );
 
-    regs.stdby_ctrl_mode_stby_cr_capabilities
-        .write(StbyCrCapabilities::TargetXactSupport::SET);
+    // regs.stdby_ctrl_mode_stby_cr_capabilities
+    //     .write(StbyCrCapabilities::TargetXactSupport::SET);
     romtime::println!(
         "STBY_CR_CAPABILITIES: {:x}",
         regs.stdby_ctrl_mode_stby_cr_capabilities.get()

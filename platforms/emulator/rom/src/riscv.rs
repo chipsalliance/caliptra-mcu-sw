@@ -53,7 +53,7 @@ pub extern "C" fn rom_entry() -> ! {
 
     romtime::println!(
         "[mcu-rom] Jumping to firmware at {}",
-        HexWord((MCU_MEMORY_MAP.sram_offset as u32) + 0x80)
+        HexWord(MCU_MEMORY_MAP.sram_offset as u32)
     );
     exit_rom();
 }
@@ -81,7 +81,7 @@ fn exit_rom() -> ! {
             li x29, 0; li x30, 0; li x31, 0;
 
             // jump to runtime
-            li a3, 0x40000080
+            li a3, 0x40000000
             jr a3",
                 options(noreturn),
         }
