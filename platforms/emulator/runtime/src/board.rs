@@ -26,7 +26,7 @@ use mcu_components::{mailbox_component_static, mctp_driver_component_static};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
 use mcu_tock_veer::pmp::{
-    CodeRegion, DataRegion, KernelTextRegion, MMIORegion, VeeRProtectionMMLEPMP,
+    DataRegion, KernelTextRegion, MMIORegion, ReadOnlyRegion, VeeRProtectionMMLEPMP,
 };
 use mcu_tock_veer::timers::InternalTimers;
 use romtime::CaliptraSoC;
@@ -306,7 +306,7 @@ pub unsafe fn main() {
     }
 
     let epmp = VeeRProtectionMMLEPMP::new(
-        CodeRegion(TORRegionSpec::new(addr_of!(_srom), addr_of!(_eprog)).unwrap()),
+        ReadOnlyRegion(TORRegionSpec::new(addr_of!(_srom), addr_of!(_eprog)).unwrap()),
         DataRegion(TORRegionSpec::new(addr_of!(_ssram), addr_of!(_esram).offset(0x80)).unwrap()),
         // use the MMIO for the PIC
         &user_mmio[..],

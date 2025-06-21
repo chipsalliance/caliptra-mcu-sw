@@ -78,7 +78,7 @@ fn write_pmpaddr_pmpcfg(i: usize, pmpcfg: u8, pmpaddr: usize) {
 ///
 /// Configured in the PMP as a `NAPOT` region.
 #[derive(Copy, Clone, Debug)]
-pub struct CodeRegion(pub TORRegionSpec);
+pub struct ReadOnlyRegion(pub TORRegionSpec);
 
 /// The Data RAM region address range.
 ///
@@ -138,7 +138,7 @@ pub struct KernelTextRegion(pub TORRegionSpec);
 ///   |     n - M - 4 ... | Machine MMIO                       | NAPOT | X | R/W   |
 ///   |                   |                                    |       |   |       |
 ///   |             n - 4 | /                                \ | OFF   | X | ----- |
-///   |             n - 3 | \ Code (spanning kernel & apps)  / | TOR   | X | R     |
+///   |             n - 3 | \ Read-Only (spanning kernel & apps) / | TOR   | X | R     |
 ///   |                   |                                    |       |   |       |
 ///   |             n - 2 | /                                \ | OFF   | X | ----- |
 ///   |             n - 1 | \ Data (spanning kernel & apps)  / | TOR   | X | R/W   |
@@ -162,7 +162,7 @@ impl VeeRProtectionMMLEPMP {
     }
 
     pub unsafe fn new(
-        code: CodeRegion,
+        read_only: ReadOnlyRegion,
         data: DataRegion,
         user_mmio: &[MMIORegion],
         machine_mmio: &[MMIORegion],
@@ -245,7 +245,7 @@ impl VeeRProtectionMMLEPMP {
             );
         }
 
-        // code at n - 4 .. n - 3:
+        // read-only at n - 4 .. n - 3:
         write_pmpaddr_pmpcfg(
             AVAILABLE_ENTRIES - 4,
             (pmpcfg_octet::a::OFF
@@ -254,7 +254,7 @@ impl VeeRProtectionMMLEPMP {
                 + pmpcfg_octet::x::CLEAR
                 + pmpcfg_octet::l::SET)
                 .into(),
-            (code.0.start() as usize) >> 2,
+            (read_only.0.start() as usize) >> 2,
         );
         write_pmpaddr_pmpcfg(
             AVAILABLE_ENTRIES - 3,
@@ -264,7 +264,7 @@ impl VeeRProtectionMMLEPMP {
                 + pmpcfg_octet::x::CLEAR
                 + pmpcfg_octet::l::SET)
                 .into(),
-            (code.0.end() as usize) >> 2,
+            (read_only.0.end() as usize) >> 2,
         );
 
         // data at n - 2 .. n - 1:

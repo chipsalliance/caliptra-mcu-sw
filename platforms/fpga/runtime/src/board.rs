@@ -23,7 +23,7 @@ use mcu_components::mctp_mux_component_static;
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
 use mcu_tock_veer::pmp::{
-    CodeRegion, DataRegion, KernelTextRegion, MMIORegion, VeeRProtectionMMLEPMP,
+    DataRegion, KernelTextRegion, MMIORegion, ReadOnlyRegion, VeeRProtectionMMLEPMP,
 };
 use mcu_tock_veer::timers::InternalTimers;
 use romtime::CaliptraSoC;
@@ -287,7 +287,7 @@ pub unsafe fn main() {
 
     romtime::println!("[mcu-runtime] Set PMP");
     let epmp = VeeRProtectionMMLEPMP::new(
-        CodeRegion(TORRegionSpec::new(addr_of!(_srom), addr_of!(_eprog)).unwrap()),
+        ReadOnlyRegion(TORRegionSpec::new(addr_of!(_srom), addr_of!(_eprog)).unwrap()),
         DataRegion(TORRegionSpec::new(addr_of!(_ssram), addr_of!(_esram)).unwrap()),
         // use the MMIO for the PIC
         &user_mmio[..],
