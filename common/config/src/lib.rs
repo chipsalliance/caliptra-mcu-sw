@@ -125,9 +125,11 @@ impl MemoryRegionType {
 
 impl McuMemoryMap {
     /// Size of each MRAC region in bytes (256MB = 0x10000000)
+    #[cfg(not(target_arch = "riscv32"))]
     const MRAC_REGION_SIZE: u32 = 0x1000_0000;
 
     /// Get the MRAC region index for a given address
+    #[cfg(not(target_arch = "riscv32"))]
     fn get_mrac_region(address: u32) -> usize {
         let region = (address / Self::MRAC_REGION_SIZE) as usize;
         debug_assert!(
@@ -147,6 +149,7 @@ impl McuMemoryMap {
     ///               01 = no side effects, cacheable
     ///               10 = side effects, not cacheable
     ///               11 = invalid (prevented by hardware)
+    #[cfg(not(target_arch = "riscv32"))]
     pub fn compute_mrac(&self) -> u32 {
         // Track which regions have been assigned and their types
         let mut region_types = [MemoryRegionType::UNMAPPED; 16];
