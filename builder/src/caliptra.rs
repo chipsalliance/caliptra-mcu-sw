@@ -269,9 +269,11 @@ impl CaliptraBuilder {
             pqc_key_type: FwVerificationPqcKeyType::LMS,
             ..Default::default()
         };
+
+        // TODO: allow using FPGA firmware
         let bundle = caliptra_builder::build_and_sign_image(
-            &caliptra_builder::firmware::FMC_FPGA_WITH_UART,
-            &caliptra_builder::firmware::APP_WITH_UART_FPGA,
+            &caliptra_builder::firmware::FMC_WITH_UART,
+            &caliptra_builder::firmware::APP_WITH_UART,
             opts,
         )?;
         let fw_bytes = bundle.to_bytes()?;
