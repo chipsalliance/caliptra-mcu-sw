@@ -99,6 +99,51 @@ pub struct MMIORegion(pub NAPOTRegionSpec);
 #[derive(Copy, Clone, Debug)]
 pub struct KernelTextRegion(pub TORRegionSpec);
 
+/// Enum containing all possible PMP region types for platform configuration
+#[derive(Debug, Clone, Copy)]
+pub enum PMPRegion {
+    ReadOnly(ReadOnlyRegion),
+    Data(DataRegion),
+    KernelText(KernelTextRegion),
+    UserMMIO(MMIORegion),
+    MachineMMIO(MMIORegion),
+}
+
+/// Configuration result containing all PMP regions in a simple list
+pub struct PMPRegionList {
+    /// Fixed-size array of regions (no heap allocation)
+    /// Size 16 assumes worst case that all regions are TOR regions (using 2 PMP entries each)
+    /// User regions: MPU_REGIONS, Kernel regions: ~3-4, total fits within AVAILABLE_ENTRIES
+    pub regions: [Option<PMPRegion>; 16],
+    /// Number of actual regions used
+    pub count: usize,
+}
+
+impl PMPRegionList {
+    /// Create a new empty region list
+    pub fn new() -> Self {
+        Self {
+            regions: [None; 16],
+            count: 0,
+        }
+    }
+
+    /// Add a region to the list
+    pub fn add_region(&mut self, region: PMPRegion) -> Result<(), ()> {
+        if self.count >= 16 {
+            return Err(());
+        }
+        self.regions[self.count] = Some(region);
+        self.count += 1;
+        Ok(())
+    }
+
+    /// Iterate through all regions
+    pub fn iter(&self) -> impl Iterator<Item = &PMPRegion> {
+        self.regions[..self.count].iter().filter_map(|r| r.as_ref())
+    }
+}
+
 /// A RISC-V ePMP implementation which supports machine-mode (kernel) memory
 /// protection by using the machine-mode lockdown mode (MML), with a fixed
 /// number of "kernel regions" (such as `.text`, flash, RAM and MMIO).

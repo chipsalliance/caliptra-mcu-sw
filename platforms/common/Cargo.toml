@@ -1,0 +1,17 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-platforms-common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mcu-tock-veer.workspace = true
+mcu-config.workspace = true
+romtime.workspace = true
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+rv32i.workspace = true
+
+[features]
+default = []

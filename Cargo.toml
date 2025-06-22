@@ -18,6 +18,7 @@ members = [
     "registers/generator",
     "registers/systemrdl",
     "registers/systemrdl-new",
+    "platforms/common",
     "platforms/emulator/config",
     "platforms/emulator/rom",
     "platforms/emulator/runtime",

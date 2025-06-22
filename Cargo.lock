@@ -2495,6 +2495,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-platforms-common"
+version = "0.1.0"
+dependencies = [
+ "mcu-config",
+ "mcu-tock-veer",
+ "romtime",
+ "rv32i",
+]
+
+[[package]]
 name = "mcu-registers-systemrdl-new"
 version = "0.1.0"
 dependencies = [
