@@ -33,10 +33,7 @@ const ITRNG_DIVISOR: u32 = 400;
 const DEFAULT_AXI_PAUSER: u32 = 0xcccc_cccc;
 
 // use the virtual target dynamic address for the recovery target
-const recovery_target_addr: u8 = 0x3b;
-
-// ITRNG FIFO stores 1024 DW and outputs 4 bits at a time to Caliptra.
-const FPGA_ITRNG_FIFO_SIZE: usize = 1024;
+const RECOVERY_TARGET_ADDR: u8 = 0x3b;
 
 // ITRNG FIFO stores 1024 DW and outputs 4 bits at a time to Caliptra.
 const FPGA_ITRNG_FIFO_SIZE: usize = 1024;
@@ -99,9 +96,6 @@ pub struct ModelFpgaRealtime {
     i3c_mmio: *mut u32,
     i3c_controller_mmio: *mut u32,
     i3c_controller: xi3c::Controller,
-
-    realtime_thread: Option<thread::JoinHandle<()>>,
-    realtime_thread_exit_flag: Arc<AtomicBool>,
 
     realtime_thread: Option<thread::JoinHandle<()>>,
     realtime_thread_exit_flag: Arc<AtomicBool>,
@@ -395,12 +389,7 @@ impl ModelFpgaRealtime {
                     .recovery_block_read_request(RecoveryCommandCode::IndirectFifoStatus)
                     .expect("Device should response to indirect fifo status read request");
                 let empty = fifo_status[0] & 1 == 1;
-                let full = fifo_status[0] & 2 == 2;
-                //println!(
-                //    "FIFO status: empty {} full {}, status {:x?}",
-                //    empty, full, fifo_status
-                //);
-                // while empty or not full, send
+                // while empty send
                 if empty {
                     // fifo is empty, send a block
                     let chunk = self.recovery_fifo_blocks.pop().unwrap();
@@ -714,7 +703,7 @@ impl ModelFpgaRealtime {
             cmd_type: 1,
             no_repeated_start: 0, // we want the next command (read) to be Sr
             pec: 1,
-            target_addr: recovery_target_addr,
+            target_addr: RECOVERY_TARGET_ADDR,
             ..Default::default()
         };
 
@@ -741,7 +730,7 @@ impl ModelFpgaRealtime {
 
         // then we send a private read for the minimum length
         let len_range = Self::command_code_to_len(command);
-        cmd.target_addr = recovery_target_addr;
+        cmd.target_addr = RECOVERY_TARGET_ADDR;
         cmd.no_repeated_start = 0;
         cmd.tid = 0;
         cmd.pec = 0;
@@ -802,7 +791,7 @@ impl ModelFpgaRealtime {
             cmd_type: 1,
             no_repeated_start: 1,
             pec: 1,
-            target_addr: recovery_target_addr,
+            target_addr: RECOVERY_TARGET_ADDR,
             ..Default::default()
         };
 
@@ -925,9 +914,6 @@ impl McuHwModel for ModelFpgaRealtime {
             i3c_mmio,
             i3c_controller_mmio,
             i3c_controller,
-
-            realtime_thread,
-            realtime_thread_exit_flag,
 
             realtime_thread,
             realtime_thread_exit_flag,
@@ -1154,6 +1140,7 @@ mod test {
         .expect("Could not build MCU runtime");
         let mut caliptra_builder = mcu_builder::CaliptraBuilder::new(
             true,
+            true,
             None,
             None,
             None,
@@ -1219,7 +1206,7 @@ mod test {
         };
         let all_zero = ptr.iter().all(|&x| x == 0);
         println!("MCU SRAM all 0: {}", all_zero);
-        if let Some((i, _)) = ptr.iter().enumerate().find(|(i, &x)| x != 0) {
+        if let Some((i, _)) = ptr.iter().enumerate().find(|(_, &x)| x != 0) {
             println!("Found non-zero at {}", i);
             println!(
                 "Found non-zeroes at {}, value: {:02x?}",

@@ -45,6 +45,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
 
     let mut caliptra_builder = CaliptraBuilder::new(
         active_mode,
+        false,
         caliptra_rom,
         caliptra_firmware,
         soc_manifest,
