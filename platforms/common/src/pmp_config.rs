@@ -386,7 +386,8 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
         memory_map.dccm_size,
         memory_map.dccm_properties,
     ); // Will be filtered out (memory)
-    add_region(memory_map.pic_offset, 0x1000, memory_map.pic_properties); // MMIO - will be added
+       // MMIO - will be added, TODO: Size of PIC is hardcoded here.
+    add_region(memory_map.pic_offset, 0x10000, memory_map.pic_properties);
     add_region(
         memory_map.i3c_offset,
         memory_map.i3c_size,
@@ -543,10 +544,6 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
         all_regions[region_count] = Some(*region);
         region_count += 1;
     }
-
-    // Step 4: Sort regions by start address
-    all_regions[..region_count]
-        .sort_unstable_by_key(|region_opt| region_opt.unwrap().start_addr as usize);
 
     // Step 5: Coalesce adjacent regions with identical properties in-place
     let coalesced_count = coalesce_regions_in_place(&mut all_regions, region_count);

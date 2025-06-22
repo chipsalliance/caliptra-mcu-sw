@@ -2578,6 +2578,7 @@ dependencies = [
  "mcu-components",
  "mcu-config",
  "mcu-config-emulator",
+ "mcu-platforms-common",
  "mcu-tock-veer",
  "registers-generated",
  "riscv 0.1.0",
@@ -2591,6 +2592,7 @@ dependencies = [
 name = "mcu-runtime-fpga"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
  "capsules-core",
  "capsules-emulator",
  "capsules-extra",
@@ -2604,6 +2606,7 @@ dependencies = [
  "mcu-components",
  "mcu-config",
  "mcu-config-fpga",
+ "mcu-platforms-common",
  "mcu-tock-veer",
  "registers-generated",
  "riscv 0.1.0",
