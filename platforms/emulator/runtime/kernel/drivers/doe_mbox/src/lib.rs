@@ -27,10 +27,10 @@ const DOE_MBOX_SRAM_ADDR: u32 = DOE_MBOX_ADDR + 0x1000; // SRAM offset from DOE 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum DoeMboxState {
     Idle,
-    RxWait, // Driver owns RX buffer, waiting for data. Driver does not own client's TX buffer.
-    RxReceived, // Client owns RX buffer, waiting for set_rx_buffer() call.
-    TxDeferred, // Driver owns the TX buffer, waiting for send_done() call.
-    PendingReset, // Waiting either set_rx_buffer() or send_done() to reset the state.
+    RxWait,       // Driver owns DOE SRAM buffer, waiting for data.
+    RxInProgress, // Client owns DOE SRAM buffer, waiting for set_rx_buffer() call.
+    ReadyForTx,   // Driver owns DOE SRAM buffer, ready to send data.
+    TxInProgress, // Driver owns the Client TX buffer and DOE SRAM buffer, waiting for send_done() call.
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -51,6 +51,8 @@ pub struct EmulatedDoeTransport<'a, A: Alarm<'a>> {
 
     // Buffer to hold the client data object.
     client_buf: TakeCell<'static, [u32]>,
+
+    pending_reset: Cell<bool>,
 
     state: Cell<DoeMboxState>,
     timer_mode: Cell<TimerMode>,
@@ -88,6 +90,7 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
             doe_data_buf: TakeCell::new(static_doe_data_buf),
             doe_data_buf_len: len,
             client_buf: TakeCell::empty(),
+            pending_reset: Cell::new(false),
             state: Cell::new(DoeMboxState::Idle),
             timer_mode: Cell::new(TimerMode::NoTimer),
             alarm: VirtualMuxAlarm::new(alarm),
@@ -103,7 +106,6 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
 
     fn schedule_send_done(&self) {
         self.timer_mode.set(TimerMode::SendDoneDefer);
-        self.state.set(DoeMboxState::TxDeferred);
         let now = self.alarm.now();
         self.alarm
             .set_alarm(now, (Self::DEFER_SEND_DONE_TICKS).into());
@@ -121,6 +123,7 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
         // Reset the doe_box_status register
         self.timer_mode.set(TimerMode::NoTimer);
         self.state.set(DoeMboxState::RxWait);
+        self.pending_reset.set(false);
         self.registers
             .doe_mbox_status
             .write(DoeMboxStatus::ResetAck::SET);
@@ -141,9 +144,9 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
                 .doe_mbox_event
                 .modify(DoeMboxEvent::ResetReq::SET);
             if self.state.get() != DoeMboxState::RxWait {
-                // If buffer is still in use, we cannot reset.
-                // Defer the reset until set_rx_buffer is called.
-                self.state.set(DoeMboxState::PendingReset);
+                // If client/driver buffer is still in use, we cannot reset.
+                // Defer the reset until the buffers are returned to owners.
+                self.pending_reset.set(true);
             } else {
                 // Reset the DOE Mbox status and state
                 self.reset_state();
@@ -191,9 +194,12 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
                             "DOE_MBOX_DRIVER: Receiving data into buffer, len={}",
                             data_len
                         );
+                        self.state.set(DoeMboxState::RxInProgress);
                         client.receive(rx_buf, data_len);
                         println!("DOE_MBOX_DRIVER: Data received, completed");
-                        self.state.set(DoeMboxState::RxReceived);
+                    } else {
+                        // No client to receive data, just restore the buffer
+                        self.doe_data_buf.replace(rx_buf);
                     }
                 }
                 None => {
@@ -203,6 +209,11 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
                 }
             }
         }
+
+        println!(
+            "DOE_MBOX_DRIVER: State after handling interrupt: {:?}",
+            self.state.get()
+        );
     }
 }
 
@@ -213,21 +224,31 @@ impl<'a, A: Alarm<'a>> AlarmClient for EmulatedDoeTransport<'a, A> {
                 // Spurious alarm, nothing to do.
             }
             TimerMode::ResponseTimeout => {
-                if self.state.get() == DoeMboxState::RxReceived {
-                    self.registers
-                        .doe_mbox_status
-                        .write(DoeMboxStatus::Error::SET);
-                    debug!("DOE Mbox: Response timeout, resetting to RxWait");
+                self.registers
+                    .doe_mbox_status
+                    .write(DoeMboxStatus::Error::SET);
+                debug!("DOE Mbox: Response timeout occurred");
+                match self.state.get() {
+                    DoeMboxState::RxInProgress | DoeMboxState::TxInProgress => {
+                        // If we were in RxInProgress or TxInProgress state, we need to reset the state
+                        self.pending_reset.set(true);
+                    }
+                    _ => {
+                        // If we were in RxWait or ReadyForTx state, just reset to RxWait
+                        self.pending_reset.set(false);
+                        self.reset_state();
+                    }
                 }
-                // Always reset state to RxWait after timeout
-                self.state.set(DoeMboxState::RxWait);
             }
             TimerMode::SendDoneDefer => {
                 self.tx_client.map(|client| {
                     client.send_done(self.client_buf.take().unwrap(), Ok(()));
+                    self.registers
+                        .doe_mbox_status
+                        .write(DoeMboxStatus::DataReady::SET);
                 });
-                if self.state.get() == DoeMboxState::PendingReset {
-                    // If we were in TxDeferred state, we need to reset the state
+                if self.pending_reset.get() {
+                    // If we were in TxInProgress state, we need to reset the state
                     self.reset_state();
                 } else {
                     // After send_done, go back to RxWait
@@ -251,12 +272,12 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
 
     fn set_rx_buffer(&self, rx_buf: &'static mut [u32]) {
         self.doe_data_buf.replace(rx_buf);
-        if self.state.get() == DoeMboxState::PendingReset {
+        if self.pending_reset.get() {
             // If we were waiting for a reset, reset the state now
             self.reset_state();
         } else {
-            // Move to RxWait state
-            self.state.set(DoeMboxState::RxWait);
+            // Move to ReadyForTx state
+            self.state.set(DoeMboxState::ReadyForTx);
         }
     }
 
@@ -281,41 +302,45 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
         doe_payload: &'static mut [u32],
         payload_len: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u32])> {
-        if self.state.get() != DoeMboxState::RxReceived {
-            println!("DOE Mbox: Cannot transmit, not in RxReceived state");
+        if self.state.get() != DoeMboxState::ReadyForTx {
+            println!("DOE Mbox: Cannot transmit, not in ReadyForTx state");
             return Err((ErrorCode::FAIL, doe_payload));
         }
 
-        if DOE_HDR_SIZE_DWORDS + payload_len > self.max_data_object_size() {
+        let hdr_dwords = doe_hdr.map_or(0, |hdr| hdr.len());
+
+        if hdr_dwords + payload_len > self.max_data_object_size() {
             return Err((ErrorCode::SIZE, doe_payload));
         }
 
         // Check if the tx buffer is available
         if self.doe_data_buf.is_none() {
-            return Err((ErrorCode::NOMEM, doe_payload));
+            panic!("DOE_MBOX_DRIVER: No TX buffer available. This should not happen in normal operation.");
         }
+
+        self.state.set(DoeMboxState::TxInProgress);
 
         // copy the header and payload into the tx buffer
         let tx_buf = self.doe_data_buf.take().unwrap();
         let mut offset = 0;
         if let Some(hdr) = doe_hdr {
-            for i in 0..DOE_HDR_SIZE_DWORDS {
+            for i in 0..hdr_dwords {
                 tx_buf[i] = hdr[i];
             }
-            offset = DOE_HDR_SIZE_DWORDS;
+            offset = hdr_dwords;
         }
         for i in 0..payload_len {
             tx_buf[offset + i] = doe_payload[i];
         }
         let data_len = offset + payload_len;
 
+        // Replace the buffer with the new data
+        self.doe_data_buf.replace(tx_buf);
+
         println!("DOE_MBOX_DRIVER: Transmitting data, len={}", data_len);
 
         // Set data len and data ready in the status register
         self.registers.doe_mbox_dlen.set(data_len as u32);
-        self.registers
-            .doe_mbox_status
-            .write(DoeMboxStatus::DataReady::SET);
 
         if let Some(_client) = self.tx_client.get() {
             // hold on to the client buffer until send_done is called
@@ -323,6 +348,12 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
             // In real hardware, this would be asynchronous. Here, we defer the send_done callback
             // to emulate hardware behavior by scheduling it via an alarm.
             self.schedule_send_done();
+        } else {
+            // We don't have a client to notify, so we just set the status data ready for the next read
+            self.registers
+                .doe_mbox_status
+                .write(DoeMboxStatus::DataReady::SET);
+            self.state.set(DoeMboxState::RxWait);
         }
 
         Ok(())

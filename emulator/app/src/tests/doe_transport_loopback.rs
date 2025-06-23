@@ -2,7 +2,7 @@
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
 use rand::Rng;
-const NUM_TEST_VECTORS: usize = 1;
+const NUM_TEST_VECTORS: usize = 4;
 const MIN_TEST_DATA_SIZE: usize = 2 * 4; // minimum size of test vectors
 const MAX_TEST_DATA_SIZE: usize = 128 * 4; // maximum size of test vectors
 use std::sync::mpsc::{Receiver, Sender};
@@ -42,13 +42,14 @@ impl DoeTransportTest for Test {
         running: Arc<AtomicBool>,
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
+        retry_count: Option<usize>,
     ) {
         println!(
             "DOE_TRANSPORT_LOOPBACK_TEST: Running test with test vec len: {} thread_id {:?}",
             self.test_vector.len(),
             thread::current().id()
         );
-        let mut retry = 40;
+        let mut retry = retry_count.unwrap_or(10);
         self.state = DoeTestState::Start;
         while running.load(Ordering::Relaxed) {
             match self.state {

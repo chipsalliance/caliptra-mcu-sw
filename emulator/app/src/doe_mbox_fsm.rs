@@ -158,6 +158,7 @@ pub trait DoeTransportTest {
         running: Arc<AtomicBool>,
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
+        retry_count: Option<usize>,
     );
     fn is_passed(&self) -> bool;
 }
@@ -187,15 +188,23 @@ impl DoeTransportTestRunner {
     }
 
     pub fn run_tests(&mut self) {
-        for test in self.test_vectors.iter_mut() {
-            test.run_test(self.running.clone(), &mut self.tx, &mut self.rx);
+        for (i, test) in self.test_vectors.iter_mut().enumerate() {
+            let retry = if i == 0 {
+                Some(40) // Max Retry only for the first test
+            } else {
+                None // No retry for subsequent tests
+            };
+            test.run_test(self.running.clone(), &mut self.tx, &mut self.rx, retry);
             if test.is_passed() {
                 self.passed += 1;
             }
         }
 
         if self.passed == self.test_vectors.len() {
-            println!("DOE_TRANSPORT_TESTS: All tests passed successfully.");
+            println!(
+                "DOE_TRANSPORT_TESTS: All {} tests passed successfully.",
+                self.passed
+            );
             exit(0);
         } else {
             println!(

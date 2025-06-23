@@ -164,7 +164,6 @@ impl DoeMboxPeriph {
     }
 
     pub fn write_data(&mut self, data: Vec<u8>) -> Result<(), String> {
-        self.reset(); // Reset the mailbox before writing new data
         let mut inner = self.inner.lock().unwrap();
         if data.len() > inner.max_sram_dword_size * 4 {
             return Err(format!(
@@ -486,7 +485,7 @@ mod tests {
     fn test_doe_mbox_event() {
         let dummy_clock = Clock::new();
         let mut autobus = test_helper_setup_autobus(&dummy_clock);
-        // Doe driver writes the event register to indicate an event
+        // DOE driver writes to the event register to clear data ready event
         autobus
             .write(
                 RvSize::Word,
@@ -498,7 +497,7 @@ mod tests {
             autobus
                 .read(RvSize::Word, DOE_MBOX_BASE_ADDR + DOE_MBOX_EVENT_REG_OFFSET,)
                 .unwrap(),
-            DoeMboxEvent::DataReady::SET.value
+            DoeMboxEvent::DataReady::CLEAR.value
         );
 
         // Clear the event register
@@ -516,7 +515,7 @@ mod tests {
             DoeMboxEvent::DataReady::CLEAR.value
         );
 
-        // Set the event register to indicate a reset request
+        // DOE Driver writes 1 to event register to clear the reset request event
         autobus
             .write(
                 RvSize::Word,
@@ -528,7 +527,7 @@ mod tests {
             autobus
                 .read(RvSize::Word, DOE_MBOX_BASE_ADDR + DOE_MBOX_EVENT_REG_OFFSET,)
                 .unwrap(),
-            DoeMboxEvent::ResetReq::SET.value
+            DoeMboxEvent::ResetReq::CLEAR.value
         );
     }
 

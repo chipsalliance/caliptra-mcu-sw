@@ -114,6 +114,6 @@ pub fn test_doe_transport_loopback() -> Option<u32> {
     doe_mbox.set_tx_client(tester);
     tester.register();
     tester.deferred_call.set();
-    doe_mbox.init();
+    doe_mbox.enable();
     None
 }
