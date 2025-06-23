@@ -1201,20 +1201,6 @@ mod test {
                 model.start_recovery_bmc();
             }
         }
-        let ptr = unsafe {
-            core::slice::from_raw_parts((model.mci.ptr as *const u8).offset(0xc0_0000), 512 * 1024)
-        };
-        let all_zero = ptr.iter().all(|&x| x == 0);
-        println!("MCU SRAM all 0: {}", all_zero);
-        if let Some((i, _)) = ptr.iter().enumerate().find(|(_, &x)| x != 0) {
-            println!("Found non-zero at {}", i);
-            println!(
-                "Found non-zeroes at {}, value: {:02x?}",
-                i,
-                ptr[0..4].to_vec()
-            );
-        }
-        println!("blocks {}", model.blocks_sent);
 
         println!("Ending");
     }
