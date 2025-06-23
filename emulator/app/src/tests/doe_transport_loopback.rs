@@ -2,7 +2,7 @@
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
 use rand::Rng;
-const NUM_TEST_VECTORS: usize = 4;
+const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_SIZE: usize = 2 * 4; // minimum size of test vectors
 const MAX_TEST_DATA_SIZE: usize = 128 * 4; // maximum size of test vectors
 use std::sync::mpsc::{Receiver, Sender};
@@ -42,11 +42,12 @@ impl DoeTransportTest for Test {
         running: Arc<AtomicBool>,
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
+        wait_for_responder: bool,
         retry_count: Option<usize>,
     ) {
         println!(
-            "DOE_TRANSPORT_LOOPBACK_TEST: Running test with test vec len: {} thread_id {:?}",
-            self.test_vector.len(),
+            "DOE_TRANSPORT_LOOPBACK_TEST: Running test with test vec len: {} dwords thread_id {:?}",
+            self.test_vector.len() / 4,
             thread::current().id()
         );
         let mut retry = retry_count.unwrap_or(10);
@@ -57,11 +58,17 @@ impl DoeTransportTest for Test {
                     self.state = DoeTestState::SendData;
                 }
                 DoeTestState::SendData => {
+                    if wait_for_responder {
+                        println!("DOE_TRANSPORT_LOOPBACK_TEST: Waiting for MCU to boot up and responder to be ready.");
+                        // Booting up the responder might take some time, so we wait here
+                        thread::sleep(Duration::from_secs(10));
+                    }
                     tx.send(self.test_vector.clone()).unwrap();
                     self.state = DoeTestState::ReceiveData;
+                    thread::sleep(Duration::from_millis(100));
                 }
                 DoeTestState::ReceiveData => {
-                    match rx.recv_timeout(Duration::from_millis(5)) {
+                    match rx.recv_timeout(Duration::from_millis(15)) {
                         Ok(response) => {
                             if response == self.test_vector {
                                 println!("DOE_TRANSPORT_LOOPBACK_TEST: Test passed: Sent and received data match.");
@@ -83,7 +90,7 @@ impl DoeTransportTest for Test {
                                 self.passed = false;
                                 self.state = DoeTestState::Finish;
                             } else {
-                                thread::sleep(Duration::from_millis(300));
+                                thread::sleep(Duration::from_millis(100));
                             }
                         }
                         Err(e) => {

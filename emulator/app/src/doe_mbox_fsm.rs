@@ -15,6 +15,7 @@ enum DoeMboxState {
     Idle,
     SendData,
     ReceiveData,
+    WaitingResetAck,
     Error,
 }
 
@@ -46,7 +47,7 @@ impl DoeMboxFsm {
                 fsm.on_event();
 
                 // Small delay to prevent busy waiting
-                thread::sleep(Duration::from_millis(1));
+                thread::sleep(Duration::from_millis(10));
             }
         });
         (fsm_to_test_rx, test_to_fsm_tx)
@@ -79,6 +80,15 @@ impl DoeMboxStateMachine {
             );
             self.pending_outgoing_message = Some(message);
             self.state = DoeMboxState::SendData;
+        } else {
+            // reset the pending message if we are not in idle state
+            println!(
+                "DOE_MBOX_FSM: Ignoring outgoing message {:?} in state {:?}, thread id: {:?}",
+                message, self.state, thread::current().id()
+            );
+            self.doe_mbox.request_reset();
+            self.pending_outgoing_message = Some(message);
+            self.state = DoeMboxState::WaitingResetAck;
         }
     }
 
@@ -86,6 +96,15 @@ impl DoeMboxStateMachine {
         match self.state {
             DoeMboxState::Idle => {
                 self.handle_idle_state();
+            }
+            DoeMboxState::WaitingResetAck => {
+                // Handle waiting for reset acknowledgment
+                if self.doe_mbox.check_reset_ack() {
+                    self.state = DoeMboxState::SendData;
+                } else {
+                    // If reset is not acknowledged, stay in this state
+                    println!("DOE_MBOX_FSM: Waiting for reset acknowledgment...");
+                }
             }
             DoeMboxState::SendData => {
                 self.handle_send_data_state();
@@ -158,6 +177,7 @@ pub trait DoeTransportTest {
         running: Arc<AtomicBool>,
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
+        wait_for_responder: bool,
         retry_count: Option<usize>,
     );
     fn is_passed(&self) -> bool;
@@ -194,7 +214,7 @@ impl DoeTransportTestRunner {
             } else {
                 None // No retry for subsequent tests
             };
-            test.run_test(self.running.clone(), &mut self.tx, &mut self.rx, retry);
+            test.run_test(self.running.clone(), &mut self.tx, &mut self.rx, i == 0, retry);
             if test.is_passed() {
                 self.passed += 1;
             }

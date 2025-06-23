@@ -249,6 +249,7 @@ impl DoeMboxPeriph {
             // Clear the RESET_ACK bit
             inner.clear_status_reset_ack();
             println!("DOE_MBOX_PERIPH: Reset acknowledged.");
+            inner.reset(); // Reset the mailbox state
             true
         } else {
             false
