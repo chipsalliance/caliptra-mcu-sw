@@ -125,6 +125,27 @@ impl Default for McuMemoryMap {
     }
 }
 
+/// Configures other parameters that are expected to be strapped or hardcoded for a platform.
+/// These are the defaults that can be overridden and provided to the ROM and runtime builds.
+#[repr(C)]
+pub struct McuStraps {
+    pub i3c_static_addr: u8,
+    pub axi_user: u32,
+    pub cptra_wdt_cfg0: u32,
+    pub cptra_wdt_cfg1: u32,
+}
+
+impl McuStraps {
+    pub const fn default() -> Self {
+        McuStraps {
+            i3c_static_addr: 0x3a,
+            axi_user: 0xcccc_cccc,
+            cptra_wdt_cfg0: 100_000_000,
+            cptra_wdt_cfg1: 100_000_000,
+        }
+    }
+}
+
 /// Represents the properties of a memory region for MRAC computation
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

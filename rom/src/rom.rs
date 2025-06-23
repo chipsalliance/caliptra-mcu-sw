@@ -19,12 +19,14 @@ use caliptra_api::mailbox::CommandId;
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use core::fmt::Write;
+use core::ptr::addr_of;
 use registers_generated::{fuses::Fuses, i3c, mci, otp_ctrl, soc};
 use romtime::{HexWord, Mci, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
 extern "C" {
     pub static MCU_MEMORY_MAP: mcu_config::McuMemoryMap;
+    pub static MCU_STRAPS: mcu_config::McuStraps;
 }
 
 pub struct Soc {
@@ -147,6 +149,9 @@ impl Soc {
 pub fn rom_start() {
     romtime::println!("[mcu-rom] Hello from ROM");
 
+    let straps: StaticRef<mcu_config::McuStraps> =
+        unsafe { StaticRef::new(addr_of!(MCU_STRAPS) as *const mcu_config::McuStraps) };
+
     let otp_base: StaticRef<otp_ctrl::regs::OtpCtrl> =
         unsafe { StaticRef::new(MCU_MEMORY_MAP.otp_offset as *const otp_ctrl::regs::OtpCtrl) };
     let i3c_base: StaticRef<i3c::regs::I3c> =
@@ -170,17 +175,9 @@ pub fn rom_start() {
 
     romtime::println!("[mcu-rom] Initializing I3C");
     let mut i3c = I3c::new(i3c_base);
-    i3c.configure(0x3a, true);
+    i3c.configure(straps.i3c_static_addr, true);
 
     // only do these on the emulator for now
-    // let otp = Otp::new(otp_base);
-    // let otp_status = otp.status();
-    // romtime::println!("[mcu-rom] OTP status: {}", HexWord(otp_status));
-
-    // let lc_status =
-    //     unsafe { core::ptr::read_volatile((MCU_MEMORY_MAP.lc_offset + 0x4) as *const u32) };
-    // romtime::println!("[mcu-rom] LC status: {}", HexWord(lc_status));
-
     let fuses = if unsafe { MCU_MEMORY_MAP.rom_offset } == 0x8000_0000 {
         let otp = Otp::new(otp_base);
         if let Err(err) = otp.init() {
@@ -195,6 +192,7 @@ pub fn rom_start() {
             }
         }
     } else {
+        // this is the default key in Caliptra builder
         let mut vendor = [
             0xb1, 0x7c, 0xa8, 0x77, 0x66, 0x66, 0x57, 0xcc, 0xd1, 0x00, 0xe6, 0x92, 0x6c, 0x72,
             0x06, 0xb6, 0x0c, 0x99, 0x5c, 0xb6, 0x89, 0x92, 0xc6, 0xc9, 0xba, 0xef, 0xce, 0x72,
@@ -220,9 +218,8 @@ pub fn rom_start() {
         }
     };
 
-    // TODO: pass these in as parameters
-    soc.registers.cptra_wdt_cfg[0].set(100_000_000);
-    soc.registers.cptra_wdt_cfg[1].set(100_000_000);
+    soc.registers.cptra_wdt_cfg[0].set(straps.cptra_wdt_cfg0);
+    soc.registers.cptra_wdt_cfg[1].set(straps.cptra_wdt_cfg1);
 
     romtime::println!(
         "[mcu-rom] Waiting for Caliptra to be ready for fuses: {}",
@@ -231,19 +228,21 @@ pub fn rom_start() {
     while !soc.ready_for_fuses() {}
 
     romtime::println!("[mcu-rom] Writing fuses to Caliptra");
-    romtime::println!("[mcu-rom] Setting Caliptra mailbox user 0 to CCCCCCCC");
+    romtime::println!(
+        "[mcu-rom] Setting Caliptra mailbox user 0 to {}",
+        HexWord(straps.axi_user)
+    );
 
-    // TODO: read this value from somewhere
-    soc.registers.cptra_mbox_valid_axi_user[0].set(0xcccc_cccc);
+    soc.registers.cptra_mbox_valid_axi_user[0].set(straps.axi_user);
     romtime::println!("[mcu-rom] Locking Caliptra mailbox user 0");
     soc.registers.cptra_mbox_axi_user_lock[0].set(1);
 
     romtime::println!("[mcu-rom] Setting TRNG user");
-    soc.registers.cptra_trng_valid_axi_user.set(0xcccc_cccc);
+    soc.registers.cptra_trng_valid_axi_user.set(straps.axi_user);
     romtime::println!("[mcu-rom] Locking TRNG user");
     soc.registers.cptra_trng_axi_user_lock.set(1);
     romtime::println!("[mcu-rom] Setting DMA user");
-    soc.registers.ss_caliptra_dma_axi_user.set(0xcccc_cccc);
+    soc.registers.ss_caliptra_dma_axi_user.set(straps.axi_user);
 
     soc.populate_fuses(&fuses);
     romtime::println!("[mcu-rom] Setting Caliptra fuse write done");

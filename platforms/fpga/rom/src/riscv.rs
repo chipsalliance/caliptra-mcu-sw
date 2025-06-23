@@ -20,10 +20,14 @@ core::arch::global_asm!(include_str!("start.s"));
 
 use mcu_config::McuMemoryMap;
 
-// re-export this so the common ROM can use it
+// re-export these so the common ROM and runtime can use them
 #[no_mangle]
 #[used]
 pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_fpga::FPGA_MEMORY_MAP;
+
+#[no_mangle]
+#[used]
+pub static MCU_STRAPS: McuStraps = mcu_config_fpga::FPGA_MCU_STRAPS;
 
 pub extern "C" fn rom_entry() -> ! {
     print_to_console("FPGA MCU ROM\n");

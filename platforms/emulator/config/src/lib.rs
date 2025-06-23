@@ -3,7 +3,7 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
 pub mod flash;
-use mcu_config::{McuMemoryMap, MemoryRegionType};
+use mcu_config::{McuMemoryMap, McuStraps, MemoryRegionType};
 
 pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     rom_offset: 0x8000_0000,
@@ -76,3 +76,5 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
         cacheable: false,
     },
 };
+
+pub const EMULATOR_MCU_STRAPS: McuStraps = McuStraps::default();

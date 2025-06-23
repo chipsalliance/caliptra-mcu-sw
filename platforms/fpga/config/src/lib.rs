@@ -2,7 +2,7 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
-use mcu_config::{McuMemoryMap, MemoryRegionType};
+use mcu_config::{McuMemoryMap, McuStraps, MemoryRegionType};
 
 pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     rom_offset: 0xb004_0000,
@@ -75,3 +75,5 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
         cacheable: false,
     },
 };
+
+pub const FPGA_MCU_STRAPS: McuStraps = McuStraps::default();
