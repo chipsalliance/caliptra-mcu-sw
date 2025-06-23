@@ -144,26 +144,7 @@ impl Soc {
     }
 }
 
-#[cfg(target_arch = "riscv32")]
-fn configure_mrac() {
-    // defined in VeeR spec: https://chipsalliance.github.io/Cores-VeeR-EL2/html/main/docs_rendered/html/memory-map.html#region-access-control-register-mrac
-    const MRAC_CSR: usize = 0x7c0;
-    // Set all memory to side effects and cacheable.
-    // The LSU of the VeeR core is set to 64 bits, which translates all
-    // memory access to 64 bits by default, even though the core is 32 bits.
-    // If we set side effects to true everywhere, then all accesses are instead
-    // translated to 32 bits, so we waste less latency and bandwidth.
-    // We only have I-Cache (no D-Cache), so it is safe to set all memory to cacheable.
-    let mrac = riscv_csr::csr::ReadWriteRiscvCsr::<usize, (), MRAC_CSR>::new();
-    mrac.set(0xaaaa_aaaa);
-}
-
-#[cfg(not(target_arch = "riscv32"))]
-fn configure_mrac() {}
-
 pub fn rom_start() {
-    configure_mrac();
-
     romtime::println!("[mcu-rom] Hello from ROM");
 
     let otp_base: StaticRef<otp_ctrl::regs::OtpCtrl> =
