@@ -876,10 +876,10 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         Some(Box::new(doe_mbox)),
         Some(Box::new(dma_ctrl)),
         None,
-        None,
-        None,
-        None,
         Some(Box::new(otp)),
+        None,
+        None,
+        None,
         None,
     );
 

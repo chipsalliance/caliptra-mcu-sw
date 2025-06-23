@@ -187,7 +187,7 @@ pub(crate) async fn execute_mailbox_cmd(
     mailbox
         .populate_checksum(cmd, req_bytes)
         .map_err(CaliptraApiError::Syscall)?;
-    match mailbox.execute(cmd, req_bytes, &mut resp_bytes[..]).await {
+    match mailbox.execute(cmd, req_bytes, resp_bytes).await {
         Ok(size) => Ok(size),
         Err(MailboxError::ErrorCode(ErrorCode::Busy)) => Err(CaliptraApiError::MailboxBusy)?,
         Err(e) => Err(CaliptraApiError::Mailbox(e))?,
