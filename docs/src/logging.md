@@ -12,7 +12,7 @@ Each log entry consists of a fixed-size header followed by variable-length data.
 
 | Field Name   | Type     | Size (bytes) | Description                                 |
 |--------------|----------|--------------|---------------------------------------------|
-| log_magic    | `u8`     | 1            | Start of entry marker                       |
+| log_magic    | `u16`    | 2            | Start of entry marker                       |
 | length       | `u16`    | 2            | Total length of the entry (header + data)   |
 | entry_id     | `u32`    | 4            | Unique identifier for the log entry         |
 
@@ -20,7 +20,7 @@ Each log entry consists of a fixed-size header followed by variable-length data.
 
 | Field Name   | Type     | Size (bytes) | Description                                 |
 |--------------|----------|--------------|---------------------------------------------|
-| log_magic    | `u8`     | 1            | Start of entry marker                       |
+| log_magic    | `u16`    | 2            | Start of entry marker                       |
 | length       | `u16`    | 2            | Total length of the entry (header + data)   |
 | entry_id     | `u32`    | 4            | Unique identifier for the log entry         |
 | data         | `[u8]`   | variable     | Log entry payload                           |
@@ -30,16 +30,15 @@ The `data` field may include additional structured information (such as severity
 ### Reference Format - Debug Log Entry Data
 
 *Table: Reference DebugLogEntryData fields*
-
-| Field Name | Type   | Size (bytes) | Description                                   |
-|------------|--------|--------------|-----------------------------------------------|
-| format     | `u16`  | 2            | Format of the log entry                       |
-| severity   | `u8`   | 1            | Severity level of the entry (errro, info, warning etc.)|
-| component  | `u8`   | 1            | System component that generated the entry     |
-| msg_index  | `u8`   | 1            | Identifier for the entry message              |
-| arg1       | `u32`  | 4            | Message specific argument                     |
-| arg2       | `u32`  | 4            | Message specific argument                     |
-| time       | `u64`  | 8            | Elapsed time in milliseconds since boot       |
+| Field Name  | Type   | Size (bytes) | Description                                                                                                    |
+|-------------|--------|--------------|----------------------------------------------------------------------------------------------------------------|
+| format      | `u16`  | 2            | Format of the log entry                                                                                        |
+| severity    | `u8`   | 1            | Severity level of the entry (error, info, warning, etc.)                                                       |
+| component   | `u8`   | 1            | System component that generated the entry                                                                      |
+| msg_index   | `u8`   | 1            | Identifier for the entry message                                                                               |
+| arg1        | `u32`  | 4            | Message-specific argument                                                                                      |
+| arg2        | `u32`  | 4            | Message-specific argument                                                                                      |
+| cycle_count | `u64`  | 8            | Elapsed processor cycles since boot.<br>Note: This is a raw cycle count for performance reasons. Converting to milliseconds requires dividing by the clock frequency, which can be done offline or by the log consumer if needed. |
 
 All log entries are stored as a contiguous byte array in the backend storage.
 
