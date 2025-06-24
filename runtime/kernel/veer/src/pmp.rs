@@ -78,7 +78,7 @@ fn write_pmpaddr_pmpcfg(i: usize, pmpcfg: u8, pmpaddr: usize) {
 ///
 /// Configured in the PMP as a `NAPOT` region.
 #[derive(Copy, Clone, Debug)]
-pub struct CodeRegion(pub TORRegionSpec);
+pub struct ReadOnlyRegion(pub TORRegionSpec);
 
 /// The Data RAM region address range.
 ///
@@ -99,9 +99,123 @@ pub struct MMIORegion(pub NAPOTRegionSpec);
 #[derive(Copy, Clone, Debug)]
 pub struct KernelTextRegion(pub TORRegionSpec);
 
+/// Enum containing all possible PMP region types for platform configuration
+#[derive(Debug, Clone, Copy)]
+pub enum PMPRegion {
+    ReadOnly(ReadOnlyRegion),
+    Data(DataRegion),
+    KernelText(KernelTextRegion),
+    UserMMIO(MMIORegion),
+    MachineMMIO(MMIORegion),
+}
+
+/// Configuration result containing all PMP regions in a simple list
+pub struct PMPRegionList {
+    /// Fixed-size array of regions (no heap allocation)
+    /// Size 16 assumes worst case that all regions are TOR regions (using 2 PMP entries each)
+    /// User regions: MPU_REGIONS, Kernel regions: ~3-4, total fits within AVAILABLE_ENTRIES
+    pub regions: [Option<PMPRegion>; 16],
+    /// Number of actual regions used
+    pub count: usize,
+}
+
+impl PMPRegionList {
+    /// Create a new empty region list
+    pub fn new() -> Self {
+        Self {
+            regions: [None; 16],
+            count: 0,
+        }
+    }
+
+    /// Add a region to the list
+    pub fn add_region(&mut self, region: PMPRegion) -> Result<(), ()> {
+        if self.count >= 16 {
+            return Err(());
+        }
+        self.regions[self.count] = Some(region);
+        self.count += 1;
+        Ok(())
+    }
+
+    /// Iterate through all regions
+    pub fn iter(&self) -> impl Iterator<Item = &PMPRegion> {
+        self.regions[..self.count].iter().filter_map(|r| r.as_ref())
+    }
+}
+
+impl fmt::Display for PMPRegion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PMPRegion::ReadOnly(region) => {
+                write!(
+                    f,
+                    "ReadOnly({:#x}..{:#x}) [TOR, R--, LOCK]",
+                    region.0.start() as usize,
+                    region.0.end() as usize
+                )
+            }
+            PMPRegion::Data(region) => {
+                write!(
+                    f,
+                    "Data({:#x}..{:#x}) [TOR, RW-, LOCK]",
+                    region.0.start() as usize,
+                    region.0.end() as usize
+                )
+            }
+            PMPRegion::KernelText(region) => {
+                write!(
+                    f,
+                    "KernelText({:#x}..{:#x}) [TOR, R-X, LOCK]",
+                    region.0.start() as usize,
+                    region.0.end() as usize
+                )
+            }
+            PMPRegion::UserMMIO(region) => {
+                write!(
+                    f,
+                    "UserMMIO({:#x}+{:#x}) [NAPOT, RW-, USER]",
+                    region.0.start() as usize,
+                    region.0.size()
+                )
+            }
+            PMPRegion::MachineMMIO(region) => {
+                write!(
+                    f,
+                    "MachineMMIO({:#x}+{:#x}) [NAPOT, RW-, LOCK]",
+                    region.0.start() as usize,
+                    region.0.size()
+                )
+            }
+        }
+    }
+}
+
+impl fmt::Display for PMPRegionList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "PMPRegionList ({} regions):", self.count)?;
+        writeln!(f, "  Format: [MODE, RWX, LOCK] where:")?;
+        writeln!(
+            f,
+            "    MODE: TOR=Top-of-Range, NAPOT=Naturally-Aligned-Power-of-Two"
+        )?;
+        writeln!(f, "    RWX:  R=Read, W=Write, X=Execute, -=Not-Allowed")?;
+        writeln!(f, "    LOCK: LOCK=Locked-to-Machine, USER=User-Accessible")?;
+        writeln!(
+            f,
+            "  PMP Entry Layout: User regions (0..{}), Kernel regions ((64-N)..63)",
+            MPU_REGIONS * 2 - 1
+        )?;
+        for (i, region) in self.iter().enumerate() {
+            writeln!(f, "  [{}]: {}", i, region)?;
+        }
+        Ok(())
+    }
+}
+
 /// A RISC-V ePMP implementation which supports machine-mode (kernel) memory
-/// protection by using the machine-mode lockdown mode (MML), with a fixed
-/// number of "kernel regions" (such as `.text`, flash, RAM and MMIO).
+/// protection by using the machine-mode lockdown mode (MML), with direct
+/// 1:1 mapping from PMPRegionList to PMP hardware entries.
 ///
 /// This implementation will configure the ePMP in the following way:
 ///
@@ -118,32 +232,26 @@ pub struct KernelTextRegion(pub TORRegionSpec);
 ///
 /// - `pmpaddrX` / `pmpcfgX` CSRs:
 ///   ```text
-///   +-------------------+------------------------------------+-------+---+-------+
-///   | ENTRY             | REGION / ADDR                      | MODE  | L | PERMS |
-///   +-------------------+------------------------------------+-------+---+-------+
-///   |                 0 | ---------------------------------- | OFF   | X | ----- |
-///   |                 1 | Kernel .text section               | TOR   | X | R/X   |
-///   |                   |                                    |       |   |       |
-///   |                 2 | /                                \ | OFF   |   |       |
-///   |                 3 | \ Userspace TOR region #0        / | TOR   |   | ????? |
-///   |                   |                                    |       |   |       |
-///   |                 4 | /                                \ | OFF   |   |       |
-///   |                 5 | \ Userspace TOR region #1        / | TOR   |   | ????? |
-///   |                   |                                    |       |   |       |
-///   |     n - M - U - 6 | /                                \ |       |   |       |
-///   |     n - M - U - 5 | \ Userspace TOR region #x        / |       |   |       |
-///   |                   |                                    |       |   |       |
-///   | n - M - U - 4 ... | User MMIO                          | NAPOT |   | R/W   |
-///   |                   |                                    |       |   |       |
-///   |     n - M - 4 ... | Machine MMIO                       | NAPOT | X | R/W   |
-///   |                   |                                    |       |   |       |
-///   |             n - 4 | /                                \ | OFF   | X | ----- |
-///   |             n - 3 | \ Code (spanning kernel & apps)  / | TOR   | X | R     |
-///   |                   |                                    |       |   |       |
-///   |             n - 2 | /                                \ | OFF   | X | ----- |
-///   |             n - 1 | \ Data (spanning kernel & apps)  / | TOR   | X | R/W   |
-///   +-------------------+------------------------------------+-------+---+-------|
+///   +-------------+----------------------------------------+-------+---+-------+
+///   | ENTRY RANGE | USAGE                                  | MODE  | L | PERMS |
+///   +-------------+----------------------------------------+-------+---+-------+
+///   |     0..(M*2-1)| User MPU regions (dynamic allocation)  |       |   |       |
+///   |             | - M TOR regions × 2 entries each (M=MPU_REGIONS) |   |       |
+///   |             | - Configured via shadow_user_pmpcfgs  | TOR   |   | ????? |
+///   |    (64-N)..63| Kernel regions (1:1 from PMPRegionList)      |   |       |
+///   |             | - NAPOT regions (MMIO): 1 entry each  | NAPOT | ? | R/W   |
+///   |             | - TOR regions (Code/Data): 2 entries   |       |   |       |
+///   |             |   * Entry N:   start address          | OFF   | L | ----- |
+///   |             |   * Entry N+1: end address            | TOR   | L | R?W?X |
+///   +-------------+----------------------------------------+-------+---+-------+
 ///   ```
+///
+/// **Key Design Principles:**
+/// - **1:1 Mapping**: PMPRegionList entries are written directly to PMP registers in order
+/// - **Fixed Layout**: User regions occupy entries 0..(MPU_REGIONS*2-1), kernel regions use last N entries (64-N)..63
+/// - **Entry Efficiency**: NAPOT regions use 1 entry, TOR regions use 2 entries
+/// - **Security**: Kernel regions are locked (L=1), user regions are dynamic
+/// - **Boot Override**: Kernel regions at end allow Tock to override entries during boot as needed
 ///
 /// Crucially, this implementation relies on an unconfigured hardware PMP
 /// implementing the ePMP (`mseccfg` CSR) extension, providing the Machine
@@ -156,138 +264,147 @@ pub struct VeeRProtectionMMLEPMP {
 }
 
 impl VeeRProtectionMMLEPMP {
-    // Start user-mode TOR regions after the first kernel .text region:
+    // Start user-mode TOR regions at entry 0 (kernel regions are at the end)
+    // Entries 0..(MPU_REGIONS*2-1) are used for dynamic user MPU regions (MPU_REGIONS TOR regions × 2 entries each)
+    // Entries (64-N)..63 are reserved for kernel regions from PMPRegionList (where N = kernel entries needed)
     fn tor_regions_offset(&self) -> usize {
-        1
+        0
     }
 
-    pub unsafe fn new(
-        code: CodeRegion,
-        data: DataRegion,
-        user_mmio: &[MMIORegion],
-        machine_mmio: &[MMIORegion],
-        kernel_text: KernelTextRegion,
-    ) -> Result<Self, ()> {
-        // Ensure that the MPU_REGIONS (starting at entry, and occupying two
-        // entries per region) don't overflow the available entires, excluding
-        // the 6 entries used for implementing the kernel memory protection:
-        let u = user_mmio.len();
-        let m = machine_mmio.len();
-        assert!(MPU_REGIONS <= ((AVAILABLE_ENTRIES - 6 - m - u) / 2));
-
+    pub unsafe fn new(pmp_regions: PMPRegionList) -> Result<Self, ()> {
+        // Clear all PMP entries first
         for i in 0..AVAILABLE_ENTRIES {
             reset_entry(i);
         }
 
-        // -----------------------------------------------------------------
-        // Hardware PMP is verified to be in a compatible mode & state, and
-        // has at least `AVAILABLE_ENTRIES` entries. We have not yet checked
-        // whether the PMP is actually an _e_PMP. However, we don't want to
-        // produce a gadget to set RLB, and so the only safe way to test
-        // this is to set up the PMP regions and then try to enable the
-        // mseccfg bits.
-        // -----------------------------------------------------------------
+        // Conservative approach: assume worst-case that all regions are TOR regions (2 entries each)
+        let max_kernel_entries = pmp_regions.count * 2;
 
-        // Set the kernel `.text`, flash, RAM and MMIO regions, in no
-        // particular order, with the exception of `.text` and flash:
-        // `.text` must precede flash, as otherwise we'd be revoking execute
-        // permissions temporarily. Given that we can currently execute
-        // code, this should not have any impact on our accessible memory,
-        // assuming that the provided regions are not otherwise aliased.
-
-        // `.text` at beginning
-        write_pmpaddr_pmpcfg(
-            0,
-            (pmpcfg_octet::a::OFF
-                + pmpcfg_octet::r::CLEAR
-                + pmpcfg_octet::w::CLEAR
-                + pmpcfg_octet::x::CLEAR
-                + pmpcfg_octet::l::SET)
-                .into(),
-            (kernel_text.0.start() as usize) >> 2,
-        );
-        write_pmpaddr_pmpcfg(
-            1,
-            (pmpcfg_octet::a::TOR
-                + pmpcfg_octet::r::SET
-                + pmpcfg_octet::w::CLEAR
-                + pmpcfg_octet::x::SET
-                + pmpcfg_octet::l::SET)
-                .into(),
-            (kernel_text.0.end() as usize) >> 2,
-        );
-
-        // user MMIO at n - m - u - 4
-        for (i, mmio) in user_mmio.iter().enumerate() {
-            write_pmpaddr_pmpcfg(
-                AVAILABLE_ENTRIES - m - u - 4 + i,
-                (pmpcfg_octet::a::NAPOT
-                    + pmpcfg_octet::r::CLEAR
-                    + pmpcfg_octet::w::SET
-                    + pmpcfg_octet::x::SET
-                    + pmpcfg_octet::l::CLEAR) // shared region, R/W for both U and M
-                    .into(),
-                mmio.0.napot_addr(),
-            );
+        // Ensure we don't exceed available PMP entries (reserve MPU_REGIONS*2 for user MPU)
+        if max_kernel_entries > (AVAILABLE_ENTRIES - MPU_REGIONS * 2) {
+            return Err(()); // Too many kernel regions
         }
 
-        // machine MMIO at n - m - 4
-        for (i, mmio) in machine_mmio.iter().enumerate() {
-            write_pmpaddr_pmpcfg(
-                AVAILABLE_ENTRIES - m - 4 + i,
-                (pmpcfg_octet::a::NAPOT
-                    + pmpcfg_octet::r::SET
-                    + pmpcfg_octet::w::SET
-                    + pmpcfg_octet::x::CLEAR
-                    + pmpcfg_octet::l::SET)
-                    .into(),
-                mmio.0.napot_addr(),
-            );
+        // Calculate starting entry for kernel regions (at the end of PMP entries)
+        // We'll use conservative allocation but only consume what we actually need
+        let kernel_start_entry = AVAILABLE_ENTRIES - max_kernel_entries;
+
+        // Process regions from PMPRegionList in order, writing directly to PMP registers
+        // This creates a 1:1 mapping from PMPRegionList to PMP hardware entries.
+        //
+        // PMP Entry Layout:
+        // - Entries 0..(MPU_REGIONS*2-1): User MPU regions (using shadow_user_pmpcfgs for dynamic config)
+        // - Entries (64-N)..63: Direct mapping from PMPRegionList regions (where N = kernel entries needed)
+        // - NAPOT regions: Use 1 PMP entry each
+        // - TOR regions: Use 2 PMP entries each (start=OFF, end=TOR)
+        //
+        // Maximum entries used: up to (MPU_REGIONS*2) for user regions + up to (64-MPU_REGIONS*2) for kernel regions = 64 total
+        let mut pmp_entry = kernel_start_entry;
+
+        for region in pmp_regions.iter() {
+            match region {
+                PMPRegion::KernelText(r) => {
+                    // TOR region: start address (OFF) + end address (TOR with R+X)
+                    write_pmpaddr_pmpcfg(
+                        pmp_entry,
+                        (pmpcfg_octet::a::OFF
+                            + pmpcfg_octet::r::CLEAR
+                            + pmpcfg_octet::w::CLEAR
+                            + pmpcfg_octet::x::CLEAR
+                            + pmpcfg_octet::l::SET)
+                            .into(),
+                        (r.0.start() as usize) >> 2,
+                    );
+                    write_pmpaddr_pmpcfg(
+                        pmp_entry + 1,
+                        (pmpcfg_octet::a::TOR
+                            + pmpcfg_octet::r::SET
+                            + pmpcfg_octet::w::CLEAR
+                            + pmpcfg_octet::x::SET
+                            + pmpcfg_octet::l::SET)
+                            .into(),
+                        (r.0.end() as usize) >> 2,
+                    );
+                    pmp_entry += 2;
+                }
+                PMPRegion::ReadOnly(r) => {
+                    // TOR region: start address (OFF) + end address (TOR with R only)
+                    write_pmpaddr_pmpcfg(
+                        pmp_entry,
+                        (pmpcfg_octet::a::OFF
+                            + pmpcfg_octet::r::CLEAR
+                            + pmpcfg_octet::w::CLEAR
+                            + pmpcfg_octet::x::CLEAR
+                            + pmpcfg_octet::l::SET)
+                            .into(),
+                        (r.0.start() as usize) >> 2,
+                    );
+                    write_pmpaddr_pmpcfg(
+                        pmp_entry + 1,
+                        (pmpcfg_octet::a::TOR
+                            + pmpcfg_octet::r::SET
+                            + pmpcfg_octet::w::CLEAR
+                            + pmpcfg_octet::x::CLEAR
+                            + pmpcfg_octet::l::SET)
+                            .into(),
+                        (r.0.end() as usize) >> 2,
+                    );
+                    pmp_entry += 2;
+                }
+                PMPRegion::Data(r) => {
+                    // TOR region: start address (OFF) + end address (TOR with R+W)
+                    write_pmpaddr_pmpcfg(
+                        pmp_entry,
+                        (pmpcfg_octet::a::OFF
+                            + pmpcfg_octet::r::CLEAR
+                            + pmpcfg_octet::w::CLEAR
+                            + pmpcfg_octet::x::CLEAR
+                            + pmpcfg_octet::l::SET)
+                            .into(),
+                        (r.0.start() as usize) >> 2,
+                    );
+                    write_pmpaddr_pmpcfg(
+                        pmp_entry + 1,
+                        (pmpcfg_octet::a::TOR
+                            + pmpcfg_octet::r::SET
+                            + pmpcfg_octet::w::SET
+                            + pmpcfg_octet::x::CLEAR
+                            + pmpcfg_octet::l::SET)
+                            .into(),
+                        (r.0.end() as usize) >> 2,
+                    );
+                    pmp_entry += 2;
+                }
+                PMPRegion::UserMMIO(r) => {
+                    // NAPOT region: user-accessible MMIO (R+W for both user and machine)
+                    write_pmpaddr_pmpcfg(
+                        pmp_entry,
+                        (pmpcfg_octet::a::NAPOT
+                            + pmpcfg_octet::r::CLEAR // TODO: Bug? should be set, emulator hangs if SET?
+                            + pmpcfg_octet::w::SET
+                            + pmpcfg_octet::x::SET
+                            + pmpcfg_octet::l::CLEAR) // Not locked - accessible to both user and machine
+                            .into(),
+                        r.0.napot_addr(),
+                    );
+                    pmp_entry += 1;
+                }
+                PMPRegion::MachineMMIO(r) => {
+                    // NAPOT region: machine-only MMIO (R+W for machine only)
+                    write_pmpaddr_pmpcfg(
+                        pmp_entry,
+                        (pmpcfg_octet::a::NAPOT
+                            + pmpcfg_octet::r::SET
+                            + pmpcfg_octet::w::SET
+                            + pmpcfg_octet::x::CLEAR
+                            + pmpcfg_octet::l::SET) // Locked - machine-only access
+                            .into(),
+                        r.0.napot_addr(),
+                    );
+                    pmp_entry += 1;
+                }
+            }
         }
-
-        // code at n - 4 .. n - 3:
-        write_pmpaddr_pmpcfg(
-            AVAILABLE_ENTRIES - 4,
-            (pmpcfg_octet::a::OFF
-                + pmpcfg_octet::r::CLEAR
-                + pmpcfg_octet::w::CLEAR
-                + pmpcfg_octet::x::CLEAR
-                + pmpcfg_octet::l::SET)
-                .into(),
-            (code.0.start() as usize) >> 2,
-        );
-        write_pmpaddr_pmpcfg(
-            AVAILABLE_ENTRIES - 3,
-            (pmpcfg_octet::a::TOR
-                + pmpcfg_octet::r::SET
-                + pmpcfg_octet::w::CLEAR
-                + pmpcfg_octet::x::CLEAR
-                + pmpcfg_octet::l::SET)
-                .into(),
-            (code.0.end() as usize) >> 2,
-        );
-
-        // data at n - 2 .. n - 1:
-        write_pmpaddr_pmpcfg(
-            AVAILABLE_ENTRIES - 2,
-            (pmpcfg_octet::a::OFF
-                + pmpcfg_octet::r::CLEAR
-                + pmpcfg_octet::w::CLEAR
-                + pmpcfg_octet::x::CLEAR
-                + pmpcfg_octet::l::SET)
-                .into(),
-            (data.0.start() as usize) >> 2,
-        );
-        write_pmpaddr_pmpcfg(
-            AVAILABLE_ENTRIES - 1,
-            (pmpcfg_octet::a::TOR
-                + pmpcfg_octet::r::SET
-                + pmpcfg_octet::w::SET
-                + pmpcfg_octet::x::CLEAR
-                + pmpcfg_octet::l::SET)
-                .into(),
-            (data.0.end() as usize) >> 2,
-        );
 
         // Finally, attempt to enable the MSECCFG security bits, and verify
         // that they have been set correctly. If they have not been set to
@@ -307,10 +424,10 @@ impl VeeRProtectionMMLEPMP {
         // error condition by ensuring that the platform will never execute
         // userspace code!
         if csr::CSR.mseccfg.get() != 0x00000003 {
-            return Err(());
+            return Err(()); // Hardware doesn't support ePMP or configuration failed
         }
 
-        // Setup complete
+        // Initialize user PMP shadow configuration (entries 0..(MPU_REGIONS*2-1) for dynamic user regions)
         const DEFAULT_USER_PMPCFG_OCTET: Cell<TORUserPMPCFG> = Cell::new(TORUserPMPCFG::OFF);
         Ok(VeeRProtectionMMLEPMP {
             user_pmp_enabled: Cell::new(false),

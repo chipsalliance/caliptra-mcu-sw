@@ -23,15 +23,13 @@ use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
 use mcu_components::mctp_mux_component_static;
 use mcu_components::{mailbox_component_static, mctp_driver_component_static};
+use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
-use mcu_tock_veer::pmp::{
-    CodeRegion, DataRegion, KernelTextRegion, MMIORegion, VeeRProtectionMMLEPMP,
-};
+use mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
 use mcu_tock_veer::timers::InternalTimers;
 use romtime::CaliptraSoC;
 use rv32i::csr;
-use rv32i::pmp::{NAPOTRegionSpec, TORRegionSpec};
 
 use crate::instantiate_flash_partitions;
 use mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
@@ -272,48 +270,104 @@ pub unsafe fn main() {
     // ensure that much of the board initialization routine runs with ePMP
     // protection.
 
-    // fixed regions to allow user mode direct access to emulator control and UART
-    // TODO: fix these
-    let user_mmio = [MMIORegion(
-        NAPOTRegionSpec::new(0x1000_0000 as *const u8, 0x1000_0000).unwrap(),
-    )];
-    // additional MMIO for machine only peripherals
-    let mut machine_mmio: ArrayVec<_, 4> = ArrayVec::new();
-    machine_mmio.push(MMIORegion(
-        NAPOTRegionSpec::new(0x2000_0000 as *const u8, 0x2000_0000).unwrap(),
-    ));
-    // PIC
-    machine_mmio.push(MMIORegion(
-        NAPOTRegionSpec::new(MCU_MEMORY_MAP.pic_offset as u32 as *const u8, 0x1_0000).unwrap(),
-    ));
-    // and the rest of memory is reserved for the kernel
-    // we're done with the ROM so we can mask include that as well
-    machine_mmio.push(MMIORegion(
-        NAPOTRegionSpec::new(0x8000_0000 as *const u8, 0x8000_0000).unwrap(),
-    ));
+    // Define platform-specific memory regions
+    let mut platform_regions = ArrayVec::<PlatformRegion, 8>::new();
 
-    // if we are *not* using DCCM as a stack, then lock it as machine MMIO
+    // Kernel text region (read + execute)
+    platform_regions.push(PlatformRegion {
+        start_addr: addr_of!(_stext),
+        size: addr_of!(_etext) as usize - addr_of!(_stext) as usize,
+        is_mmio: false,
+        user_accessible: false,
+        read: true,
+        write: false,
+        execute: true,
+    });
+
+    // Read-only region (ROM)
+    platform_regions.push(PlatformRegion {
+        start_addr: addr_of!(_srom),
+        size: addr_of!(_eprog) as usize - addr_of!(_srom) as usize,
+        is_mmio: false,
+        user_accessible: false,
+        read: true,
+        write: false,
+        execute: false,
+    });
+
+    // Data region (SRAM)
+    platform_regions.push(PlatformRegion {
+        start_addr: addr_of!(_ssram),
+        size: (addr_of!(_esram) as usize + 0x80) - addr_of!(_ssram) as usize,
+        is_mmio: false,
+        user_accessible: false,
+        read: true,
+        write: true,
+        execute: false,
+    });
+
+    // Add DCCM region if not being used for stack
+    // Check if DCCM is available and not used for stack
     if !(MCU_MEMORY_MAP.dccm_offset..MCU_MEMORY_MAP.dccm_offset + MCU_MEMORY_MAP.dccm_size)
-        .contains(&(addr_of!(_ssram) as u32))
+        .contains(&(addr_of!(STACK_MEMORY) as u32))
     {
-        machine_mmio.push(MMIORegion(
-            NAPOTRegionSpec::new(
-                MCU_MEMORY_MAP.dccm_offset as u32 as *const u8,
-                MCU_MEMORY_MAP.dccm_size as usize,
-            )
-            .unwrap(),
-        ));
+        platform_regions.push(PlatformRegion {
+            start_addr: MCU_MEMORY_MAP.dccm_offset as *const u8,
+            size: MCU_MEMORY_MAP.dccm_size as usize,
+            is_mmio: false,
+            user_accessible: false,
+            read: true,
+            write: true,
+            execute: false,
+        });
     }
 
-    let epmp = VeeRProtectionMMLEPMP::new(
-        CodeRegion(TORRegionSpec::new(addr_of!(_srom), addr_of!(_eprog)).unwrap()),
-        DataRegion(TORRegionSpec::new(addr_of!(_ssram), addr_of!(_esram).offset(0x80)).unwrap()),
-        // use the MMIO for the PIC
-        &user_mmio[..],
-        &machine_mmio[..],
-        KernelTextRegion(TORRegionSpec::new(addr_of!(_stext), addr_of!(_etext)).unwrap()),
-    )
-    .unwrap();
+    // User-accessible MMIO (emulator control and UART)
+    platform_regions.push(PlatformRegion {
+        start_addr: 0x1000_0000 as *const u8,
+        size: 0x1000_0000,
+        is_mmio: true,
+        user_accessible: true,
+        read: true,
+        write: true,
+        execute: false,
+    });
+
+    // TODO: Why is this not in the McuMemoryMap? What is this?
+    platform_regions.push(PlatformRegion {
+        start_addr: 0x2000_8000 as *const u8,
+        size: 0x1000,
+        is_mmio: true,
+        user_accessible: false,
+        read: true,
+        write: true,
+        execute: false,
+    });
+
+    // TODO: Why is this not in the McuMemoryMap? What is this?
+    platform_regions.push(PlatformRegion {
+        start_addr: 0x3000_0000 as *const u8,
+        size: 0x20000,
+        is_mmio: true,
+        user_accessible: false,
+        read: true,
+        write: true,
+        execute: false,
+    });
+
+    // Create PMP configuration
+    let config = PlatformPMPConfig {
+        regions: &platform_regions,
+        memory_map: &MCU_MEMORY_MAP,
+    };
+
+    // Generate PMP region list using the shared infrastructure
+    let pmp_regions = mcu_platforms_common::pmp_config::create_pmp_regions(config)
+        .expect("Failed to create PMP regions");
+
+    romtime::println!("PMP Regions:");
+    romtime::println!("{}", pmp_regions);
+    let epmp = VeeRProtectionMMLEPMP::new(pmp_regions).unwrap();
     romtime::println!("Finished setting up PMP");
 
     // initialize capabilities
