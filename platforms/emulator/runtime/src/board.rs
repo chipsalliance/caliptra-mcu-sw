@@ -344,6 +344,17 @@ pub unsafe fn main() {
         execute: false,
     });
 
+    // Dummy DOE mailbox peripheral region
+    platform_regions.push(PlatformRegion {
+        start_addr: 0x2f00_0000 as *const u8,
+        size: 0x10_1000,
+        is_mmio: true,
+        user_accessible: false,
+        read: true,
+        write: true,
+        execute: false,
+    });
+
     // TODO: Why is this not in the McuMemoryMap? What is this?
     platform_regions.push(PlatformRegion {
         start_addr: 0x3000_0000 as *const u8,
