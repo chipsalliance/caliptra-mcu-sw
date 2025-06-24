@@ -140,6 +140,9 @@ impl MctpUtil {
         while running.load(Ordering::Relaxed) && retry > 0 {
             match i3c_state {
                 I3cControllerState::Start => {
+                    // Add some delay before sending the first packet.
+                    // The MCU might need some time to boot up and be ready to receive the request.
+                    std::thread::sleep(std::time::Duration::from_secs(5));
                     i3c_state = I3cControllerState::SendPrivateWrite;
                 }
 
