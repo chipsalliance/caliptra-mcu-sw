@@ -18,7 +18,7 @@ use core::fmt::Write;
 #[cfg(target_arch = "riscv32")]
 core::arch::global_asm!(include_str!("start.s"));
 
-use mcu_config::McuMemoryMap;
+use mcu_config::{McuMemoryMap, McuStraps};
 
 // re-export these so the common ROM and runtime can use them
 #[no_mangle]
