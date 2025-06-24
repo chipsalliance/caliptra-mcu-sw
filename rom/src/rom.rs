@@ -149,8 +149,7 @@ impl Soc {
 pub fn rom_start() {
     romtime::println!("[mcu-rom] Hello from ROM");
 
-    let straps: StaticRef<mcu_config::McuStraps> =
-        unsafe { StaticRef::new(addr_of!(MCU_STRAPS) as *const mcu_config::McuStraps) };
+    let straps: StaticRef<mcu_config::McuStraps> = unsafe { StaticRef::new(addr_of!(MCU_STRAPS)) };
 
     let otp_base: StaticRef<otp_ctrl::regs::OtpCtrl> =
         unsafe { StaticRef::new(MCU_MEMORY_MAP.otp_offset as *const otp_ctrl::regs::OtpCtrl) };
@@ -274,22 +273,19 @@ pub fn rom_start() {
             soc_manager.soc_mbox().status().read().mbox_fsm_ps()
         ))
     );
-    {
-        // drop this to release the lock
-        if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
-            match err {
-                CaliptraApiError::MailboxCmdFailed(code) => {
-                    romtime::println!(
-                        "[mcu-rom] Error finishing mailbox command: {}",
-                        HexWord(code)
-                    );
-                }
-                _ => {
-                    romtime::println!("[mcu-rom] Error finishing mailbox command");
-                }
+    if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
+        match err {
+            CaliptraApiError::MailboxCmdFailed(code) => {
+                romtime::println!(
+                    "[mcu-rom] Error finishing mailbox command: {}",
+                    HexWord(code)
+                );
             }
-            fatal_error(5);
+            _ => {
+                romtime::println!("[mcu-rom] Error finishing mailbox command");
+            }
         }
+        fatal_error(5);
     };
 
     romtime::println!("[mcu-rom] Waiting for firmware to be ready");

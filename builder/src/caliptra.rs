@@ -33,6 +33,7 @@ pub struct CaliptraBuilder {
 }
 
 impl CaliptraBuilder {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         active_mode: bool,
         fpga: bool,
