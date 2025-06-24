@@ -53,7 +53,7 @@ impl<'a> DeferredCallClient for EmulatedDoeTransportTester<'a> {
             let tx_buf = self.tx_rx_buf.take().expect("tx_buf not initialized");
             let len = self.data_len.get();
 
-            debug!("EMULATED_DOE_TRANSPORT_TESTER: Sending {} bytes", len);
+            println!("EMULATED_DOE_TRANSPORT_TESTER: Sending {} dwords", len);
 
             _ = self.doe_mbox.transmit(None, tx_buf, len);
             self.state.set(IoState::Sent);
@@ -74,13 +74,12 @@ impl DoeTransportRxClient for EmulatedDoeTransportTester<'_> {
             panic!("Received data length exceeds buffer size");
         }
 
-        println!("EMULATED_DOE_TRANSPORT_TESTER: Received {} bytes", len);
+        println!("EMULATED_DOE_TRANSPORT_TESTER: Received {} dwords", len);
 
         // Copy the received data into the buffer
         for i in 0..len {
             rx_buf[i] = buf[i];
         }
-        println!("EMULATED_DOE_TRANSPORT_TESTER: copied {} bytes", len);
 
         self.doe_mbox.set_rx_buffer(buf);
         self.tx_rx_buf.replace(rx_buf);
@@ -114,6 +113,6 @@ pub fn test_doe_transport_loopback() -> Option<u32> {
     doe_mbox.set_tx_client(tester);
     tester.register();
     tester.deferred_call.set();
-    doe_mbox.init();
+    doe_mbox.enable().unwrap();
     None
 }

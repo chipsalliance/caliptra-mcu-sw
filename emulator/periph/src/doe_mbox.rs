@@ -6,12 +6,9 @@ use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
 use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{Readable, Writeable};
 
-use std::thread;
-
 pub struct DummyDoeMbox {
     timer: Timer,
     event_irq: Irq,
-    last_irq_status: bool,
     periph: DoeMboxPeriph,
 }
 
@@ -43,7 +40,6 @@ impl DummyDoeMbox {
         DummyDoeMbox {
             timer,
             event_irq,
-            last_irq_status: false,
             periph,
         }
     }
@@ -52,15 +48,6 @@ impl DummyDoeMbox {
 impl DoeMboxPeripheral for DummyDoeMbox {
     fn poll(&mut self) {
         let irq_status = self.periph.inner.lock().unwrap().check_interrupts();
-        if self.last_irq_status != irq_status {
-            // No change in IRQ status, no need to reschedule
-            println!(
-                "DOE mailbox interrupt triggered {}. thread id: {:?}",
-                irq_status,
-                thread::current().id()
-            );
-            self.last_irq_status = irq_status;
-        }
         self.event_irq.set_level(irq_status);
         self.timer.schedule_poll_in(Self::DOE_MBOX_TICKS);
     }
@@ -90,12 +77,7 @@ impl DoeMboxPeripheral for DummyDoeMbox {
             registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
         >,
     ) {
-        println!(
-            "DOE_MBOX_BUS: Bus Writing to status register: {:#x}",
-            val.reg.get()
-        );
-
-        // Simple: STATUS register uses normal read/write semantics
+        // STATUS register uses normal read/write semantics
         // MCU can set and clear bits explicitly by writing the desired value
         self.periph
             .inner
@@ -124,10 +106,6 @@ impl DoeMboxPeripheral for DummyDoeMbox {
             registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
         >,
     ) {
-        println!(
-            "DOE_MBOX_BUS: Bus Writing to event register: {:#x}",
-            val.reg.get()
-        );
         self.periph
             .inner
             .lock()
@@ -164,7 +142,6 @@ impl DoeMboxPeriph {
     }
 
     pub fn write_data(&mut self, data: Vec<u8>) -> Result<(), String> {
-        self.reset(); // Reset the mailbox before writing new data
         let mut inner = self.inner.lock().unwrap();
         if data.len() > inner.max_sram_dword_size * 4 {
             return Err(format!(
@@ -190,10 +167,6 @@ impl DoeMboxPeriph {
             client.incoming();
         }
 
-        println!(
-            "DOE_MBOX_FSM: Data written successfully, length: {} words",
-            data_len
-        );
         Ok(())
     }
 
@@ -205,8 +178,6 @@ impl DoeMboxPeriph {
         if let Some(client) = self.incoming_write_client.lock().unwrap().clone() {
             client.incoming();
         }
-
-        println!("DOE_MBOX_FSM: Reset request sent.");
     }
 
     pub fn read_data(&self) -> Result<Option<Vec<u8>>, String> {
@@ -216,7 +187,6 @@ impl DoeMboxPeriph {
         if status == 0 {
             return Ok(None);
         }
-        println!("DOE_MBOX_FSM: Checking status: {:#x}", status);
 
         if status & DoeMboxStatus::DataReady::SET.value != 0 {
             // Data is ready to be read
@@ -227,7 +197,6 @@ impl DoeMboxPeriph {
             inner.clear_status_data_ready();
 
             let data_len = inner.mbox_dlen.reg.get() as usize;
-            println!("DOE_MBOX_FSM: Reading data of length: {} words", data_len);
             let data = (0..data_len)
                 .flat_map(|i| inner.read_doe_sram(i).to_le_bytes())
                 .collect::<Vec<u8>>();
@@ -249,7 +218,7 @@ impl DoeMboxPeriph {
         if status & DoeMboxStatus::ResetAck::SET.value != 0 {
             // Clear the RESET_ACK bit
             inner.clear_status_reset_ack();
-            println!("DOE_MBOX_PERIPH: Reset acknowledged.");
+            inner.reset(); // Reset the mailbox state
             true
         } else {
             false
@@ -333,10 +302,6 @@ impl DoeMboxInner {
         let write_val = val.reg.get();
         let new_val = current & !write_val; // w1c: writing 1 clears the bit
         self.mbox_event.reg.set(new_val);
-        println!(
-            "Bus w1c EVENT: wrote {:#x}, {:#x} -> {:#x}",
-            write_val, current, new_val
-        );
     }
 
     // Internal peripheral logic for SETTING EVENT bits and clearing the STATUS bits (not bus operations)
@@ -345,10 +310,6 @@ impl DoeMboxInner {
         self.mbox_event
             .reg
             .set(current | DoeMboxEvent::DataReady::SET.value);
-        println!(
-            "DOE_MBOX_PERIPH: Set EVENT.DATA_READY, new value: {:#x}",
-            self.mbox_event.reg.get()
-        );
     }
 
     pub fn set_event_reset_req(&mut self) {
@@ -356,10 +317,6 @@ impl DoeMboxInner {
         self.mbox_event
             .reg
             .set(current | DoeMboxEvent::ResetReq::SET.value);
-        println!(
-            "DOE_MBOX_PERIPH: Set EVENT.RESET_REQ, new value: {:#x}",
-            self.mbox_event.reg.get()
-        );
     }
 
     pub fn clear_status_data_ready(&mut self) {
@@ -367,10 +324,6 @@ impl DoeMboxInner {
         self.mbox_status
             .reg
             .set(current & !DoeMboxStatus::DataReady::SET.value);
-        println!(
-            "DOE_MBOX_PERIPH: Cleared STATUS.DATA_READY, new value: {:#x}",
-            self.mbox_status.reg.get()
-        );
     }
 
     pub fn clear_status_error(&mut self) {
@@ -378,10 +331,6 @@ impl DoeMboxInner {
         self.mbox_status
             .reg
             .set(current & !DoeMboxStatus::Error::SET.value);
-        println!(
-            "DOE_MBOX_PERIPH: Cleared STATUS.ERROR, new value: {:#x}",
-            self.mbox_status.reg.get()
-        );
     }
 
     pub fn clear_status_reset_ack(&mut self) {
@@ -389,10 +338,6 @@ impl DoeMboxInner {
         self.mbox_status
             .reg
             .set(current & !DoeMboxStatus::ResetAck::SET.value);
-        println!(
-            "DOE_MBOX_PERIPH: Cleared STATUS.RESET_ACK, new value: {:#x}",
-            self.mbox_status.reg.get()
-        );
     }
 }
 
@@ -486,7 +431,7 @@ mod tests {
     fn test_doe_mbox_event() {
         let dummy_clock = Clock::new();
         let mut autobus = test_helper_setup_autobus(&dummy_clock);
-        // Doe driver writes the event register to indicate an event
+        // DOE driver writes to the event register to clear data ready event
         autobus
             .write(
                 RvSize::Word,
@@ -498,7 +443,7 @@ mod tests {
             autobus
                 .read(RvSize::Word, DOE_MBOX_BASE_ADDR + DOE_MBOX_EVENT_REG_OFFSET,)
                 .unwrap(),
-            DoeMboxEvent::DataReady::SET.value
+            DoeMboxEvent::DataReady::CLEAR.value
         );
 
         // Clear the event register
@@ -516,7 +461,7 @@ mod tests {
             DoeMboxEvent::DataReady::CLEAR.value
         );
 
-        // Set the event register to indicate a reset request
+        // DOE Driver writes 1 to event register to clear the reset request event
         autobus
             .write(
                 RvSize::Word,
@@ -528,7 +473,7 @@ mod tests {
             autobus
                 .read(RvSize::Word, DOE_MBOX_BASE_ADDR + DOE_MBOX_EVENT_REG_OFFSET,)
                 .unwrap(),
-            DoeMboxEvent::ResetReq::SET.value
+            DoeMboxEvent::ResetReq::CLEAR.value
         );
     }
 
@@ -645,53 +590,4 @@ mod tests {
             DoeMboxStatus::Error::CLEAR.value
         );
     }
-
-    // #[test]
-    // // fn test_doe_mbox_req_resp_success() {
-    // //     let dummy_clock = Clock::new();
-    // //     let mut autobus = test_helper_setup_autobus(&dummy_clock);
-
-    // //     // check to see if the status register is clear
-    // //     assert_eq!(
-    // //         autobus
-    // //             .read(
-    // //                 RvSize::Word,
-    // //                 DOE_MBOX_BASE_ADDR + DOE_MBOX_STATUS_REG_OFFSET
-    // //             )
-    // //             .unwrap(),
-    // //         0
-    // //     );
-
-    // //     // write to the DOE SRAM
-    // //     let data: Vec<u32> = (0..100).collect();
-    // //     for (i, &word) in data.iter().enumerate() {
-    // //         autobus
-    // //             .write(
-    // //                 RvSize::Word,
-    // //                 DOE_MBOX_SRAM_BASE_ADDR + i as u32 * 4,
-    // //                 word as u32,
-    // //             )
-    // //             .unwrap();
-    // //     }
-
-    // //     // write the data length register
-    // //     autobus
-    // //         .write(
-    // //             RvSize::Word,
-    // //             DOE_MBOX_BASE_ADDR + DOE_MBOX_DLEN_REG_OFFSET,
-    // //             data.len() as u32,
-    // //         )
-    // //         .unwrap();
-
-    // //     // Set the event register to indicate data is ready
-    // //     autobus
-    // //         .write(
-    // //             RvSize::Word,
-    // //             DOE_MBOX_BASE_ADDR + DOE_MBOX_EVENT_REG_OFFSET,
-    // //             DoeMboxEvent::DataReady::SET.value,
-    // //         )
-    // //         .unwrap();
-
-    // //     // write the event register to indicate data is ready
-    // // }
 }

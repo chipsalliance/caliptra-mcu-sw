@@ -1320,7 +1320,6 @@ dependencies = [
  "doe-transport",
  "kernel",
  "registers-generated",
- "romtime",
 ]
 
 [[package]]

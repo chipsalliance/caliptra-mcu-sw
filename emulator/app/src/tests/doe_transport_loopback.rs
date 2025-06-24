@@ -2,7 +2,7 @@
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
 use rand::Rng;
-const NUM_TEST_VECTORS: usize = 1;
+const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_SIZE: usize = 2 * 4; // minimum size of test vectors
 const MAX_TEST_DATA_SIZE: usize = 128 * 4; // maximum size of test vectors
 use std::sync::mpsc::{Receiver, Sender};
@@ -42,25 +42,42 @@ impl DoeTransportTest for Test {
         running: Arc<AtomicBool>,
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
+        wait_for_responder: bool,
+        retry_count: Option<usize>,
     ) {
         println!(
-            "DOE_TRANSPORT_LOOPBACK_TEST: Running test with test vec len: {} thread_id {:?}",
-            self.test_vector.len(),
-            thread::current().id()
+            "DOE_TRANSPORT_LOOPBACK_TEST: Running test with test vec len: {} dwords",
+            self.test_vector.len() / 4,
         );
-        let mut retry = 40;
+
+        let mut retries_left = retry_count.unwrap_or(10);
         self.state = DoeTestState::Start;
+
         while running.load(Ordering::Relaxed) {
             match self.state {
                 DoeTestState::Start => {
                     self.state = DoeTestState::SendData;
                 }
                 DoeTestState::SendData => {
-                    tx.send(self.test_vector.clone()).unwrap();
+                    if wait_for_responder {
+                        println!("DOE_TRANSPORT_LOOPBACK_TEST: Waiting for MCU to boot up and responder to be ready.");
+                        // Optionally sleep here if needed
+                        // thread::sleep(Duration::from_secs(10));
+                    }
+                    if let Err(e) = tx.send(self.test_vector.clone()) {
+                        println!(
+                            "DOE_TRANSPORT_LOOPBACK_TEST: Failed to send test vector: {:?}",
+                            e
+                        );
+                        self.passed = false;
+                        self.state = DoeTestState::Finish;
+                        continue;
+                    }
                     self.state = DoeTestState::ReceiveData;
+                    thread::sleep(Duration::from_millis(100));
                 }
                 DoeTestState::ReceiveData => {
-                    match rx.recv_timeout(Duration::from_millis(5)) {
+                    match rx.try_recv() {
                         Ok(response) => {
                             if response == self.test_vector {
                                 println!("DOE_TRANSPORT_LOOPBACK_TEST: Test passed: Sent and received data match.");
@@ -74,15 +91,19 @@ impl DoeTransportTest for Test {
                             }
                             self.state = DoeTestState::Finish;
                         }
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                            // println!("DOE_TRANSPORT_LOOPBACK_TEST: Timeout waiting for response. state is now {:?}", self.state);
-                            retry -= 1;
-                            if retry == 0 {
-                                println!("DOE_TRANSPORT_LOOPBACK_TEST: Max retries reached, failing test.");
-                                self.passed = false;
-                                self.state = DoeTestState::Finish;
-                            } else {
-                                thread::sleep(Duration::from_millis(300));
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {
+                            // No data yet, stay in ReceiveData state and yield for a bit
+                            thread::sleep(Duration::from_millis(300));
+                            // We are currently waiting indefinitely for the first response.
+                            // The emulator has a timeout mechanism to avoid running the test indefinitely.
+                            if !wait_for_responder {
+                                if retries_left == 0 {
+                                    println!("DOE_TRANSPORT_LOOPBACK_TEST: Retry limit reached, test failed.");
+                                    self.passed = false;
+                                    self.state = DoeTestState::Finish;
+                                } else {
+                                    retries_left -= 1;
+                                }
                             }
                         }
                         Err(e) => {
@@ -96,7 +117,7 @@ impl DoeTransportTest for Test {
                     }
                 }
                 DoeTestState::Finish => {
-                    break; // Exit the loop after finishing the test
+                    break;
                 }
             }
         }

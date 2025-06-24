@@ -118,16 +118,16 @@ The DOE Transport trait defines a platform-agnostic interface for sending and re
 ```Rust
 /// MAX PCI-DOE DATA OBJECT LENGTH
 const MAX_PCI_DOE_LEN: usize = 1 << 18; // In DWORDS
-const MAX_PCI_DOE_LEN_BYTES: usize = MAX_PCI_DOE_LEN * 4; // In Bytes
+pub const DOE_HDR_SIZE_DWORDS: usize = 2;
 
 pub trait DoeTransportTxClient {
     /// Called when the DOE data object transmission is done.
-    fn send_done(&self, tx_buf: &'static mut [u8], result: Result<(), ErrorCode>);
+    fn send_done(&self, tx_buf: &'static mut [u32], result: Result<(), ErrorCode>);
 }
 
 pub trait DoeTransportRxClient {
-    /// Called when a DOE data object is received. 
-    fn receive(&self, rx_buf: &'static mut [u8], len: usize) -> Result<(), ErrorCode>;
+    /// Called when a DOE data object is received.
+    fn receive(&self, rx_buf: &'static mut [u32], len: usize);
 }
 
 
@@ -152,8 +152,9 @@ pub trait DoeTransport {
     /// Send DOE Object to be transmitted over SoC specific DOE transport.
     /// 
     /// # Arguments
-    /// * `doe_hdr` - DOE header bytes
+    /// * `doe_hdr` - DOE header in dwords
     /// * `doe_payload` - A reference to the DOE payload
-    /// * `payload_len` - The length of the payload in bytes
-    fn transmit(&self, doe_hdr: [u8; DOE_HDR_SIZE_DWORDS], doe_payload: &'static mut [u8], payload_len: usize) -> Result<(), (ErrorCode, &'static mut [u8])>;
+    /// * `payload_len` - The length of the payload in dwords
+    fn transmit(&self, doe_hdr: Option<[u32; DOE_HDR_SIZE_DWORDS]>, doe_payload: &'static mut [u32], payload_len: usize) -> Result<(), (ErrorCode, &'static mut [u32])>;
+
 }

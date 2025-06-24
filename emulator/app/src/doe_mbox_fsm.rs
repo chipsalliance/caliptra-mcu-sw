@@ -15,6 +15,7 @@ enum DoeMboxState {
     Idle,
     SendData,
     ReceiveData,
+    WaitingResetAck,
     Error,
 }
 
@@ -46,7 +47,7 @@ impl DoeMboxFsm {
                 fsm.on_event();
 
                 // Small delay to prevent busy waiting
-                thread::sleep(Duration::from_millis(1));
+                thread::sleep(Duration::from_millis(10));
             }
         });
         (fsm_to_test_rx, test_to_fsm_tx)
@@ -73,12 +74,21 @@ impl DoeMboxStateMachine {
     fn handle_outgoing_message(&mut self, message: Vec<u8>) {
         if self.state == DoeMboxState::Idle {
             println!(
-                "DOE_MBOX_FSM: Handling outgoing message: {:?}, thread id: {:?}",
-                message,
-                thread::current().id()
+                "DOE_MBOX_FSM: Handling outgoing message of length {} dwords",
+                message.len() / 4
             );
             self.pending_outgoing_message = Some(message);
             self.state = DoeMboxState::SendData;
+        } else {
+            // reset the pending message if we are not in idle state
+            println!(
+                "DOE_MBOX_FSM: Resetting the state before handling outgoing message of len {} dwords in state {:?}",
+                message.len() / 4,
+                self.state,
+            );
+            self.doe_mbox.request_reset();
+            self.pending_outgoing_message = Some(message);
+            self.state = DoeMboxState::WaitingResetAck;
         }
     }
 
@@ -86,6 +96,15 @@ impl DoeMboxStateMachine {
         match self.state {
             DoeMboxState::Idle => {
                 self.handle_idle_state();
+            }
+            DoeMboxState::WaitingResetAck => {
+                // Handle waiting for reset acknowledgment
+                if self.doe_mbox.check_reset_ack() {
+                    self.state = DoeMboxState::SendData;
+                } else {
+                    // If reset is not acknowledged, stay in this state
+                    println!("DOE_MBOX_FSM: Waiting for reset acknowledgment...");
+                }
             }
             DoeMboxState::SendData => {
                 self.handle_send_data_state();
@@ -158,6 +177,8 @@ pub trait DoeTransportTest {
         running: Arc<AtomicBool>,
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
+        wait_for_responder: bool,
+        retry_count: Option<usize>,
     );
     fn is_passed(&self) -> bool;
 }
@@ -187,19 +208,29 @@ impl DoeTransportTestRunner {
     }
 
     pub fn run_tests(&mut self) {
-        for test in self.test_vectors.iter_mut() {
-            test.run_test(self.running.clone(), &mut self.tx, &mut self.rx);
+        for (i, test) in self.test_vectors.iter_mut().enumerate() {
+            test.run_test(
+                self.running.clone(),
+                &mut self.tx,
+                &mut self.rx,
+                i == 0,
+                None, // No retry for any test
+            );
             if test.is_passed() {
                 self.passed += 1;
             }
         }
 
         if self.passed == self.test_vectors.len() {
-            println!("DOE_TRANSPORT_TESTS: All tests passed successfully.");
+            println!(
+                "DOE_TRANSPORT_TESTS: All {}/{} tests passed successfully.",
+                self.passed,
+                self.test_vectors.len()
+            );
             exit(0);
         } else {
             println!(
-                "DOE_TRANSPORT_TESTS: Some tests failed. Passed: {}, Total: {}",
+                "DOE_TRANSPORT_TESTS: Some tests failed. {}/{} tests passed.",
                 self.passed,
                 self.test_vectors.len()
             );
@@ -222,7 +253,7 @@ pub(crate) fn run_doe_transport_tests(
         let timeout = Duration::from_secs(60); // 60 seconds timeout
         std::thread::sleep(timeout);
         println!(
-            "DOE_TRANSPORT_TESTS TIMED OUT AFTER {:?} seconds",
+            "DOE_TRANSPORT_TESTS Timeout after {:?} seconds",
             timeout.as_secs()
         );
         running_clone_test_timeout.store(false, Ordering::Relaxed);
