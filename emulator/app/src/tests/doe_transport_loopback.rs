@@ -50,20 +50,19 @@ impl DoeTransportTest for Test {
             self.test_vector.len() / 4,
         );
 
-        let mut retries_left = retry_count.unwrap_or(10);
+        let mut retries_left = retry_count.unwrap_or(0);
         self.state = DoeTestState::Start;
 
         while running.load(Ordering::Relaxed) {
             match self.state {
                 DoeTestState::Start => {
+                    // waits for the responder to be ready if this is the first message to send
+                    if wait_for_responder {
+                        thread::sleep(Duration::from_secs(10));
+                    }
                     self.state = DoeTestState::SendData;
                 }
                 DoeTestState::SendData => {
-                    if wait_for_responder {
-                        println!("DOE_TRANSPORT_LOOPBACK_TEST: Waiting for MCU to boot up and responder to be ready.");
-                        // Optionally sleep here if needed
-                        // thread::sleep(Duration::from_secs(10));
-                    }
                     if let Err(e) = tx.send(self.test_vector.clone()) {
                         println!(
                             "DOE_TRANSPORT_LOOPBACK_TEST: Failed to send test vector: {:?}",
@@ -94,9 +93,8 @@ impl DoeTransportTest for Test {
                         Err(std::sync::mpsc::TryRecvError::Empty) => {
                             // No data yet, stay in ReceiveData state and yield for a bit
                             thread::sleep(Duration::from_millis(300));
-                            // We are currently waiting indefinitely for the first response.
-                            // The emulator has a timeout mechanism to avoid running the test indefinitely.
-                            if !wait_for_responder {
+                            // If retry_count is some, check retry count. Otherwise, wait indefinitely.
+                            if retry_count.is_some() {
                                 if retries_left == 0 {
                                     println!("DOE_TRANSPORT_LOOPBACK_TEST: Retry limit reached, test failed.");
                                     self.passed = false;

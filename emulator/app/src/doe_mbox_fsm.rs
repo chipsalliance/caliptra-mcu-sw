@@ -214,7 +214,7 @@ impl DoeTransportTestRunner {
                 &mut self.tx,
                 &mut self.rx,
                 i == 0,
-                None, // No retry for any test
+                if i == 0 { None } else { Some(10) }, // First test waits indefinitely, others retry 10 times
             );
             if test.is_passed() {
                 self.passed += 1;
