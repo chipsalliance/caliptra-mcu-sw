@@ -84,7 +84,9 @@ impl DoeMboxStateMachine {
             // reset the pending message if we are not in idle state
             println!(
                 "DOE_MBOX_FSM: Ignoring outgoing message {:?} in state {:?}, thread id: {:?}",
-                message, self.state, thread::current().id()
+                message,
+                self.state,
+                thread::current().id()
             );
             self.doe_mbox.request_reset();
             self.pending_outgoing_message = Some(message);
@@ -214,7 +216,13 @@ impl DoeTransportTestRunner {
             } else {
                 None // No retry for subsequent tests
             };
-            test.run_test(self.running.clone(), &mut self.tx, &mut self.rx, i == 0, retry);
+            test.run_test(
+                self.running.clone(),
+                &mut self.tx,
+                &mut self.rx,
+                i == 0,
+                retry,
+            );
             if test.is_passed() {
                 self.passed += 1;
             }
