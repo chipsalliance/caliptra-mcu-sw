@@ -15,7 +15,7 @@ use kernel::{static_buf, static_init};
 use mcu_tock_veer::timers::InternalTimers;
 use romtime::println;
 
-pub const TEST_BUF_LEN: usize = 128;
+pub const TEST_BUF_LEN: usize = 128 * 4; // 128 dwords, 512 bytes
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum IoState {
@@ -26,7 +26,7 @@ pub enum IoState {
 
 struct EmulatedDoeTransportTester<'a> {
     doe_mbox: &'a EmulatedDoeTransport<'static, InternalTimers<'static>>,
-    tx_rx_buf: TakeCell<'static, [u32]>,
+    tx_rx_buf: TakeCell<'static, [u8]>,
     state: Cell<IoState>,
     data_len: Cell<usize>,
     deferred_call: DeferredCall,
@@ -35,7 +35,7 @@ struct EmulatedDoeTransportTester<'a> {
 impl EmulatedDoeTransportTester<'_> {
     pub fn new(
         doe_mbox: &'static EmulatedDoeTransport<'static, InternalTimers<'static>>,
-        test_buf: &'static mut [u32],
+        test_buf: &'static mut [u8],
     ) -> Self {
         Self {
             doe_mbox,
@@ -53,12 +53,11 @@ impl<'a> DeferredCallClient for EmulatedDoeTransportTester<'a> {
             let tx_buf = self.tx_rx_buf.take().expect("tx_buf not initialized");
             let len = self.data_len.get();
 
-            println!("EMULATED_DOE_TRANSPORT_TESTER: Sending {} dwords", len);
+            println!("EMULATED_DOE_TRANSPORT_TESTER: Sending {} bytes", len);
 
-            _ = self.doe_mbox.transmit(None, tx_buf, len);
+            _ = self.doe_mbox.transmit(tx_buf, len);
             self.state.set(IoState::Sent);
         }
-        self.deferred_call.set();
     }
 
     fn register(&'static self) {
@@ -76,20 +75,27 @@ impl DoeTransportRxClient for EmulatedDoeTransportTester<'_> {
 
         println!("EMULATED_DOE_TRANSPORT_TESTER: Received {} dwords", len);
 
-        // Copy the received data into the buffer
-        for i in 0..len {
-            rx_buf[i] = buf[i];
+        if rx_buf.len() < len * 4 {
+            panic!("rx_buf is too small for the received data");
         }
 
+        // Copy the received data into the buffer
+        for (i, dword) in buf.iter().enumerate().take(len) {
+            let start = i * 4;
+            let end = start + 4;
+            rx_buf[start..end].copy_from_slice(&dword.to_le_bytes());
+        }
         self.doe_mbox.set_rx_buffer(buf);
         self.tx_rx_buf.replace(rx_buf);
-        self.data_len.set(len);
+        self.data_len.set(len * 4); // Store the length in bytes
+        self.deferred_call.set();
+
         self.state.set(IoState::Received);
     }
 }
 
 impl DoeTransportTxClient for EmulatedDoeTransportTester<'_> {
-    fn send_done(&self, buf: &'static mut [u32], result: Result<(), kernel::ErrorCode>) {
+    fn send_done(&self, buf: &'static mut [u8], result: Result<(), kernel::ErrorCode>) {
         assert!(result.is_ok(), "Failed to send data: {:?}", result);
         self.tx_rx_buf.replace(buf);
         self.state.set(IoState::Idle);
@@ -100,8 +106,8 @@ pub fn test_doe_transport_loopback() -> Option<u32> {
     let peripherals = unsafe { EMULATOR_PERIPHERALS.unwrap() };
     let doe_mbox = &peripherals.doe_transport;
 
-    let tx_rx_buffer = unsafe { static_buf!([u32; TEST_BUF_LEN]) };
-    let tx_rx_buffer = tx_rx_buffer.write([0u32; TEST_BUF_LEN]) as &'static mut [u32];
+    let tx_rx_buffer = unsafe { static_buf!([u8; TEST_BUF_LEN]) };
+    let tx_rx_buffer = tx_rx_buffer.write([0u8; TEST_BUF_LEN]) as &'static mut [u8];
     let tester = unsafe {
         static_init!(
             EmulatedDoeTransportTester<'static>,

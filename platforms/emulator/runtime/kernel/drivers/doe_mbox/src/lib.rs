@@ -2,9 +2,7 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
-use doe_transport::hil::{
-    DoeTransport, DoeTransportRxClient, DoeTransportTxClient, DOE_HDR_SIZE_DWORDS,
-};
+use doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
 
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
@@ -48,7 +46,7 @@ pub struct EmulatedDoeTransport<'a, A: Alarm<'a>> {
     doe_data_buf_len: usize,
 
     // Buffer to hold the client data object.
-    client_buf: TakeCell<'static, [u32]>,
+    client_buf: TakeCell<'static, [u8]>,
 
     pending_reset: Cell<bool>,
 
@@ -219,7 +217,11 @@ impl<'a, A: Alarm<'a>> AlarmClient for EmulatedDoeTransport<'a, A> {
             }
             TimerMode::SendDoneDefer => {
                 self.tx_client.map(|client| {
-                    client.send_done(self.client_buf.take().unwrap(), Ok(()));
+                    if let Some(buf) = self.client_buf.take() {
+                        client.send_done(buf, Ok(()));
+                    } else {
+                        panic!("DOE_MBOX_DRIVER: No client buffer available for send_done");
+                    }
                     self.registers
                         .doe_mbox_status
                         .write(DoeMboxStatus::DataReady::SET);
@@ -272,22 +274,19 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
         Ok(())
     }
 
-    #[allow(clippy::manual_memcpy)]
+    // #[allow(clippy::manual_memcpy)]
     fn transmit(
         &self,
-        doe_hdr: Option<[u32; DOE_HDR_SIZE_DWORDS]>,
-        doe_payload: &'static mut [u32],
-        payload_len: usize,
-    ) -> Result<(), (ErrorCode, &'static mut [u32])> {
+        doe_message: &'static mut [u8],
+        message_len: usize,
+    ) -> Result<(), (ErrorCode, &'static mut [u8])> {
         if self.state.get() != DoeMboxState::ReadyForTx {
             debug!("DOE Mbox: Cannot transmit, not in ReadyForTx state");
-            return Err((ErrorCode::FAIL, doe_payload));
+            return Err((ErrorCode::FAIL, doe_message));
         }
 
-        let hdr_dwords = doe_hdr.map_or(0, |hdr| hdr.len());
-
-        if hdr_dwords + payload_len > self.max_data_object_size() {
-            return Err((ErrorCode::SIZE, doe_payload));
+        if message_len > self.max_data_object_size() {
+            return Err((ErrorCode::SIZE, doe_message));
         }
 
         // Check if the tx buffer is available
@@ -299,19 +298,15 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
 
         // copy the header and payload into the tx buffer
         let tx_buf = self.doe_data_buf.take().unwrap();
-        let mut offset = 0;
-        if let Some(hdr) = doe_hdr {
-            for i in 0..hdr_dwords {
-                tx_buf[i] = hdr[i];
-            }
-            offset = hdr_dwords;
-        }
-        for i in 0..payload_len {
-            tx_buf[offset + i] = doe_payload[i];
-        }
-        let data_len = offset + payload_len;
 
-        // Replace the buffer with the new data
+        for (i, chunk) in doe_message.chunks(4).enumerate().take(message_len / 4) {
+            let mut dword = [0u8; 4];
+            dword[..chunk.len()].copy_from_slice(chunk);
+            tx_buf[i] = u32::from_le_bytes(dword);
+        }
+        let data_len = message_len / 4; // Length in DWORDs
+
+        // Replace the buffer with the new copied data
         self.doe_data_buf.replace(tx_buf);
 
         // Set data len and data ready in the status register
@@ -319,7 +314,7 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
 
         if let Some(_client) = self.tx_client.get() {
             // hold on to the client buffer until send_done is called
-            self.client_buf.replace(doe_payload);
+            self.client_buf.replace(doe_message);
             // In real hardware, this would be asynchronous. Here, we defer the send_done callback
             // to emulate hardware behavior by scheduling it via an alarm.
             self.schedule_send_done();

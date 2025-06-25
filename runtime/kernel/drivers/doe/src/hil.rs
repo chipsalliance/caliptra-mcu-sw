@@ -7,7 +7,7 @@ pub const DOE_HDR_SIZE_DWORDS: usize = 2; // Size of the DOE header in DWORDs (8
 
 pub trait DoeTransportTxClient {
     /// Called when the DOE data object transmission is done.
-    fn send_done(&self, tx_buf: &'static mut [u32], result: Result<(), ErrorCode>);
+    fn send_done(&self, tx_buf: &'static mut [u8], result: Result<(), ErrorCode>);
 }
 
 pub trait DoeTransportRxClient {
@@ -36,13 +36,11 @@ pub trait DoeTransport {
     /// Send DOE Object to be transmitted over SoC specific DOE transport.
     ///
     /// # Arguments
-    /// * `doe_hdr` - DOE header bytes
-    /// * `doe_payload` - A reference to the DOE payload
-    /// * `payload_len` - The length of the payload in bytes
+    /// * `doe_message` - A reference to the DOE data object to be transmitted.
+    /// * `message_len` - The length of the message in bytes
     fn transmit(
         &self,
-        doe_hdr: Option<[u32; DOE_HDR_SIZE_DWORDS]>,
-        doe_payload: &'static mut [u32],
-        payload_len: usize,
-    ) -> Result<(), (ErrorCode, &'static mut [u32])>;
+        doe_message: &'static mut [u8],
+        message_len: usize,
+    ) -> Result<(), (ErrorCode, &'static mut [u8])>;
 }

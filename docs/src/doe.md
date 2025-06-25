@@ -150,11 +150,14 @@ pub trait DoeTransport {
     fn disable(&self) -> Result<(), ErrorCode>;
 
     /// Send DOE Object to be transmitted over SoC specific DOE transport.
-    /// 
+    ///
     /// # Arguments
-    /// * `doe_hdr` - DOE header in dwords
-    /// * `doe_payload` - A reference to the DOE payload
-    /// * `payload_len` - The length of the payload in dwords
-    fn transmit(&self, doe_hdr: Option<[u32; DOE_HDR_SIZE_DWORDS]>, doe_payload: &'static mut [u32], payload_len: usize) -> Result<(), (ErrorCode, &'static mut [u32])>;
+    /// * `doe_message` - A reference to the DOE data object to be transmitted.
+    /// * `message_len` - The length of the message in bytes
+    fn transmit(
+        &self,
+        doe_message: &'static mut [u8],
+        message_len: usize,
+    ) -> Result<(), (ErrorCode, &'static mut [u8])>;
 
 }
