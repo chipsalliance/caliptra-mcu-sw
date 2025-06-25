@@ -28,7 +28,9 @@ use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
 use mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
 use mcu_tock_veer::timers::InternalTimers;
+use registers_generated::mci;
 use romtime::CaliptraSoC;
+use romtime::StaticRef;
 use rv32i::csr;
 
 use crate::instantiate_flash_partitions;
@@ -666,6 +668,13 @@ pub unsafe fn main() {
     if let Some(exit) = exit {
         crate::io::exit_emulator(exit);
     }
+
+    // Disable WDT1 before running the loop
+    let mci: StaticRef<mci::regs::Mci> =
+        unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
+    let mci_wdt = romtime::Mci::new(mci);
+    mci_wdt.disable_wdt();
+
     board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
 }
 
