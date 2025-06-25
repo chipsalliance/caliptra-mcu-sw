@@ -126,10 +126,13 @@ pub trait DoeTransportTxClient {
 }
 
 pub trait DoeTransportRxClient {
-    /// Called when a DOE data object is received. 
-    fn receive(&self, rx_buf: &'static mut [u8], len: usize) -> Result<(), ErrorCode>;
+    /// Called when a DOE data object is received.
+    /// 
+    /// # Arguments
+    /// * `rx_buf` - A mutable reference to the buffer containing the received DOE data object.
+    /// * `len_dwords` - The length of the received message in dwords (32-bit words).
+    fn receive(&self, rx_buf: &'static mut [u32], len_dwords: usize);
 }
-
 
 pub trait DoeTransport {
     /// Sets the transmit and receive clients for the DOE transport instance
@@ -138,10 +141,10 @@ pub trait DoeTransport {
 
     /// Sets the buffer used for receiving incoming DOE Objects.
     /// This function should be called by the Rx client upon receiving the `receive()` callback.
-    fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
+    fn set_rx_buffer(&self, rx_buf: &'static mut [u32]);
 
     /// Gets the maximum size of the data object that can be sent or received over DOE Transport.
-    fn max_data_object_size(&self) -> usize;
+    fn max_data_size_dwords(&self) -> usize;
 
     /// Enable the DOE transport driver instance.
     fn enable(&self) -> Result<(), ErrorCode>;
@@ -150,10 +153,14 @@ pub trait DoeTransport {
     fn disable(&self) -> Result<(), ErrorCode>;
 
     /// Send DOE Object to be transmitted over SoC specific DOE transport.
-    /// 
+    ///
     /// # Arguments
-    /// * `doe_hdr` - DOE header bytes
-    /// * `doe_payload` - A reference to the DOE payload
-    /// * `payload_len` - The length of the payload in bytes
-    fn transmit(&self, doe_hdr: [u8; DOE_HDR_SIZE], doe_payload: &'static mut [u8], payload_len: usize) -> Result<(), (ErrorCode, &'static mut [u8])>;
+    /// * `tx_buf` - A reference to the DOE data object to be transmitted.
+    /// * `len` - The length of the message in bytes
+    fn transmit(
+        &self,
+        tx_buf: &'static mut [u8],
+        len_bytes: usize,
+    ) -> Result<(), (ErrorCode, &'static mut [u8])>;
 }
+```

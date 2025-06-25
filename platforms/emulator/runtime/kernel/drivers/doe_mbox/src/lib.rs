@@ -2,7 +2,7 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
-use doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient, DOE_HDR_SIZE};
+use doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
 
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
@@ -41,7 +41,7 @@ pub struct EmulatedDoeTransport<'a, A: Alarm<'a>> {
     rx_client: OptionalCell<&'a dyn DoeTransportRxClient>,
 
     // Buffer to send/receive the DOE data object.
-    doe_data_buf: TakeCell<'static, [u8]>,
+    doe_data_buf: TakeCell<'static, [u32]>,
     doe_data_buf_len: usize,
 
     // Buffer to hold the client data object.
@@ -52,10 +52,10 @@ pub struct EmulatedDoeTransport<'a, A: Alarm<'a>> {
     alarm: VirtualMuxAlarm<'a, A>,
 }
 
-fn doe_mbox_sram_static_ref(len: usize) -> &'static mut [u8] {
+fn doe_mbox_sram_static_ref(len: usize) -> &'static mut [u32] {
     // SAFETY: We assume the SRAM is initialized and the address is valid.
     // The length is provided by the caller and should match the actual SRAM size.
-    unsafe { core::slice::from_raw_parts_mut(DOE_MBOX_SRAM_ADDR as *mut u8, len) }
+    unsafe { core::slice::from_raw_parts_mut(DOE_MBOX_SRAM_ADDR as *mut u32, len) }
 }
 
 impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
@@ -131,7 +131,7 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
         self.start_response_timeout();
 
         let data_len = self.registers.doe_mbox_dlen.get() as usize;
-        if data_len > self.max_data_object_size() {
+        if data_len > self.max_data_size_dwords() {
             self.registers
                 .doe_mbox_status
                 .write(DoeMboxStatus::Error::SET);
@@ -194,11 +194,11 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
         self.rx_client.set(client);
     }
 
-    fn set_rx_buffer(&self, rx_buf: &'static mut [u8]) {
+    fn set_rx_buffer(&self, rx_buf: &'static mut [u32]) {
         self.doe_data_buf.replace(rx_buf);
     }
 
-    fn max_data_object_size(&self) -> usize {
+    fn max_data_size_dwords(&self) -> usize {
         self.doe_data_buf_len
     }
 
@@ -214,40 +214,51 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
 
     fn transmit(
         &self,
-        doe_hdr: [u8; DOE_HDR_SIZE],
-        doe_payload: &'static mut [u8],
-        payload_len: usize,
+        tx_buf: &'static mut [u8],
+        len_bytes: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
         if self.state.get() != DoeMboxState::RxReceived {
             debug!("DOE Mbox: Cannot transmit, not in RxReceived state");
-            return Err((ErrorCode::FAIL, doe_payload));
+            return Err((ErrorCode::FAIL, tx_buf));
         }
 
-        if DOE_HDR_SIZE + payload_len > self.max_data_object_size() {
-            return Err((ErrorCode::SIZE, doe_payload));
+        if len_bytes > self.max_data_size_dwords() * 4 {
+            debug!("DOE Mbox: Data length exceeds maximum size");
+            return Err((ErrorCode::SIZE, tx_buf));
+        }
+
+        if len_bytes % 4 != 0 {
+            debug!("DOE Mbox: Data length must be a multiple of 4 bytes");
+            return Err((ErrorCode::INVAL, tx_buf));
         }
 
         // Check if the tx buffer is available
         if self.doe_data_buf.is_none() {
-            return Err((ErrorCode::NOMEM, doe_payload));
+            return Err((ErrorCode::NOMEM, tx_buf));
         }
 
         // copy the header and payload into the tx buffer
-        let tx_buf = self.doe_data_buf.take().unwrap();
-        tx_buf[..DOE_HDR_SIZE].copy_from_slice(&doe_hdr[..]);
-        tx_buf[DOE_HDR_SIZE..DOE_HDR_SIZE + payload_len].copy_from_slice(doe_payload);
+        let buf = self.doe_data_buf.take().unwrap();
+
+        for (i, chunk) in tx_buf.chunks(4).enumerate().take(len_bytes / 4) {
+            let mut dword = [0u8; 4];
+            dword[..chunk.len()].copy_from_slice(chunk);
+            buf[i] = u32::from_le_bytes(dword);
+        }
+        let data_len = len_bytes / 4; // Length in DWORDs
+
+        // Replace the buffer with the new copied data
+        self.doe_data_buf.replace(buf);
 
         // Set data len and data ready in the status register
-        self.registers
-            .doe_mbox_dlen
-            .set((DOE_HDR_SIZE + payload_len) as u32);
+        self.registers.doe_mbox_dlen.set((data_len) as u32);
         self.registers
             .doe_mbox_status
             .write(DoeMboxStatus::DataReady::SET);
 
         if let Some(_client) = self.tx_client.get() {
             // hold on to the client buffer until send_done is called
-            self.client_buf.replace(doe_payload);
+            self.client_buf.replace(tx_buf);
             // In real hardware, this would be asynchronous. Here, we defer the send_done callback
             // to emulate hardware behavior by scheduling it via an alarm.
             self.schedule_send_done();
