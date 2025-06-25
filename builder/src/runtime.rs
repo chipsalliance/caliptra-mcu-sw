@@ -6,6 +6,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use crate::apps::apps_build_flat_tbf;
 use crate::{objcopy, target_binary, target_dir, OBJCOPY_FLAGS, PROJECT_ROOT, SYSROOT, TARGET};
 use anyhow::{anyhow, bail, Result};
@@ -90,7 +94,7 @@ pub fn runtime_build_no_apps_uncached(
 
     let ld_string = runtime_ld_script(
         memory_map,
-        memory_map.sram_offset + INTERRUPT_TABLE_SIZE as u32,
+        memory_map.sram_offset,
         kernel_size as u32,
         apps_offset as u32,
         apps_size as u32,
@@ -335,10 +339,9 @@ pub fn runtime_build_with_apps_cached(
     app_offset += runtime_bin_size;
     let runtime_end_offset = app_offset;
 
-    // ensure that we leave space for the interrupt table
     // and align to 4096 bytes (needed for rust-lld)
-    let apps_offset = (runtime_end_offset + INTERRUPT_TABLE_SIZE).next_multiple_of(4096);
-    let padding = apps_offset - runtime_end_offset - INTERRUPT_TABLE_SIZE;
+    let apps_offset = runtime_end_offset.next_multiple_of(4096);
+    let padding = apps_offset - runtime_end_offset;
 
     // build the apps with the data memory at some incorrect offset
     let apps_bin = apps_build_flat_tbf(apps_offset, apps_memory_offset, features, example_app)?;

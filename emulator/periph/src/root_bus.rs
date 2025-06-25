@@ -301,8 +301,7 @@ impl Bus for McuRootBus {
         if let (Device::MCU, EventData::MemoryRead { start_addr, len }) =
             (event.dest, event.event.clone())
         {
-            // TODO: we need to adjust the interrupt vector table to be at the end or rewrite our LD script to add it automatically
-            let start = (start_addr + 0x80) as usize;
+            let start = start_addr as usize;
             let len = len as usize;
             if start >= RAM_SIZE as usize || start + len >= RAM_SIZE as usize {
                 println!(
@@ -333,7 +332,7 @@ impl Bus for McuRootBus {
         if let (Device::MCU, EventData::MemoryWrite { start_addr, data }) =
             (event.dest, event.event.clone())
         {
-            let start = (start_addr + 0x80) as usize;
+            let start = start_addr as usize;
             if start >= RAM_SIZE as usize || start + data.len() >= RAM_SIZE as usize {
                 println!(
                     "Ignoring invalid MCU RAM write to {}..{}",

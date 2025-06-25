@@ -11,10 +11,8 @@ use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::{debug, ErrorCode};
-use registers_generated::i3c::bits::HcControl::{BusEnable, ModeSelector};
 use registers_generated::i3c::bits::{
-    InterruptEnable, InterruptStatus, QueueThldCtrl, RingHeadersSectionOffset, StbyCrCapabilities,
-    StbyCrControl, StbyCrDeviceAddr, StbyCrDeviceChar, TtiQueueThldCtrl,
+    InterruptEnable, InterruptStatus, StbyCrDeviceAddr, StbyCrDeviceChar,
 };
 use registers_generated::i3c::regs::I3c;
 use tock_registers::register_bitfields;
@@ -132,64 +130,9 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     pub fn init(&'static self) {
-        // Run the initialization steps for the primary and secondary controller from:
-        // https://chipsalliance.github.io/i3c-core/initialization.html
+        // Most of the I3C setup is done by the ROM.
         self.alarm.setup();
         self.alarm.set_alarm_client(self);
-
-        // Verify the value of the HCI_VERSION register at the I3CBase address. The controller is compliant with MIPI HCI v1.2 and therefore the HCI_VERSION should read 0x120
-        if self.registers.i3c_base_hci_version.get() != 0x120 {
-            panic!("HCI version is not 0x120");
-        }
-        if !self
-            .registers
-            .stdby_ctrl_mode_stby_cr_capabilities
-            .is_set(StbyCrCapabilities::TargetXactSupport)
-        {
-            panic!("I3C target transaction support is not enabled");
-        }
-
-        // Evaluate RING_HEADERS_SECTION_OFFSET, the SECTION_OFFSET should read 0x0 as this controller doesn’t support the DMA mode
-        let rhso = self
-            .registers
-            .i3c_base_ring_headers_section_offset
-            .read(RingHeadersSectionOffset::SectionOffset);
-        if rhso != 0 {
-            panic!("RING_HEADERS_SECTION_OFFSET is not 0");
-        }
-
-        // initialize timing registers
-        self.registers.soc_mgmt_if_t_r_reg.set(0x2);
-        self.registers.soc_mgmt_if_t_hd_dat_reg.set(0xa);
-        self.registers.soc_mgmt_if_t_su_dat_reg.set(0xa);
-
-        // Setup the threshold for the HCI queues (in the internal/private software data structures):
-        self.registers.piocontrol_queue_thld_ctrl.modify(
-            QueueThldCtrl::CmdEmptyBufThld.val(0)
-                + QueueThldCtrl::RespBufThld.val(1)
-                + QueueThldCtrl::IbiStatusThld.val(1),
-        );
-
-        self.registers.stdby_ctrl_mode_stby_cr_control.modify(
-            StbyCrControl::StbyCrEnableInit::SET // enable the standby controller
-                + StbyCrControl::TargetXactEnable::SET // enable Target Transaction Interface
-                + StbyCrControl::DaaEntdaaEnable::SET // enable dynamic address assignment
-                + StbyCrControl::BastCccIbiRing.val(0) // Set the IBI to use ring buffer 0
-                + StbyCrControl::PrimeAcceptGetacccr::CLEAR // // don't auto-accept primary controller role
-                + StbyCrControl::AcrFsmOpSelect::CLEAR, // don't become the active controller and set us as not the bus owner
-        );
-
-        // set TTI queue thresholds
-        self.registers.tti_tti_queue_thld_ctrl.modify(
-            TtiQueueThldCtrl::IbiThld.val(1)
-                + TtiQueueThldCtrl::RxDescThld.val(1)
-                + TtiQueueThldCtrl::TxDescThld.val(1),
-        );
-
-        // enable the PHY connection to the bus
-        self.registers
-            .i3c_base_hc_control
-            .modify(ModeSelector::SET + BusEnable::CLEAR); // clear is enabled, set is suspended
     }
 
     pub fn enable_interrupts(&self) {

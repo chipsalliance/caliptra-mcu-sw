@@ -23,6 +23,7 @@ use zerocopy::{transmute, IntoBytes};
 
 pub struct CaliptraBuilder {
     active_mode: bool,
+    fpga: bool,
     caliptra_rom: Option<PathBuf>,
     caliptra_firmware: Option<PathBuf>,
     soc_manifest: Option<PathBuf>,
@@ -32,8 +33,10 @@ pub struct CaliptraBuilder {
 }
 
 impl CaliptraBuilder {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         active_mode: bool,
+        fpga: bool,
         caliptra_rom: Option<PathBuf>,
         caliptra_firmware: Option<PathBuf>,
         soc_manifest: Option<PathBuf>,
@@ -43,6 +46,7 @@ impl CaliptraBuilder {
     ) -> Self {
         Self {
             active_mode,
+            fpga,
             caliptra_rom,
             caliptra_firmware,
             soc_manifest,
@@ -59,7 +63,7 @@ impl CaliptraBuilder {
             }
             Ok(caliptra_rom.clone())
         } else {
-            Self::compile_caliptra_rom_cached()
+            Self::compile_caliptra_rom_cached(self.fpga)
         }
     }
 
@@ -72,7 +76,7 @@ impl CaliptraBuilder {
                 bail!("Vendor public key hash is required for active mode if Caliptra FW is passed as an argument");
             }
         } else {
-            let (path, vendor_pk_hash) = Self::compile_caliptra_fw_cached()?;
+            let (path, vendor_pk_hash) = Self::compile_caliptra_fw_cached(self.fpga)?;
             self.vendor_pk_hash = Some(vendor_pk_hash);
             self.caliptra_firmware = Some(path);
         }
@@ -135,6 +139,8 @@ impl CaliptraBuilder {
         flags.set_image_source(IMAGE_SOURCE_IN_REQUEST);
         let crypto = Crypto::default();
         let digest = from_hw_format(&crypto.sha384_digest(&data)?);
+        let d: String = digest.clone().encode_hex();
+        println!("MCU len {} digest: {}", data.len(), d);
 
         Ok(AuthManifestImageMetadata {
             fw_id: 2,
@@ -192,7 +198,7 @@ impl CaliptraBuilder {
         None
     }
 
-    fn compile_caliptra_rom_cached() -> Result<PathBuf> {
+    fn compile_caliptra_rom_cached(fpga: bool) -> Result<PathBuf> {
         if let Some(version) = Self::caliptra_version() {
             let path = target_dir().join(format!("caliptra-rom-{}.bin", version));
             if path.exists() {
@@ -203,23 +209,27 @@ impl CaliptraBuilder {
                 "Caliptra version {} not found in cache, compiling ROM...",
                 version
             );
-            let compiled_rom = Self::compile_caliptra_rom_uncached()?;
+            let compiled_rom = Self::compile_caliptra_rom_uncached(fpga)?;
             std::fs::copy(compiled_rom, &path)?;
             Ok(path)
         } else {
             println!("Caliptra version not found so cannot use cached ROM");
-            Self::compile_caliptra_rom_uncached()
+            Self::compile_caliptra_rom_uncached(fpga)
         }
     }
 
-    fn compile_caliptra_rom_uncached() -> Result<PathBuf> {
-        let rom_bytes = caliptra_builder::rom_for_fw_integration_tests()?;
+    fn compile_caliptra_rom_uncached(fpga: bool) -> Result<PathBuf> {
+        let rom_bytes = if fpga {
+            caliptra_builder::build_firmware_rom(&caliptra_builder::firmware::ROM_FPGA_WITH_UART)?
+        } else {
+            caliptra_builder::rom_for_fw_integration_tests()?.to_vec()
+        };
         let path = target_dir().join("caliptra-rom.bin");
         std::fs::write(&path, rom_bytes)?;
         Ok(path)
     }
 
-    fn compile_caliptra_fw_cached() -> Result<(PathBuf, String)> {
+    fn compile_caliptra_fw_cached(fpga: bool) -> Result<(PathBuf, String)> {
         if let Some(version) = Self::caliptra_version() {
             let path = target_dir().join(format!("caliptra-fw-bundle-{}.bin", version));
             if path.exists() {
@@ -230,12 +240,12 @@ impl CaliptraBuilder {
                 "Caliptra FW bundle version {} not found in cache, compiling...",
                 version
             );
-            let compiled_fw_bundle = Self::compile_caliptra_fw_uncached()?.0;
+            let compiled_fw_bundle = Self::compile_caliptra_fw_uncached(fpga)?.0;
             std::fs::copy(compiled_fw_bundle, &path)?;
             Self::parse_fw_bundle(path)
         } else {
             println!("Caliptra version not found so cannot use cached FW bundle");
-            Self::compile_caliptra_fw_uncached()
+            Self::compile_caliptra_fw_uncached(fpga)
         }
     }
 
@@ -259,16 +269,25 @@ impl CaliptraBuilder {
         Ok(x)
     }
 
-    fn compile_caliptra_fw_uncached() -> Result<(PathBuf, String)> {
+    fn compile_caliptra_fw_uncached(fpga: bool) -> Result<(PathBuf, String)> {
         let opts = caliptra_builder::ImageOptions {
             pqc_key_type: FwVerificationPqcKeyType::LMS,
             ..Default::default()
         };
-        let bundle = caliptra_builder::build_and_sign_image(
-            &caliptra_builder::firmware::FMC_WITH_UART,
-            &caliptra_builder::firmware::APP_WITH_UART,
-            opts,
-        )?;
+
+        let bundle = if fpga {
+            caliptra_builder::build_and_sign_image(
+                &caliptra_builder::firmware::FMC_FPGA_WITH_UART,
+                &caliptra_builder::firmware::APP_WITH_UART_FPGA,
+                opts,
+            )?
+        } else {
+            caliptra_builder::build_and_sign_image(
+                &caliptra_builder::firmware::FMC_WITH_UART,
+                &caliptra_builder::firmware::APP_WITH_UART,
+                opts,
+            )?
+        };
         let fw_bytes = bundle.to_bytes()?;
         let path = target_dir().join("caliptra-fw-bundle.bin");
         std::fs::write(&path, fw_bytes)?;

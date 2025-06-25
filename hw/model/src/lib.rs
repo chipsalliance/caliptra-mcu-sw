@@ -61,6 +61,8 @@ pub struct InitParams<'a> {
     pub caliptra_rom: &'a [u8],
     // Caliptra's firmware bundle.
     pub caliptra_firmware: &'a [u8],
+    // SoC manifest
+    pub soc_manifest: &'a [u8],
     // The contents of the MCU ROM
     pub mcu_rom: &'a [u8],
     // The contents of the MCU firmware
@@ -152,6 +154,7 @@ impl Default for InitParams<'_> {
             trace_path: None,
             stack_info: None,
             csr_hmac_key: [1; 16],
+            soc_manifest: Default::default(),
         }
     }
 }
