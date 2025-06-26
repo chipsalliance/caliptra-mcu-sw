@@ -66,31 +66,27 @@ impl<'a> DeferredCallClient for EmulatedDoeTransportTester<'a> {
 }
 
 impl DoeTransportRxClient for EmulatedDoeTransportTester<'_> {
-    fn receive(&self, buf: &'static mut [u32], len: usize) {
+    fn receive(&self, rx_buf: &'static mut [u8], len: usize) {
         // copy the data into the rx_buf
-        let rx_buf = self.tx_rx_buf.take().expect("rx_buf not initialized");
-        if len > rx_buf.len() {
-            panic!("Received data length exceeds buffer size");
-        }
+        // let rx_buf = self.tx_rx_buf.take().expect("rx_buf not initialized");
+        // if len > rx_buf.len() {
+        //     panic!("Received data length exceeds buffer size");
+        // }
 
-        println!("EMULATED_DOE_TRANSPORT_TESTER: Received {} dwords", len);
+        println!("EMULATED_DOE_TRANSPORT_TESTER: Received {} bytes", len);
 
-        if rx_buf.len() < len * 4 {
-            panic!("rx_buf is too small for the received data");
-        }
-
-        // Copy the received data into the buffer
-        for (i, dword) in buf.iter().enumerate().take(len) {
-            let start = i * 4;
-            let end = start + 4;
-            rx_buf[start..end].copy_from_slice(&dword.to_le_bytes());
-        }
-        self.doe_mbox.set_rx_buffer(buf);
         self.tx_rx_buf.replace(rx_buf);
-        self.data_len.set(len * 4); // Store the length in bytes
+        self.data_len.set(len); // Store the length of the received data
         self.deferred_call.set();
 
         self.state.set(IoState::Received);
+    }
+
+    fn receive_expected(&self) {
+        // This function can be used to handle expected data reception
+        // For now, we just set the state to Received
+        self.doe_mbox
+            .set_rx_buffer(self.tx_rx_buf.take().expect("rx_buf not available"));
     }
 }
 

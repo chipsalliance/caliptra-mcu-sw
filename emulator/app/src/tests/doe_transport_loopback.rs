@@ -46,8 +46,8 @@ impl DoeTransportTest for Test {
         retry_count: Option<usize>,
     ) {
         println!(
-            "DOE_TRANSPORT_LOOPBACK_TEST: Running test with test vec len: {} dwords",
-            self.test_vector.len() / 4,
+            "DOE_TRANSPORT_LOOPBACK_TEST: Running test with test vec len: {} bytes",
+            self.test_vector.len()
         );
 
         let mut retries_left = retry_count.unwrap_or(0);
@@ -58,7 +58,7 @@ impl DoeTransportTest for Test {
                 DoeTestState::Start => {
                     // waits for the responder to be ready if this is the first message to send
                     if wait_for_responder {
-                        thread::sleep(Duration::from_secs(10));
+                        thread::sleep(Duration::from_secs(5));
                     }
                     self.state = DoeTestState::SendData;
                 }

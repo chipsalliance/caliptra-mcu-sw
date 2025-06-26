@@ -3,16 +3,26 @@
 use core::result::Result;
 use kernel::ErrorCode;
 
-pub const DOE_HDR_SIZE_DWORDS: usize = 2; // Size of the DOE header in DWORDs (8 bytes)
-
 pub trait DoeTransportTxClient {
-    /// Called when the DOE data object transmission is done.
+    /// Called by driver to notify that the DOE data object transmission is done.
+    ///
+    /// # Arguments
+    /// * `tx_buf` - buffer containing the DOE data object that was transmitted
+    /// * `result` - Result indicating success or failure of the transmission
     fn send_done(&self, tx_buf: &'static mut [u8], result: Result<(), ErrorCode>);
 }
 
 pub trait DoeTransportRxClient {
-    /// Called when a DOE data object is received.
-    fn receive(&self, rx_buf: &'static mut [u32], len: usize);
+    /// Called to receive a DOE data object.
+    ///
+    /// # Arguments
+    /// * `rx_buf` - buffer containing the received DOE data object
+    /// * `len` - The length of the data received in bytes
+    fn receive(&self, rx_buf: &'static mut [u8], len: usize);
+    /// receive expected callback. This is called when a DOE data object is received,
+    /// but buffer is not available with the driver to copy the data into.
+    /// The client must call `set_rx_buffer()` to set the buffer
+    fn receive_expected(&self);
 }
 
 pub trait DoeTransport {
@@ -21,8 +31,7 @@ pub trait DoeTransport {
     fn set_rx_client(&self, client: &'static dyn DoeTransportRxClient);
 
     /// Sets the buffer used for receiving incoming DOE Objects.
-    /// This function should be called by the Rx client upon receiving the `receive()` callback.
-    fn set_rx_buffer(&self, rx_buf: &'static mut [u32]);
+    fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
 
     /// Gets the maximum size of the data object that can be sent or received over DOE Transport.
     fn max_data_object_size(&self) -> usize;
@@ -36,11 +45,11 @@ pub trait DoeTransport {
     /// Send DOE Object to be transmitted over SoC specific DOE transport.
     ///
     /// # Arguments
-    /// * `doe_message` - A reference to the DOE data object to be transmitted.
-    /// * `message_len` - The length of the message in bytes
+    /// * `tx_buf` - A reference to the DOE data object to be transmitted.
+    /// * `len` - The length of the message in bytes
     fn transmit(
         &self,
-        doe_message: &'static mut [u8],
-        message_len: usize,
+        tx_buf: &'static mut [u8],
+        len: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])>;
 }
