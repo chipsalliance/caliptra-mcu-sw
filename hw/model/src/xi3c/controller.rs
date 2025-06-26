@@ -260,6 +260,7 @@ impl Controller {
         self.reset();
         self.reset_fifos();
         if self.config.ibi_capable {
+            println!("XI3C: enabling IBI");
             self.enable_ibi();
         }
         if self.config.hj_capable {
@@ -277,7 +278,10 @@ impl Controller {
                 self.dyna_addr_assign(&DYNA_ADDR_LIST, self.config.device_count)?;
             } else {
                 let static_addrs = self.config.known_static_addrs.clone();
-                println!("Controller: initializing dynamic addresses with SETDASA (static address: {:x?})", &static_addrs);
+                println!(
+                    "XI3C: initializing dynamic addresses with SETDASA (static address: {:x?})",
+                    &static_addrs
+                );
                 let mut cmd: Command = Command {
                     cmd_type: 1,
                     no_repeated_start: 0,
@@ -288,9 +292,9 @@ impl Controller {
                     tid: 2,
                 };
                 assert!(self.ready);
-                println!("Controller: Broadcast CCC SETDASA");
+                println!("XI3C: Broadcast CCC SETDASA");
                 self.send_transfer_cmd(&mut cmd, Ccc::Byte(XI3C_CCC_SETDASA))?;
-                println!("Acknowledged");
+                println!("XI3C: Acknowledged");
                 for (i, addr) in static_addrs.iter().enumerate() {
                     self.dyna_addr_assign_static(
                         *addr,
@@ -393,9 +397,9 @@ impl Controller {
         cmd.tid = 0;
         cmd.pec = 0;
         cmd.cmd_type = 1;
-        println!("Controller: Broadcast CCC ENTDAA");
+        println!("XI3C: Broadcast CCC ENTDAA");
         self.send_transfer_cmd(&mut cmd, Ccc::Byte(XI3C_CCC_BRDCAST_ENTDAA))?;
-        println!("Acknowledged");
+        println!("XI3C: Acknowledged");
         let mut index = 0;
         while index < dev_count as u16 && index < 108 {
             let addr = dyna_addr[index as usize] << 1 | get_odd_parity(dyna_addr[index as usize]);
@@ -488,6 +492,12 @@ impl Controller {
             dev_index, addr_bcr
         );
         self.regs().target_addr_bcr.set(addr_bcr);
+    }
+
+    pub fn off(&mut self) {
+        let mut data = self.regs().reset.get();
+        data |= XI3C_SOFT_RESET_MASK;
+        self.regs().reset.set(data);
     }
 
     #[inline]
@@ -690,11 +700,11 @@ impl Controller {
                 space_index += 1;
             }
         }
-        println!("Waiting for master_send_polled response");
+        //println!("Waiting for master_send_polled response");
         if self.get_response() != 0 {
             Err(XST_SEND_ERROR)
         } else {
-            println!("master_send_polled OK");
+            //println!("master_send_polled OK");
             Ok(())
         }
     }

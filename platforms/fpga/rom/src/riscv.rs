@@ -18,12 +18,16 @@ use core::fmt::Write;
 #[cfg(target_arch = "riscv32")]
 core::arch::global_asm!(include_str!("start.s"));
 
-use mcu_config::McuMemoryMap;
+use mcu_config::{McuMemoryMap, McuStraps};
 
-// re-export this so the common ROM can use it
+// re-export these so the common ROM and runtime can use them
 #[no_mangle]
 #[used]
 pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_fpga::FPGA_MEMORY_MAP;
+
+#[no_mangle]
+#[used]
+pub static MCU_STRAPS: McuStraps = mcu_config_fpga::FPGA_MCU_STRAPS;
 
 pub extern "C" fn rom_entry() -> ! {
     print_to_console("FPGA MCU ROM\n");
@@ -40,7 +44,7 @@ pub extern "C" fn rom_entry() -> ! {
 
     mcu_rom_common::rom_start();
 
-    let addr = MCU_MEMORY_MAP.sram_offset + 0x80;
+    let addr = MCU_MEMORY_MAP.sram_offset;
     romtime::println!("[mcu-rom] Jumping to firmware at {:08x}", addr);
     exit_rom(addr);
 }
@@ -49,13 +53,13 @@ fn exit_rom(addr: u32) -> ! {
     unsafe {
         core::arch::asm! {
                 "// Clear the stack
-            //la a0, STACK_ORIGIN      // dest
-            //la a1, STACK_SIZE        // len
-            //add a1, a1, a0
+            la a0, STACK_ORIGIN      // dest
+            la a1, STACK_SIZE        // len
+            add a1, a1, a0
         1:
-            //sw zero, 0(a0)
-            //addi a0, a0, 4
-            //bltu a0, a1, 1b
+            sw zero, 0(a0)
+            addi a0, a0, 4
+            bltu a0, a1, 1b
 
 
             // Clear all registers
@@ -72,7 +76,6 @@ fn exit_rom(addr: u32) -> ! {
             jr a3",
                 in("a3") addr,
                 options(noreturn),
-
         }
     }
 }

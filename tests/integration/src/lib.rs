@@ -164,6 +164,7 @@ mod test {
 
         let mut caliptra_builder = CaliptraBuilder::new(
             true,
+            false,
             None,
             None,
             None,

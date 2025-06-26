@@ -22,13 +22,17 @@ core::arch::global_asm!(include_str!("start.s"));
 use crate::flash::flash_api::FlashPartition;
 #[allow(unused_imports)]
 use crate::flash::flash_ctrl::{EmulatedFlashCtrl, PRIMARY_FLASH_CTRL_BASE};
-use mcu_config::McuMemoryMap;
+use mcu_config::{McuMemoryMap, McuStraps};
 use romtime::HexWord;
 
-// re-export this so the common ROM can use it
+// re-export these so the common ROM can use it
 #[no_mangle]
 #[used]
 pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_emulator::EMULATOR_MEMORY_MAP;
+
+#[no_mangle]
+#[used]
+pub static MCU_STRAPS: McuStraps = mcu_config_emulator::EMULATOR_MCU_STRAPS;
 
 pub extern "C" fn rom_entry() -> ! {
     unsafe {
@@ -53,7 +57,7 @@ pub extern "C" fn rom_entry() -> ! {
 
     romtime::println!(
         "[mcu-rom] Jumping to firmware at {}",
-        HexWord((MCU_MEMORY_MAP.sram_offset as u32) + 0x80)
+        HexWord(MCU_MEMORY_MAP.sram_offset as u32)
     );
     exit_rom();
 }
@@ -81,7 +85,7 @@ fn exit_rom() -> ! {
             li x29, 0; li x30, 0; li x31, 0;
 
             // jump to runtime
-            li a3, 0x40000080
+            li a3, 0x40000000
             jr a3",
                 options(noreturn),
         }

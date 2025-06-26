@@ -2,7 +2,7 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
-use mcu_config::{McuMemoryMap, MemoryRegionType};
+use mcu_config::{McuMemoryMap, McuStraps, MemoryRegionType};
 
 pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     rom_offset: 0xb004_0000,
@@ -14,7 +14,7 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     dccm_size: 16 * 1024,
     dccm_properties: MemoryRegionType::MEMORY,
 
-    sram_offset: 0xb008_0000,
+    sram_offset: 0xa8c0_0000,
     sram_size: 384 * 1024,
     sram_properties: MemoryRegionType::MEMORY,
 
@@ -45,3 +45,5 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     lc_size: 0x8c,
     lc_properties: MemoryRegionType::MMIO,
 };
+
+pub const FPGA_MCU_STRAPS: McuStraps = McuStraps::default();

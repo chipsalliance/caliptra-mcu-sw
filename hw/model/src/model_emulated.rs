@@ -9,10 +9,9 @@ use crate::Output;
 use anyhow::Result;
 use caliptra_emu_bus::{Clock, Event};
 use caliptra_emu_cpu::{Cpu, CpuArgs, InstrTracer, Pic};
-use caliptra_emu_periph::ActionCb;
-use caliptra_emu_periph::MailboxRequester;
-use caliptra_emu_periph::ReadyForFwCb;
-use caliptra_emu_periph::{CaliptraRootBus, CaliptraRootBusArgs, TbServicesCb};
+use caliptra_emu_periph::{
+    ActionCb, CaliptraRootBus, CaliptraRootBusArgs, MailboxRequester, ReadyForFwCb, TbServicesCb,
+};
 use caliptra_hw_model::ModelError;
 use caliptra_hw_model_types::ErrorInjectionMode;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
@@ -288,7 +287,7 @@ mod test {
         )
         .expect("Could not build MCU runtime");
         let mut caliptra_builder =
-            mcu_builder::CaliptraBuilder::new(true, None, None, None, None, None, None);
+            mcu_builder::CaliptraBuilder::new(true, false, None, None, None, None, None, None);
         let caliptra_rom = caliptra_builder
             .get_caliptra_rom()
             .expect("Could not build Caliptra ROM");
