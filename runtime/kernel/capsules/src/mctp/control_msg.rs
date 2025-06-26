@@ -45,6 +45,7 @@ pub enum MCTPCtrlCmd {
     SetEID,
     GetEID,
     GetMsgTypeSupport,
+    GetVersionSupport,
     Unsupported,
 }
 
@@ -64,6 +65,7 @@ impl MCTPCtrlCmd {
         match self {
             MCTPCtrlCmd::SetEID => 2,
             MCTPCtrlCmd::GetEID => 0,
+            MCTPCtrlCmd::GetVersionSupport => 0,
             MCTPCtrlCmd::GetMsgTypeSupport => 0,
             MCTPCtrlCmd::Unsupported => 0xFF,
         }
@@ -73,6 +75,7 @@ impl MCTPCtrlCmd {
         match self {
             MCTPCtrlCmd::SetEID => 2,
             MCTPCtrlCmd::GetEID => 0,
+            MCTPCtrlCmd::GetVersionSupport => 1,
             MCTPCtrlCmd::GetMsgTypeSupport => 5,
             MCTPCtrlCmd::Unsupported => 0,
         }
@@ -82,6 +85,7 @@ impl MCTPCtrlCmd {
         match self {
             MCTPCtrlCmd::SetEID => 4,
             MCTPCtrlCmd::GetEID => 4,
+            MCTPCtrlCmd::GetVersionSupport => 18, // 2 bytes header + 4 entries * 4 bytes each
             MCTPCtrlCmd::GetMsgTypeSupport => 1,
             MCTPCtrlCmd::Unsupported => 0,
         }
@@ -150,6 +154,84 @@ impl MCTPCtrlCmd {
 
         resp.write_to(&mut rsp_buf[..self.resp_data_len()])
             .map_err(|_| ErrorCode::FAIL)
+    }
+
+    pub fn process_get_version_support(
+        &self,
+        req: &[u8],
+        rsp_buf: &mut [u8],
+    ) -> Result<(), ErrorCode> {
+        let version_type = VersionSupportType::from(req[0]);
+
+        match version_type {
+            VersionSupportType::BaseSpec | VersionSupportType::ControlProtocolMessage => {
+                // Support MCTP Base and Control specs with 4 versions: 1.0, 1.1, 1.2, 1.3.3
+                let header = GetVersionSupportHeaderResp {
+                    completion_code: 0x00, // Success
+                    entry_counter: 4,      // 4 version entries
+                };
+
+                header
+                    .write_to(&mut rsp_buf[..2])
+                    .map_err(|_| ErrorCode::FAIL)?;
+
+                // Version 1.0: major=0xF1, minor=0xF0, update=0xFF, alpha=0x00
+                let version_1_0 = GetVersionSupportEntryResp {
+                    major: 0xF1,
+                    minor: 0xF0,
+                    update: 0xFF,
+                    alpha: 0x00,
+                };
+                version_1_0
+                    .write_to(&mut rsp_buf[2..6])
+                    .map_err(|_| ErrorCode::FAIL)?;
+
+                // Version 1.1: major=0xF1, minor=0xF1, update=0xFF, alpha=0x00
+                let version_1_1 = GetVersionSupportEntryResp {
+                    major: 0xF1,
+                    minor: 0xF1,
+                    update: 0xFF,
+                    alpha: 0x00,
+                };
+                version_1_1
+                    .write_to(&mut rsp_buf[6..10])
+                    .map_err(|_| ErrorCode::FAIL)?;
+
+                // Version 1.2: major=0xF1, minor=0xF2, update=0xFF, alpha=0x00
+                let version_1_2 = GetVersionSupportEntryResp {
+                    major: 0xF1,
+                    minor: 0xF2,
+                    update: 0xFF,
+                    alpha: 0x00,
+                };
+                version_1_2
+                    .write_to(&mut rsp_buf[10..14])
+                    .map_err(|_| ErrorCode::FAIL)?;
+
+                // Version 1.3.3: major=0xF1, minor=0xF3, update=0xF3, alpha=0x00
+                let version_1_3_3 = GetVersionSupportEntryResp {
+                    major: 0xF1,
+                    minor: 0xF3,
+                    update: 0xF3,
+                    alpha: 0x00,
+                };
+                version_1_3_3
+                    .write_to(&mut rsp_buf[14..18])
+                    .map_err(|_| ErrorCode::FAIL)?;
+            }
+            _ => {
+                // Unsupported version types
+                let header = GetVersionSupportHeaderResp {
+                    completion_code: 0x80, // Unsupported
+                    entry_counter: 0,
+                };
+
+                header
+                    .write_to(&mut rsp_buf[..2])
+                    .map_err(|_| ErrorCode::FAIL)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -306,6 +388,84 @@ impl From<u8> for EIDType {
     }
 }
 
+// Get Version Support Request
+enum VersionSupportType {
+    BaseSpec,
+    VendorControlled7E,
+    VendorControlled7F,
+    ControlProtocolMessage,
+    DSP0241,
+    DSP0261,
+    #[allow(dead_code)]
+    Other(u8),
+}
+
+#[allow(dead_code)]
+struct VersionSupportResp {}
+
+impl From<u8> for VersionSupportType {
+    fn from(val: u8) -> VersionSupportType {
+        match val {
+            0xff => VersionSupportType::BaseSpec,
+            0x7e => VersionSupportType::VendorControlled7E,
+            0x7f => VersionSupportType::VendorControlled7F,
+            0x00 => VersionSupportType::ControlProtocolMessage,
+            0x01 => VersionSupportType::DSP0241,
+            0x02 => VersionSupportType::DSP0261,
+            _ => VersionSupportType::Other(val),
+        }
+    }
+}
+
+// Get Version Support Response
+#[repr(C)]
+#[derive(Clone, Debug, FromBytes, IntoBytes, Immutable)]
+pub struct GetVersionSupportHeaderResp {
+    pub completion_code: u8,
+    pub entry_counter: u8,
+}
+
+impl Default for GetVersionSupportHeaderResp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl GetVersionSupportHeaderResp {
+    pub fn new() -> Self {
+        GetVersionSupportHeaderResp {
+            completion_code: 0,
+            entry_counter: 0,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Debug, FromBytes, IntoBytes, Immutable)]
+pub struct GetVersionSupportEntryResp {
+    pub alpha: u8,
+    pub update: u8,
+    pub minor: u8,
+    pub major: u8,
+}
+
+impl Default for GetVersionSupportEntryResp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl GetVersionSupportEntryResp {
+    pub fn new() -> Self {
+        GetVersionSupportEntryResp {
+            alpha: 0,
+            update: 0,
+            minor: 0,
+            major: 0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -387,5 +547,69 @@ mod tests {
         assert_eq!(rsp.completion_code(), CmdCompletionCode::Success as u8);
         assert_eq!(rsp.eid(), 0x0A);
         assert_eq!(rsp.eid_type(), EIDType::DynamicOnly as u8);
+    }
+
+    #[test]
+    fn test_get_version_support() {
+        let req = [0xff]; // BaseSpec version type
+        let rsp_buf = &mut [0; 18];
+
+        MCTPCtrlCmd::GetVersionSupport
+            .process_get_version_support(&req, rsp_buf)
+            .unwrap();
+
+        // Check header (first 2 bytes)
+        let header: GetVersionSupportHeaderResp =
+            GetVersionSupportHeaderResp::read_from_bytes(&rsp_buf[..2]).unwrap();
+        assert_eq!(header.completion_code, 0x00); // Success
+        assert_eq!(header.entry_counter, 4);
+
+        // Check version 1.0 entry
+        let version_1_0: GetVersionSupportEntryResp =
+            GetVersionSupportEntryResp::read_from_bytes(&rsp_buf[2..6]).unwrap();
+        assert_eq!(version_1_0.major, 0xF1);
+        assert_eq!(version_1_0.minor, 0xF0);
+        assert_eq!(version_1_0.update, 0xFF);
+        assert_eq!(version_1_0.alpha, 0x00);
+
+        // Check version 1.1 entry
+        let version_1_1: GetVersionSupportEntryResp =
+            GetVersionSupportEntryResp::read_from_bytes(&rsp_buf[6..10]).unwrap();
+        assert_eq!(version_1_1.major, 0xF1);
+        assert_eq!(version_1_1.minor, 0xF1);
+        assert_eq!(version_1_1.update, 0xFF);
+        assert_eq!(version_1_1.alpha, 0x00);
+
+        // Check version 1.2 entry
+        let version_1_2: GetVersionSupportEntryResp =
+            GetVersionSupportEntryResp::read_from_bytes(&rsp_buf[10..14]).unwrap();
+        assert_eq!(version_1_2.major, 0xF1);
+        assert_eq!(version_1_2.minor, 0xF2);
+        assert_eq!(version_1_2.update, 0xFF);
+        assert_eq!(version_1_2.alpha, 0x00);
+
+        // Check version 1.3.3 entry
+        let version_1_3_3: GetVersionSupportEntryResp =
+            GetVersionSupportEntryResp::read_from_bytes(&rsp_buf[14..18]).unwrap();
+        assert_eq!(version_1_3_3.major, 0xF1);
+        assert_eq!(version_1_3_3.minor, 0xF3);
+        assert_eq!(version_1_3_3.update, 0xF3);
+        assert_eq!(version_1_3_3.alpha, 0x00);
+    }
+
+    #[test]
+    fn test_get_version_support_unsupported() {
+        let req = [0x01]; // DSP0241 version type (unsupported)
+        let rsp_buf = &mut [0; 18];
+
+        MCTPCtrlCmd::GetVersionSupport
+            .process_get_version_support(&req, rsp_buf)
+            .unwrap();
+
+        // Check header (first 2 bytes)
+        let header: GetVersionSupportHeaderResp =
+            GetVersionSupportHeaderResp::read_from_bytes(&rsp_buf[..2]).unwrap();
+        assert_eq!(header.completion_code, 0x80); // Unsupported
+        assert_eq!(header.entry_counter, 0);
     }
 }
