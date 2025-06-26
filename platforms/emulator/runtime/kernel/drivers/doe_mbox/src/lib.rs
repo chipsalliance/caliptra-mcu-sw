@@ -184,7 +184,8 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
         let rx_buf = match self.client_rx_buf.take() {
             Some(buf) => buf,
             None => {
-                panic!("DOE_MBOX_DRIVER: No RX buffer available. This should not happen in normal operation.");
+                debug!("DOE_MBOX_DRIVER: Error! No RX buffer available. This should not happen in normal operation.");
+                return;
             }
         };
 
@@ -195,12 +196,17 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
             .doe_mbox_event
             .modify(DoeMboxEvent::DataReady::SET);
 
+        let doe_buf = match self.doe_data_buf.take() {
+            Some(buf) => buf,
+            None => {
+                debug!("DOE_MBOX_DRIVER: Error! No DOE data buffer available. This should not happen in normal operation.");
+                return;
+            }
+        };
+
         if let Some(client) = self.rx_client.get() {
             // If the RX buffer is not large enough, we cannot receive data
             // Notify the client to set a larger receive buffer
-            let doe_buf = self.doe_data_buf.take().unwrap_or_else(|| {
-                panic!("DOE_MBOX_DRIVER: No DOE data buffer available. This should not happen in normal operation.");
-            });
             let copy_len_dwords = data_len.min(rx_buf.len() / 4);
             for (i, dword) in doe_buf.iter().enumerate().take(copy_len_dwords) {
                 let start = i * 4;
@@ -229,12 +235,14 @@ impl<'a, A: Alarm<'a>> AlarmClient for EmulatedDoeTransport<'a, A> {
                 self.tx_client.map(|client| {
                     if let Some(buf) = self.client_tx_buf.take() {
                         client.send_done(buf, Ok(()));
+                        self.registers
+                            .doe_mbox_status
+                            .write(DoeMboxStatus::DataReady::SET);
                     } else {
-                        panic!("DOE_MBOX_DRIVER: No client buffer available for send_done");
+                        self.registers
+                            .doe_mbox_status
+                            .write(DoeMboxStatus::Error::SET);
                     }
-                    self.registers
-                        .doe_mbox_status
-                        .write(DoeMboxStatus::DataReady::SET);
                 });
                 if self.pending_reset.get() {
                     // If we were in TxInProgress state, we need to reset the state
@@ -277,7 +285,6 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
         Ok(())
     }
 
-    // #[allow(clippy::manual_memcpy)]
     fn transmit(
         &self,
         tx_buf: &'static mut [u8],
@@ -299,9 +306,13 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
 
         self.state.set(DoeMboxState::TxInProgress);
 
-        let doe_buf = self.doe_data_buf.take().unwrap_or_else (|| {
-            panic!("DOE_MBOX_DRIVER: No DOE data buffer available. This should not happen in normal operation.");
-        });
+        let doe_buf = match self.doe_data_buf.take() {
+            Some(buf) => buf,
+            None => {
+                debug!("DOE_MBOX_DRIVER: Error! No DOE data buffer available. This should not happen in normal operation.");
+                return Err((ErrorCode::FAIL, tx_buf));
+            }
+        };
 
         doe_buf.fill(0);
 

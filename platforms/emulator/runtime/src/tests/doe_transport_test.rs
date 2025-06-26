@@ -67,12 +67,6 @@ impl<'a> DeferredCallClient for EmulatedDoeTransportTester<'a> {
 
 impl DoeTransportRxClient for EmulatedDoeTransportTester<'_> {
     fn receive(&self, rx_buf: &'static mut [u8], len: usize) {
-        // copy the data into the rx_buf
-        // let rx_buf = self.tx_rx_buf.take().expect("rx_buf not initialized");
-        // if len > rx_buf.len() {
-        //     panic!("Received data length exceeds buffer size");
-        // }
-
         println!("EMULATED_DOE_TRANSPORT_TESTER: Received {} bytes", len);
 
         self.tx_rx_buf.replace(rx_buf);
