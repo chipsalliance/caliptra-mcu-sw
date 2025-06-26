@@ -243,7 +243,7 @@ impl Default for DoeMboxInner {
 impl DoeMboxInner {
     fn new() -> Self {
         DoeMboxInner {
-            mbox_sram: Vec::new(),
+            mbox_sram: vec![0u32; 1 << 18],
             max_sram_dword_size: (1 << 18), // Example size, adjust as needed
             mbox_dlen: ReadWriteRegister::new(0),
             mbox_event: ReadWriteRegister::new(0),
@@ -256,16 +256,12 @@ impl DoeMboxInner {
         self.mbox_dlen.reg.set(0);
         self.mbox_event.reg.set(0);
         self.mbox_status.reg.set(0);
-        self.mbox_sram.clear(); // Clear the SRAM
+        self.mbox_sram.fill(0); // Clear the SRAM
     }
 
     fn check_interrupts(&mut self) -> bool {
         // Check if any relevant bits (DataReady or ResetReq) are set in the event register
         let event_val = self.mbox_event.reg.get();
-        // println!(
-        //     "DOE_MBOX_PERIPH: Checking interrupts, event value: {:#x}",
-        //     event_val
-        // );
         (event_val & DoeMboxEvent::DataReady::SET.value != 0)
             || (event_val & DoeMboxEvent::ResetReq::SET.value != 0)
     }
@@ -288,10 +284,6 @@ impl DoeMboxInner {
         }
 
         if index < self.mbox_sram.len() {
-            self.mbox_sram[index] = val;
-        } else {
-            // Extend the SRAM vector if necessary
-            self.mbox_sram.resize(index + 1, 0);
             self.mbox_sram[index] = val;
         }
     }
