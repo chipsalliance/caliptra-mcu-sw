@@ -9,7 +9,7 @@ pub trait DoeTransportTxClient {
     /// # Arguments
     /// * `tx_buf` - buffer containing the DOE data object that was transmitted
     /// * `result` - Result indicating success or failure of the transmission
-    fn send_done(&self, tx_buf: &'static mut [u8], result: Result<(), ErrorCode>);
+    fn send_done(&self, tx_buf: &'static mut [u32], result: Result<(), ErrorCode>);
 }
 
 pub trait DoeTransportRxClient {
@@ -17,8 +17,8 @@ pub trait DoeTransportRxClient {
     ///
     /// # Arguments
     /// * `rx_buf` - buffer containing the received DOE data object
-    /// * `len` - The length of the data received in bytes
-    fn receive(&self, rx_buf: &'static mut [u8], len: usize);
+    /// * `len_dwords` - The length of the data received in dwords
+    fn receive(&self, rx_buf: &'static mut [u32], len_dwords: usize);
     /// receive expected callback. This is called when a DOE data object is received,
     /// but buffer is not available with the driver to copy the data into.
     /// The client must call `set_rx_buffer()` to set the buffer
@@ -31,7 +31,7 @@ pub trait DoeTransport {
     fn set_rx_client(&self, client: &'static dyn DoeTransportRxClient);
 
     /// Sets the buffer used for receiving incoming DOE Objects.
-    fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
+    fn set_rx_buffer(&self, rx_buf: &'static mut [u32]);
 
     /// Gets the maximum size of the data object that can be sent or received over DOE Transport.
     fn max_data_object_size(&self) -> usize;
@@ -49,7 +49,7 @@ pub trait DoeTransport {
     /// * `len` - The length of the message in bytes
     fn transmit(
         &self,
-        tx_buf: &'static mut [u8],
+        tx_buf: &'static mut [u32],
         len: usize,
-    ) -> Result<(), (ErrorCode, &'static mut [u8])>;
+    ) -> Result<(), (ErrorCode, &'static mut [u32])>;
 }

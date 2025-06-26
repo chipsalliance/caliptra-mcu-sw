@@ -45,8 +45,8 @@ pub struct EmulatedDoeTransport<'a, A: Alarm<'a>> {
     doe_data_buf_len: usize,
 
     // Client buffers for tx and rx.
-    client_rx_buf: TakeCell<'static, [u8]>,
-    client_tx_buf: TakeCell<'static, [u8]>,
+    client_rx_buf: TakeCell<'static, [u32]>,
+    client_tx_buf: TakeCell<'static, [u32]>,
 
     pending_reset: Cell<bool>,
 
@@ -175,7 +175,7 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
         }
 
         if self.client_rx_buf.is_none() {
-            // Start the receive timeout timer
+            // Schedule a retry to receive data
             // and exit the interrupt handler
             self.schedule_receive_retry();
             return;
@@ -188,8 +188,6 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
                 return;
             }
         };
-
-        // self.state.set(DoeMboxState::RxInProgress);
 
         // Clear the DATA_READY event, writing 1 to the event register
         self.registers
@@ -204,20 +202,15 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
             }
         };
 
+        // If we have a client, notify it with the received data
         if let Some(client) = self.rx_client.get() {
-            // If the RX buffer is not large enough, we cannot receive data
-            // Notify the client to set a larger receive buffer
-            let copy_len_dwords = data_len.min(rx_buf.len() / 4);
+            let copy_len_dwords = data_len.min(rx_buf.len());
             for (i, dword) in doe_buf.iter().enumerate().take(copy_len_dwords) {
-                let start = i * 4;
-                let end = start + 4;
-                rx_buf[start..end].copy_from_slice(&dword.to_le_bytes()[..end - start]);
+                rx_buf[i] = *dword;
             }
             self.doe_data_buf.replace(doe_buf);
-            // If we have a client, notify it with the received data
-            client.receive(rx_buf, copy_len_dwords * 4);
+            client.receive(rx_buf, copy_len_dwords);
             self.state.set(DoeMboxState::TxWait); // Wait for transmit to be called
-                                                  // self.start_transmit_timeout_timer(); // receive timeout timer is automatically cancelled
         }
     }
 }
@@ -267,7 +260,7 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
         self.rx_client.set(client);
     }
 
-    fn set_rx_buffer(&self, rx_buf: &'static mut [u8]) {
+    fn set_rx_buffer(&self, rx_buf: &'static mut [u32]) {
         self.client_rx_buf.replace(rx_buf);
     }
 
@@ -287,21 +280,16 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
 
     fn transmit(
         &self,
-        tx_buf: &'static mut [u8],
-        len: usize,
-    ) -> Result<(), (ErrorCode, &'static mut [u8])> {
+        tx_buf: &'static mut [u32],
+        len_dwords: usize,
+    ) -> Result<(), (ErrorCode, &'static mut [u32])> {
         if self.state.get() != DoeMboxState::TxWait {
             debug!("DOE Mbox: Cannot transmit, not in TxWait state");
             return Err((ErrorCode::FAIL, tx_buf));
         }
 
-        if len > self.max_data_object_size() {
+        if len_dwords > self.max_data_object_size() {
             return Err((ErrorCode::SIZE, tx_buf));
-        }
-
-        if len % 4 != 0 {
-            // The DOE data object must be a multiple of 4 bytes
-            return Err((ErrorCode::INVAL, tx_buf));
         }
 
         self.state.set(DoeMboxState::TxInProgress);
@@ -316,18 +304,14 @@ impl<'a, A: Alarm<'a>> DoeTransport for EmulatedDoeTransport<'a, A> {
 
         doe_buf.fill(0);
 
-        let data_len = len / 4; // Length in DWORDs
-
-        for (i, chunk) in tx_buf.chunks(4).enumerate().take(data_len) {
-            let mut dword = [0u8; 4];
-            dword[..chunk.len()].copy_from_slice(chunk);
-            doe_buf[i] = u32::from_le_bytes(dword);
+        for (i, dword) in tx_buf.iter().enumerate().take(len_dwords) {
+            doe_buf[i] = *dword;
         }
 
         self.doe_data_buf.replace(doe_buf);
 
         // Set data len and data ready in the status register
-        self.registers.doe_mbox_dlen.set(data_len as u32);
+        self.registers.doe_mbox_dlen.set(len_dwords as u32);
 
         if let Some(_client) = self.tx_client.get() {
             // hold on to the client buffer until send_done is called

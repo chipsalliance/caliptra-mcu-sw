@@ -3,8 +3,8 @@
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
 use rand::Rng;
 const NUM_TEST_VECTORS: usize = 10;
-const MIN_TEST_DATA_SIZE: usize = 2 * 4; // minimum size of test vectors
-const MAX_TEST_DATA_SIZE: usize = 128 * 4; // maximum size of test vectors
+const MIN_TEST_DATA_DWORDS: usize = 2; // minimum size of test vectors
+const MAX_TEST_DATA_DWORDS: usize = 128; // maximum size of test vectors
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -24,7 +24,7 @@ pub fn generate_tests() -> Vec<Box<dyn DoeTransportTest + Send>> {
     let mut tests: Vec<Box<dyn DoeTransportTest + Send>> = Vec::new();
     for _ in 0..NUM_TEST_VECTORS {
         // Generate a random size (multiple of 4 bytes)
-        let num_words = rng.gen_range((MIN_TEST_DATA_SIZE / 4)..=(MAX_TEST_DATA_SIZE / 4));
+        let num_words = rng.gen_range((MIN_TEST_DATA_DWORDS)..=(MAX_TEST_DATA_DWORDS));
         let mut vector = vec![0u8; num_words * 4];
         rng.fill(vector.as_mut_slice());
         tests.push(Box::new(Test {
