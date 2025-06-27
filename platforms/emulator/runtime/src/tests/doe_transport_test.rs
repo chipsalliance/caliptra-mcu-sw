@@ -26,7 +26,7 @@ pub enum IoState {
 
 struct EmulatedDoeTransportTester<'a> {
     doe_mbox: &'a EmulatedDoeTransport<'static, InternalTimers<'static>>,
-    tx_rx_buf: TakeCell<'static, [u8]>,
+    tx_rx_buf: TakeCell<'static, [u32]>,
     state: Cell<IoState>,
     data_len: Cell<usize>,
     deferred_call: DeferredCall,
@@ -35,7 +35,7 @@ struct EmulatedDoeTransportTester<'a> {
 impl EmulatedDoeTransportTester<'_> {
     pub fn new(
         doe_mbox: &'static EmulatedDoeTransport<'static, InternalTimers<'static>>,
-        test_buf: &'static mut [u8],
+        test_buf: &'static mut [u32],
     ) -> Self {
         Self {
             doe_mbox,
@@ -55,7 +55,8 @@ impl<'a> DeferredCallClient for EmulatedDoeTransportTester<'a> {
 
             println!("EMULATED_DOE_TRANSPORT_TESTER: Sending {} bytes", len);
 
-            _ = self.doe_mbox.transmit(test_tx_buf, len);
+            _ = self.doe_mbox.transmit(test_tx_buf.iter().copied(), len);
+            self.tx_rx_buf.replace(test_tx_buf);
             self.state.set(IoState::Sent);
         }
     }
@@ -69,7 +70,7 @@ impl DoeTransportRxClient for EmulatedDoeTransportTester<'_> {
     fn receive(&self, rx_buf: &'static mut [u32], len_dw: usize) {
         println!("EMULATED_DOE_TRANSPORT_TESTER: Received {} dwords", len_dw);
 
-        if len_dw * 4 > TEST_BUF_LEN {
+        if len_dw > TEST_BUF_LEN {
             panic!("Received data length exceeds buffer size");
         }
 
@@ -80,40 +81,24 @@ impl DoeTransportRxClient for EmulatedDoeTransportTester<'_> {
             .expect("rx_buf not available for receiving data");
 
         for (i, &val) in rx_buf.iter().enumerate().take(len_dw) {
-            let bytes = val.to_le_bytes();
-            let start = i * 4;
-            let end = start + 4;
-            test_rx_buf[start..end].copy_from_slice(&bytes);
+            test_rx_buf[i] = val;
         }
 
         // Set the received buffer back in the doe_mbox
         self.doe_mbox.set_rx_buffer(rx_buf);
 
         self.tx_rx_buf.replace(test_rx_buf);
-        self.data_len.set(len_dw * 4); // Store the length of the received data
+        self.data_len.set(len_dw); // Store the length of the received data
         self.deferred_call.set();
 
         self.state.set(IoState::Received);
     }
-
-    // fn receive_expected(&self) {
-    //     // This function can be used to handle expected data reception
-    //     // For now, we just set the state to Received
-    //     self.doe_mbox
-    //         .set_rx_buffer(self.tx_rx_buf.take().expect("rx_buf not available"));
-    // }
 }
 
 impl<'a> DoeTransportTxClient<'a> for EmulatedDoeTransportTester<'a> {
-    fn send_done(&self, buf: &'a [u8], result: Result<(), kernel::ErrorCode>) {
+    fn send_done(&self, result: Result<(), kernel::ErrorCode>) {
         assert!(result.is_ok(), "Failed to send data: {:?}", result);
 
-        let buf_ptr = buf.as_ptr() as *mut u8;
-        let buf_len = buf.len();
-        // SAFETY: The buffer returned here is the same one previously passed to transmit().
-        // We can safely reconstruct a static mutable slice for reuse in next receive operation in test.
-        let static_buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, buf_len) };
-        self.tx_rx_buf.replace(static_buf);
         self.state.set(IoState::Idle);
     }
 }
@@ -122,8 +107,8 @@ pub fn test_doe_transport_loopback() -> Option<u32> {
     let peripherals = unsafe { EMULATOR_PERIPHERALS.unwrap() };
     let doe_mbox = &peripherals.doe_transport;
 
-    let tx_rx_buffer = unsafe { static_buf!([u8; TEST_BUF_LEN]) };
-    let tx_rx_buffer = tx_rx_buffer.write([0u8; TEST_BUF_LEN]) as &'static mut [u8];
+    let tx_rx_buffer = unsafe { static_buf!([u32; TEST_BUF_LEN]) };
+    let tx_rx_buffer = tx_rx_buffer.write([0u32; TEST_BUF_LEN]) as &'static mut [u32];
     let tester = unsafe {
         static_init!(
             EmulatedDoeTransportTester<'static>,

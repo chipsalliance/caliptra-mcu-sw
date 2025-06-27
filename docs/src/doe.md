@@ -116,15 +116,13 @@ pub struct DoeDriver {
 The DOE Transport trait defines a platform-agnostic interface for sending and receiving DOE data objects. Integrators must provide a SoC-specific implementation of this trait to enable PCI-DOE communication with the host.
 
 ```Rust
-/// MAX PCI-DOE DATA OBJECT LENGTH
-const MAX_PCI_DOE_LEN: usize = 1 << 18; // In DWORDS
-pub trait DoeTransportTxClient {
+
+pub trait DoeTransportTxClient<'a> {
     /// Called by driver to notify that the DOE data object transmission is done.
     ///
     /// # Arguments
-    /// * `tx_buf` - buffer containing the DOE data object that was transmitted
     /// * `result` - Result indicating success or failure of the transmission
-    fn send_done(&self, tx_buf: &'static mut [u8], result: Result<(), ErrorCode>);
+    fn send_done(&self, result: Result<(), ErrorCode>);
 }
 
 pub trait DoeTransportRxClient {
@@ -132,21 +130,18 @@ pub trait DoeTransportRxClient {
     ///
     /// # Arguments
     /// * `rx_buf` - buffer containing the received DOE data object
-    /// * `len` - The length of the data received in bytes
-    fn receive(&self, rx_buf: &'static mut [u8], len: usize);
-    /// receive expected callback. This is called when a DOE data object is received,
-    /// but buffer is not available with the driver to copy the data into.
-    /// The client must call `set_rx_buffer()` to set the buffer
-    fn receive_expected(&self);
+    /// * `len_dw` - The length of the data received in dwords
+    fn receive(&self, rx_buf: &'static mut [u32], len_dw: usize);
 }
 
-pub trait DoeTransport {
+pub trait DoeTransport<'a> {
     /// Sets the transmit and receive clients for the DOE transport instance
-    fn set_tx_client(&self, client: &'static dyn DoeTransportTxClient);
-    fn set_rx_client(&self, client: &'static dyn DoeTransportRxClient);
+    fn set_tx_client(&self, client: &'a dyn DoeTransportTxClient<'a>);
+    fn set_rx_client(&self, client: &'a dyn DoeTransportRxClient);
 
     /// Sets the buffer used for receiving incoming DOE Objects.
-    fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
+    /// This should be called in receive()
+    fn set_rx_buffer(&self, rx_buf: &'static mut [u32]);
 
     /// Gets the maximum size of the data object that can be sent or received over DOE Transport.
     fn max_data_object_size(&self) -> usize;
@@ -160,12 +155,9 @@ pub trait DoeTransport {
     /// Send DOE Object to be transmitted over SoC specific DOE transport.
     ///
     /// # Arguments
-    /// * `tx_buf` - A reference to the DOE data object to be transmitted.
-    /// * `len` - The length of the message in bytes
-    fn transmit(
-        &self,
-        tx_buf: &'static mut [u8],
-        len: usize,
-    ) -> Result<(), (ErrorCode, &'static mut [u8])>;
+    /// * `tx_buf` - Iterator that yields u32 values from data object to be transmitted.
+    /// * `len` - The length of the message in dwords (4-byte words).
+    fn transmit(&self, tx_buf: impl Iterator<Item = u32>, len_dw: usize) -> Result<(), ErrorCode>;
 }
+
 ```
