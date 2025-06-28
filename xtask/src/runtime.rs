@@ -15,7 +15,6 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         caliptra_rom,
         caliptra_firmware,
         soc_manifest,
-        active_mode,
         manufacturing_mode,
         vendor_pk_hash,
         streaming_boot,
@@ -44,7 +43,6 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     .into();
 
     let mut caliptra_builder = CaliptraBuilder::new(
-        active_mode,
         false,
         caliptra_rom,
         caliptra_firmware,
@@ -64,7 +62,6 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         "emulator",
         "--release",
         "--",
-        "--caliptra",
         "--rom",
         rom_binary.to_str().unwrap(),
         "--firmware",
@@ -157,9 +154,6 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     }
     if trace {
         cargo_run_args.extend(["-t", "-l", PROJECT_ROOT.to_str().unwrap()]);
-    }
-    if active_mode {
-        cargo_run_args.extend(["--active-mode"]);
     }
     if manufacturing_mode {
         cargo_run_args.extend(["--manufacturing-mode"]);

@@ -22,7 +22,6 @@ use std::{num::ParseIntError, path::PathBuf, str::FromStr};
 use zerocopy::{transmute, IntoBytes};
 
 pub struct CaliptraBuilder {
-    active_mode: bool,
     fpga: bool,
     caliptra_rom: Option<PathBuf>,
     caliptra_firmware: Option<PathBuf>,
@@ -35,7 +34,6 @@ pub struct CaliptraBuilder {
 impl CaliptraBuilder {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        active_mode: bool,
         fpga: bool,
         caliptra_rom: Option<PathBuf>,
         caliptra_firmware: Option<PathBuf>,
@@ -45,7 +43,6 @@ impl CaliptraBuilder {
         soc_images: Option<Vec<SocImage>>,
     ) -> Self {
         Self {
-            active_mode,
             fpga,
             caliptra_rom,
             caliptra_firmware,
@@ -72,7 +69,7 @@ impl CaliptraBuilder {
             if !caliptra_firmware.exists() {
                 bail!("Caliptra runtime bundle not found: {:?}", caliptra_firmware);
             }
-            if self.active_mode && self.vendor_pk_hash.is_none() {
+            if self.vendor_pk_hash.is_none() {
                 bail!("Vendor public key hash is required for active mode if Caliptra FW is passed as an argument");
             }
         } else {

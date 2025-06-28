@@ -52,9 +52,6 @@ enum Commands {
         #[arg(long)]
         caliptra_firmware: Option<PathBuf>,
 
-        #[arg(long, default_value_t = false)]
-        active_mode: bool,
-
         #[clap(long, default_value_t = false)]
         manufacturing_mode: bool,
 

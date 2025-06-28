@@ -92,27 +92,19 @@ struct Emulator {
     #[arg(long = "stdin-uart", overrides_with = "stdin_uart")]
     _no_stdin_uart: bool,
 
-    /// Start a Caliptra CPU as well and connect to the MCU.
-    #[arg(short, long, default_value_t = false)]
-    caliptra: bool,
-
     /// The ROM path for the Caliptra CPU.
     #[arg(long)]
-    caliptra_rom: Option<PathBuf>,
+    caliptra_rom: PathBuf,
 
     /// The Firmware path for the Caliptra CPU.
     #[arg(long)]
-    caliptra_firmware: Option<PathBuf>,
+    caliptra_firmware: PathBuf,
 
     #[arg(long)]
-    soc_manifest: Option<PathBuf>,
+    soc_manifest: PathBuf,
 
     #[arg(long)]
     i3c_port: Option<u16>,
-
-    /// Boot active mode (MCU firmware will need to be loaded by Caliptra Core)
-    #[arg(long)]
-    active_mode: bool,
 
     /// This is only needed if the IDevID CSR needed to be generated in the Caliptra Core.
     #[arg(long)]
@@ -289,10 +281,10 @@ fn read_console(running: Arc<AtomicBool>, stdin_uart: Option<Arc<Mutex<Option<u8
 fn free_run(
     running: Arc<AtomicBool>,
     mut mcu_cpu: Cpu<AutoRootBus>,
-    mut caliptra_cpu: Option<CaliptraMainCpu<CaliptraMainRootBus>>,
+    mut caliptra_cpu: CaliptraMainCpu<CaliptraMainRootBus>,
     trace_path: Option<PathBuf>,
     stdin_uart: Option<Arc<Mutex<Option<u8>>>>,
-    mut bmc: Option<Bmc>,
+    mut bmc: Bmc,
 ) {
     // read from the console in a separate thread to prevent blocking
     let running_clone = running.clone();
@@ -335,19 +327,13 @@ fn free_run(
             if action != StepAction::Continue {
                 break;
             }
-            match caliptra_cpu
-                .as_mut()
-                .map(|cpu| cpu.step(Some(caliptra_trace_fn)))
-            {
-                Some(CaliptraMainStepAction::Continue) | None => {}
+            match caliptra_cpu.step(Some(caliptra_trace_fn)) {
+                CaliptraMainStepAction::Continue => {}
                 _ => {
                     println!("Caliptra CPU Halted");
-                    caliptra_cpu = None;
                 }
             }
-            if let Some(bmc) = bmc.as_mut() {
-                bmc.step();
-            }
+            bmc.step();
         }
     } else {
         while running.load(std::sync::atomic::Ordering::Relaxed) {
@@ -360,16 +346,13 @@ fn free_run(
             if action != StepAction::Continue {
                 break;
             }
-            match caliptra_cpu.as_mut().map(|cpu| cpu.step(None)) {
-                Some(CaliptraMainStepAction::Continue) | None => {}
+            match caliptra_cpu.step(None) {
+                CaliptraMainStepAction::Continue => {}
                 _ => {
                     println!("Caliptra CPU Halted");
-                    caliptra_cpu = None;
                 }
             }
-            if let Some(bmc) = bmc.as_mut() {
-                bmc.step();
-            }
+            bmc.step();
         }
     };
 }
@@ -420,7 +403,6 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         })
         .unwrap();
     }
-    let active_mode = cli.active_mode;
     let args_rom = &cli.rom;
     let args_log_dir = &cli.log_dir.unwrap_or_else(|| PathBuf::from("/tmp"));
 
@@ -429,52 +411,29 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         exit(-1);
     }
 
-    let (mut caliptra_cpu, soc_to_caliptra) = if cli.caliptra {
-        if cli.gdb_port.is_some() {
-            println!("Caliptra CPU cannot be started with GDB enabled");
-            exit(-1);
-        }
-        if cli.caliptra_rom.is_none() {
-            println!("Caliptra ROM File is required if Caliptra is enabled");
-            exit(-1);
-        }
+    if cli.gdb_port.is_some() {
+        println!("Caliptra CPU cannot be started with GDB enabled");
+        exit(-1);
+    }
 
-        let device_lifecycle: Option<String> = if cli.manufacturing_mode {
-            Some("manufacturing".into())
-        } else {
-            Some("production".into())
-        };
-
-        let req_idevid_csr: Option<bool> = if cli.manufacturing_mode {
-            Some(true)
-        } else {
-            None
-        };
-
-        let (caliptra_cpu, soc_to_caliptra) = start_caliptra(&StartCaliptraArgs {
-            rom: cli.caliptra_rom,
-            device_lifecycle,
-            req_idevid_csr,
-            active_mode,
-            firmware: if active_mode {
-                None
-            } else {
-                cli.caliptra_firmware.clone()
-            },
-            ..Default::default()
-        })
-        .expect("Failed to start Caliptra CPU");
-        assert!(caliptra_cpu.is_some());
-        (caliptra_cpu, soc_to_caliptra)
+    let device_lifecycle: Option<String> = if cli.manufacturing_mode {
+        Some("manufacturing".into())
     } else {
-        // still create the external bus for the mailbox and SoC interfaces
-        let (caliptra_cpu, soc_to_caliptra) = start_caliptra(&StartCaliptraArgs {
-            ..Default::default()
-        })
-        .expect("Failed to start Caliptra CPU");
-        assert!(caliptra_cpu.is_none());
-        (None, soc_to_caliptra)
+        Some("production".into())
     };
+
+    let req_idevid_csr: Option<bool> = if cli.manufacturing_mode {
+        Some(true)
+    } else {
+        None
+    };
+
+    let (mut caliptra_cpu, soc_to_caliptra) = start_caliptra(&StartCaliptraArgs {
+        rom: cli.caliptra_rom,
+        device_lifecycle,
+        req_idevid_csr,
+    })
+    .expect("Failed to start Caliptra CPU");
 
     let rom_buffer = read_binary(args_rom, 0)?;
     if rom_buffer.len() > ROM_SIZE as usize {
@@ -487,7 +446,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         rom_buffer.len(),
     );
 
-    if active_mode && cli.firmware.is_none() {
+    if cli.firmware.is_none() {
         println!("Active mode requires an MCU firmware file to be passed");
         exit(-1);
     }
@@ -633,12 +592,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         pic: pic.clone(),
         clock: clock.clone(),
     };
-    let mut root_bus = McuRootBus::new(bus_args).unwrap();
-
-    if !active_mode {
-        root_bus.load_ram(0x80, &mcu_firmware);
-    }
-
+    let root_bus = McuRootBus::new(bus_args).unwrap();
     let dma_ram = root_bus.ram.clone();
     let dma_rom_sram = root_bus.rom_sram.clone();
 
@@ -921,48 +875,25 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     cpu.write_pc(mcu_root_bus_offsets.rom_offset);
     cpu.register_events();
 
-    let mut bmc = match caliptra_cpu.as_mut() {
-        Some(caliptra_cpu) => {
-            println!("Initializing recovery interface");
-            let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
-            let (mcu_event_sender, mcu_event_reciever) = cpu.register_events();
-            let bmc = Bmc::new(
-                caliptra_event_sender,
-                caliptra_event_receiver,
-                mcu_event_sender,
-                mcu_event_reciever,
-            );
-            Some(bmc)
-        }
-        _ => None,
-    };
-
+    println!("Initializing recovery interface");
+    let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
+    let (mcu_event_sender, mcu_event_reciever) = cpu.register_events();
     // prepare the BMC recovery interface emulator
-    if active_mode {
-        if bmc.is_none() {
-            println!("Active mode is only supported when Caliptra CPU is enabled");
-            exit(-1);
-        }
-        let bmc = bmc.as_mut().unwrap();
+    let mut bmc = Bmc::new(
+        caliptra_event_sender,
+        caliptra_event_receiver,
+        mcu_event_sender,
+        mcu_event_reciever,
+    );
 
-        // load the firmware images and SoC manifest into the recovery interface emulator
-        // TODO: support reading these from firmware bundle as well
-        let Some(caliptra_firmware) = cli.caliptra_firmware else {
-            println!("Caliptra firmware file is required in active mode");
-            exit(-1);
-        };
-        let Some(soc_manifest) = cli.soc_manifest else {
-            println!("SoC manifest file is required in active mode");
-            exit(-1);
-        };
-        let caliptra_firmware = read_binary(&caliptra_firmware, RAM_ORG).unwrap();
-        let soc_manifest = read_binary(&soc_manifest, 0).unwrap();
-        bmc.push_recovery_image(caliptra_firmware);
-        bmc.push_recovery_image(soc_manifest);
-        bmc.push_recovery_image(mcu_firmware);
-        println!("Active mode enabled with 3 recovery images");
-        // TODO: set caliptra SoC registers if active mode
-    }
+    // load the firmware images and SoC manifest into the recovery interface emulator
+
+    let caliptra_firmware = read_binary(&cli.caliptra_firmware, RAM_ORG).unwrap();
+    let soc_manifest = read_binary(&cli.soc_manifest, 0).unwrap();
+    bmc.push_recovery_image(caliptra_firmware);
+    bmc.push_recovery_image(soc_manifest);
+    bmc.push_recovery_image(mcu_firmware);
+    println!("Active mode enabled with 3 recovery images");
 
     if cli.streaming_boot.is_some() {
         let _ = simple_logger::SimpleLogger::new()
