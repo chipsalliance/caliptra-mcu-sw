@@ -2,7 +2,7 @@
 
 MCU has the [OpenTitan fuse controller](https://opentitan.org/book/hw/ip/otp_ctrl/) (OTP) and [Lifecycle controller](https://opentitan.org/book/hw/ip/lc_ctrl/) (LC), which sit on top of a process-specific fuse macro and manages them with a uniform interface.
 
-The hardware has provisioned the OTP controller with an overall structure that has Calitpra- and general Subsystem-specific blocks, which are required, and vendor-defined blocks.
+The hardware has provisioned the OTP controller with an overall structure that has Caliptra- and general Subsystem-specific blocks, which are required, and vendor-defined blocks.
 
 As part of the Fuse API, we support defining the vendor-specific fuses and assist in provisioning the Caliptra- and vendor-specific fuses.
 
