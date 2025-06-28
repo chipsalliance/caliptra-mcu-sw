@@ -14,3 +14,4 @@
     - [External MCTP VDM Commands](./external_mctp_vdm_cmds.md)
     - [Unified External Command Handling](./unified_external_command_handling.md)
     - [Logging](./logging.md)
+    - [In-Field Fuse Programming](./fuses.md)
