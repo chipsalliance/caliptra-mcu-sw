@@ -17,6 +17,7 @@ use elf::endian::AnyEndian;
 use elf::ElfBytes;
 use mcu_config::McuMemoryMap;
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -275,17 +276,54 @@ fn write_cached_values(platform: &str, values: &CachedValues) {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn runtime_build_with_apps_cached(
-    features: &[&str],
-    output_name: Option<&str>,
-    example_app: bool,
-    platform: Option<&str>,
-    memory_map: Option<&McuMemoryMap>,
-    use_dccm_for_stack: bool,
-    dccm_offset: Option<u32>,
-    dccm_size: Option<u32>,
-) -> Result<String> {
+#[derive(Default)]
+pub struct RuntimeBuildArgs {
+    /// Features to build with
+    pub features: Vec<String>,
+    /// Name of the output binary
+    pub output_name: Option<String>,
+    /// Whether to build the example application
+    pub example_app: bool,
+    /// Platform to build for (e.g., "emulator", "fpga")
+    pub platform: Option<String>,
+    /// Memory map to use for the build
+    pub memory_map: Option<&'static McuMemoryMap>,
+    /// If present, use DCCM for stack (specified offset and size)
+    pub dccm: Option<(u32, u32)>,
+}
+
+impl RuntimeBuildArgs {
+    fn canonical_name(&self) -> String {
+        let mut output = "runtime".to_string();
+        if let Some(platform) = self.platform.as_deref() {
+            output += "-";
+            output += platform;
+        }
+        if !self.features.is_empty() {
+            output += "-";
+            output += &self.features.join("-");
+        }
+        if self.example_app {
+            output += "-example";
+        }
+        if let Some((dccm_offset, dccm_size)) = self.dccm {
+            output += &format!("-dccm-{:x}-{:x}", dccm_offset, dccm_size);
+        }
+        output += ".bin";
+        output
+    }
+}
+
+pub fn runtime_build_with_apps_cached(args: &RuntimeBuildArgs) -> Result<String> {
+    let features = args.features.iter().map(|x| x.as_str()).collect::<Vec<_>>();
+    let output_name = args.output_name.as_deref();
+    let example_app = args.example_app;
+    let platform = args.platform.as_deref();
+    let memory_map = args.memory_map;
+    let use_dccm_for_stack = args.dccm.is_some();
+    let dccm_offset = args.dccm.as_ref().map(|(offset, _)| *offset);
+    let dccm_size = args.dccm.as_ref().map(|(_, size)| *size);
+
     let memory_map = memory_map.unwrap_or(&mcu_config_emulator::EMULATOR_MEMORY_MAP);
     let mut app_offset = memory_map.sram_offset as usize;
     let output_name = output_name.unwrap_or(DEFAULT_RUNTIME_NAME);
@@ -303,7 +341,7 @@ pub fn runtime_build_with_apps_cached(
         cached_values.kernel_size,
         cached_values.apps_offset,
         cached_values.apps_size,
-        features,
+        &features,
         output_name,
         platform,
         memory_map,
@@ -324,7 +362,7 @@ pub fn runtime_build_with_apps_cached(
                 cached_values.kernel_size,
                 cached_values.apps_offset,
                 cached_values.apps_size,
-                features,
+                &features,
                 output_name,
                 platform,
                 memory_map,
@@ -344,7 +382,7 @@ pub fn runtime_build_with_apps_cached(
     let padding = apps_offset - runtime_end_offset;
 
     // build the apps with the data memory at some incorrect offset
-    let apps_bin = apps_build_flat_tbf(apps_offset, apps_memory_offset, features, example_app)?;
+    let apps_bin = apps_build_flat_tbf(apps_offset, apps_memory_offset, &features, example_app)?;
     let apps_bin_len = apps_bin.len();
     println!("Apps built: {} bytes", apps_bin_len);
 
@@ -358,7 +396,7 @@ pub fn runtime_build_with_apps_cached(
             kernel_size,
             apps_offset,
             apps_bin_len,
-            features,
+            &features,
             output_name,
             platform,
             memory_map,
@@ -381,7 +419,8 @@ pub fn runtime_build_with_apps_cached(
         println!("Rebuilding apps with correct offsets");
 
         // re-link the applications with the correct data memory offsets
-        let apps_bin = apps_build_flat_tbf(apps_offset, apps_memory_offset, features, example_app)?;
+        let apps_bin =
+            apps_build_flat_tbf(apps_offset, apps_memory_offset, &features, example_app)?;
         assert_eq!(
             apps_bin_len,
             apps_bin.len(),

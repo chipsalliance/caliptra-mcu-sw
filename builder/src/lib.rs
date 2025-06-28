@@ -11,6 +11,7 @@ pub use caliptra::{CaliptraBuilder, SocImage};
 pub use rom::{rom_build, rom_ld_script};
 pub use runtime::{
     runtime_build_no_apps_uncached, runtime_build_with_apps_cached, runtime_ld_script,
+    RuntimeBuildArgs,
 };
 
 use anyhow::{anyhow, Result};

@@ -2,7 +2,9 @@
 
 use crate::Commands;
 use anyhow::Result;
-use mcu_builder::{rom_build, runtime_build_with_apps_cached, CaliptraBuilder, PROJECT_ROOT};
+use mcu_builder::{
+    rom_build, runtime_build_with_apps_cached, CaliptraBuilder, RuntimeBuildArgs, PROJECT_ROOT,
+};
 use std::{path::PathBuf, process::Command};
 
 /// Run the Runtime Tock kernel image for RISC-V in the emulator.
@@ -28,18 +30,21 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         panic!("Must call runtime_run with Commands::Runtime");
     };
 
-    let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
     let rom_binary: PathBuf = rom_build(None, "")?.into();
-    let tock_binary: PathBuf = runtime_build_with_apps_cached(
-        &features,
-        None,
-        false,
-        None,
-        None,
-        use_dccm_for_stack,
-        dccm_offset,
-        dccm_size,
-    )?
+    let dccm = if use_dccm_for_stack {
+        Some((
+            dccm_offset.unwrap_or(mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset),
+            dccm_size.unwrap_or(mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size),
+        ))
+    } else {
+        None
+    };
+
+    let tock_binary: PathBuf = runtime_build_with_apps_cached(&RuntimeBuildArgs {
+        features,
+        dccm,
+        ..Default::default()
+    })?
     .into();
 
     let mut caliptra_builder = CaliptraBuilder::new(

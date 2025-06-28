@@ -2,7 +2,7 @@
 mod test_soc_boot;
 #[cfg(test)]
 mod test {
-    use mcu_builder::{CaliptraBuilder, SocImage, TARGET};
+    use mcu_builder::{CaliptraBuilder, RuntimeBuildArgs, SocImage, TARGET};
     use std::process::ExitStatus;
     use std::sync::atomic::AtomicU32;
     use std::sync::Mutex;
@@ -51,16 +51,12 @@ mod test {
     pub fn compile_runtime(feature: &str, example_app: bool) -> PathBuf {
         let output = target_binary(&format!("runtime-{}.bin", feature));
         let output_name = format!("{}", output.display());
-        mcu_builder::runtime_build_with_apps_cached(
-            &[feature],
-            Some(&output_name),
+        mcu_builder::runtime_build_with_apps_cached(&RuntimeBuildArgs {
+            features: vec![feature.to_string()],
+            output_name: Some(output_name.clone()),
             example_app,
-            None,
-            None,
-            false,
-            None,
-            None,
-        )
+            ..Default::default()
+        })
         .expect("Runtime build failed");
         assert!(output.exists());
         output

@@ -6,6 +6,7 @@ pub mod boot;
 
 /// Configures the memory map for the MCU.
 /// These are the defaults that can be overridden and provided to the ROM and runtime builds.
+#[derive(Clone)]
 #[repr(C)]
 pub struct McuMemoryMap {
     pub rom_offset: u32,

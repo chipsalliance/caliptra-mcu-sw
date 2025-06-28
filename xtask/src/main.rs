@@ -3,7 +3,7 @@
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
 use core::panic;
-use mcu_builder::SocImage;
+use mcu_builder::{RuntimeBuildArgs, SocImage};
 use std::path::PathBuf;
 
 mod cargo_lock;
@@ -236,21 +236,29 @@ fn main() {
             dccm_offset,
             dccm_size,
         } => {
-            let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            mcu_builder::runtime_build_with_apps_cached(
-                &features,
-                output.as_deref(),
-                false,
-                platform.as_deref(),
-                match platform.as_deref() {
-                    None | Some("emulator") => Some(&mcu_config_emulator::EMULATOR_MEMORY_MAP),
-                    Some("fpga") => Some(&mcu_config_fpga::FPGA_MEMORY_MAP),
-                    _ => panic!("Unsupported platform"),
-                },
-                *use_dccm_for_stack,
-                *dccm_offset,
-                *dccm_size,
-            )
+            let dccm = if *use_dccm_for_stack {
+                Some((
+                    dccm_offset.unwrap_or(mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset),
+                    dccm_size.unwrap_or(mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size),
+                ))
+            } else {
+                None
+            };
+
+            let memory_map = match platform.as_deref() {
+                None | Some("emulator") => Some(&mcu_config_emulator::EMULATOR_MEMORY_MAP),
+                Some("fpga") => Some(&mcu_config_fpga::FPGA_MEMORY_MAP),
+                _ => panic!("Unsupported platform"),
+            };
+
+            mcu_builder::runtime_build_with_apps_cached(&RuntimeBuildArgs {
+                features: features.clone(),
+                output_name: output.clone(),
+                example_app: false,
+                platform: platform.clone(),
+                memory_map,
+                dccm,
+            })
             .map(|_| ())
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
