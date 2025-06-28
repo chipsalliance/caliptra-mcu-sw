@@ -287,7 +287,7 @@ mod test {
         )
         .expect("Could not build MCU runtime");
         let mut caliptra_builder =
-            mcu_builder::CaliptraBuilder::new(true, false, None, None, None, None, None, None);
+            mcu_builder::CaliptraBuilder::new(false, None, None, None, None, None, None);
         let caliptra_rom = caliptra_builder
             .get_caliptra_rom()
             .expect("Could not build Caliptra ROM");

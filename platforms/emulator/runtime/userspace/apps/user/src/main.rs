@@ -5,15 +5,11 @@
 #![feature(impl_trait_in_assoc_type)]
 #![allow(static_mut_refs)]
 
-use core::fmt::Write;
-use libtock_console::Console;
-use libtockasync::TockExecutor;
-
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
-use libsyscall_caliptra::DefaultSyscalls;
+use libtockasync::TockExecutor;
 
 mod image_loader;
 mod spdm;
@@ -62,9 +58,6 @@ async fn start() {
 }
 
 pub(crate) async fn async_main() {
-    let mut console_writer = Console::<DefaultSyscalls>::writer();
-    writeln!(console_writer, "USER_APP: Hello async world!").unwrap();
-
     EXECUTOR.get().spawner().spawn(spdm::spdm_task()).unwrap();
 
     EXECUTOR

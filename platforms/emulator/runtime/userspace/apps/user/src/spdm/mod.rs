@@ -28,8 +28,6 @@ static HASH_PRIORITY_TABLE: &[BaseHashAlgoType] = &[
 #[embassy_executor::task]
 pub(crate) async fn spdm_task() {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
-    writeln!(console_writer, "SPDM_APP: Hello SPDM async world!").unwrap();
-
     writeln!(console_writer, "SPDM_APP: Running SPDM-APP...").unwrap();
 
     let mut raw_buffer = [0; MAX_MCTP_SPDM_MSG_SIZE];

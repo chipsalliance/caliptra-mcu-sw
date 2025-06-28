@@ -163,7 +163,6 @@ mod test {
         cargo_run_args.extend(["--lc-size", &lc_size]);
 
         let mut caliptra_builder = CaliptraBuilder::new(
-            true,
             false,
             None,
             None,
@@ -177,11 +176,9 @@ mod test {
             if manufacturing_mode {
                 cargo_run_args.push("--manufacturing-mode");
             }
-            cargo_run_args.push("--active-mode");
             let caliptra_rom = caliptra_builder
                 .get_caliptra_rom()
                 .expect("Failed to build Caliptra ROM");
-            cargo_run_args.push("--caliptra");
             cargo_run_args.push("--caliptra-rom");
             cargo_run_args.push(caliptra_rom.to_str().unwrap());
             let caliptra_fw = caliptra_builder
