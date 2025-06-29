@@ -5,8 +5,11 @@
 use crate::DefaultSyscalls;
 use caliptra_api::mailbox::MailboxReqHeader;
 use core::marker::PhantomData;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
+
+static MAILBOX_MUTEX: Mutex<CriticalSectionRawMutex, ()> = Mutex::new(());
 
 /// Mailbox interface user interface.
 ///
@@ -68,6 +71,9 @@ impl<S: Syscalls> Mailbox<S> {
         input_data: &[u8],
         response_buffer: &mut [u8],
     ) -> Result<usize, MailboxError> {
+        // lock the global mailbox mutex to ensure exclusive access
+        let mutex = MAILBOX_MUTEX.lock().await;
+
         // Subscribe to the asynchronous notification for when the command is processed
         let result: Result<(u32, u32, u32), ErrorCode> = share::scope::<(), _, _>(|_handle| {
             let mut sub = TockSubscribe::subscribe_allow_ro_rw::<S, DefaultConfig>(
@@ -94,6 +100,8 @@ impl<S: Syscalls> Mailbox<S> {
             }
         })?
         .await;
+
+        drop(mutex); // release the global mailbox lock
 
         match result {
             Ok((bytes, error_code, _)) => {

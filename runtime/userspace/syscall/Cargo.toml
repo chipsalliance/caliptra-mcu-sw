@@ -8,6 +8,7 @@ edition.workspace = true
 
 [dependencies]
 caliptra-api.workspace = true
+embassy-sync.workspace = true
 libtock_console.workspace = true
 libtock_platform.workspace = true
 libtockasync.workspace = true
