@@ -2216,6 +2216,7 @@ name = "libsyscall-caliptra"
 version = "0.1.0"
 dependencies = [
  "caliptra-api",
+ "embassy-sync",
  "libtock_console",
  "libtock_platform",
  "libtock_runtime",
