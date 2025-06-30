@@ -4,9 +4,13 @@
 
 use crate::DefaultSyscalls;
 use caliptra_api::mailbox::MailboxReqHeader;
-use core::marker::PhantomData;
+use core::{hint::black_box, marker::PhantomData};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
+
+// Global mutex to ensure that multiple tasks do not overwrite each other's upcall pointers.
+static MAILBOX_MUTEX: Mutex<CriticalSectionRawMutex, u32> = Mutex::new(0);
 
 /// Mailbox interface user interface.
 ///
@@ -68,32 +72,41 @@ impl<S: Syscalls> Mailbox<S> {
         input_data: &[u8],
         response_buffer: &mut [u8],
     ) -> Result<usize, MailboxError> {
-        // Subscribe to the asynchronous notification for when the command is processed
-        let result: Result<(u32, u32, u32), ErrorCode> = share::scope::<(), _, _>(|_handle| {
-            let mut sub = TockSubscribe::subscribe_allow_ro_rw::<S, DefaultConfig>(
-                self.driver_num,
-                mailbox_subscribe::COMMAND_DONE,
-                mailbox_ro_buffer::INPUT,
-                input_data,
-                mailbox_rw_buffer::RESPONSE,
-                response_buffer,
-            );
+        let result = {
+            // lock the global mailbox mutex to ensure exclusive access
+            let mutex = MAILBOX_MUTEX.lock().await;
 
-            // Issue the command to the kernel
-            match S::command(self.driver_num, mailbox_cmd::EXECUTE_COMMAND, command, 0)
-                .to_result::<(), ErrorCode>()
-            {
-                Ok(()) => Ok(TockSubscribe::subscribe_finish(sub)),
-                Err(err) => {
-                    S::unallow_ro(self.driver_num, mailbox_ro_buffer::INPUT);
-                    S::unallow_rw(self.driver_num, mailbox_rw_buffer::RESPONSE);
-                    // If command returned error immediately, cancel the future
-                    sub.cancel();
-                    Err(MailboxError::ErrorCode(err))
+            // Subscribe to the asynchronous notification for when the command is processed
+            let result = share::scope::<(), _, _>(|_handle| {
+                let mut sub = TockSubscribe::subscribe_allow_ro_rw::<S, DefaultConfig>(
+                    self.driver_num,
+                    mailbox_subscribe::COMMAND_DONE,
+                    mailbox_ro_buffer::INPUT,
+                    input_data,
+                    mailbox_rw_buffer::RESPONSE,
+                    response_buffer,
+                );
+
+                // Issue the command to the kernel
+                match S::command(self.driver_num, mailbox_cmd::EXECUTE_COMMAND, command, 0)
+                    .to_result::<(), ErrorCode>()
+                {
+                    Ok(()) => Ok(TockSubscribe::subscribe_finish(sub)),
+                    Err(err) => {
+                        S::unallow_ro(self.driver_num, mailbox_ro_buffer::INPUT);
+                        S::unallow_rw(self.driver_num, mailbox_rw_buffer::RESPONSE);
+                        // If command returned error immediately, cancel the future
+                        sub.cancel();
+                        Err(MailboxError::ErrorCode(err))
+                    }
                 }
-            }
-        })?
-        .await;
+            })?
+            .await;
+
+            black_box(*mutex); // Ensure the mutex is not optimized away
+
+            result
+        };
 
         match result {
             Ok((bytes, error_code, _)) => {
