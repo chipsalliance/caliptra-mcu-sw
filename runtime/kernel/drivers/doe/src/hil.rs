@@ -33,10 +33,10 @@ pub trait DoeTransport<'a> {
     fn max_data_object_size(&self) -> usize;
 
     /// Enable the DOE transport driver instance.
-    fn enable(&self) -> Result<(), ErrorCode>;
+    fn enable(&self);
 
     /// Disable the DOE transport driver instance.
-    fn disable(&self) -> Result<(), ErrorCode>;
+    fn disable(&self);
 
     /// Send DOE Object to be transmitted over SoC specific DOE transport.
     ///

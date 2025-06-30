@@ -6,8 +6,10 @@ use crate::MCU_MEMORY_MAP;
 use arrayvec::ArrayVec;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
+use capsules_runtime::doe::driver::DoeDriver;
 use capsules_runtime::mctp::base_protocol::MessageType;
 use core::ptr::{addr_of, addr_of_mut};
+use doe_mbox_driver::EmulatedDoeTransport;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::errorcode;
@@ -22,7 +24,9 @@ use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
 use mcu_components::mctp_mux_component_static;
-use mcu_components::{mailbox_component_static, mctp_driver_component_static};
+use mcu_components::{
+    doe_component_static, mailbox_component_static, mctp_driver_component_static,
+};
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
@@ -134,6 +138,10 @@ struct VeeR {
     mctp_secure_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    doe_spdm: &'static capsules_runtime::doe::driver::DoeDriver<
+        'static,
+        EmulatedDoeTransport<'static, InternalTimers<'static>>,
+    >,
     flash_partitions: [Option<&'static capsules_runtime::flash_partition::FlashPartition<'static>>;
         mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT],
     mailbox: &'static capsules_runtime::mailbox::Mailbox<
@@ -159,6 +167,7 @@ impl SyscallDriverLookup for VeeR {
             }
             capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
             capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
+            capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM => f(Some(self.doe_spdm)),
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
             mcu_config_emulator::flash::DRIVER_NUM_START
@@ -524,6 +533,16 @@ pub unsafe fn main() {
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
 
+    // Set up a SPDM over DOE capsule.
+    let doe_spdm = mcu_components::doe::DoeComponent::new(
+        board_kernel,
+        capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM,
+        &emulator_peripherals.doe_transport,
+    )
+    .finalize(doe_component_static!(
+        doe_mbox_driver::EmulatedDoeTransport<'static, InternalTimers<'static>>
+    ));
+
     peripherals.init();
 
     // Create a mux for the physical flash controller
@@ -600,6 +619,7 @@ pub unsafe fn main() {
             mctp_secure_spdm,
             mctp_pldm,
             mctp_caliptra,
+            doe_spdm,
             flash_partitions,
             mailbox,
             dma,

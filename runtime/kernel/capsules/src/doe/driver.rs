@@ -6,8 +6,10 @@ use kernel::debug;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, GrantKernelData, UpcallCount};
 use kernel::processbuffer::{ReadableProcessBuffer, ReadableProcessSlice, WriteableProcessBuffer};
 use kernel::syscall::{CommandReturn, SyscallDriver};
-use kernel::utilities::cells::{OptionalCell, TakeCell};
+use kernel::utilities::cells::OptionalCell;
 use kernel::{ErrorCode, ProcessId};
+
+pub const DOE_SPDM_DRIVER_NUM: usize = 0xA000_0010;
 
 /// IDs for subscribe calls
 mod upcall {
@@ -54,7 +56,6 @@ pub struct DoeDriver<'a, T: DoeTransport<'a>> {
         AllowRwCount<{ rw_allow::COUNT }>,
     >,
     current_app: OptionalCell<ProcessId>,
-    kernel_rx_buf: TakeCell<'static, [u32]>,
 }
 
 impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
@@ -66,13 +67,11 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
             AllowRoCount<{ ro_allow::COUNT }>,
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
-        kernel_rx_buf: &'static mut [u32],
     ) -> Self {
         DoeDriver {
             doe_transport,
             apps: grant,
             current_app: OptionalCell::empty(),
-            kernel_rx_buf: TakeCell::new(kernel_rx_buf),
         }
     }
 
@@ -290,24 +289,24 @@ impl<'a, T: DoeTransport<'a>> DoeTransportRxClient for DoeDriver<'a, T> {
     fn receive(&self, rx_buf: &'static mut [u32], len: usize) {
         if len < 3 || len > rx_buf.len() {
             debug!("Invalid length received: {}", len);
-            self.kernel_rx_buf.replace(rx_buf);
+            self.doe_transport.set_rx_buffer(rx_buf);
             return;
         }
-        // Debode the DOE header
+        // Decode the DOE header
         debug!("Received DOE Data Object with length: {}", len);
 
         let doe_hdr = match DoeDataObjectHeader::decode(rx_buf) {
             Ok(header) => header,
             Err(_) => {
                 debug!("Failed to decode DOE header");
-                self.kernel_rx_buf.replace(rx_buf);
+                self.doe_transport.set_rx_buffer(rx_buf);
                 return;
             }
         };
 
         if !doe_hdr.validate(len as u32) {
             debug!("Invalid DOE Data Object");
-            self.kernel_rx_buf.replace(rx_buf);
+            self.doe_transport.set_rx_buffer(rx_buf);
             return;
         }
 

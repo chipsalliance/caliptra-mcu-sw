@@ -243,14 +243,12 @@ impl<'a, A: Alarm<'a>> DoeTransport<'a> for EmulatedDoeTransport<'a, A> {
         self.doe_data_buf_len
     }
 
-    fn enable(&self) -> Result<(), ErrorCode> {
+    fn enable(&self) {
         self.state.set(DoeMboxState::RxWait);
-        Ok(())
     }
 
-    fn disable(&self) -> Result<(), ErrorCode> {
+    fn disable(&self) {
         self.state.set(DoeMboxState::Idle);
-        Ok(())
     }
 
     fn transmit(&self, tx_buf: impl Iterator<Item = u32>, len_dw: usize) -> Result<(), ErrorCode> {
