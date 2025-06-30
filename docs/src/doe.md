@@ -58,18 +58,18 @@ const DATA_OBJECT_PROTOCOL_DOE_DISCOVERY: u8 = 0x00;
 const DATA_OBJECT_PROTOCOL_CMA_SPDM: u8 = 0x01;
 const DATA_OBJECT_PROTOCOL_SECURE_CMA_SPDM: u8 = 0x02;
 
+pub const DOE_SPDM_DRIVER_NUM: usize = 0xA000_0010;
 
 /// IDs for subscribe calls
 mod upcall {
     /// Callback for when the message is received
-    pub const RECEIVED_SPDM_MESSAGE: usize = 0;
-    pub const RECEIVED_SECURE_SPDM_MESSAGE: usize = 1;
+    pub const RECEIVED_MESSAGE: usize = 0;
 
     /// Callback for when the message is transmitted.
-    pub const MESSAGE_TRANSMITTED: usize = 2;
+    pub const MESSAGE_TRANSMITTED: usize = 1;
 
     /// Number of upcalls
-    pub const COUNT: u8 = 3;
+    pub const COUNT: u8 = 2;
 }
 
 /// IDs for read-only allow buffers
@@ -84,19 +84,18 @@ mod ro_allow {
 /// IDs for read-write allow buffers
 mod rw_allow {
     /// Buffer for the message to be received
-    pub const SPDM_MESSAGE: u32 = 0;
-    pub const SECURE_SPDM_MESSAGE: u32 = 1;
+    pub const MESSAGE_READ: usize = 0;
 
     /// Number of read-write allow buffers
-    pub const COUNT: u8 = 2;
+    pub const COUNT: u8 = 1;
 }
 
 #[derive(Default)]
 pub struct App {
-    pending_rx_spdm: Option<bool>, // Indicates if a SPDM message is pending
-    pending_rx_secure_spdm: Option<bool>, // Indicates if a Secure-SPDM message is pending
-    pending_tx: Option<bool>, // Indicates if a message is pending to be sent
+    waiting_rx: Cell<bool>, // Indicates if a message is waiting to be received
+    pending_tx: Cell<bool>, // Indicates if a message is in progress
 }
+
 
 pub struct DoeDriver {
     doe_transport: & dyn DoeTransport,
@@ -106,7 +105,6 @@ pub struct DoeDriver {
         AllowRoCount<{ ro_allow::COUNT }>,
         AllowRwCount<{ rw_allow::COUNT }>,
     >,
-    kernel_msg_buf: MapCell<SubSliceMut<'static, u8>>, // For DOE Discovery handling
     current_app: Cell<Option<ProcessId>>,
 }
 
@@ -147,10 +145,10 @@ pub trait DoeTransport<'a> {
     fn max_data_object_size(&self) -> usize;
 
     /// Enable the DOE transport driver instance.
-    fn enable(&self) -> Result<(), ErrorCode>;
+    fn enable(&self);
 
     /// Disable the DOE transport driver instance.
-    fn disable(&self) -> Result<(), ErrorCode>;
+    fn disable(&self);
 
     /// Send DOE Object to be transmitted over SoC specific DOE transport.
     ///
