@@ -8,6 +8,7 @@ use kernel::processbuffer::{ReadableProcessBuffer, ReadableProcessSlice, Writeab
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::OptionalCell;
 use kernel::{ErrorCode, ProcessId};
+use romtime::println;
 
 pub const DOE_SPDM_DRIVER_NUM: usize = 0xA000_0010;
 
@@ -127,7 +128,7 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
             return;
         }
 
-        let next_index = (data_object_protocol as u8 + 1) % DataObjectType::SecureSpdm as u8;
+        let next_index = (data_object_protocol as u8 + 1) % NUM_DATA_OBJECT_PROTOCOL_TYPES as u8;
 
         let mut doe_resp = [0u32; DOE_DISCOVERY_DATA_OBJECT_LEN_DW];
 
@@ -288,30 +289,30 @@ impl<'a, T: DoeTransport<'a>> SyscallDriver for DoeDriver<'a, T> {
 impl<'a, T: DoeTransport<'a>> DoeTransportRxClient for DoeDriver<'a, T> {
     fn receive(&self, rx_buf: &'static mut [u32], len: usize) {
         if len < 3 || len > rx_buf.len() {
-            debug!("Invalid length received: {}", len);
+            println!("DOE_CAPSULE: Invalid length received: {}", len);
             self.doe_transport.set_rx_buffer(rx_buf);
             return;
         }
         // Decode the DOE header
-        debug!("Received DOE Data Object with length: {}", len);
+        println!("DOE_CAPSULE: Received DOE Data Object with length: {}", len);
 
         let doe_hdr = match DoeDataObjectHeader::decode(rx_buf) {
             Ok(header) => header,
             Err(_) => {
-                debug!("Failed to decode DOE header");
+                println!("DOE_CAPSULE: Failed to decode DOE header");
                 self.doe_transport.set_rx_buffer(rx_buf);
                 return;
             }
         };
 
         if !doe_hdr.validate(len as u32) {
-            debug!("Invalid DOE Data Object");
+            println!("DOE_CAPSULE: Invalid DOE Data Object");
             self.doe_transport.set_rx_buffer(rx_buf);
             return;
         }
 
-        debug!(
-            "Received DOE Data Object: vendor_id: {}, type: {:?}, length: {}",
+        println!(
+            "DOE_CAPSULE: Received DOE Data Object: vendor_id: {}, type: {:?}, length: {}",
             doe_hdr.vendor_id,
             doe_hdr.data_object_type(),
             doe_hdr.length
@@ -320,9 +321,9 @@ impl<'a, T: DoeTransport<'a>> DoeTransportRxClient for DoeDriver<'a, T> {
         match doe_hdr.data_object_type() {
             DataObjectType::DoeDiscovery => {
                 let doe_req_dw = rx_buf[DOE_DATA_OBJECT_HEADER_LEN_DW];
+                self.doe_transport.set_rx_buffer(rx_buf);
                 let doe_req = DoeDiscoveryRequest::decode(doe_req_dw);
                 self.handle_doe_discovery(doe_req);
-                self.doe_transport.set_rx_buffer(rx_buf);
             }
             DataObjectType::Spdm | DataObjectType::SecureSpdm => {
                 self.handle_spdm_upcall(rx_buf, len);

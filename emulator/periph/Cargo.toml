@@ -30,6 +30,7 @@ tempfile.workspace = true
 default = []
 test-dma = []
 test-doe-transport-loopback = []
+test-doe-discovery = []
 test-i3c-constant-writes = []
 test-flash-based-boot = []
 test-flash-ctrl-init = []

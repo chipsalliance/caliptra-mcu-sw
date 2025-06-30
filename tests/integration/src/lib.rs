@@ -303,6 +303,7 @@ mod test {
     run_test!(test_caliptra_mailbox, example_app);
     run_test!(test_dma, example_app);
     run_test!(test_doe_transport_loopback, example_app);
+    run_test!(test_doe_discovery, example_app);
     run_test!(test_i3c_simple);
     run_test!(test_i3c_constant_writes);
     run_test!(test_flash_ctrl_init);

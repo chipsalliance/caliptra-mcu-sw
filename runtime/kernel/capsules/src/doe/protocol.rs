@@ -6,12 +6,13 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const DOE_DATA_OBJECT_HEADER_LEN_DW: usize = 2; // 8 bytes, 2 dwords
 pub const DOE_DISCOVERY_REQ_RESP_LEN_DW: usize = 1; // 4 bytes, 1 dword
-const PCISIG_DOE_VENDOR_ID: u16 = 0x0001;
-const LENGTH_FIELD_BITS: u32 = 18;
 pub const DOE_DISCOVERY_DATA_OBJECT_LEN_DW: usize =
     DOE_DATA_OBJECT_HEADER_LEN_DW + DOE_DISCOVERY_REQ_RESP_LEN_DW; // 3 dwords
 pub const DOE_DISCOVERY_DATA_OBJECT_LEN: usize = DOE_DISCOVERY_DATA_OBJECT_LEN_DW * 4; // 12 bytes
+pub const NUM_DATA_OBJECT_PROTOCOL_TYPES: usize = DataObjectType::SecureSpdm as usize + 1; // DoeDiscovery, Spdm, SecureSpdm
 const LENGTH_MASK: u32 = (1 << LENGTH_FIELD_BITS) - 1;
+const PCISIG_DOE_VENDOR_ID: u16 = 0x0001;
+const LENGTH_FIELD_BITS: u32 = 18;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
@@ -94,7 +95,7 @@ impl DoeDataObjectHeader {
         DataObjectType::from(self.data_object_type)
     }
 
-    pub fn validate(&self, data_obj_len: u32) -> bool {
+    pub fn validate(&self, received_len_dw: u32) -> bool {
         // Validate vendor ID
         if self.vendor_id != PCISIG_DOE_VENDOR_ID {
             return false;
@@ -110,17 +111,9 @@ impl DoeDataObjectHeader {
             return false;
         }
 
-        if self.data_object_type() == DataObjectType::DoeDiscovery {
-            // For DOE Discovery, length must be exactly 1 dword and match data_obj_len
-            if self.length != DOE_DISCOVERY_REQ_RESP_LEN_DW as u32 || self.length != data_obj_len {
-                return false;
-            }
-        } else {
-            // For other types, length must be at least DOE_DISCOVERY_DATA_OBJECT_LEN_DW and match data_obj_len
-            if self.length < DOE_DISCOVERY_DATA_OBJECT_LEN_DW as u32 || self.length != data_obj_len
-            {
-                return false;
-            }
+        // If the length field doesn't match the data size received, silently discard the object
+        if self.length < DOE_DISCOVERY_DATA_OBJECT_LEN_DW as u32 || received_len_dw != self.length {
+            return false;
         }
 
         true

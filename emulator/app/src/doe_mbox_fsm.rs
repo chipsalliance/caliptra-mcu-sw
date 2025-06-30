@@ -178,7 +178,6 @@ pub trait DoeTransportTest {
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
         wait_for_responder: bool,
-        retry_count: Option<usize>,
     );
     fn is_passed(&self) -> bool;
 }
@@ -209,13 +208,7 @@ impl DoeTransportTestRunner {
 
     pub fn run_tests(&mut self) {
         for (i, test) in self.test_vectors.iter_mut().enumerate() {
-            test.run_test(
-                self.running.clone(),
-                &mut self.tx,
-                &mut self.rx,
-                i == 0,
-                if i == 0 { None } else { Some(10) }, // First test waits indefinitely, others retry 10 times
-            );
+            test.run_test(self.running.clone(), &mut self.tx, &mut self.rx, i == 0);
             if test.is_passed() {
                 self.passed += 1;
             }

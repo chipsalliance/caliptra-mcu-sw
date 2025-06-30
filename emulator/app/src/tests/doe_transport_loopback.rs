@@ -43,14 +43,12 @@ impl DoeTransportTest for Test {
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
         wait_for_responder: bool,
-        retry_count: Option<usize>,
     ) {
         println!(
             "DOE_TRANSPORT_LOOPBACK_TEST: Running test with test vec len: {} bytes",
             self.test_vector.len()
         );
 
-        let mut retries_left = retry_count.unwrap_or(0);
         self.state = DoeTestState::Start;
 
         while running.load(Ordering::Relaxed) {
@@ -93,16 +91,6 @@ impl DoeTransportTest for Test {
                         Err(std::sync::mpsc::TryRecvError::Empty) => {
                             // No data yet, stay in ReceiveData state and yield for a bit
                             thread::sleep(Duration::from_millis(300));
-                            // If retry_count is some, check retry count. Otherwise, wait indefinitely.
-                            if retry_count.is_some() {
-                                if retries_left == 0 {
-                                    println!("DOE_TRANSPORT_LOOPBACK_TEST: Retry limit reached, test failed.");
-                                    self.passed = false;
-                                    self.state = DoeTestState::Finish;
-                                } else {
-                                    retries_left -= 1;
-                                }
-                            }
                         }
                         Err(e) => {
                             println!(

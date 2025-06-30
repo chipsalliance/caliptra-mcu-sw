@@ -675,8 +675,12 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         println!("Starting DOE transport loopback test thread");
         let tests = tests::doe_transport_loopback::generate_tests();
         doe_mbox_fsm::run_doe_transport_tests(running.clone(), test_tx, test_rx, tests);
-    }
-    if cfg!(feature = "test-mctp-ctrl-cmds") {
+    } else if cfg!(feature = "test-doe-discovery") {
+        let (test_rx, test_tx) = doe_mbox_fsm.start(running.clone());
+        println!("Starting DOE discovery test thread");
+        let tests = tests::doe_discovery::DoeDiscoveryTest::generate_tests();
+        doe_mbox_fsm::run_doe_transport_tests(running.clone(), test_tx, test_rx, tests);
+    } else if cfg!(feature = "test-mctp-ctrl-cmds") {
         i3c_controller.start();
         println!(
             "Starting test-mctp-ctrl-cmds test thread for testing target {:?}",
