@@ -65,7 +65,7 @@ struct Emulator {
     rom: PathBuf,
 
     #[arg(short, long)]
-    firmware: Option<PathBuf>,
+    firmware: PathBuf,
 
     /// Optional file to store OTP / fuses between runs.
     #[arg(short, long)]
@@ -446,17 +446,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         rom_buffer.len(),
     );
 
-    if cli.firmware.is_none() {
-        println!("Active mode requires an MCU firmware file to be passed");
-        exit(-1);
-    }
-
-    let mcu_firmware = if let Some(firmware_path) = cli.firmware {
-        read_binary(&firmware_path, 0x4000_0080)?
-    } else {
-        // this just immediately exits
-        vec![0xb7, 0xf6, 0x00, 0x20, 0x94, 0xc2]
-    };
+    let mcu_firmware = read_binary(&cli.firmware, 0x4000_0000)?;
 
     let clock = Rc::new(Clock::new());
 
