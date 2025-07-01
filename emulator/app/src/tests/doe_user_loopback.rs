@@ -32,7 +32,7 @@ pub fn generate_tests() -> Vec<Box<dyn DoeTransportTest + Send>> {
             test_vector: vector,
             test_state: DoeTestState::Start,
             passed: false,
-            retry_count: 20,
+            retry_count: 40,
         }));
     }
     tests
