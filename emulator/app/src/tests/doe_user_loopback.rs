@@ -66,7 +66,7 @@ impl DoeTransportTest for Test {
                         .is_ok()
                     {
                         self.test_state = DoeTestState::ReceiveData;
-                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        std::thread::sleep(std::time::Duration::from_secs(2));
                     } else {
                         println!("DOE_USER_LOOPBACK: Failed to send request");
                         self.passed = false;
