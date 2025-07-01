@@ -27,6 +27,9 @@ mod test_caliptra_crypto;
 #[cfg(feature = "test-dma")]
 mod test_dma;
 
+#[cfg(feature = "test-doe-user-loopback")]
+mod test_doe_loopback;
+
 #[cfg(feature = "test-caliptra-certs")]
 mod test_caliptra_certs;
 
@@ -102,6 +105,18 @@ pub(crate) async fn async_main<S: Syscalls>() {
         .unwrap();
 
         test_mctp_loopback().await;
+    }
+
+    #[cfg(feature = "test-doe-user-loopback")]
+    {
+        writeln!(
+            console_writer,
+            "Running test-doe-user-loopback test for DOE message type"
+        )
+        .unwrap();
+
+        // This test is not implemented yet.
+        test_doe_loopback::test_doe_loopback().await;
     }
 
     #[cfg(feature = "test-flash-usermode")]

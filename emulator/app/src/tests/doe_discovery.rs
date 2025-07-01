@@ -123,8 +123,8 @@ impl DoeTransportTest for Test {
                     Ok(response) if !response.is_empty() => {
                         if response == self.resp_msg {
                             println!(
-                                "DOE_DISCOVERY_TEST: Received response matches expected: {:?}",
-                                response
+                                "DOE_DISCOVERY_TEST: Received response matches expected: {}",
+                                response.len()
                             );
                             self.passed = true;
                         } else {

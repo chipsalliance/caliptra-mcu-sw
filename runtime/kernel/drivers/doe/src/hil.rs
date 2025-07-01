@@ -30,7 +30,7 @@ pub trait DoeTransport<'a> {
     fn set_rx_buffer(&self, rx_buf: &'static mut [u32]);
 
     /// Gets the maximum size of the data object that can be sent or received over DOE Transport.
-    fn max_data_object_size(&self) -> usize;
+    fn max_data_object_size_dw(&self) -> usize;
 
     /// Enable the DOE transport driver instance.
     fn enable(&self);

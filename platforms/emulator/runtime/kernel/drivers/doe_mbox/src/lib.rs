@@ -152,7 +152,7 @@ impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
         }
         let data_len = self.registers.doe_mbox_dlen.get() as usize;
         // If the data length is not valid, set error bit
-        if data_len > self.max_data_object_size() {
+        if data_len > self.max_data_object_size_dw() {
             self.registers
                 .doe_mbox_status
                 .write(DoeMboxStatus::Error::SET);
@@ -239,7 +239,7 @@ impl<'a, A: Alarm<'a>> DoeTransport<'a> for EmulatedDoeTransport<'a, A> {
         self.doe_data_buf.replace(rx_buf);
     }
 
-    fn max_data_object_size(&self) -> usize {
+    fn max_data_object_size_dw(&self) -> usize {
         self.doe_data_buf_len
     }
 
@@ -252,7 +252,7 @@ impl<'a, A: Alarm<'a>> DoeTransport<'a> for EmulatedDoeTransport<'a, A> {
     }
 
     fn transmit(&self, tx_buf: impl Iterator<Item = u32>, len_dw: usize) -> Result<(), ErrorCode> {
-        if len_dw > self.max_data_object_size() {
+        if len_dw > self.max_data_object_size_dw() {
             return Err(ErrorCode::SIZE);
         }
 

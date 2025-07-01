@@ -15,7 +15,7 @@ pub const DOE_SPDM_DRIVER_NUM: usize = 0xA000_0010;
 /// IDs for subscribe calls
 mod upcall {
     /// Callback for when the message is received
-    pub const RECEIVED_MESSAGE: usize = 0;
+    pub const MESSAGE_RECEIVED: usize = 0;
 
     /// Callback for when the message is transmitted.
     pub const MESSAGE_TRANSMITTED: usize = 1;
@@ -207,7 +207,7 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
                 Ok(Ok(len)) => {
                     debug!("SPDM Data Object received successfully, length: {}", len);
                     kernel_data
-                        .schedule_upcall(upcall::RECEIVED_MESSAGE, (len, 0, 0))
+                        .schedule_upcall(upcall::MESSAGE_RECEIVED, (len, 0, 0))
                         .ok();
                 }
                 Ok(Err(err)) => {
@@ -233,6 +233,7 @@ impl<'a, T: DoeTransport<'a>> SyscallDriver for DoeDriver<'a, T> {
     /// - `1`: Receive message. Issues upcall when driver receives a SPDM/Secure SPDM Data object type
     /// - `2`: Send message. Sends the received message to the DOE transport layer. Schedules an upcall
     ///   when the message is sent.
+    /// - `3`: Max message size. Returns the maximum message size supported by the DOE transport layer.
     ///
     fn command(
         &self,
@@ -276,6 +277,11 @@ impl<'a, T: DoeTransport<'a>> SyscallDriver for DoeDriver<'a, T> {
                         CommandReturn::failure(err)
                     }
                 }
+            }
+            3 => {
+                // Get Max Data Object Size
+                let max_size_dw = self.doe_transport.max_data_object_size_dw();
+                CommandReturn::success_u32((max_size_dw * 4) as u32)
             }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
