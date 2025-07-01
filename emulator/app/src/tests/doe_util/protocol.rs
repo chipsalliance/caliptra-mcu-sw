@@ -1,7 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-// Define a bitfield structure with from bytes and intobytes implementations for DOE Header
-
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
