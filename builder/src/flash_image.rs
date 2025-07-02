@@ -2,56 +2,29 @@
 
 use anyhow::{anyhow, bail, Result};
 use crc32fast::Hasher;
+use flash_image::{FlashHeader, ImageHeader, FLASH_IMAGE_MAGIC_NUMBER, HEADER_VERSION};
 use mcu_config_emulator::flash::PartitionTable;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error, ErrorKind, Read, Seek, Write};
-use zerocopy::{byteorder::U32, FromBytes, IntoBytes};
-use zerocopy::{Immutable, KnownLayout};
+use std::mem::offset_of;
+use zerocopy::{FromBytes, IntoBytes};
 
-const FLASH_IMAGE_MAGIC_NUMBER: u32 = u32::from_be_bytes(*b"FLSH");
-const HEADER_VERSION: u16 = 0x0001;
-const HEADER_SIZE: usize = std::mem::size_of::<FlashImageHeader>();
-const CHECKSUM_SIZE: usize = std::mem::size_of::<FlashImageChecksum>();
-const IMAGE_INFO_SIZE: usize = std::mem::size_of::<FlashImageInfo>();
+const HEADER_SIZE: usize = std::mem::size_of::<FlashHeader>();
+const IMAGE_INFO_SIZE: usize = std::mem::size_of::<ImageHeader>();
 const CALIPTRA_FMC_RT_IDENTIFIER: u32 = 0x00000001;
 const SOC_MANIFEST_IDENTIFIER: u32 = 0x00000002;
 const MCU_RT_IDENTIFIER: u32 = 0x00000003;
 const SOC_IMAGES_BASE_IDENTIFIER: u32 = 0x00001000;
 
 pub struct FlashImage<'a> {
-    header: FlashImageHeader,
-    checksum: FlashImageChecksum,
+    header: FlashHeader,
     payload: FlashImagePayload<'a>,
 }
 
-#[repr(C, packed)]
-#[derive(IntoBytes, FromBytes, Immutable, KnownLayout, Debug)]
-pub struct FlashImageHeader {
-    magic_number: U32<zerocopy::byteorder::BigEndian>,
-    header_version: u16,
-    image_count: u16,
-}
-
-#[repr(C, packed)]
-#[derive(IntoBytes, FromBytes, Immutable, KnownLayout, Debug)]
-pub struct FlashImageChecksum {
-    header: u32,
-    payload: u32,
-}
-
 pub struct FlashImagePayload<'a> {
-    image_info: &'a [FlashImageInfo],
+    image_info: &'a [ImageHeader],
     images: &'a [FirmwareImage<'a>],
 }
-
-#[repr(C, packed)]
-#[derive(IntoBytes, FromBytes, Immutable, Debug)]
-pub struct FlashImageInfo {
-    identifier: u32,
-    image_offset: u32, // Location of the image in the flash as an offset from the header
-    size: u32,         // Size of the image
-}
-
 #[derive(Clone)]
 pub struct FirmwareImage<'a> {
     pub identifier: u32,
@@ -68,22 +41,21 @@ impl<'a> FirmwareImage<'a> {
 }
 
 impl<'a> FlashImage<'a> {
-    pub fn new(images: &'a [FirmwareImage<'a>], image_info: &'a [FlashImageInfo]) -> Self {
-        let header = FlashImageHeader {
-            magic_number: FLASH_IMAGE_MAGIC_NUMBER.into(),
-            header_version: HEADER_VERSION,
+    pub fn new(images: &'a [FirmwareImage<'a>], image_info: &'a [ImageHeader]) -> Self {
+        let mut header = FlashHeader {
+            magic: FLASH_IMAGE_MAGIC_NUMBER.into(),
+            version: HEADER_VERSION,
             image_count: image_info.len() as u16,
+            image_headers_offset: core::mem::size_of::<FlashHeader>() as u32,
+            header_crc32: 0,
         };
 
-        let payload = FlashImagePayload { image_info, images };
+        let header_checksum =
+            calculate_checksum(header.as_bytes()[..offset_of!(FlashHeader, header_crc32)].as_ref());
+        header.header_crc32 = header_checksum;
+        let payload = FlashImagePayload::new(image_info, images);
 
-        let checksum = FlashImageChecksum::new(&header, &payload);
-
-        Self {
-            header,
-            checksum,
-            payload,
-        }
+        Self { header, payload }
     }
 
     pub fn write_to_file(&self, offset: usize, filename: &str) -> Result<()> {
@@ -103,7 +75,6 @@ impl<'a> FlashImage<'a> {
                 ))
             })?;
         file.write_all(self.header.as_bytes())?;
-        file.write_all(self.checksum.as_bytes())?;
         for info in self.payload.image_info {
             file.write_all(info.as_bytes())?;
         }
@@ -119,35 +90,45 @@ impl<'a> FlashImage<'a> {
         if image.len() < HEADER_SIZE {
             bail!("Image too small to contain the header.");
         }
-        let header = FlashImageHeader::read_from_bytes(&image[..HEADER_SIZE])
+        let header = FlashHeader::read_from_bytes(&image[..HEADER_SIZE])
             .map_err(|_| anyhow!("Failed to parse header: invalid format or size"))?;
-        if header.magic_number != FLASH_IMAGE_MAGIC_NUMBER {
+        if header.magic != FLASH_IMAGE_MAGIC_NUMBER {
             bail!("Invalid header: incorrect magic number or header version.");
         }
 
-        if header.header_version != HEADER_VERSION {
+        if header.version != HEADER_VERSION {
             bail!("Unsupported header version");
         }
         // Parse and verify checksums
-        let checksum =
-            FlashImageChecksum::read_from_bytes(&image[HEADER_SIZE..(HEADER_SIZE + CHECKSUM_SIZE)])
-                .map_err(|_| anyhow!("Failed to parse checksum field"))?;
-        let calculated_header_checksum = calculate_checksum(header.as_bytes());
-        let calculated_payload_checksum = calculate_checksum(&image[16..]);
-
-        if checksum.header != calculated_header_checksum {
+        let calculated_header_checksum =
+            calculate_checksum(header.as_bytes()[..offset_of!(FlashHeader, header_crc32)].as_ref());
+        if calculated_header_checksum != header.header_crc32 {
             bail!("Header checksum mismatch.");
-        }
-
-        if checksum.payload != calculated_payload_checksum {
-            bail!("Payload checksum mismatch.");
         }
 
         // Parse and verify image info and data
         for i in 0..header.image_count as usize {
-            let offset = HEADER_SIZE + CHECKSUM_SIZE + (IMAGE_INFO_SIZE * i);
-            let info = FlashImageInfo::read_from_bytes(&image[offset..offset + IMAGE_INFO_SIZE])
+            let offset = header.image_headers_offset as usize + (IMAGE_INFO_SIZE * i);
+            let info = ImageHeader::read_from_bytes(&image[offset..offset + IMAGE_INFO_SIZE])
                 .map_err(|_| anyhow!("Failed to read image info"))?;
+            let image_checksum = calculate_checksum(
+                &image[info.offset as usize..info.offset as usize + info.size as usize],
+            );
+            if image_checksum != info.image_checksum {
+                bail!(
+                    "Image checksum mismatch for image with identifier: {}",
+                    info.identifier
+                );
+            }
+            let header_checksum = calculate_checksum(
+                info.as_bytes()[..offset_of!(ImageHeader, image_header_checksum)].as_ref(),
+            );
+            if header_checksum != info.image_header_checksum {
+                bail!(
+                    "Image header checksum mismatch for image with identifier: {}",
+                    info.identifier
+                );
+            }
             println!("{:?}", info);
         }
 
@@ -162,25 +143,9 @@ pub fn calculate_checksum(data: &[u8]) -> u32 {
     hasher.finalize()
 }
 
-impl FlashImagePayload<'_> {
-    pub fn calculate_checksum(&self) -> u32 {
-        let mut hasher = Hasher::new();
-        for info in self.image_info {
-            hasher.update(info.as_bytes());
-        }
-        for image in self.images {
-            hasher.update(image.data);
-        }
-        hasher.finalize()
-    }
-}
-
-impl FlashImageChecksum {
-    pub fn new(header: &FlashImageHeader, payload: &FlashImagePayload) -> Self {
-        Self {
-            header: calculate_checksum(header.as_bytes()),
-            payload: payload.calculate_checksum(),
-        }
+impl<'a> FlashImagePayload<'a> {
+    pub fn new(image_info: &'a [ImageHeader], images: &'a [FirmwareImage<'a>]) -> Self {
+        Self { image_info, images }
     }
 }
 
@@ -253,17 +218,22 @@ pub fn flash_image_create(
     Ok(())
 }
 
-pub fn generate_image_info(images: Vec<FirmwareImage>) -> Vec<FlashImageInfo> {
+pub fn generate_image_info(images: Vec<FirmwareImage>) -> Vec<ImageHeader> {
     let mut info = Vec::new();
-    let mut offset = std::mem::size_of::<FlashImageHeader>() as u32
-        + std::mem::size_of::<FlashImageChecksum>() as u32
-        + (std::mem::size_of::<FlashImageInfo>() * images.len()) as u32;
+    let mut offset = std::mem::size_of::<FlashHeader>() as u32
+        + (std::mem::size_of::<ImageHeader>() * images.len()) as u32;
     for image in images.iter() {
-        info.push(FlashImageInfo {
+        let mut header = ImageHeader {
             identifier: image.identifier,
-            image_offset: offset,
+            offset,
             size: image.data.len() as u32,
-        });
+            image_checksum: calculate_checksum(image.data),
+            image_header_checksum: 0,
+        };
+        header.image_header_checksum = calculate_checksum(
+            header.as_bytes()[..offset_of!(ImageHeader, image_header_checksum)].as_ref(),
+        );
+        info.push(header);
         offset += image.data.len() as u32;
     }
     info
@@ -379,21 +349,17 @@ mod tests {
             .expect("Failed to read flash image");
 
         // Verify header
-        let magic_number = u32::from_be_bytes(data[0..4].try_into().unwrap());
-        let header_version = u16::from_le_bytes(data[4..6].try_into().unwrap());
-        let image_count = u16::from_le_bytes(data[6..8].try_into().unwrap());
+        let header = FlashHeader::read_from_bytes(&data[..HEADER_SIZE])
+            .expect("Failed to parse flash header");
 
-        assert_eq!(magic_number, FLASH_IMAGE_MAGIC_NUMBER);
-        assert_eq!(header_version, HEADER_VERSION);
-        assert_eq!(image_count, 5); // 3 main images + 2 SoC images
+        assert_eq!(header.magic, FLASH_IMAGE_MAGIC_NUMBER);
+        assert_eq!(header.version, HEADER_VERSION);
+        assert_eq!(header.image_count, 5); // 3 main images + 2 SoC images
 
         // Verify checksums
-        let header_checksum = u32::from_le_bytes(data[8..12].try_into().unwrap());
-        let payload_checksum = u32::from_le_bytes(data[12..16].try_into().unwrap());
-        let calculated_header_checksum = calculate_checksum(&data[0..8]);
-        let calculated_payload_checksum = calculate_checksum(&data[16..]);
-        assert_eq!(header_checksum, calculated_header_checksum);
-        assert_eq!(payload_checksum, calculated_payload_checksum);
+        let calculated_header_checksum =
+            calculate_checksum(&data[0..offset_of!(FlashHeader, header_crc32)]);
+        assert_eq!(header.header_crc32, calculated_header_checksum);
 
         let expected_images: Vec<(u32, &[u8])> = vec![
             (CALIPTRA_FMC_RT_IDENTIFIER, caliptra_fw_content),
@@ -402,34 +368,37 @@ mod tests {
             (SOC_IMAGES_BASE_IDENTIFIER, soc_image1_content),
             (SOC_IMAGES_BASE_IDENTIFIER + 1, soc_image2_content),
         ];
-        let mut image_offsets = Vec::new();
+        let mut image_headers = Vec::new();
 
         for (i, _item) in expected_images
             .iter()
             .enumerate()
-            .take(image_count as usize)
+            .take(header.image_count as usize)
         {
-            let offset = std::mem::size_of::<FlashImageHeader>()
-                + std::mem::size_of::<FlashImageChecksum>()
-                + (std::mem::size_of::<FlashImageInfo>() * i);
-            let identifier = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
-            let image_offset = u32::from_le_bytes(data[offset + 4..offset + 8].try_into().unwrap());
-            let size = u32::from_le_bytes(data[offset + 8..offset + 12].try_into().unwrap());
+            let offset =
+                header.image_headers_offset as usize + (std::mem::size_of::<ImageHeader>() * i);
+            let image_header =
+                ImageHeader::read_from_bytes(&data[offset..offset + IMAGE_INFO_SIZE])
+                    .expect("Failed to read image header");
 
             // Verify identifier and size
-            assert_eq!(identifier, expected_images[i].0);
+            assert_eq!(image_header.identifier, expected_images[i].0);
             assert_eq!(
-                size as usize,
+                image_header.size as usize,
                 expected_images[i].1.len().next_multiple_of(4)
             );
 
-            image_offsets.push((image_offset as usize, size as usize));
+            image_headers.push(image_header);
         }
 
         // Verify image data using offsets
-        for (i, (start_offset, _size)) in image_offsets.iter().enumerate() {
-            let actual_data = &data[*start_offset..*start_offset + expected_images[i].1.len()];
-            assert_eq!(actual_data, expected_images[i].1);
+        for (i, header) in image_headers.iter().enumerate() {
+            let actual_data =
+                &data[header.offset as usize..header.offset as usize + header.size as usize];
+            assert_eq!(
+                &actual_data[..expected_images[i].1.len()],
+                expected_images[i].1
+            );
         }
     }
 

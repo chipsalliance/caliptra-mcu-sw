@@ -4,7 +4,7 @@ use libsyscall_caliptra::dma::{AXIAddr, DMASource, DMATransaction, DMA as DMASys
 use libtock_platform::ErrorCode;
 use zerocopy::FromBytes;
 
-use flash_image::{FlashChecksums, FlashHeader, ImageHeader};
+use flash_image::{FlashHeader, ImageHeader};
 
 use libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
 
@@ -34,9 +34,8 @@ pub async fn flash_read_toc(
 ) -> Result<(u32, u32), ErrorCode> {
     let (header, _) = FlashHeader::ref_from_prefix(header).map_err(|_| ErrorCode::Fail)?;
     for index in 0..header.image_count as usize {
-        let flash_offset = core::mem::size_of::<FlashHeader>()
-            + core::mem::size_of::<FlashChecksums>()
-            + index * core::mem::size_of::<ImageHeader>();
+        let flash_offset =
+            core::mem::size_of::<FlashHeader>() + index * core::mem::size_of::<ImageHeader>();
         let buffer = &mut [0u8; core::mem::size_of::<ImageHeader>()];
         flash
             .read(flash_offset, core::mem::size_of::<ImageHeader>(), buffer)

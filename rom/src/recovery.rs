@@ -2,7 +2,7 @@
 
 use crate::flash::flash_partition::FlashPartition;
 use bitfield::bitfield;
-use flash_image::{FlashChecksums, FlashHeader, ImageHeader};
+use flash_image::{FlashHeader, ImageHeader};
 use registers_generated::i3c;
 use registers_generated::i3c::bits::{RecIntfCfg, RecoveryCtrl};
 use romtime::StaticRef;
@@ -204,8 +204,18 @@ impl StateMachineContext for Context {
 }
 
 pub fn get_flash_image_info(id: u32, flash_driver: &mut FlashPartition) -> Result<(u32, u32), ()> {
-    // get the maximum size between FlashHeader, Checksums, and ImageHeader
-    let mut buf = [0u8; 12];
+    // Get the maximum size between FlashHeader and ImageHeader
+    // Use a buffer large enough for either header (FlashHeader or ImageHeader)
+    const MAX_HEADER_SIZE: usize = {
+        let flash_header_size = core::mem::size_of::<FlashHeader>();
+        let image_header_size = core::mem::size_of::<ImageHeader>();
+        if flash_header_size > image_header_size {
+            flash_header_size
+        } else {
+            image_header_size
+        }
+    };
+    let mut buf = [0u8; MAX_HEADER_SIZE];
 
     // Read the flash header
     flash_driver
@@ -220,9 +230,7 @@ pub fn get_flash_image_info(id: u32, flash_driver: &mut FlashPartition) -> Resul
 
     for i in 0..image_count as usize {
         // Read the image header
-        let offset = core::mem::size_of::<FlashHeader>()
-            + core::mem::size_of::<FlashChecksums>()
-            + i * core::mem::size_of::<ImageHeader>();
+        let offset = core::mem::size_of::<FlashHeader>() + i * core::mem::size_of::<ImageHeader>();
         flash_driver
             .read(offset, &mut buf[..core::mem::size_of::<ImageHeader>()])
             .map_err(|_| ())?;

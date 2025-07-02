@@ -6,7 +6,7 @@ use super::pldm_client::{IMAGE_LOADING_TASK_YIELD, PLDM_TASK_YIELD};
 use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use flash_image::{FlashChecksums, FlashHeader, ImageHeader};
+use flash_image::{FlashHeader, ImageHeader};
 use libsyscall_caliptra::dma::{AXIAddr, DMASource, DMATransaction, DMA as DMASyscall};
 use pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
@@ -122,9 +122,7 @@ impl FdOps for StreamingFdOps<'_> {
     ) -> Result<ComponentResponseCode, FdOpsError> {
         if let Some(size) = component.comp_image_size {
             if size
-                < (core::mem::size_of::<ImageHeader>()
-                    + core::mem::size_of::<FlashChecksums>()
-                    + core::mem::size_of::<FlashHeader>()) as u32
+                < (core::mem::size_of::<ImageHeader>() + core::mem::size_of::<FlashHeader>()) as u32
             {
                 // Image size is too small
                 // Return Ok with response code here to allow PLDM lib to pass it to UA

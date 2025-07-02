@@ -17,6 +17,7 @@ cargo_metadata.workspace = true
 crc32fast.workspace = true
 elf.workspace = true
 emulator-consts.workspace = true
+flash-image.workspace = true
 hex.workspace = true
 mcu-config.workspace = true
 mcu-config-emulator.workspace = true

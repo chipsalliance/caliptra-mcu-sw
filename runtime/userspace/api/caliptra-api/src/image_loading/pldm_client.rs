@@ -3,7 +3,7 @@
 extern crate alloc;
 use crate::image_loading::pldm_context::State;
 use crate::image_loading::pldm_fdops::StreamingFdOps;
-use flash_image::{FlashChecksums, FlashHeader, ImageHeader};
+use flash_image::{FlashHeader, ImageHeader};
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
@@ -88,9 +88,8 @@ pub async fn pldm_download_toc(image_id: u32) -> Result<(u32, u32), ErrorCode> {
         DOWNLOAD_CTX.lock(|ctx| {
             let mut ctx = ctx.borrow_mut();
             ctx.total_length = core::mem::size_of::<ImageHeader>(); // image info length
-            ctx.initial_offset = core::mem::size_of::<FlashHeader>()
-                + core::mem::size_of::<FlashChecksums>()
-                + index * core::mem::size_of::<ImageHeader>();
+            ctx.initial_offset =
+                core::mem::size_of::<FlashHeader>() + index * core::mem::size_of::<ImageHeader>();
             ctx.current_offset = ctx.initial_offset;
             ctx.total_downloaded = 0;
         });

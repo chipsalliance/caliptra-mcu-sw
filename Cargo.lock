@@ -2417,6 +2417,7 @@ dependencies = [
  "crc32fast",
  "elf",
  "emulator-consts",
+ "flash-image",
  "hex",
  "mcu-config",
  "mcu-config-emulator",
