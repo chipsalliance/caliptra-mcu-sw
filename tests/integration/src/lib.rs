@@ -78,6 +78,8 @@ mod test {
         streaming_boot_package_path: Option<PathBuf>,
         primary_flash_image_path: Option<PathBuf>,
         secondary_flash_image_path: Option<PathBuf>,
+        caliptra_builder: Option<CaliptraBuilder>,
+        hw_revision: Option<String>,
     ) -> ExitStatus {
         let mut cargo_run_args = vec![
             "run",
@@ -162,26 +164,33 @@ mod test {
         let lc_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_size);
         cargo_run_args.extend(["--lc-size", &lc_size]);
 
-        let mut caliptra_builder = CaliptraBuilder::new(
-            true,
-            false,
-            None,
-            None,
-            None,
-            None,
-            Some(runtime_path.clone()),
-            soc_images,
-        );
+        let mut caliptra_builder = if let Some(caliptra_builder) = caliptra_builder {
+            caliptra_builder
+        } else {
+            CaliptraBuilder::new(
+                false,
+                None,
+                None,
+                None,
+                None,
+                Some(runtime_path.clone()),
+                soc_images,
+            )
+        };
+
+        let hw_revision_str;
+        if let Some(hw_revision) = hw_revision {
+            hw_revision_str = hw_revision;
+            cargo_run_args.extend(["--hw-revision", &hw_revision_str]);
+        }
 
         if active_mode {
             if manufacturing_mode {
                 cargo_run_args.push("--manufacturing-mode");
             }
-            cargo_run_args.push("--active-mode");
             let caliptra_rom = caliptra_builder
                 .get_caliptra_rom()
                 .expect("Failed to build Caliptra ROM");
-            cargo_run_args.push("--caliptra");
             cargo_run_args.push("--caliptra-rom");
             cargo_run_args.push(caliptra_rom.to_str().unwrap());
             let caliptra_fw = caliptra_builder
@@ -248,6 +257,8 @@ mod test {
             i3c_port,
             true,  // active mode is always true
             false, //set this to true if you want to run in manufacturing mode
+            None,
+            None,
             None,
             None,
             None,
@@ -343,6 +354,8 @@ mod test {
             None,
             None,
             None,
+            None,
+            None,
         );
         assert_eq!(0, test.code().unwrap_or_default());
 
@@ -366,6 +379,8 @@ mod test {
             i3c_port,
             true,
             false,
+            None,
+            None,
             None,
             None,
             None,

@@ -1,23 +1,23 @@
 // Licensed under the Apache-2.0 license
 
-use crate::flash::flash_ctrl::{EmulatedFlashCtrl, FlashDrvError};
+use crate::flash::hil::{FlashDrvError, FlashStorage};
 
-/// Represents a partition within the emulated flash memory.
+/// Represents a partition within the flash memory.
 ///
 /// A `FlashPartition` provides a view into a contiguous region of the underlying
-/// emulated flash, allowing for read, write, and erase operations within the
+/// flash, allowing for read, write, and erase operations within the
 /// specified bounds. Each partition is associated with a name, a base offset,
 /// and a length, and all operations are checked to ensure they do not exceed
 /// the partition's boundaries.
 ///
 /// # Fields
-/// - `driver`: Reference to the emulated flash controller driver.
+/// - `driver`: Reference to the flash storage controller driver.
 /// - `name`: Name of the partition (for debugging or identification).
 /// - `base_offset`: The starting offset of the partition within the flash.
 /// - `length`: The size of the partition in bytes.
 #[allow(dead_code)]
 pub struct FlashPartition<'a> {
-    driver: &'a EmulatedFlashCtrl,
+    driver: &'a dyn FlashStorage,
     name: &'static str,
     base_offset: usize,
     length: usize,
@@ -29,7 +29,7 @@ impl<'a> FlashPartition<'a> {
     ///
     /// # Arguments
     ///
-    /// * `driver` - Reference to the emulated flash controller.
+    /// * `driver` - Reference to the flash storage controller.
     /// * `name` - Static string slice representing the partition name.
     /// * `base_offset` - The starting offset of the partition within the flash.
     /// * `length` - The length of the partition in bytes.
@@ -39,7 +39,7 @@ impl<'a> FlashPartition<'a> {
     /// Returns `Ok(FlashPartition)` if the partition fits within the flash capacity,
     /// otherwise returns `Err(FlashDrvError::SIZE)` if the partition exceeds the flash size.
     pub fn new(
-        driver: &'a EmulatedFlashCtrl,
+        driver: &'a dyn FlashStorage,
         name: &'static str,
         base_offset: usize,
         length: usize,
@@ -67,11 +67,11 @@ impl<'a> FlashPartition<'a> {
     ///
     /// Returns `Ok(())` if the read operation is successful.
     /// Returns `Err(FlashDrvError::SIZE)` if the requested range exceeds the partition size, or propagates errors from the underlying flash controller.
-    pub fn read(&self, partition_offset: usize, buf: &mut [u8]) -> Result<(), FlashDrvError> {
+    pub fn read(&self, partition_offset: usize, buf: &'a mut [u8]) -> Result<(), FlashDrvError> {
         if partition_offset + buf.len() > self.length {
             return Err(FlashDrvError::SIZE);
         }
-        self.driver.read(self.base_offset + partition_offset, buf)
+        self.driver.read(buf, self.base_offset + partition_offset)
     }
 
     /// Writes data to the flash partition, starting at the specified offset within the partition.
@@ -90,7 +90,7 @@ impl<'a> FlashPartition<'a> {
         if partition_offset + buf.len() > self.length {
             return Err(FlashDrvError::SIZE);
         }
-        self.driver.write(self.base_offset + partition_offset, buf)
+        self.driver.write(buf, self.base_offset + partition_offset)
     }
 
     /// Erases a region of the flash partition, starting at the specified offset within the partition.
@@ -114,6 +114,10 @@ impl<'a> FlashPartition<'a> {
 
     pub fn len(&self) -> usize {
         self.length
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.length == 0
     }
 
     pub fn name(&self) -> &'static str {

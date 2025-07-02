@@ -14,6 +14,7 @@ caliptra-error.workspace = true
 dpe.workspace = true
 embassy-executor.workspace = true
 embassy-sync.workspace = true
+flash-image.workspace = true
 libtockasync.workspace = true
 libsyscall-caliptra.workspace = true
 libtock_console.workspace = true

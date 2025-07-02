@@ -69,7 +69,6 @@ async fn start() {
 
 pub(crate) async fn async_main<S: Syscalls>() {
     let mut console_writer = Console::<S>::writer();
-    writeln!(console_writer, "Hello async world!").unwrap();
     writeln!(
         console_writer,
         "Timer frequency: {}",
@@ -79,14 +78,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
     match AsyncAlarm::<S>::exists() {
         Ok(()) => {}
-        Err(e) => {
-            writeln!(
+        Err(_) => {
+            let _ = writeln!(
                 console_writer,
-                "Alarm capsule not available, so skipping sleep loop: {:?}",
-                e
-            )
-            .unwrap();
-            return;
+                "Alarm capsule not available, so cannot execute tests"
+            );
+            romtime::test_exit(0);
         }
     };
 
@@ -170,11 +167,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         )
         .unwrap();
 
-        // Terminate the emulator explicitly after the test is completed within app.
-        unsafe {
-            // By writing to this address we can exit the emulator.
-            core::ptr::write_volatile(0x1000_2000 as *mut u32, 0);
-        }
+        romtime::test_exit(0);
     }
     #[cfg(feature = "test-pldm-request-response")]
     {

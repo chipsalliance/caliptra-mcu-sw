@@ -14,12 +14,14 @@ Abstract:
 
 #![no_std]
 
+pub mod flash;
+pub use flash::*;
 mod fuses;
 pub use fuses::*;
 mod rom;
 pub use rom::*;
 mod i3c;
-
+mod recovery;
 pub trait FatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> !;
 }

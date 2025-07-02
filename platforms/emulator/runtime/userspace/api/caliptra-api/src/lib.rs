@@ -2,4 +2,4 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
-pub mod flash_boot_cfg;
+pub mod image_loading;

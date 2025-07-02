@@ -21,8 +21,8 @@ use hex::ToHex;
 use std::{num::ParseIntError, path::PathBuf, str::FromStr};
 use zerocopy::{transmute, IntoBytes};
 
+#[derive(Clone, Debug)]
 pub struct CaliptraBuilder {
-    active_mode: bool,
     fpga: bool,
     caliptra_rom: Option<PathBuf>,
     caliptra_firmware: Option<PathBuf>,
@@ -35,7 +35,6 @@ pub struct CaliptraBuilder {
 impl CaliptraBuilder {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        active_mode: bool,
         fpga: bool,
         caliptra_rom: Option<PathBuf>,
         caliptra_firmware: Option<PathBuf>,
@@ -45,7 +44,6 @@ impl CaliptraBuilder {
         soc_images: Option<Vec<SocImage>>,
     ) -> Self {
         Self {
-            active_mode,
             fpga,
             caliptra_rom,
             caliptra_firmware,
@@ -72,7 +70,7 @@ impl CaliptraBuilder {
             if !caliptra_firmware.exists() {
                 bail!("Caliptra runtime bundle not found: {:?}", caliptra_firmware);
             }
-            if self.active_mode && self.vendor_pk_hash.is_none() {
+            if self.vendor_pk_hash.is_none() {
                 bail!("Vendor public key hash is required for active mode if Caliptra FW is passed as an argument");
             }
         } else {
@@ -123,6 +121,18 @@ impl CaliptraBuilder {
             self.soc_manifest = Some(path);
         }
         Ok(self.soc_manifest.clone().unwrap())
+    }
+
+    pub fn replace_manifest_metadata(&mut self, metadata: Vec<SocImage>) -> Result<PathBuf> {
+        println!("Replacing SoC manifest metadata with: {:?}", metadata);
+        // Replace the current metadata
+        self.soc_images = Some(metadata);
+
+        self.soc_manifest = None; // Clear the cached manifest
+
+        // Rebuild the SoC manifest
+        println!("Rebuilding SoC manifest with new metadata");
+        self.get_soc_manifest()
     }
 
     pub fn get_vendor_pk_hash(&mut self) -> Result<&str> {

@@ -4,6 +4,7 @@
 
 use core::fmt::Write;
 use core::ops::{Index, IndexMut};
+use mcu_rom_common::flash::hil::{FlashDrvError, FlashStorage};
 use registers_generated::primary_flash_ctrl::{
     self,
     bits::{CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus},
@@ -15,6 +16,14 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 #[allow(dead_code)]
 pub const PRIMARY_FLASH_CTRL_BASE: StaticRef<PrimaryFlashCtrl> = unsafe {
     StaticRef::new(primary_flash_ctrl::PRIMARY_FLASH_CTRL_ADDR as *const PrimaryFlashCtrl)
+};
+
+#[allow(dead_code)]
+pub const SECONDARY_FLASH_CTRL_BASE: StaticRef<PrimaryFlashCtrl> = unsafe {
+    StaticRef::new(
+        registers_generated::secondary_flash_ctrl::SECONDARY_FLASH_CTRL_ADDR
+            as *const PrimaryFlashCtrl,
+    )
 };
 
 const PAGE_SIZE: usize = 256;
@@ -37,90 +46,6 @@ impl TryInto<FlashOperation> for u32 {
             2 => Ok(FlashOperation::WritePage),
             3 => Ok(FlashOperation::ErasePage),
             _ => Err(()),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(usize)]
-pub enum FlashDrvError {
-    // Reserved value, for when "no error" / "success" should be
-    // encoded in the same numeric representation as FlashDrvError
-    //
-    // Ok(()) = 0,
-    /// Generic failure condition
-    FAIL = 1,
-    /// Underlying system is busy; retry
-    BUSY = 2,
-    /// The state requested is already set
-    ALREADY = 3,
-    /// The component is powered down
-    OFF = 4,
-    /// Reservation required before use
-    RESERVE = 5,
-    /// An invalid parameter was passed
-    INVAL = 6,
-    /// Parameter passed was too large
-    SIZE = 7,
-    /// Operation canceled by a call
-    CANCEL = 8,
-    /// Memory required not available
-    NOMEM = 9,
-    /// Operation is not supported
-    NOSUPPORT = 10,
-    /// Device is not available
-    NODEVICE = 11,
-    /// Device is not physically installed
-    UNINSTALLED = 12,
-    /// Packet transmission not acknowledged
-    NOACK = 13,
-}
-
-impl From<FlashDrvError> for usize {
-    fn from(err: FlashDrvError) -> usize {
-        err as usize
-    }
-}
-
-impl TryFrom<Result<(), FlashDrvError>> for FlashDrvError {
-    type Error = ();
-
-    fn try_from(rc: Result<(), FlashDrvError>) -> Result<Self, Self::Error> {
-        match rc {
-            Ok(()) => Err(()),
-            Err(FlashDrvError::FAIL) => Ok(FlashDrvError::FAIL),
-            Err(FlashDrvError::BUSY) => Ok(FlashDrvError::BUSY),
-            Err(FlashDrvError::ALREADY) => Ok(FlashDrvError::ALREADY),
-            Err(FlashDrvError::OFF) => Ok(FlashDrvError::OFF),
-            Err(FlashDrvError::RESERVE) => Ok(FlashDrvError::RESERVE),
-            Err(FlashDrvError::INVAL) => Ok(FlashDrvError::INVAL),
-            Err(FlashDrvError::SIZE) => Ok(FlashDrvError::SIZE),
-            Err(FlashDrvError::CANCEL) => Ok(FlashDrvError::CANCEL),
-            Err(FlashDrvError::NOMEM) => Ok(FlashDrvError::NOMEM),
-            Err(FlashDrvError::NOSUPPORT) => Ok(FlashDrvError::NOSUPPORT),
-            Err(FlashDrvError::NODEVICE) => Ok(FlashDrvError::NODEVICE),
-            Err(FlashDrvError::UNINSTALLED) => Ok(FlashDrvError::UNINSTALLED),
-            Err(FlashDrvError::NOACK) => Ok(FlashDrvError::NOACK),
-        }
-    }
-}
-
-impl From<FlashDrvError> for Result<(), FlashDrvError> {
-    fn from(ec: FlashDrvError) -> Self {
-        match ec {
-            FlashDrvError::FAIL => Err(FlashDrvError::FAIL),
-            FlashDrvError::BUSY => Err(FlashDrvError::BUSY),
-            FlashDrvError::ALREADY => Err(FlashDrvError::ALREADY),
-            FlashDrvError::OFF => Err(FlashDrvError::OFF),
-            FlashDrvError::RESERVE => Err(FlashDrvError::RESERVE),
-            FlashDrvError::INVAL => Err(FlashDrvError::INVAL),
-            FlashDrvError::SIZE => Err(FlashDrvError::SIZE),
-            FlashDrvError::CANCEL => Err(FlashDrvError::CANCEL),
-            FlashDrvError::NOMEM => Err(FlashDrvError::NOMEM),
-            FlashDrvError::NOSUPPORT => Err(FlashDrvError::NOSUPPORT),
-            FlashDrvError::NODEVICE => Err(FlashDrvError::NODEVICE),
-            FlashDrvError::UNINSTALLED => Err(FlashDrvError::UNINSTALLED),
-            FlashDrvError::NOACK => Err(FlashDrvError::NOACK),
         }
     }
 }
@@ -158,30 +83,10 @@ pub struct EmulatedFlashCtrl {
     registers: StaticRef<PrimaryFlashCtrl>,
 }
 
-#[allow(dead_code)]
-impl EmulatedFlashCtrl {
-    pub fn initialize_flash_ctrl(base: StaticRef<PrimaryFlashCtrl>) -> EmulatedFlashCtrl {
-        let ctrl = EmulatedFlashCtrl { registers: base };
-        ctrl.init();
-        ctrl
-    }
-
-    pub fn capacity(&self) -> usize {
-        FLASH_MAX_PAGES * PAGE_SIZE
-    }
-
-    fn init(&self) {
-        self.registers
-            .op_status
-            .modify(OpStatus::Err::CLEAR + OpStatus::Done::CLEAR);
-
-        self.clear_error_interrupt();
-        self.clear_event_interrupt();
-    }
-
+impl FlashStorage for EmulatedFlashCtrl {
     // Read arbitrary length of data from flash, starting at `offset`, into `buf`.
     // Returns Ok(()) on success, or Err(FlashDrvError) on failure.
-    pub fn read(&self, offset: usize, buf: &mut [u8]) -> Result<(), FlashDrvError> {
+    fn read(&self, buf: &mut [u8], offset: usize) -> Result<(), FlashDrvError> {
         let mut remaining = buf.len();
         let mut buf_offset = 0;
         let mut flash_offset = offset;
@@ -208,7 +113,7 @@ impl EmulatedFlashCtrl {
 
     // Write arbitrary length of data to flash, starting at `offset`, from `buf`.
     // Returns Ok(()) on success, or Err(FlashDrvError) on failure.
-    pub fn write(&self, offset: usize, buf: &[u8]) -> Result<(), FlashDrvError> {
+    fn write(&self, buf: &[u8], offset: usize) -> Result<(), FlashDrvError> {
         let mut remaining = buf.len();
         let mut buf_offset = 0;
         let mut flash_offset = offset;
@@ -242,7 +147,7 @@ impl EmulatedFlashCtrl {
 
     // Erase arbitrary length of data in flash, starting at `offset`, for `len` bytes.
     // Returns Ok(()) on success, or Err(FlashDrvError) on failure.
-    pub fn erase(&self, offset: usize, len: usize) -> Result<(), FlashDrvError> {
+    fn erase(&self, offset: usize, len: usize) -> Result<(), FlashDrvError> {
         if len == 0 {
             return Ok(());
         }
@@ -253,6 +158,28 @@ impl EmulatedFlashCtrl {
             self.erase_page(page)?;
         }
         Ok(())
+    }
+
+    fn capacity(&self) -> usize {
+        FLASH_MAX_PAGES * PAGE_SIZE
+    }
+}
+
+#[allow(dead_code)]
+impl EmulatedFlashCtrl {
+    pub fn initialize_flash_ctrl(base: StaticRef<PrimaryFlashCtrl>) -> EmulatedFlashCtrl {
+        let ctrl = EmulatedFlashCtrl { registers: base };
+        ctrl.init();
+        ctrl
+    }
+
+    fn init(&self) {
+        self.registers
+            .op_status
+            .modify(OpStatus::Err::CLEAR + OpStatus::Done::CLEAR);
+
+        self.clear_error_interrupt();
+        self.clear_event_interrupt();
     }
 
     fn read_page(

@@ -13,6 +13,7 @@ Abstract:
 --*/
 
 use crate::fatal_error;
+use crate::flash::flash_partition::FlashPartition;
 use crate::fuses::Otp;
 use crate::i3c::I3c;
 use caliptra_api::mailbox::CommandId;
@@ -149,7 +150,7 @@ impl Soc {
     }
 }
 
-pub fn rom_start() {
+pub fn rom_start(flash_partition_driver: Option<&mut FlashPartition>) {
     romtime::println!("[mcu-rom] Hello from ROM");
 
     let straps: StaticRef<mcu_config::McuStraps> = unsafe { StaticRef::new(addr_of!(MCU_STRAPS)) };
@@ -220,10 +221,16 @@ pub fn rom_start() {
         }
     };
 
-    soc.registers.cptra_wdt_cfg[0].set(straps.cptra_wdt_cfg0);
-    soc.registers.cptra_wdt_cfg[1].set(straps.cptra_wdt_cfg1);
+    if flash_partition_driver.is_none() {
+        // Flash image loading takes a long time, and will trigger a watchdog reset
+        // so disable it for flash loading for now.
+        // TODO: Handle flash image loading with the watchdog enabled
 
-    mci.configure_wdt(WDT1_TIMEOUT_CYCLES, WDT2_TIMEOUT_CYCLES);
+        soc.registers.cptra_wdt_cfg[0].set(straps.cptra_wdt_cfg0);
+        soc.registers.cptra_wdt_cfg[1].set(straps.cptra_wdt_cfg1);
+
+        mci.configure_wdt(WDT1_TIMEOUT_CYCLES, WDT2_TIMEOUT_CYCLES);
+    }
 
     romtime::println!(
         "[mcu-rom] Waiting for Caliptra to be ready for fuses: {}",
@@ -292,6 +299,16 @@ pub fn rom_start() {
         }
         fatal_error(5);
     };
+
+    if let Some(flash_driver) = flash_partition_driver {
+        romtime::println!("[mcu-rom] Starting Flash recovery flow");
+
+        crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
+            .map_err(|_| fatal_error(1))
+            .unwrap();
+
+        romtime::println!("[mcu-rom] Flash Recovery flow complete");
+    }
 
     romtime::println!("[mcu-rom] Waiting for firmware to be ready");
     while !soc.fw_ready() {}

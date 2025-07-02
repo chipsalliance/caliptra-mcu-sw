@@ -52,9 +52,6 @@ enum Commands {
         #[arg(long)]
         caliptra_firmware: Option<PathBuf>,
 
-        #[arg(long, default_value_t = false)]
-        active_mode: bool,
-
         #[clap(long, default_value_t = false)]
         manufacturing_mode: bool,
 
@@ -200,6 +197,10 @@ enum FlashImageCommands {
         /// Path to the flash image file
         #[arg(value_name = "FILE")]
         file: String,
+
+        /// Offset of the flash image in the file
+        #[arg(long, value_name = "OFFSET", default_value_t = 0)]
+        offset: u32,
     },
 }
 
@@ -276,8 +277,8 @@ fn main() {
                 0,
                 output,
             ),
-            FlashImageCommands::Verify { file } => {
-                mcu_builder::flash_image::flash_image_verify(file)
+            FlashImageCommands::Verify { file, offset } => {
+                mcu_builder::flash_image::flash_image_verify(file, *offset)
             }
         },
         Commands::Clippy => clippy::clippy(),

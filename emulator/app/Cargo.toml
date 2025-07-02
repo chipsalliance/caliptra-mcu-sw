@@ -40,6 +40,7 @@ pldm-ua.workspace = true
 rand.workspace = true
 sec1.workspace = true
 sha2.workspace = true
+semver.workspace = true
 simple_logger.workspace = true
 smlang.workspace = true
 strum_macros.workspace = true

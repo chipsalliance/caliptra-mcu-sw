@@ -6,7 +6,6 @@ mod pldm_client;
 mod pldm_context;
 mod pldm_fdops;
 
-use crate::flash_image::FlashHeader;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{
@@ -15,6 +14,7 @@ use caliptra_api::mailbox::{
 };
 use caliptra_auth_man_types::ImageMetadataFlags;
 use embassy_executor::Spawner;
+use flash_image::FlashHeader;
 use libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
 use libsyscall_caliptra::mailbox::MailboxError;
 use libsyscall_caliptra::{dma::AXIAddr, mailbox::Mailbox};

@@ -1,4 +1,5 @@
 // Licensed under the Apache-2.0 license
+
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
 use crate::tests::doe_util::common::DoeUtil;
 use crate::tests::doe_util::protocol::*;
@@ -123,8 +124,8 @@ impl DoeTransportTest for Test {
                     Ok(response) if !response.is_empty() => {
                         if response == self.resp_msg {
                             println!(
-                                "DOE_DISCOVERY_TEST: Received response matches expected: {}",
-                                response.len()
+                                "DOE_DISCOVERY_TEST: Received response matches expected: {:?}",
+                                response
                             );
                             self.passed = true;
                         } else {
