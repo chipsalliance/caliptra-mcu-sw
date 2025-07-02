@@ -3,7 +3,9 @@
 use libsyscall_caliptra::flash::SpiFlash;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_platform::ErrorCode;
-use mcu_config::boot::{BootConfig, BootConfigError, PartitionId, PartitionStatus, RollbackEnable};
+use mcu_config::boot::{
+    BootConfigAsync, BootConfigError, PartitionId, PartitionStatus, RollbackEnable,
+};
 use mcu_config_emulator::flash::{
     FlashPartition, PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION,
     IMAGE_B_PARTITION, PARTITION_TABLE,
@@ -59,7 +61,7 @@ impl FlashBootConfig {
     }
 }
 
-impl BootConfig for FlashBootConfig {
+impl BootConfigAsync for FlashBootConfig {
     async fn get_partition_status(
         &self,
         partition_id: PartitionId,

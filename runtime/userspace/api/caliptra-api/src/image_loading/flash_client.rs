@@ -4,7 +4,7 @@ use libsyscall_caliptra::dma::{AXIAddr, DMASource, DMATransaction, DMA as DMASys
 use libtock_platform::ErrorCode;
 use zerocopy::FromBytes;
 
-use crate::flash_image::{FlashChecksums, FlashHeader, ImageHeader};
+use flash_image::{FlashChecksums, FlashHeader, ImageHeader};
 
 use libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
 

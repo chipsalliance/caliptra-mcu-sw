@@ -5,7 +5,7 @@
 /// This trait abstracts the operations required to manage boot partitions,
 /// track their status and boot counts, and control rollback functionality.
 #[allow(async_fn_in_trait)]
-pub trait BootConfig {
+pub trait BootConfigAsync {
     /// Determines which partition should be booted.
     ///
     /// # Returns
@@ -79,6 +79,47 @@ pub trait BootConfig {
     /// # Returns
     /// * `Result<(), BootConfigError>` - `Ok(())` if successful, or an error on failure.
     async fn persist(&self) -> Result<(), BootConfigError> {
+        Ok(()) // Default: do nothing
+    }
+}
+
+// Synchronous version of the BootConfigAsync trait
+pub trait BootConfig {
+    /// Determines which partition should be booted.
+    fn get_active_partition(&self) -> Result<PartitionId, BootConfigError>;
+
+    /// Sets the active partition to boot from.
+    fn set_active_partition(&mut self, partition: PartitionId) -> Result<(), BootConfigError>;
+
+    /// Updates the status of a specified partition.
+    fn set_partition_status(
+        &mut self,
+        partition: PartitionId,
+        status: PartitionStatus,
+    ) -> Result<(), BootConfigError>;
+
+    /// Retrieves the current status of a specified partition.
+    fn get_partition_status(
+        &self,
+        partition: PartitionId,
+    ) -> Result<PartitionStatus, BootConfigError>;
+
+    /// Increments the boot count for a specified partition.
+    fn increment_boot_count(&self, partition: PartitionId) -> Result<u16, BootConfigError>;
+
+    /// Retrieves the boot count for a specified partition.
+    fn get_boot_count(&self, partition: PartitionId) -> Result<u16, BootConfigError>;
+
+    /// Checks if rollback functionality is enabled.
+    fn is_rollback_enabled(&self) -> Result<bool, BootConfigError>;
+
+    /// Enables or disables rollback functionality.
+    fn set_rollback_enable(&mut self, enable: bool) -> Result<(), BootConfigError>;
+
+    /// Optionally persists the updated configuration.
+    ///
+    /// This method can be overridden to persist changes to non-volatile storage.
+    fn persist(&self) -> Result<(), BootConfigError> {
         Ok(()) // Default: do nothing
     }
 }

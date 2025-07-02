@@ -34,6 +34,7 @@ mcu-config.workspace = true
 mcu-config-fpga = { workspace = true, optional = true }
 emulator-registers-generated.workspace = true
 registers-generated.workspace = true
+semver.workspace = true
 sha2.workspace = true
 tock-registers.workspace = true
 uio = { workspace = true, optional = true }

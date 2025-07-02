@@ -11,7 +11,7 @@ mod config;
 
 use core::fmt::Write;
 #[allow(unused)]
-use libapi_emulated_caliptra::flash_boot_cfg::FlashBootConfig;
+use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
 #[allow(unused)]
 use libsyscall_caliptra::flash::SpiFlash;
 use libtock_console::Console;
@@ -19,7 +19,7 @@ use libtock_platform::ErrorCode;
 #[allow(unused)]
 use mcu_config::boot;
 #[allow(unused)]
-use mcu_config::boot::{BootConfig, PartitionId, PartitionStatus, RollbackEnable};
+use mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus, RollbackEnable};
 #[allow(unused)]
 use mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,

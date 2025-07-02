@@ -15,7 +15,7 @@ const CHECKSUM_SIZE: usize = std::mem::size_of::<FlashImageChecksum>();
 const IMAGE_INFO_SIZE: usize = std::mem::size_of::<FlashImageInfo>();
 const CALIPTRA_FMC_RT_IDENTIFIER: u32 = 0x00000001;
 const SOC_MANIFEST_IDENTIFIER: u32 = 0x00000002;
-const MCU_RT_IDENTIFIER: u32 = 0x00000002;
+const MCU_RT_IDENTIFIER: u32 = 0x00000003;
 const SOC_IMAGES_BASE_IDENTIFIER: u32 = 0x00001000;
 
 pub struct FlashImage<'a> {
@@ -25,7 +25,7 @@ pub struct FlashImage<'a> {
 }
 
 #[repr(C, packed)]
-#[derive(IntoBytes, FromBytes, Immutable, KnownLayout)]
+#[derive(IntoBytes, FromBytes, Immutable, KnownLayout, Debug)]
 pub struct FlashImageHeader {
     magic_number: U32<zerocopy::byteorder::BigEndian>,
     header_version: u16,
@@ -33,7 +33,7 @@ pub struct FlashImageHeader {
 }
 
 #[repr(C, packed)]
-#[derive(IntoBytes, FromBytes, Immutable, KnownLayout)]
+#[derive(IntoBytes, FromBytes, Immutable, KnownLayout, Debug)]
 pub struct FlashImageChecksum {
     header: u32,
     payload: u32,
@@ -269,7 +269,7 @@ pub fn generate_image_info(images: Vec<FirmwareImage>) -> Vec<FlashImageInfo> {
     info
 }
 
-pub fn flash_image_verify(image_file_path: &str) -> Result<()> {
+pub fn flash_image_verify(image_file_path: &str, offset: u32) -> Result<()> {
     let mut file = File::open(image_file_path).map_err(|e| {
         Error::new(
             ErrorKind::NotFound,
@@ -285,7 +285,7 @@ pub fn flash_image_verify(image_file_path: &str) -> Result<()> {
         )
     })?;
     file.read_to_end(&mut data)?;
-    FlashImage::verify_flash_image(&data)
+    FlashImage::verify_flash_image(&data[offset as usize..])
 }
 
 pub fn write_partition_table(
@@ -472,7 +472,7 @@ mod tests {
             .expect("Failed to write flash image");
 
         // Verify the firmware image
-        let result = flash_image_verify(image_path);
+        let result = flash_image_verify(image_path, 0);
         result.unwrap_or_else(|e| {
             eprintln!("Error: {}", e);
             std::process::exit(1);
@@ -516,7 +516,7 @@ mod tests {
             .expect("Failed to corrupt data");
 
         // Verify the corrupted firmware image
-        let result = flash_image_verify(image_path);
+        let result = flash_image_verify(image_path, 0);
         assert!(
             result.is_err(),
             "Expected verification to fail for corrupted firmware image"

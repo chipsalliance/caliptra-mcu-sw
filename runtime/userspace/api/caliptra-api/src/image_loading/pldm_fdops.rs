@@ -4,9 +4,9 @@ extern crate alloc;
 
 use super::pldm_client::{IMAGE_LOADING_TASK_YIELD, PLDM_TASK_YIELD};
 use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
-use crate::flash_image::{FlashChecksums, FlashHeader, ImageHeader};
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use flash_image::{FlashChecksums, FlashHeader, ImageHeader};
 use libsyscall_caliptra::dma::{AXIAddr, DMASource, DMATransaction, DMA as DMASyscall};
 use pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;

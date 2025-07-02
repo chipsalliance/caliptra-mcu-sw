@@ -42,7 +42,7 @@ pub extern "C" fn rom_entry() -> ! {
 
     romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
 
-    mcu_rom_common::rom_start();
+    mcu_rom_common::rom_start(None);
 
     let addr = MCU_MEMORY_MAP.sram_offset;
     romtime::println!("[mcu-rom] Jumping to firmware at {:08x}", addr);

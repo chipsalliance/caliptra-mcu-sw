@@ -17,6 +17,7 @@ use caliptra_hw_model_types::ErrorInjectionMode;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
 use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp};
 use emulator_registers_generated::root_bus::AutoRootBus;
+use semver::Version;
 use std::cell::Cell;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
@@ -147,6 +148,7 @@ impl McuHwModel for ModelEmulated {
             &mut i3c_controller,
             i3c_error_irq,
             i3c_notif_irq,
+            Version::new(2, 0, 0),
         );
         let otp = Otp::new(&clock.clone(), None, None, None)?;
         let mci = Mci::new(&clock.clone());

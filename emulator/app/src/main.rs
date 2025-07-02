@@ -126,6 +126,10 @@ struct Emulator {
     #[arg(long)]
     secondary_flash_image: Option<PathBuf>,
 
+    /// HW revision in semver format (e.g., "2.0.0")
+    #[arg(long, value_parser = semver::Version::parse, default_value = "2.0.0")]
+    hw_revision: semver::Version,
+
     /// Override ROM offset
     #[arg(long, value_parser=maybe_hex::<u32>)]
     rom_offset: Option<u32>,
@@ -284,7 +288,7 @@ fn free_run(
     mut caliptra_cpu: CaliptraMainCpu<CaliptraMainRootBus>,
     trace_path: Option<PathBuf>,
     stdin_uart: Option<Arc<Mutex<Option<u8>>>>,
-    mut bmc: Bmc,
+    mut bmc: Option<Bmc>,
 ) {
     // read from the console in a separate thread to prevent blocking
     let running_clone = running.clone();
@@ -333,7 +337,9 @@ fn free_run(
                     println!("Caliptra CPU Halted");
                 }
             }
-            bmc.step();
+            if let Some(bmc) = bmc.as_mut() {
+                bmc.step();
+            }
         }
     } else {
         while running.load(std::sync::atomic::Ordering::Relaxed) {
@@ -352,7 +358,9 @@ fn free_run(
                     println!("Caliptra CPU Halted");
                 }
             }
-            bmc.step();
+            if let Some(bmc) = bmc.as_mut() {
+                bmc.step();
+            }
         }
     };
 }
@@ -428,10 +436,21 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         None
     };
 
+    let use_mcu_recovery_interface;
+    #[cfg(feature = "test-flash-based-boot")]
+    {
+        use_mcu_recovery_interface = true;
+    }
+    #[cfg(not(feature = "test-flash-based-boot"))]
+    {
+        use_mcu_recovery_interface = false;
+    }
+
     let (mut caliptra_cpu, soc_to_caliptra) = start_caliptra(&StartCaliptraArgs {
         rom: cli.caliptra_rom,
         device_lifecycle,
         req_idevid_csr,
+        use_mcu_recovery_interface,
     })
     .expect("Failed to start Caliptra CPU");
 
@@ -507,15 +526,11 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         mcu_root_bus_offsets.ram_size = sram_size;
     }
 
-    // Don't override default DCCM offset and size when the ROM flash driver feature is enabled.
-    #[cfg(not(feature = "test-mcu-rom-flash-access"))]
-    {
-        if let Some(dccm_offset) = cli.dccm_offset {
-            mcu_root_bus_offsets.rom_dedicated_ram_offset = dccm_offset;
-        }
-        if let Some(dccm_size) = cli.dccm_size {
-            mcu_root_bus_offsets.rom_dedicated_ram_size = dccm_size;
-        }
+    if let Some(dccm_offset) = cli.dccm_offset {
+        mcu_root_bus_offsets.rom_dedicated_ram_offset = dccm_offset;
+    }
+    if let Some(dccm_size) = cli.dccm_size {
+        mcu_root_bus_offsets.rom_dedicated_ram_size = dccm_size;
     }
 
     if let Some(i3c_offset) = cli.i3c_offset {
@@ -602,6 +617,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         &mut i3c_controller,
         i3c_error_irq,
         i3c_notif_irq,
+        cli.hw_revision.clone(),
     );
     let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
 
@@ -865,26 +881,47 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     cpu.write_pc(mcu_root_bus_offsets.rom_offset);
     cpu.register_events();
 
-    println!("Initializing recovery interface");
-    let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
-    let (mcu_event_sender, mcu_event_reciever) = cpu.register_events();
-    // prepare the BMC recovery interface emulator
-    let mut bmc = Bmc::new(
-        caliptra_event_sender,
-        caliptra_event_receiver,
-        mcu_event_sender,
-        mcu_event_reciever,
-    );
+    let mut bmc;
+    #[cfg(feature = "test-flash-based-boot")]
+    {
+        println!("Emulator is using MCU recovery interface");
+        bmc = None;
+        let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
+        let (mcu_event_sender, mcu_event_receiver) = cpu.register_events();
+        cpu.bus
+            .i3c_periph
+            .as_mut()
+            .unwrap()
+            .periph
+            .register_event_channels(
+                caliptra_event_sender,
+                caliptra_event_receiver,
+                mcu_event_sender,
+                mcu_event_receiver,
+            );
+    }
+    #[cfg(not(feature = "test-flash-based-boot"))]
+    {
+        let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
+        let (mcu_event_sender, mcu_event_reciever) = cpu.register_events();
+        // prepare the BMC recovery interface emulator
+        bmc = Some(Bmc::new(
+            caliptra_event_sender,
+            caliptra_event_receiver,
+            mcu_event_sender,
+            mcu_event_reciever,
+        ));
 
-    // load the firmware images and SoC manifest into the recovery interface emulator
+        // load the firmware images and SoC manifest into the recovery interface emulator
 
-    let caliptra_firmware = read_binary(&cli.caliptra_firmware, RAM_ORG).unwrap();
-    let soc_manifest = read_binary(&cli.soc_manifest, 0).unwrap();
-    bmc.push_recovery_image(caliptra_firmware);
-    bmc.push_recovery_image(soc_manifest);
-    bmc.push_recovery_image(mcu_firmware);
-    println!("Active mode enabled with 3 recovery images");
-
+        let caliptra_firmware = read_binary(&cli.caliptra_firmware, RAM_ORG).unwrap();
+        let soc_manifest = read_binary(&cli.soc_manifest, 0).unwrap();
+        let bmc = bmc.as_mut().unwrap();
+        bmc.push_recovery_image(caliptra_firmware);
+        bmc.push_recovery_image(soc_manifest);
+        bmc.push_recovery_image(mcu_firmware);
+        println!("Active mode enabled with 3 recovery images");
+    }
     if cli.streaming_boot.is_some() {
         let _ = simple_logger::SimpleLogger::new()
             .with_level(log::LevelFilter::Debug)

@@ -7,6 +7,14 @@ use tock_registers::interfaces::{Readable, Writeable};
 pub trait SocPeripheral {
     fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
     fn set_dma_rom_sram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
+    fn register_event_channels(
+        &mut self,
+        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
+        _events_from_caliptra: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
+        _events_to_mcu: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
+        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
+    ) {
+    }
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}

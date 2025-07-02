@@ -7,6 +7,5 @@ pub mod checksum;
 pub mod crypto;
 pub mod error;
 pub mod evidence;
-pub mod flash_image;
 pub mod image_loading;
 pub mod mailbox_api;

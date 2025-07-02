@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 extern crate alloc;
-use crate::flash_image::{FlashChecksums, FlashHeader, ImageHeader};
 use crate::image_loading::pldm_context::State;
 use crate::image_loading::pldm_fdops::StreamingFdOps;
+use flash_image::{FlashChecksums, FlashHeader, ImageHeader};
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
