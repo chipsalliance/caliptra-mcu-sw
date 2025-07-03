@@ -377,6 +377,18 @@ pub unsafe fn main() {
         execute: false,
     });
 
+    /* XS: no space to add another PMP region
+    // Memory-mapped direct read for primary flash storage. 64MB region starting at 0x9000_0000.
+    platform_regions.push(PlatformRegion {
+        start_addr: 0x3800_0000 as *const u8,
+        size: 0x0400_0000, // 64MB
+        is_mmio: true,
+        user_accessible: false,
+        read: true,
+        write: false,
+        execute: false,
+    }); */
+
     // Create PMP configuration
     let config = PlatformPMPConfig {
         regions: &platform_regions,

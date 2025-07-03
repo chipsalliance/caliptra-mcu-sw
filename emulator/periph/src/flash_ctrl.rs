@@ -89,6 +89,7 @@ pub struct DummyFlashCtrl {
     operation_start: Option<ActionHandle>,
     error_irq: Irq,
     event_irq: Irq,
+    direct_read_region: Option<Rc<RefCell<Ram>>>,
 }
 
 impl DummyFlashCtrl {
@@ -125,6 +126,7 @@ impl DummyFlashCtrl {
 
     pub fn new(
         clock: &Clock,
+        direct_read_region: Option<Rc<RefCell<Ram>>>,
         file_name: Option<PathBuf>,
         error_irq: Irq,
         event_irq: Irq,
@@ -138,19 +140,30 @@ impl DummyFlashCtrl {
                 .create(true)
                 .truncate(false)
                 .open(&path)?;
-
             let capacity = DummyFlashCtrl::PAGE_SIZE * DummyFlashCtrl::MAX_PAGES as usize;
             if file.metadata()?.len() < capacity as u64 || initial_content.is_some() {
                 DummyFlashCtrl::initialize_flash_storage(&mut file, capacity, initial_content)?;
+            }
+            if let Some(region) = direct_read_region.as_ref() {
+                // Enforce region size matches file backend
+                if region.borrow().len() as usize != capacity {
+                    panic!(
+                        "direct_read_region size ({}) does not match flash file size ({})",
+                        region.borrow().len(),
+                        capacity
+                    );
+                }
+                file.seek(std::io::SeekFrom::Start(0))?;
+                file.read_exact(&mut region.borrow_mut().data_mut()[..capacity])?;
             }
             Some(file)
         } else {
             None
         };
-
         Ok(Self {
             dma_ram: None,
             dma_rom_sram: None,
+            direct_read_region,
             interrupt_state: ReadWriteRegister::new(0x0000_0000),
             interrupt_enable: ReadWriteRegister::new(0x0000_0000),
             page_size: ReadWriteRegister::new(0x0000_0000),
@@ -252,12 +265,21 @@ impl DummyFlashCtrl {
         {
             return Err(FlashOpError::ReadError);
         }
-
-        let file = self.file.as_mut().unwrap();
-        let offset = (page_num * Self::PAGE_SIZE as u32) as u64;
-        file.seek(std::io::SeekFrom::Start(offset))
-            .and_then(|_| file.read_exact(&mut self.buffer))
-            .map_err(|_| FlashOpError::ReadError)?;
+        // If direct read region is set, read from it directly.
+        let offset = (page_num * Self::PAGE_SIZE as u32) as usize;
+        if let Some(region) = self.direct_read_region.as_ref() {
+            let region = region.borrow();
+            if offset + Self::PAGE_SIZE > region.len() as usize {
+                return Err(FlashOpError::ReadError);
+            }
+            self.buffer
+                .copy_from_slice(&region.data()[offset..offset + Self::PAGE_SIZE]);
+        } else {
+            let file = self.file.as_mut().unwrap();
+            file.seek(std::io::SeekFrom::Start(offset as u64))
+                .and_then(|_| file.read_exact(&mut self.buffer))
+                .map_err(|_| FlashOpError::ReadError)?;
+        }
 
         let access_type = self.dma_ram_access_check(page_addr);
         let (dma_ram, dma_start_addr) = match access_type {
@@ -274,7 +296,6 @@ impl DummyFlashCtrl {
             ),
             DmaRamAccessType::Invalid => return Err(FlashOpError::DmaRamAccessError),
         };
-
         for (i, &byte) in self.buffer.iter().enumerate() {
             dma_ram
                 .borrow_mut()
@@ -284,7 +305,6 @@ impl DummyFlashCtrl {
                     FlashOpError::DmaRamAccessError
                 })?;
         }
-
         Ok(())
     }
 
@@ -331,16 +351,21 @@ impl DummyFlashCtrl {
             };
         }
 
-        // Write the entire page from the buffer to the backend file
-        if let Some(file) = &mut self.file {
-            let offset = (page_num * Self::PAGE_SIZE as u32) as u64;
-            if file.seek(std::io::SeekFrom::Start(offset)).is_err()
-                || file.write_all(&self.buffer).is_err()
-            {
+        let offset = (page_num * Self::PAGE_SIZE as u32) as usize;
+        // Write to file first
+        let file = self.file.as_mut().unwrap();
+        file.seek(std::io::SeekFrom::Start(offset as u64))
+            .and_then(|_| file.write_all(&self.buffer))
+            .map_err(|_| FlashOpError::WriteError)?;
+
+        // If direct_read_region is present, update it only if file write succeeded
+        if let Some(region) = self.direct_read_region.as_ref() {
+            let mut region = region.borrow_mut();
+            if offset + Self::PAGE_SIZE > region.len() as usize {
                 return Err(FlashOpError::WriteError);
             }
+            region.data_mut()[offset..offset + Self::PAGE_SIZE].copy_from_slice(&self.buffer);
         }
-
         Ok(())
     }
 
@@ -356,15 +381,19 @@ impl DummyFlashCtrl {
             return Err(FlashOpError::EraseError);
         }
 
-        // Erase the entire page in the backend file by writing 0xFF.
-        if let Some(file) = &mut self.file {
-            // Erase the entire page in the backend file
-            let offset = (page_num * Self::PAGE_SIZE as u32) as u64;
-            if file.seek(std::io::SeekFrom::Start(offset)).is_err()
-                || file.write_all(&vec![0xFF; Self::PAGE_SIZE]).is_err()
-            {
+        let offset = (page_num * Self::PAGE_SIZE as u32) as usize;
+        let file = self.file.as_mut().unwrap();
+        file.seek(std::io::SeekFrom::Start(offset as u64))
+            .and_then(|_| file.write_all(&vec![0xFF; Self::PAGE_SIZE]))
+            .map_err(|_| FlashOpError::EraseError)?;
+
+        // If direct_read_region is present, update it only if file erase succeeded
+        if let Some(region) = self.direct_read_region.as_ref() {
+            let mut region = region.borrow_mut();
+            if offset + Self::PAGE_SIZE > region.len() as usize {
                 return Err(FlashOpError::EraseError);
             }
+            region.data_mut()[offset..offset + Self::PAGE_SIZE].fill(0xFF);
         }
 
         Ok(())
@@ -786,6 +815,7 @@ mod test {
         let mut flash_controller = Box::new(
             DummyFlashCtrl::new(
                 clock,
+                None, // No direct read region for autobus setup
                 file,
                 flash_ctrl_error_irq,
                 flash_ctrl_event_irq,
