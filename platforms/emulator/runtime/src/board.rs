@@ -63,6 +63,9 @@ extern "C" {
     /// The end of the kernel / app RAM (Included only for kernel PMP)
     static _esram: u8;
 
+    static _sstorage: u8;
+    static _estorage: u8;
+
     pub(crate) static _pic_vector_table: u8;
 }
 
@@ -118,6 +121,10 @@ pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
 
 #[no_mangle]
 pub static mut PIC: Pic = Pic::new(MCU_MEMORY_MAP.pic_offset);
+
+// XS: Allocate 128K for logging test
+#[no_mangle]
+pub static mut LOG_STORAGE: Option<&'static [u8]> = None;
 
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
@@ -282,7 +289,7 @@ pub unsafe fn main() {
     // protection.
 
     // Define platform-specific memory regions
-    let mut platform_regions = ArrayVec::<PlatformRegion, 8>::new();
+    let mut platform_regions = ArrayVec::<PlatformRegion, 9>::new();
 
     // Kernel text region (read + execute)
     platform_regions.push(PlatformRegion {
@@ -374,6 +381,17 @@ pub unsafe fn main() {
         user_accessible: false,
         read: true,
         write: true,
+        execute: false,
+    });
+
+    // XS: Add direct read flash region
+    platform_regions.push(PlatformRegion {
+        start_addr: addr_of!(_sstorage) as *const u8,
+        size: (addr_of!(_estorage) as usize - addr_of!(_sstorage) as usize),
+        is_mmio: true,
+        user_accessible: true,
+        read: true,
+        write: false,
         execute: false,
     });
 
@@ -595,6 +613,20 @@ pub unsafe fn main() {
         .modify(csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::BIT29::SET);
     csr::CSR.mstatus.modify(csr::mstatus::mstatus::mie::SET);
 
+    romtime::println!("[xs debug]sstorage: {:#010x}", addr_of!(_sstorage) as usize);
+    romtime::println!("[xs debug]estorage: {:#010x}", addr_of!(_estorage) as usize);
+
+    LOG_STORAGE = Some(unsafe {
+        core::slice::from_raw_parts(
+            addr_of!(_sstorage),
+            addr_of!(_estorage) as usize - addr_of!(_sstorage) as usize,
+        )
+    });
+
+    if let Some(log_storage) = LOG_STORAGE {
+        check_log_storage_erased(log_storage);
+    }
+
     debug!("MCU initialization complete.");
     debug!("Entering main loop.");
 
@@ -730,4 +762,20 @@ pub fn run_kernel_op(loops: usize) {
             );
         }
     }
+}
+
+// Sanity check the storage region is 0xFF
+fn check_log_storage_erased(log_storage: &[u8]) {
+    for (i, &byte) in log_storage.iter().enumerate() {
+        assert!(
+            byte == 0xFF,
+            "[xs debug] LOG_STORAGE not erased at offset {:#x}: {:#04x}",
+            i,
+            byte
+        );
+    }
+    debug!(
+        "[xs debug] LOG_STORAGE erased check passed, size: {} bytes",
+        log_storage.len()
+    );
 }

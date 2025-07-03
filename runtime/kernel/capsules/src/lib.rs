@@ -7,5 +7,6 @@ pub mod test;
 
 pub mod doe;
 pub mod flash_partition;
+//pub mod logging_flash;
 pub mod mailbox;
 pub mod mctp;
