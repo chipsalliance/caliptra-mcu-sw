@@ -13,7 +13,6 @@ A typical overall flash layout is:
 | Flash Layout |
 | ------------ |
 | Header       |
-| Checksum     |
 | Payload      |
 
 The Payload contains the following fields:
@@ -47,21 +46,8 @@ The Header section contains the metadata for the images stored in the flash.
 | Magic Number   | 4            | A unique identifier to mark the start of the header.<br />The value must be `0x464C5348` (`"FLSH"` in ASCII)                               |
 | Header Version | 2            | The header version format, allowing for backward compatibility if the package format changes over time.<br />(Current version is `0x0001`) |
 | Image Count    | 2            | The number of image stored in the flash.<br />Each image will have its own image information section.                                      |
-
-## Checksum
-
-The checksum section contains integrity checksums for the header and the payload sections.
-
-| Field            | Size (bytes) | Description                                                                                                       |
-| ---------------- | ------------ | ----------------------------------------------------------------------------------------------------------------- |
-| Header Checksum  | 4            | The integrity checksum of the Header section.                                                                     |
-|                  |              | It is calculated starting at the first byte of the Header until the last byte of the Image Count field.           |
-|                  |              | For this specification, The CRC-32 algorithm with polynomial 0x04C11DB7 (as used by IEEE 802.3)                   |
-|                  |              | is used for checksum computation, processing one byte at a time with the least significant bit first.             |
-| Payload Checksum | 4            | The integrity checksum of the payload section.                                                                    |
-|                  |              | It is calculated starting at the first byte of the first image information until the last byte of the last image. |
-|                  |              | For this specification, The CRC-32 algorithm with polynomial `0x04C11DB7` (as used by IEEE 802.3)                 |
-|                  |              | is used for checksum computation, processing one byte at a time with the least significant bit first.             |
+| Payload Offset | 4            | Offset in bytes of the header to where the first byte of the Payload is located.  |
+| Header Checksum | 4            | CRC-32 checksum calculated for the header excluding this field  |
 
 ## Image Information
 
@@ -77,6 +63,8 @@ The Image Information section is repeated for each image and provides detailed m
 | Size                | 4            | Size in bytes of the image. This is the actual size of the image without padding.      |
 |                     |              | The image itself as written to the flash should be 4-byte aligned and additional       |
 |                     |              | padding will be required to guarantee alignment.                                       |
+| Image Checksum      | 4            | CRC-32 checksum calculated for the binary image located at `ImageLocationOffset` |
+| Image Info Checksum | 4            | CRC-32 checksum calculated for the header excluding this field  |
 
 ## Image
 

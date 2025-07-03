@@ -140,6 +140,9 @@ impl MctpUtil {
         while running.load(Ordering::Relaxed) && retry > 0 {
             match i3c_state {
                 I3cControllerState::Start => {
+                    // Add some delay before sending the first packet.
+                    // The MCU might need some time to boot up and be ready to receive the request.
+                    std::thread::sleep(std::time::Duration::from_secs(5));
                     i3c_state = I3cControllerState::SendPrivateWrite;
                 }
 
@@ -230,12 +233,14 @@ impl MctpUtil {
     }
 
     /// Receive a response from target address and return the assembled message
-    /// This function will block until the response is received
+    /// Blocks until a response is received or the specified timeout is reached.
+    /// If no timeout is provided, it will wait indefinitely for a response.
     ///
     /// # Arguments
     /// * `running` - A flag to indicate if the emulator running status
     /// * `stream` - The TCP stream to I3C socket
     /// * `target_addr` - The target address of the I3C device
+    /// * `timeout` - An optional timeout value in seconds
     ///
     /// # Returns
     /// * `Vec<u8>` - The assembled response message
@@ -245,21 +250,32 @@ impl MctpUtil {
         running: Arc<AtomicBool>,
         stream: &mut TcpStream,
         target_addr: u8,
+        timeout: Option<u32>,
     ) -> Vec<u8> {
+        let retry_count = timeout.unwrap_or(0) * 5;
         self.new_resp();
         let mut message_identifier = MessageIdentifier::default();
-        let pkts = self.receive_packets(running, stream, target_addr, &mut message_identifier);
+
+        let pkts = self.receive_packets(
+            running,
+            stream,
+            target_addr,
+            &mut message_identifier,
+            retry_count,
+        );
         assert_eq!(message_identifier.tag_owner, 0);
         self.assemble(pkts, &message_identifier)
     }
 
     /// Receive a request and return the assembled message
-    /// This function will block until the request is received
+    /// This function will block until the request is received or the specified timeout is reached.
+    /// If no timeout is provided, it will wait indefinitely for a request.
     ///
     /// # Arguments
     /// * `running` - A flag to indicate if the emulator running status
     /// * `stream` - The TCP stream to I3C socket
     /// * `target_addr` - The target address of the I3C device
+    /// * `timeout` - An optional timeout value in seconds
     ///
     /// # Returns
     /// * `Vec<u8>` - The assembled request message
@@ -268,22 +284,32 @@ impl MctpUtil {
         running: Arc<AtomicBool>,
         stream: &mut TcpStream,
         target_addr: u8,
+        timeout: Option<u32>,
     ) -> Vec<u8> {
+        let retry_count = timeout.unwrap_or(0) * 5;
         // Msg tag will be assigned by the sender (device in this case)
         self.new_req(8);
         let mut message_identifier = MessageIdentifier::default();
-        let pkts = self.receive_packets(running, stream, target_addr, &mut message_identifier);
+        let pkts = self.receive_packets(
+            running,
+            stream,
+            target_addr,
+            &mut message_identifier,
+            retry_count,
+        );
         assert_eq!(message_identifier.tag_owner, 1);
         self.assemble(pkts, &message_identifier)
     }
 
     /// Receive a generic MCTP Message and return the assembled message
-    /// This function will block until the request is received
+    /// This function will block until the request is received or the specified timeout is reached
+    /// If no timeout is provided, it will wait indefinitely for a request.
     ///
     /// # Arguments
     /// * `running` - A flag to indicate if the emulator running status
     /// * `stream` - The TCP stream to I3C socket
     /// * `target_addr` - The target address of the I3C device
+    /// * `timeout` - An optional timeout value in seconds
     ///
     /// # Returns
     /// * `Vec<u8>` - The assembled request message
@@ -292,9 +318,17 @@ impl MctpUtil {
         running: Arc<AtomicBool>,
         stream: &mut TcpStream,
         target_addr: u8,
+        timeout: Option<u32>,
     ) -> Vec<u8> {
+        let retry_count = timeout.unwrap_or(0) * 5;
         let mut message_identifier = MessageIdentifier::default();
-        let pkts = self.receive_packets(running, stream, target_addr, &mut message_identifier);
+        let pkts = self.receive_packets(
+            running,
+            stream,
+            target_addr,
+            &mut message_identifier,
+            retry_count,
+        );
         self.assemble(pkts, &message_identifier)
     }
 
@@ -304,16 +338,26 @@ impl MctpUtil {
         stream: &mut TcpStream,
         target_addr: u8,
         message_identifier: &mut MessageIdentifier,
+        retry_count: u32,
     ) -> VecDeque<Vec<u8>> {
         let mut i3c_state = I3cControllerState::WaitForIbi;
         let mut pkts: VecDeque<Vec<u8>> = VecDeque::new();
         stream.set_nonblocking(true).unwrap();
+        let mut retry = retry_count;
 
         while running.load(Ordering::Relaxed) {
             match i3c_state {
                 I3cControllerState::WaitForIbi => {
                     if receive_ibi(stream, target_addr) {
                         i3c_state = I3cControllerState::ReceivePrivateRead;
+                    } else if retry > 0 {
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                        retry -= 1;
+                        if retry == 0 {
+                            println!("MCTP_UTIL: IBI not received. Exiting...");
+                            pkts.clear();
+                            break;
+                        }
                     }
                 }
                 I3cControllerState::ReceivePrivateRead => {

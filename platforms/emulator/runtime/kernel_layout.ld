@@ -249,11 +249,6 @@ SECTIONS
 
     .sram (NOLOAD) :
     {
-        /* Reserve space for the PIC vector table */
-        . = ALIGN(1024); /* Must be aligned to 1 KB boundary */
-        _pic_vector_table = .;
-        . = . + 32 * 4;
-
         /* Kernel BSS section. Memory that is expected to be initialized to
          * zero.
          *
@@ -276,8 +271,6 @@ SECTIONS
         . = ALIGN(4);
         _ezero = .;
 
-
-
         /* Application Memory.
          *
          * Tock uses the remainder of SRAM for application memory.
@@ -291,6 +284,7 @@ SECTIONS
         _sappmem = .;
         *(.app_memory)
     } > ram
+
     _eappmem = ORIGIN(ram) + LENGTH(ram);
 
 
@@ -365,6 +359,10 @@ _sprog = ORIGIN(prog);
 _eprog = ORIGIN(prog) + LENGTH(prog);
 _ssram = ORIGIN(ram);
 _esram = ORIGIN(ram) + LENGTH(ram);
+
+/* Reserve space for the PIC vector table */
+_pic_vector_table = ORIGIN(dccm) + LENGTH(dccm) - 1024;
+
 
 
 /* This.. this is a dirty, not-fully-understood, hack. In some way, linking is

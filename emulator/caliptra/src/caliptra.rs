@@ -14,126 +14,65 @@ Abstract:
 
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use caliptra_emu_bus::Clock;
-use caliptra_emu_cpu::Cpu;
+use caliptra_emu_cpu::{Cpu, CpuArgs, Pic};
 use caliptra_emu_periph::soc_reg::DebugManufService;
 use caliptra_emu_periph::{
     CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal, MailboxRequester,
     ReadyForFwCb, SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
 };
 use caliptra_hw_model::BusMmio;
-use std::fs::File;
-use std::io::{self, ErrorKind};
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::io::{self, ErrorKind, Write};
+use std::path::PathBuf;
 use std::process::exit;
 use std::rc::Rc;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use tock_registers::register_bitfields;
 use tock_registers::registers::InMemoryRegister;
 
-/// Firmware Load Command Opcode
-const FW_LOAD_CMD_OPCODE: u32 = 0x4657_4C44;
-/// Start firmware download
-const RI_DOWNLOAD_FIRMWARE: u32 = 0x5249_4644;
 /// Mailbox user for accessing Caliptra mailbox.
 const MAILBOX_USER: MailboxRequester = MailboxRequester::SocUser(1);
 
-/// The number of CPU clock cycles it takes to write the firmware to the mailbox.
-const FW_WRITE_TICKS: u64 = 1000;
-
-const EXPECTED_CALIPTRA_BOOT_TIME_IN_CYCLES: u64 = 20_000_000; // 20 million cycles
-
-fn words_from_bytes_le(arr: &[u8; 48]) -> [u32; 12] {
-    let mut result = [0u32; 12];
-    for i in 0..result.len() {
-        result[i] = u32::from_le_bytes(arr[i * 4..][..4].try_into().unwrap())
-    }
-    result
-}
-
 #[derive(Default)]
 pub struct StartCaliptraArgs {
-    pub rom: Option<PathBuf>,
-    pub active_mode: bool,
-    pub firmware: Option<PathBuf>,
-    pub update_firmware: Option<PathBuf>,
-    pub log_dir: Option<PathBuf>,
-    pub ueid: Option<u128>,
-    pub idevid_key_id_algo: Option<String>,
+    pub rom: PathBuf,
     pub req_idevid_csr: Option<bool>,
-    pub req_ldevid_cert: Option<bool>,
-    pub mfg_pk_hash: Option<String>,
-    pub owner_pk_hash: Option<String>,
     pub device_lifecycle: Option<String>,
-    pub wdt_timeout: Option<u64>,
+    pub use_mcu_recovery_interface: bool,
 }
+
+register_bitfields! [
+    u32,
+    IDevIdCertAttrFlags [
+        KEY_ID_ALGO OFFSET(0) NUMBITS(2) [
+            SHA1 = 0b00,
+            SHA256 = 0b01,
+            SHA384 = 0b10,
+            FUSE = 0b11,
+        ],
+        RESERVED OFFSET(2) NUMBITS(30) [],
+    ],
+];
 
 /// Creates and returns an initialized a Caliptra emulator CPU.
 pub fn start_caliptra(
     args: &StartCaliptraArgs,
-) -> io::Result<(Option<Cpu<CaliptraRootBus>>, SocToCaliptraBus)> {
-    let args_rom = &args.rom;
-    let args_current_fw = &args.firmware;
-    let args_update_fw = &args.update_firmware;
+) -> io::Result<(Cpu<CaliptraRootBus>, SocToCaliptraBus)> {
     let tmp = PathBuf::from("/tmp");
-    let args_log_dir = args.log_dir.as_ref().unwrap_or(&tmp);
-    let args_idevid_key_id_algo = args.idevid_key_id_algo.as_deref().unwrap_or("sha1");
-    let args_ueid = args.ueid.unwrap_or(u128::MAX);
-    let wdt_timeout = args
-        .wdt_timeout
-        .unwrap_or(EXPECTED_CALIPTRA_BOOT_TIME_IN_CYCLES);
-    let mut mfg_pk_hash = match hex::decode(args.mfg_pk_hash.as_ref().unwrap_or(&String::new())) {
-        Ok(mfg_pk_hash) => mfg_pk_hash,
-        Err(_) => {
-            return Err(io::Error::new(
-                ErrorKind::InvalidInput,
-                "Manufacturer public keys hash format is incorrect",
-            ));
-        }
-    };
-    let mut owner_pk_hash = match hex::decode(args.owner_pk_hash.as_ref().unwrap_or(&String::new()))
-    {
-        Ok(owner_pk_hash) => owner_pk_hash,
-        Err(_) => {
-            return Err(io::Error::new(
-                ErrorKind::InvalidInput,
-                "Owner public key hash format is incorrect",
-            ));
-        }
-    };
+    let args_log_dir = &tmp;
+    let args_idevid_key_id_algo = "sha1";
+    let args_ueid = u128::MAX;
     let unprovisioned = String::from("unprovisioned");
     let args_device_lifecycle = args.device_lifecycle.as_ref().unwrap_or(&unprovisioned);
-    if let Some(args_rom) = args_rom.as_ref() {
-        if !Path::new(args_rom).exists() {
-            Err(io::Error::new(
-                ErrorKind::NotFound,
-                format!("ROM File {:?} does not exist", args_rom),
-            ))?;
-        }
-    }
-
-    if (!mfg_pk_hash.is_empty() && mfg_pk_hash.len() != 48)
-        || (!owner_pk_hash.is_empty() && owner_pk_hash.len() != 48)
-    {
+    let args_use_mcu_recovery_interface = args.use_mcu_recovery_interface;
+    if !args.rom.exists() {
         Err(io::Error::new(
-            ErrorKind::InvalidInput,
-            format!(
-                "Incorrect mfg_pk_hash: {} and/or owner_pk_hash: {} length",
-                mfg_pk_hash.len(),
-                owner_pk_hash.len()
-            ),
+            ErrorKind::NotFound,
+            format!("ROM File {:?} does not exist", &args.rom),
         ))?;
     }
-    change_dword_endianess(&mut mfg_pk_hash);
-    change_dword_endianess(&mut owner_pk_hash);
-    let req_idevid_csr = args.req_idevid_csr.unwrap_or(false);
-    let req_ldevid_cert = args.req_ldevid_cert.unwrap_or(false);
 
-    let mut rom_buffer = Vec::new();
-    if let Some(args_rom) = args_rom {
-        let mut rom = File::open(args_rom)?;
-        rom.read_to_end(&mut rom_buffer)?;
-    }
+    let req_idevid_csr = args.req_idevid_csr.unwrap_or(false);
+    let rom_buffer = std::fs::read(&args.rom)?;
 
     if rom_buffer.len() > CaliptraRootBus::ROM_SIZE {
         Err(io::Error::new(
@@ -145,33 +84,10 @@ pub fn start_caliptra(
         ))?;
     }
 
-    let mut current_fw_buf = Vec::new();
-    if let Some(path) = args_current_fw {
-        if !Path::new(path).exists() {
-            Err(io::Error::new(
-                ErrorKind::NotFound,
-                format!("Current firmware file {:?} does not exist", path),
-            ))?;
-        }
-        let mut firmware = File::open(path)?;
-        firmware.read_to_end(&mut current_fw_buf)?;
-    }
-    let current_fw_buf = Rc::new(current_fw_buf);
-
-    let mut update_fw_buf = Vec::new();
-    if let Some(path) = args_update_fw {
-        Err(io::Error::new(
-            ErrorKind::NotFound,
-            format!("Update firmware file {:?} does not exist", args_update_fw),
-        ))?;
-        let mut firmware = File::open(path)?;
-        firmware.read_to_end(&mut update_fw_buf)?;
-    }
-    let update_fw_buf = Rc::new(update_fw_buf);
-
     let log_dir = Rc::new(args_log_dir.to_path_buf());
 
-    let clock = Clock::new();
+    let clock = Rc::new(Clock::new());
+    let pic = Rc::new(Pic::new());
 
     let mut security_state = SecurityState::default();
     security_state.set_device_lifecycle(
@@ -186,29 +102,14 @@ pub fn start_caliptra(
         },
     );
 
-    let ready_for_fw_cb = if args.active_mode {
-        // in active mode, we don't upload the firmware here
-        // TODO: this needs to be moved to the MCU ROM when that has a mailbox driver
-        ReadyForFwCb::new(move |args| {
-            args.schedule_later(FW_WRITE_TICKS, move |mailbox: &mut MailboxInternal| {
-                let soc_mbox = mailbox.as_external(MAILBOX_USER).regs();
-                // Write the cmd to mailbox.
-                assert!(!soc_mbox.lock().read().lock());
-                soc_mbox.cmd().write(|_| RI_DOWNLOAD_FIRMWARE);
-                soc_mbox.dlen().write(|_| 0u32);
-                soc_mbox.execute().write(|w| w.execute(true));
-            });
-        })
-    } else {
-        ReadyForFwCb::new(move |args| {
-            let firmware_buffer = current_fw_buf.clone();
-            args.schedule_later(FW_WRITE_TICKS, move |mailbox: &mut MailboxInternal| {
-                upload_fw_to_mailbox(mailbox, firmware_buffer);
-            });
-        })
-    };
+    // in active mode, we don't upload the firmware here, as MCU ROM will trigger it
+    let ready_for_fw_cb = ReadyForFwCb::new(|_| {});
+    // in active mode, we don't update firmware here, as MCU will trigger it
+    let upload_update_fw = UploadUpdateFwCb::new(|_| {});
 
     let bus_args = CaliptraRootBusArgs {
+        clock: clock.clone(),
+        pic: pic.clone(),
         rom: rom_buffer,
         log_dir: args_log_dir.clone(),
         tb_services_cb: TbServicesCb::new(move |val| match val {
@@ -218,9 +119,7 @@ pub fn start_caliptra(
         }),
         ready_for_fw_cb,
         security_state,
-        upload_update_fw: UploadUpdateFwCb::new(move |mailbox: &mut MailboxInternal| {
-            upload_fw_to_mailbox(mailbox, update_fw_buf.clone());
-        }),
+        upload_update_fw,
         download_idevid_csr_cb: DownloadIdevidCsrCb::new(
             move |mailbox: &mut MailboxInternal,
                   cptra_dbg_manuf_service_reg: &mut InMemoryRegister<
@@ -230,11 +129,12 @@ pub fn start_caliptra(
                 download_idev_id_csr(mailbox, log_dir.clone(), cptra_dbg_manuf_service_reg);
             },
         ),
-        subsystem_mode: args.active_mode,
+        subsystem_mode: true,
+        use_mcu_recovery_interface: args_use_mcu_recovery_interface,
         ..Default::default()
     };
 
-    let root_bus = CaliptraRootBus::new(&clock, bus_args);
+    let root_bus = CaliptraRootBus::new(bus_args);
     let soc_ifc = unsafe {
         caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
             0x3003_0000 as *mut u32,
@@ -242,54 +142,13 @@ pub fn start_caliptra(
         )
     };
 
-    if !mfg_pk_hash.is_empty() {
-        let mfg_pk_hash = words_from_bytes_le(
-            &mfg_pk_hash
-                .try_into()
-                .expect("mfg_pk_hash must be 48 bytes"),
-        );
-        soc_ifc.fuse_vendor_pk_hash().write(&mfg_pk_hash);
-    }
-
-    if !owner_pk_hash.is_empty() {
-        let owner_pk_hash = words_from_bytes_le(
-            &owner_pk_hash
-                .try_into()
-                .expect("owner_pk_hash must be 48 bytes"),
-        );
-        soc_ifc.cptra_owner_pk_hash().write(&owner_pk_hash);
-    }
-
     // Populate DBG_MANUF_SERVICE_REG
-    {
-        const GEN_IDEVID_CSR_FLAG: u32 = 1 << 0;
-        const GEN_LDEVID_CSR_FLAG: u32 = 1 << 1;
-
-        let mut val = 0;
-        if req_idevid_csr {
-            val |= GEN_IDEVID_CSR_FLAG;
-        }
-        if req_ldevid_cert {
-            val |= GEN_LDEVID_CSR_FLAG;
-        }
-        soc_ifc.cptra_dbg_manuf_service_reg().write(|_| val);
-    }
+    soc_ifc
+        .cptra_dbg_manuf_service_reg()
+        .write(|_| if req_idevid_csr { 1 } else { 0 });
 
     // Populate fuse_idevid_cert_attr
     {
-        register_bitfields! [
-            u32,
-            IDevIdCertAttrFlags [
-                KEY_ID_ALGO OFFSET(0) NUMBITS(2) [
-                    SHA1 = 0b00,
-                    SHA256 = 0b01,
-                    SHA384 = 0b10,
-                    FUSE = 0b11,
-                ],
-                RESERVED OFFSET(2) NUMBITS(30) [],
-            ],
-        ];
-
         // Determine the Algorithm used for IDEVID Certificate Subject Key Identifier
         let algo = match args_idevid_key_id_algo.to_ascii_lowercase().as_str() {
             "" | "sha1" => IDevIdCertAttrFlags::KEY_ID_ALGO::SHA1,
@@ -315,65 +174,12 @@ pub fn start_caliptra(
         soc_ifc.fuse_idevid_cert_attr().write(&cert);
     }
 
-    // Populate cptra_wdt_cfg
-    {
-        soc_ifc.cptra_wdt_cfg().at(0).write(|_| wdt_timeout as u32);
-        soc_ifc
-            .cptra_wdt_cfg()
-            .at(1)
-            .write(|_| (wdt_timeout >> 32) as u32);
-    }
-
     let ext_soc_ifc = root_bus.soc_to_caliptra_bus(MAILBOX_USER);
 
-    // only return a full CPU if we have a firmware to run
-    if args_rom.is_some() {
-        Ok((Some(Cpu::new(root_bus, clock)), ext_soc_ifc))
-    } else {
-        Ok((None, ext_soc_ifc))
-    }
-}
-
-fn change_dword_endianess(data: &mut [u8]) {
-    for idx in (0..data.len()).step_by(4) {
-        data.swap(idx, idx + 3);
-        data.swap(idx + 1, idx + 2);
-    }
-}
-
-fn upload_fw_to_mailbox(mailbox: &mut MailboxInternal, firmware_buffer: Rc<Vec<u8>>) {
-    let soc_mbox = mailbox.as_external(MAILBOX_USER).regs();
-    // Write the cmd to mailbox.
-
-    assert!(!soc_mbox.lock().read().lock());
-
-    soc_mbox.cmd().write(|_| FW_LOAD_CMD_OPCODE);
-    soc_mbox.dlen().write(|_| firmware_buffer.len() as u32);
-
-    //
-    // Write firmware image.
-    //
-    let word_size = std::mem::size_of::<u32>();
-    let remainder = firmware_buffer.len() % word_size;
-    let n = firmware_buffer.len() - remainder;
-
-    for idx in (0..n).step_by(word_size) {
-        soc_mbox.datain().write(|_| {
-            u32::from_le_bytes(firmware_buffer[idx..idx + word_size].try_into().unwrap())
-        });
-    }
-
-    // Handle the remainder bytes.
-    if remainder > 0 {
-        let mut last_word = firmware_buffer[n] as u32;
-        for idx in 1..remainder {
-            last_word |= (firmware_buffer[n + idx] as u32) << (idx << 3);
-        }
-        soc_mbox.datain().write(|_| last_word);
-    }
-
-    // Set the execute register.
-    soc_mbox.execute().write(|w| w.execute(true));
+    Ok((
+        Cpu::new(root_bus, clock.clone(), pic.clone(), CpuArgs::default()),
+        ext_soc_ifc,
+    ))
 }
 
 fn download_idev_id_csr(

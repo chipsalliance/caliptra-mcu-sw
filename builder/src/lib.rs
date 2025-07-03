@@ -8,8 +8,10 @@ mod runtime;
 mod tbf;
 
 pub use caliptra::{CaliptraBuilder, SocImage};
-pub use rom::rom_build;
-pub use runtime::{runtime_build_no_apps, runtime_build_with_apps};
+pub use rom::{rom_build, rom_ld_script};
+pub use runtime::{
+    runtime_build_no_apps_uncached, runtime_build_with_apps_cached, runtime_ld_script,
+};
 
 use anyhow::{anyhow, Result};
 use std::{
@@ -26,6 +28,12 @@ pub static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
         .unwrap()
         .to_path_buf()
 });
+
+pub fn target_dir() -> PathBuf {
+    std::env::var("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PROJECT_ROOT.join("target"))
+}
 
 pub(crate) static SYSROOT: LazyLock<String> = LazyLock::new(|| {
     // cache this in the target directory as it seems to be very slow to call rustc

@@ -42,13 +42,6 @@ jobs:
           sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
-      - name: Install cmake 3.x
-        run: |
-          wget https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz &&
-          mkdir -p /opt/cmake &&
-          tar xvzf cmake-3.31.6-linux-x86_64.tar.gz -C /opt/cmake --strip-components=1 &&
-          echo "/opt/cmake/bin" >> $GITHUB_PATH
-
       - name: Restore sccache binary
         uses: actions/cache/restore@v3
         id: sccache_bin_restore
@@ -100,32 +93,8 @@ jobs:
           cargo --config "$EXTRA_CARGO_CONFIG" xtask precheckin
           sccache --show-stats
 
-      - name: Checkout spdm-emu repository
-        uses: actions/checkout@v4
-        with:
-          repository: parvathib/spdm-emu
-          ref: pbhogaraju/get-certificate
-          path: spdm-emu
-          submodules: recursive
-
-      - name: Build spdm-emu
-        run: |
-          pushd spdm-emu
-          git submodule update --init --recursive
-          mkdir build
-          pushd build
-          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=mbedtls ..
-          make copy_sample_key
-          make
-          popd
-          popd
-
       - name: Run all tests
         run: |
           export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
           cargo --config "$EXTRA_CARGO_CONFIG" xtask test
           sccache --show-stats
-
-      - name: Display SPDM Validator test results
-        run: |
-          cat $GITHUB_WORKSPACE/test.log

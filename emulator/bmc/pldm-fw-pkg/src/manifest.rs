@@ -841,7 +841,7 @@ impl FirmwareDeviceIdRecord {
         }
 
         // Encode applicable_components
-        let mut bitmap = vec![0u8; ((component_bitmap_length + 7) / 8) as usize];
+        let mut bitmap = vec![0u8; component_bitmap_length.div_ceil(8) as usize];
         let num_components = component_bitmap_length;
         if let Some(ref components) = self.applicable_components {
             for &component in components {
@@ -929,7 +929,7 @@ impl FirmwareDeviceIdRecord {
         }
 
         // Decode applicable_components
-        let mut bitmap = vec![0u8; ((component_bitmap_length + 7) / 8) as usize];
+        let mut bitmap = vec![0u8; component_bitmap_length.div_ceil(8) as usize];
         let num_components = component_bitmap_length;
         reader.read_exact(&mut bitmap)?;
 
@@ -1020,7 +1020,7 @@ impl FirmwareDeviceIdRecord {
         total_size += 4; // reference_manifest_length (u32)
 
         // applicable_components bitmap
-        total_size += ((component_bitmap_length + 7) / 8) as usize;
+        total_size += component_bitmap_length.div_ceil(8) as usize;
 
         // component_image_set_version_string
         if let Some(ref version_string) = self.component_image_set_version_string {
@@ -1162,7 +1162,7 @@ impl DownstreamDeviceIdRecord {
         }
 
         // Encode applicable_components
-        let mut bitmap = vec![0u8; ((component_bitmap_length + 7) / 8) as usize];
+        let mut bitmap = vec![0u8; component_bitmap_length.div_ceil(8) as usize];
         let num_components = component_bitmap_length;
         if let Some(ref components) = self.applicable_components {
             for &component in components {
@@ -1252,7 +1252,7 @@ impl DownstreamDeviceIdRecord {
 
         // Decode applicable_components
         // Read the bitmap from the reader
-        let mut bitmap = vec![0u8; ((component_bitmap_length + 7) / 8) as usize];
+        let mut bitmap = vec![0u8; component_bitmap_length.div_ceil(8) as usize];
         let num_components = component_bitmap_length;
         reader.read_exact(&mut bitmap)?;
 
@@ -1342,7 +1342,7 @@ impl DownstreamDeviceIdRecord {
         total_size += 4; // reference_manifest_length (u32)
 
         // applicable_components bitmap
-        total_size += ((component_bitmap_length + 7) / 8) as usize;
+        total_size += component_bitmap_length.div_ceil(8) as usize;
 
         // self_contained_activation_min_version_string
         if let Some(ref version_string) = self.self_contained_activation_min_version_string {

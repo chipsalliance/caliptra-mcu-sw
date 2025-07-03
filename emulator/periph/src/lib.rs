@@ -12,6 +12,7 @@ Abstract:
 
 --*/
 mod dma_ctrl;
+mod doe_mbox;
 mod emu_ctrl;
 mod flash_ctrl;
 mod i3c;
@@ -25,12 +26,13 @@ mod spi_host;
 mod uart;
 
 pub use dma_ctrl::DummyDmaCtrl;
+pub use doe_mbox::{DoeMboxPeriph, DummyDoeMbox};
 pub use emu_ctrl::EmuCtrl;
 pub use flash_ctrl::DummyFlashCtrl;
 pub use i3c::I3c;
 pub use i3c_protocol::*;
 pub use mci::Mci;
 pub use otp::Otp;
-pub use root_bus::{CaliptraRootBus, CaliptraRootBusArgs};
+pub use root_bus::{McuRootBus, McuRootBusArgs, McuRootBusOffsets};
 pub use spi_flash::IoMode;
 pub use uart::Uart;

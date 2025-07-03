@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use clap::{Parser, Subcommand};
+use clap_num::maybe_hex;
+use core::panic;
 use mcu_builder::SocImage;
 use std::path::PathBuf;
 
@@ -50,9 +52,6 @@ enum Commands {
         #[arg(long)]
         caliptra_firmware: Option<PathBuf>,
 
-        #[arg(long, default_value_t = false)]
-        active_mode: bool,
-
         #[clap(long, default_value_t = false)]
         manufacturing_mode: bool,
 
@@ -74,6 +73,15 @@ enum Commands {
         /// Path to the Flash image to be used in streaming boot
         #[arg(long)]
         flash_image: Option<PathBuf>,
+
+        #[arg(long, default_value_t = false)]
+        use_dccm_for_stack: bool,
+
+        #[arg(long, value_parser=maybe_hex::<u32>)]
+        dccm_offset: Option<u32>,
+
+        #[arg(long, value_parser=maybe_hex::<u32>)]
+        dccm_size: Option<u32>,
     },
     /// Build Runtime image
     RuntimeBuild {
@@ -83,9 +91,29 @@ enum Commands {
 
         #[arg(long)]
         output: Option<String>,
+
+        /// Platform to build for. Default: emulator
+        #[arg(long)]
+        platform: Option<String>,
+
+        #[arg(long, default_value_t = false)]
+        use_dccm_for_stack: bool,
+
+        #[arg(long, value_parser=maybe_hex::<u32>)]
+        dccm_offset: Option<u32>,
+
+        #[arg(long, value_parser=maybe_hex::<u32>)]
+        dccm_size: Option<u32>,
     },
     /// Build ROM
-    RomBuild,
+    RomBuild {
+        /// Platform to build for. Default: emulator
+        #[arg(long)]
+        platform: Option<String>,
+        /// Features to build ROM with.
+        #[arg(long)]
+        features: Option<String>,
+    },
     /// Build and Run ROM image
     Rom {
         /// Run with tracing options
@@ -169,6 +197,10 @@ enum FlashImageCommands {
         /// Path to the flash image file
         #[arg(value_name = "FILE")]
         file: String,
+
+        /// Offset of the flash image in the file
+        #[arg(long, value_name = "OFFSET", default_value_t = 0)]
+        offset: u32,
     },
 }
 
@@ -200,12 +232,36 @@ fn main() {
     let cli = Xtask::parse();
     let result = match &cli.xtask {
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),
-        Commands::RuntimeBuild { features, output } => {
+        Commands::RuntimeBuild {
+            features,
+            output,
+            platform,
+            use_dccm_for_stack,
+            dccm_offset,
+            dccm_size,
+        } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            mcu_builder::runtime_build_with_apps(&features, output.as_deref(), false)
+            mcu_builder::runtime_build_with_apps_cached(
+                &features,
+                output.as_deref(),
+                false,
+                platform.as_deref(),
+                match platform.as_deref() {
+                    None | Some("emulator") => Some(&mcu_config_emulator::EMULATOR_MEMORY_MAP),
+                    Some("fpga") => Some(&mcu_config_fpga::FPGA_MEMORY_MAP),
+                    _ => panic!("Unsupported platform"),
+                },
+                *use_dccm_for_stack,
+                *dccm_offset,
+                *dccm_size,
+            )
+            .map(|_| ())
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
-        Commands::RomBuild => mcu_builder::rom_build(),
+        Commands::RomBuild { platform, features } => {
+            mcu_builder::rom_build(platform.as_deref(), features.as_deref().unwrap_or(""))
+                .map(|_| ())
+        }
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
                 caliptra_fw,
@@ -218,10 +274,11 @@ fn main() {
                 soc_manifest,
                 mcu_runtime,
                 soc_images,
+                0,
                 output,
             ),
-            FlashImageCommands::Verify { file } => {
-                mcu_builder::flash_image::flash_image_verify(file)
+            FlashImageCommands::Verify { file, offset } => {
+                mcu_builder::flash_image::flash_image_verify(file, *offset)
             }
         },
         Commands::Clippy => clippy::clippy(),

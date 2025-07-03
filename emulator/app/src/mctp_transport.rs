@@ -142,7 +142,7 @@ impl PldmSocket for MctpPldmSocket {
             .try_clone()
             .map_err(|_| PldmTransportError::Disconnected)?;
         let raw_pkt: Vec<u8> =
-            mctp_util.receive(self.running.clone(), &mut stream, self.target_addr);
+            mctp_util.receive(self.running.clone(), &mut stream, self.target_addr, None);
         let len = raw_pkt.len() - 1;
         if raw_pkt.is_empty() {
             return Err(PldmTransportError::Underflow);

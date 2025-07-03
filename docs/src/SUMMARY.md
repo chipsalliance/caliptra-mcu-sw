@@ -9,3 +9,8 @@
     - [Image Loading](./image_loading.md)
     - [MCTP](./mctp.md)
     - [SPDM](./spdm.md)
+    - [PLDM](./pldm.md)
+    - [External Mailbox Commands](./external_mailbox_cmds.md)
+    - [External MCTP VDM Commands](./external_mctp_vdm_cmds.md)
+    - [Unified External Command Handling](./unified_external_command_handling.md)
+    - [Logging](./logging.md)

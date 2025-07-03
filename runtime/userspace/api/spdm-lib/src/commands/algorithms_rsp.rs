@@ -1,14 +1,12 @@
 // Licensed under the Apache-2.0 license
 
-use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
+use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandResult, SpdmError};
-use crate::protocol::algorithms::*;
-use crate::protocol::capabilities::*;
-use crate::protocol::common::SpdmMsgHdr;
-use crate::protocol::SpdmVersion;
+use crate::protocol::*;
 use crate::state::ConnectionState;
+use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
 use core::mem::size_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -19,7 +17,7 @@ const MAX_SPDM_EXT_ALG_COUNT_V10: u8 = 8;
 const MAX_SPDM_EXT_ALG_COUNT_V11: u8 = 20;
 
 #[derive(IntoBytes, FromBytes, Immutable, Default, Debug)]
-#[repr(packed)]
+#[repr(C, packed)]
 struct NegotiateAlgorithmsReq {
     num_alg_struct_tables: u8,
     param2: u8,
@@ -69,14 +67,12 @@ impl NegotiateAlgorithmsReq {
     }
 }
 
-impl CommonCodec for NegotiateAlgorithmsReq {
-    const DATA_KIND: DataKind = DataKind::Payload;
-}
+impl CommonCodec for NegotiateAlgorithmsReq {}
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
-#[repr(packed)]
+#[repr(C, packed)]
 #[allow(dead_code)]
-struct NegotiateAlgorithmsResp {
+struct AlgorithmsResp {
     num_alg_struct_tables: u8,
     reserved_1: u8,
     length: u16,
@@ -92,9 +88,7 @@ struct NegotiateAlgorithmsResp {
     reserved_3: [u8; 2],
 }
 
-impl CommonCodec for NegotiateAlgorithmsResp {
-    const DATA_KIND: DataKind = DataKind::Payload;
-}
+impl CommonCodec for AlgorithmsResp {}
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C)]
@@ -104,9 +98,7 @@ struct ExtendedAlgo {
     algorithm_id: u16,
 }
 
-impl CommonCodec for ExtendedAlgo {
-    const DATA_KIND: DataKind = DataKind::Payload;
-}
+impl CommonCodec for ExtendedAlgo {}
 
 #[derive(Debug, Clone, Copy)]
 enum AlgType {
@@ -142,14 +134,32 @@ bitfield! {
         pub alg_supported, set_alg_supported: 31, 16;
 }
 
-impl CommonCodec for AlgStructure {
-    const DATA_KIND: DataKind = DataKind::Payload;
+impl CommonCodec for AlgStructure {}
+
+pub(crate) fn selected_measurement_specification(ctx: &SpdmContext) -> MeasurementSpecification {
+    let local_cap_flags = &ctx.local_capabilities.flags;
+    let local_algorithms = &ctx.local_algorithms.device_algorithms;
+    let peer_algorithms = ctx.state.connection_info.peer_algorithms();
+    let algorithm_priority_table = &ctx.local_algorithms.algorithm_priority_table;
+
+    let mut measurement_specification_sel = MeasurementSpecification::default();
+    if local_cap_flags.mel_cap() == 1
+        || (local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithNoSignature as u8
+            || local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithSignature as u8)
+    {
+        measurement_specification_sel =
+            MeasurementSpecification(local_algorithms.measurement_spec.0.prioritize(
+                &peer_algorithms.measurement_spec.0,
+                algorithm_priority_table.measurement_specification,
+            ));
+    }
+    measurement_specification_sel
 }
 
-fn process_negotiate_algorithms_request(
-    ctx: &mut SpdmContext,
+async fn process_negotiate_algorithms_request<'a>(
+    ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
-    req_payload: &mut MessageBuf,
+    req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Validate the version
     let connection_version = ctx.state.connection_info.version_number();
@@ -270,10 +280,15 @@ fn process_negotiate_algorithms_request(
         .connection_info
         .set_peer_algorithms(peer_algorithms);
 
-    Ok(())
+    // Append NEGOTIATE_ALGORITHMS to the transcript VCA context
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::Vca)
+        .await
 }
 
-fn generate_algorithms_response(ctx: &mut SpdmContext, rsp: &mut MessageBuf) -> CommandResult<()> {
+async fn generate_algorithms_response<'a>(
+    ctx: &mut SpdmContext<'a>,
+    rsp: &mut MessageBuf<'a>,
+) -> CommandResult<()> {
     let connection_version = ctx.state.connection_info.version_number();
     let peer_algorithms = ctx.state.connection_info.peer_algorithms();
     let local_algorithms = &ctx.local_algorithms.device_algorithms;
@@ -284,21 +299,17 @@ fn generate_algorithms_response(ctx: &mut SpdmContext, rsp: &mut MessageBuf) -> 
 
     // Note: No extended asymmetric key and hash algorithms in response.
     let rsp_length = size_of::<SpdmMsgHdr>()
-        + size_of::<NegotiateAlgorithmsResp>()
+        + size_of::<AlgorithmsResp>()
         + num_alg_struct_tables * size_of::<AlgStructure>();
 
+    // SPDM header first
+    let spdm_hdr = SpdmMsgHdr::new(connection_version, ReqRespCode::Algorithms);
+    let mut payload_len = spdm_hdr
+        .encode(rsp)
+        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?;
+
     // MeasurementSpecificationSel
-    let mut measurement_specification_sel = MeasurementSpecification::default();
-    if local_cap_flags.mel_cap() == 1
-        || (local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithNoSignature as u8
-            || local_cap_flags.meas_cap() == MeasCapability::MeasurementsWithSignature as u8)
-    {
-        measurement_specification_sel =
-            MeasurementSpecification(local_algorithms.measurement_spec.0.prioritize(
-                &peer_algorithms.measurement_spec.0,
-                algorithm_priority_table.measurement_specification,
-            ));
-    }
+    let measurement_specification_sel = selected_measurement_specification(ctx);
 
     // OtherParamsSelection (Responder doesn't set the multi asymmetric key use flag)
     let mut other_params_selection = OtherParamSupport::default();
@@ -336,7 +347,7 @@ fn generate_algorithms_response(ctx: &mut SpdmContext, rsp: &mut MessageBuf) -> 
         algorithm_priority_table.mel_specification,
     ));
 
-    let algorithms_rsp = NegotiateAlgorithmsResp {
+    let algorithms_rsp = AlgorithmsResp {
         num_alg_struct_tables: num_alg_struct_tables as u8,
         reserved_1: 0,
         length: rsp_length as u16,
@@ -353,19 +364,22 @@ fn generate_algorithms_response(ctx: &mut SpdmContext, rsp: &mut MessageBuf) -> 
     };
 
     // Fill the response buffer with fixed algorithms response fields
-    let mut len = algorithms_rsp
+    payload_len += algorithms_rsp
         .encode(rsp)
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?;
 
     // Fill the response buffer with selected algorithm structure table
-    len += fill_alg_struct_table(ctx, rsp, num_alg_struct_tables)?;
+    payload_len += encode_alg_struct_table(ctx, rsp, num_alg_struct_tables)?;
 
-    rsp.push_data(len)
+    rsp.push_data(payload_len)
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?;
-    Ok(())
+
+    // Add the ALGORITHMS to the transcript VCA context
+    ctx.append_message_to_transcript(rsp, TranscriptContext::Vca)
+        .await
 }
 
-fn fill_alg_struct_table(
+fn encode_alg_struct_table(
     ctx: &mut SpdmContext,
     rsp: &mut MessageBuf,
     num_alg_struct_tables: usize,
@@ -457,7 +471,7 @@ fn fill_alg_struct_table(
     Ok(len)
 }
 
-pub(crate) fn handle_negotiate_algorithms<'a>(
+pub(crate) async fn handle_negotiate_algorithms<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
@@ -467,14 +481,14 @@ pub(crate) fn handle_negotiate_algorithms<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
-    // Process negotiate algorithms request
-    process_negotiate_algorithms_request(ctx, spdm_hdr, req_payload)?;
+    // Process NEGOTIATE_ALGORITHMS request
+    process_negotiate_algorithms_request(ctx, spdm_hdr, req_payload).await?;
 
-    // Generate algorithms response
+    // Generate ALGORITHMS response
     ctx.prepare_response_buffer(req_payload)?;
-    generate_algorithms_response(ctx, req_payload)?;
+    generate_algorithms_response(ctx, req_payload).await?;
 
-    // Set the connection state to AfterAlgorithms
+    // Set the connection state to AlgorithmsNegotiated
     ctx.state
         .connection_info
         .set_state(ConnectionState::AlgorithmsNegotiated);

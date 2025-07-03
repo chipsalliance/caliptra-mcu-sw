@@ -32,12 +32,6 @@ Both the Caliptra Core and MCU emulator will run if you use the `runtime` xtask:
 cargo xtask runtime
 ```
 
-By default, Caliptra runs in passive mode, but active mode is also support via a command-line flag:
-
-```shell
-cargo xtask runtime --active-mode
-```
-
 This uses the full [active, or subsystem, mode boot flow](https://chipsalliance.github.io/caliptra-mcu-sw/rom.html#cold-boot-flow).
 
 
@@ -73,6 +67,7 @@ The `cargo xtask` commands will default to the `emulator` platform (for now).
 ## Directory structure
 
 * `emulator/`: Emulator to run the ROM and RT firmware
+* `hw/model`: Abstraction for running different platforms for tests.
 * `rom/`: ROM code
 * `runtime/`: runtime firmware
 * `romtime/`: Shared code between ROM and runtime

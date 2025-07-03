@@ -38,7 +38,6 @@ pub struct FirmwareParamFixed {
     pub active_comp_image_set_ver_str_len: u8,
     pub pending_comp_image_set_ver_str_type: u8,
     pub pending_comp_image_set_ver_str_len: u8,
-    pub active_comp_image_set_ver_str: [u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN],
 }
 
 impl Default for FirmwareParamFixed {
@@ -50,7 +49,6 @@ impl Default for FirmwareParamFixed {
             active_comp_image_set_ver_str_len: 0,
             pending_comp_image_set_ver_str_type: 0,
             pending_comp_image_set_ver_str_len: 0,
-            active_comp_image_set_ver_str: [0; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN],
         }
     }
 }
@@ -59,6 +57,7 @@ impl Default for FirmwareParamFixed {
 #[repr(C)]
 pub struct FirmwareParameters {
     pub params_fixed: FirmwareParamFixed,
+    pub active_comp_image_set_ver_str: [u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN],
     pub pending_comp_image_set_ver_str: Option<[u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN]>,
     pub comp_param_table: [ComponentParameterEntry; MAX_COMPONENT_COUNT],
 }
@@ -79,12 +78,6 @@ impl FirmwareParameters {
                 active_comp_image_set_ver_str_len: active_comp_image_set_version.str_len,
                 pending_comp_image_set_ver_str_type: pending_comp_image_set_version.str_type,
                 pending_comp_image_set_ver_str_len: pending_comp_image_set_version.str_len,
-                active_comp_image_set_ver_str: {
-                    let mut arr = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
-                    let len = active_comp_image_set_version.str_data.len();
-                    arr[..len].copy_from_slice(&active_comp_image_set_version.str_data);
-                    arr
-                },
             },
             pending_comp_image_set_ver_str: if pending_comp_image_set_version.str_len > 0 {
                 let mut arr = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
@@ -93,6 +86,12 @@ impl FirmwareParameters {
                 Some(arr)
             } else {
                 None
+            },
+            active_comp_image_set_ver_str: {
+                let mut arr = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
+                let len = active_comp_image_set_version.str_data.len();
+                arr[..len].copy_from_slice(&active_comp_image_set_version.str_data);
+                arr
             },
             comp_param_table: {
                 let count = comp_param_table.len().min(MAX_COMPONENT_COUNT);
@@ -112,6 +111,8 @@ impl FirmwareParameters {
         if self.pending_comp_image_set_ver_str.is_some() {
             bytes += self.params_fixed.pending_comp_image_set_ver_str_len as usize;
         }
+        bytes += self.params_fixed.active_comp_image_set_ver_str_len as usize;
+
         for i in 0..self.params_fixed.comp_count as usize {
             bytes += self.comp_param_table[i].codec_size_in_bytes();
         }
@@ -130,6 +131,10 @@ impl PldmCodec for FirmwareParameters {
             .unwrap();
 
         offset += core::mem::size_of::<FirmwareParamFixed>();
+
+        let len = self.params_fixed.active_comp_image_set_ver_str_len as usize;
+        buffer[offset..offset + len].copy_from_slice(&self.active_comp_image_set_ver_str[..len]);
+        offset += len;
 
         if let Some(pending_comp_image_set_ver_str) = &self.pending_comp_image_set_ver_str {
             let len = self.params_fixed.pending_comp_image_set_ver_str_len as usize;
@@ -155,6 +160,16 @@ impl PldmCodec for FirmwareParameters {
         )
         .unwrap();
         offset += core::mem::size_of::<FirmwareParamFixed>();
+
+        let mut active_comp_image_set_ver_str = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
+        let len = params_fixed.active_comp_image_set_ver_str_len as usize;
+        active_comp_image_set_ver_str[..len].copy_from_slice(
+            buffer
+                .get(offset..offset + len)
+                .ok_or(PldmCodecError::BufferTooShort)?,
+        );
+
+        offset += len;
 
         let pending_comp_image_set_ver_str = if params_fixed.pending_comp_image_set_ver_str_len > 0
         {
@@ -187,6 +202,7 @@ impl PldmCodec for FirmwareParameters {
 
         Ok(FirmwareParameters {
             params_fixed,
+            active_comp_image_set_ver_str,
             pending_comp_image_set_ver_str,
             comp_param_table,
         })

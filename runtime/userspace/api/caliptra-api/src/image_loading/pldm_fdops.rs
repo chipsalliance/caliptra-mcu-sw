@@ -4,9 +4,9 @@ extern crate alloc;
 
 use super::pldm_client::{IMAGE_LOADING_TASK_YIELD, PLDM_TASK_YIELD};
 use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
-use crate::flash_image::{FlashChecksums, FlashHeader, ImageHeader};
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use flash_image::{FlashHeader, ImageHeader};
 use libsyscall_caliptra::dma::{AXIAddr, DMASource, DMATransaction, DMA as DMASyscall};
 use pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
@@ -22,17 +22,14 @@ use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
 
 const MAX_PLDM_TRANSFER_SIZE: usize = core::mem::size_of::<RequestFirmwareDataResponseFixed>();
 
-pub struct StreamingFdOps {
-    descriptors: &'static [Descriptor],
-    fw_params: &'static FirmwareParameters,
+pub struct StreamingFdOps<'a> {
+    descriptors: &'a [Descriptor],
+    fw_params: &'a FirmwareParameters,
 }
 
-impl StreamingFdOps {
+impl<'a> StreamingFdOps<'a> {
     /// Creates a new instance of the StreamingFdOps.
-    pub const fn new(
-        descriptors: &'static [Descriptor],
-        fw_params: &'static FirmwareParameters,
-    ) -> Self {
+    pub const fn new(descriptors: &'a [Descriptor], fw_params: &'a FirmwareParameters) -> Self {
         Self {
             descriptors,
             fw_params,
@@ -87,7 +84,7 @@ impl StreamingFdOps {
 }
 
 #[async_trait(?Send)]
-impl FdOps for StreamingFdOps {
+impl FdOps for StreamingFdOps<'_> {
     async fn get_device_identifiers(
         &self,
         device_identifiers: &mut [Descriptor],
@@ -125,9 +122,7 @@ impl FdOps for StreamingFdOps {
     ) -> Result<ComponentResponseCode, FdOpsError> {
         if let Some(size) = component.comp_image_size {
             if size
-                < (core::mem::size_of::<ImageHeader>()
-                    + core::mem::size_of::<FlashChecksums>()
-                    + core::mem::size_of::<FlashHeader>()) as u32
+                < (core::mem::size_of::<ImageHeader>() + core::mem::size_of::<FlashHeader>()) as u32
             {
                 // Image size is too small
                 // Return Ok with response code here to allow PLDM lib to pass it to UA
@@ -222,6 +217,15 @@ impl FdOps for StreamingFdOps {
         DOWNLOAD_CTX.lock(|ctx| ctx.borrow().download_complete)
     }
 
+    async fn query_download_progress(
+        &self,
+        _component: &FirmwareComponent,
+        progress_percent: &mut ProgressPercent,
+    ) -> Result<(), FdOpsError> {
+        *progress_percent = ProgressPercent::default();
+        Ok(())
+    }
+
     async fn verify(
         &self,
         _component: &FirmwareComponent,
@@ -243,6 +247,14 @@ impl FdOps for StreamingFdOps {
         // For streaming boot, apply is not applicable, so we return 100% progress.
         *progress_percent = ProgressPercent::new(100).unwrap();
         Ok(ApplyResult::ApplySuccess)
+    }
+
+    async fn cancel_update_component(
+        &self,
+        _component: &FirmwareComponent,
+    ) -> Result<(), FdOpsError> {
+        // TODO: Implement cancel update component logic if needed
+        Ok(())
     }
 
     async fn activate(

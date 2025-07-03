@@ -45,11 +45,15 @@ impl Otp {
         Ok(())
     }
 
+    pub fn status(&self) -> u32 {
+        self.registers.otp_status.get()
+    }
+
     fn read_data(&self, addr: usize, len: usize, data: &mut [u8]) -> Result<(), McuError> {
         if data.len() < len || len % 4 != 0 {
             return Err(McuError::InvalidDataError);
         }
-        for (i, chunk) in (&mut data[..len]).chunks_exact_mut(4).enumerate() {
+        for (i, chunk) in data[..len].chunks_exact_mut(4).enumerate() {
             let word = self.read_word(addr / 4 + i)?;
             let word_bytes = word.to_le_bytes();
             chunk.copy_from_slice(&word_bytes[..chunk.len()]);
@@ -99,9 +103,9 @@ impl Otp {
     pub fn read_fuses(&self) -> Result<Fuses, McuError> {
         let mut fuses = Fuses::default();
         self.read_data(
-            fuses::SECRET_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
-            fuses::SECRET_TEST_UNLOCK_PARTITION_BYTE_SIZE,
-            &mut fuses.secret_test_unlock_partition,
+            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
+            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
+            &mut fuses.sw_test_unlock_partition,
         )?;
         self.read_data(
             fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET,

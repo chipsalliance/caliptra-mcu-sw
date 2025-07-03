@@ -1,0 +1,66 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "user-app"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+critical-section.workspace = true
+embassy-executor.workspace = true
+embassy-sync.workspace = true
+libapi-caliptra.workspace = true
+libapi-emulated-caliptra.workspace = true
+libsyscall-caliptra.workspace = true
+libtock_console.workspace = true
+libtock_debug_panic.workspace = true
+libtock_platform.workspace = true
+libtock_runtime.workspace = true
+libtock.workspace = true
+libtockasync.workspace = true
+mcu-config.workspace = true
+mcu-config-emulator.workspace = true
+portable-atomic.workspace = true
+pldm-common.workspace = true
+pldm-lib.workspace = true
+romtime.workspace = true
+spdm-lib.workspace = true
+zerocopy.workspace = true
+
+[target.'cfg(not(target_arch = "riscv32"))'.dependencies]
+libtock_unittest.workspace = true
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
+embedded-alloc.workspace = true
+
+[features]
+default = []
+test-caliptra-certs = []
+test-caliptra-crypto = []
+test-caliptra-mailbox = []
+test-doe-transport-loopback = []
+test-doe-discovery = []
+test-doe-user-loopback = []
+test-exit-immediately = []
+test-i3c-simple = []
+test-i3c-constant-writes = []
+test-flash-based-boot = []
+test-flash-ctrl-init = []
+test-flash-ctrl-read-write-page = []
+test-flash-ctrl-erase-page = []
+test-flash-storage-read-write = []
+test-flash-storage-erase = []
+test-flash-usermode = []
+test-mctp-ctrl-cmds = []
+test-mctp-capsule-loopback = []
+test-mctp-user-loopback = []
+test-mcu-rom-flash-access = []
+test-pldm-request-response = []
+test-pldm-discovery = []
+test-pldm-fw-update = []
+test-pldm-fw-update-e2e = []
+test-pldm-streaming-boot = []
+test-spdm-validator = []

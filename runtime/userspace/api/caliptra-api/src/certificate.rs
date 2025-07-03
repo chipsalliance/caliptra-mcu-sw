@@ -80,7 +80,7 @@ impl CertContext {
         if cert.len() > PopulateIdevEcc384CertReq::MAX_CERT_SIZE {
             return Err(CaliptraApiError::InvalidArgument("Invalid cert size"));
         }
-        let cmd = CommandId::POPULATE_IDEV_CERT.into();
+        let cmd = CommandId::POPULATE_IDEV_ECC384_CERT.into();
         let mut req = PopulateIdevEcc384CertReq {
             cert_size: cert.len() as u32,
             ..Default::default()
@@ -277,9 +277,9 @@ impl CertContext {
         Ok(resp)
     }
 
-    async fn execute_dpe_cmd<'a>(
+    async fn execute_dpe_cmd(
         &mut self,
-        dpe_cmd: &mut Command<'a>,
+        dpe_cmd: &mut Command<'_>,
     ) -> CaliptraApiResult<DpeResponse> {
         let mut cmd_data: [u8; InvokeDpeReq::DATA_MAX_SIZE] = [0; InvokeDpeReq::DATA_MAX_SIZE];
         let dpe_cmd_id: u32 = Self::dpe_cmd_id(dpe_cmd);

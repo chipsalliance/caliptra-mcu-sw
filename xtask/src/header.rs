@@ -17,6 +17,7 @@ const IGNORED_PATHS: &[&str] = &[
     ".github/dependabot.yml",
     "builder/src/tbf.rs",
     "emulator/app/src/dis.rs",
+    "hw/model/src/xi3c/controller.rs",
 ];
 const IGNORED_DIRS: &[&str] = &[
     ".git",

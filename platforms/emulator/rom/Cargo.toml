@@ -6,13 +6,27 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
+[build-dependencies]
+mcu-builder.workspace = true
+mcu-config-emulator.workspace = true
+
 [dependencies]
+bitfield.workspace = true
+mcu-config.workspace = true
+mcu-config-emulator.workspace = true
 mcu-rom-common.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true
 tock-registers.workspace = true
 zeroize.workspace = true
+zerocopy.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 riscv-csr.workspace = true
 rv32i.workspace = true
+
+[features]
+default = []
+test-mcu-rom-flash-access = []
+test-flash-based-boot = []
+test-pldm-streaming-boot = []

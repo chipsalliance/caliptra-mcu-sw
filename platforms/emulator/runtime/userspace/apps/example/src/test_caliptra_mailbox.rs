@@ -1,12 +1,12 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_api::mailbox::{
-    MailboxReqHeader, QuotePcrsFlags, QuotePcrsReq, QuotePcrsResp, Request,
-};
+use caliptra_api::mailbox::{MailboxReqHeader, QuotePcrsEcc384Req, QuotePcrsEcc384Resp, Request};
 use core::fmt::Write;
 use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use romtime::{println, test_exit};
 use zerocopy::{FromBytes, IntoBytes};
+
+use libapi_caliptra::evidence::{Evidence, PCR_QUOTE_BUFFER_SIZE, PCR_QUOTE_RSP_START};
 
 #[allow(unused)]
 pub(crate) async fn test_caliptra_mailbox() {
@@ -14,22 +14,21 @@ pub(crate) async fn test_caliptra_mailbox() {
 
     let mailbox: Mailbox = Mailbox::new();
 
-    let mut req = QuotePcrsReq {
+    let mut req = QuotePcrsEcc384Req {
         hdr: MailboxReqHeader::default(),
         nonce: [0x34; 32],
-        flags: QuotePcrsFlags::ECC_SIGNATURE,
     };
     let req_data = req.as_mut_bytes();
     mailbox
-        .populate_checksum(QuotePcrsReq::ID.into(), req_data)
+        .populate_checksum(QuotePcrsEcc384Req::ID.into(), req_data)
         .unwrap();
 
-    let response_buffer = &mut [0u8; core::mem::size_of::<QuotePcrsResp>()];
+    let response_buffer = &mut [0u8; core::mem::size_of::<QuotePcrsEcc384Resp>()];
 
     println!("Sending QUOTE_PCRS command");
 
     if let Err(err) = mailbox
-        .execute(QuotePcrsReq::ID.0, req_data, response_buffer)
+        .execute(QuotePcrsEcc384Req::ID.0, req_data, response_buffer)
         .await
     {
         println!("Mailbox command failed with err {:?}", err);
@@ -43,7 +42,7 @@ pub(crate) async fn test_caliptra_mailbox() {
         test_exit(1);
     }
 
-    match QuotePcrsResp::ref_from_bytes(response_buffer) {
+    match QuotePcrsEcc384Resp::ref_from_bytes(response_buffer) {
         Ok(resp) => {
             if resp.nonce != req.nonce {
                 println!(
@@ -67,15 +66,14 @@ pub(crate) async fn test_caliptra_mailbox_bad_command() {
 
     let mailbox: Mailbox = Mailbox::new();
 
-    let mut req = QuotePcrsReq {
+    let mut req: QuotePcrsEcc384Req = QuotePcrsEcc384Req {
         hdr: MailboxReqHeader::default(),
         nonce: [0x34; 32],
-        flags: QuotePcrsFlags::ECC_SIGNATURE,
     };
     let req_data = req.as_mut_bytes();
     mailbox.populate_checksum(0xffff_ffff, req_data).unwrap();
 
-    let response_buffer = &mut [0u8; core::mem::size_of::<QuotePcrsResp>()];
+    let response_buffer = &mut [0u8; core::mem::size_of::<QuotePcrsEcc384Resp>()];
 
     println!("Sending invalid command with correct checksum");
 
@@ -101,25 +99,24 @@ pub(crate) async fn test_caliptra_mailbox_fail() {
 
     let mailbox: Mailbox = Mailbox::new();
 
-    let mut req = QuotePcrsReq {
+    let mut req = QuotePcrsEcc384Req {
         hdr: MailboxReqHeader::default(),
         nonce: [0x34; 32],
-        flags: QuotePcrsFlags::ECC_SIGNATURE,
     };
     let req_data = req.as_mut_bytes();
     let len = req_data.len();
     // send a command that is too short, but has the correct checksum
     let req_data = &mut req_data[..len - 4];
     mailbox
-        .populate_checksum(QuotePcrsReq::ID.into(), req_data)
+        .populate_checksum(QuotePcrsEcc384Req::ID.into(), req_data)
         .unwrap();
 
-    let response_buffer = &mut [0u8; core::mem::size_of::<QuotePcrsResp>()];
+    let response_buffer = &mut [0u8; core::mem::size_of::<QuotePcrsEcc384Resp>()];
 
     println!("Sending bad QUOTE_PCRS command");
 
     match mailbox
-        .execute(QuotePcrsReq::ID.0, req_data, response_buffer)
+        .execute(QuotePcrsEcc384Req::ID.0, req_data, response_buffer)
         .await
     {
         Err(MailboxError::MailboxError(err))
@@ -132,4 +129,66 @@ pub(crate) async fn test_caliptra_mailbox_fail() {
             test_exit(1);
         }
     }
+}
+
+#[allow(unused)]
+pub(crate) async fn test_caliptra_evidence() {
+    println!("Starting mailbox evidence test");
+
+    println!("Starting PCR quote test");
+    test_pcr_quote_with_pqc_signature().await;
+    test_pcr_quote_with_ecc_signature().await;
+    println!("PCR Quote test success");
+
+    println!("Mailbox evidence test completed successfully");
+}
+
+async fn test_pcr_quote_with_pqc_signature() {
+    println!("Starting PCR quote with PQC signature test");
+    let mut pcr_quote = [0u8; PCR_QUOTE_BUFFER_SIZE];
+
+    match Evidence::pcr_quote(&mut pcr_quote, true).await {
+        Ok(copy_len) if copy_len > 0 => {
+            println!(
+                "PCR quote with PQC Signature[{}]: {:x?} ",
+                copy_len,
+                &pcr_quote[PCR_QUOTE_RSP_START..copy_len]
+            );
+        }
+        Err(err) => {
+            println!("Failed to get PCR quote: {:?}", err);
+            test_exit(1);
+        }
+        _ => {
+            println!("Failed! Got empty PCR Quote");
+            test_exit(1);
+        }
+    }
+
+    println!("PCR Quote with PQC signature test success");
+}
+
+async fn test_pcr_quote_with_ecc_signature() {
+    println!("Starting PCR quote with ECC signature test");
+    let mut pcr_quote = [0u8; PCR_QUOTE_BUFFER_SIZE];
+
+    match Evidence::pcr_quote(&mut pcr_quote, false).await {
+        Ok(copy_len) if copy_len > 0 => {
+            println!(
+                "PCR quote with ECC Signature[{}]: {:x?}",
+                copy_len,
+                &pcr_quote[..copy_len]
+            );
+        }
+        Err(err) => {
+            println!("Failed to get PCR quote: {:?}", err);
+            test_exit(1);
+        }
+        _ => {
+            println!("Failed! Got empty PCR Quote");
+            test_exit(1);
+        }
+    }
+
+    println!("PCR Quote ECC signature test success");
 }

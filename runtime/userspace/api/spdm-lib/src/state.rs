@@ -103,4 +103,5 @@ pub enum ConnectionState {
     AlgorithmsNegotiated,
     AfterDigest,
     AfterCertificate,
+    Authenticated,
 }

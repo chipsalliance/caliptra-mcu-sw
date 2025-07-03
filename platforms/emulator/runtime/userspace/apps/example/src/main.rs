@@ -7,12 +7,14 @@
 
 use core::fmt::Write;
 #[cfg(feature = "test-flash-usermode")]
-use libsyscall_caliptra::flash::{driver_num as par_driver_num, FlashCapacity, SpiFlash};
+use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash};
 use libtock::alarm::*;
 use libtock_console::Console;
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
+#[cfg(feature = "test-flash-usermode")]
+use mcu_config_emulator::flash::{IMAGE_A_PARTITION, IMAGE_B_PARTITION};
 
 #[cfg(feature = "test-pldm-request-response")]
 mod test_pldm_request_response;
@@ -24,6 +26,9 @@ mod test_caliptra_crypto;
 
 #[cfg(feature = "test-dma")]
 mod test_dma;
+
+#[cfg(feature = "test-doe-user-loopback")]
+mod test_doe_loopback;
 
 #[cfg(feature = "test-caliptra-certs")]
 mod test_caliptra_certs;
@@ -64,7 +69,6 @@ async fn start() {
 
 pub(crate) async fn async_main<S: Syscalls>() {
     let mut console_writer = Console::<S>::writer();
-    writeln!(console_writer, "Hello async world!").unwrap();
     writeln!(
         console_writer,
         "Timer frequency: {}",
@@ -74,14 +78,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
     match AsyncAlarm::<S>::exists() {
         Ok(()) => {}
-        Err(e) => {
-            writeln!(
+        Err(_) => {
+            let _ = writeln!(
                 console_writer,
-                "Alarm capsule not available, so skipping sleep loop: {:?}",
-                e
-            )
-            .unwrap();
-            return;
+                "Alarm capsule not available, so cannot execute tests"
+            );
+            romtime::test_exit(0);
         }
     };
 
@@ -102,6 +104,18 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_mctp_loopback().await;
     }
 
+    #[cfg(feature = "test-doe-user-loopback")]
+    {
+        writeln!(
+            console_writer,
+            "Running test-doe-user-loopback test for DOE message type"
+        )
+        .unwrap();
+
+        // This test is not implemented yet.
+        test_doe_loopback::test_doe_loopback().await;
+    }
+
     #[cfg(feature = "test-flash-usermode")]
     {
         writeln!(console_writer, "flash usermode test starts").unwrap();
@@ -116,12 +130,13 @@ pub(crate) async fn async_main<S: Syscalls>() {
         };
 
         let mut test_cfg_1 = flash_test::FlashTestConfig {
-            drv_num: par_driver_num::ACTIVE_IMAGE_PARTITION,
+            drv_num: IMAGE_A_PARTITION.driver_num,
             expected_capacity: flash_test::EXPECTED_CAPACITY,
             expected_chunk_size: flash_test::EXPECTED_CHUNK_SIZE,
-            e_offset: 0,
+            e_offset: IMAGE_A_PARTITION.offset,
             e_len: flash_test::BUF_LEN,
-            w_offset: 20,
+            w_offset: IMAGE_A_PARTITION.offset + 20,
+            p_offset: IMAGE_A_PARTITION.offset,
             w_len: 1000,
             w_buf: &user_w_buf,
             r_buf: &mut user_r_buf,
@@ -134,12 +149,13 @@ pub(crate) async fn async_main<S: Syscalls>() {
         .unwrap();
 
         let mut test_cfg_2 = flash_test::FlashTestConfig {
-            drv_num: par_driver_num::RECOVERY_IMAGE_PARTITION,
+            drv_num: IMAGE_B_PARTITION.driver_num,
             expected_capacity: flash_test::EXPECTED_CAPACITY,
             expected_chunk_size: flash_test::EXPECTED_CHUNK_SIZE,
-            e_offset: 0,
+            e_offset: IMAGE_B_PARTITION.offset,
             e_len: flash_test::BUF_LEN,
-            w_offset: 20,
+            w_offset: IMAGE_B_PARTITION.offset + 20,
+            p_offset: IMAGE_B_PARTITION.offset,
             w_len: 1000,
             w_buf: &user_w_buf,
             r_buf: &mut user_r_buf,
@@ -151,11 +167,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         )
         .unwrap();
 
-        // Terminate the emulator explicitly after the test is completed within app.
-        unsafe {
-            // By writing to this address we can exit the emulator.
-            core::ptr::write_volatile(0x1000_2000 as *mut u32, 0);
-        }
+        romtime::test_exit(0);
     }
     #[cfg(feature = "test-pldm-request-response")]
     {
@@ -166,12 +178,14 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_mailbox::test_caliptra_mailbox().await;
         test_caliptra_mailbox::test_caliptra_mailbox_bad_command().await;
         test_caliptra_mailbox::test_caliptra_mailbox_fail().await;
+        test_caliptra_mailbox::test_caliptra_evidence().await;
         romtime::test_exit(0);
     }
 
     #[cfg(feature = "test-caliptra-crypto")]
     {
         test_caliptra_crypto::test_caliptra_sha().await;
+        test_caliptra_crypto::test_caliptra_rng().await;
         romtime::test_exit(0);
     }
 
@@ -237,6 +251,7 @@ pub mod flash_test {
         pub e_len: usize,
         pub w_offset: usize,
         pub w_len: usize,
+        pub p_offset: usize,
         pub w_buf: &'a [u8],
         pub r_buf: &'a mut [u8],
     }
@@ -295,21 +310,23 @@ pub mod flash_test {
 
         // Data integrity check
         {
-            for i in 0..test_cfg.w_offset.min(test_cfg.r_buf.len()) {
+            for i in 0..(test_cfg.w_offset - test_cfg.p_offset).min(test_cfg.r_buf.len()) {
                 assert_eq!(test_cfg.r_buf[i], 0xFF, "data mismatch at {}", i);
             }
+
             for i in
                 test_cfg.w_offset..(test_cfg.w_offset + test_cfg.w_len).min(test_cfg.r_buf.len())
             {
                 assert_eq!(
-                    test_cfg.r_buf[i],
+                    test_cfg.r_buf[i - test_cfg.p_offset],
                     test_cfg.w_buf[i - test_cfg.w_offset],
                     "data mismatch at {}",
                     i
                 );
             }
 
-            for i in (test_cfg.w_offset + test_cfg.w_len).min(test_cfg.r_buf.len())
+            for i in (test_cfg.w_offset - test_cfg.p_offset + test_cfg.w_len)
+                .min(test_cfg.r_buf.len())
                 ..test_cfg.e_len.min(test_cfg.r_buf.len())
             {
                 assert_eq!(test_cfg.r_buf[i], 0xFF, "data mismatch at {}", i);

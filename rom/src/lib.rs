@@ -14,16 +14,14 @@ Abstract:
 
 #![no_std]
 
-#[cfg(target_arch = "riscv32")]
+pub mod flash;
+pub use flash::*;
 mod fuses;
-#[cfg(target_arch = "riscv32")]
 pub use fuses::*;
-
-#[cfg(target_arch = "riscv32")]
-mod riscv;
-#[cfg(target_arch = "riscv32")]
-pub use riscv::*;
-
+mod rom;
+pub use rom::*;
+mod i3c;
+mod recovery;
 pub trait FatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> !;
 }

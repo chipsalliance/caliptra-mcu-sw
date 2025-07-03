@@ -47,6 +47,14 @@ fn test_hello() -> Result<()> {
             "-p",
             "emulator",
             "--",
+            "--caliptra-rom",
+            "/dev/null",
+            "--caliptra-firmware",
+            "/dev/null",
+            "--soc-manifest",
+            "/dev/null",
+            "--firmware",
+            "/dev/null",
             "--rom",
             format!("target/{}/debug/hello", TARGET).as_str(),
         ])
@@ -68,8 +76,8 @@ fn test_hello() -> Result<()> {
     Ok(())
 }
 
-fn test_panic_missing() -> Result<()> {
-    rom_build()?;
+pub(crate) fn test_panic_missing() -> Result<()> {
+    rom_build(None, "")?;
     let rom_elf = PROJECT_ROOT
         .join("target")
         .join(TARGET)

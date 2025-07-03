@@ -9,12 +9,6 @@ use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::{ErrorCode, ProcessId};
 
-/// Each partition is presented to userspace as a separate driver number.
-/// Below is the temporary driver number for each partition.
-pub const ACTIVE_IMAGE_PAR_DRIVER_NUM: usize = 0x8000_0006;
-pub const STAGING_PAR_DRIVER_NUM: usize = 0x8000_0007;
-pub const RECOVERY_IMAGE_PAR_DRIVER_NUM: usize = 0x8000_0008;
-
 pub const BUF_LEN: usize = 512;
 
 /// IDs for subscribed upcalls.
@@ -73,6 +67,8 @@ impl Default for App {
 pub struct FlashPartition<'a> {
     // The underlying flash storage driver.
     driver: &'a dyn flash_driver::hil::FlashStorage<'a>,
+    // The driver number for this partition.
+    driver_num: usize,
     // Per-app state.
     apps: Grant<
         App,
@@ -93,6 +89,7 @@ pub struct FlashPartition<'a> {
 impl<'a> FlashPartition<'a> {
     pub fn new(
         driver: &'a dyn flash_driver::hil::FlashStorage<'a>,
+        driver_num: usize,
         grant: Grant<
             App,
             UpcallCount<{ upcall::COUNT }>,
@@ -105,12 +102,18 @@ impl<'a> FlashPartition<'a> {
     ) -> FlashPartition<'a> {
         FlashPartition {
             driver,
+            driver_num,
             apps: grant,
             buffer: TakeCell::new(buffer),
             current_app: OptionalCell::empty(),
             start_address,
             length,
         }
+    }
+
+    // Get the Driver number for this partition.
+    pub fn get_driver_num(&self) -> usize {
+        self.driver_num
     }
 
     // Check if any command is pending. If not, this command is executed.

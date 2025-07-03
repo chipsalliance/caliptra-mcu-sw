@@ -1,22 +1,30 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "runtime"
+name = "mcu-runtime-emulator"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+arrayvec.workspace = true
 capsules-core.workspace = true
 capsules-extra.workspace = true
 capsules-emulator.workspace = true
 capsules-runtime.workspace = true
 capsules-system.workspace = true
 components.workspace = true
+doe-transport.workspace = true
+doe-mbox-driver.workspace = true
 dma-driver.workspace = true
 flash-driver.workspace = true
 i3c-driver.workspace = true
 kernel.workspace = true
+mcu-components.workspace = true
+mcu-config.workspace = true
+mcu-config-emulator.workspace = true
+mcu-platforms-common.workspace = true
+mcu-tock-veer.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true
 tock-registers.workspace = true
@@ -32,6 +40,9 @@ test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []
 test-dma = []
+test-doe-transport-loopback = []
+test-doe-discovery = []
+test-doe-user-loopback = []
 test-exit-immediately = []
 test-i3c-simple = []
 test-i3c-constant-writes = []
@@ -45,6 +56,7 @@ test-flash-usermode = []
 test-mctp-ctrl-cmds = []
 test-mctp-capsule-loopback = []
 test-mctp-user-loopback = []
+test-mcu-rom-flash-access = []
 test-pldm-request-response = []
 test-pldm-discovery = []
 test-pldm-fw-update = []

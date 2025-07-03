@@ -13,8 +13,8 @@ Abstract:
 
 --*/
 use crate::otp_digest;
+use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_types::{RvAddr, RvData};
-use emulator_bus::{Clock, ReadWriteRegister, Timer};
 use registers_generated::fuses::{self};
 use registers_generated::otp_ctrl::bits::{DirectAccessCmd, OtpStatus};
 use serde::{Deserialize, Serialize};
@@ -34,8 +34,8 @@ const TOTAL_SIZE: usize = fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE
 
 const PARTITIONS: [(usize, usize); 15] = [
     (
-        fuses::SECRET_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
-        fuses::SECRET_TEST_UNLOCK_PARTITION_BYTE_SIZE,
+        fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
+        fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
     ),
     (
         fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET,
@@ -241,8 +241,8 @@ impl Otp {
 }
 
 impl emulator_registers_generated::otp::OtpPeripheral for Otp {
-    fn read_otp_status(&mut self) -> emulator_bus::ReadWriteRegister<u32, OtpStatus::Register> {
-        self.status.clone()
+    fn read_otp_status(&mut self) -> caliptra_emu_bus::ReadWriteRegister<u32, OtpStatus::Register> {
+        ReadWriteRegister::new(self.status.reg.get())
     }
 
     fn write_direct_access_address(

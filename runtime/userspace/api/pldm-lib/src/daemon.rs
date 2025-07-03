@@ -4,12 +4,15 @@ use crate::cmd_interface::CmdInterface;
 use crate::config;
 use crate::firmware_device::fd_context::FirmwareDeviceContext;
 use crate::firmware_device::fd_ops::FdOps;
+use crate::timer::AsyncAlarm;
 use crate::transport::MctpTransport;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use libsyscall_caliptra::mctp::driver_num;
+use libsyscall_caliptra::DefaultSyscalls;
+use libtock_alarm::Milliseconds;
 
 pub const MAX_MCTP_PLDM_MSG_SIZE: usize = 1024;
 
@@ -118,16 +121,29 @@ pub async fn pldm_initiator(
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
-    // Wait for signal from responder before starting the loop
-    initiator_signal.wait().await;
+    loop {
+        // Wait for signal from responder before starting the loop
+        initiator_signal.wait().await;
 
-    let mut msg_buffer = [0; MAX_MCTP_PLDM_MSG_SIZE];
-    let mut transport = MctpTransport::new(driver_num::MCTP_PLDM);
+        if !running.load(Ordering::SeqCst) {
+            break;
+        }
 
-    while running.load(Ordering::SeqCst) {
-        let _ = cmd_interface
-            .handle_initiator_msg(&mut transport, &mut msg_buffer)
-            .await;
+        let mut msg_buffer = [0; MAX_MCTP_PLDM_MSG_SIZE];
+        let mut transport = MctpTransport::new(driver_num::MCTP_PLDM);
+        while running.load(Ordering::SeqCst) {
+            if cmd_interface.should_stop_initiator_mode().await {
+                break;
+            }
+
+            // Handle initiator messages
+            let _ = cmd_interface
+                .handle_initiator_msg(&mut transport, &mut msg_buffer)
+                .await;
+
+            // Sleep to yield control to other tasks.
+            AsyncAlarm::<DefaultSyscalls>::sleep(Milliseconds(1)).await;
+        }
     }
 }
 

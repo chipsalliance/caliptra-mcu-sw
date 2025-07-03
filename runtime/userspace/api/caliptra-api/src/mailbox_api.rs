@@ -12,6 +12,7 @@
 //! - `MAX_DPE_RESP_DATA_SIZE`: Maximum size of DPE response data.
 //! - `MAX_ECC_CERT_SIZE`: Maximum size of an ECC certificate.
 //! - `MAX_CERT_CHUNK_SIZE`: Maximum size of a certificate chunk.
+//! - `MAX_RANDOM_NUM_SIZE`: Maximum size of a random number and the rand_stir input.
 //!
 //! # Assertions
 //! - Ensures that the redefined structures do not exceed the size of their original counterparts.
@@ -23,6 +24,8 @@
 //! - `DpeEcResp`: Represents a response for DPE commands with variable-length data. Equivalent to `InvokeDpeResp`.
 //! - `CertifyEcKeyResp`: Represents a response for the "Certify Key" DPE command. Equivalent to `CertifyKeyResp`.
 //! - `CertificateChainResp`: Represents a response containing a chunk of a certificate chain. Equivalent to `GetCertificateChainResp`.
+//! - `RandomStirReq`: Represents a request to stir the random number generator. Equivalent to `CmRandomStirReq`.
+//! - `RandomGenerateResp`: Represents a response for generating random numbers. Equivalent to `CmRandomGenerateResp`.
 //!
 //! # Enums
 //! - `DpeResponse`: Enum representing various DPE command responses:
@@ -33,8 +36,10 @@
 
 use crate::error::CaliptraApiError;
 use crate::error::CaliptraApiResult;
+use caliptra_api::mailbox::CmRandomGenerateResp;
 use caliptra_api::mailbox::{
-    InvokeDpeResp, MailboxReqHeader, MailboxRespHeader, CMB_SHA_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
+    CmRandomStirReq, InvokeDpeResp, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
+    CMB_SHA_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
 };
 use core::mem::size_of;
 use dpe::context::ContextHandle;
@@ -48,15 +53,19 @@ pub const MAX_CRYPTO_MBOX_DATA_SIZE: usize = 1024;
 pub const MAX_DPE_RESP_DATA_SIZE: usize = 1536;
 pub const MAX_ECC_CERT_SIZE: usize = 1024;
 pub const MAX_CERT_CHUNK_SIZE: usize = 1024;
+pub const MAX_RANDOM_STIR_SIZE: usize = 48;
+pub const MAX_RANDOM_NUM_SIZE: usize = 48;
 
 const _: () = assert!(MAX_CRYPTO_MBOX_DATA_SIZE <= MAX_CMB_DATA_SIZE);
 const _: () = assert!(size_of::<DpeEcResp>() <= size_of::<InvokeDpeResp>());
 const _: () = assert!(size_of::<CertificateChainResp>() <= size_of::<GetCertificateChainResp>());
 const _: () = assert!(size_of::<CertifyEcKeyResp>() <= size_of::<CertifyKeyResp>());
+const _: () = assert!(size_of::<RandomStirReq>() <= size_of::<CmRandomStirReq>());
+const _: () = assert!(size_of::<RandomGenerateResp>() <= size_of::<CmRandomGenerateResp>());
 
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
-pub struct ShaInitReq {
+pub(crate) struct ShaInitReq {
     pub hdr: MailboxReqHeader,
     pub hash_algorithm: u32,
     pub input_size: u32,
@@ -66,7 +75,7 @@ pub struct ShaInitReq {
 // CM_SHA_UPDATE
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
-pub struct ShaUpdateReq {
+pub(crate) struct ShaUpdateReq {
     pub hdr: MailboxReqHeader,
     pub context: [u8; CMB_SHA_CONTEXT_SIZE],
     pub input_size: u32,
@@ -76,16 +85,42 @@ pub struct ShaUpdateReq {
 // CM_SHA_FINAL
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
-pub struct ShaFinalReq {
+pub(crate) struct ShaFinalReq {
     pub hdr: MailboxReqHeader,
     pub context: [u8; CMB_SHA_CONTEXT_SIZE],
     pub input_size: u32,
     pub input: [u8; 0],
 }
 
+// CM_RANDOM_STIR
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub(crate) struct RandomStirReq {
+    pub hdr: MailboxReqHeader,
+    pub input_size: u32,
+    pub input: [u8; MAX_RANDOM_STIR_SIZE],
+}
+
+// CM_RANDOM_GENERATE
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub(crate) struct RandomGenerateResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    pub data: [u8; MAX_RANDOM_NUM_SIZE],
+}
+
+impl Default for RandomGenerateResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            data: [0u8; MAX_RANDOM_NUM_SIZE],
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
-pub struct DpeEcResp {
+pub(crate) struct DpeEcResp {
     pub hdr: MailboxRespHeader,
     pub data_size: u32,
     pub data: [u8; MAX_DPE_RESP_DATA_SIZE], // variable length
@@ -102,11 +137,10 @@ impl Default for DpeEcResp {
 
 // DPE Commands
 
-pub enum DpeResponse {
+pub(crate) enum DpeResponse {
     CertifyKey(CertifyEcKeyResp),
     Sign(SignResp),
     GetCertificateChain(CertificateChainResp),
-    Error(ResponseHdr),
 }
 
 #[repr(C)]
@@ -119,7 +153,7 @@ pub enum DpeResponse {
     zerocopy::Immutable,
     zerocopy::KnownLayout,
 )]
-pub struct CertifyEcKeyResp {
+pub(crate) struct CertifyEcKeyResp {
     pub resp_hdr: ResponseHdr,
     pub new_context_handle: ContextHandle,
     pub derived_pubkey_x: [u8; DPE_PROFILE.get_ecc_int_size()],
@@ -138,7 +172,7 @@ pub struct CertifyEcKeyResp {
     zerocopy::Immutable,
     zerocopy::KnownLayout,
 )]
-pub struct CertificateChainResp {
+pub(crate) struct CertificateChainResp {
     pub resp_hdr: ResponseHdr,
     pub certificate_size: u32,
     pub certificate_chain: [u8; MAX_CERT_CHUNK_SIZE],
@@ -153,7 +187,7 @@ pub(crate) async fn execute_mailbox_cmd(
     mailbox
         .populate_checksum(cmd, req_bytes)
         .map_err(CaliptraApiError::Syscall)?;
-    match mailbox.execute(cmd, req_bytes, &mut resp_bytes[..]).await {
+    match mailbox.execute(cmd, req_bytes, resp_bytes).await {
         Ok(size) => Ok(size),
         Err(MailboxError::ErrorCode(ErrorCode::Busy)) => Err(CaliptraApiError::MailboxBusy)?,
         Err(e) => Err(CaliptraApiError::Mailbox(e))?,

@@ -307,3 +307,137 @@ image_loader.finalize();
 
 
 ```
+
+## Recovery Boot Flow
+
+During system initialization, the recovery boot flow ensures that valid firmware is successfully loaded into the Caliptra core, MCU, and other SoC elements.
+
+In flash-based systems, an [A/B partitioning](firmware_update.md#ab-partition-mechanism) mechanism is used to enhance reliability by allowing fallback to a working firmware image in case of boot failure.
+
+The method of selecting which partition to boot from is system-specific. For example, the active partition may be determined by a hardware pin, a soft fuse or register, or an entry in the flash partition table.
+
+###  Caliptra Boot Flow
+This section describes the actions taken by the Caliptra ROM and Caliptra FMC/Runtime (RT) during boot, particularly in handling boot failures.
+
+If a corrupted or unauthorized Caliptra FMC+RT image is downloaded, the Caliptra ROM sets the CPTRA_FW_ERROR_FATAL register. MCU then initiates a recovery mechanism to provide the Caliptra core with a valid firmware image on the next SOC reset.
+
+If the firmware image fails to execute properly (e.g., hangs), the Caliptra watchdog triggers a timeout, causing an error to be asserted to the MCU ROM, which then initiates the recovery process.
+
+```mermaid
+flowchart TD
+    CaliptraFlow([Start]) -->Start
+    Start[Execute Caliptra ROM] --> StartWD[Start Watchdog]
+    StartWD --> SetReady[Set RECOVERY_STATUS = Awaiting Image]
+
+    SetReady -->|Recovery Image Available| DownloadFMC[Stream FMC + RT from Recovery Interface]
+    DownloadFMC --> AuthFMC[Authenticate FMC + RT]
+
+    AuthFMC -->|Auth Pass| BootRuntime[Execute FMC + RT]
+    AuthFMC -->|Auth Fail| ClearSignals[Set RECOVERY_STATUS = AuthFailed]
+
+    ClearSignals -->|Warm Boot| NonFatal[Set cptra_error_non_fatal]
+    ClearSignals -->|Cold Boot| Fatal[Set cptra_error_fatal]
+
+    NonFatal --> WaitReset[Wait for SOC Reset] -->|Reset| Start
+    Fatal --> WaitReset
+
+    BootRuntime --> LoadManifest[Load & <br>Auth SoC Manifest]
+    LoadManifest -->|Auth Pass| LoadMCURT[Load & Auth MCU RT]
+    LoadMCURT -->|Auth Pass| StartMCURT[Set Exec/Go for MCU<br>Set RECOVERY_STATUS = 'Recovery successful']
+    LoadMCURT -->|Auth Fail| ClearSignals
+
+    CPTRA_WD_TIMEOUT[Watchdog Timeout] --> Fatal
+
+    StartMCURT --> Done_cptra([Done])
+```
+
+### MCU ROM Boot Flow
+
+This section describes how the MCU ROM handles failures during the loading of Caliptra firmware and MCU Runtime firmware.
+
+To avoid infinite reboot loops caused by a faulty firmware image, each partition maintains a boot count, which tracks how many times the system has attempted to boot from it.
+
+On power-up, the MCU ROM checks the partition table for the status and boot count of the currently active partition.
+
+If the count is below a predefined threshold (e.g., MAX_COUNT), the system increments the count and attempts to boot the partition.
+
+If the count exceeds MAX_COUNT, the partition is marked as unhealthy, and the MCU triggers a recovery flow, switching to another valid partition if available.
+
+After a successful boot, the partition status is marked as "Boot Successful". Future boots may reset the count or ignore it.
+
+This mechanism ensures automatic rollback to a working firmware without manual intervention.
+
+```mermaid
+flowchart TD
+    MCUFlow([Start])-->MCUROM
+    TIMEOUT([Watchdog<br>Timeout])-->MCUROM
+    MCUROM[Execute MCU ROM]
+    MCUROM --> StartMCUWD[Start MCU<br>Watchdog]-->
+    READ_PART[Retrieve Active<br>Partition]-->CHECK_BOOT_COUNT
+    MonitorErrors[Monitor Caliptra<br>Errors] --> |cptra_error_non_fatal<br>cptra_error_fatal| Recover
+    CHECK_BOOT_COUNT[Check active partition<br>boot count<br>and status] --> |Status =='Valid'<br>&&<br>Boot count >= MAX_COUNT| Recover
+    CHECK_BOOT_COUNT --> |Status =='Boot Successful'<br>i.e. partition booted before| CHECK_RESET_REASON
+    CHECK_BOOT_COUNT --> |Status='Valid'<br>&&<br>Boot count < MAX_COUNT| INCREMENT_COUNT[Increment Boot count] -->  CHECK_RESET_REASON
+
+    CHECK_RESET_REASON[Get RESET_REASON]-->|Cold Boot|LoadFMC[Load Caliptra<br>FMC + Runtime<br>from Active Flash<br>Partition]
+    CHECK_RESET_REASON-->|Warm Boot|LoadMCURTWarm[Load MCU RT<br>from Active Partition]-->AuthorizeMCURT[Authorize MCU RT]
+
+    AuthorizeMCURT-->|Auth Pass|MCURTStart
+    AuthorizeMCURT-->|Auth Fail|Recover
+    LoadFMC --> WaitRecoveryReady[Wait for<br>RECOVERY_STATUS<br>to be 'Awaiting<br>Image']
+        --> |RECOVERY_STATUS =<br>'Awaiting Image'| StreamFMC[Stream Caliptra<br>FMC + Runtime<br>to Recovery Interface]
+    StreamFMC --> WaitForCaliptraBoot[Wait Caliptra<br>RT Boot]
+
+
+
+    WaitForCaliptraBoot  --> |Caliptra RT Booted,<br>RECOVERY_STATUS =<br>'Recovery successful'| StreamManifest[Load Manifest<br>from Active<br>partition and<br>stream to Recovery<br>Interface]
+        --> StreamMCURT[Load MCU RT<br>from Active<br>partition and<br>stream to Recovery<br>Interface]
+
+    StreamMCURT--> WaitMCURTBoot[Wait for MCU<br>Exec/Go Bit<br>to be set]
+
+    WaitMCURTBoot-->|Exec Go/Bit<br>set|MCURTStart([MCU Runtime Boot Flow])
+
+
+    Recover([MCU Recovery Flow])
+
+```
+### MCU Recovery Flow
+
+When a boot failure occurs (e.g., due to exceeding maximum boot attempts, authentication failure, or watchdog timeout), the MCU Recovery Flow is triggered to restore system operability by switching to a known-good firmware partition.
+
+If the active partition fails to boot, the system attempts to revert to the other available and valid partition.
+
+The MCU will indicate to the SoC that an error occured and will need a full SOC Reset.
+
+```mermaid
+flowchart TD
+    Start([MCU Recovery Flow])--> InvalidateActivePartition[Set Active<br>Partition as<br>Invalid] --> SetStatusBootFailed[Set Partition<br>Status as Boot Failed]
+        --> SetNewActivePartition[Set other valid<br>partition, if any,<br>as Active]
+        --> SetFatalError[Set FW_ERROR_FATAL<br> MCI Reg]
+        --> WaitForSOCReset[Wait for<br>SOC Reset]
+```
+
+### MCU Runtime and SoC Image(s) Boot Flow
+
+When the MCU ROM hands off execution to the MCU Runtime firmware, it keeps the MCU watchdog timer active. If the watchdog expires at any point—indicating a hang or prolonged stall—the MCU will be reset. Upon reset, the MCU ROM will evaluate the boot count and initiate the recovery flow if necessary (e.g., if the boot count exceeds the defined threshold).
+
+The MCU Runtime firmware is responsible for loading and authorizing the remaining SoC images. If all SoC images are successfully loaded, authenticated, and booted, the partition's boot status can be marked as "Boot Successful." However, if any of the images fail to load or validate, the system behavior is left to user-defined policy. For example, the user may choose to trigger the recovery flow to fall back to a previous version of the SoC images or halt execution entirely to prevent further operation under an unstable configuration.
+
+```mermaid
+flowchart TD
+    Start([MCU Runtime<br>Boot Flow])-->MCURuntime
+    MCURuntime[Execute MCU<br>Runtime FW]
+    MCURuntime-->StartWatchdog[Start MCU<br>Watchdog]
+    StartWatchdog-->LoadAndAuthorizeSocImage[Load and<br>Authorize SOC<br>Images]
+
+    LoadAndAuthorizeSocImage --> |Auth Pass| SUCCESSFUL_BOOT[Set Partition <br>Status as <br>'Boot Successful'] --> Done([Done])
+    LoadAndAuthorizeSocImage --> |Auth Fail| UserDefinedOption[User Defined<br>Logic - e.g.<br>Switch to other<br>partition or Hang]
+
+    TIMEOUT([MCU  Watchdog<br>Timeout])-->MCURESET[MCU Reset]-->MCUROM([MCU ROM])
+
+```
+
+References:<br>
+* OCP Recovery Interface [https://www.opencompute.org/documents/ocp-recovery-document-1p0-final-1-pdf]
+* Caliptra Error and Recovery Flow [https://github.com/chipsalliance/caliptra-rtl/blob/main/docs/CaliptraIntegrationSpecification.md#caliptra-error-and-recovery-flow]
+* Fatal and Non-Fatal Errors [https://github.com/chipsalliance/Caliptra/blob/main/doc/Caliptra.md#error-reporting-and-handling]

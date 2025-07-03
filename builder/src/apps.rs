@@ -14,14 +14,9 @@ pub const APPS: &[App] = &[
         minimum_ram: 44 * 1024,
     },
     App {
-        name: "spdm-app",
+        name: "user-app",
         permissions: vec![],
-        minimum_ram: 36 * 1024,
-    },
-    App {
-        name: "image-loader-app",
-        permissions: vec![],
-        minimum_ram: 20 * 1024,
+        minimum_ram: 68 * 1024,
     },
 ];
 
@@ -180,7 +175,7 @@ fn app_build(
 /* Licensed under the Apache-2.0 license */
 TBF_HEADER_SIZE = 0x{:x};
 FLASH_START = 0x{:x};
-FLASH_LENGTH = 0x17000;
+FLASH_LENGTH = 0x36000;
 RAM_START = 0x{:x};
 RAM_LENGTH = 0x{:x};
 INCLUDE platforms/emulator/runtime/userspace/apps/app_layout.ld",

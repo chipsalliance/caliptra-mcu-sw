@@ -6,19 +6,25 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use crate::apps::apps_build_flat_tbf;
-use crate::{objcopy, target_binary, OBJCOPY_FLAGS, PROJECT_ROOT, SYSROOT, TARGET};
+use crate::{objcopy, target_binary, target_dir, OBJCOPY_FLAGS, PROJECT_ROOT, SYSROOT, TARGET};
 use anyhow::{anyhow, bail, Result};
 use elf::endian::AnyEndian;
 use elf::ElfBytes;
-use emulator_consts::{RAM_OFFSET, RAM_SIZE};
+use mcu_config::McuMemoryMap;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
 
+const DEFAULT_PLATFORM: &str = "emulator";
 const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
 const INTERRUPT_TABLE_SIZE: usize = 128;
 // amount to reserve for data RAM at the end of RAM
-const DATA_RAM_SIZE: usize = 128 * 1024;
+const DATA_RAM_SIZE: usize = 112 * 1024;
 
 fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize> {
     let elf_bytes = std::fs::read(&elf_file)?;
@@ -41,62 +47,64 @@ fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize> {
 /// will be used.
 ///
 /// Returns the kernel size and the apps memory offset.
-pub fn runtime_build_no_apps(
-    kernel_size: Option<usize>,
-    apps_offset: Option<usize>,
-    apps_size: Option<usize>,
+#[allow(clippy::too_many_arguments)]
+pub fn runtime_build_no_apps_uncached(
+    kernel_size: usize,
+    apps_offset: usize,
+    apps_size: usize,
     features: &[&str],
     output_name: &str,
+    platform: &str,
+    memory_map: &McuMemoryMap,
+    use_dccm_for_stack: bool,
+    dccm_offset: Option<u32>,
+    dccm_size: Option<u32>,
 ) -> Result<(usize, usize)> {
     let tock_dir = &PROJECT_ROOT
         .join("platforms")
-        .join("emulator")
+        .join(platform)
         .join("runtime");
     let sysr = SYSROOT.clone();
     let ld_file_path = tock_dir.join("layout.ld");
 
-    // placeholder values
-    let runtime_size = kernel_size.unwrap_or(128 * 1024);
-    let apps_offset = apps_offset.unwrap_or(RAM_OFFSET as usize + 192 * 1024);
-    let apps_size = apps_size.unwrap_or(64 * 1024);
+    let dccm_offset = dccm_offset.unwrap_or(memory_map.dccm_offset) as usize;
+    let dccm_size = dccm_size.unwrap_or(memory_map.dccm_size) as usize;
 
-    let ram_start = RAM_OFFSET as usize + RAM_SIZE as usize - DATA_RAM_SIZE;
-    assert!(
-        ram_start >= apps_offset + apps_size,
-        "RAM must be after apps ram_start {:x} apps_offset {:x} apps_size {:x}",
-        ram_start,
-        apps_offset,
-        apps_size
-    );
-
-    std::fs::write(
-        &ld_file_path,
-        format!(
-            "
-/* Licensed under the Apache-2.0 license. */
-
-/* Based on the Tock board layouts, which are: */
-/* Licensed under the Apache License, Version 2.0 or the MIT License. */
-/* SPDX-License-Identifier: Apache-2.0 OR MIT                         */
-/* Copyright Tock Contributors 2023.                                  */
-
-MEMORY
-{{
-    rom (rx)  : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
-    prog (rx) : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
-    ram (rwx) : ORIGIN = 0x{:x}, LENGTH = 0x{:x}
-}}
-
-INCLUDE platforms/emulator/runtime/kernel_layout.ld
-",
-            RAM_OFFSET + INTERRUPT_TABLE_SIZE as u32,
-            runtime_size,
-            apps_offset,
-            apps_size,
+    let (ram_start, ram_size) = if use_dccm_for_stack {
+        let ram_size = dccm_size - INTERRUPT_TABLE_SIZE;
+        assert!(
+            DATA_RAM_SIZE <= ram_size,
+            "DCCM size is not large enough for data RAM"
+        );
+        (dccm_offset, ram_size)
+    } else {
+        let ram_start =
+            memory_map.sram_offset as usize + memory_map.sram_size as usize - DATA_RAM_SIZE;
+        assert!(
+            ram_start >= apps_offset + apps_size,
+            "RAM must be after apps ram_start {:x} apps_offset {:x} apps_size {:x}",
             ram_start,
-            DATA_RAM_SIZE,
-        ),
+            apps_offset,
+            apps_size
+        );
+        (ram_start, DATA_RAM_SIZE)
+    };
+
+    // TODO: print data usage after build from ELF file
+
+    let ld_string = runtime_ld_script(
+        memory_map,
+        memory_map.sram_offset,
+        kernel_size as u32,
+        apps_offset as u32,
+        apps_size as u32,
+        ram_start as u32,
+        ram_size as u32,
+        dccm_offset as u32,
+        dccm_size as u32,
     )?;
+
+    std::fs::write(&ld_file_path, ld_string)?;
 
     // The following flags should only be passed to the board's binary crate, but
     // not to any of its dependencies (the kernel, capsules, chips, etc.). The
@@ -171,10 +179,11 @@ INCLUDE platforms/emulator/runtime/kernel_layout.ld
     // - `optimize_for_size`: Sets a feature flag in the core library that aims to
     //   produce smaller implementations for certain algorithms. See
     //   https://github.com/rust-lang/rust/pull/125011 for more details.
+    let bin = format!("mcu-runtime-{}", platform);
     let cargo_flags_tock = [
         "--verbose".into(),
         format!("--target={}", TARGET),
-        format!("--package {}", "runtime"),
+        format!("--package {}", bin),
         "-Z build-std=core,compiler_builtins".into(),
         "-Z build-std-features=core/optimize_for_size".into(),
     ]
@@ -192,7 +201,7 @@ INCLUDE platforms/emulator/runtime/kernel_layout.ld
         .arg("rustc")
         .args(cargo_flags_tock.split(' '))
         .arg("--bin")
-        .arg("runtime")
+        .arg(&bin)
         .arg("--release")
         .args(features)
         .arg("--")
@@ -208,7 +217,7 @@ INCLUDE platforms/emulator/runtime/kernel_layout.ld
     let cmd = cmd
         .arg("--output-target=binary")
         .args(objcopy_flags_kernel.split(' '))
-        .arg(target_binary("runtime"))
+        .arg(target_binary(&bin))
         .arg(target_binary(output_name));
     println!("Executing {:?}", cmd);
     if !cmd.status()?.success() {
@@ -217,60 +226,171 @@ INCLUDE platforms/emulator/runtime/kernel_layout.ld
 
     let kernel_size = std::fs::metadata(target_binary(output_name)).unwrap().len() as usize;
 
-    get_apps_memory_offset(target_binary("runtime")).map(|apps_offset| (kernel_size, apps_offset))
+    get_apps_memory_offset(target_binary(&bin)).map(|apps_offset| (kernel_size, apps_offset))
 }
 
-pub fn runtime_build_with_apps(
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct CachedValues {
+    kernel_size: usize,
+    apps_offset: usize,
+    apps_size: usize,
+}
+
+impl Default for CachedValues {
+    fn default() -> Self {
+        CachedValues {
+            kernel_size: 128 * 1024,
+            apps_offset: (mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset + 128 * 1024)
+                as usize,
+            apps_size: 80 * 1024,
+        }
+    }
+}
+
+fn read_cached_values(platform: &str) -> CachedValues {
+    let cache_file = target_dir().join(format!("cached-values-{}.json", platform));
+    if let Ok(data) = std::fs::read_to_string(&cache_file) {
+        if let Ok(values) = serde_json::from_str::<CachedValues>(&data) {
+            return values;
+        }
+    }
+    CachedValues::default()
+}
+
+fn write_cached_values(platform: &str, values: &CachedValues) {
+    let cache_file = target_dir().join(format!("cached-values-{}.json", platform));
+    match serde_json::to_string(values) {
+        Ok(data) => {
+            if let Err(err) = std::fs::write(cache_file, data) {
+                println!(
+                    "Error writing cached values for platform {}; igoring: {}",
+                    platform, err
+                );
+            }
+        }
+        Err(err) => println!(
+            "Failed to write cached values for platform {}; ignoring: {}",
+            platform, err
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn runtime_build_with_apps_cached(
     features: &[&str],
     output_name: Option<&str>,
     example_app: bool,
-) -> Result<()> {
-    let mut app_offset = RAM_OFFSET as usize;
+    platform: Option<&str>,
+    memory_map: Option<&McuMemoryMap>,
+    use_dccm_for_stack: bool,
+    dccm_offset: Option<u32>,
+    dccm_size: Option<u32>,
+) -> Result<String> {
+    let memory_map = memory_map.unwrap_or(&mcu_config_emulator::EMULATOR_MEMORY_MAP);
+    let mut app_offset = memory_map.sram_offset as usize;
     let output_name = output_name.unwrap_or(DEFAULT_RUNTIME_NAME);
     let runtime_bin = target_binary(output_name);
 
+    let platform = platform.unwrap_or(DEFAULT_PLATFORM);
+    let mut cached_values = read_cached_values(platform);
+    println!(
+        "Read cached values for platform {}: {:?}",
+        platform, cached_values
+    );
+
     // build once to get the size of the runtime binary without apps
-    let (kernel_size, apps_memory_offset) =
-        runtime_build_no_apps(None, None, None, features, output_name)?;
+    let (kernel_size, apps_memory_offset) = match runtime_build_no_apps_uncached(
+        cached_values.kernel_size,
+        cached_values.apps_offset,
+        cached_values.apps_size,
+        features,
+        output_name,
+        platform,
+        memory_map,
+        use_dccm_for_stack,
+        dccm_offset,
+        dccm_size,
+    ) {
+        Ok((kernel_size, apps_memory_offset)) => (kernel_size, apps_memory_offset),
+        Err(_) => {
+            // if it fails, bust the cache and rebuild with default values
+            cached_values = CachedValues::default();
+            println!(
+        "Build failed with cached values; busting the cache and using defaults for platform {}: {:?}",
+        platform, cached_values
+        );
+
+            runtime_build_no_apps_uncached(
+                cached_values.kernel_size,
+                cached_values.apps_offset,
+                cached_values.apps_size,
+                features,
+                output_name,
+                platform,
+                memory_map,
+                use_dccm_for_stack,
+                dccm_offset,
+                dccm_size,
+            )?
+        }
+    };
 
     let runtime_bin_size = std::fs::metadata(&runtime_bin)?.len() as usize;
     app_offset += runtime_bin_size;
     let runtime_end_offset = app_offset;
 
-    // ensure that we leave space for the interrupt table
     // and align to 4096 bytes (needed for rust-lld)
-    let app_offset = (runtime_end_offset + INTERRUPT_TABLE_SIZE).next_multiple_of(4096);
-    let padding = app_offset - runtime_end_offset - INTERRUPT_TABLE_SIZE;
+    let apps_offset = runtime_end_offset.next_multiple_of(4096);
+    let padding = apps_offset - runtime_end_offset;
 
     // build the apps with the data memory at some incorrect offset
-    let apps_bin_len =
-        apps_build_flat_tbf(app_offset, apps_memory_offset, features, example_app)?.len();
+    let apps_bin = apps_build_flat_tbf(apps_offset, apps_memory_offset, features, example_app)?;
+    let apps_bin_len = apps_bin.len();
     println!("Apps built: {} bytes", apps_bin_len);
 
-    // re-link and place the apps and data RAM after the runtime binary
-    let (kernel_size2, apps_memory_offset) = runtime_build_no_apps(
-        Some(kernel_size),
-        Some(app_offset),
-        Some(apps_bin_len),
-        features,
-        output_name,
-    )?;
+    if kernel_size != cached_values.kernel_size
+        || apps_offset != cached_values.apps_offset
+        || apps_bin_len != cached_values.apps_size
+    {
+        println!("Rebuilding kernel with correct offsets and sizes");
+        // re-link and place the apps and data RAM after the runtime binary
+        let (kernel_size2, new_apps_memory_offset) = runtime_build_no_apps_uncached(
+            kernel_size,
+            apps_offset,
+            apps_bin_len,
+            features,
+            output_name,
+            platform,
+            memory_map,
+            use_dccm_for_stack,
+            dccm_offset,
+            dccm_size,
+        )?;
 
-    assert_eq!(
-        kernel_size, kernel_size2,
-        "Kernel size changed between runs"
-    );
+        assert_eq!(
+            kernel_size, kernel_size2,
+            "Kernel size changed between runs"
+        );
+        assert_eq!(
+            apps_memory_offset, new_apps_memory_offset,
+            "Apps memory offset changed between runs"
+        );
+    }
 
-    // re-link the applications with the correct data memory offsets
-    let apps_bin = apps_build_flat_tbf(app_offset, apps_memory_offset, features, example_app)?;
-    assert_eq!(
-        apps_bin_len,
-        apps_bin.len(),
-        "Applications sizes changed between runs"
-    );
+    if apps_offset != cached_values.apps_offset {
+        println!("Rebuilding apps with correct offsets");
+
+        // re-link the applications with the correct data memory offsets
+        let apps_bin = apps_build_flat_tbf(apps_offset, apps_memory_offset, features, example_app)?;
+        assert_eq!(
+            apps_bin_len,
+            apps_bin.len(),
+            "Applications sizes changed between runs"
+        );
+        println!("Apps built: {} bytes", apps_bin.len());
+    }
 
     println!("Apps data memory offset is {:x}", apps_memory_offset);
-    println!("Apps built: {} bytes", apps_bin.len());
 
     let mut bin = std::fs::read(&runtime_bin)?;
     let kernel_size = bin.len();
@@ -284,5 +404,69 @@ pub fn runtime_build_with_apps(
     println!("Total runtime binary: {} bytes", bin.len());
     println!("Runtime binary is available at {:?}", &runtime_bin);
 
-    Ok(())
+    // update the cache
+    let cached_values = CachedValues {
+        kernel_size,
+        apps_offset,
+        apps_size: apps_bin_len,
+    };
+    println!(
+        "Updating cached values for platform {}: {:?}",
+        platform, cached_values
+    );
+    write_cached_values(platform, &cached_values);
+
+    Ok(runtime_bin.to_string_lossy().to_string())
 }
+
+#[allow(clippy::too_many_arguments)]
+pub fn runtime_ld_script(
+    memory_map: &McuMemoryMap,
+    runtime_offset: u32,
+    runtime_size: u32,
+    apps_offset: u32,
+    apps_size: u32,
+    data_ram_offset: u32,
+    data_ram_size: u32,
+    dccm_offset: u32,
+    dccm_size: u32,
+) -> Result<String> {
+    let mut map = memory_map.hash_map();
+    map.insert("DCCM_OFFSET".to_string(), format!("0x{:x}", dccm_offset));
+    map.insert("DCCM_SIZE".to_string(), format!("0x{:x}", dccm_size));
+    map.insert(
+        "RUNTIME_OFFSET".to_string(),
+        format!("0x{:x}", runtime_offset),
+    );
+    map.insert("RUNTIME_SIZE".to_string(), format!("0x{:x}", runtime_size));
+    map.insert("APPS_OFFSET".to_string(), format!("0x{:x}", apps_offset));
+    map.insert("APPS_SIZE".to_string(), format!("0x{:x}", apps_size));
+    map.insert(
+        "DATA_RAM_OFFSET".to_string(),
+        format!("0x{:x}", data_ram_offset),
+    );
+    map.insert(
+        "DATA_RAM_SIZE".to_string(),
+        format!("0x{:x}", data_ram_size),
+    );
+    Ok(subst::substitute(RUNTIME_LD_TEMPLATE, &map)?)
+}
+
+const RUNTIME_LD_TEMPLATE: &str = r#"
+/* Licensed under the Apache-2.0 license. */
+
+/* Based on the Tock board layouts, which are: */
+/* Licensed under the Apache License, Version 2.0 or the MIT License. */
+/* SPDX-License-Identifier: Apache-2.0 OR MIT                         */
+/* Copyright Tock Contributors 2023.                                  */
+
+MEMORY
+{
+    rom (rx)  : ORIGIN = $RUNTIME_OFFSET, LENGTH = $RUNTIME_SIZE
+    prog (rx) : ORIGIN = $APPS_OFFSET, LENGTH = $APPS_SIZE
+    ram (rwx) : ORIGIN = $DATA_RAM_OFFSET, LENGTH = $DATA_RAM_SIZE
+    dccm (rw) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_SIZE
+}
+
+INCLUDE platforms/emulator/runtime/kernel_layout.ld
+"#;

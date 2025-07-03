@@ -12,8 +12,8 @@ Abstract:
 
 --*/
 
+use caliptra_emu_bus::{Bus, BusError};
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
-use emulator_bus::{Bus, BusError};
 use std::process::exit;
 
 /// Emulation Control
@@ -53,7 +53,7 @@ impl Bus for EmuCtrl {
     /// # Error
     ///
     /// * `RvException` - Exception with cause `RvExceptionCause::LoadAccessFault`
-    ///                   or `RvExceptionCause::LoadAddrMisaligned`
+    ///   or `RvExceptionCause::LoadAddrMisaligned`
     fn read(&mut self, size: RvSize, addr: RvAddr) -> Result<RvData, BusError> {
         match (size, addr) {
             (RvSize::Word, EmuCtrl::ADDR_EXIT) => Ok(0),
@@ -72,7 +72,7 @@ impl Bus for EmuCtrl {
     /// # Error
     ///
     /// * `RvException` - Exception with cause `RvExceptionCause::StoreAccessFault`
-    ///                   or `RvExceptionCause::StoreAddrMisaligned`
+    ///   or `RvExceptionCause::StoreAddrMisaligned`
     fn write(&mut self, _size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
         match addr {
             EmuCtrl::ADDR_EXIT => {

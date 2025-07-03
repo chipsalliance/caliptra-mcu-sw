@@ -1,22 +1,28 @@
 // Licensed under the Apache-2.0 license
 
-use crate::codec::{CommonCodec, DataKind};
+use crate::codec::CommonCodec;
 use crate::error::{SpdmError, SpdmResult};
-use crate::protocol::version::SpdmVersion;
+use crate::protocol::{version::SpdmVersion, REQUESTER_CONTEXT_LEN, SPDM_CONTEXT_LEN};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum ReqRespCode {
     GetVersion = 0x84,
     Version = 0x04,
     GetCapabilities = 0xE1,
     Capabilities = 0x61,
     NegotiateAlgorithms = 0xE3,
-    Algorithmes = 0x63,
+    Algorithms = 0x63,
     GetDigests = 0x81,
     Digests = 0x01,
     GetCertificate = 0x82,
     Certificate = 0x02,
+    Challenge = 0x83,
+    ChallengeAuth = 0x03,
+    GetMeasurements = 0xE0,
+    Measurements = 0x60,
+    ChunkGet = 0x86,
+    ChunkResponse = 0x06,
     Error = 0x7F,
 }
 
@@ -29,11 +35,17 @@ impl TryFrom<u8> for ReqRespCode {
             0xE1 => Ok(ReqRespCode::GetCapabilities),
             0x61 => Ok(ReqRespCode::Capabilities),
             0xE3 => Ok(ReqRespCode::NegotiateAlgorithms),
-            0x63 => Ok(ReqRespCode::Algorithmes),
+            0x63 => Ok(ReqRespCode::Algorithms),
             0x81 => Ok(ReqRespCode::GetDigests),
             0x01 => Ok(ReqRespCode::Digests),
             0x82 => Ok(ReqRespCode::GetCertificate),
             0x02 => Ok(ReqRespCode::Certificate),
+            0x83 => Ok(ReqRespCode::Challenge),
+            0x03 => Ok(ReqRespCode::ChallengeAuth),
+            0xE0 => Ok(ReqRespCode::GetMeasurements),
+            0x60 => Ok(ReqRespCode::Measurements),
+            0x86 => Ok(ReqRespCode::ChunkGet),
+            0x06 => Ok(ReqRespCode::ChunkResponse),
             0x7F => Ok(ReqRespCode::Error),
             _ => Err(SpdmError::UnsupportedRequest),
         }
@@ -47,16 +59,21 @@ impl From<ReqRespCode> for u8 {
 }
 
 impl ReqRespCode {
-    pub fn response_code(&self) -> SpdmResult<ReqRespCode> {
-        match self {
-            ReqRespCode::GetVersion => Ok(ReqRespCode::Version),
-            ReqRespCode::GetCapabilities => Ok(ReqRespCode::Capabilities),
-            ReqRespCode::NegotiateAlgorithms => Ok(ReqRespCode::Algorithmes),
-            ReqRespCode::GetDigests => Ok(ReqRespCode::Digests),
-            ReqRespCode::GetCertificate => Ok(ReqRespCode::Certificate),
-            ReqRespCode::Error => Ok(ReqRespCode::Error),
-            _ => Err(SpdmError::UnsupportedRequest),
+    pub(crate) fn spdm_context_string(&self) -> SpdmResult<[u8; SPDM_CONTEXT_LEN]> {
+        let mut context = [0u8; SPDM_CONTEXT_LEN];
+        let ctx_str = match self {
+            ReqRespCode::ChallengeAuth => "responder-challenge_auth signing",
+            ReqRespCode::Measurements => "responder-measurements signing",
+            _ => return Err(SpdmError::UnsupportedRequest),
+        };
+
+        if ctx_str.len() > SPDM_CONTEXT_LEN {
+            return Err(SpdmError::InvalidParam);
         }
+        let zero_pad_size = SPDM_CONTEXT_LEN - ctx_str.len();
+        context[zero_pad_size..].copy_from_slice(ctx_str.as_bytes());
+
+        Ok(context)
     }
 }
 
@@ -84,6 +101,10 @@ impl SpdmMsgHdr {
     }
 }
 
-impl CommonCodec for SpdmMsgHdr {
-    const DATA_KIND: DataKind = DataKind::Header;
-}
+impl CommonCodec for SpdmMsgHdr {}
+
+// Requester context (used for SPDM 1.3 and later versions)
+#[derive(FromBytes, IntoBytes, Immutable, Debug)]
+#[repr(C)]
+pub(crate) struct RequesterContext([u8; REQUESTER_CONTEXT_LEN]);
+impl CommonCodec for RequesterContext {}

@@ -22,11 +22,14 @@ platforms/emulator/runtime/userspace/apps/*.ld
 book
 
 # flash file
-main_flash
-recovery_flash
+primary_flash
+secondary_flash
 
 # Protocol validator test logs
 test.log
 
 # Test certificates to support spdm lib development
 test_certs
+
+# ld scripts
+layout.ld

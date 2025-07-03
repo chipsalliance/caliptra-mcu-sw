@@ -7,12 +7,19 @@ use crate::protocol::base::{
 use crate::protocol::firmware_update::{FirmwareDeviceState, FwUpdateCmd, UpdateOptionFlags};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub const PROGRESS_PERCENT_NOT_SUPPORTED: u8 = 101;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProgressPercent(u8);
 
+impl Default for ProgressPercent {
+    fn default() -> Self {
+        ProgressPercent::new(PROGRESS_PERCENT_NOT_SUPPORTED).unwrap()
+    }
+}
 impl ProgressPercent {
     pub fn new(value: u8) -> Result<Self, PldmError> {
-        if value > 100 {
+        if value > PROGRESS_PERCENT_NOT_SUPPORTED {
             Err(PldmError::InvalidData)
         } else {
             Ok(ProgressPercent(value))
@@ -46,6 +53,7 @@ pub enum AuxState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuxStateStatus {
     AuxStateInProgressOrSuccess = 0x00,
+    Reserved,
     Timeout = 0x09,
     GenericError = 0x0a,
     VendorDefined,
@@ -57,6 +65,7 @@ impl TryFrom<u8> for AuxStateStatus {
     fn try_from(value: u8) -> Result<Self, PldmError> {
         match value {
             0x00 => Ok(AuxStateStatus::AuxStateInProgressOrSuccess),
+            0x01..=0x08 => Ok(AuxStateStatus::Reserved),
             0x09 => Ok(AuxStateStatus::Timeout),
             0x0a => Ok(AuxStateStatus::GenericError),
             0x70..=0xef => Ok(AuxStateStatus::VendorDefined),
@@ -146,7 +155,7 @@ impl GetStatusResponse {
         current_state: FirmwareDeviceState,
         previous_state: FirmwareDeviceState,
         aux_state: AuxState,
-        aux_state_status: AuxStateStatus,
+        aux_state_status: u8,
         progress_percent: ProgressPercent,
         reason_code: GetStatusReasonCode,
         update_option: UpdateOptionResp,
@@ -162,7 +171,7 @@ impl GetStatusResponse {
             current_state: current_state as u8,
             previous_state: previous_state as u8,
             aux_state: aux_state as u8,
-            aux_state_status: aux_state_status as u8,
+            aux_state_status,
             progress_percent: progress_percent.value(),
             reason_code: reason_code as u8,
             update_option_flags_enabled: {
@@ -200,7 +209,7 @@ mod test {
             FirmwareDeviceState::Idle,
             FirmwareDeviceState::Idle,
             AuxState::IdleLearnComponentsReadXfer,
-            AuxStateStatus::AuxStateInProgressOrSuccess,
+            AuxStateStatus::AuxStateInProgressOrSuccess as u8,
             ProgressPercent::new(50).unwrap(),
             GetStatusReasonCode::Initialization,
             UpdateOptionResp::NoForceUpdate,

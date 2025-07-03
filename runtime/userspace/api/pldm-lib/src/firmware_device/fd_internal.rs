@@ -97,9 +97,34 @@ impl FdInternal {
         }
     }
 
+    pub async fn fd_idle_timeout(&self) {
+        let state = self.get_fd_state().await;
+        let reason = match state {
+            FirmwareDeviceState::Idle => return,
+            FirmwareDeviceState::LearnComponents => GetStatusReasonCode::LearnComponentTimeout,
+            FirmwareDeviceState::ReadyXfer => GetStatusReasonCode::ReadyXferTimeout,
+            FirmwareDeviceState::Download => GetStatusReasonCode::DownloadTimeout,
+            FirmwareDeviceState::Verify => GetStatusReasonCode::VerifyTimeout,
+            FirmwareDeviceState::Apply => GetStatusReasonCode::ApplyTimeout,
+            FirmwareDeviceState::Activate => GetStatusReasonCode::ActivateFw,
+        };
+
+        self.set_fd_idle(reason).await;
+    }
+
+    pub async fn get_fd_reason(&self) -> Option<GetStatusReasonCode> {
+        let inner = self.inner.lock().await;
+        inner.reason
+    }
+
     pub async fn get_fd_state(&self) -> FirmwareDeviceState {
         let inner = self.inner.lock().await;
         inner.state.clone()
+    }
+
+    pub async fn get_fd_prev_state(&self) -> FirmwareDeviceState {
+        let inner = self.inner.lock().await;
+        inner.prev_state.clone()
     }
 
     pub async fn set_xfer_size(&self, transfer_size: usize) {
@@ -125,6 +150,11 @@ impl FdInternal {
     pub async fn set_update_flags(&self, flags: UpdateOptionFlags) {
         let mut inner = self.inner.lock().await;
         inner.update_flags = flags;
+    }
+
+    pub async fn get_update_flags(&self) -> UpdateOptionFlags {
+        let inner = self.inner.lock().await;
+        inner.update_flags
     }
 
     pub async fn set_fd_req(
@@ -242,6 +272,24 @@ impl FdInternal {
         let mut inner = self.inner.lock().await;
         if let InitiatorModeState::Apply(apply) = &mut inner.initiator_mode_state {
             apply.progress_percent = progress;
+        }
+    }
+
+    pub async fn get_fd_verify_progress(&self) -> Option<u8> {
+        let inner = self.inner.lock().await;
+        if let InitiatorModeState::Verify(verify) = &inner.initiator_mode_state {
+            Some(verify.progress_percent)
+        } else {
+            None
+        }
+    }
+
+    pub async fn get_fd_apply_progress(&self) -> Option<u8> {
+        let inner = self.inner.lock().await;
+        if let InitiatorModeState::Apply(apply) = &inner.initiator_mode_state {
+            Some(apply.progress_percent)
+        } else {
+            None
         }
     }
 

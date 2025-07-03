@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 extern crate alloc;
-use crate::flash_image::{FlashChecksums, FlashHeader, ImageHeader};
 use crate::image_loading::pldm_context::State;
 use crate::image_loading::pldm_fdops::StreamingFdOps;
+use flash_image::{FlashHeader, ImageHeader};
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
@@ -88,9 +88,8 @@ pub async fn pldm_download_toc(image_id: u32) -> Result<(u32, u32), ErrorCode> {
         DOWNLOAD_CTX.lock(|ctx| {
             let mut ctx = ctx.borrow_mut();
             ctx.total_length = core::mem::size_of::<ImageHeader>(); // image info length
-            ctx.initial_offset = core::mem::size_of::<FlashHeader>()
-                + core::mem::size_of::<FlashChecksums>()
-                + index * core::mem::size_of::<ImageHeader>();
+            ctx.initial_offset =
+                core::mem::size_of::<FlashHeader>() + index * core::mem::size_of::<ImageHeader>();
             ctx.current_offset = ctx.initial_offset;
             ctx.total_downloaded = 0;
         });
@@ -162,10 +161,10 @@ pub async fn pldm_download_image(
     Ok(())
 }
 
-pub async fn initialize_pldm(
+pub async fn initialize_pldm<'a>(
     spawner: Spawner,
-    descriptors: &'static [Descriptor],
-    fw_params: &'static FirmwareParameters,
+    descriptors: &'a [Descriptor],
+    fw_params: &'a FirmwareParameters,
 ) -> Result<(), ErrorCode> {
     let is_initialiazed = PLDM_STATE.lock(|state| {
         let mut state = state.borrow_mut();

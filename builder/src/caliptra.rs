@@ -3,25 +3,27 @@
 //! Wrappers around the Caliptra builder library to make it easier to build
 //! the ROM, firwmare, and SoC manifest.
 
-use crate::PROJECT_ROOT;
+use crate::target_dir;
 use anyhow::{bail, Result};
 use caliptra_auth_man_gen::{
     AuthManifestGenerator, AuthManifestGeneratorConfig, AuthManifestGeneratorKeyConfig,
 };
 use caliptra_auth_man_types::{
-    Addr64, AuthManifestFlags, AuthManifestImageMetadata, AuthManifestPrivKeys,
-    AuthManifestPubKeys, AuthorizationManifest, ImageMetadataFlags,
+    Addr64, AuthManifestFlags, AuthManifestImageMetadata, AuthManifestPrivKeysConfig,
+    AuthManifestPubKeysConfig, AuthorizationManifest, ImageMetadataFlags,
 };
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_fake_keys::*;
 use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
-use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_image_types::{FwVerificationPqcKeyType, ImageManifest};
+use cargo_metadata::MetadataCommand;
 use hex::ToHex;
 use std::{num::ParseIntError, path::PathBuf, str::FromStr};
-use zerocopy::IntoBytes;
+use zerocopy::{transmute, IntoBytes};
 
+#[derive(Clone, Debug)]
 pub struct CaliptraBuilder {
-    active_mode: bool,
+    fpga: bool,
     caliptra_rom: Option<PathBuf>,
     caliptra_firmware: Option<PathBuf>,
     soc_manifest: Option<PathBuf>,
@@ -31,8 +33,9 @@ pub struct CaliptraBuilder {
 }
 
 impl CaliptraBuilder {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        active_mode: bool,
+        fpga: bool,
         caliptra_rom: Option<PathBuf>,
         caliptra_firmware: Option<PathBuf>,
         soc_manifest: Option<PathBuf>,
@@ -41,7 +44,7 @@ impl CaliptraBuilder {
         soc_images: Option<Vec<SocImage>>,
     ) -> Self {
         Self {
-            active_mode,
+            fpga,
             caliptra_rom,
             caliptra_firmware,
             soc_manifest,
@@ -58,7 +61,7 @@ impl CaliptraBuilder {
             }
             Ok(caliptra_rom.clone())
         } else {
-            Self::compile_caliptra_rom()
+            Self::compile_caliptra_rom_cached(self.fpga)
         }
     }
 
@@ -67,11 +70,11 @@ impl CaliptraBuilder {
             if !caliptra_firmware.exists() {
                 bail!("Caliptra runtime bundle not found: {:?}", caliptra_firmware);
             }
-            if self.active_mode && self.vendor_pk_hash.is_none() {
+            if self.vendor_pk_hash.is_none() {
                 bail!("Vendor public key hash is required for active mode if Caliptra FW is passed as an argument");
             }
         } else {
-            let (path, vendor_pk_hash) = Self::compile_caliptra_fw()?;
+            let (path, vendor_pk_hash) = Self::compile_caliptra_fw_cached(self.fpga)?;
             self.vendor_pk_hash = Some(vendor_pk_hash);
             self.caliptra_firmware = Some(path);
         }
@@ -120,6 +123,18 @@ impl CaliptraBuilder {
         Ok(self.soc_manifest.clone().unwrap())
     }
 
+    pub fn replace_manifest_metadata(&mut self, metadata: Vec<SocImage>) -> Result<PathBuf> {
+        println!("Replacing SoC manifest metadata with: {:?}", metadata);
+        // Replace the current metadata
+        self.soc_images = Some(metadata);
+
+        self.soc_manifest = None; // Clear the cached manifest
+
+        // Rebuild the SoC manifest
+        println!("Rebuilding SoC manifest with new metadata");
+        self.get_soc_manifest()
+    }
+
     pub fn get_vendor_pk_hash(&mut self) -> Result<&str> {
         if self.vendor_pk_hash.is_none() {
             let _ = self.get_caliptra_fw()?;
@@ -134,6 +149,8 @@ impl CaliptraBuilder {
         flags.set_image_source(IMAGE_SOURCE_IN_REQUEST);
         let crypto = Crypto::default();
         let digest = from_hw_format(&crypto.sha384_digest(&data)?);
+        let d: String = digest.clone().encode_hex();
+        println!("MCU len {} digest: {}", data.len(), d);
 
         Ok(AuthManifestImageMetadata {
             fw_id: 2,
@@ -168,85 +185,179 @@ impl CaliptraBuilder {
     fn write_soc_manifest(metadata: Vec<AuthManifestImageMetadata>) -> Result<PathBuf> {
         let manifest = Self::create_auth_manifest_with_metadata(metadata);
 
-        let path = PROJECT_ROOT.join("target").join("soc-manifest");
+        let path = target_dir().join("soc-manifest");
         std::fs::write(&path, manifest.as_bytes())?;
         Ok(path)
     }
 
-    fn compile_caliptra_rom() -> Result<PathBuf> {
-        let rom_bytes = caliptra_builder::rom_for_fw_integration_tests()?;
-        let path = PROJECT_ROOT.join("target").join("caliptra-rom.bin");
+    fn caliptra_version() -> Option<String> {
+        let metadata = MetadataCommand::new().exec().unwrap();
+        if let Some(caliptra) = metadata
+            .packages
+            .iter()
+            .find(|p| *p.name == "caliptra-builder")
+        {
+            if let Some(source) = caliptra.source.as_ref() {
+                if source.repr.starts_with("git") && source.repr.contains('#') {
+                    // If the source is a git repository, we can extract the commit hash
+                    return source.repr.split('#').next_back().map(|s| s.to_string());
+                }
+            }
+        }
+        println!("Could not determine Caliptra version from Cargo metadata, local checkout?");
+        None
+    }
+
+    fn compile_caliptra_rom_cached(fpga: bool) -> Result<PathBuf> {
+        if let Some(version) = Self::caliptra_version() {
+            let path = target_dir().join(format!("caliptra-rom-{}.bin", version));
+            if path.exists() {
+                println!("Using cached Caliptra ROM at {:?}", path);
+                return Ok(path);
+            }
+            println!(
+                "Caliptra version {} not found in cache, compiling ROM...",
+                version
+            );
+            let compiled_rom = Self::compile_caliptra_rom_uncached(fpga)?;
+            std::fs::copy(compiled_rom, &path)?;
+            Ok(path)
+        } else {
+            println!("Caliptra version not found so cannot use cached ROM");
+            Self::compile_caliptra_rom_uncached(fpga)
+        }
+    }
+
+    fn compile_caliptra_rom_uncached(fpga: bool) -> Result<PathBuf> {
+        let rom_bytes = if fpga {
+            caliptra_builder::build_firmware_rom(&caliptra_builder::firmware::ROM_FPGA_WITH_UART)?
+        } else {
+            caliptra_builder::rom_for_fw_integration_tests()?.to_vec()
+        };
+        let path = target_dir().join("caliptra-rom.bin");
         std::fs::write(&path, rom_bytes)?;
         Ok(path)
     }
 
-    fn compile_caliptra_fw() -> Result<(PathBuf, String)> {
+    fn compile_caliptra_fw_cached(fpga: bool) -> Result<(PathBuf, String)> {
+        if let Some(version) = Self::caliptra_version() {
+            let path = target_dir().join(format!("caliptra-fw-bundle-{}.bin", version));
+            if path.exists() {
+                println!("Using cached Caliptra FW bundle at {:?}", path);
+                return Self::parse_fw_bundle(path);
+            }
+            println!(
+                "Caliptra FW bundle version {} not found in cache, compiling...",
+                version
+            );
+            let compiled_fw_bundle = Self::compile_caliptra_fw_uncached(fpga)?.0;
+            std::fs::copy(compiled_fw_bundle, &path)?;
+            Self::parse_fw_bundle(path)
+        } else {
+            println!("Caliptra version not found so cannot use cached FW bundle");
+            Self::compile_caliptra_fw_uncached(fpga)
+        }
+    }
+
+    fn parse_fw_bundle(path: PathBuf) -> Result<(PathBuf, String)> {
+        let manifest = {
+            let bundle: [u8; core::mem::size_of::<ImageManifest>()] = std::fs::read(&path)?
+                [..core::mem::size_of::<ImageManifest>()]
+                .try_into()
+                .unwrap();
+            transmute!(bundle)
+        };
+        Ok((path, Self::vendor_pk_hash(manifest)?))
+    }
+
+    fn vendor_pk_hash(manifest: ImageManifest) -> Result<String> {
+        let crypto = Crypto::default();
+        let x = from_hw_format(
+            &crypto.sha384_digest(manifest.preamble.vendor_pub_key_info.as_bytes())?,
+        )
+        .encode_hex();
+        Ok(x)
+    }
+
+    fn compile_caliptra_fw_uncached(fpga: bool) -> Result<(PathBuf, String)> {
         let opts = caliptra_builder::ImageOptions {
             pqc_key_type: FwVerificationPqcKeyType::LMS,
             ..Default::default()
         };
-        let bundle = caliptra_builder::build_and_sign_image(
-            &caliptra_builder::firmware::FMC_WITH_UART,
-            &caliptra_builder::firmware::APP_WITH_UART,
-            opts,
-        )?;
-        let crypto = Crypto::default();
-        let vendor_pk_hash = from_hw_format(
-            &crypto.sha384_digest(bundle.manifest.preamble.vendor_pub_key_info.as_bytes())?,
-        )
-        .encode_hex();
+
+        let bundle = if fpga {
+            caliptra_builder::build_and_sign_image(
+                &caliptra_builder::firmware::FMC_FPGA_WITH_UART,
+                &caliptra_builder::firmware::APP_WITH_UART_FPGA,
+                opts,
+            )?
+        } else {
+            caliptra_builder::build_and_sign_image(
+                &caliptra_builder::firmware::FMC_WITH_UART,
+                &caliptra_builder::firmware::APP_WITH_UART,
+                opts,
+            )?
+        };
         let fw_bytes = bundle.to_bytes()?;
-        let path = PROJECT_ROOT.join("target").join("caliptra-fw-bundle.bin");
+        let path = target_dir().join("caliptra-fw-bundle.bin");
         std::fs::write(&path, fw_bytes)?;
-        Ok((path, vendor_pk_hash))
+        Ok((path, Self::vendor_pk_hash(bundle.manifest)?))
     }
 
     pub fn create_auth_manifest_with_metadata(
         image_metadata_list: Vec<AuthManifestImageMetadata>,
     ) -> AuthorizationManifest {
         let vendor_fw_key_info: AuthManifestGeneratorKeyConfig = AuthManifestGeneratorKeyConfig {
-            pub_keys: AuthManifestPubKeys {
+            pub_keys: AuthManifestPubKeysConfig {
                 ecc_pub_key: VENDOR_ECC_KEY_0_PUBLIC,
                 lms_pub_key: VENDOR_LMS_KEY_0_PUBLIC,
+                mldsa_pub_key: VENDOR_MLDSA_KEY_0_PUBLIC,
             },
-            priv_keys: Some(AuthManifestPrivKeys {
+            priv_keys: Some(AuthManifestPrivKeysConfig {
                 ecc_priv_key: VENDOR_ECC_KEY_0_PRIVATE,
                 lms_priv_key: VENDOR_LMS_KEY_0_PRIVATE,
+                mldsa_priv_key: VENDOR_MLDSA_KEY_0_PRIVATE,
             }),
         };
 
         let vendor_man_key_info: AuthManifestGeneratorKeyConfig = AuthManifestGeneratorKeyConfig {
-            pub_keys: AuthManifestPubKeys {
+            pub_keys: AuthManifestPubKeysConfig {
                 ecc_pub_key: VENDOR_ECC_KEY_1_PUBLIC,
                 lms_pub_key: VENDOR_LMS_KEY_1_PUBLIC,
+                mldsa_pub_key: VENDOR_MLDSA_KEY_0_PUBLIC,
             },
-            priv_keys: Some(AuthManifestPrivKeys {
+            priv_keys: Some(AuthManifestPrivKeysConfig {
                 ecc_priv_key: VENDOR_ECC_KEY_1_PRIVATE,
                 lms_priv_key: VENDOR_LMS_KEY_1_PRIVATE,
+                mldsa_priv_key: VENDOR_MLDSA_KEY_0_PRIVATE,
             }),
         };
 
         let owner_fw_key_info: Option<AuthManifestGeneratorKeyConfig> =
             Some(AuthManifestGeneratorKeyConfig {
-                pub_keys: AuthManifestPubKeys {
+                pub_keys: AuthManifestPubKeysConfig {
                     ecc_pub_key: OWNER_ECC_KEY_PUBLIC,
                     lms_pub_key: OWNER_LMS_KEY_PUBLIC,
+                    mldsa_pub_key: OWNER_MLDSA_KEY_PUBLIC,
                 },
-                priv_keys: Some(AuthManifestPrivKeys {
+                priv_keys: Some(AuthManifestPrivKeysConfig {
                     ecc_priv_key: OWNER_ECC_KEY_PRIVATE,
                     lms_priv_key: OWNER_LMS_KEY_PRIVATE,
+                    mldsa_priv_key: OWNER_MLDSA_KEY_PRIVATE,
                 }),
             });
 
         let owner_man_key_info: Option<AuthManifestGeneratorKeyConfig> =
             Some(AuthManifestGeneratorKeyConfig {
-                pub_keys: AuthManifestPubKeys {
+                pub_keys: AuthManifestPubKeysConfig {
                     ecc_pub_key: OWNER_ECC_KEY_PUBLIC,
                     lms_pub_key: OWNER_LMS_KEY_PUBLIC,
+                    mldsa_pub_key: OWNER_MLDSA_KEY_PUBLIC,
                 },
-                priv_keys: Some(AuthManifestPrivKeys {
+                priv_keys: Some(AuthManifestPrivKeysConfig {
                     ecc_priv_key: OWNER_ECC_KEY_PRIVATE,
                     lms_priv_key: OWNER_LMS_KEY_PRIVATE,
+                    mldsa_priv_key: OWNER_MLDSA_KEY_PRIVATE,
                 }),
             });
 
@@ -258,6 +369,7 @@ impl CaliptraBuilder {
             image_metadata_list,
             version: 1,
             flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
+            pqc_key_type: FwVerificationPqcKeyType::LMS,
         };
 
         let gen = AuthManifestGenerator::new(Crypto::default());

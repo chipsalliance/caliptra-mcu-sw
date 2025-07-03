@@ -73,7 +73,7 @@ impl<'a> MockMctp<'a> {
     }
 }
 
-impl<'a> MCTPRxClient for MockMctp<'a> {
+impl MCTPRxClient for MockMctp<'_> {
     fn receive(
         &self,
         src_eid: u8,
@@ -129,7 +129,7 @@ impl<'a> MCTPRxClient for MockMctp<'a> {
     }
 }
 
-impl<'a> MCTPTxClient for MockMctp<'a> {
+impl MCTPTxClient for MockMctp<'_> {
     fn send_done(
         &self,
         dest_eid: u8,

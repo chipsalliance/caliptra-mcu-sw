@@ -5,6 +5,9 @@
 
 #![allow(static_mut_refs)]
 
+use crate::CHIP;
+use crate::PROCESSES;
+use crate::PROCESS_PRINTER;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use core::fmt::Write;
@@ -18,11 +21,7 @@ use kernel::hil;
 use kernel::hil::time::{Alarm, AlarmClient, Ticks, Ticks64, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::ErrorCode;
-
-use crate::timers::InternalTimers;
-use crate::CHIP;
-use crate::PROCESSES;
-use crate::PROCESS_PRINTER;
+use mcu_tock_veer::timers::InternalTimers;
 
 pub(crate) static mut WRITER: Writer = Writer {};
 
