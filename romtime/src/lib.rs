@@ -2,6 +2,7 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![allow(static_mut_refs)]
+#![feature(riscv_ext_intrinsics)]
 
 mod error;
 pub use error::*;
@@ -112,18 +113,9 @@ pub fn crc8(crc: u8, data: u8) -> u8 {
 #[cfg(target_arch = "riscv32")]
 pub fn crc8(crc: u8, data: u8) -> u8 {
     // CRC-8 with last 8 bits of polynomial x^8 + x^2 + x^1 + 1.
-    let mut crc = crc ^ data;
-    unsafe {
-        core::arch::asm!(
-            "clmul {crc}, {seven}, {crc}",
-            "srli {tmp}, {crc}, 8",
-            "clmul {tmp}, {seven}, {tmp}",
-            "xor {crc}, {tmp}, {crc}",
-            "zext.b {crc}, {crc}", // ensure result is 8 bits
-            crc = inout(reg) crc,
-            seven = in(reg) 7,
-            tmp = out(reg) _,
-        );
-    }
-    crc
+    let polynomial = 0x07;
+    let crc = (crc ^ data) as usize;
+    let a = unsafe { core::arch::riscv32::clmul(crc, polynomial) };
+    let b = unsafe { core::arch::riscv32::clmul(a >> 8, polynomial) };
+    (a ^ b) as u8
 }
