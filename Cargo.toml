@@ -282,7 +282,7 @@ opt-level = 3
 [profile.release]
 debug = true      # Keep debug symbols in the release ELF so that we can debug more easily.
 lto = true
-opt-level = "s"
+opt-level = "z"
 codegen-units = 1
 
 [patch.crates-io]
