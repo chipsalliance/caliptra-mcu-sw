@@ -2,7 +2,7 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![allow(static_mut_refs)]
-#![feature(riscv_ext_intrinsics)]
+#![cfg_attr(target_arch = "riscv32", feature(riscv_ext_intrinsics))]
 
 mod error;
 pub use error::*;
