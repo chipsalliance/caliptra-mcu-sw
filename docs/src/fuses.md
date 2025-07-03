@@ -63,9 +63,11 @@ We will provide a script, `cargo xtask fuse-autogen`, that can be used to proces
 
 The command will use either a `--platform` flag to indicate the file is `platforms/{platform}/fuse_bits.hjson` or a `--file` to specify the file manually.
 
+This script can optionally generate extra commands for programming specific fuses as well as Rust and C code to access them.
+
 ## Fuse Provisioning Commands
 
-The fuse provisioning commands can be used over our [generic command](#todo) interface through MCTP, mailboxes, etc., or through commands in firmware manifest (except read operations).
+The fuse provisioning commands can be used over our [generic command](#mc_fuse_read) interface through MCTP, mailboxes, etc., or through commands in firmware manifest (except read operations).
 
 The commands are:
 
