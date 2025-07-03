@@ -68,7 +68,6 @@ impl TestMctp {
     }
 
     fn receive_socket_message(
-        &self,
         running: Arc<AtomicBool>,
         stream: &mut TcpStream,
     ) -> Option<(u32, u32, Vec<u8>)> {
@@ -114,7 +113,6 @@ impl TestMctp {
     }
 
     fn send_socket_message(
-        &self,
         spdm_client_stream: &mut TcpStream,
         transport_type: u32,
         command: u32,
@@ -204,17 +202,17 @@ impl TestMctp {
         }
     }
 
-    fn send_hello(&self, stream: &mut TcpStream, tranport_type: u32) {
+    fn send_hello(stream: &mut TcpStream, tranport_type: u32) {
         println!("SPDM_SERVER: Got Client Hello");
         let server_hello = b"Server Hello!\0";
         let hello_bytes = server_hello.as_bytes();
 
-        self.send_socket_message(stream, tranport_type, SOCKET_SPDM_COMMAND_TEST, hello_bytes);
+        Self::send_socket_message(stream, tranport_type, SOCKET_SPDM_COMMAND_TEST, hello_bytes);
     }
 
-    fn send_stop(&self, stream: &mut TcpStream, tranport_type: u32) {
+    fn send_stop(stream: &mut TcpStream, tranport_type: u32) {
         println!("SPDM_SERVER: Got Stop");
-        self.send_socket_message(stream, tranport_type, SOCKET_SPDM_COMMAND_STOP, &[]);
+        Self::send_socket_message(stream, tranport_type, SOCKET_SPDM_COMMAND_STOP, &[]);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -235,13 +233,13 @@ impl TestMctp {
         match socket_command {
             SOCKET_SPDM_COMMAND_TEST => {
                 println!("SPDM_SERVER: Received test command. Send Server Hello");
-                self.send_hello(spdm_client_stream, transport_type);
+                Self::send_hello(spdm_client_stream, transport_type);
                 self.spdm_server_state = SpdmServerState::ReceiveRequest;
                 true
             }
             SOCKET_SPDM_COMMAND_STOP => {
                 println!("SPDM_SERVER: Received stop command. Stop the responder plugin");
-                self.send_stop(spdm_client_stream, transport_type);
+                Self::send_stop(spdm_client_stream, transport_type);
                 self.passed = true;
                 false
             }
@@ -290,7 +288,7 @@ impl TestMctp {
                     self.spdm_server_state = SpdmServerState::ReceiveRequest;
                 }
                 SpdmServerState::ReceiveRequest => {
-                    let result = self.receive_socket_message(running.clone(), spdm_client_stream);
+                    let result = Self::receive_socket_message(running.clone(), spdm_client_stream);
                     if let Some((transport_type, command, buffer)) = result {
                         println!("SPDM_SERVER: Received message from SPDM client transport type {} command {} Buffer {:x?}", transport_type, command, buffer);
                         let result = self.process_socket_message(
@@ -309,7 +307,7 @@ impl TestMctp {
                 }
                 SpdmServerState::SendResponse => {
                     println!("SPDM_SERVER: Sending response to SPDM client");
-                    self.send_socket_message(
+                    Self::send_socket_message(
                         spdm_client_stream,
                         1,
                         SOCKET_SPDM_COMMAND_NORMAL,

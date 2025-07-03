@@ -33,6 +33,7 @@ Abstract:
 
 --*/
 
+use crate::tests::spdm_responder_validator::common::execute_spdm_validator;
 use emulator_periph::{
     DynamicI3cAddress, I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriCommandXfer,
     ReguDataTransferCommand, ResponseDescriptor,
@@ -46,8 +47,6 @@ use std::sync::{mpsc, Arc};
 use std::time::Duration;
 use std::vec;
 use zerocopy::{transmute, FromBytes, IntoBytes};
-
-use crate::tests::spdm_validator::execute_spdm_validator;
 
 const CRC8_SMBUS: crc::Crc<u8> = crc::Crc::<u8>::new(&crc::CRC_8_SMBUS);
 
@@ -195,8 +194,8 @@ pub(crate) fn run_tests(
         test_runner.run_tests();
     });
 
-    if cfg!(feature = "test-spdm-validator") {
-        execute_spdm_validator(running.clone());
+    if cfg!(feature = "test-mctp-spdm-responder-conformance") {
+        execute_spdm_validator(running.clone(), "MCTP");
     }
 }
 

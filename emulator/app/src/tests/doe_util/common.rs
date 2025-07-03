@@ -4,6 +4,7 @@ use crate::tests::doe_util::protocol::*;
 use std::sync::mpsc::{Receiver, RecvError, SendError, Sender};
 use zerocopy::IntoBytes;
 
+#[derive(Debug, Clone, Copy, Default)]
 pub struct DoeUtil;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

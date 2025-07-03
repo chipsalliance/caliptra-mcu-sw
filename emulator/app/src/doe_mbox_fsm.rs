@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::tests::spdm_responder_validator::common::execute_spdm_validator;
 use emulator_periph::DoeMboxPeriph;
 use std::process::exit;
 use std::sync::mpsc::{Receiver, Sender};

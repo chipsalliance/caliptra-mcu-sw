@@ -17,7 +17,7 @@ use crate::protocol::version::*;
 use crate::protocol::DeviceCapabilities;
 use crate::state::{ConnectionState, State};
 use crate::transcript::{TranscriptContext, TranscriptManager};
-use crate::transport::SpdmTransport;
+use crate::transport::common::SpdmTransport;
 
 pub struct SpdmContext<'a> {
     transport: &'a mut dyn SpdmTransport,
@@ -59,7 +59,8 @@ impl<'a> SpdmContext<'a> {
     }
 
     pub async fn process_message(&mut self, msg_buf: &mut MessageBuf<'a>) -> SpdmResult<()> {
-        self.transport
+        let secure = self
+            .transport
             .receive_request(msg_buf)
             .await
             .map_err(SpdmError::Transport)?;
@@ -67,11 +68,13 @@ impl<'a> SpdmContext<'a> {
         // Process message
         match self.handle_request(msg_buf).await {
             Ok(()) => {
-                self.send_response(msg_buf).await?;
+                self.send_response(msg_buf, secure).await?;
             }
             Err((rsp, command_error)) => {
                 if rsp {
-                    self.send_response(msg_buf).await.inspect_err(|_| {})?;
+                    self.send_response(msg_buf, secure)
+                        .await
+                        .inspect_err(|_| {})?;
                 }
                 Err(SpdmError::Command(command_error))?;
             }
@@ -126,9 +129,9 @@ impl<'a> SpdmContext<'a> {
         Ok(())
     }
 
-    async fn send_response(&mut self, resp: &mut MessageBuf<'a>) -> SpdmResult<()> {
+    async fn send_response(&mut self, resp: &mut MessageBuf<'a>, secure: bool) -> SpdmResult<()> {
         self.transport
-            .send_response(resp)
+            .send_response(resp, secure)
             .await
             .map_err(SpdmError::Transport)
     }

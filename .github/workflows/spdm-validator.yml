@@ -97,7 +97,7 @@ jobs:
       - name: Run SPDM validator test tests
         run: |
           export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
-          cargo t -p tests-integration -- --test test_spdm_validator --nocapture  --include-ignored
+          cargo t -p tests-integration -- --test test_mctp_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
 
       - name: Display SPDM Validator test results

@@ -4,13 +4,15 @@ mod config;
 mod dev_cert_store;
 use core::fmt::Write;
 use dev_cert_store::{DeviceCertChain, DeviceCertStore};
+use embassy_executor::Spawner;
 use libsyscall_caliptra::mctp::driver_num;
 use libsyscall_caliptra::DefaultSyscalls;
-use libtock_console::{Console, ConsoleWriter};
+use libtock_console::Console;
 use spdm_lib::codec::MessageBuf;
 use spdm_lib::context::SpdmContext;
 use spdm_lib::protocol::*;
-use spdm_lib::transport::{MctpTransport, SpdmTransport};
+use spdm_lib::transport::common::SpdmTransport;
+use spdm_lib::transport::mctp::MctpTransport;
 
 // Caliptra supported SPDM versions
 const SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12, SpdmVersion::V13];
@@ -26,18 +28,21 @@ static HASH_PRIORITY_TABLE: &[BaseHashAlgoType] = &[
 ];
 
 #[embassy_executor::task]
-pub(crate) async fn spdm_task() {
+pub(crate) async fn spdm_task(spawner: Spawner) {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     writeln!(console_writer, "SPDM_APP: Running SPDM-APP...").unwrap();
 
-    let mut raw_buffer = [0; MAX_MCTP_SPDM_MSG_SIZE];
+    // let mut raw_buffer = [0; MAX_MCTP_SPDM_MSG_SIZE];
 
-    spdm_loop(&mut raw_buffer, &mut console_writer).await;
+    spawner.spawn(spdm_mctp_responder()).unwrap();
 
     writeln!(console_writer, "SPDM_APP: app finished").unwrap();
 }
 
-async fn spdm_loop(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<DefaultSyscalls>) {
+#[embassy_executor::task]
+async fn spdm_mctp_responder() {
+    let mut raw_buffer = [0; MAX_MCTP_SPDM_MSG_SIZE];
+    let mut cw = Console::<DefaultSyscalls>::writer();
     let mut mctp_spdm_transport: MctpTransport = MctpTransport::new(driver_num::MCTP_SPDM);
 
     let max_mctp_spdm_msg_size =
@@ -91,7 +96,7 @@ async fn spdm_loop(raw_buffer: &mut [u8], cw: &mut ConsoleWriter<DefaultSyscalls
         }
     };
 
-    let mut msg_buffer = MessageBuf::new(raw_buffer);
+    let mut msg_buffer = MessageBuf::new(&mut raw_buffer);
     loop {
         let result = ctx.process_message(&mut msg_buffer).await;
         match result {
