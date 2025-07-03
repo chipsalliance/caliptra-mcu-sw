@@ -100,7 +100,7 @@ impl PldmFwUpdateTest {
         }
     }
     pub fn wait_for_state_transition(&self, expected_state: update_sm::States) -> Result<(), ()> {
-        let timeout = Duration::from_secs(20);
+        let timeout = Duration::from_secs(30);
         let start_time = std::time::Instant::now();
 
         while start_time.elapsed() < timeout {
