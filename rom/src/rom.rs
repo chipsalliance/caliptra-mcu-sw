@@ -25,9 +25,6 @@ use registers_generated::{fuses::Fuses, i3c, mci, otp_ctrl, soc};
 use romtime::{HexWord, Mci, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
-const WDT1_TIMEOUT_CYCLES: u32 = 20_000_000;
-const WDT2_TIMEOUT_CYCLES: u32 = 1;
-
 extern "C" {
     pub static MCU_MEMORY_MAP: mcu_config::McuMemoryMap;
     pub static MCU_STRAPS: mcu_config::McuStraps;
@@ -229,7 +226,8 @@ pub fn rom_start(flash_partition_driver: Option<&mut FlashPartition>) {
         soc.registers.cptra_wdt_cfg[0].set(straps.cptra_wdt_cfg0);
         soc.registers.cptra_wdt_cfg[1].set(straps.cptra_wdt_cfg1);
 
-        mci.configure_wdt(WDT1_TIMEOUT_CYCLES, WDT2_TIMEOUT_CYCLES);
+        mci.set_nmi_vector(unsafe { MCU_MEMORY_MAP.rom_offset });
+        mci.configure_wdt(straps.mcu_wdt_cfg0, straps.mcu_wdt_cfg1);
     }
 
     romtime::println!(
@@ -248,6 +246,10 @@ pub fn rom_start(flash_partition_driver: Option<&mut FlashPartition>) {
     romtime::println!("[mcu-rom] Locking Caliptra mailbox user 0");
     soc.registers.cptra_mbox_axi_user_lock[0].set(1);
 
+    romtime::println!("[mcu-rom] Setting OTP user");
+    soc.registers.cptra_fuse_valid_axi_user.set(straps.axi_user);
+    romtime::println!("[mcu-rom] Locking OTP user");
+    soc.registers.cptra_fuse_axi_user_lock.set(1);
     romtime::println!("[mcu-rom] Setting TRNG user");
     soc.registers.cptra_trng_valid_axi_user.set(straps.axi_user);
     romtime::println!("[mcu-rom] Locking TRNG user");
@@ -312,6 +314,7 @@ pub fn rom_start(flash_partition_driver: Option<&mut FlashPartition>) {
 
     romtime::println!("[mcu-rom] Waiting for firmware to be ready");
     while !soc.fw_ready() {}
+    romtime::println!("[mcu-rom] Firmware is ready");
 
     // Check that the firmware was actually loaded before jumping to it
     let firmware_ptr = unsafe { MCU_MEMORY_MAP.sram_offset as *const u32 };

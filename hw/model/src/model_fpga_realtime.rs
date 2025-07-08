@@ -367,21 +367,6 @@ impl ModelFpgaRealtime {
                             "I3C core reported length should have been {}",
                             self.recovery_ctrl_len / 4
                         );
-                        //  self
-                        //     .i3c_core()
-                        //     .sec_fw_recovery_if_indirect_fifo_ctrl_1
-                        //     .set(image.len() as u32 / 4);
-                        // }
-                        // let reported_len = self
-                        //     .i3c_core()
-                        //     .sec_fw_recovery_if_indirect_fifo_ctrl_1
-                        //     .get();
-                        // println!("I3C core reported length: {}", reported_len);
-                        // if reported_len as usize != image.len() / 4 {
-                        //     panic!(
-                        //         "I3C core reported length should have been {}",
-                        //         image.len() / 4
-                        //     );
                     }
                     self.recovery_ctrl_written = true;
                 }
@@ -393,9 +378,7 @@ impl ModelFpgaRealtime {
                 if empty {
                     // fifo is empty, send a block
                     let chunk = self.recovery_fifo_blocks.pop().unwrap();
-                    //println!("     BMC blocks {} checksum {:08x}", self.blocks_sent, self.chk);
                     self.blocks_sent += 1;
-                    println!("Sending block ({} left)", self.recovery_fifo_blocks.len());
                     self.recovery_block_write_request(
                         RecoveryCommandCode::IndirectFifoData,
                         &chunk,
@@ -1139,7 +1122,6 @@ mod test {
         )
         .expect("Could not build MCU runtime");
         let mut caliptra_builder = mcu_builder::CaliptraBuilder::new(
-            true,
             true,
             None,
             None,
