@@ -90,7 +90,8 @@ pub static mut PROCESS_PRINTER: Option<
     feature = "test-flash-ctrl-read-write-page",
     feature = "test-flash-ctrl-erase-page",
     feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase"
+    feature = "test-flash-storage-erase",
+    feature = "test-linear-log-flash"
 ))]
 static mut BOARD: Option<&'static kernel::Kernel> = None;
 
@@ -98,7 +99,8 @@ static mut BOARD: Option<&'static kernel::Kernel> = None;
     feature = "test-flash-ctrl-read-write-page",
     feature = "test-flash-ctrl-erase-page",
     feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase"
+    feature = "test-flash-storage-erase",
+    feature = "test-linear-log-flash"
 ))]
 static mut PLATFORM: Option<&'static VeeR> = None;
 
@@ -106,7 +108,8 @@ static mut PLATFORM: Option<&'static VeeR> = None;
     feature = "test-flash-ctrl-read-write-page",
     feature = "test-flash-ctrl-erase-page",
     feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase"
+    feature = "test-flash-storage-erase",
+    feature = "test-linear-log-flash"
 ))]
 static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = None;
 
@@ -121,10 +124,6 @@ pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
 
 #[no_mangle]
 pub static mut PIC: Pic = Pic::new(MCU_MEMORY_MAP.pic_offset);
-
-// XS: Allocate 128K for logging test
-#[no_mangle]
-pub static mut LOG_STORAGE: Option<&'static [u8]> = None;
 
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
@@ -616,17 +615,6 @@ pub unsafe fn main() {
     romtime::println!("[xs debug]sstorage: {:#010x}", addr_of!(_sstorage) as usize);
     romtime::println!("[xs debug]estorage: {:#010x}", addr_of!(_estorage) as usize);
 
-    LOG_STORAGE = Some(unsafe {
-        core::slice::from_raw_parts(
-            addr_of!(_sstorage),
-            addr_of!(_estorage) as usize - addr_of!(_sstorage) as usize,
-        )
-    });
-
-    if let Some(log_storage) = LOG_STORAGE {
-        check_log_storage_erased(log_storage);
-    }
-
     debug!("MCU initialization complete.");
     debug!("Entering main loop.");
 
@@ -682,7 +670,8 @@ pub unsafe fn main() {
         feature = "test-flash-ctrl-read-write-page",
         feature = "test-flash-ctrl-erase-page",
         feature = "test-flash-storage-read-write",
-        feature = "test-flash-storage-erase"
+        feature = "test-flash-storage-erase",
+        feature = "test-linear-log-flash"
     ))]
     {
         PLATFORM = Some(veer);
@@ -721,6 +710,9 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-doe-transport-loopback") {
         debug!("Executing test-doe-transport-loopback");
         crate::tests::doe_transport_test::test_doe_transport_loopback()
+    } else if cfg!(feature = "test-linear-log-flash") {
+        debug!("Executing test-linear-log-flash");
+        crate::tests::linear_log_test::run(mux_alarm, &emulator_peripherals.primary_flash_ctrl)
     } else {
         None
     };
@@ -748,7 +740,8 @@ pub unsafe fn main() {
     feature = "test-flash-ctrl-read-write-page",
     feature = "test-flash-ctrl-erase-page",
     feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase"
+    feature = "test-flash-storage-erase",
+    feature = "test-linear-log-flash"
 ))]
 pub fn run_kernel_op(loops: usize) {
     unsafe {
@@ -762,20 +755,4 @@ pub fn run_kernel_op(loops: usize) {
             );
         }
     }
-}
-
-// Sanity check the storage region is 0xFF
-fn check_log_storage_erased(log_storage: &[u8]) {
-    for (i, &byte) in log_storage.iter().enumerate() {
-        assert!(
-            byte == 0xFF,
-            "[xs debug] LOG_STORAGE not erased at offset {:#x}: {:#04x}",
-            i,
-            byte
-        );
-    }
-    debug!(
-        "[xs debug] LOG_STORAGE erased check passed, size: {} bytes",
-        log_storage.len()
-    );
 }

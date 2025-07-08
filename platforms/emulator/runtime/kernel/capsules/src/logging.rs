@@ -72,6 +72,9 @@ use kernel::hil::log::{LogRead, LogReadClient, LogWrite, LogWriteClient};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::ErrorCode;
 
+use core::fmt::Write;
+use romtime::println;
+
 /// Globally declare entry ID type.
 type EntryID = usize;
 
@@ -172,7 +175,8 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
         log
     }
 
-    fn set_flash_base_address(&mut self, flash_base_address: u32) {
+    #[allow(dead_code)]
+    pub fn set_flash_base_address(&mut self, flash_base_address: u32) {
         self.flash_base_address = Some(flash_base_address);
     }
 
@@ -180,8 +184,8 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
     /// XS: Our flash base address in emulator is not always 0, so we need to take that into account
     fn page_number(&self, entry_id: EntryID) -> usize {
         let flash_base_addr = self.flash_base_address.unwrap_or(0) as usize;
-        (self.volume.as_ptr() as usize - flash_base_addr)
-            + entry_id % self.volume.len() / self.page_size
+        (self.volume.as_ptr() as usize - flash_base_addr + entry_id % self.volume.len())
+            / self.page_size
     }
 
     /// Gets the buffer containing the byte at the given position in the log.
@@ -473,6 +477,10 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
         match self.driver.write_page(page_number, pagebuffer) {
             Ok(()) => Ok(()),
             Err((ecode, pagebuffer)) => {
+                romtime::println!(
+                    "[xs debug]logging capsule: flush_pagebuffer: write_page failed with error {:?} for page number {}",
+                    ecode, page_number
+                );
                 self.pagebuffer.replace(pagebuffer);
                 Err(ecode)
             }
@@ -595,6 +603,8 @@ impl<'a, F: Flash + 'static> LogRead<'a> for Log<'a, F> {
         buffer: &'static mut [u8],
         length: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
+        romtime::println!("[xs debug]logging capsule: read: length {}", length);
+
         // Check for failure cases.
         if self.state.get() != State::Idle {
             // Log busy, try reading again later.
@@ -694,12 +704,31 @@ impl<'a, F: Flash + 'static> LogWrite<'a> for Log<'a, F> {
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
         let entry_size = length + ENTRY_HEADER_SIZE;
 
+        romtime::println!(
+            "[xs debug]logging capsule: append: entry_size including ENTRY_HEADER {}",
+            entry_size
+        );
+        kernel::debug!(
+            "[xs debug]logging capsule: append: entry_size including ENTRY_HEADER {}",
+            entry_size
+        );
+
         // Check for failure cases.
         if self.state.get() != State::Idle {
             // Log busy, try appending again later.
             return Err((ErrorCode::BUSY, buffer));
         } else if length == 0 || buffer.len() < length {
             // Invalid length provided.
+            println!(
+                "[xs debug]logging capsule: append: invalid length {}, buffer.len()= {}",
+                length,
+                buffer.len()
+            );
+            kernel::debug!(
+                "[xs debug]logging capsule: append: invalid length {}, buffer.len()= {}",
+                length,
+                buffer.len()
+            );
             return Err((ErrorCode::INVAL, buffer));
         } else if entry_size + PAGE_HEADER_SIZE > self.page_size {
             // Entry too big, won't fit within a single page.
@@ -726,6 +755,7 @@ impl<'a, F: Flash + 'static> LogWrite<'a> for Log<'a, F> {
                     Ok(())
                 } else {
                     // Need to sync pagebuffer first, then append to new page.
+                    romtime::println!("[xs debug]logging capsule: append: flushing previous page");
                     self.buffer.replace(buffer);
                     let return_code = self.flush_pagebuffer(pagebuffer);
                     if return_code == Ok(()) {

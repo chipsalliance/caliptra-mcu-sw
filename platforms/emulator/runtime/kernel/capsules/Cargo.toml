@@ -11,3 +11,5 @@ bitfield.workspace = true
 dma-driver.workspace = true
 kernel.workspace = true
 registers-generated.workspace = true
+
+romtime.workspace = true
