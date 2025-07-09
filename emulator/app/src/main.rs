@@ -49,6 +49,7 @@ use std::cell::RefCell;
 use std::fs::File;
 use std::io;
 use std::io::{IsTerminal, Read, Write};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::rc::Rc;
@@ -56,6 +57,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use tests::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
 use tests::pldm_request_response_test::PldmRequestResponseTest;
+
+pub static MCU_RUNTIME_STARTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Parser)]
 #[command(version, about, long_about = None, name = "Caliptra MCU Emulator")]
@@ -289,6 +292,7 @@ fn free_run(
     trace_path: Option<PathBuf>,
     stdin_uart: Option<Arc<Mutex<Option<u8>>>>,
     mut bmc: Option<Bmc>,
+    sram_range: Range<u32>,
 ) {
     // read from the console in a separate thread to prevent blocking
     let running_clone = running.clone();
@@ -331,6 +335,9 @@ fn free_run(
             if action != StepAction::Continue {
                 break;
             }
+            if sram_range.contains(&mcu_cpu.read_pc()) {
+                MCU_RUNTIME_STARTED.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
             match caliptra_cpu.step(Some(caliptra_trace_fn)) {
                 CaliptraMainStepAction::Continue => {}
                 _ => {
@@ -351,6 +358,9 @@ fn free_run(
             let action = mcu_cpu.step(None);
             if action != StepAction::Continue {
                 break;
+            }
+            if sram_range.contains(&mcu_cpu.read_pc()) {
+                MCU_RUNTIME_STARTED.store(true, std::sync::atomic::Ordering::Relaxed);
             }
             match caliptra_cpu.step(None) {
                 CaliptraMainStepAction::Continue => {}
@@ -1006,6 +1016,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
                 instr_trace,
                 stdin_uart,
                 bmc,
+                mcu_root_bus_offsets.ram_offset
+                    ..mcu_root_bus_offsets.ram_offset + mcu_root_bus_offsets.ram_size,
             );
         }
     }

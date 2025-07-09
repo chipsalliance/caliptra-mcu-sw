@@ -10,6 +10,8 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
+use crate::MCU_RUNTIME_STARTED;
+
 #[derive(Debug, Clone, PartialEq)]
 enum DoeMboxState {
     Idle,
@@ -254,6 +256,10 @@ pub(crate) fn run_doe_transport_tests(
 
     // Spawn a thread to run the tests
     thread::spawn(move || {
+        // wait for the runtime to start
+        while running.load(Ordering::Relaxed) && !MCU_RUNTIME_STARTED.load(Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
         let mut test = DoeTransportTestRunner::new(tx, rx, running_clone, tests);
 
         test.run_tests();

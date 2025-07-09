@@ -5,8 +5,10 @@
 use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::mctp_transport::MctpPldmSocket;
+use crate::MCU_RUNTIME_STARTED;
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::control::*;
 use pldm_common::message::firmware_update::get_fw_params::{
@@ -93,6 +95,11 @@ impl PldmRequestResponseTest {
 
     pub fn run(socket: MctpPldmSocket, running: Arc<AtomicBool>) {
         std::thread::spawn(move || {
+            // wait for the runtime to start
+            while running.load(Ordering::Relaxed) && !MCU_RUNTIME_STARTED.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+
             print!("Emulator: Running PLDM Loopback Test: ",);
             let mut test = PldmRequestResponseTest::new(socket, running);
             if test.test_send_receive().is_err() {

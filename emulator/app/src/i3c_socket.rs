@@ -48,6 +48,7 @@ use std::vec;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
 use crate::tests::spdm_validator::execute_spdm_validator;
+use crate::MCU_RUNTIME_STARTED;
 
 const CRC8_SMBUS: crc::Crc<u8> = crc::Crc::<u8>::new(&crc::CRC_8_SMBUS);
 
@@ -191,6 +192,11 @@ pub(crate) fn run_tests(
         running_clone_stop.store(false, Ordering::Relaxed);
     });
     std::thread::spawn(move || {
+        // wait for the runtime to start
+        while running_clone.load(Ordering::Relaxed) && !MCU_RUNTIME_STARTED.load(Ordering::Relaxed)
+        {
+            std::thread::sleep(Duration::from_millis(10));
+        }
         let mut test_runner = MctpTestRunner::new(stream, target_addr.into(), running_clone, tests);
         test_runner.run_tests();
     });
