@@ -26,7 +26,7 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     i3c_properties: MemoryRegionType::MMIO,
 
     mci_offset: 0xa800_0000,
-    mci_size: 0xe0_0000,
+    mci_size: 0xa0_0028,
     mci_properties: MemoryRegionType::MMIO,
 
     mbox_offset: 0xa412_0000,

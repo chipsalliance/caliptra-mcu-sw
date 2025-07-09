@@ -45,9 +45,13 @@ extern "C" {
     static _stext: u8;
     /// The end of the kernel text (Included only for kernel PMP)
     static _etext: u8;
-    /// The start of the kernel / app / storage flash (Included only for kernel PMP)
+    /// The start of the kernel (Included only for kernel PMP)
     static _srom: u8;
-    /// The end of the kernel / app / storage flash (Included only for kernel PMP)
+    /// The end of the kernel (Included only for kernel PMP)
+    static _erom: u8;
+    /// The start of the app / storage flash (Included only for kernel PMP)
+    static _sprog: u8;
+    /// The end of the app / storage flash (Included only for kernel PMP)
     static _eprog: u8;
     /// The start of the kernel / app RAM (Included only for kernel PMP)
     static _ssram: u8;
@@ -266,8 +270,8 @@ pub unsafe fn main() {
 
     // Kernel text region (read + execute)
     platform_regions.push(PlatformRegion {
-        start_addr: addr_of!(_stext),
-        size: addr_of!(_etext) as usize - addr_of!(_stext) as usize,
+        start_addr: addr_of!(_srom),
+        size: addr_of!(_erom) as usize - addr_of!(_srom) as usize,
         is_mmio: false,
         user_accessible: false,
         read: true,
@@ -277,8 +281,8 @@ pub unsafe fn main() {
 
     // Read-only region (ROM)
     platform_regions.push(PlatformRegion {
-        start_addr: addr_of!(_srom),
-        size: addr_of!(_eprog) as usize - addr_of!(_srom) as usize,
+        start_addr: addr_of!(_sprog),
+        size: addr_of!(_eprog) as usize - addr_of!(_sprog) as usize,
         is_mmio: false,
         user_accessible: false,
         read: true,
@@ -309,8 +313,8 @@ pub unsafe fn main() {
 
     // User-accessible MMIO (FPGA peripherals and UART)
     platform_regions.push(PlatformRegion {
-        start_addr: 0x1000_0000 as *const u8,
-        size: 0x1000_0000,
+        start_addr: 0xa401_0000 as *const u8,
+        size: 0x2000,
         is_mmio: true,
         user_accessible: true,
         read: true,
@@ -329,6 +333,9 @@ pub unsafe fn main() {
     let pmp_regions = mcu_platforms_common::pmp_config::create_pmp_regions(config)
         .expect("Failed to create PMP regions");
 
+    romtime::println!("[mcu-runtime] Enabling PMP");
+    romtime::println!("PMP Regions:");
+    romtime::println!("{}", pmp_regions);
     let epmp = VeeRProtectionMMLEPMP::new(pmp_regions).unwrap();
     romtime::println!("[mcu-runtime] Set PMP done");
 
@@ -402,7 +409,11 @@ pub unsafe fn main() {
     romtime::println!("[mcu-runtime] Peripherals initialized");
 
     let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
-    chip.init(_pic_vector_table as u32);
+    romtime::println!(
+        "[mcu-runtime] Initializing chip with PIC vector table set to {:x}",
+        addr_of!(_pic_vector_table) as u32
+    );
+    chip.init(addr_of!(_pic_vector_table) as u32);
     CHIP = Some(chip);
     romtime::println!("[mcu-runtime] Chip initialized");
 
