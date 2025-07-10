@@ -43,7 +43,7 @@ struct MctpPldmSocketData {
 impl PldmSocket for MctpPldmSocket {
     fn send(&self, payload: &[u8]) -> Result<(), PldmTransportError> {
         let mut mctp_util = MctpUtil::new();
-
+        mctp_util.set_pkt_payload_size(MAX_PLDM_PAYLOAD_SIZE);
         let mut mctp_common_header = MctpCommonHeader(0);
         mctp_common_header.set_ic(0);
         mctp_common_header.set_msg_type(MCTP_PLDM_MSG_TYPE);
@@ -127,6 +127,7 @@ impl PldmSocket for MctpPldmSocket {
         // We are in duplex mode, so we can receive packets
         // without waiting for the first response
         let mut mctp_util = MctpUtil::new();
+        mctp_util.set_pkt_payload_size(MAX_PLDM_PAYLOAD_SIZE);
         let mut stream = self
             .stream
             .try_clone()

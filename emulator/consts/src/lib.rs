@@ -30,6 +30,6 @@ pub const RAM_ORG: u32 = 0x4000_0000;
 pub const RAM_SIZE: u32 = 384 * 1024;
 pub const ROM_ORG: u32 = 0x8000_0000;
 pub const ROM_SIZE: u32 = 48 * 1024;
-pub const EXTERNAL_TEST_SRAM_SIZE: u32 = 4 * 1024;
+pub const EXTERNAL_TEST_SRAM_SIZE: u32 = 1024 * 1024;
 pub const ROM_DEDICATED_RAM_ORG: u32 = 0x5000_0000;
 pub const ROM_DEDICATED_RAM_SIZE: u32 = 256 * 1024;

@@ -27,6 +27,7 @@ rv32i.workspace = true
 
 [features]
 default = []
+test-firmware-update = []
 test-mcu-rom-flash-access = []
 test-flash-based-boot = []
 test-pldm-streaming-boot = []

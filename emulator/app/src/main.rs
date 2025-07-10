@@ -943,7 +943,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     }
     if cli.streaming_boot.is_some() {
         let _ = simple_logger::SimpleLogger::new()
-            .with_level(log::LevelFilter::Debug)
+            .with_level(log::LevelFilter::Info)
             .init();
         let pldm_fw_pkg_path = cli.streaming_boot.as_ref().unwrap();
         println!(

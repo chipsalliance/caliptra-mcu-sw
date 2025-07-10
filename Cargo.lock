@@ -2226,6 +2226,7 @@ checksum = "1171693293099992e19cddea4e8b849964e9846f4acee11b3948bcc337be8776"
 name = "libsyscall-caliptra"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "caliptra-api",
  "embassy-sync",
  "libtock_console",

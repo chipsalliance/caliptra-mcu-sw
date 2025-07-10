@@ -63,7 +63,7 @@ impl Default for McuRootBusOffsets {
             rom_dedicated_ram_size: ROM_DEDICATED_RAM_SIZE,
             pic_offset: 0x6000_0000,
             external_test_sram_offset: 0x8000_0000,
-            external_test_sram_size: 0x1000,
+            external_test_sram_size: EXTERNAL_TEST_SRAM_SIZE,
         }
     }
 }

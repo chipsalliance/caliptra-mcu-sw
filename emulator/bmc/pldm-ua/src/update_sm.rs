@@ -25,7 +25,7 @@ use std::cmp::{max, min};
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
-const MAX_TRANSFER_SIZE: u32 = 64; // Maximum bytes to transfer in one request
+const MAX_TRANSFER_SIZE: u32 = 180; // Maximum bytes to transfer in one request
 const BASELINE_TRANSFER_SIZE: u32 = 32; // Minimum bytes to transfer in one request
 const MAX_OUTSTANDING_TRANSFER_REQ: u8 = 1;
 const GET_STATUS_ACTIVATION_POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -182,7 +182,7 @@ pub trait StateMachineActions {
     ) -> Result<(), ()> {
         ctx.instance_id += 1; // Response received, increment instance id
         if response.fixed.completion_code == PldmBaseCompletionCode::Success as u8 {
-            info!("RequestUpdate response success");
+            debug!("RequestUpdate response success");
             ctx.event_queue
                 .send(PldmEvents::Update(Events::SendPassComponentRequest))
                 .map_err(|_| ())?;
@@ -204,7 +204,7 @@ pub trait StateMachineActions {
         let num_components_passed = ctx.component_response_codes.len();
 
         if num_components_passed >= num_of_components_to_pass {
-            info!("All components passed");
+            debug!("All components passed");
             return Ok(());
         }
 
@@ -261,7 +261,7 @@ pub trait StateMachineActions {
     fn on_next_component(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
         ctx.current_component_index = self.find_next_component_to_update(ctx);
         if ctx.current_component_index.is_none() {
-            info!("No more component to update");
+            debug!("No more component to update");
             ctx.event_queue
                 .send(PldmEvents::Update(Events::ActivateFirmware))
                 .map_err(|_| ())?;
@@ -338,7 +338,7 @@ pub trait StateMachineActions {
             && response.comp_compatibility_resp
                 == ComponentCompatibilityResponse::CompCanBeUpdated as u8
         {
-            info!("UpdateComponent response success, start download");
+            debug!("UpdateComponent response success, start download");
             ctx.event_queue
                 .send(PldmEvents::Update(Events::StartDownload))
                 .map_err(|_| ())?;
@@ -477,12 +477,12 @@ pub trait StateMachineActions {
             let device_comp_timestamp = comp_entry
                 .comp_param_entry_fixed
                 .active_comp_comparison_stamp;
-            info!(
+            debug!(
                 "Component id: {}, Package timestamp : {} , Device timestamp : {}",
                 pkg_component.identifier, comp_timestamp, device_comp_timestamp
             );
             if comp_timestamp <= device_comp_timestamp {
-                info!("Component is already up to date");
+                debug!("Component is already up to date");
                 return false;
             }
         }
@@ -504,12 +504,12 @@ pub trait StateMachineActions {
                     comp_idx,
                     ctx.device_id.as_ref().unwrap(),
                 ) {
-                    info!(
+                    debug!(
                         "Component id: {} is in applicable components",
                         ctx.pldm_fw_pkg.component_image_information[comp_idx].identifier
                     );
                 } else {
-                    info!(
+                    debug!(
                         "Component id: {} is not applicable",
                         ctx.pldm_fw_pkg.component_image_information[comp_idx].identifier
                     );
@@ -520,7 +520,7 @@ pub trait StateMachineActions {
                     component,
                     &response.parms.comp_param_table[i as usize],
                 ) {
-                    info!("Component id: {} will be updated,", component.identifier);
+                    debug!("Component id: {} will be updated,", component.identifier);
                     ctx.components.push(component.clone());
                 }
             }
@@ -531,7 +531,7 @@ pub trait StateMachineActions {
                 .send(PldmEvents::Update(Events::SendRequestUpdate))
                 .map_err(|_| ())
         } else {
-            info!("No component needs update");
+            debug!("No component needs update");
             ctx.event_queue
                 .send(PldmEvents::Update(Events::StopUpdateOnError))
                 .map_err(|_| ())?;
@@ -625,6 +625,16 @@ pub trait StateMachineActions {
                 PldmBaseCompletionCode::Success as u8,
                 &buffer[..request.length as usize],
             );
+
+            ctx.transferred_bytes += request.length;
+            if ctx.transferred_bytes % 1024 < request.length {
+                info!(
+                    "Transferred {} bytes so far out of {} bytes",
+                    ctx.transferred_bytes,
+                    data.len()
+                );
+            }
+
             send_message_helper(&ctx.socket, &response)
         } else {
             error!("No image data found, make sure the image is decoded correctly");
@@ -717,7 +727,7 @@ pub trait StateMachineActions {
     ) -> Result<(), ()> {
         ctx.instance_id += 1; // Response received, increment instance id
         if response.completion_code == PldmBaseCompletionCode::Success as u8 {
-            info!("GetStatus response success");
+            debug!("GetStatus response success");
 
             if ctx.activation_time.is_some() {
                 // Currently waiting for activation
@@ -1058,6 +1068,8 @@ pub struct InnerContext<S: PldmSocket> {
     pub current_component_index: Option<usize>,
     timer: Timer,
     activation_time: Option<Instant>,
+
+    transferred_bytes: u32,
 }
 
 pub struct Context<T: StateMachineActions, S: PldmSocket> {
@@ -1085,6 +1097,7 @@ impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
                 current_component_index: None,
                 timer: Timer::new(),
                 activation_time: None,
+                transferred_bytes: 0,
             },
         }
     }

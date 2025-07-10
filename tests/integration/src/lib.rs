@@ -1,4 +1,5 @@
 // Licensed under the Apache-2.0 license
+mod test_firmware_update;
 mod test_soc_boot;
 #[cfg(test)]
 mod test {
