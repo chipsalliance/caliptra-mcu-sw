@@ -1,20 +1,13 @@
-// Licensed under the Apache-2.0 license
+//! Licensed under the Apache-2.0 license
 
-/// This module tests the PLDM Firmware Update
-use std::process::exit;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+//! This module tests the PLDM Firmware Update
 
 use crate::mctp_transport::MctpPldmSocket;
-use crate::{running, MCU_RUNTIME_STARTED};
-use pldm_common::protocol::firmware_update::*;
-use pldm_ua::transport::PldmSocket;
-use pldm_ua::{discovery_sm, update_sm};
-
+use crate::{EMULATOR_RUNNING, MCU_RUNTIME_STARTED};
 use chrono::{TimeZone, Utc};
 use lazy_static::lazy_static;
 use log::{error, LevelFilter};
+use pldm_common::protocol::firmware_update::*;
 use pldm_fw_pkg::{
     manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
@@ -24,7 +17,12 @@ use pldm_fw_pkg::{
 };
 use pldm_ua::daemon::Options;
 use pldm_ua::daemon::PldmDaemon;
+use pldm_ua::transport::PldmSocket;
+use pldm_ua::{discovery_sm, update_sm};
 use simple_logger::SimpleLogger;
+use std::process::exit;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 use uuid::Uuid;
 
 pub const DEVICE_UUID: [u8; 16] = [
@@ -157,7 +155,9 @@ impl PldmFwUpdateTest {
     pub fn run(socket: MctpPldmSocket) {
         std::thread::spawn(move || {
             // wait for the runtime to start
-            while running.load(Ordering::Relaxed) && !MCU_RUNTIME_STARTED.load(Ordering::Relaxed) {
+            while EMULATOR_RUNNING.load(Ordering::Relaxed)
+                && !MCU_RUNTIME_STARTED.load(Ordering::Relaxed)
+            {
                 std::thread::sleep(Duration::from_millis(10));
             }
 
@@ -169,7 +169,7 @@ impl PldmFwUpdateTest {
             } else {
                 println!("Passed");
             }
-            running.store(false, Ordering::Relaxed);
+            EMULATOR_RUNNING.store(false, Ordering::Relaxed);
         });
     }
 }

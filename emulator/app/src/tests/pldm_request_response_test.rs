@@ -1,14 +1,9 @@
-// Licensed under the Apache-2.0 license
-
-/// This module tests the PLDM request/response interaction between the emulator and the device.
-/// The emulator sends out different PLDM requests and expects a corresponding response for those requests.
-use std::process::exit;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+//! Licensed under the Apache-2.0 license
+//! This module tests the PLDM request/response interaction between the emulator and the device.
+//! The emulator sends out different PLDM requests and expects a corresponding response for those requests.
 
 use crate::mctp_transport::MctpPldmSocket;
-use crate::{running, wait_for_runtime_start, MCU_RUNTIME_STARTED};
+use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::control::*;
 use pldm_common::message::firmware_update::get_fw_params::{
@@ -20,6 +15,8 @@ use pldm_common::message::firmware_update::query_devid::{
 use pldm_common::protocol::base::*;
 use pldm_common::protocol::firmware_update::*;
 use pldm_ua::transport::PldmSocket;
+use std::process::exit;
+use std::sync::atomic::Ordering;
 
 pub struct PldmRequestResponseTest {
     test_messages: Vec<PldmExpectedMessagePair>,
@@ -94,7 +91,7 @@ impl PldmRequestResponseTest {
     pub fn run(socket: MctpPldmSocket) {
         std::thread::spawn(move || {
             wait_for_runtime_start();
-            if !running.load(Ordering::Relaxed) {
+            if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
                 return;
             }
             print!("Emulator: Running PLDM Loopback Test: ",);
@@ -105,7 +102,7 @@ impl PldmRequestResponseTest {
             } else {
                 println!("Passed");
             }
-            running.store(false, Ordering::Relaxed);
+            EMULATOR_RUNNING.store(false, Ordering::Relaxed);
         });
     }
 

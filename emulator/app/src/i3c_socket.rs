@@ -33,6 +33,8 @@ Abstract:
 
 --*/
 
+use crate::tests::spdm_validator::execute_spdm_validator;
+use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
 use emulator_periph::{
     DynamicI3cAddress, I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriCommandXfer,
     ReguDataTransferCommand, ResponseDescriptor,
@@ -40,15 +42,12 @@ use emulator_periph::{
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::process::exit;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
+use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{mpsc, Arc};
 use std::time::Duration;
 use std::vec;
 use zerocopy::{transmute, FromBytes, IntoBytes};
-
-use crate::tests::spdm_validator::execute_spdm_validator;
-use crate::{running, wait_for_runtime_start, MCU_RUNTIME_STARTED};
 
 const CRC8_SMBUS: crc::Crc<u8> = crc::Crc::<u8>::new(&crc::CRC_8_SMBUS);
 
@@ -71,7 +70,7 @@ fn handle_i3c_socket_loop(
     listener
         .set_nonblocking(true)
         .expect("Could not set non-blocking");
-    while running.load(Ordering::Relaxed) {
+    while EMULATOR_RUNNING.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, addr)) => {
                 handle_i3c_socket_connection(
@@ -113,7 +112,7 @@ fn handle_i3c_socket_connection(
     let stream = &mut stream;
     stream.set_nonblocking(true).unwrap();
 
-    while running.load(Ordering::Relaxed) {
+    while EMULATOR_RUNNING.load(Ordering::Relaxed) {
         // try reading
         let mut incoming_header_bytes = [0u8; 9];
         match stream.read_exact(&mut incoming_header_bytes) {
@@ -177,11 +176,11 @@ pub(crate) fn run_tests(
         let timeout = test_timeout_seconds.unwrap_or(Duration::from_secs(120));
         std::thread::sleep(timeout);
         println!("INTEGRATION TEST TIMED OUT AFTER {:?} SECONDS", timeout);
-        running.store(false, Ordering::Relaxed);
+        EMULATOR_RUNNING.store(false, Ordering::Relaxed);
     });
     std::thread::spawn(move || {
         wait_for_runtime_start();
-        if !running.load(Ordering::Relaxed) {
+        if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
             return;
         }
         let mut test_runner = MctpTestRunner::new(stream, target_addr.into(), tests);
@@ -232,7 +231,7 @@ impl MctpTestRunner {
             self.passed,
             self.tests.len()
         );
-        running.store(false, Ordering::Relaxed);
+        EMULATOR_RUNNING.store(false, Ordering::Relaxed);
         if self.passed == self.tests.len() {
             exit(0);
         } else {

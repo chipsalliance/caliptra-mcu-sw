@@ -1,12 +1,11 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
-use crate::running;
 use crate::tests::doe_util::common::DoeUtil;
 use crate::tests::doe_util::protocol::*;
-use std::sync::atomic::{AtomicBool, Ordering};
+use crate::EMULATOR_RUNNING;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use zerocopy::IntoBytes;
@@ -100,7 +99,7 @@ impl DoeTransportTest for Test {
 
         self.test_state = DoeTestState::Start;
 
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.test_state {
                 DoeTestState::Start => {
                     if wait_for_responder {

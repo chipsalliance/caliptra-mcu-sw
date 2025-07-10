@@ -1,18 +1,15 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
-use crate::running;
+use crate::EMULATOR_RUNNING;
 use rand::Rng;
 const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_DWORDS: usize = 1; // minimum size of test vectors
 const MAX_TEST_DATA_DWORDS: usize = 250; // maximum size of test vectors
 use crate::tests::doe_util::common::DoeUtil;
 use crate::tests::doe_util::protocol::DataObjectType;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
 
 struct Test {
     test_vector: Vec<u8>,
@@ -53,7 +50,7 @@ impl DoeTransportTest for Test {
 
         self.test_state = DoeTestState::Start;
 
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.test_state {
                 DoeTestState::Start => {
                     if wait_for_responder {

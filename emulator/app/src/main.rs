@@ -60,10 +60,10 @@ use tests::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
 use tests::pldm_request_response_test::PldmRequestResponseTest;
 
 pub static MCU_RUNTIME_STARTED: AtomicBool = AtomicBool::new(false);
-pub static running: AtomicBool = AtomicBool::new(true);
+pub static EMULATOR_RUNNING: AtomicBool = AtomicBool::new(true);
 
 pub fn wait_for_runtime_start() {
-    while running.load(Ordering::Relaxed) && !MCU_RUNTIME_STARTED.load(Ordering::Relaxed) {
+    while EMULATOR_RUNNING.load(Ordering::Relaxed) && !MCU_RUNTIME_STARTED.load(Ordering::Relaxed) {
         std::thread::sleep(Duration::from_millis(10));
     }
 }
@@ -254,7 +254,7 @@ fn disassemble(pc: u32, instr: u32) -> String {
 fn read_console(stdin_uart: Option<Arc<Mutex<Option<u8>>>>) {
     let mut buffer = vec![];
     if let Some(ref stdin_uart) = stdin_uart {
-        while running.load(std::sync::atomic::Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
             if buffer.is_empty() {
                 match crossterm::event::read() {
                     Ok(Event::Key(KeyEvent {
@@ -331,7 +331,7 @@ fn free_run(
             };
 
         // Need to have the loop in the same scope as trace_fn to prevent borrowing rules violation
-        while running.load(std::sync::atomic::Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
             if let Some(ref stdin_uart) = stdin_uart {
                 if stdin_uart.lock().unwrap().is_some() {
                     timer.schedule_poll_in(1);
@@ -355,7 +355,7 @@ fn free_run(
             }
         }
     } else {
-        while running.load(std::sync::atomic::Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
             if let Some(ref stdin_uart) = stdin_uart {
                 if stdin_uart.lock().unwrap().is_some() {
                     timer.schedule_poll_in(1);
@@ -421,7 +421,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     // exit cleanly on Ctrl-C so that we save any state.
     if io::stdout().is_terminal() {
         ctrlc::set_handler(move || {
-            running.store(false, std::sync::atomic::Ordering::Relaxed);
+            EMULATOR_RUNNING.store(false, std::sync::atomic::Ordering::Relaxed);
         })
         .unwrap();
     }

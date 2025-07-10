@@ -12,6 +12,8 @@ Abstract:
 
 --*/
 
+#![allow(unused_imports)]
+
 use crate::io::{EMULATOR_WRITER, FATAL_ERROR_HANDLER};
 use core::fmt::Write;
 
@@ -19,7 +21,6 @@ use core::fmt::Write;
 core::arch::global_asm!(include_str!("start.s"));
 
 use crate::flash::flash_boot_cfg::FlashBootCfg;
-#[allow(unused_imports)]
 use crate::flash::flash_drv::{
     EmulatedFlashCtrl, PRIMARY_FLASH_CTRL_BASE, SECONDARY_FLASH_CTRL_BASE,
 };
@@ -29,9 +30,7 @@ use mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     PARTITION_TABLE,
 };
-#[allow(unused_imports)]
 use mcu_rom_common::fatal_error;
-#[allow(unused_imports)]
 use mcu_rom_common::flash::flash_partition::FlashPartition;
 use romtime::HexWord;
 use zerocopy::{FromBytes, IntoBytes};

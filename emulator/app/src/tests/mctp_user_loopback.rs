@@ -1,11 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::i3c_socket::{MctpTestState, TestTrait};
-use crate::running;
 use crate::tests::mctp_util::common::MctpUtil;
+use crate::EMULATOR_RUNNING;
 use std::net::TcpStream;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
@@ -110,7 +109,7 @@ impl Test {
 
     fn run_loopback_test(&mut self, stream: &mut TcpStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.test_state {
                 MctpTestState::Start => {
                     self.test_state = MctpTestState::SendReq;

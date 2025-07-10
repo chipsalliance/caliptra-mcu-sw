@@ -1,16 +1,13 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
-use crate::running;
+use crate::EMULATOR_RUNNING;
 use rand::Rng;
 const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_DWORDS: usize = 2; // minimum size of test vectors
 const MAX_TEST_DATA_DWORDS: usize = 128; // maximum size of test vectors
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
 use std::thread;
 use std::time::Duration;
 
@@ -51,7 +48,7 @@ impl DoeTransportTest for Test {
 
         self.state = DoeTestState::Start;
 
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.state {
                 DoeTestState::Start => {
                     // waits for the responder to be ready if this is the first message to send

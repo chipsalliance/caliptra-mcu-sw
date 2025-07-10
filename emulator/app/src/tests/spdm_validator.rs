@@ -1,15 +1,14 @@
 // Licensed under the Apache-2.0 license
 
 use crate::i3c_socket::{MctpTestState, TestTrait};
-use crate::running;
 use crate::tests::mctp_util::common::MctpUtil;
+use crate::EMULATOR_RUNNING;
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::vec;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes};
 
@@ -78,7 +77,7 @@ impl Test {
 
         let mut command: u32 = 0;
         let mut transport_type: u32 = 0;
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             let s = stream
                 .read(&mut buffer[buffer_size..])
                 .expect("socket read error!");
@@ -148,7 +147,7 @@ impl Test {
         );
         self.mctp_test_state = MctpTestState::Start;
 
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.mctp_test_state {
                 MctpTestState::Start => {
                     self.mctp_test_state = MctpTestState::SendReq;
@@ -274,7 +273,7 @@ impl Test {
         i3c_server_stream: &mut TcpStream,
         target_addr: u8,
     ) {
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.spdm_server_state {
                 SpdmServerState::Start => {
                     self.spdm_server_state = SpdmServerState::ReceiveRequest;
@@ -346,7 +345,7 @@ impl TestTrait for Test {
 pub fn execute_spdm_validator() {
     std::thread::spawn(move || match start_spdm_device_validator() {
         Ok(mut child) => {
-            while running.load(Ordering::Relaxed) {
+            while EMULATOR_RUNNING.load(Ordering::Relaxed) {
                 match child.try_wait() {
                     Ok(Some(status)) => {
                         println!(

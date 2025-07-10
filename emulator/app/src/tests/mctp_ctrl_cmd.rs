@@ -1,13 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use crate::i3c_socket::{MctpTestState, TestTrait};
-use crate::running;
 use crate::tests::mctp_util::base_protocol::{MCTPMsgHdr, MCTP_MSG_HDR_SIZE};
 use crate::tests::mctp_util::common::MctpUtil;
 use crate::tests::mctp_util::ctrl_protocol::*;
+use crate::EMULATOR_RUNNING;
 use std::net::TcpStream;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use zerocopy::IntoBytes;
@@ -203,7 +202,7 @@ impl TestTrait for Test {
 
     fn run_test(&mut self, stream: &mut TcpStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.test_state {
                 MctpTestState::Start => {
                     println!("Starting test: {}", self.name);

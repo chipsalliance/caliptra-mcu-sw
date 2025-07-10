@@ -14,7 +14,6 @@ use pldm_ua::transport::{
     MAX_PLDM_PAYLOAD_SIZE,
 };
 use std::net::{SocketAddr, TcpStream};
-use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Condvar, Mutex};
 
 pub const MCTP_TAG_MASK: u8 = 0x07;

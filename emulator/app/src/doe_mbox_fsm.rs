@@ -1,16 +1,12 @@
 // Licensed under the Apache-2.0 license
 
+use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
 use emulator_periph::DoeMboxPeriph;
 use std::process::exit;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
 use std::thread;
 use std::time::Duration;
-
-use crate::{running, wait_for_runtime_start, MCU_RUNTIME_STARTED};
 
 #[derive(Debug, Clone, PartialEq)]
 enum DoeMboxState {
@@ -38,7 +34,7 @@ impl DoeMboxFsm {
         thread::spawn(move || {
             let mut fsm = DoeMboxStateMachine::new(doe_mbox_clone, fsm_to_test_tx);
 
-            while running.load(Ordering::Relaxed) {
+            while EMULATOR_RUNNING.load(Ordering::Relaxed) {
                 // Check for incoming messages from test
                 if let Ok(message) = test_to_fsm_rx.try_recv() {
                     fsm.handle_outgoing_message(message);
@@ -242,19 +238,19 @@ pub(crate) fn run_doe_transport_tests(
             "DOE_TRANSPORT_TESTS Timeout after {:?} seconds",
             timeout.as_secs()
         );
-        running.store(false, Ordering::Relaxed);
+        EMULATOR_RUNNING.store(false, Ordering::Relaxed);
     });
 
     // Spawn a thread to run the tests
     thread::spawn(move || {
         wait_for_runtime_start();
-        if !running.load(Ordering::Relaxed) {
+        if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
             return;
         }
         let mut test = DoeTransportTestRunner::new(tx, rx, tests);
 
         test.run_tests();
-        running.store(false, Ordering::Relaxed);
+        EMULATOR_RUNNING.store(false, Ordering::Relaxed);
         println!("DOE_TRANSPORT_TESTS: All tests completed.");
     });
 }
