@@ -43,31 +43,31 @@ int init_module(void)
 
     //  Caliptra FPGA wrapper
     uio_info0.mem[0].name = "fpga_wrapper";
-    uio_info0.mem[0].addr = 0xA4010000;
+    uio_info0.mem[0].addr = 0x400d0000000;
     uio_info0.mem[0].size = 0x00010000;
     uio_info0.mem[0].memtype = UIO_MEM_PHYS;
 
     // Caliptra MMIO interface
     uio_info0.mem[1].name = "caliptra";
-    uio_info0.mem[1].addr = 0xA4100000;
+    uio_info0.mem[1].addr = 0x40010000000;
     uio_info0.mem[1].size = 0x00040000;
     uio_info0.mem[1].memtype = UIO_MEM_PHYS;
 
     // Caliptra ROM
     uio_info0.mem[2].name = "rom";
-    uio_info0.mem[2].addr = 0xB0000000;
+    uio_info0.mem[2].addr = 0x400b0000000;
     uio_info0.mem[2].size = 0x00018000;
     uio_info0.mem[2].memtype = UIO_MEM_PHYS;
 
     // I3C controller
     uio_info0.mem[3].name = "i3c_controller";
-    uio_info0.mem[3].addr = 0xA4080000;
+    uio_info0.mem[3].addr = 0x400e0000000;
     uio_info0.mem[3].size = 0x00010000;
     uio_info0.mem[3].memtype = UIO_MEM_PHYS;
 
     // MCU SRAM
-    uio_info0.mem[4].name = "mcu_sram";
-    uio_info0.mem[4].addr = 0xB0080000;
+    uio_info0.mem[4].name = "otp_ram";
+    uio_info0.mem[4].addr = 0x40080000000;
     uio_info0.mem[4].size = 0x00080000;
     uio_info0.mem[4].memtype = UIO_MEM_PHYS;
 
@@ -86,31 +86,31 @@ int init_module(void)
 
     // LC
     uio_info1.mem[0].name = "lc";
-    uio_info1.mem[0].addr = 0xA4040000;
+    uio_info1.mem[0].addr = 0x40030000000;
     uio_info1.mem[0].size = 0x00002000;
     uio_info1.mem[0].memtype = UIO_MEM_PHYS;
 
     // MCU ROM Backdoor
     uio_info1.mem[1].name = "mcu_rom";
-    uio_info1.mem[1].addr = 0xB0020000;
+    uio_info1.mem[1].addr = 0x40070000000;
     uio_info1.mem[1].size = 0x00020000;
     uio_info1.mem[1].memtype = UIO_MEM_PHYS;
 
     // I3C
     uio_info1.mem[2].name = "ss_i3c";
-    uio_info1.mem[2].addr = 0xA4030000;
+    uio_info1.mem[2].addr = 0x40020000000;
     uio_info1.mem[2].size = 0x00010000;
     uio_info1.mem[2].memtype = UIO_MEM_PHYS;
 
     // MCI
     uio_info1.mem[3].name = "mci";
-    uio_info1.mem[3].addr = 0xA8000000;
+    uio_info1.mem[3].addr = 0x40040000000;
     uio_info1.mem[3].size = 0x01000000;
     uio_info1.mem[3].memtype = UIO_MEM_PHYS;
 
     // OTP
     uio_info1.mem[4].name = "otp";
-    uio_info1.mem[4].addr = 0xA4060000;
+    uio_info1.mem[4].addr = 0x40080000000;
     uio_info1.mem[4].size = 0x00002000;
     uio_info1.mem[4].memtype = UIO_MEM_PHYS;
 

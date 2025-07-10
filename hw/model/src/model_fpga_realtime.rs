@@ -1140,7 +1140,7 @@ mod test {
         .expect("Could not build MCU runtime");
         let mut caliptra_builder = mcu_builder::CaliptraBuilder::new(
             true,
-            true,
+            //true,
             None,
             None,
             None,
