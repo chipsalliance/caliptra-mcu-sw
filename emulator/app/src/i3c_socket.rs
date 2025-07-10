@@ -175,7 +175,10 @@ pub(crate) fn run_tests(
     std::thread::spawn(move || {
         let timeout = test_timeout_seconds.unwrap_or(Duration::from_secs(120));
         std::thread::sleep(timeout);
-        println!("INTEGRATION TEST TIMED OUT AFTER {:?} SECONDS", timeout);
+        println!(
+            "INTEGRATION TEST ON MCTP-I3C TIMED OUT AFTER {:?} SECONDS",
+            timeout
+        );
         EMULATOR_RUNNING.store(false, Ordering::Relaxed);
     });
     std::thread::spawn(move || {

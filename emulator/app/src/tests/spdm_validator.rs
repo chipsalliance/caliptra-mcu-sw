@@ -2,7 +2,7 @@
 
 use crate::i3c_socket::{MctpTestState, TestTrait};
 use crate::tests::mctp_util::common::MctpUtil;
-use crate::EMULATOR_RUNNING;
+use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -343,32 +343,36 @@ impl TestTrait for Test {
 }
 
 pub fn execute_spdm_validator() {
-    std::thread::spawn(move || match start_spdm_device_validator() {
-        Ok(mut child) => {
-            while EMULATOR_RUNNING.load(Ordering::Relaxed) {
-                match child.try_wait() {
-                    Ok(Some(status)) => {
-                        println!(
-                            "spdm_device_validator_sample exited with status: {:?}",
-                            status
-                        );
-                        break;
+    std::thread::spawn(move || {
+        println!("Starting spdm_device_validator_sample process. Waiting for runtime to start...");
+        wait_for_runtime_start();
+        match start_spdm_device_validator() {
+            Ok(mut child) => {
+                while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            println!(
+                                "spdm_device_validator_sample exited with status: {:?}",
+                                status
+                            );
+                            break;
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            println!("Error: {:?}", e);
+                            break;
+                        }
                     }
-                    Ok(None) => {}
-                    Err(e) => {
-                        println!("Error: {:?}", e);
-                        break;
-                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                 }
-                std::thread::sleep(std::time::Duration::from_millis(100));
+                let _ = child.kill();
             }
-            let _ = child.kill();
-        }
-        Err(e) => {
-            println!(
-                "Error: {:?} Failed to spawn spdm_device_validator_sample!!",
-                e
-            );
+            Err(e) => {
+                println!(
+                    "Error: {:?} Failed to spawn spdm_device_validator_sample!!",
+                    e
+                );
+            }
         }
     });
 }
