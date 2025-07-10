@@ -181,7 +181,7 @@ pub(crate) fn run_tests(
     std::thread::spawn(move || {
         wait_for_runtime_start();
         if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
-            return;
+            exit(-1);
         }
         let mut test_runner = MctpTestRunner::new(stream, target_addr.into(), tests);
         test_runner.run_tests();

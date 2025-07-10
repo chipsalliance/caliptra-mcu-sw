@@ -3,7 +3,7 @@
 //! This module tests the PLDM Firmware Update
 
 use crate::mctp_transport::MctpPldmSocket;
-use crate::{EMULATOR_RUNNING, MCU_RUNTIME_STARTED};
+use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
 use chrono::{TimeZone, Utc};
 use lazy_static::lazy_static;
 use log::{error, LevelFilter};
@@ -154,13 +154,10 @@ impl PldmFwUpdateTest {
 
     pub fn run(socket: MctpPldmSocket) {
         std::thread::spawn(move || {
-            // wait for the runtime to start
-            while EMULATOR_RUNNING.load(Ordering::Relaxed)
-                && !MCU_RUNTIME_STARTED.load(Ordering::Relaxed)
-            {
-                std::thread::sleep(Duration::from_millis(10));
+            wait_for_runtime_start();
+            if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
+                exit(-1);
             }
-
             print!("Emulator: Running PLDM Loopback Test: ",);
             let mut test = PldmFwUpdateTest::new(socket);
             if test.test_fw_update().is_err() {

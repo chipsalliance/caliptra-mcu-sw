@@ -245,7 +245,7 @@ pub(crate) fn run_doe_transport_tests(
     thread::spawn(move || {
         wait_for_runtime_start();
         if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
-            return;
+            exit(-1);
         }
         let mut test = DoeTransportTestRunner::new(tx, rx, tests);
 

@@ -92,7 +92,7 @@ impl PldmRequestResponseTest {
         std::thread::spawn(move || {
             wait_for_runtime_start();
             if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
-                return;
+                exit(-1);
             }
             print!("Emulator: Running PLDM Loopback Test: ",);
             let mut test = PldmRequestResponseTest::new(socket);
