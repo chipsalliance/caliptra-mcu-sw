@@ -48,29 +48,22 @@ use std::vec;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
 use crate::tests::spdm_validator::execute_spdm_validator;
-use crate::MCU_RUNTIME_STARTED;
+use crate::{running, wait_for_runtime_start, MCU_RUNTIME_STARTED};
 
 const CRC8_SMBUS: crc::Crc<u8> = crc::Crc::<u8>::new(&crc::CRC_8_SMBUS);
 
-pub(crate) fn start_i3c_socket(
-    running: Arc<AtomicBool>,
-    port: u16,
-) -> (Receiver<I3cBusCommand>, Sender<I3cBusResponse>) {
+pub(crate) fn start_i3c_socket(port: u16) -> (Receiver<I3cBusCommand>, Sender<I3cBusResponse>) {
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
         .expect("Failed to bind TCP socket for port");
 
     let (bus_command_tx, bus_command_rx) = mpsc::channel::<I3cBusCommand>();
     let (bus_response_tx, bus_response_rx) = mpsc::channel::<I3cBusResponse>();
-    let running_clone = running.clone();
-    std::thread::spawn(move || {
-        handle_i3c_socket_loop(running_clone, listener, bus_response_rx, bus_command_tx)
-    });
+    std::thread::spawn(move || handle_i3c_socket_loop(listener, bus_response_rx, bus_command_tx));
 
     (bus_command_rx, bus_response_tx)
 }
 
 fn handle_i3c_socket_loop(
-    running: Arc<AtomicBool>,
     listener: TcpListener,
     mut bus_response_rx: Receiver<I3cBusResponse>,
     mut bus_command_tx: Sender<I3cBusCommand>,
@@ -82,7 +75,6 @@ fn handle_i3c_socket_loop(
         match listener.accept() {
             Ok((stream, addr)) => {
                 handle_i3c_socket_connection(
-                    running.clone(),
                     stream,
                     addr,
                     &mut bus_response_rx,
@@ -113,7 +105,6 @@ struct OutgoingHeader {
 }
 
 fn handle_i3c_socket_connection(
-    running: Arc<AtomicBool>,
     mut stream: TcpStream,
     _addr: SocketAddr,
     bus_response_rx: &mut Receiver<I3cBusResponse>,
@@ -169,40 +160,36 @@ fn handle_i3c_socket_connection(
 }
 
 pub(crate) trait TestTrait {
-    fn run_test(&mut self, running: Arc<AtomicBool>, stream: &mut TcpStream, target_addr: u8);
+    fn run_test(&mut self, stream: &mut TcpStream, target_addr: u8);
     fn is_passed(&self) -> bool;
 }
 
 pub(crate) fn run_tests(
-    running: Arc<AtomicBool>,
     port: u16,
     target_addr: DynamicI3cAddress,
     tests: Vec<Box<dyn TestTrait + Send>>,
     test_timeout_seconds: Option<Duration>,
 ) {
-    let running_clone = running.clone();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let stream = TcpStream::connect(addr).unwrap();
-    let running_clone_stop = running.clone();
     // cancel the test after 120 seconds
     std::thread::spawn(move || {
         let timeout = test_timeout_seconds.unwrap_or(Duration::from_secs(120));
         std::thread::sleep(timeout);
         println!("INTEGRATION TEST TIMED OUT AFTER {:?} SECONDS", timeout);
-        running_clone_stop.store(false, Ordering::Relaxed);
+        running.store(false, Ordering::Relaxed);
     });
     std::thread::spawn(move || {
-        // wait for the runtime to start
-        while running_clone.load(Ordering::Relaxed) && !MCU_RUNTIME_STARTED.load(Ordering::Relaxed)
-        {
-            std::thread::sleep(Duration::from_millis(10));
+        wait_for_runtime_start();
+        if !running.load(Ordering::Relaxed) {
+            return;
         }
-        let mut test_runner = MctpTestRunner::new(stream, target_addr.into(), running_clone, tests);
+        let mut test_runner = MctpTestRunner::new(stream, target_addr.into(), tests);
         test_runner.run_tests();
     });
 
     if cfg!(feature = "test-spdm-validator") {
-        execute_spdm_validator(running.clone());
+        execute_spdm_validator();
     }
 }
 
@@ -220,29 +207,22 @@ struct MctpTestRunner {
     stream: TcpStream,
     target_addr: u8,
     passed: usize,
-    running: Arc<AtomicBool>,
     tests: Vec<Box<dyn TestTrait + Send>>,
 }
 
 impl MctpTestRunner {
-    pub fn new(
-        stream: TcpStream,
-        target_addr: u8,
-        running: Arc<AtomicBool>,
-        tests: Vec<Box<dyn TestTrait + Send>>,
-    ) -> Self {
+    pub fn new(stream: TcpStream, target_addr: u8, tests: Vec<Box<dyn TestTrait + Send>>) -> Self {
         Self {
             stream,
             target_addr,
             passed: 0,
-            running,
             tests,
         }
     }
 
     pub fn run_tests(&mut self) {
         for test in self.tests.iter_mut() {
-            test.run_test(self.running.clone(), &mut self.stream, self.target_addr);
+            test.run_test(&mut self.stream, self.target_addr);
             if test.is_passed() {
                 self.passed += 1;
             }
@@ -252,7 +232,7 @@ impl MctpTestRunner {
             self.passed,
             self.tests.len()
         );
-        self.running.store(false, Ordering::Relaxed);
+        running.store(false, Ordering::Relaxed);
         if self.passed == self.tests.len() {
             exit(0);
         } else {

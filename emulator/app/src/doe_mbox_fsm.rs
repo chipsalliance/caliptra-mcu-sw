@@ -10,7 +10,7 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
-use crate::MCU_RUNTIME_STARTED;
+use crate::{running, wait_for_runtime_start, MCU_RUNTIME_STARTED};
 
 #[derive(Debug, Clone, PartialEq)]
 enum DoeMboxState {
@@ -30,16 +30,15 @@ impl DoeMboxFsm {
         Self { doe_mbox }
     }
 
-    pub fn start(&mut self, running: Arc<AtomicBool>) -> (Receiver<Vec<u8>>, Sender<Vec<u8>>) {
+    pub fn start(&mut self) -> (Receiver<Vec<u8>>, Sender<Vec<u8>>) {
         let (test_to_fsm_tx, test_to_fsm_rx) = std::sync::mpsc::channel::<Vec<u8>>();
         let (fsm_to_test_tx, fsm_to_test_rx) = std::sync::mpsc::channel::<Vec<u8>>();
-        let running_clone = running.clone();
         let doe_mbox_clone = self.doe_mbox.clone();
 
         thread::spawn(move || {
             let mut fsm = DoeMboxStateMachine::new(doe_mbox_clone, fsm_to_test_tx);
 
-            while running_clone.load(Ordering::Relaxed) {
+            while running.load(Ordering::Relaxed) {
                 // Check for incoming messages from test
                 if let Ok(message) = test_to_fsm_rx.try_recv() {
                     fsm.handle_outgoing_message(message);
@@ -176,7 +175,6 @@ pub enum DoeTestState {
 pub trait DoeTransportTest {
     fn run_test(
         &mut self,
-        running: Arc<AtomicBool>,
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
         wait_for_responder: bool,
@@ -187,7 +185,6 @@ pub trait DoeTransportTest {
 pub struct DoeTransportTestRunner {
     tx: Sender<Vec<u8>>,
     rx: Receiver<Vec<u8>>,
-    running: Arc<AtomicBool>,
     test_vectors: Vec<Box<dyn DoeTransportTest + Send>>,
     passed: usize,
 }
@@ -196,13 +193,11 @@ impl DoeTransportTestRunner {
     pub fn new(
         tx: Sender<Vec<u8>>,
         rx: Receiver<Vec<u8>>,
-        running: Arc<AtomicBool>,
         tests: Vec<Box<dyn DoeTransportTest + Send>>,
     ) -> Self {
         Self {
             tx,
             rx,
-            running,
             test_vectors: tests,
             passed: 0,
         }
@@ -210,7 +205,7 @@ impl DoeTransportTestRunner {
 
     pub fn run_tests(&mut self) {
         for (i, test) in self.test_vectors.iter_mut().enumerate() {
-            test.run_test(self.running.clone(), &mut self.tx, &mut self.rx, i == 0);
+            test.run_test(&mut self.tx, &mut self.rx, i == 0);
             if test.is_passed() {
                 self.passed += 1;
             }
@@ -235,14 +230,10 @@ impl DoeTransportTestRunner {
 }
 
 pub(crate) fn run_doe_transport_tests(
-    running: Arc<AtomicBool>,
     tx: Sender<Vec<u8>>,
     rx: Receiver<Vec<u8>>,
     tests: Vec<Box<dyn DoeTransportTest + Send>>,
 ) {
-    let running_clone = running.clone();
-    let running_clone_test_timeout = running.clone();
-
     // Spawn a thread to handle the timeout for the test
     thread::spawn(move || {
         let timeout = Duration::from_secs(60); // 60 seconds timeout
@@ -251,16 +242,16 @@ pub(crate) fn run_doe_transport_tests(
             "DOE_TRANSPORT_TESTS Timeout after {:?} seconds",
             timeout.as_secs()
         );
-        running_clone_test_timeout.store(false, Ordering::Relaxed);
+        running.store(false, Ordering::Relaxed);
     });
 
     // Spawn a thread to run the tests
     thread::spawn(move || {
-        // wait for the runtime to start
-        while running.load(Ordering::Relaxed) && !MCU_RUNTIME_STARTED.load(Ordering::Relaxed) {
-            std::thread::sleep(Duration::from_millis(10));
+        wait_for_runtime_start();
+        if !running.load(Ordering::Relaxed) {
+            return;
         }
-        let mut test = DoeTransportTestRunner::new(tx, rx, running_clone, tests);
+        let mut test = DoeTransportTestRunner::new(tx, rx, tests);
 
         test.run_tests();
         running.store(false, Ordering::Relaxed);

@@ -53,12 +53,20 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tests::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
 use tests::pldm_request_response_test::PldmRequestResponseTest;
 
 pub static MCU_RUNTIME_STARTED: AtomicBool = AtomicBool::new(false);
+pub static running: AtomicBool = AtomicBool::new(true);
+
+pub fn wait_for_runtime_start() {
+    while running.load(Ordering::Relaxed) && !MCU_RUNTIME_STARTED.load(Ordering::Relaxed) {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
 
 #[derive(Parser)]
 #[command(version, about, long_about = None, name = "Caliptra MCU Emulator")]
@@ -243,7 +251,7 @@ fn disassemble(pc: u32, instr: u32) -> String {
     String::from_utf8(out).unwrap()
 }
 
-fn read_console(running: Arc<AtomicBool>, stdin_uart: Option<Arc<Mutex<Option<u8>>>>) {
+fn read_console(stdin_uart: Option<Arc<Mutex<Option<u8>>>>) {
     let mut buffer = vec![];
     if let Some(ref stdin_uart) = stdin_uart {
         while running.load(std::sync::atomic::Ordering::Relaxed) {
@@ -286,7 +294,6 @@ fn read_console(running: Arc<AtomicBool>, stdin_uart: Option<Arc<Mutex<Option<u8
 
 // CPU Main Loop (free_run no GDB)
 fn free_run(
-    running: Arc<AtomicBool>,
     mut mcu_cpu: Cpu<AutoRootBus>,
     mut caliptra_cpu: CaliptraMainCpu<CaliptraMainRootBus>,
     trace_path: Option<PathBuf>,
@@ -295,9 +302,8 @@ fn free_run(
     sram_range: Range<u32>,
 ) {
     // read from the console in a separate thread to prevent blocking
-    let running_clone = running.clone();
     let stdin_uart_clone = stdin_uart.clone();
-    std::thread::spawn(move || read_console(running_clone, stdin_uart_clone));
+    std::thread::spawn(move || read_console(stdin_uart_clone));
 
     let timer = Timer::new(&mcu_cpu.clock.clone());
     if let Some(path) = trace_path {
@@ -413,11 +419,9 @@ fn read_binary(path: &PathBuf, expect_load_addr: u32) -> io::Result<Vec<u8>> {
 
 fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     // exit cleanly on Ctrl-C so that we save any state.
-    let running = Arc::new(AtomicBool::new(true));
-    let running_clone = running.clone();
     if io::stdout().is_terminal() {
         ctrlc::set_handler(move || {
-            running_clone.store(false, std::sync::atomic::Ordering::Relaxed);
+            running.store(false, std::sync::atomic::Ordering::Relaxed);
         })
         .unwrap();
     }
@@ -617,7 +621,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     println!("Starting I3C Socket, port {}", cli.i3c_port.unwrap_or(0));
 
     let mut i3c_controller = if let Some(i3c_port) = cli.i3c_port {
-        let (rx, tx) = start_i3c_socket(running.clone(), i3c_port);
+        let (rx, tx) = start_i3c_socket(i3c_port);
         I3cController::new(rx, tx)
     } else {
         I3cController::default()
@@ -641,20 +645,20 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     println!("Starting DOE mailbox transport thread");
 
     if cfg!(feature = "test-doe-transport-loopback") {
-        let (test_rx, test_tx) = doe_mbox_fsm.start(running.clone());
+        let (test_rx, test_tx) = doe_mbox_fsm.start();
         println!("Starting DOE transport loopback test thread");
         let tests = tests::doe_transport_loopback::generate_tests();
-        doe_mbox_fsm::run_doe_transport_tests(running.clone(), test_tx, test_rx, tests);
+        doe_mbox_fsm::run_doe_transport_tests(test_tx, test_rx, tests);
     } else if cfg!(feature = "test-doe-discovery") {
-        let (test_rx, test_tx) = doe_mbox_fsm.start(running.clone());
+        let (test_rx, test_tx) = doe_mbox_fsm.start();
         println!("Starting DOE discovery test thread");
         let tests = tests::doe_discovery::DoeDiscoveryTest::generate_tests();
-        doe_mbox_fsm::run_doe_transport_tests(running.clone(), test_tx, test_rx, tests);
+        doe_mbox_fsm::run_doe_transport_tests(test_tx, test_rx, tests);
     } else if cfg!(feature = "test-doe-user-loopback") {
-        let (test_rx, test_tx) = doe_mbox_fsm.start(running.clone());
+        let (test_rx, test_tx) = doe_mbox_fsm.start();
         println!("Starting DOE user loopback test thread");
         let tests = tests::doe_user_loopback::generate_tests();
-        doe_mbox_fsm::run_doe_transport_tests(running.clone(), test_tx, test_rx, tests);
+        doe_mbox_fsm::run_doe_transport_tests(test_tx, test_rx, tests);
     } else if cfg!(feature = "test-mctp-ctrl-cmds") {
         i3c_controller.start();
         println!(
@@ -664,7 +668,6 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
         let tests = tests::mctp_ctrl_cmd::MCTPCtrlCmdTests::generate_tests();
         i3c_socket::run_tests(
-            running.clone(),
             cli.i3c_port.unwrap(),
             i3c.get_dynamic_address().unwrap(),
             tests,
@@ -679,7 +682,6 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
         let tests = tests::mctp_loopback::generate_tests();
         i3c_socket::run_tests(
-            running.clone(),
             cli.i3c_port.unwrap(),
             i3c.get_dynamic_address().unwrap(),
             tests,
@@ -697,7 +699,6 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         );
 
         i3c_socket::run_tests(
-            running.clone(),
             cli.i3c_port.unwrap(),
             i3c.get_dynamic_address().unwrap(),
             spdm_loopback_tests,
@@ -711,7 +712,6 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         i3c_controller.start();
         let spdm_validator_tests = tests::spdm_validator::generate_tests();
         i3c_socket::run_tests(
-            running.clone(),
             cli.i3c_port.unwrap(),
             i3c.get_dynamic_address().unwrap(),
             spdm_validator_tests,
@@ -730,7 +730,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         let pldm_socket = pldm_transport
             .create_socket(EndpointId(0), EndpointId(1))
             .unwrap();
-        PldmRequestResponseTest::run(pldm_socket, running.clone());
+        PldmRequestResponseTest::run(pldm_socket);
     }
 
     if cfg!(feature = "test-pldm-fw-update-e2e") {
@@ -740,7 +740,7 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
         let pldm_socket = pldm_transport
             .create_socket(EndpointId(8), EndpointId(0))
             .unwrap();
-        tests::pldm_fw_update_test::PldmFwUpdateTest::run(pldm_socket, running.clone());
+        tests::pldm_fw_update_test::PldmFwUpdateTest::run(pldm_socket);
     }
 
     let create_flash_controller =
@@ -1010,7 +1010,6 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
 
             // If no GDB Port is passed, Free Run
             free_run(
-                running.clone(),
                 cpu,
                 caliptra_cpu,
                 instr_trace,

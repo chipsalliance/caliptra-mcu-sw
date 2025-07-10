@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::mctp_transport::MctpPldmSocket;
-use crate::MCU_RUNTIME_STARTED;
+use crate::{running, MCU_RUNTIME_STARTED};
 use pldm_common::protocol::firmware_update::*;
 use pldm_ua::transport::PldmSocket;
 use pldm_ua::{discovery_sm, update_sm};
@@ -89,14 +89,12 @@ pub struct PldmFwUpdateTest {
     socket: MctpPldmSocket,
     daemon:
         Option<PldmDaemon<MctpPldmSocket, discovery_sm::DefaultActions, update_sm::DefaultActions>>,
-    running: Arc<AtomicBool>,
 }
 
 impl PldmFwUpdateTest {
-    fn new(socket: MctpPldmSocket, running: Arc<AtomicBool>) -> Self {
+    fn new(socket: MctpPldmSocket) -> Self {
         Self {
             socket,
-            running,
             daemon: None,
         }
     }
@@ -156,7 +154,7 @@ impl PldmFwUpdateTest {
         res
     }
 
-    pub fn run(socket: MctpPldmSocket, running: Arc<AtomicBool>) {
+    pub fn run(socket: MctpPldmSocket) {
         std::thread::spawn(move || {
             // wait for the runtime to start
             while running.load(Ordering::Relaxed) && !MCU_RUNTIME_STARTED.load(Ordering::Relaxed) {
@@ -164,14 +162,14 @@ impl PldmFwUpdateTest {
             }
 
             print!("Emulator: Running PLDM Loopback Test: ",);
-            let mut test = PldmFwUpdateTest::new(socket, running);
+            let mut test = PldmFwUpdateTest::new(socket);
             if test.test_fw_update().is_err() {
                 println!("Failed");
                 exit(-1);
             } else {
                 println!("Passed");
             }
-            test.running.store(false, Ordering::Relaxed);
+            running.store(false, Ordering::Relaxed);
         });
     }
 }

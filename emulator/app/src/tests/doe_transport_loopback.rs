@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
+use crate::running;
 use rand::Rng;
 const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_DWORDS: usize = 2; // minimum size of test vectors
@@ -39,7 +40,6 @@ pub fn generate_tests() -> Vec<Box<dyn DoeTransportTest + Send>> {
 impl DoeTransportTest for Test {
     fn run_test(
         &mut self,
-        running: Arc<AtomicBool>,
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
         wait_for_responder: bool,

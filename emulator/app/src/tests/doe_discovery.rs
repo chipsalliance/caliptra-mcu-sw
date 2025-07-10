@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
+use crate::running;
 use crate::tests::doe_util::common::DoeUtil;
 use crate::tests::doe_util::protocol::*;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -91,7 +92,6 @@ impl Test {
 impl DoeTransportTest for Test {
     fn run_test(
         &mut self,
-        running: Arc<AtomicBool>,
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
         wait_for_responder: bool,

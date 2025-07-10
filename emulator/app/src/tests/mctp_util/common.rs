@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::i3c_socket::{receive_ibi, receive_private_read, send_private_write};
+use crate::running;
 use crate::tests::mctp_util::base_protocol::{MCTPHdr, LOCAL_TEST_ENDPOINT_EID, MCTP_HDR_SIZE};
 
 use std::collections::VecDeque;
@@ -115,7 +116,6 @@ impl MctpUtil {
     /// # Arguments
     /// * `msg_tag` - The message tag to be used for the request
     /// * `msg` - The message to be sent
-    /// * `running` - A flag to indicate if the emulator running status
     /// * `stream` - The TCP stream to I3C socket
     /// * `target_addr` - The target address of the I3C device
     ///
@@ -125,7 +125,6 @@ impl MctpUtil {
         &mut self,
         msg_tag: u8,
         msg: &[u8],
-        running: Arc<AtomicBool>,
         stream: &mut TcpStream,
         target_addr: u8,
     ) -> Option<Vec<u8>> {
@@ -196,20 +195,18 @@ impl MctpUtil {
     /// # Arguments
     /// * `msg_tag` - The message tag to be used for the request
     /// * `msg` - The message to be sent
-    /// * `running` - A flag to indicate if the emulator running status
     /// * `stream` - The TCP stream to I3C socket
     /// * `target_addr` - The target address of the I3C device
     pub fn send_request(
         &mut self,
         msg_tag: u8,
         msg: &[u8],
-        running: Arc<AtomicBool>,
         stream: &mut TcpStream,
         target_addr: u8,
     ) {
         self.new_req(msg_tag);
         let pkts = self.packetize(msg);
-        self.send_packets(pkts, running, stream, target_addr);
+        self.send_packets(pkts, stream, target_addr);
     }
 
     /// Send a response to the target address
@@ -217,19 +214,12 @@ impl MctpUtil {
     ///
     /// # Arguments
     /// * `msg` - The message to be sent
-    /// * `running` - A flag to indicate if the emulator running status
     /// * `stream` - The TCP stream to I3C socket
     /// * `target_addr` - The target address of the I3C device
-    pub fn send_response(
-        &mut self,
-        msg: &[u8],
-        running: Arc<AtomicBool>,
-        stream: &mut TcpStream,
-        target_addr: u8,
-    ) {
+    pub fn send_response(&mut self, msg: &[u8], stream: &mut TcpStream, target_addr: u8) {
         self.new_resp();
         let pkts = self.packetize(msg);
-        self.send_packets(pkts, running, stream, target_addr);
+        self.send_packets(pkts, stream, target_addr);
     }
 
     /// Receive a response from target address and return the assembled message
@@ -237,7 +227,6 @@ impl MctpUtil {
     /// If no timeout is provided, it will wait indefinitely for a response.
     ///
     /// # Arguments
-    /// * `running` - A flag to indicate if the emulator running status
     /// * `stream` - The TCP stream to I3C socket
     /// * `target_addr` - The target address of the I3C device
     /// * `timeout` - An optional timeout value in seconds
@@ -247,7 +236,6 @@ impl MctpUtil {
     ///
     pub fn receive_response(
         &mut self,
-        running: Arc<AtomicBool>,
         stream: &mut TcpStream,
         target_addr: u8,
         timeout: Option<u32>,
@@ -256,13 +244,7 @@ impl MctpUtil {
         self.new_resp();
         let mut message_identifier = MessageIdentifier::default();
 
-        let pkts = self.receive_packets(
-            running,
-            stream,
-            target_addr,
-            &mut message_identifier,
-            retry_count,
-        );
+        let pkts = self.receive_packets(stream, target_addr, &mut message_identifier, retry_count);
         assert_eq!(message_identifier.tag_owner, 0);
         self.assemble(pkts, &message_identifier)
     }
@@ -272,7 +254,6 @@ impl MctpUtil {
     /// If no timeout is provided, it will wait indefinitely for a request.
     ///
     /// # Arguments
-    /// * `running` - A flag to indicate if the emulator running status
     /// * `stream` - The TCP stream to I3C socket
     /// * `target_addr` - The target address of the I3C device
     /// * `timeout` - An optional timeout value in seconds
@@ -281,7 +262,6 @@ impl MctpUtil {
     /// * `Vec<u8>` - The assembled request message
     pub fn receive_request(
         &mut self,
-        running: Arc<AtomicBool>,
         stream: &mut TcpStream,
         target_addr: u8,
         timeout: Option<u32>,
@@ -290,13 +270,7 @@ impl MctpUtil {
         // Msg tag will be assigned by the sender (device in this case)
         self.new_req(8);
         let mut message_identifier = MessageIdentifier::default();
-        let pkts = self.receive_packets(
-            running,
-            stream,
-            target_addr,
-            &mut message_identifier,
-            retry_count,
-        );
+        let pkts = self.receive_packets(stream, target_addr, &mut message_identifier, retry_count);
         assert_eq!(message_identifier.tag_owner, 1);
         self.assemble(pkts, &message_identifier)
     }
@@ -306,7 +280,6 @@ impl MctpUtil {
     /// If no timeout is provided, it will wait indefinitely for a request.
     ///
     /// # Arguments
-    /// * `running` - A flag to indicate if the emulator running status
     /// * `stream` - The TCP stream to I3C socket
     /// * `target_addr` - The target address of the I3C device
     /// * `timeout` - An optional timeout value in seconds
@@ -315,26 +288,18 @@ impl MctpUtil {
     /// * `Vec<u8>` - The assembled request message
     pub fn receive(
         &mut self,
-        running: Arc<AtomicBool>,
         stream: &mut TcpStream,
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
         let retry_count = timeout.unwrap_or(0) * 5;
         let mut message_identifier = MessageIdentifier::default();
-        let pkts = self.receive_packets(
-            running,
-            stream,
-            target_addr,
-            &mut message_identifier,
-            retry_count,
-        );
+        let pkts = self.receive_packets(stream, target_addr, &mut message_identifier, retry_count);
         self.assemble(pkts, &message_identifier)
     }
 
     fn receive_packets(
         &mut self,
-        running: Arc<AtomicBool>,
         stream: &mut TcpStream,
         target_addr: u8,
         message_identifier: &mut MessageIdentifier,
@@ -482,13 +447,7 @@ impl MctpUtil {
         msg
     }
 
-    fn send_packets(
-        &mut self,
-        pkts: VecDeque<Vec<u8>>,
-        running: Arc<AtomicBool>,
-        stream: &mut TcpStream,
-        target_addr: u8,
-    ) {
+    fn send_packets(&mut self, pkts: VecDeque<Vec<u8>>, stream: &mut TcpStream, target_addr: u8) {
         let mut pkts = pkts;
         stream.set_nonblocking(true).unwrap();
         while running.load(Ordering::Relaxed) {
