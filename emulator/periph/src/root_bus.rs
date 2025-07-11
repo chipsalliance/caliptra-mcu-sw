@@ -121,8 +121,7 @@ impl McuRootBus {
         let ram = Ram::new(vec![0; RAM_SIZE as usize]);
         let rom_sram = Ram::new(vec![0; ROM_DEDICATED_RAM_SIZE as usize]);
         let external_test_sram = Ram::new(vec![0; EXTERNAL_TEST_SRAM_SIZE as usize]);
-        // Initiate the primary flash storage region if needed
-        let direct_read_flash = Ram::new(vec![0xFF; DIRECT_READ_FLASH_SIZE as usize]);
+        let direct_read_flash = Ram::new(vec![0; DIRECT_READ_FLASH_SIZE as usize]);
 
         Ok(Self {
             rom,

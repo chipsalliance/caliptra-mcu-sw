@@ -1,79 +1,19 @@
+// Licensed under the Apache-2.0 license
+
+// Based on Tock log capsule with modifications.
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-//! Implements a log storage abstraction for storing persistent data in flash.
-//!
-//! Data entries can be appended to the end of a log and read back in-order. Logs may be linear
-//! (denying writes when full) or circular (overwriting the oldest entries with the newest entries
-//! when the underlying flash volume is full). The storage volumes that logs operate upon are
-//! statically allocated at compile time and cannot be dynamically created at runtime.
-//!
-//! Entries can be identified and seeked-to with their unique Entry IDs. Entry IDs maintain the
-//! ordering of the underlying entries, and an entry with a larger entry ID is newer and comes
-//! after an entry with a smaller ID. IDs can also be used to determine the physical position of
-//! entries within the log's underlying storage volume - taking the ID modulo the size of the
-//! underlying storage volume yields the position of the entry's header relative to the start of
-//! the volume. Entries should not be created manually by clients, only retrieved through the
-//! `log_start()`, `log_end()`, and `next_read_entry_id()` functions.
-//!
-//! Entry IDs are not explicitly stored in the log. Instead, each page of the log contains a header
-//! containing the page's offset relative to the start of the log (i.e. if the page size is 512
-//! bytes, then page #0 will have an offset of 0, page #1 an offset of 512, etc.). The offsets
-//! continue to increase even after a circular log wraps around (so if 5 512-byte pages of data are
-//! written to a 4 page log, then page #0 will now have an offset of 2048). Thus, the ID of an
-//! entry can be calculated by taking the offset of the page within the log and adding the offset
-//! of the entry within the page to find the position of the entry within the log (which is the
-//! ID). Entries also have a header of their own, which contains the length of the entry.
-//!
-//! Logs support the following basic operations:
-//!     * Read:     Read back previously written entries in whole. Entries are read in their
-//!                 entirety (no partial reads) from oldest to newest.
-//!     * Seek:     Seek to different entries to begin reading from a different entry (can only
-//!                 seek to the start of entries).
-//!     * Append:   Append new data entries onto the end of a log. Can fail if the new entry is too
-//!                 large to fit within the log.
-//!     * Sync:     Sync a log to flash to ensure that all changes are persistent.
-//!     * Erase:    Erase a log in its entirety, clearing the underlying flash volume.
-//! See the documentation for each individual function for more detail on how they operate.
-//!
-//! Note that while logs persist across reboots, they will be erased upon flashing a new kernel.
-//!
-//! Usage
-//! -----
-//!
-//! ```rust,ignore
-//!     storage_volume!(VOLUME, 2);
-//!     static mut PAGEBUFFER: sam4l::flashcalw::Sam4lPage = sam4l::flashcalw::Sam4lPage::new();
-//!
-//!     let log = static_init!(
-//!         capsules::log::Log,
-//!         capsules::log::Log::new(
-//!             &VOLUME,
-//!             &mut sam4l::flashcalw::FLASH_CONTROLLER,
-//!             &mut PAGEBUFFER,
-//!             true
-//!         )
-//!     );
-//!     log.register();
-//!     kernel::hil::flash::HasClient::set_client(&sam4l::flashcalw::FLASH_CONTROLLER, log);
-//!
-//!     log.set_read_client(log_storage_read_client);
-//!     log.set_append_client(log_storage_append_client);
-//! ```
-
 use core::cell::Cell;
 use core::mem::size_of;
 use core::unreachable;
-
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::hil::flash::{self, Flash};
 use kernel::hil::log::{LogRead, LogReadClient, LogWrite, LogWriteClient};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::ErrorCode;
-
-use core::fmt::Write;
-use romtime::println;
+use mcu_platforms_common::{read_volatile_at, read_volatile_slice};
 
 /// Globally declare entry ID type.
 type EntryID = usize;
@@ -116,7 +56,6 @@ pub struct Log<'a, F: Flash + 'static> {
     read_client: OptionalCell<&'a dyn LogReadClient>,
     /// Append client using Log.
     append_client: OptionalCell<&'a dyn LogWriteClient>,
-
     /// Current operation being executed, if asynchronous.
     state: Cell<State>,
     /// Entry ID of oldest entry remaining in log.
@@ -125,7 +64,6 @@ pub struct Log<'a, F: Flash + 'static> {
     read_entry_id: Cell<EntryID>,
     /// Entry ID of next entry to append.
     append_entry_id: Cell<EntryID>,
-
     /// Deferred call for deferring client callbacks.
     deferred_call: DeferredCall,
 
@@ -175,13 +113,13 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
         log
     }
 
-    #[allow(dead_code)]
+    // Set the flash base address where the logging volume relies on if it is non zero.
     pub fn set_flash_base_address(&mut self, flash_base_address: u32) {
         self.flash_base_address = Some(flash_base_address);
     }
 
     /// Returns the page number of the page containing the entry with the given ID.
-    /// XS: Our flash base address in emulator is not always 0, so we need to take that into account
+    /// Note: flash base address should be considered if set.
     fn page_number(&self, entry_id: EntryID) -> usize {
         let flash_base_addr = self.flash_base_address.unwrap_or(0) as usize;
         (self.volume.as_ptr() as usize - flash_base_addr + entry_id % self.volume.len())
@@ -236,7 +174,8 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
         for header_pos in (0..self.volume.len()).step_by(self.page_size) {
             let page_id = {
                 const ID_SIZE: usize = size_of::<EntryID>();
-                let id_bytes = &self.volume[header_pos..header_pos + ID_SIZE];
+                let mut id_bytes = [0u8; ID_SIZE];
+                read_volatile_slice!(self.volume, header_pos, &mut id_bytes);
                 let id_bytes = <[u8; ID_SIZE]>::try_from(id_bytes).unwrap();
                 usize::from_ne_bytes(id_bytes)
             };
@@ -260,14 +199,16 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
             loop {
                 // Check if next byte is start of valid entry.
                 let volume_offset = newest_page_id % self.volume.len() + last_page_len;
-                if self.volume[volume_offset] == 0 || self.volume[volume_offset] == PAD_BYTE {
+                let byte = read_volatile_at!(self.volume, volume_offset);
+                if byte == 0 || byte == PAD_BYTE {
                     break;
                 }
 
                 // Get next entry length.
                 let entry_length = {
                     const LENGTH_SIZE: usize = size_of::<usize>();
-                    let length_bytes = &self.volume[volume_offset..volume_offset + LENGTH_SIZE];
+                    let mut length_bytes = [0u8; LENGTH_SIZE];
+                    read_volatile_slice!(self.volume, volume_offset, &mut length_bytes);
                     let length_bytes = <[u8; LENGTH_SIZE]>::try_from(length_bytes).unwrap();
                     usize::from_ne_bytes(length_bytes)
                 } + ENTRY_HEADER_SIZE;
@@ -301,8 +242,10 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
                     if copy_pagebuffer {
                         // Copy last page into pagebuffer.
                         for i in 0..self.page_size {
-                            pagebuffer.as_mut()[i] =
-                                self.volume[newest_page_id % self.volume.len() + i];
+                            pagebuffer.as_mut()[i] = read_volatile_at!(
+                                self.volume,
+                                newest_page_id % self.volume.len() + i
+                            );
                         }
                     }
                     self.pagebuffer.replace(pagebuffer);
@@ -477,10 +420,6 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
         match self.driver.write_page(page_number, pagebuffer) {
             Ok(()) => Ok(()),
             Err((ecode, pagebuffer)) => {
-                romtime::println!(
-                    "[xs debug]logging capsule: flush_pagebuffer: write_page failed with error {:?} for page number {}",
-                    ecode, page_number
-                );
                 self.pagebuffer.replace(pagebuffer);
                 Err(ecode)
             }
@@ -603,8 +542,6 @@ impl<'a, F: Flash + 'static> LogRead<'a> for Log<'a, F> {
         buffer: &'static mut [u8],
         length: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
-        romtime::println!("[xs debug]logging capsule: read: length {}", length);
-
         // Check for failure cases.
         if self.state.get() != State::Idle {
             // Log busy, try reading again later.
@@ -703,32 +640,11 @@ impl<'a, F: Flash + 'static> LogWrite<'a> for Log<'a, F> {
         length: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
         let entry_size = length + ENTRY_HEADER_SIZE;
-
-        romtime::println!(
-            "[xs debug]logging capsule: append: entry_size including ENTRY_HEADER {}",
-            entry_size
-        );
-        kernel::debug!(
-            "[xs debug]logging capsule: append: entry_size including ENTRY_HEADER {}",
-            entry_size
-        );
-
         // Check for failure cases.
         if self.state.get() != State::Idle {
             // Log busy, try appending again later.
             return Err((ErrorCode::BUSY, buffer));
         } else if length == 0 || buffer.len() < length {
-            // Invalid length provided.
-            println!(
-                "[xs debug]logging capsule: append: invalid length {}, buffer.len()= {}",
-                length,
-                buffer.len()
-            );
-            kernel::debug!(
-                "[xs debug]logging capsule: append: invalid length {}, buffer.len()= {}",
-                length,
-                buffer.len()
-            );
             return Err((ErrorCode::INVAL, buffer));
         } else if entry_size + PAGE_HEADER_SIZE > self.page_size {
             // Entry too big, won't fit within a single page.
@@ -755,7 +671,6 @@ impl<'a, F: Flash + 'static> LogWrite<'a> for Log<'a, F> {
                     Ok(())
                 } else {
                     // Need to sync pagebuffer first, then append to new page.
-                    romtime::println!("[xs debug]logging capsule: append: flushing previous page");
                     self.buffer.replace(buffer);
                     let return_code = self.flush_pagebuffer(pagebuffer);
                     if return_code == Ok(()) {

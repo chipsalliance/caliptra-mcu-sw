@@ -1,24 +1,13 @@
+// Licensed under the Apache-2.0 license
+
+// Based on Tock log test framework with modifications.
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-//! Tests the log storage interface in linear mode. For testing in circular mode, see
-//! log_test.rs.
-//!
-//! The testing framework creates a non-circular log storage interface in flash and performs a
-//! series of writes and syncs to ensure that the non-circular log properly denies overly-large
-//! writes once it is full. For testing all of the general capabilities of the log storage
-//! interface, see log_test.rs.
-//!
-//! To run the test, add the following line to the imix boot sequence:
-//! ```
-//!     test::linear_log_test::run(mux_alarm);
-//! ```
-//! and use the `USER` and `RESET` buttons to manually erase the log and reboot the imix,
-//! respectively.
-
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_emulator::logging as log;
+use capsules_emulator::logging::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
 use core::cell::Cell;
 use core::ptr::addr_of_mut;
 use flash_driver::flash_ctrl;
@@ -30,13 +19,10 @@ use kernel::static_init;
 use kernel::storage_volume;
 use kernel::utilities::cells::{NumericCellExt, TakeCell};
 use kernel::ErrorCode;
-use capsules_emulator::logging::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
+use mcu_platforms_common::{read_volatile_at, read_volatile_slice};
 use mcu_tock_veer::timers::InternalTimers;
 
-use core::fmt::Write;
-use romtime::println;
-
-// Allocate a storage volume for the linear log test. This is 1KB in size.
+// Allocate 1KB storage volume for the linear log test. It resides on flash.
 storage_volume!(LINEAR_TEST_LOG, 1);
 
 const PAGE_SIZE: usize = 256; // LINEAR_TEST_LOG is 1KB, 4 pages of 256 bytes each
@@ -44,33 +30,24 @@ const USABLE_PER_PAGE: usize = PAGE_SIZE - PAGE_HEADER_SIZE;
 const MAX_ENTRY_SIZE: usize = USABLE_PER_PAGE - ENTRY_HEADER_SIZE;
 const SMALL_ENTRY_SIZE: usize = 32;
 const MEDIUM_ENTRY_SIZE: usize = 64;
-
-#[cfg(feature = "test-linear-log-flash")]
-use crate::board::run_kernel_op;
-
 const LOG_FLASH_BASE_ADDR: u32 = 0x3800_0000;
 
 pub unsafe fn run(
     mux_alarm: &'static MuxAlarm<'static, InternalTimers>,
     flash_controller: &'static flash_ctrl::EmulatedFlashCtrl,
 ) -> Option<u32> {
-    // Initialize flash controller driver
     flash_controller.init();
-
     let pagebuffer = static_init!(
         flash_ctrl::EmulatedFlashPage,
         flash_ctrl::EmulatedFlashPage::default()
     );
-
     // Create actual log storage abstraction on top of flash.
     let log: &'static mut Log = static_init!(
         Log,
         log::Log::new(&LINEAR_TEST_LOG, flash_controller, pagebuffer, false)
     );
-
     // Set up the flash base address for the log storage
     log.set_flash_base_address(LOG_FLASH_BASE_ADDR);
-
     kernel::deferred_call::DeferredCallClient::register(log);
     flash::HasClient::set_client(flash_controller, log);
 
@@ -83,20 +60,13 @@ pub unsafe fn run(
     // Create and run test for log storage.
     let test = static_init!(
         LogTest<VirtualMuxAlarm<'static, InternalTimers>>,
-        LogTest::new(
-            log,
-            &mut *addr_of_mut!(BUFFER),
-            alarm,
-            &TEST_OPS,
-            &LINEAR_TEST_LOG
-        )
+        LogTest::new(log, &mut *addr_of_mut!(BUFFER), alarm, &TEST_OPS,)
     );
     log.set_read_client(test);
     log.set_append_client(test);
     test.alarm.set_alarm_client(test);
 
     test.run();
-
     Some(0)
 }
 
@@ -152,7 +122,6 @@ struct LogTest<A: 'static + Alarm<'static>> {
     alarm: &'static A,
     ops: &'static [TestOp],
     op_index: Cell<usize>,
-    test_log_volume: &'static [u8],
 }
 
 impl<A: 'static + Alarm<'static>> LogTest<A> {
@@ -161,7 +130,6 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
         buffer: &'static mut [u8],
         alarm: &'static A,
         ops: &'static [TestOp],
-        test_log_volume: &'static [u8],
     ) -> LogTest<A> {
         romtime::println!(
             "Log recovered from flash (Start and end entry IDs: {:?} to {:?})",
@@ -175,20 +143,15 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
             alarm,
             ops,
             op_index: Cell::new(0),
-            test_log_volume,
         }
     }
 
     fn run(&self) {
         let op_index = self.op_index.get();
-
-        romtime::println!("[xs debug] LogTest: Running operation index {}", op_index);
-
         if op_index == self.ops.len() {
             romtime::println!("Linear Log Storage test succeeded!");
             return;
         }
-
         match self.ops[op_index] {
             TestOp::Read => self.read(),
             TestOp::Write(len) => self.write(len),
@@ -196,37 +159,30 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
             TestOp::Erase => self.erase(),
         }
 
+        // Integration tests are executed before kernel loop.
+        // Explicitly advance the kernel to handle deferred calls and interrupt processing.
         #[cfg(feature = "test-linear-log-flash")]
-        run_kernel_op(1000); // Ensure kernel loop runs to process the alarm
+        crate::board::run_kernel_op(1000);
     }
 
     fn read(&self) {
         self.buffer.take().map_or_else(
             || panic!("NO BUFFER"),
             move |buffer| {
-                // Clear buffer first to make debugging more sane.
-                for e in buffer.iter_mut() {
-                    *e = 0;
-                }
-
+                // Clear buffer first to ensure no stale data.
+                buffer.fill(0);
                 if let Err((error, original_buffer)) = self.log.read(buffer, buffer.len()) {
                     self.buffer.replace(original_buffer);
                     match error {
                         ErrorCode::FAIL => {
                             // No more entries, start writing again.
-                            romtime::println!(
-                                "[xs debug]Expected: nothing to read! READ DONE: READ OFFSET: {:?} / WRITE OFFSET: {:?}",
-                                self.log.next_read_entry_id(),
-                                self.log.log_end()
-                            );
                             self.op_index.increment();
                             self.run();
                         }
                         ErrorCode::BUSY => {
-                            romtime::println!("Flash busy, waiting before reattempting read");
                             self.wait();
                         }
-                        _ => panic!("[xs debug]READ FAILED: {:?}", error),
+                        _ => panic!("READ FAILED: {:?}", error),
                     }
                 }
             },
@@ -237,19 +193,11 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
         self.buffer
             .take()
             .map(move |buffer| {
-                let expect_write_fail = self.log.log_end() + len > self.test_log_volume.len();
-
-                romtime::println!("[xs debug]LogTest: Writing {} bytes to log: append entry ID: {:?}, expected_write_fail(true/false): {}",
-                                len, self.log.log_end(), expect_write_fail);
-
+                let expect_write_fail = self.log.log_end() + len > LINEAR_TEST_LOG.len();
                 // Set buffer value.
-                for i in 0..buffer.len() {
-                    buffer[i] = if i < len {
-                        len as u8
-                    } else {
-                        0
-                    };
-                }
+                buffer.iter_mut().enumerate().for_each(|(i, byte)| {
+                    *byte = if i < len { len as u8 } else { 0 };
+                });
 
                 if let Err((error, original_buffer)) = self.log.append(buffer, len) {
                     self.buffer.replace(original_buffer);
@@ -257,10 +205,6 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
                     match error {
                         ErrorCode::FAIL =>
                             if expect_write_fail {
-                                romtime::println!(
-                                    "[xs debug]Write failed on {} byte write, as expected",
-                                    len
-                                );
                                 self.op_index.increment();
                                 self.run();
                             } else {
@@ -272,7 +216,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
                                 );
                             }
                         ErrorCode::BUSY => self.wait(),
-                        _ => panic!("[xs debug]Log test write: WRITE FAILED: {:?}", error),
+                        _ => panic!("Log test write: WRITE FAILED: {:?}", error),
                     }
                 } else if expect_write_fail {
                     panic!(
@@ -296,22 +240,15 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
     fn wait(&self) {
         let delay = self.alarm.ticks_from_ms(WAIT_MS);
         let now = self.alarm.now();
-        romtime::println!(
-            "[xs debug] Setting alarm for now={:?} delay={:?}",
-            now,
-            delay
-        );
         self.alarm.set_alarm(now, delay);
     }
 
     fn erase(&self) {
-        match self.log.erase() {
-            Ok(()) => (),
-            Err(ErrorCode::BUSY) => {
-                romtime::println!("[xs debug]Flash busy, waiting before reattempting erase");
-                self.wait();
+        if let Err(e) = self.log.erase() {
+            match e {
+                ErrorCode::BUSY => self.wait(),
+                _ => panic!("Erase failed: {:?}", e),
             }
-            Err(e) => panic!("Erase failed: {:?}", e),
         }
     }
 }
@@ -322,15 +259,17 @@ impl<A: Alarm<'static>> LogReadClient for LogTest<A> {
             Ok(()) => {
                 // Verify correct value was read.
                 assert!(length > 0);
-                for i in 0..length {
-                    if buffer[i] != length as u8 {
-                        panic!(
+                buffer
+                    .iter()
+                    .take(length)
+                    .enumerate()
+                    .for_each(|(i, &byte)| {
+                        assert_eq!(
+                            byte, length as u8,
                             "Read incorrect value {} at index {}, expected {}",
-                            buffer[i], i, length
+                            byte, i, length
                         );
-                    }
-                }
-                romtime::println!("[xs debug]read_done: Successful read of size {}", length);
+                    });
                 self.buffer.replace(buffer);
                 self.wait();
             }
@@ -349,18 +288,13 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
     fn append_done(
         &self,
         buffer: &'static mut [u8],
-        length: usize,
+        _length: usize,
         records_lost: bool,
         error: Result<(), ErrorCode>,
     ) {
         assert!(!records_lost);
         match error {
             Ok(()) => {
-                romtime::println!(
-                    "[xs debug]append_done: Write succeeded on {} byte write, as expected",
-                    length
-                );
-
                 self.buffer.replace(buffer);
                 self.op_index.increment();
                 self.wait();
@@ -370,13 +304,7 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
     }
 
     fn sync_done(&self, error: Result<(), ErrorCode>) {
-        if error == Ok(()) {
-            romtime::println!(
-                "[xs debug]SYNC DONE: READ OFFSET: {:?} / WRITE OFFSET: {:?}",
-                self.log.next_read_entry_id(),
-                self.log.log_end()
-            );
-        } else {
+        if error != Ok(()) {
             panic!("Sync failed: {:?}", error);
         }
 
@@ -387,17 +315,36 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
     fn erase_done(&self, error: Result<(), ErrorCode>) {
         match error {
             Ok(()) => {
-                romtime::println!("[xs debug]ERASE DONE");
-                romtime::println!(
-                    "(Start and end entry IDs: {:?} to {:?})",
-                    self.log.log_start(),
-                    self.log.log_end()
-                );
+                // print out the linear test log for debugging
+                for i in 0..LINEAR_TEST_LOG.len() {
+                    let byte = read_volatile_at!(&LINEAR_TEST_LOG, i);
+                    assert_eq!(
+                        byte, 0xFF,
+                        "Log not fully erased at index {} byte {}",
+                        i, byte
+                    );
+                }
+
+                // Make sure that a read on an empty log fails normally.
+                self.buffer.take().map(move |buffer| {
+                    if let Err((error, original_buffer)) = self.log.read(buffer, buffer.len()) {
+                        self.buffer.replace(original_buffer);
+                        match error {
+                            ErrorCode::FAIL => (),
+                            ErrorCode::BUSY => {
+                                self.wait();
+                            }
+                            _ => panic!("Read on empty log did not fail as expected: {:?}", error),
+                        }
+                    } else {
+                        panic!("Read on empty log succeeded! (it shouldn't)");
+                    }
+                });
+
                 self.op_index.increment();
                 self.run();
             }
             Err(ErrorCode::BUSY) => {
-                romtime::println!("[xs debug]Erase busy, retrying...");
                 self.wait();
             }
             Err(e) => panic!("Erase failed: {:?}", e),
@@ -407,10 +354,6 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
 
 impl<A: Alarm<'static>> AlarmClient for LogTest<A> {
     fn alarm(&self) {
-        romtime::println!(
-            "[xs debug]AlarmClient::alarm() invoked, starting test: op_index: {}",
-            self.op_index.get()
-        );
         self.run();
     }
 }

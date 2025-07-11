@@ -314,17 +314,11 @@ impl DummyFlashCtrl {
         // Get the address from the register
         let page_addr = self.page_addr.reg.get();
 
-        println!(
-            "[xs debug]DummyFlashCtrl: write_page: page_num: {}, page_addr: {} ",
-            page_num, page_addr
-        );
-
         // Sanity check for the page number, page size and file
         if page_num >= Self::MAX_PAGES
             || self.page_size.reg.get() < Self::PAGE_SIZE as u32
             || self.file.is_none()
         {
-            println!("[xs debug]DummyFlashCtrl: write_page: invalid page number or page size");
             return Err(FlashOpError::WriteError);
         }
 
@@ -373,7 +367,6 @@ impl DummyFlashCtrl {
             region.data_mut()[offset..offset + Self::PAGE_SIZE].copy_from_slice(&self.buffer);
         }
 
-        println!("[xs debug]DummyFlashCtrl: write_page: write to file and region succeeded");
         Ok(())
     }
 

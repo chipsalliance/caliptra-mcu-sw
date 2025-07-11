@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+//pub(crate) mod circular_log_test;
 pub(crate) mod doe_transport_test;
 pub(crate) mod flash_ctrl_test;
 pub(crate) mod flash_storage_test;
