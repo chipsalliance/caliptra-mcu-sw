@@ -179,7 +179,7 @@ pub(crate) fn run_tests(
             "INTEGRATION TEST ON MCTP-I3C TIMED OUT AFTER {:?} SECONDS",
             timeout
         );
-        EMULATOR_RUNNING.store(false, Ordering::Relaxed);
+        exit(-1);
     });
     std::thread::spawn(move || {
         wait_for_runtime_start();

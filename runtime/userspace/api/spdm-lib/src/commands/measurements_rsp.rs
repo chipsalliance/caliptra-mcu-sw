@@ -98,7 +98,7 @@ impl MeasurementsResponse {
         &self,
         measurements: &mut SpdmMeasurements,
         transcript_mgr: &mut TranscriptManager,
-        cert_store: &mut dyn SpdmCertStore,
+        cert_store: &dyn SpdmCertStore,
         offset: usize,
         chunk_buf: &mut [u8],
     ) -> CommandResult<usize> {
@@ -179,7 +179,9 @@ impl MeasurementsResponse {
             && self.req_attr.signature_requested() == 1
             && offset + copied >= signature_start
         {
-            let signature = self.l1_signature_ecc(transcript_mgr, cert_store).await?;
+            let signature = self
+                .l1_signature(self.asym_algo, transcript_mgr, cert_store)
+                .await?;
             let sig_offset = (offset + copied) - signature_start;
             let copy_len = (signature.len() - sig_offset).min(rem_len);
             chunk_buf[copied..copied + copy_len]
@@ -293,24 +295,26 @@ impl MeasurementsResponse {
         Ok(len)
     }
 
-    async fn l1_signature_ecc(
+    async fn l1_signature(
         &self,
+        asym_algo: AsymAlgo,
         transcript: &mut TranscriptManager,
-        cert_store: &mut dyn SpdmCertStore,
+        cert_store: &dyn SpdmCertStore,
     ) -> CommandResult<[u8; ECC_P384_SIGNATURE_SIZE]> {
         let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
         let mut signature_buf = MessageBuf::new(&mut signature);
         let _ = self
-            .encode_l1_signature_ecc(transcript, cert_store, &mut signature_buf)
+            .encode_l1_signature(asym_algo, transcript, cert_store, &mut signature_buf)
             .await?;
 
         Ok(signature)
     }
 
-    async fn encode_l1_signature_ecc(
+    async fn encode_l1_signature(
         &self,
+        asym_algo: AsymAlgo,
         transcript: &mut TranscriptManager,
-        cert_store: &mut dyn SpdmCertStore,
+        cert_store: &dyn SpdmCertStore,
         buf: &mut MessageBuf<'_>,
     ) -> CommandResult<usize> {
         // Get the L1 transcript hash
@@ -337,7 +341,7 @@ impl MeasurementsResponse {
 
         let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
         cert_store
-            .sign_hash(slot_id, &tbs, &mut signature)
+            .sign_hash(slot_id, asym_algo, &tbs, &mut signature)
             .await
             .map_err(|e| (false, CommandError::CertStore(e)))?;
 

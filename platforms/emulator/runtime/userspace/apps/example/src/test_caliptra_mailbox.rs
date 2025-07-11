@@ -6,7 +6,7 @@ use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use romtime::{println, test_exit};
 use zerocopy::{FromBytes, IntoBytes};
 
-use libapi_caliptra::evidence::{Evidence, PCR_QUOTE_BUFFER_SIZE, PCR_QUOTE_RSP_START};
+use libapi_caliptra::evidence::{Evidence, PCR_QUOTE_BUFFER_SIZE};
 
 #[allow(unused)]
 pub(crate) async fn test_caliptra_mailbox() {
@@ -152,7 +152,7 @@ async fn test_pcr_quote_with_pqc_signature() {
             println!(
                 "PCR quote with PQC Signature[{}]: {:x?} ",
                 copy_len,
-                &pcr_quote[PCR_QUOTE_RSP_START..copy_len]
+                &pcr_quote[..copy_len]
             );
         }
         Err(err) => {
