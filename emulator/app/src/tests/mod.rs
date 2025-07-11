@@ -12,4 +12,3 @@ pub mod mctp_user_loopback;
 pub mod pldm_fw_update_test;
 pub mod pldm_request_response_test;
 pub mod spdm_responder_validator;
-// pub mod spdm_validator;

@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::i3c_socket::{MctpTestState, TestTrait};
+use crate::i3c_socket::{MctpTestState, MctpTransportTest};
 use crate::tests::mctp_util::common::MctpUtil;
 use crate::EMULATOR_RUNNING;
 use std::net::TcpStream;
@@ -19,7 +19,7 @@ pub(crate) enum MctpUserAppTests {
 }
 
 impl MctpUserAppTests {
-    pub fn generate_tests(msg_type: u8) -> Vec<Box<dyn TestTrait + Send>> {
+    pub fn generate_tests(msg_type: u8) -> Vec<Box<dyn MctpTransportTest + Send>> {
         MctpUserAppTests::iter()
             .enumerate()
             .map(|(i, test_id)| {
@@ -28,7 +28,7 @@ impl MctpUserAppTests {
                 let req_msg_buf = test_id.generate_req_msg(msg_type);
 
                 Box::new(Test::new(test_name, msg_type, msg_tag, req_msg_buf))
-                    as Box<dyn TestTrait + Send>
+                    as Box<dyn MctpTransportTest + Send>
             })
             .collect()
     }
@@ -145,7 +145,7 @@ impl Test {
     }
 }
 
-impl TestTrait for Test {
+impl MctpTransportTest for Test {
     fn is_passed(&self) -> bool {
         self.passed
     }

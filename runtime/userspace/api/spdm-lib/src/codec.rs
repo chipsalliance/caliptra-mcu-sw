@@ -292,7 +292,7 @@ mod tests {
         let data = msg_buf.data_mut(msg_len);
         assert!(data.is_ok());
         data.unwrap().copy_from_slice(&msg[..msg_len]);
-        assert!(msg_buf.trim(msg_len).is_ok());
+        assert!(msg_buf.resize(msg_len).is_ok());
         assert_eq!(msg_buf.tail, 48);
         assert_eq!(msg_buf.data_len(), 48);
         assert_eq!(msg_buf.data(48).unwrap(), &msg[..msg_len]);

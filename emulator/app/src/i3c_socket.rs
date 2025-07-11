@@ -167,7 +167,7 @@ pub(crate) trait TestTrait {
 pub(crate) fn run_tests(
     port: u16,
     target_addr: DynamicI3cAddress,
-    tests: Vec<Box<dyn TestTrait + Send>>,
+    tests: Vec<Box<dyn MctpTransportTest + Send>>,
     test_timeout_seconds: Option<Duration>,
 ) {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
