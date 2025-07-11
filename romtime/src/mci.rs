@@ -25,6 +25,10 @@ impl Mci {
         self.registers.mci_reg_hw_flow_status.get()
     }
 
+    pub fn set_nmi_vector(&self, nmi_vector: u32) {
+        self.registers.mci_reg_mcu_nmi_vector.set(nmi_vector);
+    }
+
     pub fn configure_wdt(&self, wdt1_timeout: u32, wdt2_timeout: u32) {
         // Set WDT1 period.
         self.registers.mci_reg_wdt_timer1_timeout_period[0].set(wdt1_timeout);

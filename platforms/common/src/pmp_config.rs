@@ -1,12 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-#[cfg(target_arch = "riscv32")]
 use mcu_config::McuMemoryMap;
-#[cfg(target_arch = "riscv32")]
 use mcu_tock_veer::pmp::PMPRegionList;
 
 /// Input from platform: a memory region with its properties
-#[cfg(target_arch = "riscv32")]
 #[derive(Debug, Clone, Copy)]
 pub struct PlatformRegion {
     pub start_addr: *const u8,
@@ -19,7 +16,6 @@ pub struct PlatformRegion {
 }
 
 /// Input configuration from platform
-#[cfg(target_arch = "riscv32")]
 pub struct PlatformPMPConfig<'a> {
     /// All platform memory regions (kernel text, code, data, MMIO, etc.)
     pub regions: &'a [PlatformRegion],
@@ -28,8 +24,7 @@ pub struct PlatformPMPConfig<'a> {
 }
 
 /// Check if two regions overlap
-#[cfg(target_arch = "riscv32")]
-fn regions_overlap(region_a: PlatformRegion, region_b: PlatformRegion) -> bool {
+fn regions_overlap(region_a: &PlatformRegion, region_b: &PlatformRegion) -> bool {
     let start_a = region_a.start_addr as usize;
     let end_a = start_a + region_a.size;
     let start_b = region_b.start_addr as usize;
@@ -40,7 +35,6 @@ fn regions_overlap(region_a: PlatformRegion, region_b: PlatformRegion) -> bool {
 }
 
 /// Check if a platform region overlaps with a memory area defined by offset/size
-#[cfg(target_arch = "riscv32")]
 fn region_overlaps_memory_area(region: PlatformRegion, mem_offset: u32, mem_size: u32) -> bool {
     let region_start = region.start_addr as usize;
     let region_end = region_start + region.size;
@@ -52,7 +46,6 @@ fn region_overlaps_memory_area(region: PlatformRegion, mem_offset: u32, mem_size
 }
 
 /// Try to upgrade an MMIO region to NAPOT format by expanding its size
-#[cfg(target_arch = "riscv32")]
 fn try_convert_to_napot(region: PlatformRegion) -> Result<PlatformRegion, PlatformRegion> {
     if !region.is_mmio {
         return Err(region); // Only convert MMIO regions
@@ -96,7 +89,6 @@ fn try_convert_to_napot(region: PlatformRegion) -> Result<PlatformRegion, Platfo
 }
 
 /// Convert MMIO regions to NAPOT where possible (best effort)
-#[cfg(target_arch = "riscv32")]
 fn optimize_mmio_napot(regions: &mut [Option<PlatformRegion>; 32], region_count: usize) -> usize {
     // Try to convert each MMIO region to NAPOT (best effort)
     for i in 0..region_count {
@@ -112,7 +104,7 @@ fn optimize_mmio_napot(regions: &mut [Option<PlatformRegion>; 32], region_count:
                         if i != j {
                             if let Some(other_region) = regions[j] {
                                 if other_region.is_mmio
-                                    && regions_overlap(napot_region, other_region)
+                                    && regions_overlap(&napot_region, &other_region)
                                 {
                                     has_overlap = true;
                                     break;
@@ -136,7 +128,6 @@ fn optimize_mmio_napot(regions: &mut [Option<PlatformRegion>; 32], region_count:
 }
 
 /// Coalesce adjacent regions with identical properties in-place
-#[cfg(target_arch = "riscv32")]
 fn coalesce_regions_in_place(
     regions: &mut [Option<PlatformRegion>; 32],
     region_count: usize,
@@ -184,11 +175,93 @@ fn coalesce_regions_in_place(
 }
 
 /// Convert processed platform regions to PMP regions and add them to the list
-#[cfg(target_arch = "riscv32")]
 fn convert_platform_regions_to_pmp(
     pmp_list: &mut PMPRegionList,
     platform_regions: &[Option<PlatformRegion>],
 ) -> Result<(), ()> {
+    // Do the kernel text region first
+    for region_opt in platform_regions.iter() {
+        let platform_region = region_opt.as_ref().unwrap();
+
+        // Convert PlatformRegion to appropriate PMPRegion variant
+        match (
+            platform_region.is_mmio,
+            platform_region.user_accessible,
+            platform_region.read,
+            platform_region.write,
+            platform_region.execute,
+        ) {
+            // Non-MMIO regions: Read + Execute (KernelText)
+            (false, _, true, false, true) => {
+                // TODO: Consider trying NAPOT format first for code regions (more efficient - 1 PMP entry vs 2)
+                //       and fall back to TOR if alignment/size requirements aren't met
+                use mcu_tock_veer::pmp::KernelTextRegion;
+                use rv32i::pmp::TORRegionSpec;
+
+                let tor_spec = TORRegionSpec::new(platform_region.start_addr, unsafe {
+                    platform_region.start_addr.add(platform_region.size)
+                })
+                .ok_or(())?;
+
+                // Add the converted region to the list
+                pmp_list.add_region(mcu_tock_veer::pmp::PMPRegion::KernelText(
+                    KernelTextRegion(tor_spec),
+                ))?;
+            }
+            _ => {}
+        };
+    }
+
+    // Next do memories.
+    for region_opt in platform_regions {
+        let platform_region = region_opt.unwrap();
+
+        // Convert PlatformRegion to appropriate PMPRegion variant
+        let pmp_region = match (
+            platform_region.is_mmio,
+            platform_region.user_accessible,
+            platform_region.read,
+            platform_region.write,
+            platform_region.execute,
+        ) {
+            // Non-MMIO regions: Read + Write (Data)
+            (false, _, true, true, false) => {
+                use mcu_tock_veer::pmp::DataRegion;
+                use rv32i::pmp::TORRegionSpec;
+
+                let tor_spec = TORRegionSpec::new(platform_region.start_addr, unsafe {
+                    platform_region.start_addr.add(platform_region.size)
+                })
+                .ok_or(())?;
+
+                Some(mcu_tock_veer::pmp::PMPRegion::Data(DataRegion(tor_spec)))
+            }
+
+            // Non-MMIO regions: Read only (ReadOnly)
+            (false, _, true, false, false) => {
+                use mcu_tock_veer::pmp::ReadOnlyRegion;
+                use rv32i::pmp::TORRegionSpec;
+
+                let tor_spec = TORRegionSpec::new(platform_region.start_addr, unsafe {
+                    platform_region.start_addr.add(platform_region.size)
+                })
+                .ok_or(())?;
+
+                Some(mcu_tock_veer::pmp::PMPRegion::ReadOnly(ReadOnlyRegion(
+                    tor_spec,
+                )))
+            }
+
+            _ => None,
+        };
+
+        // Add the converted region to the list
+        if let Some(pmp_region) = pmp_region {
+            pmp_list.add_region(pmp_region)?;
+        }
+    }
+
+    // Finally do MMIO regions.
     for region_opt in platform_regions {
         let platform_region = region_opt.unwrap();
 
@@ -229,7 +302,9 @@ fn convert_platform_regions_to_pmp(
                             ()
                         })?;
 
-                mcu_tock_veer::pmp::PMPRegion::UserMMIO(MMIORegion(napot_spec))
+                Some(mcu_tock_veer::pmp::PMPRegion::UserMMIO(MMIORegion(
+                    napot_spec,
+                )))
             }
 
             // MMIO regions: machine-only
@@ -259,49 +334,18 @@ fn convert_platform_regions_to_pmp(
                             ()
                         })?;
 
-                mcu_tock_veer::pmp::PMPRegion::MachineMMIO(MMIORegion(napot_spec))
+                Some(mcu_tock_veer::pmp::PMPRegion::MachineMMIO(MMIORegion(
+                    napot_spec,
+                )))
             }
 
+            // already done:
             // Non-MMIO regions: Read + Execute (KernelText)
-            (false, _, true, false, true) => {
-                // TODO: Consider trying NAPOT format first for code regions (more efficient - 1 PMP entry vs 2)
-                //       and fall back to TOR if alignment/size requirements aren't met
-                use mcu_tock_veer::pmp::KernelTextRegion;
-                use rv32i::pmp::TORRegionSpec;
-
-                let tor_spec = TORRegionSpec::new(platform_region.start_addr, unsafe {
-                    platform_region.start_addr.add(platform_region.size)
-                })
-                .ok_or(())?;
-
-                mcu_tock_veer::pmp::PMPRegion::KernelText(KernelTextRegion(tor_spec))
-            }
-
+            (false, _, true, false, true) => None,
             // Non-MMIO regions: Read + Write (Data)
-            (false, _, true, true, false) => {
-                use mcu_tock_veer::pmp::DataRegion;
-                use rv32i::pmp::TORRegionSpec;
-
-                let tor_spec = TORRegionSpec::new(platform_region.start_addr, unsafe {
-                    platform_region.start_addr.add(platform_region.size)
-                })
-                .ok_or(())?;
-
-                mcu_tock_veer::pmp::PMPRegion::Data(DataRegion(tor_spec))
-            }
-
+            (false, _, true, true, false) => None,
             // Non-MMIO regions: Read only (ReadOnly)
-            (false, _, true, false, false) => {
-                use mcu_tock_veer::pmp::ReadOnlyRegion;
-                use rv32i::pmp::TORRegionSpec;
-
-                let tor_spec = TORRegionSpec::new(platform_region.start_addr, unsafe {
-                    platform_region.start_addr.add(platform_region.size)
-                })
-                .ok_or(())?;
-
-                mcu_tock_veer::pmp::PMPRegion::ReadOnly(ReadOnlyRegion(tor_spec))
-            }
+            (false, _, true, false, false) => None,
 
             // Invalid combinations (should never happen due to early validation)
             _ => {
@@ -321,7 +365,9 @@ fn convert_platform_regions_to_pmp(
         };
 
         // Add the converted region to the list
-        pmp_list.add_region(pmp_region)?;
+        if let Some(pmp_region) = pmp_region {
+            pmp_list.add_region(pmp_region)?;
+        }
     }
 
     Ok(())
@@ -344,7 +390,6 @@ fn convert_platform_regions_to_pmp(
 /// - Non-MMIO regions must be machine-only (user_accessible=false) (hard error)
 /// - Non-MMIO regions must have valid permission combinations: R+X, R+W, or R (hard error)
 /// - Non-MMIO region overlaps are allowed with priority-based resolution (warning)
-#[cfg(target_arch = "riscv32")]
 pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList, ()> {
     // Step 1: Create static array to collect all regions (assume max 32 regions)
     let mut all_regions: [Option<PlatformRegion>; 32] = [None; 32];
@@ -446,8 +491,13 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
 
             // For MMIO regions: check for overlaps with existing MMIO regions
             for i in 0..region_count {
-                let existing = all_regions[i].unwrap();
-                if existing.is_mmio && regions_overlap(*region, existing) {
+                let existing = &all_regions[i].unwrap();
+                if existing.is_mmio && regions_overlap(region, existing) {
+                    romtime::println!(
+                        "[mcu-runtime-pmp] Region {:?} overlaps with {:?}",
+                        region,
+                        existing
+                    );
                     return Err(()); // MMIO regions cannot overlap
                 }
             }
@@ -505,7 +555,7 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
             // Earlier entries in the platform region list have higher priority
             for i in 0..region_count {
                 let existing = all_regions[i].unwrap();
-                if !existing.is_mmio && regions_overlap(*region, existing) {
+                if !existing.is_mmio && regions_overlap(region, &existing) {
                     // Non-MMIO overlap detected: earlier region takes priority
                     // This is allowed for cases like KernelTextRegion overlapping with ReadOnlyRegion
                     // where fine-grained regions should override broader regions
@@ -545,13 +595,13 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
         region_count += 1;
     }
 
-    // Step 5: Coalesce adjacent regions with identical properties in-place
+    // Step 4: Coalesce adjacent regions with identical properties in-place
     let coalesced_count = coalesce_regions_in_place(&mut all_regions, region_count);
 
-    // Step 6: Optimize MMIO regions to NAPOT format where possible (best effort)
+    // Step 5: Optimize MMIO regions to NAPOT format where possible (best effort)
     let final_count = optimize_mmio_napot(&mut all_regions, coalesced_count);
 
-    // Step 7: Convert processed platform regions to PMP regions
+    // Step 6: Convert processed platform regions to PMP regions
     let mut pmp_list = PMPRegionList::new();
     convert_platform_regions_to_pmp(&mut pmp_list, &all_regions[..final_count])?;
 

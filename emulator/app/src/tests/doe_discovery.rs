@@ -3,9 +3,9 @@
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
 use crate::tests::doe_util::common::DoeUtil;
 use crate::tests::doe_util::protocol::*;
-use std::sync::atomic::{AtomicBool, Ordering};
+use crate::EMULATOR_RUNNING;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use zerocopy::IntoBytes;
@@ -91,7 +91,6 @@ impl Test {
 impl DoeTransportTest for Test {
     fn run_test(
         &mut self,
-        running: Arc<AtomicBool>,
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
         wait_for_responder: bool,
@@ -100,7 +99,7 @@ impl DoeTransportTest for Test {
 
         self.test_state = DoeTestState::Start;
 
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.test_state {
                 DoeTestState::Start => {
                     if wait_for_responder {

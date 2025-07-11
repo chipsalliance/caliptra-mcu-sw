@@ -4,8 +4,14 @@ use crate::i3c_socket::{MctpTestState, TestTrait};
 use crate::tests::mctp_util::common::MctpUtil;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
+use std::fs::File;
+use std::io::{self, ErrorKind, Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::path::Path;
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::Ordering;
 use std::vec;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes};
 
@@ -67,18 +73,14 @@ impl TestMctp {
         }
     }
 
-    fn receive_socket_message(
-        &self,
-        running: Arc<AtomicBool>,
-        stream: &mut TcpStream,
-    ) -> Option<(u32, u32, Vec<u8>)> {
+    fn receive_socket_message(&self, stream: &mut TcpStream) -> Option<(u32, u32, Vec<u8>)> {
         let mut buffer = [0u8; RECEIVER_BUFFER_SIZE];
         let mut buffer_size = 0;
         let mut expected_size = 0;
 
         let mut command: u32 = 0;
         let mut transport_type: u32 = 0;
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             let s = stream
                 .read(&mut buffer[buffer_size..])
                 .expect("socket read error!");
@@ -140,12 +142,7 @@ impl TestMctp {
         );
     }
 
-    fn send_req_receive_resp(
-        &mut self,
-        running: Arc<AtomicBool>,
-        i3c_stream: &mut TcpStream,
-        target_addr: u8,
-    ) {
+    fn send_req_receive_resp(&mut self, i3c_stream: &mut TcpStream, target_addr: u8) {
         i3c_stream.set_nonblocking(true).unwrap();
         println!(
             "SPDM_SERVER: Sending message to target {:x?}",
@@ -153,7 +150,7 @@ impl TestMctp {
         );
         self.mctp_test_state = MctpTestState::Start;
 
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.mctp_test_state {
                 MctpTestState::Start => {
                     self.mctp_test_state = MctpTestState::SendReq;
@@ -162,7 +159,6 @@ impl TestMctp {
                     self.mctp_util.send_request(
                         self.msg_tag,
                         self.cur_req_msg.as_slice(),
-                        running.clone(),
                         i3c_stream,
                         target_addr,
                     );
@@ -172,7 +168,6 @@ impl TestMctp {
                 MctpTestState::ReceiveResp => {
                     println!("SPDM_SERVER: receive_response");
                     let resp_msg = self.mctp_util.receive_response(
-                        running.clone(),
                         i3c_stream,
                         target_addr,
                         Some(20), // timeout in seconds
@@ -220,7 +215,6 @@ impl TestMctp {
     #[allow(clippy::too_many_arguments)]
     fn process_socket_message(
         &mut self,
-        running: Arc<AtomicBool>,
         spdm_client_stream: &mut TcpStream,
         i3c_server_stream: &mut TcpStream,
         target_addr: u8,
@@ -252,7 +246,6 @@ impl TestMctp {
                     let result = self.mctp_util.wait_for_responder(
                         self.msg_tag,
                         self.cur_req_msg.as_slice(),
-                        running,
                         i3c_server_stream,
                         target_addr,
                     );
@@ -266,7 +259,7 @@ impl TestMctp {
                         return false;
                     }
                 } else {
-                    self.send_req_receive_resp(running, i3c_server_stream, target_addr);
+                    self.send_req_receive_resp(i3c_server_stream, target_addr);
                 }
 
                 self.spdm_server_state = SpdmServerState::SendResponse;
@@ -279,22 +272,20 @@ impl TestMctp {
 
     fn run_test_internal(
         &mut self,
-        running: Arc<AtomicBool>,
         spdm_client_stream: &mut TcpStream,
         i3c_server_stream: &mut TcpStream,
         target_addr: u8,
     ) {
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.spdm_server_state {
                 SpdmServerState::Start => {
                     self.spdm_server_state = SpdmServerState::ReceiveRequest;
                 }
                 SpdmServerState::ReceiveRequest => {
-                    let result = self.receive_socket_message(running.clone(), spdm_client_stream);
+                    let result = self.receive_socket_message(spdm_client_stream);
                     if let Some((transport_type, command, buffer)) = result {
                         println!("SPDM_SERVER: Received message from SPDM client transport type {} command {} Buffer {:x?}", transport_type, command, buffer);
                         let result = self.process_socket_message(
-                            running.clone(),
                             spdm_client_stream,
                             i3c_server_stream,
                             target_addr,
@@ -340,7 +331,7 @@ impl TestTrait for TestMctp {
         self.passed
     }
 
-    fn run_test(&mut self, running: Arc<AtomicBool>, stream: &mut TcpStream, target_addr: u8) {
+    fn run_test(&mut self, stream: &mut TcpStream, target_addr: u8) {
         let listener =
             TcpListener::bind("127.0.0.1:2323").expect("Could not bind to the SPDM listerner port");
         println!("SPDM_SERVER: Emulator Listening on port 2323");
@@ -349,7 +340,76 @@ impl TestTrait for TestMctp {
             let mut client_stream = spdm_stream.expect("Failed to accept connection");
 
             println!("SPDM_SERVER: Emulator Accepted connection from SPDM client");
-            self.run_test_internal(running, &mut client_stream, stream, target_addr);
+            self.run_test_internal(&mut client_stream, stream, target_addr);
         }
     }
+}
+
+pub fn execute_spdm_validator() {
+    std::thread::spawn(move || {
+        println!("Starting spdm_device_validator_sample process. Waiting for runtime to start...");
+        wait_for_runtime_start();
+        match start_spdm_device_validator() {
+            Ok(mut child) => {
+                while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            println!(
+                                "spdm_device_validator_sample exited with status: {:?}",
+                                status
+                            );
+                            break;
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            println!("Error: {:?}", e);
+                            break;
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                let _ = child.kill();
+            }
+            Err(e) => {
+                println!(
+                    "Error: {:?} Failed to spawn spdm_device_validator_sample!!",
+                    e
+                );
+            }
+        }
+    });
+}
+
+pub fn start_spdm_device_validator() -> io::Result<Child> {
+    let spdm_validator_dir = std::env::var("SPDM_VALIDATOR_DIR");
+    let dir_path = match spdm_validator_dir {
+        Ok(dir) => {
+            println!("SPDM_VALIDATOR_DIR: {}", dir);
+            Path::new(&dir).to_path_buf()
+        }
+        Err(_e) => {
+            println!(
+                "SPDM_VALIDATOR_DIR is not set. The spdm_device_validator_sample can't be found"
+            );
+            return Err(ErrorKind::NotFound.into());
+        }
+    };
+
+    let utility_path = dir_path.join("spdm_device_validator_sample");
+    if !utility_path.exists() {
+        println!("spdm_device_validator_sample not found in the path");
+        return Err(ErrorKind::NotFound.into());
+    }
+
+    let log_file_path = dir_path.join("spdm_device_validator_output.txt");
+
+    let output_file = File::create(log_file_path)?;
+    let output_file_clone = output_file.try_clone()?;
+
+    println!("Starting spdm_device_validator_sample process");
+
+    Command::new(utility_path)
+        .stdout(Stdio::from(output_file))
+        .stderr(Stdio::from(output_file_clone))
+        .spawn()
 }

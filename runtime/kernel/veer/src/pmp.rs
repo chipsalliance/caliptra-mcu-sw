@@ -380,7 +380,7 @@ impl VeeRProtectionMMLEPMP {
                     write_pmpaddr_pmpcfg(
                         pmp_entry,
                         (pmpcfg_octet::a::NAPOT
-                            + pmpcfg_octet::r::CLEAR // TODO: Bug? should be set, emulator hangs if SET?
+                            + pmpcfg_octet::r::CLEAR
                             + pmpcfg_octet::w::SET
                             + pmpcfg_octet::x::SET
                             + pmpcfg_octet::l::CLEAR) // Not locked - accessible to both user and machine

@@ -2,9 +2,9 @@
 
 use crate::i3c_socket::{MctpTestState, TestTrait};
 use crate::tests::mctp_util::common::MctpUtil;
+use crate::EMULATOR_RUNNING;
 use std::net::TcpStream;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
@@ -89,16 +89,10 @@ impl Test {
         matches!(self.test_name.as_str(), "MctpAppResponderReady")
     }
 
-    fn wait_for_responder(
-        &mut self,
-        running: Arc<AtomicBool>,
-        stream: &mut TcpStream,
-        target_addr: u8,
-    ) {
+    fn wait_for_responder(&mut self, stream: &mut TcpStream, target_addr: u8) {
         let resp_msg = self.mctp_util.wait_for_responder(
             self.msg_tag,
             self.req_msg_buf.as_slice(),
-            running,
             stream,
             target_addr,
         );
@@ -113,14 +107,9 @@ impl Test {
         );
     }
 
-    fn run_loopback_test(
-        &mut self,
-        running: Arc<AtomicBool>,
-        stream: &mut TcpStream,
-        target_addr: u8,
-    ) {
+    fn run_loopback_test(&mut self, stream: &mut TcpStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.test_state {
                 MctpTestState::Start => {
                     self.test_state = MctpTestState::SendReq;
@@ -129,16 +118,13 @@ impl Test {
                     self.mctp_util.send_request(
                         self.msg_tag,
                         self.req_msg_buf.as_slice(),
-                        running.clone(),
                         stream,
                         target_addr,
                     );
                     self.test_state = MctpTestState::ReceiveResp;
                 }
                 MctpTestState::ReceiveResp => {
-                    let resp_msg =
-                        self.mctp_util
-                            .receive_response(running.clone(), stream, target_addr, None);
+                    let resp_msg = self.mctp_util.receive_response(stream, target_addr, None);
                     if !resp_msg.is_empty() {
                         assert!(self.req_msg_buf == resp_msg);
                         self.passed = true;
@@ -164,12 +150,12 @@ impl TestTrait for Test {
         self.passed
     }
 
-    fn run_test(&mut self, running: Arc<AtomicBool>, stream: &mut TcpStream, target_addr: u8) {
+    fn run_test(&mut self, stream: &mut TcpStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
         if self.responder_ready_test() {
-            self.wait_for_responder(running, stream, target_addr);
+            self.wait_for_responder(stream, target_addr);
         } else {
-            self.run_loopback_test(running, stream, target_addr);
+            self.run_loopback_test(stream, target_addr);
         }
     }
 }
