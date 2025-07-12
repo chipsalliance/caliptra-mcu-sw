@@ -61,6 +61,7 @@ pub enum TranscriptContext {
     FinishMutualAuthHmac = 1 << 7,
     FinishRspResponderOnly = 1 << 8,
     FinishRspMutualAuth = 1 << 9,
+    TH2 = 1 << 10,
 }
 
 /// Transcript management for the SPDM responder.
@@ -83,11 +84,23 @@ pub(crate) struct TranscriptManager {
     // B = Concatenate (GET_DIGESTS, DIGESTS, GET_CERTIFICATE, CERTIFICATE)
     // C = Concatenate (CHALLENGE, CHALLENGE_AUTH excluding signature)
     hash_ctx_m1: Option<HashContext>,
-    // Hash Context for `L1``
+    // Hash Context for `L1`
     // L1 = Concatenate(A, M) if SPDM_VERSION >= 1.2 or L1 = Concatenate(M) if SPDM_VERSION < 1.2
     // where
     // M = Concatenate (GET_MEASUREMENTS, MEASUREMENTS\signature)
     hash_ctx_l1: Option<HashContext>,
+
+    // we don't support PSK, so TH1 = KEY_EXCHANGE_RSP HMAC transcript
+
+    // we don't support PSK, so TH2 = only uses key exchange
+    // Hash Context for FINISH_RSP Mutual Authentication HMAC transcript
+    // FRMA = Concatenate(A, B, C, D, E)
+    // where
+    // B = Concatenate(DIGESTS, Hash(cert chain DER) or Hash(pub key))
+    // C = Concatenate(KEY_EXCHANGE, KEY_EXCHANGE_RSP)
+    // D = Concatenate(DIGESTS, Hash(cert chain DER) or Hash(pub key)) if encapsulated DIGESTS is issued and MULTI_KEY_CONN_REQ is true
+    // E = Concatenace(FINISH, FINISH_RSP)
+    hash_ctx_th2: Option<HashContext>,
 
     // KEY_EXCHANGE_RSP contexts:
     // Hash Context for KEY_EXCHANGE_RSP signature transcript
@@ -217,6 +230,7 @@ impl TranscriptManager {
             TranscriptContext::Vca => self.vca_buf.reset(),
             TranscriptContext::M1 => self.hash_ctx_m1 = None,
             TranscriptContext::L1 => self.hash_ctx_l1 = None,
+            TranscriptContext::TH2 => self.hash_ctx_th2 = None,
             TranscriptContext::KeyExchangeRspSignature => self.hash_ctx_kex_rsp_hmac = None,
             TranscriptContext::KeyExchangeRspHmac => self.hash_ctx_kex_rsp_hmac = None,
             TranscriptContext::FinishMutualAuthSignaure => {
@@ -253,6 +267,7 @@ impl TranscriptManager {
             }
             TranscriptContext::M1 => &mut self.hash_ctx_m1,
             TranscriptContext::L1 => &mut self.hash_ctx_l1,
+            TranscriptContext::TH2 => &mut self.hash_ctx_th2,
             TranscriptContext::KeyExchangeRspSignature => &mut self.hash_ctx_kex_rsp_sig,
             TranscriptContext::KeyExchangeRspHmac => &mut self.hash_ctx_kex_rsp_hmac,
             TranscriptContext::FinishMutualAuthSignaure => {
@@ -335,6 +350,7 @@ impl TranscriptManager {
             TranscriptContext::Vca => return Err(TranscriptError::InvalidState),
             TranscriptContext::M1 => self.hash_ctx_m1.as_mut().take(),
             TranscriptContext::L1 => self.hash_ctx_l1.as_mut().take(),
+            TranscriptContext::TH2 => self.hash_ctx_th2.as_mut().take(),
             TranscriptContext::FinishMutualAuthSignaure => {
                 self.hash_ctx_finish_mutual_auth_signature.as_mut().take()
             }
@@ -362,6 +378,20 @@ impl TranscriptManager {
             return Err(TranscriptError::InvalidState);
         }
 
+        match context {
+            TranscriptContext::KeyExchangeRspHmac => {
+                // this is TH1 since we don't support PSK
+                let mut copy_hash = [0u8; SHA384_HASH_SIZE];
+                copy_hash.copy_from_slice(hash);
+                self.th1.replace(copy_hash);
+            }
+            TranscriptContext::TH2 => {
+                let mut copy_hash = [0u8; SHA384_HASH_SIZE];
+                copy_hash.copy_from_slice(hash);
+                self.th2.replace(copy_hash);
+            }
+            _ => {}
+        }
         Ok(())
     }
 }

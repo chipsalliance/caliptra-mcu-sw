@@ -180,6 +180,7 @@ async fn generate_digests_response<'a>(
         rsp,
         &[
             TranscriptContext::M1,
+            TranscriptContext::TH2,
             // TODO: check if issued and multi_key_conn_rsp is true
             TranscriptContext::KeyExchangeRspSignature,
             TranscriptContext::KeyExchangeRspHmac,
@@ -278,7 +279,7 @@ async fn process_get_digests<'a>(
     // Reset the transcript manager
     ctx.reset_transcript_via_req_code(ReqRespCode::GetDigests);
 
-    // Append the request message to the M1 transcript
+    // Append the request message to transcripts
     ctx.append_message_to_transcript(req_payload, TranscriptContext::M1)
         .await
 }
