@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::cert_store::MAX_CERT_SLOTS_SUPPORTED;
+use crate::cert_store::{hash_cert_chain, MAX_CERT_SLOTS_SUPPORTED};
 use crate::codec::{encode_u8_slice, Codec, CommonCodec, MessageBuf};
 use crate::commands::algorithms_rsp::selected_measurement_specification;
 use crate::commands::challenge_auth_rsp::{encode_measurement_summary_hash, encode_opaque_data};
@@ -115,6 +115,7 @@ async fn process_key_exchange<'a>(
     }
 
     // Make sure the asymmetric algorithm is ECC P384
+    // TODO: support MLDSA
     if !matches!(ctx.selected_base_asym_algo(), Ok(AsymAlgo::EccP384)) {
         Err(ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
     }
@@ -143,7 +144,27 @@ async fn process_key_exchange<'a>(
         }
     }
 
+    let asym_algo = ctx.selected_base_asym_algo().unwrap();
+    let mut cert_chain_hash = hash_cert_chain(ctx.device_certs_store, exch_req.slot_id, asym_algo)
+        .await
+        .map_err(|e| (false, CommandError::CertStore(e)))?;
+
     // Update transcripts
+    // TODO: these should be copied to slot-specific transcripts
+    ctx.append_message_to_transcripts(
+        &mut (&mut cert_chain_hash[..]).into(),
+        &[
+            TranscriptContext::KeyExchangeRspHmac,
+            TranscriptContext::KeyExchangeRspSignature,
+            TranscriptContext::FinishMutualAuthSignaure,
+            TranscriptContext::FinishResponderOnlyHmac,
+            TranscriptContext::FinishMutualAuthHmac,
+            TranscriptContext::FinishRspResponderOnly,
+            TranscriptContext::FinishRspMutualAuth,
+        ],
+    )
+    .await?;
+
     ctx.append_message_to_transcripts(
         req_payload,
         &[
