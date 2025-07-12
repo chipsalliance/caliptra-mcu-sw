@@ -202,6 +202,9 @@ fn handle_exception(exception: mcause::Exception) {
         | mcause::Exception::LoadPageFault
         | mcause::Exception::StorePageFault
         | mcause::Exception::Unknown => {
+            let mepc = CSR.mepc.get();
+            romtime::println!("[xs debug]Faulting PC (mepc): 0x{:08x}", mepc);
+            romtime::println!("[xs debug]Previous PC: 0x{:08x}", mepc.wrapping_sub(4));
             panic!("fatal exception: {:?}: {:#x}", exception, CSR.mtval.get());
         }
     }

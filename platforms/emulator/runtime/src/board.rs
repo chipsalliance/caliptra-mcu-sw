@@ -91,7 +91,8 @@ pub static mut PROCESS_PRINTER: Option<
     feature = "test-flash-ctrl-erase-page",
     feature = "test-flash-storage-read-write",
     feature = "test-flash-storage-erase",
-    feature = "test-linear-log-flash"
+    feature = "test-log-flash-linear",
+    feature = "test-log-flash-circular"
 ))]
 static mut BOARD: Option<&'static kernel::Kernel> = None;
 
@@ -100,7 +101,8 @@ static mut BOARD: Option<&'static kernel::Kernel> = None;
     feature = "test-flash-ctrl-erase-page",
     feature = "test-flash-storage-read-write",
     feature = "test-flash-storage-erase",
-    feature = "test-linear-log-flash"
+    feature = "test-log-flash-linear",
+    feature = "test-log-flash-circular"
 ))]
 static mut PLATFORM: Option<&'static VeeR> = None;
 
@@ -109,7 +111,8 @@ static mut PLATFORM: Option<&'static VeeR> = None;
     feature = "test-flash-ctrl-erase-page",
     feature = "test-flash-storage-read-write",
     feature = "test-flash-storage-erase",
-    feature = "test-linear-log-flash"
+    feature = "test-log-flash-linear",
+    feature = "test-log-flash-circular"
 ))]
 static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = None;
 
@@ -671,7 +674,8 @@ pub unsafe fn main() {
         feature = "test-flash-ctrl-erase-page",
         feature = "test-flash-storage-read-write",
         feature = "test-flash-storage-erase",
-        feature = "test-linear-log-flash"
+        feature = "test-log-flash-linear",
+        feature = "test-log-flash-circular"
     ))]
     {
         PLATFORM = Some(veer);
@@ -710,9 +714,9 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-doe-transport-loopback") {
         debug!("Executing test-doe-transport-loopback");
         crate::tests::doe_transport_test::test_doe_transport_loopback()
-    } else if cfg!(feature = "test-linear-log-flash") {
-        debug!("Executing test-linear-log-flash");
-        crate::tests::linear_log_test::run(mux_alarm, &emulator_peripherals.primary_flash_ctrl)
+    } else if cfg!(feature = "test-log-flash-circular") {
+        debug!("Executing test-log-flash-circular");
+        crate::tests::circular_log_test::run(mux_alarm, &emulator_peripherals.primary_flash_ctrl)
     } else {
         None
     };
@@ -721,6 +725,12 @@ pub unsafe fn main() {
     {
         debug!("Executing test-mctp-capsule-loopback");
         crate::tests::mctp_test::test_mctp_capsule_loopback(mux_mctp);
+    }
+
+    #[cfg(feature = "test-log-flash-linear")]
+    {
+        debug!("Executing test-log-flash-linear");
+        crate::tests::linear_log_test::run(mux_alarm, &emulator_peripherals.primary_flash_ctrl)
     }
 
     if let Some(exit) = exit {
@@ -741,7 +751,8 @@ pub unsafe fn main() {
     feature = "test-flash-ctrl-erase-page",
     feature = "test-flash-storage-read-write",
     feature = "test-flash-storage-erase",
-    feature = "test-linear-log-flash"
+    feature = "test-log-flash-linear",
+    feature = "test-log-flash-circular"
 ))]
 pub fn run_kernel_op(loops: usize) {
     unsafe {

@@ -749,7 +749,8 @@ fn run(cli: Emulator, capture_uart_output: bool) -> io::Result<Vec<u8>> {
                 feature = "test-flash-storage-erase",
                 feature = "test-flash-usermode",
                 feature = "test-mcu-rom-flash-access",
-                feature = "test-linear-log-flash",
+                feature = "test-log-flash-linear",
+                feature = "test-log-flash-circular",
             )) {
                 Some(
                     tempfile::NamedTempFile::new()

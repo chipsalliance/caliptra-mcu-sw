@@ -8,6 +8,7 @@
 use core::cell::Cell;
 use core::mem::size_of;
 use core::unreachable;
+use core::fmt;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::hil::flash::{self, Flash};
 use kernel::hil::log::{LogRead, LogReadClient, LogWrite, LogWriteClient};
@@ -27,7 +28,7 @@ pub const ENTRY_HEADER_SIZE: usize = size_of::<usize>();
 const PAD_BYTE: u8 = 0xFF;
 
 /// Log state keeps track of any in-progress asynchronous operations.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum State {
     Idle,
     Read,
@@ -35,6 +36,19 @@ enum State {
     Append,
     Sync,
     Erase,
+}
+
+impl core::fmt::Display for State {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            State::Idle => write!(f, "Idle"),
+            State::Read => write!(f, "Read"),
+            State::Seek => write!(f, "Seek"),
+            State::Append => write!(f, "Append"),
+            State::Sync => write!(f, "Sync"),
+            State::Erase => write!(f, "Erase"),
+        }
+    }
 }
 
 pub struct Log<'a, F: Flash + 'static> {
@@ -640,6 +654,7 @@ impl<'a, F: Flash + 'static> LogWrite<'a> for Log<'a, F> {
         length: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
         let entry_size = length + ENTRY_HEADER_SIZE;
+        romtime::println!("[xs debug][log append] state={:?} buf_length={}", self.state.get(), length);
         // Check for failure cases.
         if self.state.get() != State::Idle {
             // Log busy, try appending again later.
@@ -658,6 +673,8 @@ impl<'a, F: Flash + 'static> LogWrite<'a> for Log<'a, F> {
         match self.pagebuffer.take() {
             Some(pagebuffer) => {
                 self.state.set(State::Append);
+
+                romtime::println!("[xs debug][log append] set state=Append buffer={:p}", buffer);
                 self.length.set(length);
 
                 // Check if previous page needs to be flushed and new entry will fit within space

@@ -60,7 +60,7 @@ pub unsafe fn run(
     // Create and run test for log storage.
     let test = static_init!(
         LogTest<VirtualMuxAlarm<'static, InternalTimers>>,
-        LogTest::new(log, &mut *addr_of_mut!(BUFFER), alarm, &TEST_OPS,)
+        LogTest::new(log, &mut *addr_of_mut!(BUFFER), alarm, &TEST_OPS)
     );
     log.set_read_client(test);
     log.set_append_client(test);
@@ -161,7 +161,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
 
         // Integration tests are executed before kernel loop.
         // Explicitly advance the kernel to handle deferred calls and interrupt processing.
-        #[cfg(feature = "test-linear-log-flash")]
+        #[cfg(feature = "test-log-flash-linear")]
         crate::board::run_kernel_op(1000);
     }
 
