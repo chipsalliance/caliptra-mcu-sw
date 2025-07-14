@@ -6,7 +6,7 @@ use crate::measurements::common::{
 };
 use crate::protocol::{algorithms::AsymAlgo, SHA384_HASH_SIZE};
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
-use libapi_caliptra::evidence::{Evidence, PCR_QUOTE_BUFFER_SIZE, PCR_QUOTE_RSP_START};
+use libapi_caliptra::evidence::{Evidence, PCR_QUOTE_BUFFER_SIZE};
 use libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use zerocopy::IntoBytes;
 
@@ -150,9 +150,7 @@ impl FreeformManifest {
             return Err(MeasurementsError::MeasurementSizeMismatch);
         }
 
-        // remove the mailbox header from the quote
-        quote_slice.copy_within(METADATA_SIZE + PCR_QUOTE_RSP_START.., METADATA_SIZE);
-        self.data_size = METADATA_SIZE + measurement_value_size - PCR_QUOTE_RSP_START;
+        self.data_size = METADATA_SIZE + measurement_value_size;
 
         Ok(())
     }

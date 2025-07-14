@@ -2,12 +2,13 @@
 
 use crate::i3c_socket::{MctpTestState, TestTrait};
 use crate::tests::mctp_util::common::MctpUtil;
-use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
+use crate::EMULATOR_RUNNING;
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::vec;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes};
@@ -17,6 +18,8 @@ pub const SOCKET_SPDM_COMMAND_NORMAL: u32 = 0x0001;
 pub const SOCKET_SPDM_COMMAND_STOP: u32 = 0xFFFE;
 pub const SOCKET_SPDM_COMMAND_TEST: u32 = 0xDEAD;
 pub const SOCKET_HEADER_LEN: usize = 12;
+
+static SERVER_LISTENING: AtomicBool = AtomicBool::new(false);
 
 pub fn generate_tests() -> Vec<Box<dyn TestTrait + Send>> {
     vec![Box::new(Test::new("SpdmValidatorTests")) as Box<dyn TestTrait + Send>]
@@ -66,7 +69,7 @@ impl Test {
             mctp_util: MctpUtil::new(),
             responder_ready: false,
             passed: false,
-            cmd_retry_count: 5,
+            cmd_retry_count: 1,
         }
     }
 
@@ -167,7 +170,7 @@ impl Test {
                     let resp_msg = self.mctp_util.receive_response(
                         i3c_stream,
                         target_addr,
-                        Some(20), // timeout in seconds
+                        Some(60), // timeout in seconds
                     );
                     if !resp_msg.is_empty() {
                         println!("SPDM_SERVER: response received, marking finished");
@@ -332,6 +335,7 @@ impl TestTrait for Test {
         let listener =
             TcpListener::bind("127.0.0.1:2323").expect("Could not bind to the SPDM listerner port");
         println!("SPDM_SERVER: Emulator Listening on port 2323");
+        SERVER_LISTENING.store(true, Ordering::Relaxed);
 
         if let Some(spdm_stream) = listener.incoming().next() {
             let mut client_stream = spdm_stream.expect("Failed to accept connection");
@@ -344,8 +348,13 @@ impl TestTrait for Test {
 
 pub fn execute_spdm_validator() {
     std::thread::spawn(move || {
-        println!("Starting spdm_device_validator_sample process. Waiting for runtime to start...");
-        wait_for_runtime_start();
+        println!(
+            "Starting spdm_device_validator_sample process. Waiting for SPDM listener to start..."
+        );
+        while !SERVER_LISTENING.load(Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+
         match start_spdm_device_validator() {
             Ok(mut child) => {
                 while EMULATOR_RUNNING.load(Ordering::Relaxed) {
@@ -406,6 +415,8 @@ pub fn start_spdm_device_validator() -> io::Result<Child> {
     println!("Starting spdm_device_validator_sample process");
 
     Command::new(utility_path)
+        .arg("--pcap")
+        .arg("caliptra_spdm_validator.pcap")
         .stdout(Stdio::from(output_file))
         .stderr(Stdio::from(output_file_clone))
         .spawn()
