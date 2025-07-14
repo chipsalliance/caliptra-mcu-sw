@@ -132,7 +132,7 @@ impl MctpUtil {
         let mut i3c_state = I3cControllerState::Start;
         let msg_type = msg[0];
 
-        let mut retry = 45;
+        let mut retry = 50;
 
         while EMULATOR_RUNNING.load(Ordering::Relaxed) && retry > 0 {
             match i3c_state {
@@ -238,7 +238,7 @@ impl MctpUtil {
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
-        let retry_count = timeout.unwrap_or(0) * 5;
+        let retry_count = timeout.unwrap_or(0) * 2;
         self.new_resp();
         let mut message_identifier = MessageIdentifier::default();
 
@@ -264,7 +264,7 @@ impl MctpUtil {
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
-        let retry_count = timeout.unwrap_or(0) * 5;
+        let retry_count = timeout.unwrap_or(0) * 2;
         // Msg tag will be assigned by the sender (device in this case)
         self.new_req(8);
         let mut message_identifier = MessageIdentifier::default();
@@ -290,7 +290,7 @@ impl MctpUtil {
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
-        let retry_count = timeout.unwrap_or(0) * 5;
+        let retry_count = timeout.unwrap_or(0) * 2;
         let mut message_identifier = MessageIdentifier::default();
         let pkts = self.receive_packets(stream, target_addr, &mut message_identifier, retry_count);
         self.assemble(pkts, &message_identifier)
@@ -314,7 +314,7 @@ impl MctpUtil {
                     if receive_ibi(stream, target_addr) {
                         i3c_state = I3cControllerState::ReceivePrivateRead;
                     } else if retry > 0 {
-                        std::thread::sleep(std::time::Duration::from_millis(200));
+                        std::thread::sleep(std::time::Duration::from_millis(500));
                         retry -= 1;
                         if retry == 0 {
                             println!("MCTP_UTIL: IBI not received. Exiting...");
