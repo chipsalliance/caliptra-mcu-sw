@@ -348,10 +348,11 @@ impl TestTrait for Test {
 
 pub fn execute_spdm_validator() {
     std::thread::spawn(move || {
-        println!("Starting spdm_device_validator_sample process. Waiting for runtime to start...");
-        while SERVER_LISTENING.load(Ordering::Relaxed) {
+        println!("Starting spdm_device_validator_sample process. Waiting for runtime to start and server to bind to port...");
+        while !SERVER_LISTENING.load(Ordering::Relaxed) {
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
+
         match start_spdm_device_validator() {
             Ok(mut child) => {
                 while EMULATOR_RUNNING.load(Ordering::Relaxed) {
