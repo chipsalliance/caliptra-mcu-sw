@@ -14,6 +14,10 @@ use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 use libapi_caliptra::crypto::rng::Rng;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
+use core::fmt::Write;
+use libsyscall_caliptra::DefaultSyscalls;
+use libtock_console::Console;
+
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
 struct ChallengeReqBase {
@@ -263,6 +267,14 @@ async fn generate_challenge_auth_response<'a>(
         .selected_base_asym_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
 
+    let mut cw = Console::<DefaultSyscalls>::writer();
+    writeln!(
+        cw,
+        "[SPDM_LIB]: Preparing CHALLENGE_AUTH response meas_summary_hash_type: {}",
+        meas_summary_hash_type
+    )
+    .unwrap();
+
     // Prepare the response buffer
     // Spdm Header first
     let connection_version = ctx.state.connection_info.version_number();
@@ -271,23 +283,46 @@ async fn generate_challenge_auth_response<'a>(
         .encode(rsp)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
+    writeln!(cw, "[SPDM_LIB]: CHALLENGE_AUTH response header encoded").unwrap();
+
     // Encode the CHALLENGE_AUTH response fixed fields
     payload_len += encode_challenge_auth_rsp_base(ctx, slot_id, asym_algo, rsp).await?;
+
+    writeln!(
+        cw,
+        "[SPDM_LIB]: CHALLENGE_AUTH response fixed fields encoded"
+    )
+    .unwrap();
 
     // Get the measurement summary hash
     if meas_summary_hash_type != 0 {
         payload_len +=
             encode_measurement_summary_hash(ctx, asym_algo, meas_summary_hash_type, rsp).await?;
+        writeln!(
+            cw,
+            "[SPDM_LIB]: CHALLENGE_AUTH response measurement summary hash encoded"
+        )
+        .unwrap();
     }
 
     // Encode the Opaque data length = 0
     payload_len += encode_opaque_data(rsp)?;
+    writeln!(
+        cw,
+        "[SPDM_LIB]: CHALLENGE_AUTH response opaque data encoded"
+    )
+    .unwrap();
 
     // if requester context is present, encode it
     if let Some(context) = requester_context {
         payload_len += context
             .encode(rsp)
             .map_err(|e| (false, CommandError::Codec(e)))?;
+        writeln!(
+            cw,
+            "[SPDM_LIB]: CHALLENGE_AUTH response requester context encoded"
+        )
+        .unwrap();
     }
 
     // Append CHALLENGE_AUTH to the M1 transcript
@@ -296,6 +331,7 @@ async fn generate_challenge_auth_response<'a>(
 
     // Generate the signature and encode it in the response
     payload_len += encode_m1_signature(ctx, slot_id, asym_algo, rsp).await?;
+    writeln!(cw, "[SPDM_LIB]: CHALLENGE_AUTH response signature encoded").unwrap();
 
     rsp.push_data(payload_len)
         .map_err(|e| (false, CommandError::Codec(e)))

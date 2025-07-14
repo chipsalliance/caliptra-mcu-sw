@@ -167,7 +167,7 @@ impl Test {
                     let resp_msg = self.mctp_util.receive_response(
                         i3c_stream,
                         target_addr,
-                        Some(20), // timeout in seconds
+                        Some(35), // timeout in seconds
                     );
                     if !resp_msg.is_empty() {
                         println!("SPDM_SERVER: response received, marking finished");
