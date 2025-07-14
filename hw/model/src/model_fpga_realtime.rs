@@ -1121,6 +1121,10 @@ mod test {
 
     #[test]
     fn test_new_unbooted() {
+        if !std::path::Path::new("/dev/uio0").exists() {
+            println!("Skipping test_new_unbooted as /dev/uio0 does not exist; did you run cargo xtask fpga-install-kernel-modules ?");
+            return;
+        }
         let mcu_rom = mcu_builder::rom_build(Some("fpga"), "").expect("Could not build MCU ROM");
         let mcu_runtime = &mcu_builder::runtime_build_with_apps_cached(
             &[],

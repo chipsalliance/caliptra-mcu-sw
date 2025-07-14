@@ -9,6 +9,11 @@ use tock_registers::interfaces::{Readable, Writeable};
 
 // TODO: use the Lifecycle controller to read the Lifecycle state
 
+const OTP_STATUS_ERROR_MASK: u32 = (1 << 22) - 1;
+const OTP_CONSISTENCY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
+const OTP_INTEGRITY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
+const OTP_CHECK_TIMEOUT: u32 = 0x10_0000;
+
 pub struct Otp {
     registers: StaticRef<otp_ctrl::regs::OtpCtrl>,
 }
@@ -20,7 +25,7 @@ impl Otp {
 
     pub fn init(&self) -> Result<(), McuError> {
         romtime::println!("Initializing OTP controller...");
-        if self.registers.otp_status.get() & ((1 << 22) - 1) != 0 {
+        if self.registers.otp_status.get() & OTP_STATUS_ERROR_MASK != 0 {
             romtime::println!("OTP error: {}", self.registers.otp_status.get());
             return Err(McuError::FusesError);
         }
@@ -36,12 +41,16 @@ impl Otp {
         }
 
         // Enable periodic background checks
-        // romtime::println!("Enabling consistency check period");
-        // self.registers.consistency_check_period.set(0x3ff_ffff);
+        romtime::println!("Enabling consistency check period");
+        self.registers
+            .consistency_check_period
+            .set(OTP_CONSISTENCY_CHECK_PERIOD_MASK);
         romtime::println!("Enabling integrity check period");
-        self.registers.integrity_check_period.set(0x3ff_ffff);
+        self.registers
+            .integrity_check_period
+            .set(OTP_INTEGRITY_CHECK_PERIOD_MASK);
         romtime::println!("Enabling check timeout");
-        self.registers.check_timeout.set(0x10_0000);
+        self.registers.check_timeout.set(OTP_CHECK_TIMEOUT);
         // Disable modifications to the background checks
         romtime::println!("Disabling check modifications");
         self.registers
@@ -161,7 +170,7 @@ impl Otp {
     }
 
     pub fn check_error(&self) -> Option<u32> {
-        let status = self.registers.otp_status.get() & 0x3ffff;
+        let status = self.registers.otp_status.get() & OTP_STATUS_ERROR_MASK;
         if status == 0 {
             None
         } else {

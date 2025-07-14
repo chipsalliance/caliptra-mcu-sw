@@ -8,6 +8,8 @@ use romtime::{Exit, HexWord};
 pub(crate) struct FpgaWriter {}
 pub(crate) static mut FPGA_WRITER: FpgaWriter = FpgaWriter {};
 
+const FPGA_UART_OUTPUT: *mut u32 = 0xa401_1014 as *mut u32;
+
 impl Write for FpgaWriter {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         print_to_console(s);
@@ -19,7 +21,7 @@ pub(crate) fn print_to_console(buf: &str) {
     for b in buf.bytes() {
         // Print to this address for FPGA output
         unsafe {
-            core::ptr::write_volatile(0xa401_1014 as *mut u32, b as u32 | 0x100);
+            core::ptr::write_volatile(FPGA_UART_OUTPUT, b as u32 | 0x100);
         }
     }
 }
@@ -39,7 +41,7 @@ pub fn exit_fpga(exit_code: u32) -> ! {
     unsafe {
         // By writing to this address we can exit the FPGA.
         let b = if exit_code == 0 { 0x01 } else { 0xff };
-        core::ptr::write_volatile(0xa401_1014 as *mut u32, b as u32 | 0x100);
+        core::ptr::write_volatile(FPGA_UART_OUTPUT, b as u32 | 0x100);
     }
     loop {}
 }

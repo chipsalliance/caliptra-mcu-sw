@@ -272,7 +272,7 @@ impl McuHwModel for ModelEmulated {
 
 #[cfg(test)]
 mod test {
-    use crate::{DefaultHwModel, InitParams, McuHwModel};
+    use crate::{InitParams, McuHwModel, ModelEmulated};
 
     #[test]
     fn test_new_unbooted() {
@@ -303,7 +303,7 @@ mod test {
         let caliptra_rom = std::fs::read(caliptra_rom).unwrap();
         let caliptra_fw = std::fs::read(caliptra_fw).unwrap();
 
-        let mut model = DefaultHwModel::new_unbooted(InitParams {
+        let mut model = ModelEmulated::new_unbooted(InitParams {
             caliptra_rom: &caliptra_rom,
             caliptra_firmware: &caliptra_fw,
             ..Default::default()
