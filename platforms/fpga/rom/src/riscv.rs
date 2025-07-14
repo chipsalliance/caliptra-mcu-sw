@@ -12,7 +12,7 @@ Abstract:
 
 --*/
 
-use crate::io::{print_to_console, FATAL_ERROR_HANDLER, FPGA_WRITER};
+use crate::io::{print_to_console, EXITER, FATAL_ERROR_HANDLER, FPGA_WRITER};
 use core::fmt::Write;
 
 #[cfg(target_arch = "riscv32")]
@@ -38,6 +38,10 @@ pub extern "C" fn rom_entry() -> ! {
     unsafe {
         #[allow(static_mut_refs)]
         mcu_rom_common::set_fatal_error_handler(&mut FATAL_ERROR_HANDLER);
+    }
+    unsafe {
+        #[allow(static_mut_refs)]
+        romtime::set_exiter(&mut EXITER);
     }
 
     romtime::println!("[mcu-rom] Starting FPGA MCU ROM");

@@ -1,6 +1,9 @@
 // Licensed under the Apache-2.0 license
 
+#![allow(clippy::mut_from_ref)]
+
 use crate::fpga_regs::{Control, FifoData, FifoRegs, FifoStatus, ItrngFifoStatus, WrapperRegs};
+use crate::output::ExitStatus;
 use crate::{xi3c, InitParams, McuHwModel, Output, SecurityState};
 use anyhow::{anyhow, Error, Result};
 use caliptra_emu_bus::{Device, Event, EventData, RecoveryCommandCode};
@@ -9,6 +12,7 @@ use emulator_bmc::Bmc;
 use registers_generated::i3c;
 use registers_generated::i3c::bits::DeviceStatus0;
 use registers_generated::mci::bits::Go::Go;
+use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
@@ -21,7 +25,7 @@ const FPGA_WRAPPER_MAPPING: (usize, usize) = (0, 0);
 const CALIPTRA_MAPPING: (usize, usize) = (0, 1);
 const CALIPTRA_ROM_MAPPING: (usize, usize) = (0, 2);
 const I3C_CONTROLLER_MAPPING: (usize, usize) = (0, 3);
-const MCU_SRAM_MAPPING: (usize, usize) = (0, 4);
+const OTP_RAM_MAPPING: (usize, usize) = (0, 4);
 const LC_MAPPING: (usize, usize) = (1, 0);
 const MCU_ROM_MAPPING: (usize, usize) = (1, 1);
 const I3C_TARGET_MAPPING: (usize, usize) = (1, 2);
@@ -91,7 +95,7 @@ pub struct ModelFpgaRealtime {
     caliptra_mmio: CaliptraMmio,
     caliptra_rom_backdoor: *mut u8,
     mcu_rom_backdoor: *mut u8,
-    mcu_sram_backdoor: *mut u8,
+    otp_mem_backdoor: *mut u8,
     mci: Mci,
     i3c_mmio: *mut u32,
     i3c_controller_mmio: *mut u32,
@@ -223,6 +227,15 @@ impl ModelFpgaRealtime {
                     .push_uart_char(data.read(FifoData::NextChar) as u8);
             }
         }
+        if self.output().exit_requested() {
+            println!("Exiting firmware request");
+            let code = match self.output().exit_status() {
+                Some(ExitStatus::Passed) => 0,
+                Some(ExitStatus::Failed) => 1,
+                None => 0,
+            };
+            exit(code);
+        }
     }
 
     // UIO crate doesn't provide a way to unmap memory.
@@ -329,61 +342,56 @@ impl ModelFpgaRealtime {
         self.bmc_step_counter += 1;
 
         // check if we need to fill the recovey FIFO
-        if self.bmc_step_counter % 128 == 0 {
-            if !self.recovery_fifo_blocks.is_empty() {
-                if !self.recovery_ctrl_written {
-                    let status = self
-                        .i3c_core()
-                        .sec_fw_recovery_if_device_status_0
-                        .read(DeviceStatus0::DevStatus);
+        if self.bmc_step_counter % 128 == 0 && !self.recovery_fifo_blocks.is_empty() {
+            if !self.recovery_ctrl_written {
+                let status = self
+                    .i3c_core()
+                    .sec_fw_recovery_if_device_status_0
+                    .read(DeviceStatus0::DevStatus);
 
-                    if status != 3 && self.bmc_step_counter % 65536 == 0 {
-                        println!("Waiting for device status to be 3, currently: {}", status);
-                        return;
-                    }
-
-                    let len = ((self.recovery_ctrl_len / 4) as u32).to_le_bytes();
-                    let mut ctrl = vec![0, 1];
-                    ctrl.extend_from_slice(&len);
-
-                    println!("Writing Indirect fifo ctrl: {:x?}", ctrl);
-                    self.recovery_block_write_request(RecoveryCommandCode::IndirectFifoCtrl, &ctrl);
-
-                    let reported_len = self
-                        .i3c_core()
-                        .sec_fw_recovery_if_indirect_fifo_ctrl_1
-                        .get();
-
-                    println!("I3C core reported length: {}", reported_len);
-                    if reported_len as usize != self.recovery_ctrl_len / 4 {
-                        println!(
-                            "I3C core reported length should have been {}",
-                            self.recovery_ctrl_len / 4
-                        );
-
-                        self.print_i3c_registers();
-
-                        panic!(
-                            "I3C core reported length should have been {}",
-                            self.recovery_ctrl_len / 4
-                        );
-                    }
-                    self.recovery_ctrl_written = true;
+                if status != 3 && self.bmc_step_counter % 65536 == 0 {
+                    println!("Waiting for device status to be 3, currently: {}", status);
+                    return;
                 }
-                let fifo_status = self
-                    .recovery_block_read_request(RecoveryCommandCode::IndirectFifoStatus)
-                    .expect("Device should response to indirect fifo status read request");
-                let empty = fifo_status[0] & 1 == 1;
-                // while empty send
-                if empty {
-                    // fifo is empty, send a block
-                    let chunk = self.recovery_fifo_blocks.pop().unwrap();
-                    self.blocks_sent += 1;
-                    self.recovery_block_write_request(
-                        RecoveryCommandCode::IndirectFifoData,
-                        &chunk,
+
+                let len = ((self.recovery_ctrl_len / 4) as u32).to_le_bytes();
+                let mut ctrl = vec![0, 1];
+                ctrl.extend_from_slice(&len);
+
+                println!("Writing Indirect fifo ctrl: {:x?}", ctrl);
+                self.recovery_block_write_request(RecoveryCommandCode::IndirectFifoCtrl, &ctrl);
+
+                let reported_len = self
+                    .i3c_core()
+                    .sec_fw_recovery_if_indirect_fifo_ctrl_1
+                    .get();
+
+                println!("I3C core reported length: {}", reported_len);
+                if reported_len as usize != self.recovery_ctrl_len / 4 {
+                    println!(
+                        "I3C core reported length should have been {}",
+                        self.recovery_ctrl_len / 4
+                    );
+
+                    self.print_i3c_registers();
+
+                    panic!(
+                        "I3C core reported length should have been {}",
+                        self.recovery_ctrl_len / 4
                     );
                 }
+                self.recovery_ctrl_written = true;
+            }
+            let fifo_status = self
+                .recovery_block_read_request(RecoveryCommandCode::IndirectFifoStatus)
+                .expect("Device should response to indirect fifo status read request");
+            let empty = fifo_status[0] & 1 == 1;
+            // while empty send
+            if empty {
+                // fifo is empty, send a block
+                let chunk = self.recovery_fifo_blocks.pop().unwrap();
+                self.blocks_sent += 1;
+                self.recovery_block_write_request(RecoveryCommandCode::IndirectFifoData, &chunk);
             }
         }
 
@@ -739,7 +747,7 @@ impl ModelFpgaRealtime {
                 &cmd,
                 len_range.0 + 2,
             )
-            .expect(&format!("Expected to read {}+ bytes", len_range.0 + 2));
+            .unwrap_or_else(|_| panic!("Expected to read {}+ bytes", len_range.0 + 2));
 
         if resp.len() < 2 {
             panic!("Expected to read at least 2 bytes from target for recovery block length");
@@ -788,7 +796,7 @@ impl ModelFpgaRealtime {
 
         let mut data = vec![recovery_command_code];
         data.extend_from_slice(&(payload.len() as u16).to_le_bytes());
-        data.extend_from_slice(&payload);
+        data.extend_from_slice(payload);
 
         assert!(
             self.i3c_controller
@@ -823,8 +831,8 @@ impl McuHwModel for ModelFpgaRealtime {
         let caliptra_rom_backdoor = devs[CALIPTRA_ROM_MAPPING.0]
             .map_mapping(CALIPTRA_ROM_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u8;
-        let mcu_sram_backdoor = devs[MCU_SRAM_MAPPING.0]
-            .map_mapping(MCU_SRAM_MAPPING.1)
+        let otp_mem_backdoor = devs[OTP_RAM_MAPPING.0]
+            .map_mapping(OTP_RAM_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u8;
         let mcu_rom_backdoor = devs[MCU_ROM_MAPPING.0]
             .map_mapping(MCU_ROM_MAPPING.1)
@@ -892,7 +900,7 @@ impl McuHwModel for ModelFpgaRealtime {
             caliptra_mmio: CaliptraMmio { ptr: caliptra_mmio },
             caliptra_rom_backdoor,
             mcu_rom_backdoor,
-            mcu_sram_backdoor,
+            otp_mem_backdoor,
             mci: Mci { ptr: mci_ptr },
             i3c_mmio,
             i3c_controller_mmio,
@@ -938,13 +946,13 @@ impl McuHwModel for ModelFpgaRealtime {
         }
 
         // Set the UDS Seed
-        for i in 0..16 {
-            m.wrapper.regs().cptra_obf_uds_seed[i].set(DEFAULT_UDS_SEED[i]);
+        for (i, &uds) in DEFAULT_UDS_SEED.iter().enumerate() {
+            m.wrapper.regs().cptra_obf_uds_seed[i].set(uds);
         }
 
-        // Set the FE Seed
-        for i in 0..8 {
-            m.wrapper.regs().cptra_obf_field_entropy[i].set(DEFAULT_FIELD_ENTROPY[i]);
+        // Set the FE
+        for (i, &fe) in DEFAULT_FIELD_ENTROPY.iter().enumerate() {
+            m.wrapper.regs().cptra_obf_field_entropy[i].set(fe);
         }
 
         // Currently not using strap UDS and FE
@@ -953,6 +961,10 @@ impl McuHwModel for ModelFpgaRealtime {
         println!("Putting subsystem into reset");
         m.set_subsystem_reset(true);
 
+        println!("Clearing OTP memory");
+        let otp_mem =
+            unsafe { core::slice::from_raw_parts_mut(m.otp_mem_backdoor as *mut u32, 16384 / 4) };
+        otp_mem.fill(0);
         println!("Clearing fifo");
         // Sometimes there's garbage in here; clean it out
         m.clear_logs();
@@ -1066,8 +1078,8 @@ impl McuHwModel for ModelFpgaRealtime {
     }
 
     fn set_generic_input_wires(&mut self, value: &[u32; 2]) {
-        for i in 0..2 {
-            self.wrapper.regs().generic_input_wires[i].set(value[i]);
+        for (i, &val) in value.iter().enumerate() {
+            self.wrapper.regs().generic_input_wires[i].set(val);
         }
     }
 
@@ -1096,7 +1108,7 @@ impl Drop for ModelFpgaRealtime {
         self.unmap_mapping(self.caliptra_mmio.ptr, CALIPTRA_MAPPING);
         self.unmap_mapping(self.caliptra_rom_backdoor as *mut u32, CALIPTRA_ROM_MAPPING);
         self.unmap_mapping(self.mcu_rom_backdoor as *mut u32, MCU_ROM_MAPPING);
-        self.unmap_mapping(self.mcu_sram_backdoor as *mut u32, MCU_SRAM_MAPPING);
+        self.unmap_mapping(self.otp_mem_backdoor as *mut u32, OTP_RAM_MAPPING);
         self.unmap_mapping(self.mci.ptr, MCI_MAPPING);
         self.unmap_mapping(self.i3c_mmio, I3C_TARGET_MAPPING);
         self.unmap_mapping(self.i3c_controller_mmio, I3C_CONTROLLER_MAPPING);

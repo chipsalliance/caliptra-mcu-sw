@@ -156,6 +156,7 @@ mcu-builder = { path = "builder" }
 mcu-config = { path = "common/config" }
 mcu-config-emulator = { path = "platforms/emulator/config" }
 mcu-config-fpga = { path = "platforms/fpga/config" }
+mcu-hw-model = { path = "hw/model" }
 mcu-platforms-common = { path = "platforms/common" }
 mcu-rom-common = { path = "rom" }
 mcu-components = { path = "runtime/kernel/components" }

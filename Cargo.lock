@@ -4522,6 +4522,7 @@ dependencies = [
  "mcu-builder",
  "mcu-config-emulator",
  "mcu-config-fpga",
+ "mcu-hw-model",
  "pldm-fw-pkg",
  "proc-macro2",
  "quote",

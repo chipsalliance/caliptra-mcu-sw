@@ -2,7 +2,9 @@
 
 use anyhow::{anyhow, bail, Result};
 use mcu_builder::PROJECT_ROOT;
-use std::path::Path;
+use mcu_hw_model::McuHwModel;
+use mcu_hw_model::{DefaultHwModel, InitParams};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub fn fpga_install_kernel_modules() -> Result<()> {
@@ -124,4 +126,27 @@ fn is_module_loaded(module: &str) -> Result<bool> {
     Ok(stdout
         .lines()
         .any(|line| line.split_whitespace().next() == Some(module)))
+}
+
+pub(crate) fn fpga_run(mcu_rom: &PathBuf) -> Result<()> {
+    if !mcu_rom.exists() {
+        bail!("MCU ROM file does not exist: {}", mcu_rom.display());
+    }
+    let mcu_rom = std::fs::read(mcu_rom)?;
+    let blank = [0u8; 256]; // Placeholder for empty firmware
+    let mut model = DefaultHwModel::new_unbooted(InitParams {
+        caliptra_rom: &blank,
+        caliptra_firmware: &blank,
+        mcu_rom: &mcu_rom,
+        mcu_firmware: &blank,
+        soc_manifest: &blank,
+        active_mode: true,
+        ..Default::default()
+    })
+    .unwrap();
+    for _ in 0..1_000_000 {
+        model.step();
+    }
+    println!("Ending FPGA run");
+    Ok(())
 }

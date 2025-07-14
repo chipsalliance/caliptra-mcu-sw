@@ -160,6 +160,11 @@ enum Commands {
     Deps,
     /// Build and install the FPGA kernel modules for uio and the ROM backdoors
     FpgaInstallKernelModules,
+    /// Run firmware on the FPGA
+    FpgaRun {
+        #[arg(long)]
+        mcu_rom: PathBuf,
+    },
     /// Utility to create and parse PLDM firmware packages
     PldmFirmware {
         #[command(subcommand)]
@@ -295,6 +300,7 @@ fn main() {
             addrmap,
         } => registers::autogen(*check, files, addrmap),
         Commands::Deps => deps::check(),
+        Commands::FpgaRun { mcu_rom } => fpga::fpga_run(mcu_rom),
         Commands::FpgaInstallKernelModules => fpga::fpga_install_kernel_modules(),
         Commands::PldmFirmware { subcommand } => match subcommand {
             PldmFirmwareCommands::Create { manifest, file } => pldm_fw_pkg::create(manifest, file),
