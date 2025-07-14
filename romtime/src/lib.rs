@@ -86,12 +86,14 @@ pub fn set_exiter(exiter: &'static mut dyn Exit) {
     }
 }
 
-pub fn test_exit(code: u32) {
+pub fn test_exit(code: u32) -> ! {
     unsafe {
         if let Some(exiter) = EXITER.as_mut() {
             exiter.exit(code);
         }
     }
+    #[allow(clippy::empty_loop)]
+    loop {}
 }
 
 #[cfg(not(target_arch = "riscv32"))]

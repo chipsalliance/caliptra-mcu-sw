@@ -133,10 +133,10 @@ impl PldmSocket for MctpPldmSocket {
             .try_clone()
             .map_err(|_| PldmTransportError::Disconnected)?;
         let raw_pkt: Vec<u8> = mctp_util.receive(&mut stream, self.target_addr, None);
-        let len = raw_pkt.len() - 1;
         if raw_pkt.is_empty() {
             return Err(PldmTransportError::Underflow);
         }
+        let len = raw_pkt.len() - 1;
         let mut data = [0u8; MAX_PLDM_PAYLOAD_SIZE];
         // Skip the first byte containing the MCTP common header
         // and only return the PLDM payload
