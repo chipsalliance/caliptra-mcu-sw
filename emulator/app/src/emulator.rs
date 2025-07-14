@@ -430,6 +430,7 @@ impl Emulator {
         let root_bus = McuRootBus::new(bus_args).unwrap();
         let dma_ram = root_bus.ram.clone();
         let dma_rom_sram = root_bus.rom_sram.clone();
+        let direct_read_flash = root_bus.direct_read_flash.clone();
 
         let i3c_error_irq = pic.register_irq(McuRootBus::I3C_ERROR_IRQ);
         let i3c_notif_irq = pic.register_irq(McuRootBus::I3C_NOTIF_IRQ);
@@ -561,7 +562,11 @@ impl Emulator {
         }
 
         let create_flash_controller =
-            |default_path: &str, error_irq: u8, event_irq: u8, initial_content: Option<&[u8]>| {
+            |default_path: &str,
+             error_irq: u8,
+             event_irq: u8,
+             initial_content: Option<&[u8]>,
+             direct_read_region: Option<Rc<RefCell<caliptra_emu_bus::Ram>>>| {
                 // Use a temporary file for flash storage if we're running a test
                 let flash_file = if cfg!(any(
                     feature = "test-flash-ctrl-init",
@@ -571,6 +576,8 @@ impl Emulator {
                     feature = "test-flash-storage-erase",
                     feature = "test-flash-usermode",
                     feature = "test-mcu-rom-flash-access",
+                    feature = "test-log-flash-linear",
+                    feature = "test-log-flash-circular",
                 )) {
                     Some(
                         tempfile::NamedTempFile::new()
@@ -584,6 +591,7 @@ impl Emulator {
 
                 DummyFlashCtrl::new(
                     &clock.clone(),
+                    direct_read_region,
                     flash_file,
                     pic.register_irq(error_irq),
                     pic.register_irq(event_irq),
@@ -615,6 +623,7 @@ impl Emulator {
             McuRootBus::PRIMARY_FLASH_CTRL_ERROR_IRQ,
             McuRootBus::PRIMARY_FLASH_CTRL_EVENT_IRQ,
             primary_flash_initial_content.as_deref(),
+            Some(direct_read_flash.clone()),
         );
 
         let secondary_flash_initial_content = if cli.secondary_flash_image.is_some() {
@@ -639,6 +648,7 @@ impl Emulator {
             McuRootBus::SECONDARY_FLASH_CTRL_ERROR_IRQ,
             McuRootBus::SECONDARY_FLASH_CTRL_EVENT_IRQ,
             secondary_flash_initial_content.as_deref(),
+            None,
         );
 
         let mut dma_ctrl = emulator_periph::DummyDmaCtrl::new(

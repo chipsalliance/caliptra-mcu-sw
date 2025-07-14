@@ -449,6 +449,23 @@ pub fn runtime_ld_script(
         "DATA_RAM_SIZE".to_string(),
         format!("0x{:x}", data_ram_size),
     );
+
+    // Use hardcoded values for the flash memory offsets and sizes temporarily.
+    // Reserve 128KB at the end of primary flash for logging.
+    // TODO: Pass flash offset and size as parameters instead of hardcoding.
+    let flash_offset = emulator_consts::DIRECT_READ_FLASH_ORG;
+    let flash_size = emulator_consts::DIRECT_READ_FLASH_SIZE;
+    let logging_flash_size = 128 * 1024;
+    let logging_flash_offset = flash_offset + flash_size - logging_flash_size;
+    map.insert(
+        "FLASH_OFFSET".to_string(),
+        format!("0x{:x}", logging_flash_offset),
+    );
+    map.insert(
+        "FLASH_SIZE".to_string(),
+        format!("0x{:x}", logging_flash_size),
+    );
+
     Ok(subst::substitute(RUNTIME_LD_TEMPLATE, &map)?)
 }
 
@@ -466,7 +483,10 @@ MEMORY
     prog (rx) : ORIGIN = $APPS_OFFSET, LENGTH = $APPS_SIZE
     ram (rwx) : ORIGIN = $DATA_RAM_OFFSET, LENGTH = $DATA_RAM_SIZE
     dccm (rw) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_SIZE
+    flash (r) : ORIGIN = $FLASH_OFFSET, LENGTH = $FLASH_SIZE
 }
+
+PAGE_SIZE = 256;
 
 INCLUDE platforms/emulator/runtime/kernel_layout.ld
 "#;
