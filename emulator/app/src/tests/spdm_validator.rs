@@ -8,6 +8,7 @@ use std::io::{self, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::vec;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes};
@@ -17,6 +18,8 @@ pub const SOCKET_SPDM_COMMAND_NORMAL: u32 = 0x0001;
 pub const SOCKET_SPDM_COMMAND_STOP: u32 = 0xFFFE;
 pub const SOCKET_SPDM_COMMAND_TEST: u32 = 0xDEAD;
 pub const SOCKET_HEADER_LEN: usize = 12;
+
+static SERVER_LISTENING: AtomicBool = AtomicBool::new(false);
 
 pub fn generate_tests() -> Vec<Box<dyn TestTrait + Send>> {
     vec![Box::new(Test::new("SpdmValidatorTests")) as Box<dyn TestTrait + Send>]
@@ -332,6 +335,7 @@ impl TestTrait for Test {
         let listener =
             TcpListener::bind("127.0.0.1:2323").expect("Could not bind to the SPDM listerner port");
         println!("SPDM_SERVER: Emulator Listening on port 2323");
+        SERVER_LISTENING.store(true, Ordering::Relaxed);
 
         if let Some(spdm_stream) = listener.incoming().next() {
             let mut client_stream = spdm_stream.expect("Failed to accept connection");
@@ -345,7 +349,9 @@ impl TestTrait for Test {
 pub fn execute_spdm_validator() {
     std::thread::spawn(move || {
         println!("Starting spdm_device_validator_sample process. Waiting for runtime to start...");
-        wait_for_runtime_start();
+        while SERVER_LISTENING.load(Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
         match start_spdm_device_validator() {
             Ok(mut child) => {
                 while EMULATOR_RUNNING.load(Ordering::Relaxed) {
