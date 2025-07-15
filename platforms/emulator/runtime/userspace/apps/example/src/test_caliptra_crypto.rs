@@ -1,11 +1,14 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_api::mailbox::CmKeyUsage;
+use libapi_caliptra::crypto::ecdh::Ecdh;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
+use libapi_caliptra::crypto::hmac::{HkdfSalt, Hmac};
+use libapi_caliptra::crypto::import::Import;
 use libapi_caliptra::crypto::rng::Rng;
 use libapi_caliptra::mailbox_api::{MAX_RANDOM_NUM_SIZE, MAX_RANDOM_STIR_SIZE};
 
-use core::fmt::write;
-use romtime::{println, test_exit};
+use romtime::{println, test_exit, HexBytes};
 
 const EXPECTED_HASHES_384: [[u8; 48]; 1] = [[
     // data 1
@@ -76,10 +79,11 @@ pub async fn test_caliptra_rng() {
     println!("RNG test completed successfully");
 }
 
+#[allow(unused)]
 async fn test_add_random_stir() {
     println!("Testing RNG add stir");
 
-    let mut random_stir = [1u8; MAX_RANDOM_STIR_SIZE];
+    let random_stir = [1u8; MAX_RANDOM_STIR_SIZE];
 
     // Add random stir of max allowed size
     let result = Rng::add_random_stir(&random_stir).await;
@@ -159,4 +163,118 @@ async fn test_generate_random_number() {
         "Generate random number of size 33 failed as expected: {:?}",
         result
     );
+}
+
+pub async fn test_caliptra_ecdh() {
+    println!("Starting Caliptra mailbox ECDH test");
+    test_ecdh().await;
+    println!("ECDH test completed successfully");
+}
+
+async fn test_ecdh() {
+    println!("Testing ECDH");
+
+    let exch1 = Ecdh::ecdh_generate().await.unwrap_or_else(|e| {
+        println!("Failed to generate ECDH exchange: {:?}", e);
+        test_exit(1);
+    });
+    let exch2 = Ecdh::ecdh_generate().await.unwrap_or_else(|e| {
+        println!("Failed to generate ECDH exchange: {:?}", e);
+        test_exit(1);
+    });
+
+    let finish = Ecdh::ecdh_finish(CmKeyUsage::Hmac, &exch1, &exch2.exchange_data)
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to finish ECDH exchange: {:?}", e);
+            test_exit(1);
+        });
+
+    let hmac = Hmac::hmac(&finish, &[1, 2, 3, 4])
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to compute HMAC: {:?}", e);
+            test_exit(1);
+        });
+
+    println!("HMAC computed successfully: {}", HexBytes(&hmac.mac[..48]));
+    // We don't have a great way to verify the HMAC is correct since Caliptra is our source of
+    // truth, and we can't independently verify it from the shared key without pulling in a no_std crypto library.
+    println!("ECDH test passed successfully");
+}
+
+pub async fn test_caliptra_hmac() {
+    println!("Starting Caliptra mailbox HMAC test");
+    test_hmac().await;
+    println!("HMAC test completed successfully");
+}
+
+async fn test_hmac() {
+    println!("Testing HMAC");
+
+    let num = [0u8; 48];
+    let cmk = Import::import(CmKeyUsage::Hmac, &num)
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to import key: {:?}", e);
+            test_exit(1);
+        })
+        .cmk;
+
+    let hmac = Hmac::hmac(&cmk, &num).await.unwrap_or_else(|e| {
+        println!("Failed to HMAC: {:?}", e);
+        test_exit(1);
+    });
+
+    let expected: [u8; 48] = [
+        0x7e, 0xe8, 0x20, 0x6f, 0x55, 0x70, 0x02, 0x3e, 0x6d, 0xc7, 0x51, 0x9e, 0xb1, 0x07, 0x3b,
+        0xc4, 0xe7, 0x91, 0xad, 0x37, 0xb5, 0xc3, 0x82, 0xaa, 0x10, 0xba, 0x18, 0xe2, 0x35, 0x7e,
+        0x71, 0x69, 0x71, 0xf9, 0x36, 0x2f, 0x2c, 0x2f, 0xe2, 0xa7, 0x6b, 0xfd, 0x78, 0xdf, 0xec,
+        0x4e, 0xa9, 0xb5,
+    ];
+
+    if &hmac.mac[..48] != expected {
+        println!(
+            "HMAC mismatch: expected {}, got {}",
+            HexBytes(&expected),
+            HexBytes(&hmac.mac)
+        );
+        test_exit(1);
+    }
+
+    let extract = Hmac::hkdf_extract(HkdfSalt::Data(&num), &cmk)
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to HKDF-Extract: {:?}", e);
+            test_exit(1);
+        });
+
+    let expand = Hmac::hkdf_expand(&extract.prk, CmKeyUsage::Hmac, 48, &num)
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to HKDF-Expand: {:?}", e);
+            test_exit(1);
+        });
+    let hmac = Hmac::hmac(&expand.okm, &num).await.unwrap_or_else(|e| {
+        println!("Failed to HMAC: {:?}", e);
+        test_exit(1);
+    });
+
+    let expected: [u8; 48] = [
+        0x35, 0xaa, 0x87, 0xc1, 0xc4, 0x4a, 0xee, 0x6c, 0xf4, 0xb3, 0xf7, 0x4d, 0x45, 0xe4, 0xd8,
+        0x34, 0x84, 0x48, 0x1b, 0x1c, 0xc8, 0xbc, 0x0c, 0x77, 0x95, 0x1b, 0xac, 0x3f, 0xb9, 0x40,
+        0x52, 0x06, 0x1f, 0x38, 0xd2, 0x3d, 0xb0, 0x8e, 0xdf, 0x2d, 0xac, 0xe0, 0x56, 0xb1, 0xbd,
+        0xd3, 0x29, 0x49,
+    ];
+
+    if &hmac.mac[..48] != expected {
+        println!(
+            "HMAC mismatch: expected {}, got {}",
+            HexBytes(&expected),
+            HexBytes(&hmac.mac[..48])
+        );
+        test_exit(1);
+    }
+
+    println!("HMAC test passed successfully");
 }
