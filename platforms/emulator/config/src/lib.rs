@@ -2,6 +2,7 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
+pub mod dma;
 pub mod flash;
 use mcu_config::{McuMemoryMap, McuStraps, MemoryRegionType};
 

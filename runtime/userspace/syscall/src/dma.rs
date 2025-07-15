@@ -154,9 +154,3 @@ mod dma_ro_buffer {
 mod dma_subscribe {
     pub const XFER_DONE: u32 = 0;
 }
-
-pub fn mcu_sram_to_axi_address(addr: u32) -> u64 {
-    const MCU_SRAM_HI_OFFSET: u64 = 0x1000_0000;
-    // Convert a local address to an AXI address
-    (MCU_SRAM_HI_OFFSET << 32) | (addr as u64)
-}

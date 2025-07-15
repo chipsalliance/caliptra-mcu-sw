@@ -13,10 +13,9 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 use core::fmt::Debug;
 use libapi_caliptra::firmware_update::StagingMemory;
-use libsyscall_caliptra::dma::{
-    mcu_sram_to_axi_address, DMASource, DMATransaction, DMA as DMASyscall,
-};
+use libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
 use libtock_platform::ErrorCode;
+use mcu_config_emulator::dma::mcu_sram_to_axi_address;
 
 const DMA_TRANSFER_SIZE: usize = 512;
 const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0x2000_0000_0000_0000;
