@@ -60,6 +60,7 @@ mod test {
             false,
             None,
             None,
+            Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG),
         )
         .expect("Runtime build failed");
         assert!(output.exists());

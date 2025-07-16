@@ -16,6 +16,7 @@ use anyhow::{anyhow, bail, Result};
 use elf::endian::AnyEndian;
 use elf::ElfBytes;
 use mcu_config::McuMemoryMap;
+use mcu_config_emulator::flash::LoggingFlashConfig;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
@@ -59,6 +60,7 @@ pub fn runtime_build_no_apps_uncached(
     use_dccm_for_stack: bool,
     dccm_offset: Option<u32>,
     dccm_size: Option<u32>,
+    log_flash_config: Option<&LoggingFlashConfig>,
 ) -> Result<(usize, usize)> {
     let tock_dir = &PROJECT_ROOT
         .join("platforms")
@@ -102,6 +104,7 @@ pub fn runtime_build_no_apps_uncached(
         ram_size as u32,
         dccm_offset as u32,
         dccm_size as u32,
+        log_flash_config,
     )?;
 
     std::fs::write(&ld_file_path, ld_string)?;
@@ -285,6 +288,7 @@ pub fn runtime_build_with_apps_cached(
     use_dccm_for_stack: bool,
     dccm_offset: Option<u32>,
     dccm_size: Option<u32>,
+    log_flash_config: Option<&LoggingFlashConfig>,
 ) -> Result<String> {
     let memory_map = memory_map.unwrap_or(&mcu_config_emulator::EMULATOR_MEMORY_MAP);
     let mut app_offset = memory_map.sram_offset as usize;
@@ -310,6 +314,7 @@ pub fn runtime_build_with_apps_cached(
         use_dccm_for_stack,
         dccm_offset,
         dccm_size,
+        log_flash_config,
     ) {
         Ok((kernel_size, apps_memory_offset)) => (kernel_size, apps_memory_offset),
         Err(_) => {
@@ -331,6 +336,7 @@ pub fn runtime_build_with_apps_cached(
                 use_dccm_for_stack,
                 dccm_offset,
                 dccm_size,
+                log_flash_config,
             )?
         }
     };
@@ -365,6 +371,7 @@ pub fn runtime_build_with_apps_cached(
             use_dccm_for_stack,
             dccm_offset,
             dccm_size,
+            log_flash_config,
         )?;
 
         assert_eq!(
@@ -430,6 +437,7 @@ pub fn runtime_ld_script(
     data_ram_size: u32,
     dccm_offset: u32,
     dccm_size: u32,
+    log_flash_config: Option<&LoggingFlashConfig>,
 ) -> Result<String> {
     let mut map = memory_map.hash_map();
     map.insert("DCCM_OFFSET".to_string(), format!("0x{:x}", dccm_offset));
@@ -450,21 +458,24 @@ pub fn runtime_ld_script(
         format!("0x{:x}", data_ram_size),
     );
 
-    // Use hardcoded values for the flash memory offsets and sizes temporarily.
-    // Reserve 128KB at the end of primary flash for logging.
-    // TODO: Pass flash offset and size as parameters instead of hardcoding.
-    let flash_offset = emulator_consts::DIRECT_READ_FLASH_ORG;
-    let flash_size = emulator_consts::DIRECT_READ_FLASH_SIZE;
-    let logging_flash_size = 128 * 1024;
-    let logging_flash_offset = flash_offset + flash_size - logging_flash_size;
-    map.insert(
-        "FLASH_OFFSET".to_string(),
-        format!("0x{:x}", logging_flash_offset),
-    );
-    map.insert(
-        "FLASH_SIZE".to_string(),
-        format!("0x{:x}", logging_flash_size),
-    );
+    if let Some(cfg) = log_flash_config {
+        map.insert(
+            "FLASH_OFFSET".to_string(),
+            format!("0x{:x}", cfg.logging_flash_offset),
+        );
+        map.insert(
+            "FLASH_SIZE".to_string(),
+            format!("0x{:x}", cfg.logging_flash_size),
+        );
+        map.insert(
+            "PAGE_SIZE".to_string(),
+            format!("PAGE_SIZE = {};", cfg.page_size),
+        );
+    } else {
+        map.insert("FLASH_OFFSET".to_string(), "0x0".to_string());
+        map.insert("FLASH_SIZE".to_string(), "0x0".to_string());
+        map.insert("PAGE_SIZE".to_string(), "".to_string());
+    }
 
     Ok(subst::substitute(RUNTIME_LD_TEMPLATE, &map)?)
 }
@@ -486,7 +497,7 @@ MEMORY
     flash (r) : ORIGIN = $FLASH_OFFSET, LENGTH = $FLASH_SIZE
 }
 
-PAGE_SIZE = 256;
+$PAGE_SIZE
 
 INCLUDE platforms/emulator/runtime/kernel_layout.ld
 "#;

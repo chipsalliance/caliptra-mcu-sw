@@ -185,3 +185,26 @@ impl StandAloneChecksumCalculator {
     }
 }
 impl ChecksumCalculator for StandAloneChecksumCalculator {}
+
+// Logging flash configuration for emulator platform
+#[derive(Debug, Clone, Copy)]
+pub struct LoggingFlashConfig {
+    pub logging_flash_size: u32,
+    pub logging_flash_offset: u32,
+    pub page_size: u32, // Flash page size in bytes.
+}
+
+impl LoggingFlashConfig {
+    // 128KB at the end of the 64MB primary flash is reserved for logging.
+    // Offset is calculated as: emulator_consts::DIRECT_READ_FLASH_ORG + emulator_consts::DIRECT_READ_FLASH_SIZE - 128 * 1024.
+    // This region must not overlap with any other flash partitions.
+    pub const fn default() -> Self {
+        Self {
+            logging_flash_offset: 0x3BFE_0000,
+            logging_flash_size: 128 * 1024,
+            page_size: 256,
+        }
+    }
+}
+
+pub const LOGGING_FLASH_CONFIG: LoggingFlashConfig = LoggingFlashConfig::default();
