@@ -263,6 +263,13 @@ fn main() {
                 *use_dccm_for_stack,
                 *dccm_offset,
                 *dccm_size,
+                match platform.as_deref() {
+                    None | Some("emulator") => {
+                        Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG)
+                    }
+                    Some("fpga") => None,
+                    _ => panic!("Unsupported platform"),
+                },
             )
             .map(|_| ())
         }

@@ -43,6 +43,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         use_dccm_for_stack,
         dccm_offset,
         dccm_size,
+        None,
     )?
     .into();
 
