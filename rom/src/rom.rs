@@ -302,14 +302,17 @@ pub fn rom_start(flash_partition_driver: Option<&mut FlashPartition>) {
         fatal_error(5);
     };
 
-    if let Some(flash_driver) = flash_partition_driver {
-        romtime::println!("[mcu-rom] Starting Flash recovery flow");
+    // Loading flash into the recovery flow is only possible in 2.1+.
+    if cfg!(feature = "hw-2-1") {
+        if let Some(flash_driver) = flash_partition_driver {
+            romtime::println!("[mcu-rom] Starting Flash recovery flow");
 
-        crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
-            .map_err(|_| fatal_error(1))
-            .unwrap();
+            crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
+                .map_err(|_| fatal_error(1))
+                .unwrap();
 
-        romtime::println!("[mcu-rom] Flash Recovery flow complete");
+            romtime::println!("[mcu-rom] Flash Recovery flow complete");
+        }
     }
 
     romtime::println!("[mcu-rom] Waiting for firmware to be ready");

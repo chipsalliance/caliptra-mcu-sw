@@ -36,6 +36,7 @@ embedded-alloc.workspace = true
 
 [features]
 default = []
+hw-2-1 = []
 test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []

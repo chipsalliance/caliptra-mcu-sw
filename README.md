@@ -34,6 +34,20 @@ cargo xtask runtime
 
 This uses the full [active, or subsystem, mode boot flow](https://chipsalliance.github.io/caliptra-mcu-sw/rom.html#cold-boot-flow).
 
+## Hardware revisions
+
+Currently, two hardware revisions are supported: 2.0 and 2.1.
+
+The features added to the 2.1 hardware are, briefly:
+
+* Caliptra ML-KEM support
+* I3C AXI recovery bypass
+
+By default, the emulator and firmware use the 2.0 hardware features.
+
+For the emulator, there is a `--hw-revision 2.1.0` flag that can be used to select the 2.1 hardware when running (`cargo xtask runtime` also supports this flag).
+
+For firmware, 2.1 features can be enabled using the `hw-2-1` feature flag when specifying dependencies.
 
 ## Documentation
 
