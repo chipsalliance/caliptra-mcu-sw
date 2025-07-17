@@ -344,6 +344,22 @@ SECTIONS
     {
       *(.eh_frame*);
     }
+
+    /* Region for non-volatile storage used by kernel. 
+     *
+     * Align on PAGE_SIZE number of bytes. Volumes within this region are
+     * allocated with the storage_volume! macro in utils.rs.
+     */
+    .storage (NOLOAD):
+    {
+      . = ALIGN(PAGE_SIZE);
+      _sstorage = .;
+      KEEP*(.storage* storage*)
+      _estorage = .;
+      . = ALIGN(PAGE_SIZE);
+    } > flash
+    . = ALIGN(PAGE_SIZE);
+
 }
 
 /* LOADADDR: Return the absolute load address of the named section. This is
@@ -363,6 +379,9 @@ _esram = ORIGIN(ram) + LENGTH(ram);
 /* Reserve space for the PIC vector table */
 _pic_vector_table = ORIGIN(dccm) + LENGTH(dccm) - 1024;
 
+/* Direct read flash region */
+_sstorage = ORIGIN(flash);
+_estorage = ORIGIN(flash) + LENGTH(flash);
 
 
 /* This.. this is a dirty, not-fully-understood, hack. In some way, linking is

@@ -286,6 +286,7 @@ mod test {
             false,
             None,
             None,
+            None,
         )
         .expect("Could not build MCU runtime");
         let mut caliptra_builder =

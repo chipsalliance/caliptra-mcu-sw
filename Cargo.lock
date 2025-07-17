@@ -794,6 +794,7 @@ dependencies = [
  "bitfield",
  "dma-driver",
  "kernel",
+ "mcu-platforms-common",
  "registers-generated",
 ]
 

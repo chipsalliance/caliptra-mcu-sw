@@ -60,6 +60,7 @@ mod test {
             false,
             None,
             None,
+            Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG),
         )
         .expect("Runtime build failed");
         assert!(output.exists());
@@ -325,6 +326,8 @@ mod test {
     run_test!(test_flash_storage_read_write);
     run_test!(test_flash_storage_erase);
     run_test!(test_flash_usermode, example_app);
+    run_test!(test_log_flash_linear);
+    run_test!(test_log_flash_circular);
     run_test!(test_mctp_ctrl_cmds);
     run_test!(test_mctp_capsule_loopback);
     run_test!(test_mctp_user_loopback, example_app);

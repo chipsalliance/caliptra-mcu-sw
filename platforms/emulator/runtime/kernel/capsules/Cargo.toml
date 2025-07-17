@@ -9,5 +9,6 @@ edition.workspace = true
 [dependencies]
 bitfield.workspace = true
 dma-driver.workspace = true
+mcu-platforms-common.workspace = true
 kernel.workspace = true
 registers-generated.workspace = true
