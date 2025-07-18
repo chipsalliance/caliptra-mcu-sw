@@ -6,19 +6,10 @@ use emulator_registers_generated::mci::MciPeripheral;
 use registers_generated::mci::bits::{
     Error0IntrT, WdtStatus, WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
 };
-use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+use tock_registers::interfaces::{ReadWriteable, Readable};
 
 pub struct Mci {
-    cptra_wdt_timer1_en: ReadWriteRegister<u32, WdtTimer1En::Register>,
-    cptra_wdt_timer1_ctrl: ReadWriteRegister<u32, WdtTimer1Ctrl::Register>,
-    cptra_wdt_timer1_timeout_period: [u32; 2],
-
-    cptra_wdt_timer2_en: ReadWriteRegister<u32, WdtTimer2En::Register>,
-    cptra_wdt_timer2_ctrl: ReadWriteRegister<u32, WdtTimer2Ctrl::Register>,
-    cptra_wdt_timer2_timeout_period: [u32; 2],
-
-    cptra_wdt_status: ReadWriteRegister<u32, WdtStatus::Register>,
-    cptra_wdt_cfg: [u32; 2],
+    ext_mci_regs: caliptra_emu_periph::mci::Mci,
 
     error0_internal_intr_r: ReadWriteRegister<u32, Error0IntrT::Register>,
 
@@ -36,16 +27,10 @@ impl Mci {
     pub const CPTRA_WDT_TIMER2_TIMEOUT_PERIOD_START: u32 = 0xc8;
     pub const CPTRA_WDT_STATUS_START: u32 = 0xd0;
 
-    pub fn new(clock: &Clock) -> Self {
+    pub fn new(clock: &Clock, ext_mci_regs: caliptra_emu_periph::mci::Mci) -> Self {
         Self {
-            cptra_wdt_timer1_en: ReadWriteRegister::new(0),
-            cptra_wdt_timer1_ctrl: ReadWriteRegister::new(0),
-            cptra_wdt_timer1_timeout_period: [0xffff_ffff; 2],
-            cptra_wdt_timer2_en: ReadWriteRegister::new(0),
-            cptra_wdt_timer2_ctrl: ReadWriteRegister::new(0),
-            cptra_wdt_timer2_timeout_period: [0xffff_ffff; 2],
-            cptra_wdt_status: ReadWriteRegister::new(0),
-            cptra_wdt_cfg: [0x0; 2],
+            ext_mci_regs,
+
             error0_internal_intr_r: ReadWriteRegister::new(0),
             timer: Timer::new(clock),
             op_wdt_timer1_expired_action: None,
@@ -56,48 +41,54 @@ impl Mci {
 
 impl MciPeripheral for Mci {
     fn read_mci_reg_wdt_timer1_en(&mut self) -> ReadWriteRegister<u32, WdtTimer1En::Register> {
-        ReadWriteRegister::new(self.cptra_wdt_timer1_en.reg.get())
+        ReadWriteRegister::new(self.ext_mci_regs.regs.borrow().wdt_timer1_en)
     }
 
     fn read_mci_reg_wdt_timer1_ctrl(&mut self) -> ReadWriteRegister<u32, WdtTimer1Ctrl::Register> {
-        ReadWriteRegister::new(self.cptra_wdt_timer1_ctrl.reg.get())
+        ReadWriteRegister::new(self.ext_mci_regs.regs.borrow().wdt_timer1_ctrl)
     }
 
     fn read_mci_reg_wdt_timer1_timeout_period(&mut self, index: usize) -> RvData {
-        self.cptra_wdt_timer1_timeout_period[index]
+        self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[index]
     }
 
     fn read_mci_reg_wdt_timer2_en(&mut self) -> ReadWriteRegister<u32, WdtTimer2En::Register> {
-        ReadWriteRegister::new(self.cptra_wdt_timer2_en.reg.get())
+        ReadWriteRegister::new(self.ext_mci_regs.regs.borrow().wdt_timer2_en)
     }
 
     fn read_mci_reg_wdt_timer2_ctrl(&mut self) -> ReadWriteRegister<u32, WdtTimer2Ctrl::Register> {
-        ReadWriteRegister::new(self.cptra_wdt_timer2_ctrl.reg.get())
+        ReadWriteRegister::new(self.ext_mci_regs.regs.borrow().wdt_timer2_ctrl)
     }
 
     fn read_mci_reg_wdt_timer2_timeout_period(&mut self, index: usize) -> RvData {
-        self.cptra_wdt_timer2_timeout_period[index]
+        self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[index]
     }
 
     fn read_mci_reg_wdt_status(&mut self) -> ReadWriteRegister<u32, WdtStatus::Register> {
-        ReadWriteRegister::new(self.cptra_wdt_status.reg.get())
+        ReadWriteRegister::new(self.ext_mci_regs.regs.borrow().wdt_status)
     }
 
     fn read_mci_reg_wdt_cfg(&mut self, index: usize) -> RvData {
-        self.cptra_wdt_cfg[index]
+        self.ext_mci_regs.regs.borrow().wdt_cfg[index]
     }
 
     fn write_mci_reg_wdt_timer1_en(&mut self, val: ReadWriteRegister<u32, WdtTimer1En::Register>) {
-        self.cptra_wdt_timer1_en.reg.set(val.reg.get());
+        self.ext_mci_regs.regs.borrow_mut().wdt_timer1_en = val.reg.get();
 
-        self.cptra_wdt_status
-            .reg
-            .modify(WdtStatus::T1Timeout::CLEAR);
+        let wdt_status = ReadWriteRegister::<u32, WdtStatus::Register>::new(
+            self.ext_mci_regs.regs.borrow_mut().wdt_status,
+        );
+
+        wdt_status.reg.modify(WdtStatus::T1Timeout::CLEAR);
+
+        self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
         // If timer is enabled, schedule a callback on expiry.
-        if self.cptra_wdt_timer1_en.reg.is_set(WdtTimer1En::Timer1En) {
-            let timer_period: u64 = (self.cptra_wdt_timer1_timeout_period[1] as u64) << 32
-                | self.cptra_wdt_timer1_timeout_period[0] as u64;
+        let en = ReadWriteRegister::<u32, WdtTimer1En::Register>::new(val.reg.get());
+        if en.reg.is_set(WdtTimer1En::Timer1En) {
+            let timer_period: u64 =
+                (self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32
+                    | self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[0] as u64;
 
             self.op_wdt_timer1_expired_action = Some(self.timer.schedule_poll_in(timer_period));
         } else {
@@ -109,40 +100,52 @@ impl MciPeripheral for Mci {
         &mut self,
         val: ReadWriteRegister<u32, WdtTimer1Ctrl::Register>,
     ) {
-        self.cptra_wdt_timer1_ctrl.reg.set(val.reg.get());
+        self.ext_mci_regs.regs.borrow_mut().wdt_timer1_ctrl = val.reg.get();
 
-        if self.cptra_wdt_timer1_en.reg.is_set(WdtTimer1En::Timer1En)
-            && self
-                .cptra_wdt_timer1_ctrl
-                .reg
-                .is_set(WdtTimer1Ctrl::Timer1Restart)
-        {
-            self.cptra_wdt_status
-                .reg
-                .modify(WdtStatus::T1Timeout::CLEAR);
+        let en = ReadWriteRegister::<u32, WdtTimer1En::Register>::new(
+            self.ext_mci_regs.regs.borrow_mut().wdt_timer1_en,
+        );
+        if en.reg.is_set(WdtTimer1En::Timer1En) && val.reg.is_set(WdtTimer1Ctrl::Timer1Restart) {
+            let wdt_status = ReadWriteRegister::<u32, WdtStatus::Register>::new(
+                self.ext_mci_regs.regs.borrow_mut().wdt_status,
+            );
 
-            let timer_period: u64 = (self.cptra_wdt_timer1_timeout_period[1] as u64) << 32
-                | self.cptra_wdt_timer1_timeout_period[0] as u64;
+            wdt_status.reg.modify(WdtStatus::T1Timeout::CLEAR);
+
+            self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
+
+            let timer_period: u64 =
+                (self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32
+                    | self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[0] as u64;
 
             self.op_wdt_timer1_expired_action = Some(self.timer.schedule_poll_in(timer_period));
         }
     }
 
     fn write_mci_reg_wdt_timer1_timeout_period(&mut self, val: RvData, index: usize) {
-        self.cptra_wdt_timer1_timeout_period[index] = val;
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .wdt_timer1_timeout_period[index] = val;
     }
 
     fn write_mci_reg_wdt_timer2_en(&mut self, val: ReadWriteRegister<u32, WdtTimer2En::Register>) {
-        self.cptra_wdt_timer2_en.reg.set(val.reg.get());
+        self.ext_mci_regs.regs.borrow_mut().wdt_timer2_en = val.reg.get();
 
-        self.cptra_wdt_status
-            .reg
-            .modify(WdtStatus::T2Timeout::CLEAR);
+        let wdt_status = ReadWriteRegister::<u32, WdtStatus::Register>::new(
+            self.ext_mci_regs.regs.borrow_mut().wdt_status,
+        );
+        wdt_status.reg.modify(WdtStatus::T2Timeout::CLEAR);
+        self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
         // If timer is enabled, schedule a callback on expiry.
-        if self.cptra_wdt_timer2_en.reg.is_set(WdtTimer2En::Timer2En) {
-            let timer_period: u64 = (self.cptra_wdt_timer2_timeout_period[1] as u64) << 32
-                | self.cptra_wdt_timer2_timeout_period[0] as u64;
+        let en = ReadWriteRegister::<u32, WdtTimer2En::Register>::new(
+            self.ext_mci_regs.regs.borrow().wdt_timer2_en,
+        );
+        if en.reg.is_set(WdtTimer2En::Timer2En) {
+            let timer_period: u64 =
+                (self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32
+                    | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
             self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
         } else {
@@ -154,58 +157,83 @@ impl MciPeripheral for Mci {
         &mut self,
         val: ReadWriteRegister<u32, WdtTimer2Ctrl::Register>,
     ) {
-        self.cptra_wdt_timer2_ctrl.reg.set(val.reg.get());
+        self.ext_mci_regs.regs.borrow_mut().wdt_timer2_ctrl = val.reg.get();
 
-        if self.cptra_wdt_timer2_en.reg.is_set(WdtTimer2En::Timer2En)
-            && self
-                .cptra_wdt_timer2_ctrl
-                .reg
-                .is_set(WdtTimer2Ctrl::Timer2Restart)
-        {
-            self.cptra_wdt_status
-                .reg
-                .modify(WdtStatus::T2Timeout::CLEAR);
+        let en = ReadWriteRegister::<u32, WdtTimer2En::Register>::new(
+            self.ext_mci_regs.regs.borrow().wdt_timer2_en,
+        );
+        if en.reg.is_set(WdtTimer2En::Timer2En) && val.reg.is_set(WdtTimer2Ctrl::Timer2Restart) {
+            let wdt_status = ReadWriteRegister::<u32, WdtStatus::Register>::new(
+                self.ext_mci_regs.regs.borrow().wdt_status,
+            );
+            wdt_status.reg.modify(WdtStatus::T2Timeout::CLEAR);
+            self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
-            let timer_period: u64 = (self.cptra_wdt_timer2_timeout_period[1] as u64) << 32
-                | self.cptra_wdt_timer2_timeout_period[0] as u64;
+            let timer_period: u64 =
+                (self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32
+                    | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
             self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
         }
     }
 
     fn write_mci_reg_wdt_timer2_timeout_period(&mut self, val: RvData, index: usize) {
-        self.cptra_wdt_timer2_timeout_period[index] = val;
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .wdt_timer2_timeout_period[index] = val;
     }
 
     fn poll(&mut self) {
         if self.timer.fired(&mut self.op_wdt_timer1_expired_action) {
-            self.cptra_wdt_status.reg.modify(WdtStatus::T1Timeout::SET);
+            // Set T1Timeout in WDT status register
+            let wdt_status = ReadWriteRegister::<u32, WdtStatus::Register>::new(
+                self.ext_mci_regs.regs.borrow().wdt_status,
+            );
+            wdt_status.reg.modify(WdtStatus::T1Timeout::SET);
+            self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
+
             self.error0_internal_intr_r
                 .reg
                 .modify(Error0IntrT::ErrorWdtTimer1TimeoutSts::SET);
 
-            // If WDT2 is disabled, schedule a callback on it's expiry.
-            if !self.cptra_wdt_timer2_en.reg.is_set(WdtTimer2En::Timer2En) {
-                self.cptra_wdt_status
-                    .reg
-                    .modify(WdtStatus::T2Timeout::CLEAR);
+            // If WDT2 is disabled, schedule a callback on its expiry.
+            let wdt2_en = ReadWriteRegister::<u32, WdtTimer2En::Register>::new(
+                self.ext_mci_regs.regs.borrow().wdt_timer2_en,
+            );
+            if !wdt2_en.reg.is_set(WdtTimer2En::Timer2En) {
+                // Clear T2Timeout in WDT status register
+                let wdt_status = ReadWriteRegister::<u32, WdtStatus::Register>::new(
+                    self.ext_mci_regs.regs.borrow().wdt_status,
+                );
+                wdt_status.reg.modify(WdtStatus::T2Timeout::CLEAR);
+                self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
+
                 self.error0_internal_intr_r
                     .reg
                     .modify(Error0IntrT::ErrorWdtTimer2TimeoutSts::CLEAR);
 
-                let timer_period: u64 = (self.cptra_wdt_timer2_timeout_period[1] as u64) << 32
-                    | self.cptra_wdt_timer2_timeout_period[0] as u64;
+                let timer_period: u64 =
+                    (self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32
+                        | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
                 self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
             }
         }
 
         if self.timer.fired(&mut self.op_wdt_timer2_expired_action) {
-            self.cptra_wdt_status.reg.modify(WdtStatus::T2Timeout::SET);
+            let wdt_status = ReadWriteRegister::<u32, WdtStatus::Register>::new(
+                self.ext_mci_regs.regs.borrow().wdt_status,
+            );
+            wdt_status.reg.modify(WdtStatus::T2Timeout::SET);
+            self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
             // If WDT2 was not scheduled due to WDT1 expiry (i.e WDT2 is disabled), schedule an NMI.
             // Else, do nothing.
-            if self.cptra_wdt_timer2_en.reg.is_set(WdtTimer2En::Timer2En) {
+            let wdt2_en = ReadWriteRegister::<u32, WdtTimer2En::Register>::new(
+                self.ext_mci_regs.regs.borrow().wdt_timer2_en,
+            );
+            if wdt2_en.reg.is_set(WdtTimer2En::Timer2En) {
                 self.error0_internal_intr_r
                     .reg
                     .modify(Error0IntrT::ErrorWdtTimer2TimeoutSts::SET);
@@ -248,8 +276,9 @@ mod tests {
     #[test]
     fn test_wdt() {
         let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
 
-        let mci_reg: Mci = Mci::new(&clock);
+        let mci_reg: Mci = Mci::new(&clock, ext_mci_regs);
         let mut mci_bus = MciBus {
             periph: Box::new(mci_reg),
         };
