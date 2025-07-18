@@ -60,9 +60,9 @@ impl<S: Syscalls> LoggingSyscall<S> {
             .map(|x: u32| x as usize)
     }
 
-    pub async fn read_contents(
+    pub async fn read_entry(
         &self,
-        offset: usize,
+        //offset: usize,
         buffer: &mut [u8],
     ) -> Result<usize, ErrorCode> {
         let result = share::scope::<(), _, _>(|_handle| {
@@ -72,13 +72,8 @@ impl<S: Syscalls> LoggingSyscall<S> {
                 rw_allow::READ,
                 buffer,
             );
-            if let Err(e) = S::command(
-                self.driver_num,
-                logging_cmd::READ,
-                offset as u32,
-                buffer.len() as u32,
-            )
-            .to_result::<(), ErrorCode>()
+            if let Err(e) = S::command(self.driver_num, logging_cmd::READ, buffer.len() as u32, 0)
+                .to_result::<(), ErrorCode>()
             {
                 S::unallow_rw(self.driver_num, rw_allow::READ);
                 sub.cancel();

@@ -4,3 +4,4 @@
 
 pub mod dma;
 pub mod flash_partition;
+pub mod logging;
