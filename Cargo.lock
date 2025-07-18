@@ -3554,6 +3554,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bitfield",
+ "caliptra-api",
  "libapi-caliptra",
  "libsyscall-caliptra",
  "libtock_console",

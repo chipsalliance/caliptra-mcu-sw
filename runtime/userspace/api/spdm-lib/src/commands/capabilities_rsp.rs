@@ -228,6 +228,9 @@ async fn process_get_capabilities<'a>(
         ctx.state
             .connection_info
             .set_peer_capabilities(peer_capabilities);
+        // TODO: update capabilities so we can disable transcripts we don't need
+        // ctx.transcript_mgr
+        //     .update_capabilities(ctx.local_capabilities.flags, peer_capabilities.flags);
     }
 
     // Reset the transcript depending on request code

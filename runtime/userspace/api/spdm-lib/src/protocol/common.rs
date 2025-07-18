@@ -23,6 +23,8 @@ pub(crate) enum ReqRespCode {
     Measurements = 0x60,
     ChunkGet = 0x86,
     ChunkResponse = 0x06,
+    KeyExchange = 0xE4,
+    Finish = 0xE5,
     Error = 0x7F,
 }
 
@@ -47,6 +49,8 @@ impl TryFrom<u8> for ReqRespCode {
             0x86 => Ok(ReqRespCode::ChunkGet),
             0x06 => Ok(ReqRespCode::ChunkResponse),
             0x7F => Ok(ReqRespCode::Error),
+            0xE4 => Ok(ReqRespCode::KeyExchange),
+            0xE5 => Ok(ReqRespCode::Finish),
             _ => Err(SpdmError::UnsupportedRequest),
         }
     }
