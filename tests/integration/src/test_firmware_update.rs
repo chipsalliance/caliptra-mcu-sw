@@ -4,12 +4,13 @@
 mod test {
     use crate::test::{compile_runtime, get_rom_with_feature, run_runtime, TEST_LOCK};
     use chrono::{TimeZone, Utc};
-    use mcu_builder::{CaliptraBuilder, SocImage};
+    use mcu_builder::{CaliptraBuilder, ImageCfg};
     use mcu_config_emulator::flash::PartitionTable;
     use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     };
+    use flash_image::{FlashHeader, ImageHeader};
     use pldm_fw_pkg::FirmwareManifest;
     use std::path::PathBuf;
     use std::process::ExitStatus;
@@ -22,7 +23,7 @@ mod test {
         rom: PathBuf,
         runtime: PathBuf,
         i3c_port: u32,
-        soc_images: Vec<SocImage>,
+        soc_images: Vec<ImageCfg>,
         soc_images_paths: Vec<PathBuf>,
         primary_flash_image_path: Option<PathBuf>,
         secondary_flash_image_path: Option<PathBuf>,
@@ -207,6 +208,15 @@ mod test {
         assert_eq!(0, test.code().unwrap_or_default());
     }
 
+    fn get_flash_offset(img_sizes: &[usize], img_index: usize) -> usize {
+        let mut img_offset = std::mem::size_of::<FlashHeader>()
+            + std::mem::size_of::<ImageHeader>() * img_index;
+        for i in 0..img_index {
+            img_offset += img_sizes[i];
+        }
+        img_offset
+    }
+
     // Common test function for both flash-based and streaming boot
     fn test_firmware_update_common() {
         let lock = TEST_LOCK.lock().unwrap();
@@ -223,19 +233,34 @@ mod test {
             soc_image_fw_2.clone().to_vec(),
         ]);
 
+        let mcu_flash_offset = get_flash_offset(
+            &[],
+            0,
+        );
+
         // Create SOC image metadata that will be written to the SoC manifest
         let soc_images = vec![
-            SocImage {
+            ImageCfg {
                 path: soc_images_paths[0].clone(),
                 load_addr: CALIPTRA_EXTERNAL_RAM_BASE,
                 image_id: 4096,
+                ..Default::default()
             },
-            SocImage {
+            ImageCfg {
                 path: soc_images_paths[1].clone(),
                 load_addr: CALIPTRA_EXTERNAL_RAM_BASE + soc_image_fw_1.len() as u64,
                 image_id: 4097,
+                ..Default::default()
             },
         ];
+
+        let mcu_cfg = ImageCfg {
+            path: test_runtime.clone(),
+            load_addr: 0x40000000,
+            staging_addr: CALIPTRA_EXTERNAL_RAM_BASE + mcu_flash_offset as u64,
+            image_id: 2,
+            ..Default::default()
+        };
 
         // Build the Caliptra runtime
         let mut builder = CaliptraBuilder::new(
@@ -246,6 +271,7 @@ mod test {
             None,
             Some(test_runtime.clone()),
             Some(soc_images.clone()),
+            Some(mcu_cfg.clone()),
         );
 
         // Build Caliptra firmware
@@ -268,9 +294,9 @@ mod test {
                 );
         */
         let (soc_images_paths, flash_image_path) = create_flash_image(
-            Some(caliptra_fw),
-            Some(soc_manifest),
             None,
+            None,
+            Some(soc_images_paths[0].clone()),
             None,
             0,
             Vec::new(),

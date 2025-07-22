@@ -29,7 +29,8 @@ pub struct CaliptraBuilder {
     soc_manifest: Option<PathBuf>,
     vendor_pk_hash: Option<String>,
     mcu_firmware: Option<PathBuf>,
-    soc_images: Option<Vec<SocImage>>,
+    soc_images: Option<Vec<ImageCfg>>,
+    mcu_image_cfg: Option<ImageCfg>,
 }
 
 impl CaliptraBuilder {
@@ -41,7 +42,8 @@ impl CaliptraBuilder {
         soc_manifest: Option<PathBuf>,
         vendor_pk_hash: Option<String>,
         mcu_firmware: Option<PathBuf>,
-        soc_images: Option<Vec<SocImage>>,
+        soc_images: Option<Vec<ImageCfg>>,
+        mcu_image_cfg: Option<ImageCfg>,
     ) -> Self {
         Self {
             fpga,
@@ -51,6 +53,7 @@ impl CaliptraBuilder {
             vendor_pk_hash,
             mcu_firmware,
             soc_images,
+            mcu_image_cfg,
         }
     }
 
@@ -112,7 +115,7 @@ impl CaliptraBuilder {
                 bail!("MCU firmware is required to build SoC manifest");
             }
             let mcu_fw_metadata =
-                Self::get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
+                self.get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
             let soc_images_metadata = self.get_soc_images_metadata()?;
             let mut metadata = vec![mcu_fw_metadata];
             metadata.extend(soc_images_metadata);
@@ -123,7 +126,7 @@ impl CaliptraBuilder {
         Ok(self.soc_manifest.clone().unwrap())
     }
 
-    pub fn replace_manifest_metadata(&mut self, metadata: Vec<SocImage>) -> Result<PathBuf> {
+    pub fn replace_manifest_metadata(&mut self, metadata: Vec<ImageCfg>) -> Result<PathBuf> {
         println!("Replacing SoC manifest metadata with: {:?}", metadata);
         // Replace the current metadata
         self.soc_images = Some(metadata);
@@ -142,7 +145,7 @@ impl CaliptraBuilder {
         Ok(self.vendor_pk_hash.as_ref().unwrap())
     }
 
-    fn get_mcu_manifest_metadata(runtime_path: &PathBuf) -> Result<AuthManifestImageMetadata> {
+    fn get_mcu_manifest_metadata(&self, runtime_path: &PathBuf) -> Result<AuthManifestImageMetadata> {
         const IMAGE_SOURCE_IN_REQUEST: u32 = 1;
         let data = std::fs::read(runtime_path).unwrap();
         let mut flags = ImageMetadataFlags(0);
@@ -152,10 +155,27 @@ impl CaliptraBuilder {
         let d: String = digest.clone().encode_hex();
         println!("MCU len {} digest: {}", data.len(), d);
 
+        let cfg = if self.mcu_image_cfg.is_some() {
+            self.mcu_image_cfg.clone().unwrap()
+        } else {
+            ImageCfg {
+                image_id: 2,
+                ..Default::default()
+            }
+        };
+
         Ok(AuthManifestImageMetadata {
-            fw_id: 2,
+            fw_id: cfg.image_id,
             flags: flags.0,
             digest,
+            image_load_address: Addr64 {
+                lo: cfg.load_addr as u32,
+                hi: (cfg.load_addr >> 32) as u32,
+            },
+            image_staging_address: Addr64 {
+                lo: cfg.staging_addr as u32,
+                hi: (cfg.staging_addr >> 32) as u32,
+            },
             ..Default::default()
         })
     }
@@ -183,6 +203,7 @@ impl CaliptraBuilder {
     }
 
     fn write_soc_manifest(metadata: Vec<AuthManifestImageMetadata>) -> Result<PathBuf> {
+        println!("Writing SoC manifest with metadata: {:?}", metadata);
         let manifest = Self::create_auth_manifest_with_metadata(metadata);
 
         let path = target_dir().join("soc-manifest");
@@ -378,28 +399,43 @@ impl CaliptraBuilder {
 }
 
 #[derive(Debug, Clone)]
-pub struct SocImage {
+pub struct ImageCfg {
     pub path: PathBuf,
     pub load_addr: u64,
+    pub staging_addr: u64,
     pub image_id: u32,
 }
-impl FromStr for SocImage {
+impl Default for ImageCfg {
+    fn default() -> Self {
+        ImageCfg {
+            path: PathBuf::new(),
+            load_addr: 0,
+            staging_addr: 0,
+            image_id: 0,
+        }
+    }
+}
+
+impl FromStr for ImageCfg {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split(',').collect();
         if parts.len() != 3 {
-            return Err("Expected format: <path>,<load_addr>,<image_id>".into());
+            return Err("Expected format: <path>,<load_addr>,<staging_addr>,<image_id>".into());
         }
 
         let path = PathBuf::from(parts[0]);
         let load_addr = u64::from_str_radix(parts[1].trim_start_matches("0x"), 16)
             .map_err(|e: ParseIntError| e.to_string())?;
-        let image_id = parts[2].parse::<u32>().map_err(|e| e.to_string())?;
+        let staging_addr = u64::from_str_radix(parts[2].trim_start_matches("0x"), 16)
+            .map_err(|e: ParseIntError| e.to_string())?;
+        let image_id = parts[3].parse::<u32>().map_err(|e| e.to_string())?;
 
-        Ok(SocImage {
+        Ok(ImageCfg {
             path,
             load_addr,
+            staging_addr,
             image_id,
         })
     }

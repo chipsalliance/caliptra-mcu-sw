@@ -8,4 +8,5 @@ pub mod test;
 pub mod doe;
 pub mod flash_partition;
 pub mod mailbox;
+pub mod mci;
 pub mod mctp;

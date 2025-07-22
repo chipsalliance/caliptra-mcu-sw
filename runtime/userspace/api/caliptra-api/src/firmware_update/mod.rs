@@ -8,10 +8,10 @@ mod pldm_fdops;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{
-    CommandId, FwInfoResp, GetImageInfoResp, MailboxReqHeader, MailboxRespHeader,
+    ActivateFirmwareReq, ActivateFirmwareResp, CommandId, FwInfoResp, GetImageInfoResp, MailboxReqHeader, MailboxRespHeader
 };
 use embassy_executor::Spawner;
-use flash_image::{FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, SOC_MANIFEST_IDENTIFIER};
+use flash_image::{FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, SOC_MANIFEST_IDENTIFIER, MCU_RT_IDENTIFIER};
 use libsyscall_caliptra::mailbox::Mailbox;
 use libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
 use libtock_platform::ErrorCode;
@@ -20,6 +20,11 @@ use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::protocol::firmware_update::Descriptor;
 use pldm_lib::daemon::PldmService;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+
+
+use libtock_console::Console;
+use libsyscall_caliptra::DefaultSyscalls;
+use core::fmt::Write;
 
 pub struct FirmwareUpdater<'a> {
     staging_memory: &'static dyn StagingMemory,
@@ -69,7 +74,7 @@ impl<'a> FirmwareUpdater<'a> {
             FlashHeader::read_from_prefix(&flash_header).map_err(|_| ErrorCode::Fail)?;
         flash_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
         let image_headers_offset = flash_header.image_headers_offset as usize;
-
+/*
         // Update Caliptra
         let (image_offset, image_len) = self
             .get_image_toc(
@@ -82,7 +87,9 @@ impl<'a> FirmwareUpdater<'a> {
         self.update_caliptra(image_offset, image_len).await?;
         self.wait_caliptra_rt_execution().await?;
 
+
         // Set the new Auth Manifest
+        writeln!(Console::<DefaultSyscalls>::writer(), "Updating Manifest").unwrap();
         let (image_offset, image_len) = self
             .get_image_toc(
                 flash_header.image_count as usize,
@@ -91,7 +98,27 @@ impl<'a> FirmwareUpdater<'a> {
             )
             .await
             .map_err(|_| ErrorCode::Fail)?;
-        self.update_manifest(image_offset, image_len).await
+        self.update_manifest(image_offset, image_len).await?;
+
+*/
+        writeln!(Console::<DefaultSyscalls>::writer(), "Updating MCU").unwrap();
+                let (image_offset, image_len) = self
+            .get_image_toc(
+                flash_header.image_count as usize,
+                image_headers_offset,
+                MCU_RT_IDENTIFIER,
+            )
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
+
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "Updating MCU with offset: {}, len: {}",
+            image_offset, image_len)
+        .unwrap();
+
+        self.update_mcu(image_len).await?;
+        Ok(())
     }
 
     pub async fn get_image_toc(
@@ -175,6 +202,43 @@ impl<'a> FirmwareUpdater<'a> {
                     CommandId::SET_AUTH_MANIFEST.into(),
                     Some(header),
                     &mut payload_stream,
+                    response_buffer,
+                )
+                .await;
+            match result {
+                Ok(_) => return Ok(()),
+                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
+                Err(_) => return Err(ErrorCode::Fail),
+            }
+        }
+    }
+
+    async fn update_mcu(&mut self, len: usize) -> Result<(), ErrorCode> {
+        let mut req = ActivateFirmwareReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            fw_id_count: 1,
+            fw_ids: {
+                let mut fw_ids = [0u32; ActivateFirmwareReq::MAX_FW_ID_COUNT];
+                fw_ids[0] = MCU_RT_IDENTIFIER;
+                fw_ids
+            },
+            mcu_fw_image_size: len as u32,
+        };
+
+        let req = req.as_mut_bytes();
+
+        self.mailbox
+            .populate_checksum(CommandId::ACTIVATE_FIRMWARE.into(), req)
+            .unwrap();
+
+
+        let response_buffer = &mut [0u8; core::mem::size_of::<ActivateFirmwareResp>()];
+        loop {
+            let result = self
+                .mailbox
+                .execute(
+                    CommandId::ACTIVATE_FIRMWARE.into(),
+                    req,
                     response_buffer,
                 )
                 .await;
@@ -291,4 +355,11 @@ impl PayloadStream for MailboxPayloadStream {
 pub struct AuthManifestReqHeader {
     pub chksum: u32,
     pub manifest_size: u32,
+}
+
+
+#[embassy_executor::task]
+async fn mcu_update_task() {
+    // Wait for the EXEC_FW_CTRL of MCU to be cleared
+    
 }

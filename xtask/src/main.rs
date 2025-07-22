@@ -3,7 +3,7 @@
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
 use core::panic;
-use mcu_builder::SocImage;
+use mcu_builder::ImageCfg;
 use std::path::PathBuf;
 
 mod cargo_lock;
@@ -72,7 +72,7 @@ enum Commands {
         /// List of SoC images with format: <path>,<load_addr>,<image_id>
         /// Example: --soc_image image1.bin,0x80000000,2
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
-        soc_images: Option<Vec<SocImage>>,
+        soc_images: Option<Vec<ImageCfg>>,
 
         /// Path to the Flash image to be used in streaming boot
         #[arg(long)]
