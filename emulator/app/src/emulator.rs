@@ -521,18 +521,27 @@ impl Emulator {
                 spdm_loopback_tests,
                 None,
             );
-        } else if cfg!(feature = "test-spdm-validator") {
+        } else if cfg!(feature = "test-mctp-spdm-responder-conformance") {
             if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
                 println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
                 exit(0);
             }
             i3c_controller.start();
-            let spdm_validator_tests = tests::spdm_validator::generate_tests();
-            i3c_socket::run_tests(
+            crate::tests::spdm_responder_validator::mctp::run_mctp_spdm_conformance_test(
                 cli.i3c_port.unwrap(),
                 i3c.get_dynamic_address().unwrap(),
-                spdm_validator_tests,
-                Some(std::time::Duration::from_secs(9000)), // timeout in seconds
+                std::time::Duration::from_secs(9000), // timeout in seconds
+            );
+        } else if cfg!(feature = "test-doe-spdm-responder-conformance") {
+            if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
+                println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
+                exit(0);
+            }
+            let (test_rx, test_tx) = doe_mbox_fsm.start();
+            crate::tests::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
+                test_tx,
+                test_rx,
+                std::time::Duration::from_secs(9000), // timeout in seconds
             );
         }
 
