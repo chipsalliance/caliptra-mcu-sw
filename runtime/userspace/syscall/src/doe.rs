@@ -6,6 +6,9 @@ use libtock_platform::share;
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
+use core::fmt::Write;
+use libtock_console::Console;
+
 pub struct Doe<S: Syscalls = DefaultSyscalls> {
     _syscall: PhantomData<S>,
     driver_num: u32,
@@ -37,6 +40,7 @@ impl<S: Syscalls> Doe<S> {
     /// - `Ok(usize)` - The number of bytes received.
     /// - `Err(ErrorCode)` - An error code if the operation fails.
     pub async fn receive_message(&self, buf: &mut [u8]) -> Result<u32, ErrorCode> {
+        let mut cw = Console::<DefaultSyscalls>::writer();
         if buf.is_empty() {
             return Err(ErrorCode::Invalid);
         }
@@ -60,6 +64,12 @@ impl<S: Syscalls> Doe<S> {
             Ok(TockSubscribe::subscribe_finish(sub))
         })?
         .await?;
+        writeln!(
+            cw,
+            "SPDM_LIB: RECEIVE_MESSAGE: Upcall received for driver_num {:X}! recv_len = {}",
+            self.driver_num, recv_len
+        )
+        .unwrap();
 
         Ok(recv_len)
     }
@@ -71,6 +81,7 @@ impl<S: Syscalls> Doe<S> {
     /// - `Ok(())` - If the message was sent successfully.
     /// - `Err(ErrorCode)` - An error code if the operation fails.
     pub async fn send_message(&self, buf: &[u8]) -> Result<(), ErrorCode> {
+        let mut cw = Console::<DefaultSyscalls>::writer();
         if buf.is_empty() {
             return Err(ErrorCode::Invalid);
         }
@@ -94,6 +105,12 @@ impl<S: Syscalls> Doe<S> {
             Ok(TockSubscribe::subscribe_finish(sub))
         })?
         .await?;
+        writeln!(
+            cw,
+            "SPDM_LIB: SEND_MESSAGE: Upcall received for driver_num {:X}! MESSAGE_TRANSMITTED",
+            self.driver_num
+        )
+        .unwrap();
 
         Ok(())
     }

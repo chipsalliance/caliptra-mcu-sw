@@ -306,11 +306,12 @@ extern "C" fn kernel_upcall<S: Syscalls>(arg0: u32, arg1: u32, arg2: u32, data: 
     // in the Drop instead of dereferencing into an invalid pointer.
     unsafe { (*upcall).result.set(Some((arg0, arg1, arg2))) };
     if let Some(waker) = unsafe { (*upcall).waker.take() } {
+        writeln!(cw, "SPDM_LIB: KERNEL_UPCALL: Waking future.").unwrap();
         waker.wake();
     } else {
         writeln!(
             cw,
-            "ERROR!!!!!SPDM_LIB: KERNEL_UPCALL: No waker found, upcall will not wake future."
+            "SPDM_LIB: KERNEL_UPCALL: ERROR!!!!! No waker found, upcall will not wake future."
         )
         .unwrap();
     }
