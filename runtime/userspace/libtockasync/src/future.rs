@@ -8,6 +8,9 @@ use core::task::{Context, Poll, Waker};
 use libtock_platform::exit_on_drop::ExitOnDrop;
 use libtock_platform::*;
 
+use core::fmt::Write;
+use libtock_console::Console;
+
 /// TockSubscribe is a future implementation that performs a Tock subscribe call and
 /// is ready when the subscribe upcall happens.
 ///
@@ -293,6 +296,7 @@ impl TockSubscribe {
 }
 
 extern "C" fn kernel_upcall<S: Syscalls>(arg0: u32, arg1: u32, arg2: u32, data: Register) {
+    let mut cw = Console::<S>::writer();
     let exit: ExitOnDrop<S> = Default::default();
     let upcall: *mut TockSubscribe = data.into();
     // Safety: we set the pointer to a pinned TockSubscribe instance in the subscribe.
@@ -303,6 +307,12 @@ extern "C" fn kernel_upcall<S: Syscalls>(arg0: u32, arg1: u32, arg2: u32, data: 
     unsafe { (*upcall).result.set(Some((arg0, arg1, arg2))) };
     if let Some(waker) = unsafe { (*upcall).waker.take() } {
         waker.wake();
+    } else {
+        writeln!(
+            cw,
+            "ERROR!!!!!SPDM_LIB: KERNEL_UPCALL: No waker found, upcall will not wake future."
+        )
+        .unwrap();
     }
     core::mem::forget(exit);
 }
