@@ -370,7 +370,7 @@ async fn generate_algorithms_response<'a>(
 
     // Fill the response buffer with selected algorithm structure table
     payload_len += encode_alg_struct_table(ctx, rsp, num_alg_struct_tables)?;
-    
+
     // Add the ALGORITHMS to the transcript VCA context
     ctx.append_message_to_transcript(rsp, TranscriptContext::Vca)
         .await?;

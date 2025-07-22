@@ -276,7 +276,7 @@ async fn generate_capabilities_response<'a>(
             .encode(rsp_buf)
             .map_err(|e| (false, CommandError::Codec(e)))?;
     }
-    
+
     // Append CAPABILITIES to the transcript VCA context
     ctx.append_message_to_transcript(rsp_buf, TranscriptContext::Vca)
         .await?;

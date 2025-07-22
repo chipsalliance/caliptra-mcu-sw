@@ -56,6 +56,9 @@ impl MctpTransport {
         while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.tx_rx_state {
                 TxRxState::Start => {
+                    // This is to give some time for send_done upcall to be invoked by the kernel to the app.
+                    // Just a hack and may not be perfect solution.
+                    std::thread::sleep(std::time::Duration::from_millis(200));
                     self.tx_rx_state = TxRxState::SendReq;
                 }
                 TxRxState::SendReq => {

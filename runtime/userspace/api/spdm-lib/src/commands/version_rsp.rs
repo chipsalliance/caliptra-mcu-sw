@@ -102,7 +102,7 @@ async fn generate_version_response<'a>(
             .encode(rsp_buf)
             .map_err(|_| (false, CommandError::BufferTooSmall))?;
     }
-    
+
     // Append response to VCA transcript
     ctx.append_message_to_transcript(rsp_buf, TranscriptContext::Vca)
         .await?;

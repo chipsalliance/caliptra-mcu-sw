@@ -94,6 +94,23 @@ jobs:
           popd
           popd
 
+      - name: Run SPDM validator test tests on MCTP transport
+        run: |
+          export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
+          cargo t -p tests-integration -- --test test_mctp_spdm_responder_conformance --nocapture  --include-ignored
+          sccache --show-stats
+    
+      - name: Display SPDM Validator test results on MCTP transport
+        run: |
+          cat $GITHUB_WORKSPACE/test.log
+      
+      - name: Check for test failures
+        run: |
+          if grep -E 'test suite \(.*\) - pass: [0-9]+, fail: [1-9][0-9]*' $GITHUB_WORKSPACE/test.log; then
+            echo "Test suite had failures."
+            exit 1
+          fi
+
       - name: Run SPDM validator test tests on DOE transport
         run: |
           export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin

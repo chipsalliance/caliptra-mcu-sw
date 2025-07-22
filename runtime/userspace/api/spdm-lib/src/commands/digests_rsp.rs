@@ -170,7 +170,7 @@ async fn generate_digests_response<'a>(
     if connection_version >= SpdmVersion::V13 && ctx.state.connection_info.multi_key_conn_rsp() {
         payload_len += encode_multi_key_conn_rsp_data(ctx, provisioned_slot_mask, rsp).await?;
     }
-    
+
     // Append the response message to the M1 transcript
     ctx.append_message_to_transcript(rsp, TranscriptContext::M1)
         .await?;

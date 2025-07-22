@@ -52,7 +52,11 @@ impl Transport for DoeTransport {
             match self.tx_rx_state {
                 TxRxState::Start => {
                     if wait_for_responder {
-                        std::thread::sleep(std::time::Duration::from_secs(20));
+                        std::thread::sleep(std::time::Duration::from_secs(10));
+                    } else {
+                        // This is to give some time for send_done upcall to be invoked by the kernel to the app.
+                        // Just a hack and may not be perfect solution.
+                        std::thread::sleep(std::time::Duration::from_millis(200));
                     }
                     self.tx_rx_state = TxRxState::SendReq;
                 }
