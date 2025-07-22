@@ -3,7 +3,6 @@
 use crate::doe::protocol::*;
 use core::cell::Cell;
 use doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
-// use kernel::debug;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, GrantKernelData, UpcallCount};
 use kernel::processbuffer::{ReadableProcessBuffer, ReadableProcessSlice, WriteableProcessBuffer};
 use kernel::syscall::{CommandReturn, SyscallDriver};
@@ -106,14 +105,17 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
         let _result = kernel_data
             .get_readonly_processbuffer(ro_allow::MESSAGE_WRITE)
             .map_err(|e| {
-                println!("Error getting ReadOnlyProcessBuffer buffer: {:?}", e);
+                println!(
+                    "DOE_CAPSULE: Error getting ReadOnlyProcessBuffer buffer: {:?}",
+                    e
+                );
                 ErrorCode::INVAL
             })
             .and_then(|tx_buf| {
                 tx_buf
                     .enter(|app_buf| self.start_transmit(app_buf))
                     .map_err(|e| {
-                        println!("Error getting application tx buffer: {:?}", e);
+                        println!("DOE_CAPSULE: Error getting application tx buffer: {:?}", e);
                         ErrorCode::FAIL
                     })
             })?;
@@ -167,11 +169,6 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
 
     fn handle_spdm_upcall(&self, rx_buf: &'static mut [u32], len_dw: usize) {
         // Handle SPDM Data Object
-        println!(
-            "DOE_CAPSULE: Handling SPDM Data Object with length: {} dwords",
-            len_dw
-        );
-
         self.apps.each(|_, app, kernel_data| {
             if app.waiting_rx.get() {
                 app.waiting_rx.set(false);
@@ -180,50 +177,46 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
                 return;
             }
 
-            let read_len: Result<Result<usize, ErrorCode>, ErrorCode> =
-                match kernel_data.get_readwrite_processbuffer(rw_allow::MESSAGE_READ) {
-                    Ok(read_buf) => {
-                        let copy_len_dw = core::cmp::min(read_buf.len() / 4, len_dw);
-                        read_buf
-                            .mut_enter(|app_buf| {
-                                for (i, &data) in rx_buf.iter().enumerate().take(copy_len_dw) {
-                                    let start = i * 4;
-                                    let end = start + 4;
-                                    let bytes = data.to_le_bytes();
-                                    app_buf[start..end].copy_from_slice(&bytes);
-                                }
-                                Ok(copy_len_dw * 4)
-                            })
-                            .map_err(|e| {
-                                println!("Error entering ReadWriteProcessBuffer buffer");
-                                e.into()
-                            })
-                    }
-                    Err(err) => {
-                        println!("Error getting ReadWriteProcessBuffer buffer: {:?}", err);
-                        Err(ErrorCode::INVAL)
-                    }
-                };
+            let read_len: Result<Result<usize, ErrorCode>, ErrorCode> = match kernel_data
+                .get_readwrite_processbuffer(rw_allow::MESSAGE_READ)
+            {
+                Ok(read_buf) => {
+                    let copy_len_dw = core::cmp::min(read_buf.len() / 4, len_dw);
+                    read_buf
+                        .mut_enter(|app_buf| {
+                            for (i, &data) in rx_buf.iter().enumerate().take(copy_len_dw) {
+                                let start = i * 4;
+                                let end = start + 4;
+                                let bytes = data.to_le_bytes();
+                                app_buf[start..end].copy_from_slice(&bytes);
+                            }
+                            Ok(copy_len_dw * 4)
+                        })
+                        .map_err(|e| {
+                            println!("DOE_CAPSULE: Error entering ReadWriteProcessBuffer buffer");
+                            e.into()
+                        })
+                }
+                Err(err) => {
+                    println!(
+                        "DOE_CAPSULE: Error getting ReadWriteProcessBuffer buffer: {:?}",
+                        err
+                    );
+                    Err(ErrorCode::INVAL)
+                }
+            };
 
             match read_len {
                 Ok(Ok(len)) => {
-                    println!(
-                        "DOE_CAPSULE: SPDM Data Object received successfully, length: {}",
-                        len
-                    );
                     kernel_data
                         .schedule_upcall(upcall::MESSAGE_RECEIVED, (len, 0, 0))
                         .ok();
-                    println!(
-                        "DOE_CAPSULE: Upcall scheduled for MESSAGE_RECEIVED with length: {}",
-                        len
-                    );
                 }
                 Ok(Err(err)) => {
                     println!("DOE_CAPSULE: Error copying data to app buffer: {:?}", err);
                 }
                 Err(err) => {
-                    println!("DOE_CAPSULE: Error copying data to app buffer: {:?}", err);
+                    println!("DOE_CAPSULE: Error while accessing app buffer: {:?}", err);
                 }
             }
         });
@@ -276,13 +269,13 @@ impl<'a, T: DoeTransport<'a>> SyscallDriver for DoeDriver<'a, T> {
                         self.send_app_data(process_id, app, kernel_data)
                     })
                     .map_err(|err| {
-                        println!("Error sending DOE Data object: {:?}", err);
+                        println!("DOE_CAPSULE: Error sending DOE Data object: {:?}", err);
                         err.into()
                     });
                 match result {
                     Ok(_) => CommandReturn::success(),
                     Err(err) => {
-                        println!("ErrorCode sending DOE Data object: {:?}", err);
+                        println!("DOE_CAPSULE: Error sending DOE Data object: {:?}", err);
                         CommandReturn::failure(err)
                     }
                 }
