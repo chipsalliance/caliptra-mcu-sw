@@ -57,6 +57,6 @@ impl Ecdh {
             rsp_bytes,
         )
         .await?;
-        Ok(Cmk(rsp.output))
+        Ok(rsp.output)
     }
 }

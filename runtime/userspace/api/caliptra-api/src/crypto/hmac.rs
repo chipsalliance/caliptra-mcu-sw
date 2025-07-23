@@ -1,10 +1,11 @@
 // Licensed under the Apache-2.0 license
 
+use crate::crypto::import::Import;
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::execute_mailbox_cmd;
 use caliptra_api::mailbox::{
     CmHashAlgorithm, CmHkdfExpandReq, CmHkdfExpandResp, CmHkdfExtractReq, CmHkdfExtractResp,
-    CmHmacReq, CmHmacResp, CmKeyUsage, Cmk, Request,
+    CmHmacReq, CmHmacResp, CmKeyUsage, Cmk, Request, MAX_CMB_DATA_SIZE,
 };
 use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::IntoBytes;
@@ -52,17 +53,16 @@ impl Hmac {
         req.ikm.0.copy_from_slice(&ikm.0);
         match salt {
             HkdfSalt::Cmk(cmk) => {
-                // TODO: set flag
-                req.salt.copy_from_slice(&cmk.0);
+                req.salt.0.copy_from_slice(&cmk.0);
             }
-            // TODO: switch to CM_IMPORT when https://github.com/chipsalliance/caliptra-sw/pull/2303 is merged
             HkdfSalt::Data(data) => {
-                if data.len() > req.salt.len() {
+                if data.len() > MAX_CMB_DATA_SIZE {
                     return Err(CaliptraApiError::InvalidArgument(
-                        "Salt data size exceeds maximum allowed",
+                        "Salt size exceeds maximum allowed",
                     ));
                 }
-                req.salt[..data.len()].copy_from_slice(data);
+                let salt_cmk = Import::import(CmKeyUsage::Hmac, data).await?;
+                req.salt.0.copy_from_slice(&salt_cmk.cmk.0);
             }
         }
         let mut rsp = CmHkdfExtractResp::default();
