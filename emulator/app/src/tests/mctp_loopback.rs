@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
 
-use crate::i3c_socket::{MctpTestState, TestTrait};
+use crate::i3c_socket::{MctpTestState, MctpTransportTest};
 use crate::tests::mctp_util::common::MctpUtil;
 use crate::EMULATOR_RUNNING;
 use std::net::TcpStream;
 use std::sync::atomic::Ordering;
 
-pub fn generate_tests() -> Vec<Box<dyn TestTrait + Send>> {
-    vec![Box::new(Test::new("MctpMultiPktTest")) as Box<dyn TestTrait + Send>]
+pub fn generate_tests() -> Vec<Box<dyn MctpTransportTest + Send>> {
+    vec![Box::new(Test::new("MctpMultiPktTest")) as Box<dyn MctpTransportTest + Send>]
 }
 
 struct Test {
@@ -30,7 +30,7 @@ impl Test {
     }
 }
 
-impl TestTrait for Test {
+impl MctpTransportTest for Test {
     fn is_passed(&self) -> bool {
         self.passed
     }

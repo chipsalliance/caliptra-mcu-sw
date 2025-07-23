@@ -6,9 +6,6 @@ use libtock_platform::share;
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
-use core::fmt::Write;
-use libtock_console::Console;
-
 type EndpointId = u8;
 type Tag = u8;
 
@@ -65,9 +62,7 @@ impl<S: Syscalls> Mctp<S> {
     /// * `(u32, MessageInfo)` - On success, returns tuple containing length of the request received and the message information containing the source EID, message tag
     /// * `ErrorCode` - The error code on failure
     pub async fn receive_request(&self, req: &mut [u8]) -> Result<(u32, MessageInfo), ErrorCode> {
-        let mut console_writer = Console::<S>::writer();
         if req.is_empty() {
-            writeln!(console_writer, "MCTP: received empty req").unwrap();
             Err(ErrorCode::Invalid)?;
         }
 

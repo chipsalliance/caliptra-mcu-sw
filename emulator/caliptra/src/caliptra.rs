@@ -18,7 +18,7 @@ use caliptra_emu_cpu::{Cpu, CpuArgs, Pic};
 use caliptra_emu_periph::soc_reg::DebugManufService;
 use caliptra_emu_periph::{
     CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal, MailboxRequester,
-    ReadyForFwCb, SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
+    Mci, ReadyForFwCb, SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
 };
 use caliptra_hw_model::BusMmio;
 use std::io::{self, ErrorKind, Write};
@@ -56,7 +56,7 @@ register_bitfields! [
 /// Creates and returns an initialized a Caliptra emulator CPU.
 pub fn start_caliptra(
     args: &StartCaliptraArgs,
-) -> io::Result<(Cpu<CaliptraRootBus>, SocToCaliptraBus)> {
+) -> io::Result<(Cpu<CaliptraRootBus>, SocToCaliptraBus, Mci)> {
     let tmp = PathBuf::from("/tmp");
     let args_log_dir = &tmp;
     let args_idevid_key_id_algo = "sha1";
@@ -141,6 +141,7 @@ pub fn start_caliptra(
             BusMmio::new(root_bus.soc_to_caliptra_bus(MAILBOX_USER)),
         )
     };
+    let ext_mci = root_bus.mci_external_regs();
 
     // Populate DBG_MANUF_SERVICE_REG
     soc_ifc
@@ -179,6 +180,7 @@ pub fn start_caliptra(
     Ok((
         Cpu::new(root_bus, clock.clone(), pic.clone(), CpuArgs::default()),
         ext_soc_ifc,
+        ext_mci,
     ))
 }
 

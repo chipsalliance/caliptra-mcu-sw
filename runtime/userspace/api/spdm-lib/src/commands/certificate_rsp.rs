@@ -80,7 +80,7 @@ bitfield! {
 }
 
 async fn encode_certchain_metadata(
-    cert_store: &mut dyn SpdmCertStore,
+    cert_store: &dyn SpdmCertStore,
     total_certchain_len: u16,
     slot_id: u8,
     asym_algo: AsymAlgo,
@@ -149,6 +149,7 @@ async fn generate_certificate_response<'a>(
         let cert_info = ctx
             .device_certs_store
             .cert_info(slot_id)
+            .await
             .unwrap_or_default();
         resp_attr.set_certificate_info(cert_info.cert_model());
     }
@@ -224,12 +225,13 @@ async fn generate_certificate_response<'a>(
         }
     }
 
-    rsp.push_data(payload_len)
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-
     // Append the response message to the M1 transcript
     ctx.append_message_to_transcript(rsp, TranscriptContext::M1)
-        .await
+        .await?;
+
+    rsp.push_data(payload_len)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+    Ok(())
 }
 
 async fn process_get_certificate<'a>(
@@ -255,7 +257,7 @@ async fn process_get_certificate<'a>(
 
     // Check if the slot is provisioned. Otherwise, return an InvalidRequest error.
     let slot_mask = 1 << slot_id;
-    let (_, provisioned_slot_mask) = cert_slot_mask(ctx.device_certs_store);
+    let (_, provisioned_slot_mask) = cert_slot_mask(ctx.device_certs_store).await;
 
     if provisioned_slot_mask & slot_mask == 0 {
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;

@@ -1,12 +1,19 @@
 // Licensed under the Apache-2.0 license
 
-use crate::error::{SpdmError, SpdmResult};
+use crate::error::SpdmError;
 use bitfield::bitfield;
 use libapi_caliptra::crypto::hash::HashAlgoType;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const SHA384_HASH_SIZE: usize = 48;
 pub const ECC_P384_SIGNATURE_SIZE: usize = 96;
+
+// Caliptra Hash Priority table
+pub static HASH_PRIORITY_TABLE: &[BaseHashAlgoType] = &[
+    BaseHashAlgoType::TpmAlgSha512,
+    BaseHashAlgoType::TpmAlgSha384,
+    BaseHashAlgoType::TpmAlgSha256,
+];
 
 // Type of Asymmetric Algorithm selected by the responder.
 // Currently only ECC P384 is supported.
@@ -536,7 +543,7 @@ pub enum KeyScheduleType {
     SpdmKeySchedule,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct DeviceAlgorithms {
     pub measurement_spec: MeasurementSpecification,
     pub other_param_support: OtherParamSupport,
@@ -548,6 +555,45 @@ pub struct DeviceAlgorithms {
     pub aead_cipher_suite: AeadCipherSuite,
     pub req_base_asym_algo: ReqBaseAsymAlg,
     pub key_schedule: KeySchedule,
+}
+
+impl Default for DeviceAlgorithms {
+    fn default() -> Self {
+        let mut measurement_spec = MeasurementSpecification(0);
+        measurement_spec.set_dmtf_measurement_spec(1);
+
+        let other_param_support = OtherParamSupport::default();
+
+        let mut measurement_hash_algo = MeasurementHashAlgo::default();
+        measurement_hash_algo.set_tpm_alg_sha_384(1);
+
+        let mut base_asym_algo = BaseAsymAlgo::default();
+        base_asym_algo.set_tpm_alg_ecdsa_ecc_nist_p384(1);
+
+        let mut base_hash_algo = BaseHashAlgo::default();
+        base_hash_algo.set_tpm_alg_sha_384(1);
+
+        let mut mel_specification = MelSpecification::default();
+        mel_specification.set_dmtf_mel_spec(1);
+
+        let dhe_group = DheNamedGroup::default();
+        let aead_cipher_suite = AeadCipherSuite::default();
+        let req_base_asym_algo = ReqBaseAsymAlg::default();
+        let key_schedule = KeySchedule::default();
+
+        DeviceAlgorithms {
+            measurement_spec,
+            other_param_support,
+            measurement_hash_algo,
+            base_asym_algo,
+            base_hash_algo,
+            mel_specification,
+            dhe_group,
+            aead_cipher_suite,
+            req_base_asym_algo,
+            key_schedule,
+        }
+    }
 }
 
 impl DeviceAlgorithms {
@@ -588,16 +634,21 @@ pub struct LocalDeviceAlgorithms<'a> {
     pub algorithm_priority_table: AlgorithmPriorityTable<'a>,
 }
 
-pub(crate) fn validate_device_algorithms(
-    local_device_algorithms: &LocalDeviceAlgorithms,
-) -> SpdmResult<()> {
-    let local_algorithms = &local_device_algorithms.device_algorithms;
-
-    // If responder supports the measurements, then exactly one bit should be set in the MeasurementHashAlgo
-    let measurement_hash_algo = local_algorithms.measurement_hash_algo;
-    if measurement_hash_algo.0.count_ones() > 1 {
-        Err(SpdmError::InvalidParam)?;
+impl Default for LocalDeviceAlgorithms<'_> {
+    fn default() -> Self {
+        LocalDeviceAlgorithms {
+            device_algorithms: DeviceAlgorithms::default(),
+            algorithm_priority_table: AlgorithmPriorityTable {
+                measurement_specification: None,
+                opaque_data_format: None,
+                base_asym_algo: None,
+                base_hash_algo: Some(HASH_PRIORITY_TABLE),
+                mel_specification: None,
+                dhe_group: None,
+                aead_cipher_suite: None,
+                req_base_asym_algo: None,
+                key_schedule: None,
+            },
+        }
     }
-
-    Ok(())
 }

@@ -51,7 +51,9 @@ impl FreeformManifest {
         _raw_bit_stream: bool,
     ) -> MeasurementsResult<usize> {
         if index == SPDM_MEASUREMENT_MANIFEST_INDEX || index == 0xFF {
-            self.refresh_measurement_record(asym_algo).await?;
+            if self.data_size == 0 {
+                self.refresh_measurement_record(asym_algo).await?;
+            }
             Ok(self.data_size)
         } else {
             Err(MeasurementsError::InvalidIndex)
@@ -67,7 +69,9 @@ impl FreeformManifest {
         measurement_chunk: &mut [u8],
     ) -> MeasurementsResult<usize> {
         if index == SPDM_MEASUREMENT_MANIFEST_INDEX || index == 0xFF {
-            self.refresh_measurement_record(asym_algo).await?;
+            if self.data_size == 0 {
+                self.refresh_measurement_record(asym_algo).await?;
+            }
             if offset >= self.data_size {
                 return Err(MeasurementsError::InvalidOffset);
             }

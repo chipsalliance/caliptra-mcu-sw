@@ -62,6 +62,10 @@ extern "C" {
     static _ssram: u8;
     /// The end of the kernel / app RAM (Included only for kernel PMP)
     static _esram: u8;
+    /// The start of the flash region for logging
+    static _sstorage: u8;
+    /// The end of the flash region for logging
+    static _estorage: u8;
 
     pub(crate) static _pic_vector_table: u8;
 }
@@ -87,7 +91,9 @@ pub static mut PROCESS_PRINTER: Option<
     feature = "test-flash-ctrl-read-write-page",
     feature = "test-flash-ctrl-erase-page",
     feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase"
+    feature = "test-flash-storage-erase",
+    feature = "test-log-flash-linear",
+    feature = "test-log-flash-circular"
 ))]
 static mut BOARD: Option<&'static kernel::Kernel> = None;
 
@@ -95,7 +101,9 @@ static mut BOARD: Option<&'static kernel::Kernel> = None;
     feature = "test-flash-ctrl-read-write-page",
     feature = "test-flash-ctrl-erase-page",
     feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase"
+    feature = "test-flash-storage-erase",
+    feature = "test-log-flash-linear",
+    feature = "test-log-flash-circular"
 ))]
 static mut PLATFORM: Option<&'static VeeR> = None;
 
@@ -103,7 +111,9 @@ static mut PLATFORM: Option<&'static VeeR> = None;
     feature = "test-flash-ctrl-read-write-page",
     feature = "test-flash-ctrl-erase-page",
     feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase"
+    feature = "test-flash-storage-erase",
+    feature = "test-log-flash-linear",
+    feature = "test-log-flash-circular"
 ))]
 static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = None;
 
@@ -282,7 +292,7 @@ pub unsafe fn main() {
     // protection.
 
     // Define platform-specific memory regions
-    let mut platform_regions = ArrayVec::<PlatformRegion, 8>::new();
+    let mut platform_regions = ArrayVec::<PlatformRegion, 9>::new();
 
     // Kernel text region (read + execute)
     platform_regions.push(PlatformRegion {
@@ -374,6 +384,17 @@ pub unsafe fn main() {
         user_accessible: false,
         read: true,
         write: true,
+        execute: false,
+    });
+
+    // Logging flash region
+    platform_regions.push(PlatformRegion {
+        start_addr: addr_of!(_sstorage) as *const u8,
+        size: (addr_of!(_estorage) as usize - addr_of!(_sstorage) as usize),
+        is_mmio: true,
+        user_accessible: false,
+        read: true,
+        write: false,
         execute: false,
     });
 
@@ -650,7 +671,9 @@ pub unsafe fn main() {
         feature = "test-flash-ctrl-read-write-page",
         feature = "test-flash-ctrl-erase-page",
         feature = "test-flash-storage-read-write",
-        feature = "test-flash-storage-erase"
+        feature = "test-flash-storage-erase",
+        feature = "test-log-flash-linear",
+        feature = "test-log-flash-circular"
     ))]
     {
         PLATFORM = Some(veer);
@@ -689,6 +712,12 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-doe-transport-loopback") {
         debug!("Executing test-doe-transport-loopback");
         crate::tests::doe_transport_test::test_doe_transport_loopback()
+    } else if cfg!(feature = "test-log-flash-circular") {
+        debug!("Executing test-log-flash-circular");
+        crate::tests::circular_log_test::run(mux_alarm, &emulator_peripherals.primary_flash_ctrl)
+    } else if cfg!(feature = "test-log-flash-linear") {
+        debug!("Executing test-log-flash-linear");
+        crate::tests::linear_log_test::run(mux_alarm, &emulator_peripherals.primary_flash_ctrl)
     } else {
         None
     };
@@ -716,7 +745,9 @@ pub unsafe fn main() {
     feature = "test-flash-ctrl-read-write-page",
     feature = "test-flash-ctrl-erase-page",
     feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase"
+    feature = "test-flash-storage-erase",
+    feature = "test-log-flash-linear",
+    feature = "test-log-flash-circular"
 ))]
 pub fn run_kernel_op(loops: usize) {
     unsafe {

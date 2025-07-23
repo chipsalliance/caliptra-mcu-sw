@@ -189,14 +189,18 @@ impl<'a> MessageBuf<'a> {
         Ok(())
     }
 
-    /// Remove data from the end of the buffer by the specified number of bytes
-    /// This is used to resize the buffer length.
-    pub fn trim(&mut self, len: usize) -> CodecResult<()> {
-        if self.tail < len {
+    /// Resize buffer length to the specified number of bytes from the data pointer.
+    /// If the new length is greater than the current, the tail is increased (if within capacity).
+    /// If the new length is less, the tail is reduced.
+    pub fn resize(&mut self, len: usize) -> CodecResult<()> {
+        let new_tail = len;
+        if new_tail > self.buffer.len() {
+            Err(CodecError::BufferOverflow)?;
+        }
+        if new_tail < self.data {
             Err(CodecError::BufferUnderflow)?;
         }
-        self.tail = self.data + len;
-
+        self.tail = new_tail;
         Ok(())
     }
 
@@ -226,14 +230,18 @@ impl<'a> MessageBuf<'a> {
         self.buffer.fill(0);
         self.data = 0;
         self.tail = 0;
+        self.head = 0;
     }
 
-    /// Returns the message buffer from the data pointer to the tail pointer
-    pub fn message_data(&self) -> CodecResult<&[u8]> {
-        if self.head > self.tail || self.head > self.data {
+    /// Returns the message buffer up to the specified data offset.
+    pub fn message_slice(&self, offset: usize) -> CodecResult<&[u8]> {
+        if offset < self.head {
             Err(CodecError::BufferUnderflow)?;
         }
-        Ok(&self.buffer[self.head..self.tail])
+        if offset > self.tail {
+            Err(CodecError::BufferOverflow)?;
+        }
+        Ok(&self.buffer[self.head..offset])
     }
 
     /// For debug purposes
@@ -300,7 +308,7 @@ mod tests {
         let data = msg_buf.data_mut(msg_len);
         assert!(data.is_ok());
         data.unwrap().copy_from_slice(&msg[..msg_len]);
-        assert!(msg_buf.trim(msg_len).is_ok());
+        assert!(msg_buf.resize(msg_len).is_ok());
         assert_eq!(msg_buf.tail, 48);
         assert_eq!(msg_buf.data_len(), 48);
         assert_eq!(msg_buf.data(48).unwrap(), &msg[..msg_len]);

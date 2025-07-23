@@ -67,6 +67,7 @@ async fn start() {
     async_main::<libtock_unittest::fake::Syscalls>().await;
 }
 
+#[allow(unreachable_code)]
 pub(crate) async fn async_main<S: Syscalls>() {
     let mut console_writer = Console::<S>::writer();
     writeln!(
@@ -186,6 +187,8 @@ pub(crate) async fn async_main<S: Syscalls>() {
     {
         test_caliptra_crypto::test_caliptra_sha().await;
         test_caliptra_crypto::test_caliptra_rng().await;
+        test_caliptra_crypto::test_caliptra_ecdh().await;
+        test_caliptra_crypto::test_caliptra_hmac().await;
         romtime::test_exit(0);
     }
 

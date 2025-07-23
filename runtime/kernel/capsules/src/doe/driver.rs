@@ -3,7 +3,6 @@
 use crate::doe::protocol::*;
 use core::cell::Cell;
 use doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
-use kernel::debug;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, GrantKernelData, UpcallCount};
 use kernel::processbuffer::{ReadableProcessBuffer, ReadableProcessSlice, WriteableProcessBuffer};
 use kernel::syscall::{CommandReturn, SyscallDriver};
@@ -106,14 +105,17 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
         let _result = kernel_data
             .get_readonly_processbuffer(ro_allow::MESSAGE_WRITE)
             .map_err(|e| {
-                debug!("Error getting ReadOnlyProcessBuffer buffer: {:?}", e);
+                println!(
+                    "DOE_CAPSULE: Error getting ReadOnlyProcessBuffer buffer: {:?}",
+                    e
+                );
                 ErrorCode::INVAL
             })
             .and_then(|tx_buf| {
                 tx_buf
                     .enter(|app_buf| self.start_transmit(app_buf))
                     .map_err(|e| {
-                        debug!("Error getting application tx buffer: {:?}", e);
+                        println!("DOE_CAPSULE: Error getting application tx buffer: {:?}", e);
                         ErrorCode::FAIL
                     })
             })?;
@@ -125,7 +127,7 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
     fn handle_doe_discovery(&self, doe_req: DoeDiscoveryRequest) {
         let data_object_protocol = DataObjectType::from(doe_req.index());
         if data_object_protocol == DataObjectType::Unsupported {
-            debug!("Unsupported DOE Discovery Request");
+            println!("DOE_CAPSULE: Unsupported DOE Discovery Request");
             return;
         }
 
@@ -137,85 +139,84 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
         let discovery_response = DoeDiscoveryResponse::new(data_object_protocol as u8, next_index);
 
         // Prepare the response buffer
-        let doe_header = DoeDataObjectHeader::new(
-            data_object_protocol,
-            DOE_DISCOVERY_DATA_OBJECT_LEN_DW as u32,
-        );
+        let doe_header = DoeDataObjectHeader::new(DOE_DISCOVERY_DATA_OBJECT_LEN_DW as u32);
         if doe_header
             .encode(&mut doe_resp[..DOE_DATA_OBJECT_HEADER_LEN_DW])
             .is_err()
         {
-            debug!("Error encoding DOE header");
+            println!("DOE_CAPSULE: Error encoding DOE header");
             return;
         }
         if discovery_response
             .encode(&mut doe_resp[DOE_DATA_OBJECT_HEADER_LEN_DW..])
             .is_err()
         {
-            debug!("Error encoding DOE discovery response");
+            println!("DOE_CAPSULE: Error encoding DOE discovery response");
             return;
         }
 
         // Transmit the DOE Discovery Response
-
-        match self
+        if let Err(err) = self
             .doe_transport
             .transmit(doe_resp.iter().copied(), doe_resp.len())
         {
-            Ok(_) => debug!("DOE Discovery Response transmitted successfully"),
-            Err(err) => debug!("Error transmitting DOE Discovery Response: {:?}", err),
-        };
+            println!(
+                "DOE_CAPSULE: Error transmitting DOE Discovery Response: {:?}",
+                err
+            );
+        }
     }
 
     fn handle_spdm_upcall(&self, rx_buf: &'static mut [u32], len_dw: usize) {
         // Handle SPDM Data Object
-        debug!("Handling SPDM Data Object with length: {} dwords", len_dw);
-
         self.apps.each(|_, app, kernel_data| {
             if app.waiting_rx.get() {
                 app.waiting_rx.set(false);
             } else {
-                debug!("Application not waiting for Data Object");
+                println!("DOE_CAPSULE: Application not waiting for Data Object");
                 return;
             }
 
-            let read_len: Result<Result<usize, ErrorCode>, ErrorCode> =
-                match kernel_data.get_readwrite_processbuffer(rw_allow::MESSAGE_READ) {
-                    Ok(read_buf) => {
-                        let copy_len_dw = core::cmp::min(read_buf.len() / 4, len_dw);
-                        read_buf
-                            .mut_enter(|app_buf| {
-                                for (i, &data) in rx_buf.iter().enumerate().take(copy_len_dw) {
-                                    let start = i * 4;
-                                    let end = start + 4;
-                                    let bytes = data.to_le_bytes();
-                                    app_buf[start..end].copy_from_slice(&bytes);
-                                }
-                                Ok(copy_len_dw * 4)
-                            })
-                            .map_err(|e| {
-                                debug!("Error entering ReadWriteProcessBuffer buffer");
-                                e.into()
-                            })
-                    }
-                    Err(err) => {
-                        debug!("Error getting ReadWriteProcessBuffer buffer: {:?}", err);
-                        Err(ErrorCode::INVAL)
-                    }
-                };
+            let read_len: Result<Result<usize, ErrorCode>, ErrorCode> = match kernel_data
+                .get_readwrite_processbuffer(rw_allow::MESSAGE_READ)
+            {
+                Ok(read_buf) => {
+                    let copy_len_dw = core::cmp::min(read_buf.len() / 4, len_dw);
+                    read_buf
+                        .mut_enter(|app_buf| {
+                            for (i, &data) in rx_buf.iter().enumerate().take(copy_len_dw) {
+                                let start = i * 4;
+                                let end = start + 4;
+                                let bytes = data.to_le_bytes();
+                                app_buf[start..end].copy_from_slice(&bytes);
+                            }
+                            Ok(copy_len_dw * 4)
+                        })
+                        .map_err(|e| {
+                            println!("DOE_CAPSULE: Error entering ReadWriteProcessBuffer buffer");
+                            e.into()
+                        })
+                }
+                Err(err) => {
+                    println!(
+                        "DOE_CAPSULE: Error getting ReadWriteProcessBuffer buffer: {:?}",
+                        err
+                    );
+                    Err(ErrorCode::INVAL)
+                }
+            };
 
             match read_len {
                 Ok(Ok(len)) => {
-                    debug!("SPDM Data Object received successfully, length: {}", len);
                     kernel_data
                         .schedule_upcall(upcall::MESSAGE_RECEIVED, (len, 0, 0))
                         .ok();
                 }
                 Ok(Err(err)) => {
-                    debug!("Error copying data to app buffer: {:?}", err);
+                    println!("DOE_CAPSULE: Error copying data to app buffer: {:?}", err);
                 }
                 Err(err) => {
-                    debug!("Error copying data to app buffer: {:?}", err);
+                    println!("DOE_CAPSULE: Error while accessing app buffer: {:?}", err);
                 }
             }
         });
@@ -268,13 +269,13 @@ impl<'a, T: DoeTransport<'a>> SyscallDriver for DoeDriver<'a, T> {
                         self.send_app_data(process_id, app, kernel_data)
                     })
                     .map_err(|err| {
-                        debug!("Error sending DOE Data object: {:?}", err);
+                        println!("DOE_CAPSULE: Error sending DOE Data object: {:?}", err);
                         err.into()
                     });
                 match result {
                     Ok(_) => CommandReturn::success(),
                     Err(err) => {
-                        debug!("ErrorCode sending DOE Data object: {:?}", err);
+                        println!("DOE_CAPSULE: Error sending DOE Data object: {:?}", err);
                         CommandReturn::failure(err)
                     }
                 }
@@ -300,9 +301,8 @@ impl<'a, T: DoeTransport<'a>> DoeTransportRxClient for DoeDriver<'a, T> {
             self.doe_transport.set_rx_buffer(rx_buf);
             return;
         }
-        // Decode the DOE header
-        println!("DOE_CAPSULE: Received DOE Data Object with length: {}", len);
 
+        // Decode the DOE header
         let doe_hdr = match DoeDataObjectHeader::decode(rx_buf) {
             Ok(header) => header,
             Err(_) => {
@@ -337,7 +337,7 @@ impl<'a, T: DoeTransport<'a>> DoeTransportRxClient for DoeDriver<'a, T> {
                 // Note: rx_buf is consumed by handle_spdm_upcall, so we don't call set_rx_buffer here
             }
             DataObjectType::Unsupported => {
-                debug!("Unsupported DOE Data Object");
+                println!("DOE_CAPSULE: Unsupported DOE Data Object");
                 self.doe_transport.set_rx_buffer(rx_buf);
             }
         }

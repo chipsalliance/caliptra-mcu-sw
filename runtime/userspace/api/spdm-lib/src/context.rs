@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-// use crate::cert_mgr::DeviceCertsManager;
 use crate::cert_store::*;
 use crate::chunk_ctx::LargeResponseCtx;
 use crate::codec::{Codec, MessageBuf};
@@ -17,7 +16,7 @@ use crate::protocol::version::*;
 use crate::protocol::DeviceCapabilities;
 use crate::state::{ConnectionState, State};
 use crate::transcript::{TranscriptContext, TranscriptManager};
-use crate::transport::SpdmTransport;
+use crate::transport::common::SpdmTransport;
 
 pub struct SpdmContext<'a> {
     transport: &'a mut dyn SpdmTransport,
@@ -26,7 +25,7 @@ pub struct SpdmContext<'a> {
     pub(crate) transcript_mgr: TranscriptManager,
     pub(crate) local_capabilities: DeviceCapabilities,
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
-    pub(crate) device_certs_store: &'a mut dyn SpdmCertStore,
+    pub(crate) device_certs_store: &'a dyn SpdmCertStore,
     pub(crate) measurements: SpdmMeasurements,
     pub(crate) large_resp_context: LargeResponseCtx,
 }
@@ -36,12 +35,9 @@ impl<'a> SpdmContext<'a> {
         supported_versions: &'a [SpdmVersion],
         spdm_transport: &'a mut dyn SpdmTransport,
         local_capabilities: DeviceCapabilities,
-        local_algorithms: LocalDeviceAlgorithms<'a>,
-        device_certs_store: &'a mut dyn SpdmCertStore,
+        device_certs_store: &'a dyn SpdmCertStore,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
-
-        validate_device_algorithms(&local_algorithms)?;
 
         validate_cert_store(device_certs_store)?;
 
@@ -51,7 +47,7 @@ impl<'a> SpdmContext<'a> {
             state: State::new(),
             transcript_mgr: TranscriptManager::new(),
             local_capabilities,
-            local_algorithms,
+            local_algorithms: LocalDeviceAlgorithms::default(),
             device_certs_store,
             measurements: SpdmMeasurements::default(),
             large_resp_context: LargeResponseCtx::default(),
@@ -59,19 +55,24 @@ impl<'a> SpdmContext<'a> {
     }
 
     pub async fn process_message(&mut self, msg_buf: &mut MessageBuf<'a>) -> SpdmResult<()> {
-        self.transport
+        let secure = self
+            .transport
             .receive_request(msg_buf)
             .await
             .map_err(SpdmError::Transport)?;
 
+        // TODO: Decrypt if secure.
+
         // Process message
         match self.handle_request(msg_buf).await {
             Ok(()) => {
-                self.send_response(msg_buf).await?;
+                self.send_response(msg_buf, secure).await?;
             }
             Err((rsp, command_error)) => {
                 if rsp {
-                    self.send_response(msg_buf).await.inspect_err(|_| {})?;
+                    self.send_response(msg_buf, secure)
+                        .await
+                        .inspect_err(|_| {})?;
                 }
                 Err(SpdmError::Command(command_error))?;
             }
@@ -126,9 +127,10 @@ impl<'a> SpdmContext<'a> {
         Ok(())
     }
 
-    async fn send_response(&mut self, resp: &mut MessageBuf<'a>) -> SpdmResult<()> {
+    async fn send_response(&mut self, resp: &mut MessageBuf<'a>, secure: bool) -> SpdmResult<()> {
+        // TODO: Encrypt if secure.
         self.transport
-            .send_response(resp)
+            .send_response(resp, secure)
             .await
             .map_err(SpdmError::Transport)
     }
@@ -231,8 +233,10 @@ impl<'a> SpdmContext<'a> {
         msg_buf: &mut MessageBuf<'_>,
         transcript_context: TranscriptContext,
     ) -> CommandResult<()> {
+        let data_offset = msg_buf.data_offset();
+
         let msg = msg_buf
-            .message_data()
+            .message_slice(data_offset)
             .map_err(|e| (false, CommandError::Codec(e)))?;
 
         self.transcript_mgr

@@ -53,7 +53,7 @@ pub struct DeviceCapabilities {
 }
 
 bitfield! {
-#[derive(FromBytes, IntoBytes, Immutable, Default, Clone, Copy)]
+#[derive(FromBytes, IntoBytes, Immutable, Clone, Copy)]
 #[repr(C)]
 pub struct CapabilityFlags(u32);
 impl Debug;
@@ -90,5 +90,30 @@ reserved , _: 31, 30;
 impl CapabilityFlags {
     pub fn new(flags: u32) -> Self {
         Self(flags)
+    }
+}
+
+impl Default for CapabilityFlags {
+    fn default() -> Self {
+        let mut capability_flags = CapabilityFlags::new(0);
+        capability_flags.set_cache_cap(0);
+        capability_flags.set_cert_cap(1);
+        capability_flags.set_chal_cap(1);
+        capability_flags.set_meas_cap(MeasCapability::MeasurementsWithSignature as u8);
+        capability_flags.set_meas_fresh_cap(0);
+        capability_flags.set_encrypt_cap(0);
+        capability_flags.set_mac_cap(0);
+        capability_flags.set_mut_auth_cap(0);
+        capability_flags.set_key_ex_cap(0);
+        capability_flags.set_psk_cap(PskCapability::NoPsk as u8);
+        capability_flags.set_encap_cap(0);
+        capability_flags.set_hbeat_cap(0);
+        capability_flags.set_key_upd_cap(0);
+        capability_flags.set_handshake_in_the_clear_cap(0);
+        capability_flags.set_pub_key_id_cap(0);
+        capability_flags.set_chunk_cap(1);
+        capability_flags.set_alias_cert_cap(1);
+
+        capability_flags
     }
 }

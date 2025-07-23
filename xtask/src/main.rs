@@ -31,6 +31,10 @@ struct Xtask {
 enum Commands {
     /// Build and Run Runtime image
     Runtime {
+        /// HW revision in semver format (e.g., "2.0.0")
+        #[arg(long, value_parser = semver::Version::parse, default_value = "2.0.0")]
+        hw_revision: semver::Version,
+
         /// Run with tracing options
         #[arg(short, long, default_value_t = false)]
         trace: bool,
@@ -259,6 +263,13 @@ fn main() {
                 *use_dccm_for_stack,
                 *dccm_offset,
                 *dccm_size,
+                match platform.as_deref() {
+                    None | Some("emulator") => {
+                        Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG)
+                    }
+                    Some("fpga") => None,
+                    _ => panic!("Unsupported platform"),
+                },
             )
             .map(|_| ())
         }

@@ -89,14 +89,21 @@ async fn process_challenge<'a>(
 
     // Note: Pubkey of the responder will not be pre-provisioned to Requester. So slot ID 0xFF is invalid.
     if challenge_req.slot_id >= MAX_CERT_SLOTS_SUPPORTED
-        || !ctx.device_certs_store.is_provisioned(challenge_req.slot_id)
+        || !ctx
+            .device_certs_store
+            .is_provisioned(challenge_req.slot_id)
+            .await
     {
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
     // If multi-key connection response is supported, validate the key supports challenge usage
     if connection_version >= SpdmVersion::V13 && ctx.state.connection_info.multi_key_conn_rsp() {
-        match ctx.device_certs_store.key_usage_mask(challenge_req.slot_id) {
+        match ctx
+            .device_certs_store
+            .key_usage_mask(challenge_req.slot_id)
+            .await
+        {
             Some(key_usage_mask) if key_usage_mask.challenge_usage() != 0 => {}
             _ => Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?,
         }
@@ -163,7 +170,7 @@ async fn encode_m1_signature<'a>(
     let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
 
     ctx.device_certs_store
-        .sign_hash(slot_id, &tbs, &mut signature)
+        .sign_hash(slot_id, asym_algo, &tbs, &mut signature)
         .await
         .map_err(|e| (false, CommandError::CertStore(e)))?;
 

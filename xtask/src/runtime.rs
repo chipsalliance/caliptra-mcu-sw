@@ -8,6 +8,7 @@ use std::{path::PathBuf, process::Command};
 /// Run the Runtime Tock kernel image for RISC-V in the emulator.
 pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     let Commands::Runtime {
+        hw_revision,
         trace,
         i3c_port,
         features,
@@ -28,7 +29,10 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         panic!("Must call runtime_run with Commands::Runtime");
     };
 
-    let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
+    let mut features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
+    if hw_revision >= semver::Version::new(2, 1, 0) && !features.contains(&"hw-2-1") {
+        features.push("hw-2-1");
+    }
     let rom_binary: PathBuf = rom_build(None, "")?.into();
     let tock_binary: PathBuf = runtime_build_with_apps_cached(
         &features,
@@ -39,6 +43,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         use_dccm_for_stack,
         dccm_offset,
         dccm_size,
+        None,
     )?
     .into();
 
@@ -56,6 +61,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     let caliptra_firmware = caliptra_builder.get_caliptra_fw()?;
     let soc_manifest = caliptra_builder.get_soc_manifest()?;
     let vendor_pk_hash = caliptra_builder.get_vendor_pk_hash()?;
+    let hw_revision = hw_revision.to_string();
     let mut cargo_run_args = vec![
         "run",
         "-p",
@@ -75,6 +81,8 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         soc_manifest.to_str().unwrap(),
         "--vendor-pk-hash",
         vendor_pk_hash,
+        "--hw-revision",
+        &hw_revision,
     ];
     // map the memory map to the emulator
     let rom_offset = format!(

@@ -98,7 +98,7 @@ impl MeasurementsResponse {
         &self,
         measurements: &mut SpdmMeasurements,
         transcript_mgr: &mut TranscriptManager,
-        cert_store: &mut dyn SpdmCertStore,
+        cert_store: &dyn SpdmCertStore,
         offset: usize,
         chunk_buf: &mut [u8],
     ) -> CommandResult<usize> {
@@ -179,13 +179,14 @@ impl MeasurementsResponse {
             && self.req_attr.signature_requested() == 1
             && offset + copied >= signature_start
         {
-            let signature = self.l1_signature_ecc(transcript_mgr, cert_store).await?;
+            let signature = self
+                .l1_signature(self.asym_algo, transcript_mgr, cert_store)
+                .await?;
             let sig_offset = (offset + copied) - signature_start;
             let copy_len = (signature.len() - sig_offset).min(rem_len);
             chunk_buf[copied..copied + copy_len]
                 .copy_from_slice(&signature[sig_offset..sig_offset + copy_len]);
             copied += copy_len;
-            // rem_len -= copy_len;
         }
 
         Ok(copied)
@@ -293,24 +294,26 @@ impl MeasurementsResponse {
         Ok(len)
     }
 
-    async fn l1_signature_ecc(
+    async fn l1_signature(
         &self,
+        asym_algo: AsymAlgo,
         transcript: &mut TranscriptManager,
-        cert_store: &mut dyn SpdmCertStore,
+        cert_store: &dyn SpdmCertStore,
     ) -> CommandResult<[u8; ECC_P384_SIGNATURE_SIZE]> {
         let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
         let mut signature_buf = MessageBuf::new(&mut signature);
         let _ = self
-            .encode_l1_signature_ecc(transcript, cert_store, &mut signature_buf)
+            .encode_l1_signature(asym_algo, transcript, cert_store, &mut signature_buf)
             .await?;
 
         Ok(signature)
     }
 
-    async fn encode_l1_signature_ecc(
+    async fn encode_l1_signature(
         &self,
+        asym_algo: AsymAlgo,
         transcript: &mut TranscriptManager,
-        cert_store: &mut dyn SpdmCertStore,
+        cert_store: &dyn SpdmCertStore,
         buf: &mut MessageBuf<'_>,
     ) -> CommandResult<usize> {
         // Get the L1 transcript hash
@@ -337,7 +340,7 @@ impl MeasurementsResponse {
 
         let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
         cert_store
-            .sign_hash(slot_id, &tbs, &mut signature)
+            .sign_hash(slot_id, asym_algo, &tbs, &mut signature)
             .await
             .map_err(|e| (false, CommandError::CertStore(e)))?;
 
@@ -463,8 +466,6 @@ pub(crate) async fn generate_measurements_response<'a>(
         Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, handle, None))?
     } else {
         // If the response fits in a single message, prepare it directly
-        ctx.prepare_response_buffer(rsp)?;
-
         // Encode the response fixed fields
         rsp.put_data(rsp_len)
             .map_err(|e| (false, CommandError::Codec(e)))?;

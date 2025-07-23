@@ -33,7 +33,6 @@ Abstract:
 
 --*/
 
-use crate::tests::spdm_validator::execute_spdm_validator;
 use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
 use emulator_periph::{
     DynamicI3cAddress, I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriCommandXfer,
@@ -158,7 +157,7 @@ fn handle_i3c_socket_connection(
     }
 }
 
-pub(crate) trait TestTrait {
+pub(crate) trait MctpTransportTest {
     fn run_test(&mut self, stream: &mut TcpStream, target_addr: u8);
     fn is_passed(&self) -> bool;
 }
@@ -166,7 +165,7 @@ pub(crate) trait TestTrait {
 pub(crate) fn run_tests(
     port: u16,
     target_addr: DynamicI3cAddress,
-    tests: Vec<Box<dyn TestTrait + Send>>,
+    tests: Vec<Box<dyn MctpTransportTest + Send>>,
     test_timeout_seconds: Option<Duration>,
 ) {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -179,7 +178,7 @@ pub(crate) fn run_tests(
             "INTEGRATION TEST ON MCTP-I3C TIMED OUT AFTER {:?} SECONDS",
             timeout
         );
-        EMULATOR_RUNNING.store(false, Ordering::Relaxed);
+        exit(-1);
     });
     std::thread::spawn(move || {
         wait_for_runtime_start();
@@ -189,10 +188,6 @@ pub(crate) fn run_tests(
         let mut test_runner = MctpTestRunner::new(stream, target_addr.into(), tests);
         test_runner.run_tests();
     });
-
-    if cfg!(feature = "test-spdm-validator") {
-        execute_spdm_validator();
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -209,11 +204,15 @@ struct MctpTestRunner {
     stream: TcpStream,
     target_addr: u8,
     passed: usize,
-    tests: Vec<Box<dyn TestTrait + Send>>,
+    tests: Vec<Box<dyn MctpTransportTest + Send>>,
 }
 
 impl MctpTestRunner {
-    pub fn new(stream: TcpStream, target_addr: u8, tests: Vec<Box<dyn TestTrait + Send>>) -> Self {
+    pub fn new(
+        stream: TcpStream,
+        target_addr: u8,
+        tests: Vec<Box<dyn MctpTransportTest + Send>>,
+    ) -> Self {
         Self {
             stream,
             target_addr,

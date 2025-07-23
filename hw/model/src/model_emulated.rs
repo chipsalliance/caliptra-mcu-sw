@@ -151,7 +151,8 @@ impl McuHwModel for ModelEmulated {
             Version::new(2, 0, 0),
         );
         let otp = Otp::new(&clock.clone(), None, None, None)?;
-        let mci = Mci::new(&clock.clone());
+        let ext_mci = root_bus.mci_external_regs();
+        let mci = Mci::new(&clock.clone(), ext_mci);
 
         let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
             vec![Box::new(mcu_root_bus), Box::new(soc_to_caliptra_bus)];
@@ -284,6 +285,7 @@ mod test {
             None,
             None,
             false,
+            None,
             None,
             None,
         )

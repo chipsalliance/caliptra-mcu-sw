@@ -19,7 +19,10 @@ pub const SPDM_CERT_CHAIN_METADATA_LEN: u16 =
 #[derive(Debug, PartialEq)]
 pub enum CertStoreError {
     InitFailed,
+    NotInitialized,
     InvalidSlotId,
+    UnprovisionedSlot,
+    UnsupportedAsymAlgo,
     UnsupportedHashAlgo,
     BufferTooSmall,
     InvalidOffset,
@@ -44,7 +47,7 @@ pub trait SpdmCertStore {
     ///
     /// # Returns
     /// * `bool` - True if the slot is provisioned, false otherwise.
-    fn is_provisioned(&self, slot_id: u8) -> bool;
+    async fn is_provisioned(&self, slot_id: u8) -> bool;
 
     /// Get the length of the certificate chain in bytes.
     /// The certificate chain is in ASN.1 DER-encoded X.509 v3 format.
@@ -56,7 +59,7 @@ pub trait SpdmCertStore {
     ///
     /// # Returns
     /// * `usize` - The length of the certificate chain in bytes or error.
-    async fn cert_chain_len(&mut self, asym_algo: AsymAlgo, slot_id: u8) -> CertStoreResult<usize>;
+    async fn cert_chain_len(&self, asym_algo: AsymAlgo, slot_id: u8) -> CertStoreResult<usize>;
 
     /// Get the certificate chain in portion. The certificate chain is in ASN.1 DER-encoded X.509 v3 format.
     /// The type of the certificate chain is indicated by the asym_algo parameter.
@@ -72,7 +75,7 @@ pub trait SpdmCertStore {
     /// If the cert portion size is smaller than the buffer size, the remaining bytes in the buffer will be filled with 0,
     /// indicating the end of the cert chain.
     async fn get_cert_chain<'a>(
-        &mut self,
+        &self,
         slot_id: u8,
         asym_algo: AsymAlgo,
         offset: usize,
@@ -90,7 +93,7 @@ pub trait SpdmCertStore {
     /// # Returns
     /// * `()` - Ok if successful, error otherwise.
     async fn root_cert_hash<'a>(
-        &mut self,
+        &self,
         slot_id: u8,
         asym_algo: AsymAlgo,
         cert_hash: &'a mut [u8; SHA384_HASH_SIZE],
@@ -100,6 +103,7 @@ pub trait SpdmCertStore {
     ///
     /// # Arguments
     /// * `slot_id` - The slot ID of the certificate chain.
+    /// * `asym_algo` - Asymmetric algorithm to sign with.
     /// * `hash` - The hash to sign.
     /// * `signature` - The output buffer to store the ECC384 signature.
     ///
@@ -108,6 +112,7 @@ pub trait SpdmCertStore {
     async fn sign_hash<'a>(
         &self,
         slot_id: u8,
+        asym_algo: AsymAlgo,
         hash: &'a [u8; SHA384_HASH_SIZE],
         signature: &'a mut [u8; ECC_P384_SIGNATURE_SIZE],
     ) -> CertStoreResult<()>;
@@ -120,7 +125,7 @@ pub trait SpdmCertStore {
     ///
     /// # Returns
     /// * u8 - The KeyPairID associated with the certificate chain or None if not supported or not found.
-    fn key_pair_id(&self, slot_id: u8) -> Option<u8>;
+    async fn key_pair_id(&self, slot_id: u8) -> Option<u8>;
 
     /// Retrieve the `CertificateInfo` associated with the certificate chain for the given slot.
     /// The `CertificateInfo` structure specifies the certificate model (such as DeviceID, Alias, or General),
@@ -131,7 +136,7 @@ pub trait SpdmCertStore {
     ///
     /// # Returns
     /// * `CertificateInfo` - The CertificateInfo associated with the certificate chain or None if not supported or not found.
-    fn cert_info(&self, slot_id: u8) -> Option<CertificateInfo>;
+    async fn cert_info(&self, slot_id: u8) -> Option<CertificateInfo>;
 
     /// Get the KeyUsageMask associated with the certificate chain if SPDM responder supports
     /// multiple asymmetric keys in connection.
@@ -141,7 +146,7 @@ pub trait SpdmCertStore {
     ///
     /// # Returns
     /// * `KeyUsageMask` - The KeyUsageMask associated with the certificate chain or None if not supported or not found.
-    fn key_usage_mask(&self, slot_id: u8) -> Option<KeyUsageMask>;
+    async fn key_usage_mask(&self, slot_id: u8) -> Option<KeyUsageMask>;
 }
 
 pub(crate) fn validate_cert_store(cert_store: &dyn SpdmCertStore) -> SpdmResult<()> {
@@ -152,13 +157,16 @@ pub(crate) fn validate_cert_store(cert_store: &dyn SpdmCertStore) -> SpdmResult<
     Ok(())
 }
 
-pub(crate) fn cert_slot_mask(cert_store: &dyn SpdmCertStore) -> (u8, u8) {
+pub(crate) async fn cert_slot_mask(cert_store: &dyn SpdmCertStore) -> (u8, u8) {
     let slot_count = cert_store.slot_count().min(MAX_CERT_SLOTS_SUPPORTED);
     let supported_slot_mask = (1 << slot_count) - 1;
 
-    let provisioned_slot_mask = (0..slot_count)
-        .filter(|&i| cert_store.is_provisioned(i))
-        .fold(0, |mask, i| mask | (1 << i));
+    let mut provisioned_slot_mask = 0;
+    for i in 0..slot_count {
+        if cert_store.is_provisioned(i).await {
+            provisioned_slot_mask |= 1 << i;
+        }
+    }
 
     (supported_slot_mask, provisioned_slot_mask)
 }

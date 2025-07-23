@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::i3c_socket::{MctpTestState, TestTrait};
+use crate::i3c_socket::{MctpTestState, MctpTransportTest};
 use crate::tests::mctp_util::base_protocol::{MCTPMsgHdr, MCTP_MSG_HDR_SIZE};
 use crate::tests::mctp_util::common::MctpUtil;
 use crate::tests::mctp_util::ctrl_protocol::*;
@@ -34,7 +34,7 @@ pub(crate) enum MCTPCtrlCmdTests {
 }
 
 impl MCTPCtrlCmdTests {
-    pub fn generate_tests() -> Vec<Box<dyn TestTrait + Send>> {
+    pub fn generate_tests() -> Vec<Box<dyn MctpTransportTest + Send>> {
         MCTPCtrlCmdTests::iter()
             .enumerate()
             .map(|(i, test_id)| {
@@ -43,7 +43,7 @@ impl MCTPCtrlCmdTests {
                 let resp_msg = test_id.generate_response_msg();
                 let msg_tag = (i % 4) as u8;
                 Box::new(Test::new(test_name, req_msg, resp_msg, msg_tag))
-                    as Box<dyn TestTrait + Send>
+                    as Box<dyn MctpTransportTest + Send>
             })
             .collect()
     }
@@ -195,7 +195,7 @@ impl Test {
     }
 }
 
-impl TestTrait for Test {
+impl MctpTransportTest for Test {
     fn is_passed(&self) -> bool {
         self.passed
     }
