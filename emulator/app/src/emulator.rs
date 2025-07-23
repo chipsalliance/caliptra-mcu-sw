@@ -277,7 +277,7 @@ impl Emulator {
             use_mcu_recovery_interface = false;
         }
 
-        let (mut caliptra_cpu, soc_to_caliptra) = start_caliptra(&StartCaliptraArgs {
+        let (mut caliptra_cpu, soc_to_caliptra, ext_mci) = start_caliptra(&StartCaliptraArgs {
             rom: cli.caliptra_rom,
             device_lifecycle,
             req_idevid_csr,
@@ -673,7 +673,7 @@ impl Emulator {
         });
 
         let otp = Otp::new(&clock.clone(), cli.otp, owner_pk_hash, vendor_pk_hash)?;
-        let mci = Mci::new(&clock.clone());
+        let mci = Mci::new(&clock.clone(), ext_mci);
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
             Some(auto_root_bus_offsets),
