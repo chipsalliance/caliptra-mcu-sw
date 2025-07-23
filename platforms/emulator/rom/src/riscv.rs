@@ -14,7 +14,7 @@ Abstract:
 
 #![allow(unused_imports)]
 
-use crate::io::{EMULATOR_WRITER, FATAL_ERROR_HANDLER};
+use crate::io::{EMULATOR_EXITER, EMULATOR_WRITER, FATAL_ERROR_HANDLER};
 use core::fmt::Write;
 
 #[cfg(target_arch = "riscv32")]
@@ -52,6 +52,10 @@ pub extern "C" fn rom_entry() -> ! {
     unsafe {
         #[allow(static_mut_refs)]
         mcu_rom_common::set_fatal_error_handler(&mut FATAL_ERROR_HANDLER);
+    }
+    unsafe {
+        #[allow(static_mut_refs)]
+        romtime::set_exiter(&mut EMULATOR_EXITER);
     }
 
     #[cfg(feature = "test-flash-based-boot")]
