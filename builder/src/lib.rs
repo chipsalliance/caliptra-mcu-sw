@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+mod all;
 mod apps;
 mod caliptra;
 pub mod flash_image;
@@ -7,6 +8,7 @@ mod rom;
 mod runtime;
 mod tbf;
 
+pub use all::all_build;
 pub use caliptra::{CaliptraBuilder, SocImage};
 pub use rom::{rom_build, rom_ld_script};
 pub use runtime::{
@@ -23,10 +25,19 @@ use std::{
 pub const TARGET: &str = "riscv32imc-unknown-none-elf";
 
 pub static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
-    Path::new(&env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .to_path_buf()
+    let current_dir = std::env::current_dir().expect("Could not get current directory");
+    option_env!("CARGO_MANIFEST_DIR")
+        .map(|s| {
+            let p = Path::new(&s);
+            if p.exists() {
+                p.parent()
+                    .unwrap_or(current_dir.clone().as_path())
+                    .to_path_buf()
+            } else {
+                current_dir.clone()
+            }
+        })
+        .unwrap_or(current_dir)
 });
 
 pub fn target_dir() -> PathBuf {

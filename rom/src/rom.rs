@@ -73,13 +73,19 @@ impl Soc {
             .is_set(soc::bits::CptraFlowStatus::ReadyForFuses)
     }
 
-    pub fn populate_fuses(&self, fuses: &Fuses) {
+    pub fn populate_fuses(&self, fuses: &Fuses, field_entropy: bool) {
         // secret fuses are populated by a hardware state machine, so we can skip those
 
-        romtime::println!("[mcu-fuse-write] Setting UDS seed base address");
-        self.registers
-            .ss_uds_seed_base_addr_l
-            .set(registers_generated::fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET as u32);
+        let offset = if field_entropy {
+            registers_generated::fuses::SECRET_PROD_PARTITION_0_BYTE_OFFSET
+        } else {
+            registers_generated::fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET
+        };
+        romtime::println!(
+            "[mcu-fuse-write] Setting UDS/FE base address to {:x}",
+            offset
+        );
+        self.registers.ss_uds_seed_base_addr_l.set(offset as u32);
         self.registers.ss_uds_seed_base_addr_h.set(0);
 
         // TODO[cap2]: the OTP map doesn't have this value yet, so we hardcode it for now
@@ -161,11 +167,16 @@ impl Soc {
     }
 }
 
-pub fn rom_start(
-    lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
-    burn_lifecycle_tokens: Option<LifecycleHashedTokens>,
-    flash_partition_driver: Option<&mut FlashPartition>,
-) {
+#[derive(Default)]
+pub struct RomParameters<'a> {
+    pub lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
+    pub burn_lifecycle_tokens: Option<LifecycleHashedTokens>,
+    pub flash_partition_driver: Option<&'a mut FlashPartition<'a>>,
+    /// Whether or not to program field entropy after booting Caliptra runtime firmware
+    pub program_field_entropy: [bool; 4],
+}
+
+pub fn rom_start(params: RomParameters) {
     romtime::println!("[mcu-rom] Hello from ROM");
 
     let straps: StaticRef<mcu_config::McuStraps> = unsafe { StaticRef::new(addr_of!(MCU_STRAPS)) };
@@ -215,7 +226,7 @@ pub fn rom_start(
     let lc = Lifecycle::new(lc_base);
     lc.init().unwrap();
 
-    if let Some((state, token)) = lifecycle_transition {
+    if let Some((state, token)) = params.lifecycle_transition {
         if let Err(err) = lc.transition(state, &token) {
             romtime::println!("[mcu-rom] Error transitioning lifecycle: {:?}", err);
             fatal_error(err.into());
@@ -231,20 +242,20 @@ pub fn rom_start(
         fatal_error(err as u32);
     }
 
-    if let Some(tokens) = burn_lifecycle_tokens {
+    if let Some(tokens) = params.burn_lifecycle_tokens.as_ref() {
         romtime::println!("[mcu-rom] Burning lifecycle tokens");
         if otp.check_error().is_some() {
-            romtime::println!("[mcu-rom] OTP error: {:x}", otp.status());
+            romtime::println!("[mcu-rom] OTP error: {}", HexWord(otp.status()));
             otp.print_errors();
             romtime::println!("[mcu-rom] Halting");
             romtime::test_exit(1);
         }
 
-        if let Err(err) = otp.burn_lifecycle_tokens(&tokens) {
+        if let Err(err) = otp.burn_lifecycle_tokens(tokens) {
             romtime::println!(
-                "[mcu-rom] Error burning lifecycle tokens {:?}; OTP status: {:x}",
+                "[mcu-rom] Error burning lifecycle tokens {:?}; OTP status: {}",
                 err,
-                otp.status()
+                HexWord(otp.status())
             );
             otp.print_errors();
             romtime::println!("[mcu-rom] Halting");
@@ -291,7 +302,7 @@ pub fn rom_start(
     };
 
     // TODO: Handle flash image loading with the watchdog enabled
-    if flash_partition_driver.is_none() {
+    if params.flash_partition_driver.is_none() {
         soc.registers.cptra_wdt_cfg[0].set(straps.cptra_wdt_cfg0);
         soc.registers.cptra_wdt_cfg[1].set(straps.cptra_wdt_cfg1);
 
@@ -319,9 +330,9 @@ pub fn rom_start(
     romtime::println!("[mcu-rom] Locking Caliptra mailbox user 0");
     soc.registers.cptra_mbox_axi_user_lock[0].set(1);
 
-    romtime::println!("[mcu-rom] Setting OTP user");
+    romtime::println!("[mcu-rom] Setting fuse user");
     soc.registers.cptra_fuse_valid_axi_user.set(straps.axi_user);
-    romtime::println!("[mcu-rom] Locking OTP user");
+    romtime::println!("[mcu-rom] Locking fuse user");
     soc.registers.cptra_fuse_axi_user_lock.set(1);
     romtime::println!("[mcu-rom] Setting TRNG user");
     soc.registers.cptra_trng_valid_axi_user.set(straps.axi_user);
@@ -330,7 +341,7 @@ pub fn rom_start(
     romtime::println!("[mcu-rom] Setting DMA user");
     soc.registers.ss_caliptra_dma_axi_user.set(straps.axi_user);
 
-    soc.populate_fuses(&fuses);
+    soc.populate_fuses(&fuses, params.program_field_entropy.iter().any(|x| *x));
     romtime::println!("[mcu-rom] Setting Caliptra fuse write done");
     soc.fuse_write_done();
     while soc.ready_for_fuses() {}
@@ -377,7 +388,7 @@ pub fn rom_start(
 
     // Loading flash into the recovery flow is only possible in 2.1+.
     if cfg!(feature = "hw-2-1") {
-        if let Some(flash_driver) = flash_partition_driver {
+        if let Some(flash_driver) = params.flash_partition_driver {
             romtime::println!("[mcu-rom] Starting Flash recovery flow");
 
             crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
@@ -407,4 +418,52 @@ pub fn rom_start(
     while !soc.ready_for_runtime() {}
 
     romtime::println!("[mcu-rom] Finished common initialization");
+
+    // program field entropy if requested
+    for (partition, _) in params
+        .program_field_entropy
+        .iter()
+        .enumerate()
+        .filter(|(_, x)| **x)
+    {
+        romtime::println!(
+            "[mcu-rom] Executing FE_PROG command for partition {}",
+            partition
+        );
+        if let Err(err) = soc_manager.start_mailbox_req(
+            CommandId::FE_PROG.into(),
+            4,
+            [partition as u32].into_iter(),
+        ) {
+            match err {
+                CaliptraApiError::MailboxCmdFailed(code) => {
+                    romtime::println!("[mcu-rom] Error sending mailbox command: {}", HexWord(code));
+                }
+                _ => {
+                    romtime::println!("[mcu-rom] Error sending mailbox command");
+                }
+            }
+            fatal_error(4);
+        }
+        romtime::println!(
+            "[mcu-rom] Done sending FE_PROG command: status {}",
+            HexWord(u32::from(
+                soc_manager.soc_mbox().status().read().mbox_fsm_ps()
+            ))
+        );
+        if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
+            match err {
+                CaliptraApiError::MailboxCmdFailed(code) => {
+                    romtime::println!(
+                        "[mcu-rom] Error finishing mailbox command: {}",
+                        HexWord(code)
+                    );
+                }
+                _ => {
+                    romtime::println!("[mcu-rom] Error finishing mailbox command");
+                }
+            }
+            fatal_error(5);
+        };
+    }
 }

@@ -209,8 +209,9 @@ impl CaliptraBuilder {
     }
 
     fn compile_caliptra_rom_cached(fpga: bool) -> Result<PathBuf> {
+        let platform = if fpga { "fpga" } else { "emulator" };
         if let Some(version) = Self::caliptra_version() {
-            let path = target_dir().join(format!("caliptra-rom-{}.bin", version));
+            let path = target_dir().join(format!("caliptra-rom-{}-{}.bin", version, platform));
             if path.exists() {
                 println!("Using cached Caliptra ROM at {:?}", path);
                 return Ok(path);
@@ -240,8 +241,10 @@ impl CaliptraBuilder {
     }
 
     fn compile_caliptra_fw_cached(fpga: bool) -> Result<(PathBuf, String)> {
+        let platform = if fpga { "fpga" } else { "emulator" };
         if let Some(version) = Self::caliptra_version() {
-            let path = target_dir().join(format!("caliptra-fw-bundle-{}.bin", version));
+            let path =
+                target_dir().join(format!("caliptra-fw-bundle-{}-{}.bin", version, platform));
             if path.exists() {
                 println!("Using cached Caliptra FW bundle at {:?}", path);
                 return Self::parse_fw_bundle(path);

@@ -19,7 +19,9 @@ use core::fmt::Write;
 core::arch::global_asm!(include_str!("start.s"));
 
 use mcu_config::{McuMemoryMap, McuStraps};
-use mcu_rom_common::{LifecycleControllerState, LifecycleHashedToken, LifecycleToken};
+use mcu_rom_common::{
+    LifecycleControllerState, LifecycleHashedToken, LifecycleToken, RomParameters,
+};
 
 // re-export these so the common ROM and runtime can use them
 #[no_mangle]
@@ -97,7 +99,11 @@ pub extern "C" fn rom_entry() -> ! {
         None
     };
 
-    mcu_rom_common::rom_start(lifecycle_transition, burn_lifecycle_tokens, None);
+    mcu_rom_common::rom_start(RomParameters {
+        lifecycle_transition,
+        burn_lifecycle_tokens,
+        ..Default::default()
+    });
 
     let addr = MCU_MEMORY_MAP.sram_offset;
     romtime::println!("[mcu-rom] Jumping to firmware at {:08x}", addr);

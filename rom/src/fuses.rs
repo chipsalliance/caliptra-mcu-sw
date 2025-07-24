@@ -679,18 +679,8 @@ impl Otp {
         );
         self.burn_lifecycle_token(LC_TOKENS_OFFSET + 10 * 16, &tokens.rma)?;
 
-        // for addr in (0x4a0..0x550).step_by(16) {
-        //     let dword = ((hashed_token >> 64) as u64).swap_bytes();
-        //     romtime::println!("[mcu-rom] Writing {:x} <- {:016x}", addr, dword);
-        //     otp.write_dword(addr / 8, dword).unwrap();
-
-        //     let dword = ((hashed_token) as u64).swap_bytes();
-        //     romtime::println!("[mcu-rom] Writing {:x} <- {:016x}", addr + 8, dword);
-        //     otp.write_dword((addr + 8) / 8, dword).unwrap();
-        // }
-
         romtime::println!("[mcu-rom] Finalizing digest");
-        self.finalize_digest(LC_TOKENS_OFFSET).unwrap();
+        self.finalize_digest(LC_TOKENS_OFFSET)?;
         Ok(())
     }
 
