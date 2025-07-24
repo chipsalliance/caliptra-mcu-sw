@@ -31,7 +31,7 @@ use emulator_bmc::Bmc;
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
 use emulator_periph::{
-    DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, Mci, McuRootBus,
+    DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci, McuRootBus,
     McuRootBusArgs, McuRootBusOffsets, Otp,
 };
 use emulator_registers_generated::dma::DmaPeripheral;
@@ -681,6 +681,7 @@ impl Emulator {
             v.try_into().unwrap()
         });
 
+        let lc = LcCtrl::new();
         let otp = Otp::new(&clock.clone(), cli.otp, owner_pk_hash, vendor_pk_hash)?;
         let mci = Mci::new(&clock.clone(), ext_mci);
         let mut auto_root_bus = AutoRootBus::new(
@@ -694,7 +695,7 @@ impl Emulator {
             Some(Box::new(dma_ctrl)),
             None,
             Some(Box::new(otp)),
-            None,
+            Some(Box::new(lc)),
             None,
             None,
             None,

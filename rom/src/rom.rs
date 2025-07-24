@@ -12,15 +12,23 @@ Abstract:
 
 --*/
 
+#![allow(clippy::empty_loop)]
+
 use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
 use crate::fuses::Otp;
 use crate::i3c::I3c;
+use crate::Lifecycle;
+use crate::LifecycleControllerState;
+use crate::LifecycleHashedTokens;
+use crate::LifecycleToken;
 use caliptra_api::mailbox::CommandId;
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use core::fmt::Write;
 use core::ptr::addr_of;
+use registers_generated::lc_ctrl;
+use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use registers_generated::{fuses::Fuses, i3c, mci, otp_ctrl, soc};
 use romtime::{HexWord, Mci, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
@@ -67,6 +75,12 @@ impl Soc {
 
     pub fn populate_fuses(&self, fuses: &Fuses) {
         // secret fuses are populated by a hardware state machine, so we can skip those
+
+        romtime::println!("[mcu-fuse-write] Setting UDS seed base address");
+        self.registers
+            .ss_uds_seed_base_addr_l
+            .set(registers_generated::fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET as u32);
+        self.registers.ss_uds_seed_base_addr_h.set(0);
 
         // TODO[cap2]: the OTP map doesn't have this value yet, so we hardcode it for now
         self.registers.fuse_pqc_key_type.set(3); // LMS
@@ -147,11 +161,17 @@ impl Soc {
     }
 }
 
-pub fn rom_start(flash_partition_driver: Option<&mut FlashPartition>) {
+pub fn rom_start(
+    lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
+    burn_lifecycle_tokens: Option<LifecycleHashedTokens>,
+    flash_partition_driver: Option<&mut FlashPartition>,
+) {
     romtime::println!("[mcu-rom] Hello from ROM");
 
     let straps: StaticRef<mcu_config::McuStraps> = unsafe { StaticRef::new(addr_of!(MCU_STRAPS)) };
 
+    let lc_base: StaticRef<lc_ctrl::regs::LcCtrl> =
+        unsafe { StaticRef::new(MCU_MEMORY_MAP.lc_offset as *const lc_ctrl::regs::LcCtrl) };
     let otp_base: StaticRef<otp_ctrl::regs::OtpCtrl> =
         unsafe { StaticRef::new(MCU_MEMORY_MAP.otp_offset as *const otp_ctrl::regs::OtpCtrl) };
     let i3c_base: StaticRef<i3c::regs::I3c> =
@@ -170,20 +190,72 @@ pub fn rom_start(flash_partition_driver: Option<&mut FlashPartition>) {
 
     // De-assert caliptra reset
     let mci = Mci::new(mci_base);
+
+    romtime::println!(
+        "[mcu-rom] Device lifecycle: {}",
+        match mci.device_lifecycle_state() {
+            DeviceLifecycle::Value::DeviceUnprovisioned => "Unprovisioned",
+            DeviceLifecycle::Value::DeviceManufacturing => "Manufacturing",
+            DeviceLifecycle::Value::DeviceProduction => "Production",
+        }
+    );
+
+    romtime::println!(
+        "[mcu-rom] MCI generic input wires[0]: {}",
+        HexWord(mci.registers.mci_reg_generic_input_wires[0].get())
+    );
+    romtime::println!(
+        "[mcu-rom] MCI generic input wires[1]: {}",
+        HexWord(mci.registers.mci_reg_generic_input_wires[1].get())
+    );
+
     romtime::println!("[mcu-rom] Setting Caliptra boot go");
     mci.caliptra_boot_go();
 
-    romtime::println!("[mcu-rom] Initializing I3C");
-    let mut i3c = I3c::new(i3c_base);
-    i3c.configure(straps.i3c_static_addr, true);
+    let lc = Lifecycle::new(lc_base);
+    lc.init().unwrap();
+
+    if let Some((state, token)) = lifecycle_transition {
+        if let Err(err) = lc.transition(state, &token) {
+            romtime::println!("[mcu-rom] Error transitioning lifecycle: {:?}", err);
+            fatal_error(err.into());
+        }
+        romtime::println!("Lifecycle transition successful; halting");
+        loop {}
+    }
+
+    // FPGA has problems with the integrity check, so we disable it
+    let otp = Otp::new(true, false, otp_base);
+    if let Err(err) = otp.init() {
+        romtime::println!("[mcu-rom] Error initializing OTP: {}", HexWord(err as u32));
+        fatal_error(err as u32);
+    }
+
+    if let Some(tokens) = burn_lifecycle_tokens {
+        romtime::println!("[mcu-rom] Burning lifecycle tokens");
+        if otp.check_error().is_some() {
+            romtime::println!("[mcu-rom] OTP error: {:x}", otp.status());
+            otp.print_errors();
+            romtime::println!("[mcu-rom] Halting");
+            romtime::test_exit(1);
+        }
+
+        if let Err(err) = otp.burn_lifecycle_tokens(&tokens) {
+            romtime::println!(
+                "[mcu-rom] Error burning lifecycle tokens {:?}; OTP status: {:x}",
+                err,
+                otp.status()
+            );
+            otp.print_errors();
+            romtime::println!("[mcu-rom] Halting");
+            romtime::test_exit(1);
+        }
+        romtime::println!("[mcu-rom] Lifecycle token burning successful; halting");
+        loop {}
+    }
 
     // only do these on the emulator for now
     let fuses = if unsafe { MCU_MEMORY_MAP.rom_offset } == 0x8000_0000 {
-        let otp = Otp::new(otp_base);
-        if let Err(err) = otp.init() {
-            romtime::println!("Error initializing OTP: {}", HexWord(err as u32));
-            fatal_error(1);
-        }
         match otp.read_fuses() {
             Ok(fuses) => fuses,
             Err(e) => {
@@ -218,17 +290,18 @@ pub fn rom_start(flash_partition_driver: Option<&mut FlashPartition>) {
         }
     };
 
+    // TODO: Handle flash image loading with the watchdog enabled
     if flash_partition_driver.is_none() {
-        // Flash image loading takes a long time, and will trigger a watchdog reset
-        // so disable it for flash loading for now.
-        // TODO: Handle flash image loading with the watchdog enabled
-
         soc.registers.cptra_wdt_cfg[0].set(straps.cptra_wdt_cfg0);
         soc.registers.cptra_wdt_cfg[1].set(straps.cptra_wdt_cfg1);
 
         mci.set_nmi_vector(unsafe { MCU_MEMORY_MAP.rom_offset });
         mci.configure_wdt(straps.mcu_wdt_cfg0, straps.mcu_wdt_cfg1);
     }
+
+    romtime::println!("[mcu-rom] Initializing I3C");
+    let mut i3c = I3c::new(i3c_base);
+    i3c.configure(straps.i3c_static_addr, true);
 
     romtime::println!(
         "[mcu-rom] Waiting for Caliptra to be ready for fuses: {}",

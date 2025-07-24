@@ -15,3 +15,4 @@
     - [Unified External Command Handling](./unified_external_command_handling.md)
     - [Logging](./logging.md)
     - [In-Field Fuse Programming](./fuses.md)
+- [Running with an FPGA](./fpga.md)

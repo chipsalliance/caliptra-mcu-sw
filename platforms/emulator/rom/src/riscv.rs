@@ -121,11 +121,11 @@ pub extern "C" fn rom_entry() -> ! {
             _ => fatal_error(1),
         };
 
-        mcu_rom_common::rom_start(Some(&mut flash_image_partition_driver));
+        mcu_rom_common::rom_start(None, None, Some(&mut flash_image_partition_driver));
     }
     #[cfg(not(feature = "test-flash-based-boot"))]
     {
-        mcu_rom_common::rom_start(None);
+        mcu_rom_common::rom_start(None, None, None);
     }
 
     #[cfg(feature = "test-mcu-rom-flash-access")]
