@@ -11,7 +11,7 @@ jobs:
 
     env:
       # Change this to a new random value if you suspect the cache is corrupted
-      CACHE_BUSTER: 9ff0db888988
+      CACHE_BUSTER: abc0db888988
 
     steps:
       - name: Checkout repo
@@ -72,7 +72,8 @@ jobs:
           cargo xtask rom-build --platform fpga
           cargo xtask runtime-build --platform fpga
 
-          tar -cvz -f /tmp/caliptra-binaries.tar.gz target
+          mkdir -p /tmp/caliptra-binaries
+          tar -cvz -f /tmp/caliptra-binaries/caliptra-binaries.tar.gz target
 
       - name: 'Upload test firmware artifact'
         uses: actions/upload-artifact@v4
@@ -96,13 +97,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: caliptra-test-firmware${{ inputs.artifact-suffix }}
-          path: /tmp/caliptra-binaries.tar.gz
+          path: /tmp/caliptra-binaries
 
       - name: Mount binaries
         run: |
           ls
           pwd
-          tar -xzvf /tmp/caliptra-binaries.tar.gz
+          tar -xvf /tmp/caliptra-binaries/caliptra-binaries.tar.gz
 
       - name: Execute tests
         run: |
