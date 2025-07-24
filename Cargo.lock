@@ -3712,6 +3712,7 @@ name = "tests-integration"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "flash-image",
  "mcu-builder",
  "mcu-config",
  "mcu-config-emulator",
