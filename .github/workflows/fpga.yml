@@ -100,12 +100,12 @@ jobs:
 
       - name: Mount binaries
         run: |
-          tar -xvf /tmp/caliptra-binaries.tar.gz
+          ls
+          pwd
+          tar -xzvf /tmp/caliptra-binaries.tar.gz
 
       - name: Execute tests
         run: |
-          ls
-          pwd
           export CPTRA_UIO_NUM=0
           cargo xtask fpga-run
 
