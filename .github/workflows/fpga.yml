@@ -2,8 +2,6 @@ name: FPGA Test Job
 
 on:
   pull_request:
-  push:
-    branches: ["clundin/fpga-bootstrap-job"]
 jobs:
   build_test_binaries:
     runs-on: [e2-standard-8]
@@ -93,6 +91,8 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
+          submodules: 'recursive' 
+
       - name: 'Download Test Firmware Artifact'
         uses: actions/download-artifact@v4
         with:
