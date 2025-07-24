@@ -256,7 +256,6 @@ pub fn rom_start(
 
     // only do these on the emulator for now
     let fuses = if unsafe { MCU_MEMORY_MAP.rom_offset } == 0x8000_0000 {
-        // FPGA has problems with the integrity check, so we disable it
         match otp.read_fuses() {
             Ok(fuses) => fuses,
             Err(e) => {
