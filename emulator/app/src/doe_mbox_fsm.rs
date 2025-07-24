@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
+use crate::{sleep_emulator_ticks, wait_for_runtime_start, EMULATOR_RUNNING};
 use emulator_periph::DoeMboxPeriph;
 use std::process::exit;
 use std::sync::atomic::Ordering;
@@ -44,7 +44,7 @@ impl DoeMboxFsm {
                 fsm.on_event();
 
                 // Small delay to prevent busy waiting
-                thread::sleep(Duration::from_millis(10));
+                sleep_emulator_ticks(1000);
             }
         });
         (fsm_to_test_rx, test_to_fsm_tx)

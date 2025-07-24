@@ -4,10 +4,8 @@ use crate::tests::doe_util::common::DoeUtil;
 use crate::tests::spdm_responder_validator::common::{
     execute_spdm_validator, SpdmValidatorRunner, SERVER_LISTENING,
 };
-use crate::tests::spdm_responder_validator::transport::{
-    Transport, MAX_CMD_TIMEOUT_SECONDS, SOCKET_TRANSPORT_TYPE_PCI_DOE,
-};
-use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
+use crate::tests::spdm_responder_validator::transport::{Transport, SOCKET_TRANSPORT_TYPE_PCI_DOE};
+use crate::{sleep_emulator_ticks, wait_for_runtime_start, EMULATOR_RUNNING};
 use std::net::TcpListener;
 use std::process::exit;
 use std::sync::atomic::Ordering;
@@ -52,11 +50,11 @@ impl Transport for DoeTransport {
             match self.tx_rx_state {
                 TxRxState::Start => {
                     if wait_for_responder {
-                        std::thread::sleep(std::time::Duration::from_secs(10));
+                        sleep_emulator_ticks(5_000_000);
                     } else {
                         // This is to give some time for send_done upcall to be invoked by the kernel to the app.
                         // Just a hack and may not be perfect solution.
-                        std::thread::sleep(std::time::Duration::from_millis(200));
+                        sleep_emulator_ticks(100_000);
                     }
                     self.tx_rx_state = TxRxState::SendReq;
                 }
@@ -68,35 +66,32 @@ impl Transport for DoeTransport {
                         self.tx_rx_state = TxRxState::Finish;
                     }
                 }
-                TxRxState::ReceiveResp => {
-                    match DoeUtil::receive_raw_data_object(&self.rx, Some(MAX_CMD_TIMEOUT_SECONDS))
-                    {
-                        Ok(response) if !response.is_empty() => {
-                            resp = Some(response.clone());
-                            self.tx_rx_state = TxRxState::Finish;
-                        }
-                        Ok(_) => {
-                            if retry_count < self.retry_count {
-                                retry_count += 1;
-                                println!(
-                                    "[{}]: No response received, retrying... ({})",
-                                    TEST_NAME, retry_count
-                                );
-                                self.tx_rx_state = TxRxState::SendReq;
-                            } else {
-                                println!(
-                                    "[{}]: No response received after {} retries, failing test",
-                                    TEST_NAME, self.retry_count
-                                );
-                                self.tx_rx_state = TxRxState::Finish;
-                            }
-                        }
-                        Err(e) => {
-                            println!("[{}]: Failed to receive response: {:?}", TEST_NAME, e);
+                TxRxState::ReceiveResp => match DoeUtil::receive_raw_data_object(&self.rx) {
+                    Ok(response) if !response.is_empty() => {
+                        resp = Some(response.clone());
+                        self.tx_rx_state = TxRxState::Finish;
+                    }
+                    Ok(_) => {
+                        if retry_count < self.retry_count {
+                            retry_count += 1;
+                            println!(
+                                "[{}]: No response received, retrying... ({})",
+                                TEST_NAME, retry_count
+                            );
+                            self.tx_rx_state = TxRxState::SendReq;
+                        } else {
+                            println!(
+                                "[{}]: No response received after {} retries, failing test",
+                                TEST_NAME, self.retry_count
+                            );
                             self.tx_rx_state = TxRxState::Finish;
                         }
                     }
-                }
+                    Err(e) => {
+                        println!("[{}]: Failed to receive response: {:?}", TEST_NAME, e);
+                        self.tx_rx_state = TxRxState::Finish;
+                    }
+                },
                 TxRxState::Finish => {
                     break;
                 }
@@ -130,6 +125,8 @@ pub fn run_doe_spdm_conformance_test(
     // Spawn a thread to run the tests
     thread::spawn(move || {
         wait_for_runtime_start();
+        // give time for the app to be loaded and ready
+        sleep_emulator_ticks(1_000_000);
 
         if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
             exit(-1);
