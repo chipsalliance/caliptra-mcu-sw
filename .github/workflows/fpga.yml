@@ -36,6 +36,7 @@ jobs:
         run: |
           sudo apt-get update -qy && sudo apt-get -y install debootstrap binfmt-support qemu-user-static u-boot-tools
 
+        # TODO(clundin): Not sure if we will need to use this.
       - name: build sysroot
         # Note: This is the sysroot for the tiny debian installation we run on the FPGA;
         # it is missing xilinx-provided kernel headers needed to build kernel modules
@@ -64,16 +65,19 @@ jobs:
         run: |
           sudo apt-get update -qy && sudo apt-get install -y gcc-aarch64-linux-gnu squashfs-tools
           rustup toolchain install 1.84-x86_64-unknown-linux-gnu
-          rustup target add aarch64-unknown-linux-gnu
 
       - name: Build test firmware
         run: |
           rustup target add riscv32imc-unknown-none-elf
+          rustup target add aarch64-unknown-linux-gnu
+
+          # Build ROM and runtime binaries
           cargo xtask rom-build --platform fpga
           cargo xtask runtime-build --platform fpga
 
+          # Cross compile xtask for the ARM core
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="aarch64-linux-gnu-gcc"
-          cargo --build xtask --target aarch64-unknown-linux-gnu
+          cargo build xtask --target aarch64-unknown-linux-gnu
 
           mkdir -p /tmp/caliptra-binaries
           tar -cvz -f /tmp/caliptra-binaries/caliptra-binaries.tar.gz target/riscv32imc-unknown-none-elf/release/mcu-rom-fpga.bin target/riscv32imc-unknown-none-elf/release/runtime.bin target/aarch64-unknown-linux-gnu/debug/xtask
@@ -104,8 +108,6 @@ jobs:
 
       - name: Mount binaries
         run: |
-          ls
-          pwd
           tar -xvf /tmp/caliptra-binaries/caliptra-binaries.tar.gz
 
       - name: Execute tests
