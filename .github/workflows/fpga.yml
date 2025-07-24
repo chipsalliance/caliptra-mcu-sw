@@ -72,9 +72,6 @@ jobs:
           cargo xtask rom-build --platform fpga
           cargo xtask runtime-build --platform fpga
 
-          target/riscv32imc-unknown-none-elf/release/mcu-rom-fpga.bin
-          target/riscv32imc-unknown-none-elf/release/runtime.bin
-
           tar cfz /tmp/caliptra-binaries.tar.gz target/
 
       - name: 'Upload test firmware artifact'
