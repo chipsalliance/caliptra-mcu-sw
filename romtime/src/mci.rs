@@ -5,12 +5,23 @@ use registers_generated::mci;
 use tock_registers::interfaces::{Readable, Writeable};
 
 pub struct Mci {
-    registers: StaticRef<mci::regs::Mci>,
+    pub registers: StaticRef<mci::regs::Mci>,
 }
 
 impl Mci {
     pub const fn new(registers: StaticRef<mci::regs::Mci>) -> Self {
         Mci { registers }
+    }
+
+    pub fn device_lifecycle_state(&self) -> mci::bits::SecurityState::DeviceLifecycle::Value {
+        self.registers
+            .mci_reg_security_state
+            .read_as_enum(mci::bits::SecurityState::DeviceLifecycle)
+            .unwrap_or(mci::bits::SecurityState::DeviceLifecycle::Value::DeviceUnprovisioned)
+    }
+
+    pub fn security_state(&self) -> u32 {
+        self.registers.mci_reg_security_state.get()
     }
 
     pub fn caliptra_boot_go(&self) {

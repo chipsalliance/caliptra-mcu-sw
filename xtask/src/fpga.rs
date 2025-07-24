@@ -2,8 +2,7 @@
 
 use anyhow::{anyhow, bail, Result};
 use mcu_builder::PROJECT_ROOT;
-use mcu_hw_model::McuHwModel;
-use mcu_hw_model::{DefaultHwModel, InitParams};
+use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -128,25 +127,75 @@ fn is_module_loaded(module: &str) -> Result<bool> {
         .any(|line| line.split_whitespace().next() == Some(module)))
 }
 
-pub(crate) fn fpga_run(mcu_rom: &PathBuf) -> Result<()> {
+pub(crate) fn fpga_run(
+    mcu_rom: &PathBuf,
+    caliptra_rom: Option<&PathBuf>,
+    otp_file: Option<&PathBuf>,
+    save_otp: bool,
+    uds: bool,
+) -> Result<()> {
+    if !Path::new("/dev/uio0").exists() {
+        fpga_install_kernel_modules()?;
+    }
     if !mcu_rom.exists() {
         bail!("MCU ROM file does not exist: {}", mcu_rom.display());
     }
+    let otp_memory = if otp_file.is_some() && otp_file.unwrap().exists() {
+        mcu_hw_model::read_otp_vmem_data(&std::fs::read(otp_file.unwrap())?)?
+    } else {
+        vec![]
+    };
     let mcu_rom = std::fs::read(mcu_rom)?;
     let blank = [0u8; 256]; // Placeholder for empty firmware
-    let mut model = DefaultHwModel::new_unbooted(InitParams {
-        caliptra_rom: &blank,
+    let caliptra_rom = if let Some(caliptra_rom) = caliptra_rom {
+        std::fs::read(caliptra_rom)?
+    } else {
+        blank.to_vec()
+    };
+    // If we're doing UDS provisioning, we need to set the bootfsm breakpoint
+    // so we can use JTAG/TAP.
+    let bootfsm_break = uds;
+    let mut model = ModelFpgaRealtime::new_unbooted(InitParams {
+        caliptra_rom: &caliptra_rom,
         caliptra_firmware: &blank,
         mcu_rom: &mcu_rom,
         mcu_firmware: &blank,
         soc_manifest: &blank,
         active_mode: true,
+        otp_memory: Some(&otp_memory),
+        uds_program_req: uds,
+        bootfsm_break,
         ..Default::default()
     })
     .unwrap();
-    for _ in 0..1_000_000 {
+
+    let mut requested = false;
+    let start_cycle_count = model.cycle_count();
+    for _ in 0..100_000 {
+        if uds && model.cycle_count() - start_cycle_count > 20_000_000 && !requested {
+            // wait for user input before proceeding with UDS provisioning
+
+            println!("Opening openocd connection to Caliptra");
+            model.open_openocd(4444)?;
+            println!("Setting Caliptra UDS programming reqest");
+            model.set_uds_req()?;
+            println!("Setting Caliptra bootfsm go");
+            model.set_bootfsm_go()?;
+            // println!("Notifying ROM to proceed");
+            // // notify ROM that we are ready to proceed.
+            // model.set_mcu_generic_input_wires(&[(1 << 31) | 1, 0]);
+
+            requested = true;
+        }
         model.step();
     }
     println!("Ending FPGA run");
+    if save_otp {
+        println!(
+            "Saving OTP memory to file {}",
+            otp_file.as_ref().unwrap().display()
+        );
+        model.save_otp_memory(otp_file.as_ref().unwrap())?;
+    }
     Ok(())
 }

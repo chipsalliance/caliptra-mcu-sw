@@ -166,8 +166,25 @@ enum Commands {
     FpgaInstallKernelModules,
     /// Run firmware on the FPGA
     FpgaRun {
+        /// Where to load the MCU ROM from.
         #[arg(long)]
         mcu_rom: PathBuf,
+
+        /// Where to load the Caliptra ROM from.
+        #[arg(long)]
+        caliptra_rom: Option<PathBuf>,
+
+        /// Where to load and save OTP memory.
+        #[arg(long)]
+        otp: Option<PathBuf>,
+
+        /// Save OTP memory to a file after running.
+        #[arg(long, default_value_t = false)]
+        save_otp: bool,
+
+        /// Run UDS provisioning flow
+        #[arg(long, default_value_t = false)]
+        uds: bool,
     },
     /// Utility to create and parse PLDM firmware packages
     PldmFirmware {
@@ -311,7 +328,19 @@ fn main() {
             addrmap,
         } => registers::autogen(*check, files, addrmap),
         Commands::Deps => deps::check(),
-        Commands::FpgaRun { mcu_rom } => fpga::fpga_run(mcu_rom),
+        Commands::FpgaRun {
+            mcu_rom,
+            caliptra_rom,
+            otp,
+            save_otp,
+            uds,
+        } => fpga::fpga_run(
+            mcu_rom,
+            caliptra_rom.as_ref(),
+            otp.as_ref(),
+            *save_otp,
+            *uds,
+        ),
         Commands::FpgaInstallKernelModules => fpga::fpga_install_kernel_modules(),
         Commands::PldmFirmware { subcommand } => match subcommand {
             PldmFirmwareCommands::Create { manifest, file } => pldm_fw_pkg::create(manifest, file),

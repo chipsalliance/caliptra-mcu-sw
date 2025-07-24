@@ -19,17 +19,21 @@ use output::ExitStatus;
 pub use output::Output;
 use rand::{rngs::StdRng, SeedableRng};
 use std::io::{stdout, ErrorKind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::mpsc;
 
 mod bus_logger;
 mod fpga_regs;
+mod lifecycle_controller;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
 mod model_fpga_realtime;
 mod output;
+mod vmem;
 mod xi3c;
+
+pub use vmem::read_otp_vmem_data;
 
 pub enum ShaAccMode {
     Sha384Stream,
@@ -74,6 +78,13 @@ pub struct InitParams<'a> {
     // The initial contents of the ICCM SRAM
     pub caliptra_iccm: &'a [u8],
 
+    // The initial contents of the OTP memory
+    pub otp_memory: Option<&'a [u8]>,
+
+    // The initial lifecycle controller state of the device.
+    // If otp_memory is set, this will be ignored.
+    pub lifecycle_controller_state: Option<u32>,
+
     pub log_writer: Box<dyn std::io::Write>,
 
     pub security_state: SecurityState,
@@ -86,14 +97,18 @@ pub struct InitParams<'a> {
     // ECC384 and MLDSA87 keypairs
     pub prod_dbg_unlock_keypairs: Vec<(&'a [u8; 96], &'a [u8; 2592])>,
 
+    pub bootfsm_break: bool,
+
     pub debug_intent: bool,
+
+    pub uds_program_req: bool,
 
     // The silicon obfuscation key passed to caliptra_top.
     pub cptra_obf_key: [u32; 8],
 
     pub csr_hmac_key: [u32; 16],
 
-    pub uds_granularity_64: bool,
+    pub uds_granularity_32: bool,
 
     // 4-bit nibbles of raw entropy to feed into the internal TRNG (ENTROPY_SRC
     // peripheral).
@@ -139,11 +154,15 @@ impl Default for InitParams<'_> {
             mcu_firmware: Default::default(),
             caliptra_dccm: Default::default(),
             caliptra_iccm: Default::default(),
+            otp_memory: None,
+            lifecycle_controller_state: None,
             log_writer: Box::new(stdout()),
             security_state: *SecurityState::default()
                 .set_device_lifecycle(DeviceLifecycle::Unprovisioned),
             dbg_manuf_service: Default::default(),
-            uds_granularity_64: true,
+            uds_granularity_32: false, // 64-bit granularity
+            bootfsm_break: false,
+            uds_program_req: false,
             active_mode: false,
             prod_dbg_unlock_keypairs: Default::default(),
             debug_intent: false,
@@ -221,11 +240,15 @@ pub trait McuHwModel {
     where
         Self: Sized;
 
+    fn save_otp_memory(&self, path: &Path) -> Result<()>;
+
     /// The type name of this model
     fn type_name(&self) -> &'static str;
 
     /// Step execution ahead one clock cycle.
     fn step(&mut self);
+
+    fn cycle_count(&mut self) -> u64;
 
     /// Any UART-ish output written by the microcontroller will be available here.
     fn output(&mut self) -> &mut Output;
@@ -327,6 +350,8 @@ pub trait McuHwModel {
     fn set_security_state(&mut self, _value: SecurityState) {}
 
     fn set_generic_input_wires(&mut self, _value: &[u32; 2]) {}
+
+    fn set_mcu_generic_input_wires(&mut self, _value: &[u32; 2]) {}
 
     fn set_caliptra_boot_go(&mut self, _value: bool) {}
 
