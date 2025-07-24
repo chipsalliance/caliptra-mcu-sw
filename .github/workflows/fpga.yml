@@ -100,7 +100,7 @@ jobs:
 
       - name: Mount binaries
         run: |
-          tar -cvf /tmp/caliptra-binaries.tar.gz
+          tar -xvf /tmp/caliptra-binaries.tar.gz
 
       - name: Execute tests
         run: |
