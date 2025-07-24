@@ -2,6 +2,8 @@ name: FPGA Test Job
 
 on:
   pull_request:
+  push:
+    branches: ["clundin/fpga-bootstrap-job"]
 jobs:
   build_test_binaries:
     runs-on: [e2-standard-8]
