@@ -79,7 +79,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: caliptra-test-firmware${{ inputs.artifact-suffix }}
-          path: /tmp/caliptra-binaries.tar.gz
+          path: /tmp/caliptra-binaries
           retention-days: 1
 
   test_artifacts:
