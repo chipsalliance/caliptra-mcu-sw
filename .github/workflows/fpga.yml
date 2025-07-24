@@ -73,7 +73,7 @@ jobs:
           cargo xtask runtime-build --platform fpga
 
           mkdir -p /tmp/caliptra-binaries
-          tar -cvz -f /tmp/caliptra-binaries/caliptra-binaries.tar.gz target
+          tar -cvz -f /tmp/caliptra-binaries/caliptra-binaries.tar.gz target/riscv32imc-unknown-none-elf/release/mcu-rom-fpga.bin target/riscv32imc-unknown-none-elf/release/runtime.bin
 
       - name: 'Upload test firmware artifact'
         uses: actions/upload-artifact@v4
