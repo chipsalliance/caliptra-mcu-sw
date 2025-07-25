@@ -56,6 +56,39 @@ impl Timer {
         });
     }
 
+    /// Schedules a periodic callback to be executed after the specified duration.
+    ///
+    /// If a timer is already running, it is **cancelled** before scheduling a new one.
+    ///
+    /// # Parameters
+    /// - `duration`: The duration after which the callback should be executed.
+    /// - `context`: Shared data passed to the callback.
+    /// - `callback`: A function that executes when the timer fires.
+    pub fn schedule_periodic<F, G>(&mut self, duration: Duration, mut context: G, mut callback: F)
+    where
+        F: FnMut(&mut G) + Send + 'static,
+        G: Send + 'static,
+    {
+        // Cancel any running timer before scheduling a new one
+        self.cancel();
+
+        let (tx, rx) = mpsc::channel();
+        self.cancel_tx = Some(tx);
+
+        thread::spawn(move || {
+            loop {
+                let result = rx.recv_timeout(duration);
+                if result.is_err() {
+                    // Timer expired, execute callback
+                    callback(&mut context);
+                } else {
+                    // Timer was cancelled, exit loop
+                    break;
+                }
+            }
+        });
+    }
+
     /// Cancels the currently running timer, if any.
     /// This prevents the scheduled callback from executing.
     pub fn cancel(&mut self) {
