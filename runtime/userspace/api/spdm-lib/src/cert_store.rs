@@ -183,7 +183,7 @@ pub(crate) async fn cert_slot_mask(cert_store: &dyn SpdmCertStore) -> (u8, u8) {
 /// # Returns
 /// * `hash` - The hash of the certificate chain.
 pub(crate) async fn hash_cert_chain(
-    cert_store: &mut dyn SpdmCertStore,
+    cert_store: &dyn SpdmCertStore,
     slot_id: u8,
     asym_algo: AsymAlgo,
 ) -> CertStoreResult<[u8; SHA384_HASH_SIZE]> {

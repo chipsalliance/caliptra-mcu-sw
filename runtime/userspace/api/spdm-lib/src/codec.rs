@@ -84,6 +84,17 @@ pub fn encode_u8_slice(data: &[u8], buffer: &mut MessageBuf) -> CodecResult<usiz
     Ok(len)
 }
 
+pub fn decode_u8_slice(buffer: &mut MessageBuf, data: &mut [u8]) -> CodecResult<()> {
+    let len = data.len();
+    if buffer.data_len() < len {
+        Err(CodecError::BufferTooSmall)?;
+    }
+    let src_data = buffer.data(len)?;
+    data.copy_from_slice(src_data);
+    buffer.pull_data(len)?;
+    Ok(())
+}
+
 impl<'a> From<&'a mut [u8]> for MessageBuf<'a> {
     fn from(buffer: &'a mut [u8]) -> Self {
         let tail = buffer.len();

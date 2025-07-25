@@ -3,10 +3,10 @@
 #![allow(dead_code)]
 
 use crate::codec::{encode_u8_slice, Codec, CommonCodec, MessageBuf};
-use crate::commands::challenge_auth_rsp::encode_opaque_data;
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
+use crate::protocol::opaque_data::encode_opaque_data;
 use crate::protocol::*;
 use crate::state::ConnectionState;
 use bitfield::bitfield;
@@ -14,7 +14,6 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const RANDOM_DATA_LEN: usize = 32;
 pub const ECDSA384_SIGNATURE_LEN: usize = 96;
-pub const OPAQUE_DATA_LEN_MAX_SIZE: usize = 1024; // Maximum size for opaque data
 
 bitfield! {
     #[derive(FromBytes, IntoBytes, Immutable)]
@@ -128,7 +127,7 @@ async fn generate_finish_response<'a>(
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
     // Encode the Opaque data length = 0
-    encode_opaque_data(rsp)?;
+    encode_opaque_data(rsp, &[])?;
 
     if generate_responder_verify_data {
         let hmac = finish_rsp_transcript_responder_only(ctx).await?;

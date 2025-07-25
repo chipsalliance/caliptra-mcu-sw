@@ -83,7 +83,7 @@ async fn process_challenge<'a>(
         })?);
     }
 
-    if challenge_req.slot_id > 0 && selected_measurement_specification(ctx).0 == 0 {
+    if challenge_req.measurement_hash_type > 0 && selected_measurement_specification(ctx).0 == 0 {
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
@@ -241,16 +241,6 @@ pub(crate) async fn encode_measurement_summary_hash<'a>(
     Ok(hash_len)
 }
 
-pub(crate) fn encode_opaque_data(rsp: &mut MessageBuf<'_>) -> CommandResult<usize> {
-    let len = size_of::<u16>();
-    rsp.put_data(len)
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-    rsp.pull_data(len)
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-
-    Ok(len)
-}
-
 async fn generate_challenge_auth_response<'a>(
     ctx: &mut SpdmContext<'a>,
     slot_id: u8,
@@ -281,7 +271,7 @@ async fn generate_challenge_auth_response<'a>(
     }
 
     // Encode the Opaque data length = 0
-    payload_len += encode_opaque_data(rsp)?;
+    payload_len += encode_opaque_data(rsp, &[])?;
 
     // if requester context is present, encode it
     if let Some(context) = requester_context {

@@ -5,7 +5,7 @@
 use crate::cert_store::{hash_cert_chain, MAX_CERT_SLOTS_SUPPORTED};
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::algorithms_rsp::selected_measurement_specification;
-use crate::commands::challenge_auth_rsp::{encode_measurement_summary_hash, encode_opaque_data};
+use crate::commands::challenge_auth_rsp::encode_measurement_summary_hash;
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
@@ -27,14 +27,24 @@ struct KeyExchangeEcdhReqBase {
     measurement_hash_type: u8,
     slot_id: u8,
     req_session_id: u16,
-    session_policy: u8,
+    session_policy: SessionPolicy,
     _reserved: u8,
     random_data: [u8; RANDOM_DATA_LEN],
     exchange_data: [u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE],
-    opaque_data_len: u16,
-    opaque_data: [u8; OPAQUE_DATA_LEN_MAX_SIZE],
 }
+
 impl CommonCodec for KeyExchangeEcdhReqBase {}
+
+bitfield! {
+    #[derive(FromBytes, IntoBytes, Immutable)]
+    #[repr(C)]
+    struct SessionPolicy(u8);
+    impl Debug;
+    u8;
+    pub termination_policy, _: 0, 0;
+    pub event_all_policy, _: 1, 1;
+    reserved, _: 7, 2;
+}
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
@@ -115,37 +125,56 @@ async fn process_key_exchange<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
     }
 
-    // Make sure the asymmetric algorithm is ECC P384
-    // TODO: support MLDSA
-    if !matches!(ctx.selected_base_asym_algo(), Ok(AsymAlgo::EccP384)) {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
-    }
+    // Get the selected AsymAlgo and verify the selected hash algorithm is SHA384
+    let asym_algo = ctx
+        .selected_base_asym_algo()
+        .and_then(|algo| ctx.verify_selected_hash_algo().map(|_| algo))
+        .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
 
     // Decode the KEY_EXCHANGE request payload
     let exch_req = KeyExchangeEcdhReqBase::decode(req_payload).map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
     })?;
 
-    if exch_req.slot_id > 0 && selected_measurement_specification(ctx).0 == 0 {
+    // Verify that the selected measurement hash type is DMTF
+    if exch_req.measurement_hash_type > 0 && selected_measurement_specification(ctx).0 == 0 {
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
     // Note: Pubkey of the responder will not be pre-provisioned to Requester. So slot ID 0xFF is invalid.
     if exch_req.slot_id >= MAX_CERT_SLOTS_SUPPORTED
-        || !ctx.device_certs_store.is_provisioned(exch_req.slot_id)
+        || ctx.local_capabilities.flags.cert_cap() == 0
+        || !ctx
+            .device_certs_store
+            .is_provisioned(exch_req.slot_id)
+            .await
     {
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
     // If multi-key connection response is supported, validate the key supports key_exch usage
     if connection_version >= SpdmVersion::V13 && ctx.state.connection_info.multi_key_conn_rsp() {
-        match ctx.device_certs_store.key_usage_mask(exch_req.slot_id) {
+        match ctx
+            .device_certs_store
+            .key_usage_mask(exch_req.slot_id)
+            .await
+        {
             Some(key_usage_mask) if key_usage_mask.key_exch_usage() != 0 => {}
             _ => Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?,
         }
     }
 
-    let asym_algo = ctx.selected_base_asym_algo().unwrap();
+    // If session policy with event_all_policy is set, verify that the responder supports event capability
+    if exch_req.session_policy.event_all_policy() != 0
+        && ctx.local_capabilities.flags.event_cap() == 0
+    {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
+    }
+
+    let (_opaque_data, _opaque_data_len) = decode_opaque_data(req_payload).map_err(|_| {
+        ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
+    })?;
+
     let _cert_chain_hash = hash_cert_chain(ctx.device_certs_store, exch_req.slot_id, asym_algo)
         .await
         .map_err(|e| (false, CommandError::CertStore(e)))?;
@@ -211,6 +240,7 @@ async fn encode_key_exchange_rsp_base(
 
 async fn sign_transcript(
     ctx: &mut SpdmContext<'_>,
+    asym_algo: AsymAlgo,
     slot_id: u8,
     transcript_ctx: TranscriptContext,
 ) -> CommandResult<[u8; ECDSA384_SIGNATURE_LEN]> {
@@ -222,7 +252,7 @@ async fn sign_transcript(
 
     let mut signature = [0u8; ECDSA384_SIGNATURE_LEN];
     ctx.device_certs_store
-        .sign_hash(slot_id, &hash_to_sign, &mut signature)
+        .sign_hash(slot_id, asym_algo, &hash_to_sign, &mut signature)
         .await
         .map_err(|e| (false, CommandError::CertStore(e)))?;
     Ok(signature)
@@ -253,7 +283,7 @@ async fn generate_key_exchange_response<'a>(
     }
 
     // Encode the Opaque data length = 0
-    encode_opaque_data(rsp)?;
+    encode_opaque_data(rsp, &[])?;
 
     // TODO: Update transcript
     // ctx.append_message_to_transcript(rsp, TranscriptContext::KeyExchangeRspSignature)
@@ -319,8 +349,9 @@ pub(crate) async fn handle_key_exchange<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
-    // Check if key exchange is supported
-    if ctx.local_capabilities.flags.key_ex_cap() == 0 {
+    // Check if KEY_EX_CAP at least MAC_CAP is supported
+    if ctx.local_capabilities.flags.key_ex_cap() == 0 || ctx.local_capabilities.flags.mac_cap() == 0
+    {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnsupportedRequest, 0, None))?;
     }
 
