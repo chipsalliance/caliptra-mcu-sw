@@ -96,6 +96,7 @@ impl PldmFwUpdateTest {
             daemon: None,
         }
     }
+    #[allow(clippy::result_unit_err)]
     pub fn wait_for_state_transition(&self, expected_state: update_sm::States) -> Result<(), ()> {
         let timeout = Duration::from_secs(30);
         let start_time = std::time::Instant::now();
@@ -125,6 +126,7 @@ impl PldmFwUpdateTest {
         }
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn test_fw_update(&mut self) -> Result<(), ()> {
         // Initialize log level to info (only once)
         let _ = SimpleLogger::new().with_level(LevelFilter::Debug).init();

@@ -75,6 +75,7 @@ impl PldmRequestResponseTest {
         test_messages.push(PldmExpectedMessagePair { request, response });
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn test_send_receive(&mut self) -> Result<(), ()> {
         self.socket.connect().map_err(|_| ())?;
 

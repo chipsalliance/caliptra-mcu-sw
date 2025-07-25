@@ -50,6 +50,14 @@ tock-registers.workspace = true
 uuid.workspace = true
 zerocopy.workspace = true
 
+[[bin]]
+name = "emulator"
+path = "src/main.rs"
+
+[lib]
+name = "emulator"
+path = "src/lib.rs"
+
 [features]
 default = []
 test-caliptra-certs = []

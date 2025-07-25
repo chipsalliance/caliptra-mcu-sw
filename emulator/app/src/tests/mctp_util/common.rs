@@ -39,6 +39,7 @@ pub struct MessageIdentifier {
     pub tag_owner: u8,
 }
 
+#[allow(clippy::new_without_default)]
 impl MctpUtil {
     pub fn new() -> MctpUtil {
         MctpUtil {
