@@ -424,7 +424,7 @@ pub fn rom_start(params: RomParameters) {
         .program_field_entropy
         .iter()
         .enumerate()
-        .filter(|(_, x)| **x)
+        .filter(|(_, partition)| **partition)
     {
         romtime::println!(
             "[mcu-rom] Executing FE_PROG command for partition {}",
