@@ -46,4 +46,12 @@ impl Mci {
     pub fn disable_wdt(&self) {
         self.registers.mci_reg_wdt_timer1_en.set(0); // Timer1En CLEAR
     }
+
+    pub fn read_notif0_intr_trig_r(&self) -> u32 {
+        self.registers.intr_block_rf_notif0_intr_trig_r.get()
+    }
+
+    pub fn write_notif0_intr_trig_r(&self, value: u32) {
+        self.registers.intr_block_rf_notif0_intr_trig_r.set(value);
+    }
 }

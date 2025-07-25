@@ -3,6 +3,7 @@
 #![no_std]
 
 pub mod doe;
+pub mod mci;
 pub mod mailbox;
 pub mod mctp_driver;
 pub mod mock_mctp;

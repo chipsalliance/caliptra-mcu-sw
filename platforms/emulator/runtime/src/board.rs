@@ -25,7 +25,7 @@ use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
 use mcu_components::mctp_mux_component_static;
 use mcu_components::{
-    doe_component_static, mailbox_component_static, mctp_driver_component_static,
+    doe_component_static, mailbox_component_static, mctp_driver_component_static, mci_component_static
 };
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
@@ -159,6 +159,7 @@ struct VeeR {
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
     dma: &'static capsules_emulator::dma::Dma<'static>,
+    mci: &'static capsules_runtime::mci::Mci,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -180,6 +181,7 @@ impl SyscallDriverLookup for VeeR {
             capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM => f(Some(self.doe_spdm)),
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
+            capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
             mcu_config_emulator::flash::DRIVER_NUM_START
                 ..=mcu_config_emulator::flash::DRIVER_NUM_END => {
                 for index in 0..mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT {
@@ -465,6 +467,15 @@ pub unsafe fn main() {
     ));
     mailbox.alarm.set_alarm_client(mailbox);
 
+    let mci_regs: StaticRef<mci::regs::Mci> =
+        unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
+    let mci = mcu_components::mci::MciComponent::new(
+        board_kernel,
+        capsules_runtime::mci::DRIVER_NUM,
+    ).finalize(mci_component_static!(
+        mci_regs
+    ));
+
     let emulator_peripherals =
         static_init!(EmulatorPeripherals, EmulatorPeripherals::new(mux_alarm),);
     emulator_peripherals.init();
@@ -644,6 +655,7 @@ pub unsafe fn main() {
             flash_partitions,
             mailbox,
             dma,
+            mci,
         }
     );
 

@@ -33,6 +33,9 @@ mod test_doe_loopback;
 #[cfg(feature = "test-caliptra-certs")]
 mod test_caliptra_certs;
 
+//#[cfg(feature = "test-mci")]
+mod test_mci;
+
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
@@ -207,6 +210,11 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_dma::test_dma_xfer_local_to_external().await;
         romtime::test_exit(0);
     }
+    #[cfg(feature = "test-mci")]
+    {
+        test_mci::test_mci_read_write().await;
+        romtime::test_exit(0);
+    }    
 
     writeln!(console_writer, "app finished").unwrap();
 }

@@ -183,6 +183,30 @@ impl MciPeripheral for Mci {
             .borrow_mut()
             .wdt_timer2_timeout_period[index] = val;
     }
+        fn read_mci_reg_intr_block_rf_notif0_intr_trig_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Notif0IntrTrigT::Register,
+    > {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_notif0_intr_trig_r
+            .into()
+    }
+    fn write_mci_reg_intr_block_rf_notif0_intr_trig_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Notif0IntrTrigT::Register,
+        >,
+    ) {
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_notif0_intr_trig_r = val.reg.get();
+    }
 
     fn poll(&mut self) {
         if self.timer.fired(&mut self.op_wdt_timer1_expired_action) {
