@@ -216,7 +216,7 @@ async fn encode_challenge_auth_rsp_base<'a>(
         .map_err(|e| (false, CommandError::Codec(e)))
 }
 
-async fn encode_measurement_summary_hash<'a>(
+pub(crate) async fn encode_measurement_summary_hash<'a>(
     ctx: &mut SpdmContext<'a>,
     asym_algo: AsymAlgo,
     meas_summary_hash_type: u8,
@@ -241,7 +241,7 @@ async fn encode_measurement_summary_hash<'a>(
     Ok(hash_len)
 }
 
-fn encode_opaque_data(rsp: &mut MessageBuf<'_>) -> CommandResult<usize> {
+pub(crate) fn encode_opaque_data(rsp: &mut MessageBuf<'_>) -> CommandResult<usize> {
     let len = size_of::<u16>();
     rsp.put_data(len)
         .map_err(|e| (false, CommandError::Codec(e)))?;

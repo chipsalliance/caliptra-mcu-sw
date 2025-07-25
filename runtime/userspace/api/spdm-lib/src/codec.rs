@@ -84,6 +84,18 @@ pub fn encode_u8_slice(data: &[u8], buffer: &mut MessageBuf) -> CodecResult<usiz
     Ok(len)
 }
 
+impl<'a> From<&'a mut [u8]> for MessageBuf<'a> {
+    fn from(buffer: &'a mut [u8]) -> Self {
+        let tail = buffer.len();
+        Self {
+            buffer,
+            head: 0,
+            data: 0,
+            tail,
+        }
+    }
+}
+
 // Generic message buffer for message encoding and decoding
 #[derive(Debug)]
 pub struct MessageBuf<'a> {
