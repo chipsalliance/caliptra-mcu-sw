@@ -33,6 +33,9 @@ mod test_doe_loopback;
 #[cfg(feature = "test-caliptra-certs")]
 mod test_caliptra_certs;
 
+#[cfg(feature = "test-log-flash-usermode")]
+mod test_logging_flash;
+
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
@@ -208,6 +211,14 @@ pub(crate) async fn async_main<S: Syscalls>() {
     {
         test_dma::test_dma_xfer_local_to_local().await;
         test_dma::test_dma_xfer_local_to_external().await;
+        romtime::test_exit(0);
+    }
+
+    #[cfg(feature = "test-log-flash-usermode")]
+    {
+        test_logging_flash::test_logging_flash_simple().await;
+        test_logging_flash::test_logging_flash_various_entries().await;
+        test_logging_flash::test_logging_flash_invalid_inputs().await;
         romtime::test_exit(0);
     }
 

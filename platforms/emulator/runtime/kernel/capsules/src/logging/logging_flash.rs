@@ -375,7 +375,7 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
         self.records_lost
             .set(self.oldest_entry_id.get() != PAGE_HEADER_SIZE);
         self.error.set(Ok(()));
-        self.client_callback();
+        self.deferred_client_callback();
     }
 
     /// Flushes the pagebuffer to flash. Log state must be non-idle before calling, else data races
@@ -691,15 +691,20 @@ impl<'a, F: Flash + 'static> LogWrite<'a> for Log<'a, F> {
     ///     * BUSY: log or flash driver busy, try again later.
     ///     * RESERVE: no log client set.
     /// Result<(), ErrorCode>s used in sync_done callback:
-    ///     * Ok(()): append succeeded.
+    ///     * Ok(()): sync succeeded.
     ///     * FAIL: write failed due to flash error.
     fn sync(&self) -> Result<(), ErrorCode> {
-        if self.append_entry_id.get() % self.page_size == PAGE_HEADER_SIZE {
-            // Pagebuffer empty, don't need to flush.
-            return Ok(());
-        } else if self.state.get() != State::Idle {
+        if self.state.get() != State::Idle {
             // Log busy, try appending again later.
             return Err(ErrorCode::BUSY);
+        }
+
+        // Pagebuffer empty, don't need to flush. Make successful callback.
+        if self.append_entry_id.get() % self.page_size == PAGE_HEADER_SIZE {
+            self.state.set(State::Sync);
+            self.error.set(Ok(()));
+            self.deferred_client_callback();
+            return Ok(());
         }
 
         self.pagebuffer
@@ -716,7 +721,7 @@ impl<'a, F: Flash + 'static> LogWrite<'a> for Log<'a, F> {
 
     /// Erase the entire log.
     /// Result<(), ErrorCode>s used:
-    ///     * Ok(()): flush started successfully.
+    ///     * Ok(()): erase started successfully.
     ///     * BUSY: log busy, try again later.
     /// Result<(), ErrorCode>s used in erase_done callback:
     ///     * Ok(()): erase succeeded.
@@ -725,6 +730,14 @@ impl<'a, F: Flash + 'static> LogWrite<'a> for Log<'a, F> {
         if self.state.get() != State::Idle {
             // Log busy, try appending again later.
             return Err(ErrorCode::BUSY);
+        }
+
+        // Log is empty, nothing to erase. Make successful callback.
+        if self.oldest_entry_id.get() == self.append_entry_id.get() && !self.records_lost.get() {
+            self.state.set(State::Erase);
+            self.error.set(Ok(()));
+            self.deferred_client_callback();
+            return Ok(());
         }
 
         self.state.set(State::Erase);
@@ -804,7 +817,7 @@ impl<F: Flash + 'static> flash::Client<F> for Log<'_, F> {
         match result.is_ok() {
             true => {
                 let oldest_entry_id = self.oldest_entry_id.get();
-                if oldest_entry_id >= self.append_entry_id.get() - self.page_size {
+                if oldest_entry_id + self.page_size >= self.append_entry_id.get() {
                     // Erased all pages. Reset state and callback client.
                     if self.reset() {
                         self.error.set(Ok(()));

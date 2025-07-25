@@ -5,6 +5,7 @@
 pub mod dma;
 pub mod doe;
 pub mod flash;
+pub mod logging;
 pub mod mailbox;
 pub mod mctp;
 
