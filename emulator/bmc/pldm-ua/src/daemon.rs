@@ -175,6 +175,10 @@ impl<
                         }
                     }
                     PldmEvents::Stop => {
+                        let discovery_sm = &mut *discovery_sm.lock().unwrap();
+                        discovery_sm
+                            .process_event(discovery_sm::Events::CancelDiscovery)
+                            .unwrap();
                         running.store(false, Ordering::Relaxed);
                         break;
                     }
