@@ -99,8 +99,8 @@ impl<'a> FirmwareUpdater<'a> {
             .await
             .map_err(|_| ErrorCode::Fail)?;
         self.update_manifest(image_offset, image_len).await?;
-
 */
+
         writeln!(Console::<DefaultSyscalls>::writer(), "Updating MCU").unwrap();
                 let (image_offset, image_len) = self
             .get_image_toc(

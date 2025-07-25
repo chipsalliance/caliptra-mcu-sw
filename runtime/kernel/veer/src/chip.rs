@@ -31,6 +31,7 @@ extern "C" {
 
 pub static mut TIMERS: InternalTimers<'static> = InternalTimers::new();
 // TODO: these should be part of the memory map
+pub const MCI_IRQ: u8 = 0x01;
 pub const I3C_ERROR_IRQ: u8 = 0x11;
 pub const I3C_NOTIF_IRQ: u8 = 0x12;
 
@@ -79,6 +80,11 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
             return true;
         } else if interrupt == I3C_NOTIF_IRQ as u32 {
             self.i3c.handle_notification_interrupt();
+            return true;
+        } else if interrupt == MCI_IRQ as u32 {
+            // Handle MCI interrupt
+            // This is a placeholder, actual handling logic should be implemented
+            romtime::println!("[Runtime] MCI Interrupt received");
             return true;
         }
         debug!("Unhandled interrupt {}", interrupt);

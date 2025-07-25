@@ -15,7 +15,7 @@ Abstract:
 use crate::{spi_host::SpiHost, EmuCtrl, Uart};
 use caliptra_emu_bus::{Bus, BusError, Clock, Ram, Rom};
 use caliptra_emu_bus::{Device, Event, EventData};
-use caliptra_emu_cpu::{Pic, PicMmioRegisters};
+use caliptra_emu_cpu::{Irq, Pic, PicMmioRegisters};
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use emulator_consts::{
     DIRECT_READ_FLASH_ORG, DIRECT_READ_FLASH_SIZE, EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE,
@@ -97,11 +97,13 @@ pub struct McuRootBus {
     pub pic_regs: PicMmioRegisters,
     pub external_test_sram: Rc<RefCell<Ram>>,
     pub direct_read_flash: Rc<RefCell<Ram>>,
+    pub mci_irq : Irq,
     event_sender: Option<mpsc::Sender<Event>>,
     offsets: McuRootBusOffsets,
 }
 
 impl McuRootBus {
+    pub const MCI_IRQ: u8 = 1;
     pub const UART_NOTIF_IRQ: u8 = 16;
     pub const I3C_ERROR_IRQ: u8 = 17;
     pub const I3C_NOTIF_IRQ: u8 = 18;
@@ -122,6 +124,7 @@ impl McuRootBus {
         let rom_sram = Ram::new(vec![0; ROM_DEDICATED_RAM_SIZE as usize]);
         let external_test_sram = Ram::new(vec![0; EXTERNAL_TEST_SRAM_SIZE as usize]);
         let direct_read_flash = Ram::new(vec![0; DIRECT_READ_FLASH_SIZE as usize]);
+        let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
 
         Ok(Self {
             rom,
@@ -135,6 +138,7 @@ impl McuRootBus {
             external_test_sram: Rc::new(RefCell::new(external_test_sram)),
             direct_read_flash: Rc::new(RefCell::new(direct_read_flash)),
             offsets: args.offsets,
+            mci_irq,
         })
     }
 
@@ -398,6 +402,13 @@ impl Bus for McuRootBus {
                         .unwrap();
                 }
             }
+        }
+
+        if let (Device::MCU, EventData::MciInterrupt) = (event.dest, event.event.clone()) {
+            println!(
+                "[MCU] MCI Interrupt received"
+            );
+            self.mci_irq.set_level(true);
         }
     }
 }

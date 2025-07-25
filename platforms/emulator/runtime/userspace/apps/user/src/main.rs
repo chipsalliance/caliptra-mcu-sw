@@ -59,6 +59,7 @@ async fn start() {
 }
 
 pub(crate) async fn async_main() {
+/*
     EXECUTOR
         .get()
         .spawner()
@@ -70,7 +71,7 @@ pub(crate) async fn async_main() {
         .spawner()
         .spawn(image_loader::image_loading_task())
         .unwrap();
-
+*/
     #[cfg(feature = "test-firmware-update")]
     EXECUTOR
         .get()
