@@ -220,7 +220,7 @@ pub fn setup<
     daemon_options: Options<D, U>,
 ) -> TestSetup<D, U> {
     // Initialize log level to info (only once)
-    let _ = SimpleLogger::new().with_level(LevelFilter::Info).init();
+    let _ = SimpleLogger::new().with_level(LevelFilter::Debug).init();
 
     // Setup the PLDM transport
     let transport = MockTransport::new();
@@ -299,11 +299,17 @@ pub struct CustomDiscoverySm {}
 impl discovery_sm::StateMachineActions for CustomDiscoverySm {
     fn on_start_discovery(
         &self,
-        ctx: &discovery_sm::InnerContext<impl PldmSocket>,
+        ctx: &mut pldm_ua::discovery_sm::InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
         ctx.event_queue
             .send(PldmEvents::Update(update_sm::Events::StartUpdate))
             .map_err(|_| ())?;
+        Ok(())
+    }
+    fn on_cancel_discovery(
+        &self,
+        ctx: &mut discovery_sm::InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         Ok(())
     }
 }

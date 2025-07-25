@@ -2,6 +2,9 @@
 
 #[cfg(test)]
 mod common;
+use std::thread::sleep;
+use std::time::Duration;
+
 use pldm_common::protocol::base::{PldmControlCmd, PldmSupportedType, TransferRespFlag};
 use pldm_common::protocol::firmware_update::FwUpdateCmd;
 use pldm_common::protocol::version::{PLDM_BASE_PROTOCOL_VERSION, PLDM_FW_UPDATE_PROTOCOL_VERSION};
@@ -191,6 +194,57 @@ fn test_discovery() {
                 FwUpdateCmd::CancelUpdateComponent as u8,
                 FwUpdateCmd::CancelUpdate as u8,
             ],
+        ),
+    );
+
+    setup.daemon.stop();
+}
+
+#[test]
+fn test_discovery_with_retry() {
+    let mut setup = common::setup(Options {
+        pldm_fw_pkg: Some(FirmwareManifest::default()),
+        discovery_sm_actions: discovery_sm::DefaultActions {},
+        update_sm_actions: UpdateSmStopAfterRequest {
+            is_fw_update_started: false,
+        },
+        fd_tid: DEVICE_TID,
+    });
+
+    // TID to be assigned to the device
+    const DEVICE_TID: u8 = 0x01;
+
+    let request: SetTidRequest = setup
+        .receive_request(&setup.fd_sock, PldmControlCmd::SetTid as u8)
+        .unwrap();
+    assert_eq!(request.tid, DEVICE_TID);
+
+    sleep(Duration::from_secs(5)); // Simulate a delay before sending SetTid response
+
+    // Receive the SetTid request again
+    let request: SetTidRequest = setup
+        .receive_request(&setup.fd_sock, PldmControlCmd::SetTid as u8)
+        .unwrap();
+    assert_eq!(request.tid, DEVICE_TID);
+
+    // Send SetTid response
+    setup.send_response(
+        &setup.fd_sock,
+        &SetTidResponse::new(request.hdr.instance_id(), COMPLETION_CODE_SUCCESSFUL),
+    );
+
+    // Receive GetTid request
+    let request: GetTidRequest = setup
+        .receive_request(&setup.fd_sock, PldmControlCmd::GetTid as u8)
+        .unwrap();
+
+    // Send GetTid response
+    setup.send_response(
+        &setup.fd_sock,
+        &GetTidResponse::new(
+            request.hdr.instance_id(),
+            DEVICE_TID,
+            COMPLETION_CODE_SUCCESSFUL,
         ),
     );
 

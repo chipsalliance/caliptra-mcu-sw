@@ -3,6 +3,9 @@
 #[cfg(test)]
 mod common;
 
+use std::thread::sleep;
+use std::time::Duration;
+
 use common::CustomDiscoverySm;
 use pldm_common::message::firmware_update::get_fw_params::{
     FirmwareParameters, GetFirmwareParametersRequest, GetFirmwareParametersResponse,
@@ -211,6 +214,55 @@ fn test_caliptra_fw_update() {
     });
 
     // Receive QueryDeviceIdentifiers request
+    let request: GetFirmwareParametersRequest = setup
+        .receive_request(&setup.fd_sock, FwUpdateCmd::GetFirmwareParameters as u8)
+        .unwrap();
+
+    let caliptra_comp_fw_params = get_caliptra_component_fw_params();
+    let params = FirmwareParameters::new(
+        FirmwareDeviceCapability(0x0010),
+        1,
+        &PldmFirmwareString::new("UTF-8", COMPONENT_ACTIVE_VER_STR).unwrap(),
+        &PldmFirmwareString::new("UTF-8", "").unwrap(),
+        &[caliptra_comp_fw_params],
+    );
+
+    let response = GetFirmwareParametersResponse::new(
+        request.hdr.instance_id(),
+        PldmBaseCompletionCode::Success as u8,
+        &params,
+    );
+
+    setup.send_response(&setup.fd_sock, &response);
+
+    setup.wait_for_state_transition(update_sm::States::RequestUpdateSent);
+
+    setup.daemon.stop();
+}
+
+#[test]
+fn test_caliptra_fw_update_with_timeout() {
+    // PLDM firmware package contains Caliptra Firmware with current active version + 1
+    let pldm_fw_pkg = get_pldm_fw_pkg_caliptra_only(Some(CALIPTRA_FW_ACTIVE_COMP_STAMP + 1));
+
+    // Setup the test environment
+    let mut setup = common::setup(Options {
+        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        discovery_sm_actions: CustomDiscoverySm {},
+        update_sm_actions: UpdateSmBypassQueryDevId {
+            expected_num_components_to_update: 1,
+        },
+        fd_tid: 0x01,
+    });
+
+    // Receive QueryDeviceIdentifiers request
+    let _: GetFirmwareParametersRequest = setup
+        .receive_request(&setup.fd_sock, FwUpdateCmd::GetFirmwareParameters as u8)
+        .unwrap();
+
+    sleep(Duration::from_secs(5)); // Simulate a delay before sending response
+
+    // Should receive another GetFirmwareParameters request
     let request: GetFirmwareParametersRequest = setup
         .receive_request(&setup.fd_sock, FwUpdateCmd::GetFirmwareParameters as u8)
         .unwrap();
