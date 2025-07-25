@@ -1,9 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use mcu_builder::PROJECT_ROOT;
+use mcu_builder::{FirmwareBinaries, PROJECT_ROOT};
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
-use std::io::Read;
 use std::path::Path;
 use std::process::Command;
 
@@ -154,41 +153,13 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
 
     let blank = [0u8; 256]; // Placeholder for empty firmware
 
-    let (mcu_rom, mcu_runtime, soc_manifest, caliptra_rom, caliptra_fw) = if zip.is_some() {
+    let binaries = if zip.is_some() {
         // Load firmware and manifests from ZIP file.
         if mcu_rom.is_some() || caliptra_rom.is_some() {
             bail!("Cannot specify --mcu-rom or --caliptra-rom with --zip");
         }
 
-        let f = std::fs::File::open(zip.unwrap())?;
-        let mut z = zip::ZipArchive::new(f)?;
-        let mut mcu_rom = vec![];
-        let mut mcu_runtime = vec![];
-        let mut soc_manifest = vec![];
-        let mut caliptra_rom = vec![];
-        let mut caliptra_fw = vec![];
-        z.by_name("mcu_rom.bin")
-            .map_err(|_| anyhow!("mcu_rom.bin not found in ZIP"))?
-            .read_to_end(&mut mcu_rom)?;
-        z.by_name("mcu_runtime.bin")
-            .map_err(|_| anyhow!("mcu_runtime.bin not found in ZIP"))?
-            .read_to_end(&mut mcu_runtime)?;
-        z.by_name("soc_manifest.bin")
-            .map_err(|_| anyhow!("soc_manifest.bin not found in ZIP"))?
-            .read_to_end(&mut soc_manifest)?;
-        z.by_name("caliptra_rom.bin")
-            .map_err(|_| anyhow!("caliptra_rom.bin not found in ZIP"))?
-            .read_to_end(&mut caliptra_rom)?;
-        z.by_name("caliptra_fw.bin")
-            .map_err(|_| anyhow!("caliptra_fw.bin not found in ZIP"))?
-            .read_to_end(&mut caliptra_fw)?;
-        (
-            mcu_rom,
-            mcu_runtime,
-            soc_manifest,
-            caliptra_rom,
-            caliptra_fw,
-        )
+        FirmwareBinaries::read_from_zip(zip.as_ref().unwrap())?
     } else {
         let mcu_rom = std::fs::read(mcu_rom.unwrap())?;
         let caliptra_rom = if let Some(caliptra_rom) = caliptra_rom {
@@ -197,13 +168,13 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
             blank.to_vec()
         };
 
-        (
+        FirmwareBinaries {
             mcu_rom,
-            blank.to_vec(),
-            blank.to_vec(),
+            mcu_runtime: blank.to_vec(),
             caliptra_rom,
-            blank.to_vec(),
-        )
+            caliptra_fw: blank.to_vec(),
+            soc_manifest: blank.to_vec(),
+        }
     };
     let otp_memory = if otp_file.is_some() && otp_file.unwrap().exists() {
         mcu_hw_model::read_otp_vmem_data(&std::fs::read(otp_file.unwrap())?)?
@@ -215,11 +186,11 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
     // so we can use JTAG/TAP.
     let bootfsm_break = uds;
     let mut model = ModelFpgaRealtime::new_unbooted(InitParams {
-        caliptra_rom: &caliptra_rom,
-        caliptra_firmware: &caliptra_fw,
-        mcu_rom: &mcu_rom,
-        mcu_firmware: &mcu_runtime,
-        soc_manifest: &soc_manifest,
+        caliptra_rom: &binaries.caliptra_rom,
+        caliptra_firmware: &binaries.caliptra_fw,
+        mcu_rom: &binaries.mcu_rom,
+        mcu_firmware: &binaries.mcu_runtime,
+        soc_manifest: &binaries.soc_manifest,
         active_mode: true,
         otp_memory: Some(&otp_memory),
         uds_program_req: uds,
