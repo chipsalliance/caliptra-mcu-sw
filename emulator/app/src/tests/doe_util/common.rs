@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::tests::doe_util::protocol::*;
+use crate::{sleep_emulator_ticks, tests::doe_util::protocol::*};
 use std::sync::mpsc::{Receiver, RecvError, SendError, Sender};
 use zerocopy::IntoBytes;
 
@@ -79,19 +79,21 @@ impl DoeUtil {
         }
     }
 
-    pub fn receive_raw_data_object(
-        rx: &Receiver<Vec<u8>>,
-        timeout: Option<u32>,
-    ) -> Result<Vec<u8>, DoeUtilError> {
-        let retry_count = timeout.unwrap_or(0) * 5;
-        for _ in 0..retry_count {
+    pub fn receive_raw_data_object(rx: &Receiver<Vec<u8>>) -> Result<Vec<u8>, DoeUtilError> {
+        // TODO: this should not need to be so high.
+        // Nothing should take >3,500,000 ticks to respond,
+        // but setting it to 35 will fail tests.
+        for _ in 0..50 {
             match rx.try_recv() {
                 Ok(message) => {
-                    println!("DOE_UTIL: Received raw data object");
+                    println!(
+                        "DOE_UTIL: Received raw data object with length: {}",
+                        message.len()
+                    );
                     return Ok(message);
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    sleep_emulator_ticks(100_000);
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     println!("DOE_UTIL: Receiver has disconnected.");

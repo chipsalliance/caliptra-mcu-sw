@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
-use crate::EMULATOR_RUNNING;
+use crate::{sleep_emulator_ticks, EMULATOR_RUNNING};
 use rand::Rng;
 const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_DWORDS: usize = 1; // minimum size of test vectors
@@ -54,7 +54,7 @@ impl DoeTransportTest for Test {
             match self.test_state {
                 DoeTestState::Start => {
                     if wait_for_responder {
-                        std::thread::sleep(std::time::Duration::from_secs(20));
+                        sleep_emulator_ticks(1_000_000);
                     }
                     self.test_state = DoeTestState::SendData;
                 }
@@ -63,7 +63,7 @@ impl DoeTransportTest for Test {
                         .is_ok()
                     {
                         self.test_state = DoeTestState::ReceiveData;
-                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        sleep_emulator_ticks(100_000);
                     } else {
                         println!("DOE_USER_LOOPBACK: Failed to send request");
                         self.passed = false;
