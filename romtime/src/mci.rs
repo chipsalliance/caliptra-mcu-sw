@@ -4,7 +4,7 @@ use crate::static_ref::StaticRef;
 use registers_generated::mci;
 use tock_registers::interfaces::{Readable, Writeable};
 
-const NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK: u32 = 0x1;
+const NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK: u32 = 0x2;
 
 pub struct Mci {
     registers: StaticRef<mci::regs::Mci>,
@@ -49,6 +49,9 @@ impl Mci {
         self.registers.mci_reg_wdt_timer1_en.set(0); // Timer1En CLEAR
     }
     
+    pub fn read_reset_reason(&self) -> u32 {
+        self.registers.mci_reg_reset_reason.get()
+    }
 
     pub fn read_notif0_intr_trig_r(&self) -> u32 {
         self.registers.intr_block_rf_notif0_intr_trig_r.get()
@@ -74,6 +77,8 @@ impl Mci {
         if intr_status & NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK != 0 {
             // Clear interrupt
             self.write_notif0_intr_trig_r(NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK);
+            // Request MCU reset
+            self.registers.mci_reg_reset_request.set(1); // Any value will trigger reset
         }
     }
 

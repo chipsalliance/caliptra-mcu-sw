@@ -97,7 +97,7 @@ pub struct McuRootBus {
     pub pic_regs: PicMmioRegisters,
     pub external_test_sram: Rc<RefCell<Ram>>,
     pub direct_read_flash: Rc<RefCell<Ram>>,
-    pub mci_irq : Irq,
+    pub mci_irq : Rc<RefCell<Irq>>,
     event_sender: Option<mpsc::Sender<Event>>,
     offsets: McuRootBusOffsets,
 }
@@ -138,7 +138,7 @@ impl McuRootBus {
             external_test_sram: Rc::new(RefCell::new(external_test_sram)),
             direct_read_flash: Rc::new(RefCell::new(direct_read_flash)),
             offsets: args.offsets,
-            mci_irq,
+            mci_irq: Rc::new(RefCell::new(mci_irq)),
         })
     }
 
@@ -404,11 +404,11 @@ impl Bus for McuRootBus {
             }
         }
 
-        if let (Device::MCU, EventData::MciInterrupt) = (event.dest, event.event.clone()) {
+        if let (Device::MCU, EventData::MciInterrupt { asserted }) = (event.dest, event.event.clone()) {
             println!(
-                "[MCU] MCI Interrupt received"
+                "[MCU] MCI Interrupt received {}", asserted
             );
-            self.mci_irq.set_level(true);
+            self.mci_irq.borrow_mut().set_level(asserted);
         }
     }
 }

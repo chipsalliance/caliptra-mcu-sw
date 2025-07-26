@@ -1,12 +1,17 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_emu_bus::{ActionHandle, Clock, ReadWriteRegister, Timer, TimerAction};
+use std::{cell::{Cell, RefCell}, rc::Rc, sync::mpsc};
+
+use caliptra_emu_bus::{ActionHandle, Clock, Device, Event, EventData, ReadWriteRegister, Timer, TimerAction};
+use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
 use emulator_registers_generated::mci::MciPeripheral;
 use registers_generated::mci::bits::{
     Error0IntrT, WdtStatus, WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
 };
 use tock_registers::interfaces::{ReadWriteable, Readable};
+
+const RESET_STATUS_MCU_RESET_MASK: u32 = 0x2;
 
 pub struct Mci {
     ext_mci_regs: caliptra_emu_periph::mci::Mci,
@@ -16,6 +21,12 @@ pub struct Mci {
     timer: Timer,
     op_wdt_timer1_expired_action: Option<ActionHandle>,
     op_wdt_timer2_expired_action: Option<ActionHandle>,
+    op_mcu_reset_request_action: Option<ActionHandle>,
+    op_mcu_assert_mcu_reset_status_action: Option<ActionHandle>,
+    op_mcu_deassert_mcu_reset_status_action: Option<ActionHandle>,
+
+    irq: Rc<RefCell<Irq>>,
+
 }
 
 impl Mci {
@@ -27,7 +38,13 @@ impl Mci {
     pub const CPTRA_WDT_TIMER2_TIMEOUT_PERIOD_START: u32 = 0xc8;
     pub const CPTRA_WDT_STATUS_START: u32 = 0xd0;
 
-    pub fn new(clock: &Clock, ext_mci_regs: caliptra_emu_periph::mci::Mci) -> Self {
+    pub fn new(clock: &Clock, ext_mci_regs: caliptra_emu_periph::mci::Mci, irq: Rc<RefCell<Irq>>) -> Self {
+        // Clear the reset status, MCU and Caiptra are out of reset
+        ext_mci_regs
+            .regs
+            .borrow_mut()
+            .reset_status = 0;
+
         Self {
             ext_mci_regs,
 
@@ -35,11 +52,17 @@ impl Mci {
             timer: Timer::new(clock),
             op_wdt_timer1_expired_action: None,
             op_wdt_timer2_expired_action: None,
+            op_mcu_reset_request_action: None,
+            op_mcu_assert_mcu_reset_status_action: None,
+            op_mcu_deassert_mcu_reset_status_action: None,
+            irq,
         }
     }
+
 }
 
 impl MciPeripheral for Mci {
+    
     fn read_mci_reg_wdt_timer1_en(&mut self) -> ReadWriteRegister<u32, WdtTimer1En::Register> {
         ReadWriteRegister::new(self.ext_mci_regs.regs.borrow().wdt_timer1_en)
     }
@@ -227,6 +250,28 @@ impl MciPeripheral for Mci {
             .regs
             .borrow_mut()
             .intr_block_rf_notif0_intr_trig_r = new_val;
+
+ 
+
+    }
+
+    fn read_mci_reg_reset_reason(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::ResetReason::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.ext_mci_regs.regs.borrow().reset_reason)
+    }
+
+    fn write_mci_reg_reset_request(
+        &mut self,
+        _val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::ResetRequest::Register,
+        >,
+    ) {
+        self.op_mcu_reset_request_action = Some(self.timer.schedule_poll_in(100));
     }
 
     fn poll(&mut self) {
@@ -298,6 +343,42 @@ impl MciPeripheral for Mci {
                 },
             );
         }
+
+        if self.timer.fired(&mut self.op_mcu_reset_request_action) {
+            // Handle MCU reset request
+            println!("[MCI] TimerAction::UpdateReset");
+            self.timer.schedule_action_in(
+                100,
+                TimerAction::UpdateReset 
+            );
+            self.op_wdt_timer2_expired_action = None;
+            // Allow enough time for MCU to reset before asserting RESET_STATUS_MCU_RESET
+            self.op_mcu_assert_mcu_reset_status_action = Some(self.timer.schedule_poll_in(100));
+        }
+        if self.timer.fired(&mut self.op_mcu_assert_mcu_reset_status_action) {
+            // MCU is now in reset, assert the reset status
+            println!("[MCI] TimerAction::Set Reset Status");
+            self.ext_mci_regs.regs.borrow_mut().reset_status |= RESET_STATUS_MCU_RESET_MASK;
+            self.op_mcu_assert_mcu_reset_status_action = None;
+            // Allow enough time for Caliptra to process the reset status before deasserting it
+            self.op_mcu_deassert_mcu_reset_status_action = Some(self.timer.schedule_poll_in(1000));
+        }
+        if self.timer.fired(&mut self.op_mcu_deassert_mcu_reset_status_action) {
+            // MCU is now out of reset, deassert the reset status
+            println!("[MCI] TimerAction::Clear Reset Status");
+            self.ext_mci_regs.regs.borrow_mut().reset_status &= !RESET_STATUS_MCU_RESET_MASK;
+            self.op_mcu_deassert_mcu_reset_status_action = None;
+
+            println!(
+                "Deasserting Interrupt"
+            );
+
+            self.irq.borrow_mut().set_level(false);
+            println!(
+                "Deasserted Interrupt"
+            );                  
+        }
+
     }
 }
 
@@ -322,8 +403,9 @@ mod tests {
     fn test_wdt() {
         let clock = Clock::new();
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
-
-        let mci_reg: Mci = Mci::new(&clock, ext_mci_regs);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mci_reg: Mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)));
         let mut mci_bus = MciBus {
             periph: Box::new(mci_reg),
         };

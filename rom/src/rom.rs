@@ -25,6 +25,8 @@ use registers_generated::{fuses::Fuses, i3c, mci, otp_ctrl, soc};
 use romtime::{HexWord, Mci, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
+const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
+
 extern "C" {
     pub static MCU_MEMORY_MAP: mcu_config::McuMemoryMap;
     pub static MCU_STRAPS: mcu_config::McuStraps;
@@ -170,148 +172,160 @@ pub fn rom_start(flash_partition_driver: Option<&mut FlashPartition>) {
 
     // De-assert caliptra reset
     let mci = Mci::new(mci_base);
+    let reset_reason = mci.read_reset_reason();
+
     romtime::println!("[mcu-rom] Setting Caliptra boot go");
-    mci.caliptra_boot_go();
+    if reset_reason & RESET_REASON_FW_HITLESS_UPD_RESET_MASK == 0 {
+        mci.caliptra_boot_go();
 
-    romtime::println!("[mcu-rom] Initializing I3C");
-    let mut i3c = I3c::new(i3c_base);
-    i3c.configure(straps.i3c_static_addr, true);
+        romtime::println!("[mcu-rom] Initializing I3C");
+        let mut i3c = I3c::new(i3c_base);
+        i3c.configure(straps.i3c_static_addr, true);
 
-    // only do these on the emulator for now
-    let fuses = if unsafe { MCU_MEMORY_MAP.rom_offset } == 0x8000_0000 {
-        let otp = Otp::new(otp_base);
-        if let Err(err) = otp.init() {
-            romtime::println!("Error initializing OTP: {}", HexWord(err as u32));
-            fatal_error(1);
-        }
-        match otp.read_fuses() {
-            Ok(fuses) => fuses,
-            Err(e) => {
-                romtime::println!("Error reading fuses: {}", HexWord(e as u32));
+        romtime::println!("[mcu-rom] Finished Initializing I3C");
+
+        
+
+        romtime::println!("[mcu-rom] Reset Reason : {}", HexWord(reset_reason));
+
+
+        // Reset reason is not FW_HITLESS_UPD_RESET
+        // only do these on the emulator for now
+        let fuses = if unsafe { MCU_MEMORY_MAP.rom_offset } == 0x8000_0000 {
+            let otp = Otp::new(otp_base);
+            if let Err(err) = otp.init() {
+                romtime::println!("Error initializing OTP: {}", HexWord(err as u32));
                 fatal_error(1);
             }
-        }
-    } else {
-        // this is the default key in Caliptra builder
-        let mut vendor = [
-            0xb1, 0x7c, 0xa8, 0x77, 0x66, 0x66, 0x57, 0xcc, 0xd1, 0x00, 0xe6, 0x92, 0x6c, 0x72,
-            0x06, 0xb6, 0x0c, 0x99, 0x5c, 0xb6, 0x89, 0x92, 0xc6, 0xc9, 0xba, 0xef, 0xce, 0x72,
-            0x8a, 0xf0, 0x54, 0x41, 0xde, 0xe1, 0xff, 0x41, 0x5a, 0xdf, 0xc1, 0x87, 0xe1, 0xe4,
-            0xed, 0xb4, 0xd3, 0xb2, 0xd9, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        ];
-        // swizzle
-        for i in (0..64).step_by(4) {
-            let a = vendor[i];
-            let b = vendor[i + 1];
-            let c = vendor[i + 2];
-            let d = vendor[i + 3];
-            vendor[i] = d;
-            vendor[i + 1] = c;
-            vendor[i + 2] = b;
-            vendor[i + 3] = a;
-        }
-
-        Fuses {
-            vendor_hashes_manuf_partition: vendor,
-            ..Default::default()
-        }
-    };
-
-    if flash_partition_driver.is_none() {
-        // Flash image loading takes a long time, and will trigger a watchdog reset
-        // so disable it for flash loading for now.
-        // TODO: Handle flash image loading with the watchdog enabled
-
-        soc.registers.cptra_wdt_cfg[0].set(straps.cptra_wdt_cfg0);
-        soc.registers.cptra_wdt_cfg[1].set(straps.cptra_wdt_cfg1);
-
-        mci.set_nmi_vector(unsafe { MCU_MEMORY_MAP.rom_offset });
-        mci.configure_wdt(straps.mcu_wdt_cfg0, straps.mcu_wdt_cfg1);
-    }
-
-    romtime::println!(
-        "[mcu-rom] Waiting for Caliptra to be ready for fuses: {}",
-        soc.ready_for_fuses()
-    );
-    while !soc.ready_for_fuses() {}
-
-    romtime::println!("[mcu-rom] Writing fuses to Caliptra");
-    romtime::println!(
-        "[mcu-rom] Setting Caliptra mailbox user 0 to {}",
-        HexWord(straps.axi_user)
-    );
-
-    soc.registers.cptra_mbox_valid_axi_user[0].set(straps.axi_user);
-    romtime::println!("[mcu-rom] Locking Caliptra mailbox user 0");
-    soc.registers.cptra_mbox_axi_user_lock[0].set(1);
-
-    romtime::println!("[mcu-rom] Setting OTP user");
-    soc.registers.cptra_fuse_valid_axi_user.set(straps.axi_user);
-    romtime::println!("[mcu-rom] Locking OTP user");
-    soc.registers.cptra_fuse_axi_user_lock.set(1);
-    romtime::println!("[mcu-rom] Setting TRNG user");
-    soc.registers.cptra_trng_valid_axi_user.set(straps.axi_user);
-    romtime::println!("[mcu-rom] Locking TRNG user");
-    soc.registers.cptra_trng_axi_user_lock.set(1);
-    romtime::println!("[mcu-rom] Setting DMA user");
-    soc.registers.ss_caliptra_dma_axi_user.set(straps.axi_user);
-
-    soc.populate_fuses(&fuses);
-    romtime::println!("[mcu-rom] Setting Caliptra fuse write done");
-    soc.fuse_write_done();
-    while soc.ready_for_fuses() {}
-
-    romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for mbox",);
-    while !soc.ready_for_mbox() {}
-    romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
-
-    // tell Caliptra to download firmware from the recovery interface
-    romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command",);
-    if let Err(err) =
-        soc_manager.start_mailbox_req(CommandId::RI_DOWNLOAD_FIRMWARE.into(), 0, [].into_iter())
-    {
-        match err {
-            CaliptraApiError::MailboxCmdFailed(code) => {
-                romtime::println!("[mcu-rom] Error sending mailbox command: {}", HexWord(code));
+            match otp.read_fuses() {
+                Ok(fuses) => fuses,
+                Err(e) => {
+                    romtime::println!("Error reading fuses: {}", HexWord(e as u32));
+                    fatal_error(1);
+                }
             }
-            _ => {
-                romtime::println!("[mcu-rom] Error sending mailbox command");
+        } else {
+            // this is the default key in Caliptra builder
+            let mut vendor = [
+                0xb1, 0x7c, 0xa8, 0x77, 0x66, 0x66, 0x57, 0xcc, 0xd1, 0x00, 0xe6, 0x92, 0x6c, 0x72,
+                0x06, 0xb6, 0x0c, 0x99, 0x5c, 0xb6, 0x89, 0x92, 0xc6, 0xc9, 0xba, 0xef, 0xce, 0x72,
+                0x8a, 0xf0, 0x54, 0x41, 0xde, 0xe1, 0xff, 0x41, 0x5a, 0xdf, 0xc1, 0x87, 0xe1, 0xe4,
+                0xed, 0xb4, 0xd3, 0xb2, 0xd9, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ];
+            // swizzle
+            for i in (0..64).step_by(4) {
+                let a = vendor[i];
+                let b = vendor[i + 1];
+                let c = vendor[i + 2];
+                let d = vendor[i + 3];
+                vendor[i] = d;
+                vendor[i + 1] = c;
+                vendor[i + 2] = b;
+                vendor[i + 3] = a;
             }
+
+            Fuses {
+                vendor_hashes_manuf_partition: vendor,
+                ..Default::default()
+            }
+        };
+
+        if flash_partition_driver.is_none() {
+            // Flash image loading takes a long time, and will trigger a watchdog reset
+            // so disable it for flash loading for now.
+            // TODO: Handle flash image loading with the watchdog enabled
+
+            soc.registers.cptra_wdt_cfg[0].set(straps.cptra_wdt_cfg0);
+            soc.registers.cptra_wdt_cfg[1].set(straps.cptra_wdt_cfg1);
+
+            mci.set_nmi_vector(unsafe { MCU_MEMORY_MAP.rom_offset });
+            mci.configure_wdt(straps.mcu_wdt_cfg0, straps.mcu_wdt_cfg1);
         }
-        fatal_error(4);
-    }
-    romtime::println!(
-        "[mcu-rom] Done sending RI_DOWNLOAD_FIRMWARE command: status {}",
-        HexWord(u32::from(
-            soc_manager.soc_mbox().status().read().mbox_fsm_ps()
-        ))
-    );
-    if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
-        match err {
-            CaliptraApiError::MailboxCmdFailed(code) => {
-                romtime::println!(
-                    "[mcu-rom] Error finishing mailbox command: {}",
-                    HexWord(code)
-                );
+
+        romtime::println!(
+            "[mcu-rom] Waiting for Caliptra to be ready for fuses: {}",
+            soc.ready_for_fuses()
+        );
+        while !soc.ready_for_fuses() {}
+
+        romtime::println!("[mcu-rom] Writing fuses to Caliptra");
+        romtime::println!(
+            "[mcu-rom] Setting Caliptra mailbox user 0 to {}",
+            HexWord(straps.axi_user)
+        );
+
+        soc.registers.cptra_mbox_valid_axi_user[0].set(straps.axi_user);
+        romtime::println!("[mcu-rom] Locking Caliptra mailbox user 0");
+        soc.registers.cptra_mbox_axi_user_lock[0].set(1);
+
+        romtime::println!("[mcu-rom] Setting OTP user");
+        soc.registers.cptra_fuse_valid_axi_user.set(straps.axi_user);
+        romtime::println!("[mcu-rom] Locking OTP user");
+        soc.registers.cptra_fuse_axi_user_lock.set(1);
+        romtime::println!("[mcu-rom] Setting TRNG user");
+        soc.registers.cptra_trng_valid_axi_user.set(straps.axi_user);
+        romtime::println!("[mcu-rom] Locking TRNG user");
+        soc.registers.cptra_trng_axi_user_lock.set(1);
+        romtime::println!("[mcu-rom] Setting DMA user");
+        soc.registers.ss_caliptra_dma_axi_user.set(straps.axi_user);
+
+        soc.populate_fuses(&fuses);
+        romtime::println!("[mcu-rom] Setting Caliptra fuse write done");
+        soc.fuse_write_done();
+        while soc.ready_for_fuses() {}
+
+        romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for mbox",);
+        while !soc.ready_for_mbox() {}
+        romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
+
+        // tell Caliptra to download firmware from the recovery interface
+        romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command",);
+        if let Err(err) =
+            soc_manager.start_mailbox_req(CommandId::RI_DOWNLOAD_FIRMWARE.into(), 0, [].into_iter())
+        {
+            match err {
+                CaliptraApiError::MailboxCmdFailed(code) => {
+                    romtime::println!("[mcu-rom] Error sending mailbox command: {}", HexWord(code));
+                }
+                _ => {
+                    romtime::println!("[mcu-rom] Error sending mailbox command");
+                }
             }
-            _ => {
-                romtime::println!("[mcu-rom] Error finishing mailbox command");
-            }
+            fatal_error(4);
         }
-        fatal_error(5);
-    };
+        romtime::println!(
+            "[mcu-rom] Done sending RI_DOWNLOAD_FIRMWARE command: status {}",
+            HexWord(u32::from(
+                soc_manager.soc_mbox().status().read().mbox_fsm_ps()
+            ))
+        );
+        if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
+            match err {
+                CaliptraApiError::MailboxCmdFailed(code) => {
+                    romtime::println!(
+                        "[mcu-rom] Error finishing mailbox command: {}",
+                        HexWord(code)
+                    );
+                }
+                _ => {
+                    romtime::println!("[mcu-rom] Error finishing mailbox command");
+                }
+            }
+            fatal_error(5);
+        };
 
-    // Loading flash into the recovery flow is only possible in 2.1+.
-    if cfg!(feature = "hw-2-1") {
-        if let Some(flash_driver) = flash_partition_driver {
-            romtime::println!("[mcu-rom] Starting Flash recovery flow");
+        // Loading flash into the recovery flow is only possible in 2.1+.
+        if cfg!(feature = "hw-2-1") {
+            if let Some(flash_driver) = flash_partition_driver {
+                romtime::println!("[mcu-rom] Starting Flash recovery flow");
 
-            crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
-                .map_err(|_| fatal_error(1))
-                .unwrap();
+                crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
+                    .map_err(|_| fatal_error(1))
+                    .unwrap();
 
-            romtime::println!("[mcu-rom] Flash Recovery flow complete");
+                romtime::println!("[mcu-rom] Flash Recovery flow complete");
+            }
         }
     }
 
