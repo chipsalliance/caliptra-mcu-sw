@@ -4,6 +4,8 @@ use crate::static_ref::StaticRef;
 use registers_generated::mci;
 use tock_registers::interfaces::{Readable, Writeable};
 
+const NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK: u32 = 0x1;
+
 pub struct Mci {
     registers: StaticRef<mci::regs::Mci>,
 }
@@ -46,6 +48,7 @@ impl Mci {
     pub fn disable_wdt(&self) {
         self.registers.mci_reg_wdt_timer1_en.set(0); // Timer1En CLEAR
     }
+    
 
     pub fn read_notif0_intr_trig_r(&self) -> u32 {
         self.registers.intr_block_rf_notif0_intr_trig_r.get()
@@ -54,4 +57,24 @@ impl Mci {
     pub fn write_notif0_intr_trig_r(&self, value: u32) {
         self.registers.intr_block_rf_notif0_intr_trig_r.set(value);
     }
+
+    pub fn read_wdt_timer1_en(&self) -> u32 {
+        self.registers.mci_reg_wdt_timer1_en.get()
+    }
+    pub fn write_wdt_timer1_en(&self, value: u32) {
+        self.registers.mci_reg_wdt_timer1_en.set(value);
+    }
+
+    pub fn handle_interrupt(&self)  {
+        let intr_status = self.read_notif0_intr_trig_r();
+        crate::println!(
+            "[Runtime] MCI Interrupt received, status: {:#x}",
+            intr_status
+        );
+        if intr_status & NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK != 0 {
+            // Clear interrupt
+            self.write_notif0_intr_trig_r(NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK);
+        }
+    }
+
 }

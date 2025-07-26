@@ -84,5 +84,6 @@ pub mod cmd {
 }
 
 pub mod mci_reg {
+    pub const WDT_TIMER1_EN: u32 = 0xb0;
     pub const NOTIF0_INTR_TRIG_R: u32 = 0x1034;
 }

@@ -183,7 +183,23 @@ impl MciPeripheral for Mci {
             .borrow_mut()
             .wdt_timer2_timeout_period[index] = val;
     }
-        fn read_mci_reg_intr_block_rf_notif0_intr_trig_r(
+
+    fn write_mci_reg_fw_flow_status(&mut self, val: caliptra_emu_types::RvData) 
+    {
+        println!("Writing value {} to FLOW_STATUS", val);
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .flow_status = val;
+    }
+
+    fn read_mci_reg_fw_flow_status(&mut self) -> caliptra_emu_types::RvData {
+        println!("Reading FLOW_STATUS");
+        self.ext_mci_regs.regs.borrow().flow_status
+    }
+
+
+    fn read_mci_reg_intr_block_rf_notif0_intr_trig_r(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
@@ -202,10 +218,15 @@ impl MciPeripheral for Mci {
             registers_generated::mci::bits::Notif0IntrTrigT::Register,
         >,
     ) {
+        // Clear the interrupt by writing 1 to the bit
+
+        let cur_value = self.read_mci_reg_intr_block_rf_notif0_intr_trig_r().reg.get();
+        let new_val = cur_value & !val.reg.get();
+
         self.ext_mci_regs
             .regs
             .borrow_mut()
-            .intr_block_rf_notif0_intr_trig_r = val.reg.get();
+            .intr_block_rf_notif0_intr_trig_r = new_val;
     }
 
     fn poll(&mut self) {

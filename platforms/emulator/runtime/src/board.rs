@@ -25,7 +25,7 @@ use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
 use mcu_components::mctp_mux_component_static;
 use mcu_components::{
-    doe_component_static, mailbox_component_static, mctp_driver_component_static, mci_component_static
+    doe_component_static, mailbox_component_static, mctp_driver_component_static,
 };
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
@@ -467,14 +467,7 @@ pub unsafe fn main() {
     ));
     mailbox.alarm.set_alarm_client(mailbox);
 
-    let mci_regs: StaticRef<mci::regs::Mci> =
-        unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
-    let mci = mcu_components::mci::MciComponent::new(
-        board_kernel,
-        capsules_runtime::mci::DRIVER_NUM,
-    ).finalize(mci_component_static!(
-        mci_regs
-    ));
+
 
     let emulator_peripherals =
         static_init!(EmulatorPeripherals, EmulatorPeripherals::new(mux_alarm),);
@@ -485,6 +478,12 @@ pub unsafe fn main() {
         VeeRDefaultPeripherals,
         VeeRDefaultPeripherals::new(emulator_peripherals, mux_alarm, &MCU_MEMORY_MAP)
     );
+
+    let mci = mcu_components::mci::MciComponent::new(
+        board_kernel,
+        capsules_runtime::mci::DRIVER_NUM,
+        &peripherals.mci,
+    ).finalize(kernel::static_buf!(capsules_runtime::mci::Mci));
 
     let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
     chip.init(addr_of!(_pic_vector_table) as u32);
