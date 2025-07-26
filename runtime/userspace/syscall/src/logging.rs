@@ -164,12 +164,12 @@ mod subscribe {
 }
 
 mod ro_allow {
-    /// Write buffer for the entry to be appended to the log.
+    /// Read-only buffer containing the entry to be appended to the log.
     pub const APPEND: u32 = 0;
 }
 
 mod rw_allow {
-    /// Read buffer for the entry to be read from the log.
+    /// Read-write buffer for receiving the entry to be read from the log.
     pub const READ: u32 = 0;
 }
 
