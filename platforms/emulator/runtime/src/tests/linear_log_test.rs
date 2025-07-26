@@ -30,7 +30,7 @@ const USABLE_PER_PAGE: usize = PAGE_SIZE - PAGE_HEADER_SIZE;
 const MAX_ENTRY_SIZE: usize = USABLE_PER_PAGE - ENTRY_HEADER_SIZE;
 const SMALL_ENTRY_SIZE: usize = 32;
 const MEDIUM_ENTRY_SIZE: usize = 64;
-const LOG_FLASH_BASE_ADDR: u32 = 0x3800_0000;
+const LOG_FLASH_BASE_ADDR: u32 = mcu_config_emulator::flash::LOGGING_FLASH_CONFIG.base_addr;
 
 pub unsafe fn run(
     mux_alarm: &'static MuxAlarm<'static, InternalTimers>,

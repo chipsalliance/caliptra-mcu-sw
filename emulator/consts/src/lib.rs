@@ -27,7 +27,7 @@ pub const DEFAULT_CPU_ARGS: CpuArgs = CpuArgs {
 };
 
 pub const RAM_ORG: u32 = 0x4000_0000;
-pub const RAM_SIZE: u32 = 384 * 1024;
+pub const RAM_SIZE: u32 = 512 * 1024; // TEMPORARY: Increased SRAM size to accommodate integration testing
 pub const ROM_ORG: u32 = 0x8000_0000;
 pub const ROM_SIZE: u32 = 48 * 1024;
 pub const EXTERNAL_TEST_SRAM_SIZE: u32 = 1024 * 1024;

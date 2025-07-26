@@ -20,6 +20,7 @@ use kernel::platform::SyscallFilter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::process;
 use kernel::scheduler::cooperative::CooperativeSched;
+use kernel::storage_volume;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
@@ -129,6 +130,9 @@ pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
 #[no_mangle]
 pub static mut PIC: Pic = Pic::new(MCU_MEMORY_MAP.pic_offset);
 
+// Storage volume for logging flash. Use 64KB as placeholder.
+storage_volume!(LOG, 64);
+
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
 struct VeeR {
@@ -159,6 +163,7 @@ struct VeeR {
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
     dma: &'static capsules_emulator::dma::Dma<'static>,
+    logging_flash: &'static capsules_emulator::logging::driver::LoggingFlashDriver<'static>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -190,6 +195,9 @@ impl SyscallDriverLookup for VeeR {
                     }
                 }
                 return f(None);
+            }
+            capsules_emulator::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
+                f(Some(self.logging_flash))
             }
 
             _ => f(None),
@@ -599,6 +607,24 @@ pub unsafe fn main() {
         mux_secondary_flash
     );
 
+    // Create flash user for logging capsule that is connected to the primary flash
+    let logging_fl_user = components::flash::FlashUserComponent::new(mux_primary_flash).finalize(
+        components::flash_user_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
+    );
+
+    // Logging capsule
+    let logging_flash = runtime_components::logging::LoggingFlashComponent::new(
+        board_kernel,
+        capsules_emulator::logging::driver::LOGGING_FLASH_DRIVER_NUM,
+        logging_fl_user,
+        &LOG,
+        true,
+    )
+    .finalize(crate::logging_flash_component_static!(
+        virtual_flash::FlashUser<'static, flash_driver::flash_ctrl::EmulatedFlashCtrl>,
+        capsules_emulator::logging::driver::BUF_LEN
+    ));
+
     let dma = runtime_components::dma::DmaComponent::new(
         &emulator_peripherals.dma,
         board_kernel,
@@ -644,6 +670,7 @@ pub unsafe fn main() {
             flash_partitions,
             mailbox,
             dma,
+            logging_flash,
         }
     );
 

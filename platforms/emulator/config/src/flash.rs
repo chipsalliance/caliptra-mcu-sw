@@ -191,6 +191,7 @@ impl ChecksumCalculator for StandAloneChecksumCalculator {}
 pub struct LoggingFlashConfig {
     pub logging_flash_size: u32,
     pub logging_flash_offset: u32,
+    pub base_addr: u32, // Base address of the logging flash.
     pub page_size: u32, // Flash page size in bytes.
 }
 
@@ -202,6 +203,7 @@ impl LoggingFlashConfig {
         Self {
             logging_flash_offset: 0x3BFE_0000,
             logging_flash_size: 128 * 1024,
+            base_addr: 0x3800_0000,
             page_size: 256,
         }
     }

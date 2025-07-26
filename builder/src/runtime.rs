@@ -25,7 +25,7 @@ const DEFAULT_PLATFORM: &str = "emulator";
 const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
 const INTERRUPT_TABLE_SIZE: usize = 128;
 // amount to reserve for data RAM at the end of RAM
-const DATA_RAM_SIZE: usize = 106 * 1024;
+const DATA_RAM_SIZE: usize = 112 * 1024;
 
 fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize> {
     let elf_bytes = std::fs::read(&elf_file)?;
@@ -242,8 +242,8 @@ struct CachedValues {
 impl Default for CachedValues {
     fn default() -> Self {
         CachedValues {
-            kernel_size: 128 * 1024,
-            apps_offset: (mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset + 128 * 1024)
+            kernel_size: 132 * 1024,
+            apps_offset: (mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset + 132 * 1024)
                 as usize,
             apps_size: 80 * 1024,
         }
@@ -301,6 +301,12 @@ pub fn runtime_build_with_apps_cached(
         "Read cached values for platform {}: {:?}",
         platform, cached_values
     );
+
+    let log_flash_config = if platform == "emulator" {
+        Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG)
+    } else {
+        None
+    };
 
     // build once to get the size of the runtime binary without apps
     let (kernel_size, apps_memory_offset) = match runtime_build_no_apps_uncached(

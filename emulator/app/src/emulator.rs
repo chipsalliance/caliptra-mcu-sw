@@ -587,6 +587,7 @@ impl Emulator {
                     feature = "test-mcu-rom-flash-access",
                     feature = "test-log-flash-linear",
                     feature = "test-log-flash-circular",
+                    feature = "test-log-flash-usermode",
                 )) {
                     Some(
                         tempfile::NamedTempFile::new()
