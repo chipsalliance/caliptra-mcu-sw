@@ -19,7 +19,7 @@ use pldm_common::protocol::firmware_update::{
 };
 use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
-
+use mcu_config_emulator::dma::mcu_sram_to_axi_address;
 const MAX_PLDM_TRANSFER_SIZE: usize = core::mem::size_of::<RequestFirmwareDataResponseFixed>();
 
 pub struct StreamingFdOps<'a> {
@@ -43,7 +43,7 @@ impl<'a> StreamingFdOps<'a> {
         data: &[u8],
     ) -> Result<(), FdOpsError> {
         let dma_syscall: DMASyscall = DMASyscall::new();
-        let source_address = super::local_ram_to_axi_address(data.as_ptr() as u32);
+        let source_address = mcu_sram_to_axi_address(data.as_ptr() as u32);
 
         let transaction = DMATransaction {
             byte_count: data.len(),

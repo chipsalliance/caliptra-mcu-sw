@@ -212,7 +212,7 @@ mod test {
 
     fn get_flash_offset(img_sizes: &[usize], img_index: usize) -> usize {
         let mut img_offset = std::mem::size_of::<FlashHeader>()
-            + std::mem::size_of::<ImageHeader>() * img_index;
+            + std::mem::size_of::<ImageHeader>() * (1+img_index);
         for i in 0..img_index {
             img_offset += img_sizes[i];
         }
@@ -235,11 +235,6 @@ mod test {
             soc_image_fw_2.clone().to_vec(),
         ]);
 
-        let mcu_flash_offset = get_flash_offset(
-            &[],
-            0,
-        );
-
         // Create SOC image metadata that will be written to the SoC manifest
         let soc_images = vec![
             ImageCfg {
@@ -261,7 +256,7 @@ mod test {
         let mcu_cfg = ImageCfg {
             path: test_runtime.clone(),
             load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
-            staging_addr: CALIPTRA_EXTERNAL_RAM_BASE + mcu_flash_offset as u64,
+            staging_addr: CALIPTRA_EXTERNAL_RAM_BASE + (512*1024) as u64,
             image_id: 2,
             exec_bit: 2,
             ..Default::default()

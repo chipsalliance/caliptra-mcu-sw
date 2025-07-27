@@ -8,10 +8,12 @@ mod pldm_fdops;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{
-    ActivateFirmwareReq, ActivateFirmwareResp, CommandId, FwInfoResp, GetImageInfoResp, MailboxReqHeader, MailboxRespHeader
+    ActivateFirmwareReq, ActivateFirmwareResp, CommandId, FwInfoResp, GetImageInfoReq, GetImageInfoResp, MailboxReqHeader, MailboxRespHeader, Request
 };
+use mcu_config_emulator::dma::{mcu_sram_to_axi_address, caliptra_axi_addr_to_dma_addr};
 use embassy_executor::Spawner;
 use flash_image::{FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, SOC_MANIFEST_IDENTIFIER, MCU_RT_IDENTIFIER};
+use libsyscall_caliptra::dma::AXIAddr;
 use libsyscall_caliptra::mailbox::Mailbox;
 use libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
 use libtock_platform::ErrorCode;
@@ -20,11 +22,14 @@ use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::protocol::firmware_update::Descriptor;
 use pldm_lib::daemon::PldmService;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+use libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
 
 
 use libtock_console::Console;
 use libsyscall_caliptra::DefaultSyscalls;
 use core::fmt::Write;
+
+const MAX_DMA_TRANSFER_SIZE: usize = 128;
 
 pub struct FirmwareUpdater<'a> {
     staging_memory: &'static dyn StagingMemory,
@@ -117,7 +122,7 @@ impl<'a> FirmwareUpdater<'a> {
             image_offset, image_len)
         .unwrap();
 
-        self.update_mcu(image_len).await?;
+        self.update_mcu(image_offset,image_len).await?;
         Ok(())
     }
 
@@ -213,7 +218,91 @@ impl<'a> FirmwareUpdater<'a> {
         }
     }
 
-    async fn update_mcu(&mut self, len: usize) -> Result<(), ErrorCode> {
+    async fn get_dma_image_staging_address(&self, image_id: u32) -> Result<AXIAddr, ErrorCode> {
+        let mut req = GetImageInfoReq {
+            hdr: MailboxReqHeader::default(),
+            fw_id: image_id.to_le_bytes(),
+        };
+        let req_data = req.as_mut_bytes();
+        self.mailbox
+            .populate_checksum(GetImageInfoReq::ID.into(), req_data)
+            .unwrap();
+
+        let response_buffer = &mut [0u8; core::mem::size_of::<GetImageInfoResp>()];
+
+        loop {
+            let result = self.mailbox
+                .execute(GetImageInfoReq::ID.0, req_data, response_buffer)
+                .await;
+            match result {
+                Ok(_) => break,
+                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
+                Err(_) => return Err(ErrorCode::Fail),
+            }
+        }
+
+        match GetImageInfoResp::ref_from_bytes(response_buffer) {
+            Ok(resp) => {
+                let caliptra_axi_addr =
+                    (resp.image_staging_address_high as u64) << 32 | resp.image_staging_address_low as u64;
+
+                caliptra_axi_addr_to_dma_addr(caliptra_axi_addr).map_err(|_| ErrorCode::Fail)
+            }
+            Err(_) => Err(ErrorCode::Fail),
+        }
+    }    
+
+    pub async fn copy_to_dma_staging(
+        &self,
+        staging_address: AXIAddr,
+        offset: usize,
+        img_size: usize,
+    ) -> Result<(), ErrorCode> {
+        let dma_syscall: DMASyscall = DMASyscall::new();
+        let mut remaining_size = img_size;
+        let mut current_offset = offset;
+        let mut current_address = staging_address;
+
+        while remaining_size > 0 {
+            let transfer_size = remaining_size.min(MAX_DMA_TRANSFER_SIZE);
+            let mut buffer = [0; MAX_DMA_TRANSFER_SIZE];
+            self.staging_memory
+                .read(current_offset, &mut buffer[..transfer_size])
+                .await?;
+
+            let source_address = mcu_sram_to_axi_address(buffer.as_ptr() as u32);
+            let transaction = DMATransaction {
+                byte_count: transfer_size,
+                source: DMASource::Address(source_address),
+                dest_addr: current_address,
+            };
+            dma_syscall.xfer(&transaction).await?;
+            remaining_size -= transfer_size;
+            current_offset += transfer_size;
+            current_address += transfer_size as u64;
+        }
+
+        Ok(())
+    }
+
+    async fn update_mcu(&mut self, image_offset: usize, len: usize) -> Result<(), ErrorCode> {
+        // Get the DMA staging address for the MCU
+        let staging_address = self.get_dma_image_staging_address( MCU_RT_IDENTIFIER).await?;
+
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "Staging address for MCU: {:#x}",
+            staging_address
+        ).unwrap();
+
+        // Copy the firmware image to the MCU DMA staging area
+        self.copy_to_dma_staging(staging_address, image_offset, len).await?;
+
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "Copied MCU image to DMA staging area"
+        ).unwrap();
+
         let mut req = ActivateFirmwareReq {
             hdr: MailboxReqHeader { chksum: 0 },
             fw_id_count: 1,

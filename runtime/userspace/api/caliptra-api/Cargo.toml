@@ -20,6 +20,7 @@ libsyscall-caliptra.workspace = true
 libtock_console.workspace = true
 libtock_platform.workspace = true
 libtock_runtime.workspace = true
+mcu-config-emulator.workspace = true
 pldm-common.workspace = true
 pldm-lib.workspace = true
 zerocopy.workspace = true

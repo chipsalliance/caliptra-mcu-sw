@@ -2164,6 +2164,7 @@ dependencies = [
  "libtock_runtime",
  "libtock_unittest",
  "libtockasync",
+ "mcu-config-emulator",
  "pldm-common",
  "pldm-lib",
  "zerocopy",

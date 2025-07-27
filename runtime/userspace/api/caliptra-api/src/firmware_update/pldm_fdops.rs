@@ -18,7 +18,7 @@ use pldm_common::protocol::firmware_update::{
 use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
 
-const MAX_PLDM_TRANSFER_SIZE: usize = 180; // This should be smaller than I3C MAX_READ_WRITE_SIZE
+const MAX_PLDM_TRANSFER_SIZE: usize = 500; // This should be smaller than I3C MAX_READ_WRITE_SIZE
 
 pub struct UpdateFdOps {}
 

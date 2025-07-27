@@ -19,7 +19,7 @@ use tock_registers::register_bitfields;
 use tock_registers::LocalRegisterCopy;
 
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
-pub const MAX_READ_WRITE_SIZE: usize = 250;
+pub const MAX_READ_WRITE_SIZE: usize = 512;
 
 register_bitfields! {
     u32,

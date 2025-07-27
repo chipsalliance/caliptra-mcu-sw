@@ -367,7 +367,7 @@ impl Bus for McuRootBus {
                 let mut ram = self.ram.borrow_mut();
                 let ram_size = ram.len() as usize;
                 let len = data.len().min(ram_size - start);
-                ram.data_mut()[start..start + len].copy_from_slice(&data[..len]);
+            ram.data_mut()[start..start + len].copy_from_slice(&data[..len]);
             }
         }
 
@@ -388,6 +388,19 @@ impl Bus for McuRootBus {
                 let ram = self.external_test_sram.borrow();
                 let ram_size = ram.len() as usize;
                 let len = len.min(ram_size - start);
+                let data = ram.data()[start..start + len].to_vec();
+
+                // Caliptra DMA processes the data in 4-byte chunks
+                let data: Vec<u8> = data
+                    .chunks(4)
+                    .flat_map(|chunk| {
+                        if chunk.len() == 4 {
+                            chunk.iter().rev().cloned().collect::<Vec<u8>>()
+                        } else {
+                            chunk.to_vec()
+                        }
+                    })
+                    .collect();
 
                 if let Some(event_sender) = self.event_sender.as_ref() {
                     event_sender
@@ -396,7 +409,7 @@ impl Bus for McuRootBus {
                             dest: event.src,
                             event: EventData::MemoryReadResponse {
                                 start_addr,
-                                data: ram.data()[start..start + len].to_vec(),
+                                data,
                             },
                         })
                         .unwrap();

@@ -25,7 +25,7 @@ use std::cmp::{max, min};
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
-const MAX_TRANSFER_SIZE: u32 = 180; // Maximum bytes to transfer in one request
+const MAX_TRANSFER_SIZE: u32 = 500; // Maximum bytes to transfer in one request
 const BASELINE_TRANSFER_SIZE: u32 = 32; // Minimum bytes to transfer in one request
 const MAX_OUTSTANDING_TRANSFER_REQ: u8 = 1;
 const GET_STATUS_ACTIVATION_POLL_INTERVAL: Duration = Duration::from_secs(1);
