@@ -76,3 +76,9 @@ impl RomEnv {
         }
     }
 }
+
+impl Default for RomEnv {
+    fn default() -> Self {
+        Self::new()
+    }
+}
