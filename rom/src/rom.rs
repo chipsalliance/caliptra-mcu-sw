@@ -16,21 +16,18 @@ Abstract:
 
 use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
-use crate::fuses::Otp;
-use crate::i3c::I3c;
-use crate::Lifecycle;
 use crate::LifecycleControllerState;
 use crate::LifecycleHashedTokens;
 use crate::LifecycleToken;
+use crate::RomEnv;
 use caliptra_api::mailbox::CommandId;
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use core::fmt::Write;
-use core::ptr::addr_of;
-use registers_generated::lc_ctrl;
+use registers_generated::fuses::Fuses;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
-use registers_generated::{fuses::Fuses, i3c, mci, otp_ctrl, soc};
-use romtime::{HexWord, Mci, StaticRef};
+use registers_generated::soc;
+use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
 extern "C" {
@@ -179,28 +176,18 @@ pub struct RomParameters<'a> {
 pub fn rom_start(params: RomParameters) {
     romtime::println!("[mcu-rom] Hello from ROM");
 
-    let straps: StaticRef<mcu_config::McuStraps> = unsafe { StaticRef::new(addr_of!(MCU_STRAPS)) };
+    // Create ROM environment with all peripherals
+    let mut env = RomEnv::new();
 
-    let lc_base: StaticRef<lc_ctrl::regs::LcCtrl> =
-        unsafe { StaticRef::new(MCU_MEMORY_MAP.lc_offset as *const lc_ctrl::regs::LcCtrl) };
-    let otp_base: StaticRef<otp_ctrl::regs::OtpCtrl> =
-        unsafe { StaticRef::new(MCU_MEMORY_MAP.otp_offset as *const otp_ctrl::regs::OtpCtrl) };
-    let i3c_base: StaticRef<i3c::regs::I3c> =
-        unsafe { StaticRef::new(MCU_MEMORY_MAP.i3c_offset as *const i3c::regs::I3c) };
-    let soc_base: StaticRef<soc::regs::Soc> =
-        unsafe { StaticRef::new(MCU_MEMORY_MAP.soc_offset as *const soc::regs::Soc) };
-    let mci_base: StaticRef<mci::regs::Mci> =
-        unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
-
-    let mut soc_manager = romtime::CaliptraSoC::new(
-        Some(unsafe { MCU_MEMORY_MAP.soc_offset }),
-        Some(unsafe { MCU_MEMORY_MAP.soc_offset }),
-        Some(unsafe { MCU_MEMORY_MAP.mbox_offset }),
-    );
-    let soc = Soc::new(soc_base);
-
-    // De-assert caliptra reset
-    let mci = Mci::new(mci_base);
+    // Create local references to minimize code changes
+    let mci = &env.mci;
+    let soc = &env.soc;
+    let lc = &env.lc;
+    let otp = &mut env.otp;
+    let i3c = &mut env.i3c;
+    let i3c_base = env.i3c_base;
+    let soc_manager = &mut env.soc_manager;
+    let straps = &env.straps;
 
     romtime::println!(
         "[mcu-rom] Device lifecycle: {}",
@@ -251,7 +238,6 @@ pub fn rom_start(params: RomParameters) {
     romtime::println!("[mcu-rom] Setting Caliptra boot go");
     mci.caliptra_boot_go();
 
-    let lc = Lifecycle::new(lc_base);
     lc.init().unwrap();
 
     if let Some((state, token)) = params.lifecycle_transition {
@@ -264,7 +250,6 @@ pub fn rom_start(params: RomParameters) {
     }
 
     // FPGA has problems with the integrity check, so we disable it
-    let otp = Otp::new(true, false, otp_base);
     if let Err(err) = otp.init() {
         romtime::println!("[mcu-rom] Error initializing OTP: {}", HexWord(err as u32));
         fatal_error(err as u32);
@@ -339,7 +324,6 @@ pub fn rom_start(params: RomParameters) {
     }
 
     romtime::println!("[mcu-rom] Initializing I3C");
-    let mut i3c = I3c::new(i3c_base);
     i3c.configure(straps.i3c_static_addr, true);
 
     romtime::println!(

@@ -20,6 +20,8 @@ mod fuses;
 pub use fuses::*;
 mod rom;
 pub use rom::*;
+mod rom_env;
+pub use rom_env::*;
 mod i3c;
 mod recovery;
 pub trait FatalErrorHandler {
