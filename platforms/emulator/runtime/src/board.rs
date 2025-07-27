@@ -156,7 +156,7 @@ struct VeeR {
         'static,
         EmulatedDoeTransport<'static, InternalTimers<'static>>,
     >,
-    flash_partitions: [Option<&'static capsules_runtime::flash_partition::FlashPartition<'static>>;
+    flash_partitions: [Option<&'static capsules_emulator::flash_partition::FlashPartition<'static>>;
         mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT],
     mailbox: &'static capsules_runtime::mailbox::Mailbox<
         'static,
@@ -582,7 +582,7 @@ pub unsafe fn main() {
             ));
 
     let mut flash_partitions: [Option<
-        &'static capsules_runtime::flash_partition::FlashPartition<'static>,
+        &'static capsules_emulator::flash_partition::FlashPartition<'static>,
     >; mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT] =
         [None; mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT];
 

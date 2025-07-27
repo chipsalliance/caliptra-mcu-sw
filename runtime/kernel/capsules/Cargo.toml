@@ -12,7 +12,6 @@ caliptra-api.workspace = true
 capsules-core.workspace = true
 capsules-extra.workspace = true
 doe-transport.workspace = true
-flash-driver.workspace = true
 i3c-driver.workspace = true
 kernel.workspace = true
 registers-generated.workspace = true

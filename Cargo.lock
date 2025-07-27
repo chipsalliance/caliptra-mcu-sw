@@ -810,6 +810,7 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "dma-driver",
+ "flash-driver",
  "kernel",
  "mcu-platforms-common",
  "registers-generated",
@@ -835,7 +836,6 @@ dependencies = [
  "capsules-core",
  "capsules-extra",
  "doe-transport",
- "flash-driver",
  "i3c-driver",
  "kernel",
  "registers-generated",
@@ -2496,7 +2496,6 @@ dependencies = [
  "components",
  "dma-driver",
  "doe-transport",
- "flash-driver",
  "i3c-driver",
  "kernel",
  "mcu-config",
