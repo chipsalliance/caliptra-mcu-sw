@@ -91,14 +91,7 @@ impl CaliptraBuilder {
         let mut metadata = Vec::new();
         if let Some(soc_images) = &self.soc_images {
             for soc_image in soc_images {
-                let soc_metadata = Self::get_soc_manifest_metadata(
-                    &soc_image.path,
-                    soc_image.image_id,
-                    Addr64 {
-                        lo: soc_image.load_addr as u32,
-                        hi: (soc_image.load_addr >> 32) as u32,
-                    },
-                )?;
+                let soc_metadata = Self::get_soc_manifest_metadata(&soc_image)?;
                 metadata.push(soc_metadata);
             }
         }
@@ -150,6 +143,7 @@ impl CaliptraBuilder {
         let data = std::fs::read(runtime_path).unwrap();
         let mut flags = ImageMetadataFlags(0);
         flags.set_image_source(IMAGE_SOURCE_IN_REQUEST);
+        
         let crypto = Crypto::default();
         let digest = from_hw_format(&crypto.sha384_digest(&data)?);
         let d: String = digest.clone().encode_hex();
@@ -163,6 +157,7 @@ impl CaliptraBuilder {
                 ..Default::default()
             }
         };
+        flags.set_exec_bit(cfg.exec_bit);
 
         Ok(AuthManifestImageMetadata {
             fw_id: cfg.image_id,
@@ -180,24 +175,28 @@ impl CaliptraBuilder {
         })
     }
 
-    fn get_soc_manifest_metadata(
-        runtime_path: &PathBuf,
-        fw_id: u32,
-        load_address: Addr64,
-    ) -> Result<AuthManifestImageMetadata> {
+    fn get_soc_manifest_metadata(image_cfg: &ImageCfg) -> Result<AuthManifestImageMetadata> {
         const IMAGE_SOURCE_LOAD_ADDRESS: u32 = 2;
-        let data = std::fs::read(runtime_path).unwrap();
+        let data = std::fs::read(&image_cfg.path).unwrap();
         let mut flags = ImageMetadataFlags(0);
         flags.set_ignore_auth_check(false);
         flags.set_image_source(IMAGE_SOURCE_LOAD_ADDRESS);
+        flags.set_exec_bit(image_cfg.exec_bit);
         let crypto = Crypto::default();
         let digest = from_hw_format(&crypto.sha384_digest(&data)?);
 
         Ok(AuthManifestImageMetadata {
-            fw_id,
+            fw_id: image_cfg.image_id,
             flags: flags.0,
             digest,
-            image_load_address: load_address,
+            image_staging_address: Addr64 {
+                lo: image_cfg.staging_addr as u32,
+                hi: (image_cfg.staging_addr >> 32) as u32,
+            },
+            image_load_address: Addr64 {
+                lo: image_cfg.load_addr as u32,
+                hi: (image_cfg.load_addr >> 32) as u32,
+            },
             ..Default::default()
         })
     }
@@ -404,6 +403,7 @@ pub struct ImageCfg {
     pub load_addr: u64,
     pub staging_addr: u64,
     pub image_id: u32,
+    pub exec_bit: u32,
 }
 impl Default for ImageCfg {
     fn default() -> Self {
@@ -412,6 +412,7 @@ impl Default for ImageCfg {
             load_addr: 0,
             staging_addr: 0,
             image_id: 0,
+            exec_bit: 0,
         }
     }
 }
@@ -421,8 +422,8 @@ impl FromStr for ImageCfg {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split(',').collect();
-        if parts.len() != 3 {
-            return Err("Expected format: <path>,<load_addr>,<staging_addr>,<image_id>".into());
+        if parts.len() != 5 {
+            return Err("Expected format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>".into());
         }
 
         let path = PathBuf::from(parts[0]);
@@ -431,12 +432,14 @@ impl FromStr for ImageCfg {
         let staging_addr = u64::from_str_radix(parts[2].trim_start_matches("0x"), 16)
             .map_err(|e: ParseIntError| e.to_string())?;
         let image_id = parts[3].parse::<u32>().map_err(|e| e.to_string())?;
+        let exec_bit = parts[4].parse::<u32>().map_err(|e| e.to_string())?;
 
         Ok(ImageCfg {
             path,
             load_addr,
             staging_addr,
             image_id,
+            exec_bit,
         })
     }
 }

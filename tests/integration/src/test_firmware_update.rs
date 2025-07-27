@@ -6,6 +6,7 @@ mod test {
     use chrono::{TimeZone, Utc};
     use mcu_builder::{CaliptraBuilder, ImageCfg};
     use mcu_config_emulator::flash::PartitionTable;
+    use mcu_config_emulator::EMULATOR_MEMORY_MAP;
     use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
@@ -16,6 +17,7 @@ mod test {
     use std::process::ExitStatus;
 
     const CALIPTRA_EXTERNAL_RAM_BASE: u64 = 0x8000_0000;
+    const MCU_SRAM_OFFSET: u64 = 0xc0_0000;
 
     #[derive(Clone)]
     struct TestOptions {
@@ -244,21 +246,24 @@ mod test {
                 path: soc_images_paths[0].clone(),
                 load_addr: CALIPTRA_EXTERNAL_RAM_BASE,
                 image_id: 4096,
+                exec_bit: 100,
                 ..Default::default()
             },
             ImageCfg {
                 path: soc_images_paths[1].clone(),
                 load_addr: CALIPTRA_EXTERNAL_RAM_BASE + soc_image_fw_1.len() as u64,
                 image_id: 4097,
+                exec_bit: 101,
                 ..Default::default()
             },
         ];
 
         let mcu_cfg = ImageCfg {
             path: test_runtime.clone(),
-            load_addr: 0x40000000,
+            load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
             staging_addr: CALIPTRA_EXTERNAL_RAM_BASE + mcu_flash_offset as u64,
             image_id: 2,
+            exec_bit: 2,
             ..Default::default()
         };
 
@@ -295,8 +300,9 @@ mod test {
         */
         let (soc_images_paths, flash_image_path) = create_flash_image(
             None,
-            None,
-            Some(soc_images_paths[0].clone()),
+            Some(soc_manifest),
+            Some(test_runtime.clone()),
+//            Some(soc_images_paths[0].clone()),
             None,
             0,
             Vec::new(),

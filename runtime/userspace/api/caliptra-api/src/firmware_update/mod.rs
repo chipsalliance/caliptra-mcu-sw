@@ -86,7 +86,7 @@ impl<'a> FirmwareUpdater<'a> {
             .map_err(|_| ErrorCode::Fail)?;
         self.update_caliptra(image_offset, image_len).await?;
         self.wait_caliptra_rt_execution().await?;
-
+*/
 
         // Set the new Auth Manifest
         writeln!(Console::<DefaultSyscalls>::writer(), "Updating Manifest").unwrap();
@@ -99,7 +99,7 @@ impl<'a> FirmwareUpdater<'a> {
             .await
             .map_err(|_| ErrorCode::Fail)?;
         self.update_manifest(image_offset, image_len).await?;
-*/
+
 
         writeln!(Console::<DefaultSyscalls>::writer(), "Updating MCU").unwrap();
                 let (image_offset, image_len) = self
