@@ -220,6 +220,34 @@ pub fn rom_start(params: RomParameters) {
         HexWord(mci.registers.mci_reg_generic_input_wires[1].get())
     );
 
+    // Read and print the reset reason register
+    let reset_reason = mci.registers.mci_reg_reset_reason.get();
+    romtime::println!("[mcu-rom] MCI RESET_REASON: 0x{:08x}", reset_reason);
+
+    // Handle different reset reasons
+    use romtime::McuResetReason;
+    match mci.reset_reason_enum() {
+        McuResetReason::ColdBoot => {
+            romtime::println!("[mcu-rom] Cold boot detected");
+            // Continue with normal boot flow
+        }
+        McuResetReason::WarmReset => {
+            // TODO: Implement warm reset flow
+            panic!("[mcu-rom] TODO: Warm reset flow not implemented");
+        }
+        McuResetReason::FirmwareBootUpdate => {
+            // TODO: Implement firmware boot update flow
+            panic!("[mcu-rom] TODO: Firmware boot update flow not implemented");
+        }
+        McuResetReason::FirmwareHitlessUpdate => {
+            // TODO: Implement firmware hitless update flow
+            panic!("[mcu-rom] TODO: Firmware hitless update flow not implemented");
+        }
+        McuResetReason::Invalid => {
+            panic!("[mcu-rom] Invalid reset reason: multiple bits set");
+        }
+    }
+
     romtime::println!("[mcu-rom] Setting Caliptra boot go");
     mci.caliptra_boot_go();
 
