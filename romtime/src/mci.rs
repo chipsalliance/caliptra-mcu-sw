@@ -4,11 +4,6 @@ use crate::static_ref::StaticRef;
 use registers_generated::mci;
 use tock_registers::interfaces::{Readable, Writeable};
 
-// Reset reason bit definitions
-const WARM_RESET_BIT: u32 = 1 << 2; // bit 2
-const FW_BOOT_UPD_RESET_BIT: u32 = 1 << 1; // bit 1
-const FW_HITLESS_UPD_RESET_BIT: u32 = 1 << 0; // bit 0
-
 /// MCU Reset Reason
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum McuResetReason {
@@ -89,18 +84,28 @@ impl Mci {
 
     /// Get the reset reason as an enum
     pub fn reset_reason_enum(&self) -> McuResetReason {
-        let reason = self.reset_reason();
-
-        let warm_reset = (reason & WARM_RESET_BIT) != 0;
-        let fw_boot_upd = (reason & FW_BOOT_UPD_RESET_BIT) != 0;
-        let fw_hitless_upd = (reason & FW_HITLESS_UPD_RESET_BIT) != 0;
+        let warm_reset = self
+            .registers
+            .mci_reg_reset_reason
+            .read(mci::bits::ResetReason::WarmReset)
+            != 0;
+        let fw_boot_upd = self
+            .registers
+            .mci_reg_reset_reason
+            .read(mci::bits::ResetReason::FwBootUpdReset)
+            != 0;
+        let fw_hitless_upd = self
+            .registers
+            .mci_reg_reset_reason
+            .read(mci::bits::ResetReason::FwHitlessUpdReset)
+            != 0;
 
         match (warm_reset, fw_boot_upd, fw_hitless_upd) {
             (false, false, false) => McuResetReason::ColdBoot,
             (true, false, false) => McuResetReason::WarmReset,
             (false, true, false) => McuResetReason::FirmwareBootUpdate,
             (false, false, true) => McuResetReason::FirmwareHitlessUpdate,
-            _ => McuResetReason::Invalid, // Multiple bits set
+            _ => McuResetReason::Invalid,
         }
     }
 
