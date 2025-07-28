@@ -62,7 +62,7 @@ impl Default for McuMemoryMap {
             dccm_properties: MemoryRegionType::MEMORY,
 
             sram_offset: 0x4000_0000,
-            sram_size: 384 * 1024,
+            sram_size: 512 * 1024,
             sram_properties: MemoryRegionType::MEMORY,
 
             pic_offset: 0x6000_0000,

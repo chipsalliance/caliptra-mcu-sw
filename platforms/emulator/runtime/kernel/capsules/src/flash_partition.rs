@@ -188,6 +188,11 @@ impl<'a> FlashPartition<'a> {
                         }
 
                         self.userspace_call_driver(command, offset, active_len)
+                            .inspect_err(|_| {
+                                // If the driver call failed immediately, clear current_app
+                                // so other apps can proceed.
+                                self.current_app.clear();
+                            })
                     } else if app.pending_command {
                         // No more room in the queue, nowhere to store this request.
                         Err(ErrorCode::NOMEM)

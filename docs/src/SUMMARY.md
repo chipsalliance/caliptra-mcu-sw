@@ -10,6 +10,7 @@
     - [MCTP](./mctp.md)
     - [SPDM](./spdm.md)
     - [PLDM](./pldm.md)
+    - [Firmware Update](./firmware_update.md)
     - [External Mailbox Commands](./external_mailbox_cmds.md)
     - [External MCTP VDM Commands](./external_mctp_vdm_cmds.md)
     - [Unified External Command Handling](./unified_external_command_handling.md)

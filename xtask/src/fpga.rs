@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use mcu_builder::PROJECT_ROOT;
+use mcu_builder::{FirmwareBinaries, PROJECT_ROOT};
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 pub fn fpga_install_kernel_modules() -> Result<()> {
@@ -127,40 +127,70 @@ fn is_module_loaded(module: &str) -> Result<bool> {
         .any(|line| line.split_whitespace().next() == Some(module)))
 }
 
-pub(crate) fn fpga_run(
-    mcu_rom: &PathBuf,
-    caliptra_rom: Option<&PathBuf>,
-    otp_file: Option<&PathBuf>,
-    save_otp: bool,
-    uds: bool,
-) -> Result<()> {
+pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
+    let crate::Commands::FpgaRun {
+        zip,
+        mcu_rom,
+        caliptra_rom,
+        otp,
+        save_otp,
+        uds,
+        steps,
+        no_recovery,
+    } = args
+    else {
+        panic!("Must call fpga_run with Commands::FpgaRun");
+    };
+    let otp_file = otp.as_ref();
+    let recovery = !no_recovery;
+
     if !Path::new("/dev/uio0").exists() {
         fpga_install_kernel_modules()?;
     }
-    if !mcu_rom.exists() {
-        bail!("MCU ROM file does not exist: {}", mcu_rom.display());
+    if mcu_rom.is_none() && zip.is_none() {
+        bail!("Must specify either --mcu-rom or --zip");
     }
+
+    let blank = [0u8; 256]; // Placeholder for empty firmware
+
+    let binaries = if zip.is_some() {
+        // Load firmware and manifests from ZIP file.
+        if mcu_rom.is_some() || caliptra_rom.is_some() {
+            bail!("Cannot specify --mcu-rom or --caliptra-rom with --zip");
+        }
+
+        FirmwareBinaries::read_from_zip(zip.as_ref().unwrap())?
+    } else {
+        let mcu_rom = std::fs::read(mcu_rom.unwrap())?;
+        let caliptra_rom = if let Some(caliptra_rom) = caliptra_rom {
+            std::fs::read(caliptra_rom)?
+        } else {
+            blank.to_vec()
+        };
+
+        FirmwareBinaries {
+            mcu_rom,
+            mcu_runtime: blank.to_vec(),
+            caliptra_rom,
+            caliptra_fw: blank.to_vec(),
+            soc_manifest: blank.to_vec(),
+        }
+    };
     let otp_memory = if otp_file.is_some() && otp_file.unwrap().exists() {
         mcu_hw_model::read_otp_vmem_data(&std::fs::read(otp_file.unwrap())?)?
     } else {
         vec![]
     };
-    let mcu_rom = std::fs::read(mcu_rom)?;
-    let blank = [0u8; 256]; // Placeholder for empty firmware
-    let caliptra_rom = if let Some(caliptra_rom) = caliptra_rom {
-        std::fs::read(caliptra_rom)?
-    } else {
-        blank.to_vec()
-    };
+
     // If we're doing UDS provisioning, we need to set the bootfsm breakpoint
     // so we can use JTAG/TAP.
     let bootfsm_break = uds;
     let mut model = ModelFpgaRealtime::new_unbooted(InitParams {
-        caliptra_rom: &caliptra_rom,
-        caliptra_firmware: &blank,
-        mcu_rom: &mcu_rom,
-        mcu_firmware: &blank,
-        soc_manifest: &blank,
+        caliptra_rom: &binaries.caliptra_rom,
+        caliptra_firmware: &binaries.caliptra_fw,
+        mcu_rom: &binaries.mcu_rom,
+        mcu_firmware: &binaries.mcu_runtime,
+        soc_manifest: &binaries.soc_manifest,
         active_mode: true,
         otp_memory: Some(&otp_memory),
         uds_program_req: uds,
@@ -169,23 +199,24 @@ pub(crate) fn fpga_run(
     })
     .unwrap();
 
-    let mut requested = false;
+    let mut uds_requested = false;
+    let mut xi3c_configured = false;
     let start_cycle_count = model.cycle_count();
-    for _ in 0..100_000 {
-        if uds && model.cycle_count() - start_cycle_count > 20_000_000 && !requested {
-            // wait for user input before proceeding with UDS provisioning
-
+    for _ in 0..steps {
+        if uds && model.cycle_count() - start_cycle_count > 20_000_000 && !uds_requested {
             println!("Opening openocd connection to Caliptra");
             model.open_openocd(4444)?;
-            println!("Setting Caliptra UDS programming reqest");
+            println!("Setting Caliptra UDS programming request");
             model.set_uds_req()?;
             println!("Setting Caliptra bootfsm go");
             model.set_bootfsm_go()?;
-            // println!("Notifying ROM to proceed");
-            // // notify ROM that we are ready to proceed.
-            // model.set_mcu_generic_input_wires(&[(1 << 31) | 1, 0]);
-
-            requested = true;
+            uds_requested = true;
+        } else if recovery && !xi3c_configured && model.i3c_target_configured() {
+            xi3c_configured = true;
+            println!("I3C target configured");
+            model.configure_i3c_controller();
+            println!("Starting recovery flow (BMC)");
+            model.start_recovery_bmc();
         }
         model.step();
     }
