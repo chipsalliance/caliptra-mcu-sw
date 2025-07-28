@@ -9,6 +9,8 @@ use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
+use libapi_caliptra::crypto::asym::AsymAlgo;
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[derive(FromBytes, IntoBytes, Immutable)]
@@ -226,7 +228,7 @@ async fn generate_certificate_response<'a>(
     }
 
     // Append the response message to the M1 transcript
-    ctx.append_message_to_transcript(rsp, TranscriptContext::M1)
+    ctx.append_message_to_transcript(rsp, TranscriptContext::M1, None)
         .await?;
 
     rsp.push_data(payload_len)
@@ -277,7 +279,7 @@ async fn process_get_certificate<'a>(
     ctx.reset_transcript_via_req_code(ReqRespCode::GetCertificate);
 
     // Append the request to the M1 transcript
-    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1)
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1, None)
         .await?;
 
     Ok((slot_id, offset, length))

@@ -3,8 +3,9 @@
 pub(crate) mod cert_chain;
 
 use crate::spdm::cert_store::cert_chain::CertChain;
+use libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use spdm_lib::cert_store::{CertStoreError, CertStoreResult, MAX_CERT_SLOTS_SUPPORTED};
-use spdm_lib::protocol::{AsymAlgo, ECC_P384_SIGNATURE_SIZE, SHA384_HASH_SIZE};
 
 pub struct DeviceCertStore {
     cert_chains: [Option<CertChain>; MAX_CERT_SLOTS_SUPPORTED as usize],

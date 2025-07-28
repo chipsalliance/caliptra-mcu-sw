@@ -6,6 +6,7 @@ use crate::codec::CodecError;
 use crate::commands::error_rsp::ErrorCode;
 use crate::measurements::common::MeasurementsError;
 use crate::protocol::SignCtxError;
+use crate::session::SessionError;
 use crate::transcript::TranscriptError;
 use crate::transport::common::TransportError;
 use libapi_caliptra::error::CaliptraApiError;
@@ -40,4 +41,5 @@ pub enum CommandError {
     CaliptraApi(CaliptraApiError),
     Transcript(TranscriptError),
     Measurement(MeasurementsError),
+    Session(SessionError),
 }

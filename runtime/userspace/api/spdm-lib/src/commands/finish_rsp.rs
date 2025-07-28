@@ -10,6 +10,8 @@ use crate::protocol::opaque_data::encode_opaque_data;
 use crate::protocol::*;
 use crate::state::ConnectionState;
 use bitfield::bitfield;
+use libapi_caliptra::crypto::asym::AsymAlgo;
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const RANDOM_DATA_LEN: usize = 32;
@@ -147,7 +149,7 @@ async fn finish_rsp_transcript_responder_only(
     // TODO: transcript.extend(finish);
 
     let hash = [0u8; SHA384_HASH_SIZE];
-    // ctx.transcript_mgr
+    // ctx.shared_transcript
     //     .hash(TranscriptContext::FinishRspResponderOnly, &mut hash)
     //     .await
     //     .map_err(|e| (false, CommandError::Transcript(e)))?;

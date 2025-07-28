@@ -281,7 +281,7 @@ async fn process_negotiate_algorithms_request<'a>(
         .set_peer_algorithms(peer_algorithms);
 
     // Append NEGOTIATE_ALGORITHMS to the transcript VCA context
-    ctx.append_message_to_transcript(req_payload, TranscriptContext::Vca)
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::Vca, None)
         .await
 }
 
@@ -372,7 +372,7 @@ async fn generate_algorithms_response<'a>(
     payload_len += encode_alg_struct_table(ctx, rsp, num_alg_struct_tables)?;
 
     // Add the ALGORITHMS to the transcript VCA context
-    ctx.append_message_to_transcript(rsp, TranscriptContext::Vca)
+    ctx.append_message_to_transcript(rsp, TranscriptContext::Vca, None)
         .await?;
 
     rsp.push_data(payload_len)

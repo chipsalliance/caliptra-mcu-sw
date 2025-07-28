@@ -10,7 +10,8 @@ use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
+use libapi_caliptra::crypto::asym::*;
+use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use libapi_caliptra::crypto::rng::Rng;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
@@ -18,7 +19,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 #[repr(C)]
 struct ChallengeReqBase {
     slot_id: u8,
-    measurement_hash_type: u8,
+    meas_summary_hash_type: u8,
     nonce: [u8; NONCE_LEN],
 }
 impl CommonCodec for ChallengeReqBase {}
@@ -83,7 +84,7 @@ async fn process_challenge<'a>(
         })?);
     }
 
-    if challenge_req.measurement_hash_type > 0 && selected_measurement_specification(ctx).0 == 0 {
+    if challenge_req.meas_summary_hash_type > 0 && selected_measurement_specification(ctx).0 == 0 {
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
@@ -110,12 +111,12 @@ async fn process_challenge<'a>(
     }
 
     // Append the CHALLENGE request to the M1 transcript
-    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1)
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1, None)
         .await?;
 
     Ok((
         challenge_req.slot_id,
-        challenge_req.measurement_hash_type,
+        challenge_req.meas_summary_hash_type,
         requester_context,
     ))
 }
@@ -130,8 +131,8 @@ async fn encode_m1_signature<'a>(
 
     // Get the M1 transcript hash
     let mut m1_transcript_hash = [0u8; SHA384_HASH_SIZE];
-    ctx.transcript_mgr
-        .hash(TranscriptContext::M1, &mut m1_transcript_hash)
+    ctx.shared_transcript
+        .hash(TranscriptContext::M1, None, &mut m1_transcript_hash, true)
         .await
         .map_err(|e| (false, CommandError::Transcript(e)))?;
 
@@ -281,7 +282,7 @@ async fn generate_challenge_auth_response<'a>(
     }
 
     // Append CHALLENGE_AUTH to the M1 transcript
-    ctx.append_message_to_transcript(rsp, TranscriptContext::M1)
+    ctx.append_message_to_transcript(rsp, TranscriptContext::M1, None)
         .await?;
 
     // Generate the signature and encode it in the response

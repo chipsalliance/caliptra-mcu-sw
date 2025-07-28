@@ -32,3 +32,6 @@ pub mod measurements;
 
 // Chunking context for large messages
 pub mod chunk_ctx;
+
+// Secure session management
+pub mod session;

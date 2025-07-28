@@ -12,10 +12,10 @@ use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
+use libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use spdm_lib::cert_store::{CertStoreError, CertStoreResult, SpdmCertStore};
-use spdm_lib::protocol::{
-    AsymAlgo, CertificateInfo, KeyUsageMask, ECC_P384_SIGNATURE_SIZE, SHA384_HASH_SIZE,
-};
+use spdm_lib::protocol::{CertificateInfo, KeyUsageMask};
 
 /// Static storage just for the endorsement chain (since it needs static lifetime)
 static mut SLOT0_ENDORSEMENT: MaybeUninit<EndorsementCertChain> = MaybeUninit::uninit();

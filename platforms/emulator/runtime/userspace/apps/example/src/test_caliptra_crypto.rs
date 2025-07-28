@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_api::mailbox::CmKeyUsage;
-use libapi_caliptra::crypto::ecdh::Ecdh;
+use libapi_caliptra::crypto::asym::ecdh::Ecdh;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 use libapi_caliptra::crypto::hmac::{HkdfSalt, Hmac};
 use libapi_caliptra::crypto::import::Import;

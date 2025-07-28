@@ -5,31 +5,12 @@ use bitfield::bitfield;
 use libapi_caliptra::crypto::hash::HashAlgoType;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-pub const SHA384_HASH_SIZE: usize = 48;
-pub const ECC_P384_SIGNATURE_SIZE: usize = 96;
-
 // Caliptra Hash Priority table
 pub static HASH_PRIORITY_TABLE: &[BaseHashAlgoType] = &[
     BaseHashAlgoType::TpmAlgSha512,
     BaseHashAlgoType::TpmAlgSha384,
     BaseHashAlgoType::TpmAlgSha256,
 ];
-
-// Type of Asymmetric Algorithm selected by the responder.
-// Currently only ECC P384 is supported.
-// This can be extended to support PQC algorithms in the future.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum AsymAlgo {
-    EccP384,
-}
-
-impl AsymAlgo {
-    pub fn signature_size(&self) -> usize {
-        match self {
-            AsymAlgo::EccP384 => ECC_P384_SIGNATURE_SIZE,
-        }
-    }
-}
 
 pub(crate) trait Prioritize<T>
 where
@@ -613,6 +594,24 @@ impl DeviceAlgorithms {
         }
         num
     }
+
+    pub fn set_dhe_group(&mut self) {
+        let mut dhe_named_group = DheNamedGroup::default();
+        dhe_named_group.set_secp384r1(1);
+        self.dhe_group = dhe_named_group;
+    }
+
+    pub fn set_aead_cipher_suite(&mut self) {
+        let mut aead_cipher_suite = AeadCipherSuite::default();
+        aead_cipher_suite.set_aes256_gcm(1);
+        self.aead_cipher_suite = aead_cipher_suite;
+    }
+
+    pub fn set_spdm_key_schedule(&mut self) {
+        let mut key_schedule = KeySchedule::default();
+        key_schedule.set_spdm_key_schedule(1);
+        self.key_schedule = key_schedule;
+    }
 }
 
 // Algorithm Priority Table set by the responder
@@ -638,6 +637,25 @@ impl Default for LocalDeviceAlgorithms<'_> {
     fn default() -> Self {
         LocalDeviceAlgorithms {
             device_algorithms: DeviceAlgorithms::default(),
+            algorithm_priority_table: AlgorithmPriorityTable {
+                measurement_specification: None,
+                opaque_data_format: None,
+                base_asym_algo: None,
+                base_hash_algo: Some(HASH_PRIORITY_TABLE),
+                mel_specification: None,
+                dhe_group: None,
+                aead_cipher_suite: None,
+                req_base_asym_algo: None,
+                key_schedule: None,
+            },
+        }
+    }
+}
+
+impl LocalDeviceAlgorithms<'_> {
+    pub fn new(device_algorithms: DeviceAlgorithms) -> Self {
+        LocalDeviceAlgorithms {
+            device_algorithms,
             algorithm_priority_table: AlgorithmPriorityTable {
                 measurement_specification: None,
                 opaque_data_format: None,

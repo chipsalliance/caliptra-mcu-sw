@@ -1,7 +1,9 @@
 // Licensed under the Apache-2.0 license
 use crate::measurements::freeform_manifest::FreeformManifest;
-use crate::protocol::{algorithms::AsymAlgo, MeasurementSpecification, SHA384_HASH_SIZE};
+use crate::protocol::MeasurementSpecification;
 use bitfield::bitfield;
+use libapi_caliptra::crypto::asym::AsymAlgo;
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use libapi_caliptra::error::CaliptraApiError;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 

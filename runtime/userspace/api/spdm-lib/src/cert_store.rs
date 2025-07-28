@@ -3,12 +3,12 @@
 extern crate alloc;
 
 use crate::error::{SpdmError, SpdmResult};
-use crate::protocol::algorithms::{AsymAlgo, ECC_P384_SIGNATURE_SIZE, SHA384_HASH_SIZE};
 use crate::protocol::certs::{CertificateInfo, KeyUsageMask};
 use crate::protocol::SpdmCertChainHeader;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
+use libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
+use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use libapi_caliptra::error::CaliptraApiError;
 use libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 
