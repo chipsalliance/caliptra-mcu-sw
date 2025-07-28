@@ -8,12 +8,13 @@ use caliptra_emu_types::RvData;
 use emulator_registers_generated::mci::MciPeripheral;
 use registers_generated::mci::bits::{
     Error0IntrT, Notif0IntrEnT, Notif0IntrT, ResetReason, WdtStatus, WdtTimer1Ctrl, WdtTimer1En,
-    WdtTimer2Ctrl, WdtTimer2En,
+    WdtTimer2Ctrl, WdtTimer2En, ResetRequest,
 };
 use std::{cell::RefCell, rc::Rc};
 use tock_registers::interfaces::{ReadWriteable, Readable};
 
 const RESET_STATUS_MCU_RESET_MASK: u32 = 0x2;
+const RESET_REQUEST_MCU_REQ_MASK: u32 = 0x1; // McuReq bit (bit 0)
 
 pub struct Mci {
     ext_mci_regs: caliptra_emu_periph::mci::Mci,
@@ -112,6 +113,10 @@ impl MciPeripheral for Mci {
 
     fn write_mci_reg_reset_reason(&mut self, val: ReadWriteRegister<u32, ResetReason::Register>) {
         self.reset_reason.set(val.reg.get());
+    }
+
+    fn read_mci_reg_reset_request(&mut self) -> ReadWriteRegister<u32, ResetRequest::Register> {
+        ReadWriteRegister::new(self.ext_mci_regs.regs.borrow().reset_request)
     }
 
     fn write_mci_reg_wdt_timer1_en(&mut self, val: ReadWriteRegister<u32, WdtTimer1En::Register>) {
@@ -259,12 +264,21 @@ impl MciPeripheral for Mci {
 
     fn write_mci_reg_reset_request(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::ResetRequest::Register,
         >,
     ) {
-        self.op_mcu_reset_request_action = Some(self.timer.schedule_poll_in(100));
+        // Store value in shared ext_mci register (will be consumed by emulator)
+        self.ext_mci_regs.regs.borrow_mut().reset_request = val.reg.get();
+
+        if val.reg.is_set(ResetRequest::McuReq) {
+            // Set warm reset reason immediately
+            self.reset_reason.handle_warm_reset();
+
+            // Schedule the reset status assertion
+            self.op_mcu_reset_request_action = Some(self.timer.schedule_poll_in(100));
+        }
     }
 
     fn read_mci_reg_intr_block_rf_notif0_internal_intr_r(
@@ -905,6 +919,11 @@ impl MciPeripheral for Mci {
         {
             // MCU is now in reset, assert the reset status
             self.ext_mci_regs.regs.borrow_mut().reset_status |= RESET_STATUS_MCU_RESET_MASK;
+
+            // Also set the reset_request register so emulator can see it
+            // This ensures the emulator will perform the actual CPU reset
+            self.ext_mci_regs.regs.borrow_mut().reset_request = RESET_REQUEST_MCU_REQ_MASK;
+
             self.op_mcu_assert_mcu_reset_status_action = None;
             // Allow enough time for Caliptra to process the reset status before deasserting it
             self.op_mcu_deassert_mcu_reset_status_action = Some(self.timer.schedule_poll_in(1000));

@@ -40,6 +40,7 @@ pldm-common.workspace = true
 pldm-fw-pkg.workspace = true
 pldm-ua.workspace = true
 rand.workspace = true
+registers-generated.workspace = true
 sec1.workspace = true
 sha2.workspace = true
 semver.workspace = true

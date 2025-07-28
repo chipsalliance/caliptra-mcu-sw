@@ -12,6 +12,8 @@ Abstract:
 
 --*/
 
+use tock_registers::interfaces::Readable;
+
 use crate::dis;
 use crate::doe_mbox_fsm;
 use crate::elf;
@@ -1048,6 +1050,25 @@ impl Emulator {
 
         if action != StepAction::Continue {
             return action;
+        }
+
+        // Check if MCU reset is pending via MCI peripheral
+        if let Some(mci_bus) = &mut self.mcu_cpu.bus.mci_periph {
+            let reset_request = mci_bus.periph.read_mci_reg_reset_request();
+
+            // Check if mcu_req bit is set
+            if reset_request
+                .reg
+                .is_set(registers_generated::mci::bits::ResetRequest::McuReq)
+            {
+                // Clear the RESET_REQUEST register (hardware auto-clear)
+                mci_bus
+                    .periph
+                    .write_mci_reg_reset_request(caliptra_emu_bus::ReadWriteRegister::new(0));
+
+                // Perform CPU reset
+                self.mcu_cpu.do_reset();
+            }
         }
 
         if self.sram_range.contains(&self.mcu_cpu.read_pc()) {
