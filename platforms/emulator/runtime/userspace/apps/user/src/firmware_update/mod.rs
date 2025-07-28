@@ -13,23 +13,15 @@ use libtock_console::Console;
 use libtock_platform::ErrorCode;
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 
-#[embassy_executor::task]
-pub async fn firmware_update_task() {
-    match firmware_update().await {
-        Ok(_) => romtime::test_exit(0),
-        Err(_) => romtime::test_exit(1),
-    }
-}
-
 #[allow(dead_code)]
 pub async fn firmware_update() -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     writeln!(console_writer, "fw_upd task").unwrap();
     let reset_reason = get_reset_reason()?;
+
+    writeln!(console_writer, "Reset Reason: {:#x}", reset_reason).unwrap();
     if reset_reason & RESET_REASON_FW_HITLESS_UPD_RESET_MASK == RESET_REASON_FW_HITLESS_UPD_RESET_MASK {
-        // Mark staging partition as active
-        #[cfg(feature = "test-firmware-update-flash")]
-        flash_memory::mark_pending_as_active().await?;
+        // Device rebooted due to firmware update, skip firmware update
         return Ok(());
     }    
     #[cfg(feature = "test-firmware-update-streaming")]
@@ -139,7 +131,7 @@ mod external_memory {
 
 }
 
-// #[cfg(feature = "test-firmware-update-flash")]
+#[cfg(feature = "test-firmware-update-flash")]
 mod flash_memory {
     extern crate alloc;
     use alloc::boxed::Box;
@@ -220,23 +212,6 @@ mod flash_memory {
         fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             Ok(())
         }
-    }
-
-    pub async fn mark_pending_as_active() -> Result<(), ErrorCode> {
-        let mut boot_config = FlashBootConfig::new();
-        let pending_partition_id = boot_config
-            .get_pending_partition()
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-
-        writeln!(Console::<DefaultSyscalls>::writer(), "Marking pending partition {:?} as active", pending_partition_id).unwrap();
-
-        boot_config
-            .set_active_partition(pending_partition_id)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-
-        Ok(())
     }
 
 }

@@ -138,6 +138,7 @@ async fn image_loading() -> Result<(), ErrorCode> {
             .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)
             .await
             .map_err(|_| ErrorCode::Fail)?;
+        boot_config.set_active_partition(load_partition.0);
     }
 
     #[cfg(any(

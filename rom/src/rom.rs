@@ -175,7 +175,12 @@ pub fn rom_start(flash_partition_driver: Option<&mut FlashPartition>) {
     let reset_reason = mci.read_reset_reason();
 
     romtime::println!("[mcu-rom] Setting Caliptra boot go");
-    if reset_reason & RESET_REASON_FW_HITLESS_UPD_RESET_MASK == 0 {
+    if reset_reason & RESET_REASON_FW_HITLESS_UPD_RESET_MASK == RESET_REASON_FW_HITLESS_UPD_RESET_MASK {
+        // MCU rebooted due to a hitless firmware update from a previous ACTIVATE_FIRMWARE command.
+        // Since MCU rebooted, MCU has not released the mailbox lock
+        // So we need to release the mailbox lock before proceeding.
+        soc_manager.soc_mbox().execute().write(|w| w.execute(false));
+    } else {
         mci.caliptra_boot_go();
 
         romtime::println!("[mcu-rom] Initializing I3C");
@@ -184,12 +189,8 @@ pub fn rom_start(flash_partition_driver: Option<&mut FlashPartition>) {
 
         romtime::println!("[mcu-rom] Finished Initializing I3C");
 
-        
-
         romtime::println!("[mcu-rom] Reset Reason : {}", HexWord(reset_reason));
 
-
-        // Reset reason is not FW_HITLESS_UPD_RESET
         // only do these on the emulator for now
         let fuses = if unsafe { MCU_MEMORY_MAP.rom_offset } == 0x8000_0000 {
             let otp = Otp::new(otp_base);

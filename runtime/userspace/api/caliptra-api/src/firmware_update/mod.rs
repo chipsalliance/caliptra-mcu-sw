@@ -447,10 +447,3 @@ pub struct AuthManifestReqHeader {
     pub chksum: u32,
     pub manifest_size: u32,
 }
-
-
-#[embassy_executor::task]
-async fn mcu_update_task() {
-    // Wait for the EXEC_FW_CTRL of MCU to be cleared
-    
-}
