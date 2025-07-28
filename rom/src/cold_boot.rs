@@ -15,14 +15,75 @@ Abstract:
 #![allow(clippy::empty_loop)]
 
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
-use caliptra_api::mailbox::CommandId;
+use caliptra_api::mailbox::{CommandId, FeProgReq, MailboxReqHeader};
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use core::fmt::Write;
 use registers_generated::fuses::Fuses;
-use romtime::HexWord;
+use romtime::{CaliptraSoC, HexWord};
+use zerocopy::{transmute, IntoBytes};
 
 pub struct ColdBoot {}
+
+impl ColdBoot {
+    fn program_field_entropy(program_field_entropy: &[bool; 4], soc_manager: &mut CaliptraSoC) {
+        for (partition, _) in program_field_entropy
+            .iter()
+            .enumerate()
+            .filter(|(_, partition)| **partition)
+        {
+            romtime::println!(
+                "[mcu-rom] Executing FE_PROG command for partition {}",
+                partition
+            );
+
+            let req = FeProgReq {
+                partition: partition as u32,
+                ..Default::default()
+            };
+            let req = req.as_bytes();
+            let chksum = caliptra_api::calc_checksum(CommandId::FE_PROG.into(), req);
+            // set the checksum
+            let req = FeProgReq {
+                hdr: MailboxReqHeader { chksum },
+                partition: partition as u32,
+            };
+            let req: [u32; 2] = transmute!(req);
+            if let Err(err) = soc_manager.start_mailbox_req(
+                CommandId::FE_PROG.into(),
+                req.len() * 4,
+                req.iter().copied(),
+            ) {
+                match err {
+                    CaliptraApiError::MailboxCmdFailed(code) => {
+                        romtime::println!(
+                            "[mcu-rom] Error sending mailbox command: {}",
+                            HexWord(code)
+                        );
+                    }
+                    _ => {
+                        romtime::println!("[mcu-rom] Error sending mailbox command");
+                    }
+                }
+                fatal_error(6);
+            }
+            if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
+                match err {
+                    CaliptraApiError::MailboxCmdFailed(code) => {
+                        romtime::println!(
+                            "[mcu-rom] Error finishing mailbox command: {}",
+                            HexWord(code)
+                        );
+                    }
+                    _ => {
+                        romtime::println!("[mcu-rom] Error finishing mailbox command");
+                    }
+                }
+                fatal_error(7);
+            };
+        }
+    }
+}
 
 impl BootFlow for ColdBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
@@ -237,54 +298,9 @@ impl BootFlow for ColdBoot {
         romtime::println!("[mcu-rom] Finished common initialization");
 
         // program field entropy if requested
-        for (partition, _) in params
-            .program_field_entropy
-            .iter()
-            .enumerate()
-            .filter(|(_, partition)| **partition)
-        {
-            romtime::println!(
-                "[mcu-rom] Executing FE_PROG command for partition {}",
-                partition
-            );
-            if let Err(err) = soc_manager.start_mailbox_req(
-                CommandId::FE_PROG.into(),
-                4,
-                [partition as u32].into_iter(),
-            ) {
-                match err {
-                    CaliptraApiError::MailboxCmdFailed(code) => {
-                        romtime::println!(
-                            "[mcu-rom] Error sending mailbox command: {}",
-                            HexWord(code)
-                        );
-                    }
-                    _ => {
-                        romtime::println!("[mcu-rom] Error sending mailbox command");
-                    }
-                }
-                fatal_error(4);
-            }
-            romtime::println!(
-                "[mcu-rom] Done sending FE_PROG command: status {}",
-                HexWord(u32::from(
-                    soc_manager.soc_mbox().status().read().mbox_fsm_ps()
-                ))
-            );
-            if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
-                match err {
-                    CaliptraApiError::MailboxCmdFailed(code) => {
-                        romtime::println!(
-                            "[mcu-rom] Error finishing mailbox command: {}",
-                            HexWord(code)
-                        );
-                    }
-                    _ => {
-                        romtime::println!("[mcu-rom] Error finishing mailbox command");
-                    }
-                }
-                fatal_error(5);
-            };
+        if params.program_field_entropy.iter().any(|x| *x) {
+            romtime::println!("[mcu-rom] Programming field entropy");
+            Self::program_field_entropy(&params.program_field_entropy, soc_manager);
         }
 
         // Jump to firmware

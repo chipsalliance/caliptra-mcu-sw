@@ -411,6 +411,12 @@ pub fn runtime_build_with_apps_cached(
 
     bin.extend_from_slice(vec![0; padding].as_slice());
     bin.extend_from_slice(&apps_bin);
+    // Ensure that runtime binary is a multiple of 256 bytes.
+    // This is needed to load into the recovery interface efficiently.
+    if bin.len() % 256 != 0 {
+        let padding = 256 - (bin.len() % 256);
+        bin.extend_from_slice(vec![0; padding].as_slice());
+    }
     std::fs::write(&runtime_bin, &bin)?;
 
     println!("Kernel binary size: {} bytes", kernel_size);

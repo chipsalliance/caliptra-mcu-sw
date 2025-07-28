@@ -21,6 +21,7 @@ use crate::LifecycleControllerState;
 use crate::LifecycleHashedTokens;
 use crate::LifecycleToken;
 use crate::RomEnv;
+use core::fmt::Write;
 use registers_generated::fuses::Fuses;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use registers_generated::soc;

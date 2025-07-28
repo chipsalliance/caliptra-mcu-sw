@@ -25,6 +25,7 @@ use rv32i::syscall::SysCall;
 extern "C" {
     #[allow(improper_ctypes)]
     pub static mut PIC: Pic;
+    pub static TIMER_FREQUENCY_HZ: u32;
 }
 
 //pub static mut PIC: Pic = Pic::new();
