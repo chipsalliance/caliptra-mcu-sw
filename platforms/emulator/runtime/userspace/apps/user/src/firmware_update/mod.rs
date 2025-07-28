@@ -7,18 +7,11 @@ use crate::EXECUTOR;
 use core::fmt::Write;
 use libapi_caliptra::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
 use libsyscall_caliptra::DefaultSyscalls;
+use libsyscall_caliptra::mci::{Mci as MciSyscall, mci_reg::RESET_REASON};
 use libtock_console::Console;
 
-use alloc::boxed::Box;
-use async_trait::async_trait;
-use core::fmt::Debug;
-use libapi_caliptra::firmware_update::StagingMemory;
-use libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
 use libtock_platform::ErrorCode;
-use mcu_config_emulator::dma::mcu_sram_to_axi_address;
-
-const DMA_TRANSFER_SIZE: usize = 512;
-const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0x2000_0000_0000_0000;
+const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 
 #[embassy_executor::task]
 pub async fn firmware_update_task() {
@@ -29,72 +22,221 @@ pub async fn firmware_update_task() {
 }
 
 #[allow(dead_code)]
-async fn firmware_update() -> Result<(), ErrorCode> {
+pub async fn firmware_update() -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     writeln!(console_writer, "fw_upd task").unwrap();
-    let fw_params = PldmFirmwareDeviceParams {
-        descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
-        fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
-    };
-    let mut updater: FirmwareUpdater =
-        FirmwareUpdater::new(STAGING_MEMORY.get(), &fw_params, EXECUTOR.get().spawner());
-    updater.start().await?;
+    let reset_reason = get_reset_reason()?;
+    if reset_reason & RESET_REASON_FW_HITLESS_UPD_RESET_MASK == RESET_REASON_FW_HITLESS_UPD_RESET_MASK {
+        // Mark staging partition as active
+        #[cfg(feature = "test-firmware-update-flash")]
+        flash_memory::mark_pending_as_active().await?;
+        return Ok(());
+    }    
+    #[cfg(feature = "test-firmware-update-streaming")]
+    {
+        let fw_params = PldmFirmwareDeviceParams {
+            descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
+            fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
+        };        
+        let mut updater: FirmwareUpdater =
+            FirmwareUpdater::new(external_memory::STAGING_MEMORY.get(), &fw_params, EXECUTOR.get().spawner());
+        updater.start().await?;
+    }
+
+    #[cfg(feature = "test-firmware-update-flash")]
+    {
+        let fw_params = PldmFirmwareDeviceParams {
+            descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
+            fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
+        };        
+        let mut staging_memory = flash_memory::ExternalFlash::new().await?;
+        let staging_memory: &'static flash_memory::ExternalFlash =
+            unsafe { core::mem::transmute(&mut staging_memory) };    
+        let mut updater: FirmwareUpdater =
+            FirmwareUpdater::new(staging_memory, &fw_params, EXECUTOR.get().spawner());
+        updater.start().await?;
+    }
 
     Ok(())
 }
 
-pub static STAGING_MEMORY: embassy_sync::lazy_lock::LazyLock<ExternalRAM> =
-    embassy_sync::lazy_lock::LazyLock::new(|| ExternalRAM::new());
-
-pub struct ExternalRAM {
-    dma_syscall: DMASyscall,
+fn get_reset_reason() -> Result<u32, ErrorCode> {
+    let mci = MciSyscall::<DefaultSyscalls>::new();
+    let reason = mci.read(RESET_REASON,0)?;
+    Ok(reason)
 }
 
-impl ExternalRAM {
-    pub fn new() -> Self {
-        ExternalRAM {
-            dma_syscall: DMASyscall::new(),
+
+#[cfg(feature = "test-firmware-update-streaming")]
+mod external_memory {
+    extern crate alloc;
+    use alloc::boxed::Box;
+    use async_trait::async_trait;
+    use libapi_caliptra::firmware_update::StagingMemory;
+    use libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
+    use libtock_platform::ErrorCode;
+    use mcu_config_emulator::dma::mcu_sram_to_axi_address;
+    use core::fmt::Debug;
+
+    const DMA_TRANSFER_SIZE: usize = 512;
+    const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0x2000_0000_0000_0000;    
+
+    pub static STAGING_MEMORY: embassy_sync::lazy_lock::LazyLock<ExternalRAM> =
+        embassy_sync::lazy_lock::LazyLock::new(|| ExternalRAM::new());
+
+    pub struct ExternalRAM {
+        dma_syscall: DMASyscall,
+    }
+
+    impl ExternalRAM {
+        pub fn new() -> Self {
+            ExternalRAM {
+                dma_syscall: DMASyscall::new(),
+            }
         }
     }
-}
 
-#[async_trait]
-impl StagingMemory for ExternalRAM {
-    async fn write(&self, offset: usize, data: &[u8]) -> Result<(), ErrorCode> {
-        let mut current_offset = offset;
-        while current_offset < offset + data.len() {
-            let transfer_size = (offset + data.len() - current_offset).min(DMA_TRANSFER_SIZE);
-            let source_address = mcu_sram_to_axi_address(data.as_ptr() as u32);
-            let transaction = DMATransaction {
-                byte_count: transfer_size,
-                source: DMASource::Address(source_address),
-                dest_addr: DEVICE_EXTERNAL_SRAM_BASE + current_offset as u64,
+    #[async_trait]
+    impl StagingMemory for ExternalRAM {
+        async fn write(&self, offset: usize, data: &[u8]) -> Result<(), ErrorCode> {
+            let mut current_offset = offset;
+            while current_offset < offset + data.len() {
+                let transfer_size = (offset + data.len() - current_offset).min(DMA_TRANSFER_SIZE);
+                let source_address = mcu_sram_to_axi_address(data.as_ptr() as u32);
+                let transaction = DMATransaction {
+                    byte_count: transfer_size,
+                    source: DMASource::Address(source_address),
+                    dest_addr: DEVICE_EXTERNAL_SRAM_BASE + current_offset as u64,
+                };
+                self.dma_syscall.xfer(&transaction).await?;
+                current_offset += transfer_size;
+            }
+
+            Ok(())
+        }
+
+        async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode> {
+            let dest_address = mcu_sram_to_axi_address(data.as_mut_ptr() as u32);
+            let transaction: DMATransaction<'_> = DMATransaction {
+                byte_count: data.len(),
+                source: DMASource::Address(DEVICE_EXTERNAL_SRAM_BASE + offset as u64),
+                dest_addr: dest_address,
             };
-            self.dma_syscall.xfer(&transaction).await?;
-            current_offset += transfer_size;
+            self.dma_syscall.xfer(&transaction).await
         }
 
-        Ok(())
+        fn size(&self) -> usize {
+            // Return the size of the staging memory. Replace with actual value if needed.
+            1024 * 1024 // 1 MiB as an example
+        }
     }
 
-    async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode> {
-        let dest_address = mcu_sram_to_axi_address(data.as_mut_ptr() as u32);
-        let transaction: DMATransaction<'_> = DMATransaction {
-            byte_count: data.len(),
-            source: DMASource::Address(DEVICE_EXTERNAL_SRAM_BASE + offset as u64),
-            dest_addr: dest_address,
-        };
-        self.dma_syscall.xfer(&transaction).await
+    impl Debug for ExternalRAM {
+        fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            Ok(())
+        }
     }
 
-    fn size(&self) -> usize {
-        // Return the size of the staging memory. Replace with actual value if needed.
-        1024 * 1024 // 1 MiB as an example
-    }
 }
 
-impl Debug for ExternalRAM {
-    fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+// #[cfg(feature = "test-firmware-update-flash")]
+mod flash_memory {
+    extern crate alloc;
+    use alloc::boxed::Box;
+    use async_trait::async_trait;
+    use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
+    use libtock_console::Console;
+    use mcu_config::boot::{BootConfigAsync, PartitionStatus};
+    use libapi_caliptra::firmware_update::StagingMemory;
+    use libsyscall_caliptra::{flash::{FlashCapacity, SpiFlash as FlashSyscall}, DefaultSyscalls};
+    use libtock_platform::ErrorCode;
+    use core::fmt::Debug;
+    use core::fmt::Write;
+
+    pub struct ExternalFlash {
+        flash_syscall: FlashSyscall,
+    }
+
+    impl ExternalFlash {
+        pub async fn new() -> Result<Self, ErrorCode> {
+
+            writeln!(Console::<DefaultSyscalls>::writer(), "Initializing ExternalFlash").unwrap();
+            let mut boot_config = FlashBootConfig::new();
+            writeln!(Console::<DefaultSyscalls>::writer(), "Reading partition table").unwrap();
+
+
+            let temp = boot_config.read_partition_table().await?;
+            writeln!(Console::<DefaultSyscalls>::writer(), "Partition Table: {:?}", temp).unwrap();
+
+
+
+
+            let inactive_partition_id = boot_config
+                .get_inactive_partition()
+                .await
+                .map_err(|_| ErrorCode::Fail)?;
+
+            writeln!(Console::<DefaultSyscalls>::writer(), "Inactive Partition: {:?}", inactive_partition_id).unwrap();
+
+            // Mark the partition as invalid
+            boot_config
+                .set_partition_status(inactive_partition_id, PartitionStatus::Invalid)
+                .await
+                .map_err(|_| ErrorCode::Fail)?;
+
+            writeln!(Console::<DefaultSyscalls>::writer(), "Marked partition {:?} as Invalid", inactive_partition_id).unwrap();
+
+            let inactive_partition = boot_config
+                .get_partition_from_id(inactive_partition_id)
+                .map_err(|_| ErrorCode::Fail)?;
+
+            writeln!(Console::<DefaultSyscalls>::writer(), "Inactive Partition: {:?}", inactive_partition).unwrap();
+
+            Ok(ExternalFlash {
+                flash_syscall: FlashSyscall::new(inactive_partition.driver_num),
+            })
+        }
+        
+    }
+
+    #[async_trait]
+    impl StagingMemory for ExternalFlash {
+        async fn write(&self, offset: usize, data: &[u8]) -> Result<(), ErrorCode> {
+            self.flash_syscall.write(offset, data.len(), data).await
+        }
+
+        async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode> {
+            self.flash_syscall
+                .read(offset, data.len(), data)
+                .await
+        }
+
+        fn size(&self) -> usize {
+            self.flash_syscall.get_capacity().unwrap_or(FlashCapacity(0)).0 as usize
+        }
+    }
+
+    impl Debug for ExternalFlash {
+        fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            Ok(())
+        }
+    }
+
+    pub async fn mark_pending_as_active() -> Result<(), ErrorCode> {
+        let mut boot_config = FlashBootConfig::new();
+        let pending_partition_id = boot_config
+            .get_pending_partition()
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
+
+        writeln!(Console::<DefaultSyscalls>::writer(), "Marking pending partition {:?} as active", pending_partition_id).unwrap();
+
+        boot_config
+            .set_active_partition(pending_partition_id)
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
+
         Ok(())
     }
+
 }

@@ -148,7 +148,7 @@ impl PartitionTable {
     }
 
     pub fn populate_checksum<C: ChecksumCalculator>(&mut self, calculator: &C) {
-        self.checksum = calculator.calc_checksum(self.as_bytes());
+        self.checksum = calculator.calc_checksum(&self.as_bytes()[0..offset_of!(Self, checksum)]);
     }
 
     pub fn verify_checksum<C: ChecksumCalculator>(&self, calculator: &C) -> bool {

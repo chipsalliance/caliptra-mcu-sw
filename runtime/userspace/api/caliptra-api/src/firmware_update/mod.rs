@@ -59,6 +59,7 @@ impl<'a> FirmwareUpdater<'a> {
     }
 
     pub async fn start(&mut self) -> Result<(), ErrorCode> {
+
         // Download firmware image to staging memory
         pldm_client::initialize_pldm(
             self.spawner,
@@ -68,6 +69,7 @@ impl<'a> FirmwareUpdater<'a> {
         )
         .await?;
         pldm_client::pldm_wait_completion().await?;
+
 
         // Parse the downloaded firmware image
         let mut flash_header = [0u8; core::mem::size_of::<FlashHeader>()];
@@ -79,7 +81,7 @@ impl<'a> FirmwareUpdater<'a> {
             FlashHeader::read_from_prefix(&flash_header).map_err(|_| ErrorCode::Fail)?;
         flash_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
         let image_headers_offset = flash_header.image_headers_offset as usize;
-/*
+        
         // Update Caliptra
         let (image_offset, image_len) = self
             .get_image_toc(
@@ -91,7 +93,6 @@ impl<'a> FirmwareUpdater<'a> {
             .map_err(|_| ErrorCode::Fail)?;
         self.update_caliptra(image_offset, image_len).await?;
         self.wait_caliptra_rt_execution().await?;
-*/
 
         // Set the new Auth Manifest
         writeln!(Console::<DefaultSyscalls>::writer(), "Updating Manifest").unwrap();
@@ -123,6 +124,7 @@ impl<'a> FirmwareUpdater<'a> {
         .unwrap();
 
         self.update_mcu(image_offset,image_len).await?;
+        
         Ok(())
     }
 
@@ -252,16 +254,16 @@ impl<'a> FirmwareUpdater<'a> {
         }
     }    
 
-    pub async fn copy_to_dma_staging(
+    pub async fn copy_to_memory(
         &self,
-        staging_address: AXIAddr,
+        mem_address: AXIAddr,
         offset: usize,
         img_size: usize,
     ) -> Result<(), ErrorCode> {
         let dma_syscall: DMASyscall = DMASyscall::new();
         let mut remaining_size = img_size;
         let mut current_offset = offset;
-        let mut current_address = staging_address;
+        let mut current_address = mem_address;
 
         while remaining_size > 0 {
             let transfer_size = remaining_size.min(MAX_DMA_TRANSFER_SIZE);
@@ -296,7 +298,7 @@ impl<'a> FirmwareUpdater<'a> {
         ).unwrap();
 
         // Copy the firmware image to the MCU DMA staging area
-        self.copy_to_dma_staging(staging_address, image_offset, len).await?;
+        self.copy_to_memory(staging_address, image_offset, len).await?;
 
         writeln!(
             Console::<DefaultSyscalls>::writer(),

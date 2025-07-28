@@ -2,7 +2,8 @@
 
 #![cfg(any(
     feature = "test-pldm-streaming-boot",
-    feature = "test-flash-based-boot"
+    feature = "test-flash-based-boot",
+    feature = "test-firmware-update-flash",
 ))]
 pub mod streaming_boot_consts {
     use embassy_sync::lazy_lock::LazyLock;

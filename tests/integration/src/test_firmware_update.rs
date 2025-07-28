@@ -5,7 +5,8 @@ mod test {
     use crate::test::{compile_runtime, get_rom_with_feature, run_runtime, TEST_LOCK};
     use chrono::{TimeZone, Utc};
     use mcu_builder::{CaliptraBuilder, ImageCfg};
-    use mcu_config_emulator::flash::PartitionTable;
+    use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
+    use mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator};
     use mcu_config_emulator::EMULATOR_MEMORY_MAP;
     use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
@@ -209,20 +210,14 @@ mod test {
         let test = run_runtime_with_options(opts);
         assert_eq!(0, test.code().unwrap_or_default());
     }
-
-    fn get_flash_offset(img_sizes: &[usize], img_index: usize) -> usize {
-        let mut img_offset = std::mem::size_of::<FlashHeader>()
-            + std::mem::size_of::<ImageHeader>() * (1+img_index);
-        for i in 0..img_index {
-            img_offset += img_sizes[i];
-        }
-        img_offset
-    }
-
     // Common test function for both flash-based and streaming boot
-    fn test_firmware_update_common() {
+    fn test_firmware_update_common(use_flash: bool) {
         let lock = TEST_LOCK.lock().unwrap();
-        let feature = "test-firmware-update";
+        let feature = if use_flash {
+            "test-firmware-update-flash"
+        } else {
+            "test-firmware-update-streaming"
+        };
         let i3c_port = 65500;
         let soc_image_fw_1 = [0x55u8; 512]; // Example firmware data for SOC image 1
         let soc_image_fw_2 = [0xAAu8; 256]; // Example firmware data for SOC image 2
@@ -283,24 +278,13 @@ mod test {
             .get_soc_manifest()
             .expect("Failed to build SOC manifest");
 
-        /*
-                let (soc_images_paths, flash_image_path) = create_flash_image(
-                    Some(caliptra_fw),
-                    Some(soc_manifest),
-                    Some(test_runtime.clone()),
-                    None,
-                    0,
-                    soc_images_paths.clone(),
-                );
-        */
         let (soc_images_paths, flash_image_path) = create_flash_image(
-            None,
-            Some(soc_manifest),
+            Some(caliptra_fw.clone()),
+            Some(soc_manifest.clone()),
             Some(test_runtime.clone()),
-//            Some(soc_images_paths[0].clone()),
             None,
             0,
-            Vec::new(),
+            soc_images_paths.clone(),
         );
 
         // Generate the corresponding PLDM package from the flash image
@@ -312,9 +296,37 @@ mod test {
             Some(create_pldm_fw_package(&pldm_manifest))
         };
 
+        // Generate a flash image file to write to the primary flash
+        let mut partition_table = PartitionTable {
+            active_partition: PartitionId::A as u32,
+            partition_a_status: PartitionStatus::Valid as u16,
+            partition_b_status: PartitionStatus::Invalid as u16,
+            rollback_enable: RollbackEnable::Enabled as u32,
+            ..Default::default()
+        };
+        let checksum_calculator = StandAloneChecksumCalculator::new();
+        partition_table.populate_checksum(&checksum_calculator);
+
+        let flash_offset = partition_table
+            .get_active_partition()
+            .1
+            .map_or(0, |p| p.offset);
+        let (soc_images_paths, primary_flash_image_path) = create_flash_image(
+            Some(caliptra_fw),
+            Some(soc_manifest),
+            Some(test_runtime.clone()),
+            Some(partition_table.clone()),
+            flash_offset,
+            soc_images_paths.clone(),
+        );        
+
         // For non flash-based boot, the flash image path is not needeed to be passed to the emulator
         // as the firmware will be streamed from the PLDM package
-        let flash_image_path = None;
+        let flash_image_path = if use_flash {
+            Some(primary_flash_image_path)
+        } else {
+            None
+        };
 
         let mcu_rom = get_rom_with_feature(feature);
 
@@ -342,6 +354,6 @@ mod test {
 
     #[test]
     fn test_firmware_update() {
-        test_firmware_update_common();
+        test_firmware_update_common(true);
     }
 }

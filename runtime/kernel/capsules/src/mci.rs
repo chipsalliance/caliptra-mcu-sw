@@ -19,6 +19,7 @@ mod cmd {
 }
 
 mod mci_reg {
+    pub const RESET_REASON: u32 = 0x38;
     pub const WDT_TIMER1_EN: u32 = 0xb0;
     pub const NOTIF0_INTR_TRIG_R: u32 = 0x1034;
 
@@ -63,6 +64,7 @@ impl Mci {
         match self.apps.enter(processid, |app, _| {
             
             match app.reg_offset {
+                mci_reg::RESET_REASON => { CommandReturn::success_u32(self.driver.read_reset_reason()) },
                 mci_reg::WDT_TIMER1_EN => CommandReturn::success_u32(self.driver.read_wdt_timer1_en()),
                 mci_reg::NOTIF0_INTR_TRIG_R => CommandReturn::success_u32(self.driver.read_notif0_intr_trig_r()),
                 _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
