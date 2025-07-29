@@ -13,7 +13,7 @@ use kernel::utilities::StaticRef;
 use kernel::{debug, ErrorCode};
 use registers_generated::i3c::bits::{InterruptEnable, InterruptStatus, StbyCrDeviceAddr};
 use registers_generated::i3c::regs::I3c;
-use tock_registers::register_bitfields;
+use tock_registers::{register_bitfields, LocalRegisterCopy};
 
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
 pub const MAX_READ_WRITE_SIZE: usize = 250;
@@ -196,12 +196,9 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let mut buf_idx = self.rx_buffer_idx.get();
         let buf_size = self.rx_buffer_size.get();
 
-        // TODO: correct this when we send the 32-bit descriptors matching i3c-core
-        let _desc = self.registers.tti_rx_desc_queue_port.get();
-        let desc1 = self.registers.tti_rx_desc_queue_port.get();
-        // let desc = LocalRegisterCopy::<u32, RxDesc::Register>::new(desc);
-        // let len = desc.read(RxDesc::DataLength) as usize;
-        let len = (desc1 >> 16) as usize;
+        let desc = self.registers.tti_rx_desc_queue_port.get();
+        let desc = LocalRegisterCopy::<u32, RxDesc::Register>::new(desc);
+        let len = desc.read(RxDesc::DataLength) as usize;
 
         // read everything
         let mut full = false;

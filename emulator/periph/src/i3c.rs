@@ -161,13 +161,19 @@ impl I3c {
 
     fn read_rx_data_into_buffer(&mut self) {
         if let Some(xfer) = self.i3c_target.read_command() {
-            let cmd: u64 = xfer.cmd.into();
-            let data = xfer.data;
-            // TODO: send only the length with the private read flow is fixed
+            // TODO: we don't request data using rnw
+            let rnw = (u64::from(xfer.cmd.clone()) & (1 << 29)) as u32;
             self.tti_rx_desc_queue_raw
-                .push_back((cmd & 0xffff_ffff) as u32);
-            self.tti_rx_desc_queue_raw
-                .push_back(((cmd >> 32) & 0xffff_ffff) as u32);
+                .push_back(xfer.cmd.raw_data_len() as u32 | rnw);
+            let data = match xfer.cmd.clone() {
+                crate::I3cTcriCommand::Immediate(imm) => vec![
+                    imm.data_byte_1(),
+                    imm.data_byte_2(),
+                    imm.data_byte_3(),
+                    imm.data_byte_4(),
+                ],
+                _ => xfer.data,
+            };
             self.tti_rx_data_raw.push_back(data);
         }
     }
@@ -574,10 +580,7 @@ impl I3cPeripheral for I3c {
     }
 
     fn read_i3c_ec_tti_rx_desc_queue_port(&mut self) -> u32 {
-        if self.tti_rx_desc_queue_raw.len() & 1 == 0 {
-            // only replace the data every other read since the descriptor is 64 bits
-            self.tti_rx_current = self.tti_rx_data_raw.pop_front().unwrap_or_default().into();
-        }
+        self.tti_rx_current = self.tti_rx_data_raw.pop_front().unwrap_or_default().into();
         self.tti_rx_desc_queue_raw.pop_front().unwrap_or(0)
     }
 
@@ -962,8 +965,6 @@ impl I3cPeripheral for I3c {
                     COUNTER += 1;
                 }
                 self.tti_rx_desc_queue_raw.push_back(100 << 16);
-                // TODO: delete this line
-                self.tti_rx_desc_queue_raw.push_back(unsafe { COUNTER });
                 self.tti_rx_data_raw.push_back(vec![0xff; 100]);
             }
         }
@@ -1035,7 +1036,7 @@ mod tests {
                 registers_generated::i3c::I3C_CSR_ADDR + TTI_RX_DESC_QUEUE_PORT
             )
             .unwrap(),
-            1
+            4
         );
     }
 }
