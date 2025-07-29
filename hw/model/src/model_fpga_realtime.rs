@@ -6,13 +6,16 @@ use crate::fpga_regs::{Control, FifoData, FifoRegs, FifoStatus, ItrngFifoStatus,
 use crate::output::ExitStatus;
 use crate::{xi3c, InitParams, McuHwModel, Output, SecurityState};
 use anyhow::{anyhow, bail, Error, Result};
-use caliptra_emu_bus::{Device, Event, EventData, RecoveryCommandCode};
+use caliptra_api::SocManager;
+use caliptra_emu_bus::{Bus, BusError, BusMmio, Device, Event, EventData, RecoveryCommandCode};
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use caliptra_hw_model_types::{DEFAULT_FIELD_ENTROPY, DEFAULT_UDS_SEED};
 use emulator_bmc::Bmc;
 use registers_generated::i3c;
 use registers_generated::i3c::bits::{DeviceStatus0, StbyCrDeviceAddr, StbyCrVirtDeviceAddr};
 use registers_generated::mci::bits::Go::Go;
 use std::io::Write;
+use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::process::exit;
@@ -941,6 +944,13 @@ impl ModelFpgaRealtime {
     pub fn mci_flow_status(&mut self) -> u32 {
         self.mci.regs().mci_reg_fw_flow_status.get()
     }
+
+    fn caliptra_axi_bus(&mut self) -> FpgaRealtimeBus<'_> {
+        FpgaRealtimeBus {
+            mmio: self.caliptra_mmio.ptr,
+            phantom: Default::default(),
+        }
+    }
 }
 
 impl McuHwModel for ModelFpgaRealtime {
@@ -1279,6 +1289,69 @@ impl McuHwModel for ModelFpgaRealtime {
     fn save_otp_memory(&self, path: &Path) -> Result<()> {
         let s = crate::vmem::write_otp_vmem_data(self.otp_slice())?;
         Ok(std::fs::write(path, s.as_bytes())?)
+    }
+
+    fn caliptra_soc_manager(&mut self) -> impl SocManager {
+        self
+    }
+}
+
+pub struct FpgaRealtimeBus<'a> {
+    mmio: *mut u32,
+    phantom: PhantomData<&'a mut ()>,
+}
+
+impl FpgaRealtimeBus<'_> {
+    fn ptr_for_addr(&mut self, addr: RvAddr) -> Option<*mut u32> {
+        let addr = addr as usize;
+        unsafe {
+            match addr {
+                0x3002_0000..=0x3003_ffff => Some(self.mmio.add((addr - 0x3000_0000) / 4)),
+                _ => None,
+            }
+        }
+    }
+}
+
+impl Bus for FpgaRealtimeBus<'_> {
+    fn read(&mut self, _size: RvSize, addr: RvAddr) -> Result<RvData, BusError> {
+        if let Some(ptr) = self.ptr_for_addr(addr) {
+            Ok(unsafe { ptr.read_volatile() })
+        } else {
+            println!("Error LoadAccessFault");
+            Err(BusError::LoadAccessFault)
+        }
+    }
+
+    fn write(&mut self, _size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
+        if let Some(ptr) = self.ptr_for_addr(addr) {
+            // TODO: support 16-bit and 8-bit writes
+            unsafe { ptr.write_volatile(val) };
+            Ok(())
+        } else {
+            Err(BusError::StoreAccessFault)
+        }
+    }
+}
+
+impl SocManager for &mut ModelFpgaRealtime {
+    const SOC_IFC_ADDR: u32 = 0x3003_0000;
+    const SOC_IFC_TRNG_ADDR: u32 = 0x3003_0000;
+    const SOC_MBOX_ADDR: u32 = 0x3002_0000;
+
+    const MAX_WAIT_CYCLES: u32 = 20_000_000;
+
+    type TMmio<'a>
+        = BusMmio<FpgaRealtimeBus<'a>>
+    where
+        Self: 'a;
+
+    fn mmio_mut(&mut self) -> Self::TMmio<'_> {
+        BusMmio::new(self.caliptra_axi_bus())
+    }
+
+    fn delay(&mut self) {
+        self.step();
     }
 }
 
