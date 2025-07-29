@@ -708,6 +708,12 @@ pub unsafe fn main() {
         BOARD = Some(board_kernel);
     }
 
+    // Disable WDT1 before running the loop or tests
+    let mci: StaticRef<mci::regs::Mci> =
+        unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
+    let mci_wdt = romtime::Mci::new(mci);
+    mci_wdt.disable_wdt();
+
     // Run any requested test
     let exit = if cfg!(feature = "test-exit-immediately") {
         debug!("Executing test-exit-immediately");
@@ -756,14 +762,9 @@ pub unsafe fn main() {
     }
 
     if let Some(exit) = exit {
+        debug!("Exiting with code {}", exit);
         crate::io::exit_emulator(exit);
     }
-
-    // Disable WDT1 before running the loop
-    let mci: StaticRef<mci::regs::Mci> =
-        unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
-    let mci_wdt = romtime::Mci::new(mci);
-    mci_wdt.disable_wdt();
 
     board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
 }
