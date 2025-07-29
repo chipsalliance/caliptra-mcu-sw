@@ -67,7 +67,7 @@ async fn process_challenge<'a>(
     }
 
     // Make sure the selected hash algorithm is SHA384
-    ctx.verify_selected_hash_algo()
+    ctx.verify_negotiated_hash_algo()
         .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
 
     // Decode the CHALLENGE request payload
@@ -251,7 +251,7 @@ async fn generate_challenge_auth_response<'a>(
 ) -> CommandResult<()> {
     // Get the selected asymmetric algorithm
     let asym_algo = ctx
-        .selected_base_asym_algo()
+        .negotiated_base_asym_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
 
     // Prepare the response buffer

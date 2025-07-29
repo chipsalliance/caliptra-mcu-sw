@@ -70,7 +70,7 @@ async fn process_finish<'a>(
     }
 
     // Make sure the asymmetric algorithm is ECC P384
-    if !matches!(ctx.selected_base_asym_algo(), Ok(AsymAlgo::EccP384)) {
+    if !matches!(ctx.negotiated_base_asym_algo(), Ok(AsymAlgo::EccP384)) {
         Err(ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
     }
 

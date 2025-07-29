@@ -164,7 +164,7 @@ impl<'a> SpdmContext<'a> {
         ) as usize
     }
 
-    pub(crate) fn verify_selected_hash_algo(&mut self) -> SpdmResult<()> {
+    pub(crate) fn verify_negotiated_hash_algo(&mut self) -> SpdmResult<()> {
         let peer_algorithms = self.state.connection_info.peer_algorithms();
         let local_algorithms = &self.local_algorithms.device_algorithms;
         let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
@@ -186,7 +186,7 @@ impl<'a> SpdmContext<'a> {
         Ok(())
     }
 
-    pub(crate) fn selected_base_asym_algo(&self) -> SpdmResult<AsymAlgo> {
+    pub(crate) fn negotiated_base_asym_algo(&self) -> SpdmResult<AsymAlgo> {
         let peer_algorithms = self.state.connection_info.peer_algorithms();
         let local_algorithms = &self.local_algorithms.device_algorithms;
         let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
@@ -204,23 +204,23 @@ impl<'a> SpdmContext<'a> {
         Ok(AsymAlgo::EccP384)
     }
 
-    // pub(crate) fn selected_dhe_group(&self) -> SpdmResult<KeyExchScheme> {
-    //     let peer_algorithms = self.state.connection_info.peer_algorithms();
-    //     let local_algorithms = &self.local_algorithms.device_algorithms;
-    //     let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
+    pub(crate) fn verify_negotiated_dhe_group(&self) -> SpdmResult<()> {
+        let peer_algorithms = self.state.connection_info.peer_algorithms();
+        let local_algorithms = &self.local_algorithms.device_algorithms;
+        let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
 
-    //     let dhe_group_sel = DheGroup(local_algorithms.dhe_group.0.prioritize(
-    //         &peer_algorithms.dhe_group.0,
-    //         algorithm_priority_table.dhe_group,
-    //     ));
+        let dhe_group_sel = DheNamedGroup(local_algorithms.dhe_group.0.prioritize(
+            &peer_algorithms.dhe_group.0,
+            algorithm_priority_table.dhe_group,
+        ));
 
-    //     // Ensure DheGroupSel has exactly one bit set and it is SECP384R1
-    //     if dhe_group_sel.0.count_ones() != 1 || dhe_group_sel.tpm_alg_secp384r1() != 1 {
-    //         return Err(SpdmError::InvalidParam);
-    //     }
+        // Ensure DheGroupSel has exactly one bit set and it is SECP384R1
+        if dhe_group_sel.0.count_ones() != 1 || dhe_group_sel.secp384r1() != 1 {
+            return Err(SpdmError::InvalidParam);
+        }
 
-    //     Ok(dhe_group_sel)
-    // }
+        Ok(())
+    }
 
     pub(crate) fn generate_error_response(
         &self,

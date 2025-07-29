@@ -439,7 +439,7 @@ async fn process_get_measurements<'a>(
     ctx.append_message_to_transcript(req_payload, TranscriptContext::L1, None)
         .await?;
 
-    let asym_algo = ctx.selected_base_asym_algo().map_err(|_| {
+    let asym_algo = ctx.negotiated_base_asym_algo().map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
     })?;
 
@@ -520,7 +520,7 @@ pub(crate) async fn handle_get_measurements<'a>(
 
     // Verify that the DMTF measurement spec is selected and the measurement hash algorithm is SHA384
     let meas_spec_sel = selected_measurement_specification(ctx);
-    if meas_spec_sel.dmtf_measurement_spec() == 0 || ctx.verify_selected_hash_algo().is_err() {
+    if meas_spec_sel.dmtf_measurement_spec() == 0 || ctx.verify_negotiated_hash_algo().is_err() {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 

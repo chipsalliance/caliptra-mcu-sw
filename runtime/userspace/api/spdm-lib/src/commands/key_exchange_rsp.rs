@@ -10,19 +10,17 @@ use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
 use crate::protocol::*;
-use crate::session::SessionPolicy;
+use crate::session::{SessionInfo, SessionKeyType, SessionPolicy, SessionState, SessionType};
+use crate::state::ConnectionInfo;
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
 use libapi_caliptra::crypto::asym::ecdh::CMB_ECDH_EXCHANGE_DATA_MAX_SIZE;
 use libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
-// use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use libapi_caliptra::crypto::rng::Rng;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const RANDOM_DATA_LEN: usize = 32;
-// pub const ECDSA383_SIGNATURE_LEN: usize = 96;
-pub const OPAQUE_DATA_LEN_MAX_SIZE: usize = 1024; // Maximum size for opaque data
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
@@ -76,6 +74,38 @@ bitfield! {
     pub implicit_get_digests, set_implicit_get_digests: 2, 2;
 
     reserved, _: 7, 3;
+}
+
+fn init_session(
+    session_info: &mut SessionInfo,
+    local_capabilities_flags: CapabilityFlags,
+    connection_info: &ConnectionInfo,
+    session_policy: SessionPolicy,
+    asym_algo: AsymAlgo,
+) {
+    // let local_capabilities_flags = ctx.local_capabilities.flags;
+    let peer_capabilities = connection_info.peer_capabilities().flags;
+
+    let mac_cap = local_capabilities_flags.mac_cap() != 0 && peer_capabilities.mac_cap() != 0;
+    let encrypt_cap =
+        local_capabilities_flags.encrypt_cap() != 0 && peer_capabilities.encrypt_cap() != 0;
+
+    let session_type = match (mac_cap, encrypt_cap) {
+        (true, true) => SessionType::MacAndEncrypt,
+        (true, false) => SessionType::MacOnly,
+        _ => SessionType::None,
+    };
+
+    let handshake_in_the_clear = local_capabilities_flags.handshake_in_the_clear_cap() != 0
+        && peer_capabilities.handshake_in_the_clear_cap() != 0;
+
+    session_info.init(
+        handshake_in_the_clear,
+        session_policy,
+        session_type,
+        connection_info.version_number(),
+        asym_algo,
+    );
 }
 
 async fn process_key_exchange<'a>(
@@ -140,16 +170,23 @@ async fn process_key_exchange<'a>(
     let (session_id, resp_session_id) =
         ctx.session_mgr.generate_session_id(exch_req.req_session_id);
 
-    ctx.session_mgr
-        .create_session(session_id, exch_req.session_policy)
-        .map_err(|_| {
-            ctx.generate_error_response(req_payload, ErrorCode::SessionLimitExceeded, 0, None)
-        })?;
+    // Create session and initialize it
+    ctx.session_mgr.create_session(session_id).map_err(|_| {
+        ctx.generate_error_response(req_payload, ErrorCode::SessionLimitExceeded, 0, None)
+    })?;
 
     let session_info = ctx
         .session_mgr
         .session_info_mut(session_id)
         .map_err(|e| (false, CommandError::Session(e)))?;
+
+    init_session(
+        session_info,
+        ctx.local_capabilities.flags,
+        &ctx.state.connection_info,
+        exch_req.session_policy,
+        asym_algo,
+    );
 
     let resp_exch_data = session_info
         .compute_dhe_secret(&exch_req.exchange_data)
@@ -202,13 +239,12 @@ async fn encode_key_exchange_rsp_base(
         .map_err(|e| (false, CommandError::Codec(e)))
 }
 
-async fn encode_th1_signature(
+async fn th1_signature(
     ctx: &mut SpdmContext<'_>,
     session_id: u32,
     slot_id: u8,
     asym_algo: AsymAlgo,
-    rsp: &mut MessageBuf<'_>,
-) -> CommandResult<usize> {
+) -> CommandResult<[u8; ECC_P384_SIGNATURE_SIZE]> {
     let spdm_version = ctx.state.connection_info.version_number();
     let th1_transcript_hash = ctx
         .transcript_hash(
@@ -231,14 +267,7 @@ async fn encode_th1_signature(
         .sign_hash(slot_id, asym_algo, &tbs, &mut signature)
         .await
         .map_err(|e| (false, CommandError::CertStore(e)))?;
-
-    encode_u8_slice(&signature, rsp).map_err(|e| (false, CommandError::Codec(e)))?;
-
-    Ok(signature.len())
-}
-
-fn init_secure_session(_ctx: &mut SpdmContext<'_>, _session_id: u32) -> CommandResult<()> {
-    todo!("Initialize session's info and state");
+    Ok(signature)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -272,58 +301,59 @@ async fn generate_key_exchange_response<'a>(
     // Encode the Opaque data length = 0
     payload_len += encode_opaque_data(rsp, &[])?;
 
-    payload_len += encode_th1_signature(ctx, session_id, slot_id, asym_algo, rsp).await?;
+    // Append the response to Th transcript
+    ctx.append_message_to_transcript(rsp, TranscriptContext::Th, None)
+        .await?;
 
-    // TODO: Update transcript
-    // ctx.append_message_to_transcript(rsp, TranscriptContext::KeyExchangeRspSignature)
-    //     .await?;
+    // Encode TH1 signature.
+    let th1_sig = th1_signature(ctx, session_id, slot_id, asym_algo).await?;
+    payload_len += encode_u8_slice(&th1_sig, rsp).map_err(|e| (false, CommandError::Codec(e)))?;
 
-    // TODO: Add signature
-    // let signature =
-    //     sign_transcript(ctx, slot_id, TranscriptContext::KeyExchangeRspSignature).await?;
-    // encode_u8_slice(&signature, rsp).map_err(|e| (false, CommandError::Codec(e)))?;
+    // Update the session transcript with the KEY_EXCHANGE_RSP signature
+    ctx.append_slice_to_transcript(&th1_sig, TranscriptContext::Th, Some(session_id))
+        .await?;
 
-    // TODO: we won't need this transcript any more
-    // ctx.shared_transcript
-    //     .disable_transcript(TranscriptContext::KeyExchangeRspSignature);
+    // Compute TH1 transcript hash for generating the session handshake key
+    let th1_transcript_hash = ctx
+        .transcript_hash(TranscriptContext::Th, Some(session_id), false)
+        .await?;
 
-    let session_handshake_encrypted = false; // TODO: Need to figure this out
-    let session_handshake_message_authenticated = false; // TODO: Need to figure this out
-    let generate_hmac = session_handshake_encrypted || session_handshake_message_authenticated;
-    if generate_hmac {
-        // TODO: Append to HMAC transcript
-        // ctx.append_message_to_transcript(rsp, TranscriptContext::KeyExchangeRspHmac)
-        //     .await?;
+    // generate session handshake key
+    let session_info = ctx
+        .session_mgr
+        .session_info_mut(session_id)
+        .map_err(|e| (false, CommandError::Session(e)))?;
 
-        // let mut hash_to_hmac = [0u8; SHA384_HASH_SIZE];
-        // TODO: compute the HMAC
-        // ctx.shared_transcript
-        //     .hash(TranscriptContext::KeyExchangeRspHmac, &mut hash_to_hmac)
-        //     .await
-        //     .map_err(|e| (false, CommandError::Transcript(e)))?;
-        // let mac = Hmac::hmac(ctx.secrets.finished_key.as_ref().unwrap(), &hash_to_hmac)
-        //     .await
-        //     .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
-        // encode_u8_slice(&mac.mac[..mac.hdr.data_len as usize], rsp)
-        //     .map_err(|e| (false, CommandError::Codec(e)))?;
+    session_info
+        .generate_session_handshake_key(&th1_transcript_hash)
+        .await
+        .map_err(|e| (false, CommandError::Session(e)))?;
+
+    // Encode ResponderVerifyData if applicable
+    let responder_verify_data =
+        if !session_info.handshake_in_the_clear && session_info.session_type != SessionType::None {
+            Some(
+                session_info
+                    .compute_hmac(SessionKeyType::ResponseFinishedKey, &th1_transcript_hash)
+                    .await
+                    .map_err(|e| (false, CommandError::Session(e)))?,
+            )
+        } else {
+            None
+        };
+
+    if let Some(responder_verify_data) = responder_verify_data {
+        payload_len += encode_u8_slice(&responder_verify_data, rsp)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+
+        ctx.append_slice_to_transcript(
+            &responder_verify_data,
+            TranscriptContext::Th,
+            Some(session_id),
+        )
+        .await?;
     }
 
-    // TODO: update transcripts
-    // We won't need this transcript any more.
-    // ctx.shared_transcript
-    //     .disable_transcript(TranscriptContext::KeyExchangeRspHmac);
-
-    // // Append the final key exchange response to the finish response transcripts.
-    // ctx.append_message_to_transcripts(
-    //     rsp,
-    //     &[
-    //         TranscriptContext::FinishMutualAuthHmac,
-    //         TranscriptContext::FinishRspMutualAuth,
-    //         TranscriptContext::FinishRspResponderOnly,
-    //         TranscriptContext::FinishMutualAuthSignaure,
-    //     ],
-    // )
-    // .await?;
     rsp.push_data(payload_len)
         .map_err(|e| (false, CommandError::Codec(e)))
 }
@@ -353,10 +383,16 @@ pub(crate) async fn handle_key_exchange<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnsupportedRequest, 0, None))?;
     }
 
-    // Get the selected AsymAlgo and verify the selected hash algorithm is SHA384
+    // Check negotiated algorithms are valid and generate error response once
     let asym_algo = ctx
-        .selected_base_asym_algo()
-        .and_then(|algo| ctx.verify_selected_hash_algo().map(|_| algo))
+        .negotiated_base_asym_algo()
+        .and_then(|algo| {
+            // Check hash algorithm
+            ctx.verify_negotiated_hash_algo()?;
+            // Check DHE group
+            ctx.verify_negotiated_dhe_group()?;
+            Ok(algo)
+        })
         .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
 
     // Process KEY_EXCHANGE request
@@ -377,6 +413,9 @@ pub(crate) async fn handle_key_exchange<'a>(
     )
     .await?;
 
-    // TODO: derive the secrets
+    ctx.session_mgr
+        .set_session_state(session_id, SessionState::HandshakeInProgress)
+        .map_err(|e| (false, CommandError::Session(e)))?;
+
     Ok(())
 }

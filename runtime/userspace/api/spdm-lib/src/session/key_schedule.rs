@@ -1,0 +1,314 @@
+// Licensed under the Apache-2.0 license
+
+//! SPDM Key Schedule
+//! Handles secret, key derivation and management for SPDM secure sessions.
+//!
+
+use crate::protocol::SpdmVersion;
+use arrayvec::ArrayVec;
+use caliptra_api::mailbox::Cmk;
+use libapi_caliptra::crypto::asym::ecdh::{CmKeyUsage, Ecdh, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE};
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use libapi_caliptra::crypto::hmac::{HkdfSalt, Hmac};
+use libapi_caliptra::error::CaliptraApiError;
+
+// const AES_256_GCM_KEY_SIZE: usize = 256 >> 3; // 256 bits or 32 bytes
+// const AES_256_GCM_IV_SIZE: usize = 96 >> 3; // 96 bits or 12 bytes
+
+#[derive(Debug, PartialEq)]
+pub enum KeyScheduleError {
+    BufferTooSmall,
+    DheSecretNotFound,
+    HandshakeSecretNotFound,
+    MasterSecretNotFound,
+    DataSecretNotFound,
+    CaliptraApi(CaliptraApiError),
+}
+
+pub type KeyScheduleResult<T> = Result<T, KeyScheduleError>;
+
+pub enum SessionKeyType {
+    RequestFinishedKey,
+    ResponseFinishedKey,
+    // TODO: Add more key types as needed
+}
+
+#[derive(Default)]
+pub(crate) struct KeySchedule {
+    spdm_version: SpdmVersion,
+    master_secret_ctx: MasterSecretCtx,
+    handshake_secret_ctx: HandshakeSecretCtx,
+    _data_secret_ctx: DataSecretCtx,
+}
+
+impl KeySchedule {
+    const MAX_BIN_STR_LEN: usize = 128;
+
+    pub fn set_spdm_version(&mut self, version: SpdmVersion) {
+        self.spdm_version = version;
+    }
+
+    pub async fn compute_dhe_secret(
+        &mut self,
+        peer_exch_data: &[u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE],
+    ) -> KeyScheduleResult<[u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE]> {
+        let mut self_exch_data = [0u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE];
+
+        // Generate an ephemeral key pair
+        let generate_resp = Ecdh::ecdh_generate()
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?;
+
+        self_exch_data.copy_from_slice(&generate_resp.exchange_data);
+
+        // Finish the ECDH key exchange to generate the shared secret
+        let shared_secret = Ecdh::ecdh_finish(CmKeyUsage::Hmac, &generate_resp, peer_exch_data)
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?;
+
+        // Store the shared secret in the session context
+        self.master_secret_ctx.dhe_secret = Some(shared_secret);
+
+        Ok(self_exch_data)
+    }
+
+    pub async fn generate_session_handshake_key(
+        &mut self,
+        th1_transcript_hash: &[u8],
+    ) -> KeyScheduleResult<()> {
+        self.generate_handshake_secret().await?;
+        self.generate_req_rsp_handshake_secret(th1_transcript_hash)
+            .await?;
+        self.generate_req_rsp_finished_key().await
+    }
+
+    pub async fn hmac(
+        &self,
+        key_type: SessionKeyType,
+        data: &[u8],
+    ) -> KeyScheduleResult<[u8; SHA384_HASH_SIZE]> {
+        let key = match key_type {
+            SessionKeyType::RequestFinishedKey => self
+                .handshake_secret_ctx
+                .request_finished_key
+                .as_ref()
+                .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
+            SessionKeyType::ResponseFinishedKey => self
+                .handshake_secret_ctx
+                .response_finished_key
+                .as_ref()
+                .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
+        };
+
+        // Compute HMAC using the specified key
+        let hmac = Hmac::hmac(key, data)
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?;
+
+        let mut hmac_bytes = [0u8; SHA384_HASH_SIZE];
+        hmac_bytes.copy_from_slice(&hmac.mac);
+
+        Ok(hmac_bytes)
+    }
+
+    // Generates the handshake secret using the DHE Secret and Salt_0
+    async fn generate_handshake_secret(&mut self) -> KeyScheduleResult<()> {
+        let salt_0 = [0u8; SHA384_HASH_SIZE];
+
+        // Handshake-Secret = HKDF-Extract(Salt_0, DHE-Secret)
+        if let Some(dhe_secret) = &self.master_secret_ctx.dhe_secret {
+            let extract = Hmac::hkdf_extract(HkdfSalt::Data(&salt_0), dhe_secret)
+                .await
+                .map_err(KeyScheduleError::CaliptraApi)?;
+
+            // Store the handshake secret.
+            self.master_secret_ctx.handshake_secret = Some(extract.prk);
+            // TODO: Should we set dhe_secret to None after extracting?
+
+            Ok(())
+        } else {
+            Err(KeyScheduleError::DheSecretNotFound)
+        }
+    }
+
+    // Generate the request/response direction handshake secret
+    async fn generate_req_rsp_handshake_secret(
+        &mut self,
+        th1_transcript_hash: &[u8],
+    ) -> KeyScheduleResult<()> {
+        let bin_str1 = self.bin_concat(
+            SpdmBinStr::BinStr1,
+            SHA384_HASH_SIZE as u16,
+            Some(th1_transcript_hash),
+        )?;
+        let bin_str2 = self.bin_concat(
+            SpdmBinStr::BinStr2,
+            SHA384_HASH_SIZE as u16,
+            Some(th1_transcript_hash),
+        )?;
+
+        // Request-Handshake-Secret = HKDF-Expand(Handshake-Secret, bin_str1, Hash.Length)
+        let expand_req = Hmac::hkdf_expand(
+            self.master_secret_ctx
+                .handshake_secret
+                .as_ref()
+                .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
+            CmKeyUsage::Hmac,
+            SHA384_HASH_SIZE as u32,
+            bin_str1.as_slice(),
+        )
+        .await
+        .map_err(KeyScheduleError::CaliptraApi)?;
+
+        // Response-Handshake-Secret = HKDF-Expand(Handshake-Secret, bin_str2, Hash.Length)
+        let expand_rsp = Hmac::hkdf_expand(
+            self.master_secret_ctx
+                .handshake_secret
+                .as_ref()
+                .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
+            CmKeyUsage::Hmac,
+            SHA384_HASH_SIZE as u32,
+            bin_str2.as_slice(),
+        )
+        .await
+        .map_err(KeyScheduleError::CaliptraApi)?;
+
+        self.handshake_secret_ctx.request_handshake_secret = Some(expand_req.okm);
+        self.handshake_secret_ctx.response_handshake_secret = Some(expand_rsp.okm);
+
+        Ok(())
+    }
+
+    async fn generate_req_rsp_finished_key(&mut self) -> KeyScheduleResult<()> {
+        let bin_str7 = self.bin_concat(SpdmBinStr::BinStr7, SHA384_HASH_SIZE as u16, None)?;
+
+        // Request-Finished-Key = HKDF-Expand(Request-Handshake-Secret, bin_str7, Hash.Length)
+        let expand_req = Hmac::hkdf_expand(
+            self.handshake_secret_ctx
+                .request_handshake_secret
+                .as_ref()
+                .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
+            CmKeyUsage::Hmac,
+            SHA384_HASH_SIZE as u32,
+            bin_str7.as_slice(),
+        )
+        .await
+        .map_err(KeyScheduleError::CaliptraApi)?;
+
+        // Response-Finished-Key = HKDF-Expand(Response-Handshake-Secret, bin_str7, Hash.Length)
+        let expand_rsp = Hmac::hkdf_expand(
+            self.handshake_secret_ctx
+                .response_handshake_secret
+                .as_ref()
+                .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
+            CmKeyUsage::Hmac,
+            SHA384_HASH_SIZE as u32,
+            bin_str7.as_slice(),
+        )
+        .await
+        .map_err(KeyScheduleError::CaliptraApi)?;
+
+        self.handshake_secret_ctx.request_finished_key = Some(expand_req.okm);
+        self.handshake_secret_ctx.response_finished_key = Some(expand_rsp.okm);
+        Ok(())
+    }
+
+    fn bin_concat(
+        &self,
+        bin_str_type: SpdmBinStr,
+        length: u16,
+        context: Option<&[u8]>,
+    ) -> KeyScheduleResult<ArrayVec<u8, { Self::MAX_BIN_STR_LEN }>> {
+        let mut bin_str_buf = ArrayVec::<u8, { Self::MAX_BIN_STR_LEN }>::new();
+        let length_bytes = length.to_le_bytes();
+        let version_bytes = self.version_str().as_bytes();
+        let label_bytes = bin_str_type.label().as_bytes();
+
+        bin_str_buf
+            .try_extend_from_slice(&length_bytes)
+            .map_err(|_| KeyScheduleError::BufferTooSmall)?;
+        bin_str_buf
+            .try_extend_from_slice(version_bytes)
+            .map_err(|_| KeyScheduleError::BufferTooSmall)?;
+        bin_str_buf
+            .try_extend_from_slice(label_bytes)
+            .map_err(|_| KeyScheduleError::BufferTooSmall)?;
+        if let Some(context) = context {
+            bin_str_buf
+                .try_extend_from_slice(context)
+                .map_err(|_| KeyScheduleError::BufferTooSmall)?;
+        }
+
+        Ok(bin_str_buf)
+    }
+
+    fn version_str(&self) -> &str {
+        match self.spdm_version {
+            SpdmVersion::V10 => "spdm1.0 ",
+            SpdmVersion::V11 => "spdm1.1 ",
+            SpdmVersion::V12 => "spdm1.2 ",
+            SpdmVersion::V13 => "spdm1.3 ",
+        }
+    }
+}
+
+#[derive(Default)]
+struct MasterSecretCtx {
+    // DHE secret
+    dhe_secret: Option<Cmk>,
+    // Handshake secret
+    handshake_secret: Option<Cmk>,
+    // Master secret
+    _master_secret: Option<Cmk>,
+}
+
+#[derive(Default)]
+struct HandshakeSecretCtx {
+    // Request direction handshake secret
+    request_handshake_secret: Option<Cmk>,
+    // Response direction handshake secret
+    response_handshake_secret: Option<Cmk>,
+    // Request direction finished key
+    request_finished_key: Option<Cmk>,
+    // Response direction finished key
+    response_finished_key: Option<Cmk>,
+}
+
+#[derive(Default)]
+struct DataSecretCtx {
+    // Request direction data secret
+    _request_data_secret: Option<Cmk>,
+    // Response direction data secret
+    _response_data_secret: Option<Cmk>,
+}
+
+#[allow(dead_code)]
+enum SpdmBinStr {
+    BinStr0,
+    BinStr1,
+    BinStr2,
+    BinStr3,
+    BinStr4,
+    BinStr5,
+    BinStr6,
+    BinStr7,
+    BinStr8,
+    BinStr9,
+}
+
+impl SpdmBinStr {
+    fn label(&self) -> &'static str {
+        match self {
+            SpdmBinStr::BinStr0 => "derived",
+            SpdmBinStr::BinStr1 => "req hs data",
+            SpdmBinStr::BinStr2 => "rsp hs data",
+            SpdmBinStr::BinStr3 => "req app data",
+            SpdmBinStr::BinStr4 => "rsp app data",
+            SpdmBinStr::BinStr5 => "key",
+            SpdmBinStr::BinStr6 => "iv",
+            SpdmBinStr::BinStr7 => "finished",
+            SpdmBinStr::BinStr8 => "exp master",
+            SpdmBinStr::BinStr9 => "traffic upd",
+        }
+    }
+}

@@ -3,6 +3,7 @@
 use crate::cert_store::MAX_CERT_SLOTS_SUPPORTED;
 use crate::protocol::SpdmVersion;
 use crate::session::SessionInfo;
+use arrayvec::ArrayVec;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use libapi_caliptra::error::CaliptraApiError;
 
@@ -16,59 +17,15 @@ pub enum TranscriptError {
 
 pub type TranscriptResult<T> = Result<T, TranscriptError>;
 
-// Generic buffer implementation to eliminate code duplication
-struct Buffer<const N: usize> {
-    data: [u8; N],
-    size: usize,
-}
-
-impl<const N: usize> Default for Buffer<N> {
-    fn default() -> Self {
-        Self {
-            data: [0; N],
-            size: 0,
-        }
-    }
-}
-
-impl<const N: usize> Buffer<N> {
-    fn from_slice(data: &[u8]) -> TranscriptResult<Self> {
-        let mut buffer = Buffer::default();
-        if data.len() > N {
-            Err(TranscriptError::BufferOverflow)?
-        }
-        buffer.data[..data.len()].copy_from_slice(data);
-        buffer.size = data.len();
-        Ok(buffer)
-    }
-
-    fn reset(&mut self) {
-        self.data.fill(0);
-        self.size = 0;
-    }
-
-    fn append(&mut self, data: &[u8]) -> TranscriptResult<()> {
-        if self.size + data.len() > N {
-            return Err(TranscriptError::BufferOverflow);
-        }
-        self.data[self.size..self.size + data.len()].copy_from_slice(data);
-        self.size += data.len();
-        Ok(())
-    }
-
-    fn data(&self) -> &[u8] {
-        &self.data[..self.size]
-    }
-}
-
-// Type aliases for specific buffer types with their respective sizes
+// Buffer size constants
 const VCA_BUFFER_SIZE: usize = 256;
 const DIGESTS_BUFFER_SIZE: usize = 4
     + (SHA384_HASH_SIZE + MAX_CERT_SLOTS_SUPPORTED as usize)
     + 4 * MAX_CERT_SLOTS_SUPPORTED as usize;
 
-type VcaBuffer = Buffer<VCA_BUFFER_SIZE>;
-type DigestsBuffer = Buffer<DIGESTS_BUFFER_SIZE>;
+// Type aliases for buffer types
+type VcaBuffer = ArrayVec<u8, VCA_BUFFER_SIZE>;
+type DigestsBuffer = ArrayVec<u8, DIGESTS_BUFFER_SIZE>;
 
 pub enum TranscriptContext {
     Vca,
@@ -104,7 +61,7 @@ impl Transcript {
     pub fn new() -> Self {
         Self {
             spdm_version: SpdmVersion::V10,
-            vca_buf: VcaBuffer::default(),
+            vca_buf: VcaBuffer::new(),
             digests_buf: None,
             hash_ctx_m1: None,
             hash_ctx_l1: None,
@@ -125,7 +82,7 @@ impl Transcript {
     /// * `context` - The context to reset. If `None`, all contexts are reset.
     pub fn reset(&mut self) {
         self.spdm_version = SpdmVersion::V10;
-        self.vca_buf.reset();
+        self.vca_buf.clear();
         self.digests_buf = None;
         self.hash_ctx_m1 = None;
         self.hash_ctx_l1 = None;
@@ -137,7 +94,7 @@ impl Transcript {
     /// * `context` - The context to reset.
     pub fn reset_context(&mut self, context: TranscriptContext) {
         match context {
-            TranscriptContext::Vca => self.vca_buf.reset(),
+            TranscriptContext::Vca => self.vca_buf.clear(),
             TranscriptContext::Digests => self.digests_buf = None,
             TranscriptContext::M1 => self.hash_ctx_m1 = None,
             TranscriptContext::L1 => self.hash_ctx_l1 = None,
@@ -149,6 +106,7 @@ impl Transcript {
     ///
     /// # Arguments
     /// * `context` - The context to append data to.
+    /// * `session_info` - Session info for session-specific contexts
     /// * `data` - The data to append.
     ///
     /// # Returns
@@ -160,7 +118,7 @@ impl Transcript {
         data: &[u8],
     ) -> TranscriptResult<()> {
         match context {
-            TranscriptContext::Vca => self.vca_buf.append(data),
+            TranscriptContext::Vca => self.append_vca(data),
             TranscriptContext::Digests => self.append_digests(data),
             TranscriptContext::M1 => self.append_m1(data).await,
             TranscriptContext::L1 => self.append_l1(self.spdm_version, session_info, data).await,
@@ -170,7 +128,7 @@ impl Transcript {
                 } else {
                     Err(TranscriptError::MissingSessionInfo)
                 }
-            } 
+            }
         }
     }
 
@@ -264,8 +222,17 @@ impl Transcript {
         }
     }
 
+    fn append_vca(&mut self, data: &[u8]) -> TranscriptResult<()> {
+        self.vca_buf
+            .try_extend_from_slice(data)
+            .map_err(|_| TranscriptError::BufferOverflow)
+    }
+
     fn append_digests(&mut self, data: &[u8]) -> TranscriptResult<()> {
-        let digests_buf = DigestsBuffer::from_slice(data)?;
+        let mut digests_buf = DigestsBuffer::new();
+        digests_buf
+            .try_extend_from_slice(data)
+            .map_err(|_| TranscriptError::BufferOverflow)?;
         self.digests_buf = Some(digests_buf);
         Ok(())
     }
@@ -274,7 +241,7 @@ impl Transcript {
         if let Some(ctx) = &mut self.hash_ctx_m1 {
             ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
         } else {
-            let vca_data = self.vca_buf.data();
+            let vca_data = self.vca_buf.as_slice();
             let mut ctx = HashContext::new();
             ctx.init(HashAlgoType::SHA384, Some(vca_data))
                 .await
@@ -300,7 +267,7 @@ impl Transcript {
                     ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
                 } else {
                     let vca_data = if spdm_version >= SpdmVersion::V12 {
-                        Some(self.vca_buf.data())
+                        Some(self.vca_buf.as_slice())
                     } else {
                         None
                     };
@@ -322,7 +289,7 @@ impl Transcript {
                     ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
                 } else {
                     let vca_data = if spdm_version >= SpdmVersion::V12 {
-                        Some(self.vca_buf.data())
+                        Some(self.vca_buf.as_slice())
                     } else {
                         None
                     };
@@ -349,11 +316,11 @@ impl Transcript {
         if let Some(ctx) = &mut session_info.session_transcript.hash_ctx_th {
             ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
         } else {
-            let vca_data = self.vca_buf.data();
+            let vca_data = self.vca_buf.as_slice();
             let digests_data = self
                 .digests_buf
                 .as_ref()
-                .map(|buf| buf.data())
+                .map(|buf| buf.as_slice())
                 .unwrap_or(&[]);
             let mut ctx = HashContext::new();
             ctx.init(HashAlgoType::SHA384, Some(vca_data))
@@ -378,7 +345,7 @@ pub(crate) struct SessionTranscript {
     // L1 = Concatenate(A, M) if SPDM_VERSION >= 1.2 or L1 = Concatenate(M) if SPDM_VERSION < 1.2
     // where
     // M = Concatenate (GET_MEASUREMENTS, MEASUREMENTS\signature)
-    hash_ctx_l1: Option<HashContext>,
+    pub(crate) hash_ctx_l1: Option<HashContext>,
     // Hash Context for `TH1/TH2`
     // TH1 = Concatenate(A, D, Ct, Ksig/Khmac)
     // where
@@ -388,7 +355,7 @@ pub(crate) struct SessionTranscript {
     // Khmac = Concatenate(KEY_EXCHANGE, KEY_EXCHANGE_RSP excluding ResponderVerifyData)
     //
     // TH2 = TODO
-    hash_ctx_th: Option<HashContext>,
+    pub(crate) hash_ctx_th: Option<HashContext>,
 }
 
 impl SessionTranscript {
