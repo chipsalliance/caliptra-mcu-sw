@@ -5,8 +5,9 @@
 
 //! Create a timer using the VeeR EL2 Internal Timer registers.
 
+use crate::chip::TIMER_FREQUENCY_HZ;
 use core::cell::Cell;
-use kernel::hil::time::{self, Alarm, ConvertTicks, Freq1MHz, Frequency, Ticks, Ticks64, Time};
+use kernel::hil::time::{self, Alarm, ConvertTicks, Frequency, Ticks, Ticks64, Time};
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::registers::register_bitfields;
@@ -40,6 +41,9 @@ register_bitfields![usize,
         enable OFFSET(0) NUMBITS(1) [],
         cascade OFFSET(3) NUMBITS(1) [],
     ],
+    value [
+        value OFFSET(0) NUMBITS(32) [],
+    ],
 ];
 
 pub struct InternalTimers<'a> {
@@ -53,6 +57,8 @@ pub struct InternalTimers<'a> {
     mitb1: ReadWriteRiscvCsr<usize, mitb0::Register, 0x7D6>,
     mitctl0: ReadWriteRiscvCsr<usize, mitctl0::Register, 0x7D4>,
     mitctl1: ReadWriteRiscvCsr<usize, mitctl1::Register, 0x7D5>,
+    mcycle: ReadWriteRiscvCsr<usize, value::Register, { riscv_csr::csr::MCYCLE }>,
+    mcycleh: ReadWriteRiscvCsr<usize, value::Register, { riscv_csr::csr::MCYCLEH }>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -80,6 +86,8 @@ impl<'a> InternalTimers<'a> {
             mitb1: ReadWriteRiscvCsr::new(),
             mitctl0: ReadWriteRiscvCsr::new(),
             mitctl1: ReadWriteRiscvCsr::new(),
+            mcycle: ReadWriteRiscvCsr::new(),
+            mcycleh: ReadWriteRiscvCsr::new(),
         }
     }
 
@@ -134,14 +142,22 @@ impl<'a> InternalTimers<'a> {
     }
 }
 
+/// Platform-specific frequency for the internal timers.
+#[derive(Debug)]
+pub enum FreqPlatform {}
+impl Frequency for FreqPlatform {
+    fn frequency() -> u32 {
+        // Safety: This is a constant defined in the platform.
+        unsafe { TIMER_FREQUENCY_HZ }
+    }
+}
+
 impl Time for InternalTimers<'_> {
-    // TODO: replace with real VeeR frequency
-    // This is roughly okay for the emulator though.
-    type Frequency = Freq1MHz;
+    type Frequency = FreqPlatform;
     type Ticks = Ticks64;
 
     fn now(&self) -> Ticks64 {
-        (self.mitcnt0.get() as u32).into()
+        (((self.mcycleh.get() as u64) << 32) | (self.mcycle.get() as u64)).into()
     }
 }
 
@@ -151,15 +167,19 @@ impl<'a> time::Alarm<'a> for InternalTimers<'a> {
     }
 
     fn set_alarm(&self, reference: Self::Ticks, dt: Self::Ticks) {
-        // This does not handle the 32-bit wraparound case.
+        // This does not handle the 64-bit wraparound case.
         // TODO: support cascade to support larger time ranges
         let now = self.now();
-        let mut expire = reference.wrapping_add(dt);
-
-        if !now.within_range(reference, expire) {
-            expire = now;
-        }
-        let val = (expire.into_u64() & 0xffff_ffff) as usize;
+        let expire = reference.wrapping_add(dt);
+        let dt = if now.within_range(reference, expire) {
+            dt
+        } else {
+            // expire immediately
+            1u64.into()
+        };
+        let val = (dt.into_u64() & 0xffff_ffff) as usize;
+        // Set the start as 0 and the bound as the delta.
+        self.mitcnt0.set(0);
         self.mitb0.set(val);
         self.enable_timer0();
     }

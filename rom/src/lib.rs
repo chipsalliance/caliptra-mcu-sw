@@ -20,8 +20,15 @@ mod fuses;
 pub use fuses::*;
 mod rom;
 pub use rom::*;
+mod rom_env;
+pub use rom_env::*;
 mod i3c;
 mod recovery;
+
+// Boot flow modules
+mod cold_boot;
+pub use cold_boot::ColdBoot;
+
 pub trait FatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> !;
 }

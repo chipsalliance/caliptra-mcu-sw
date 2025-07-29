@@ -1,10 +1,11 @@
 // Licensed under the Apache-2.0 license
 
+use crate::reset_reason::ResetReasonEmulator;
 use caliptra_emu_bus::{ActionHandle, Clock, ReadWriteRegister, Timer, TimerAction};
 use caliptra_emu_types::RvData;
 use emulator_registers_generated::mci::MciPeripheral;
 use registers_generated::mci::bits::{
-    Error0IntrT, WdtStatus, WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
+    Error0IntrT, ResetReason, WdtStatus, WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
 };
 use tock_registers::interfaces::{ReadWriteable, Readable};
 
@@ -16,6 +17,9 @@ pub struct Mci {
     timer: Timer,
     op_wdt_timer1_expired_action: Option<ActionHandle>,
     op_wdt_timer2_expired_action: Option<ActionHandle>,
+
+    // emulates the RESET_REASON register
+    reset_reason: ResetReasonEmulator,
 }
 
 impl Mci {
@@ -28,6 +32,9 @@ impl Mci {
     pub const CPTRA_WDT_STATUS_START: u32 = 0xd0;
 
     pub fn new(clock: &Clock, ext_mci_regs: caliptra_emu_periph::mci::Mci) -> Self {
+        let mut reset_reason = ResetReasonEmulator::new();
+        reset_reason.handle_power_up();
+
         Self {
             ext_mci_regs,
 
@@ -35,6 +42,7 @@ impl Mci {
             timer: Timer::new(clock),
             op_wdt_timer1_expired_action: None,
             op_wdt_timer2_expired_action: None,
+            reset_reason,
         }
     }
 }
@@ -70,6 +78,14 @@ impl MciPeripheral for Mci {
 
     fn read_mci_reg_wdt_cfg(&mut self, index: usize) -> RvData {
         self.ext_mci_regs.regs.borrow().wdt_cfg[index]
+    }
+
+    fn read_mci_reg_reset_reason(&mut self) -> ReadWriteRegister<u32, ResetReason::Register> {
+        ReadWriteRegister::new(self.reset_reason.get())
+    }
+
+    fn write_mci_reg_reset_reason(&mut self, val: ReadWriteRegister<u32, ResetReason::Register>) {
+        self.reset_reason.set(val.reg.get());
     }
 
     fn write_mci_reg_wdt_timer1_en(&mut self, val: ReadWriteRegister<u32, WdtTimer1En::Register>) {
