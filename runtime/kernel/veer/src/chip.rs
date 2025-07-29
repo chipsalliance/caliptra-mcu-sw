@@ -28,12 +28,11 @@ extern "C" {
     pub static TIMER_FREQUENCY_HZ: u32;
 }
 
-//pub static mut PIC: Pic = Pic::new();
-
 pub static mut TIMERS: InternalTimers<'static> = InternalTimers::new();
 // TODO: these should be part of the memory map
-pub const I3C_ERROR_IRQ: u8 = 0x11;
-pub const I3C_NOTIF_IRQ: u8 = 0x12;
+pub const MCI_IRQ: u8 = 0x1;
+pub const I3C_IRQ: u8 = 0x2;
+pub const LSB_IRG: u8 = 0x3;
 
 pub struct VeeR<'a, I: InterruptService + 'a> {
     userspace_kernel_boundary: SysCall,
@@ -75,11 +74,8 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
             .service_interrupt(interrupt)
         {
             return true;
-        } else if interrupt == I3C_ERROR_IRQ as u32 {
-            self.i3c.handle_error_interrupt();
-            return true;
-        } else if interrupt == I3C_NOTIF_IRQ as u32 {
-            self.i3c.handle_notification_interrupt();
+        } else if interrupt == I3C_IRQ as u32 {
+            self.i3c.handle_interrupt();
             return true;
         }
         debug!("Unhandled interrupt {}", interrupt);
@@ -240,23 +236,18 @@ unsafe fn handle_interrupt(intr: mcause::Interrupt, mcause: u32) {
             // We received an interrupt, disable interrupts while we handle them
             CSR.mie.modify(mie::mext::CLEAR);
 
-            // Claim the interrupt, unwrap() as we know an interrupt exists
-            // Once claimed this interrupt won't fire until it's completed
-            // NOTE: The interrupt is no longer pending in the PIC
-            loop {
-                let interrupt = PIC.next_pending();
-
-                match interrupt {
-                    Some(irq) => {
-                        PIC.save_interrupt(irq);
-                    }
-                    None => {
-                        // Enable generic interrupts
-                        CSR.mie.modify(mie::mext::SET);
-                        break;
-                    }
-                }
+            // Claim the interrupt, unwrap() as we know an interrupt exists.
+            // Once claimed this interrupt won't fire until it's completed.
+            // MCU is configured in fast interrupt mode, which means
+            // we can only process one pending interrupt at a time,
+            // and will rely on the PIC to trigger the next one
+            // after we return.
+            if let Some(irq) = PIC.next_pending() {
+                PIC.save_interrupt(irq);
             }
+
+            // Enable generic interrupts
+            CSR.mie.modify(mie::mext::SET);
         }
 
         mcause::Interrupt::Unknown => {

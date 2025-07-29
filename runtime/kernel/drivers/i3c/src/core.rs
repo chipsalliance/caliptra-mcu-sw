@@ -11,66 +11,22 @@ use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::{debug, ErrorCode};
-use registers_generated::i3c::bits::{
-    InterruptEnable, InterruptStatus, StbyCrDeviceAddr, StbyCrDeviceChar,
-};
+use registers_generated::i3c::bits::{InterruptEnable, InterruptStatus, StbyCrDeviceAddr};
 use registers_generated::i3c::regs::I3c;
 use tock_registers::register_bitfields;
-use tock_registers::LocalRegisterCopy;
 
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
 pub const MAX_READ_WRITE_SIZE: usize = 250;
 
 register_bitfields! {
     u32,
-        I3CResponseDescriptor [
-            ErrStatus OFFSET(28) NUMBITS(4) [
-                Success = 0,
-                CRCError = 1,
-                ParityError = 2,
-                FrameError = 3,
-                AddrHeaderError = 4,
-                Nack = 5,
-                Overflow = 6,
-                ShortReadError = 7,
-                Aborted = 8,
-                BusError = 9,
-                NotSupported = 10,
-                Reserved0 = 11,
-                Reserved1 = 12,
-                Reserved2 = 13,
-                Reserved3 = 14,
-                Reserved4 = 15,
-            ],
-            TID OFFSET(24) NUMBITS(4) [],
-            DataLength OFFSET(0) NUMBITS(16) [],
-        ],
     IbiDescriptor [
-        ReceivedStatus OFFSET(31) NUMBITS(1) [],
-        Error OFFSET(30) NUMBITS(1) [],
-        StatusType OFFSET(27) NUMBITS(3) [
-            Regular = 0,
-            CreditAck = 1,
-            ScheduledCmd = 2,
-            AutocmdRead = 4,
-            StbyCrBcastCcc = 7,
-        ],
-        TimestampPreset OFFSET(25) NUMBITS(1) [],
-        LastStatus OFFSET(24) NUMBITS(1) [],
-        Chunks OFFSET(16) NUMBITS(8) [],
-        ID OFFSET(8) NUMBITS(8) [],
+        Mdb OFFSET(24) NUMBITS(8) [],
         DataLength OFFSET(0) NUMBITS(8) [],
-    ]
-}
-
-register_bitfields! {
-    u64,
-    I3CCommandDescriptor [
-        RNW OFFSET(29) NUMBITS(1) [
-            Write = 0,
-            Read = 1,
-        ],
-        DataLength OFFSET(48) NUMBITS(16) [],
+    ],
+    RxDesc [
+        Error OFFSET(28) NUMBITS(4) [],
+        DataLength OFFSET(0) NUMBITS(16) [],
     ],
 }
 
@@ -96,12 +52,6 @@ pub struct I3CCore<'a, A: Alarm<'a>> {
 }
 
 impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
-    // bit 4 = 0: we don't support virtual targets
-    // bit 3 = 0: we will always respond to bus commands
-    // bit 2 = 0: no ibi data bytes
-    // bit 1 = 2: ibi request capable
-    // bit 0 = 0: no max data speed limitation
-    const BCR: u32 = 2;
     // how long to wait to retry
     const RETRY_WAIT_TICKS: u32 = 1000;
 
@@ -122,13 +72,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         }
     }
 
-    pub fn configure(&self, device_characteristic: u8) {
-        self.registers.stdby_ctrl_mode_stby_cr_device_char.modify(
-            StbyCrDeviceChar::Dcr.val(device_characteristic as u32)
-                + StbyCrDeviceChar::BcrVar.val(Self::BCR),
-        );
-    }
-
     pub fn init(&'static self) {
         // Most of the I3C setup is done by the ROM.
         self.alarm.setup();
@@ -136,26 +79,18 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     pub fn enable_interrupts(&self) {
-        self.registers.tti_interrupt_enable.modify(
-            InterruptEnable::IbiThldStatEn::SET
-                + InterruptEnable::RxDescThldStatEn::SET
-                + InterruptEnable::TxDescThldStatEn::SET
-                + InterruptEnable::RxDataThldStatEn::SET
-                + InterruptEnable::TxDataThldStatEn::SET,
-        );
+        romtime::println!("[mcu-runtime-i3c] Enabling I3C interrupts");
+        self.registers
+            .tti_interrupt_enable
+            .modify(InterruptEnable::RxDescStatEn::SET + InterruptEnable::TxDescStatEn::SET);
     }
 
     pub fn disable_interrupts(&self) {
-        self.registers.tti_interrupt_enable.modify(
-            InterruptEnable::IbiThldStatEn::CLEAR
-                + InterruptEnable::RxDescThldStatEn::CLEAR
-                + InterruptEnable::TxDescThldStatEn::CLEAR
-                + InterruptEnable::RxDataThldStatEn::CLEAR
-                + InterruptEnable::TxDataThldStatEn::CLEAR,
-        );
+        romtime::println!("[mcu-runtime-i3c] Disabling I3C interrupts");
+        self.registers.tti_interrupt_enable.set(0);
     }
 
-    pub fn handle_interrupt(&self, _error: bool) {
+    pub fn handle_interrupt(&self) {
         let tti_interrupts = self.registers.tti_interrupt_status.extract();
         if tti_interrupts.get() != 0 {
             // Bus error occurred
@@ -241,14 +176,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         self.alarm.set_alarm(now, ticks.into());
     }
 
-    pub fn handle_error_interrupt(&self) {
-        self.handle_interrupt(true);
-    }
-
-    pub fn handle_notification_interrupt(&self) {
-        self.handle_interrupt(false);
-    }
-
     // called when TTI has a private Write with data for us to grab
     pub fn handle_incoming_write(&self) {
         self.retry_incoming_write.set(false);
@@ -268,12 +195,13 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let rx_buffer = self.rx_buffer.take().unwrap();
         let mut buf_idx = self.rx_buffer_idx.get();
         let buf_size = self.rx_buffer_size.get();
-        let desc0 = self.registers.tti_rx_desc_queue_port.get();
+
+        // TODO: correct this when we send the 32-bit descriptors matching i3c-core
+        let _desc = self.registers.tti_rx_desc_queue_port.get();
         let desc1 = self.registers.tti_rx_desc_queue_port.get();
-        let desc = LocalRegisterCopy::<u64, I3CCommandDescriptor::Register>::new(
-            ((desc1 as u64) << 32) | (desc0 as u64),
-        );
-        let len = desc.read(I3CCommandDescriptor::DataLength) as usize;
+        // let desc = LocalRegisterCopy::<u32, RxDesc::Register>::new(desc);
+        // let len = desc.read(RxDesc::DataLength) as usize;
+        let len = (desc1 >> 16) as usize;
 
         // read everything
         let mut full = false;
@@ -365,12 +293,20 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // TODO: we have no way to send this to the client
     }
 
-    fn send_ibi(&self, mdb: u8) {
-        // TODO: it is unclear if we need to set anything else in the descriptor
-        self.registers
-            .tti_tti_ibi_port
-            .set(IbiDescriptor::DataLength.val(1).value);
-        self.registers.tti_tti_ibi_port.set(mdb as u32);
+    fn send_ibi(&self, mdb: u8, data: &[u8]) {
+        // write the descriptor first
+        self.registers.tti_tti_ibi_port.set(
+            (IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(data.len() as u32))
+                .into(),
+        );
+
+        // write payload
+        data.chunks(4).for_each(|chunk| {
+            let mut bytes = [0; 4];
+            bytes[..chunk.len()].copy_from_slice(chunk);
+            let word = u32::from_le_bytes(bytes);
+            self.registers.tti_tti_ibi_port.set(word);
+        });
     }
 }
 
@@ -402,7 +338,7 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         self.tx_buffer_idx.set(0);
         self.tx_buffer_size.set(len);
         // TODO: check that this is for MCTP or something else
-        self.send_ibi(MDB_PENDING_READ_MCTP);
+        self.send_ibi(MDB_PENDING_READ_MCTP, &[]);
         Ok(())
     }
 
@@ -458,7 +394,7 @@ impl<'a, A: Alarm<'a>> AlarmClient for I3CCore<'a, A> {
             self.handle_outgoing_read();
         }
         if self.retry_incoming_write.get() {
-            self.handle_notification_interrupt();
+            self.handle_interrupt();
         }
     }
 }

@@ -216,33 +216,44 @@ impl KernelResources<VeeRChip> for VeeR {
     }
 }
 
-// TODO: remove this dependence on the emulator when the emulator-specific
-// pieces are moved to platform/emulator/runtime
-pub(crate) struct EmulatorWriter {}
-pub(crate) static mut EMULATOR_WRITER: EmulatorWriter = EmulatorWriter {};
+pub(crate) struct FpgaWriter {}
+pub(crate) static mut FPGA_WRITER: FpgaWriter = FpgaWriter {};
 
-impl core::fmt::Write for EmulatorWriter {
+impl core::fmt::Write for FpgaWriter {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         print_to_console(s);
         Ok(())
     }
 }
 
+const FPGA_UART_OUTPUT: *mut u32 = 0xa401_1014 as *mut u32;
+
 pub(crate) fn print_to_console(buf: &str) {
     for b in buf.bytes() {
         // Print to this address for emulator output
         unsafe {
-            core::ptr::write_volatile(0xa401_1014 as *mut u32, b as u32 | 0x100);
+            core::ptr::write_volatile(FPGA_UART_OUTPUT, b as u32 | 0x100);
         }
     }
 }
 
-pub(crate) struct EmulatorExiter {}
-pub(crate) static mut EMULATOR_EXITER: EmulatorExiter = EmulatorExiter {};
-impl romtime::Exit for EmulatorExiter {
+pub(crate) struct FpgaExiter {}
+pub(crate) static mut FPGA_EXITER: FpgaExiter = FpgaExiter {};
+impl romtime::Exit for FpgaExiter {
     fn exit(&mut self, code: u32) {
-        crate::io::exit_emulator(code);
+        exit_fpga(code)
     }
+}
+
+/// Exit the FPGA
+pub fn exit_fpga(exit_code: u32) -> ! {
+    // Safety: This is a safe memory address to write to for exiting the FPGA.
+    unsafe {
+        // By writing to this address we can exit the FPGA.
+        let b = if exit_code == 0 { 0xff } else { 0x01 };
+        core::ptr::write_volatile(FPGA_UART_OUTPUT, b as u32 | 0x100);
+    }
+    loop {}
 }
 
 /// Main function called after RAM initialized.
@@ -257,9 +268,9 @@ pub unsafe fn main() {
     // TODO: remove this when the emulator-specific pieces are moved to
     // platform/emulator/runtime
     #[allow(static_mut_refs)]
-    romtime::set_printer(&mut EMULATOR_WRITER);
+    romtime::set_printer(&mut FPGA_WRITER);
     #[allow(static_mut_refs)]
-    romtime::set_exiter(&mut EMULATOR_EXITER);
+    romtime::set_exiter(&mut FPGA_EXITER);
 
     // Set up memory protection immediately after setting the trap handler, to
     // ensure that much of the board initialization routine runs with ePMP
@@ -406,7 +417,7 @@ pub unsafe fn main() {
         VeeRDefaultPeripherals,
         VeeRDefaultPeripherals::new(fpga_peripherals, mux_alarm, &MCU_MEMORY_MAP)
     );
-    romtime::println!("[mcu-runtime] Peripherals initialized");
+    romtime::println!("[mcu-runtime] Peripherals created");
 
     let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
     romtime::println!(

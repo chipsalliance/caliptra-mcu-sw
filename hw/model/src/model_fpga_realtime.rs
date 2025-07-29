@@ -10,7 +10,7 @@ use caliptra_emu_bus::{Device, Event, EventData, RecoveryCommandCode};
 use caliptra_hw_model_types::{DEFAULT_FIELD_ENTROPY, DEFAULT_UDS_SEED};
 use emulator_bmc::Bmc;
 use registers_generated::i3c;
-use registers_generated::i3c::bits::DeviceStatus0;
+use registers_generated::i3c::bits::{DeviceStatus0, StbyCrDeviceAddr, StbyCrVirtDeviceAddr};
 use registers_generated::mci::bits::Go::Go;
 use std::io::Write;
 use std::net::{SocketAddr, TcpStream};
@@ -39,9 +39,6 @@ const OTP_MAPPING: (usize, usize) = (1, 4);
 const ITRNG_DIVISOR: u32 = 400;
 const DEFAULT_AXI_PAUSER: u32 = 0xcccc_cccc;
 const OTP_SIZE: usize = 16384;
-
-// use the virtual target dynamic address for the recovery target
-const RECOVERY_TARGET_ADDR: u8 = 0x3b;
 
 // ITRNG FIFO stores 1024 DW and outputs 4 bits at a time to Caliptra.
 const FPGA_ITRNG_FIFO_SIZE: usize = 1024;
@@ -705,25 +702,94 @@ impl ModelFpgaRealtime {
         );
     }
 
+    fn get_i3c_primary_addr(&mut self) -> u8 {
+        let reg = self
+            .i3c_core()
+            .stdby_ctrl_mode_stby_cr_device_addr
+            .extract();
+        if reg.is_set(StbyCrDeviceAddr::DynamicAddrValid) {
+            reg.read(StbyCrDeviceAddr::DynamicAddr) as u8
+        } else if reg.is_set(StbyCrDeviceAddr::StaticAddrValid) {
+            reg.read(StbyCrDeviceAddr::StaticAddr) as u8
+        } else {
+            panic!("I3C target does not have a valid address set");
+        }
+    }
+
+    fn get_i3c_recovery_addr(&mut self) -> u8 {
+        let reg = self
+            .i3c_core()
+            .stdby_ctrl_mode_stby_cr_virt_device_addr
+            .extract();
+        if reg.is_set(StbyCrVirtDeviceAddr::VirtDynamicAddrValid) {
+            reg.read(StbyCrVirtDeviceAddr::VirtDynamicAddr) as u8
+        } else if reg.is_set(StbyCrVirtDeviceAddr::VirtStaticAddrValid) {
+            reg.read(StbyCrVirtDeviceAddr::VirtStaticAddr) as u8
+        } else {
+            panic!("I3C target does not have a valid address set");
+        }
+    }
+
+    // send a recovery block write request to the I3C target
+    pub fn send_i3c_write(&mut self, payload: &[u8]) {
+        let target_addr = self.get_i3c_primary_addr();
+        println!("I3C addr = {:x}", target_addr);
+        let mut cmd = xi3c::Command {
+            cmd_type: 1,
+            no_repeated_start: 1,
+            pec: 1,
+            target_addr,
+            ..Default::default()
+        };
+        println!("TTI status: {:x}", self.i3c_core().tti_status.get());
+        println!(
+            "TTI interrupt enable: {:x}",
+            self.i3c_core().tti_interrupt_enable.get()
+        );
+        println!(
+            "TTI interrupt status: {:x}",
+            self.i3c_core().tti_interrupt_status.get()
+        );
+        match self
+            .i3c_controller
+            .master_send_polled(&mut cmd, payload, payload.len() as u16)
+        {
+            Ok(_) => {
+                println!("Acknowledge received");
+            }
+            Err(e) => {
+                println!("Failed to ack write message sent to target: {:x}", e);
+            }
+        }
+
+        println!("TTI status: {:x}", self.i3c_core().tti_status.get());
+        println!(
+            "TTI interrupt enable: {:x}",
+            self.i3c_core().tti_interrupt_enable.get()
+        );
+        println!(
+            "TTI interrupt status: {:x}",
+            self.i3c_core().tti_interrupt_status.get()
+        );
+    }
+
     // send a recovery block read request to the I3C target
     fn recovery_block_read_request(&mut self, command: RecoveryCommandCode) -> Option<Vec<u8>> {
         // per the recovery spec, this maps to a private write and private read
+
+        let target_addr = self.get_i3c_recovery_addr();
 
         // First we write the recovery command code for the block we want
         let mut cmd = xi3c::Command {
             cmd_type: 1,
             no_repeated_start: 0, // we want the next command (read) to be Sr
             pec: 1,
-            target_addr: RECOVERY_TARGET_ADDR,
+            target_addr,
             ..Default::default()
         };
 
         let recovery_command_code = Self::command_code_to_u8(command);
 
-        // println!(
-        //     "Sending write to target: 0x{:x} to start recovery block read (with no termination)",
-        //     recovery_command_code
-        // );
         if self
             .i3c_controller
             .master_send_polled(&mut cmd, &[recovery_command_code], 1)
@@ -732,34 +798,19 @@ impl ModelFpgaRealtime {
             return None;
         }
 
-        // assert!(
-        //         .is_ok(),
-        //     "Failed to ack write message sent to target for command code {}",
-        //     recovery_command_code
-        // );
-        // println!("Acknowledge received");
-
         // then we send a private read for the minimum length
         let len_range = Self::command_code_to_len(command);
-        cmd.target_addr = RECOVERY_TARGET_ADDR;
+        cmd.target_addr = target_addr;
         cmd.no_repeated_start = 0;
         cmd.tid = 0;
         cmd.pec = 0;
         cmd.cmd_type = 1;
-        // println!(
-        //     "Starting private read from target for {} bytes with repeated start",
-        //     len_range.0
-        // );
+
         self.i3c_controller
             .master_recv(&mut cmd, len_range.0 + 2)
             .expect("Failed to receive ack from target");
-        // println!("Acknowledge received");
 
         // read in the length, lsb then msb
-        // println!(
-        //     "Reading the minimum block length ({}+ bytes expected)",
-        //     len_range.0
-        // );
         let resp = self
             .i3c_controller
             .master_recv_finish(
@@ -772,7 +823,6 @@ impl ModelFpgaRealtime {
         if resp.len() < 2 {
             panic!("Expected to read at least 2 bytes from target for recovery block length");
         }
-        // println!("Read from target {:02x?}", resp);
         let len = u16::from_le_bytes([resp[0], resp[1]]);
         if len < len_range.0 || len > len_range.1 {
             self.print_i3c_registers();
@@ -783,14 +833,12 @@ impl ModelFpgaRealtime {
         }
         let len = len as usize;
         let left = len - (resp.len() - 2);
-        // println!("Expect to read {} bytes from target ({} more)", len, left);
         // read the rest of the bytes
         if left > 0 {
             // TODO: if the length is more than the minimum we need to abort and restart with the correct value
             // because the xi3c controller does not support variable reads.
             todo!()
         }
-        // println!("Got block read back from target: {:x?}", &resp[2..]);
         Some(resp[2..].to_vec())
     }
 
@@ -798,21 +846,16 @@ impl ModelFpgaRealtime {
     fn recovery_block_write_request(&mut self, command: RecoveryCommandCode, payload: &[u8]) {
         // per the recovery spec, this maps to a private write
 
+        let target_addr = self.get_i3c_recovery_addr();
         let mut cmd = xi3c::Command {
             cmd_type: 1,
             no_repeated_start: 1,
             pec: 1,
-            target_addr: RECOVERY_TARGET_ADDR,
+            target_addr,
             ..Default::default()
         };
 
         let recovery_command_code = Self::command_code_to_u8(command);
-
-        // println!(
-        //     "Sending write to target: 0x{:x} + 2 bytes length + {} bytes payload",
-        //     recovery_command_code,
-        //     payload.len(),
-        // );
 
         let mut data = vec![recovery_command_code];
         data.extend_from_slice(&(payload.len() as u16).to_le_bytes());

@@ -432,8 +432,7 @@ impl Emulator {
         let dma_rom_sram = root_bus.rom_sram.clone();
         let direct_read_flash = root_bus.direct_read_flash.clone();
 
-        let i3c_error_irq = pic.register_irq(McuRootBus::I3C_ERROR_IRQ);
-        let i3c_notif_irq = pic.register_irq(McuRootBus::I3C_NOTIF_IRQ);
+        let i3c_irq = pic.register_irq(McuRootBus::I3C_IRQ);
 
         println!("Starting I3C Socket, port {}", cli.i3c_port.unwrap_or(0));
 
@@ -446,8 +445,7 @@ impl Emulator {
         let i3c = I3c::new(
             &clock.clone(),
             &mut i3c_controller,
-            i3c_error_irq,
-            i3c_notif_irq,
+            i3c_irq,
             cli.hw_revision.clone(),
         );
         let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
