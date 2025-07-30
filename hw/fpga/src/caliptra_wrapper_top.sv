@@ -27,9 +27,7 @@
 import axi_struct_pkg::*;
 import caliptra_fpga_realtime_regs_pkg::*;
 
-module caliptra_wrapper_top #(
-    `include "el2_param.vh"
-) (
+module caliptra_wrapper_top (
     input bit core_clk,
     input bit i3c_clk,
 
@@ -2036,7 +2034,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_cptra_core_jtag_trst_n_i(jtag_trst_n),
     .cptra_ss_cptra_core_jtag_tdo_o(jtag_tdo),
     .cptra_ss_cptra_core_jtag_tdoEn_o(),
-    //output logic [124:0]               cptra_ss_cptra_generic_fw_exec_ctrl_o,
+    //output logic [124:0]               cptra_ss_cptra_generic_fw_exec_ctrl_o, // TODO
     .cptra_ss_cptra_generic_fw_exec_ctrl_o(),
     .cptra_ss_cptra_generic_fw_exec_ctrl_2_mcu_o(cptra_ss_cptra_generic_fw_exec_ctrl_2_mcu),
     .cptra_ss_cptra_generic_fw_exec_ctrl_2_mcu_i(cptra_ss_cptra_generic_fw_exec_ctrl_2_mcu),
@@ -2099,15 +2097,14 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_mcu_no_rom_config_i(hwif_out.interface_regs.mcu_config.mcu_no_rom_config.value),
     .cptra_ss_mci_boot_seq_brkpoint_i(hwif_out.interface_regs.mcu_config.cptra_ss_mci_boot_seq_brkpoint_i.value),
 
-    // TODO: input logic cptra_ss_lc_Allow_RMA_on_PPD_i,
-    .cptra_ss_lc_Allow_RMA_or_SCRAP_on_PPD_i(1'b0),
-    .cptra_ss_FIPS_ZEROIZATION_PPD_i(1'b0), // TODO: Connect to wrapper?
+    .cptra_ss_lc_Allow_RMA_or_SCRAP_on_PPD_i(1'b0), // TODO: Connect to wrapper?
+    .cptra_ss_FIPS_ZEROIZATION_PPD_i(1'b0), // TODO: Connect to wrapper? Physical pin to trigger zeroization
 
     .cptra_ss_all_error_fatal_o(hwif_in.interface_regs.mci_error.mci_error_fatal.next), // TODO: Update name in wrapper
     .cptra_ss_all_error_non_fatal_o(hwif_in.interface_regs.mci_error.mci_error_non_fatal.next), // TODO: Update name in wrapper
 
-    // TODO: MCU JTAG
-    .cptra_ss_mcu_ext_int(0), // TODO: Should SW drive this to something?
+    .cptra_ss_mcu_ext_int(0), // TODO: Should SW drive this to something? SOC interrupts
+    // MCU JTAG
     .cptra_ss_mcu_jtag_tck_i(mcu_jtag_tck_i),
     .cptra_ss_mcu_jtag_tms_i(mcu_jtag_tms_i),
     .cptra_ss_mcu_jtag_tdi_i(mcu_jtag_tdi_i),
@@ -2142,6 +2139,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_lc_esclate_scrap_state0_i(hwif_out.interface_regs.mcu_config.cptra_ss_lc_esclate_scrap_state0_i.value),   // NOTE: These two signals are very important. FIXME: Renaming is needed
     .cptra_ss_lc_esclate_scrap_state1_i(hwif_out.interface_regs.mcu_config.cptra_ss_lc_esclate_scrap_state1_i.value),   // If you assert them, Caliptr-SS will enter SCRAP mode
 
+    // TODO: Connect?
     /*output wire*/ .cptra_ss_soc_dft_en_o(),
     /*output wire*/ .cptra_ss_soc_hw_debug_en_o(),
 
@@ -2176,6 +2174,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     assign fifo_write_en = caliptra_ss_top_0.caliptra_top_dut.soc_ifc_top1.i_soc_ifc_reg.field_combo.CPTRA_GENERIC_OUTPUT_WIRES[0].generic_wires.load_next;
     assign fifo_char[7:0] = caliptra_ss_top_0.caliptra_top_dut.soc_ifc_top1.i_soc_ifc_reg.field_combo.CPTRA_GENERIC_OUTPUT_WIRES[0].generic_wires.next[7:0];
 
+    // Hierarchical references for exposing signals for debug.
     assign caliptra_ifu_i0_pc = {caliptra_ss_top_0.caliptra_top_dut.rvtop.veer.ifu_i0_pc, 1'b0};
     assign mcu_ifu_i0_pc      = {caliptra_ss_top_0.rvtop_wrapper.rvtop.veer.ifu_i0_pc, 1'b0};
     assign ifu_i0_instr       = caliptra_ss_top_0.rvtop_wrapper.rvtop.veer.ifu_i0_instr;

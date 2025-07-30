@@ -1,5 +1,5 @@
 
-set adbDir $fpgaDir/../third_party/caliptra-rtl/submodules/adams-bridge
+set adbDir $ssrtlDir/third_party/caliptra-rtl/submodules/adams-bridge
 
 if { [file exists $adbDir/src/abr_prim/rtl/abr_prim_flop_macros.sv] == 0 } {
     puts "ERROR: $adbDir/src/abr_prim/rtl/abr_prim_flop_macros.sv not found"

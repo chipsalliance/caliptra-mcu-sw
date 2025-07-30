@@ -37,9 +37,8 @@ add_files [ glob $caliptrartlDir/src/riscv_core/veer_el2/rtl/*/*.sv ]
 add_files [ glob $caliptrartlDir/src/riscv_core/veer_el2/rtl/*/*.v ]
 
 # Add Adam's Bridge
-if {$ENABLE_ADB} {
-  source adams-bridge-files.tcl
-}
+source adams-bridge-files.tcl
+
 # Add Caliptra headers and packages
 add_files [ glob $caliptrartlDir/src/*/rtl/*.svh ]
 add_files [ glob $caliptrartlDir/src/*/rtl/*_pkg.sv ]
@@ -74,7 +73,7 @@ add_files [ glob $ssrtlDir/src/*/rtl/*.svh ]
 add_files [ glob $ssrtlDir/src/*/rtl/*.sv ]
 
 # I3C
-set i3cDir $fpgaDir/../third_party/i3c-core
+set i3cDir $ssrtlDir/third_party/i3c-core
 # Include headers and packages first
 add_files [ glob $i3cDir/src/*.svh ]
 add_files [ glob $i3cDir/src/libs/*.svh ]
@@ -86,37 +85,20 @@ add_files [ glob $i3cDir/src/*_pkg.sv ]
 add_files [ glob $i3cDir/src/*/*/*.sv ]
 add_files [ glob $i3cDir/src/*/*.sv ]
 add_files [ glob $i3cDir/src/*.sv ]
-# Remove the i3c-core versions of the AXI modules, so that it uses the caliptra-rtl versions instead
-#remove_files [ glob $i3cDir/src/libs/*.svh ]
-#remove_files [ glob $i3cDir/src/libs/axi_sub/*.sv ]
 
 # Remove spi_host files that aren't used yet and are flagged as having syntax errors
 # TODO: Re-include these files when spi_host is used.
 remove_files [ glob $caliptrartlDir/src/spi_host/rtl/*.sv ]
 
-# Remove Caliptra files that need to be replaced by FPGA specific versions
-# Key Vault is very large. Replacing KV with a version with the minimum number of entries.
-#remove_files [ glob $caliptrartlDir/src/keyvault/rtl/kv_reg.sv ]
-
 # Add FPGA specific sources
 add_files [ glob $fpgaDir/src/*.sv]
 add_files [ glob $fpgaDir/src/*.v]
 
+# Replace RAM with FPGA block ram
+remove_files [ glob $caliptrartlDir/src/ecc/rtl/ecc_ram_tdp_file.sv ]
 
-if {$DISABLE_ECC} {
-  # Remove ECC to be replaced by stub for SS
-  remove_files [ glob $caliptrartlDir/src/ecc/rtl/*.sv ]
-} else {
-  # Replace RAM with FPGA block ram
-  remove_files [ glob $caliptrartlDir/src/ecc/rtl/ecc_ram_tdp_file.sv ]
-  # Remove ECC stub from FPGA files
-  remove_files $fpgaDir/src/ecc_stub.sv
-}
-
-if {$ENABLE_ADB} {
-  # Remove MLDSA stub
-  remove_files $fpgaDir/src/mldsa_stub.sv
-}
+# Replace caliptra_ss_top with version modified with faster I3C clocks
+remove_files [ glob $ssrtlDir/src/integration/rtl/caliptra_ss_top.sv ]
 
 # TODO: Copy aes_clk_wrapper.sv to apply workaround
 file copy [ glob $caliptrartlDir/src/aes/rtl/aes_clp_wrapper.sv ] $outputDir/aes_clk_wrapper.sv

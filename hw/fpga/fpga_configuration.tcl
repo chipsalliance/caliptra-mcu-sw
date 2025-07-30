@@ -7,8 +7,6 @@ set ITRNG TRUE
 set CG_EN FALSE
 set RTL_VERSION latest
 set BOARD VCK190
-set DISABLE_ECC FALSE
-set ENABLE_ADB TRUE
 set ITRNG TRUE
 set FAST_I3C TRUE
 
@@ -36,9 +34,8 @@ file mkdir $outputDir
 file mkdir $caliptrapackageDir
 
 # Path to rtl
-#set rtlDir $fpgaDir/../$RTL_VERSION/rtl
-set caliptrartlDir $fpgaDir/../third_party/caliptra-rtl
-set ssrtlDir $fpgaDir/..
+set ssrtlDir $fpgaDir/../caliptra-ss
+set caliptrartlDir $ssrtlDir/third_party/caliptra-rtl
 puts "JTAG: $JTAG"
 puts "ITRNG: $ITRNG"
 puts "CG_EN: $CG_EN"
