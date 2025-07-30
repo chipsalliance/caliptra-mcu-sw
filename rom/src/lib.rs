@@ -14,6 +14,8 @@ Abstract:
 
 #![no_std]
 
+pub mod boot_status;
+pub use boot_status::*;
 pub mod flash;
 pub use flash::*;
 mod fuses;

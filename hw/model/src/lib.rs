@@ -358,4 +358,8 @@ pub trait McuHwModel {
     fn events_from_caliptra(&mut self) -> Vec<Event>;
 
     fn events_to_caliptra(&mut self) -> mpsc::Sender<Event>;
+
+    fn mci_flow_status(&mut self) -> u32 {
+        0
+    }
 }

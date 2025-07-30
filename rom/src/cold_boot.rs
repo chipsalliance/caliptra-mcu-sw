@@ -14,6 +14,7 @@ Abstract:
 
 #![allow(clippy::empty_loop)]
 
+use crate::boot_status::McuRomBootStatus;
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
 use caliptra_api::mailbox::{CommandId, FeProgReq, MailboxReqHeader};
 use caliptra_api::CaliptraApiError;
@@ -26,7 +27,11 @@ use zerocopy::{transmute, IntoBytes};
 pub struct ColdBoot {}
 
 impl ColdBoot {
-    fn program_field_entropy(program_field_entropy: &[bool; 4], soc_manager: &mut CaliptraSoC) {
+    fn program_field_entropy(
+        program_field_entropy: &[bool; 4],
+        soc_manager: &mut CaliptraSoC,
+        mci: &romtime::Mci,
+    ) {
         for (partition, _) in program_field_entropy
             .iter()
             .enumerate()
@@ -81,6 +86,16 @@ impl ColdBoot {
                 }
                 fatal_error(7);
             };
+
+            // Set status for each partition completion
+            let partition_status = match partition {
+                0 => McuRomBootStatus::FieldEntropyPartition0Complete.into(),
+                1 => McuRomBootStatus::FieldEntropyPartition1Complete.into(),
+                2 => McuRomBootStatus::FieldEntropyPartition2Complete.into(),
+                3 => McuRomBootStatus::FieldEntropyPartition3Complete.into(),
+                _ => mci.flow_status(),
+            };
+            mci.set_flow_status(partition_status);
         }
     }
 }
@@ -88,6 +103,8 @@ impl ColdBoot {
 impl BootFlow for ColdBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
         romtime::println!("[mcu-rom] Starting cold boot flow");
+        env.mci
+            .set_flow_status(McuRomBootStatus::ColdBootFlowStarted.into());
 
         // Create local references to minimize code changes
         let mci = &env.mci;
@@ -101,15 +118,19 @@ impl BootFlow for ColdBoot {
 
         romtime::println!("[mcu-rom] Setting Caliptra boot go");
         mci.caliptra_boot_go();
+        mci.set_flow_status(McuRomBootStatus::CaliptraBootGoAsserted.into());
 
         lc.init().unwrap();
+        mci.set_flow_status(McuRomBootStatus::LifecycleControllerInitialized.into());
 
         if let Some((state, token)) = params.lifecycle_transition {
+            mci.set_flow_status(McuRomBootStatus::LifecycleTransitionStarted.into());
             if let Err(err) = lc.transition(state, &token) {
                 romtime::println!("[mcu-rom] Error transitioning lifecycle: {:?}", err);
                 fatal_error(err.into());
             }
             romtime::println!("Lifecycle transition successful; halting");
+            mci.set_flow_status(McuRomBootStatus::LifecycleTransitionComplete.into());
             loop {}
         }
 
@@ -118,9 +139,12 @@ impl BootFlow for ColdBoot {
             romtime::println!("[mcu-rom] Error initializing OTP: {}", HexWord(err as u32));
             fatal_error(err as u32);
         }
+        mci.set_flow_status(McuRomBootStatus::OtpControllerInitialized.into());
 
         if let Some(tokens) = params.burn_lifecycle_tokens.as_ref() {
             romtime::println!("[mcu-rom] Burning lifecycle tokens");
+            mci.set_flow_status(McuRomBootStatus::LifecycleTokenBurningStarted.into());
+
             if otp.check_error().is_some() {
                 romtime::println!("[mcu-rom] OTP error: {}", HexWord(otp.status()));
                 otp.print_errors();
@@ -139,13 +163,17 @@ impl BootFlow for ColdBoot {
                 romtime::test_exit(1);
             }
             romtime::println!("[mcu-rom] Lifecycle token burning successful; halting");
+            mci.set_flow_status(McuRomBootStatus::LifecycleTokenBurningComplete.into());
             loop {}
         }
 
         // only do these on the emulator for now
         let fuses = if unsafe { MCU_MEMORY_MAP.rom_offset } == 0x8000_0000 {
             match otp.read_fuses() {
-                Ok(fuses) => fuses,
+                Ok(fuses) => {
+                    mci.set_flow_status(McuRomBootStatus::FusesReadFromOtp.into());
+                    fuses
+                }
                 Err(e) => {
                     romtime::println!("Error reading fuses: {}", HexWord(e as u32));
                     fatal_error(1);
@@ -160,6 +188,7 @@ impl BootFlow for ColdBoot {
                 0xed, 0xb4, 0xd3, 0xb2, 0xd9, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             ];
+
             // swizzle
             for i in (0..64).step_by(4) {
                 let a = vendor[i];
@@ -171,6 +200,7 @@ impl BootFlow for ColdBoot {
                 vendor[i + 2] = b;
                 vendor[i + 3] = a;
             }
+            mci.set_flow_status(McuRomBootStatus::FusesReadFromOtp.into());
 
             Fuses {
                 vendor_hashes_manuf_partition: vendor,
@@ -185,16 +215,19 @@ impl BootFlow for ColdBoot {
 
             mci.set_nmi_vector(unsafe { MCU_MEMORY_MAP.rom_offset });
             mci.configure_wdt(straps.mcu_wdt_cfg0, straps.mcu_wdt_cfg1);
+            mci.set_flow_status(McuRomBootStatus::WatchdogConfigured.into());
         }
 
         romtime::println!("[mcu-rom] Initializing I3C");
         i3c.configure(straps.i3c_static_addr, true);
+        mci.set_flow_status(McuRomBootStatus::I3cInitialized.into());
 
         romtime::println!(
             "[mcu-rom] Waiting for Caliptra to be ready for fuses: {}",
             soc.ready_for_fuses()
         );
         while !soc.ready_for_fuses() {}
+        mci.set_flow_status(McuRomBootStatus::CaliptraReadyForFuses.into());
 
         romtime::println!("[mcu-rom] Writing fuses to Caliptra");
         romtime::println!(
@@ -216,15 +249,20 @@ impl BootFlow for ColdBoot {
         soc.set_cptra_trng_axi_user_lock(1);
         romtime::println!("[mcu-rom] Setting DMA user");
         soc.set_ss_caliptra_dma_axi_user(straps.axi_user);
+        mci.set_flow_status(McuRomBootStatus::AxiUsersConfigured.into());
 
         soc.populate_fuses(&fuses, params.program_field_entropy.iter().any(|x| *x));
+        mci.set_flow_status(McuRomBootStatus::FusesPopulatedToCaliptra.into());
+
         romtime::println!("[mcu-rom] Setting Caliptra fuse write done");
         soc.fuse_write_done();
         while soc.ready_for_fuses() {}
+        mci.set_flow_status(McuRomBootStatus::FuseWriteComplete.into());
 
         romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for mbox",);
         while !soc.ready_for_mbox() {}
         romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
+        mci.set_flow_status(McuRomBootStatus::CaliptraReadyForMailbox.into());
 
         // tell Caliptra to download firmware from the recovery interface
         romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command",);
@@ -241,6 +279,8 @@ impl BootFlow for ColdBoot {
             }
             fatal_error(4);
         }
+        mci.set_flow_status(McuRomBootStatus::RiDownloadFirmwareCommandSent.into());
+
         romtime::println!(
             "[mcu-rom] Done sending RI_DOWNLOAD_FIRMWARE command: status {}",
             HexWord(u32::from(
@@ -261,23 +301,27 @@ impl BootFlow for ColdBoot {
             }
             fatal_error(5);
         };
+        mci.set_flow_status(McuRomBootStatus::RiDownloadFirmwareComplete.into());
 
         // Loading flash into the recovery flow is only possible in 2.1+.
         if cfg!(feature = "hw-2-1") {
             if let Some(flash_driver) = params.flash_partition_driver {
                 romtime::println!("[mcu-rom] Starting Flash recovery flow");
+                mci.set_flow_status(McuRomBootStatus::FlashRecoveryFlowStarted.into());
 
                 crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
                     .map_err(|_| fatal_error(1))
                     .unwrap();
 
                 romtime::println!("[mcu-rom] Flash Recovery flow complete");
+                mci.set_flow_status(McuRomBootStatus::FlashRecoveryFlowComplete.into());
             }
         }
 
         romtime::println!("[mcu-rom] Waiting for firmware to be ready");
         while !soc.fw_ready() {}
         romtime::println!("[mcu-rom] Firmware is ready");
+        mci.set_flow_status(McuRomBootStatus::FirmwareReadyDetected.into());
 
         // Check that the firmware was actually loaded before jumping to it
         let firmware_ptr = unsafe { MCU_MEMORY_MAP.sram_offset as *const u32 };
@@ -287,6 +331,7 @@ impl BootFlow for ColdBoot {
             fatal_error(1);
         }
         romtime::println!("[mcu-rom] Firmware load detected");
+        mci.set_flow_status(McuRomBootStatus::FirmwareValidationComplete.into());
 
         // wait for the Caliptra RT to be ready
         // this is a busy loop, but it should be very short
@@ -294,17 +339,21 @@ impl BootFlow for ColdBoot {
             "[mcu-rom] Waiting for Caliptra RT to be ready for runtime mailbox commands"
         );
         while !soc.ready_for_runtime() {}
+        mci.set_flow_status(McuRomBootStatus::CaliptraRuntimeReady.into());
 
         romtime::println!("[mcu-rom] Finished common initialization");
 
         // program field entropy if requested
         if params.program_field_entropy.iter().any(|x| *x) {
             romtime::println!("[mcu-rom] Programming field entropy");
-            Self::program_field_entropy(&params.program_field_entropy, soc_manager);
+            mci.set_flow_status(McuRomBootStatus::FieldEntropyProgrammingStarted.into());
+            Self::program_field_entropy(&params.program_field_entropy, soc_manager, mci);
+            mci.set_flow_status(McuRomBootStatus::FieldEntropyProgrammingComplete.into());
         }
 
         // Jump to firmware
         romtime::println!("[mcu-rom] Jumping to firmware");
+        mci.set_flow_status(McuRomBootStatus::ColdBootFlowComplete.into());
 
         #[cfg(target_arch = "riscv32")]
         unsafe {

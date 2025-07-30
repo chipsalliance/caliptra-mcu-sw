@@ -47,6 +47,10 @@ impl Mci {
         self.registers.mci_reg_cptra_boot_go.set(1);
     }
 
+    pub fn set_flow_status(&self, status: u32) {
+        self.registers.mci_reg_fw_flow_status.set(status);
+    }
+
     pub fn flow_status(&self) -> u32 {
         self.registers.mci_reg_fw_flow_status.get()
     }

@@ -32,6 +32,7 @@ nix.workspace = true
 rand.workspace = true
 mcu-config.workspace = true
 mcu-config-fpga = { workspace = true, optional = true }
+mcu-rom-common.workspace = true
 emulator-registers-generated.workspace = true
 registers-generated.workspace = true
 semver.workspace = true

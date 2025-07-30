@@ -937,6 +937,10 @@ impl ModelFpgaRealtime {
         self.openocd = Some(socket);
         Ok(())
     }
+
+    pub fn mci_flow_status(&mut self) -> u32 {
+        self.mci.regs().mci_reg_fw_flow_status.get()
+    }
 }
 
 impl McuHwModel for ModelFpgaRealtime {

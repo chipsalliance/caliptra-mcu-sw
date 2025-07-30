@@ -15,8 +15,10 @@ use caliptra_emu_periph::{
 use caliptra_hw_model::ModelError;
 use caliptra_hw_model_types::ErrorInjectionMode;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
+use emulator_periph::McuRootBusOffsets;
 use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp};
 use emulator_registers_generated::root_bus::AutoRootBus;
+use mcu_config::McuMemoryMap;
 use semver::Version;
 use std::cell::Cell;
 use std::collections::hash_map::DefaultHasher;
@@ -134,10 +136,17 @@ impl McuHwModel for ModelEmulated {
         std::hash::Hash::hash_slice(params.caliptra_rom, &mut hasher);
         let image_tag = hasher.finish();
 
+        let memory_map = McuMemoryMap::default();
+        let mut offsets = McuRootBusOffsets::default();
+        offsets.rom_offset = memory_map.rom_offset;
+        offsets.ram_offset = memory_map.sram_offset;
+        offsets.ram_size = memory_map.sram_size;
+
         let bus_args = McuRootBusArgs {
             rom: params.mcu_rom.into(),
             pic: pic.clone(),
             clock: clock.clone(),
+            offsets,
             ..Default::default()
         };
         let mcu_root_bus = McuRootBus::new(bus_args).unwrap();
@@ -175,6 +184,7 @@ impl McuHwModel for ModelEmulated {
 
         let args = CpuArgs::default();
         let mut cpu = Cpu::new(BusLogger::new(auto_root_bus), clock, pic, args);
+        cpu.write_pc(McuMemoryMap::default().rom_offset);
 
         if let Some(stack_info) = params.stack_info {
             cpu.with_stack_info(stack_info);
@@ -276,16 +286,29 @@ impl McuHwModel for ModelEmulated {
     fn save_otp_memory(&self, _path: &Path) -> Result<()> {
         unimplemented!()
     }
+
+    fn mci_flow_status(&mut self) -> u32 {
+        self.cpu
+            .bus
+            .bus
+            .mci_periph
+            .as_mut()
+            .unwrap()
+            .periph
+            .read_mci_reg_fw_flow_status()
+    }
 }
 
 #[cfg(test)]
 mod test {
+    use mcu_rom_common::McuRomBootStatus;
+
     use crate::{InitParams, McuHwModel, ModelEmulated};
 
     #[test]
     fn test_new_unbooted() {
-        let _mcu_rom = mcu_builder::rom_build(None, "").expect("Could not build MCU ROM");
-        let _mcu_runtime = &mcu_builder::runtime_build_with_apps_cached(
+        let mcu_rom = mcu_builder::rom_build(None, "").expect("Could not build MCU ROM");
+        let mcu_runtime = &mcu_builder::runtime_build_with_apps_cached(
             &[],
             None,
             false,
@@ -297,8 +320,15 @@ mod test {
             None,
         )
         .expect("Could not build MCU runtime");
-        let mut caliptra_builder =
-            mcu_builder::CaliptraBuilder::new(false, None, None, None, None, None, None);
+        let mut caliptra_builder = mcu_builder::CaliptraBuilder::new(
+            false,
+            None,
+            None,
+            None,
+            None,
+            Some(mcu_rom.clone().into()),
+            None,
+        );
         let caliptra_rom = caliptra_builder
             .get_caliptra_rom()
             .expect("Could not build Caliptra ROM");
@@ -308,18 +338,37 @@ mod test {
         let _vendor_pk_hash = caliptra_builder
             .get_vendor_pk_hash()
             .expect("Could not get vendor PK hash");
+        let soc_manifest = caliptra_builder.get_soc_manifest().unwrap();
 
+        let mcu_rom = std::fs::read(mcu_rom).unwrap();
+        println!("MCU rom: {:x?}", &mcu_rom[..16]);
+        let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
+        let soc_manifest = std::fs::read(soc_manifest).unwrap();
         let caliptra_rom = std::fs::read(caliptra_rom).unwrap();
         let caliptra_fw = std::fs::read(caliptra_fw).unwrap();
 
         let mut model = ModelEmulated::new_unbooted(InitParams {
+            mcu_rom: &mcu_rom,
+            mcu_firmware: &mcu_runtime,
+            soc_manifest: &soc_manifest,
             caliptra_rom: &caliptra_rom,
             caliptra_firmware: &caliptra_fw,
             ..Default::default()
         })
         .unwrap();
-        for _ in 0..1000 {
+        model.cpu_enabled.set(true);
+        for _ in 0..10_000 {
             model.step();
         }
+        use std::io::Write;
+        let mut w = std::io::Sink::default();
+        if !model.output().peek().is_empty() {
+            w.write_all(model.output().take(usize::MAX).as_bytes())
+                .unwrap();
+        }
+        assert_eq!(
+            u32::from(McuRomBootStatus::CaliptraBootGoAsserted),
+            model.mci_flow_status()
+        );
     }
 }

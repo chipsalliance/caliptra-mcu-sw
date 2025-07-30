@@ -2551,6 +2551,7 @@ dependencies = [
  "mcu-builder",
  "mcu-config",
  "mcu-config-fpga",
+ "mcu-rom-common",
  "nix 0.26.4",
  "rand",
  "registers-generated",
