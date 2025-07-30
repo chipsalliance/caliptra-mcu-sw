@@ -202,6 +202,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
     let mut uds_requested = false;
     let mut xi3c_configured = false;
     let start_cycle_count = model.cycle_count();
+    let mut i3c_sent = true; // set to false to test I3C interrupt
     for _ in 0..steps {
         if uds && model.cycle_count() - start_cycle_count > 20_000_000 && !uds_requested {
             println!("Opening openocd connection to Caliptra");
@@ -217,6 +218,12 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
             model.configure_i3c_controller();
             println!("Starting recovery flow (BMC)");
             model.start_recovery_bmc();
+        }
+
+        if !i3c_sent && model.cycle_count() - start_cycle_count > 400_000_000 {
+            i3c_sent = true;
+            println!("Host: sending I3C");
+            model.send_i3c_write(&[1, 2, 3, 4]);
         }
         model.step();
     }

@@ -102,9 +102,9 @@ pub struct McuRootBus {
 }
 
 impl McuRootBus {
+    pub const MCI_IRQ: u8 = 1;
+    pub const I3C_IRQ: u8 = 2;
     pub const UART_NOTIF_IRQ: u8 = 16;
-    pub const I3C_ERROR_IRQ: u8 = 17;
-    pub const I3C_NOTIF_IRQ: u8 = 18;
     pub const PRIMARY_FLASH_CTRL_ERROR_IRQ: u8 = 19;
     pub const PRIMARY_FLASH_CTRL_EVENT_IRQ: u8 = 20;
     pub const SECONDARY_FLASH_CTRL_ERROR_IRQ: u8 = 21;
