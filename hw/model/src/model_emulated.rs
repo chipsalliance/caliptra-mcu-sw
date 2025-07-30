@@ -137,10 +137,12 @@ impl McuHwModel for ModelEmulated {
         let image_tag = hasher.finish();
 
         let memory_map = McuMemoryMap::default();
-        let mut offsets = McuRootBusOffsets::default();
-        offsets.rom_offset = memory_map.rom_offset;
-        offsets.ram_offset = memory_map.sram_offset;
-        offsets.ram_size = memory_map.sram_size;
+        let offsets = McuRootBusOffsets {
+            rom_offset: memory_map.rom_offset,
+            ram_offset: memory_map.sram_offset,
+            ram_size: memory_map.sram_size,
+            ..Default::default()
+        };
 
         let bus_args = McuRootBusArgs {
             rom: params.mcu_rom.into(),
