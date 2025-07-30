@@ -6,7 +6,9 @@ on:
     branches: ["clundin/fpga-bootstrap-job"]
 jobs:
   build_test_binaries:
-    runs-on: [e2-standard-8]
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/clundin25/caliptra-fpga-cross-compile-image:latest
     timeout-minutes: 60
 
     env:
@@ -19,57 +21,8 @@ jobs:
         with:
           submodules: 'true'
 
-      - name: Restore sysroot from cache
-        uses: actions/cache/restore@v3
-        id: restore_sysroot_cache
-        with:
-          path: /tmp/caliptra-fpga-sysroot.tar
-          key: sysroot-v9-${{ env.CACHE_BUSTER }}
-
-      - name: Extract sysroot
-        if: "steps.restore_sysroot_cache.outputs.cache-hit"
-        run: |
-          sudo tar xvf /tmp/caliptra-fpga-sysroot.tar
-
-      - name: Install sysroot pre-requisites
-        if: "!steps.restore_sysroot_cache.outputs.cache-hit"
-        run: |
-          sudo apt-get update -qy && sudo apt-get -y install debootstrap binfmt-support qemu-user-static u-boot-tools
-
-      - name: build sysroot
-        # Note: This is the sysroot for the tiny debian installation we run on the FPGA;
-        # it is missing xilinx-provided kernel headers needed to build kernel modules
-        if: "!steps.restore_sysroot_cache.outputs.cache-hit"
-        run: |
-          sudo mkdir /tmp/caliptra-fpga-sysroot
-          sudo debootstrap --include linux-libc-dev --arch arm64 --foreign bookworm /tmp/caliptra-fpga-sysroot
-          sudo chroot /tmp/caliptra-fpga-sysroot /debootstrap/debootstrap --second-stage
-
-          # Remove unnecesary files
-          sudo find /tmp/caliptra-fpga-sysroot/ \( -type d -and ! -perm -o=r \) -prune -exec rm -rf {} \;
-          sudo find /tmp/caliptra-fpga-sysroot/ \( -type d -and ! -perm -o=x \) -prune -exec rm -rf {} \;
-          sudo find /tmp/caliptra-fpga-sysroot/ \( ! -perm -o=r \) -exec rm -f {} \;
-          sudo find /tmp/caliptra-fpga-sysroot/ \( -type c -or -type b -or -type p -or -type s \) -exec rm -f {} \;
-
-          sudo tar cvf /tmp/caliptra-fpga-sysroot.tar /tmp/caliptra-fpga-sysroot
-
-      - name: Save FPGA sysroot to cache
-        if: "!steps.restore_sysroot_cache.outputs.cache-hit"
-        uses: actions/cache/save@v3
-        with:
-          path: /tmp/caliptra-fpga-sysroot.tar
-          key: sysroot-v9-${{ env.CACHE_BUSTER }}
-
-      - name: Install cross compiler
-        run: |
-          sudo apt-get update -qy && sudo apt-get install -y gcc-aarch64-linux-gnu squashfs-tools
-          rustup toolchain install 1.84-x86_64-unknown-linux-gnu
-
       - name: Build test firmware
         run: |
-          rustup target add riscv32imc-unknown-none-elf
-          rustup target add aarch64-unknown-linux-gnu
-
           # Build ROM and runtime binaries
           cargo xtask rom-build --platform fpga
           cargo xtask runtime-build --platform fpga
