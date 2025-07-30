@@ -39,3 +39,8 @@ rustflags = [
     "-C",
     "link-arg=-icf=all",
 ]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = [
+    "-C", "linker=aarch64-linux-gnu-gcc",
+]
