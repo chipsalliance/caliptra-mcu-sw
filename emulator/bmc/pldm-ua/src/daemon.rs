@@ -124,8 +124,13 @@ impl<
             match socket.receive(None).map_err(|_| ()) {
                 Ok(rx_pkt) => {
                     debug!("Received response: {}", rx_pkt);
-                    let ev = Self::handle_packet(&rx_pkt)?;
-                    event_queue_tx.send(ev).map_err(|_| ())?;
+                    let ev = Self::handle_packet(&rx_pkt);
+                    if ev.is_err() {
+                        error!("Error handling packet: {:?}", ev);
+                        // Ignore unexpected packet and continue
+                        continue;
+                    }
+                    event_queue_tx.send(ev.unwrap()).map_err(|_| ())?;
                 }
                 Err(_) => {
                     error!("Error receiving packet");
