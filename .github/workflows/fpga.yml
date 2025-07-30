@@ -36,7 +36,6 @@ jobs:
         run: |
           sudo apt-get update -qy && sudo apt-get -y install debootstrap binfmt-support qemu-user-static u-boot-tools
 
-        # TODO(clundin): Not sure if we will need to use this.
       - name: build sysroot
         # Note: This is the sysroot for the tiny debian installation we run on the FPGA;
         # it is missing xilinx-provided kernel headers needed to build kernel modules
