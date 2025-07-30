@@ -1122,6 +1122,8 @@ impl McuHwModel for ModelFpgaRealtime {
         println!("Writing Caliptra ROM ({} bytes)", caliptra_rom_data.len());
         caliptra_rom_slice.copy_from_slice(&caliptra_rom_data);
         println!("Writing MCU ROM");
+        println!("Raw pointer address: {:p}", m.mcu_rom_backdoor as *const i32);
+        println!("Reference address: {:p}", m.mcu_rom_backdoor);
         let mcu_rom_slice =
             unsafe { core::slice::from_raw_parts_mut(m.mcu_rom_backdoor, mcu_rom_data.len()) };
         mcu_rom_slice.copy_from_slice(&mcu_rom_data);
