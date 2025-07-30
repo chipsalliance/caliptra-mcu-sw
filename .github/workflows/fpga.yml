@@ -74,10 +74,7 @@ jobs:
           cargo xtask rom-build --platform fpga
           cargo xtask runtime-build --platform fpga
 
-
           # Cross compile xtask for the ARM core
-          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="aarch64-linux-gnu-gcc"
-          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C link-arg=--sysroot=/tmp/caliptra-fpga-sysroot/"
           cargo build -p xtask --target aarch64-unknown-linux-gnu
 
           mkdir -p /tmp/caliptra-binaries

@@ -39,3 +39,9 @@ rustflags = [
     "-C",
     "link-arg=-icf=all",
 ]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = [
+    "-C", "link-arg=--sysroot=/tmp/caliptra-fpga-sysroot/",
+    "-C", "linker=aarch64-linux-gnu-gcc",
+]
