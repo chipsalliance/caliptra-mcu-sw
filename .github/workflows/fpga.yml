@@ -113,14 +113,6 @@ jobs:
 
       - name: Execute tests
         run: |
-          ls -lh /dev/ui*
           export RUST_BACKTRACE=1
-
-          mkdir temp
-          pushd temp
-          curl -LO "https://github.com/clundin25/caliptra-sw/releases/download/release_v20241005_0/working-xtask.tar.gz"
-          tar -xvf working-xtask.tar.gz
-          popd
-
-          sudo ./temp/target/aarch64-unknown-linux-gnu/debug/xtask fpga-run --mcu-rom target/riscv32imc-unknown-none-elf/release/mcu-rom-fpga.bin
+          sudo ./target/aarch64-unknown-linux-gnu/debug/xtask fpga-run --mcu-rom target/riscv32imc-unknown-none-elf/release/mcu-rom-fpga.bin
 
