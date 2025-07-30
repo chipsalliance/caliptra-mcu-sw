@@ -341,7 +341,6 @@ mod test {
         let soc_manifest = caliptra_builder.get_soc_manifest().unwrap();
 
         let mcu_rom = std::fs::read(mcu_rom).unwrap();
-        println!("MCU rom: {:x?}", &mcu_rom[..16]);
         let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
         let soc_manifest = std::fs::read(soc_manifest).unwrap();
         let caliptra_rom = std::fs::read(caliptra_rom).unwrap();
