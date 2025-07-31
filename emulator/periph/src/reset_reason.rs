@@ -45,10 +45,6 @@ pub struct ResetReasonEmulator {
 
     /// Track power state to properly handle warm reset
     pwrgood: bool,
-
-    /// Track if we've seen the first mci_rst_b edge after power on
-    /// This corresponds to Warm_Reset_Capture_Flag in the hardware
-    first_mci_reset_captured: bool,
 }
 
 impl ResetReasonEmulator {
@@ -57,7 +53,6 @@ impl ResetReasonEmulator {
         Self {
             ext_mci_regs,
             pwrgood: true,
-            first_mci_reset_captured: false,
         }
     }
 
@@ -76,7 +71,6 @@ impl ResetReasonEmulator {
     pub fn handle_power_down(&mut self) {
         self.pwrgood = false;
         self.set(0);
-        self.first_mci_reset_captured = false;
     }
 
     /// Handle power up event
@@ -88,19 +82,15 @@ impl ResetReasonEmulator {
     /// This is called when mci_rst_b toggles (goes low then high)
     ///
     /// Per hardware spec:
-    /// - If pwrgood is stable (high), this is a warm reset and WARM_RESET bit is set
+    /// - If pwrgood is high, this is a warm reset and WARM_RESET bit is set
     /// - FW_BOOT_UPD_RESET and FW_HITLESS_UPD_RESET are cleared by mci_rst_b
     pub fn handle_warm_reset(&mut self) {
-        // Hardware logic: set WARM_RESET if this is not the first mci_rst_b edge after power on
-        // and power has remained stable
-        if self.pwrgood && self.first_mci_reset_captured {
+        // If power is good, this is a warm reset
+        if self.pwrgood {
             let reg = ReadWriteRegister::<u32, ResetReason::Register>::new(self.get());
             reg.reg.modify(ResetReason::WarmReset::SET);
             self.set(reg.reg.get());
         }
-
-        // Mark that we've seen at least one mci_rst_b toggle
-        self.first_mci_reset_captured = true;
 
         // Clear the firmware update bits (these are cleared by mci_rst_b)
         let reg = ReadWriteRegister::<u32, ResetReason::Register>::new(self.get());
@@ -125,25 +115,25 @@ mod tests {
     fn test_cold_reset() {
         let mut rr = ResetReasonEmulator::default();
 
-        // Initial state should be 0
         assert_eq!(rr.get(), 0);
+        assert!(rr.pwrgood);
 
-        // First reset after power on should not set WARM_RESET
+        // Any reset while powered should set WARM_RESET
         rr.handle_warm_reset();
-        assert_eq!(rr.get() & (1 << 2), 0); // bit 2 is WARM_RESET
+        assert_eq!(rr.get() & (1 << 2), 1 << 2); // bit 2 is WARM_RESET
     }
 
     #[test]
     fn test_warm_reset() {
         let mut rr = ResetReasonEmulator::default();
 
-        // First reset
-        rr.handle_warm_reset();
-        assert_eq!(rr.get() & (1 << 2), 0);
-
-        // Second reset should set WARM_RESET
+        // First reset while powered should set WARM_RESET
         rr.handle_warm_reset();
         assert_eq!(rr.get() & (1 << 2), 1 << 2); // bit 2 should be set
+
+        // Second reset should also set WARM_RESET (it's already set)
+        rr.handle_warm_reset();
+        assert_eq!(rr.get() & (1 << 2), 1 << 2); // bit 2 should still be set
     }
 
     #[test]
@@ -152,17 +142,16 @@ mod tests {
 
         // Set up warm reset condition
         rr.handle_warm_reset();
-        rr.handle_warm_reset();
         assert_eq!(rr.get() & (1 << 2), 1 << 2);
 
         // Power down should clear everything
         rr.handle_power_down();
         assert_eq!(rr.get(), 0);
 
-        // Power up and first reset should not set WARM_RESET
+        // Power up and first reset after power cycle should set WARM_RESET
         rr.handle_power_up();
         rr.handle_warm_reset();
-        assert_eq!(rr.get() & (1 << 2), 0);
+        assert_eq!(rr.get() & (1 << 2), 1 << 2);
     }
 
     #[test]
@@ -176,8 +165,9 @@ mod tests {
 
         assert_eq!(rr.get() & (1 << 1), 1 << 1); // bit 1 is FW_BOOT_UPD_RESET
 
-        // Warm reset should clear FW update bits
+        // Warm reset should clear FW update bits but set WARM_RESET
         rr.handle_warm_reset();
-        assert_eq!(rr.get() & (1 << 1), 0);
+        assert_eq!(rr.get() & (1 << 1), 0); // FW update bit cleared
+        assert_eq!(rr.get() & (1 << 2), 1 << 2); // WARM_RESET bit set
     }
 }
