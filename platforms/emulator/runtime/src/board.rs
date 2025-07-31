@@ -804,6 +804,26 @@ pub unsafe fn main() {
         crate::io::exit_emulator(exit);
     }
 
+    // Disable WDT1 before running the loop
+    let mci: StaticRef<mci::regs::Mci> =
+        unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
+    let mci_wdt = romtime::Mci::new(mci);
+    mci_wdt.disable_wdt();
+
+    #[cfg(feature = "test-warm-boot")]
+    {
+        let warm_boot_flag: *mut u32 =
+            (MCU_MEMORY_MAP.dccm_offset + MCU_MEMORY_MAP.dccm_size - 4) as *mut u32;
+
+        if *warm_boot_flag == 0xdeadbeef {
+            romtime::println!("Warm boot detected, jumping to kernel loop");
+        } else {
+            romtime::println!("Cold boot detected, running warm boot test, triggering warm reset");
+            *warm_boot_flag = 0xdeadbeef;
+            mci_wdt.trigger_warm_reset();
+            panic!("Warm boot test failed, shouldnt get here");
+        }
+    }
     board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
 }
 

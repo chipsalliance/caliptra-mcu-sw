@@ -89,6 +89,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
     )
     .unwrap();
 
+    #[cfg(feature = "test-warm-boot")]
+    {
+        let _ = writeln!(console_writer, "Warm boot test done");
+        romtime::test_exit(0);
+    }
+
     match AsyncAlarm::<S>::exists() {
         Ok(()) => {}
         Err(_) => {
