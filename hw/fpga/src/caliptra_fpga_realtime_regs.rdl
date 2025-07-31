@@ -13,16 +13,6 @@
 // limitations under the License.
 //
 
-property rd_swacc {
-    component = field;
-    type = boolean;
-};
-
-property wr_swacc {
-    component = field;
-    type = boolean;
-};
-
 regfile interface_regs {
     reg {
         default sw=r;

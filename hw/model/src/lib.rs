@@ -14,6 +14,7 @@ use caliptra_hw_model_types::{
 use caliptra_registers::soc_ifc::regs::{
     CptraItrngEntropyConfig0WriteVal, CptraItrngEntropyConfig1WriteVal,
 };
+use caliptra_registers::interface_regs;
 pub use model_emulated::ModelEmulated;
 use output::ExitStatus;
 pub use output::Output;
@@ -24,7 +25,7 @@ use std::str::FromStr;
 use std::sync::mpsc;
 
 mod bus_logger;
-mod fpga_regs;
+//mod fpga_regs;
 mod lifecycle_controller;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]

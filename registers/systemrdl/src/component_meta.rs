@@ -110,6 +110,9 @@ static FIELD: ComponentMeta = ComponentMeta {
         PropertyMeta{name: "encode", ty: PropertyType::EnumReference, is_dynamic: true},
         PropertyMeta{name: "precedence", ty: PropertyType::PrecedenceType, is_dynamic: true},
         PropertyMeta{name: "paritycheck", ty: PropertyType::Boolean, is_dynamic: true},
+
+        PropertyMeta{name: "rd_swacc", ty: PropertyType::Boolean, is_dynamic: true},
+        PropertyMeta{name: "wr_swacc", ty: PropertyType::Boolean, is_dynamic: true},
     ],
 };
 

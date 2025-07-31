@@ -2,6 +2,7 @@
 Markdown description for SystemRDL register map.
 
 Don't override. Generated from: caliptra_fpga_realtime_regs
+  - rdl_properties.rdl
   - caliptra_fpga_realtime_regs.rdl
 -->
 
