@@ -2,7 +2,10 @@
 
 #![allow(clippy::mut_from_ref)]
 
-use crate::fpga_regs::{Control, FifoData, FifoRegs, FifoStatus, ItrngFifoStatus, WrapperRegs};
+use registers_generated::interface_regs::bits::{Control};
+use registers_generated::interface_regs::regs::InterfaceRegs;
+use registers_generated::fifo_regs::bits::{LogFifoData, LogFifoStatus, ItrngFifoStatus, DbgFifoStatus};
+use registers_generated::fifo_regs::regs::FifoRegs;
 use crate::output::ExitStatus;
 use crate::{xi3c, InitParams, McuHwModel, Output, SecurityState};
 use anyhow::{anyhow, bail, Error, Result};
@@ -52,8 +55,8 @@ struct Wrapper {
 }
 
 impl Wrapper {
-    fn regs(&self) -> &mut WrapperRegs {
-        unsafe { &mut *(self.ptr as *mut WrapperRegs) }
+    fn regs(&self) -> &mut InterfaceRegs {
+        unsafe { &mut *(self.ptr as *mut InterfaceRegs) }
     }
     fn fifo_regs(&self) -> &mut FifoRegs {
         unsafe { &mut *(self.ptr.offset(0x1000 / 4) as *mut FifoRegs) }
@@ -155,7 +158,7 @@ impl ModelFpgaRealtime {
                 .wrapper
                 .fifo_regs()
                 .log_fifo_status
-                .is_set(FifoStatus::Empty)
+                .is_set(LogFifoStatus::LogFifoEmpty)
             {
                 break;
             }
@@ -163,7 +166,7 @@ impl ModelFpgaRealtime {
                 .wrapper
                 .fifo_regs()
                 .log_fifo_data
-                .is_set(FifoData::CharValid)
+                .is_set(LogFifoData::CharValid)
             {
                 break;
             }
@@ -175,18 +178,15 @@ impl ModelFpgaRealtime {
                 .wrapper
                 .fifo_regs()
                 .dbg_fifo_status
-                .is_set(FifoStatus::Empty)
+                .is_set(DbgFifoStatus::DbgFifoEmpty)
             {
                 break;
             }
-            if !self
+            let _ = self
                 .wrapper
                 .fifo_regs()
-                .dbg_fifo_data_pop
-                .is_set(FifoData::CharValid)
-            {
-                break;
-            }
+                .dbg_fifo_pop
+                .get();
         }
     }
 
@@ -197,7 +197,7 @@ impl ModelFpgaRealtime {
                 .wrapper
                 .fifo_regs()
                 .log_fifo_status
-                .is_set(FifoStatus::Full)
+                .is_set(LogFifoStatus::LogFifoFull)
             {
                 panic!("FPGA log FIFO overran");
             }
@@ -205,16 +205,17 @@ impl ModelFpgaRealtime {
                 .wrapper
                 .fifo_regs()
                 .log_fifo_status
-                .is_set(FifoStatus::Empty)
+                .is_set(LogFifoStatus::LogFifoEmpty)
             {
                 break;
             }
             let data = self.wrapper.fifo_regs().log_fifo_data.extract();
             // Add byte to log if it is valid
-            if data.is_set(FifoData::CharValid) {
+            if data.is_set(LogFifoData::CharValid) {
                 self.output()
                     .sink()
-                    .push_uart_char(data.read(FifoData::NextChar) as u8);
+                    .push_uart_char(data.read(LogFifoData::NextChar) as u8);
+                    //.push_uart_char(data & 0xF as u8);
             }
         }
 
@@ -224,7 +225,7 @@ impl ModelFpgaRealtime {
                 .wrapper
                 .fifo_regs()
                 .dbg_fifo_status
-                .is_set(FifoStatus::Full)
+                .is_set(DbgFifoStatus::DbgFifoFull)
             {
                 panic!("FPGA log FIFO overran");
             }
@@ -232,16 +233,18 @@ impl ModelFpgaRealtime {
                 .wrapper
                 .fifo_regs()
                 .dbg_fifo_status
-                .is_set(FifoStatus::Empty)
+                .is_set(DbgFifoStatus::DbgFifoEmpty)
             {
                 break;
             }
-            let data = self.wrapper.fifo_regs().dbg_fifo_data_pop.extract();
+            let data = self.wrapper.fifo_regs().dbg_fifo_pop.extract();
             // Add byte to log if it is valid
-            if data.is_set(FifoData::CharValid) {
+            // TODO: This is reinterpreting the dbg fifo like the log fifo...
+            //if data.is_set(LogFifoData::CharValid) {
+            if (data.get() & 0x100) > 0 {
                 self.output()
                     .sink()
-                    .push_uart_char(data.read(FifoData::NextChar) as u8);
+                    .push_uart_char((data.get() & 0xFF) as u8);
             }
         }
         if self.output().exit_requested() {
@@ -274,11 +277,11 @@ impl ModelFpgaRealtime {
         wrapper
             .fifo_regs()
             .itrng_fifo_status
-            .write(ItrngFifoStatus::Reset::SET);
+            .write(ItrngFifoStatus::ItrngFifoReset::SET);
         wrapper
             .fifo_regs()
             .itrng_fifo_status
-            .write(ItrngFifoStatus::Reset::CLEAR);
+            .write(ItrngFifoStatus::ItrngFifoReset::CLEAR);
 
         // Small delay to allow reset to complete
         thread::sleep(Duration::from_millis(1));
@@ -290,7 +293,7 @@ impl ModelFpgaRealtime {
                 if !wrapper
                     .fifo_regs()
                     .itrng_fifo_status
-                    .is_set(ItrngFifoStatus::Full)
+                    .is_set(ItrngFifoStatus::ItrngFifoFull)
                 {
                     let mut itrng_dw = 0;
                     for i in 0..8 {
@@ -1309,7 +1312,8 @@ impl Drop for ModelFpgaRealtime {
 mod test {
     use crate::{DefaultHwModel, InitParams, McuHwModel};
 
-    #[ignore]
+    // TODO: Put this back before pushing
+    //#[ignore]
     #[test]
     fn test_new_unbooted() {
         let mcu_rom = mcu_builder::rom_build(Some("fpga"), "").expect("Could not build MCU ROM");

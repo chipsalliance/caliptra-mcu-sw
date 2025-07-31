@@ -14,7 +14,7 @@ use caliptra_hw_model_types::{
 use caliptra_registers::soc_ifc::regs::{
     CptraItrngEntropyConfig0WriteVal, CptraItrngEntropyConfig1WriteVal,
 };
-use caliptra_registers::interface_regs;
+//use registers_generated::interface_regs;
 pub use model_emulated::ModelEmulated;
 use output::ExitStatus;
 pub use output::Output;
