@@ -8,6 +8,7 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 use flash_image::{FlashHeader, ImageHeader};
 use libsyscall_caliptra::dma::{AXIAddr, DMASource, DMATransaction, DMA as DMASyscall};
+use mcu_config_emulator::dma::mcu_sram_to_axi_address;
 use pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::message::firmware_update::get_status::ProgressPercent;
@@ -19,7 +20,6 @@ use pldm_common::protocol::firmware_update::{
 };
 use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
-
 const MAX_PLDM_TRANSFER_SIZE: usize = core::mem::size_of::<RequestFirmwareDataResponseFixed>();
 
 pub struct StreamingFdOps<'a> {
@@ -43,7 +43,7 @@ impl<'a> StreamingFdOps<'a> {
         data: &[u8],
     ) -> Result<(), FdOpsError> {
         let dma_syscall: DMASyscall = DMASyscall::new();
-        let source_address = super::local_ram_to_axi_address(data.as_ptr() as u32);
+        let source_address = mcu_sram_to_axi_address(data.as_ptr() as u32);
 
         let transaction = DMATransaction {
             byte_count: data.len(),

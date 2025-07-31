@@ -3,7 +3,7 @@ mod test_firmware_update;
 mod test_soc_boot;
 #[cfg(test)]
 mod test {
-    use mcu_builder::{CaliptraBuilder, SocImage, TARGET};
+    use mcu_builder::{CaliptraBuilder, ImageCfg, TARGET};
     use std::process::ExitStatus;
     use std::sync::atomic::AtomicU32;
     use std::sync::Mutex;
@@ -76,7 +76,7 @@ mod test {
         i3c_port: String,
         active_mode: bool,
         manufacturing_mode: bool,
-        soc_images: Option<Vec<SocImage>>,
+        soc_images: Option<Vec<ImageCfg>>,
         streaming_boot_package_path: Option<PathBuf>,
         primary_flash_image_path: Option<PathBuf>,
         secondary_flash_image_path: Option<PathBuf>,
@@ -178,6 +178,7 @@ mod test {
                 None,
                 Some(runtime_path.clone()),
                 soc_images,
+                None,
             )
         };
 

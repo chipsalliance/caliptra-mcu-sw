@@ -17,6 +17,7 @@ Abstract:
 use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
 use crate::ColdBoot;
+use crate::FwHitlessUpdate;
 use crate::LifecycleControllerState;
 use crate::LifecycleHashedTokens;
 use crate::LifecycleToken;
@@ -258,9 +259,8 @@ pub fn rom_start(params: RomParameters) {
             fatal_error(0x1002); // Error code for unimplemented firmware boot update
         }
         McuResetReason::FirmwareHitlessUpdate => {
-            // TODO: Implement firmware hitless update flow
-            romtime::println!("[mcu-rom] TODO: Firmware hitless update flow not implemented");
-            fatal_error(0x1003); // Error code for unimplemented firmware hitless update
+            romtime::println!("[mcu-rom] Starting firmware hitless update flow");
+            FwHitlessUpdate::run(&mut env, params);
         }
         McuResetReason::Invalid => {
             romtime::println!("[mcu-rom] Invalid reset reason: multiple bits set");

@@ -80,8 +80,16 @@ pub fn all_build(
     )?;
 
     let fpga = platform == "fpga";
-    let mut caliptra_builder =
-        crate::CaliptraBuilder::new(fpga, None, None, None, None, Some(mcu_runtime.into()), None);
+    let mut caliptra_builder = crate::CaliptraBuilder::new(
+        fpga,
+        None,
+        None,
+        None,
+        None,
+        Some(mcu_runtime.into()),
+        None,
+        None,
+    );
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_fw = caliptra_builder.get_caliptra_fw()?;
     let vendor_pk_hash = caliptra_builder.get_vendor_pk_hash()?;

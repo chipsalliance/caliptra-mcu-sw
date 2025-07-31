@@ -31,6 +31,9 @@ mod recovery;
 mod cold_boot;
 pub use cold_boot::ColdBoot;
 
+mod fw_hitless_update;
+pub use fw_hitless_update::FwHitlessUpdate;
+
 pub trait FatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> !;
 }

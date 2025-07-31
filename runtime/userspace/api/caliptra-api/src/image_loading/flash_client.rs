@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
+use flash_image::{FlashHeader, ImageHeader};
 use libsyscall_caliptra::dma::{AXIAddr, DMASource, DMATransaction, DMA as DMASyscall};
 use libtock_platform::ErrorCode;
+use mcu_config_emulator::dma::mcu_sram_to_axi_address;
 use zerocopy::FromBytes;
-
-use flash_image::{FlashHeader, ImageHeader};
 
 use libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
 
@@ -68,7 +68,7 @@ pub async fn flash_load_image(
             .read(current_offset, transfer_size, &mut buffer)
             .await?;
 
-        let source_address = super::local_ram_to_axi_address(buffer.as_ptr() as u32);
+        let source_address = mcu_sram_to_axi_address(buffer.as_ptr() as u32);
         let transaction = DMATransaction {
             byte_count: transfer_size,
             source: DMASource::Address(source_address),

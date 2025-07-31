@@ -50,12 +50,25 @@ pub async fn image_loading_task() {
         feature = "test-pldm-discovery",
         feature = "test-pldm-fw-update",
         feature = "test-pldm-fw-update-e2e",
+        feature = "test-firmware-update-flash",
     ))]
     {
         match image_loading().await {
-            Ok(_) => romtime::test_exit(0),
+            Ok(_) => {}
             Err(_) => romtime::test_exit(1),
         }
+        // After image loading, proceed to firmware update if enabled
+        #[cfg(any(
+            feature = "test-firmware-update-streaming",
+            feature = "test-firmware-update-flash"
+        ))]
+        {
+            match crate::firmware_update::firmware_update().await {
+                Ok(_) => {}
+                Err(_) => romtime::test_exit(1),
+            }
+        }
+        romtime::test_exit(0);
     }
 }
 
@@ -79,7 +92,10 @@ async fn image_loading() -> Result<(), ErrorCode> {
             .await?;
         pldm_image_loader.finalize().await?;
     }
-    #[cfg(feature = "test-flash-based-boot")]
+    #[cfg(any(
+        feature = "test-flash-based-boot",
+        feature = "test-firmware-update-flash",
+    ))]
     {
         let mut boot_config = FlashBootConfig::new();
         let active_partition_id = boot_config
@@ -89,7 +105,31 @@ async fn image_loading() -> Result<(), ErrorCode> {
         let active_partition = boot_config
             .get_partition_from_id(active_partition_id)
             .map_err(|_| ErrorCode::Fail)?;
-        let flash_syscall = SpiFlash::new(active_partition.driver_num);
+
+        let active = (active_partition_id, active_partition);
+
+        let pending = {
+            let pending_partition_id = boot_config.get_pending_partition().await;
+            if pending_partition_id.is_ok() {
+                let pending_partition_id = pending_partition_id.unwrap();
+                let pending_partition = boot_config
+                    .get_partition_from_id(pending_partition_id)
+                    .map_err(|_| ErrorCode::Fail)?;
+
+                Some((pending_partition_id, pending_partition))
+            } else {
+                None
+            }
+        };
+
+        let load_partition = if let Some((pending_partition_id, pending_partition)) = pending {
+            (pending_partition_id, pending_partition)
+        } else {
+            // No pending partition, use the active one
+            active
+        };
+
+        let flash_syscall = SpiFlash::new(load_partition.1.driver_num);
         let flash_image_loader: FlashImageLoader = FlashImageLoader::new(flash_syscall);
         flash_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
@@ -98,7 +138,11 @@ async fn image_loading() -> Result<(), ErrorCode> {
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2)
             .await?;
         boot_config
-            .set_partition_status(active_partition_id, PartitionStatus::BootSuccessful)
+            .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
+        boot_config
+            .set_active_partition(load_partition.0)
             .await
             .map_err(|_| ErrorCode::Fail)?;
     }

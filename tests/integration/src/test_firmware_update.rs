@@ -4,17 +4,21 @@
 mod test {
     use crate::test::{compile_runtime, get_rom_with_feature, run_runtime, TEST_LOCK};
     use chrono::{TimeZone, Utc};
-    use mcu_builder::{CaliptraBuilder, SocImage};
-    use mcu_config_emulator::flash::PartitionTable;
+    use mcu_builder::{CaliptraBuilder, ImageCfg};
+    use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
+    use mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator};
+    use mcu_config_emulator::EMULATOR_MEMORY_MAP;
     use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     };
+
     use pldm_fw_pkg::FirmwareManifest;
     use std::path::PathBuf;
     use std::process::ExitStatus;
 
     const CALIPTRA_EXTERNAL_RAM_BASE: u64 = 0x8000_0000;
+    const MCU_SRAM_OFFSET: u64 = 0xc0_0000;
 
     #[derive(Clone)]
     struct TestOptions {
@@ -22,7 +26,7 @@ mod test {
         rom: PathBuf,
         runtime: PathBuf,
         i3c_port: u32,
-        soc_images: Vec<SocImage>,
+        soc_images: Vec<ImageCfg>,
         soc_images_paths: Vec<PathBuf>,
         primary_flash_image_path: Option<PathBuf>,
         secondary_flash_image_path: Option<PathBuf>,
@@ -208,9 +212,13 @@ mod test {
     }
 
     // Common test function for both flash-based and streaming boot
-    fn test_firmware_update_common() {
+    fn test_firmware_update_common(use_flash: bool) {
         let lock = TEST_LOCK.lock().unwrap();
-        let feature = "test-firmware-update";
+        let feature = if use_flash {
+            "test-firmware-update-flash"
+        } else {
+            "test-firmware-update-streaming"
+        };
         let i3c_port = 65500;
         let soc_image_fw_1 = [0x55u8; 512]; // Example firmware data for SOC image 1
         let soc_image_fw_2 = [0xAAu8; 256]; // Example firmware data for SOC image 2
@@ -225,17 +233,29 @@ mod test {
 
         // Create SOC image metadata that will be written to the SoC manifest
         let soc_images = vec![
-            SocImage {
+            ImageCfg {
                 path: soc_images_paths[0].clone(),
                 load_addr: CALIPTRA_EXTERNAL_RAM_BASE,
                 image_id: 4096,
+                exec_bit: 100,
+                ..Default::default()
             },
-            SocImage {
+            ImageCfg {
                 path: soc_images_paths[1].clone(),
                 load_addr: CALIPTRA_EXTERNAL_RAM_BASE + soc_image_fw_1.len() as u64,
                 image_id: 4097,
+                exec_bit: 101,
+                ..Default::default()
             },
         ];
+
+        let mcu_cfg = ImageCfg {
+            path: test_runtime.clone(),
+            load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
+            staging_addr: CALIPTRA_EXTERNAL_RAM_BASE + (512 * 1024) as u64,
+            image_id: 2,
+            exec_bit: 2,
+        };
 
         // Build the Caliptra runtime
         let mut builder = CaliptraBuilder::new(
@@ -246,6 +266,7 @@ mod test {
             None,
             Some(test_runtime.clone()),
             Some(soc_images.clone()),
+            Some(mcu_cfg.clone()),
         );
 
         // Build Caliptra firmware
@@ -257,23 +278,13 @@ mod test {
             .get_soc_manifest()
             .expect("Failed to build SOC manifest");
 
-        /*
-                let (soc_images_paths, flash_image_path) = create_flash_image(
-                    Some(caliptra_fw),
-                    Some(soc_manifest),
-                    Some(test_runtime.clone()),
-                    None,
-                    0,
-                    soc_images_paths.clone(),
-                );
-        */
         let (soc_images_paths, flash_image_path) = create_flash_image(
-            Some(caliptra_fw),
-            Some(soc_manifest),
-            None,
+            Some(caliptra_fw.clone()),
+            Some(soc_manifest.clone()),
+            Some(test_runtime.clone()),
             None,
             0,
-            Vec::new(),
+            soc_images_paths.clone(),
         );
 
         // Generate the corresponding PLDM package from the flash image
@@ -285,9 +296,37 @@ mod test {
             Some(create_pldm_fw_package(&pldm_manifest))
         };
 
+        // Generate a flash image file to write to the primary flash
+        let mut partition_table = PartitionTable {
+            active_partition: PartitionId::A as u32,
+            partition_a_status: PartitionStatus::Valid as u16,
+            partition_b_status: PartitionStatus::Invalid as u16,
+            rollback_enable: RollbackEnable::Enabled as u32,
+            ..Default::default()
+        };
+        let checksum_calculator = StandAloneChecksumCalculator::new();
+        partition_table.populate_checksum(&checksum_calculator);
+
+        let flash_offset = partition_table
+            .get_active_partition()
+            .1
+            .map_or(0, |p| p.offset);
+        let (soc_images_paths, primary_flash_image_path) = create_flash_image(
+            Some(caliptra_fw),
+            Some(soc_manifest),
+            Some(test_runtime.clone()),
+            Some(partition_table.clone()),
+            flash_offset,
+            soc_images_paths.clone(),
+        );
+
         // For non flash-based boot, the flash image path is not needeed to be passed to the emulator
         // as the firmware will be streamed from the PLDM package
-        let flash_image_path = None;
+        let flash_image_path = if use_flash {
+            Some(primary_flash_image_path)
+        } else {
+            None
+        };
 
         let mcu_rom = get_rom_with_feature(feature);
 
@@ -315,6 +354,6 @@ mod test {
 
     #[test]
     fn test_firmware_update() {
-        test_firmware_update_common();
+        test_firmware_update_common(true);
     }
 }

@@ -2248,6 +2248,7 @@ dependencies = [
  "libtock_runtime",
  "libtock_unittest",
  "libtockasync",
+ "mcu-config-emulator",
  "pldm-common",
  "pldm-lib",
  "zerocopy",
@@ -3788,6 +3789,7 @@ name = "tests-integration"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "flash-image",
  "mcu-builder",
  "mcu-config",
  "mcu-config-emulator",

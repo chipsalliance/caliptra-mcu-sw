@@ -20,6 +20,7 @@ use libsyscall_caliptra::mailbox::MailboxError;
 use libsyscall_caliptra::{dma::AXIAddr, mailbox::Mailbox};
 use libtock_platform::ErrorCode;
 use libtockasync::TockExecutor;
+use mcu_config_emulator::dma::caliptra_axi_addr_to_dma_addr;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use pldm_common::protocol::firmware_update::Descriptor;
@@ -125,25 +126,6 @@ impl ImageLoader for PldmImageLoader<'_> {
     }
 }
 
-const MCU_SRAM_HI_OFFSET: u64 = 0x1000_0000;
-pub fn local_ram_to_axi_address(addr: u32) -> u64 {
-    // Convert a local address to an AXI address
-    (MCU_SRAM_HI_OFFSET << 32) | (addr as u64)
-}
-
-pub fn caliptra_axi_addr_to_dma_addr(addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
-    // Convert Caliptra's AXI address to this device DMA address
-    // Caliptra's External SRAM is mapped at 0x0000_0000_8000_0000
-    // that is mapped to this device's DMA 0x2000_0000_8000_0000
-    const CALIPTRA_EXTERNAL_SRAM_BASE: u64 = 0x0000_0000_8000_0000;
-    const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0x2000_0000_0000_0000;
-    if addr < CALIPTRA_EXTERNAL_SRAM_BASE {
-        return Err(ErrorCode::Invalid);
-    }
-
-    Ok(addr - CALIPTRA_EXTERNAL_SRAM_BASE + DEVICE_EXTERNAL_SRAM_BASE)
-}
-
 async fn get_image_load_address(mailbox: &Mailbox, image_id: u32) -> Result<AXIAddr, ErrorCode> {
     let mut req = GetImageInfoReq {
         hdr: MailboxReqHeader::default(),
@@ -172,7 +154,7 @@ async fn get_image_load_address(mailbox: &Mailbox, image_id: u32) -> Result<AXIA
             let caliptra_axi_addr =
                 (resp.image_load_address_high as u64) << 32 | resp.image_load_address_low as u64;
 
-            caliptra_axi_addr_to_dma_addr(caliptra_axi_addr)
+            caliptra_axi_addr_to_dma_addr(caliptra_axi_addr).map_err(|_| ErrorCode::Fail)
         }
         Err(_) => Err(ErrorCode::Fail),
     }

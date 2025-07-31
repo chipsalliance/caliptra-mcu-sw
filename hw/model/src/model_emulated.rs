@@ -384,6 +384,7 @@ mod test {
             None,
             Some(mcu_rom.clone().into()),
             None,
+            None,
         );
         let caliptra_rom = caliptra_builder
             .get_caliptra_rom()

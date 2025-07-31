@@ -129,6 +129,39 @@ impl BootConfigAsync for FlashBootConfig {
         Ok(active_partition)
     }
 
+    async fn get_pending_partition(&self) -> Result<PartitionId, BootConfigError> {
+        let partition_table = self
+            .read_partition_table()
+            .await
+            .map_err(|_| BootConfigError::ReadFailed)?;
+        let (active_partition, _) = partition_table.get_active_partition();
+
+        let other_partition = match active_partition {
+            PartitionId::A => Ok(PartitionId::B),
+            PartitionId::B => Ok(PartitionId::A),
+            _ => Ok(PartitionId::A),
+        }?;
+
+        if self.get_partition_status(other_partition).await? == PartitionStatus::Valid {
+            Ok(other_partition)
+        } else {
+            Err(BootConfigError::InvalidStatus)
+        }
+    }
+
+    async fn get_inactive_partition(&self) -> Result<PartitionId, BootConfigError> {
+        let partition_table = self
+            .read_partition_table()
+            .await
+            .map_err(|_| BootConfigError::ReadFailed)?;
+        let (active_partition, _) = partition_table.get_active_partition();
+        match active_partition {
+            PartitionId::A => Ok(PartitionId::B),
+            PartitionId::B => Ok(PartitionId::A),
+            _ => Ok(PartitionId::A),
+        }
+    }
+
     async fn set_active_partition(
         &mut self,
         partition_id: PartitionId,
