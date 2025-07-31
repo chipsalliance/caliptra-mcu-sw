@@ -1,8 +1,7 @@
 # IDE_KM - Integrity and Data Encryption Key Management Protocol
+The Caliptra subsystem enables IDE_KM protocol support over SPDM secure sessions by transmitting IDE_KM messages as application data. The IDE_KM protocol manages the provisioning of encryption keys for IDE streams, providing confidentiality, integrity, and replay protection for Translation Layer Packets (TLPs).
 
-The Caliptra subsystem supports the IDE_KM protocol within SPDM secure sessions. IDE_KM enables the setup of encryption keys for IDE streams, providing confidentiality, integrity, and replay protection for Translation Layer Packets (TLPs).
-
-To enable IDE_KM, devices must implement the `IdeDriver` trait. This trait defines the interfaces and configuration required for IDE key management and secure communication. This documentation describes how to integrate IDE_KM with the Caliptra subsystem, outlines implementation requirements, and provides usage guidelines.
+To implement IDE_KM, devices must provide the `IdeDriver` trait implementation. This trait defines the interfaces and configuration necessary for secure IDE key management. This documentation describes how to integrate IDE_KM with the Caliptra subsystem, outlines implementation requirements, and offers guidance for usage.
 
 
 ```rust
@@ -10,8 +9,7 @@ To enable IDE_KM, devices must implement the `IdeDriver` trait. This trait defin
 pub const IDE_STREAM_KEY_SIZE_DW: usize = 4;
 pub const IDE_STREAM_IV_SIZE_DW: usize = 2;
 
-#[derive(Debug, IntoBytes, FromBytes, Immutable, Unaligned)]
-#[repr(C, packed)]
+/// Port Configuration structure contains the configuration and capabilities for a specific IDE port.
 pub struct PortConfig<
     const LINK_IDE_REG_BLOCK_COUNT: usize,
     const SELECTIVE_IDE_REG_BLOCK_COUNT: usize,
@@ -27,35 +25,13 @@ pub struct PortConfig<
     selective_ide_stream_reg_block: [SelectiveIdeStreamRegBlock<1>; SELECTIVE_IDE_REG_BLOCK_COUNT],
 }
 
-impl<const LINK_IDE_REG_BLOCK_COUNT: usize, const SELECTIVE_IDE_REG_BLOCK_COUNT: usize> Default
-    for PortConfig<LINK_IDE_REG_BLOCK_COUNT, SELECTIVE_IDE_REG_BLOCK_COUNT>
-{
-    fn default() -> Self {
-        Self {
-            port_index: 0,
-            function_num: 0,
-            bus_num: 0,
-            segment: 0,
-            max_port_index: 0,
-            ide_cap_reg: 0,
-            ide_ctrl_reg: 0,
-            link_ide_stream_reg_block: [LinkIdeStreamRegBlock::default(); LINK_IDE_REG_BLOCK_COUNT],
-            selective_ide_stream_reg_block: [SelectiveIdeStreamRegBlock::default();
-                SELECTIVE_IDE_REG_BLOCK_COUNT],
-        }
-    }
-}
-
 /// Link IDE Register Block
-#[derive(Default, Debug, Clone, Copy, IntoBytes, FromBytes, Immutable, Unaligned)]
-#[repr(C, packed)]
 pub struct LinkIdeStreamRegBlock {
     ctrl_reg: u32,
     status_reg: u32,
 }
 
-#[derive(Debug, Clone, Copy, IntoBytes, FromBytes, Immutable, Unaligned)]
-#[repr(C, packed)]
+/// Selective IDE Stream Register Block
 pub struct SelectiveIdeStreamRegBlock<const ADDR_ASSOC_COUNT: usize> {
     capability_reg: u32,
     ctrl_reg: u32,
@@ -65,28 +41,14 @@ pub struct SelectiveIdeStreamRegBlock<const ADDR_ASSOC_COUNT: usize> {
     addr_assoc_reg_blk: [AddrAssociationRegBlock; ADDR_ASSOC_COUNT],
 }
 
-impl<const ADDR_ASSOC_COUNT: usize> Default for SelectiveIdeStreamRegBlock<ADDR_ASSOC_COUNT> {
-    fn default() -> Self {
-        Self {
-            capability_reg: 0,
-            ctrl_reg: 0,
-            status_reg: 0,
-            rid_association_reg_1: 0,
-            rid_association_reg_2: 0,
-            addr_assoc_reg_blk: [AddrAssociationRegBlock::default(); ADDR_ASSOC_COUNT],
-        }
-    }
-}
-
-#[derive(Default, Debug, Clone, Copy, IntoBytes, FromBytes, Immutable, Unaligned)]
-#[repr(C, packed)]
+/// IDE Address Association Register Block
 pub struct AddrAssociationRegBlock {
     reg1: u32,
     reg2: u32,
     reg3: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// IDE Driver Error Types
 pub enum IdeDriverError {
     InvalidPortIndex,
     UnsupportedPortIndex,
@@ -101,6 +63,8 @@ pub enum IdeDriverError {
 
 pub type IdeDriverResult<T> = Result<T, IdeDriverError>;
 
+
+/// KeyInfo structure contains information about the key set, direction, and sub-stream.
 bitfield! {
     #[derive(Clone, Copy, PartialEq, Eq)]
     pub struct KeyInfo(u8);
@@ -109,22 +73,6 @@ bitfield! {
     pub key_direction, set_key_direction: 1;
     reserved, _: 3, 2;
     pub key_sub_stream, set_key_sub_stream: 7, 4;
-}
-
-impl KeyInfo {
-    /// Create a new KeyInfo with specified parameters
-    pub fn new(key_set_bit: bool, key_direction: bool, key_sub_stream: u8) -> Self {
-        let mut info = KeyInfo(0);
-        info.set_key_set_bit(key_set_bit);
-        info.set_key_direction(key_direction);
-        info.set_key_sub_stream(key_sub_stream & 0xF); // Ensure only 4 bits
-        info
-    }
-
-    /// Get the raw value
-    pub fn raw(&self) -> u8 {
-        self.0
-    }
 }
 
 /// IDE Driver Trait
@@ -143,7 +91,6 @@ impl KeyInfo {
 ///     { Self::SELECTIVE_IDE_REG_BLOCK_COUNT }
 /// >;
 /// ```
-#[async_trait]
 pub trait IdeDriver {
     /// Number of Link IDE register blocks supported by this implementation
     const LINK_IDE_REG_BLOCK_COUNT: usize;
