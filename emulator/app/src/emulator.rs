@@ -32,7 +32,7 @@ use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
 use emulator_periph::{
     CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
-    McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp,
+    McuMailbox0Internal, McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp,
 };
 use emulator_registers_generated::dma::DmaPeripheral;
 use emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
@@ -721,7 +721,12 @@ impl Emulator {
 
         let lc = LcCtrl::new();
         let otp = Otp::new(&clock.clone(), cli.otp, None, owner_pk_hash, vendor_pk_hash)?;
-        let mci = Mci::new(&clock.clone(), ext_mci, mci_irq);
+        let mci = Mci::new(
+            &clock.clone(),
+            ext_mci,
+            mci_irq,
+            Some(McuMailbox0Internal::new(&clock.clone())),
+        );
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,

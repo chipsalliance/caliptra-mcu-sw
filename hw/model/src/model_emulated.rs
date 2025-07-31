@@ -28,7 +28,9 @@ use caliptra_hw_model::ModelError;
 use caliptra_hw_model::SecurityState;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
 use emulator_periph::McuRootBusOffsets;
-use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp};
+use emulator_periph::{
+    I3c, I3cController, Mci, McuMailbox0Internal, McuRootBus, McuRootBusArgs, Otp,
+};
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
 use mcu_rom_common::LifecycleControllerState;
@@ -218,7 +220,12 @@ impl McuHwModel for ModelEmulated {
         )?;
         let ext_mci = root_bus.mci_external_regs();
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
-        let mci = Mci::new(&clock.clone(), ext_mci, Rc::new(RefCell::new(mci_irq)));
+        let mci = Mci::new(
+            &clock.clone(),
+            ext_mci,
+            Rc::new(RefCell::new(mci_irq)),
+            Some(McuMailbox0Internal::new(&clock.clone())),
+        );
 
         let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
             vec![Box::new(mcu_root_bus), Box::new(soc_to_caliptra_bus)];
