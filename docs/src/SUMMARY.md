@@ -9,6 +9,8 @@
     - [Image Loading](./image_loading.md)
     - [MCTP](./mctp.md)
     - [SPDM](./spdm.md)
+        - [IDE Key Management](./ide_km.md)
+        - [PCI DOE](./doe.md)
     - [PLDM](./pldm.md)
     - [Firmware Update](./firmware_update.md)
     - [External Mailbox Commands](./external_mailbox_cmds.md)
