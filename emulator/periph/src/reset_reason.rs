@@ -40,8 +40,8 @@ use tock_registers::interfaces::{ReadWriteable, Readable};
 
 /// Emulates the MCI RESET_REASON register behavior
 pub struct ResetReasonEmulator {
-    /// The actual register value
-    value: u32,
+    /// Reference to the MCI peripheral registers in caliptra-sw
+    ext_mci_regs: caliptra_emu_periph::mci::Mci,
 
     /// Track power state to properly handle warm reset
     pwrgood: bool,
@@ -53,9 +53,9 @@ pub struct ResetReasonEmulator {
 
 impl ResetReasonEmulator {
     /// Create a new reset reason emulator
-    pub fn new() -> Self {
+    pub fn new(ext_mci_regs: caliptra_emu_periph::mci::Mci) -> Self {
         Self {
-            value: 0,
+            ext_mci_regs,
             pwrgood: true,
             first_mci_reset_captured: false,
         }
@@ -63,19 +63,19 @@ impl ResetReasonEmulator {
 
     /// Get the current register value
     pub fn get(&self) -> u32 {
-        self.value
+        self.ext_mci_regs.regs.borrow().reset_reason
     }
 
     /// Set the register value (for software writes)
     pub fn set(&mut self, value: u32) {
-        self.value = value;
+        self.ext_mci_regs.regs.borrow_mut().reset_reason = value;
     }
 
     /// Handle power down event
     /// When mci_pwrgood goes low, all bits are cleared
     pub fn handle_power_down(&mut self) {
         self.pwrgood = false;
-        self.value = 0;
+        self.set(0);
         self.first_mci_reset_captured = false;
     }
 
@@ -94,25 +94,26 @@ impl ResetReasonEmulator {
         // Hardware logic: set WARM_RESET if this is not the first mci_rst_b edge after power on
         // and power has remained stable
         if self.pwrgood && self.first_mci_reset_captured {
-            let reg = ReadWriteRegister::<u32, ResetReason::Register>::new(self.value);
+            let reg = ReadWriteRegister::<u32, ResetReason::Register>::new(self.get());
             reg.reg.modify(ResetReason::WarmReset::SET);
-            self.value = reg.reg.get();
+            self.set(reg.reg.get());
         }
 
         // Mark that we've seen at least one mci_rst_b toggle
         self.first_mci_reset_captured = true;
 
         // Clear the firmware update bits (these are cleared by mci_rst_b)
-        let reg = ReadWriteRegister::<u32, ResetReason::Register>::new(self.value);
+        let reg = ReadWriteRegister::<u32, ResetReason::Register>::new(self.get());
         reg.reg
             .modify(ResetReason::FwBootUpdReset::CLEAR + ResetReason::FwHitlessUpdReset::CLEAR);
-        self.value = reg.reg.get();
+        self.set(reg.reg.get())
     }
 }
 
 impl Default for ResetReasonEmulator {
     fn default() -> Self {
-        Self::new()
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        Self::new(ext_mci_regs)
     }
 }
 
@@ -122,7 +123,7 @@ mod tests {
 
     #[test]
     fn test_cold_reset() {
-        let mut rr = ResetReasonEmulator::new();
+        let mut rr = ResetReasonEmulator::default();
 
         // Initial state should be 0
         assert_eq!(rr.get(), 0);
@@ -134,7 +135,7 @@ mod tests {
 
     #[test]
     fn test_warm_reset() {
-        let mut rr = ResetReasonEmulator::new();
+        let mut rr = ResetReasonEmulator::default();
 
         // First reset
         rr.handle_warm_reset();
@@ -147,7 +148,7 @@ mod tests {
 
     #[test]
     fn test_power_cycle() {
-        let mut rr = ResetReasonEmulator::new();
+        let mut rr = ResetReasonEmulator::default();
 
         // Set up warm reset condition
         rr.handle_warm_reset();
@@ -166,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_software_writes() {
-        let mut rr = ResetReasonEmulator::new();
+        let mut rr = ResetReasonEmulator::default();
 
         // Software can set FW update bits
         let reg = ReadWriteRegister::<u32, ResetReason::Register>::new(0);

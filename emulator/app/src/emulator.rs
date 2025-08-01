@@ -668,6 +668,7 @@ impl Emulator {
         .unwrap();
 
         emulator_periph::DummyDmaCtrl::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
+        let mci_irq = root_bus.mci_irq.clone();
 
         let delegates: Vec<Box<dyn Bus>> = vec![Box::new(root_bus), Box::new(soc_to_caliptra)];
 
@@ -682,7 +683,8 @@ impl Emulator {
 
         let lc = LcCtrl::new();
         let otp = Otp::new(&clock.clone(), cli.otp, owner_pk_hash, vendor_pk_hash)?;
-        let mci = Mci::new(&clock.clone(), ext_mci);
+        let mci = Mci::new(&clock.clone(), ext_mci, mci_irq);
+
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
             Some(auto_root_bus_offsets),

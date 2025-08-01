@@ -19,6 +19,7 @@ use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::StaticRef;
 use mcu_config::McuMemoryMap;
 use registers_generated::i3c::regs::I3c;
+use registers_generated::mci;
 use rv32i::csr::{mcause, mie::mie, CSR};
 use rv32i::syscall::SysCall;
 
@@ -44,6 +45,7 @@ pub struct VeeR<'a, I: InterruptService + 'a> {
 
 pub struct VeeRDefaultPeripherals<'a> {
     pub i3c: i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
+    pub mci: romtime::Mci,
     pub additional_interrupt_handler: &'static dyn InterruptService,
 }
 
@@ -53,11 +55,15 @@ impl<'a> VeeRDefaultPeripherals<'a> {
         alarm: &'a MuxAlarm<'a, InternalTimers<'a>>,
         memory_map: &McuMemoryMap,
     ) -> Self {
+        let mci: romtime::StaticRef<mci::regs::Mci> =
+            unsafe { romtime::StaticRef::new(memory_map.mci_offset as *const mci::regs::Mci) };
+        let mci_driver = romtime::Mci::new(mci);
         Self {
             i3c: i3c_driver::core::I3CCore::new(
                 unsafe { StaticRef::new(memory_map.i3c_offset as *const I3c) },
                 alarm,
             ),
+            mci: mci_driver,
             additional_interrupt_handler,
         }
     }
@@ -76,6 +82,9 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
             return true;
         } else if interrupt == I3C_IRQ as u32 {
             self.i3c.handle_interrupt();
+            return true;
+        } else if interrupt == MCI_IRQ as u32 {
+            self.mci.handle_interrupt();
             return true;
         }
         debug!("Unhandled interrupt {}", interrupt);

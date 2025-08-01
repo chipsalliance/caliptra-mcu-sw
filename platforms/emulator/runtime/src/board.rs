@@ -164,6 +164,7 @@ struct VeeR {
     >,
     dma: &'static capsules_emulator::dma::Dma<'static>,
     logging_flash: &'static capsules_emulator::logging::driver::LoggingFlashDriver<'static>,
+    mci: &'static capsules_runtime::mci::Mci,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -185,6 +186,7 @@ impl SyscallDriverLookup for VeeR {
             capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM => f(Some(self.doe_spdm)),
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
+            capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
             mcu_config_emulator::flash::DRIVER_NUM_START
                 ..=mcu_config_emulator::flash::DRIVER_NUM_END => {
                 for index in 0..mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT {
@@ -483,6 +485,13 @@ pub unsafe fn main() {
         VeeRDefaultPeripherals::new(emulator_peripherals, mux_alarm, &MCU_MEMORY_MAP)
     );
 
+    let mci = mcu_components::mci::MciComponent::new(
+        board_kernel,
+        capsules_runtime::mci::DRIVER_NUM,
+        &peripherals.mci,
+    )
+    .finalize(kernel::static_buf!(capsules_runtime::mci::Mci));
+
     let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
     chip.init(addr_of!(_pic_vector_table) as u32);
     CHIP = Some(chip);
@@ -671,6 +680,7 @@ pub unsafe fn main() {
             mailbox,
             dma,
             logging_flash,
+            mci,
         }
     );
 

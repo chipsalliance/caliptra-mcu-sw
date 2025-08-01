@@ -148,7 +148,6 @@ register_bitfields! [
 #[derive(Bus)]
 #[poll_fn(bus_poll)]
 #[warm_reset_fn(warm_reset)]
-#[update_reset_fn(update_reset)]
 pub struct SpiHost {
     /// Interrupt State
     #[register(offset = 0x00)]
