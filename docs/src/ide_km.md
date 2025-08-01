@@ -77,7 +77,7 @@ bitfield! {
 
 /// IDE Driver Trait
 ///
-/// Provides an interface for Intel Device Encryption (IDE) key management operations.
+/// Provides an interface for Integrity and Data Encryption (IDE) key management operations.
 /// This trait abstracts hardware-specific implementations for different platforms.
 ///
 /// # Implementation Notes
