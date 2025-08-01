@@ -24,18 +24,15 @@ jobs:
       - name: Build test firmware
         run: |
           # Build ROM and runtime binaries
-          cargo xtask rom-build --platform fpga
-          cargo xtask runtime-build --platform fpga
-
-          # Cross compile xtask for the ARM core
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="aarch64-linux-gnu-gcc"
+          cargo xtask all-build --platform fpga
+
+          # Build xtask
           cargo build -p xtask --target aarch64-unknown-linux-gnu
 
           mkdir -p /tmp/caliptra-binaries
-          tar -cvz -f /tmp/caliptra-binaries/caliptra-binaries.tar.gz \
-            target/riscv32imc-unknown-none-elf/release/mcu-rom-fpga.bin \
-            target/riscv32imc-unknown-none-elf/release/runtime.bin \
-            target/aarch64-unknown-linux-gnu/debug/xtask
+          mv target/all-fw.zip /tmp/caliptra-binaries
+          mv target/aarch64-unknown-linux-gnu/debug/xtask /tmp/caliptra-binaries/xtask
 
       - name: 'Upload test firmware artifact'
         uses: actions/upload-artifact@v4
@@ -61,11 +58,7 @@ jobs:
           name: caliptra-test-firmware${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-binaries
 
-      - name: Mount binaries
-        run: |
-          tar -xvf /tmp/caliptra-binaries/caliptra-binaries.tar.gz
-
       - name: Execute tests
         run: |
           export RUST_BACKTRACE=1
-          sudo ./target/aarch64-unknown-linux-gnu/debug/xtask fpga-run --mcu-rom target/riscv32imc-unknown-none-elf/release/mcu-rom-fpga.bin
+          sudo /tmp/caliptra-binaries/xtask fpga-run --zip /tmp/caliptra-binaries/all-fw.zip
