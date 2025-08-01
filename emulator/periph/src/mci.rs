@@ -48,6 +48,14 @@ impl Mci {
 }
 
 impl MciPeripheral for Mci {
+    fn read_mci_reg_fw_flow_status(&mut self) -> caliptra_emu_types::RvData {
+        self.ext_mci_regs.regs.borrow().flow_status
+    }
+
+    fn write_mci_reg_fw_flow_status(&mut self, val: caliptra_emu_types::RvData) {
+        self.ext_mci_regs.regs.borrow_mut().flow_status = val;
+    }
+
     fn read_mci_reg_wdt_timer1_en(&mut self) -> ReadWriteRegister<u32, WdtTimer1En::Register> {
         ReadWriteRegister::new(self.ext_mci_regs.regs.borrow().wdt_timer1_en)
     }

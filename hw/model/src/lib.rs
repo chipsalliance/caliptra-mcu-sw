@@ -3,13 +3,12 @@
 use anyhow::{bail, Result};
 pub use api::mailbox::mbox_write_fifo;
 pub use api_types::{DbgManufServiceRegReq, DeviceLifecycle, Fuses, SecurityState, U4};
-use caliptra_api::{self as api};
+use caliptra_api::{self as api, SocManager};
 use caliptra_api_types as api_types;
 use caliptra_emu_bus::Event;
 pub use caliptra_emu_cpu::{CodeRange, ImageInfo, StackInfo, StackRange};
 use caliptra_hw_model_types::{
-    ErrorInjectionMode, EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles,
-    DEFAULT_CPTRA_OBF_KEY,
+    EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
 };
 use caliptra_registers::soc_ifc::regs::{
     CptraItrngEntropyConfig0WriteVal, CptraItrngEntropyConfig1WriteVal,
@@ -269,6 +268,8 @@ pub trait McuHwModel {
         self.copy_output_until_exit_success(std::io::Sink::default())
     }
 
+    fn caliptra_soc_manager(&mut self) -> impl SocManager;
+
     fn copy_output_until_exit_success(
         &mut self,
         mut w: impl std::io::Write,
@@ -337,11 +338,9 @@ pub trait McuHwModel {
         Ok(())
     }
 
-    fn cover_fw_mage(&mut self, _image: &[u8]) {}
+    fn cover_fw_image(&mut self, _image: &[u8]) {}
 
     fn tracing_hint(&mut self, enable: bool);
-
-    fn ecc_error_injection(&mut self, _mode: ErrorInjectionMode) {}
 
     fn set_axi_user(&mut self, axi_user: u32);
 
@@ -358,4 +357,8 @@ pub trait McuHwModel {
     fn events_from_caliptra(&mut self) -> Vec<Event>;
 
     fn events_to_caliptra(&mut self) -> mpsc::Sender<Event>;
+
+    fn mci_flow_status(&mut self) -> u32 {
+        0
+    }
 }

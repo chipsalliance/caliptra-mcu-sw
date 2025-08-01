@@ -10,6 +10,8 @@
     - [MCTP](./mctp.md)
     - [SPDM](./spdm.md)
     - [PLDM](./pldm.md)
+        - [IDE Key Management](./ide_km.md)
+        - [PCI DOE](./doe.md)
     - [Firmware Update](./firmware_update.md)
     - [External Mailbox Commands](./external_mailbox_cmds.md)
     - [External MCTP VDM Commands](./external_mctp_vdm_cmds.md)

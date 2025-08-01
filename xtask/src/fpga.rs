@@ -228,6 +228,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         model.step();
     }
     println!("Ending FPGA run");
+    println!("MCI flow status: {:x}", model.mci_flow_status());
     if save_otp {
         println!(
             "Saving OTP memory to file {}",
