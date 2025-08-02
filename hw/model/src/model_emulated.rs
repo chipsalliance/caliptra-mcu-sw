@@ -36,6 +36,7 @@ use emulator_periph::{
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
 use mcu_rom_common::LifecycleControllerState;
+use mcu_rom_common::McuRomBootStatus;
 use registers_generated::fuses;
 use semver::Version;
 use std::cell::Cell;
@@ -282,6 +283,28 @@ impl McuHwModel for ModelEmulated {
         m.tracing_hint(true);
 
         Ok(m)
+    }
+
+    fn boot(&mut self, _boot_params: crate::BootParams) -> Result<()>
+    where
+        Self: Sized,
+    {
+        self.cpu_enabled.set(true);
+        for _ in 0..10_000 {
+            self.step();
+        }
+        use std::io::Write;
+        let mut w = std::io::Sink::default();
+        if !self.output().peek().is_empty() {
+            w.write_all(self.output().take(usize::MAX).as_bytes())
+                .unwrap();
+        }
+        assert_eq!(
+            u32::from(McuRomBootStatus::CaliptraBootGoAsserted),
+            self.mci_flow_status()
+        );
+        // TODO: load caliptra and MCU firmware
+        Ok(())
     }
 
     fn type_name(&self) -> &'static str {

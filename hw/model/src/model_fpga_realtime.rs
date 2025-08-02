@@ -1249,8 +1249,28 @@ impl McuHwModel for ModelFpgaRealtime {
         // };
         // sram_slice.copy_from_slice(&fw_data);
 
+        while !m.i3c_target_configured() {}
         println!("Done starting MCU");
         Ok(m)
+    }
+
+    fn boot(&mut self, _boot_params: crate::BootParams) -> Result<()>
+    where
+        Self: Sized,
+    {
+        let mut xi3c_configured = false;
+        for _ in 0..1_000_000 {
+            if !xi3c_configured && self.i3c_target_configured() {
+                xi3c_configured = true;
+                println!("I3C target configured");
+                self.configure_i3c_controller();
+                println!("Starting recovery flow (BMC)");
+                self.start_recovery_bmc();
+            }
+            self.step();
+        }
+        println!("Finished booting");
+        Ok(())
     }
 
     fn type_name(&self) -> &'static str {
@@ -1446,29 +1466,5 @@ impl Drop for ModelFpgaRealtime {
         self.unmap_mapping(self.mci.ptr, MCI_MAPPING);
         self.unmap_mapping(self.i3c_mmio, I3C_TARGET_MAPPING);
         self.unmap_mapping(self.i3c_controller_mmio, I3C_CONTROLLER_MAPPING);
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::{DefaultHwModel, InitParams, McuHwModel};
-    use mcu_builder::FirmwareBinaries;
-    use mcu_rom_common::McuRomBootStatus;
-
-    #[test]
-    fn test_new_unbooted() {
-        let firmware_bundle = FirmwareBinaries::from_env().unwrap();
-        let mut model = DefaultHwModel::new_unbooted(InitParams {
-            caliptra_rom: &firmware_bundle.caliptra_rom,
-            caliptra_firmware: &firmware_bundle.caliptra_fw,
-            mcu_rom: &firmware_bundle.mcu_rom,
-            mcu_firmware: &firmware_bundle.mcu_runtime,
-            soc_manifest: &firmware_bundle.soc_manifest,
-            active_mode: true,
-            ..Default::default()
-        })
-        .unwrap();
-
-        model.step_until(|m| m.mci_flow_status() == u32::from(McuRomBootStatus::I3cInitialized));
     }
 }
