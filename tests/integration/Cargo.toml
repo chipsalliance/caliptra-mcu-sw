@@ -17,3 +17,12 @@ pldm-fw-pkg.workspace = true
 tempfile.workspace = true
 uuid.workspace = true
 zerocopy.workspace = true
+
+[dev-dependencies]
+caliptra-api-types.workspace = true
+caliptra-api.workspace = true
+caliptra-builder.workspace = true
+mcu-hw-model.workspace = true
+registers-generated.workspace = true
+tock-registers.workspace = true
+

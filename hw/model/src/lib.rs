@@ -17,6 +17,7 @@ pub use model_emulated::ModelEmulated;
 use output::ExitStatus;
 pub use output::Output;
 use rand::{rngs::StdRng, SeedableRng};
+use sha2::Digest;
 use std::io::{stdout, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -58,6 +59,21 @@ pub type DefaultHwModel = ModelFpgaRealtime;
 pub const DEFAULT_APB_PAUSER: u32 = 0x01;
 
 const EXPECTED_CALIPTRA_BOOT_TIME_IN_CYCLES: u64 = 40_000_000; // 40 million cycles
+
+/// Constructs an HwModel based on the cargo features and environment
+/// variables. Most test cases that need to construct a HwModel should use this
+/// function over HwModel::new_unbooted().
+///
+/// The model returned by this function does not have any fuses programmed and
+/// is not yet ready to execute code in the microcontroller. Most test cases
+/// should use [`new`] instead.
+pub fn new_unbooted(params: InitParams) -> Result<DefaultHwModel> {
+    let summary = params.summary();
+    DefaultHwModel::new_unbooted(params).inspect(|hw| {
+        println!("Using hardware-model {}", hw.type_name());
+        println!("{summary:#?}");
+    })
+}
 
 pub struct InitParams<'a> {
     // The contents of the Caliptra ROM
@@ -130,6 +146,17 @@ pub struct InitParams<'a> {
     // overflows.
     pub stack_info: Option<StackInfo>,
 }
+
+impl InitParams<'_> {
+    pub fn summary(&self) -> InitParamsSummary {
+        InitParamsSummary {
+            rom_sha384: sha2::Sha384::digest(self.mcu_rom).into(),
+            obf_key: self.cptra_obf_key,
+            security_state: self.security_state,
+        }
+    }
+}
+
 impl Default for InitParams<'_> {
     fn default() -> Self {
         let seed = std::env::var("CPTRA_TRNG_SEED")
