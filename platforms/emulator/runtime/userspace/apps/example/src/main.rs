@@ -36,7 +36,7 @@ mod test_caliptra_certs;
 #[cfg(feature = "test-log-flash-usermode")]
 mod test_logging_flash;
 
-#[cfg(feature = "test-mci")]
+#[cfg(any(feature = "test-mci", feature = "test-warm-reset"))]
 mod test_mci;
 
 #[cfg(target_arch = "riscv32")]
@@ -82,12 +82,6 @@ pub(crate) async fn async_main<S: Syscalls>() {
         AsyncAlarm::<S>::get_frequency().unwrap().0
     )
     .unwrap();
-
-    #[cfg(feature = "test-warm-boot")]
-    {
-        let _ = writeln!(console_writer, "Warm boot test done");
-        romtime::test_exit(0);
-    }
 
     match AsyncAlarm::<S>::exists() {
         Ok(()) => {}
@@ -233,6 +227,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
     #[cfg(feature = "test-mci")]
     {
         test_mci::test_mci_read_write().await;
+        romtime::test_exit(0);
+    }
+
+    #[cfg(feature = "test-warm-reset")]
+    {
+        test_mci::test_mci_warm_reset().await;
         romtime::test_exit(0);
     }
 

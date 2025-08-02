@@ -13,6 +13,7 @@ mod cmd {
     pub const MCI_READ: u32 = 1;
     pub const MCI_WRITE: u32 = 2;
     pub const MCI_SET_REGISTER: u32 = 3;
+    pub const MCI_TRIGGER_WARM_RESET: u32 = 4;
 }
 
 mod mci_reg {
@@ -103,6 +104,10 @@ impl SyscallDriver for Mci {
             cmd::MCI_READ => self.read_reg(processid),
             cmd::MCI_WRITE => self.write_reg(arg1 as u32, processid),
             cmd::MCI_SET_REGISTER => self.set_reg(arg1 as u32, arg2 as u32, processid),
+            cmd::MCI_TRIGGER_WARM_RESET => {
+                self.driver.trigger_warm_reset();
+                CommandReturn::success()
+            }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }

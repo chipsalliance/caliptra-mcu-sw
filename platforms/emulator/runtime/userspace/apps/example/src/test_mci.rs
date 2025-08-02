@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use core::fmt::Write;
-use libsyscall_caliptra::mci::mci_reg::WDT_TIMER1_EN;
+use libsyscall_caliptra::mci::mci_reg::{RESET_REASON, WDT_TIMER1_EN};
 use libsyscall_caliptra::mci::Mci;
 use romtime::{println, test_exit};
 
@@ -20,6 +20,37 @@ pub(crate) async fn test_mci_read_write() {
     let reg_val = mci.read(WDT_TIMER1_EN, 0).unwrap();
     if reg_val != 0x2 {
         println!("WDT_TIMER1_EN is not 0x2: {}", reg_val);
+        test_exit(1);
+    }
+}
+
+#[allow(unused)]
+pub(crate) async fn test_mci_warm_reset() {
+    println!("Starting test_mci_warm_reset");
+
+    let mci: Mci = Mci::new();
+
+    // Read reset reason
+    let reset_reason = mci.read(RESET_REASON, 0).unwrap();
+    println!("Reset reason register: 0x{:08x}", reset_reason);
+
+    // Check if this is a warm reset (bit 2)
+    const WARM_RESET_BIT: u32 = 1 << 2;
+
+    if reset_reason & WARM_RESET_BIT != 0 {
+        println!("Warm reset detected successfully!");
+        // Test passed - we assume this warm reset was triggered by our test
+        // Note: Without persistent memory accessible from userspace, we can't
+        // definitively prove this was our reset vs another warm reset
+        return;
+    } else {
+        println!("Cold boot detected, triggering warm reset...");
+
+        // Trigger warm reset
+        mci.trigger_warm_reset().unwrap();
+
+        // Should never reach here if reset works
+        println!("ERROR: Still running after reset request!");
         test_exit(1);
     }
 }
