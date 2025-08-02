@@ -48,7 +48,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwRevId::Register>
     {
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_emu_bus::ReadWriteRegister::new(0x1000)
     }
     fn read_mci_reg_fw_rev_id(&mut self, _index: usize) -> caliptra_emu_types::RvData {
         0
