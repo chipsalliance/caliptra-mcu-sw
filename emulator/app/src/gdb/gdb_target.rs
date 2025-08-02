@@ -52,6 +52,21 @@ impl GdbTarget {
         }
     }
 
+    // Get a reference to the underlying emulator
+    pub fn emulator(&self) -> &Emulator {
+        &self.emulator
+    }
+
+    // Get a mutable reference to the underlying emulator
+    pub fn emulator_mut(&mut self) -> &mut Emulator {
+        &mut self.emulator
+    }
+
+    // Extract the emulator from the GdbTarget, consuming the GdbTarget
+    pub fn into_emulator(self) -> Emulator {
+        self.emulator
+    }
+
     // Signal an interrupt request (called when Ctrl+C is received)
     pub fn request_interrupt(&mut self) {
         self.interrupt_requested = true;
