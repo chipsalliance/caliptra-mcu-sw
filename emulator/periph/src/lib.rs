@@ -36,6 +36,7 @@ pub use i3c_protocol::*;
 pub use lc_ctrl::LcCtrl;
 pub use mci::Mci;
 pub use otp::Otp;
+pub use otp_digest::{otp_digest, otp_scramble, otp_unscramble};
 pub use reset_reason::ResetReasonEmulator;
 pub use root_bus::{McuRootBus, McuRootBusArgs, McuRootBusOffsets};
 pub use spi_flash::IoMode;

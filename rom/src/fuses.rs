@@ -36,6 +36,15 @@ impl From<LifecycleToken> for [u8; 16] {
     }
 }
 
+/// Raw tokens
+pub struct LifecycleRawTokens {
+    pub test_unlock: [LifecycleToken; 7],
+    pub manuf: LifecycleToken,
+    pub manuf_to_prod: LifecycleToken,
+    pub prod_to_prod_end: LifecycleToken,
+    pub rma: LifecycleToken,
+}
+
 /// Hashed token, suitable for burning into the OTP.
 #[derive(Clone, Copy)]
 pub struct LifecycleHashedToken(pub [u8; 16]);
@@ -53,7 +62,6 @@ impl From<LifecycleHashedToken> for [u8; 16] {
 }
 
 /// Hashed tokens to be burned into the OTP for lifecycle transitions.
-#[allow(dead_code)]
 pub struct LifecycleHashedTokens {
     pub test_unlock: [LifecycleHashedToken; 7],
     pub manuf: LifecycleHashedToken,
@@ -86,6 +94,65 @@ pub enum LifecycleControllerState {
     ProdEnd = 18,
     Rma = 19,
     Scrap = 20,
+}
+
+impl core::fmt::Display for LifecycleControllerState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            LifecycleControllerState::Raw => write!(f, "raw"),
+            LifecycleControllerState::TestUnlocked0 => write!(f, "test_unlocked0"),
+            LifecycleControllerState::TestLocked0 => write!(f, "test_locked0"),
+            LifecycleControllerState::TestUnlocked1 => write!(f, "test_unlocked1"),
+            LifecycleControllerState::TestLocked1 => write!(f, "test_locked1"),
+            LifecycleControllerState::TestUnlocked2 => write!(f, "test_unlocked2"),
+            LifecycleControllerState::TestLocked2 => write!(f, "test_locked2"),
+            LifecycleControllerState::TestUnlocked3 => write!(f, "test_unlocked3"),
+            LifecycleControllerState::TestLocked3 => write!(f, "test_locked3"),
+            LifecycleControllerState::TestUnlocked4 => write!(f, "test_unlocked4"),
+            LifecycleControllerState::TestLocked4 => write!(f, "test_locked4"),
+            LifecycleControllerState::TestUnlocked5 => write!(f, "test_unlocked5"),
+            LifecycleControllerState::TestLocked5 => write!(f, "test_locked5"),
+            LifecycleControllerState::TestUnlocked6 => write!(f, "test_unlocked6"),
+            LifecycleControllerState::TestLocked6 => write!(f, "test_locked6"),
+            LifecycleControllerState::TestUnlocked7 => write!(f, "test_unlocked7"),
+            LifecycleControllerState::Dev => write!(f, "dev"),
+            LifecycleControllerState::Prod => write!(f, "prod"),
+            LifecycleControllerState::ProdEnd => write!(f, "prod_end"),
+            LifecycleControllerState::Rma => write!(f, "rma"),
+            LifecycleControllerState::Scrap => write!(f, "scrap"),
+        }
+    }
+}
+
+impl core::str::FromStr for LifecycleControllerState {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "raw" => Ok(LifecycleControllerState::Raw),
+            "test_unlocked0" => Ok(LifecycleControllerState::TestUnlocked0),
+            "test_locked0" => Ok(LifecycleControllerState::TestLocked0),
+            "test_unlocked1" => Ok(LifecycleControllerState::TestUnlocked1),
+            "test_locked1" => Ok(LifecycleControllerState::TestLocked1),
+            "test_unlocked2" => Ok(LifecycleControllerState::TestUnlocked2),
+            "test_locked2" => Ok(LifecycleControllerState::TestLocked2),
+            "test_unlocked3" => Ok(LifecycleControllerState::TestUnlocked3),
+            "test_locked3" => Ok(LifecycleControllerState::TestLocked3),
+            "test_unlocked4" => Ok(LifecycleControllerState::TestUnlocked4),
+            "test_locked4" => Ok(LifecycleControllerState::TestLocked4),
+            "test_unlocked5" => Ok(LifecycleControllerState::TestUnlocked5),
+            "test_locked5" => Ok(LifecycleControllerState::TestLocked5),
+            "test_unlocked6" => Ok(LifecycleControllerState::TestUnlocked6),
+            "test_locked6" => Ok(LifecycleControllerState::TestLocked6),
+            "test_unlocked7" => Ok(LifecycleControllerState::TestUnlocked7),
+            "dev" | "manuf" | "manufacturing" => Ok(LifecycleControllerState::Dev),
+            "production" | "prod" => Ok(LifecycleControllerState::Prod),
+            "prod_end" => Ok(LifecycleControllerState::ProdEnd),
+            "rma" => Ok(LifecycleControllerState::Rma),
+            "scrap" => Ok(LifecycleControllerState::Scrap),
+            _ => Err("Invalid lifecycle state"),
+        }
+    }
 }
 
 impl From<LifecycleControllerState> for u8 {

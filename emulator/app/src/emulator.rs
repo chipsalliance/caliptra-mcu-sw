@@ -682,7 +682,7 @@ impl Emulator {
         });
 
         let lc = LcCtrl::new();
-        let otp = Otp::new(&clock.clone(), cli.otp, owner_pk_hash, vendor_pk_hash)?;
+        let otp = Otp::new(&clock.clone(), cli.otp, None, owner_pk_hash, vendor_pk_hash)?;
         let mci = Mci::new(&clock.clone(), ext_mci, mci_irq);
 
         let mut auto_root_bus = AutoRootBus::new(

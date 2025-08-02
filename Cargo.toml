@@ -122,6 +122,7 @@ serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
 serde-hjson = "1.1.0"
 sha2 = { version = "0.10.8", default-features = false }
+sha3 = "0.10.8"
 simple_logger = "5.0.0"
 smlang = "0.8.0"
 subst = "0.3.8"

@@ -1161,8 +1161,6 @@ fn autogen_fuses(check: bool, dest_dir: &Path) -> Result<()> {
             .map(|s| s.parse::<usize>().unwrap())
             .unwrap_or(calculated_size);
 
-        // TODO: this one seems to be incorrect in the hjson file
-        // https://github.com/chipsalliance/caliptra-ss/issues/193
         if name != "vendor_test_partition" {
             assert_eq!(calculated_size, size);
         }
@@ -1174,12 +1172,12 @@ fn autogen_fuses(check: bool, dest_dir: &Path) -> Result<()> {
         output += &format!("pub {}: [u8; {}],\n", name, size);
         default_impl_output += &format!("{}: [0; {}],\n", name, size);
         const_output += &format!(
-            "pub const {}_BYTE_OFFSET: usize = {};\n",
+            "pub const {}_BYTE_OFFSET: usize = 0x{:x};\n",
             name.to_uppercase(),
             offset
         );
         const_output += &format!(
-            "pub const {}_BYTE_SIZE: usize = {};\n",
+            "pub const {}_BYTE_SIZE: usize = 0x{:x};\n",
             name.to_uppercase(),
             size,
         );

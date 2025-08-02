@@ -292,16 +292,18 @@ impl CaliptraBuilder {
                 .unwrap();
             transmute!(bundle)
         };
-        Ok((path, Self::vendor_pk_hash(manifest)?))
+        Ok((path, Self::vendor_pk_hash_str(manifest)?))
     }
 
-    fn vendor_pk_hash(manifest: ImageManifest) -> Result<String> {
+    pub fn vendor_pk_hash(manifest: &ImageManifest) -> Result<[u8; 48]> {
         let crypto = Crypto::default();
-        let x = from_hw_format(
-            &crypto.sha384_digest(manifest.preamble.vendor_pub_key_info.as_bytes())?,
-        )
-        .encode_hex();
-        Ok(x)
+        Ok(from_hw_format(&crypto.sha384_digest(
+            manifest.preamble.vendor_pub_key_info.as_bytes(),
+        )?))
+    }
+
+    fn vendor_pk_hash_str(manifest: ImageManifest) -> Result<String> {
+        Ok(Self::vendor_pk_hash(&manifest)?.encode_hex())
     }
 
     fn compile_caliptra_fw_uncached(fpga: bool) -> Result<(PathBuf, String)> {
@@ -326,7 +328,7 @@ impl CaliptraBuilder {
         let fw_bytes = bundle.to_bytes()?;
         let path = target_dir().join("caliptra-fw-bundle.bin");
         std::fs::write(&path, fw_bytes)?;
-        Ok((path, Self::vendor_pk_hash(bundle.manifest)?))
+        Ok((path, Self::vendor_pk_hash_str(bundle.manifest)?))
     }
 
     pub fn create_auth_manifest_with_metadata(

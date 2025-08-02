@@ -216,6 +216,10 @@ enum Commands {
         /// Whether to disable the recovery interface and I3C
         #[arg(long, default_value_t = false)]
         no_recovery: bool,
+
+        /// Lifecycle controller state to set (raw, test_unlocked0, manufacturing, prod, etc.).
+        #[arg(long)]
+        lifecycle: Option<String>,
     },
     /// Utility to create and parse PLDM firmware packages
     PldmFirmware {
