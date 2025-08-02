@@ -15,11 +15,15 @@ use caliptra_api::SocManager;
 use caliptra_emu_bus::Bus;
 use caliptra_emu_bus::BusError;
 use caliptra_emu_bus::BusMmio;
+use caliptra_emu_bus::Device;
 use caliptra_emu_bus::{Clock, Event};
+use caliptra_emu_cpu::Cpu as CaliptraMainCpu;
 use caliptra_emu_cpu::{Cpu, CpuArgs, InstrTracer, Pic};
+use caliptra_emu_periph::dma::recovery::RecoveryControl;
 use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_periph::{
-    ActionCb, CaliptraRootBus, CaliptraRootBusArgs, MailboxRequester, ReadyForFwCb, TbServicesCb,
+    ActionCb, CaliptraRootBus as CaliptraMainRootBus, CaliptraRootBusArgs, MailboxRequester,
+    ReadyForFwCb, TbServicesCb,
 };
 use caliptra_emu_types::RvAddr;
 use caliptra_emu_types::RvData;
@@ -29,6 +33,8 @@ use caliptra_hw_model::ModelError;
 use caliptra_hw_model::SecurityState;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
+use caliptra_registers::i3ccsr::regs::DeviceStatus0ReadVal;
+use emulator_bmc::Bmc;
 use emulator_periph::McuRootBusOffsets;
 use emulator_periph::{
     I3c, I3cController, Mci, McuMailbox0Internal, McuRootBus, McuRootBusArgs, Otp,
@@ -47,6 +53,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc;
+use tock_registers::interfaces::{ReadWriteable, Readable};
 
 const DEFAULT_AXI_PAUSER: u32 = 0xaaaa_aaaa;
 
@@ -54,6 +61,7 @@ const DEFAULT_AXI_PAUSER: u32 = 0xaaaa_aaaa;
 pub struct ModelEmulated {
     cpu: Cpu<BusLogger<AutoRootBus>>,
     soc_to_caliptra_bus: SocToCaliptraBus,
+    pub caliptra_cpu: CaliptraMainCpu<CaliptraMainRootBus>,
     output: Output,
     caliptra_trace_fn: Option<Box<InstrTracer<'static>>>,
     ready_for_fw: Rc<Cell<bool>>,
@@ -68,6 +76,11 @@ pub struct ModelEmulated {
     events_to_caliptra: mpsc::Sender<Event>,
     events_from_caliptra: mpsc::Receiver<Event>,
     collected_events_from_caliptra: Vec<Event>,
+
+    bmc: Bmc,
+    from_bmc: mpsc::Receiver<Event>,
+    bmc_step_counter: usize,
+    recovery_started: bool,
 }
 
 fn hash_slice(slice: &[u8]) -> u64 {
@@ -136,7 +149,7 @@ impl McuHwModel for ModelEmulated {
             clock: clock.clone(),
             ..CaliptraRootBusArgs::default()
         };
-        let mut root_bus = CaliptraRootBus::new(bus_args);
+        let mut root_bus = CaliptraMainRootBus::new(bus_args);
 
         root_bus
             .soc_reg
@@ -163,6 +176,8 @@ impl McuHwModel for ModelEmulated {
             .soc_reg
             .set_hw_config((1 | if params.active_mode { 1 << 5 } else { 0 }).into());
 
+        let soc_to_caliptra_bus_delegate =
+            root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(DEFAULT_AXI_PAUSER));
         let soc_to_caliptra_bus =
             root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(DEFAULT_AXI_PAUSER));
 
@@ -232,8 +247,10 @@ impl McuHwModel for ModelEmulated {
             Some(McuMailbox0Internal::new(&clock.clone())),
         );
 
-        let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
-            vec![Box::new(mcu_root_bus), Box::new(soc_to_caliptra_bus)];
+        let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> = vec![
+            Box::new(mcu_root_bus),
+            Box::new(soc_to_caliptra_bus_delegate),
+        ];
 
         let auto_root_bus = AutoRootBus::new(
             delegates,
@@ -253,19 +270,57 @@ impl McuHwModel for ModelEmulated {
         );
 
         let args = CpuArgs::default();
-        let mut cpu = Cpu::new(BusLogger::new(auto_root_bus), clock, pic, args);
+        let mut cpu = Cpu::new(
+            BusLogger::new(auto_root_bus),
+            clock.clone(),
+            pic.clone(),
+            args,
+        );
         cpu.write_pc(McuMemoryMap::default().rom_offset);
 
         if let Some(stack_info) = params.stack_info {
             cpu.with_stack_info(stack_info);
         }
 
+        let mut caliptra_cpu = Cpu::new(root_bus, clock.clone(), pic.clone(), CpuArgs::default());
+
         let (events_to_caliptra, events_from_caliptra) = cpu.register_events();
-        let soc_to_caliptra_bus =
-            root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(DEFAULT_AXI_PAUSER));
+
+        let (caliptra_cpu_event_sender, from_bmc) = mpsc::channel();
+        let (to_bmc, caliptra_cpu_event_recv) = mpsc::channel();
+        caliptra_cpu
+            .bus
+            .dma
+            .axi
+            .recovery
+            .register_outgoing_events(to_bmc.clone());
+
+        // these aren't used
+        let (mcu_cpu_event_sender, mcu_cpu_event_recv) = mpsc::channel();
+
+        // This is a fake BMC that runs the recovery flow as a series of events for recovery block reads and writes.
+        let mut bmc = Bmc::new(
+            caliptra_cpu_event_sender,
+            caliptra_cpu_event_recv,
+            mcu_cpu_event_sender,
+            mcu_cpu_event_recv,
+        );
+
+        // load the firmware images and SoC manifest into the recovery interface emulator
+        let rri = &mut caliptra_cpu.bus.dma.axi.recovery;
+        let images = [
+            params.caliptra_firmware,
+            params.soc_manifest,
+            params.mcu_firmware,
+        ];
+        for image in images {
+            bmc.push_recovery_image(image.to_vec());
+            rri.cms_data.push(image.to_vec());
+        }
 
         let mut m = ModelEmulated {
             soc_to_caliptra_bus,
+            caliptra_cpu,
             output,
             cpu,
             caliptra_trace_fn: None,
@@ -277,11 +332,68 @@ impl McuHwModel for ModelEmulated {
             events_to_caliptra,
             events_from_caliptra,
             collected_events_from_caliptra: vec![],
+            bmc,
+            from_bmc,
+            bmc_step_counter: 0,
+            recovery_started: false,
         };
         // Turn tracing on if the trace path was set
         m.tracing_hint(true);
 
         Ok(m)
+    }
+
+    fn boot(&mut self, _boot_params: crate::BootParams) -> Result<()>
+    where
+        Self: Sized,
+    {
+        println!("writing to cptra_bootfsm_go");
+        self.caliptra_soc_manager()
+            .soc_ifc()
+            .cptra_bootfsm_go()
+            .write(|w| w.go(true));
+        self.cpu_enabled.set(true);
+        for _ in 0..10_000 {
+            self.step();
+        }
+        use std::io::Write;
+        let mut w = std::io::Sink::default();
+        if !self.output().peek().is_empty() {
+            w.write_all(self.output().take(usize::MAX).as_bytes())
+                .unwrap();
+        }
+        const MAX_WAIT_CYCLES: u32 = 200_000_000;
+        let mut cycles = 0;
+        while !self.ready_for_fw() {
+            // If GENERATE_IDEVID_CSR was set then we need to clear cptra_dbg_manuf_service_reg
+            // once the CSR is ready to continue making progress.
+            //
+            // Generally the CSR should be read from the mailbox at this point, but to
+            // accommodate test cases that ignore the CSR mailbox, we will ignore it here.
+            {
+                let mut soc_mgr = self.caliptra_soc_manager();
+                let soc_ifc = soc_mgr.soc_ifc();
+                if soc_ifc.cptra_flow_status().read().idevid_csr_ready() {
+                    soc_ifc.cptra_dbg_manuf_service_reg().write(|_| 0);
+                }
+            }
+
+            self.step();
+            cycles += 1;
+            if cycles > MAX_WAIT_CYCLES {
+                return Err(ModelError::ReadyForFirmwareTimeout { cycles }.into());
+            }
+        }
+        self.start_recovery_bmc();
+        let mut cycles: u32 = 0;
+        while !self.ready_for_runtime() {
+            self.step();
+            cycles += 1;
+            if cycles > MAX_WAIT_CYCLES {
+                return Err(ModelError::ReadyForFirmwareTimeout { cycles }.into());
+            }
+        }
+        Ok(())
     }
 
     fn type_name(&self) -> &'static str {
@@ -295,6 +407,35 @@ impl McuHwModel for ModelEmulated {
     fn step(&mut self) {
         if self.cpu_enabled.get() {
             self.cpu.step(self.caliptra_trace_fn.as_deref_mut());
+        }
+        self.caliptra_cpu
+            .step(self.caliptra_trace_fn.as_deref_mut());
+        self.bmc_step();
+
+        // do the bare minimum for the recovery flow: activating the recovery image
+        const DEVICE_STATUS_PENDING: u32 = 0x4;
+        const ACTIVATE_RECOVERY_IMAGE_CMD: u32 = 0xF;
+        if DeviceStatus0ReadVal::from(
+            self.caliptra_cpu
+                .bus
+                .dma
+                .axi
+                .recovery
+                .device_status_0
+                .reg
+                .get(),
+        )
+        .dev_status()
+            == DEVICE_STATUS_PENDING
+        {
+            self.caliptra_cpu
+                .bus
+                .dma
+                .axi
+                .recovery
+                .recovery_ctrl
+                .reg
+                .modify(RecoveryControl::ACTIVATE_RECOVERY_IMAGE.val(ACTIVATE_RECOVERY_IMAGE_CMD));
         }
         let events = self.events_from_caliptra.try_iter().collect::<Vec<_>>();
         self.collected_events_from_caliptra.extend(events);
@@ -379,6 +520,48 @@ impl McuHwModel for ModelEmulated {
 impl ModelEmulated {
     fn caliptra_axi_bus(&mut self) -> EmulatedAxiBus<'_> {
         EmulatedAxiBus { model: self }
+    }
+
+    fn ready_for_runtime(&mut self) -> bool {
+        self.caliptra_soc_manager()
+            .soc_ifc()
+            .cptra_flow_status()
+            .read()
+            .ready_for_runtime()
+    }
+
+    pub fn start_recovery_bmc(&mut self) {
+        self.recovery_started = true;
+    }
+
+    fn bmc_step(&mut self) {
+        if !self.recovery_started {
+            return;
+        }
+
+        self.bmc_step_counter += 1;
+
+        // don't run the BMC every time as it can spam requests
+        if self.bmc_step_counter < 100_000 || self.bmc_step_counter % 10_000 != 0 {
+            return;
+        }
+        self.bmc.step();
+
+        // we need to translate from the BMC events to the I3C controller block reads and writes
+        let Ok(event) = self.from_bmc.try_recv() else {
+            return;
+        };
+        // ignore messages that aren't meant for Caliptra core.
+        if !matches!(event.dest, Device::CaliptraCore) {
+            return;
+        }
+
+        self.caliptra_cpu
+            .bus
+            .dma
+            .axi
+            .recovery
+            .incoming_event(event.into());
     }
 }
 

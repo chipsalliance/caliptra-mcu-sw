@@ -1240,8 +1240,28 @@ impl McuHwModel for ModelFpgaRealtime {
         // };
         // sram_slice.copy_from_slice(&fw_data);
 
+        while !m.i3c_target_configured() {}
         println!("Done starting MCU");
         Ok(m)
+    }
+
+    fn boot(&mut self, _boot_params: crate::BootParams) -> Result<()>
+    where
+        Self: Sized,
+    {
+        let mut xi3c_configured = false;
+        for _ in 0..1_000_000 {
+            if !xi3c_configured && self.i3c_target_configured() {
+                xi3c_configured = true;
+                println!("I3C target configured");
+                self.configure_i3c_controller();
+                println!("Starting recovery flow (BMC)");
+                self.start_recovery_bmc();
+            }
+            self.step();
+        }
+        println!("Finished booting");
+        Ok(())
     }
 
     fn type_name(&self) -> &'static str {

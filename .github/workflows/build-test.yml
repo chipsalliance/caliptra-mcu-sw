@@ -95,6 +95,10 @@ jobs:
 
       - name: Run all tests
         run: |
+          # Build ROM and runtime binaries
+          cargo xtask all-build --platform emulator
+
           export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
+          export CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip"
           cargo --config "$EXTRA_CARGO_CONFIG" xtask test
           sccache --show-stats
