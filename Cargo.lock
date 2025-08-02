@@ -1519,6 +1519,7 @@ dependencies = [
  "pldm-fw-pkg",
  "pldm-ua",
  "rand",
+ "registers-generated",
  "sec1",
  "semver",
  "sha2",
