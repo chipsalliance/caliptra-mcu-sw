@@ -1,4 +1,5 @@
-# IDE_KM - Integrity and Data Encryption Key Management Protocol
+# IDE_KM - Integrity and Data Encryption Key Management Protocol Support
+
 The Caliptra subsystem enables IDE_KM protocol support over SPDM secure sessions by transmitting IDE_KM messages as application data. The IDE_KM protocol manages the provisioning of encryption keys for IDE streams, providing confidentiality, integrity, and replay protection for Translation Layer Packets (TLPs).
 
 To implement IDE_KM, devices must provide the `IdeDriver` trait implementation. This trait defines the interfaces and configuration necessary for secure IDE key management. This documentation describes how to integrate IDE_KM with the Caliptra subsystem, outlines implementation requirements, and offers guidance for usage.
