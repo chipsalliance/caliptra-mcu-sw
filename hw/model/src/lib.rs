@@ -82,12 +82,22 @@ const DEFAULT_LIFECYCLE_RAW_TOKENS: LifecycleRawTokens = LifecycleRawTokens {
 /// The model returned by this function does not have any fuses programmed and
 /// is not yet ready to execute code in the microcontroller. Most test cases
 /// should use [`new`] instead.
-pub fn new_unbooted<M: McuHwModel>(params: InitParams) -> Result<M> {
+pub fn new_unbooted(params: InitParams) -> Result<DefaultHwModel> {
     let summary = params.summary();
-    M::new_unbooted(params).inspect(|hw| {
+    DefaultHwModel::new_unbooted(params).inspect(|hw| {
         println!("Using hardware-model {}", hw.type_name());
         println!("{summary:#?}");
     })
+}
+
+/// Constructs an HwModel based on the cargo features and environment variables,
+/// and boot it to the point where CPU execution can occur. This includes
+/// programming the fuses, initializing the boot_fsm state machine, and
+/// (optionally) uploading firmware. Most test cases that need to construct a
+/// HwModel should use this function over [`HwModel::new()`] and
+/// [`crate::new_unbooted`].
+pub fn new(init_params: InitParams, boot_params: BootParams) -> Result<DefaultHwModel> {
+    DefaultHwModel::new(init_params, boot_params)
 }
 
 pub struct InitParams<'a> {
@@ -285,6 +295,34 @@ pub trait McuHwModel {
     /// Create a model. Most high-level tests should use [`new()`]
     /// instead.
     fn new_unbooted(params: InitParams) -> Result<Self>
+    where
+        Self: Sized;
+
+    /// Create a model, and boot it to the point where CPU execution can
+    /// occur. This includes programming the fuses, initializing the
+    /// boot_fsm state machine, and (optionally) uploading firmware.
+    fn new(init_params: InitParams, boot_params: BootParams) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let init_params_summary = init_params.summary();
+
+        let mut hw: Self = McuHwModel::new_unbooted(init_params)?;
+        let mc_generation = hw.mcu_manager().mci().hw_rev_id().read().mc_generation();
+        let cptra_hw_rev_id = hw.caliptra_soc_manager().soc_ifc().cptra_hw_rev_id().read();
+        println!(
+            "Using hardware-model {} mc_generation={:04x} cptra_hw_rev_id={{cptra_generation=0x{:04x}, soc_stepping_id={:04x}}}",
+            hw.type_name(), mc_generation, cptra_hw_rev_id.cptra_generation(), cptra_hw_rev_id.soc_stepping_id()
+        );
+        println!("{init_params_summary:#?}");
+
+        hw.boot(boot_params)?;
+
+        Ok(hw)
+    }
+
+    // TODO this should have a common boot function similar to the Caliptra HW model.
+    fn boot(&mut self, boot_params: BootParams) -> Result<()>
     where
         Self: Sized;
 
