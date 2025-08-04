@@ -2,20 +2,19 @@
 
 #![allow(dead_code)]
 
-use crate::codec::{encode_u8_slice, Codec, CommonCodec, MessageBuf};
+use crate::codec::{decode_u8_slice, encode_u8_slice, Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
-use crate::protocol::opaque_data::encode_opaque_data;
 use crate::protocol::*;
+use crate::session::{SessionKeyType, SessionState};
 use crate::state::ConnectionState;
+use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
-use libapi_caliptra::crypto::asym::AsymAlgo;
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const RANDOM_DATA_LEN: usize = 32;
-pub const ECDSA384_SIGNATURE_LEN: usize = 96;
 
 bitfield! {
     #[derive(FromBytes, IntoBytes, Immutable)]
@@ -33,9 +32,8 @@ bitfield! {
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
 struct FinishReqBase {
-    signature_present: u8,
-    slot_id: u8,
-    opaque_data_len: u16,
+    req_signature_present: u8,
+    req_slot_id: u8,
 }
 impl CommonCodec for FinishReqBase {}
 
@@ -44,7 +42,6 @@ impl CommonCodec for FinishReqBase {}
 struct FinishRspBase {
     _reserved0: u8,
     _reserved1: u8,
-    opaque_data_len: u16,
 }
 impl CommonCodec for FinishRspBase {}
 
@@ -53,13 +50,42 @@ impl FinishRspBase {
         Self {
             _reserved0: 0,
             _reserved1: 0,
-            opaque_data_len: 0,
         }
     }
 }
 
+async fn verify_requester_verify_data(
+    ctx: &mut SpdmContext<'_>,
+    session_id: u32,
+    requester_verify_data: &[u8; SHA384_HASH_SIZE],
+    req_payload: &mut MessageBuf<'_>,
+) -> CommandResult<()> {
+    // Compute TH1 transcript hash for generating the session handshake key
+    let th1_transcript_hash = ctx
+        .transcript_hash(TranscriptContext::Th, Some(session_id), false)
+        .await?;
+
+    // generate session handshake key
+    let session_info = ctx
+        .session_mgr
+        .session_info_mut(session_id)
+        .map_err(|e| (false, CommandError::Session(e)))?;
+
+    let computed_hmac = session_info
+        .compute_hmac(SessionKeyType::RequestFinishedKey, &th1_transcript_hash)
+        .await
+        .map_err(|e| (false, CommandError::Session(e)))?;
+
+    if computed_hmac != *requester_verify_data {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::DecryptError, 0, None))?
+    }
+
+    Ok(())
+}
+
 async fn process_finish<'a>(
     ctx: &mut SpdmContext<'a>,
+    session_id: u32,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
@@ -69,94 +95,110 @@ async fn process_finish<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
     }
 
-    // Make sure the asymmetric algorithm is ECC P384
-    if !matches!(ctx.negotiated_base_asym_algo(), Ok(AsymAlgo::EccP384)) {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
-    }
+    // Decode the FINISH request payload (currently no Session-based mutual authentication is supported)
+    let _finish_req_base =
+        FinishReqBase::decode(req_payload).map_err(|e| (false, CommandError::Codec(e)))?;
 
-    // Decode the FINISH request payload
-    let finish_req_base = FinishReqBase::decode(req_payload).map_err(|_| {
-        ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
-    })?;
-    if finish_req_base.opaque_data_len > OPAQUE_DATA_LEN_MAX_SIZE as u16 {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
-    }
-    // ignore the opaque data
-    req_payload
-        .pull_data(finish_req_base.opaque_data_len as usize)
+    ctx.reset_transcript_via_req_code(ReqRespCode::Finish);
+
+    // Append FINISH req (excluding RequesterVerifyData) to TH transcript.
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::Th, Some(session_id))
+        .await?;
+
+    // Verify HMAC of the RequesterVerifyData
+    let mut requester_verify_data = [0u8; SHA384_HASH_SIZE];
+    decode_u8_slice(req_payload, &mut requester_verify_data)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    if finish_req_base.signature_present != 0 {
-        // TODO: validate the signature
-        let mut signature = [0u8; ECDSA384_SIGNATURE_LEN];
-        signature.copy_from_slice(
-            req_payload
-                .data(ECDSA384_SIGNATURE_LEN)
-                .map_err(|e| (false, CommandError::Codec(e)))?,
-        );
-        req_payload
-            .pull_data(ECDSA384_SIGNATURE_LEN)
-            .map_err(|e| (false, CommandError::Codec(e)))?;
-    }
-    let _requester_verify_data = req_payload
-        .data(SHA384_HASH_SIZE)
+    // Verify the RequesterVerifyData
+    verify_requester_verify_data(ctx, session_id, &requester_verify_data, req_payload).await?;
+
+    // Add the RequesterVerifyData to the transcript
+    ctx.append_slice_to_transcript(
+        &requester_verify_data,
+        TranscriptContext::Th,
+        Some(session_id),
+    )
+    .await
+}
+
+async fn encode_responder_verify_data(
+    ctx: &mut SpdmContext<'_>,
+    session_id: u32,
+    rsp: &mut MessageBuf<'_>,
+) -> CommandResult<usize> {
+    let hmac_transcript_hash = ctx
+        .transcript_hash(TranscriptContext::Th, Some(session_id), false)
+        .await?;
+
+    let session_info = ctx
+        .session_mgr
+        .session_info_mut(session_id)
+        .map_err(|e| (false, CommandError::Session(e)))?;
+
+    let responder_verify_data = session_info
+        .compute_hmac(SessionKeyType::ResponseFinishedKey, &hmac_transcript_hash)
+        .await
+        .map_err(|e| (false, CommandError::Session(e)))?;
+
+    let len = encode_u8_slice(&responder_verify_data, rsp)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    // TODO: verify requester verify data
-    Ok(())
+    // Append ResponderVerifyData to the transcript
+    ctx.append_slice_to_transcript(
+        &responder_verify_data,
+        TranscriptContext::Th,
+        Some(session_id),
+    )
+    .await?;
+
+    Ok(len)
 }
 
 async fn generate_finish_response<'a>(
     ctx: &mut SpdmContext<'a>,
-    generate_responder_verify_data: bool,
+    session_id: u32,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Prepare the response buffer
     // Spdm Header first
     let connection_version = ctx.state.connection_info.version_number();
     let spdm_hdr = SpdmMsgHdr::new(connection_version, ReqRespCode::Finish);
-    spdm_hdr
+    let mut payload_len = spdm_hdr
         .encode(rsp)
         .map_err(|e| (false, CommandError::Codec(e)))?;
-
-    // TODO: update transcripts
-    // ctx.append_message_to_transcript(rsp, TranscriptContext::FinishRspResponderOnly)
-    //     .await?;
 
     // Encode the FINISH response fixed fields
-    FinishRspBase::new()
+    payload_len += FinishRspBase::new()
         .encode(rsp)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    // Encode the Opaque data length = 0
-    encode_opaque_data(rsp, &[])?;
+    ctx.append_message_to_transcript(rsp, TranscriptContext::Th, Some(session_id))
+        .await?;
 
-    if generate_responder_verify_data {
-        let hmac = finish_rsp_transcript_responder_only(ctx).await?;
-        encode_u8_slice(&hmac, rsp).map_err(|e| (false, CommandError::Codec(e)))?;
+    // Only generate and encode ResponderVerifyData if the session is in the clear
+    // This will also add the ResponderVerifyData to the transcript
+    if ctx.state.connection_info.handshake_in_the_clear() {
+        payload_len += encode_responder_verify_data(ctx, session_id, rsp).await?;
     }
-    Ok(())
-}
 
-async fn finish_rsp_transcript_responder_only(
-    _ctx: &mut SpdmContext<'_>,
-) -> CommandResult<[u8; SHA384_HASH_SIZE]> {
-    // Hash of the specified certificate chain in DER format (that is, Param2 of KEY_EXCHANGE ) or hash of the
-    // public key in its provisioned format, if a certificate is not used.
-    // TODO: transcript.extend(cert_chain_hash);
-    // TODO: transcript.extend(key_exchange);
-    // TODO: transcript.extend(key_exchange_rsp);
-    // TODO: transcript.extend(finish);
+    // Geneate session data key
+    let th2_transcript_hash = ctx
+        .transcript_hash(TranscriptContext::Th, Some(session_id), true)
+        .await?;
 
-    let hash = [0u8; SHA384_HASH_SIZE];
-    // ctx.shared_transcript
-    //     .hash(TranscriptContext::FinishRspResponderOnly, &mut hash)
-    //     .await
-    //     .map_err(|e| (false, CommandError::Transcript(e)))?;
+    let session_info = ctx
+        .session_mgr
+        .session_info_mut(session_id)
+        .map_err(|e| (false, CommandError::Session(e)))?;
 
-    // TODO: HMAC(...)
+    session_info
+        .generate_session_data_key(&th2_transcript_hash)
+        .await
+        .map_err(|e| (false, CommandError::Session(e)))?;
 
-    Ok(hash)
+    rsp.push_data(payload_len)
+        .map_err(|e| (false, CommandError::Codec(e)))
 }
 
 pub(crate) async fn handle_finish<'a>(
@@ -169,25 +211,58 @@ pub(crate) async fn handle_finish<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
-    // Check if key exchange is supported
+    // FINISH is not supported in  v1.0
+    if ctx.state.connection_info.version_number() < SpdmVersion::V11 {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::UnsupportedRequest, 0, None))?;
+    }
+
+    // Check if KEY_EX_CAP is supported
     if ctx.local_capabilities.flags.key_ex_cap() == 0 {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnsupportedRequest, 0, None))?;
     }
 
-    // TODO: Check that we have started a key exchange
-    // if ctx.secrets.request_direction_handshake.is_none() {
-    //     Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
-    // }
+    // According to DSP0274, it is valid to set only ENCRYPT_CAP and clear MAC_CAP.
+    // However, DSP0277 specifies that secure messaging requires at least MAC_CAP to be set.
+    if ctx.local_capabilities.flags.mac_cap() == 0 {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
+    }
+
+    if !ctx.state.connection_info.handshake_in_the_clear() && !ctx.session_mgr.session_active() {
+        // If session handshake is not in the clear, we must have an active session
+        Err(ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None))?;
+    } else if ctx.state.connection_info.handshake_in_the_clear() && ctx.session_mgr.session_active()
+    {
+        // If session handshake is in the clear, we must not have an active session
+        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
+    }
+
+    // TODO: Get the current session ID if handshake in the clear is not set
+    let session_id = ctx.session_mgr.active_session_id().ok_or_else(|| {
+        ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
+    })?;
+
+    let session_info = ctx.session_mgr.session_info(session_id).map_err(|_| {
+        ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
+    })?;
+
+    if session_info.session_state != SessionState::HandshakeInProgress {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
+    }
+
+    // Verify the negotiated Hash algorithm is SHA384
+    ctx.verify_negotiated_hash_algo()
+        .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
 
     // Process FINISH request
-    process_finish(ctx, spdm_hdr, req_payload).await?;
+    process_finish(ctx, session_id, spdm_hdr, req_payload).await?;
 
     // Generate FINISH response
     ctx.prepare_response_buffer(req_payload)?;
-    let generate_responder_verify_data = false; // TODO: see if we support handshake in the clear, ctx.handshake_in_the_clear();
-    generate_finish_response(ctx, generate_responder_verify_data, req_payload).await?;
+    generate_finish_response(ctx, session_id, req_payload).await?;
 
-    // TODO: mark the session as mutually authenticated?
-
+    // Set the session state to SessionEstablished
+    ctx.session_mgr
+        .set_session_state(session_id, SessionState::SessionEstablished)
+        .map_err(|e| (false, CommandError::Session(e)))?;
     Ok(())
 }

@@ -303,6 +303,14 @@ pub(crate) async fn handle_get_capabilities<'a>(
     ctx.prepare_response_buffer(req_payload)?;
     generate_capabilities_response(ctx, req_payload).await?;
 
+    // Set handshake_in_the_clear flag based on local and peer capabilities
+    let local_flags = ctx.local_capabilities.flags;
+    let peer_flags = ctx.state.connection_info.peer_capabilities().flags;
+    if local_flags.handshake_in_the_clear_cap() != 0 && peer_flags.handshake_in_the_clear_cap() != 0
+    {
+        ctx.state.connection_info.set_handshake_in_the_clear();
+    }
+
     // Set state to AfterCapabilities
     ctx.state
         .connection_info

@@ -243,9 +243,10 @@ impl<'a> SpdmContext<'a> {
             self.shared_transcript.reset_context(TranscriptContext::L1);
         }
 
-        // If requester issued GET_MEASUREMENTS request and skipped CHALLENGE completion, reset M1 context.
+        // If requester issued GET_MEASUREMENTS or KEY_EXCHANGE or FINISH request
+        // and skipped CHALLENGE completion, reset M1 context.
         match req_code {
-            ReqRespCode::GetMeasurements | ReqRespCode::KeyExchange => {
+            ReqRespCode::GetMeasurements | ReqRespCode::KeyExchange | ReqRespCode::Finish => {
                 if self.state.connection_info.state() < ConnectionState::Authenticated {
                     self.shared_transcript.reset_context(TranscriptContext::M1);
                 }

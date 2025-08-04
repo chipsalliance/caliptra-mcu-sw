@@ -96,11 +96,7 @@ fn init_session(
         _ => SessionType::None,
     };
 
-    let handshake_in_the_clear = local_capabilities_flags.handshake_in_the_clear_cap() != 0
-        && peer_capabilities.handshake_in_the_clear_cap() != 0;
-
     session_info.init(
-        handshake_in_the_clear,
         session_policy,
         session_type,
         connection_info.version_number(),
@@ -330,17 +326,18 @@ async fn generate_key_exchange_response<'a>(
         .map_err(|e| (false, CommandError::Session(e)))?;
 
     // Encode ResponderVerifyData if applicable
-    let responder_verify_data =
-        if !session_info.handshake_in_the_clear && session_info.session_type != SessionType::None {
-            Some(
-                session_info
-                    .compute_hmac(SessionKeyType::ResponseFinishedKey, &th1_transcript_hash)
-                    .await
-                    .map_err(|e| (false, CommandError::Session(e)))?,
-            )
-        } else {
-            None
-        };
+    let responder_verify_data = if !ctx.state.connection_info.handshake_in_the_clear()
+        && session_info.session_type != SessionType::None
+    {
+        Some(
+            session_info
+                .compute_hmac(SessionKeyType::ResponseFinishedKey, &th1_transcript_hash)
+                .await
+                .map_err(|e| (false, CommandError::Session(e)))?,
+        )
+    } else {
+        None
+    };
 
     if let Some(responder_verify_data) = responder_verify_data {
         payload_len += encode_u8_slice(&responder_verify_data, rsp)
@@ -368,19 +365,25 @@ pub(crate) async fn handle_key_exchange<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
+    // KEY_EXCHANGE is not supported in  v1.0
+    if ctx.state.connection_info.version_number() < SpdmVersion::V11 {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::UnsupportedRequest, 0, None))?;
+    }
+
     // KEY_EXCHANGE request is prohibited within session
     if ctx.session_mgr.session_active() {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
-    if ctx.session_mgr.session_active() {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
+    // Check if KEY_EX_CAP is supported
+    if ctx.local_capabilities.flags.key_ex_cap() == 0 {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::UnsupportedRequest, 0, None))?;
     }
 
-    // Check if KEY_EX_CAP and at least MAC_CAP (of MAC_CAP and ENCRYPT_CAP) is supported
-    if ctx.local_capabilities.flags.key_ex_cap() == 0 || ctx.local_capabilities.flags.mac_cap() == 0
-    {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::UnsupportedRequest, 0, None))?;
+    // According to DSP0274, it is valid to set only ENCRYPT_CAP and clear MAC_CAP.
+    // However, DSP0277 specifies that secure messaging requires at least MAC_CAP to be set.
+    if ctx.local_capabilities.flags.mac_cap() == 0 {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
     // Check negotiated algorithms are valid and generate error response once
@@ -412,6 +415,10 @@ pub(crate) async fn handle_key_exchange<'a>(
         req_payload,
     )
     .await?;
+
+    if !ctx.state.connection_info.handshake_in_the_clear() {
+        ctx.session_mgr.set_active_session_id(session_id);
+    }
 
     ctx.session_mgr
         .set_session_state(session_id, SessionState::HandshakeInProgress)
