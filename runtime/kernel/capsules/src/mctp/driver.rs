@@ -225,7 +225,7 @@ impl<'a> MCTPDriver<'a> {
                                     Ok(())
                                 }
                                 Err(mut buf) => {
-                                    println!("MCTPDriver: send_msg failed");
+                                    println!("[MCTP-CAPSULE]: send_msg failed");
                                     // Reset the kernel buffer to original size and restore it
                                     buf.reset();
                                     self.kernel_msg_buf.replace(buf);
@@ -325,7 +325,7 @@ impl SyscallDriver for MCTPDriver<'_> {
                 let (peer_eid, msg_tag) = match self.parse_args(command_num, arg1, arg2) {
                     Ok((peer_eid, msg_tag)) => (peer_eid, msg_tag),
                     Err(e) => {
-                        println!("MCTPDriver: parse_args failed");
+                        println!("[MCTP-CAPSULE]: parse_args failed");
                         return CommandReturn::failure(e);
                     }
                 };
@@ -362,7 +362,7 @@ impl SyscallDriver for MCTPDriver<'_> {
                 let (peer_eid, msg_tag) = match self.parse_args(command_num, arg1, arg2) {
                     Ok((peer_eid, msg_tag)) => (peer_eid, msg_tag),
                     Err(e) => {
-                        println!("MCTPDriver: parse_args failed");
+                        println!("[MCTP-CAPSULE]: parse_args failed");
                         return CommandReturn::failure(e);
                     }
                 };
@@ -406,7 +406,7 @@ impl MCTPTxClient for MCTPDriver<'_> {
 
         if self.msg_type as u8 != msg_type {
             panic!(
-                "MCTPDriver::send_done received for msg_type {} that does not match driver msg type {}",
+                "[MCTP-CAPSULE]::send_done received for msg_type {} that does not match driver msg type {}",
                 msg_type, self.msg_type as u8
             );
         }
@@ -414,7 +414,7 @@ impl MCTPTxClient for MCTPDriver<'_> {
         let process_id = match self.current_app.get() {
             Some(process_id) => process_id,
             None => {
-                println!("MCTPDriver::send_done no app waiting for send_done");
+                println!("[MCTP-CAPSULE]::send_done no app waiting for send_done");
                 return;
             }
         };
@@ -422,7 +422,7 @@ impl MCTPTxClient for MCTPDriver<'_> {
         _ = self.apps.enter(process_id, |app, up_calls| {
             // Check if the send operation matches the pending tx operation
             if !self.tx_pending(app, msg_tag, dest_eid) {
-                println!("MCTPDriver::send_done no pending tx operation");
+                println!("[MCTP-CAPSULE]::send_done no pending tx operation");
                 return;
             }
 
@@ -438,6 +438,7 @@ impl MCTPTxClient for MCTPDriver<'_> {
                     ),
                 )
                 .ok();
+            println!("[MCTP-CAPSULE]::send_done upcall scheduled");
         });
         self.current_app.set(None);
     }
@@ -455,7 +456,7 @@ impl MCTPRxClient for MCTPDriver<'_> {
     ) {
         if self.msg_type as u8 != msg_type {
             panic!(
-                "MCTPDriver::receive received for msg_type {} that does not match driver msg type {}",
+                "[MCTP-CAPSULE]::receive received for msg_type {} that does not match driver msg type {}",
                 msg_type, self.msg_type as u8
             );
         }
@@ -471,7 +472,7 @@ impl MCTPRxClient for MCTPDriver<'_> {
                 is_pending_rx_request = Some(false);
                 rw_buffer = Some(rw_allow::READ_RESPONSE as usize);
             } else {
-                println!("MCTPDriver::receive no pending rx operation");
+                println!("[MCTP-CAPSULE]::receive no pending rx operation");
                 return;
             }
 
@@ -510,7 +511,12 @@ impl MCTPRxClient for MCTPDriver<'_> {
                     subscribe_num.unwrap(),
                     (msg_len, recv_time as usize, msg_info),
                 ) {
-                    panic!("MCTPDriver::receive upcall schedule failed: {:?}", e);
+                    panic!("[MCTP-CAPSULE]::receive upcall schedule failed: {:?}", e);
+                } else {
+                    println!(
+                        "[MCTP-CAPSULE]::receive upcall scheduled for {} bytes",
+                        msg_len
+                    );
                 }
             }
         });

@@ -6,6 +6,9 @@ use libtock_platform::share;
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
+use core::fmt::Write;
+use libtock_console::Console;
+
 type EndpointId = u8;
 type Tag = u8;
 
@@ -86,6 +89,9 @@ impl<S: Syscalls> Mctp<S> {
         })?
         .await?;
 
+        let mut cw = Console::<DefaultSyscalls>::writer();
+        write!(cw, "[MCTP-UPCALL] received message: {} bytes", recv_len).unwrap();
+
         Ok((recv_len, info.into()))
     }
 
@@ -130,7 +136,14 @@ impl<S: Syscalls> Mctp<S> {
         })?;
 
         ro_sub.await.map(|(result, _, _)| match result {
-            0 => Ok(()),
+            0 => {
+                {
+                    // The send was successful, we can log the success{
+                    let mut cw = Console::<DefaultSyscalls>::writer();
+                    write!(cw, "[MCTP-UPCALL] send_done called").unwrap();
+                };
+                Ok(())
+            }
             _ => Err(result.try_into().unwrap_or(ErrorCode::Fail)),
         })?
     }
