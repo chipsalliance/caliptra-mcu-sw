@@ -59,6 +59,7 @@ pub const DEFAULT_APB_PAUSER: u32 = 0x01;
 
 const EXPECTED_CALIPTRA_BOOT_TIME_IN_CYCLES: u64 = 40_000_000; // 40 million cycles
 
+// This is a random number, but should be kept in sync with what is the default value in the FPGA ROM.
 const DEFAULT_LIFECYCLE_RAW_TOKEN: LifecycleToken =
     LifecycleToken(0x05edb8c608fcc830de181732cfd65e57u128.to_le_bytes());
 
