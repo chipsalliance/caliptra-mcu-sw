@@ -193,9 +193,9 @@ void free_run(struct CEmulator* emulator) {
         // Check for UART output (streaming mode)
         int uart_len = emulator_get_uart_output_streaming(emulator, uart_buffer, uart_buffer_size);
         if (uart_len > 0) {
-            // Print UART output to console (without extra newline if it already ends with one)
-            printf("%.*s", uart_len, uart_buffer);
-            fflush(stdout);
+            // Print UART output to stderr to match Rust emulator behavior
+            fprintf(stderr, "%.*s", uart_len, uart_buffer);
+            fflush(stderr);
         }
         
         switch (action) {
@@ -582,7 +582,7 @@ int main(int argc, char *argv[]) {
     int final_len = emulator_get_uart_output_streaming(global_emulator, final_output, sizeof(final_output) - 1);
     if (final_len > 0) {
         final_output[final_len] = '\0';
-        printf("Final UART output:\n%s", final_output);
+        fprintf(stderr, "Final UART output:\n%s", final_output);
     }
 
     // Clean up

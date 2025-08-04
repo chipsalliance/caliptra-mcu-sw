@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use mcu_builder::PROJECT_ROOT;
-use std::{path::PathBuf, process::Command};
+use std::process::Command;
 
 const CBINDING_DIR: &str = "emulator/cbinding";
 
@@ -29,7 +29,7 @@ pub(crate) fn build_lib(release: bool) -> Result<()> {
     }
 
     // Check if the header file was generated
-    let header_path = PathBuf::from(CBINDING_DIR).join("emulator_cbinding.h");
+    let header_path = PROJECT_ROOT.join(CBINDING_DIR).join("emulator_cbinding.h");
     if !header_path.exists() {
         anyhow::bail!(
             "Header file was not generated at expected location: {:?}",
@@ -50,7 +50,7 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
     // First ensure the library and header are built
     build_lib(release)?;
 
-    let cbinding_dir = PathBuf::from(CBINDING_DIR);
+    let cbinding_dir = PROJECT_ROOT.join(CBINDING_DIR);
     let lib_dir = if release {
         "../../target/release"
     } else {
@@ -134,10 +134,10 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
         std::fs::rename(&lib_src, &lib_dst)?;
     }
 
-    let header_src = cbinding_dir.join("emulator_cbinding.h");
+    let header_src = PROJECT_ROOT.join(CBINDING_DIR).join("emulator_cbinding.h");
     let header_dst = target_cbinding_dir.join("emulator_cbinding.h");
     if header_src.exists() {
-        std::fs::rename(&header_src, &header_dst)?;
+        std::fs::copy(&header_src, &header_dst)?;
     }
 
     let emulator_dst = target_cbinding_dir.join("emulator");
@@ -177,7 +177,7 @@ pub(crate) fn clean(release: bool) -> Result<()> {
     }
 
     // Clean C artifacts from original locations (in case they weren't moved)
-    let cbinding_dir = PathBuf::from(CBINDING_DIR);
+    let cbinding_dir = PROJECT_ROOT.join(CBINDING_DIR);
     let emulator_binary = cbinding_dir.join("emulator");
     let header_file = cbinding_dir.join("emulator_cbinding.h");
     let cfi_stubs_obj = cbinding_dir.join("cfi_stubs.o");
