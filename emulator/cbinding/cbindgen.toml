@@ -69,16 +69,13 @@ packed = "EMULATOR_PACKED"
 aligned_n = "EMULATOR_ALIGN"
 
 [fn]
-rename_args = "GeckoCase"
 must_use = "EMULATOR_MUST_USE"
 no_return = "EMULATOR_NO_RETURN"
 
 [struct]
-rename_fields = "GeckoCase"
 must_use = "EMULATOR_MUST_USE"
 
 [enum]
-rename_variants = "GeckoCase"
 must_use = "EMULATOR_MUST_USE"
 
 [const]

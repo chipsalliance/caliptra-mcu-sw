@@ -80,17 +80,17 @@ int main() {
     
     // 2. Configure emulator
     struct CEmulatorConfig config = {
-        .mRomPath = "rom.bin",
-        .mFirmwarePath = "firmware.bin",
-        .mCaliptraRomPath = "caliptra_rom.bin",
-        .mCaliptraFirmwarePath = "caliptra_firmware.bin",
-        .mSocManifestPath = "manifest.bin",
-        .mGdbPort = 0,  // No GDB
-        .mStdinUart = 1,  // Enable console input
-        .mCaptureUartOutput = 1,  // Capture UART output
+        .rom_path = "rom.bin",
+        .firmware_path = "firmware.bin",
+        .caliptra_rom_path = "caliptra_rom.bin",
+        .caliptra_firmware_path = "caliptra_firmware.bin",
+        .soc_manifest_path = "manifest.bin",
+        .gdb_port = 0,  // No GDB
+        .stdin_uart = 1,  // Enable console input
+        .capture_uart_output = 1,  // Capture UART output
         // All memory layout parameters default to -1 (use defaults)
-        .mRomOffset = -1, .mRomSize = -1,
-        .mUartOffset = -1, .mUartSize = -1,
+        .rom_offset = -1, .rom_size = -1,
+        .uart_offset = -1, .uart_size = -1,
         // ... other parameters
     };
     
@@ -129,24 +129,24 @@ int main() {
 ```c
 struct CEmulatorConfig config = {
     // Required file paths
-    .mRomPath = "path/to/rom.bin",
-    .mFirmwarePath = "path/to/firmware.bin", 
-    .mCaliptraRomPath = "path/to/caliptra_rom.bin",
-    .mCaliptraFirmwarePath = "path/to/caliptra_firmware.bin",
-    .mSocManifestPath = "path/to/manifest.bin",
+    .rom_path = "path/to/rom.bin",
+    .firmware_path = "path/to/firmware.bin", 
+    .caliptra_rom_path = "path/to/caliptra_rom.bin",
+    .caliptra_firmware_path = "path/to/caliptra_firmware.bin",
+    .soc_manifest_path = "path/to/manifest.bin",
     
     // Basic configuration
-    .mGdbPort = 0,                    // 0 = no GDB, >0 = GDB port
-    .mI3cPort = 0,                    // 0 = no I3C, >0 = I3C port
-    .mTraceInstr = 0,                 // 0 = no trace, 1 = trace instructions
-    .mStdinUart = 1,                  // 1 = enable console input to UART
-    .mManufacturingMode = 0,          // 0 = normal, 1 = manufacturing mode
-    .mCaptureUartOutput = 1,          // 1 = capture UART output
+    .gdb_port = 0,                    // 0 = no GDB, >0 = GDB port
+    .i3c_port = 0,                    // 0 = no I3C, >0 = I3C port
+    .trace_instr = 0,                 // 0 = no trace, 1 = trace instructions
+    .stdin_uart = 1,                  // 1 = enable console input to UART
+    .manufacturing_mode = 0,          // 0 = normal, 1 = manufacturing mode
+    .capture_uart_output = 1,         // 1 = capture UART output
     
     // Hardware version
-    .mHwRevisionMajor = 2,
-    .mHwRevisionMinor = 0,
-    .mHwRevisionPatch = 0,
+    .hw_revision_major = 2,
+    .hw_revision_minor = 0,
+    .hw_revision_patch = 0,
 };
 ```
 
@@ -155,28 +155,28 @@ All memory layout parameters use `-1` for defaults or specific values for custom
 
 ```c
 // Use all defaults (recommended for most cases)
-.mRomOffset = -1, .mRomSize = -1,
-.mUartOffset = -1, .mUartSize = -1,
-.mSramOffset = -1, .mSramSize = -1,
+.rom_offset = -1, .rom_size = -1,
+.uart_offset = -1, .uart_size = -1,
+.sram_offset = -1, .sram_size = -1,
 // ... all other offset/size parameters
 
 // Custom memory layout example
-.mRomOffset = 0x40000000,   // ROM at 1GB
-.mRomSize = 0x100000,       // 1MB ROM
-.mSramOffset = 0x20000000,  // SRAM at 512MB
-.mSramSize = 0x800000,      // 8MB SRAM
+.rom_offset = 0x40000000,   // ROM at 1GB
+.rom_size = 0x100000,       // 1MB ROM
+.sram_offset = 0x20000000,  // SRAM at 512MB
+.sram_size = 0x800000,      // 8MB SRAM
 // ... customize as needed
 ```
 
 Available memory layout parameters:
-- `mRomOffset/mRomSize`, `mUartOffset/mUartSize`, `mCtrlOffset/mCtrlSize`
-- `mSpiOffset/mSpiSize`, `mSramOffset/mSramSize`, `mPicOffset`
-- `mDccmOffset/mDccmSize`, `mI3cOffset/mI3cSize`
-- `mPrimaryFlashOffset/mPrimaryFlashSize`, `mSecondaryFlashOffset/mSecondaryFlashSize`
-- `mMciOffset/mMciSize`, `mDmaOffset/mDmaSize`
-- `mMboxOffset/mMboxSize`, `mSocOffset/mSocSize`
-- `mOtpOffset/mOtpSize`, `mLcOffset/mLcSize`
-- `mExternalTestSramOffset/mExternalTestSramSize`
+- `rom_offset/rom_size`, `uart_offset/uart_size`, `ctrl_offset/ctrl_size`
+- `spi_offset/spi_size`, `sram_offset/sram_size`, `pic_offset`
+- `dccm_offset/dccm_size`, `i3c_offset/i3c_size`
+- `primary_flash_offset/primary_flash_size`, `secondary_flash_offset/secondary_flash_size`
+- `mci_offset/mci_size`, `dma_offset/dma_size`
+- `mbox_offset/mbox_size`, `soc_offset/soc_size`
+- `otp_offset/otp_size`, `lc_offset/lc_size`
+- `external_test_sram_offset/external_test_sram_size`
 
 ## UART and Console Features
 
@@ -185,8 +185,8 @@ The emulator supports real-time UART output and console input:
 
 ```c
 // Enable UART features in configuration
-config.mStdinUart = 1;          // Console input → UART RX
-config.mCaptureUartOutput = 1; // Capture UART TX
+config.stdin_uart = 1;          // Console input → UART RX
+config.capture_uart_output = 1; // Capture UART TX
 
 // In your main loop
 char uart_buffer[1024];
@@ -223,7 +223,7 @@ int emulator_get_uart_output_streaming(struct CEmulator* emulator, char* buffer,
 ```c
 struct CEmulatorConfig config = {
     // ... other config ...
-    .mGdbPort = 3333,  // Enable GDB server on port 3333
+    .gdb_port = 3333,  // Enable GDB server on port 3333
 };
 
 emulator_init(memory, &config);
