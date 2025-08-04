@@ -1,10 +1,19 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::Result;
-use mcu_builder::PROJECT_ROOT;
+use mcu_builder::{target_dir, PROJECT_ROOT};
 use std::process::Command;
 
 const CBINDING_DIR: &str = "emulator/cbinding";
+
+/// Get the static library name with the correct extension for the target platform
+fn get_lib_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "emulator_cbinding.lib"
+    } else {
+        "libemulator_cbinding.a"
+    }
+}
 
 /// Build the Rust static library for the emulator C binding
 pub(crate) fn build_lib(release: bool) -> Result<()> {
@@ -37,8 +46,8 @@ pub(crate) fn build_lib(release: bool) -> Result<()> {
         );
     }
 
-    println!("✓ Rust static library built successfully");
-    println!("✓ Header file generated successfully at {:?}", header_path);
+    println!("Rust static library built successfully");
+    println!("Header file generated successfully at {:?}", header_path);
     Ok(())
 }
 
@@ -51,11 +60,8 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
     build_lib(release)?;
 
     let cbinding_dir = PROJECT_ROOT.join(CBINDING_DIR);
-    let lib_dir = if release {
-        "../../target/release"
-    } else {
-        "../../target/debug"
-    };
+    let target_build_dir = target_dir().join(build_type);
+    let lib_dir = target_build_dir.to_str().unwrap();
 
     println!("Linking C emulator with library directory: {}", lib_dir);
 
@@ -78,7 +84,7 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
         anyhow::bail!("Failed to compile CFI stubs");
     }
 
-    println!("✓ CFI stubs compiled successfully");
+    println!("CFI stubs compiled successfully");
 
     // Now link the main emulator with stubs
     let status = Command::new("gcc")
@@ -116,19 +122,12 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
     }
 
     // Create target directory for organized artifacts
-    let target_subdir = if release { "release" } else { "debug" };
-    let target_cbinding_dir = PROJECT_ROOT
-        .join("target")
-        .join(target_subdir)
-        .join("emulator_cbinding");
+    let target_cbinding_dir = target_build_dir.join("emulator_cbinding");
     std::fs::create_dir_all(&target_cbinding_dir)?;
 
     // Move all artifacts to target directory
-    let lib_name = "libemulator_cbinding.a";
-    let lib_src = PROJECT_ROOT
-        .join("target")
-        .join(target_subdir)
-        .join(lib_name);
+    let lib_name = get_lib_name();
+    let lib_src = target_build_dir.join(lib_name);
     let lib_dst = target_cbinding_dir.join(lib_name);
     if lib_src.exists() {
         std::fs::rename(&lib_src, &lib_dst)?;
@@ -151,8 +150,8 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
         std::fs::rename(&cfi_stubs_src, &cfi_stubs_dst)?;
     }
 
-    println!("✓ C emulator binary built successfully");
-    println!("✓ All artifacts organized in {:?}", target_cbinding_dir);
+    println!("C emulator binary built successfully");
+    println!("All artifacts organized in {:?}", target_cbinding_dir);
     println!("  - {}", lib_name);
     println!("  - emulator_cbinding.h");
     println!("  - emulator");
@@ -166,14 +165,11 @@ pub(crate) fn clean(release: bool) -> Result<()> {
     println!("Cleaning build artifacts ({})...", build_type);
 
     // Clean organized artifacts from target directory
-    let target_subdir = if release { "release" } else { "debug" };
-    let target_cbinding_dir = PROJECT_ROOT
-        .join("target")
-        .join(target_subdir)
-        .join("emulator_cbinding");
+    let target_build_dir = target_dir().join(build_type);
+    let target_cbinding_dir = target_build_dir.join("emulator_cbinding");
     if target_cbinding_dir.exists() {
         std::fs::remove_dir_all(&target_cbinding_dir)?;
-        println!("✓ Removed organized artifacts directory");
+        println!("Removed organized artifacts directory");
     }
 
     // Clean C artifacts from original locations (in case they weren't moved)
@@ -184,17 +180,17 @@ pub(crate) fn clean(release: bool) -> Result<()> {
 
     if emulator_binary.exists() {
         std::fs::remove_file(&emulator_binary)?;
-        println!("✓ Removed emulator binary");
+        println!("Removed emulator binary");
     }
 
     if header_file.exists() {
         std::fs::remove_file(&header_file)?;
-        println!("✓ Removed header file");
+        println!("Removed header file");
     }
 
     if cfi_stubs_obj.exists() {
         std::fs::remove_file(&cfi_stubs_obj)?;
-        println!("✓ Removed CFI stubs object file");
+        println!("Removed CFI stubs object file");
     }
 
     // Clean specific Rust artifacts for emulator-cbinding only
@@ -210,11 +206,10 @@ pub(crate) fn clean(release: bool) -> Result<()> {
 
     if !status.success() {
         eprintln!("Warning: Failed to clean emulator-cbinding Rust artifacts");
-    } else {
-        println!("✓ Cleaned emulator-cbinding Rust artifacts");
+        return Ok(());
     }
 
-    println!("✓ Build artifacts cleaned successfully");
+    println!("Build artifacts cleaned successfully");
     Ok(())
 }
 
@@ -226,6 +221,6 @@ pub(crate) fn build_all(release: bool) -> Result<()> {
         build_type
     );
     build_emulator(release)?;
-    println!("✓ All emulator C binding components built successfully");
+    println!("All emulator C binding components built successfully");
     Ok(())
 }
