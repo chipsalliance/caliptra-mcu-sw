@@ -16,20 +16,12 @@ pub(crate) fn build_lib(release: bool) -> Result<()> {
         args.push("--release");
     }
     
-    let output = Command::new("cargo")
+    let status = Command::new("cargo")
         .args(&args)
         .current_dir(&*PROJECT_ROOT)
-        .output()?;
+        .status()?;
     
-    // Print stdout and stderr for debug purposes
-    if !output.stdout.is_empty() {
-        println!("cargo stdout:\n{}", String::from_utf8_lossy(&output.stdout));
-    }
-    if !output.stderr.is_empty() {
-        println!("cargo stderr:\n{}", String::from_utf8_lossy(&output.stderr));
-    }
-    
-    if !output.status.success() {
+    if !status.success() {
         anyhow::bail!("Failed to build Rust static library");
     }
     
@@ -58,7 +50,7 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
     println!("Linking C emulator with library directory: {}", lib_dir);
     
     // First compile the CFI stubs
-    let cfi_stubs_output = Command::new("gcc")
+    let cfi_stubs_status = Command::new("gcc")
         .args(&[
             "-std=c11",
             "-Wall",
@@ -70,19 +62,16 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
             "cfi_stubs.o",
         ])
         .current_dir(&cbinding_dir)
-        .output()?;
+        .status()?;
     
-    if !cfi_stubs_output.status.success() {
-        if !cfi_stubs_output.stderr.is_empty() {
-            println!("gcc cfi_stubs stderr:\n{}", String::from_utf8_lossy(&cfi_stubs_output.stderr));
-        }
+    if !cfi_stubs_status.success() {
         anyhow::bail!("Failed to compile CFI stubs");
     }
     
     println!("✓ CFI stubs compiled successfully");
     
     // Now link the main emulator with stubs
-    let output = Command::new("gcc")
+    let status = Command::new("gcc")
         .args(&[
             "-std=c11",
             "-Wall", 
@@ -100,17 +89,9 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
             "-lrt",  // POSIX real-time extensions (for mq_*, timer_*, aio_* functions)
         ])
         .current_dir(&cbinding_dir)
-        .output()?;
+        .status()?;
     
-    // Print stdout and stderr for debug purposes
-    if !output.stdout.is_empty() {
-        println!("gcc stdout:\n{}", String::from_utf8_lossy(&output.stdout));
-    }
-    if !output.stderr.is_empty() {
-        println!("gcc stderr:\n{}", String::from_utf8_lossy(&output.stderr));
-    }
-    
-    if !output.status.success() {
+    if !status.success() {
         anyhow::bail!("Failed to build C emulator binary");
     }
     
@@ -124,8 +105,9 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
 }
 
 /// Clean build artifacts
-pub(crate) fn clean() -> Result<()> {
-    println!("Cleaning build artifacts...");
+pub(crate) fn clean(release: bool) -> Result<()> {
+    let build_type = if release { "release" } else { "debug" };
+    println!("Cleaning build artifacts ({})...", build_type);
     
     // Clean C artifacts
     let cbinding_dir = PathBuf::from(CBINDING_DIR);
@@ -149,8 +131,13 @@ pub(crate) fn clean() -> Result<()> {
     }
     
     // Clean specific Rust artifacts for emulator-cbinding only
+    let mut args = vec!["clean", "-p", "emulator-cbinding"];
+    if release {
+        args.push("--release");
+    }
+    
     let status = Command::new("cargo")
-        .args(&["clean", "-p", "emulator-cbinding"])
+        .args(&args)
         .current_dir(&*PROJECT_ROOT)
         .status()?;
     

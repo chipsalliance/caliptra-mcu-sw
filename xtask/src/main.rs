@@ -312,7 +312,11 @@ enum EmulatorCbindingCommands {
         release: bool,
     },
     /// Clean all build artifacts
-    Clean,
+    Clean {
+        /// Clean release mode artifacts (otherwise cleans debug artifacts)
+        #[arg(long, default_value_t = false)]
+        release: bool,
+    },
 }
 
 fn main() {
@@ -412,7 +416,7 @@ fn main() {
             EmulatorCbindingCommands::Build { release } => emulator_cbinding::build_all(*release),
             EmulatorCbindingCommands::BuildLib { release } => emulator_cbinding::build_lib(*release),
             EmulatorCbindingCommands::BuildEmulator { release } => emulator_cbinding::build_emulator(*release),
-            EmulatorCbindingCommands::Clean => emulator_cbinding::clean(),
+            EmulatorCbindingCommands::Clean { release } => emulator_cbinding::clean(*release),
         },
     };
     result.unwrap_or_else(|e| {
