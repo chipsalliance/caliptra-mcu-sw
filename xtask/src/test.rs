@@ -8,21 +8,7 @@ use crate::emulator_cbinding;
 
 pub(crate) fn test() -> Result<()> {
     test_panic_missing()?;
-    e2e_tests()?;
-    cargo_test()
-}
-
-fn cargo_test() -> Result<()> {
-    println!("Running: cargo test");
-    let status = Command::new("cargo")
-        .current_dir(&*PROJECT_ROOT)
-        .args(["test", "--workspace"])
-        .status()?;
-
-    if !status.success() {
-        bail!("cargo test failed");
-    }
-    Ok(())
+    e2e_tests()
 }
 
 fn e2e_tests() -> Result<()> {

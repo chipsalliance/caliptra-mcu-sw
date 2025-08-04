@@ -88,13 +88,18 @@ jobs:
             exit 1
           )
 
-      - name: Run precheckin
+      - name: Run xtest precheckin tests
         run: |
           cargo --config "$EXTRA_CARGO_CONFIG" xtask precheckin
           sccache --show-stats
 
-      - name: Run all tests
+      - name: Run xtest tests
         run: |
           export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
           cargo --config "$EXTRA_CARGO_CONFIG" xtask test
+          sccache --show-stats
+
+      - name: Run unit tests
+        run: |
+          cargo --config "$EXTRA_CARGO_CONFIG" test --locked --workspace
           sccache --show-stats

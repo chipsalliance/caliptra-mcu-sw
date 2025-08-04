@@ -31,7 +31,7 @@ fn test_emulator_args_creation() {
     // Test that we can create EmulatorArgs
     use std::path::PathBuf;
 
-    let args = EmulatorArgs {
+    let _ = EmulatorArgs {
         rom: PathBuf::from("test_rom.bin"),
         firmware: PathBuf::from("test_firmware.bin"),
         caliptra_rom: PathBuf::from("test_caliptra_rom.bin"),
