@@ -414,8 +414,12 @@ fn main() {
         },
         Commands::EmulatorCbinding { subcommand } => match subcommand {
             EmulatorCbindingCommands::Build { release } => emulator_cbinding::build_all(*release),
-            EmulatorCbindingCommands::BuildLib { release } => emulator_cbinding::build_lib(*release),
-            EmulatorCbindingCommands::BuildEmulator { release } => emulator_cbinding::build_emulator(*release),
+            EmulatorCbindingCommands::BuildLib { release } => {
+                emulator_cbinding::build_lib(*release)
+            }
+            EmulatorCbindingCommands::BuildEmulator { release } => {
+                emulator_cbinding::build_emulator(*release)
+            }
             EmulatorCbindingCommands::Clean { release } => emulator_cbinding::clean(*release),
         },
     };

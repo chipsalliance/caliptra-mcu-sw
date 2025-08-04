@@ -59,7 +59,7 @@ cargo xtask emulator-cbinding clean --release          # Clean release artifacts
 - **Release builds** (`--release`): Optimized, smaller binaries, faster execution
 
 This generates:
-- `target/debug/libemulator_cbinding.a` or `target/release/libemulator_cbinding.a` - Static library
+- `target/debug/emulator_cbinding/libemulator_cbinding.a` or `target/release/emulator_cbinding/libemulator_cbinding.a` - Static library
 - `emulator_cbinding.h` - C header file
 - `emulator` - Example C application
 
