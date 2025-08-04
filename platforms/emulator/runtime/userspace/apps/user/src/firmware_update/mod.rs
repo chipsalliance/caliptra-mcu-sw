@@ -95,7 +95,7 @@ mod external_memory {
     const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0x2000_0000_0000_0000;
 
     pub static STAGING_MEMORY: embassy_sync::lazy_lock::LazyLock<ExternalRAM> =
-        embassy_sync::lazy_lock::LazyLock::new(|| ExternalRAM::new(EMULATED_DMA_MAPPING.get()));
+        embassy_sync::lazy_lock::LazyLock::new(|| ExternalRAM::new(&EMULATED_DMA_MAPPING));
 
     pub struct ExternalRAM {
         dma_syscall: DMASyscall,

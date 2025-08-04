@@ -54,7 +54,7 @@ pub async fn image_loading_task() {
         feature = "test-firmware-update-flash",
     ))]
     {
-        match image_loading(EMULATED_DMA_MAPPING.get()).await {
+        match image_loading(&EMULATED_DMA_MAPPING).await {
             Ok(_) => {}
             Err(_) => romtime::test_exit(1),
         }
@@ -64,7 +64,7 @@ pub async fn image_loading_task() {
             feature = "test-firmware-update-flash"
         ))]
         {
-            match crate::firmware_update::firmware_update(EMULATED_DMA_MAPPING.get()).await {
+            match crate::firmware_update::firmware_update(&EMULATED_DMA_MAPPING).await {
                 Ok(_) => {}
                 Err(_) => romtime::test_exit(1),
             }
@@ -201,4 +201,4 @@ impl DMAMapping for EmulatedDMAMap {
 }
 
 #[allow(dead_code)]
-pub static EMULATED_DMA_MAPPING: LazyLock<EmulatedDMAMap> = LazyLock::new(|| EmulatedDMAMap {});
+pub static EMULATED_DMA_MAPPING: EmulatedDMAMap = EmulatedDMAMap {};
