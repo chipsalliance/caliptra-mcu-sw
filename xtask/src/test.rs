@@ -88,7 +88,7 @@ fn test_hello() -> Result<()> {
         .args(["run", "-p", "emulator", "--"])
         .args(&args)
         .output()?;
-    
+
     check_emulator_output(output, "Emulator")?;
     Ok(())
 }
@@ -109,7 +109,11 @@ fn test_hello_c_emulator() -> Result<()> {
 
     // Get the common emulator arguments
     let args = get_emulator_args();
-    println!("Running C emulator: {} {}", c_emulator_path.display(), args.join(" "));
+    println!(
+        "Running C emulator: {} {}",
+        c_emulator_path.display(),
+        args.join(" ")
+    );
 
     // Run the C emulator with the same arguments as the Rust emulator
     let output = Command::new(&c_emulator_path)
