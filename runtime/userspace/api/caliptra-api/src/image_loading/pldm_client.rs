@@ -9,7 +9,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
-use libsyscall_caliptra::dma::AXIAddr;
+use libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
 
 use libtock_platform::ErrorCode;
 
@@ -161,10 +161,11 @@ pub async fn pldm_download_image(
     Ok(())
 }
 
-pub async fn initialize_pldm<'a>(
+pub async fn initialize_pldm<'a, D: DMAMapping + 'static>(
     spawner: Spawner,
     descriptors: &'a [Descriptor],
     fw_params: &'a FirmwareParameters,
+    dma_mapping: &'a D,
 ) -> Result<(), ErrorCode> {
     let is_initialiazed = PLDM_STATE.lock(|state| {
         let mut state = state.borrow_mut();
@@ -179,8 +180,8 @@ pub async fn initialize_pldm<'a>(
         if descriptors.is_empty() {
             panic!("PLDM descriptors cannot be empty");
         }
-        let mut stud_fd_ops: StreamingFdOps = StreamingFdOps::new(descriptors, fw_params);
-        let stud_fd_ops: &'static mut StreamingFdOps =
+        let mut stud_fd_ops = StreamingFdOps::new(descriptors, fw_params, dma_mapping);
+        let stud_fd_ops: &'static mut StreamingFdOps<D> =
             unsafe { core::mem::transmute(&mut stud_fd_ops) };
 
         spawner

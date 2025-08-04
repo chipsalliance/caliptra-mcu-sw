@@ -12,6 +12,7 @@ mod config;
 use core::fmt::Write;
 #[allow(unused)]
 use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
+use libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
 #[allow(unused)]
 use libsyscall_caliptra::flash::SpiFlash;
 use libtock_console::Console;
@@ -53,7 +54,7 @@ pub async fn image_loading_task() {
         feature = "test-firmware-update-flash",
     ))]
     {
-        match image_loading().await {
+        match image_loading(EMULATED_DMA_MAPPING.get()).await {
             Ok(_) => {}
             Err(_) => romtime::test_exit(1),
         }
@@ -63,7 +64,7 @@ pub async fn image_loading_task() {
             feature = "test-firmware-update-flash"
         ))]
         {
-            match crate::firmware_update::firmware_update().await {
+            match crate::firmware_update::firmware_update(EMULATED_DMA_MAPPING.get()).await {
                 Ok(_) => {}
                 Err(_) => romtime::test_exit(1),
             }
@@ -73,7 +74,8 @@ pub async fn image_loading_task() {
 }
 
 #[allow(dead_code)]
-async fn image_loading() -> Result<(), ErrorCode> {
+#[allow(unused_variables)]
+async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     writeln!(console_writer, "IMAGE_LOADER_APP: Hello async world!").unwrap();
     #[cfg(feature = "test-pldm-streaming-boot")]
@@ -82,8 +84,8 @@ async fn image_loading() -> Result<(), ErrorCode> {
             descriptors: &config::streaming_boot_consts::DESCRIPTOR.get()[..],
             fw_params: config::streaming_boot_consts::STREAMING_BOOT_FIRMWARE_PARAMS.get(),
         };
-        let pldm_image_loader: PldmImageLoader =
-            PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner());
+        let pldm_image_loader =
+            PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner(), dma_mapping);
         pldm_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
             .await?;
@@ -130,7 +132,7 @@ async fn image_loading() -> Result<(), ErrorCode> {
         };
 
         let flash_syscall = SpiFlash::new(load_partition.1.driver_num);
-        let flash_image_loader: FlashImageLoader = FlashImageLoader::new(flash_syscall);
+        let flash_image_loader = FlashImageLoader::new(flash_syscall, dma_mapping);
         flash_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
             .await?;
@@ -176,3 +178,27 @@ async fn image_loading() -> Result<(), ErrorCode> {
     }
     Ok(())
 }
+
+pub struct EmulatedDMAMap {}
+impl DMAMapping for EmulatedDMAMap {
+    fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode> {
+        const MCU_SRAM_HI_OFFSET: u64 = 0x1000_0000;
+        // Convert a local address to an AXI address
+        Ok((MCU_SRAM_HI_OFFSET << 32) | (addr as u64))
+    }
+
+    fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
+        // Caliptra's External SRAM is mapped at 0x0000_0000_8000_0000
+        // that is mapped to this device's DMA 0x2000_0000_8000_0000
+        const CALIPTRA_EXTERNAL_SRAM_BASE: u64 = 0x0000_0000_8000_0000;
+        const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0x2000_0000_0000_0000;
+        if addr < CALIPTRA_EXTERNAL_SRAM_BASE {
+            return Err(ErrorCode::Invalid);
+        }
+
+        Ok(addr - CALIPTRA_EXTERNAL_SRAM_BASE + DEVICE_EXTERNAL_SRAM_BASE)
+    }
+}
+
+#[allow(dead_code)]
+pub static EMULATED_DMA_MAPPING: LazyLock<EmulatedDMAMap> = LazyLock::new(|| EmulatedDMAMap {});
