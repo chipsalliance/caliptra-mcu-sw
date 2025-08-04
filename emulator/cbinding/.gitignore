@@ -1,2 +1,3 @@
 *.a
 emulator
+emulator_cbinding.h

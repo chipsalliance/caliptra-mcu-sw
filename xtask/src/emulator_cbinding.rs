@@ -61,7 +61,7 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
 
     // First compile the CFI stubs
     let cfi_stubs_status = Command::new("gcc")
-        .args(&[
+        .args([
             "-std=c11",
             "-Wall",
             "-Wextra",
@@ -82,7 +82,7 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
 
     // Now link the main emulator with stubs
     let status = Command::new("gcc")
-        .args(&[
+        .args([
             "-std=c11",
             "-Wall",
             "-Wextra",
