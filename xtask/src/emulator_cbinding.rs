@@ -100,7 +100,42 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
         anyhow::bail!("Emulator binary was not created at expected location: {:?}", emulator_path);
     }
     
-    println!("✓ C emulator binary built successfully at {:?}", emulator_path);
+    // Create target directory for organized artifacts
+    let target_subdir = if release { "release" } else { "debug" };
+    let target_cbinding_dir = PROJECT_ROOT.join("target").join(target_subdir).join("emulator_cbinding");
+    std::fs::create_dir_all(&target_cbinding_dir)?;
+    
+    // Move all artifacts to target directory
+    let lib_name = "libemulator_cbinding.a";
+    let lib_src = PROJECT_ROOT.join("target").join(target_subdir).join(lib_name);
+    let lib_dst = target_cbinding_dir.join(lib_name);
+    if lib_src.exists() {
+        std::fs::rename(&lib_src, &lib_dst)?;
+    }
+    
+    let header_src = cbinding_dir.join("emulator_cbinding.h");
+    let header_dst = target_cbinding_dir.join("emulator_cbinding.h");
+    if header_src.exists() {
+        std::fs::rename(&header_src, &header_dst)?;
+    }
+    
+    let emulator_dst = target_cbinding_dir.join("emulator");
+    if emulator_path.exists() {
+        std::fs::rename(&emulator_path, &emulator_dst)?;
+    }
+    
+    let cfi_stubs_src = cbinding_dir.join("cfi_stubs.o");
+    let cfi_stubs_dst = target_cbinding_dir.join("cfi_stubs.o");
+    if cfi_stubs_src.exists() {
+        std::fs::rename(&cfi_stubs_src, &cfi_stubs_dst)?;
+    }
+    
+    println!("✓ C emulator binary built successfully");
+    println!("✓ All artifacts organized in {:?}", target_cbinding_dir);
+    println!("  - {}", lib_name);
+    println!("  - emulator_cbinding.h");
+    println!("  - emulator");
+    println!("  - cfi_stubs.o");
     Ok(())
 }
 
@@ -109,7 +144,15 @@ pub(crate) fn clean(release: bool) -> Result<()> {
     let build_type = if release { "release" } else { "debug" };
     println!("Cleaning build artifacts ({})...", build_type);
     
-    // Clean C artifacts
+    // Clean organized artifacts from target directory
+    let target_subdir = if release { "release" } else { "debug" };
+    let target_cbinding_dir = PROJECT_ROOT.join("target").join(target_subdir).join("emulator_cbinding");
+    if target_cbinding_dir.exists() {
+        std::fs::remove_dir_all(&target_cbinding_dir)?;
+        println!("✓ Removed organized artifacts directory");
+    }
+    
+    // Clean C artifacts from original locations (in case they weren't moved)
     let cbinding_dir = PathBuf::from(CBINDING_DIR);
     let emulator_binary = cbinding_dir.join("emulator");
     let header_file = cbinding_dir.join("emulator_cbinding.h");

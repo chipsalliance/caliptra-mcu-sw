@@ -11,6 +11,23 @@ Abstract:
     C version of the Caliptra MCU Emulator main program.
     Supports the same command line arguments as the Rust version.
 
+Build Instructions:
+
+    This file is built automatically by the xtask system:
+    
+    For debug build:
+    cargo xtask emulator-cbinding build-emulator
+    
+    For release build:
+    cargo xtask emulator-cbinding build-emulator --release
+    
+    Build artifacts are organized in:
+    <PROJECT_ROOT>/target/<debug|release>/emulator_cbinding/
+    - libemulator_cbinding.a (static library)
+    - emulator_cbinding.h (C header)
+    - emulator (binary executable)
+    - cfi_stubs.o (CFI stub object)
+
 --*/
 
 #define _DEFAULT_SOURCE  // For usleep on some systems
