@@ -225,64 +225,64 @@ unsigned int parse_hex_or_decimal(const char* str) {
 int main(int argc, char *argv[]) {
     // Initialize config with defaults
     struct CEmulatorConfig config = {
-        .rom_path = NULL,
-        .firmware_path = NULL,
-        .caliptra_rom_path = NULL,
-        .caliptra_firmware_path = NULL,
-        .soc_manifest_path = NULL,
-        .otp_path = NULL,
-        .log_dir_path = NULL,
-        .gdb_port = 0,
-        .i3c_port = 0,
-        .trace_instr = 0,
-        .stdin_uart = 1,  // Default to true
-        .manufacturing_mode = 0,
-        .capture_uart_output = 1,  // Default to capturing UART output
-        .vendor_pk_hash = NULL,
-        .owner_pk_hash = NULL,
-        .streaming_boot_path = NULL,
-        .primary_flash_image_path = NULL,
-        .secondary_flash_image_path = NULL,
-        .hw_revision_major = 2,
-        .hw_revision_minor = 0,
-        .hw_revision_patch = 0,
+        .mRomPath = NULL,
+        .mFirmwarePath = NULL,
+        .mCaliptraRomPath = NULL,
+        .mCaliptraFirmwarePath = NULL,
+        .mSocManifestPath = NULL,
+        .mOtpPath = NULL,
+        .mLogDirPath = NULL,
+        .mGdbPort = 0,
+        .mI3cPort = 0,
+        .mTraceInstr = 0,
+        .mStdinUart = 1,  // Default to true
+        .mManufacturingMode = 0,
+        .mCaptureUartOutput = 1,  // Default to capturing UART output
+        .mVendorPkHash = NULL,
+        .mOwnerPkHash = NULL,
+        .mStreamingBootPath = NULL,
+        .mPrimaryFlashImagePath = NULL,
+        .mSecondaryFlashImagePath = NULL,
+        .mHwRevisionMajor = 2,
+        .mHwRevisionMinor = 0,
+        .mHwRevisionPatch = 0,
         // Initialize all memory layout overrides to -1 (use defaults)
-        .rom_offset = -1,
-        .rom_size = -1,
-        .uart_offset = -1,
-        .uart_size = -1,
-        .ctrl_offset = -1,
-        .ctrl_size = -1,
-        .spi_offset = -1,
-        .spi_size = -1,
-        .sram_offset = -1,
-        .sram_size = -1,
-        .pic_offset = -1,
-        .external_test_sram_offset = -1,
-        .external_test_sram_size = -1,
-        .dccm_offset = -1,
-        .dccm_size = -1,
-        .i3c_offset = -1,
-        .i3c_size = -1,
-        .primary_flash_offset = -1,
-        .primary_flash_size = -1,
-        .secondary_flash_offset = -1,
-        .secondary_flash_size = -1,
-        .mci_offset = -1,
-        .mci_size = -1,
-        .dma_offset = -1,
-        .dma_size = -1,
-        .mbox_offset = -1,
-        .mbox_size = -1,
-        .soc_offset = -1,
-        .soc_size = -1,
-        .otp_offset = -1,
-        .otp_size = -1,
-        .lc_offset = -1,
-        .lc_size = -1,
-        .external_read_callback = NULL,
-        .external_write_callback = NULL,
-        .callback_context = NULL,
+        .mRomOffset = -1,
+        .mRomSize = -1,
+        .mUartOffset = -1,
+        .mUartSize = -1,
+        .mCtrlOffset = -1,
+        .mCtrlSize = -1,
+        .mSpiOffset = -1,
+        .mSpiSize = -1,
+        .mSramOffset = -1,
+        .mSramSize = -1,
+        .mPicOffset = -1,
+        .mExternalTestSramOffset = -1,
+        .mExternalTestSramSize = -1,
+        .mDccmOffset = -1,
+        .mDccmSize = -1,
+        .mI3cOffset = -1,
+        .mI3cSize = -1,
+        .mPrimaryFlashOffset = -1,
+        .mPrimaryFlashSize = -1,
+        .mSecondaryFlashOffset = -1,
+        .mSecondaryFlashSize = -1,
+        .mMciOffset = -1,
+        .mMciSize = -1,
+        .mDmaOffset = -1,
+        .mDmaSize = -1,
+        .mMboxOffset = -1,
+        .mMboxSize = -1,
+        .mSocOffset = -1,
+        .mSocSize = -1,
+        .mOtpOffset = -1,
+        .mOtpSize = -1,
+        .mLcOffset = -1,
+        .mLcSize = -1,
+        .mExternalReadCallback = NULL,
+        .mExternalWriteCallback = NULL,
+        .mCallbackContext = NULL,
     };
 
     // Define long options
@@ -341,138 +341,138 @@ int main(int argc, char *argv[]) {
     while ((c = getopt_long(argc, argv, "r:f:o:g:l:thV", long_options, &option_index)) != -1) {
         switch (c) {
             case 'r':
-                config.rom_path = optarg;
+                config.mRomPath = optarg;
                 break;
             case 'f':
-                config.firmware_path = optarg;
+                config.mFirmwarePath = optarg;
                 break;
             case 'o':
-                config.otp_path = optarg;
+                config.mOtpPath = optarg;
                 break;
             case 'g':
-                config.gdb_port = atoi(optarg);
+                config.mGdbPort = atoi(optarg);
                 break;
             case 'l':
-                config.log_dir_path = optarg;
+                config.mLogDirPath = optarg;
                 break;
             case 't':
-                config.trace_instr = 1;
+                config.mTraceInstr = 1;
                 break;
             case 128: // --no-stdin-uart
-                config.stdin_uart = 0;
+                config.mStdinUart = 0;
                 break;
             case 129: // --caliptra-rom
-                config.caliptra_rom_path = optarg;
+                config.mCaliptraRomPath = optarg;
                 break;
             case 130: // --caliptra-firmware
-                config.caliptra_firmware_path = optarg;
+                config.mCaliptraFirmwarePath = optarg;
                 break;
             case 131: // --soc-manifest
-                config.soc_manifest_path = optarg;
+                config.mSocManifestPath = optarg;
                 break;
             case 132: // --i3c-port
-                config.i3c_port = atoi(optarg);
+                config.mI3cPort = atoi(optarg);
                 break;
             case 133: // --manufacturing-mode
-                config.manufacturing_mode = 1;
+                config.mManufacturingMode = 1;
                 break;
             case 134: // --vendor-pk-hash
-                config.vendor_pk_hash = optarg;
+                config.mVendorPkHash = optarg;
                 break;
             case 135: // --owner-pk-hash
-                config.owner_pk_hash = optarg;
+                config.mOwnerPkHash = optarg;
                 break;
             case 136: // --streaming-boot
-                config.streaming_boot_path = optarg;
+                config.mStreamingBootPath = optarg;
                 break;
             case 137: // --primary-flash-image
-                config.primary_flash_image_path = optarg;
+                config.mPrimaryFlashImagePath = optarg;
                 break;
             case 138: // --secondary-flash-image
-                config.secondary_flash_image_path = optarg;
+                config.mSecondaryFlashImagePath = optarg;
                 break;
             case 139: // --hw-revision
                 // Parse semver format like "2.0.0"
-                if (sscanf(optarg, "%u.%u.%u", &config.hw_revision_major, 
-                          &config.hw_revision_minor, &config.hw_revision_patch) != 3) {
+                if (sscanf(optarg, "%u.%u.%u", &config.mHwRevisionMajor, 
+                          &config.mHwRevisionMinor, &config.mHwRevisionPatch) != 3) {
                     fprintf(stderr, "Invalid hw-revision format. Expected format: major.minor.patch\n");
                     return 1;
                 }
                 break;
             case 140: // --rom-offset
-                config.rom_offset = parse_hex_or_decimal(optarg);
+                config.mRomOffset = parse_hex_or_decimal(optarg);
                 break;
             case 141: // --rom-size
-                config.rom_size = parse_hex_or_decimal(optarg);
+                config.mRomSize = parse_hex_or_decimal(optarg);
                 break;
             case 142: // --uart-offset
-                config.uart_offset = parse_hex_or_decimal(optarg);
+                config.mUartOffset = parse_hex_or_decimal(optarg);
                 break;
             case 143: // --uart-size
-                config.uart_size = parse_hex_or_decimal(optarg);
+                config.mUartSize = parse_hex_or_decimal(optarg);
                 break;
             case 144: // --sram-offset
-                config.sram_offset = parse_hex_or_decimal(optarg);
+                config.mSramOffset = parse_hex_or_decimal(optarg);
                 break;
             case 145: // --sram-size
-                config.sram_size = parse_hex_or_decimal(optarg);
+                config.mSramSize = parse_hex_or_decimal(optarg);
                 break;
             case 146: // --pic-offset
-                config.pic_offset = parse_hex_or_decimal(optarg);
+                config.mPicOffset = parse_hex_or_decimal(optarg);
                 break;
             case 147: // --dccm-offset
-                config.dccm_offset = parse_hex_or_decimal(optarg);
+                config.mDccmOffset = parse_hex_or_decimal(optarg);
                 break;
             case 148: // --dccm-size
-                config.dccm_size = parse_hex_or_decimal(optarg);
+                config.mDccmSize = parse_hex_or_decimal(optarg);
                 break;
             case 149: // --i3c-offset
-                config.i3c_offset = parse_hex_or_decimal(optarg);
+                config.mI3cOffset = parse_hex_or_decimal(optarg);
                 break;
             case 150: // --i3c-size
-                config.i3c_size = parse_hex_or_decimal(optarg);
+                config.mI3cSize = parse_hex_or_decimal(optarg);
                 break;
             case 151: // --mci-offset
-                config.mci_offset = parse_hex_or_decimal(optarg);
+                config.mMciOffset = parse_hex_or_decimal(optarg);
                 break;
             case 152: // --mci-size
-                config.mci_size = parse_hex_or_decimal(optarg);
+                config.mMciSize = parse_hex_or_decimal(optarg);
                 break;
             case 153: // --primary-flash-offset
-                config.primary_flash_offset = parse_hex_or_decimal(optarg);
+                config.mPrimaryFlashOffset = parse_hex_or_decimal(optarg);
                 break;
             case 154: // --primary-flash-size
-                config.primary_flash_size = parse_hex_or_decimal(optarg);
+                config.mPrimaryFlashSize = parse_hex_or_decimal(optarg);
                 break;
             case 155: // --secondary-flash-offset
-                config.secondary_flash_offset = parse_hex_or_decimal(optarg);
+                config.mSecondaryFlashOffset = parse_hex_or_decimal(optarg);
                 break;
             case 156: // --secondary-flash-size
-                config.secondary_flash_size = parse_hex_or_decimal(optarg);
+                config.mSecondaryFlashSize = parse_hex_or_decimal(optarg);
                 break;
             case 157: // --soc-offset
-                config.soc_offset = parse_hex_or_decimal(optarg);
+                config.mSocOffset = parse_hex_or_decimal(optarg);
                 break;
             case 158: // --soc-size
-                config.soc_size = parse_hex_or_decimal(optarg);
+                config.mSocSize = parse_hex_or_decimal(optarg);
                 break;
             case 159: // --otp-offset
-                config.otp_offset = parse_hex_or_decimal(optarg);
+                config.mOtpOffset = parse_hex_or_decimal(optarg);
                 break;
             case 160: // --otp-size
-                config.otp_size = parse_hex_or_decimal(optarg);
+                config.mOtpSize = parse_hex_or_decimal(optarg);
                 break;
             case 161: // --lc-offset
-                config.lc_offset = parse_hex_or_decimal(optarg);
+                config.mLcOffset = parse_hex_or_decimal(optarg);
                 break;
             case 162: // --lc-size
-                config.lc_size = parse_hex_or_decimal(optarg);
+                config.mLcSize = parse_hex_or_decimal(optarg);
                 break;
             case 163: // --mbox-offset
-                config.mbox_offset = parse_hex_or_decimal(optarg);
+                config.mMboxOffset = parse_hex_or_decimal(optarg);
                 break;
             case 164: // --mbox-size
-                config.mbox_size = parse_hex_or_decimal(optarg);
+                config.mMboxSize = parse_hex_or_decimal(optarg);
                 break;
             case 'h':
                 print_usage(argv[0]);
@@ -489,27 +489,27 @@ int main(int argc, char *argv[]) {
     }
 
     // Check required arguments
-    if (!config.rom_path) {
+    if (!config.mRomPath) {
         fprintf(stderr, "Error: ROM path is required (--rom)\n");
         print_usage(argv[0]);
         return 1;
     }
-    if (!config.firmware_path) {
+    if (!config.mFirmwarePath) {
         fprintf(stderr, "Error: Firmware path is required (--firmware)\n");
         print_usage(argv[0]);
         return 1;
     }
-    if (!config.caliptra_rom_path) {
+    if (!config.mCaliptraRomPath) {
         fprintf(stderr, "Error: Caliptra ROM path is required (--caliptra-rom)\n");
         print_usage(argv[0]);
         return 1;
     }
-    if (!config.caliptra_firmware_path) {
+    if (!config.mCaliptraFirmwarePath) {
         fprintf(stderr, "Error: Caliptra firmware path is required (--caliptra-firmware)\n");
         print_usage(argv[0]);
         return 1;
     }
-    if (!config.soc_manifest_path) {
+    if (!config.mSocManifestPath) {
         fprintf(stderr, "Error: SoC manifest path is required (--soc-manifest)\n");
         print_usage(argv[0]);
         return 1;

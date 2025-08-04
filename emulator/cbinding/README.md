@@ -33,14 +33,19 @@ The C bindings provide:
 
 ### Build Steps
 
+The emulator C binding can be built using the `cargo xtask emulator-cbinding` command:
+
 ```bash
-cd emulator/cbinding
+# Build all components (library, header, and binary) - recommended
+cargo xtask emulator-cbinding build
 
-# Build the static library and generate headers
-cargo build --release
+# Alternative: Build individual components
+cargo xtask emulator-cbinding build-lib        # Build only the Rust static library
+cargo xtask emulator-cbinding generate-header  # Generate only the C header file
+cargo xtask emulator-cbinding build-emulator   # Build only the C emulator binary
 
-# Build the C example application
-make
+# Clean build artifacts
+cargo xtask emulator-cbinding clean
 ```
 
 This generates:
