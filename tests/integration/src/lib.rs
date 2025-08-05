@@ -331,6 +331,7 @@ mod test {
     run_test!(test_log_flash_linear);
     run_test!(test_log_flash_circular);
     run_test!(test_log_flash_usermode, example_app);
+    run_test!(test_mcu_mbox);
     run_test!(test_mctp_ctrl_cmds);
     run_test!(test_mctp_capsule_loopback);
     run_test!(test_mctp_user_loopback, example_app);

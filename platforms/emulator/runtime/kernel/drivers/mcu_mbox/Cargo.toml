@@ -1,21 +1,16 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "capsules-runtime"
+name = "mcu-mbox-driver"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-bitfield.workspace = true
-caliptra-api.workspace = true
 capsules-core.workspace = true
-capsules-extra.workspace = true
-doe-transport.workspace = true
 mcu-mbox-comm.workspace = true
-i3c-driver.workspace = true
 kernel.workspace = true
 registers-generated.workspace = true
+
+#remove later
 romtime.workspace = true
-ureg.workspace = true
-zerocopy.workspace = true

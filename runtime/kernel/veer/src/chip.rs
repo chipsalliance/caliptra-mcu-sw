@@ -46,6 +46,7 @@ pub struct VeeR<'a, I: InterruptService + 'a> {
 pub struct VeeRDefaultPeripherals<'a> {
     pub i3c: i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
     pub mci: romtime::Mci,
+    pub mcu_mbox0: mcu_mbox_driver::McuMailbox<'a, InternalTimers<'a>>,
     pub additional_interrupt_handler: &'static dyn InterruptService,
 }
 
@@ -64,12 +65,14 @@ impl<'a> VeeRDefaultPeripherals<'a> {
                 alarm,
             ),
             mci: mci_driver,
+            mcu_mbox0: mcu_mbox_driver::McuMailbox::new(mcu_mbox_driver::MCI_BASE, alarm),
             additional_interrupt_handler,
         }
     }
 
     pub fn init(&'static self) {
         self.i3c.init();
+        self.mcu_mbox0.init();
     }
 }
 
@@ -85,6 +88,7 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
             return true;
         } else if interrupt == MCI_IRQ as u32 {
             self.mci.handle_interrupt();
+            self.mcu_mbox0.handle_interrupt();
             return true;
         }
         debug!("Unhandled interrupt {}", interrupt);
