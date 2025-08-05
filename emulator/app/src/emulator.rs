@@ -63,6 +63,17 @@ pub type ExternalWriteCallback = Box<
     ) -> bool,
 >;
 
+fn parse_vendor_pqc_type(s: &str) -> Result<FwVerificationPqcKeyType, String> {
+    match s.to_lowercase().trim() {
+        "mldsa" => Ok(FwVerificationPqcKeyType::MLDSA),
+        "lms" => Ok(FwVerificationPqcKeyType::LMS),
+        _ => Err(format!(
+            "Invalid vendor PQC type: {}. Supported types are 'mldsa' and 'lms'.",
+            s
+        )),
+    }
+}
+
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None, name = "Caliptra MCU Emulator")]
 pub struct EmulatorArgs {
@@ -122,9 +133,9 @@ pub struct EmulatorArgs {
     #[arg(long)]
     pub owner_pk_hash: Option<String>,
 
-    /// 1 = MLDSA, 3 = LMS
-    #[arg(long, default_value_t = 3)]
-    pub vendor_pqc_type: u8,
+    /// mldsa or lms (default)
+    #[arg(long, value_parser = parse_vendor_pqc_type, default_value = "lms")]
+    pub vendor_pqc_type: FwVerificationPqcKeyType,
 
     /// Path to the streaming boot PLDM firmware package
     #[arg(long)]
@@ -725,14 +736,14 @@ impl Emulator {
         });
 
         let lc = LcCtrl::new();
+
         let otp = Otp::new(
             &clock.clone(),
             cli.otp,
             None,
             owner_pk_hash,
             vendor_pk_hash,
-            FwVerificationPqcKeyType::from_u8(cli.vendor_pqc_type)
-                .unwrap_or(FwVerificationPqcKeyType::LMS),
+            cli.vendor_pqc_type,
         )?;
         let mci = Mci::new(
             &clock.clone(),
