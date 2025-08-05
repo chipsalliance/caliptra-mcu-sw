@@ -327,8 +327,8 @@ impl<'a> MCTPDriver<'a> {
         // Check if we already have a buffered message and warn about replacement
         if self.buffered_message.is_some() {
             println!(
-                "[MCTP-CAPSULE]::buffer_message replacing existing buffered message with new one (src_eid={}, msg_tag={}, {} bytes)", 
-                src_eid, msg_tag, msg_len
+                "[MCTP-CAPSULE]::buffer_message replacing existing buffered message with new one (msg_tag={}, {} bytes)",
+                msg_tag, msg_len
             );
             // We'll replace it - newer messages are more likely to be relevant
         }
@@ -361,8 +361,8 @@ impl<'a> MCTPDriver<'a> {
             self.kernel_rx_buf.replace(rx_buf);
 
             println!(
-                "[MCTP-CAPSULE]::buffer_message buffered {} bytes from EID {}",
-                msg_len, src_eid
+                "[MCTP-CAPSULE]::buffer_message buffered {} bytes msg tag {}",
+                msg_len, msg_tag
             );
             true
         } else {
