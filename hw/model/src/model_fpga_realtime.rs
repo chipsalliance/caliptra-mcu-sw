@@ -1150,19 +1150,20 @@ impl McuHwModel for ModelFpgaRealtime {
             let offset = fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET;
             otp_mem[offset..offset + len].copy_from_slice(&vendor_pk_hash);
         }
-        if let Some(vendor_pqc_type) = params.vendor_pqc_type {
-            println!(
-                "Setting vendor public key pqc type to {:x?}",
-                vendor_pqc_type
-            );
-            let val = match vendor_pqc_type {
-                FwVerificationPqcKeyType::MLDSA => 0,
-                FwVerificationPqcKeyType::LMS => 1,
-            };
-            let otp_mem = m.otp_slice();
-            let offset = fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48;
-            otp_mem[offset] = val;
-        }
+        let vendor_pqc_type = params
+            .vendor_pqc_type
+            .unwrap_or(FwVerificationPqcKeyType::LMS);
+        println!(
+            "Setting vendor public key pqc type to {:x?}",
+            vendor_pqc_type
+        );
+        let val = match vendor_pqc_type {
+            FwVerificationPqcKeyType::MLDSA => 0,
+            FwVerificationPqcKeyType::LMS => 1,
+        };
+        let otp_mem = m.otp_slice();
+        let offset = fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48;
+        otp_mem[offset] = val;
 
         println!("Clearing fifo");
         // Sometimes there's garbage in here; clean it out
