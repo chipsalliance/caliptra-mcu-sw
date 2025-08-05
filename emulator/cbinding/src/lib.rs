@@ -284,7 +284,10 @@ pub unsafe extern "C" fn emulator_init(
         },
         manufacturing_mode: config.manufacturing_mode != 0,
         vendor_pk_hash: convert_optional_c_string(config.vendor_pk_hash),
-        vendor_pqc_type: config.vendor_pqc_type,
+        vendor_pqc_type: caliptra_image_types::FwVerificationPqcKeyType::from_u8(
+            config.vendor_pqc_type,
+        )
+        .unwrap_or(caliptra_image_types::FwVerificationPqcKeyType::LMS),
         owner_pk_hash: convert_optional_c_string(config.owner_pk_hash),
         streaming_boot: convert_optional_c_string(config.streaming_boot_path).map(|s| s.into()),
         primary_flash_image: convert_optional_c_string(config.primary_flash_image_path)
