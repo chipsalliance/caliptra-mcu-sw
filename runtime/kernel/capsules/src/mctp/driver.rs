@@ -7,10 +7,11 @@ use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
 use core::cell::Cell;
 use core::fmt::Write;
+use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, GrantKernelData, UpcallCount};
 use kernel::processbuffer::{ReadableProcessBuffer, WriteableProcessBuffer};
 use kernel::syscall::{CommandReturn, SyscallDriver};
-use kernel::utilities::cells::MapCell;
+use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::{ErrorCode, ProcessId};
 use romtime::println;
@@ -46,20 +47,40 @@ mod ro_allow {
 /// IDs for read-write allow buffers
 mod rw_allow {
     /// Buffer for the message to be received
-    pub const READ_REQUEST: u32 = 0;
-    pub const READ_RESPONSE: u32 = 1;
+    pub const READ_REQUEST: usize = 0;
+    pub const READ_RESPONSE: usize = 1;
 
     /// Number of read-write allow buffers
     pub const COUNT: u8 = 2;
 }
 
-#[derive(Debug, PartialEq)]
+/// Structure to hold a buffered message when no application is waiting
+#[derive(Debug, Clone, Copy)]
+struct BufferedMessage {
+    msg_type: u8,
+    msg_len: usize,
+    recv_time: u32,
+    op_context: OpContext,
+}
+
+impl BufferedMessage {
+    fn matches_pending_operation(&self, pending_op: &OpContext) -> bool {
+        // Both buffered and pending operations should be rx operations
+        if self.op_context.op_type != OpType::Rx || pending_op.op_type != OpType::Rx {
+            return false;
+        }
+
+        pending_op.matches(self.op_context.msg_tag, self.op_context.peer_eid)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
 enum OpType {
     Tx,
     Rx,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct OpContext {
     msg_tag: u8,
     peer_eid: u8,
@@ -117,6 +138,9 @@ pub struct MCTPDriver<'a> {
     msg_type: MessageType,
     max_msg_size: usize,
     kernel_msg_buf: MapCell<SubSliceMut<'static, u8>>,
+    kernel_rx_buf: TakeCell<'static, [u8]>,
+    buffered_message: OptionalCell<BufferedMessage>,
+    deferred_call: DeferredCall,
 }
 
 impl<'a> MCTPDriver<'a> {
@@ -131,6 +155,7 @@ impl<'a> MCTPDriver<'a> {
         msg_type: MessageType,
         max_msg_size: usize,
         msg_buf: SubSliceMut<'static, u8>,
+        rx_buf: &'static mut [u8],
     ) -> MCTPDriver<'a> {
         MCTPDriver {
             sender,
@@ -139,6 +164,9 @@ impl<'a> MCTPDriver<'a> {
             msg_type,
             max_msg_size,
             kernel_msg_buf: MapCell::new(msg_buf),
+            kernel_rx_buf: TakeCell::new(rx_buf),
+            buffered_message: OptionalCell::empty(),
+            deferred_call: DeferredCall::new(),
         }
     }
 
@@ -284,6 +312,151 @@ impl<'a> MCTPDriver<'a> {
 
         true
     }
+
+    /// Store a message in the buffer when no application is waiting
+    /// If there's already a buffered message, replace it with the new one (newer messages take priority)
+    fn buffer_message(
+        &self,
+        src_eid: u8,
+        msg_type: u8,
+        msg_tag: u8,
+        msg_payload: &[u8],
+        msg_len: usize,
+        recv_time: u32,
+    ) -> bool {
+        // Check if we already have a buffered message and warn about replacement
+        if self.buffered_message.is_some() {
+            println!(
+                "[MCTP-CAPSULE]::buffer_message replacing existing buffered message with new one (src_eid={}, msg_tag={}, {} bytes)", 
+                src_eid, msg_tag, msg_len
+            );
+            // We'll replace it - newer messages are more likely to be relevant
+        }
+
+        // Take the kernel rx buffer to store the message
+        if let Some(rx_buf) = self.kernel_rx_buf.take() {
+            if msg_len > rx_buf.len() {
+                // Message too large, restore buffer and drop message
+                self.kernel_rx_buf.replace(rx_buf);
+                println!("[MCTP-CAPSULE]::buffer_message message too large for buffer. Dropping message.");
+                return false;
+            }
+
+            // Copy message to buffer (this overwrites any existing message)
+            rx_buf[..msg_len].copy_from_slice(&msg_payload[..msg_len]);
+
+            // Store message metadata (this replaces any existing buffered message)
+            let buffered_msg = BufferedMessage {
+                msg_type,
+                msg_len,
+                recv_time,
+                op_context: OpContext {
+                    msg_tag,
+                    peer_eid: src_eid,
+                    op_type: OpType::Rx,
+                },
+            };
+
+            self.buffered_message.set(buffered_msg);
+            self.kernel_rx_buf.replace(rx_buf);
+
+            println!(
+                "[MCTP-CAPSULE]::buffer_message buffered {} bytes from EID {}",
+                msg_len, src_eid
+            );
+            true
+        } else {
+            println!("[MCTP-CAPSULE]::buffer_message no rx buffer available");
+            false
+        }
+    }
+
+    /// Check if there's a buffered message that matches a pending request or response
+    fn check_buffered_message(&self, op_ctx: &OpContext) -> bool {
+        if let Some(buffered_msg) = self.buffered_message.take() {
+            let matched = buffered_msg.matches_pending_operation(op_ctx);
+            self.buffered_message.set(buffered_msg);
+            matched
+        } else {
+            false
+        }
+    }
+
+    /// Deliver buffered rx message to waiting application
+    fn deliver_buffered_message(&self) {
+        if let Some(buffered_msg) = self.buffered_message.take() {
+            if let Some(rx_buf) = self.kernel_rx_buf.take() {
+                // Find the app that matches this buffered message
+                self.apps.each(|_, app, kernel_data| {
+                    // Check if this buffered message matches a pending request
+                    let rw_buffer: usize;
+                    let rx_request: bool;
+                    if let Some(req_ctx) = &app.pending_rx_request {
+                        if buffered_msg.matches_pending_operation(req_ctx) {
+                            rw_buffer = rw_allow::READ_REQUEST;
+                            rx_request = true;
+                        } else {
+                            return; // No match, continue to next app
+                        }
+                    } else if let Some(rsp_ctx) = &app.pending_rx_response {
+                        if buffered_msg.matches_pending_operation(rsp_ctx) {
+                            rw_buffer = rw_allow::READ_RESPONSE;
+                            rx_request = false;
+                        } else {
+                            return; // No match, continue to next app
+                        }
+                    } else {
+                        // No pending operation for this app, continue to next
+                        return;
+                    }
+
+                    // Copy the buffered message to the process buffer
+                    let res = kernel_data
+                        .get_readwrite_processbuffer(rw_buffer)
+                        .and_then(|read| {
+                            read.mut_enter(|rmsg_payload| {
+                                if rmsg_payload.len() < buffered_msg.msg_len {
+                                    Err(ErrorCode::SIZE)
+                                } else {
+                                    rmsg_payload[..buffered_msg.msg_len].copy_from_slice(&rx_buf[..buffered_msg.msg_len]);
+                                    Ok(())
+                                }
+                            })
+                        })
+                        .unwrap_or(Err(ErrorCode::NOMEM));
+
+                    // Schedule the upcall if the message payload is copied successfully
+                    if res.is_ok() {
+                        let subscribe_num = if rx_request {
+                            app.pending_rx_request = None;
+                            upcall::RECEIVED_REQUEST
+                        } else {
+                            app.pending_rx_response = None;
+                            upcall::RECEIVED_RESPONSE
+                        };
+
+                        let msg_info =
+                            (buffered_msg.op_context.peer_eid as usize) << 16 | (buffered_msg.msg_type as usize) << 8 | (buffered_msg.op_context.msg_tag as usize);
+                        if let Err(e) = kernel_data.schedule_upcall(
+                            subscribe_num,
+                            (buffered_msg.msg_len, buffered_msg.recv_time as usize, msg_info),
+                        ) {
+                            panic!("[MCTP-CAPSULE]::deliver_buffered_message upcall schedule failed: {:?}", e);
+                        } else {
+                            let op_type = if rx_request { "request" } else { "response" };
+                            println!(
+                                "[MCTP-CAPSULE]::deliver_buffered_message scheduled upcall for rx {} message of {} bytes",
+                                op_type, buffered_msg.msg_len,
+                            );
+                        }
+                    }
+                });
+
+                // Restore the rx buffer
+                self.kernel_rx_buf.replace(rx_buf);
+            }
+        }
+    }
 }
 
 impl SyscallDriver for MCTPDriver<'_> {
@@ -333,22 +506,36 @@ impl SyscallDriver for MCTPDriver<'_> {
                 if command_num == 1 {
                     self.apps
                         .enter(process_id, |app, _| {
-                            app.pending_rx_request = Some(OpContext {
+                            let req_rx_ctx = OpContext {
                                 msg_tag,
                                 peer_eid,
                                 op_type: OpType::Rx,
-                            });
+                            };
+                            // Check if we have a buffered message that matches this request
+                            if self.check_buffered_message(&req_rx_ctx) {
+                                self.deferred_call.set();
+                                println!("[MCTP-CAPSULE]: Found matching buffered request message");
+                            }
+                            app.pending_rx_request = Some(req_rx_ctx);
                             CommandReturn::success()
                         })
                         .unwrap_or_else(|err| CommandReturn::failure(err.into()))
                 } else if command_num == 2 {
                     self.apps
                         .enter(process_id, |app, _| {
-                            app.pending_rx_response = Some(OpContext {
+                            let rsp_rx_ctx = OpContext {
                                 msg_tag,
                                 peer_eid,
                                 op_type: OpType::Rx,
-                            });
+                            };
+                            // Check if we have a buffered message that matches this response
+                            if self.check_buffered_message(&rsp_rx_ctx) {
+                                self.deferred_call.set();
+                                println!(
+                                    "[MCTP-CAPSULE]: Found matching buffered response message"
+                                );
+                            }
+                            app.pending_rx_response = Some(rsp_rx_ctx);
                             CommandReturn::success()
                         })
                         .unwrap_or_else(|err| CommandReturn::failure(err.into()))
@@ -461,24 +648,31 @@ impl MCTPRxClient for MCTPDriver<'_> {
             );
         }
 
+        let mut rx_upcall_scheduled = false;
+
         self.apps.each(|_, app, kernel_data| {
-            let is_pending_rx_request: Option<bool>;
-            let rw_buffer: Option<usize>;
-            // Check if the received message matches the pending rx operation
-            if self.pending_rx_request(app, msg_tag, src_eid) {
-                is_pending_rx_request = Some(true);
-                rw_buffer = Some(rw_allow::READ_REQUEST as usize);
-            } else if self.pending_rx_response(app, msg_tag, src_eid) {
-                is_pending_rx_request = Some(false);
-                rw_buffer = Some(rw_allow::READ_RESPONSE as usize);
-            } else {
-                println!("[MCTP-CAPSULE]::receive no pending rx operation");
+            if rx_upcall_scheduled {
                 return;
             }
 
+            // Determine which operation matches the received message
+            let is_request = if self.pending_rx_request(app, msg_tag, src_eid) {
+                true
+            } else if self.pending_rx_response(app, msg_tag, src_eid) {
+                false
+            } else {
+                return; // No matching pending operation for this app
+            };
+
+            let rw_buffer = if is_request {
+                rw_allow::READ_REQUEST
+            } else {
+                rw_allow::READ_RESPONSE
+            };
+
             // Copy the message payload to the process buffer
             let res = kernel_data
-                .get_readwrite_processbuffer(rw_buffer.unwrap())
+                .get_readwrite_processbuffer(rw_buffer)
                 .and_then(|read| {
                     read.mut_enter(|rmsg_payload| {
                         if rmsg_payload.len() < msg_len {
@@ -493,32 +687,47 @@ impl MCTPRxClient for MCTPDriver<'_> {
 
             // Schedule the upcall if the message payload is copied successfully
             if res.is_ok() {
-                let mut subscribe_num: Option<usize> = None;
-                match is_pending_rx_request {
-                    Some(true) => {
-                        app.pending_rx_request = None;
-                        subscribe_num = Some(upcall::RECEIVED_REQUEST);
-                    }
-                    Some(false) => {
-                        app.pending_rx_response = None;
-                        subscribe_num = Some(upcall::RECEIVED_RESPONSE);
-                    }
-                    None => {}
-                }
+                let subscribe_num = if is_request {
+                    app.pending_rx_request = None;
+                    upcall::RECEIVED_REQUEST
+                } else {
+                    app.pending_rx_response = None;
+                    upcall::RECEIVED_RESPONSE
+                };
+
                 let msg_info =
                     (src_eid as usize) << 16 | (msg_type as usize) << 8 | (msg_tag as usize);
-                if let Err(e) = kernel_data.schedule_upcall(
-                    subscribe_num.unwrap(),
-                    (msg_len, recv_time as usize, msg_info),
-                ) {
+                if let Err(e) = kernel_data
+                    .schedule_upcall(subscribe_num, (msg_len, recv_time as usize, msg_info))
+                {
                     panic!("[MCTP-CAPSULE]::receive upcall schedule failed: {:?}", e);
                 } else {
                     println!(
                         "[MCTP-CAPSULE]::receive upcall scheduled for {} bytes",
                         msg_len
                     );
+                    rx_upcall_scheduled = true;
                 }
             }
         });
+
+        // If no application was waiting for this message at the moment, buffer it
+        if !rx_upcall_scheduled {
+            if self.buffer_message(src_eid, msg_type, msg_tag, msg_payload, msg_len, recv_time) {
+                // println!("[MCTP-CAPSULE]::receive message buffered for later delivery");
+            } else {
+                println!("[MCTP-CAPSULE]::receive no pending rx operation and buffering failed - dropping message");
+            }
+        }
+    }
+}
+
+impl DeferredCallClient for MCTPDriver<'_> {
+    fn handle_deferred_call(&self) {
+        self.deliver_buffered_message();
+    }
+
+    fn register(&'static self) {
+        self.deferred_call.register(self);
     }
 }

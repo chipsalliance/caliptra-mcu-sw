@@ -318,7 +318,10 @@ impl MctpUtil {
                         std::thread::sleep(std::time::Duration::from_millis(200));
                         retry -= 1;
                         if retry == 0 {
-                            println!("MCTP_UTIL: IBI not received. Exiting...");
+                            println!(
+                                "MCTP_UTIL: IBI not received. Exiting after {} retries...",
+                                retry_count
+                            );
                             pkts.clear();
                             break;
                         }
