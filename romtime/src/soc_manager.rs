@@ -6,6 +6,7 @@ use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError, SocManager};
 use registers_generated::{mbox, soc};
 use ureg::RealMmioMut;
 
+const MAILBOX_SIZE: usize = 256 * 1024;
 pub struct CaliptraSoC {
     _private: (), // ensure that this struct cannot be instantiated directly except through new
     counter: u64,
@@ -96,25 +97,13 @@ impl CaliptraSoC {
         len_bytes: usize,
         buf: impl Iterator<Item = u32>,
     ) -> core::result::Result<(), CaliptraApiError> {
-        const MAILBOX_SIZE: usize = 256 * 1024;
         if len_bytes > MAILBOX_SIZE {
             return Err(CaliptraApiError::BufferTooLargeForMailbox);
         }
 
-        // Read a 0 to get the lock
-        if self.soc_mbox().lock().read().lock() {
-            return Err(CaliptraApiError::UnableToLockMailbox);
-        }
+        self.lock_mailbox()?;
 
-        // Mailbox lock value should read 1 now
-        // If not, the reads are likely being blocked by the PAUSER check or some other issue
-        if !(self.soc_mbox().lock().read().lock()) {
-            return Err(CaliptraApiError::UnableToReadMailbox);
-        }
-
-        self.soc_mbox().cmd().write(|_| cmd);
-
-        self.soc_mbox().dlen().write(|_| len_bytes as u32);
+        self.set_command(cmd, len_bytes)?;
 
         for word in buf {
             self.soc_mbox().datain().write(|_| word);
@@ -123,6 +112,64 @@ impl CaliptraSoC {
         // Ask Caliptra to execute this command
         self.soc_mbox().execute().write(|w| w.execute(true));
 
+        Ok(())
+    }
+
+    pub fn initiate_request(
+        &mut self,
+        cmd: u32,
+        len_bytes: usize,
+    ) -> core::result::Result<(), CaliptraApiError> {
+        if len_bytes > MAILBOX_SIZE {
+            return Err(CaliptraApiError::BufferTooLargeForMailbox);
+        }
+
+        self.lock_mailbox()?;
+
+        self.set_command(cmd, len_bytes)?;
+
+        Ok(())
+    }
+
+    pub fn lock_mailbox(&mut self) -> core::result::Result<(), CaliptraApiError> {
+        // Read a 0 to get the lock
+        if self.soc_mbox().lock().read().lock() {
+            Err(CaliptraApiError::UnableToLockMailbox)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn set_command(
+        &mut self,
+        cmd: u32,
+        payload_len_bytes: usize,
+    ) -> core::result::Result<(), CaliptraApiError> {
+        // Mailbox lock value should read 1 now
+        // If not, the reads are likely being blocked by the PAUSER check or some other issue
+        if !(self.soc_mbox().lock().read().lock()) {
+            return Err(CaliptraApiError::UnableToLockMailbox);
+        }
+
+        self.soc_mbox().cmd().write(|_| cmd);
+
+        self.soc_mbox().dlen().write(|_| payload_len_bytes as u32);
+        Ok(())
+    }
+
+    pub fn write_data(&mut self, data: u32) -> core::result::Result<(), CaliptraApiError> {
+        if !(self.soc_mbox().lock().read().lock()) {
+            return Err(CaliptraApiError::UnableToLockMailbox);
+        }
+        self.soc_mbox().datain().write(|_| data);
+        Ok(())
+    }
+
+    pub fn execute_command(&mut self) -> core::result::Result<(), CaliptraApiError> {
+        if !(self.soc_mbox().lock().read().lock()) {
+            return Err(CaliptraApiError::UnableToLockMailbox);
+        }
+        self.soc_mbox().execute().write(|w| w.execute(true));
         Ok(())
     }
 

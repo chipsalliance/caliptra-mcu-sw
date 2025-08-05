@@ -2,6 +2,7 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![allow(static_mut_refs)]
+#![cfg_attr(target_arch = "riscv32", feature(riscv_ext_intrinsics))]
 
 mod error;
 pub use error::*;
@@ -85,10 +86,38 @@ pub fn set_exiter(exiter: &'static mut dyn Exit) {
     }
 }
 
-pub fn test_exit(code: u32) {
+pub fn test_exit(code: u32) -> ! {
     unsafe {
         if let Some(exiter) = EXITER.as_mut() {
             exiter.exit(code);
         }
     }
+    #[allow(clippy::empty_loop)]
+    loop {}
+}
+
+#[cfg(not(target_arch = "riscv32"))]
+pub fn crc8(crc: u8, data: u8) -> u8 {
+    // CRC-8 with last 8 bits of polynomial x^8 + x^2 + x^1 + 1.
+    let polynomial = 0x07;
+    let mut crc = crc;
+    crc ^= data;
+    for _ in 0..8 {
+        if crc & 0x80 != 0 {
+            crc = (crc << 1) ^ polynomial;
+        } else {
+            crc <<= 1;
+        }
+    }
+    crc
+}
+
+#[cfg(target_arch = "riscv32")]
+pub fn crc8(crc: u8, data: u8) -> u8 {
+    // CRC-8 with last 8 bits of polynomial x^8 + x^2 + x^1 + 1.
+    let polynomial = 0x07;
+    let crc = (crc ^ data) as usize;
+    let a = unsafe { core::arch::riscv32::clmul(crc, polynomial) };
+    let b = unsafe { core::arch::riscv32::clmul(a >> 8, polynomial) };
+    (a ^ b) as u8
 }

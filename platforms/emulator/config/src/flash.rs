@@ -148,7 +148,7 @@ impl PartitionTable {
     }
 
     pub fn populate_checksum<C: ChecksumCalculator>(&mut self, calculator: &C) {
-        self.checksum = calculator.calc_checksum(self.as_bytes());
+        self.checksum = calculator.calc_checksum(&self.as_bytes()[0..offset_of!(Self, checksum)]);
     }
 
     pub fn verify_checksum<C: ChecksumCalculator>(&self, calculator: &C) -> bool {
@@ -185,3 +185,28 @@ impl StandAloneChecksumCalculator {
     }
 }
 impl ChecksumCalculator for StandAloneChecksumCalculator {}
+
+// Logging flash configuration for emulator platform
+#[derive(Debug, Clone, Copy)]
+pub struct LoggingFlashConfig {
+    pub logging_flash_size: u32,
+    pub logging_flash_offset: u32,
+    pub base_addr: u32, // Base address of the logging flash.
+    pub page_size: u32, // Flash page size in bytes.
+}
+
+impl LoggingFlashConfig {
+    // 128KB at the end of the 64MB primary flash is reserved for logging.
+    // Offset is calculated as: emulator_consts::DIRECT_READ_FLASH_ORG + emulator_consts::DIRECT_READ_FLASH_SIZE - 128 * 1024.
+    // This region must not overlap with any other flash partitions.
+    pub const fn default() -> Self {
+        Self {
+            logging_flash_offset: 0x3BFE_0000,
+            logging_flash_size: 128 * 1024,
+            base_addr: 0x3800_0000,
+            page_size: 256,
+        }
+    }
+}
+
+pub const LOGGING_FLASH_CONFIG: LoggingFlashConfig = LoggingFlashConfig::default();

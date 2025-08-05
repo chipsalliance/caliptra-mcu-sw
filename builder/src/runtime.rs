@@ -16,6 +16,7 @@ use anyhow::{anyhow, bail, Result};
 use elf::endian::AnyEndian;
 use elf::ElfBytes;
 use mcu_config::McuMemoryMap;
+use mcu_config_emulator::flash::LoggingFlashConfig;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
@@ -24,7 +25,7 @@ const DEFAULT_PLATFORM: &str = "emulator";
 const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
 const INTERRUPT_TABLE_SIZE: usize = 128;
 // amount to reserve for data RAM at the end of RAM
-const DATA_RAM_SIZE: usize = 112 * 1024;
+const DATA_RAM_SIZE: usize = 115 * 1024;
 
 fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize> {
     let elf_bytes = std::fs::read(&elf_file)?;
@@ -59,6 +60,7 @@ pub fn runtime_build_no_apps_uncached(
     use_dccm_for_stack: bool,
     dccm_offset: Option<u32>,
     dccm_size: Option<u32>,
+    log_flash_config: Option<&LoggingFlashConfig>,
 ) -> Result<(usize, usize)> {
     let tock_dir = &PROJECT_ROOT
         .join("platforms")
@@ -102,6 +104,7 @@ pub fn runtime_build_no_apps_uncached(
         ram_size as u32,
         dccm_offset as u32,
         dccm_size as u32,
+        log_flash_config,
     )?;
 
     std::fs::write(&ld_file_path, ld_string)?;
@@ -239,8 +242,8 @@ struct CachedValues {
 impl Default for CachedValues {
     fn default() -> Self {
         CachedValues {
-            kernel_size: 128 * 1024,
-            apps_offset: (mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset + 128 * 1024)
+            kernel_size: 132 * 1024,
+            apps_offset: (mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset + 132 * 1024)
                 as usize,
             apps_size: 80 * 1024,
         }
@@ -285,6 +288,7 @@ pub fn runtime_build_with_apps_cached(
     use_dccm_for_stack: bool,
     dccm_offset: Option<u32>,
     dccm_size: Option<u32>,
+    log_flash_config: Option<&LoggingFlashConfig>,
 ) -> Result<String> {
     let memory_map = memory_map.unwrap_or(&mcu_config_emulator::EMULATOR_MEMORY_MAP);
     let mut app_offset = memory_map.sram_offset as usize;
@@ -298,6 +302,12 @@ pub fn runtime_build_with_apps_cached(
         platform, cached_values
     );
 
+    let log_flash_config = if platform == "emulator" {
+        Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG)
+    } else {
+        None
+    };
+
     // build once to get the size of the runtime binary without apps
     let (kernel_size, apps_memory_offset) = match runtime_build_no_apps_uncached(
         cached_values.kernel_size,
@@ -310,6 +320,7 @@ pub fn runtime_build_with_apps_cached(
         use_dccm_for_stack,
         dccm_offset,
         dccm_size,
+        log_flash_config,
     ) {
         Ok((kernel_size, apps_memory_offset)) => (kernel_size, apps_memory_offset),
         Err(_) => {
@@ -331,6 +342,7 @@ pub fn runtime_build_with_apps_cached(
                 use_dccm_for_stack,
                 dccm_offset,
                 dccm_size,
+                log_flash_config,
             )?
         }
     };
@@ -365,6 +377,7 @@ pub fn runtime_build_with_apps_cached(
             use_dccm_for_stack,
             dccm_offset,
             dccm_size,
+            log_flash_config,
         )?;
 
         assert_eq!(
@@ -398,6 +411,12 @@ pub fn runtime_build_with_apps_cached(
 
     bin.extend_from_slice(vec![0; padding].as_slice());
     bin.extend_from_slice(&apps_bin);
+    // Ensure that runtime binary is a multiple of 256 bytes.
+    // This is needed to load into the recovery interface efficiently.
+    if bin.len() % 256 != 0 {
+        let padding = 256 - (bin.len() % 256);
+        bin.extend_from_slice(vec![0; padding].as_slice());
+    }
     std::fs::write(&runtime_bin, &bin)?;
 
     println!("Kernel binary size: {} bytes", kernel_size);
@@ -430,6 +449,7 @@ pub fn runtime_ld_script(
     data_ram_size: u32,
     dccm_offset: u32,
     dccm_size: u32,
+    log_flash_config: Option<&LoggingFlashConfig>,
 ) -> Result<String> {
     let mut map = memory_map.hash_map();
     map.insert("DCCM_OFFSET".to_string(), format!("0x{:x}", dccm_offset));
@@ -449,6 +469,26 @@ pub fn runtime_ld_script(
         "DATA_RAM_SIZE".to_string(),
         format!("0x{:x}", data_ram_size),
     );
+
+    if let Some(cfg) = log_flash_config {
+        map.insert(
+            "FLASH_OFFSET".to_string(),
+            format!("0x{:x}", cfg.logging_flash_offset),
+        );
+        map.insert(
+            "FLASH_SIZE".to_string(),
+            format!("0x{:x}", cfg.logging_flash_size),
+        );
+        map.insert(
+            "PAGE_SIZE".to_string(),
+            format!("PAGE_SIZE = {};", cfg.page_size),
+        );
+    } else {
+        map.insert("FLASH_OFFSET".to_string(), "0x0".to_string());
+        map.insert("FLASH_SIZE".to_string(), "0x0".to_string());
+        map.insert("PAGE_SIZE".to_string(), "".to_string());
+    }
+
     Ok(subst::substitute(RUNTIME_LD_TEMPLATE, &map)?)
 }
 
@@ -466,7 +506,10 @@ MEMORY
     prog (rx) : ORIGIN = $APPS_OFFSET, LENGTH = $APPS_SIZE
     ram (rwx) : ORIGIN = $DATA_RAM_OFFSET, LENGTH = $DATA_RAM_SIZE
     dccm (rw) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_SIZE
+    flash (r) : ORIGIN = $FLASH_OFFSET, LENGTH = $FLASH_SIZE
 }
+
+$PAGE_SIZE
 
 INCLUDE platforms/emulator/runtime/kernel_layout.ld
 "#;

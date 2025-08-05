@@ -34,6 +34,12 @@ use mcu_config::McuMemoryMap;
 #[used]
 pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_emulator::EMULATOR_MEMORY_MAP;
 
+// Define the timer frequency for the emulator. This is roughly the emulation speed
+// for a reasonable processor and does not have to be exact.
+#[no_mangle]
+#[used]
+pub static TIMER_FREQUENCY_HZ: u32 = 1_000_000;
+
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 /// # Safety

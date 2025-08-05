@@ -62,7 +62,7 @@ impl Default for McuMemoryMap {
             dccm_properties: MemoryRegionType::MEMORY,
 
             sram_offset: 0x4000_0000,
-            sram_size: 384 * 1024,
+            sram_size: 512 * 1024,
             sram_properties: MemoryRegionType::MEMORY,
 
             pic_offset: 0x6000_0000,
@@ -103,6 +103,8 @@ pub struct McuStraps {
     pub axi_user: u32,
     pub cptra_wdt_cfg0: u32,
     pub cptra_wdt_cfg1: u32,
+    pub mcu_wdt_cfg0: u32,
+    pub mcu_wdt_cfg1: u32,
 }
 
 impl McuStraps {
@@ -112,6 +114,8 @@ impl McuStraps {
             axi_user: 0xcccc_cccc,
             cptra_wdt_cfg0: 100_000_000,
             cptra_wdt_cfg1: 100_000_000,
+            mcu_wdt_cfg0: 20_000_000,
+            mcu_wdt_cfg1: 1,
         }
     }
 }

@@ -12,6 +12,19 @@ pub trait BootConfigAsync {
     /// * `PartitionId` - The identifier of the active partition to boot from.
     async fn get_active_partition(&self) -> Result<PartitionId, BootConfigError>;
 
+    /// Retrieves the partition that is currently inactive.
+    ///
+    /// # Returns
+    /// * `PartitionId` - The identifier of the inactive partition.
+    async fn get_inactive_partition(&self) -> Result<PartitionId, BootConfigError>;
+
+    /// Retrieves the partition that is pending to be booted.
+    /// This partition is the non-active partition that contains staged firmware update image.
+    ///
+    /// # Returns
+    /// * `PartitionId` - The identifier of the pending partition.
+    async fn get_pending_partition(&self) -> Result<PartitionId, BootConfigError>;
+
     /// Sets the active partition to boot from.
     ///
     /// # Arguments

@@ -29,6 +29,11 @@ use mcu_config::McuMemoryMap;
 #[used]
 pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_fpga::FPGA_MEMORY_MAP;
 
+// Define the timer frequency for the FPGA.
+#[no_mangle]
+#[used]
+pub static TIMER_FREQUENCY_HZ: u32 = 20_000_000;
+
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 /// # Safety

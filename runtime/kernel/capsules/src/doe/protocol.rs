@@ -43,10 +43,10 @@ pub struct DoeDataObjectHeader {
 }
 
 impl DoeDataObjectHeader {
-    pub fn new(data_object_type: DataObjectType, length: u32) -> Self {
+    pub fn new(length: u32) -> Self {
         Self {
             vendor_id: PCISIG_DOE_VENDOR_ID,
-            data_object_type: data_object_type as u8,
+            data_object_type: DataObjectType::DoeDiscovery as u8,
             reserved_1: 0,
             length,
         }

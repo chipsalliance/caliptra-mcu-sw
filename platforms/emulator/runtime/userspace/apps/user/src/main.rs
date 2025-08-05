@@ -10,7 +10,11 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 use libtockasync::TockExecutor;
-
+#[cfg(any(
+    feature = "test-firmware-update-streaming",
+    feature = "test-firmware-update-flash"
+))]
+mod firmware_update;
 mod image_loader;
 mod spdm;
 
@@ -58,7 +62,11 @@ async fn start() {
 }
 
 pub(crate) async fn async_main() {
-    EXECUTOR.get().spawner().spawn(spdm::spdm_task()).unwrap();
+    EXECUTOR
+        .get()
+        .spawner()
+        .spawn(spdm::spdm_task(EXECUTOR.get().spawner()))
+        .unwrap();
 
     EXECUTOR
         .get()

@@ -103,14 +103,15 @@ async fn generate_version_response<'a>(
             .map_err(|_| (false, CommandError::BufferTooSmall))?;
     }
 
+    // Append response to VCA transcript
+    ctx.append_message_to_transcript(rsp_buf, TranscriptContext::Vca, None)
+        .await?;
+
     // Push data offset up by total payload length
     rsp_buf
         .push_data(payload_len)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
-
-    // Append response to VCA transcript
-    ctx.append_message_to_transcript(rsp_buf, TranscriptContext::Vca)
-        .await
+    Ok(())
 }
 
 async fn process_get_version<'a>(
@@ -128,10 +129,10 @@ async fn process_get_version<'a>(
     VersionReqPayload::decode(req_payload).map_err(|e| (false, CommandError::Codec(e)))?;
 
     // Reset Transcript
-    ctx.transcript_mgr.reset();
+    ctx.shared_transcript.reset();
 
     // Append request to VCA transcript
-    ctx.append_message_to_transcript(req_payload, TranscriptContext::Vca)
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::Vca, None)
         .await
 }
 
@@ -140,6 +141,10 @@ pub(crate) async fn handle_get_version<'a>(
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
+    // GET_VERSION request is prohibited within session
+    if ctx.session_mgr.session_active() {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
+    }
     // Process GET_VERSION request
     process_get_version(ctx, spdm_hdr, req_payload).await?;
 

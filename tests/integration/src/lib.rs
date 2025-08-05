@@ -1,8 +1,9 @@
 // Licensed under the Apache-2.0 license
+mod test_firmware_update;
 mod test_soc_boot;
 #[cfg(test)]
 mod test {
-    use mcu_builder::{CaliptraBuilder, SocImage, TARGET};
+    use mcu_builder::{CaliptraBuilder, ImageCfg, TARGET};
     use std::process::ExitStatus;
     use std::sync::atomic::AtomicU32;
     use std::sync::Mutex;
@@ -60,6 +61,7 @@ mod test {
             false,
             None,
             None,
+            Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG),
         )
         .expect("Runtime build failed");
         assert!(output.exists());
@@ -74,7 +76,7 @@ mod test {
         i3c_port: String,
         active_mode: bool,
         manufacturing_mode: bool,
-        soc_images: Option<Vec<SocImage>>,
+        soc_images: Option<Vec<ImageCfg>>,
         streaming_boot_package_path: Option<PathBuf>,
         primary_flash_image_path: Option<PathBuf>,
         secondary_flash_image_path: Option<PathBuf>,
@@ -85,7 +87,8 @@ mod test {
             "run",
             "-p",
             "emulator",
-            "--release",
+            "--profile",
+            "test",
             "--features",
             feature,
             "--",
@@ -175,6 +178,7 @@ mod test {
                 None,
                 Some(runtime_path.clone()),
                 soc_images,
+                None,
             )
         };
 
@@ -324,13 +328,18 @@ mod test {
     run_test!(test_flash_storage_read_write);
     run_test!(test_flash_storage_erase);
     run_test!(test_flash_usermode, example_app);
+    run_test!(test_log_flash_linear);
+    run_test!(test_log_flash_circular);
+    run_test!(test_log_flash_usermode, example_app);
     run_test!(test_mctp_ctrl_cmds);
     run_test!(test_mctp_capsule_loopback);
     run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);
     run_test!(test_pldm_fw_update_e2e);
-    run_test!(test_spdm_validator, nightly);
+    run_test!(test_mctp_spdm_responder_conformance, nightly);
+    run_test!(test_doe_spdm_responder_conformance, nightly);
+    run_test!(test_mci, example_app);
 
     /// This tests a full active mode boot run through with Caliptra, including
     /// loading MCU's firmware from Caliptra over the recovery interface.

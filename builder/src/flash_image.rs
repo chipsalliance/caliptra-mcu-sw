@@ -1,8 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use crc32fast::Hasher;
-use flash_image::{FlashHeader, ImageHeader, FLASH_IMAGE_MAGIC_NUMBER, HEADER_VERSION};
+use flash_image::{
+    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, FLASH_IMAGE_MAGIC_NUMBER, HEADER_VERSION,
+    MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
+};
 use mcu_config_emulator::flash::PartitionTable;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error, ErrorKind, Read, Seek, Write};
@@ -11,10 +13,6 @@ use zerocopy::{FromBytes, IntoBytes};
 
 const HEADER_SIZE: usize = std::mem::size_of::<FlashHeader>();
 const IMAGE_INFO_SIZE: usize = std::mem::size_of::<ImageHeader>();
-const CALIPTRA_FMC_RT_IDENTIFIER: u32 = 0x00000001;
-const SOC_MANIFEST_IDENTIFIER: u32 = 0x00000002;
-const MCU_RT_IDENTIFIER: u32 = 0x00000003;
-const SOC_IMAGES_BASE_IDENTIFIER: u32 = 0x00001000;
 
 pub struct FlashImage<'a> {
     header: FlashHeader,
@@ -47,12 +45,13 @@ impl<'a> FlashImage<'a> {
             version: HEADER_VERSION,
             image_count: image_info.len() as u16,
             image_headers_offset: core::mem::size_of::<FlashHeader>() as u32,
-            header_crc32: 0,
+            header_checksum: 0,
         };
 
-        let header_checksum =
-            calculate_checksum(header.as_bytes()[..offset_of!(FlashHeader, header_crc32)].as_ref());
-        header.header_crc32 = header_checksum;
+        let header_checksum = calculate_checksum(
+            header.as_bytes()[..offset_of!(FlashHeader, header_checksum)].as_ref(),
+        );
+        header.header_checksum = header_checksum;
         let payload = FlashImagePayload::new(image_info, images);
 
         Self { header, payload }
@@ -100,9 +99,10 @@ impl<'a> FlashImage<'a> {
             bail!("Unsupported header version");
         }
         // Parse and verify checksums
-        let calculated_header_checksum =
-            calculate_checksum(header.as_bytes()[..offset_of!(FlashHeader, header_crc32)].as_ref());
-        if calculated_header_checksum != header.header_crc32 {
+        let calculated_header_checksum = calculate_checksum(
+            header.as_bytes()[..offset_of!(FlashHeader, header_checksum)].as_ref(),
+        );
+        if calculated_header_checksum != header.header_checksum {
             bail!("Header checksum mismatch.");
         }
 
@@ -138,9 +138,10 @@ impl<'a> FlashImage<'a> {
 }
 
 pub fn calculate_checksum(data: &[u8]) -> u32 {
-    let mut hasher = Hasher::new();
-    hasher.update(data);
-    hasher.finalize()
+    let sum = data
+        .iter()
+        .fold(0u32, |acc, &byte| acc.wrapping_add(byte as u32));
+    0u32.wrapping_sub(sum)
 }
 
 impl<'a> FlashImagePayload<'a> {
@@ -358,8 +359,8 @@ mod tests {
 
         // Verify checksums
         let calculated_header_checksum =
-            calculate_checksum(&data[0..offset_of!(FlashHeader, header_crc32)]);
-        assert_eq!(header.header_crc32, calculated_header_checksum);
+            calculate_checksum(&data[0..offset_of!(FlashHeader, header_checksum)]);
+        assert_eq!(header.header_checksum, calculated_header_checksum);
 
         let expected_images: Vec<(u32, &[u8])> = vec![
             (CALIPTRA_FMC_RT_IDENTIFIER, caliptra_fw_content),

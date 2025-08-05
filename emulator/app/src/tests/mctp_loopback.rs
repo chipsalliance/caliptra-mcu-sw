@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
 
-use crate::i3c_socket::{MctpTestState, TestTrait};
+use crate::i3c_socket::{MctpTestState, MctpTransportTest};
 use crate::tests::mctp_util::common::MctpUtil;
+use crate::EMULATOR_RUNNING;
 use std::net::TcpStream;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
-pub fn generate_tests() -> Vec<Box<dyn TestTrait + Send>> {
-    vec![Box::new(Test::new("MctpMultiPktTest")) as Box<dyn TestTrait + Send>]
+pub(crate) fn generate_tests() -> Vec<Box<dyn MctpTransportTest + Send>> {
+    vec![Box::new(Test::new("MctpMultiPktTest")) as Box<dyn MctpTransportTest + Send>]
 }
 
 struct Test {
@@ -30,33 +30,27 @@ impl Test {
     }
 }
 
-impl TestTrait for Test {
+impl MctpTransportTest for Test {
     fn is_passed(&self) -> bool {
         self.passed
     }
 
-    fn run_test(&mut self, running: Arc<AtomicBool>, stream: &mut TcpStream, target_addr: u8) {
+    fn run_test(&mut self, stream: &mut TcpStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
 
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.test_state {
                 MctpTestState::Start => {
                     println!("Starting test: {}", self.test_name);
                     self.test_state = MctpTestState::ReceiveReq;
                 }
                 MctpTestState::ReceiveReq => {
-                    self.loopback_msg =
-                        self.mctp_util
-                            .receive_request(running.clone(), stream, target_addr, None);
+                    self.loopback_msg = self.mctp_util.receive_request(stream, target_addr, None);
                     self.test_state = MctpTestState::SendResp;
                 }
                 MctpTestState::SendResp => {
-                    self.mctp_util.send_response(
-                        self.loopback_msg.as_slice(),
-                        running.clone(),
-                        stream,
-                        target_addr,
-                    );
+                    self.mctp_util
+                        .send_response(self.loopback_msg.as_slice(), stream, target_addr);
 
                     self.test_state = MctpTestState::ReceiveReq;
                 }

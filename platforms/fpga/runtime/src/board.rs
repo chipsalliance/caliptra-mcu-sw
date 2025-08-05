@@ -45,9 +45,13 @@ extern "C" {
     static _stext: u8;
     /// The end of the kernel text (Included only for kernel PMP)
     static _etext: u8;
-    /// The start of the kernel / app / storage flash (Included only for kernel PMP)
+    /// The start of the kernel (Included only for kernel PMP)
     static _srom: u8;
-    /// The end of the kernel / app / storage flash (Included only for kernel PMP)
+    /// The end of the kernel (Included only for kernel PMP)
+    static _erom: u8;
+    /// The start of the app / storage flash (Included only for kernel PMP)
+    static _sprog: u8;
+    /// The end of the app / storage flash (Included only for kernel PMP)
     static _eprog: u8;
     /// The start of the kernel / app RAM (Included only for kernel PMP)
     static _ssram: u8;
@@ -212,33 +216,44 @@ impl KernelResources<VeeRChip> for VeeR {
     }
 }
 
-// TODO: remove this dependence on the emulator when the emulator-specific
-// pieces are moved to platform/emulator/runtime
-pub(crate) struct EmulatorWriter {}
-pub(crate) static mut EMULATOR_WRITER: EmulatorWriter = EmulatorWriter {};
+pub(crate) struct FpgaWriter {}
+pub(crate) static mut FPGA_WRITER: FpgaWriter = FpgaWriter {};
 
-impl core::fmt::Write for EmulatorWriter {
+impl core::fmt::Write for FpgaWriter {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         print_to_console(s);
         Ok(())
     }
 }
 
+const FPGA_UART_OUTPUT: *mut u32 = 0xa401_1014 as *mut u32;
+
 pub(crate) fn print_to_console(buf: &str) {
     for b in buf.bytes() {
         // Print to this address for emulator output
         unsafe {
-            core::ptr::write_volatile(0xa401_1014 as *mut u32, b as u32 | 0x100);
+            core::ptr::write_volatile(FPGA_UART_OUTPUT, b as u32 | 0x100);
         }
     }
 }
 
-pub(crate) struct EmulatorExiter {}
-pub(crate) static mut EMULATOR_EXITER: EmulatorExiter = EmulatorExiter {};
-impl romtime::Exit for EmulatorExiter {
+pub(crate) struct FpgaExiter {}
+pub(crate) static mut FPGA_EXITER: FpgaExiter = FpgaExiter {};
+impl romtime::Exit for FpgaExiter {
     fn exit(&mut self, code: u32) {
-        crate::io::exit_emulator(code);
+        exit_fpga(code)
     }
+}
+
+/// Exit the FPGA
+pub fn exit_fpga(exit_code: u32) -> ! {
+    // Safety: This is a safe memory address to write to for exiting the FPGA.
+    unsafe {
+        // By writing to this address we can exit the FPGA.
+        let b = if exit_code == 0 { 0xff } else { 0x01 };
+        core::ptr::write_volatile(FPGA_UART_OUTPUT, b as u32 | 0x100);
+    }
+    loop {}
 }
 
 /// Main function called after RAM initialized.
@@ -253,9 +268,9 @@ pub unsafe fn main() {
     // TODO: remove this when the emulator-specific pieces are moved to
     // platform/emulator/runtime
     #[allow(static_mut_refs)]
-    romtime::set_printer(&mut EMULATOR_WRITER);
+    romtime::set_printer(&mut FPGA_WRITER);
     #[allow(static_mut_refs)]
-    romtime::set_exiter(&mut EMULATOR_EXITER);
+    romtime::set_exiter(&mut FPGA_EXITER);
 
     // Set up memory protection immediately after setting the trap handler, to
     // ensure that much of the board initialization routine runs with ePMP
@@ -266,8 +281,8 @@ pub unsafe fn main() {
 
     // Kernel text region (read + execute)
     platform_regions.push(PlatformRegion {
-        start_addr: addr_of!(_stext),
-        size: addr_of!(_etext) as usize - addr_of!(_stext) as usize,
+        start_addr: addr_of!(_srom),
+        size: addr_of!(_erom) as usize - addr_of!(_srom) as usize,
         is_mmio: false,
         user_accessible: false,
         read: true,
@@ -277,8 +292,8 @@ pub unsafe fn main() {
 
     // Read-only region (ROM)
     platform_regions.push(PlatformRegion {
-        start_addr: addr_of!(_srom),
-        size: addr_of!(_eprog) as usize - addr_of!(_srom) as usize,
+        start_addr: addr_of!(_sprog),
+        size: addr_of!(_eprog) as usize - addr_of!(_sprog) as usize,
         is_mmio: false,
         user_accessible: false,
         read: true,
@@ -309,8 +324,8 @@ pub unsafe fn main() {
 
     // User-accessible MMIO (FPGA peripherals and UART)
     platform_regions.push(PlatformRegion {
-        start_addr: 0x1000_0000 as *const u8,
-        size: 0x1000_0000,
+        start_addr: 0xa401_0000 as *const u8,
+        size: 0x2000,
         is_mmio: true,
         user_accessible: true,
         read: true,
@@ -329,6 +344,9 @@ pub unsafe fn main() {
     let pmp_regions = mcu_platforms_common::pmp_config::create_pmp_regions(config)
         .expect("Failed to create PMP regions");
 
+    romtime::println!("[mcu-runtime] Enabling PMP");
+    romtime::println!("PMP Regions:");
+    romtime::println!("{}", pmp_regions);
     let epmp = VeeRProtectionMMLEPMP::new(pmp_regions).unwrap();
     romtime::println!("[mcu-runtime] Set PMP done");
 
@@ -399,10 +417,14 @@ pub unsafe fn main() {
         VeeRDefaultPeripherals,
         VeeRDefaultPeripherals::new(fpga_peripherals, mux_alarm, &MCU_MEMORY_MAP)
     );
-    romtime::println!("[mcu-runtime] Peripherals initialized");
+    romtime::println!("[mcu-runtime] Peripherals created");
 
     let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
-    chip.init(_pic_vector_table as u32);
+    romtime::println!(
+        "[mcu-runtime] Initializing chip with PIC vector table set to {:x}",
+        addr_of!(_pic_vector_table) as u32
+    );
+    chip.init(addr_of!(_pic_vector_table) as u32);
     CHIP = Some(chip);
     romtime::println!("[mcu-runtime] Chip initialized");
 

@@ -373,10 +373,10 @@ bitfield! {
     u8, rnw, set_rnw: 29, 29;
     u8, wroc, set_wroc: 30, 30;
     u8, toc, set_toc: 31, 31;
-    u8, data_byte_1, set_data_byte_1: 39, 32;
-    u8, data_byte_2, set_data_byte_2: 47, 40;
-    u8, data_byte_3, set_data_byte_3: 55, 48;
-    u8, data_byte_4, set_data_byte_4: 63, 56;
+    pub u8, data_byte_1, set_data_byte_1: 39, 32;
+    pub u8, data_byte_2, set_data_byte_2: 47, 40;
+    pub u8, data_byte_3, set_data_byte_3: 55, 48;
+    pub u8, data_byte_4, set_data_byte_4: 63, 56;
 }
 
 bitfield! {
@@ -470,6 +470,13 @@ impl From<I3cTcriCommand> for u64 {
 }
 
 impl I3cTcriCommand {
+    pub fn raw_data_len(&self) -> usize {
+        match self {
+            Self::Immediate(_) => 4,
+            Self::Regular(regular) => regular.data_length().into(),
+            Self::Combo(combo) => combo.data_length().into(),
+        }
+    }
     pub fn data_len(&self) -> usize {
         match self {
             Self::Immediate(_) => 0,

@@ -1,17 +1,13 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
+use crate::{sleep_emulator_ticks, EMULATOR_RUNNING};
 use rand::Rng;
 const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_DWORDS: usize = 2; // minimum size of test vectors
 const MAX_TEST_DATA_DWORDS: usize = 128; // maximum size of test vectors
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-use std::thread;
-use std::time::Duration;
 
 struct Test {
     test_vector: Vec<u8>,
@@ -39,7 +35,6 @@ pub fn generate_tests() -> Vec<Box<dyn DoeTransportTest + Send>> {
 impl DoeTransportTest for Test {
     fn run_test(
         &mut self,
-        running: Arc<AtomicBool>,
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
         wait_for_responder: bool,
@@ -51,12 +46,13 @@ impl DoeTransportTest for Test {
 
         self.state = DoeTestState::Start;
 
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.state {
                 DoeTestState::Start => {
                     // waits for the responder to be ready if this is the first message to send
                     if wait_for_responder {
-                        thread::sleep(Duration::from_secs(5));
+                        println!("Waiting for responder to be ready...(10,000,000 ticks)");
+                        sleep_emulator_ticks(10_000_000);
                     }
                     self.state = DoeTestState::SendData;
                 }
@@ -71,7 +67,7 @@ impl DoeTransportTest for Test {
                         continue;
                     }
                     self.state = DoeTestState::ReceiveData;
-                    thread::sleep(Duration::from_millis(100));
+                    sleep_emulator_ticks(100_000);
                 }
                 DoeTestState::ReceiveData => {
                     match rx.try_recv() {
@@ -90,7 +86,7 @@ impl DoeTransportTest for Test {
                         }
                         Err(std::sync::mpsc::TryRecvError::Empty) => {
                             // No data yet, stay in ReceiveData state and yield for a bit
-                            thread::sleep(Duration::from_millis(300));
+                            sleep_emulator_ticks(100_000);
                         }
                         Err(e) => {
                             println!(

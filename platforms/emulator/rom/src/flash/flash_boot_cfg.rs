@@ -1,10 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use mcu_config::boot::{BootConfig, BootConfigError, PartitionId, PartitionStatus, RollbackEnable};
-use mcu_config_emulator::flash::{
-    PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
-    PARTITION_TABLE,
-};
+use mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator};
 use mcu_rom_common::flash::flash_partition::FlashPartition;
 use zerocopy::{FromBytes, IntoBytes};
 pub struct FlashBootCfg<'a> {
@@ -12,6 +9,7 @@ pub struct FlashBootCfg<'a> {
 }
 
 impl<'a> FlashBootCfg<'a> {
+    #[allow(dead_code)]
     pub fn new(flash_driver: &'a mut FlashPartition<'a>) -> Self {
         Self { flash_driver }
     }

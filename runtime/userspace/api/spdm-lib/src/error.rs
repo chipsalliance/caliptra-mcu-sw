@@ -1,14 +1,14 @@
 // Licensed under the Apache-2.0 license
 
-// use crate::cert_mgr::DeviceCertsMgrError;
 use crate::cert_store::CertStoreError;
 use crate::chunk_ctx::ChunkError;
 use crate::codec::CodecError;
 use crate::commands::error_rsp::ErrorCode;
 use crate::measurements::common::MeasurementsError;
 use crate::protocol::SignCtxError;
+use crate::session::SessionError;
 use crate::transcript::TranscriptError;
-use crate::transport::TransportError;
+use crate::transport::common::TransportError;
 use libapi_caliptra::error::CaliptraApiError;
 
 #[derive(Debug)]
@@ -41,4 +41,5 @@ pub enum CommandError {
     CaliptraApi(CaliptraApiError),
     Transcript(TranscriptError),
     Measurement(MeasurementsError),
+    Session(SessionError),
 }

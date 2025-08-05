@@ -101,25 +101,10 @@ impl<'a> MCTPI3CBinding<'a> {
     fn compute_pec(addr: u8, buf: &[u8], len: usize) -> u8 {
         let mut crc = 0u8;
 
-        crc = MCTPI3CBinding::crc8(crc, addr);
+        crc = romtime::crc8(crc, addr);
 
         for byte in buf.iter().take(len) {
-            crc = MCTPI3CBinding::crc8(crc, *byte);
-        }
-        crc
-    }
-
-    fn crc8(crc: u8, data: u8) -> u8 {
-        // CRC-8 with last 8 bits of polynomial x^8 + x^2 + x^1 + 1.
-        let polynomial = 0x07;
-        let mut crc = crc;
-        crc ^= data;
-        for _ in 0..8 {
-            if crc & 0x80 != 0 {
-                crc = (crc << 1) ^ polynomial;
-            } else {
-                crc <<= 1;
-            }
+            crc = romtime::crc8(crc, *byte);
         }
         crc
     }

@@ -8,14 +8,12 @@
 use crate::tests::mctp_util::common::MctpUtil;
 use core::time::Duration;
 use emulator_periph::DynamicI3cAddress;
-
 use pldm_common::util::mctp_transport::{MctpCommonHeader, MCTP_PLDM_MSG_TYPE};
 use pldm_ua::transport::{
     EndpointId, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket,
     MAX_PLDM_PAYLOAD_SIZE,
 };
 use std::net::{SocketAddr, TcpStream};
-use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Condvar, Mutex};
 
 pub const MCTP_TAG_MASK: u8 = 0x07;
@@ -32,7 +30,6 @@ pub struct MctpPldmSocket {
     dest: EndpointId,
     target_addr: u8,
     msg_tag: u8,
-    running: Arc<AtomicBool>,
     context: Arc<(Mutex<MctpPldmSocketData>, Condvar)>,
     stream: TcpStream,
     response_msg_tag: Arc<Mutex<u8>>,
@@ -46,7 +43,7 @@ struct MctpPldmSocketData {
 impl PldmSocket for MctpPldmSocket {
     fn send(&self, payload: &[u8]) -> Result<(), PldmTransportError> {
         let mut mctp_util = MctpUtil::new();
-
+        mctp_util.set_pkt_payload_size(MAX_PLDM_PAYLOAD_SIZE);
         let mut mctp_common_header = MctpCommonHeader(0);
         mctp_common_header.set_ic(0);
         mctp_common_header.set_msg_type(MCTP_PLDM_MSG_TYPE);
@@ -70,7 +67,6 @@ impl PldmSocket for MctpPldmSocket {
             let response = mctp_util.wait_for_responder(
                 self.msg_tag,
                 mctp_payload.as_mut_slice(),
-                self.running.clone(),
                 &mut stream,
                 self.target_addr,
             );
@@ -81,7 +77,6 @@ impl PldmSocket for MctpPldmSocket {
             mctp_util.send_request(
                 self.msg_tag,
                 mctp_payload.as_mut_slice(),
-                self.running.clone(),
                 &mut stream,
                 self.target_addr,
             );
@@ -90,12 +85,7 @@ impl PldmSocket for MctpPldmSocket {
             mctp_util.set_src_eid(self.dest.0);
             mctp_util.set_dest_eid(self.source.0);
             mctp_util.set_msg_tag(msg_tag & MCTP_TAG_MASK);
-            mctp_util.send_response(
-                mctp_payload.as_mut_slice(),
-                self.running.clone(),
-                &mut stream,
-                self.target_addr,
-            );
+            mctp_util.send_response(mctp_payload.as_mut_slice(), &mut stream, self.target_addr);
         }
 
         Ok(())
@@ -137,16 +127,16 @@ impl PldmSocket for MctpPldmSocket {
         // We are in duplex mode, so we can receive packets
         // without waiting for the first response
         let mut mctp_util = MctpUtil::new();
+        mctp_util.set_pkt_payload_size(MAX_PLDM_PAYLOAD_SIZE);
         let mut stream = self
             .stream
             .try_clone()
             .map_err(|_| PldmTransportError::Disconnected)?;
-        let raw_pkt: Vec<u8> =
-            mctp_util.receive(self.running.clone(), &mut stream, self.target_addr, None);
-        let len = raw_pkt.len() - 1;
+        let raw_pkt: Vec<u8> = mctp_util.receive(&mut stream, self.target_addr, None);
         if raw_pkt.is_empty() {
             return Err(PldmTransportError::Underflow);
         }
+        let len = raw_pkt.len() - 1;
         let mut data = [0u8; MAX_PLDM_PAYLOAD_SIZE];
         // Skip the first byte containing the MCTP common header
         // and only return the PLDM payload
@@ -173,7 +163,6 @@ impl PldmSocket for MctpPldmSocket {
             dest: self.dest,
             target_addr: self.target_addr,
             msg_tag: self.msg_tag,
-            running: self.running.clone(),
             context: self.context.clone(),
             stream: self.stream.try_clone().unwrap(),
             response_msg_tag: self.response_msg_tag.clone(),
@@ -201,14 +190,12 @@ impl PldmTransport<MctpPldmSocket> for MctpTransport {
     ) -> Result<MctpPldmSocket, PldmTransportError> {
         let addr = SocketAddr::from(([127, 0, 0, 1], self.port));
         let stream = TcpStream::connect(addr).map_err(|_| PldmTransportError::Disconnected)?;
-        let running = Arc::new(AtomicBool::new(true));
         let msg_tag = 0u8;
         Ok(MctpPldmSocket {
             source,
             dest,
             target_addr: self.target_addr.into(),
             msg_tag,
-            running,
             stream,
             context: Arc::new((
                 Mutex::new(MctpPldmSocketData {

@@ -1,12 +1,10 @@
 // Licensed under the Apache-2.0 license
 
+use crate::{sleep_emulator_ticks, wait_for_runtime_start, EMULATOR_RUNNING};
 use emulator_periph::DoeMboxPeriph;
 use std::process::exit;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
 use std::thread;
 use std::time::Duration;
 
@@ -28,16 +26,15 @@ impl DoeMboxFsm {
         Self { doe_mbox }
     }
 
-    pub fn start(&mut self, running: Arc<AtomicBool>) -> (Receiver<Vec<u8>>, Sender<Vec<u8>>) {
+    pub fn start(&mut self) -> (Receiver<Vec<u8>>, Sender<Vec<u8>>) {
         let (test_to_fsm_tx, test_to_fsm_rx) = std::sync::mpsc::channel::<Vec<u8>>();
         let (fsm_to_test_tx, fsm_to_test_rx) = std::sync::mpsc::channel::<Vec<u8>>();
-        let running_clone = running.clone();
         let doe_mbox_clone = self.doe_mbox.clone();
 
         thread::spawn(move || {
             let mut fsm = DoeMboxStateMachine::new(doe_mbox_clone, fsm_to_test_tx);
 
-            while running_clone.load(Ordering::Relaxed) {
+            while EMULATOR_RUNNING.load(Ordering::Relaxed) {
                 // Check for incoming messages from test
                 if let Ok(message) = test_to_fsm_rx.try_recv() {
                     fsm.handle_outgoing_message(message);
@@ -47,7 +44,7 @@ impl DoeMboxFsm {
                 fsm.on_event();
 
                 // Small delay to prevent busy waiting
-                thread::sleep(Duration::from_millis(10));
+                sleep_emulator_ticks(1000);
             }
         });
         (fsm_to_test_rx, test_to_fsm_tx)
@@ -174,7 +171,6 @@ pub enum DoeTestState {
 pub trait DoeTransportTest {
     fn run_test(
         &mut self,
-        running: Arc<AtomicBool>,
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
         wait_for_responder: bool,
@@ -185,7 +181,6 @@ pub trait DoeTransportTest {
 pub struct DoeTransportTestRunner {
     tx: Sender<Vec<u8>>,
     rx: Receiver<Vec<u8>>,
-    running: Arc<AtomicBool>,
     test_vectors: Vec<Box<dyn DoeTransportTest + Send>>,
     passed: usize,
 }
@@ -194,13 +189,11 @@ impl DoeTransportTestRunner {
     pub fn new(
         tx: Sender<Vec<u8>>,
         rx: Receiver<Vec<u8>>,
-        running: Arc<AtomicBool>,
         tests: Vec<Box<dyn DoeTransportTest + Send>>,
     ) -> Self {
         Self {
             tx,
             rx,
-            running,
             test_vectors: tests,
             passed: 0,
         }
@@ -208,7 +201,7 @@ impl DoeTransportTestRunner {
 
     pub fn run_tests(&mut self) {
         for (i, test) in self.test_vectors.iter_mut().enumerate() {
-            test.run_test(self.running.clone(), &mut self.tx, &mut self.rx, i == 0);
+            test.run_test(&mut self.tx, &mut self.rx, i == 0);
             if test.is_passed() {
                 self.passed += 1;
             }
@@ -233,14 +226,10 @@ impl DoeTransportTestRunner {
 }
 
 pub(crate) fn run_doe_transport_tests(
-    running: Arc<AtomicBool>,
     tx: Sender<Vec<u8>>,
     rx: Receiver<Vec<u8>>,
     tests: Vec<Box<dyn DoeTransportTest + Send>>,
 ) {
-    let running_clone = running.clone();
-    let running_clone_test_timeout = running.clone();
-
     // Spawn a thread to handle the timeout for the test
     thread::spawn(move || {
         let timeout = Duration::from_secs(60); // 60 seconds timeout
@@ -249,15 +238,19 @@ pub(crate) fn run_doe_transport_tests(
             "DOE_TRANSPORT_TESTS Timeout after {:?} seconds",
             timeout.as_secs()
         );
-        running_clone_test_timeout.store(false, Ordering::Relaxed);
+        EMULATOR_RUNNING.store(false, Ordering::Relaxed);
     });
 
     // Spawn a thread to run the tests
     thread::spawn(move || {
-        let mut test = DoeTransportTestRunner::new(tx, rx, running_clone, tests);
+        wait_for_runtime_start();
+        if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
+            exit(-1);
+        }
+        let mut test = DoeTransportTestRunner::new(tx, rx, tests);
 
         test.run_tests();
-        running.store(false, Ordering::Relaxed);
+        EMULATOR_RUNNING.store(false, Ordering::Relaxed);
         println!("DOE_TRANSPORT_TESTS: All tests completed.");
     });
 }

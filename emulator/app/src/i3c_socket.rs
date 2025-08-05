@@ -33,6 +33,7 @@ Abstract:
 
 --*/
 
+use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
 use emulator_periph::{
     DynamicI3cAddress, I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriCommandXfer,
     ReguDataTransferCommand, ResponseDescriptor,
@@ -40,36 +41,27 @@ use emulator_periph::{
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::process::exit;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
+use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{mpsc, Arc};
 use std::time::Duration;
 use std::vec;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
-use crate::tests::spdm_validator::execute_spdm_validator;
-
 const CRC8_SMBUS: crc::Crc<u8> = crc::Crc::<u8>::new(&crc::CRC_8_SMBUS);
 
-pub(crate) fn start_i3c_socket(
-    running: Arc<AtomicBool>,
-    port: u16,
-) -> (Receiver<I3cBusCommand>, Sender<I3cBusResponse>) {
+pub(crate) fn start_i3c_socket(port: u16) -> (Receiver<I3cBusCommand>, Sender<I3cBusResponse>) {
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
         .expect("Failed to bind TCP socket for port");
 
     let (bus_command_tx, bus_command_rx) = mpsc::channel::<I3cBusCommand>();
     let (bus_response_tx, bus_response_rx) = mpsc::channel::<I3cBusResponse>();
-    let running_clone = running.clone();
-    std::thread::spawn(move || {
-        handle_i3c_socket_loop(running_clone, listener, bus_response_rx, bus_command_tx)
-    });
+    std::thread::spawn(move || handle_i3c_socket_loop(listener, bus_response_rx, bus_command_tx));
 
     (bus_command_rx, bus_response_tx)
 }
 
 fn handle_i3c_socket_loop(
-    running: Arc<AtomicBool>,
     listener: TcpListener,
     mut bus_response_rx: Receiver<I3cBusResponse>,
     mut bus_command_tx: Sender<I3cBusCommand>,
@@ -77,11 +69,10 @@ fn handle_i3c_socket_loop(
     listener
         .set_nonblocking(true)
         .expect("Could not set non-blocking");
-    while running.load(Ordering::Relaxed) {
+    while EMULATOR_RUNNING.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, addr)) => {
                 handle_i3c_socket_connection(
-                    running.clone(),
                     stream,
                     addr,
                     &mut bus_response_rx,
@@ -112,7 +103,6 @@ struct OutgoingHeader {
 }
 
 fn handle_i3c_socket_connection(
-    running: Arc<AtomicBool>,
     mut stream: TcpStream,
     _addr: SocketAddr,
     bus_response_rx: &mut Receiver<I3cBusResponse>,
@@ -121,7 +111,7 @@ fn handle_i3c_socket_connection(
     let stream = &mut stream;
     stream.set_nonblocking(true).unwrap();
 
-    while running.load(Ordering::Relaxed) {
+    while EMULATOR_RUNNING.load(Ordering::Relaxed) {
         // try reading
         let mut incoming_header_bytes = [0u8; 9];
         match stream.read_exact(&mut incoming_header_bytes) {
@@ -167,37 +157,37 @@ fn handle_i3c_socket_connection(
     }
 }
 
-pub(crate) trait TestTrait {
-    fn run_test(&mut self, running: Arc<AtomicBool>, stream: &mut TcpStream, target_addr: u8);
+pub(crate) trait MctpTransportTest {
+    fn run_test(&mut self, stream: &mut TcpStream, target_addr: u8);
     fn is_passed(&self) -> bool;
 }
 
 pub(crate) fn run_tests(
-    running: Arc<AtomicBool>,
     port: u16,
     target_addr: DynamicI3cAddress,
-    tests: Vec<Box<dyn TestTrait + Send>>,
+    tests: Vec<Box<dyn MctpTransportTest + Send>>,
     test_timeout_seconds: Option<Duration>,
 ) {
-    let running_clone = running.clone();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let stream = TcpStream::connect(addr).unwrap();
-    let running_clone_stop = running.clone();
     // cancel the test after 120 seconds
     std::thread::spawn(move || {
         let timeout = test_timeout_seconds.unwrap_or(Duration::from_secs(120));
         std::thread::sleep(timeout);
-        println!("INTEGRATION TEST TIMED OUT AFTER {:?} SECONDS", timeout);
-        running_clone_stop.store(false, Ordering::Relaxed);
+        println!(
+            "INTEGRATION TEST ON MCTP-I3C TIMED OUT AFTER {:?} SECONDS",
+            timeout
+        );
+        exit(-1);
     });
     std::thread::spawn(move || {
-        let mut test_runner = MctpTestRunner::new(stream, target_addr.into(), running_clone, tests);
+        wait_for_runtime_start();
+        if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
+            exit(-1);
+        }
+        let mut test_runner = MctpTestRunner::new(stream, target_addr.into(), tests);
         test_runner.run_tests();
     });
-
-    if cfg!(feature = "test-spdm-validator") {
-        execute_spdm_validator(running.clone());
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -214,29 +204,26 @@ struct MctpTestRunner {
     stream: TcpStream,
     target_addr: u8,
     passed: usize,
-    running: Arc<AtomicBool>,
-    tests: Vec<Box<dyn TestTrait + Send>>,
+    tests: Vec<Box<dyn MctpTransportTest + Send>>,
 }
 
 impl MctpTestRunner {
     pub fn new(
         stream: TcpStream,
         target_addr: u8,
-        running: Arc<AtomicBool>,
-        tests: Vec<Box<dyn TestTrait + Send>>,
+        tests: Vec<Box<dyn MctpTransportTest + Send>>,
     ) -> Self {
         Self {
             stream,
             target_addr,
             passed: 0,
-            running,
             tests,
         }
     }
 
     pub fn run_tests(&mut self) {
         for test in self.tests.iter_mut() {
-            test.run_test(self.running.clone(), &mut self.stream, self.target_addr);
+            test.run_test(&mut self.stream, self.target_addr);
             if test.is_passed() {
                 self.passed += 1;
             }
@@ -246,7 +233,7 @@ impl MctpTestRunner {
             self.passed,
             self.tests.len()
         );
-        self.running.store(false, Ordering::Relaxed);
+        EMULATOR_RUNNING.store(false, Ordering::Relaxed);
         if self.passed == self.tests.len() {
             exit(0);
         } else {
