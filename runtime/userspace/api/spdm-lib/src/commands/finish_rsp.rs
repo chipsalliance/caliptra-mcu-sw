@@ -11,6 +11,7 @@ use crate::session::{SessionKeyType, SessionState};
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
+use constant_time_eq::constant_time_eq;
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
@@ -60,23 +61,22 @@ async fn verify_requester_verify_data(
     requester_verify_data: &[u8; SHA384_HASH_SIZE],
     req_payload: &mut MessageBuf<'_>,
 ) -> CommandResult<()> {
-    // Compute TH1 transcript hash for generating the session handshake key
-    let th1_transcript_hash = ctx
+    // Compute transcript hash for generating the HMAC
+    let hmac_transcript_hash = ctx
         .transcript_hash(TranscriptContext::Th, Some(session_id), false)
         .await?;
 
-    // generate session handshake key
     let session_info = ctx
         .session_mgr
         .session_info_mut(session_id)
         .map_err(|e| (false, CommandError::Session(e)))?;
 
     let computed_hmac = session_info
-        .compute_hmac(SessionKeyType::RequestFinishedKey, &th1_transcript_hash)
+        .compute_hmac(SessionKeyType::RequestFinishedKey, &hmac_transcript_hash)
         .await
         .map_err(|e| (false, CommandError::Session(e)))?;
 
-    if computed_hmac != *requester_verify_data {
+    if !constant_time_eq(&computed_hmac, requester_verify_data) {
         Err(ctx.generate_error_response(req_payload, ErrorCode::DecryptError, 0, None))?
     }
 

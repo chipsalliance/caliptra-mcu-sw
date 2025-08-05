@@ -11,6 +11,7 @@ arrayvec.workspace = true
 async-trait.workspace = true
 bitfield.workspace = true
 caliptra-api.workspace = true
+constant_time_eq.workspace = true
 libapi-caliptra.workspace = true
 libsyscall-caliptra.workspace = true
 libtock_platform.workspace = true
