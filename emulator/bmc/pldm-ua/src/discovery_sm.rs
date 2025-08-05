@@ -1,9 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::events::PldmEvents;
+use crate::timer::Timer;
 use crate::transport::{PldmSocket, RxPacket, MAX_PLDM_PAYLOAD_SIZE};
 use crate::update_sm;
-use log::{debug, error};
+use log::{debug, error, info};
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::control::{self as pldm_packet, is_bit_set, GetPldmCommandsRequest};
 use pldm_common::protocol::base::{
@@ -14,6 +15,11 @@ use pldm_common::protocol::firmware_update::FwUpdateCmd;
 use pldm_common::protocol::version::{PLDM_BASE_PROTOCOL_VERSION, PLDM_FW_UPDATE_PROTOCOL_VERSION};
 use smlang::statemachine;
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_RETRY_COUNT: u8 = 3;
 
 // Define the state machine for PLDM Discovery Requester
 statemachine! {
@@ -40,52 +46,81 @@ statemachine! {
     }
 }
 
-fn send_request_helper<S: PldmSocket, P: PldmCodec>(socket: &S, message: &P) -> Result<(), ()> {
+fn send_request_helper<P: PldmCodec>(
+    ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    message: &P,
+) -> Result<(), ()> {
     let mut buffer = [0u8; MAX_PLDM_PAYLOAD_SIZE];
     let sz = message.encode(&mut buffer).map_err(|_| ())?;
-    socket.send(&buffer[..sz]).map_err(|_| ())?;
+    ctx.response_timer.cancel();
+    ctx.socket.send(&buffer[..sz]).map_err(|_| ())?;
     debug!("Sent request: {:?}", std::any::type_name::<P>());
+    let packet_buf = buffer[..sz].to_vec();
+    *ctx.retry_count.lock().unwrap() = 0;
+    ctx.response_timer.schedule_periodic(
+        RESPONSE_TIMEOUT,
+        (
+            ctx.socket.clone(),
+            packet_buf.clone(),
+            ctx.retry_count.clone(),
+        ),
+        |(socket, packet_buf, retry_count)| {
+            if *retry_count.lock().unwrap() < MAX_RETRY_COUNT {
+                *retry_count.lock().unwrap() += 1;
+                info!(
+                    "Retrying request, attempt: {}",
+                    *retry_count.lock().unwrap()
+                );
+                socket.send(&packet_buf[..]).unwrap();
+            } else {
+                error!("Max retry count reached, giving up on request");
+            }
+        },
+    );
     Ok(())
 }
 
 pub trait StateMachineActions {
     // Actions
-    fn on_start_discovery(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_start_discovery(
+        &self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         send_request_helper(
-            &ctx.socket,
+            ctx,
             &pldm_packet::SetTidRequest::new(ctx.instance_id, PldmMsgType::Request, ctx.fd_tid),
         )
     }
     fn on_set_tid_response(
         &self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         _response: pldm_packet::SetTidResponse,
     ) -> Result<(), ()> {
         ctx.instance_id += 1;
         send_request_helper(
-            &ctx.socket,
+            ctx,
             &pldm_packet::GetTidRequest::new(ctx.instance_id, PldmMsgType::Request),
         )
     }
     fn on_get_tid_response(
         &self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         _response: pldm_packet::GetTidResponse,
     ) -> Result<(), ()> {
         ctx.instance_id += 1;
         send_request_helper(
-            &ctx.socket,
+            ctx,
             &pldm_packet::GetPldmTypeRequest::new(ctx.instance_id, PldmMsgType::Request),
         )
     }
     fn on_pldm_types_response(
         &self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         _response: pldm_packet::GetPldmTypeResponse,
     ) -> Result<(), ()> {
         ctx.instance_id += 1;
         send_request_helper(
-            &ctx.socket,
+            ctx,
             &pldm_packet::GetPldmVersionRequest::new(
                 ctx.instance_id,
                 PldmMsgType::Request,
@@ -97,12 +132,12 @@ pub trait StateMachineActions {
     }
     fn on_pldm_version_response_type0(
         &self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         _response: pldm_packet::GetPldmVersionResponse,
     ) -> Result<(), ()> {
         ctx.instance_id += 1;
         send_request_helper(
-            &ctx.socket,
+            ctx,
             &GetPldmCommandsRequest::new(
                 ctx.instance_id,
                 PldmMsgType::Request,
@@ -113,12 +148,12 @@ pub trait StateMachineActions {
     }
     fn on_pldm_commands_response_type0(
         &self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         _response: pldm_packet::GetPldmCommandsResponse,
     ) -> Result<(), ()> {
         ctx.instance_id += 1;
         send_request_helper(
-            &ctx.socket,
+            ctx,
             &pldm_packet::GetPldmVersionRequest::new(
                 ctx.instance_id,
                 PldmMsgType::Request,
@@ -130,12 +165,12 @@ pub trait StateMachineActions {
     }
     fn on_pldm_version_response_type5(
         &self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         _response: pldm_packet::GetPldmVersionResponse,
     ) -> Result<(), ()> {
         ctx.instance_id += 1;
         send_request_helper(
-            &ctx.socket,
+            ctx,
             &GetPldmCommandsRequest::new(
                 ctx.instance_id,
                 PldmMsgType::Request,
@@ -146,22 +181,27 @@ pub trait StateMachineActions {
     }
     fn on_pldm_commands_response_type5(
         &self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         _response: pldm_packet::GetPldmCommandsResponse,
     ) -> Result<(), ()> {
+        ctx.response_timer.cancel();
         ctx.event_queue
             .send(PldmEvents::Update(update_sm::Events::StartUpdate))
             .map_err(|_| ())?;
         Ok(())
     }
-    fn on_cancel_discovery(&self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_cancel_discovery(
+        &self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
+        ctx.response_timer.cancel();
         Ok(())
     }
 
     // Guards
     fn is_valid_pldm_types_response0(
         &self,
-        ctx: &InnerContext<impl PldmSocket>,
+        ctx: &InnerContext<impl PldmSocket + Send + 'static>,
         response: &pldm_packet::GetPldmTypeResponse,
     ) -> Result<bool, ()> {
         // Verify correct instance id
@@ -184,7 +224,7 @@ pub trait StateMachineActions {
     }
     fn is_pldm_version_response_valid(
         &self,
-        ctx: &InnerContext<impl PldmSocket>,
+        ctx: &InnerContext<impl PldmSocket + Send + 'static>,
         response: &pldm_packet::GetPldmVersionResponse,
     ) -> Result<bool, ()> {
         // Verify correct instance id
@@ -206,7 +246,7 @@ pub trait StateMachineActions {
     }
     fn is_pldm_commands_response_type0_valid(
         &self,
-        ctx: &InnerContext<impl PldmSocket>,
+        ctx: &InnerContext<impl PldmSocket + Send + 'static>,
         response: &pldm_packet::GetPldmCommandsResponse,
     ) -> Result<bool, ()> {
         // Verify correct instance id
@@ -232,7 +272,7 @@ pub trait StateMachineActions {
     }
     fn is_pldm_commands_response_type5_valid(
         &self,
-        ctx: &InnerContext<impl PldmSocket>,
+        ctx: &InnerContext<impl PldmSocket + Send + 'static>,
         response: &pldm_packet::GetPldmCommandsResponse,
     ) -> Result<bool, ()> {
         // Verify correct instance id
@@ -316,19 +356,21 @@ pub fn process_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
 pub struct DefaultActions;
 impl StateMachineActions for DefaultActions {}
 
-pub struct InnerContext<S: PldmSocket> {
+pub struct InnerContext<S: PldmSocket + Send + 'static> {
     pub socket: S,
     pub event_queue: Sender<PldmEvents>,
     pub instance_id: InstanceId,
     fd_tid: u8,
+    response_timer: Timer,
+    retry_count: Arc<Mutex<u8>>,
 }
 
-pub struct Context<T: StateMachineActions, S: PldmSocket> {
+pub struct Context<T: StateMachineActions, S: PldmSocket + Send + 'static> {
     inner: T,
     inner_ctx: InnerContext<S>,
 }
 
-impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
+impl<T: StateMachineActions, S: PldmSocket + Send + 'static> Context<T, S> {
     pub fn new(context: T, socket: S, fd_tid: u8, event_queue: Sender<PldmEvents>) -> Self {
         Self {
             inner: context,
@@ -337,6 +379,8 @@ impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
                 event_queue,
                 instance_id: 0,
                 fd_tid,
+                response_timer: Timer::new(),
+                retry_count: Arc::new(Mutex::new(0)),
             },
         }
     }
@@ -363,7 +407,7 @@ macro_rules! delegate_to_inner {
     };
 }
 
-impl<T: StateMachineActions, S: PldmSocket> StateMachineContext for Context<T, S> {
+impl<T: StateMachineActions, S: PldmSocket + Send + 'static> StateMachineContext for Context<T, S> {
     // Actions
     delegate_to_inner! {
         on_start_discovery() -> Result<(), ()>,
@@ -374,7 +418,7 @@ impl<T: StateMachineActions, S: PldmSocket> StateMachineContext for Context<T, S
         on_pldm_commands_response_type0(response: pldm_packet::GetPldmCommandsResponse) -> Result<(), ()>,
         on_pldm_version_response_type5(response: pldm_packet::GetPldmVersionResponse) -> Result<(), ()>,
         on_pldm_commands_response_type5(response: pldm_packet::GetPldmCommandsResponse) -> Result<(), ()>,
-        on_cancel_discovery() -> Result<(), ()>
+        on_cancel_discovery() -> Result<(), ()>,
     }
 
     // Guards

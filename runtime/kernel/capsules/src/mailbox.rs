@@ -124,6 +124,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     ) -> Result<(), ErrorCode> {
         self.current_app.set(processid);
 
+        // App buffer contains the full payload
         match driver.start_mailbox_req(
             command,
             app_buffer.len(),
@@ -142,6 +143,96 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                 Err(ErrorCode::FAIL)
             }
         }
+    }
+
+    fn initiate_request(
+        &self,
+        command: u32,
+        payload_size: usize,
+        processid: ProcessId,
+    ) -> Result<(), ErrorCode> {
+        // Check if we're already executing a mailbox command.
+        if self.current_app.is_some() {
+            return Err(ErrorCode::BUSY);
+        }
+        self.current_app.set(processid);
+        self.driver
+            .map(|driver| {
+                driver
+                    .initiate_request(command, payload_size)
+                    .map_err(|_| ErrorCode::FAIL)
+            })
+            .ok_or(ErrorCode::RESERVE)?
+    }
+
+    fn send_next_chunk(&self, processid: ProcessId) -> Result<(), ErrorCode> {
+        // Check if we're already executing a mailbox command.
+        if self.current_app.is_none() {
+            return Err(ErrorCode::CANCEL);
+        }
+        self.apps.enter(processid, |_app, kernel_data| {
+            // copy the request so we can write async
+            kernel_data
+                .get_readonly_processbuffer(ro_allow::REQUEST)
+                .map_err(|err| {
+                    debug!("Error getting process buffer: {:?}", err);
+                    ErrorCode::FAIL
+                })
+                .and_then(|ro_buffer| {
+                    ro_buffer
+                        .enter(|app_buffer| {
+                            self.driver
+                                .map(|driver| self.write_chunk(driver, app_buffer))
+                                .ok_or(ErrorCode::RESERVE)?
+                        })
+                        .map_err(|err| {
+                            debug!("Error getting application buffer: {:?}", err);
+                            ErrorCode::FAIL
+                        })?
+                })?;
+            kernel_data
+                .schedule_upcall(upcall::COMMAND_DONE, (0, 0, 0))
+                .map_err(|err| {
+                    debug!("Error scheduling upcall: {:?}", err);
+                    ErrorCode::FAIL
+                })
+        })?
+    }
+
+    fn write_chunk(
+        &self,
+        driver: &mut CaliptraSoC,
+        app_buffer: &ReadableProcessSlice,
+    ) -> Result<(), ErrorCode> {
+        for chunk in app_buffer.chunks(4) {
+            if chunk.len() == 4 {
+                let mut buf = [0u8; 4];
+                chunk.copy_to_slice(&mut buf);
+                let data = u32::from_le_bytes(buf);
+                driver.write_data(data).map_err(|_| ErrorCode::FAIL)?;
+            } else {
+                // If the last chunk is not 4 bytes, we can't write it to the mailbox
+                debug!("Error: Incomplete data chunk in mailbox request");
+                return Err(ErrorCode::FAIL);
+            }
+        }
+        Ok(())
+    }
+
+    fn execute(&self) -> Result<(), ErrorCode> {
+        // Check if we're already executing a mailbox command.
+        if self.current_app.is_none() {
+            return Err(ErrorCode::CANCEL);
+        }
+        self.driver
+            .map(|driver| match driver.execute_command() {
+                Ok(()) => {
+                    self.schedule_alarm();
+                    Ok(())
+                }
+                Err(_) => Err(ErrorCode::FAIL),
+            })
+            .unwrap_or(Err(ErrorCode::FAIL))
     }
 
     /// Returns number of bytes in response  if the response was copied to the app.
@@ -258,7 +349,7 @@ impl<'a, A: Alarm<'a>> SyscallDriver for Mailbox<'a, A> {
         &self,
         syscall_command_num: usize,
         command: usize,
-        _r3: usize,
+        payload_size: usize,
         processid: ProcessId,
     ) -> CommandReturn {
         match syscall_command_num {
@@ -268,6 +359,33 @@ impl<'a, A: Alarm<'a>> SyscallDriver for Mailbox<'a, A> {
                 // Enqueue a mailbox command
                 let res = self.enqueue_command(command as u32, processid);
 
+                match res {
+                    Ok(()) => CommandReturn::success(),
+                    Err(e) => CommandReturn::failure(e),
+                }
+            }
+
+            2 => {
+                // Initiate a mailbox command
+                let res = self.initiate_request(command as u32, payload_size, processid);
+                match res {
+                    Ok(()) => CommandReturn::success(),
+                    Err(e) => CommandReturn::failure(e),
+                }
+            }
+
+            3 => {
+                // Send next chunk
+                let res = self.send_next_chunk(processid);
+                match res {
+                    Ok(()) => CommandReturn::success(),
+                    Err(e) => CommandReturn::failure(e),
+                }
+            }
+
+            4 => {
+                // Execute the command
+                let res = self.execute();
                 match res {
                     Ok(()) => CommandReturn::success(),
                     Err(e) => CommandReturn::failure(e),

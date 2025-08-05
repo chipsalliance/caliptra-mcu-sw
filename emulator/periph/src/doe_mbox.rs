@@ -344,7 +344,7 @@ mod tests {
     use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
     use registers_generated::doe_mbox::DOE_MBOX_ADDR;
 
-    const DOE_MBOX_BASE_ADDR: u32 = DOE_MBOX_ADDR as u32;
+    const DOE_MBOX_BASE_ADDR: u32 = DOE_MBOX_ADDR;
     const DOE_MBOX_DLEN_REG_OFFSET: u32 = 0x04;
     const DOE_MBOX_STATUS_REG_OFFSET: u32 = 0x08;
     const DOE_MBOX_EVENT_REG_OFFSET: u32 = 0x0C;
@@ -389,11 +389,7 @@ mod tests {
         let data: Vec<u32> = (0..data_word_len).collect();
         for (i, &word) in data.iter().enumerate() {
             autobus
-                .write(
-                    RvSize::Word,
-                    DOE_MBOX_SRAM_BASE_ADDR + i as u32 * 4,
-                    word as u32,
-                )
+                .write(RvSize::Word, DOE_MBOX_SRAM_BASE_ADDR + i as u32 * 4, word)
                 .unwrap();
         }
 
@@ -401,21 +397,21 @@ mod tests {
             .write(
                 RvSize::Word,
                 DOE_MBOX_BASE_ADDR + DOE_MBOX_DLEN_REG_OFFSET,
-                data_word_len as u32,
+                data_word_len,
             )
             .unwrap();
 
         let read_word_len = autobus
             .read(RvSize::Word, DOE_MBOX_BASE_ADDR + DOE_MBOX_DLEN_REG_OFFSET)
             .unwrap();
-        assert_eq!(read_word_len, data_word_len as u32);
+        assert_eq!(read_word_len, { data_word_len });
 
         // Read the DOE SRAM for read_word_len size and compare each word with the data
-        for i in 0..read_word_len as usize {
+        for (i, &data_i) in data.iter().enumerate().take(read_word_len as usize) {
             let read_word = autobus
                 .read(RvSize::Word, DOE_MBOX_SRAM_BASE_ADDR + i as u32 * 4)
                 .unwrap();
-            assert_eq!(read_word, data[i]);
+            assert_eq!(read_word, data_i);
         }
     }
 

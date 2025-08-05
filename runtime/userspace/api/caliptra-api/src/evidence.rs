@@ -11,18 +11,10 @@ use core::mem::size_of;
 use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
 
-pub const PCR_QUOTE_RSP_START: usize = size_of::<MailboxRespHeader>();
-pub const PCR_QUOTE_BUFFER_SIZE: usize = size_of::<QuotePcrsMldsa87Resp>();
-
-// const MLDSA87_SIGNATURE_BYTE_SIZE: usize = 4628;
-// const MLDSA_DIGEST_BYTE_SIZE: usize = 64;
-// const ECC_SIGNATURE_BYTE_SIZE: usize = 96;
-// const ECC_DIGEST_BYTE_SIZE: usize = 48;
-// const MLDSA87_DGST_SIG_SIZE: usize = MLDSA_DIGEST_BYTE_SIZE + MLDSA87_SIGNATURE_BYTE_SIZE;
-// const ECC_DGST_SIG_SIZE: usize = ECC_DIGEST_BYTE_SIZE + ECC_SIGNATURE_BYTE_SIZE;
-
-// const PCR_QUOTE_FIXED_FIELDS_SIZE: usize =
-//     PCR_QUOTE_SIZE - MLDSA87_DGST_SIG_SIZE - ECC_DGST_SIG_SIZE;
+const PCR_QUOTE_RSP_START: usize = size_of::<MailboxRespHeader>();
+const ECC384_QUOTE_RSP_LEN: usize = size_of::<QuotePcrsEcc384Resp>() - PCR_QUOTE_RSP_START;
+const MLDSA87_QUOTE_RSP_LEN: usize = size_of::<QuotePcrsMldsa87Resp>() - PCR_QUOTE_RSP_START;
+pub const PCR_QUOTE_BUFFER_SIZE: usize = MLDSA87_QUOTE_RSP_LEN;
 
 pub struct Evidence;
 
@@ -38,39 +30,46 @@ impl Evidence {
     async fn pcr_quote_mldsa(buffer: &mut [u8]) -> CaliptraApiResult<usize> {
         let mailbox = Mailbox::new();
 
-        let quote_len = size_of::<QuotePcrsMldsa87Resp>();
-
-        if buffer.len() < quote_len {
+        if buffer.len() < MLDSA87_QUOTE_RSP_LEN {
             return Err(CaliptraApiError::InvalidArgument("Buffer too small"));
         }
 
-        let mut req = QuotePcrsEcc384Req {
+        let mut req = QuotePcrsMldsa87Req {
             hdr: MailboxReqHeader::default(),
             nonce: [0; 32],
         };
+
+        let mut rsp_bytes = [0u8; size_of::<QuotePcrsMldsa87Resp>()];
         Rng::generate_random_number(&mut req.nonce).await?;
         let req_bytes = req.as_mut_bytes();
-        let size =
-            execute_mailbox_cmd(&mailbox, QuotePcrsMldsa87Req::ID.0, req_bytes, buffer).await?;
-        if size != quote_len {
+        let size = execute_mailbox_cmd(
+            &mailbox,
+            QuotePcrsMldsa87Req::ID.0,
+            req_bytes,
+            &mut rsp_bytes,
+        )
+        .await?;
+        if size != size_of::<QuotePcrsMldsa87Resp>() {
             return Err(CaliptraApiError::InvalidResponse);
         }
 
-        let resp = QuotePcrsMldsa87Resp::ref_from_bytes(&buffer[..quote_len])
+        let resp = QuotePcrsMldsa87Resp::ref_from_bytes(&rsp_bytes)
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
         if resp.nonce != req.nonce {
             Err(CaliptraApiError::InvalidResponse)?;
         }
-        Ok(size_of::<QuotePcrsMldsa87Resp>())
+
+        buffer.copy_from_slice(
+            &rsp_bytes[PCR_QUOTE_RSP_START..PCR_QUOTE_RSP_START + MLDSA87_QUOTE_RSP_LEN],
+        );
+        Ok(MLDSA87_QUOTE_RSP_LEN)
     }
 
     async fn pcr_quote_ecc384(buffer: &mut [u8]) -> CaliptraApiResult<usize> {
         let mailbox = Mailbox::new();
 
-        let quote_len = size_of::<QuotePcrsEcc384Resp>();
-
-        if buffer.len() < quote_len {
+        if buffer.len() < ECC384_QUOTE_RSP_LEN {
             return Err(CaliptraApiError::InvalidArgument("Buffer too small"));
         }
 
@@ -80,25 +79,36 @@ impl Evidence {
         };
         Rng::generate_random_number(&mut req.nonce).await?;
         let req_bytes = req.as_mut_bytes();
+        let mut resp_bytes = [0u8; size_of::<QuotePcrsEcc384Resp>()];
 
-        let size =
-            execute_mailbox_cmd(&mailbox, QuotePcrsEcc384Req::ID.0, req_bytes, buffer).await?;
-        if size != quote_len {
+        let size = execute_mailbox_cmd(
+            &mailbox,
+            QuotePcrsEcc384Req::ID.0,
+            req_bytes,
+            &mut resp_bytes,
+        )
+        .await?;
+        if size != size_of::<QuotePcrsEcc384Resp>() {
             return Err(CaliptraApiError::InvalidResponse);
         }
-        let resp = QuotePcrsEcc384Resp::ref_from_bytes(&buffer[..quote_len])
+
+        let resp = QuotePcrsEcc384Resp::ref_from_bytes(&resp_bytes)
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
         if resp.nonce != req.nonce {
             Err(CaliptraApiError::InvalidResponse)?;
         }
-        Ok(size_of::<QuotePcrsEcc384Resp>())
+
+        buffer[..ECC384_QUOTE_RSP_LEN].copy_from_slice(
+            &resp_bytes[PCR_QUOTE_RSP_START..PCR_QUOTE_RSP_START + ECC384_QUOTE_RSP_LEN],
+        );
+        Ok(ECC384_QUOTE_RSP_LEN)
     }
 
     pub fn pcr_quote_size(with_pqc_sig: bool) -> usize {
         match with_pqc_sig {
-            true => size_of::<QuotePcrsMldsa87Resp>(),
-            false => size_of::<QuotePcrsEcc384Resp>(),
+            true => MLDSA87_QUOTE_RSP_LEN,
+            false => ECC384_QUOTE_RSP_LEN,
         }
     }
 }

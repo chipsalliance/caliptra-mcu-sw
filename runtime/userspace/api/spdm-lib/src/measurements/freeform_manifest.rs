@@ -4,9 +4,9 @@ use crate::measurements::common::{
     DmtfMeasurementBlockMetadata, MeasurementValueType, MeasurementsError, MeasurementsResult,
     SPDM_MEASUREMENT_MANIFEST_INDEX,
 };
-use crate::protocol::{algorithms::AsymAlgo, SHA384_HASH_SIZE};
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
-use libapi_caliptra::evidence::{Evidence, PCR_QUOTE_BUFFER_SIZE, PCR_QUOTE_RSP_START};
+use libapi_caliptra::crypto::asym::AsymAlgo;
+use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
+use libapi_caliptra::evidence::{Evidence, PCR_QUOTE_BUFFER_SIZE};
 use libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use zerocopy::IntoBytes;
 
@@ -51,7 +51,9 @@ impl FreeformManifest {
         _raw_bit_stream: bool,
     ) -> MeasurementsResult<usize> {
         if index == SPDM_MEASUREMENT_MANIFEST_INDEX || index == 0xFF {
-            self.refresh_measurement_record(asym_algo).await?;
+            if self.data_size == 0 {
+                self.refresh_measurement_record(asym_algo).await?;
+            }
             Ok(self.data_size)
         } else {
             Err(MeasurementsError::InvalidIndex)
@@ -67,7 +69,9 @@ impl FreeformManifest {
         measurement_chunk: &mut [u8],
     ) -> MeasurementsResult<usize> {
         if index == SPDM_MEASUREMENT_MANIFEST_INDEX || index == 0xFF {
-            self.refresh_measurement_record(asym_algo).await?;
+            if self.data_size == 0 {
+                self.refresh_measurement_record(asym_algo).await?;
+            }
             if offset >= self.data_size {
                 return Err(MeasurementsError::InvalidOffset);
             }
@@ -150,9 +154,7 @@ impl FreeformManifest {
             return Err(MeasurementsError::MeasurementSizeMismatch);
         }
 
-        // remove the mailbox header from the quote
-        quote_slice.copy_within(METADATA_SIZE + PCR_QUOTE_RSP_START.., METADATA_SIZE);
-        self.data_size = METADATA_SIZE + measurement_value_size - PCR_QUOTE_RSP_START;
+        self.data_size = METADATA_SIZE + measurement_value_size;
 
         Ok(())
     }

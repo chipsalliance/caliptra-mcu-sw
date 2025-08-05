@@ -28,6 +28,9 @@ These commands support a wide range of functionalities, including querying devic
     - Facilitate secure debugging in production environments
     - Ensure controlled access to debugging features
 
+- **In-Field Fuse Provisioning**
+    - See [fuses spec](fuses.md) for details.
+
 ## Mailbox Commands List
 
 | **Name**                          | **Command Code** | **Description**                                                                                     |
@@ -65,6 +68,9 @@ These commands support a wide range of functionalities, including querying devic
 | MC_MLDSA_SIGN                     | 0x4D4C_4D53 ("MMLS") | Requests to sign a SHA-384 digest with the DPE leaf certificate using MLDSA.                       |
 | MC_PRODUCTION_DEBUG_UNLOCK_REQ    | 0x4D44_5552 ("MDUR") | Requests debug unlock in a production environment.                                                 |
 | MC_PRODUCTION_DEBUG_UNLOCK_TOKEN  | 0x4D44_5554 ("MDUT") | Sends the debug unlock token.                                                                      |
+| MC_FUSE_READ                      | 0x4946_5052 ("IFPR") | See [fuses spec](fuses.md) for details |
+| MC_FUSE_WRITE                      | 0x4946_5057 ("IFPW") | See [fuses spec](fuses.md) for details |
+| MC_FUSE_LOCK_PARTITION             | 0x4946_504B ("IFPK") | See [fuses spec](fuses.md) for details |
 
 ## Command Format
 
@@ -398,6 +404,8 @@ Command Code: `0x4D44_5554` ("MDUT")
 |--------------------------|----------------|---------------------------------------------------------------------------------|
 | chksum                   | u32            |                                                                                 |
 | fips_status              | u32            | FIPS approved or an error                                                      |
+
+{{#include fuse_api_cmd.md}}
 
 ### Cryptographic Command Format
 

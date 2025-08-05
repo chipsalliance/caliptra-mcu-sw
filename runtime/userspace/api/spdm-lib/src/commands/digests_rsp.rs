@@ -9,7 +9,8 @@ use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
 use core::mem::size_of;
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
+use libapi_caliptra::crypto::asym::AsymAlgo;
+use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
@@ -32,7 +33,7 @@ impl CommonCodec for GetDigestsRespCommon {}
 
 pub(crate) async fn compute_cert_chain_hash(
     slot_id: u8,
-    cert_store: &mut dyn SpdmCertStore,
+    cert_store: &dyn SpdmCertStore,
     asym_algo: AsymAlgo,
     hash: &mut [u8],
 ) -> CommandResult<()> {
@@ -101,7 +102,7 @@ pub(crate) async fn compute_cert_chain_hash(
 
 async fn encode_cert_chain_digest(
     slot_id: u8,
-    cert_store: &mut dyn SpdmCertStore,
+    cert_store: &dyn SpdmCertStore,
     asym_algo: AsymAlgo,
     rsp: &mut MessageBuf<'_>,
 ) -> CommandResult<usize> {
@@ -125,14 +126,14 @@ async fn generate_digests_response<'a>(
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Ensure the selected hash algorithm is SHA384 and retrieve the asymmetric algorithm (currently only ECC-P384 is supported)
-    ctx.verify_selected_hash_algo()
+    ctx.verify_negotiated_hash_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
     let asym_algo = ctx
-        .selected_base_asym_algo()
+        .negotiated_base_asym_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
 
     // Get the supported and provisioned slot masks.
-    let (supported_slot_mask, provisioned_slot_mask) = cert_slot_mask(ctx.device_certs_store);
+    let (supported_slot_mask, provisioned_slot_mask) = cert_slot_mask(ctx.device_certs_store).await;
 
     // No slots provisioned with certificates
     let slot_cnt = provisioned_slot_mask.count_ones() as usize;
@@ -168,22 +169,26 @@ async fn generate_digests_response<'a>(
 
     // Fill the multi-key connection response data if applicable
     if connection_version >= SpdmVersion::V13 && ctx.state.connection_info.multi_key_conn_rsp() {
-        payload_len += encode_multi_key_conn_rsp_data(ctx, provisioned_slot_mask, rsp)?;
+        payload_len += encode_multi_key_conn_rsp_data(ctx, provisioned_slot_mask, rsp).await?;
+        // Append the response message to the DIGESTS transcript. This is needed later for TH1/TH2 calculation.
+        ctx.append_message_to_transcript(rsp, TranscriptContext::Digests, None)
+            .await?;
     }
+
+    // Append the response message to the M1 transcript
+    ctx.append_message_to_transcript(rsp, TranscriptContext::M1, None)
+        .await?;
 
     // Push data offset up by total payload length
     rsp.push_data(payload_len)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
-
-    // Append the response message to the M1 transcript
-    ctx.append_message_to_transcript(rsp, TranscriptContext::M1)
-        .await
+    Ok(())
 }
 
-fn encode_multi_key_conn_rsp_data(
-    ctx: &mut SpdmContext,
+async fn encode_multi_key_conn_rsp_data(
+    ctx: &mut SpdmContext<'_>,
     provisioned_slot_mask: u8,
-    rsp: &mut MessageBuf,
+    rsp: &mut MessageBuf<'_>,
 ) -> CommandResult<usize> {
     let slot_cnt = provisioned_slot_mask.count_ones() as usize;
 
@@ -210,14 +215,17 @@ fn encode_multi_key_conn_rsp_data(
         let key_pair_id = ctx
             .device_certs_store
             .key_pair_id(slot_id as u8)
+            .await
             .unwrap_or_default();
         let cert_info = ctx
             .device_certs_store
             .cert_info(slot_id as u8)
+            .await
             .unwrap_or_default();
         let key_usage_mask = ctx
             .device_certs_store
             .key_usage_mask(slot_id as u8)
+            .await
             .unwrap_or_default();
 
         // Fill the KeyPairIDs
@@ -266,7 +274,7 @@ async fn process_get_digests<'a>(
     ctx.reset_transcript_via_req_code(ReqRespCode::GetDigests);
 
     // Append the request message to the M1 transcript
-    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1)
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1, None)
         .await
 }
 

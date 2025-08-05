@@ -4,10 +4,12 @@ use anyhow::{anyhow, bail, Result};
 use mcu_builder::{rom_build, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
+use crate::emulator_cbinding;
+
 pub(crate) fn test() -> Result<()> {
     test_panic_missing()?;
-    cargo_test()?;
-    e2e_tests()
+    e2e_tests()?;
+    cargo_test()
 }
 
 fn cargo_test() -> Result<()> {
@@ -26,10 +28,11 @@ fn cargo_test() -> Result<()> {
 fn e2e_tests() -> Result<()> {
     println!("Running: e2e tests");
 
-    test_hello()
+    test_hello()?;
+    test_hello_c_emulator()
 }
 
-fn test_hello() -> Result<()> {
+fn build_hello_binary() -> Result<()> {
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
         .env("RUSTFLAGS", "-C link-arg=-Ttests/hello/link.ld")
@@ -39,40 +42,86 @@ fn test_hello() -> Result<()> {
     if !status.success() {
         bail!("build hello binary failed");
     }
+    Ok(())
+}
 
-    let output = Command::new("cargo")
-        .current_dir(&*PROJECT_ROOT)
-        .args([
-            "run",
-            "-p",
-            "emulator",
-            "--",
-            "--caliptra-rom",
-            "/dev/null",
-            "--caliptra-firmware",
-            "/dev/null",
-            "--soc-manifest",
-            "/dev/null",
-            "--firmware",
-            "/dev/null",
-            "--rom",
-            format!("target/{}/debug/hello", TARGET).as_str(),
-        ])
-        .output()?;
+fn get_emulator_args() -> [String; 10] {
+    [
+        "--caliptra-rom".to_string(),
+        "/dev/null".to_string(),
+        "--caliptra-firmware".to_string(),
+        "/dev/null".to_string(),
+        "--soc-manifest".to_string(),
+        "/dev/null".to_string(),
+        "--firmware".to_string(),
+        "/dev/null".to_string(),
+        "--rom".to_string(),
+        format!("target/{}/debug/hello", TARGET),
+    ]
+}
+
+fn check_emulator_output(output: std::process::Output, emulator_name: &str) -> Result<()> {
     if !output.status.success() {
         bail!(
-            "Emulator failed to run hello binary: {}",
+            "{} failed to run hello binary: {}",
+            emulator_name,
             String::from_utf8(output.stderr.clone())?
         );
     }
     if !String::from_utf8(output.stderr.clone())?.contains("Hello Caliptra") {
         bail!(
-            "Emulator output did not match expected. Got: '{}' but expected to contain '{}'",
+            "{} output did not match expected. Got: '{}' but expected to contain '{}'",
+            emulator_name,
             String::from_utf8(output.stderr)?,
             "Hello Caliptra"
         );
     }
+    Ok(())
+}
 
+fn test_hello() -> Result<()> {
+    build_hello_binary()?;
+
+    let args = get_emulator_args();
+    let output = Command::new("cargo")
+        .current_dir(&*PROJECT_ROOT)
+        .args(["run", "-p", "emulator", "--"])
+        .args(&args)
+        .output()?;
+
+    check_emulator_output(output, "Emulator")?;
+    Ok(())
+}
+
+fn test_hello_c_emulator() -> Result<()> {
+    // First build the hello test binary (same as test_hello)
+    build_hello_binary()?;
+
+    // Build the C emulator binary
+    emulator_cbinding::build_emulator(false)?; // false for debug build
+
+    // Path to the C emulator binary
+    let c_emulator_path = PROJECT_ROOT
+        .join("target")
+        .join("debug")
+        .join("emulator_cbinding")
+        .join("emulator");
+
+    // Get the common emulator arguments
+    let args = get_emulator_args();
+    println!(
+        "Running C emulator: {} {}",
+        c_emulator_path.display(),
+        args.join(" ")
+    );
+
+    // Run the C emulator with the same arguments as the Rust emulator
+    let output = Command::new(&c_emulator_path)
+        .current_dir(&*PROJECT_ROOT)
+        .args(&args)
+        .output()?;
+
+    check_emulator_output(output, "C Emulator")?;
     Ok(())
 }
 

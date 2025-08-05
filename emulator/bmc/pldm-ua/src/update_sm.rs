@@ -23,14 +23,17 @@ use pldm_fw_pkg::FirmwareManifest;
 use smlang::statemachine;
 use std::cmp::{max, min};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-const MAX_TRANSFER_SIZE: u32 = 64; // Maximum bytes to transfer in one request
+const MAX_TRANSFER_SIZE: u32 = 180; // Maximum bytes to transfer in one request
 const BASELINE_TRANSFER_SIZE: u32 = 32; // Minimum bytes to transfer in one request
 const MAX_OUTSTANDING_TRANSFER_REQ: u8 = 1;
 const GET_STATUS_ACTIVATION_POLL_INTERVAL: Duration = Duration::from_secs(1);
 const SELF_ACTIVATION_FIELD_BIT: u16 = 0x0001;
 const SELF_ACTIVATION_FIELD_MASK: u16 = 0x0001;
+const RESPONSE_TIMEOUT: Duration = Duration::from_secs(3);
+const MAX_RETRY_COUNT: u8 = 3;
 
 // Define the state machine
 statemachine! {
@@ -82,11 +85,37 @@ statemachine! {
     }
 }
 
-fn send_message_helper<S: PldmSocket, P: PldmCodec>(socket: &S, message: &P) -> Result<(), ()> {
+fn send_message_helper<P: PldmCodec>(
+    ctx: &mut InnerContext<impl PldmSocket + Send + 'static + Send + 'static>,
+    message: &P,
+) -> Result<(), ()> {
     let mut buffer = [0u8; MAX_PLDM_PAYLOAD_SIZE];
+    ctx.response_timer.cancel();
     let sz = message.encode(&mut buffer).map_err(|_| ())?;
-    socket.send(&buffer[..sz]).map_err(|_| ())?;
+    ctx.socket.send(&buffer[..sz]).map_err(|_| ())?;
     debug!("Sent message: {:?}", std::any::type_name::<P>());
+    let packet_buf = buffer[..sz].to_vec();
+    *ctx.retry_count.lock().unwrap() = 0;
+    ctx.response_timer.schedule_periodic(
+        RESPONSE_TIMEOUT,
+        (
+            ctx.socket.clone(),
+            packet_buf.clone(),
+            ctx.retry_count.clone(),
+        ),
+        |(socket, packet_buf, retry_count)| {
+            if *retry_count.lock().unwrap() < MAX_RETRY_COUNT {
+                *retry_count.lock().unwrap() += 1;
+                info!(
+                    "Retrying request, attempt: {}",
+                    *retry_count.lock().unwrap()
+                );
+                socket.send(&packet_buf[..]).unwrap();
+            } else {
+                error!("Max retry count reached, giving up on request");
+            }
+        },
+    );
     Ok(())
 }
 
@@ -157,7 +186,10 @@ fn is_pkg_device_id_in_response(
 }
 pub trait StateMachineActions {
     // Guards
-    fn are_all_components_passed(&self, ctx: &InnerContext<impl PldmSocket>) -> Result<bool, ()> {
+    fn are_all_components_passed(
+        &self,
+        ctx: &InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<bool, ()> {
         if ctx.component_response_codes.len() >= ctx.components.len() {
             Ok(true)
         } else {
@@ -166,9 +198,12 @@ pub trait StateMachineActions {
     }
 
     // Actions
-    fn on_start_update(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_start_update(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         send_message_helper(
-            &ctx.socket,
+            ctx,
             &pldm_packet::query_devid::QueryDeviceIdentifiersRequest::new(
                 ctx.instance_id,
                 PldmMsgType::Request,
@@ -177,12 +212,12 @@ pub trait StateMachineActions {
     }
     fn on_request_update_response(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::request_update::RequestUpdateResponse,
     ) -> Result<(), ()> {
         ctx.instance_id += 1; // Response received, increment instance id
         if response.fixed.completion_code == PldmBaseCompletionCode::Success as u8 {
-            info!("RequestUpdate response success");
+            debug!("RequestUpdate response success");
             ctx.event_queue
                 .send(PldmEvents::Update(Events::SendPassComponentRequest))
                 .map_err(|_| ())?;
@@ -198,13 +233,13 @@ pub trait StateMachineActions {
 
     fn on_send_pass_component_request(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
         let num_of_components_to_pass = ctx.components.len();
         let num_components_passed = ctx.component_response_codes.len();
 
         if num_components_passed >= num_of_components_to_pass {
-            info!("All components passed");
+            debug!("All components passed");
             return Ok(());
         }
 
@@ -255,13 +290,16 @@ pub trait StateMachineActions {
                 },
             },
         );
-        send_message_helper(&ctx.socket, &request)
+        send_message_helper(ctx, &request)
     }
 
-    fn on_next_component(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_next_component(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         ctx.current_component_index = self.find_next_component_to_update(ctx);
         if ctx.current_component_index.is_none() {
-            info!("No more component to update");
+            debug!("No more component to update");
             ctx.event_queue
                 .send(PldmEvents::Update(Events::ActivateFirmware))
                 .map_err(|_| ())?;
@@ -275,12 +313,15 @@ pub trait StateMachineActions {
 
     fn on_all_components_passed(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
         self.on_next_component(ctx)
     }
 
-    fn find_next_component_to_update(&self, ctx: &InnerContext<impl PldmSocket>) -> Option<usize> {
+    fn find_next_component_to_update(
+        &self,
+        ctx: &InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Option<usize> {
         let start_idx = if let Some(index) = ctx.current_component_index {
             index + 1
         } else {
@@ -293,7 +334,7 @@ pub trait StateMachineActions {
 
     fn on_send_update_component(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
         if ctx.current_component_index.is_none() {
             error!("No component to update");
@@ -325,12 +366,12 @@ pub trait StateMachineActions {
                 },
             },
         );
-        send_message_helper(&ctx.socket, &request)
+        send_message_helper(ctx, &request)
     }
 
     fn on_update_component_response(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::update_component::UpdateComponentResponse,
     ) -> Result<(), ()> {
         ctx.instance_id += 1; // Response received, increment instance id
@@ -338,7 +379,7 @@ pub trait StateMachineActions {
             && response.comp_compatibility_resp
                 == ComponentCompatibilityResponse::CompCanBeUpdated as u8
         {
-            info!("UpdateComponent response success, start download");
+            debug!("UpdateComponent response success, start download");
             ctx.event_queue
                 .send(PldmEvents::Update(Events::StartDownload))
                 .map_err(|_| ())?;
@@ -356,7 +397,7 @@ pub trait StateMachineActions {
 
     fn on_query_device_identifiers_response(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::query_devid::QueryDeviceIdentifiersResponse,
     ) -> Result<(), ()> {
         for pkg_dev_id in &ctx.pldm_fw_pkg.firmware_device_id_records {
@@ -381,10 +422,10 @@ pub trait StateMachineActions {
 
     fn on_send_get_firmware_parameters(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
         send_message_helper(
-            &ctx.socket,
+            ctx,
             &pldm_packet::get_fw_params::GetFirmwareParametersRequest::new(
                 ctx.instance_id,
                 PldmMsgType::Request,
@@ -394,7 +435,7 @@ pub trait StateMachineActions {
 
     fn on_send_request_update(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
         if let Some(dev_id_record) = ctx.device_id.as_ref() {
             let version_string: PldmFirmwareString =
@@ -415,7 +456,7 @@ pub trait StateMachineActions {
                     },
                 };
             send_message_helper(
-                &ctx.socket,
+                ctx,
                 &pldm_packet::request_update::RequestUpdateRequest::new(
                     ctx.instance_id,
                     PldmMsgType::Request,
@@ -477,12 +518,12 @@ pub trait StateMachineActions {
             let device_comp_timestamp = comp_entry
                 .comp_param_entry_fixed
                 .active_comp_comparison_stamp;
-            info!(
+            debug!(
                 "Component id: {}, Package timestamp : {} , Device timestamp : {}",
                 pkg_component.identifier, comp_timestamp, device_comp_timestamp
             );
             if comp_timestamp <= device_comp_timestamp {
-                info!("Component is already up to date");
+                debug!("Component is already up to date");
                 return false;
             }
         }
@@ -491,7 +532,7 @@ pub trait StateMachineActions {
 
     fn on_get_firmware_parameters_response(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::get_fw_params::GetFirmwareParametersResponse,
     ) -> Result<(), ()> {
         ctx.instance_id += 1; // Response received, increment instance id
@@ -504,12 +545,12 @@ pub trait StateMachineActions {
                     comp_idx,
                     ctx.device_id.as_ref().unwrap(),
                 ) {
-                    info!(
+                    debug!(
                         "Component id: {} is in applicable components",
                         ctx.pldm_fw_pkg.component_image_information[comp_idx].identifier
                     );
                 } else {
-                    info!(
+                    debug!(
                         "Component id: {} is not applicable",
                         ctx.pldm_fw_pkg.component_image_information[comp_idx].identifier
                     );
@@ -520,7 +561,7 @@ pub trait StateMachineActions {
                     component,
                     &response.parms.comp_param_table[i as usize],
                 ) {
-                    info!("Component id: {} will be updated,", component.identifier);
+                    debug!("Component id: {} will be updated,", component.identifier);
                     ctx.components.push(component.clone());
                 }
             }
@@ -531,7 +572,7 @@ pub trait StateMachineActions {
                 .send(PldmEvents::Update(Events::SendRequestUpdate))
                 .map_err(|_| ())
         } else {
-            info!("No component needs update");
+            debug!("No component needs update");
             ctx.event_queue
                 .send(PldmEvents::Update(Events::StopUpdateOnError))
                 .map_err(|_| ())?;
@@ -541,7 +582,7 @@ pub trait StateMachineActions {
 
     fn on_pass_component_response(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::pass_component::PassComponentTableResponse,
     ) -> Result<(), ()> {
         ctx.instance_id += 1; // Response received, increment instance id
@@ -566,14 +607,17 @@ pub trait StateMachineActions {
         Ok(())
     }
 
-    fn on_start_download(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_start_download(
+        &mut self,
+        _ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         // TODO
         Ok(())
     }
 
     fn on_request_firmware(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         request: pldm_packet::request_fw_data::RequestFirmwareDataRequest,
     ) -> Result<(), ()> {
         if request.length > MAX_TRANSFER_SIZE || request.length < BASELINE_TRANSFER_SIZE {
@@ -583,7 +627,7 @@ pub trait StateMachineActions {
                 PldmBaseCompletionCode::InvalidLength as u8,
                 &[],
             );
-            return send_message_helper(&ctx.socket, &response);
+            return send_message_helper(ctx, &response);
         }
 
         let component = &ctx.components[ctx.current_component_index.unwrap()];
@@ -597,7 +641,7 @@ pub trait StateMachineActions {
                     FwUpdateCompletionCode::DataOutOfRange as u8,
                     &[],
                 );
-                return send_message_helper(&ctx.socket, &response);
+                return send_message_helper(ctx, &response);
             }
             let mut buffer = [0u8; MAX_TRANSFER_SIZE as usize];
             let mut to_copy = min(
@@ -625,7 +669,17 @@ pub trait StateMachineActions {
                 PldmBaseCompletionCode::Success as u8,
                 &buffer[..request.length as usize],
             );
-            send_message_helper(&ctx.socket, &response)
+
+            ctx.transferred_bytes += request.length;
+            if ctx.transferred_bytes % 1024 < request.length {
+                info!(
+                    "Transferred {} bytes so far out of {} bytes",
+                    ctx.transferred_bytes,
+                    data.len()
+                );
+            }
+
+            send_message_helper(ctx, &response)
         } else {
             error!("No image data found, make sure the image is decoded correctly");
             Err(())
@@ -634,14 +688,14 @@ pub trait StateMachineActions {
 
     fn on_transfer_complete_request(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         request: pldm_packet::transfer_complete::TransferCompleteRequest,
     ) -> Result<(), ()> {
         let response = pldm_packet::transfer_complete::TransferCompleteResponse::new(
             request.hdr.instance_id(),
             PldmBaseCompletionCode::Success as u8,
         );
-        send_message_helper(&ctx.socket, &response)?;
+        send_message_helper(ctx, &response)?;
 
         if request.tranfer_result == TransferResult::TransferSuccess as u8 {
             info!("Transfer complete success");
@@ -656,30 +710,36 @@ pub trait StateMachineActions {
         }
         Ok(())
     }
-    fn on_transfer_fail(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_transfer_fail(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         let request = pldm_packet::request_cancel::CancelUpdateComponentRequest::new(
             ctx.instance_id,
             PldmMsgType::Request,
         );
-        send_message_helper(&ctx.socket, &request)?;
+        send_message_helper(ctx, &request)?;
         Ok(())
     }
 
-    fn on_transfer_success(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_transfer_success(
+        &mut self,
+        _ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         // No action, wait for VerifyComplete from device
         Ok(())
     }
 
     fn on_verify_complete_request(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         request: pldm_packet::verify_complete::VerifyCompleteRequest,
     ) -> Result<(), ()> {
         let response = pldm_packet::verify_complete::VerifyCompleteResponse::new(
             request.hdr.instance_id(),
             PldmBaseCompletionCode::Success as u8,
         );
-        send_message_helper(&ctx.socket, &response)?;
+        send_message_helper(ctx, &response)?;
 
         if request.verify_result == VerifyResult::VerifySuccess as u8 {
             ctx.event_queue
@@ -693,7 +753,10 @@ pub trait StateMachineActions {
         Ok(())
     }
 
-    fn on_get_status(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_get_status(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         if ctx.activation_time.is_some() && (Instant::now() < ctx.activation_time.unwrap()) {
             // If the activation time is not yet reached, continue scheduling another get status request, this will be automatically cancelled
             // when the expected status is received or a activation timeout occurs
@@ -707,17 +770,17 @@ pub trait StateMachineActions {
         // Send get status request
         let request =
             pldm_packet::get_status::GetStatusRequest::new(ctx.instance_id, PldmMsgType::Request);
-        send_message_helper(&ctx.socket, &request)
+        send_message_helper(ctx, &request)
     }
 
     fn on_get_status_response(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::get_status::GetStatusResponse,
     ) -> Result<(), ()> {
         ctx.instance_id += 1; // Response received, increment instance id
         if response.completion_code == PldmBaseCompletionCode::Success as u8 {
-            info!("GetStatus response success");
+            debug!("GetStatus response success");
 
             if ctx.activation_time.is_some() {
                 // Currently waiting for activation
@@ -758,31 +821,37 @@ pub trait StateMachineActions {
         }
     }
 
-    fn on_verify_success(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_verify_success(
+        &mut self,
+        _ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         info!("Verify success");
         Ok(())
     }
 
-    fn on_verify_fail(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_verify_fail(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         error!("Verify failed");
         let request = pldm_packet::request_cancel::CancelUpdateComponentRequest::new(
             ctx.instance_id,
             PldmMsgType::Request,
         );
-        send_message_helper(&ctx.socket, &request)?;
+        send_message_helper(ctx, &request)?;
         Ok(())
     }
 
     fn on_apply_complete_request(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         request: pldm_packet::apply_complete::ApplyCompleteRequest,
     ) -> Result<(), ()> {
         let response = pldm_packet::apply_complete::ApplyCompleteResponse::new(
             request.hdr.instance_id(),
             PldmBaseCompletionCode::Success as u8,
         );
-        send_message_helper(&ctx.socket, &response)?;
+        send_message_helper(ctx, &response)?;
 
         let apply_result = pldm_packet::apply_complete::ApplyResult::try_from(request.apply_result)
             .map_err(|_| {
@@ -821,20 +890,29 @@ pub trait StateMachineActions {
         Ok(())
     }
 
-    fn on_apply_success(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_apply_success(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         info!("Apply success");
         self.on_next_component(ctx)
     }
 
-    fn on_apply_fail(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_apply_fail(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         error!("Apply failed");
         let request =
             pldm_packet::request_cancel::CancelUpdateComponentRequest::new(0, PldmMsgType::Request);
-        send_message_helper(&ctx.socket, &request)?;
+        send_message_helper(ctx, &request)?;
         Ok(())
     }
 
-    fn on_activate_firmware(&mut self, ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_activate_firmware(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         let mut is_activation_needed = false;
         let mut num_components_downloaded = 0;
         for (i, item) in ctx.component_response_codes.iter().enumerate() {
@@ -859,7 +937,7 @@ pub trait StateMachineActions {
                     PldmMsgType::Request,
                     SelfContainedActivationRequest::ActivateSelfContainedComponents,
                 );
-                send_message_helper(&ctx.socket, &request)?;
+                send_message_helper(ctx, &request)?;
             } else {
                 info!("No activation needed");
                 let request = pldm_packet::activate_fw::ActivateFirmwareRequest::new(
@@ -867,7 +945,7 @@ pub trait StateMachineActions {
                     PldmMsgType::Request,
                     SelfContainedActivationRequest::NotActivateSelfContainedComponents,
                 );
-                send_message_helper(&ctx.socket, &request)?;
+                send_message_helper(ctx, &request)?;
 
                 ctx.event_queue
                     .send(PldmEvents::Update(Events::StopUpdate))
@@ -890,7 +968,7 @@ pub trait StateMachineActions {
 
     fn on_activate_firmware_response(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::activate_fw::ActivateFirmwareResponse,
     ) -> Result<(), ()> {
         ctx.instance_id += 1; // Response received, increment instance id
@@ -925,20 +1003,29 @@ pub trait StateMachineActions {
         }
     }
 
-    fn on_stop_update(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_stop_update(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         info!("Stopping update");
+        ctx.response_timer.cancel();
         Ok(())
     }
-    fn on_stop_update_error(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_stop_update_error(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         error!("Stopping update with error");
+        ctx.response_timer.cancel();
         Ok(())
     }
     fn on_cancel_update_component_response(
         &mut self,
-        ctx: &mut InnerContext<impl PldmSocket>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::request_cancel::CancelUpdateComponentResponse,
     ) -> Result<(), ()> {
         ctx.instance_id += 1; // Response received, increment instance id
+        ctx.response_timer.cancel();
         if response.completion_code == PldmBaseCompletionCode::Success as u8 {
             info!("CancelUpdateComponent response success");
             Ok(())
@@ -1035,7 +1122,10 @@ impl StateMachineActions for DefaultActions {}
 
 pub struct DefaultActionsExitOnError;
 impl StateMachineActions for DefaultActionsExitOnError {
-    fn on_stop_update_error(&mut self, _ctx: &mut InnerContext<impl PldmSocket>) -> Result<(), ()> {
+    fn on_stop_update_error(
+        &mut self,
+        _ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+    ) -> Result<(), ()> {
         error!("Stopping update with error");
         // Exit the application with a non-zero error code
         std::process::exit(1);
@@ -1058,6 +1148,10 @@ pub struct InnerContext<S: PldmSocket> {
     pub current_component_index: Option<usize>,
     timer: Timer,
     activation_time: Option<Instant>,
+
+    transferred_bytes: u32,
+    response_timer: Timer,
+    retry_count: Arc<Mutex<u8>>,
 }
 
 pub struct Context<T: StateMachineActions, S: PldmSocket> {
@@ -1085,6 +1179,9 @@ impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
                 current_component_index: None,
                 timer: Timer::new(),
                 activation_time: None,
+                transferred_bytes: 0,
+                response_timer: Timer::new(),
+                retry_count: Arc::new(Mutex::new(0)),
             },
         }
     }
@@ -1114,7 +1211,7 @@ macro_rules! delegate_to_inner_guard {
     };
 }
 
-impl<T: StateMachineActions, S: PldmSocket> StateMachineContext for Context<T, S> {
+impl<T: StateMachineActions, S: PldmSocket + Send + 'static> StateMachineContext for Context<T, S> {
     // Actions with packet events
     delegate_to_inner_action! {
         on_start_update() -> Result<(),()>,

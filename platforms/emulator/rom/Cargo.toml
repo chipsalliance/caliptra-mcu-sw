@@ -27,6 +27,9 @@ rv32i.workspace = true
 
 [features]
 default = []
+hw-2-1 = ["mcu-rom-common/hw-2-1"]
+test-firmware-update-flash = []
+test-firmware-update-streaming = []
 test-mcu-rom-flash-access = []
-test-flash-based-boot = []
+test-flash-based-boot = ["hw-2-1"]
 test-pldm-streaming-boot = []

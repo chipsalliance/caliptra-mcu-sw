@@ -12,13 +12,16 @@ Abstract:
 
 --*/
 
-use crate::io::{print_to_console, FATAL_ERROR_HANDLER, FPGA_WRITER};
+use crate::io::{print_to_console, EXITER, FATAL_ERROR_HANDLER, FPGA_WRITER};
 use core::fmt::Write;
 
 #[cfg(target_arch = "riscv32")]
 core::arch::global_asm!(include_str!("start.s"));
 
 use mcu_config::{McuMemoryMap, McuStraps};
+use mcu_rom_common::{
+    LifecycleControllerState, LifecycleHashedToken, LifecycleToken, RomParameters,
+};
 
 // re-export these so the common ROM and runtime can use them
 #[no_mangle]
@@ -39,10 +42,76 @@ pub extern "C" fn rom_entry() -> ! {
         #[allow(static_mut_refs)]
         mcu_rom_common::set_fatal_error_handler(&mut FATAL_ERROR_HANDLER);
     }
+    unsafe {
+        #[allow(static_mut_refs)]
+        romtime::set_exiter(&mut EXITER);
+    }
 
     romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
 
-    mcu_rom_common::rom_start(None);
+    // This token is fixed in the FPGA RTL and is specified in LE order.
+    let unlock_token: LifecycleToken = 0xF12A5911421748A2ADFC9693EF1FADEAu128.to_le_bytes().into();
+
+    // This is a random token is created by us.
+    let burn_raw_token: LifecycleToken =
+        0x05edb8c608fcc830de181732cfd65e57u128.to_le_bytes().into();
+
+    // This is cSHAKE128(burn_raw_token, "LC_CTRL", 256) in LE order.
+    // You can generate it with the following Python script if you have PyCryptodome installed:
+    // ```python
+    // from Crypto.Hash import cSHAKE128
+    // value = 0x05edb8c608fcc830de181732cfd65e57
+    // data = value.to_bytes(16, byteorder="little")
+    // custom = "LC_CTRL".encode("UTF-8")
+    // shake = cSHAKE128.new(data=data, custom=custom)
+    // digest = int.from_bytes(shake.read(16), byteorder="little")
+    // print(hex(digest))
+    let burn_hashed_token: LifecycleHashedToken =
+        0x9c5f6f5060437af930d06d56630a536bu128.to_le_bytes().into();
+
+    // Use these to change the ROM flow.
+    // TODO: use generic input wires or other mechanism for host to communicate these.
+    let transition_unlocked = false;
+    let burn_tokens = false;
+    let transition_manufacturing = false;
+    let transition_production = false;
+    let program_field_entropy = false;
+
+    // For now, we use the same tokens for all lifecycle transitions.
+    let burn_lifecycle_tokens = if burn_tokens {
+        Some(mcu_rom_common::LifecycleHashedTokens {
+            test_unlock: [burn_hashed_token; 7],
+            manuf: burn_hashed_token,
+            manuf_to_prod: burn_hashed_token,
+            prod_to_prod_end: burn_hashed_token,
+            rma: burn_hashed_token,
+        })
+    } else {
+        None
+    };
+
+    let lifecycle_transition = if transition_manufacturing {
+        Some((
+            LifecycleControllerState::Dev, // alias for manufacturing
+            burn_raw_token,
+        ))
+    } else if transition_production {
+        Some((
+            LifecycleControllerState::Prod, // alias for manufacturing
+            burn_raw_token,
+        ))
+    } else if transition_unlocked {
+        Some((LifecycleControllerState::TestUnlocked0, unlock_token))
+    } else {
+        None
+    };
+
+    mcu_rom_common::rom_start(RomParameters {
+        lifecycle_transition,
+        burn_lifecycle_tokens,
+        program_field_entropy: [program_field_entropy; 4],
+        ..Default::default()
+    });
 
     let addr = MCU_MEMORY_MAP.sram_offset;
     romtime::println!("[mcu-rom] Jumping to firmware at {:08x}", addr);

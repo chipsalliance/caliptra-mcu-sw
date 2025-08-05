@@ -13,23 +13,18 @@ Abstract:
 --*/
 
 use super::gdb_target::GdbTarget;
-use caliptra_emu_bus::Bus;
-use gdbstub::common::Signal;
 use gdbstub::conn::{Connection, ConnectionExt};
 use gdbstub::stub::SingleThreadStopReason;
 use gdbstub::stub::{run_blocking, DisconnectReason, GdbStub, GdbStubError};
 use gdbstub::target::Target;
-use std::marker::PhantomData;
 use std::net::TcpListener;
 
-struct GdbEventLoop<T: Bus> {
-    _phantom: PhantomData<T>,
-}
+struct GdbEventLoop {}
 
 // The `run_blocking::BlockingEventLoop` groups together various callbacks
 // the `GdbStub::run_blocking` event loop requires you to implement.
-impl<T: Bus> run_blocking::BlockingEventLoop for GdbEventLoop<T> {
-    type Target = GdbTarget<T>;
+impl run_blocking::BlockingEventLoop for GdbEventLoop {
+    type Target = GdbTarget;
     type Connection = Box<dyn ConnectionExt<Error = std::io::Error>>;
 
     // or MultiThreadStopReason on multi threaded targets
@@ -39,7 +34,7 @@ impl<T: Bus> run_blocking::BlockingEventLoop for GdbEventLoop<T> {
     // called. The implementation should block until either the target
     // reports a stop reason, or if new data was sent over the connection.
     fn wait_for_stop_reason(
-        target: &mut GdbTarget<T>,
+        target: &mut GdbTarget,
         _conn: &mut Self::Connection,
     ) -> Result<
         run_blocking::Event<SingleThreadStopReason<u32>>,
@@ -48,8 +43,8 @@ impl<T: Bus> run_blocking::BlockingEventLoop for GdbEventLoop<T> {
             <Self::Connection as Connection>::Error,
         >,
     > {
-        // Execute Target until a stop reason (e.g. SW Breakpoint)
-        let stop_reason = target.run();
+        // Execute Target with responsive interrupt checking
+        let stop_reason = target.run_responsive();
 
         // Report Stop Reason
         Ok(run_blocking::Event::TargetStopped(stop_reason))
@@ -57,16 +52,21 @@ impl<T: Bus> run_blocking::BlockingEventLoop for GdbEventLoop<T> {
 
     // Invoked when the GDB client sends a Ctrl-C interrupt.
     fn on_interrupt(
-        _target: &mut GdbTarget<T>,
-    ) -> Result<Option<SingleThreadStopReason<u32>>, <GdbTarget<T> as Target>::Error> {
-        // a pretty typical stop reason in response to a Ctrl-C interrupt is to
-        // report a "Signal::SIGINT".
-        Ok(Some(SingleThreadStopReason::Signal(Signal::SIGINT)))
+        target: &mut GdbTarget,
+    ) -> Result<Option<SingleThreadStopReason<u32>>, <GdbTarget as Target>::Error> {
+        // Signal the target to interrupt its execution
+        println!("GDB requested an interrupt (Ctrl+C)");
+        target.request_interrupt();
+
+        // Immediately return a SIGINT to stop execution
+        Ok(Some(SingleThreadStopReason::Signal(
+            gdbstub::common::Signal::SIGINT,
+        )))
     }
 }
 
 // Routine which creates TCP Socket for GDB and execute State Machine
-pub fn wait_for_gdb_run<T: Bus>(cpu: &mut GdbTarget<T>, port: u16) {
+pub fn wait_for_gdb_run(cpu: &mut GdbTarget, port: u16) {
     // Create Socket
     let sockaddr = format!("localhost:{}", port);
     eprintln!("Waiting for a GDB connection on {:?}...", sockaddr);
@@ -81,7 +81,7 @@ pub fn wait_for_gdb_run<T: Bus>(cpu: &mut GdbTarget<T>, port: u16) {
     let gdb = GdbStub::new(connection);
 
     // Execute GDB until a disconnect event
-    match gdb.run_blocking::<GdbEventLoop<T>>(cpu) {
+    match gdb.run_blocking::<GdbEventLoop>(cpu) {
         Ok(disconnect_reason) => match disconnect_reason {
             DisconnectReason::Disconnect => {
                 println!("Client disconnected")

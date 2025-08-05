@@ -94,12 +94,56 @@ jobs:
           popd
           popd
 
-      - name: Run SPDM validator test tests
+      - name: Run SPDM validator tests on MCTP transport
         run: |
           export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
-          cargo t -p tests-integration -- --test test_spdm_validator --nocapture  --include-ignored
+          cargo t -p tests-integration -- --test test_mctp_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
 
-      - name: Display SPDM Validator test results
+      - name: Upload logs and traces for MCTP transport
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spdm-mctp-validator-test-results
+          path: |
+            test.log
+            caliptra_spdm_validator.pcap
+            spdm_device_validator_output.txt
+    
+      - name: Display SPDM Validator test results on MCTP transport
         run: |
           cat $GITHUB_WORKSPACE/test.log
+
+      - name: Check for test failures on MCTP transport
+        run: |
+          if grep -E 'test suite \(.*\) - pass: [0-9]+, fail: [1-9][0-9]*' $GITHUB_WORKSPACE/test.log; then
+            echo "Test suite had failures."
+            exit 1
+          fi
+
+      - name: Run SPDM validator tests on DOE transport
+        run: |
+          export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
+          cargo t -p tests-integration -- --test test_doe_spdm_responder_conformance --nocapture  --include-ignored
+          sccache --show-stats
+
+      - name: Upload logs and traces for DOE transport
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spdm-doe-validator-test-results
+          path: |
+            test.log
+            caliptra_spdm_validator.pcap
+            spdm_device_validator_output.txt
+
+      - name: Display SPDM Validator test results for DOE transport
+        run: |
+          cat $GITHUB_WORKSPACE/test.log
+
+      - name: Check for test failures on DOE transport
+        run: |
+          if grep -E 'test suite \(.*\) - pass: [0-9]+, fail: [1-9][0-9]*' $GITHUB_WORKSPACE/test.log; then
+            echo "Test suite had failures."
+            exit 1
+          fi

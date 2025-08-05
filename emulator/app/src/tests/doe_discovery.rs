@@ -3,9 +3,9 @@
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
 use crate::tests::doe_util::common::DoeUtil;
 use crate::tests::doe_util::protocol::*;
-use std::sync::atomic::{AtomicBool, Ordering};
+use crate::{sleep_emulator_ticks, EMULATOR_RUNNING};
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use zerocopy::IntoBytes;
@@ -91,7 +91,6 @@ impl Test {
 impl DoeTransportTest for Test {
     fn run_test(
         &mut self,
-        running: Arc<AtomicBool>,
         tx: &mut Sender<Vec<u8>>,
         rx: &mut Receiver<Vec<u8>>,
         wait_for_responder: bool,
@@ -100,11 +99,11 @@ impl DoeTransportTest for Test {
 
         self.test_state = DoeTestState::Start;
 
-        while running.load(Ordering::Relaxed) {
+        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match self.test_state {
                 DoeTestState::Start => {
                     if wait_for_responder {
-                        std::thread::sleep(std::time::Duration::from_secs(5));
+                        sleep_emulator_ticks(10_000_000);
                     }
                     self.test_state = DoeTestState::SendData;
                 }
@@ -113,7 +112,7 @@ impl DoeTransportTest for Test {
                         .is_ok()
                     {
                         self.test_state = DoeTestState::ReceiveData;
-                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        sleep_emulator_ticks(100_000);
                     } else {
                         println!("DOE_DISCOVERY_TEST: Failed to send request");
                         self.passed = false;
@@ -139,7 +138,7 @@ impl DoeTransportTest for Test {
                     }
                     Ok(_) => {
                         // Stay in ReceiveData state and yield for a bit
-                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        sleep_emulator_ticks(100_000);
                     }
                     Err(e) => {
                         println!("DOE_DISCOVERY_TEST: Failed to receive response: {:?}", e);

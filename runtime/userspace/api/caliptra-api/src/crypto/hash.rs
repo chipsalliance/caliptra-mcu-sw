@@ -12,6 +12,8 @@ use core::mem::size_of;
 use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
 
+pub const SHA384_HASH_SIZE: usize = 48;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HashAlgoType {
     SHA384,

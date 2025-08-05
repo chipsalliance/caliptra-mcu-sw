@@ -4,7 +4,7 @@
 mod test {
     use crate::test::{compile_runtime, get_rom_with_feature, run_runtime, TEST_LOCK};
     use chrono::{TimeZone, Utc};
-    use mcu_builder::{CaliptraBuilder, SocImage};
+    use mcu_builder::{CaliptraBuilder, ImageCfg};
     use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
@@ -25,7 +25,7 @@ mod test {
         rom: PathBuf,
         runtime: PathBuf,
         i3c_port: u32,
-        soc_images: Vec<SocImage>,
+        soc_images: Vec<ImageCfg>,
         soc_images_paths: Vec<PathBuf>,
         primary_flash_image_path: Option<PathBuf>,
         secondary_flash_image_path: Option<PathBuf>,
@@ -556,15 +556,17 @@ mod test {
 
         // Create SOC image metadata that will be written to the SoC manifest
         let soc_images = vec![
-            SocImage {
+            ImageCfg {
                 path: soc_images_paths[0].clone(),
                 load_addr: CALIPTRA_EXTERNAL_RAM_BASE,
                 image_id: 4096,
+                ..Default::default()
             },
-            SocImage {
+            ImageCfg {
                 path: soc_images_paths[1].clone(),
                 load_addr: CALIPTRA_EXTERNAL_RAM_BASE + soc_image_fw_1.len() as u64,
                 image_id: 4097,
+                ..Default::default()
             },
         ];
 
@@ -577,6 +579,7 @@ mod test {
             None,
             Some(test_runtime.clone()),
             Some(soc_images.clone()),
+            None,
         );
 
         // Build Caliptra firmware

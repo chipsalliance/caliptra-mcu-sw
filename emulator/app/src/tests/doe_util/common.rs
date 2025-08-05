@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::tests::doe_util::protocol::*;
+use crate::{sleep_emulator_ticks, tests::doe_util::protocol::*};
 use std::sync::mpsc::{Receiver, RecvError, SendError, Sender};
 use zerocopy::IntoBytes;
 
@@ -44,6 +44,21 @@ impl DoeUtil {
         }
     }
 
+    pub fn send_raw_data_object(data: &[u8], tx: &mut Sender<Vec<u8>>) -> Result<(), DoeUtilError> {
+        if data.is_empty() || data.len() % 4 != 0 {
+            println!("DOE_UTIL: Data length must be non-zero and a multiple of 4 bytes.");
+            return Err(DoeUtilError::InvalidDataLength);
+        }
+
+        if let Err(e) = tx.send(data.to_vec()) {
+            println!("DOE_UTIL: Failed to send raw data: {:?}", e);
+            Err(DoeUtilError::SendError(e))
+        } else {
+            println!("DOE_UTIL: Raw data sent successfully.");
+            Ok(())
+        }
+    }
+
     pub fn receive_data_object(rx: &Receiver<Vec<u8>>) -> Result<Vec<u8>, DoeUtilError> {
         match rx.try_recv() {
             Ok(message) => {
@@ -62,5 +77,30 @@ impl DoeUtil {
                 Err(DoeUtilError::ReceiveError(RecvError))
             }
         }
+    }
+
+    pub fn receive_raw_data_object(rx: &Receiver<Vec<u8>>) -> Result<Vec<u8>, DoeUtilError> {
+        // TODO: this should not need to be so high.
+        // Nothing should take >3,500,000 ticks to respond,
+        // but setting it to 35 will fail tests.
+        for _ in 0..50 {
+            match rx.try_recv() {
+                Ok(message) => {
+                    println!(
+                        "DOE_UTIL: Received raw data object with length: {}",
+                        message.len()
+                    );
+                    return Ok(message);
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    sleep_emulator_ticks(100_000);
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    println!("DOE_UTIL: Receiver has disconnected.");
+                    return Err(DoeUtilError::ReceiveError(RecvError));
+                }
+            }
+        }
+        Ok(Vec::new())
     }
 }

@@ -9,6 +9,7 @@ rustflags = [
     "panic=abort",
     "-C",
     "target-feature=+relax,+unaligned-scalar-mem,+zba,+zbb,+zbc,+zbs",
+    #"target-feature=+relax,+zba,+zbb,+zbc,+zbs",
     "-C",
     "force-frame-pointers=no",
     # See https://github.com/tock/tock/pull/2853

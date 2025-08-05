@@ -9,6 +9,8 @@ use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
+use libapi_caliptra::crypto::asym::AsymAlgo;
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[derive(FromBytes, IntoBytes, Immutable)]
@@ -80,7 +82,7 @@ bitfield! {
 }
 
 async fn encode_certchain_metadata(
-    cert_store: &mut dyn SpdmCertStore,
+    cert_store: &dyn SpdmCertStore,
     total_certchain_len: u16,
     slot_id: u8,
     asym_algo: AsymAlgo,
@@ -130,10 +132,10 @@ async fn generate_certificate_response<'a>(
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Ensure the selected hash algorithm is SHA384 and retrieve the asymmetric algorithm (currently only ECC-P384 is supported)
-    ctx.verify_selected_hash_algo()
+    ctx.verify_negotiated_hash_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
     let asym_algo = ctx
-        .selected_base_asym_algo()
+        .negotiated_base_asym_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
 
     let connection_version = ctx.state.connection_info.version_number();
@@ -149,6 +151,7 @@ async fn generate_certificate_response<'a>(
         let cert_info = ctx
             .device_certs_store
             .cert_info(slot_id)
+            .await
             .unwrap_or_default();
         resp_attr.set_certificate_info(cert_info.cert_model());
     }
@@ -224,12 +227,13 @@ async fn generate_certificate_response<'a>(
         }
     }
 
+    // Append the response message to the M1 transcript
+    ctx.append_message_to_transcript(rsp, TranscriptContext::M1, None)
+        .await?;
+
     rsp.push_data(payload_len)
         .map_err(|e| (false, CommandError::Codec(e)))?;
-
-    // Append the response message to the M1 transcript
-    ctx.append_message_to_transcript(rsp, TranscriptContext::M1)
-        .await
+    Ok(())
 }
 
 async fn process_get_certificate<'a>(
@@ -255,7 +259,7 @@ async fn process_get_certificate<'a>(
 
     // Check if the slot is provisioned. Otherwise, return an InvalidRequest error.
     let slot_mask = 1 << slot_id;
-    let (_, provisioned_slot_mask) = cert_slot_mask(ctx.device_certs_store);
+    let (_, provisioned_slot_mask) = cert_slot_mask(ctx.device_certs_store).await;
 
     if provisioned_slot_mask & slot_mask == 0 {
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
@@ -275,7 +279,7 @@ async fn process_get_certificate<'a>(
     ctx.reset_transcript_via_req_code(ReqRespCode::GetCertificate);
 
     // Append the request to the M1 transcript
-    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1)
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1, None)
         .await?;
 
     Ok((slot_id, offset, length))

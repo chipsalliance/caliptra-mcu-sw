@@ -1,14 +1,25 @@
 // Licensed under the Apache-2.0 license
 
+#![allow(clippy::mut_from_ref)]
+
 use crate::fpga_regs::{Control, FifoData, FifoRegs, FifoStatus, ItrngFifoStatus, WrapperRegs};
-use crate::{xi3c, InitParams, McuHwModel, Output, SecurityState};
-use anyhow::{anyhow, Error, Result};
-use caliptra_emu_bus::{Device, Event, EventData, RecoveryCommandCode};
-use caliptra_hw_model_types::{DEFAULT_FIELD_ENTROPY, DEFAULT_UDS_SEED};
+use crate::otp_provision::{lc_generate_memory, otp_generate_lifecycle_tokens_mem};
+use crate::output::ExitStatus;
+use crate::{xi3c, InitParams, McuHwModel, Output, DEFAULT_LIFECYCLE_RAW_TOKENS};
+use anyhow::{anyhow, bail, Error, Result};
+use caliptra_api::SocManager;
+use caliptra_emu_bus::{Bus, BusError, BusMmio, Device, Event, EventData, RecoveryCommandCode};
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
+use caliptra_hw_model_types::{HexSlice, DEFAULT_FIELD_ENTROPY, DEFAULT_UDS_SEED};
 use emulator_bmc::Bmc;
-use registers_generated::i3c;
-use registers_generated::i3c::bits::DeviceStatus0;
+use registers_generated::i3c::bits::{DeviceStatus0, StbyCrDeviceAddr, StbyCrVirtDeviceAddr};
 use registers_generated::mci::bits::Go::Go;
+use registers_generated::{fuses, i3c};
+use std::io::Write;
+use std::marker::PhantomData;
+use std::net::{SocketAddr, TcpStream};
+use std::path::Path;
+use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
@@ -21,7 +32,7 @@ const FPGA_WRAPPER_MAPPING: (usize, usize) = (0, 0);
 const CALIPTRA_MAPPING: (usize, usize) = (0, 1);
 const CALIPTRA_ROM_MAPPING: (usize, usize) = (0, 2);
 const I3C_CONTROLLER_MAPPING: (usize, usize) = (0, 3);
-const MCU_SRAM_MAPPING: (usize, usize) = (0, 4);
+const OTP_RAM_MAPPING: (usize, usize) = (0, 4);
 const LC_MAPPING: (usize, usize) = (1, 0);
 const MCU_ROM_MAPPING: (usize, usize) = (1, 1);
 const I3C_TARGET_MAPPING: (usize, usize) = (1, 2);
@@ -31,9 +42,8 @@ const OTP_MAPPING: (usize, usize) = (1, 4);
 // Set to core_clk cycles per ITRNG sample.
 const ITRNG_DIVISOR: u32 = 400;
 const DEFAULT_AXI_PAUSER: u32 = 0xcccc_cccc;
-
-// use the virtual target dynamic address for the recovery target
-const RECOVERY_TARGET_ADDR: u8 = 0x3b;
+const OTP_SIZE: usize = 16384;
+const MCU_ROM_BACKDOOR_SIZE: usize = 0x00020000;
 
 // ITRNG FIFO stores 1024 DW and outputs 4 bits at a time to Caliptra.
 const FPGA_ITRNG_FIFO_SIZE: usize = 1024;
@@ -91,7 +101,8 @@ pub struct ModelFpgaRealtime {
     caliptra_mmio: CaliptraMmio,
     caliptra_rom_backdoor: *mut u8,
     mcu_rom_backdoor: *mut u8,
-    mcu_sram_backdoor: *mut u8,
+    otp_mem_backdoor: *mut u8,
+    otp_init: Vec<u8>,
     mci: Mci,
     i3c_mmio: *mut u32,
     i3c_controller_mmio: *mut u32,
@@ -111,9 +122,23 @@ pub struct ModelFpgaRealtime {
     bmc_step_counter: usize,
     i3c_target: &'static i3c::regs::I3c,
     blocks_sent: usize,
+    openocd: Option<TcpStream>,
 }
 
 impl ModelFpgaRealtime {
+    fn set_bootfsm_break(&mut self, val: bool) {
+        if val {
+            self.wrapper
+                .regs()
+                .control
+                .modify(Control::BootfsmBrkpoint::SET);
+        } else {
+            self.wrapper
+                .regs()
+                .control
+                .modify(Control::BootfsmBrkpoint::CLEAR);
+        }
+    }
     fn set_subsystem_reset(&mut self, reset: bool) {
         self.wrapper.regs().control.modify(
             Control::CptraSsRstB.val((!reset) as u32) + Control::CptraPwrgood.val((!reset) as u32),
@@ -223,6 +248,15 @@ impl ModelFpgaRealtime {
                     .push_uart_char(data.read(FifoData::NextChar) as u8);
             }
         }
+        if self.output().exit_requested() {
+            println!("Exiting firmware request");
+            let code = match self.output().exit_status() {
+                Some(ExitStatus::Passed) => 0,
+                Some(ExitStatus::Failed) => 1,
+                None => 0,
+            };
+            exit(code);
+        }
     }
 
     // UIO crate doesn't provide a way to unmap memory.
@@ -329,78 +363,56 @@ impl ModelFpgaRealtime {
         self.bmc_step_counter += 1;
 
         // check if we need to fill the recovey FIFO
-        if self.bmc_step_counter % 128 == 0 {
-            if !self.recovery_fifo_blocks.is_empty() {
-                if !self.recovery_ctrl_written {
-                    let status = self
-                        .i3c_core()
-                        .sec_fw_recovery_if_device_status_0
-                        .read(DeviceStatus0::DevStatus);
+        if self.bmc_step_counter % 128 == 0 && !self.recovery_fifo_blocks.is_empty() {
+            if !self.recovery_ctrl_written {
+                let status = self
+                    .i3c_core()
+                    .sec_fw_recovery_if_device_status_0
+                    .read(DeviceStatus0::DevStatus);
 
-                    if status != 3 && self.bmc_step_counter % 65536 == 0 {
-                        println!("Waiting for device status to be 3, currently: {}", status);
-                        return;
-                    }
-
-                    let len = ((self.recovery_ctrl_len / 4) as u32).to_le_bytes();
-                    let mut ctrl = vec![0, 1];
-                    ctrl.extend_from_slice(&len);
-
-                    println!("Writing Indirect fifo ctrl: {:x?}", ctrl);
-                    self.recovery_block_write_request(RecoveryCommandCode::IndirectFifoCtrl, &ctrl);
-
-                    let reported_len = self
-                        .i3c_core()
-                        .sec_fw_recovery_if_indirect_fifo_ctrl_1
-                        .get();
-
-                    println!("I3C core reported length: {}", reported_len);
-                    if reported_len as usize != self.recovery_ctrl_len / 4 {
-                        println!(
-                            "I3C core reported length should have been {}",
-                            self.recovery_ctrl_len / 4
-                        );
-
-                        self.print_i3c_registers();
-
-                        panic!(
-                            "I3C core reported length should have been {}",
-                            self.recovery_ctrl_len / 4
-                        );
-                        //  self
-                        //     .i3c_core()
-                        //     .sec_fw_recovery_if_indirect_fifo_ctrl_1
-                        //     .set(image.len() as u32 / 4);
-                        // }
-                        // let reported_len = self
-                        //     .i3c_core()
-                        //     .sec_fw_recovery_if_indirect_fifo_ctrl_1
-                        //     .get();
-                        // println!("I3C core reported length: {}", reported_len);
-                        // if reported_len as usize != image.len() / 4 {
-                        //     panic!(
-                        //         "I3C core reported length should have been {}",
-                        //         image.len() / 4
-                        //     );
-                    }
-                    self.recovery_ctrl_written = true;
+                if status != 3 && self.bmc_step_counter % 65536 == 0 {
+                    println!("Waiting for device status to be 3, currently: {}", status);
+                    return;
                 }
-                let fifo_status = self
-                    .recovery_block_read_request(RecoveryCommandCode::IndirectFifoStatus)
-                    .expect("Device should response to indirect fifo status read request");
-                let empty = fifo_status[0] & 1 == 1;
-                // while empty send
-                if empty {
-                    // fifo is empty, send a block
-                    let chunk = self.recovery_fifo_blocks.pop().unwrap();
-                    //println!("     BMC blocks {} checksum {:08x}", self.blocks_sent, self.chk);
-                    self.blocks_sent += 1;
-                    println!("Sending block ({} left)", self.recovery_fifo_blocks.len());
-                    self.recovery_block_write_request(
-                        RecoveryCommandCode::IndirectFifoData,
-                        &chunk,
+
+                let len = ((self.recovery_ctrl_len / 4) as u32).to_le_bytes();
+                let mut ctrl = vec![0, 1];
+                ctrl.extend_from_slice(&len);
+
+                println!("Writing Indirect fifo ctrl: {:x?}", ctrl);
+                self.recovery_block_write_request(RecoveryCommandCode::IndirectFifoCtrl, &ctrl);
+
+                let reported_len = self
+                    .i3c_core()
+                    .sec_fw_recovery_if_indirect_fifo_ctrl_1
+                    .get();
+
+                println!("I3C core reported length: {}", reported_len);
+                if reported_len as usize != self.recovery_ctrl_len / 4 {
+                    println!(
+                        "I3C core reported length should have been {}",
+                        self.recovery_ctrl_len / 4
+                    );
+
+                    self.print_i3c_registers();
+
+                    panic!(
+                        "I3C core reported length should have been {}",
+                        self.recovery_ctrl_len / 4
                     );
                 }
+                self.recovery_ctrl_written = true;
+            }
+            let fifo_status = self
+                .recovery_block_read_request(RecoveryCommandCode::IndirectFifoStatus)
+                .expect("Device should response to indirect fifo status read request");
+            let empty = fifo_status[0] & 1 == 1;
+            // while empty send
+            if empty {
+                // fifo is empty, send a block
+                let chunk = self.recovery_fifo_blocks.pop().unwrap();
+                self.blocks_sent += 1;
+                self.recovery_block_write_request(RecoveryCommandCode::IndirectFifoData, &chunk);
             }
         }
 
@@ -694,25 +706,94 @@ impl ModelFpgaRealtime {
         );
     }
 
+    fn get_i3c_primary_addr(&mut self) -> u8 {
+        let reg = self
+            .i3c_core()
+            .stdby_ctrl_mode_stby_cr_device_addr
+            .extract();
+        if reg.is_set(StbyCrDeviceAddr::DynamicAddrValid) {
+            reg.read(StbyCrDeviceAddr::DynamicAddr) as u8
+        } else if reg.is_set(StbyCrDeviceAddr::StaticAddrValid) {
+            reg.read(StbyCrDeviceAddr::StaticAddr) as u8
+        } else {
+            panic!("I3C target does not have a valid address set");
+        }
+    }
+
+    fn get_i3c_recovery_addr(&mut self) -> u8 {
+        let reg = self
+            .i3c_core()
+            .stdby_ctrl_mode_stby_cr_virt_device_addr
+            .extract();
+        if reg.is_set(StbyCrVirtDeviceAddr::VirtDynamicAddrValid) {
+            reg.read(StbyCrVirtDeviceAddr::VirtDynamicAddr) as u8
+        } else if reg.is_set(StbyCrVirtDeviceAddr::VirtStaticAddrValid) {
+            reg.read(StbyCrVirtDeviceAddr::VirtStaticAddr) as u8
+        } else {
+            panic!("I3C target does not have a valid address set");
+        }
+    }
+
+    // send a recovery block write request to the I3C target
+    pub fn send_i3c_write(&mut self, payload: &[u8]) {
+        let target_addr = self.get_i3c_primary_addr();
+        println!("I3C addr = {:x}", target_addr);
+        let mut cmd = xi3c::Command {
+            cmd_type: 1,
+            no_repeated_start: 1,
+            pec: 1,
+            target_addr,
+            ..Default::default()
+        };
+        println!("TTI status: {:x}", self.i3c_core().tti_status.get());
+        println!(
+            "TTI interrupt enable: {:x}",
+            self.i3c_core().tti_interrupt_enable.get()
+        );
+        println!(
+            "TTI interrupt status: {:x}",
+            self.i3c_core().tti_interrupt_status.get()
+        );
+        match self
+            .i3c_controller
+            .master_send_polled(&mut cmd, payload, payload.len() as u16)
+        {
+            Ok(_) => {
+                println!("Acknowledge received");
+            }
+            Err(e) => {
+                println!("Failed to ack write message sent to target: {:x}", e);
+            }
+        }
+
+        println!("TTI status: {:x}", self.i3c_core().tti_status.get());
+        println!(
+            "TTI interrupt enable: {:x}",
+            self.i3c_core().tti_interrupt_enable.get()
+        );
+        println!(
+            "TTI interrupt status: {:x}",
+            self.i3c_core().tti_interrupt_status.get()
+        );
+    }
+
     // send a recovery block read request to the I3C target
     fn recovery_block_read_request(&mut self, command: RecoveryCommandCode) -> Option<Vec<u8>> {
         // per the recovery spec, this maps to a private write and private read
+
+        let target_addr = self.get_i3c_recovery_addr();
 
         // First we write the recovery command code for the block we want
         let mut cmd = xi3c::Command {
             cmd_type: 1,
             no_repeated_start: 0, // we want the next command (read) to be Sr
             pec: 1,
-            target_addr: RECOVERY_TARGET_ADDR,
+            target_addr,
             ..Default::default()
         };
 
         let recovery_command_code = Self::command_code_to_u8(command);
 
-        // println!(
-        //     "Sending write to target: 0x{:x} to start recovery block read (with no termination)",
-        //     recovery_command_code
-        // );
         if self
             .i3c_controller
             .master_send_polled(&mut cmd, &[recovery_command_code], 1)
@@ -721,34 +802,19 @@ impl ModelFpgaRealtime {
             return None;
         }
 
-        // assert!(
-        //         .is_ok(),
-        //     "Failed to ack write message sent to target for command code {}",
-        //     recovery_command_code
-        // );
-        // println!("Acknowledge received");
-
         // then we send a private read for the minimum length
         let len_range = Self::command_code_to_len(command);
-        cmd.target_addr = RECOVERY_TARGET_ADDR;
+        cmd.target_addr = target_addr;
         cmd.no_repeated_start = 0;
         cmd.tid = 0;
         cmd.pec = 0;
         cmd.cmd_type = 1;
-        // println!(
-        //     "Starting private read from target for {} bytes with repeated start",
-        //     len_range.0
-        // );
+
         self.i3c_controller
             .master_recv(&mut cmd, len_range.0 + 2)
             .expect("Failed to receive ack from target");
-        // println!("Acknowledge received");
 
         // read in the length, lsb then msb
-        // println!(
-        //     "Reading the minimum block length ({}+ bytes expected)",
-        //     len_range.0
-        // );
         let resp = self
             .i3c_controller
             .master_recv_finish(
@@ -756,12 +822,11 @@ impl ModelFpgaRealtime {
                 &cmd,
                 len_range.0 + 2,
             )
-            .expect(&format!("Expected to read {}+ bytes", len_range.0 + 2));
+            .unwrap_or_else(|_| panic!("Expected to read {}+ bytes", len_range.0 + 2));
 
         if resp.len() < 2 {
             panic!("Expected to read at least 2 bytes from target for recovery block length");
         }
-        // println!("Read from target {:02x?}", resp);
         let len = u16::from_le_bytes([resp[0], resp[1]]);
         if len < len_range.0 || len > len_range.1 {
             self.print_i3c_registers();
@@ -772,14 +837,12 @@ impl ModelFpgaRealtime {
         }
         let len = len as usize;
         let left = len - (resp.len() - 2);
-        // println!("Expect to read {} bytes from target ({} more)", len, left);
         // read the rest of the bytes
         if left > 0 {
             // TODO: if the length is more than the minimum we need to abort and restart with the correct value
             // because the xi3c controller does not support variable reads.
             todo!()
         }
-        // println!("Got block read back from target: {:x?}", &resp[2..]);
         Some(resp[2..].to_vec())
     }
 
@@ -787,25 +850,20 @@ impl ModelFpgaRealtime {
     fn recovery_block_write_request(&mut self, command: RecoveryCommandCode, payload: &[u8]) {
         // per the recovery spec, this maps to a private write
 
+        let target_addr = self.get_i3c_recovery_addr();
         let mut cmd = xi3c::Command {
             cmd_type: 1,
             no_repeated_start: 1,
             pec: 1,
-            target_addr: RECOVERY_TARGET_ADDR,
+            target_addr,
             ..Default::default()
         };
 
         let recovery_command_code = Self::command_code_to_u8(command);
 
-        // println!(
-        //     "Sending write to target: 0x{:x} + 2 bytes length + {} bytes payload",
-        //     recovery_command_code,
-        //     payload.len(),
-        // );
-
         let mut data = vec![recovery_command_code];
         data.extend_from_slice(&(payload.len() as u16).to_le_bytes());
-        data.extend_from_slice(&payload);
+        data.extend_from_slice(payload);
 
         assert!(
             self.i3c_controller
@@ -814,6 +872,63 @@ impl ModelFpgaRealtime {
             "Failed to ack write message sent to target"
         );
         // println!("Acknowledge received");
+    }
+
+    fn otp_slice(&self) -> &mut [u8] {
+        unsafe { core::slice::from_raw_parts_mut(self.otp_mem_backdoor, OTP_SIZE) }
+    }
+
+    pub fn print_otp_memory(&self) {
+        let otp = self.otp_slice();
+        for (i, oi) in otp.iter().copied().enumerate() {
+            if oi != 0 {
+                println!("OTP mem: {:03x}: {:02x}", i, oi);
+            }
+        }
+    }
+
+    pub fn open_openocd(&mut self, port: u16) -> Result<()> {
+        let addr = SocketAddr::from(([127, 0, 0, 1], port));
+        let stream = TcpStream::connect(addr)?;
+        self.openocd = Some(stream);
+        Ok(())
+    }
+
+    pub fn close_openocd(&mut self) {
+        self.openocd.take();
+    }
+
+    pub fn set_uds_req(&mut self) -> Result<()> {
+        let Some(mut socket) = self.openocd.take() else {
+            bail!("openocd socket is not open");
+        };
+
+        socket.write_all("riscv.cpu riscv dmi_write 0x70 4\n".as_bytes())?;
+
+        self.openocd = Some(socket);
+        Ok(())
+    }
+
+    pub fn set_bootfsm_go(&mut self) -> Result<()> {
+        let Some(mut socket) = self.openocd.take() else {
+            bail!("openocd socket is not open");
+        };
+
+        socket.write_all("riscv.cpu riscv dmi_write 0x61 1\n".as_bytes())?;
+
+        self.openocd = Some(socket);
+        Ok(())
+    }
+
+    pub fn mci_flow_status(&mut self) -> u32 {
+        self.mci.regs().mci_reg_fw_flow_status.get()
+    }
+
+    fn caliptra_axi_bus(&mut self) -> FpgaRealtimeBus<'_> {
+        FpgaRealtimeBus {
+            mmio: self.caliptra_mmio.ptr,
+            phantom: Default::default(),
+        }
     }
 }
 
@@ -840,8 +955,8 @@ impl McuHwModel for ModelFpgaRealtime {
         let caliptra_rom_backdoor = devs[CALIPTRA_ROM_MAPPING.0]
             .map_mapping(CALIPTRA_ROM_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u8;
-        let mcu_sram_backdoor = devs[MCU_SRAM_MAPPING.0]
-            .map_mapping(MCU_SRAM_MAPPING.1)
+        let otp_mem_backdoor = devs[OTP_RAM_MAPPING.0]
+            .map_mapping(OTP_RAM_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u8;
         let mcu_rom_backdoor = devs[MCU_ROM_MAPPING.0]
             .map_mapping(MCU_ROM_MAPPING.1)
@@ -909,12 +1024,12 @@ impl McuHwModel for ModelFpgaRealtime {
             caliptra_mmio: CaliptraMmio { ptr: caliptra_mmio },
             caliptra_rom_backdoor,
             mcu_rom_backdoor,
-            mcu_sram_backdoor,
+            otp_mem_backdoor,
             mci: Mci { ptr: mci_ptr },
             i3c_mmio,
             i3c_controller_mmio,
             i3c_controller,
-
+            otp_init: params.otp_memory.map(|m| m.to_vec()).unwrap_or_default(),
             realtime_thread,
             realtime_thread_exit_flag,
 
@@ -929,15 +1044,12 @@ impl McuHwModel for ModelFpgaRealtime {
             blocks_sent: 0,
             recovery_ctrl_written: false,
             recovery_ctrl_len: 0,
+            openocd: None,
         };
 
         // Set generic input wires.
-        let input_wires = [(!params.uds_granularity_64 as u32) << 31, 0];
+        let input_wires = [0, (!params.uds_granularity_32 as u32) << 31];
         m.set_generic_input_wires(&input_wires);
-
-        // Set Security State signal wires
-        println!("Set security state");
-        m.set_security_state(params.security_state);
 
         println!("Set itrng divider");
         // Set divisor for ITRNG throttling
@@ -955,20 +1067,88 @@ impl McuHwModel for ModelFpgaRealtime {
         }
 
         // Set the UDS Seed
-        for i in 0..16 {
-            m.wrapper.regs().cptra_obf_uds_seed[i].set(DEFAULT_UDS_SEED[i]);
+        for (i, udsi) in DEFAULT_UDS_SEED.iter().copied().enumerate() {
+            m.wrapper.regs().cptra_obf_uds_seed[i].set(udsi);
         }
 
         // Set the FE Seed
-        for i in 0..8 {
-            m.wrapper.regs().cptra_obf_field_entropy[i].set(DEFAULT_FIELD_ENTROPY[i]);
+        for (i, fei) in DEFAULT_FIELD_ENTROPY.iter().copied().enumerate() {
+            m.wrapper.regs().cptra_obf_field_entropy[i].set(fei);
         }
 
         // Currently not using strap UDS and FE
         m.set_secrets_valid(false);
 
+        m.set_bootfsm_break(params.bootfsm_break);
+
+        // Clear the generic input wires in case they were left in a non-zero state.
+        m.set_generic_input_wires(&[0, 0]);
+        m.set_mcu_generic_input_wires(&[0, 0]);
+
+        // if params.uds_program_req {
+        //     // notify MCU that we want to run the UDS provisioning flow
+        //     m.set_mcu_generic_input_wires(&[1, 0]);
+        // }
+
         println!("Putting subsystem into reset");
         m.set_subsystem_reset(true);
+
+        println!("Clearing OTP memory");
+        let otp_mem = m.otp_slice();
+        otp_mem.fill(0);
+
+        if !m.otp_init.is_empty() {
+            // write the initial contents of the OTP memory
+            println!("Initializing OTP with initialized data");
+            if m.otp_init.len() > otp_mem.len() {
+                bail!(
+                    "OTP initialization data is larger than OTP memory {} > {}",
+                    m.otp_init.len(),
+                    otp_mem.len()
+                );
+            }
+            otp_mem[..m.otp_init.len()].copy_from_slice(&m.otp_init);
+        }
+
+        if let Some(state) = params.lifecycle_controller_state {
+            println!("Setting lifecycle controller state to {}", state);
+            let mem = lc_generate_memory(state, 1)?;
+            // TODO: use the autogenerated offset when we update caliptra-ss
+            let offset = 4008;
+            otp_mem[offset..offset + mem.len()].copy_from_slice(&mem);
+            // otp_mem[fuses::LIFE_CYCLE_BYTE_OFFSET..fuses::LIFE_CYCLE_BYTE_OFFSET + mem.len()]
+            //     .copy_from_slice(&mem);
+
+            let tokens = params
+                .lifecycle_tokens
+                .as_ref()
+                .unwrap_or(&DEFAULT_LIFECYCLE_RAW_TOKENS);
+            let mem = otp_generate_lifecycle_tokens_mem(tokens)?;
+            // TODO: use the autogenerated offset when we update caliptra-ss
+            let offset = 1184;
+            otp_mem[offset..offset + mem.len()].copy_from_slice(&mem);
+
+            // otp_mem[fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET
+            //     ..fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET
+            //         + fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_SIZE]
+            //     .copy_from_slice(&mem);
+        }
+
+        if let Some(vendor_pk_hash) = params.vendor_pk_hash.as_ref() {
+            println!(
+                "Setting vendor public key hash to {:x?}",
+                HexSlice(vendor_pk_hash)
+            );
+            // swap endianness to match expected hardware format
+            let len = vendor_pk_hash.len();
+            let mut vendor_pk_hash = vendor_pk_hash.to_vec();
+            for i in (0..len).step_by(4) {
+                vendor_pk_hash[i..i + 4].reverse();
+            }
+            let otp_mem = m.otp_slice();
+            let offset = fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET;
+            otp_mem[offset..offset + len].copy_from_slice(&vendor_pk_hash);
+        }
 
         println!("Clearing fifo");
         // Sometimes there's garbage in here; clean it out
@@ -987,10 +1167,9 @@ impl McuHwModel for ModelFpgaRealtime {
         while caliptra_rom_data.len() % 8 != 0 {
             caliptra_rom_data.push(0);
         }
-        let mut mcu_rom_data = params.mcu_rom.to_vec();
-        while mcu_rom_data.len() % 8 != 0 {
-            mcu_rom_data.push(0);
-        }
+
+        let mut mcu_rom_data = vec![0; MCU_ROM_BACKDOOR_SIZE];
+        mcu_rom_data[..params.mcu_rom.len()].clone_from_slice(params.mcu_rom);
 
         // copy the ROM data
         let caliptra_rom_slice = unsafe {
@@ -1000,7 +1179,7 @@ impl McuHwModel for ModelFpgaRealtime {
         caliptra_rom_slice.copy_from_slice(&caliptra_rom_data);
         println!("Writing MCU ROM");
         let mcu_rom_slice =
-            unsafe { core::slice::from_raw_parts_mut(m.mcu_rom_backdoor, mcu_rom_data.len()) };
+            unsafe { core::slice::from_raw_parts_mut(m.mcu_rom_backdoor, MCU_ROM_BACKDOOR_SIZE) };
         mcu_rom_slice.copy_from_slice(&mcu_rom_data);
 
         // set the reset vector to point to the ROM backdoor
@@ -1078,13 +1257,15 @@ impl McuHwModel for ModelFpgaRealtime {
         self.wrapper.regs().itrng_divisor.set(divider - 1);
     }
 
-    fn set_security_state(&mut self, _value: SecurityState) {
-        // todo!() // this is no yet supported in FPGA
+    fn set_generic_input_wires(&mut self, value: &[u32; 2]) {
+        for (i, wire) in value.iter().copied().enumerate() {
+            self.wrapper.regs().generic_input_wires[i].set(wire);
+        }
     }
 
-    fn set_generic_input_wires(&mut self, value: &[u32; 2]) {
-        for i in 0..2 {
-            self.wrapper.regs().generic_input_wires[i].set(value[i]);
+    fn set_mcu_generic_input_wires(&mut self, value: &[u32; 2]) {
+        for (i, wire) in value.iter().copied().enumerate() {
+            self.wrapper.regs().mci_generic_input_wires[i].set(wire);
         }
     }
 
@@ -1095,6 +1276,78 @@ impl McuHwModel for ModelFpgaRealtime {
     fn events_to_caliptra(&mut self) -> mpsc::Sender<Event> {
         todo!()
     }
+
+    fn cycle_count(&mut self) -> u64 {
+        self.wrapper.regs().cycle_count.get() as u64
+    }
+
+    fn save_otp_memory(&self, path: &Path) -> Result<()> {
+        let s = crate::vmem::write_otp_vmem_data(self.otp_slice())?;
+        Ok(std::fs::write(path, s.as_bytes())?)
+    }
+
+    fn caliptra_soc_manager(&mut self) -> impl SocManager {
+        self
+    }
+}
+
+pub struct FpgaRealtimeBus<'a> {
+    mmio: *mut u32,
+    phantom: PhantomData<&'a mut ()>,
+}
+
+impl FpgaRealtimeBus<'_> {
+    fn ptr_for_addr(&mut self, addr: RvAddr) -> Option<*mut u32> {
+        let addr = addr as usize;
+        unsafe {
+            match addr {
+                0x3002_0000..=0x3003_ffff => Some(self.mmio.add((addr - 0x3000_0000) / 4)),
+                _ => None,
+            }
+        }
+    }
+}
+
+impl Bus for FpgaRealtimeBus<'_> {
+    fn read(&mut self, _size: RvSize, addr: RvAddr) -> Result<RvData, BusError> {
+        if let Some(ptr) = self.ptr_for_addr(addr) {
+            Ok(unsafe { ptr.read_volatile() })
+        } else {
+            println!("Error LoadAccessFault");
+            Err(BusError::LoadAccessFault)
+        }
+    }
+
+    fn write(&mut self, _size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
+        if let Some(ptr) = self.ptr_for_addr(addr) {
+            // TODO: support 16-bit and 8-bit writes
+            unsafe { ptr.write_volatile(val) };
+            Ok(())
+        } else {
+            Err(BusError::StoreAccessFault)
+        }
+    }
+}
+
+impl SocManager for &mut ModelFpgaRealtime {
+    const SOC_IFC_ADDR: u32 = 0x3003_0000;
+    const SOC_IFC_TRNG_ADDR: u32 = 0x3003_0000;
+    const SOC_MBOX_ADDR: u32 = 0x3002_0000;
+
+    const MAX_WAIT_CYCLES: u32 = 20_000_000;
+
+    type TMmio<'a>
+        = BusMmio<FpgaRealtimeBus<'a>>
+    where
+        Self: 'a;
+
+    fn mmio_mut(&mut self) -> Self::TMmio<'_> {
+        BusMmio::new(self.caliptra_axi_bus())
+    }
+
+    fn delay(&mut self) {
+        self.step();
+    }
 }
 
 impl Drop for ModelFpgaRealtime {
@@ -1102,7 +1355,11 @@ impl Drop for ModelFpgaRealtime {
         self.realtime_thread_exit_flag
             .store(false, Ordering::Relaxed);
         self.realtime_thread.take().unwrap().join().unwrap();
+        self.close_openocd();
         self.i3c_controller.off();
+
+        self.set_generic_input_wires(&[0, 0]);
+        self.set_mcu_generic_input_wires(&[0, 0]);
 
         // ensure that we put the I3C target into a state where we will reset it properly
         self.i3c_target.stdby_ctrl_mode_stby_cr_device_addr.set(0);
@@ -1113,7 +1370,7 @@ impl Drop for ModelFpgaRealtime {
         self.unmap_mapping(self.caliptra_mmio.ptr, CALIPTRA_MAPPING);
         self.unmap_mapping(self.caliptra_rom_backdoor as *mut u32, CALIPTRA_ROM_MAPPING);
         self.unmap_mapping(self.mcu_rom_backdoor as *mut u32, MCU_ROM_MAPPING);
-        self.unmap_mapping(self.mcu_sram_backdoor as *mut u32, MCU_SRAM_MAPPING);
+        self.unmap_mapping(self.otp_mem_backdoor as *mut u32, OTP_RAM_MAPPING);
         self.unmap_mapping(self.mci.ptr, MCI_MAPPING);
         self.unmap_mapping(self.i3c_mmio, I3C_TARGET_MAPPING);
         self.unmap_mapping(self.i3c_controller_mmio, I3C_CONTROLLER_MAPPING);
@@ -1124,6 +1381,7 @@ impl Drop for ModelFpgaRealtime {
 mod test {
     use crate::{DefaultHwModel, InitParams, McuHwModel};
 
+    #[ignore]
     #[test]
     fn test_new_unbooted() {
         let mcu_rom = mcu_builder::rom_build(Some("fpga"), "").expect("Could not build MCU ROM");
@@ -1136,16 +1394,17 @@ mod test {
             false,
             None,
             None,
+            None,
         )
         .expect("Could not build MCU runtime");
         let mut caliptra_builder = mcu_builder::CaliptraBuilder::new(
-            true,
             true,
             None,
             None,
             None,
             None,
             Some(mcu_runtime.into()),
+            None,
             None,
         );
         let caliptra_rom = caliptra_builder
@@ -1154,11 +1413,11 @@ mod test {
         let caliptra_fw = caliptra_builder
             .get_caliptra_fw()
             .expect("Could not build Caliptra FW bundle");
-        // TODO: pass this in to the MCU through the OTP
         let vendor_pk_hash = caliptra_builder
             .get_vendor_pk_hash()
             .expect("Could not get vendor PK hash");
         println!("Vendor PK hash: {:x?}", vendor_pk_hash);
+        let vendor_pk_hash = hex::decode(vendor_pk_hash).unwrap().try_into().unwrap();
         let soc_manifest = caliptra_builder
             .get_soc_manifest()
             .expect("Could not get SOC manifest");
@@ -1177,6 +1436,7 @@ mod test {
             mcu_firmware: &mcu_runtime,
             soc_manifest: &soc_manifest,
             active_mode: true,
+            vendor_pk_hash: Some(vendor_pk_hash),
             ..Default::default()
         })
         .unwrap();

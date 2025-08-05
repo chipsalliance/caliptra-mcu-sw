@@ -33,6 +33,12 @@ mod test_doe_loopback;
 #[cfg(feature = "test-caliptra-certs")]
 mod test_caliptra_certs;
 
+#[cfg(feature = "test-log-flash-usermode")]
+mod test_logging_flash;
+
+#[cfg(feature = "test-mci")]
+mod test_mci;
+
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
@@ -67,6 +73,7 @@ async fn start() {
     async_main::<libtock_unittest::fake::Syscalls>().await;
 }
 
+#[allow(unreachable_code)]
 pub(crate) async fn async_main<S: Syscalls>() {
     let mut console_writer = Console::<S>::writer();
     writeln!(
@@ -186,6 +193,8 @@ pub(crate) async fn async_main<S: Syscalls>() {
     {
         test_caliptra_crypto::test_caliptra_sha().await;
         test_caliptra_crypto::test_caliptra_rng().await;
+        test_caliptra_crypto::test_caliptra_ecdh().await;
+        test_caliptra_crypto::test_caliptra_hmac().await;
         romtime::test_exit(0);
     }
 
@@ -205,6 +214,19 @@ pub(crate) async fn async_main<S: Syscalls>() {
     {
         test_dma::test_dma_xfer_local_to_local().await;
         test_dma::test_dma_xfer_local_to_external().await;
+        romtime::test_exit(0);
+    }
+
+    #[cfg(feature = "test-log-flash-usermode")]
+    {
+        test_logging_flash::test_logging_flash_simple().await;
+        test_logging_flash::test_logging_flash_various_entries().await;
+        test_logging_flash::test_logging_flash_invalid_inputs().await;
+        romtime::test_exit(0);
+    }
+    #[cfg(feature = "test-mci")]
+    {
+        test_mci::test_mci_read_write().await;
         romtime::test_exit(0);
     }
 

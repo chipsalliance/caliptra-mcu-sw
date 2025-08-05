@@ -232,6 +232,9 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
                         &mut resp_buf[msg_payload_start..],
                     ),
 
+                    MCTPCtrlCmd::GetVersionSupport => mctp_ctrl_cmd
+                        .process_get_version_support(req_buf, &mut resp_buf[msg_payload_start..]),
+
                     MCTPCtrlCmd::GetMsgTypeSupport => return Err(ErrorCode::NOSUPPORT),
                     _ => return Err(ErrorCode::NOSUPPORT),
                 };

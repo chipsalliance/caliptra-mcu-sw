@@ -26,7 +26,7 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     i3c_properties: MemoryRegionType::MMIO,
 
     mci_offset: 0xa800_0000,
-    mci_size: 0xe0_0000,
+    mci_size: 0xa0_0028,
     mci_properties: MemoryRegionType::MMIO,
 
     mbox_offset: 0xa412_0000,
@@ -46,4 +46,11 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     lc_properties: MemoryRegionType::MMIO,
 };
 
-pub const FPGA_MCU_STRAPS: McuStraps = McuStraps::default();
+pub const FPGA_MCU_STRAPS: McuStraps = McuStraps {
+    i3c_static_addr: 0x3a,
+    axi_user: 0xcccc_cccc,
+    cptra_wdt_cfg0: 100_000_000,
+    cptra_wdt_cfg1: 100_000_000,
+    mcu_wdt_cfg0: 400_000_000, // the FPGA is slower to boot
+    mcu_wdt_cfg1: 1,
+};

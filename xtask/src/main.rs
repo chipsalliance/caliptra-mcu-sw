@@ -3,13 +3,14 @@
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
 use core::panic;
-use mcu_builder::SocImage;
+use mcu_builder::ImageCfg;
 use std::path::PathBuf;
 
 mod cargo_lock;
 mod clippy;
 mod deps;
 mod docs;
+mod emulator_cbinding;
 mod format;
 mod fpga;
 mod header;
@@ -31,6 +32,10 @@ struct Xtask {
 enum Commands {
     /// Build and Run Runtime image
     Runtime {
+        /// HW revision in semver format (e.g., "2.0.0")
+        #[arg(long, value_parser = semver::Version::parse, default_value = "2.0.0")]
+        hw_revision: semver::Version,
+
         /// Run with tracing options
         #[arg(short, long, default_value_t = false)]
         trace: bool,
@@ -68,7 +73,7 @@ enum Commands {
         /// List of SoC images with format: <path>,<load_addr>,<image_id>
         /// Example: --soc_image image1.bin,0x80000000,2
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
-        soc_images: Option<Vec<SocImage>>,
+        soc_images: Option<Vec<ImageCfg>>,
 
         /// Path to the Flash image to be used in streaming boot
         #[arg(long)]
@@ -110,6 +115,7 @@ enum Commands {
         /// Platform to build for. Default: emulator
         #[arg(long)]
         platform: Option<String>,
+
         /// Features to build ROM with.
         #[arg(long)]
         features: Option<String>,
@@ -119,6 +125,24 @@ enum Commands {
         /// Run with tracing options
         #[arg(short, long, default_value_t = false)]
         trace: bool,
+    },
+    /// Build Caliptra ROM, firmware bundle, MCU ROM, runtime, and SoC manifest and package them together
+    AllBuild {
+        #[arg(long)]
+        output: Option<String>,
+
+        /// Platform to build for. Default: emulator
+        #[arg(long)]
+        platform: Option<String>,
+
+        #[arg(long, default_value_t = false)]
+        use_dccm_for_stack: bool,
+
+        #[arg(long, value_parser=maybe_hex::<u32>)]
+        dccm_offset: Option<u32>,
+
+        #[arg(long, value_parser=maybe_hex::<u32>)]
+        dccm_size: Option<u32>,
     },
     /// Commands related to flash images
     FlashImage {
@@ -160,10 +184,53 @@ enum Commands {
     Deps,
     /// Build and install the FPGA kernel modules for uio and the ROM backdoors
     FpgaInstallKernelModules,
+    /// Run firmware on the FPGA
+    FpgaRun {
+        /// ZIP with all images.
+        #[arg(long)]
+        zip: Option<PathBuf>,
+
+        /// Where to load the MCU ROM from.
+        #[arg(long)]
+        mcu_rom: Option<PathBuf>,
+
+        /// Where to load the Caliptra ROM from.
+        #[arg(long)]
+        caliptra_rom: Option<PathBuf>,
+
+        /// Where to load and save OTP memory.
+        #[arg(long)]
+        otp: Option<PathBuf>,
+
+        /// Save OTP memory to a file after running.
+        #[arg(long, default_value_t = false)]
+        save_otp: bool,
+
+        /// Run UDS provisioning flow
+        #[arg(long, default_value_t = false)]
+        uds: bool,
+
+        /// Number of "steps" to run the FPGA before stopping
+        #[arg(long, default_value_t = 1_000_000)]
+        steps: u64,
+
+        /// Whether to disable the recovery interface and I3C
+        #[arg(long, default_value_t = false)]
+        no_recovery: bool,
+
+        /// Lifecycle controller state to set (raw, test_unlocked0, manufacturing, prod, etc.).
+        #[arg(long)]
+        lifecycle: Option<String>,
+    },
     /// Utility to create and parse PLDM firmware packages
     PldmFirmware {
         #[command(subcommand)]
         subcommand: PldmFirmwareCommands,
+    },
+    /// Emulator C binding utilities
+    EmulatorCbinding {
+        #[command(subcommand)]
+        subcommand: EmulatorCbindingCommands,
     },
 }
 
@@ -228,9 +295,50 @@ enum PldmFirmwareCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum EmulatorCbindingCommands {
+    /// Build all emulator C binding components (library, header, and binary)
+    Build {
+        /// Build in release mode (optimized)
+        #[arg(long, default_value_t = false)]
+        release: bool,
+    },
+    /// Build only the Rust static library and generate C header
+    BuildLib {
+        /// Build in release mode (optimized)
+        #[arg(long, default_value_t = false)]
+        release: bool,
+    },
+    /// Build only the C emulator binary
+    BuildEmulator {
+        /// Build in release mode (optimized)
+        #[arg(long, default_value_t = false)]
+        release: bool,
+    },
+    /// Clean all build artifacts
+    Clean {
+        /// Clean release mode artifacts (otherwise cleans debug artifacts)
+        #[arg(long, default_value_t = false)]
+        release: bool,
+    },
+}
+
 fn main() {
     let cli = Xtask::parse();
     let result = match &cli.xtask {
+        Commands::AllBuild {
+            output,
+            platform,
+            use_dccm_for_stack,
+            dccm_offset,
+            dccm_size,
+        } => mcu_builder::all_build(
+            output.as_deref(),
+            platform.as_deref(),
+            *use_dccm_for_stack,
+            *dccm_offset,
+            *dccm_size,
+        ),
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),
         Commands::RuntimeBuild {
             features,
@@ -254,6 +362,13 @@ fn main() {
                 *use_dccm_for_stack,
                 *dccm_offset,
                 *dccm_size,
+                match platform.as_deref() {
+                    None | Some("emulator") => {
+                        Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG)
+                    }
+                    Some("fpga") => None,
+                    _ => panic!("Unsupported platform"),
+                },
             )
             .map(|_| ())
         }
@@ -295,10 +410,21 @@ fn main() {
             addrmap,
         } => registers::autogen(*check, files, addrmap),
         Commands::Deps => deps::check(),
+        Commands::FpgaRun { .. } => fpga::fpga_run(cli.xtask),
         Commands::FpgaInstallKernelModules => fpga::fpga_install_kernel_modules(),
         Commands::PldmFirmware { subcommand } => match subcommand {
             PldmFirmwareCommands::Create { manifest, file } => pldm_fw_pkg::create(manifest, file),
             PldmFirmwareCommands::Decode { package, dir } => pldm_fw_pkg::decode(package, dir),
+        },
+        Commands::EmulatorCbinding { subcommand } => match subcommand {
+            EmulatorCbindingCommands::Build { release } => emulator_cbinding::build_all(*release),
+            EmulatorCbindingCommands::BuildLib { release } => {
+                emulator_cbinding::build_lib(*release)
+            }
+            EmulatorCbindingCommands::BuildEmulator { release } => {
+                emulator_cbinding::build_emulator(*release)
+            }
+            EmulatorCbindingCommands::Clean { release } => emulator_cbinding::clean(*release),
         },
     };
     result.unwrap_or_else(|e| {

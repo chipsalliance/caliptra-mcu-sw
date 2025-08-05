@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license.
 // Copyright lowRISC contributors (OpenTitan project).
 
-use std::convert::TryInto;
+use core::convert::TryInto;
 
 // This section is converted from the OpenTitan project's Python implementation of OTP digest algorithm.
 
@@ -11,7 +11,15 @@ fn present_64bit_encrypt(plain: u64, key: u128) -> u64 {
     Present::new_128(&key.to_le_bytes()).encrypt_block(plain)
 }
 
-pub(crate) fn otp_digest(data: &[u8], iv: u64, cnst: u128) -> u64 {
+pub fn otp_scramble(data: u64, key: u128) -> u64 {
+    Present::new_128(&key.to_le_bytes()).encrypt_block(data)
+}
+
+pub fn otp_unscramble(data: u64, key: u128) -> u64 {
+    Present::new_128(&key.to_le_bytes()).decrypt_block(data)
+}
+
+pub fn otp_digest(data: &[u8], iv: u64, cnst: u128) -> u64 {
     assert_eq!(data.len() % 8, 0);
     let data_blocks = data
         .chunks_exact(8)

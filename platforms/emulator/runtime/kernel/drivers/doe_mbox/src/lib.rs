@@ -59,7 +59,7 @@ fn doe_mbox_sram_static_ref(len: usize) -> &'static mut [u32] {
 impl<'a, A: Alarm<'a>> EmulatedDoeTransport<'a, A> {
     // This is just to add a delay calling `send_done` to emulate the hardware behavior.
     // Number of ticks to defer send_done
-    const DEFER_SEND_DONE_TICKS: u32 = 1000;
+    const DEFER_SEND_DONE_TICKS: u32 = 10000;
 
     const RECEIVE_RETRY_TICKS: u32 = 1000;
 

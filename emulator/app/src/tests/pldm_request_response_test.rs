@@ -1,12 +1,9 @@
-// Licensed under the Apache-2.0 license
-
-/// This module tests the PLDM request/response interaction between the emulator and the device.
-/// The emulator sends out different PLDM requests and expects a corresponding response for those requests.
-use std::process::exit;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+//! Licensed under the Apache-2.0 license
+//! This module tests the PLDM request/response interaction between the emulator and the device.
+//! The emulator sends out different PLDM requests and expects a corresponding response for those requests.
 
 use crate::mctp_transport::MctpPldmSocket;
+use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::control::*;
 use pldm_common::message::firmware_update::get_fw_params::{
@@ -18,11 +15,12 @@ use pldm_common::message::firmware_update::query_devid::{
 use pldm_common::protocol::base::*;
 use pldm_common::protocol::firmware_update::*;
 use pldm_ua::transport::PldmSocket;
+use std::process::exit;
+use std::sync::atomic::Ordering;
 
 pub struct PldmRequestResponseTest {
     test_messages: Vec<PldmExpectedMessagePair>,
     socket: MctpPldmSocket,
-    running: Arc<AtomicBool>,
 }
 
 pub struct PldmExpectedMessagePair {
@@ -33,7 +31,7 @@ pub struct PldmExpectedMessagePair {
 }
 
 impl PldmRequestResponseTest {
-    fn new(socket: MctpPldmSocket, running: Arc<AtomicBool>) -> Self {
+    fn new(socket: MctpPldmSocket) -> Self {
         let mut test_messages: Vec<PldmExpectedMessagePair> = Vec::new();
 
         if cfg!(feature = "test-pldm-request-response") {
@@ -61,7 +59,6 @@ impl PldmRequestResponseTest {
         Self {
             test_messages,
             socket,
-            running,
         }
     }
 
@@ -78,6 +75,7 @@ impl PldmRequestResponseTest {
         test_messages.push(PldmExpectedMessagePair { request, response });
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn test_send_receive(&mut self) -> Result<(), ()> {
         self.socket.connect().map_err(|_| ())?;
 
@@ -91,17 +89,21 @@ impl PldmRequestResponseTest {
         Ok(())
     }
 
-    pub fn run(socket: MctpPldmSocket, running: Arc<AtomicBool>) {
+    pub fn run(socket: MctpPldmSocket) {
         std::thread::spawn(move || {
+            wait_for_runtime_start();
+            if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
+                exit(-1);
+            }
             print!("Emulator: Running PLDM Loopback Test: ",);
-            let mut test = PldmRequestResponseTest::new(socket, running);
+            let mut test = PldmRequestResponseTest::new(socket);
             if test.test_send_receive().is_err() {
                 println!("Failed");
                 exit(-1);
             } else {
                 println!("Passed");
             }
-            test.running.store(false, Ordering::Relaxed);
+            EMULATOR_RUNNING.store(false, Ordering::Relaxed);
         });
     }
 

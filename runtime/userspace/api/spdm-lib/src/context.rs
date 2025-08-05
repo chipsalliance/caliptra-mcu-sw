@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-// use crate::cert_mgr::DeviceCertsManager;
 use crate::cert_store::*;
 use crate::chunk_ctx::LargeResponseCtx;
 use crate::codec::{Codec, MessageBuf};
@@ -15,20 +14,24 @@ use crate::protocol::algorithms::*;
 use crate::protocol::common::{ReqRespCode, SpdmMsgHdr};
 use crate::protocol::version::*;
 use crate::protocol::DeviceCapabilities;
+use crate::session::SessionManager;
 use crate::state::{ConnectionState, State};
-use crate::transcript::{TranscriptContext, TranscriptManager};
-use crate::transport::SpdmTransport;
+use crate::transcript::{Transcript, TranscriptContext};
+use crate::transport::common::SpdmTransport;
+use libapi_caliptra::crypto::asym::*;
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 
 pub struct SpdmContext<'a> {
     transport: &'a mut dyn SpdmTransport,
     pub(crate) supported_versions: &'a [SpdmVersion],
     pub(crate) state: State,
-    pub(crate) transcript_mgr: TranscriptManager,
+    pub(crate) shared_transcript: Transcript,
     pub(crate) local_capabilities: DeviceCapabilities,
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
-    pub(crate) device_certs_store: &'a mut dyn SpdmCertStore,
+    pub(crate) device_certs_store: &'a dyn SpdmCertStore,
     pub(crate) measurements: SpdmMeasurements,
     pub(crate) large_resp_context: LargeResponseCtx,
+    pub(crate) session_mgr: SessionManager,
 }
 
 impl<'a> SpdmContext<'a> {
@@ -37,11 +40,9 @@ impl<'a> SpdmContext<'a> {
         spdm_transport: &'a mut dyn SpdmTransport,
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
-        device_certs_store: &'a mut dyn SpdmCertStore,
+        device_certs_store: &'a dyn SpdmCertStore,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
-
-        validate_device_algorithms(&local_algorithms)?;
 
         validate_cert_store(device_certs_store)?;
 
@@ -49,29 +50,40 @@ impl<'a> SpdmContext<'a> {
             supported_versions,
             transport: spdm_transport,
             state: State::new(),
-            transcript_mgr: TranscriptManager::new(),
+            shared_transcript: Transcript::new(),
             local_capabilities,
             local_algorithms,
             device_certs_store,
             measurements: SpdmMeasurements::default(),
             large_resp_context: LargeResponseCtx::default(),
+            session_mgr: SessionManager::new(),
         })
     }
 
     pub async fn process_message(&mut self, msg_buf: &mut MessageBuf<'a>) -> SpdmResult<()> {
-        self.transport
+        let secure = self
+            .transport
             .receive_request(msg_buf)
             .await
             .map_err(SpdmError::Transport)?;
 
+        // Reset active session_id
+        self.session_mgr.reset_active_session_id();
+
+        // TODO: Get session ID from the message if secure.
+        // TODO: Set active session ID if it is valid
+        // TODO: Get Session info from the session ID and call decrypt() method on session_info if secure.
+
         // Process message
         match self.handle_request(msg_buf).await {
             Ok(()) => {
-                self.send_response(msg_buf).await?;
+                self.send_response(msg_buf, secure).await?;
             }
             Err((rsp, command_error)) => {
                 if rsp {
-                    self.send_response(msg_buf).await.inspect_err(|_| {})?;
+                    self.send_response(msg_buf, secure)
+                        .await
+                        .inspect_err(|_| {})?;
                 }
                 Err(SpdmError::Command(command_error))?;
             }
@@ -126,9 +138,10 @@ impl<'a> SpdmContext<'a> {
         Ok(())
     }
 
-    async fn send_response(&mut self, resp: &mut MessageBuf<'a>) -> SpdmResult<()> {
+    async fn send_response(&mut self, resp: &mut MessageBuf<'a>, secure: bool) -> SpdmResult<()> {
+        // TODO: Encrypt if secure.
         self.transport
-            .send_response(resp)
+            .send_response(resp, secure)
             .await
             .map_err(SpdmError::Transport)
     }
@@ -151,7 +164,7 @@ impl<'a> SpdmContext<'a> {
         ) as usize
     }
 
-    pub(crate) fn verify_selected_hash_algo(&mut self) -> SpdmResult<()> {
+    pub(crate) fn verify_negotiated_hash_algo(&mut self) -> SpdmResult<()> {
         let peer_algorithms = self.state.connection_info.peer_algorithms();
         let local_algorithms = &self.local_algorithms.device_algorithms;
         let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
@@ -173,7 +186,7 @@ impl<'a> SpdmContext<'a> {
         Ok(())
     }
 
-    pub(crate) fn selected_base_asym_algo(&self) -> SpdmResult<AsymAlgo> {
+    pub(crate) fn negotiated_base_asym_algo(&self) -> SpdmResult<AsymAlgo> {
         let peer_algorithms = self.state.connection_info.peer_algorithms();
         let local_algorithms = &self.local_algorithms.device_algorithms;
         let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
@@ -189,6 +202,24 @@ impl<'a> SpdmContext<'a> {
         }
 
         Ok(AsymAlgo::EccP384)
+    }
+
+    pub(crate) fn verify_negotiated_dhe_group(&self) -> SpdmResult<()> {
+        let peer_algorithms = self.state.connection_info.peer_algorithms();
+        let local_algorithms = &self.local_algorithms.device_algorithms;
+        let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
+
+        let dhe_group_sel = DheNamedGroup(local_algorithms.dhe_group.0.prioritize(
+            &peer_algorithms.dhe_group.0,
+            algorithm_priority_table.dhe_group,
+        ));
+
+        // Ensure DheGroupSel has exactly one bit set and it is SECP384R1
+        if dhe_group_sel.0.count_ones() != 1 || dhe_group_sel.secp384r1() != 1 {
+            return Err(SpdmError::InvalidParam);
+        }
+
+        Ok(())
     }
 
     pub(crate) fn generate_error_response(
@@ -209,18 +240,19 @@ impl<'a> SpdmContext<'a> {
     pub(crate) fn reset_transcript_via_req_code(&mut self, req_code: ReqRespCode) {
         // Any request other than GET_MEASUREMENTS resets the L1 transcript context.
         if req_code != ReqRespCode::GetMeasurements {
-            self.transcript_mgr.reset_context(TranscriptContext::L1);
+            self.shared_transcript.reset_context(TranscriptContext::L1);
         }
 
-        // If requester issued GET_MEASUREMENTS request and skipped CHALLENGE completion, reset M1 context.
+        // If requester issued GET_MEASUREMENTS or KEY_EXCHANGE or FINISH request
+        // and skipped CHALLENGE completion, reset M1 context.
         match req_code {
-            ReqRespCode::GetMeasurements => {
+            ReqRespCode::GetMeasurements | ReqRespCode::KeyExchange | ReqRespCode::Finish => {
                 if self.state.connection_info.state() < ConnectionState::Authenticated {
-                    self.transcript_mgr.reset_context(TranscriptContext::M1);
+                    self.shared_transcript.reset_context(TranscriptContext::M1);
                 }
             }
             ReqRespCode::GetDigests => {
-                self.transcript_mgr.reset_context(TranscriptContext::M1);
+                self.shared_transcript.reset_context(TranscriptContext::M1);
             }
             _ => {}
         }
@@ -230,14 +262,67 @@ impl<'a> SpdmContext<'a> {
         &mut self,
         msg_buf: &mut MessageBuf<'_>,
         transcript_context: TranscriptContext,
+        session_id: Option<u32>,
     ) -> CommandResult<()> {
+        let data_offset = msg_buf.data_offset();
+
         let msg = msg_buf
-            .message_data()
+            .message_slice(data_offset)
             .map_err(|e| (false, CommandError::Codec(e)))?;
 
-        self.transcript_mgr
-            .append(transcript_context, msg)
+        self.append_slice_to_transcript(msg, transcript_context, session_id)
+            .await
+    }
+
+    pub(crate) async fn append_slice_to_transcript(
+        &mut self,
+        data: &[u8],
+        transcript_context: TranscriptContext,
+        session_id: Option<u32>,
+    ) -> CommandResult<()> {
+        let session_info = if let Some(session_id) = session_id {
+            Some(
+                self.session_mgr
+                    .session_info_mut(session_id)
+                    .map_err(|e| (false, CommandError::Session(e)))?,
+            )
+        } else {
+            None
+        };
+
+        self.shared_transcript
+            .append(transcript_context, session_info, data)
             .await
             .map_err(|e| (false, CommandError::Transcript(e)))
+    }
+
+    pub(crate) async fn transcript_hash(
+        &mut self,
+        transcript_context: TranscriptContext,
+        session_id: Option<u32>,
+        finish_hash: bool,
+    ) -> CommandResult<[u8; SHA384_HASH_SIZE]> {
+        let mut transcript_hash = [0u8; SHA384_HASH_SIZE];
+        let session_info = if let Some(session_id) = session_id {
+            Some(
+                self.session_mgr
+                    .session_info_mut(session_id)
+                    .map_err(|e| (false, CommandError::Session(e)))?,
+            )
+        } else {
+            None
+        };
+
+        self.shared_transcript
+            .hash(
+                transcript_context,
+                session_info,
+                &mut transcript_hash,
+                finish_hash,
+            )
+            .await
+            .map_err(|e| (false, CommandError::Transcript(e)))?;
+
+        Ok(transcript_hash)
     }
 }

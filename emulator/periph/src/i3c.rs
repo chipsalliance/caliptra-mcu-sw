@@ -54,10 +54,8 @@ pub struct I3c {
     tti_tx_data_raw: VecDeque<Vec<u8>>,
     /// IBI buffer
     tti_ibi_buffer: Vec<u8>,
-    /// Error interrupt
-    _error_irq: Irq,
-    /// Notification interrupt
-    notif_irq: Irq,
+    /// interrupt
+    irq: Irq,
     hw_revision: Version,
 
     i3c_ec_sec_fw_recovery_if_prot_cap_2: ReadWriteRegister<u32>,
@@ -93,8 +91,7 @@ impl I3c {
     pub fn new(
         clock: &Clock,
         controller: &mut I3cController,
-        error_irq: Irq,
-        notif_irq: Irq,
+        irq: Irq,
         hw_revision: Version,
     ) -> Self {
         let mut i3c_target = I3cTarget::default();
@@ -116,8 +113,7 @@ impl I3c {
             tti_tx_desc_queue_raw: VecDeque::new(),
             tti_tx_data_raw: VecDeque::new(),
             tti_ibi_buffer: vec![],
-            _error_irq: error_irq,
-            notif_irq,
+            irq,
             hw_revision,
             i3c_ec_sec_fw_recovery_if_prot_cap_2: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_device_status_0: ReadWriteRegister::new(0),
@@ -165,12 +161,19 @@ impl I3c {
 
     fn read_rx_data_into_buffer(&mut self) {
         if let Some(xfer) = self.i3c_target.read_command() {
-            let cmd: u64 = xfer.cmd.into();
-            let data = xfer.data;
+            // TODO: we don't request data using rnw
+            let rnw = (u64::from(xfer.cmd.clone()) & (1 << 29)) as u32;
             self.tti_rx_desc_queue_raw
-                .push_back((cmd & 0xffff_ffff) as u32);
-            self.tti_rx_desc_queue_raw
-                .push_back(((cmd >> 32) & 0xffff_ffff) as u32);
+                .push_back(xfer.cmd.raw_data_len() as u32 | rnw);
+            let data = match xfer.cmd.clone() {
+                crate::I3cTcriCommand::Immediate(imm) => vec![
+                    imm.data_byte_1(),
+                    imm.data_byte_2(),
+                    imm.data_byte_3(),
+                    imm.data_byte_4(),
+                ],
+                _ => xfer.data,
+            };
             self.tti_rx_data_raw.push_back(data);
         }
     }
@@ -179,6 +182,10 @@ impl I3c {
         // TODO: implement the timeout interrupts
 
         // Set TxDescStat interrupt if there is a pending Read transaction (i.e., data needs to be written to the tx registers)
+
+        // TODO: this is incorrect, and we will not be able to service this interrupt
+        // in time. Instead, we should start writing our private writes in a callback
+        // (until the TX buffer is full).
         let pending_read = self
             .tti_rx_desc_queue_raw
             .front()
@@ -204,7 +211,7 @@ impl I3c {
                 InterruptStatus::RxDescStat::SET
             });
 
-        self.notif_irq
+        self.irq
             .set_level(self.interrupt_status.reg.any_matching_bits_set(
                 InterruptStatus::RxDescStat::SET
                     + InterruptStatus::TxDescStat::SET
@@ -216,7 +223,7 @@ impl I3c {
     // check if there area valid IBI descriptors and messages
     fn check_ibi_buffer(&mut self) {
         loop {
-            if self.tti_ibi_buffer.len() <= 4 {
+            if self.tti_ibi_buffer.len() < 4 {
                 return;
             }
 
@@ -226,10 +233,9 @@ impl I3c {
                 // wait for more data
                 return;
             }
-            // we only need the first byte, which is the MDB.
-            // TODO: handle more than the MDB?
-            // Drain IBI descriptor size + 4 bytes (MDB)
-            self.i3c_target.send_ibi(self.tti_ibi_buffer[4]);
+
+            // TODO: support sending more bytes of IBI to target
+            self.i3c_target.send_ibi((desc.0 >> 24) as u8);
             self.tti_ibi_buffer.drain(0..(len + 4).next_multiple_of(4));
         }
     }
@@ -574,10 +580,7 @@ impl I3cPeripheral for I3c {
     }
 
     fn read_i3c_ec_tti_rx_desc_queue_port(&mut self) -> u32 {
-        if self.tti_rx_desc_queue_raw.len() & 1 == 0 {
-            // only replace the data every other read since the descriptor is 64 bits
-            self.tti_rx_current = self.tti_rx_data_raw.pop_front().unwrap_or_default().into();
-        }
+        self.tti_rx_current = self.tti_rx_data_raw.pop_front().unwrap_or_default().into();
         self.tti_rx_desc_queue_raw.pop_front().unwrap_or(0)
     }
 
@@ -962,7 +965,6 @@ impl I3cPeripheral for I3c {
                     COUNTER += 1;
                 }
                 self.tti_rx_desc_queue_raw.push_back(100 << 16);
-                self.tti_rx_desc_queue_raw.push_back(unsafe { COUNTER });
                 self.tti_rx_data_raw.push_back(vec![0xff; 100]);
             }
         }
@@ -986,14 +988,12 @@ mod tests {
     fn receive_i3c_cmd() {
         let clock = Clock::new();
         let pic = Pic::new();
-        let error_irq = pic.register_irq(17);
-        let notif_irq = pic.register_irq(18);
+        let irq = pic.register_irq(2);
         let mut i3c_controller = I3cController::default();
         let mut i3c = Box::new(I3c::new(
             &clock,
             &mut i3c_controller,
-            error_irq,
-            notif_irq,
+            irq,
             Version::new(2, 0, 0),
         ));
 
@@ -1036,7 +1036,7 @@ mod tests {
                 registers_generated::i3c::I3C_CSR_ADDR + TTI_RX_DESC_QUEUE_PORT
             )
             .unwrap(),
-            1
+            4
         );
     }
 }

@@ -2,7 +2,10 @@
 
 use crate::flash::flash_partition::FlashPartition;
 use bitfield::bitfield;
-use flash_image::{FlashHeader, ImageHeader};
+use flash_image::{
+    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
+    SOC_MANIFEST_IDENTIFIER,
+};
 use registers_generated::i3c;
 use registers_generated::i3c::bits::{RecIntfCfg, RecoveryCtrl};
 use romtime::StaticRef;
@@ -250,10 +253,10 @@ pub fn get_flash_image_info(id: u32, flash_driver: &mut FlashPartition) -> Resul
 pub fn recovery_img_index_to_image_id(recovery_image_index: u32) -> Result<u32, ()> {
     // Convert the recovery image index to the image ID
     match recovery_image_index {
-        0 => Ok(0x1), // Caliptra FMC+RT index 0 is image ID 1
-        1 => Ok(0x2), // SoC Manifest index 1 is image ID 2
-        2 => Ok(0x3), // MCU Runtime index 2 is image ID 3
-        _ => Err(()), // Invalid index
+        0 => Ok(CALIPTRA_FMC_RT_IDENTIFIER),
+        1 => Ok(SOC_MANIFEST_IDENTIFIER),
+        2 => Ok(MCU_RT_IDENTIFIER),
+        _ => Err(()),
     }
 }
 

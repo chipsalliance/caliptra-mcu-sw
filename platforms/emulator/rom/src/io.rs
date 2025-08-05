@@ -3,7 +3,7 @@
 use core::fmt::Write;
 
 use mcu_rom_common::FatalErrorHandler;
-use romtime::HexWord;
+use romtime::{Exit, HexWord};
 
 pub(crate) struct EmulatorWriter {}
 pub(crate) static mut EMULATOR_WRITER: EmulatorWriter = EmulatorWriter {};
@@ -29,6 +29,15 @@ pub(crate) static mut FATAL_ERROR_HANDLER: EmulatorFatalErrorHandler = EmulatorF
 impl FatalErrorHandler for EmulatorFatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> ! {
         let _ = writeln!(EmulatorWriter {}, "MCU fatal error: {}", HexWord(code));
+        exit_emulator(code);
+    }
+}
+
+pub(crate) struct EmulatorExiter {}
+pub(crate) static mut EMULATOR_EXITER: EmulatorExiter = EmulatorExiter {};
+impl Exit for EmulatorExiter {
+    fn exit(&mut self, code: u32) {
+        let _ = writeln!(EmulatorWriter {}, "MCU exit code: {}", HexWord(code));
         exit_emulator(code);
     }
 }

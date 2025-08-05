@@ -2,7 +2,7 @@
 
 // Component for flash partition driver.
 
-use capsules_runtime::flash_partition::FlashPartition;
+use capsules_emulator::flash_partition::FlashPartition;
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
@@ -38,7 +38,7 @@ macro_rules! instantiate_flash_partitions {
                             'static,
                             flash_driver::flash_ctrl::EmulatedFlashCtrl,
                         >,
-                        capsules_runtime::flash_partition::BUF_LEN
+                        capsules_emulator::flash_partition::BUF_LEN
                     )),
                 );
             };
@@ -55,7 +55,7 @@ macro_rules! flash_partition_component_static {
         let fs_to_pages = kernel::static_buf!(
             flash_driver::flash_storage_to_pages::FlashStorageToPages<'static, $F>
         );
-        let fs = kernel::static_buf!(capsules_runtime::flash_partition::FlashPartition<'static>);
+        let fs = kernel::static_buf!(capsules_emulator::flash_partition::FlashPartition<'static>);
         let buffer = kernel::static_buf!([u8; $buf_len]);
 
         (page, fs_to_pages, fs, buffer)
@@ -118,7 +118,7 @@ impl<
             flash_driver::flash_storage_to_pages::FlashStorageToPages<'static, F>,
         >,
         &'static mut MaybeUninit<FlashPartition<'static>>,
-        &'static mut MaybeUninit<[u8; capsules_runtime::flash_partition::BUF_LEN]>,
+        &'static mut MaybeUninit<[u8; capsules_emulator::flash_partition::BUF_LEN]>,
     );
 
     type Output = &'static FlashPartition<'static>;
@@ -128,7 +128,7 @@ impl<
 
         let buffer = static_buffer
             .3
-            .write([0; capsules_runtime::flash_partition::BUF_LEN]);
+            .write([0; capsules_emulator::flash_partition::BUF_LEN]);
 
         let flash_pagebuffer = static_buffer
             .0
@@ -145,7 +145,7 @@ impl<
         let flash_partition =
             static_buffer
                 .2
-                .write(capsules_runtime::flash_partition::FlashPartition::new(
+                .write(capsules_emulator::flash_partition::FlashPartition::new(
                     fs_to_pages,
                     self.driver_num,
                     self.board_kernel.create_grant(self.driver_num, &grant_cap),

@@ -1,19 +1,13 @@
-// Licensed under the Apache-2.0 license
+//! Licensed under the Apache-2.0 license
 
-/// This module tests the PLDM Firmware Update
-use std::process::exit;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+//! This module tests the PLDM Firmware Update
 
 use crate::mctp_transport::MctpPldmSocket;
-use pldm_common::protocol::firmware_update::*;
-use pldm_ua::transport::PldmSocket;
-use pldm_ua::{discovery_sm, update_sm};
-
+use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
 use chrono::{TimeZone, Utc};
 use lazy_static::lazy_static;
 use log::{error, LevelFilter};
+use pldm_common::protocol::firmware_update::*;
 use pldm_fw_pkg::{
     manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
@@ -23,7 +17,12 @@ use pldm_fw_pkg::{
 };
 use pldm_ua::daemon::Options;
 use pldm_ua::daemon::PldmDaemon;
+use pldm_ua::transport::PldmSocket;
+use pldm_ua::{discovery_sm, update_sm};
 use simple_logger::SimpleLogger;
+use std::process::exit;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 use uuid::Uuid;
 
 pub const DEVICE_UUID: [u8; 16] = [
@@ -88,19 +87,18 @@ pub struct PldmFwUpdateTest {
     socket: MctpPldmSocket,
     daemon:
         Option<PldmDaemon<MctpPldmSocket, discovery_sm::DefaultActions, update_sm::DefaultActions>>,
-    running: Arc<AtomicBool>,
 }
 
 impl PldmFwUpdateTest {
-    fn new(socket: MctpPldmSocket, running: Arc<AtomicBool>) -> Self {
+    fn new(socket: MctpPldmSocket) -> Self {
         Self {
             socket,
-            running,
             daemon: None,
         }
     }
+    #[allow(clippy::result_unit_err)]
     pub fn wait_for_state_transition(&self, expected_state: update_sm::States) -> Result<(), ()> {
-        let timeout = Duration::from_secs(20);
+        let timeout = Duration::from_secs(30);
         let start_time = std::time::Instant::now();
 
         while start_time.elapsed() < timeout {
@@ -128,6 +126,7 @@ impl PldmFwUpdateTest {
         }
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn test_fw_update(&mut self) -> Result<(), ()> {
         // Initialize log level to info (only once)
         let _ = SimpleLogger::new().with_level(LevelFilter::Debug).init();
@@ -155,17 +154,21 @@ impl PldmFwUpdateTest {
         res
     }
 
-    pub fn run(socket: MctpPldmSocket, running: Arc<AtomicBool>) {
+    pub fn run(socket: MctpPldmSocket) {
         std::thread::spawn(move || {
+            wait_for_runtime_start();
+            if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
+                exit(-1);
+            }
             print!("Emulator: Running PLDM Loopback Test: ",);
-            let mut test = PldmFwUpdateTest::new(socket, running);
+            let mut test = PldmFwUpdateTest::new(socket);
             if test.test_fw_update().is_err() {
                 println!("Failed");
                 exit(-1);
             } else {
                 println!("Passed");
             }
-            test.running.store(false, Ordering::Relaxed);
+            EMULATOR_RUNNING.store(false, Ordering::Relaxed);
         });
     }
 }

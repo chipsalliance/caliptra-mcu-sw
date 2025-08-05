@@ -17,6 +17,7 @@ use caliptra_image_fake_keys::*;
 use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
 use caliptra_image_types::{FwVerificationPqcKeyType, ImageManifest};
 use cargo_metadata::MetadataCommand;
+use flash_image::MCU_RT_IDENTIFIER;
 use hex::ToHex;
 use std::{num::ParseIntError, path::PathBuf, str::FromStr};
 use zerocopy::{transmute, IntoBytes};
@@ -29,7 +30,8 @@ pub struct CaliptraBuilder {
     soc_manifest: Option<PathBuf>,
     vendor_pk_hash: Option<String>,
     mcu_firmware: Option<PathBuf>,
-    soc_images: Option<Vec<SocImage>>,
+    soc_images: Option<Vec<ImageCfg>>,
+    mcu_image_cfg: Option<ImageCfg>,
 }
 
 impl CaliptraBuilder {
@@ -41,7 +43,8 @@ impl CaliptraBuilder {
         soc_manifest: Option<PathBuf>,
         vendor_pk_hash: Option<String>,
         mcu_firmware: Option<PathBuf>,
-        soc_images: Option<Vec<SocImage>>,
+        soc_images: Option<Vec<ImageCfg>>,
+        mcu_image_cfg: Option<ImageCfg>,
     ) -> Self {
         Self {
             fpga,
@@ -51,6 +54,7 @@ impl CaliptraBuilder {
             vendor_pk_hash,
             mcu_firmware,
             soc_images,
+            mcu_image_cfg,
         }
     }
 
@@ -88,14 +92,7 @@ impl CaliptraBuilder {
         let mut metadata = Vec::new();
         if let Some(soc_images) = &self.soc_images {
             for soc_image in soc_images {
-                let soc_metadata = Self::get_soc_manifest_metadata(
-                    &soc_image.path,
-                    soc_image.image_id,
-                    Addr64 {
-                        lo: soc_image.load_addr as u32,
-                        hi: (soc_image.load_addr >> 32) as u32,
-                    },
-                )?;
+                let soc_metadata = Self::get_soc_manifest_metadata(soc_image)?;
                 metadata.push(soc_metadata);
             }
         }
@@ -112,7 +109,7 @@ impl CaliptraBuilder {
                 bail!("MCU firmware is required to build SoC manifest");
             }
             let mcu_fw_metadata =
-                Self::get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
+                self.get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
             let soc_images_metadata = self.get_soc_images_metadata()?;
             let mut metadata = vec![mcu_fw_metadata];
             metadata.extend(soc_images_metadata);
@@ -123,7 +120,7 @@ impl CaliptraBuilder {
         Ok(self.soc_manifest.clone().unwrap())
     }
 
-    pub fn replace_manifest_metadata(&mut self, metadata: Vec<SocImage>) -> Result<PathBuf> {
+    pub fn replace_manifest_metadata(&mut self, metadata: Vec<ImageCfg>) -> Result<PathBuf> {
         println!("Replacing SoC manifest metadata with: {:?}", metadata);
         // Replace the current metadata
         self.soc_images = Some(metadata);
@@ -142,7 +139,10 @@ impl CaliptraBuilder {
         Ok(self.vendor_pk_hash.as_ref().unwrap())
     }
 
-    fn get_mcu_manifest_metadata(runtime_path: &PathBuf) -> Result<AuthManifestImageMetadata> {
+    fn get_mcu_manifest_metadata(
+        &self,
+        runtime_path: &PathBuf,
+    ) -> Result<AuthManifestImageMetadata> {
         const IMAGE_SOURCE_IN_REQUEST: u32 = 1;
         let data = std::fs::read(runtime_path).unwrap();
         let mut flags = ImageMetadataFlags(0);
@@ -152,32 +152,54 @@ impl CaliptraBuilder {
         let d: String = digest.clone().encode_hex();
         println!("MCU len {} digest: {}", data.len(), d);
 
+        let cfg = if self.mcu_image_cfg.is_some() {
+            self.mcu_image_cfg.clone().unwrap()
+        } else {
+            ImageCfg {
+                image_id: MCU_RT_IDENTIFIER,
+                ..Default::default()
+            }
+        };
+        flags.set_exec_bit(cfg.exec_bit);
+
         Ok(AuthManifestImageMetadata {
-            fw_id: 2,
+            fw_id: cfg.image_id,
             flags: flags.0,
             digest,
+            image_load_address: Addr64 {
+                lo: cfg.load_addr as u32,
+                hi: (cfg.load_addr >> 32) as u32,
+            },
+            image_staging_address: Addr64 {
+                lo: cfg.staging_addr as u32,
+                hi: (cfg.staging_addr >> 32) as u32,
+            },
             ..Default::default()
         })
     }
 
-    fn get_soc_manifest_metadata(
-        runtime_path: &PathBuf,
-        fw_id: u32,
-        load_address: Addr64,
-    ) -> Result<AuthManifestImageMetadata> {
+    fn get_soc_manifest_metadata(image_cfg: &ImageCfg) -> Result<AuthManifestImageMetadata> {
         const IMAGE_SOURCE_LOAD_ADDRESS: u32 = 2;
-        let data = std::fs::read(runtime_path).unwrap();
+        let data = std::fs::read(&image_cfg.path).unwrap();
         let mut flags = ImageMetadataFlags(0);
         flags.set_ignore_auth_check(false);
         flags.set_image_source(IMAGE_SOURCE_LOAD_ADDRESS);
+        flags.set_exec_bit(image_cfg.exec_bit);
         let crypto = Crypto::default();
         let digest = from_hw_format(&crypto.sha384_digest(&data)?);
 
         Ok(AuthManifestImageMetadata {
-            fw_id,
+            fw_id: image_cfg.image_id,
             flags: flags.0,
             digest,
-            image_load_address: load_address,
+            image_staging_address: Addr64 {
+                lo: image_cfg.staging_addr as u32,
+                hi: (image_cfg.staging_addr >> 32) as u32,
+            },
+            image_load_address: Addr64 {
+                lo: image_cfg.load_addr as u32,
+                hi: (image_cfg.load_addr >> 32) as u32,
+            },
             ..Default::default()
         })
     }
@@ -209,8 +231,9 @@ impl CaliptraBuilder {
     }
 
     fn compile_caliptra_rom_cached(fpga: bool) -> Result<PathBuf> {
+        let platform = if fpga { "fpga" } else { "emulator" };
         if let Some(version) = Self::caliptra_version() {
-            let path = target_dir().join(format!("caliptra-rom-{}.bin", version));
+            let path = target_dir().join(format!("caliptra-rom-{}-{}.bin", version, platform));
             if path.exists() {
                 println!("Using cached Caliptra ROM at {:?}", path);
                 return Ok(path);
@@ -240,8 +263,10 @@ impl CaliptraBuilder {
     }
 
     fn compile_caliptra_fw_cached(fpga: bool) -> Result<(PathBuf, String)> {
+        let platform = if fpga { "fpga" } else { "emulator" };
         if let Some(version) = Self::caliptra_version() {
-            let path = target_dir().join(format!("caliptra-fw-bundle-{}.bin", version));
+            let path =
+                target_dir().join(format!("caliptra-fw-bundle-{}-{}.bin", version, platform));
             if path.exists() {
                 println!("Using cached Caliptra FW bundle at {:?}", path);
                 return Self::parse_fw_bundle(path);
@@ -267,16 +292,18 @@ impl CaliptraBuilder {
                 .unwrap();
             transmute!(bundle)
         };
-        Ok((path, Self::vendor_pk_hash(manifest)?))
+        Ok((path, Self::vendor_pk_hash_str(manifest)?))
     }
 
-    fn vendor_pk_hash(manifest: ImageManifest) -> Result<String> {
+    pub fn vendor_pk_hash(manifest: &ImageManifest) -> Result<[u8; 48]> {
         let crypto = Crypto::default();
-        let x = from_hw_format(
-            &crypto.sha384_digest(manifest.preamble.vendor_pub_key_info.as_bytes())?,
-        )
-        .encode_hex();
-        Ok(x)
+        Ok(from_hw_format(&crypto.sha384_digest(
+            manifest.preamble.vendor_pub_key_info.as_bytes(),
+        )?))
+    }
+
+    fn vendor_pk_hash_str(manifest: ImageManifest) -> Result<String> {
+        Ok(Self::vendor_pk_hash(&manifest)?.encode_hex())
     }
 
     fn compile_caliptra_fw_uncached(fpga: bool) -> Result<(PathBuf, String)> {
@@ -301,7 +328,7 @@ impl CaliptraBuilder {
         let fw_bytes = bundle.to_bytes()?;
         let path = target_dir().join("caliptra-fw-bundle.bin");
         std::fs::write(&path, fw_bytes)?;
-        Ok((path, Self::vendor_pk_hash(bundle.manifest)?))
+        Ok((path, Self::vendor_pk_hash_str(bundle.manifest)?))
     }
 
     pub fn create_auth_manifest_with_metadata(
@@ -378,29 +405,50 @@ impl CaliptraBuilder {
 }
 
 #[derive(Debug, Clone)]
-pub struct SocImage {
+pub struct ImageCfg {
     pub path: PathBuf,
     pub load_addr: u64,
+    pub staging_addr: u64,
     pub image_id: u32,
+    pub exec_bit: u32,
 }
-impl FromStr for SocImage {
+impl Default for ImageCfg {
+    fn default() -> Self {
+        ImageCfg {
+            path: PathBuf::new(),
+            load_addr: 0,
+            staging_addr: 0,
+            image_id: 0,
+            exec_bit: 0,
+        }
+    }
+}
+
+impl FromStr for ImageCfg {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split(',').collect();
-        if parts.len() != 3 {
-            return Err("Expected format: <path>,<load_addr>,<image_id>".into());
+        if parts.len() != 5 {
+            return Err(
+                "Expected format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>".into(),
+            );
         }
 
         let path = PathBuf::from(parts[0]);
         let load_addr = u64::from_str_radix(parts[1].trim_start_matches("0x"), 16)
             .map_err(|e: ParseIntError| e.to_string())?;
-        let image_id = parts[2].parse::<u32>().map_err(|e| e.to_string())?;
+        let staging_addr = u64::from_str_radix(parts[2].trim_start_matches("0x"), 16)
+            .map_err(|e: ParseIntError| e.to_string())?;
+        let image_id = parts[3].parse::<u32>().map_err(|e| e.to_string())?;
+        let exec_bit = parts[4].parse::<u32>().map_err(|e| e.to_string())?;
 
-        Ok(SocImage {
+        Ok(ImageCfg {
             path,
             load_addr,
+            staging_addr,
             image_id,
+            exec_bit,
         })
     }
 }
