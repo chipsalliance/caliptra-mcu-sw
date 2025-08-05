@@ -15,13 +15,21 @@ Abstract:
 #![allow(clippy::empty_loop)]
 
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
+use caliptra_api::SocManager;
 use core::fmt::Write;
 
 pub struct WarmBoot {}
 
 impl BootFlow for WarmBoot {
-    fn run(_env: &mut RomEnv, _params: RomParameters) -> ! {
+    fn run(env: &mut RomEnv, _params: RomParameters) -> ! {
         romtime::println!("[mcu-rom] Starting warm boot flow");
+
+        romtime::println!("[mcu-rom] Clearing Caliptra mailbox lock from previous session");
+        env.soc_manager.soc_mbox().dlen().write(|_| 32);
+        env.soc_manager
+            .soc_mbox()
+            .execute()
+            .write(|w| w.execute(false));
 
         // Check that the firmware was actually loaded before jumping to it
         let firmware_ptr = unsafe { MCU_MEMORY_MAP.sram_offset as *const u32 };

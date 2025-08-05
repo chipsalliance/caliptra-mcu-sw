@@ -7,8 +7,8 @@ use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
 use emulator_registers_generated::mci::MciPeripheral;
 use registers_generated::mci::bits::{
-    Error0IntrT, Notif0IntrEnT, Notif0IntrT, ResetReason, WdtStatus, WdtTimer1Ctrl, WdtTimer1En,
-    WdtTimer2Ctrl, WdtTimer2En, ResetRequest,
+    Error0IntrT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest, WdtStatus, WdtTimer1Ctrl,
+    WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
 };
 use std::{cell::RefCell, rc::Rc};
 use tock_registers::interfaces::{ReadWriteable, Readable};
