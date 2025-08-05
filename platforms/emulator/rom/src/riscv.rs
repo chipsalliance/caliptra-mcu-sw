@@ -62,9 +62,8 @@ pub extern "C" fn rom_entry() -> ! {
     {
         // Initialize the flash controller for testing purposes
 
-        let mut primary_flash_ctrl =
-            EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
-        let mut secondary_flash_ctrl =
+        let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
+        let secondary_flash_ctrl =
             EmulatedFlashCtrl::initialize_flash_ctrl(SECONDARY_FLASH_CTRL_BASE);
         let mut partition_table_driver = FlashPartition::new(
             &primary_flash_ctrl,
@@ -78,7 +77,7 @@ pub extern "C" fn rom_entry() -> ! {
         .ok()
         .unwrap();
 
-        let mut boot_cfg = FlashBootCfg::new(&mut partition_table_driver);
+        let boot_cfg = FlashBootCfg::new(&mut partition_table_driver);
         let active_partition = boot_cfg
             .get_active_partition()
             .map_err(|_| {
@@ -87,7 +86,7 @@ pub extern "C" fn rom_entry() -> ! {
             .ok()
             .unwrap();
 
-        let mut partition_a = FlashPartition::new(
+        let partition_a = FlashPartition::new(
             &primary_flash_ctrl,
             "Image A",
             IMAGE_A_PARTITION.offset,
@@ -98,7 +97,7 @@ pub extern "C" fn rom_entry() -> ! {
         })
         .ok()
         .unwrap();
-        let mut partition_b = FlashPartition::new(
+        let partition_b = FlashPartition::new(
             &secondary_flash_ctrl,
             "Image B",
             IMAGE_B_PARTITION.offset,

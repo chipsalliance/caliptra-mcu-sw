@@ -17,12 +17,11 @@ use flash_image::{
     SOC_MANIFEST_IDENTIFIER,
 };
 use libsyscall_caliptra::dma::AXIAddr;
-use libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
+use libsyscall_caliptra::dma::{DMAMapping, DMASource, DMATransaction, DMA as DMASyscall};
 use libsyscall_caliptra::mailbox::Mailbox;
 use libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
 use libtock_platform::ErrorCode;
 use libtockasync::TockExecutor;
-use mcu_config_emulator::dma::{caliptra_axi_addr_to_dma_addr, mcu_sram_to_axi_address};
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::protocol::firmware_update::Descriptor;
 use pldm_lib::daemon::PldmService;
@@ -34,10 +33,11 @@ use libtock_console::Console;
 
 const MAX_DMA_TRANSFER_SIZE: usize = 128;
 
-pub struct FirmwareUpdater<'a> {
+pub struct FirmwareUpdater<'a, D: DMAMapping> {
     staging_memory: &'static dyn StagingMemory,
     mailbox: Mailbox,
     params: &'a PldmFirmwareDeviceParams,
+    dma_mapping: &'a D,
     spawner: Spawner,
 }
 
@@ -47,16 +47,18 @@ pub struct PldmFirmwareDeviceParams {
     pub fw_params: &'static FirmwareParameters,
 }
 
-impl<'a> FirmwareUpdater<'a> {
+impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
     pub fn new(
         staging_memory: &'static dyn StagingMemory,
         params: &'a PldmFirmwareDeviceParams,
+        dma_mapping: &'a D,
         spawner: Spawner,
     ) -> Self {
         Self {
             staging_memory,
             mailbox: Mailbox::new(),
             params,
+            dma_mapping,
             spawner,
         }
     }
@@ -255,8 +257,7 @@ impl<'a> FirmwareUpdater<'a> {
             Ok(resp) => {
                 let caliptra_axi_addr = (resp.image_staging_address_high as u64) << 32
                     | resp.image_staging_address_low as u64;
-
-                caliptra_axi_addr_to_dma_addr(caliptra_axi_addr).map_err(|_| ErrorCode::Fail)
+                self.dma_mapping.cptra_axi_to_mcu_axi(caliptra_axi_addr)
             }
             Err(_) => Err(ErrorCode::Fail),
         }
@@ -280,7 +281,9 @@ impl<'a> FirmwareUpdater<'a> {
                 .read(current_offset, &mut buffer[..transfer_size])
                 .await?;
 
-            let source_address = mcu_sram_to_axi_address(buffer.as_ptr() as u32);
+            let source_address = self
+                .dma_mapping
+                .mcu_sram_to_mcu_axi(buffer.as_ptr() as u32)?;
             let transaction = DMATransaction {
                 byte_count: transfer_size,
                 source: DMASource::Address(source_address),

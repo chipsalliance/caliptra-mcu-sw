@@ -10,6 +10,7 @@ mod cargo_lock;
 mod clippy;
 mod deps;
 mod docs;
+mod emulator_cbinding;
 mod format;
 mod fpga;
 mod header;
@@ -216,11 +217,20 @@ enum Commands {
         /// Whether to disable the recovery interface and I3C
         #[arg(long, default_value_t = false)]
         no_recovery: bool,
+
+        /// Lifecycle controller state to set (raw, test_unlocked0, manufacturing, prod, etc.).
+        #[arg(long)]
+        lifecycle: Option<String>,
     },
     /// Utility to create and parse PLDM firmware packages
     PldmFirmware {
         #[command(subcommand)]
         subcommand: PldmFirmwareCommands,
+    },
+    /// Emulator C binding utilities
+    EmulatorCbinding {
+        #[command(subcommand)]
+        subcommand: EmulatorCbindingCommands,
     },
 }
 
@@ -282,6 +292,34 @@ enum PldmFirmwareCommands {
         /// Output directory for manifest and components
         #[arg(short, long, value_name = "DIRECTORY", required = true)]
         dir: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum EmulatorCbindingCommands {
+    /// Build all emulator C binding components (library, header, and binary)
+    Build {
+        /// Build in release mode (optimized)
+        #[arg(long, default_value_t = false)]
+        release: bool,
+    },
+    /// Build only the Rust static library and generate C header
+    BuildLib {
+        /// Build in release mode (optimized)
+        #[arg(long, default_value_t = false)]
+        release: bool,
+    },
+    /// Build only the C emulator binary
+    BuildEmulator {
+        /// Build in release mode (optimized)
+        #[arg(long, default_value_t = false)]
+        release: bool,
+    },
+    /// Clean all build artifacts
+    Clean {
+        /// Clean release mode artifacts (otherwise cleans debug artifacts)
+        #[arg(long, default_value_t = false)]
+        release: bool,
     },
 }
 
@@ -377,6 +415,16 @@ fn main() {
         Commands::PldmFirmware { subcommand } => match subcommand {
             PldmFirmwareCommands::Create { manifest, file } => pldm_fw_pkg::create(manifest, file),
             PldmFirmwareCommands::Decode { package, dir } => pldm_fw_pkg::decode(package, dir),
+        },
+        Commands::EmulatorCbinding { subcommand } => match subcommand {
+            EmulatorCbindingCommands::Build { release } => emulator_cbinding::build_all(*release),
+            EmulatorCbindingCommands::BuildLib { release } => {
+                emulator_cbinding::build_lib(*release)
+            }
+            EmulatorCbindingCommands::BuildEmulator { release } => {
+                emulator_cbinding::build_emulator(*release)
+            }
+            EmulatorCbindingCommands::Clean { release } => emulator_cbinding::clean(*release),
         },
     };
     result.unwrap_or_else(|e| {

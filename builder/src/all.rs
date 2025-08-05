@@ -1,14 +1,18 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Result};
+use caliptra_image_types::ImageManifest;
 use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
 };
+use zerocopy::FromBytes;
 use zip::{
     write::{FileOptions, SimpleFileOptions},
     ZipWriter,
 };
+
+use crate::CaliptraBuilder;
 
 #[derive(Default)]
 pub struct FirmwareBinaries {
@@ -48,6 +52,14 @@ impl FirmwareBinaries {
         }
 
         Ok(binaries)
+    }
+
+    pub fn vendor_pk_hash(&self) -> Option<[u8; 48]> {
+        if let Ok((manifest, _)) = ImageManifest::ref_from_prefix(&self.caliptra_fw) {
+            CaliptraBuilder::vendor_pk_hash(manifest).ok()
+        } else {
+            None
+        }
     }
 }
 

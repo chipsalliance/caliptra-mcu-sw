@@ -20,7 +20,6 @@ use caliptra_api::mailbox::{CommandId, FeProgReq, MailboxReqHeader};
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use core::fmt::Write;
-use registers_generated::fuses::Fuses;
 use romtime::{CaliptraSoC, HexWord};
 use zerocopy::{transmute, IntoBytes};
 
@@ -167,44 +166,14 @@ impl BootFlow for ColdBoot {
             loop {}
         }
 
-        // only do these on the emulator for now
-        let fuses = if unsafe { MCU_MEMORY_MAP.rom_offset } == 0x8000_0000 {
-            match otp.read_fuses() {
-                Ok(fuses) => {
-                    mci.set_flow_status(McuRomBootStatus::FusesReadFromOtp.into());
-                    fuses
-                }
-                Err(e) => {
-                    romtime::println!("Error reading fuses: {}", HexWord(e as u32));
-                    fatal_error(1);
-                }
+        let fuses = match otp.read_fuses() {
+            Ok(fuses) => {
+                mci.set_flow_status(McuRomBootStatus::FusesReadFromOtp.into());
+                fuses
             }
-        } else {
-            // this is the default key in Caliptra builder
-            let mut vendor = [
-                0xb1, 0x7c, 0xa8, 0x77, 0x66, 0x66, 0x57, 0xcc, 0xd1, 0x00, 0xe6, 0x92, 0x6c, 0x72,
-                0x06, 0xb6, 0x0c, 0x99, 0x5c, 0xb6, 0x89, 0x92, 0xc6, 0xc9, 0xba, 0xef, 0xce, 0x72,
-                0x8a, 0xf0, 0x54, 0x41, 0xde, 0xe1, 0xff, 0x41, 0x5a, 0xdf, 0xc1, 0x87, 0xe1, 0xe4,
-                0xed, 0xb4, 0xd3, 0xb2, 0xd9, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            ];
-
-            // swizzle
-            for i in (0..64).step_by(4) {
-                let a = vendor[i];
-                let b = vendor[i + 1];
-                let c = vendor[i + 2];
-                let d = vendor[i + 3];
-                vendor[i] = d;
-                vendor[i + 1] = c;
-                vendor[i + 2] = b;
-                vendor[i + 3] = a;
-            }
-            mci.set_flow_status(McuRomBootStatus::FusesReadFromOtp.into());
-
-            Fuses {
-                vendor_hashes_manuf_partition: vendor,
-                ..Default::default()
+            Err(e) => {
+                romtime::println!("Error reading fuses: {}", HexWord(e as u32));
+                fatal_error(1);
             }
         };
 

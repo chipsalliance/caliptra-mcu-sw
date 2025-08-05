@@ -2,10 +2,13 @@
 
 use crate::bus_logger::BusLogger;
 use crate::bus_logger::LogFile;
+use crate::otp_provision::lc_generate_memory;
+use crate::otp_provision::otp_generate_lifecycle_tokens_mem;
 use crate::trace_path_or_env;
 use crate::InitParams;
 use crate::McuHwModel;
 use crate::Output;
+use crate::DEFAULT_LIFECYCLE_RAW_TOKENS;
 use anyhow::Result;
 use caliptra_api::SocManager;
 use caliptra_emu_bus::Bus;
@@ -20,12 +23,16 @@ use caliptra_emu_periph::{
 use caliptra_emu_types::RvAddr;
 use caliptra_emu_types::RvData;
 use caliptra_emu_types::RvSize;
+use caliptra_hw_model::DeviceLifecycle;
 use caliptra_hw_model::ModelError;
+use caliptra_hw_model::SecurityState;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
 use emulator_periph::McuRootBusOffsets;
 use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp};
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
+use mcu_rom_common::LifecycleControllerState;
+use registers_generated::fuses;
 use semver::Version;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -84,6 +91,23 @@ impl McuHwModel for ModelEmulated {
 
         let output_sink = output.sink().clone();
 
+        let security_state_unprovisioned = SecurityState::default();
+        let security_state_manufacturing =
+            *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Manufacturing);
+        let security_state_prod =
+            *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Production);
+
+        let security_state = match params
+            .lifecycle_controller_state
+            .unwrap_or(LifecycleControllerState::Raw)
+        {
+            LifecycleControllerState::Raw
+            | LifecycleControllerState::Prod
+            | LifecycleControllerState::ProdEnd => security_state_prod,
+            LifecycleControllerState::Dev => security_state_manufacturing,
+            _ => security_state_unprovisioned,
+        };
+
         let bus_args = CaliptraRootBusArgs {
             rom: params.caliptra_rom.into(),
             tb_services_cb: TbServicesCb::new(move |ch| {
@@ -96,7 +120,7 @@ impl McuHwModel for ModelEmulated {
             bootfsm_go_cb: ActionCb::new(move || {
                 cpu_enabled_cloned.set(true);
             }),
-            security_state: params.security_state,
+            security_state,
             dbg_manuf_service_req: params.dbg_manuf_service,
             subsystem_mode: params.active_mode,
             prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs,
@@ -166,7 +190,32 @@ impl McuHwModel for ModelEmulated {
             i3c_irq,
             Version::new(2, 0, 0),
         );
-        let otp = Otp::new(&clock.clone(), None, None, None)?;
+        let mut otp_mem = vec![0u8; fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE];
+        if let Some(state) = params.lifecycle_controller_state {
+            println!("Setting lifecycle controller state to {}", state);
+            let mem = lc_generate_memory(state, 1)?;
+            otp_mem[fuses::LIFE_CYCLE_BYTE_OFFSET..fuses::LIFE_CYCLE_BYTE_OFFSET + mem.len()]
+                .copy_from_slice(&mem);
+
+            let tokens = params
+                .lifecycle_tokens
+                .as_ref()
+                .unwrap_or(&DEFAULT_LIFECYCLE_RAW_TOKENS);
+
+            let mem = otp_generate_lifecycle_tokens_mem(tokens)?;
+            otp_mem[fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET
+                ..fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET
+                    + fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_SIZE]
+                .copy_from_slice(&mem);
+        }
+
+        let otp = Otp::new(
+            &clock.clone(),
+            None,
+            Some(otp_mem),
+            None,
+            params.vendor_pk_hash,
+        )?;
         let ext_mci = root_bus.mci_external_regs();
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
         let mci = Mci::new(&clock.clone(), ext_mci, Rc::new(RefCell::new(mci_irq)));
@@ -392,9 +441,11 @@ mod test {
         let caliptra_fw = caliptra_builder
             .get_caliptra_fw()
             .expect("Could not build Caliptra FW bundle");
-        let _vendor_pk_hash = caliptra_builder
+        let vendor_pk_hash = caliptra_builder
             .get_vendor_pk_hash()
             .expect("Could not get vendor PK hash");
+        println!("Vendor PK hash: {:x?}", vendor_pk_hash);
+        let vendor_pk_hash = hex::decode(vendor_pk_hash).unwrap().try_into().unwrap();
         let soc_manifest = caliptra_builder.get_soc_manifest().unwrap();
 
         let mcu_rom = std::fs::read(mcu_rom).unwrap();
@@ -409,6 +460,7 @@ mod test {
             soc_manifest: &soc_manifest,
             caliptra_rom: &caliptra_rom,
             caliptra_firmware: &caliptra_fw,
+            vendor_pk_hash: Some(vendor_pk_hash),
             ..Default::default()
         })
         .unwrap();

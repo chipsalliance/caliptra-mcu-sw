@@ -308,7 +308,7 @@ impl discovery_sm::StateMachineActions for CustomDiscoverySm {
     }
     fn on_cancel_discovery(
         &self,
-        ctx: &mut discovery_sm::InnerContext<impl PldmSocket + Send + 'static>,
+        _ctx: &mut discovery_sm::InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
         Ok(())
     }

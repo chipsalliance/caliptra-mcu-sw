@@ -3,6 +3,7 @@ mod config;
 
 extern crate alloc;
 use core::fmt::Write;
+use libsyscall_caliptra::dma::DMAMapping;
 use libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
@@ -23,7 +24,7 @@ use libtock_platform::ErrorCode;
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 
 #[allow(dead_code)]
-pub async fn firmware_update() -> Result<(), ErrorCode> {
+pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     let reset_reason = get_reset_reason()?;
 
@@ -36,13 +37,16 @@ pub async fn firmware_update() -> Result<(), ErrorCode> {
     writeln!(console_writer, "[FW Upd] Start").unwrap();
     #[cfg(feature = "test-firmware-update-streaming")]
     {
+        use libsyscall_caliptra::dma;
+
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
             fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
         };
-        let mut updater: FirmwareUpdater = FirmwareUpdater::new(
+        let mut updater = FirmwareUpdater::new(
             external_memory::STAGING_MEMORY.get(),
             &fw_params,
+            dma_mapping,
             EXECUTOR.get().spawner(),
         );
         updater.start().await?;
@@ -57,8 +61,12 @@ pub async fn firmware_update() -> Result<(), ErrorCode> {
         let mut staging_memory = flash_memory::ExternalFlash::new().await?;
         let staging_memory: &'static flash_memory::ExternalFlash =
             unsafe { core::mem::transmute(&mut staging_memory) };
-        let mut updater: FirmwareUpdater =
-            FirmwareUpdater::new(staging_memory, &fw_params, EXECUTOR.get().spawner());
+        let mut updater = FirmwareUpdater::new(
+            staging_memory,
+            &fw_params,
+            dma_mapping,
+            EXECUTOR.get().spawner(),
+        );
         updater.start().await?;
     }
 
@@ -78,24 +86,27 @@ mod external_memory {
     use async_trait::async_trait;
     use core::fmt::Debug;
     use libapi_caliptra::firmware_update::StagingMemory;
-    use libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
+    use libsyscall_caliptra::dma::{DMAMapping, DMASource, DMATransaction, DMA as DMASyscall};
     use libtock_platform::ErrorCode;
-    use mcu_config_emulator::dma::mcu_sram_to_axi_address;
+
+    use crate::image_loader::EMULATED_DMA_MAPPING;
 
     const DMA_TRANSFER_SIZE: usize = 512;
     const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0x2000_0000_0000_0000;
 
     pub static STAGING_MEMORY: embassy_sync::lazy_lock::LazyLock<ExternalRAM> =
-        embassy_sync::lazy_lock::LazyLock::new(|| ExternalRAM::new());
+        embassy_sync::lazy_lock::LazyLock::new(|| ExternalRAM::new(&EMULATED_DMA_MAPPING));
 
     pub struct ExternalRAM {
         dma_syscall: DMASyscall,
+        dma_mapping: &'static dyn DMAMapping,
     }
 
     impl ExternalRAM {
-        pub fn new() -> Self {
+        pub fn new(dma_mapping: &'static dyn DMAMapping) -> Self {
             ExternalRAM {
                 dma_syscall: DMASyscall::new(),
+                dma_mapping,
             }
         }
     }
@@ -106,7 +117,7 @@ mod external_memory {
             let mut current_offset = offset;
             while current_offset < offset + data.len() {
                 let transfer_size = (offset + data.len() - current_offset).min(DMA_TRANSFER_SIZE);
-                let source_address = mcu_sram_to_axi_address(data.as_ptr() as u32);
+                let source_address = self.dma_mapping.mcu_sram_to_mcu_axi(data.as_ptr() as u32)?;
                 let transaction = DMATransaction {
                     byte_count: transfer_size,
                     source: DMASource::Address(source_address),
@@ -120,7 +131,9 @@ mod external_memory {
         }
 
         async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode> {
-            let dest_address = mcu_sram_to_axi_address(data.as_mut_ptr() as u32);
+            let dest_address = self
+                .dma_mapping
+                .mcu_sram_to_mcu_axi(data.as_mut_ptr() as u32)?;
             let transaction: DMATransaction<'_> = DMATransaction {
                 byte_count: data.len(),
                 source: DMASource::Address(DEVICE_EXTERNAL_SRAM_BASE + offset as u64),
@@ -148,14 +161,9 @@ mod flash_memory {
     use alloc::boxed::Box;
     use async_trait::async_trait;
     use core::fmt::Debug;
-    use core::fmt::Write;
     use libapi_caliptra::firmware_update::StagingMemory;
     use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
-    use libsyscall_caliptra::{
-        flash::{FlashCapacity, SpiFlash as FlashSyscall},
-        DefaultSyscalls,
-    };
-    use libtock_console::Console;
+    use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash as FlashSyscall};
     use libtock_platform::ErrorCode;
     use mcu_config::boot::{BootConfigAsync, PartitionStatus};
 

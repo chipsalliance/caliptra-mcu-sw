@@ -7,8 +7,7 @@ use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use flash_image::{FlashHeader, ImageHeader};
-use libsyscall_caliptra::dma::{AXIAddr, DMASource, DMATransaction, DMA as DMASyscall};
-use mcu_config_emulator::dma::mcu_sram_to_axi_address;
+use libsyscall_caliptra::dma::{AXIAddr, DMAMapping, DMASource, DMATransaction, DMA as DMASyscall};
 use pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::message::firmware_update::get_status::ProgressPercent;
@@ -22,17 +21,23 @@ use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
 const MAX_PLDM_TRANSFER_SIZE: usize = core::mem::size_of::<RequestFirmwareDataResponseFixed>();
 
-pub struct StreamingFdOps<'a> {
+pub struct StreamingFdOps<'a, D: DMAMapping> {
     descriptors: &'a [Descriptor],
     fw_params: &'a FirmwareParameters,
+    dma_mapping: &'a D,
 }
 
-impl<'a> StreamingFdOps<'a> {
+impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
     /// Creates a new instance of the StreamingFdOps.
-    pub const fn new(descriptors: &'a [Descriptor], fw_params: &'a FirmwareParameters) -> Self {
+    pub const fn new(
+        descriptors: &'a [Descriptor],
+        fw_params: &'a FirmwareParameters,
+        dma_mapping: &'a D,
+    ) -> Self {
         Self {
             descriptors,
             fw_params,
+            dma_mapping,
         }
     }
 
@@ -41,9 +46,12 @@ impl<'a> StreamingFdOps<'a> {
         load_address: AXIAddr,
         offset: usize,
         data: &[u8],
+        dma_mapping: &impl DMAMapping,
     ) -> Result<(), FdOpsError> {
         let dma_syscall: DMASyscall = DMASyscall::new();
-        let source_address = mcu_sram_to_axi_address(data.as_ptr() as u32);
+        let source_address = dma_mapping
+            .mcu_sram_to_mcu_axi(data.as_ptr() as u32)
+            .map_err(|_| FdOpsError::FwDownloadError)?;
 
         let transaction = DMATransaction {
             byte_count: data.len(),
@@ -76,7 +84,7 @@ impl<'a> StreamingFdOps<'a> {
         });
         if let Some(dma_params) = dma_params {
             return self
-                .copy_buffer_to_load_address(dma_params.0, dma_params.1, data)
+                .copy_buffer_to_load_address(dma_params.0, dma_params.1, data, self.dma_mapping)
                 .await;
         }
         Ok(())
@@ -84,7 +92,7 @@ impl<'a> StreamingFdOps<'a> {
 }
 
 #[async_trait(?Send)]
-impl FdOps for StreamingFdOps<'_> {
+impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
     async fn get_device_identifiers(
         &self,
         device_identifiers: &mut [Descriptor],
