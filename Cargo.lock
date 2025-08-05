@@ -850,6 +850,7 @@ dependencies = [
  "doe-transport",
  "i3c-driver",
  "kernel",
+ "mcu-mbox-comm",
  "registers-generated",
  "romtime",
  "ureg",
@@ -2638,6 +2639,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-mbox-comm"
+version = "0.1.0"
+dependencies = [
+ "kernel",
+]
+
+[[package]]
+name = "mcu-mbox-driver"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "kernel",
+ "mcu-mbox-comm",
+ "registers-generated",
+ "romtime",
+]
+
+[[package]]
 name = "mcu-platforms-common"
 version = "0.1.0"
 dependencies = [
@@ -2728,6 +2747,7 @@ dependencies = [
  "mcu-components",
  "mcu-config",
  "mcu-config-emulator",
+ "mcu-mbox-driver",
  "mcu-platforms-common",
  "mcu-tock-veer",
  "registers-generated",
