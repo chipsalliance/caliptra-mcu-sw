@@ -10,6 +10,7 @@ pub use caliptra_emu_cpu::{CodeRange, ImageInfo, StackInfo, StackRange};
 use caliptra_hw_model_types::{
     EtrngResponse, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
 };
+use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_registers::soc_ifc::regs::{
     CptraItrngEntropyConfig0WriteVal, CptraItrngEntropyConfig1WriteVal,
 };
@@ -103,6 +104,9 @@ pub struct InitParams<'a> {
     /// Vendor public key hash.
     /// This will override any otp_memory contents.
     pub vendor_pk_hash: Option<[u8; 48]>,
+    /// PQC key type for vendor public key.
+    /// This will override any otp_memory contents.
+    pub vendor_pqc_type: Option<FwVerificationPqcKeyType>,
 
     pub log_writer: Box<dyn std::io::Write>,
 
@@ -191,6 +195,7 @@ impl Default for InitParams<'_> {
             csr_hmac_key: [1; 16],
             soc_manifest: Default::default(),
             vendor_pk_hash: None,
+            vendor_pqc_type: None,
         }
     }
 }

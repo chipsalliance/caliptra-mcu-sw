@@ -24,6 +24,7 @@ use caliptra_emu_bus::{Bus, Clock, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
 use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
+use caliptra_image_types::FwVerificationPqcKeyType;
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
@@ -120,6 +121,10 @@ pub struct EmulatorArgs {
 
     #[arg(long)]
     pub owner_pk_hash: Option<String>,
+
+    /// 1 = MLDSA, 3 = LMS
+    #[arg(long, default_value_t = 3)]
+    pub vendor_pqc_type: u8,
 
     /// Path to the streaming boot PLDM firmware package
     #[arg(long)]
@@ -720,7 +725,15 @@ impl Emulator {
         });
 
         let lc = LcCtrl::new();
-        let otp = Otp::new(&clock.clone(), cli.otp, None, owner_pk_hash, vendor_pk_hash)?;
+        let otp = Otp::new(
+            &clock.clone(),
+            cli.otp,
+            None,
+            owner_pk_hash,
+            vendor_pk_hash,
+            FwVerificationPqcKeyType::from_u8(cli.vendor_pqc_type)
+                .unwrap_or(FwVerificationPqcKeyType::LMS),
+        )?;
         let mci = Mci::new(
             &clock.clone(),
             ext_mci,

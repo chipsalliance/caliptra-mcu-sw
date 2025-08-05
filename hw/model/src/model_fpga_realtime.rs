@@ -11,6 +11,7 @@ use caliptra_api::SocManager;
 use caliptra_emu_bus::{Bus, BusError, BusMmio, Device, Event, EventData, RecoveryCommandCode};
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use caliptra_hw_model_types::{HexSlice, DEFAULT_FIELD_ENTROPY, DEFAULT_UDS_SEED};
+use caliptra_image_types::FwVerificationPqcKeyType;
 use emulator_bmc::Bmc;
 use registers_generated::i3c::bits::{DeviceStatus0, StbyCrDeviceAddr, StbyCrVirtDeviceAddr};
 use registers_generated::mci::bits::Go::Go;
@@ -1148,6 +1149,19 @@ impl McuHwModel for ModelFpgaRealtime {
             let otp_mem = m.otp_slice();
             let offset = fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET;
             otp_mem[offset..offset + len].copy_from_slice(&vendor_pk_hash);
+        }
+        if let Some(vendor_pqc_type) = params.vendor_pqc_type {
+            println!(
+                "Setting vendor public key pqc type to {:x?}",
+                vendor_pqc_type
+            );
+            let val = match vendor_pqc_type {
+                FwVerificationPqcKeyType::MLDSA => 0,
+                FwVerificationPqcKeyType::LMS => 1,
+            };
+            let otp_mem = m.otp_slice();
+            let offset = fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48;
+            otp_mem[offset] = val;
         }
 
         println!("Clearing fifo");

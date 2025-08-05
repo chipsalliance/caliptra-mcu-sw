@@ -26,6 +26,7 @@ use caliptra_emu_types::RvSize;
 use caliptra_hw_model::DeviceLifecycle;
 use caliptra_hw_model::ModelError;
 use caliptra_hw_model::SecurityState;
+use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
 use emulator_periph::McuRootBusOffsets;
 use emulator_periph::{
@@ -217,6 +218,9 @@ impl McuHwModel for ModelEmulated {
             Some(otp_mem),
             None,
             params.vendor_pk_hash,
+            params
+                .vendor_pqc_type
+                .unwrap_or(FwVerificationPqcKeyType::LMS),
         )?;
         let ext_mci = root_bus.mci_external_regs();
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);

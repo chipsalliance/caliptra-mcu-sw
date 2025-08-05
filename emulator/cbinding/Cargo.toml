@@ -14,6 +14,7 @@ emulator.workspace = true
 libc.workspace = true
 caliptra-emu-cpu.workspace = true
 caliptra-emu-types.workspace = true
+caliptra-image-types.workspace = true
 semver.workspace = true
 
 [build-dependencies]

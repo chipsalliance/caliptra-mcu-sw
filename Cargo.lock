@@ -1608,6 +1608,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-emu-cpu",
  "caliptra-emu-types",
+ "caliptra-image-types",
  "cbindgen",
  "emulator",
  "libc",
@@ -1631,6 +1632,7 @@ dependencies = [
  "caliptra-emu-derive",
  "caliptra-emu-periph",
  "caliptra-emu-types",
+ "caliptra-image-types",
  "emulator-consts",
  "emulator-registers-generated",
  "lazy_static",
