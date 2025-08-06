@@ -44,7 +44,6 @@ const OTP_MAPPING: (usize, usize) = (1, 4);
 const ITRNG_DIVISOR: u32 = 400;
 const DEFAULT_AXI_PAUSER: u32 = 0xcccc_cccc;
 const OTP_SIZE: usize = 16384;
-const MCU_ROM_BACKDOOR_SIZE: usize = 0x00020000;
 
 // ITRNG FIFO stores 1024 DW and outputs 4 bits at a time to Caliptra.
 const FPGA_ITRNG_FIFO_SIZE: usize = 1024;
@@ -962,6 +961,9 @@ impl McuHwModel for ModelFpgaRealtime {
         let mcu_rom_backdoor = devs[MCU_ROM_MAPPING.0]
             .map_mapping(MCU_ROM_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u8;
+        let mcu_rom_size = devs[MCU_ROM_MAPPING.0]
+            .map_size(MCU_ROM_MAPPING.1)
+            .map_err(fmt_uio_error)?;
         let mci_ptr = devs[MCI_MAPPING.0]
             .map_mapping(MCI_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u32;
@@ -1183,7 +1185,7 @@ impl McuHwModel for ModelFpgaRealtime {
             caliptra_rom_data.push(0);
         }
 
-        let mut mcu_rom_data = vec![0; MCU_ROM_BACKDOOR_SIZE];
+        let mut mcu_rom_data = vec![0; mcu_rom_size];
         mcu_rom_data[..params.mcu_rom.len()].clone_from_slice(params.mcu_rom);
 
         // copy the ROM data
@@ -1194,7 +1196,7 @@ impl McuHwModel for ModelFpgaRealtime {
         caliptra_rom_slice.copy_from_slice(&caliptra_rom_data);
         println!("Writing MCU ROM");
         let mcu_rom_slice =
-            unsafe { core::slice::from_raw_parts_mut(m.mcu_rom_backdoor, MCU_ROM_BACKDOOR_SIZE) };
+            unsafe { core::slice::from_raw_parts_mut(m.mcu_rom_backdoor, mcu_rom_size) };
         mcu_rom_slice.copy_from_slice(&mcu_rom_data);
 
         // set the reset vector to point to the ROM backdoor
