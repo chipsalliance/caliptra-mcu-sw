@@ -30,6 +30,7 @@ pub(crate) struct ConnectionInfo {
     peer_capabilities: DeviceCapabilities,
     peer_algorithms: DeviceAlgorithms,
     multi_key_conn_rsp: bool,
+    handshake_in_the_clear: bool,
 }
 
 impl Default for ConnectionInfo {
@@ -40,6 +41,7 @@ impl Default for ConnectionInfo {
             peer_capabilities: DeviceCapabilities::default(),
             peer_algorithms: DeviceAlgorithms::default(),
             multi_key_conn_rsp: false,
+            handshake_in_the_clear: false,
         }
     }
 }
@@ -81,6 +83,14 @@ impl ConnectionInfo {
     #[allow(dead_code)]
     pub fn set_multi_key_conn_rsp(&mut self, multi_key_conn_rsp: bool) {
         self.multi_key_conn_rsp = multi_key_conn_rsp;
+    }
+
+    pub fn handshake_in_the_clear(&self) -> bool {
+        self.handshake_in_the_clear
+    }
+
+    pub fn set_handshake_in_the_clear(&mut self) {
+        self.handshake_in_the_clear = true;
     }
 
     pub fn multi_key_conn_rsp(&self) -> bool {

@@ -13,6 +13,7 @@ caliptra-emu-bus.workspace = true
 caliptra-emu-cpu.workspace = true
 caliptra-emu-types.workspace = true
 caliptra-emu-derive.workspace = true
+caliptra-image-types.workspace = true
 caliptra-emu-periph.workspace = true
 emulator-consts.workspace = true
 emulator-registers-generated.workspace = true

@@ -9,7 +9,7 @@ You can use [`cross-rs`](https://github.com/cross-rs/cross) to make it easier to
 For example,
 
 ```shell
-CARGO_BUILD_TARGET=aarch64-unknown-linux-gnu CARGO_TARGET_DIR=target/build/aarch64-unknown-linux-gnu cross build -p xtask --bin xtask --target=aarch64-unknown-linux-gnu
+CARGO_BUILD_TARGET=aarch64-unknown-linux-gnu CARGO_TARGET_DIR=target/build/aarch64-unknown-linux-gnu cross build -p xtask --features fpga_realtime --bin xtask --target=aarch64-unknown-linux-gnu
 ```
 
 will build the a binary that runs `xtask` that can be used on the FPGA, which can then be used to install the FPGA kernel modules (assuming the `caliptra-mcu-sw` repository is checked out and the `xtask` binary is renamed to `xtask-bin`):

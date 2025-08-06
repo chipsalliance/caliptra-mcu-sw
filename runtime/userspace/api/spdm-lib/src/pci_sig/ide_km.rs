@@ -148,7 +148,7 @@ pub trait IdeDriver {
     /// Number of Link IDE register blocks supported by this implementation
     const LINK_IDE_REG_BLOCK_COUNT: usize;
 
-    /// Number of Selective IDE register blocks supported by this implementation  
+    /// Number of Selective IDE register blocks supported by this implementation
     const SELECTIVE_IDE_REG_BLOCK_COUNT: usize;
 
     /// Number of Address Association register blocks per Selective IDE block
@@ -293,8 +293,8 @@ mod tests {
     #[test]
     fn test_key_info() {
         let key_info = KeyInfo::new(true, false, 5);
-        assert_eq!(key_info.key_set_bit(), true);
-        assert_eq!(key_info.key_direction(), false);
+        assert!(key_info.key_set_bit());
+        assert!(!key_info.key_direction());
         assert_eq!(key_info.key_sub_stream(), 5);
     }
 
@@ -319,12 +319,14 @@ mod tests {
 
         // Test that PortConfig supports zerocopy operations
         type TestPortConfig = PortConfig<1, 1>;
-        let mut config = TestPortConfig::default();
-        config.port_index = 1;
-        config.function_num = 2;
-        config.bus_num = 3;
-        config.segment = 4;
-        config.max_port_index = 5;
+        let config = TestPortConfig {
+            port_index: 1,
+            function_num: 2,
+            bus_num: 3,
+            segment: 4,
+            max_port_index: 5,
+            ..Default::default()
+        };
 
         // Convert to bytes
         let bytes = config.as_bytes();

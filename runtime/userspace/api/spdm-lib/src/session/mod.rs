@@ -53,13 +53,16 @@ impl SessionManager {
         self.active_session_id.is_some()
     }
 
-    #[allow(dead_code)]
     pub fn set_active_session_id(&mut self, session_id: u32) {
         self.active_session_id = Some(session_id);
     }
 
     pub fn reset_active_session_id(&mut self) {
         self.active_session_id = None;
+    }
+
+    pub fn active_session_id(&self) -> Option<u32> {
+        self.active_session_id
     }
 
     pub fn create_session(&mut self, session_id: u32) -> SessionResult<()> {

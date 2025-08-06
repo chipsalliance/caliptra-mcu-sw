@@ -24,6 +24,7 @@ use caliptra_emu_bus::{Bus, Clock, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
 use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
+use caliptra_image_types::FwVerificationPqcKeyType;
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
@@ -32,7 +33,7 @@ use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
 use emulator_periph::{
     CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
-    McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp,
+    McuMailbox0Internal, McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp,
 };
 use emulator_registers_generated::dma::DmaPeripheral;
 use emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
@@ -61,6 +62,17 @@ pub type ExternalWriteCallback = Box<
         caliptra_emu_types::RvData,
     ) -> bool,
 >;
+
+fn parse_vendor_pqc_type(s: &str) -> Result<FwVerificationPqcKeyType, String> {
+    match s.to_lowercase().trim() {
+        "mldsa" => Ok(FwVerificationPqcKeyType::MLDSA),
+        "lms" => Ok(FwVerificationPqcKeyType::LMS),
+        _ => Err(format!(
+            "Invalid vendor PQC type: {}. Supported types are 'mldsa' and 'lms'.",
+            s
+        )),
+    }
+}
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None, name = "Caliptra MCU Emulator")]
@@ -120,6 +132,10 @@ pub struct EmulatorArgs {
 
     #[arg(long)]
     pub owner_pk_hash: Option<String>,
+
+    /// mldsa or lms (default)
+    #[arg(long, value_parser = parse_vendor_pqc_type, default_value = "lms")]
+    pub vendor_pqc_type: FwVerificationPqcKeyType,
 
     /// Path to the streaming boot PLDM firmware package
     #[arg(long)]
@@ -720,8 +736,21 @@ impl Emulator {
         });
 
         let lc = LcCtrl::new();
-        let otp = Otp::new(&clock.clone(), cli.otp, None, owner_pk_hash, vendor_pk_hash)?;
-        let mci = Mci::new(&clock.clone(), ext_mci, mci_irq);
+
+        let otp = Otp::new(
+            &clock.clone(),
+            cli.otp,
+            None,
+            owner_pk_hash,
+            vendor_pk_hash,
+            cli.vendor_pqc_type,
+        )?;
+        let mci = Mci::new(
+            &clock.clone(),
+            ext_mci,
+            mci_irq,
+            Some(McuMailbox0Internal::new(&clock.clone())),
+        );
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,

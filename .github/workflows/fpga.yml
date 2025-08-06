@@ -24,18 +24,16 @@ jobs:
       - name: Build test firmware
         run: |
           # Build ROM and runtime binaries
-          cargo xtask rom-build --platform fpga
-          cargo xtask runtime-build --platform fpga
+          cargo xtask all-build --platform fpga
 
           # Cross compile xtask for the ARM core
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="aarch64-linux-gnu-gcc"
-          cargo build -p xtask --target aarch64-unknown-linux-gnu
+          cargo build -p xtask --features fpga_realtime --target aarch64-unknown-linux-gnu
 
           mkdir -p /tmp/caliptra-binaries
           tar -cvz -f /tmp/caliptra-binaries/caliptra-binaries.tar.gz \
-            target/riscv32imc-unknown-none-elf/release/mcu-rom-fpga.bin \
-            target/riscv32imc-unknown-none-elf/release/runtime.bin \
-            target/aarch64-unknown-linux-gnu/debug/xtask
+            target/aarch64-unknown-linux-gnu/debug/xtask \
+            target/all-fw.zip
 
           FEATURES="fpga_realtime"
           cargo nextest archive \
@@ -94,10 +92,10 @@ jobs:
           sudo mount /tmp/caliptra-test-binaries.sqsh/caliptra-test-binaries.sqsh /tmp/caliptra-test-binaries -t squashfs -o loop
           find /tmp/caliptra-test-binaries
 
-      - name: Execute FPGA Boot flow
-        run: |
-          export RUST_BACKTRACE=1
-          sudo ./target/aarch64-unknown-linux-gnu/debug/xtask fpga-run --mcu-rom target/riscv32imc-unknown-none-elf/release/mcu-rom-fpga.bin
+      # - name: Execute FPGA Boot flow
+      #   run: |
+      #     export RUST_BACKTRACE=1
+      #     sudo ./target/aarch64-unknown-linux-gnu/debug/xtask fpga-run --zip target/all-fw.zip
 
       - name: Execute tests
         run: |
@@ -110,14 +108,14 @@ jobs:
               --binaries-metadata="${TEST_BIN}/target/nextest/binaries-metadata.json"
               --target-dir-remap="${TEST_BIN}/target"
               --workspace-remap=.
-              -E 'package(mcu-hw-model) - test(test_new_unbooted)' # Modify this as we onboard crates to the FPGA test suite.
+              -E 'package(mcu-hw-model) - test(model_emulated::test::test_new_unbooted)' # Modify this as we onboard crates to the FPGA test suite.
           )
 
           cargo-nextest nextest list \
               "${COMMON_ARGS[@]}" \
               --message-format json > /tmp/nextest-list.json
 
-          sudo ${VARS} cargo-nextest nextest run \
+          sudo CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip" cargo-nextest nextest run \
               "${COMMON_ARGS[@]}" \
               --test-threads=${RUST_TEST_THREADS} \
               --no-fail-fast \

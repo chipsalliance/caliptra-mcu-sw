@@ -20,7 +20,7 @@ bitfield! {
     reserved, _: 7, 2;
 }
 
-#[allow(dead_code)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) enum SessionState {
     HandshakeNotStarted, // Before KEY_EXCHANGE and after END_SESSION
     HandshakeInProgress, // After KEY_EXCHANGE and before FINISH
@@ -37,7 +37,6 @@ pub enum SessionType {
 #[allow(dead_code)]
 pub(crate) struct SessionInfo {
     pub(crate) session_id: u32,
-    pub(crate) handshake_in_the_clear: bool, // Indicates if the handshake is in the clear
     pub(crate) session_policy: SessionPolicy,
     pub(crate) session_state: SessionState,
     pub(crate) session_type: SessionType,
@@ -51,7 +50,6 @@ impl SessionInfo {
     pub fn new(session_id: u32) -> Self {
         Self {
             session_id,
-            handshake_in_the_clear: false, // Default to false
             session_policy: SessionPolicy::default(),
             session_state: SessionState::HandshakeNotStarted,
             session_type: SessionType::None,
@@ -63,13 +61,11 @@ impl SessionInfo {
 
     pub fn init(
         &mut self,
-        handshake_in_the_clear: bool,
         session_policy: SessionPolicy,
         session_type: SessionType,
         spdm_version: SpdmVersion,
         asym_algo: AsymAlgo,
     ) {
-        self.handshake_in_the_clear = handshake_in_the_clear;
         self.session_policy = session_policy;
         self.session_state = SessionState::HandshakeNotStarted;
         self.session_type = session_type;
@@ -108,6 +104,16 @@ impl SessionInfo {
     ) -> SessionResult<()> {
         self.key_schedule_ctx
             .generate_session_handshake_key(th1_transcript_hash)
+            .await
+            .map_err(SessionError::KeySchedule)
+    }
+
+    pub async fn generate_session_data_key(
+        &mut self,
+        th2_transcript_hash: &[u8; SHA384_HASH_SIZE],
+    ) -> SessionResult<()> {
+        self.key_schedule_ctx
+            .generate_session_data_key(th2_transcript_hash)
             .await
             .map_err(SessionError::KeySchedule)
     }

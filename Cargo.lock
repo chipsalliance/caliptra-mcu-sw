@@ -1126,6 +1126,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c74b8349d32d297c9134b8c88677813a227df8f779daa29bfc29c183fe3dca6"
 
 [[package]]
+name = "constant_time_eq"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1401,7 +1407,7 @@ dependencies = [
  "caliptra-cfi-derive-git",
  "caliptra-cfi-lib-git",
  "cfg-if",
- "constant_time_eq",
+ "constant_time_eq 0.3.1",
  "crypto",
  "platform",
  "ufmt 0.2.0",
@@ -1602,6 +1608,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-emu-cpu",
  "caliptra-emu-types",
+ "caliptra-image-types",
  "cbindgen",
  "emulator",
  "libc",
@@ -1625,6 +1632,7 @@ dependencies = [
  "caliptra-emu-derive",
  "caliptra-emu-periph",
  "caliptra-emu-types",
+ "caliptra-image-types",
  "emulator-consts",
  "emulator-registers-generated",
  "lazy_static",
@@ -3689,6 +3697,7 @@ dependencies = [
  "async-trait",
  "bitfield",
  "caliptra-api",
+ "constant_time_eq 0.4.2",
  "libapi-caliptra",
  "libsyscall-caliptra",
  "libtock_console",

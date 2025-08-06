@@ -12,6 +12,7 @@ Abstract:
 
 --*/
 
+use caliptra_image_types::FwVerificationPqcKeyType;
 use emulator::{Emulator, EmulatorArgs};
 
 #[test]
@@ -31,7 +32,7 @@ fn test_emulator_args_creation() {
     // Test that we can create EmulatorArgs
     use std::path::PathBuf;
 
-    let args = EmulatorArgs {
+    let _args = EmulatorArgs {
         rom: PathBuf::from("test_rom.bin"),
         firmware: PathBuf::from("test_firmware.bin"),
         caliptra_rom: PathBuf::from("test_caliptra_rom.bin"),
@@ -46,6 +47,7 @@ fn test_emulator_args_creation() {
         i3c_port: None,
         manufacturing_mode: false,
         vendor_pk_hash: None,
+        vendor_pqc_type: FwVerificationPqcKeyType::LMS.into(),
         owner_pk_hash: None,
         streaming_boot: None,
         primary_flash_image: None,

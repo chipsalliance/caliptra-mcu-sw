@@ -30,6 +30,15 @@ impl FirmwareBinaries {
     const MCU_RUNTIME_NAME: &'static str = "mcu_runtime.bin";
     const SOC_MANIFEST_NAME: &'static str = "soc_manifest.bin";
 
+    /// Reads the environment variable `CPTRA_FIRMWARE_BUNDLE` and returns `FirmwareBinaries` if
+    /// it is set and it points to a valid zip file.
+    pub fn from_env() -> Result<Self> {
+        // TODO: Consider falling back to building the firmware if CPTRA_FIRMWARE_BUNDLE is unset.
+        let bundle_path = std::env::var("CPTRA_FIRMWARE_BUNDLE")
+            .expect("Set the environment variable CPTRA_FIRMWARE_BUNDLE ");
+        Self::read_from_zip(&bundle_path.into())
+    }
+
     pub fn read_from_zip(path: &PathBuf) -> Result<Self> {
         let file = std::fs::File::open(path)?;
         let mut zip = zip::ZipArchive::new(file)?;
