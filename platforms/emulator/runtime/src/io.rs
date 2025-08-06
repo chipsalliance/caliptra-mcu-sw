@@ -18,7 +18,7 @@ use kernel::debug;
 use kernel::debug::IoWrite;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::hil;
-use kernel::hil::time::{Alarm, AlarmClient, Ticks, Ticks64, Time};
+use kernel::hil::time::{Alarm, AlarmClient};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::ErrorCode;
 use mcu_tock_veer::timers::InternalTimers;
@@ -112,13 +112,6 @@ impl<'a> SemihostUart<'a> {
         self.alarm.set_alarm_client(self);
     }
 
-    fn set_alarm(&self, ticks: u64) {
-        self.alarm.set_alarm(
-            self.alarm.now(),
-            self.alarm.now().wrapping_add(Ticks64::from(ticks)),
-        );
-    }
-
     pub fn handle_interrupt(&self) {
         let mut b = read_byte();
         while b != 0 {
@@ -206,7 +199,6 @@ impl<'a> hil::uart::Receive<'a> for SemihostUart<'a> {
         // called from another call stack. Hence simply enable interrupts here.
         self.rx_buffer.replace(rx_buffer);
         self.rx_len.set(rx_len);
-        self.set_alarm(self.alarm.minimum_dt().into_u64());
         Ok(())
     }
     fn receive_word(&self) -> Result<(), ErrorCode> {
