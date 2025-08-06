@@ -6,9 +6,6 @@ use libtock_platform::share;
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
-use core::fmt::Write;
-use libtock_console::Console;
-
 type EndpointId = u8;
 type Tag = u8;
 
@@ -65,12 +62,9 @@ impl<S: Syscalls> Mctp<S> {
     /// * `(u32, MessageInfo)` - On success, returns tuple containing length of the request received and the message information containing the source EID, message tag
     /// * `ErrorCode` - The error code on failure
     pub async fn receive_request(&self, req: &mut [u8]) -> Result<(u32, MessageInfo), ErrorCode> {
-        let mut cw = Console::<DefaultSyscalls>::writer();
         if req.is_empty() {
             Err(ErrorCode::Invalid)?;
         }
-
-        writeln!(cw, "[MCTP-UPCALL] Setting up receive request").unwrap();
 
         let (recv_len, _, info) = share::scope::<(), _, _>(|_handle| {
             let mut sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
@@ -92,8 +86,6 @@ impl<S: Syscalls> Mctp<S> {
         })?
         .await?;
 
-        writeln!(cw, "[MCTP-UPCALL] received request: {} bytes", recv_len).unwrap();
-
         Ok((recv_len, info.into()))
     }
 
@@ -107,13 +99,11 @@ impl<S: Syscalls> Mctp<S> {
     /// * `()` - On success
     /// * `ErrorCode` - The error code on failure
     pub async fn send_response(&self, resp: &[u8], info: MessageInfo) -> Result<(), ErrorCode> {
-        let mut cw = Console::<DefaultSyscalls>::writer();
         let max_size = self.max_message_size()? as usize;
 
         if resp.is_empty() || resp.len() > max_size {
             Err(ErrorCode::Invalid)?;
         }
-        writeln!(cw, "[MCTP-UPCALL] Setting up send_response").unwrap();
 
         let ro_sub = share::scope::<(), _, _>(|_handle| {
             let mut ro_sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
@@ -140,12 +130,7 @@ impl<S: Syscalls> Mctp<S> {
         })?;
 
         ro_sub.await.map(|(result, _, _)| match result {
-            0 => {
-                {
-                    writeln!(cw, "[MCTP-UPCALL] Response send_done called").unwrap();
-                };
-                Ok(())
-            }
+            0 => Ok(()),
             _ => Err(result.try_into().unwrap_or(ErrorCode::Fail)),
         })?
     }

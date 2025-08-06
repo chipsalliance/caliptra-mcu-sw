@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::i3c_socket::{receive_ibi, receive_private_read, send_private_write};
+use crate::sleep_emulator_ticks;
 use crate::tests::mctp_util::base_protocol::{MCTPHdr, LOCAL_TEST_ENDPOINT_EID, MCTP_HDR_SIZE};
 use crate::EMULATOR_RUNNING;
 use std::collections::VecDeque;
@@ -140,7 +141,7 @@ impl MctpUtil {
                 I3cControllerState::Start => {
                     // Add some delay before sending the first packet.
                     // The MCU might need some time to boot up and be ready to receive the request.
-                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    sleep_emulator_ticks(5_000_000);
                     i3c_state = I3cControllerState::SendPrivateWrite;
                 }
 
@@ -148,7 +149,7 @@ impl MctpUtil {
                     let write_pkt = pkts.front().unwrap().clone();
                     if send_private_write(stream, target_addr, write_pkt) {
                         i3c_state = I3cControllerState::WaitForIbi;
-                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        sleep_emulator_ticks(100_000);
                     }
                 }
                 I3cControllerState::WaitForIbi => {
@@ -307,7 +308,7 @@ impl MctpUtil {
         let mut i3c_state = I3cControllerState::WaitForIbi;
         let mut pkts: VecDeque<Vec<u8>> = VecDeque::new();
         stream.set_nonblocking(true).unwrap();
-        let mut retry = retry_count;
+        let mut retry = 50;
 
         while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match i3c_state {
@@ -315,7 +316,7 @@ impl MctpUtil {
                     if receive_ibi(stream, target_addr) {
                         i3c_state = I3cControllerState::ReceivePrivateRead;
                     } else if retry > 0 {
-                        std::thread::sleep(std::time::Duration::from_millis(200));
+                        sleep_emulator_ticks(100_000);
                         retry -= 1;
                         if retry == 0 {
                             println!(

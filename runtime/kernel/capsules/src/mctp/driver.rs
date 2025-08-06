@@ -330,7 +330,6 @@ impl<'a> MCTPDriver<'a> {
                 "[MCTP-CAPSULE]::buffer_message replacing existing buffered message with new one (msg_tag={}, {} bytes)",
                 msg_tag, msg_len
             );
-            // We'll replace it - newer messages are more likely to be relevant
         }
 
         // Take the kernel rx buffer to store the message
@@ -441,13 +440,7 @@ impl<'a> MCTPDriver<'a> {
                             subscribe_num,
                             (buffered_msg.msg_len, buffered_msg.recv_time as usize, msg_info),
                         ) {
-                            panic!("[MCTP-CAPSULE]::deliver_buffered_message upcall schedule failed: {:?}", e);
-                        } else {
-                            let op_type = if rx_request { "request" } else { "response" };
-                            println!(
-                                "[MCTP-CAPSULE]::deliver_buffered_message scheduled upcall for rx {} message of {} bytes",
-                                op_type, buffered_msg.msg_len,
-                            );
+                            println!("[MCTP-CAPSULE]::deliver_buffered_message upcall schedule failed: {:?}", e);
                         }
                     }
                 });
@@ -625,7 +618,6 @@ impl MCTPTxClient for MCTPDriver<'_> {
                     ),
                 )
                 .ok();
-            println!("[MCTP-CAPSULE]::send_done upcall scheduled");
         });
         self.current_app.set(None);
     }
@@ -700,12 +692,8 @@ impl MCTPRxClient for MCTPDriver<'_> {
                 if let Err(e) = kernel_data
                     .schedule_upcall(subscribe_num, (msg_len, recv_time as usize, msg_info))
                 {
-                    panic!("[MCTP-CAPSULE]::receive upcall schedule failed: {:?}", e);
+                    println!("[MCTP-CAPSULE]::receive upcall schedule failed: {:?}", e);
                 } else {
-                    println!(
-                        "[MCTP-CAPSULE]::receive upcall scheduled for {} bytes",
-                        msg_len
-                    );
                     rx_upcall_scheduled = true;
                 }
             }
@@ -714,7 +702,6 @@ impl MCTPRxClient for MCTPDriver<'_> {
         // If no application was waiting for this message at the moment, buffer it
         if !rx_upcall_scheduled {
             if self.buffer_message(src_eid, msg_type, msg_tag, msg_payload, msg_len, recv_time) {
-                // println!("[MCTP-CAPSULE]::receive message buffered for later delivery");
             } else {
                 println!("[MCTP-CAPSULE]::receive no pending rx operation and buffering failed - dropping message");
             }
