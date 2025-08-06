@@ -7,6 +7,7 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+arrayvec.workspace = true
 caliptra-api.workspace = true
 caliptra-error.workspace = true
 caliptra-auth-man-types.workspace = true
@@ -39,6 +40,7 @@ default = []
 hw-2-1 = []
 test-caliptra-certs = []
 test-caliptra-crypto = []
+test-caliptra-crypto-profiling = []
 test-caliptra-mailbox = []
 test-dma = []
 test-doe-transport-loopback = []

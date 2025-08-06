@@ -24,6 +24,9 @@ mod test_caliptra_mailbox;
 #[cfg(feature = "test-caliptra-crypto")]
 mod test_caliptra_crypto;
 
+#[cfg(feature = "test-caliptra-crypto-profiling")]
+mod caliptra_crypto_profiling;
+
 #[cfg(feature = "test-dma")]
 mod test_dma;
 
@@ -191,10 +194,28 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
     #[cfg(feature = "test-caliptra-crypto")]
     {
+        let start_ticks = AsyncAlarm::<S>::get_ticks().unwrap();
         test_caliptra_crypto::test_caliptra_sha().await;
-        test_caliptra_crypto::test_caliptra_rng().await;
-        test_caliptra_crypto::test_caliptra_ecdh().await;
-        test_caliptra_crypto::test_caliptra_hmac().await;
+        let end_ticks = AsyncAlarm::<S>::get_ticks().unwrap();
+
+        writeln!(
+            console_writer,
+            "Caliptra crypto start ticks : {}, end ticks {}, diff : {}",
+            start_ticks,
+            end_ticks,
+            end_ticks - start_ticks
+        )
+        .unwrap();
+        // test_caliptra_crypto::test_caliptra_rng().await;
+        // test_caliptra_crypto::test_caliptra_ecdh().await;
+        // test_caliptra_crypto::test_caliptra_hmac().await;
+        romtime::test_exit(0);
+    }
+
+    #[cfg(feature = "test-caliptra-crypto-profiling")]
+    {
+        writeln!(console_writer, "Starting SHA384 Performance Profiling").unwrap();
+        caliptra_crypto_profiling::test_caliptra_sha384_profiling::<S>().await;
         romtime::test_exit(0);
     }
 

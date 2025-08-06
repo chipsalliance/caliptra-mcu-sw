@@ -28,6 +28,7 @@ secondary_flash
 # Protocol validator test artifacts
 test.log
 *.pcap
+*.txt
 
 # Test certificates to support spdm lib development
 test_certs

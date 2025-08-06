@@ -62,6 +62,7 @@ path = "src/lib.rs"
 default = []
 test-caliptra-certs = []
 test-caliptra-crypto = []
+test-caliptra-crypto-profiling = []
 test-caliptra-mailbox = []
 test-dma = []
 test-doe-transport-loopback = ["emulator-periph/test-doe-transport-loopback"]
