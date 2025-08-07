@@ -102,6 +102,7 @@ impl AesGcm {
     /// * `Ok(())` - If the initialization was successful.
     /// * `Err(CaliptraApiError)` - If there was an error during initialization.
     pub async fn spdm_crypt_init(
+        &mut self,
         _spdm_version: u8,
         _seq_number: [u8; 8],
         _seq_number_le: bool,
@@ -190,8 +191,8 @@ impl AesGcm {
     /// This method resets the context after completion.
     pub async fn encrypt_final(
         &mut self,
-        plaintext: Option<&[u8]>,
-        ciphertext: Option<&mut [u8]>,
+        plaintext: &[u8],
+        ciphertext: &mut [u8],
     ) -> CaliptraApiResult<(usize, Aes256GcmTag)> {
         let mailbox = Mailbox::new();
         if !self.encrypt {
@@ -200,12 +201,6 @@ impl AesGcm {
 
         let context = self.context.ok_or(CaliptraApiError::AesGcmInvalidContext)?;
 
-        if plaintext.is_none() && ciphertext.is_some()
-            || plaintext.is_some() && ciphertext.is_none()
-        {
-            return Err(CaliptraApiError::InvalidArgument("invalid data buffers"));
-        }
-
         let mut req = CmAesGcmEncryptFinalReq {
             hdr: MailboxReqHeader::default(),
             context,
@@ -213,13 +208,11 @@ impl AesGcm {
             ..Default::default()
         };
 
-        if let Some(plaintext) = plaintext {
-            if plaintext.len() > MAX_CMB_DATA_SIZE {
-                Err(CaliptraApiError::AesGcmInvalidDataLength)?;
-            }
-            req.plaintext[..plaintext.len()].copy_from_slice(plaintext);
-            req.plaintext_size = plaintext.len() as u32;
+        if plaintext.len() > MAX_CMB_DATA_SIZE {
+            Err(CaliptraApiError::AesGcmInvalidDataLength)?;
         }
+        req.plaintext[..plaintext.len()].copy_from_slice(plaintext);
+        req.plaintext_size = plaintext.len() as u32;
 
         let resp_bytes = &mut [0u8; size_of::<CmAesGcmEncryptFinalResp>()];
 
@@ -235,15 +228,11 @@ impl AesGcm {
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
         let final_hdr = &final_resp.hdr;
-        let mut encryptdata_size = 0;
-        if let Some(ciphertext) = ciphertext {
-            encryptdata_size = final_hdr.ciphertext_size as usize;
-            if encryptdata_size > ciphertext.len() {
-                Err(CaliptraApiError::InvalidResponse)?;
-            }
-            ciphertext[..encryptdata_size]
-                .copy_from_slice(&final_resp.ciphertext[..encryptdata_size]);
+        let encryptdata_size = final_hdr.ciphertext_size as usize;
+        if encryptdata_size > ciphertext.len() {
+            Err(CaliptraApiError::InvalidResponse)?;
         }
+        ciphertext[..encryptdata_size].copy_from_slice(&final_resp.ciphertext[..encryptdata_size]);
 
         self.reset();
 
@@ -375,8 +364,8 @@ impl AesGcm {
     pub async fn decrypt_final(
         &mut self,
         tag: Aes256GcmTag,
-        ciphertext: Option<&[u8]>,
-        plaintext: Option<&mut [u8]>,
+        ciphertext: &[u8],
+        plaintext: &mut [u8],
     ) -> CaliptraApiResult<usize> {
         let mailbox = Mailbox::new();
         if self.encrypt {
@@ -384,12 +373,6 @@ impl AesGcm {
         }
 
         let context = self.context.ok_or(CaliptraApiError::AesGcmInvalidContext)?;
-
-        if ciphertext.is_none() && plaintext.is_some()
-            || ciphertext.is_some() && plaintext.is_none()
-        {
-            return Err(CaliptraApiError::InvalidArgument("invalid data buffers"));
-        }
 
         let mut req = CmAesGcmDecryptFinalReq {
             hdr: MailboxReqHeader::default(),
@@ -400,10 +383,8 @@ impl AesGcm {
             ciphertext: [0; MAX_CMB_DATA_SIZE],
         };
 
-        if let Some(ciphertext) = ciphertext {
-            req.ciphertext[..ciphertext.len()].copy_from_slice(ciphertext);
-            req.ciphertext_size = ciphertext.len() as u32;
-        }
+        req.ciphertext[..ciphertext.len()].copy_from_slice(ciphertext);
+        req.ciphertext_size = ciphertext.len() as u32;
 
         let resp_bytes = &mut [0u8; size_of::<CmAesGcmDecryptFinalResp>()];
 
@@ -419,20 +400,276 @@ impl AesGcm {
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
         let final_hdr = &final_resp.hdr;
-        let mut decrypted_size = 0;
-        if let Some(plaintext) = plaintext {
-            decrypted_size = final_hdr.plaintext_size as usize;
-            if decrypted_size > plaintext.len() {
-                Err(CaliptraApiError::InvalidResponse)?;
-            }
-            plaintext[..decrypted_size].copy_from_slice(&final_resp.plaintext[..decrypted_size]);
+        let decrypted_size = final_hdr.plaintext_size as usize;
+        if decrypted_size > plaintext.len() {
+            Err(CaliptraApiError::InvalidResponse)?;
         }
+        plaintext[..decrypted_size].copy_from_slice(&final_resp.plaintext[..decrypted_size]);
 
-        if final_hdr.tag_verified != 1 {
+        if final_hdr.tag_verified == 0 {
             Err(CaliptraApiError::AesGcmTagVerifyFailed)?
         }
 
         self.reset();
         Ok(decrypted_size)
+    }
+
+    /// Convenience method to encrypt data in one shot
+    ///
+    /// # Arguments
+    /// * `cmk` - The CMK of the key to use for encryption
+    /// * `aad` - Additional authenticated data
+    /// * `plaintext` - The plaintext data to encrypt
+    /// * `ciphertext` - Buffer to store the encrypted ciphertext
+    ///
+    /// # Returns
+    /// * `Ok((usize, Aes256GcmIv, Aes256GcmTag))` - Total bytes encrypted, IV, and authentication tag
+    /// * `Err(CaliptraApiError)` - on failure
+    pub async fn encrypt(
+        &mut self,
+        cmk: Cmk,
+        aad: &[u8],
+        plaintext: &[u8],
+        ciphertext: &mut [u8],
+    ) -> CaliptraApiResult<(usize, Aes256GcmIv, Aes256GcmTag)> {
+        if plaintext.len() > ciphertext.len() {
+            return Err(CaliptraApiError::AesGcmInvalidDataLength);
+        }
+
+        let iv = self.encrypt_init(cmk, aad).await?;
+        let chunk_size = MAX_CMB_DATA_SIZE;
+        let mut total_encrypted = 0;
+
+        // Process full chunks with encrypt_update
+        let full_chunks = plaintext.len() / chunk_size;
+        for i in 0..full_chunks {
+            let start = i * chunk_size;
+            let end = start + chunk_size;
+            let chunk = &plaintext[start..end];
+            let cipher_chunk = &mut ciphertext[total_encrypted..];
+
+            let encrypted_size = self.encrypt_update(chunk, cipher_chunk).await?;
+            total_encrypted += encrypted_size;
+        }
+
+        // Process the last chunk (or all data if less than chunk_size) with encrypt_final
+        let remaining_start = full_chunks * chunk_size;
+        let tag = if remaining_start < plaintext.len() {
+            let last_chunk = &plaintext[remaining_start..];
+            let final_cipher_chunk = &mut ciphertext[total_encrypted..];
+
+            let (final_size, tag) = self.encrypt_final(last_chunk, final_cipher_chunk).await?;
+            total_encrypted += final_size;
+            tag
+        } else {
+            // No remaining data, call final with empty chunks
+            let (_final_size, tag) = self.encrypt_final(&[], &mut []).await?;
+            tag
+        };
+
+        Ok((total_encrypted, iv, tag))
+    }
+
+    /// Convenience method to decrypt data in one shot
+    ///
+    /// # Arguments
+    /// * `cmk` - The CMK of the key to use for decryption
+    /// * `iv` - The initialization vector for decryption
+    /// * `aad` - Additional authenticated data
+    /// * `ciphertext` - The ciphertext data to decrypt
+    /// * `tag` - The authentication tag to verify
+    /// * `plaintext` - Buffer to store the decrypted plaintext
+    ///
+    /// # Returns
+    /// * `Ok(usize)` - Total number of bytes decrypted
+    /// * `Err(CaliptraApiError)` - on failure or tag verification failure.
+    ///
+    /// # Note
+    /// This method resets the context after completion. Tag verification is handled
+    /// internally by the hardware during the decrypt operations.
+    pub async fn decrypt(
+        &mut self,
+        cmk: Cmk,
+        iv: Aes256GcmIv,
+        aad: &[u8],
+        ciphertext: &[u8],
+        tag: Aes256GcmTag,
+        plaintext: &mut [u8],
+    ) -> CaliptraApiResult<usize> {
+        if ciphertext.len() > plaintext.len() {
+            return Err(CaliptraApiError::AesGcmInvalidDataLength);
+        }
+
+        let _iv = self.decrypt_init(cmk, iv, aad).await?;
+        let chunk_size = MAX_CMB_DATA_SIZE;
+        let mut total_decrypted = 0;
+
+        // Process full chunks with decrypt_update
+        let full_chunks = ciphertext.len() / chunk_size;
+        for i in 0..full_chunks {
+            let start = i * chunk_size;
+            let end = start + chunk_size;
+            let chunk = &ciphertext[start..end];
+            let plain_chunk = &mut plaintext[total_decrypted..];
+
+            let decrypted_size = self.decrypt_update(chunk, plain_chunk).await?;
+            total_decrypted += decrypted_size;
+        }
+
+        // Process the last chunk (or all data if less than chunk_size) with decrypt_final
+        let remaining_start = full_chunks * chunk_size;
+        if remaining_start < ciphertext.len() {
+            let last_chunk = &ciphertext[remaining_start..];
+            let final_plain_chunk = &mut plaintext[total_decrypted..];
+
+            let final_size = self
+                .decrypt_final(tag, last_chunk, final_plain_chunk)
+                .await?;
+            total_decrypted += final_size;
+        } else {
+            // No remaining data, call final with empty chunks
+            let final_size = self.decrypt_final(tag, &[], &mut []).await?;
+            total_decrypted += final_size;
+        }
+
+        Ok(total_decrypted)
+    }
+
+    /// SPDM-specific convenience method to encrypt messages in one shot
+    /// Uses SPDM key and IV derivation instead of user-provided key
+    ///
+    /// # Arguments
+    /// * `spdm_version` - The SPDM version to use for key and iv derivation
+    /// * `seq_number` - Sequence number to use for per-message nonce derivation
+    /// * `seq_number_le` - Flag to indicate if the sequence number should be encoded as
+    ///   little endian(true) or big endian(false) in memory.
+    /// * `aad` - Additional authenticated data
+    /// * `plaintext` - The plaintext data to encrypt
+    /// * `ciphertext` - Buffer to store the encrypted ciphertext
+    ///
+    /// # Returns
+    /// * `Ok((usize, Aes256GcmTag))` - Total bytes encrypted and authentication tag
+    /// * `Err(CaliptraApiError)` - on failure
+    pub async fn spdm_message_encrypt(
+        &mut self,
+        spdm_version: u8,
+        seq_number: [u8; 8],
+        seq_number_le: bool,
+        aad: &[u8],
+        plaintext: &[u8],
+        ciphertext: &mut [u8],
+    ) -> CaliptraApiResult<(usize, Aes256GcmTag)> {
+        if plaintext.len() > ciphertext.len() {
+            return Err(CaliptraApiError::AesGcmInvalidDataLength);
+        }
+
+        // Initialize SPDM encryption context
+        self.spdm_crypt_init(spdm_version, seq_number, seq_number_le, aad, true)
+            .await?;
+
+        let chunk_size = MAX_CMB_DATA_SIZE;
+        let mut total_encrypted = 0;
+
+        // Process full chunks with encrypt_update
+        let full_chunks = plaintext.len() / chunk_size;
+        for i in 0..full_chunks {
+            let start = i * chunk_size;
+            let end = start + chunk_size;
+            let chunk = &plaintext[start..end];
+            let cipher_chunk = &mut ciphertext[total_encrypted..];
+
+            let encrypted_size = self.encrypt_update(chunk, cipher_chunk).await?;
+            total_encrypted += encrypted_size;
+        }
+
+        // Process the last chunk (or all data if less than chunk_size) with encrypt_final
+        let remaining_start = full_chunks * chunk_size;
+        let tag = if remaining_start < plaintext.len() {
+            let last_chunk = &plaintext[remaining_start..];
+            let final_cipher_chunk = &mut ciphertext[total_encrypted..];
+
+            let (final_size, tag) = self.encrypt_final(last_chunk, final_cipher_chunk).await?;
+            total_encrypted += final_size;
+            tag
+        } else {
+            // No remaining data, call final with empty chunks
+            let (_final_size, tag) = self.encrypt_final(&[], &mut []).await?;
+            tag
+        };
+
+        Ok((total_encrypted, tag))
+    }
+
+    /// SPDM-specific convenience method to decrypt messages in one shot
+    /// Uses SPDM key and IV derivation instead of user-provided key and IV
+    ///
+    /// # Arguments
+    /// * `spdm_version` - The SPDM version to use for key and iv derivation
+    /// * `seq_number` - Sequence number to use for per-message nonce derivation
+    /// * `seq_number_le` - Flag to indicate if the sequence number should be encoded as
+    ///   little endian(true) or big endian(false) in memory.
+    /// * `aad` - Additional authenticated data
+    /// * `ciphertext` - The ciphertext data to decrypt
+    /// * `tag` - The authentication tag to verify
+    /// * `plaintext` - Buffer to store the decrypted plaintext
+    ///
+    /// # Returns
+    /// * `Ok(usize)` - Total number of bytes decrypted
+    /// * `Err(CaliptraApiError)` - on failure or tag verification failure.
+    ///
+    /// # Note
+    /// This method resets the context after completion. Tag verification is handled
+    /// internally by the hardware during the decrypt operations.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn spdm_message_decrypt(
+        &mut self,
+        spdm_version: u8,
+        seq_number: [u8; 8],
+        seq_number_le: bool,
+        aad: &[u8],
+        ciphertext: &[u8],
+        tag: Aes256GcmTag,
+        plaintext: &mut [u8],
+    ) -> CaliptraApiResult<usize> {
+        if ciphertext.len() > plaintext.len() {
+            return Err(CaliptraApiError::AesGcmInvalidDataLength);
+        }
+
+        // Initialize SPDM decryption context
+        self.spdm_crypt_init(spdm_version, seq_number, seq_number_le, aad, false)
+            .await?;
+
+        let chunk_size = MAX_CMB_DATA_SIZE;
+        let mut total_decrypted = 0;
+
+        // Process full chunks with decrypt_update
+        let full_chunks = ciphertext.len() / chunk_size;
+        for i in 0..full_chunks {
+            let start = i * chunk_size;
+            let end = start + chunk_size;
+            let chunk = &ciphertext[start..end];
+            let plain_chunk = &mut plaintext[total_decrypted..];
+
+            let decrypted_size = self.decrypt_update(chunk, plain_chunk).await?;
+            total_decrypted += decrypted_size;
+        }
+
+        // Process the last chunk (or all data if less than chunk_size) with decrypt_final
+        let remaining_start = full_chunks * chunk_size;
+        if remaining_start < ciphertext.len() {
+            let last_chunk = &ciphertext[remaining_start..];
+            let final_plain_chunk = &mut plaintext[total_decrypted..];
+
+            let final_size = self
+                .decrypt_final(tag, last_chunk, final_plain_chunk)
+                .await?;
+            total_decrypted += final_size;
+        } else {
+            // No remaining data, call final with empty chunks
+            let final_size = self.decrypt_final(tag, &[], &mut []).await?;
+            total_decrypted += final_size;
+        }
+
+        Ok(total_decrypted)
     }
 }

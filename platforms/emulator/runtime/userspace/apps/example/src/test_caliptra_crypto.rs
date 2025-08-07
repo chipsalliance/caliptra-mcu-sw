@@ -282,70 +282,44 @@ async fn test_hmac() {
 }
 
 pub async fn test_caliptra_aes_gcm_cipher() {
-    let mut aes_gcm = AesGcm::new();
-    let cmk = aes_gcm_keygen_ecdh().await;
+    let derived_cmk = aes_gcm_keygen_ecdh().await;
+    let imported_cmk = aes_gcm_key_import().await;
     let plaintext = b"Caliptra: Secure silicon root of trust powering confidential computing!";
-    let mut ciphertext = [0u8; 128]; // Adjust size as needed
+    let mut ciphertext_buf = [0u8; 128]; // Adjust size as needed
     let aad = &[];
 
-    let iv = aes_gcm
-        .encrypt_init(cmk.clone(), aad)
-        .await
-        .unwrap_or_else(|e| {
-            println!("Failed to initialize AES-GCM encryption: {:?}", e);
-            test_exit(1);
-        });
+    println!("Testing AES-GCM encryption and decryption");
+    test_aes_gcm_enc_dec(imported_cmk, aad, &plaintext[..], &mut ciphertext_buf[..]).await;
+    test_aes_gcm_enc_dec(derived_cmk, aad, &plaintext[..], &mut ciphertext_buf[..]).await;
+    println!("Test AES-GCM encryption and decryption completed successfully");
+}
 
-    let ciphertext_size = aes_gcm
-        .encrypt_update(&plaintext[..], &mut ciphertext[..])
+async fn test_aes_gcm_enc_dec(cmk: Cmk, aad: &[u8], plaintext: &[u8], ciphertext: &mut [u8]) {
+    let mut aes_gcm = AesGcm::new();
+    let (ciphertext_size, iv, tag) = aes_gcm
+        .encrypt(cmk.clone(), aad, plaintext, &mut ciphertext[..])
         .await
         .unwrap_or_else(|e| {
             println!("Failed to encrypt data: {:?}", e);
             test_exit(1);
         });
 
-    let (_, tag) = aes_gcm.encrypt_final(None, None).await.unwrap_or_else(|e| {
-        println!("Failed to finalize AES-GCM encryption: {:?}", e);
-        test_exit(1);
-    });
-
-    println!("AES-GCM encryption completed successfully");
-    println!(
-        "Ciphertext: {}, Tag: {}",
-        HexBytes(&ciphertext[..ciphertext_size]),
-        HexBytes(&tag)
-    );
-
-    // Decrypt the ciphertext
-    let _iv = aes_gcm
-        .decrypt_init(cmk, iv, aad)
-        .await
-        .unwrap_or_else(|e| {
-            println!("Failed to initialize AES-GCM decryption: {:?}", e);
-            test_exit(1);
-        });
-
+    // Decrypt the ciphertext using the new decrypt API
     let mut decrypted_plaintext = [0u8; 128]; // Adjust size as needed
     let decrypted_size = aes_gcm
-        .decrypt_update(&ciphertext[..ciphertext_size], &mut decrypted_plaintext[..])
+        .decrypt(
+            cmk,
+            iv,
+            aad,
+            &ciphertext[..ciphertext_size],
+            tag,
+            &mut decrypted_plaintext[..],
+        )
         .await
         .unwrap_or_else(|e| {
             println!("Failed to decrypt data: {:?}", e);
             test_exit(1);
         });
-
-    println!("Decrypted size: {}", decrypted_size);
-
-    let _ = aes_gcm.decrypt_final(tag, None, None).await;
-    // .unwrap_or_else(|e| {
-    //     println!("Failed to finalize AES-GCM decryption: {:?}", e);
-    //     test_exit(1);
-    // });
-
-    println!(
-        "decrypted plaintext: {}",
-        HexBytes(&decrypted_plaintext[..decrypted_size])
-    );
 
     assert_eq!(
         &decrypted_plaintext[..decrypted_size],
@@ -373,4 +347,21 @@ async fn aes_gcm_keygen_ecdh() -> Cmk {
 
     println!("AES-GCM key generated successfully");
     finish_key
+}
+
+async fn aes_gcm_key_import() -> Cmk {
+    const TEST_AES_GCM_KEY: [u8; 32] = [
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+        0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+        0x1e, 0x1f,
+    ];
+    let cmk = Import::import(CmKeyUsage::Aes, &TEST_AES_GCM_KEY)
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to import AES-GCM key: {:?}", e);
+            test_exit(1);
+        })
+        .cmk;
+    println!("AES-GCM key imported successfully");
+    cmk
 }
