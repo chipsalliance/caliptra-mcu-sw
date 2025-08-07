@@ -16,7 +16,9 @@ classDiagram
         +new() SpdmResult~Self~
         +process_message() SpdmResult~()~
     }
+```
 
+## Related Classes
 
 ```mermaid
 classDiagram
@@ -104,3 +106,4 @@ classDiagram
 
     State *-- ConnectionState
     SessionManager *-- SessionInfo
+```
