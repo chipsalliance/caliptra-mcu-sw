@@ -5,7 +5,7 @@
 use crate::fpga_regs::{Control, FifoData, FifoRegs, FifoStatus, ItrngFifoStatus, WrapperRegs};
 use crate::otp_provision::{lc_generate_memory, otp_generate_lifecycle_tokens_mem};
 use crate::output::ExitStatus;
-use crate::{xi3c, InitParams, McuHwModel, Output, DEFAULT_LIFECYCLE_RAW_TOKENS};
+use crate::{xi3c, InitParams, McuHwModel, McuManager, Output, DEFAULT_LIFECYCLE_RAW_TOKENS};
 use anyhow::{anyhow, bail, Error, Result};
 use caliptra_api::SocManager;
 use caliptra_emu_bus::{Bus, BusError, BusMmio, Device, Event, EventData, RecoveryCommandCode};
@@ -107,6 +107,8 @@ pub struct ModelFpgaRealtime {
     i3c_mmio: *mut u32,
     i3c_controller_mmio: *mut u32,
     i3c_controller: xi3c::Controller,
+    otp_mmio: *mut u32,
+    lc_mmio: *mut u32,
 
     realtime_thread: Option<thread::JoinHandle<()>>,
     realtime_thread_exit_flag: Arc<AtomicBool>,
@@ -926,7 +928,11 @@ impl ModelFpgaRealtime {
 
     fn caliptra_axi_bus(&mut self) -> FpgaRealtimeBus<'_> {
         FpgaRealtimeBus {
-            mmio: self.caliptra_mmio.ptr,
+            caliptra_mmio: self.caliptra_mmio.ptr,
+            i3c_mmio: self.i3c_mmio,
+            mci_mmio: self.mci.ptr,
+            otp_mmio: self.otp_mmio,
+            lc_mmio: self.lc_mmio,
             phantom: Default::default(),
         }
     }
@@ -976,10 +982,10 @@ impl McuHwModel for ModelFpgaRealtime {
         let i3c_controller_mmio = devs[I3C_CONTROLLER_MAPPING.0]
             .map_mapping(I3C_CONTROLLER_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u32;
-        let _lc_mmio = devs[LC_MAPPING.0]
+        let lc_mmio = devs[LC_MAPPING.0]
             .map_mapping(LC_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u32;
-        let _otp_mmio = devs[OTP_MAPPING.0]
+        let otp_mmio = devs[OTP_MAPPING.0]
             .map_mapping(OTP_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u32;
 
@@ -1035,6 +1041,8 @@ impl McuHwModel for ModelFpgaRealtime {
             otp_init: params.otp_memory.map(|m| m.to_vec()).unwrap_or_default(),
             realtime_thread,
             realtime_thread_exit_flag,
+            otp_mmio,
+            lc_mmio,
 
             output,
             recovery_started: false,
@@ -1303,13 +1311,21 @@ impl McuHwModel for ModelFpgaRealtime {
         Ok(std::fs::write(path, s.as_bytes())?)
     }
 
+    fn mcu_manager(&mut self) -> impl McuManager {
+        self
+    }
+
     fn caliptra_soc_manager(&mut self) -> impl SocManager {
         self
     }
 }
 
 pub struct FpgaRealtimeBus<'a> {
-    mmio: *mut u32,
+    caliptra_mmio: *mut u32,
+    i3c_mmio: *mut u32,
+    mci_mmio: *mut u32,
+    otp_mmio: *mut u32,
+    lc_mmio: *mut u32,
     phantom: PhantomData<&'a mut ()>,
 }
 
@@ -1318,8 +1334,15 @@ impl FpgaRealtimeBus<'_> {
         let addr = addr as usize;
         unsafe {
             match addr {
-                0x3002_0000..=0x3003_ffff => Some(self.mmio.add((addr - 0x3000_0000) / 4)),
-                _ => None,
+                0x2000_4000..0x2000_5000 => Some(self.i3c_mmio.add((addr - 0x2000_4000) / 4)),
+                0x2100_0000..0x21e0_0000 => Some(self.mci_mmio.add((addr - 0x2100_0000) / 4)),
+                0x3002_0000..0x3004_0000 => Some(self.caliptra_mmio.add((addr - 0x3000_0000) / 4)),
+                0x7000_0000..0x7000_0140 => Some(self.otp_mmio.add((addr - 0x7000_0000) / 4)),
+                0x7000_0400..0x7000_048c => Some(self.lc_mmio.add((addr - 0x7000_0400) / 4)),
+                _ => {
+                    println!("Invalid FPGA address 0x{addr:x}");
+                    None
+                }
             }
         }
     }
@@ -1344,6 +1367,26 @@ impl Bus for FpgaRealtimeBus<'_> {
             Err(BusError::StoreAccessFault)
         }
     }
+}
+
+impl McuManager for &mut ModelFpgaRealtime {
+    type TMmio<'a>
+        = BusMmio<FpgaRealtimeBus<'a>>
+    where
+        Self: 'a;
+
+    fn mmio_mut(&mut self) -> Self::TMmio<'_> {
+        BusMmio::new(self.caliptra_axi_bus())
+    }
+
+    const I3C_ADDR: u32 = 0x2000_4000;
+    const MCI_ADDR: u32 = 0x2100_0000;
+    const TRACE_BUFFER_ADDR: u32 = 0x2101_0000;
+    const MBOX_0_ADDR: u32 = 0x2140_0000;
+    const MBOX_1_ADDR: u32 = 0x2180_0000;
+    const MCU_SRAM_ADDR: u32 = 0x21c0_0000;
+    const OTP_CTRL_ADDR: u32 = 0x7000_0000;
+    const LC_CTRL_ADDR: u32 = 0x7000_0400;
 }
 
 impl SocManager for &mut ModelFpgaRealtime {
