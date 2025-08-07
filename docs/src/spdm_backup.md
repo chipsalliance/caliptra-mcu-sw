@@ -1,3 +1,5 @@
+# SPDM Context 
+
 ```mermaid
 classDiagram
     class SpdmContext {
@@ -15,6 +17,21 @@ classDiagram
         +process_message() SpdmResult~()~
     }
 
+
+```mermaid
+classDiagram
+    class SpdmContext {
+        ~transport: &mut dyn SpdmTransport
+        ~state: State
+        ~shared_transcript: Transcript
+        ~device_certs_store: &dyn SpdmCertStore
+        ~measurements: SpdmMeasurements
+        ~session_mgr: SessionManager
+
+        +new() SpdmResult~Self~
+        +process_message() SpdmResult~()~
+    }
+
     class SpdmTransport {
         <<interface>>
         +receive_request() Result~bool~
@@ -23,13 +40,11 @@ classDiagram
 
     class SpdmCertStore {
         <<interface>>
-        +slot_count()
-        +is_provisioned()
         +root_cert_hash()
         +cert_chain_len()
         +get_certificate_chain()
         +sign_hash()
-        +key_info()
+        +key_attr()
     }
 
     class State {
