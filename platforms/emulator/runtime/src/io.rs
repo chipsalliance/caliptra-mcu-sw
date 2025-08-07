@@ -18,12 +18,13 @@ use kernel::debug;
 use kernel::debug::IoWrite;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::hil;
-use kernel::hil::time::{Alarm, AlarmClient, Ticks, Ticks64, Time};
+use kernel::hil::time::{Alarm, AlarmClient, Ticks64, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::ErrorCode;
 use mcu_tock_veer::timers::InternalTimers;
 
 pub(crate) static mut WRITER: Writer = Writer {};
+const UART_TICKS: u64 = 100000;
 
 /// Panic handler.
 ///
@@ -113,10 +114,7 @@ impl<'a> SemihostUart<'a> {
     }
 
     fn set_alarm(&self, ticks: u64) {
-        self.alarm.set_alarm(
-            self.alarm.now(),
-            self.alarm.now().wrapping_add(Ticks64::from(ticks)),
-        );
+        self.alarm.set_alarm(self.alarm.now(), Ticks64::from(ticks));
     }
 
     pub fn handle_interrupt(&self) {
@@ -203,10 +201,10 @@ impl<'a> hil::uart::Receive<'a> for SemihostUart<'a> {
 
         // Store the receive buffer and byte count. We cannot call into the
         // generic receive routine here, as the client callback needs to be
-        // called from another call stack. Hence simply enable interrupts here.
+        // called from another call stack.
         self.rx_buffer.replace(rx_buffer);
         self.rx_len.set(rx_len);
-        self.set_alarm(self.alarm.minimum_dt().into_u64());
+        self.set_alarm(UART_TICKS);
         Ok(())
     }
     fn receive_word(&self) -> Result<(), ErrorCode> {
