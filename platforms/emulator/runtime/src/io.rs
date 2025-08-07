@@ -8,7 +8,6 @@
 use crate::CHIP;
 use crate::PROCESSES;
 use crate::PROCESS_PRINTER;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use core::fmt::Write;
 use core::panic::PanicInfo;
@@ -18,13 +17,10 @@ use kernel::debug;
 use kernel::debug::IoWrite;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::hil;
-use kernel::hil::time::{Alarm, AlarmClient, Ticks64, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::ErrorCode;
-use mcu_tock_veer::timers::InternalTimers;
 
 pub(crate) static mut WRITER: Writer = Writer {};
-const UART_TICKS: u64 = 100000;
 
 /// Panic handler.
 ///
@@ -86,7 +82,6 @@ pub struct SemihostUart<'a> {
     rx_buffer: TakeCell<'static, [u8]>,
     rx_index: Cell<usize>,
     rx_len: Cell<usize>,
-    alarm: VirtualMuxAlarm<'a, InternalTimers<'a>>,
     tx_client: OptionalCell<&'a dyn hil::uart::TransmitClient>,
     tx_buffer: TakeCell<'static, [u8]>,
     tx_len: Cell<usize>,
@@ -94,13 +89,12 @@ pub struct SemihostUart<'a> {
 }
 
 impl<'a> SemihostUart<'a> {
-    pub fn new(alarm: &'a MuxAlarm<'a, InternalTimers<'a>>) -> SemihostUart<'a> {
+    pub fn new() -> SemihostUart<'a> {
         SemihostUart {
             rx_client: OptionalCell::empty(),
             rx_buffer: TakeCell::empty(),
             rx_len: Cell::new(0),
             rx_index: Cell::new(0),
-            alarm: VirtualMuxAlarm::new(alarm),
             tx_client: OptionalCell::empty(),
             tx_buffer: TakeCell::empty(),
             tx_len: Cell::new(0),
@@ -108,14 +102,7 @@ impl<'a> SemihostUart<'a> {
         }
     }
 
-    pub fn init(&'static self) {
-        self.alarm.setup();
-        self.alarm.set_alarm_client(self);
-    }
-
-    fn set_alarm(&self, ticks: u64) {
-        self.alarm.set_alarm(self.alarm.now(), Ticks64::from(ticks));
-    }
+    pub fn init(&'static self) {}
 
     pub fn handle_interrupt(&self) {
         let mut b = read_byte();
@@ -204,7 +191,6 @@ impl<'a> hil::uart::Receive<'a> for SemihostUart<'a> {
         // called from another call stack.
         self.rx_buffer.replace(rx_buffer);
         self.rx_len.set(rx_len);
-        self.set_alarm(UART_TICKS);
         Ok(())
     }
     fn receive_word(&self) -> Result<(), ErrorCode> {
@@ -212,22 +198,6 @@ impl<'a> hil::uart::Receive<'a> for SemihostUart<'a> {
     }
     fn receive_abort(&self) -> Result<(), ErrorCode> {
         Err(ErrorCode::FAIL)
-    }
-}
-
-impl<'a> AlarmClient for SemihostUart<'a> {
-    fn alarm(&self) {
-        // Callback to the clients
-        if let Some(rx_buffer) = self.rx_buffer.take() {
-            self.rx_client.map(move |client| {
-                client.received_buffer(
-                    rx_buffer,
-                    self.rx_len.get(),
-                    Ok(()),
-                    hil::uart::Error::None,
-                );
-            });
-        }
     }
 }
 
