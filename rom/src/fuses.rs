@@ -631,81 +631,49 @@ impl Otp {
 
     pub fn read_fuses(&self) -> Result<Fuses, McuError> {
         let mut fuses = Fuses::default();
-        self.read_data(
-            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
-            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
-            &mut fuses.sw_test_unlock_partition,
-        )?;
-        self.read_data(
-            fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET,
-            fuses::SECRET_MANUF_PARTITION_BYTE_SIZE,
-            &mut fuses.secret_manuf_partition,
-        )?;
-        self.read_data(
-            fuses::SECRET_PROD_PARTITION_0_BYTE_OFFSET,
-            fuses::SECRET_PROD_PARTITION_0_BYTE_SIZE,
-            &mut fuses.secret_prod_partition_0,
-        )?;
-        self.read_data(
-            fuses::SECRET_PROD_PARTITION_1_BYTE_OFFSET,
-            fuses::SECRET_PROD_PARTITION_1_BYTE_SIZE,
-            &mut fuses.secret_prod_partition_1,
-        )?;
-        self.read_data(
-            fuses::SECRET_PROD_PARTITION_2_BYTE_OFFSET,
-            fuses::SECRET_PROD_PARTITION_2_BYTE_SIZE,
-            &mut fuses.secret_prod_partition_2,
-        )?;
-        self.read_data(
-            fuses::SECRET_PROD_PARTITION_3_BYTE_OFFSET,
-            fuses::SECRET_PROD_PARTITION_3_BYTE_SIZE,
-            &mut fuses.secret_prod_partition_3,
-        )?;
+        romtime::println!("[mcu-rom-otp] Reading SW manufacturer partition");
         self.read_data(
             fuses::SW_MANUF_PARTITION_BYTE_OFFSET,
             fuses::SW_MANUF_PARTITION_BYTE_SIZE,
             &mut fuses.sw_manuf_partition,
         )?;
-        self.read_data(
-            fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET,
-            fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_SIZE,
-            &mut fuses.secret_lc_transition_partition,
-        )?;
+        romtime::println!("[mcu-rom-otp] Reading SVN partition");
         self.read_data(
             fuses::SVN_PARTITION_BYTE_OFFSET,
             fuses::SVN_PARTITION_BYTE_SIZE,
             &mut fuses.svn_partition,
         )?;
+        romtime::println!("[mcu-rom-otp] Reading vendor test partition");
         self.read_data(
             fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_TEST_PARTITION_BYTE_SIZE,
             &mut fuses.vendor_test_partition,
         )?;
+        romtime::println!("[mcu-rom-otp] Reading vendor hashes manufacturer partition");
         self.read_data(
             fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE,
             &mut fuses.vendor_hashes_manuf_partition,
         )?;
-        self.read_data(
-            fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_hashes_prod_partition,
-        )?;
-        self.read_data(
-            fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_revocations_prod_partition,
-        )?;
-        self.read_data(
-            fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_secret_prod_partition,
-        )?;
-        self.read_data(
-            fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_non_secret_prod_partition,
-        )?;
+        // TODO: read these again when the offsets are fixed
+        // romtime::println!("[mcu-rom-otp] Reading vendor hashes production partition");
+        // self.read_data(
+        //     fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET,
+        //     fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
+        //     &mut fuses.vendor_hashes_prod_partition,
+        // )?;
+        // romtime::println!("[mcu-rom-otp] Reading vendor revocations production partition");
+        // self.read_data(
+        //     fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,
+        //     fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
+        //     &mut fuses.vendor_revocations_prod_partition,
+        // )?;
+        // romtime::println!("[mcu-rom-otp] Reading vendor non-secret production partition");
+        // self.read_data(
+        //     fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
+        //     fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE,
+        //     &mut fuses.vendor_non_secret_prod_partition,
+        // )?;
         Ok(fuses)
     }
 
