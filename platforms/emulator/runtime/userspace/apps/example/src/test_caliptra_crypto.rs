@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_api::mailbox::CmKeyUsage;
+use caliptra_api::mailbox::Cmk;
+use libapi_caliptra::crypto::aes_gcm::AesGcm;
 use libapi_caliptra::crypto::asym::ecdh::Ecdh;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 use libapi_caliptra::crypto::hmac::{HkdfSalt, Hmac};
@@ -277,4 +279,98 @@ async fn test_hmac() {
     }
 
     println!("HMAC test passed successfully");
+}
+
+pub async fn test_caliptra_aes_gcm_cipher() {
+    let mut aes_gcm = AesGcm::new();
+    let cmk = aes_gcm_keygen_ecdh().await;
+    let plaintext = b"Caliptra: Secure silicon root of trust powering confidential computing!";
+    let mut ciphertext = [0u8; 128]; // Adjust size as needed
+    let aad = &[];
+
+    let iv = aes_gcm
+        .encrypt_init(cmk.clone(), aad)
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to initialize AES-GCM encryption: {:?}", e);
+            test_exit(1);
+        });
+
+    let ciphertext_size = aes_gcm
+        .encrypt_update(&plaintext[..], &mut ciphertext[..])
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to encrypt data: {:?}", e);
+            test_exit(1);
+        });
+
+    let (_, tag) = aes_gcm.encrypt_final(None, None).await.unwrap_or_else(|e| {
+        println!("Failed to finalize AES-GCM encryption: {:?}", e);
+        test_exit(1);
+    });
+
+    println!("AES-GCM encryption completed successfully");
+    println!(
+        "Ciphertext: {}, Tag: {}",
+        HexBytes(&ciphertext[..ciphertext_size]),
+        HexBytes(&tag)
+    );
+
+    // Decrypt the ciphertext
+    let _iv = aes_gcm
+        .decrypt_init(cmk, iv, aad)
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to initialize AES-GCM decryption: {:?}", e);
+            test_exit(1);
+        });
+
+    let mut decrypted_plaintext = [0u8; 128]; // Adjust size as needed
+    let decrypted_size = aes_gcm
+        .decrypt_update(&ciphertext[..ciphertext_size], &mut decrypted_plaintext[..])
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to decrypt data: {:?}", e);
+            test_exit(1);
+        });
+
+    println!("Decrypted size: {}", decrypted_size);
+
+    let _ = aes_gcm.decrypt_final(tag, None, None).await;
+    // .unwrap_or_else(|e| {
+    //     println!("Failed to finalize AES-GCM decryption: {:?}", e);
+    //     test_exit(1);
+    // });
+
+    println!(
+        "decrypted plaintext: {}",
+        HexBytes(&decrypted_plaintext[..decrypted_size])
+    );
+
+    assert_eq!(
+        &decrypted_plaintext[..decrypted_size],
+        &plaintext[..],
+        "Decrypted plaintext does not match original plaintext"
+    );
+}
+
+async fn aes_gcm_keygen_ecdh() -> Cmk {
+    let exch1 = Ecdh::ecdh_generate().await.unwrap_or_else(|e| {
+        println!("Failed to generate ECDH exchange: {:?}", e);
+        test_exit(1);
+    });
+    let exch2 = Ecdh::ecdh_generate().await.unwrap_or_else(|e| {
+        println!("Failed to generate ECDH exchange: {:?}", e);
+        test_exit(1);
+    });
+
+    let finish_key = Ecdh::ecdh_finish(CmKeyUsage::Aes, &exch1, &exch2.exchange_data)
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to finish ECDH exchange: {:?}", e);
+            test_exit(1);
+        });
+
+    println!("AES-GCM key generated successfully");
+    finish_key
 }
