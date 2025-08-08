@@ -6,8 +6,10 @@ use caliptra_api::mailbox::{
     CmAesGcmDecryptFinalReq, CmAesGcmDecryptFinalResp, CmAesGcmDecryptInitReq,
     CmAesGcmDecryptInitResp, CmAesGcmDecryptUpdateReq, CmAesGcmDecryptUpdateResp,
     CmAesGcmEncryptFinalReq, CmAesGcmEncryptFinalResp, CmAesGcmEncryptInitReq,
-    CmAesGcmEncryptInitResp, CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateResp, Cmk,
-    MailboxReqHeader, Request, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
+    CmAesGcmEncryptInitResp, CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateResp,
+    CmAesGcmSpdmDecryptInitReq, CmAesGcmSpdmDecryptInitResp, CmAesGcmSpdmEncryptInitReq,
+    CmAesGcmSpdmEncryptInitResp, Cmk, MailboxReqHeader, Request,
+    CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
 };
 use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
@@ -103,13 +105,77 @@ impl AesGcm {
     /// * `Err(CaliptraApiError)` - If there was an error during initialization.
     pub async fn spdm_crypt_init(
         &mut self,
-        _spdm_version: u8,
-        _seq_number: [u8; 8],
-        _seq_number_le: bool,
-        _aad: &[u8],
-        _enc: bool,
+        cmk: Cmk,
+        spdm_version: u8,
+        seq_number: [u8; 8],
+        seq_number_le: bool,
+        aad: &[u8],
+        enc: bool,
     ) -> CaliptraApiResult<()> {
-        todo!("Implement SPDM AES-GCM encryption initialization");
+        let mailbox = Mailbox::new();
+
+        if aad.len() > MAX_CMB_DATA_SIZE {
+            Err(CaliptraApiError::AesGcmInvalidAadLength)?;
+        }
+
+        let spdm_flags: u32 =
+            spdm_version as u32 | (if seq_number_le { 0x0 } else { 0x1 << 8 }) as u32;
+
+        if enc {
+            let mut req = CmAesGcmSpdmEncryptInitReq {
+                hdr: MailboxReqHeader::default(),
+                spdm_flags,
+                spdm_counter: seq_number,
+                cmk,
+                aad_size: aad.len() as u32,
+                ..Default::default()
+            };
+            req.aad[..aad.len()].copy_from_slice(aad);
+
+            let resp_bytes = &mut [0u8; size_of::<CmAesGcmSpdmEncryptInitResp>()];
+
+            execute_mailbox_cmd(
+                &mailbox,
+                CmAesGcmSpdmEncryptInitReq::ID.0,
+                req.as_mut_bytes(),
+                resp_bytes,
+            )
+            .await?;
+
+            let init_resp = CmAesGcmSpdmEncryptInitResp::ref_from_bytes(resp_bytes)
+                .map_err(|_| CaliptraApiError::InvalidResponse)?;
+
+            self.context = Some(init_resp.context);
+            self.encrypt = true;
+        } else {
+            let mut req = CmAesGcmSpdmDecryptInitReq {
+                hdr: MailboxReqHeader::default(),
+                spdm_flags,
+                spdm_counter: seq_number,
+                cmk,
+                aad_size: aad.len() as u32,
+                ..Default::default()
+            };
+            req.aad[..aad.len()].copy_from_slice(aad);
+
+            let resp_bytes = &mut [0u8; size_of::<CmAesGcmSpdmDecryptInitResp>()];
+
+            execute_mailbox_cmd(
+                &mailbox,
+                CmAesGcmSpdmDecryptInitReq::ID.0,
+                req.as_mut_bytes(),
+                resp_bytes,
+            )
+            .await?;
+
+            let init_resp = CmAesGcmSpdmDecryptInitResp::ref_from_bytes(resp_bytes)
+                .map_err(|_| CaliptraApiError::InvalidResponse)?;
+
+            self.context = Some(init_resp.context);
+            self.encrypt = false;
+        }
+
+        Ok(())
     }
 
     /// Encrypts the given plaintext using AES-256-GCM in an update operation.
@@ -550,8 +616,10 @@ impl AesGcm {
     /// # Returns
     /// * `Ok((usize, Aes256GcmTag))` - Total bytes encrypted and authentication tag
     /// * `Err(CaliptraApiError)` - on failure
+    #[allow(clippy::too_many_arguments)]
     pub async fn spdm_message_encrypt(
         &mut self,
+        cmk: Cmk,
         spdm_version: u8,
         seq_number: [u8; 8],
         seq_number_le: bool,
@@ -564,7 +632,7 @@ impl AesGcm {
         }
 
         // Initialize SPDM encryption context
-        self.spdm_crypt_init(spdm_version, seq_number, seq_number_le, aad, true)
+        self.spdm_crypt_init(cmk, spdm_version, seq_number, seq_number_le, aad, true)
             .await?;
 
         let chunk_size = MAX_CMB_DATA_SIZE;
@@ -623,6 +691,7 @@ impl AesGcm {
     #[allow(clippy::too_many_arguments)]
     pub async fn spdm_message_decrypt(
         &mut self,
+        cmk: Cmk,
         spdm_version: u8,
         seq_number: [u8; 8],
         seq_number_le: bool,
@@ -636,7 +705,7 @@ impl AesGcm {
         }
 
         // Initialize SPDM decryption context
-        self.spdm_crypt_init(spdm_version, seq_number, seq_number_le, aad, false)
+        self.spdm_crypt_init(cmk, spdm_version, seq_number, seq_number_le, aad, false)
             .await?;
 
         let chunk_size = MAX_CMB_DATA_SIZE;

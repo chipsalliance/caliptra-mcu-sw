@@ -292,6 +292,9 @@ pub async fn test_caliptra_aes_gcm_cipher() {
     test_aes_gcm_enc_dec(imported_cmk, aad, &plaintext[..], &mut ciphertext_buf[..]).await;
     test_aes_gcm_enc_dec(derived_cmk, aad, &plaintext[..], &mut ciphertext_buf[..]).await;
     println!("Test AES-GCM encryption and decryption completed successfully");
+    println!("Testing AES-GCM SPDM encryption and decryption");
+    test_caliptra_aes_gcm_spdm().await;
+    println!("Test AES-GCM SPDM encryption and decryption completed successfully");
 }
 
 async fn test_aes_gcm_enc_dec(cmk: Cmk, aad: &[u8], plaintext: &[u8], ciphertext: &mut [u8]) {
@@ -364,4 +367,76 @@ async fn aes_gcm_key_import() -> Cmk {
         .cmk;
     println!("AES-GCM key imported successfully");
     cmk
+}
+
+async fn test_caliptra_aes_gcm_spdm() {
+    let num = [8u8; 48];
+    let cmk = Import::import(CmKeyUsage::Hmac, &num)
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to import key: {:?}", e);
+            test_exit(1);
+        })
+        .cmk;
+
+    let spdm_version = 0x13; // Example SPDM version
+    let seq_number = [0u8; 8]; // Example sequence number
+    let seq_number_le = true; // Example sequence number endianness
+    let aad = b"Example AAD data"; // Example Additional Authenticated Data
+
+    let plaintext = [
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e,
+        0x1f, 0x20,
+    ]; // Example plaintext data
+
+    let mut ciphertext_buf = [0u8; 64]; // Adjust size as needed
+    let mut aes_gcm = AesGcm::new();
+
+    let (ciphertext_size, tag) = aes_gcm
+        .spdm_message_encrypt(
+            cmk.clone(),
+            spdm_version,
+            seq_number.clone(),
+            seq_number_le,
+            aad,
+            &plaintext[..],
+            &mut ciphertext_buf[..],
+        )
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to SPDM encrypt data: {:?}", e);
+            test_exit(1);
+        });
+
+    println!(
+        "SPDM AES-GCM encryption completed successfully. Ciphertext size: {}, Tag: {}",
+        ciphertext_size,
+        HexBytes(&tag)
+    );
+
+    // Decrypt the ciphertext using the new decrypt API
+    let mut decrypted_plaintext = [0u8; 64]; // Adjust size as needed
+    let decrypted_size = aes_gcm
+        .spdm_message_decrypt(
+            cmk,
+            spdm_version,
+            seq_number,
+            seq_number_le,
+            aad,
+            &ciphertext_buf[..ciphertext_size],
+            tag,
+            &mut decrypted_plaintext[..],
+        )
+        .await
+        .unwrap_or_else(|e| {
+            println!("Failed to SPDM decrypt data: {:?}", e);
+            test_exit(1);
+        });
+
+    assert_eq!(
+        &decrypted_plaintext[..decrypted_size],
+        &plaintext[..],
+        "Decrypted plaintext does not match original plaintext"
+    );
 }
