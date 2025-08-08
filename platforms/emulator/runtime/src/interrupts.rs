@@ -25,7 +25,7 @@ pub struct EmulatorPeripherals<'a> {
 impl<'a> EmulatorPeripherals<'a> {
     pub fn new(alarm: &'a MuxAlarm<'a, InternalTimers<'a>>) -> Self {
         Self {
-            uart: SemihostUart::new(alarm),
+            uart: SemihostUart::new(),
             primary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
                 flash_driver::flash_ctrl::PRIMARY_FLASH_CTRL_BASE,
             ),

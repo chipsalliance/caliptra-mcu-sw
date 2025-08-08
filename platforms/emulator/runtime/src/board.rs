@@ -88,34 +88,12 @@ pub static mut PROCESS_PRINTER: Option<
     &'static capsules_system::process_printer::ProcessPrinterText,
 > = None;
 
-#[cfg(any(
-    feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page",
-    feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase",
-    feature = "test-log-flash-linear",
-    feature = "test-log-flash-circular"
-))]
+// used in tests
+#[allow(unused)]
 static mut BOARD: Option<&'static kernel::Kernel> = None;
-
-#[cfg(any(
-    feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page",
-    feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase",
-    feature = "test-log-flash-linear",
-    feature = "test-log-flash-circular"
-))]
+#[allow(unused)]
 static mut PLATFORM: Option<&'static VeeR> = None;
-
-#[cfg(any(
-    feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page",
-    feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase",
-    feature = "test-log-flash-linear",
-    feature = "test-log-flash-circular"
-))]
+#[allow(unused)]
 static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = None;
 
 // How should the kernel respond when a process faults.
@@ -779,14 +757,7 @@ pub unsafe fn main() {
     board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
 }
 
-#[cfg(any(
-    feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page",
-    feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase",
-    feature = "test-log-flash-linear",
-    feature = "test-log-flash-circular"
-))]
+#[allow(unused)]
 pub fn run_kernel_op(loops: usize) {
     unsafe {
         for _i in 0..loops {

@@ -80,3 +80,10 @@ telnet localhost 4444
 > riscv.cpu riscv dmi_write 0x70 4
 > riscv.cpu riscv dmi_write 0x61 1
 ```
+
+## OTP
+
+There is an example fully provisioned (UDS and FE burned and transitioned into
+production) `.vmem` file for loading into the OTP via the `--otp` in the
+repository in
+[`otp-prod-fe.vmem`](https://github.com/chipsalliance/caliptra-mcu-sw/blob/main/otp-prod-fe.mem).
