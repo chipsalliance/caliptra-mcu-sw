@@ -7,7 +7,7 @@ To implement IDE_KM, devices must provide the `IdeDriver` trait implementation. 
 
 ```rust
 
-pub const IDE_STREAM_KEY_SIZE_DW: usize = 4;
+pub const IDE_STREAM_KEY_SIZE_DW: usize = 8;
 pub const IDE_STREAM_IV_SIZE_DW: usize = 2;
 
 /// Port Configuration structure contains the configuration and capabilities for a specific IDE port.
@@ -129,7 +129,7 @@ pub trait IdeDriver {
     /// * `stream_id` - Stream ID
     /// * `key_info` - Key information containing key set bit, direction, and sub-stream.
     /// * `port_index` - Port to which the key is to be programmed.
-    /// * `key` - The key data to be programmed (4 DWORDs).
+    /// * `key` - The key data to be programmed (8 DWORDs).
     /// * `iv` - The initialization vector (2 DWORDs).
     ///
     /// # Returns
