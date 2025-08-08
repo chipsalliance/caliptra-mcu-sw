@@ -3,8 +3,7 @@
 // DOE Transport Implementation
 
 extern crate alloc;
-use crate::codec::MessageBuf;
-use crate::codec::{Codec, CommonCodec, DataKind};
+use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
 use crate::transport::common::{SpdmTransport, TransportError, TransportResult};
 use alloc::boxed::Box;
 use async_trait::async_trait;

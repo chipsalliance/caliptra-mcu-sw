@@ -22,6 +22,7 @@ pub enum SpdmError {
     UnsupportedRequest,
     CertStore(CertStoreError),
     CaliptraApi(CaliptraApiError),
+    Session(SessionError),
 }
 
 pub type SpdmResult<T> = Result<T, SpdmError>;

@@ -7,6 +7,7 @@
 use crate::protocol::SpdmVersion;
 use arrayvec::ArrayVec;
 use caliptra_api::mailbox::Cmk;
+use libapi_caliptra::crypto::aes_gcm::{Aes256GcmTag, AesGcm};
 use libapi_caliptra::crypto::asym::ecdh::{CmKeyUsage, Ecdh, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE};
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use libapi_caliptra::crypto::hmac::{HkdfSalt, Hmac};
@@ -18,6 +19,7 @@ use libapi_caliptra::error::CaliptraApiError;
 #[derive(Debug, PartialEq)]
 pub enum KeyScheduleError {
     BufferTooSmall,
+    InvalidSessionKeyType,
     DheSecretNotFound,
     HandshakeSecretNotFound,
     MasterSecretNotFound,
@@ -27,10 +29,14 @@ pub enum KeyScheduleError {
 
 pub type KeyScheduleResult<T> = Result<T, KeyScheduleError>;
 
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum SessionKeyType {
     RequestFinishedKey,
     ResponseFinishedKey,
-    // TODO: Add more key types as needed
+    RequestHandshakeEncDecKey,
+    ResponseHandshakeEncDecKey,
+    RequestDataEncDecKey,
+    ResponseDataEncDecKey,
 }
 
 #[derive(Default)]
@@ -110,6 +116,7 @@ impl KeySchedule {
                 .response_finished_key
                 .as_ref()
                 .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
+            _ => Err(KeyScheduleError::InvalidSessionKeyType)?,
         };
 
         // Compute HMAC using the specified key
@@ -121,6 +128,133 @@ impl KeySchedule {
         hmac_bytes.copy_from_slice(&hmac.mac);
 
         Ok(hmac_bytes)
+    }
+
+    pub async fn encrypt_message(
+        &mut self,
+        session_key_type: SessionKeyType,
+        aad_data: &[u8],
+        plaintext_message: &[u8],
+        encrypted_message: &mut [u8],
+    ) -> KeyScheduleResult<(usize, Aes256GcmTag)> {
+        let major_secret = self.get_major_secret(session_key_type)?;
+        let sequence_num_bytes = self.get_sequence_number(session_key_type)?.to_le_bytes();
+
+        let mut aes_gcm = AesGcm::new();
+
+        let result = aes_gcm
+            .spdm_message_encrypt(
+                major_secret,
+                self.spdm_version.into(),
+                sequence_num_bytes,
+                true,
+                aad_data,
+                plaintext_message,
+                encrypted_message,
+            )
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?;
+
+        // Increment the sequence number after encryption
+        self.increment_sequence_number(session_key_type);
+
+        Ok(result)
+    }
+
+    pub async fn decrypt_message(
+        &mut self,
+        session_key_type: SessionKeyType,
+        aad_data: &[u8],
+        encrypted_msg: &[u8],
+        plaintext_msg: &mut [u8],
+        tag: Aes256GcmTag,
+    ) -> KeyScheduleResult<usize> {
+        let major_secret = self.get_major_secret(session_key_type)?;
+        let sequence_num_bytes = self.get_sequence_number(session_key_type)?.to_le_bytes();
+
+        let mut aes_gcm = AesGcm::new();
+
+        let decrypted_size = aes_gcm
+            .spdm_message_decrypt(
+                major_secret,
+                self.spdm_version.into(),
+                sequence_num_bytes,
+                true,
+                aad_data,
+                encrypted_msg,
+                tag,
+                plaintext_msg,
+            )
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?;
+
+        // Increment the sequence number after decryption
+        self.increment_sequence_number(session_key_type);
+
+        Ok(decrypted_size)
+    }
+
+    fn get_sequence_number(&self, session_key_type: SessionKeyType) -> KeyScheduleResult<u64> {
+        match session_key_type {
+            SessionKeyType::RequestHandshakeEncDecKey => {
+                Ok(self.handshake_secret_ctx.request_sequence_num)
+            }
+            SessionKeyType::ResponseHandshakeEncDecKey => {
+                Ok(self.handshake_secret_ctx.response_sequence_num)
+            }
+            SessionKeyType::RequestDataEncDecKey => Ok(self.data_secret_ctx.request_sequence_num),
+            SessionKeyType::ResponseDataEncDecKey => Ok(self.data_secret_ctx.response_sequence_num),
+            _ => Err(KeyScheduleError::InvalidSessionKeyType),
+        }
+    }
+
+    fn get_major_secret(&self, session_key_type: SessionKeyType) -> KeyScheduleResult<Cmk> {
+        match session_key_type {
+            SessionKeyType::RequestHandshakeEncDecKey => self
+                .handshake_secret_ctx
+                .request_handshake_secret
+                .clone()
+                .ok_or(KeyScheduleError::HandshakeSecretNotFound),
+            SessionKeyType::ResponseHandshakeEncDecKey => self
+                .handshake_secret_ctx
+                .response_handshake_secret
+                .clone()
+                .ok_or(KeyScheduleError::HandshakeSecretNotFound),
+            SessionKeyType::RequestDataEncDecKey => self
+                .data_secret_ctx
+                .request_data_secret
+                .clone()
+                .ok_or(KeyScheduleError::DataSecretNotFound),
+            SessionKeyType::ResponseDataEncDecKey => self
+                .data_secret_ctx
+                .response_data_secret
+                .clone()
+                .ok_or(KeyScheduleError::DataSecretNotFound),
+            _ => Err(KeyScheduleError::InvalidSessionKeyType),
+        }
+    }
+
+    fn increment_sequence_number(
+        &mut self,
+        session_key_type: SessionKeyType,
+    ) -> KeyScheduleResult<()> {
+        match session_key_type {
+            SessionKeyType::RequestHandshakeEncDecKey => {
+                self.handshake_secret_ctx.request_sequence_num += 1;
+            }
+            SessionKeyType::ResponseHandshakeEncDecKey => {
+                self.handshake_secret_ctx.response_sequence_num += 1;
+            }
+            SessionKeyType::RequestDataEncDecKey => {
+                self.data_secret_ctx.request_sequence_num += 1;
+            }
+            SessionKeyType::ResponseDataEncDecKey => {
+                self.data_secret_ctx.response_sequence_num += 1;
+            }
+            _ => return Err(KeyScheduleError::InvalidSessionKeyType),
+        }
+
+        Ok(())
     }
 
     // Generates the handshake secret using the DHE Secret and Salt_0
@@ -390,6 +524,10 @@ struct HandshakeSecretCtx {
     request_finished_key: Option<Cmk>,
     // Response direction finished key
     response_finished_key: Option<Cmk>,
+    // Request direction sequence number
+    request_sequence_num: u64,
+    // Response direction sequence number
+    response_sequence_num: u64,
 }
 
 #[derive(Default)]
@@ -398,6 +536,10 @@ struct DataSecretCtx {
     request_data_secret: Option<Cmk>,
     // Response direction data secret
     response_data_secret: Option<Cmk>,
+    // Request direction sequence number
+    request_sequence_num: u64,
+    // Response direction sequence number
+    response_sequence_num: u64,
 }
 
 #[allow(dead_code)]
