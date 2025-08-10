@@ -751,7 +751,7 @@ module caliptra_wrapper_top (
 
 `endif
     el2_mem_if el2_mem_export();
-    mldsa_mem_if mldsa_memory_export();
+    abr_mem_if abr_memory_export();
 
     initial begin
         BootFSM_BrkPoint = 1'b1; //Set to 1 even before anything starts
@@ -767,9 +767,9 @@ caliptra_veer_sram_export veer_sram_export_inst (
     .el2_mem_export(el2_mem_export.veer_sram_sink)
 );
 
-mldsa_mem_top mldsa_mem_top_inst (
+abr_mem_top abr_mem_top_inst (
     .clk_i(core_clk),
-    .mldsa_memory_export(mldsa_memory_export.resp)
+    .abr_memory_export(abr_memory_export.resp)
 );
 
 // Mailbox RAM
@@ -2046,7 +2046,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     // Caliptra Memory Export Interface
     // Caliptra Core, ICCM and DCCM interface
     .cptra_ss_cptra_core_el2_mem_export(el2_mem_export.veer_sram_src),
-    .mldsa_memory_export_req(mldsa_memory_export.req),
+    .abr_memory_export(abr_memory_export.req),
 
     // SRAM interface for mbox
     // Caliptra SS mailbox sram interface
@@ -2118,6 +2118,9 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_strap_recovery_ifc_base_addr_i (64'hA4030100), // I3C controller SecFwRecoveryIf
     .cptra_ss_strap_otp_fc_base_addr_i       (64'hA4060000),
     .cptra_ss_strap_uds_seed_base_addr_i     ({32'h00000000, hwif_out.interface_regs.uds_seed_base_addr.uds_seed_base_addr.value}),
+    .cptra_ss_strap_ss_key_release_base_addr_i(),             //input logic [63:0]  TODO: Connect?
+    .cptra_ss_strap_ss_key_release_key_size_i(),              //input logic [15:0]  TODO: Connect?
+    .cptra_ss_strap_ss_external_staging_area_base_addr_i(),   //input logic [63:0]  TODO: Connect?
     .cptra_ss_strap_prod_debug_unlock_auth_pk_hash_reg_bank_offset_i(hwif_out.interface_regs.prod_debug_unlock_auth_pk_hash_reg_bank_offset.prod_debug_unlock_auth_pk_hash_reg_bank_offset.value),
     .cptra_ss_strap_num_of_prod_debug_unlock_auth_pk_hashes_i(hwif_out.interface_regs.num_of_prod_debug_unlock_auth_pk_hashes.num_of_prod_debug_unlock_auth_pk_hashes.value),
     .cptra_ss_strap_caliptra_dma_axi_user_i(hwif_out.interface_regs.dma_axi_user.dma_axi_user.value),
@@ -2126,6 +2129,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_strap_generic_2_i(32'h0),
     .cptra_ss_strap_generic_3_i(32'h0),
     .cptra_ss_debug_intent_i(hwif_out.interface_regs.control.ss_debug_intent.value),            // Debug intent signal
+    .cptra_ss_ocp_lock_en_i(1'b1), // TODO: Make this configurable?
 
     // TODO: Connect
     /*output logic        */ .cptra_ss_dbg_manuf_enable_o(),
@@ -2135,6 +2139,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_lc_clk_byp_ack_i(lc_ctrl_pkg::Off),
     .cptra_ss_lc_clk_byp_req_o(lc_ctrl_pkg::Off),
     .cptra_ss_lc_ctrl_scan_rst_ni_i(1'b1),
+    .cptra_ss_lc_sec_volatile_raw_unlock_en_i(), // TODO: Connect?
 
     .cptra_ss_lc_esclate_scrap_state0_i(hwif_out.interface_regs.mcu_config.cptra_ss_lc_esclate_scrap_state0_i.value),   // NOTE: These two signals are very important. FIXME: Renaming is needed
     .cptra_ss_lc_esclate_scrap_state1_i(hwif_out.interface_regs.mcu_config.cptra_ss_lc_esclate_scrap_state1_i.value),   // If you assert them, Caliptr-SS will enter SCRAP mode
