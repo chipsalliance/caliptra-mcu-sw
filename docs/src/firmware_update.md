@@ -355,7 +355,7 @@ pub struct FirmwareUpdater<'a, D: DMAMapping> {
     fn start(&self) -> Result<(), ErrorCode>;
 
 }
-
+```
 
 ## Appendix
 
