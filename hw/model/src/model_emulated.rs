@@ -7,6 +7,7 @@ use crate::otp_provision::otp_generate_lifecycle_tokens_mem;
 use crate::trace_path_or_env;
 use crate::InitParams;
 use crate::McuHwModel;
+use crate::McuManager;
 use crate::Output;
 use crate::DEFAULT_LIFECYCLE_RAW_TOKENS;
 use anyhow::Result;
@@ -26,6 +27,7 @@ use caliptra_emu_types::RvSize;
 use caliptra_hw_model::DeviceLifecycle;
 use caliptra_hw_model::ModelError;
 use caliptra_hw_model::SecurityState;
+use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
 use emulator_periph::McuRootBusOffsets;
 use emulator_periph::{
@@ -217,6 +219,9 @@ impl McuHwModel for ModelEmulated {
             Some(otp_mem),
             None,
             params.vendor_pk_hash,
+            params
+                .vendor_pqc_type
+                .unwrap_or(FwVerificationPqcKeyType::LMS),
         )?;
         let ext_mci = root_bus.mci_external_regs();
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
@@ -362,6 +367,10 @@ impl McuHwModel for ModelEmulated {
             .read_mci_reg_fw_flow_status()
     }
 
+    fn mcu_manager(&mut self) -> impl McuManager {
+        self
+    }
+
     fn caliptra_soc_manager(&mut self) -> impl caliptra_api::SocManager {
         self
     }
@@ -379,15 +388,43 @@ pub struct EmulatedAxiBus<'a> {
 
 impl Bus for EmulatedAxiBus<'_> {
     fn read(&mut self, size: RvSize, addr: RvAddr) -> Result<RvData, BusError> {
-        let result = self.model.soc_to_caliptra_bus.read(size, addr);
+        let bus: &mut dyn Bus = match addr {
+            0x3002_0000..=0x3003_ffff => &mut self.model.soc_to_caliptra_bus,
+            _ => &mut self.model.cpu.bus,
+        };
+        let result = bus.read(size, addr);
         self.model.cpu.bus.log_read("SoC", size, addr, result);
         result
     }
     fn write(&mut self, size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
-        let result = self.model.soc_to_caliptra_bus.write(size, addr, val);
+        let bus: &mut dyn Bus = match addr {
+            0x3002_0000..=0x3003_ffff => &mut self.model.soc_to_caliptra_bus,
+            _ => &mut self.model.cpu.bus,
+        };
+        let result = bus.write(size, addr, val);
         self.model.cpu.bus.log_write("SoC", size, addr, val, result);
         result
     }
+}
+
+impl McuManager for &mut ModelEmulated {
+    type TMmio<'a>
+        = BusMmio<EmulatedAxiBus<'a>>
+    where
+        Self: 'a;
+
+    fn mmio_mut(&mut self) -> Self::TMmio<'_> {
+        BusMmio::new(self.caliptra_axi_bus())
+    }
+
+    const I3C_ADDR: u32 = 0x2000_4000;
+    const MCI_ADDR: u32 = 0x2100_0000;
+    const TRACE_BUFFER_ADDR: u32 = 0x2101_0000;
+    const MBOX_0_ADDR: u32 = 0x2140_0000;
+    const MBOX_1_ADDR: u32 = 0x2180_0000;
+    const MCU_SRAM_ADDR: u32 = 0x21c0_0000;
+    const OTP_CTRL_ADDR: u32 = 0x7000_0000;
+    const LC_CTRL_ADDR: u32 = 0x7000_0400;
 }
 
 impl SocManager for &mut ModelEmulated {

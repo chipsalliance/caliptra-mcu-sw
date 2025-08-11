@@ -28,9 +28,12 @@ impl BootFlow for FwHitlessUpdate {
 
         // Create local references to minimize code changes
         let soc_manager = &mut env.soc_manager;
+        let soc = &env.soc;
 
         // Release mailbox from activate command before device reboot
         soc_manager.soc_mbox().execute().write(|w| w.execute(false));
+
+        while !soc.fw_ready() {}
 
         // Jump to firmware
         romtime::println!("[mcu-rom] Jumping to firmware");

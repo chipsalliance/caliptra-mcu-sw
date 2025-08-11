@@ -12,6 +12,11 @@ pub enum CaliptraApiError {
     Syscall(ErrorCode),
     InvalidArgument(&'static str),
     InvalidOperation(&'static str),
+    AesGcmInvalidDataLength,
+    AesGcmInvalidAadLength,
+    AesGcmInvalidOperation,
+    AesGcmInvalidContext,
+    AesGcmTagVerifyFailed,
     InvalidResponse,
     UnprovisionedCsr,
 }

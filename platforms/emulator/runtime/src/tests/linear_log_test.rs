@@ -66,7 +66,14 @@ pub unsafe fn run(
     log.set_append_client(test);
     test.alarm.set_alarm_client(test);
 
-    test.run();
+    test.schedule_next();
+
+    // Integration tests are executed before kernel loop.
+    // Explicitly advance the kernel to handle deferred calls and interrupt processing.
+    while !test.finished() {
+        crate::board::run_kernel_op(1);
+    }
+
     Some(0)
 }
 
@@ -146,9 +153,13 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
         }
     }
 
+    fn finished(&self) -> bool {
+        self.op_index.get() >= self.ops.len()
+    }
+
     fn run(&self) {
         let op_index = self.op_index.get();
-        if op_index == self.ops.len() {
+        if self.finished() {
             romtime::println!("Linear Log Storage test succeeded!");
             return;
         }
@@ -158,11 +169,6 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
             TestOp::Sync => self.sync(),
             TestOp::Erase => self.erase(),
         }
-
-        // Integration tests are executed before kernel loop.
-        // Explicitly advance the kernel to handle deferred calls and interrupt processing.
-        #[cfg(feature = "test-log-flash-linear")]
-        crate::board::run_kernel_op(1000);
     }
 
     fn read(&self) {
@@ -177,7 +183,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
                         ErrorCode::FAIL => {
                             // No more entries, start writing again.
                             self.op_index.increment();
-                            self.run();
+                            self.schedule_next();
                         }
                         ErrorCode::BUSY => {
                             self.wait();
@@ -206,7 +212,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
                         ErrorCode::FAIL =>
                             if expect_write_fail {
                                 self.op_index.increment();
-                                self.run();
+                                self.schedule_next();
                             } else {
                                 panic!(
                                     "Write failed unexpectedly on {} byte write (read entry ID: {:?}, append entry ID: {:?})",
@@ -235,6 +241,12 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
             Ok(()) => (),
             error => panic!("Sync failed: {:?}", error),
         }
+    }
+
+    fn schedule_next(&self) {
+        let delay = self.alarm.ticks_from_ms(1);
+        let now = self.alarm.now();
+        self.alarm.set_alarm(now, delay);
     }
 
     fn wait(&self) {
@@ -309,7 +321,7 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
         }
 
         self.op_index.increment();
-        self.run();
+        self.schedule_next();
     }
 
     fn erase_done(&self, error: Result<(), ErrorCode>) {
@@ -342,7 +354,7 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
                 });
 
                 self.op_index.increment();
-                self.run();
+                self.schedule_next();
             }
             Err(ErrorCode::BUSY) => {
                 self.wait();
