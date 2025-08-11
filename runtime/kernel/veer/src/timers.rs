@@ -172,7 +172,7 @@ impl<'a> time::Alarm<'a> for InternalTimers<'a> {
         let now = self.now();
         let expire = reference.wrapping_add(dt);
         let dt = if now.within_range(reference, expire) {
-            dt
+            expire.wrapping_sub(now)
         } else {
             // expire immediately
             1u64.into()

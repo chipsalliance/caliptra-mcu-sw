@@ -73,7 +73,7 @@ impl From<StepAction> for CStepAction {
 /// # Arguments
 /// * `context` - Context pointer passed to the callback
 /// * `size` - Size of the read operation (1, 2, or 4 bytes)
-/// * `addr` - Address being read from  
+/// * `addr` - Address being read from
 /// * `buffer` - Pointer to write the read data to
 ///
 /// # Returns
@@ -145,6 +145,7 @@ pub struct CEmulatorConfig {
     pub manufacturing_mode: c_uchar,             // 0 = false, 1 = true
     pub capture_uart_output: c_uchar,            // 0 = false, 1 = true
     pub vendor_pk_hash: *const c_char,           // Optional, can be null
+    pub vendor_pqc_type: c_uchar,                // 1 = LMS, 3 = MLDSA
     pub owner_pk_hash: *const c_char,            // Optional, can be null
     pub streaming_boot_path: *const c_char,      // Optional, can be null
     pub primary_flash_image_path: *const c_char, // Optional, can be null
@@ -283,6 +284,10 @@ pub unsafe extern "C" fn emulator_init(
         },
         manufacturing_mode: config.manufacturing_mode != 0,
         vendor_pk_hash: convert_optional_c_string(config.vendor_pk_hash),
+        vendor_pqc_type: caliptra_image_types::FwVerificationPqcKeyType::from_u8(
+            config.vendor_pqc_type,
+        )
+        .unwrap_or(caliptra_image_types::FwVerificationPqcKeyType::LMS),
         owner_pk_hash: convert_optional_c_string(config.owner_pk_hash),
         streaming_boot: convert_optional_c_string(config.streaming_boot_path).map(|s| s.into()),
         primary_flash_image: convert_optional_c_string(config.primary_flash_image_path)
@@ -772,7 +777,7 @@ pub unsafe extern "C" fn example_external_read_callback(
 /// Example external write callback that logs the operation
 /// This is a simple test callback that C code can use for testing
 ///
-/// # Arguments  
+/// # Arguments
 /// * `context` - Context pointer (unused in this example)
 /// * `size` - Size of the write operation (1, 2, or 4 bytes)
 /// * `addr` - Address being written to
@@ -835,7 +840,7 @@ fn convert_c_read_callback(
     })
 }
 
-/// Convert C external write callback to Rust callback  
+/// Convert C external write callback to Rust callback
 fn convert_c_write_callback(
     c_callback: CExternalWriteCallback,
     context: *const std::ffi::c_void,

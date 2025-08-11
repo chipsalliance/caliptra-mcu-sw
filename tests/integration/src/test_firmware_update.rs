@@ -4,6 +4,7 @@
 mod test {
     use crate::test::{compile_runtime, get_rom_with_feature, run_runtime, TEST_LOCK};
     use chrono::{TimeZone, Utc};
+    use flash_image::{MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER};
     use mcu_builder::{CaliptraBuilder, ImageCfg};
     use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator};
@@ -205,6 +206,72 @@ mod test {
         )
     }
 
+    fn create_update_package() -> PathBuf {
+        // Build the update PLDM firmware package
+        let update_soc_image_fw_1 = [0x66u8; 512];
+        let update_soc_image_fw_2 = [0xBBu8; 256];
+        let update_soc_images_paths = create_soc_images(vec![
+            update_soc_image_fw_1.clone().to_vec(),
+            update_soc_image_fw_2.clone().to_vec(),
+        ]);
+        let update_soc_images = vec![
+            ImageCfg {
+                path: update_soc_images_paths[0].clone(),
+                load_addr: CALIPTRA_EXTERNAL_RAM_BASE,
+                image_id: SOC_IMAGES_BASE_IDENTIFIER,
+                exec_bit: 100,
+                ..Default::default()
+            },
+            ImageCfg {
+                path: update_soc_images_paths[1].clone(),
+                load_addr: CALIPTRA_EXTERNAL_RAM_BASE + update_soc_image_fw_1.len() as u64,
+                image_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
+                exec_bit: 101,
+                ..Default::default()
+            },
+        ];
+        let update_runtime_firmware = compile_runtime("test-flash-based-boot", false);
+        let mcu_cfg = ImageCfg {
+            path: update_runtime_firmware.clone(),
+            load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
+            staging_addr: CALIPTRA_EXTERNAL_RAM_BASE + (512 * 1024) as u64,
+            image_id: MCU_RT_IDENTIFIER,
+            exec_bit: 2,
+        };
+
+        let mut update_builder = CaliptraBuilder::new(
+            false,
+            None,
+            None,
+            None,
+            None,
+            Some(update_runtime_firmware.clone()),
+            Some(update_soc_images.clone()),
+            Some(mcu_cfg.clone()),
+        );
+        let update_caliptra_fw = update_builder
+            .get_caliptra_fw()
+            .expect("Failed to build Caliptra firmware for update");
+        let update_soc_manifest = update_builder
+            .get_soc_manifest()
+            .expect("Failed to build SOC manifest for update");
+        let (_, update_flash_image_path) = create_flash_image(
+            Some(update_caliptra_fw.clone()),
+            Some(update_soc_manifest.clone()),
+            Some(update_runtime_firmware.clone()),
+            None,
+            0,
+            update_soc_images_paths.clone(),
+        );
+
+        // Generate the corresponding PLDM package from the flash image
+        let device_uuid = get_device_uuid();
+        let flash_image =
+            std::fs::read(update_flash_image_path.clone()).expect("Failed to read flash image");
+        let pldm_manifest = get_streaming_boot_pldm_fw_manifest(&device_uuid, &flash_image);
+        create_pldm_fw_package(&pldm_manifest)
+    }
+
     /// Test case: happy path
     fn test_successful_update(opts: &TestOptions) {
         let test = run_runtime_with_options(opts);
@@ -223,6 +290,9 @@ mod test {
         let soc_image_fw_1 = [0x55u8; 512]; // Example firmware data for SOC image 1
         let soc_image_fw_2 = [0xAAu8; 256]; // Example firmware data for SOC image 2
 
+        // Build the PLDM firmware update package
+        let pldm_fw_pkg_path = create_update_package();
+
         // Compile the runtime once with the appropriate feature
         let test_runtime = compile_runtime(feature, false);
 
@@ -236,14 +306,14 @@ mod test {
             ImageCfg {
                 path: soc_images_paths[0].clone(),
                 load_addr: CALIPTRA_EXTERNAL_RAM_BASE,
-                image_id: 4096,
+                image_id: SOC_IMAGES_BASE_IDENTIFIER,
                 exec_bit: 100,
                 ..Default::default()
             },
             ImageCfg {
                 path: soc_images_paths[1].clone(),
                 load_addr: CALIPTRA_EXTERNAL_RAM_BASE + soc_image_fw_1.len() as u64,
-                image_id: 4097,
+                image_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
                 exec_bit: 101,
                 ..Default::default()
             },
@@ -253,11 +323,11 @@ mod test {
             path: test_runtime.clone(),
             load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
             staging_addr: CALIPTRA_EXTERNAL_RAM_BASE + (512 * 1024) as u64,
-            image_id: 2,
+            image_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
         };
 
-        // Build the Caliptra runtime
+        // Build the Runtime image
         let mut builder = CaliptraBuilder::new(
             false,
             None,
@@ -277,24 +347,6 @@ mod test {
         let soc_manifest = builder
             .get_soc_manifest()
             .expect("Failed to build SOC manifest");
-
-        let (soc_images_paths, flash_image_path) = create_flash_image(
-            Some(caliptra_fw.clone()),
-            Some(soc_manifest.clone()),
-            Some(test_runtime.clone()),
-            None,
-            0,
-            soc_images_paths.clone(),
-        );
-
-        // Generate the corresponding PLDM package from the flash image
-        let pldm_fw_pkg_path = {
-            let device_uuid = get_device_uuid();
-            let flash_image =
-                std::fs::read(flash_image_path.clone()).expect("Failed to read flash image");
-            let pldm_manifest = get_streaming_boot_pldm_fw_manifest(&device_uuid, &flash_image);
-            Some(create_pldm_fw_package(&pldm_manifest))
-        };
 
         // Generate a flash image file to write to the primary flash
         let mut partition_table = PartitionTable {
@@ -341,7 +393,7 @@ mod test {
             soc_images_paths: soc_images_paths.clone(),
             primary_flash_image_path: flash_image_path.clone(),
             secondary_flash_image_path: flash_image_path.clone(),
-            pldm_fw_pkg_path: pldm_fw_pkg_path.clone(),
+            pldm_fw_pkg_path: Some(pldm_fw_pkg_path),
             partition_table: None,
             builder: Some(builder.clone()),
             flash_offset: 0,

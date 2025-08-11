@@ -12,6 +12,7 @@ mod deps;
 mod docs;
 mod emulator_cbinding;
 mod format;
+#[cfg(feature = "fpga_realtime")]
 mod fpga;
 mod header;
 mod pldm_fw_pkg;
@@ -183,8 +184,10 @@ enum Commands {
     /// Check dependencies
     Deps,
     /// Build and install the FPGA kernel modules for uio and the ROM backdoors
+    #[cfg(feature = "fpga_realtime")]
     FpgaInstallKernelModules,
     /// Run firmware on the FPGA
+    #[cfg(feature = "fpga_realtime")]
     FpgaRun {
         /// ZIP with all images.
         #[arg(long)]
@@ -410,7 +413,9 @@ fn main() {
             addrmap,
         } => registers::autogen(*check, files, addrmap),
         Commands::Deps => deps::check(),
+        #[cfg(feature = "fpga_realtime")]
         Commands::FpgaRun { .. } => fpga::fpga_run(cli.xtask),
+        #[cfg(feature = "fpga_realtime")]
         Commands::FpgaInstallKernelModules => fpga::fpga_install_kernel_modules(),
         Commands::PldmFirmware { subcommand } => match subcommand {
             PldmFirmwareCommands::Create { manifest, file } => pldm_fw_pkg::create(manifest, file),

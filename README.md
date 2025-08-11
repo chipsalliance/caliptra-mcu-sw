@@ -176,5 +176,5 @@ When implementing a new emulator peripheral and firmware driver, the workflow wi
 To build install the `uio` device and the ROM backdoors for FPGA development, run
 
 ```shell
-cargo xtask fpga-install-kernel-modules
+cargo xtask-fpga fpga-install-kernel-modules
 ```

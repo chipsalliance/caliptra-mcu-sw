@@ -51,26 +51,25 @@ pub async fn image_loading_task() {
         feature = "test-pldm-discovery",
         feature = "test-pldm-fw-update",
         feature = "test-pldm-fw-update-e2e",
-        feature = "test-firmware-update-flash",
     ))]
     {
         match image_loading(&EMULATED_DMA_MAPPING).await {
             Ok(_) => {}
             Err(_) => romtime::test_exit(1),
         }
-        // After image loading, proceed to firmware update if enabled
-        #[cfg(any(
-            feature = "test-firmware-update-streaming",
-            feature = "test-firmware-update-flash"
-        ))]
-        {
-            match crate::firmware_update::firmware_update(&EMULATED_DMA_MAPPING).await {
-                Ok(_) => {}
-                Err(_) => romtime::test_exit(1),
-            }
-        }
-        romtime::test_exit(0);
     }
+    // After image loading, proceed to firmware update if enabled
+    #[cfg(any(
+        feature = "test-firmware-update-streaming",
+        feature = "test-firmware-update-flash"
+    ))]
+    {
+        match crate::firmware_update::firmware_update(&EMULATED_DMA_MAPPING).await {
+            Ok(_) => {}
+            Err(_) => romtime::test_exit(1),
+        }
+    }
+    romtime::test_exit(0);
 }
 
 #[allow(dead_code)]
@@ -133,6 +132,12 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
 
         let flash_syscall = SpiFlash::new(load_partition.1.driver_num);
         let flash_image_loader = FlashImageLoader::new(flash_syscall, dma_mapping);
+
+        if let Some(pending) = pending {
+            // Set the new Auth Manifest from the pending partition
+            flash_image_loader.set_auth_manifest().await?;
+        }
+
         flash_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
             .await?;

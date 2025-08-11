@@ -8,16 +8,19 @@ use caliptra_api_types as api_types;
 use caliptra_emu_bus::Event;
 pub use caliptra_emu_cpu::{CodeRange, ImageInfo, StackInfo, StackRange};
 use caliptra_hw_model_types::{
-    EtrngResponse, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
+    EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
 };
+use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_registers::soc_ifc::regs::{
     CptraItrngEntropyConfig0WriteVal, CptraItrngEntropyConfig1WriteVal,
 };
+pub use mcu_mgr::McuManager;
 use mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
 pub use model_emulated::ModelEmulated;
 use output::ExitStatus;
 pub use output::Output;
 use rand::{rngs::StdRng, SeedableRng};
+use sha2::Digest;
 use std::io::{stdout, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -26,6 +29,7 @@ pub use vmem::read_otp_vmem_data;
 
 mod bus_logger;
 mod fpga_regs;
+mod mcu_mgr;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
 mod model_fpga_realtime;
@@ -71,6 +75,21 @@ const DEFAULT_LIFECYCLE_RAW_TOKENS: LifecycleRawTokens = LifecycleRawTokens {
     rma: DEFAULT_LIFECYCLE_RAW_TOKEN,
 };
 
+/// Constructs an HwModel based on the cargo features and environment
+/// variables. Most test cases that need to construct a HwModel should use this
+/// function over HwModel::new_unbooted().
+///
+/// The model returned by this function does not have any fuses programmed and
+/// is not yet ready to execute code in the microcontroller. Most test cases
+/// should use [`new`] instead.
+pub fn new_unbooted<M: McuHwModel>(params: InitParams) -> Result<M> {
+    let summary = params.summary();
+    M::new_unbooted(params).inspect(|hw| {
+        println!("Using hardware-model {}", hw.type_name());
+        println!("{summary:#?}");
+    })
+}
+
 pub struct InitParams<'a> {
     /// The contents of the Caliptra ROM
     pub caliptra_rom: &'a [u8],
@@ -103,6 +122,9 @@ pub struct InitParams<'a> {
     /// Vendor public key hash.
     /// This will override any otp_memory contents.
     pub vendor_pk_hash: Option<[u8; 48]>,
+    /// PQC key type for vendor public key.
+    /// This will override any otp_memory contents.
+    pub vendor_pqc_type: Option<FwVerificationPqcKeyType>,
 
     pub log_writer: Box<dyn std::io::Write>,
 
@@ -148,6 +170,16 @@ pub struct InitParams<'a> {
     // overflows.
     pub stack_info: Option<StackInfo>,
 }
+
+impl InitParams<'_> {
+    pub fn summary(&self) -> InitParamsSummary {
+        InitParamsSummary {
+            rom_sha384: sha2::Sha384::digest(self.mcu_rom).into(),
+            obf_key: self.cptra_obf_key,
+        }
+    }
+}
+
 impl Default for InitParams<'_> {
     fn default() -> Self {
         let seed = std::env::var("CPTRA_TRNG_SEED")
@@ -191,7 +223,21 @@ impl Default for InitParams<'_> {
             csr_hmac_key: [1; 16],
             soc_manifest: Default::default(),
             vendor_pk_hash: None,
+            vendor_pqc_type: None,
         }
+    }
+}
+
+pub struct InitParamsSummary {
+    rom_sha384: [u8; 48],
+    obf_key: [u32; 8],
+}
+impl std::fmt::Debug for InitParamsSummary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InitParamsSummary")
+            .field("rom_sha384", &HexBytes(&self.rom_sha384))
+            .field("obf_key", &HexSlice(&self.obf_key))
+            .finish()
     }
 }
 
@@ -270,6 +316,8 @@ pub trait McuHwModel {
     fn step_until_exit_success(&mut self) -> std::io::Result<()> {
         self.copy_output_until_exit_success(std::io::Sink::default())
     }
+
+    fn mcu_manager(&mut self) -> impl McuManager;
 
     fn caliptra_soc_manager(&mut self) -> impl SocManager;
 

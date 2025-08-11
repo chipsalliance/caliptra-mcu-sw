@@ -29,6 +29,13 @@ use registers_generated::soc;
 use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
+// values in fuses
+const LMS_FUSE_VALUE: u8 = 1;
+const MLDSA_FUSE_VALUE: u8 = 0;
+// values when setting in Caliptra
+const MLDSA_CALIPTRA_VALUE: u8 = 1;
+const LMS_CALIPTRA_VALUE: u8 = 3;
+
 /// Trait for different boot flows (cold boot, warm reset, firmware update)
 pub trait BootFlow {
     /// Execute the boot flow
@@ -122,8 +129,13 @@ impl Soc {
         self.registers.ss_uds_seed_base_addr_l.set(offset as u32);
         self.registers.ss_uds_seed_base_addr_h.set(0);
 
-        // TODO[cap2]: the OTP map doesn't have this value yet, so we hardcode it for now
-        self.registers.fuse_pqc_key_type.set(3); // LMS
+        let pqc_type = match fuses.cptra_core_pqc_key_type_0() & 1 {
+            MLDSA_FUSE_VALUE => MLDSA_CALIPTRA_VALUE,
+            LMS_FUSE_VALUE => LMS_CALIPTRA_VALUE,
+            _ => unreachable!(),
+        };
+        self.registers.fuse_pqc_key_type.set(pqc_type as u32);
+        romtime::println!("[mcu-fuse-write] Setting vendor PQC type to {}", pqc_type);
 
         // TODO: vendor-specific fuses when those are supported
         self.registers
