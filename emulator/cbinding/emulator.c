@@ -35,25 +35,261 @@ Build Instructions:
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <signal.h>
 #include <errno.h>
-#include <getopt.h>
-#include <termios.h>
-#include <fcntl.h>
-#include <sys/select.h>
+
+#ifdef _WIN32
+    #include <windows.h>
+    #include <conio.h>
+    #include <io.h>
+    #include <malloc.h>
+    #define STDIN_FILENO 0
+    
+    // Windows doesn't have getopt, so we'll use a simplified version
+    char *optarg = NULL;
+    int optind = 1;
+    int opterr = 1;
+    int optopt = 0;
+    
+    // Windows getopt_long structures and constants
+    struct option {
+        const char *name;
+        int has_arg;
+        int *flag;
+        int val;
+    };
+    
+    #define no_argument 0
+    #define required_argument 1
+    #define optional_argument 2
+    
+    int getopt(int argc, char * const argv[], const char *optstring);
+    int getopt_long(int argc, char * const argv[], const char *optstring, 
+                   const struct option *longopts, int *longindex);
+    
+    // Windows signal handling
+    #include <signal.h>
+    
+    // Windows equivalent of aligned_alloc
+    #define aligned_alloc(alignment, size) _aligned_malloc(size, alignment)
+    
+    // Windows POSIX function mappings
+    #define read _read
+    
+#else
+    #include <unistd.h>
+    #include <signal.h>
+    #include <getopt.h>
+    #include <termios.h>
+    #include <fcntl.h>
+    #include <sys/select.h>
+#endif
+
+#ifdef _WIN32
+// Windows implementation of getopt
+int getopt(int argc, char * const argv[], const char *optstring) {
+    static int sp = 1;
+    int c;
+    char *cp;
+
+    if (sp == 1) {
+        if (optind >= argc || argv[optind][0] != '-' || argv[optind][1] == '\0')
+            return -1;
+        else if (strcmp(argv[optind], "--") == 0) {
+            optind++;
+            return -1;
+        }
+    }
+    optopt = c = argv[optind][sp];
+    if (c == ':' || (cp = strchr(optstring, c)) == NULL) {
+        if (opterr)
+            fprintf(stderr, "illegal option -- %c\n", c);
+        if (argv[optind][++sp] == '\0') {
+            optind++;
+            sp = 1;
+        }
+        return '?';
+    }
+    if (*++cp == ':') {
+        if (argv[optind][sp+1] != '\0')
+            optarg = &argv[optind++][sp+1];
+        else if (++optind >= argc) {
+            if (opterr)
+                fprintf(stderr, "option requires an argument -- %c\n", c);
+            sp = 1;
+            return '?';
+        } else
+            optarg = argv[optind++];
+        sp = 1;
+    } else {
+        if (argv[optind][++sp] == '\0') {
+            sp = 1;
+            optind++;
+        }
+        optarg = NULL;
+    }
+    return c;
+}
+
+// Windows implementation of getopt_long
+int getopt_long(int argc, char * const argv[], const char *optstring, 
+               const struct option *longopts, int *longindex) {
+    static int sp = 1;
+    int c;
+    char *cp;
+    
+    if (longindex) *longindex = -1;
+    
+    if (sp == 1) {
+        if (optind >= argc || argv[optind][0] != '-' || argv[optind][1] == '\0')
+            return -1;
+        else if (strcmp(argv[optind], "--") == 0) {
+            optind++;
+            return -1;
+        } else if (argv[optind][0] == '-' && argv[optind][1] == '-') {
+            // Long option
+            char *long_name = argv[optind] + 2;
+            char *equals_pos = strchr(long_name, '=');
+            int name_len = equals_pos ? (int)(equals_pos - long_name) : (int)strlen(long_name);
+            
+            // Find matching long option
+            for (int i = 0; longopts[i].name; i++) {
+                if (strncmp(longopts[i].name, long_name, name_len) == 0 && 
+                    strlen(longopts[i].name) == name_len) {
+                    if (longindex) *longindex = i;
+                    
+                    if (longopts[i].has_arg == required_argument) {
+                        if (equals_pos) {
+                            optarg = equals_pos + 1;
+                        } else if (++optind >= argc) {
+                            if (opterr)
+                                fprintf(stderr, "option '--%s' requires an argument\n", longopts[i].name);
+                            return '?';
+                        } else {
+                            optarg = argv[optind];
+                        }
+                        optind++;
+                    } else {
+                        if (equals_pos) {
+                            if (opterr)
+                                fprintf(stderr, "option '--%s' doesn't allow an argument\n", longopts[i].name);
+                            return '?';
+                        }
+                        optarg = NULL;
+                        optind++;
+                    }
+                    
+                    return longopts[i].val;
+                }
+            }
+            
+            if (opterr)
+                fprintf(stderr, "unrecognized option '--%.*s'\n", name_len, long_name);
+            optind++;
+            return '?';
+        }
+    }
+    
+    // Short option - use regular getopt logic
+    optopt = c = argv[optind][sp];
+    if (c == ':' || (cp = strchr(optstring, c)) == NULL) {
+        if (opterr)
+            fprintf(stderr, "illegal option -- %c\n", c);
+        if (argv[optind][++sp] == '\0') {
+            optind++;
+            sp = 1;
+        }
+        return '?';
+    }
+    if (*++cp == ':') {
+        if (argv[optind][sp+1] != '\0')
+            optarg = &argv[optind++][sp+1];
+        else if (++optind >= argc) {
+            if (opterr)
+                fprintf(stderr, "option requires an argument -- %c\n", c);
+            sp = 1;
+            return '?';
+        } else
+            optarg = argv[optind++];
+        sp = 1;
+    } else {
+        if (argv[optind][++sp] == '\0') {
+            sp = 1;
+            optind++;
+        }
+        optarg = NULL;
+    }
+    return c;
+}
+
+// Windows sleep function (usleep equivalent)
+void usleep(unsigned int microseconds) {
+    Sleep(microseconds / 1000); // Sleep takes milliseconds
+}
+
+// Windows version of kbhit check
+int kbhit_available() {
+    return _kbhit();
+}
+
+// Windows version of getch 
+int getch_char() {
+    return _getch();
+}
+
+#else
+
+// Unix versions
+int kbhit_available() {
+    fd_set read_fds;
+    struct timeval timeout;
+    
+    FD_ZERO(&read_fds);
+    FD_SET(STDIN_FILENO, &read_fds);
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+    
+    return select(STDIN_FILENO + 1, &read_fds, NULL, NULL, &timeout) > 0;
+}
+
+int getch_char() {
+    return getchar();
+}
+
+#endif
 
 // Global emulator pointer for signal handler
 static struct CEmulator* global_emulator = NULL;
 
+// Function declarations
+void free_run(struct CEmulator* emulator);
+void non_blocking_gdb_run(struct CEmulator* emulator);
+
 // Terminal settings for raw input
-static struct termios original_termios;
-static int terminal_raw_mode = 0;
+#ifdef _WIN32
+    static DWORD original_console_mode;
+    static int terminal_raw_mode = 0;
+#else
+    static struct termios original_termios;
+    static int terminal_raw_mode = 0;
+#endif
 
 // Function to enable raw terminal mode for immediate character input
 void enable_raw_mode() {
     if (terminal_raw_mode) return;
     
+#ifdef _WIN32
+    HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+    if (hStdin == INVALID_HANDLE_VALUE) return;
+    
+    if (!GetConsoleMode(hStdin, &original_console_mode)) return;
+    
+    DWORD new_mode = original_console_mode;
+    new_mode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+    
+    if (SetConsoleMode(hStdin, new_mode)) {
+        terminal_raw_mode = 1;
+    }
+#else
     if (tcgetattr(STDIN_FILENO, &original_termios) == -1) {
         return; // Not a terminal
     }
@@ -69,16 +305,25 @@ void enable_raw_mode() {
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == 0) {
         terminal_raw_mode = 1;
     }
+#endif
 }
 
 // Function to restore terminal mode
 void disable_raw_mode() {
     if (terminal_raw_mode) {
+#ifdef _WIN32
+        HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+        if (hStdin != INVALID_HANDLE_VALUE) {
+            SetConsoleMode(hStdin, original_console_mode);
+        }
+        terminal_raw_mode = 0;
+#else
         if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_termios) == 0) {
             terminal_raw_mode = 0;
         }
         // Even if tcsetattr fails, reset our flag to avoid repeated attempts
         terminal_raw_mode = 0;
+#endif
     }
 }
 
@@ -87,9 +332,11 @@ void signal_handler(int sig) {
     const char* sig_name = "UNKNOWN";
     switch (sig) {
         case SIGINT: sig_name = "SIGINT"; break;
+#ifndef _WIN32
         case SIGTERM: sig_name = "SIGTERM"; break;
         case SIGHUP: sig_name = "SIGHUP"; break;
         case SIGQUIT: sig_name = "SIGQUIT"; break;
+#endif
     }
     
     printf("\nReceived %s, requesting exit...\n", sig_name);
@@ -124,6 +371,7 @@ void print_usage(const char* program_name) {
     printf("  -l, --log-dir <LOG_DIR>              Directory in which to log execution artifacts\n");
     printf("  -t, --trace-instr                    Trace instructions\n");
     printf("      --no-stdin-uart                  Don't pass stdin to the MCU UART Rx\n");
+    printf("      --non-blocking-gdb               Use non-blocking GDB mode (C controls execution)\n");
     printf("      --i3c-port <I3C_PORT>            I3C socket port\n");
     printf("      --manufacturing-mode             Enable manufacturing mode\n");
     printf("      --vendor-pk-hash <VENDOR_PK_HASH>\n");
@@ -192,8 +440,13 @@ void free_run(struct CEmulator* emulator) {
     int step_count = 0;
     while (1) {
         // Check for console input and send to UART RX if available
+#ifdef _WIN32
+        if (kbhit_available()) {
+            char input_char = (char)getch_char();
+#else
         char input_char;
         if (read(STDIN_FILENO, &input_char, 1) == 1) {
+#endif
             // Handle special characters
             if (input_char == 3) { // Ctrl+C
                 break;
@@ -251,6 +504,154 @@ void free_run(struct CEmulator* emulator) {
     free(uart_buffer);
 }
 
+// Non-blocking GDB run function - demonstrates non-blocking GDB usage pattern
+void non_blocking_gdb_run(struct CEmulator* emulator) {
+    printf("Running emulator in non-blocking GDB mode...\n");
+    printf("GDB server available on port %u\n", emulator_get_gdb_port(emulator));
+    printf("Connect with: gdb -ex 'target remote localhost:%u'\n", emulator_get_gdb_port(emulator));
+
+    // Start the non-blocking GDB server
+    enum EmulatorError result = emulator_start_nonblocking_gdb_server(emulator);
+    if (result != Success) {
+        fprintf(stderr, "Failed to start GDB server: %d\n", result);
+        return;
+    }
+
+    printf("Non-blocking GDB server started\n");
+
+    // Buffer for UART output (streaming mode)
+    const size_t uart_buffer_size = 1024;
+    char* uart_buffer = malloc(uart_buffer_size);
+    if (!uart_buffer) {
+        fprintf(stderr, "Failed to allocate UART buffer\n");
+        return;
+    }
+
+    // Main execution loop
+    int gdb_connected = 0;
+    int step_count = 0;
+    
+    while (1) {
+        // Try to accept GDB connections (non-blocking)
+        if (!gdb_connected) {
+            int accept_result = emulator_gdb_try_accept(emulator);
+            if (accept_result == 1) {
+                printf("GDB client connected!\n");
+                gdb_connected = 1;
+            } else if (accept_result == -1) {
+                fprintf(stderr, "Error accepting GDB connection\n");
+                break;
+            }
+        }
+
+        // Process GDB messages if connected 
+        // Note: This will block when GDB is in break mode (stopped at breakpoint, etc.)
+        // and return immediately when GDB is in running mode
+        if (gdb_connected) {
+            int process_result = emulator_gdb_process_messages(emulator);
+            if (process_result == 0) {
+                printf("GDB client disconnected\n");
+                gdb_connected = 0;
+            } else if (process_result == -1) {
+                fprintf(stderr, "Error processing GDB messages\n");
+                break;
+            }
+        }
+
+        // Check if GDB wants us to stop before stepping
+        if (gdb_connected) {
+            int should_stop_before = emulator_gdb_should_stop_before_step(emulator);
+            if (should_stop_before == 1) {
+                // GDB wants us to stop (breakpoint at current PC, interrupt, etc.)
+                continue; // Skip stepping and continue processing GDB messages
+            } else if (should_stop_before == -1) {
+                fprintf(stderr, "Error checking GDB stop condition before step\n");
+                break;
+            }
+        }
+
+        // Step the emulator (C controls the execution pace)
+        enum CStepAction action = emulator_step(emulator);
+        step_count++;
+        
+        // Check if GDB wants us to stop after stepping
+        if (gdb_connected) {
+            int should_stop_after = emulator_gdb_should_stop_after_step(emulator);
+            if (should_stop_after == 1) {
+                // GDB wants us to stop (single step completed)
+                // Report the stop to GDB
+                int report_result = emulator_gdb_report_stop(emulator, action);
+                if (report_result == 0) {
+                    printf("GDB client disconnected during stop report\n");
+                    gdb_connected = 0;
+                } else if (report_result == -1) {
+                    fprintf(stderr, "Error reporting stop to GDB\n");
+                    // Continue anyway - don't break the loop
+                }
+                continue; // Skip normal processing and let GDB handle the stop
+            } else if (should_stop_after == -1) {
+                fprintf(stderr, "Error checking GDB stop condition after step\n");
+                break;
+            }
+        }
+
+        // Always report step results to GDB if connected for other stop conditions
+        if (gdb_connected && (action == Break || action == ExitSuccess || action == ExitFailure)) {
+            int report_result = emulator_gdb_report_stop(emulator, action);
+            if (report_result == 0) {
+                printf("GDB client disconnected during stop report\n");
+                gdb_connected = 0;
+            } else if (report_result == -1) {
+                fprintf(stderr, "Error reporting stop to GDB\n");
+                // Continue anyway - don't break the loop
+            }
+        }
+
+        // Check for UART output (streaming mode)
+        int uart_len = emulator_get_uart_output_streaming(emulator, uart_buffer, uart_buffer_size);
+        if (uart_len > 0) {
+            // Print UART output to stderr to match Rust emulator behavior
+            fprintf(stderr, "%.*s", uart_len, uart_buffer);
+            fflush(stderr);
+        }
+        
+        switch (action) {
+            case Continue:
+                // Normal execution continues
+                break;
+                
+            case Break:
+                printf("Emulator hit a breakpoint at step %d\n", step_count);
+                // GDB will handle this automatically via report_stop above
+                break;
+                
+            case ExitSuccess:
+                printf("Emulator exited successfully at step %d\n", step_count);
+                free(uart_buffer);
+                return;
+                
+            case ExitFailure:
+                printf("Emulator exited with failure at step %d\n", step_count);
+                free(uart_buffer);
+                return;
+        }
+
+        // Print progress periodically
+        if (step_count % 10000 == 0) {
+            printf("Executed %d steps, PC: 0x%08x, GDB connected: %s\n", 
+                   step_count, 
+                   emulator_get_pc(emulator),
+                   gdb_connected ? "yes" : "no");
+        }
+
+        // Small delay to prevent busy-waiting (optional)
+        usleep(1);
+    }
+
+    printf("Non-blocking GDB execution completed\n");
+    free(uart_buffer);
+}
+
 unsigned int parse_hex_or_decimal(const char* str) {
     if (strncmp(str, "0x", 2) == 0 || strncmp(str, "0X", 2) == 0) {
         return (unsigned int)strtoul(str, NULL, 16);
@@ -260,6 +661,9 @@ unsigned int parse_hex_or_decimal(const char* str) {
 }
 
 int main(int argc, char *argv[]) {
+    // Flag to track non-blocking GDB mode
+    int non_blocking_gdb = 0;
+    
     // Initialize config with defaults
     struct CEmulatorConfig config = {
         .rom_path = NULL,
@@ -331,6 +735,7 @@ int main(int argc, char *argv[]) {
         {"log-dir", required_argument, 0, 'l'},
         {"trace-instr", no_argument, 0, 't'},
         {"no-stdin-uart", no_argument, 0, 128},
+        {"non-blocking-gdb", no_argument, 0, 165},
         {"caliptra-rom", required_argument, 0, 129},
         {"caliptra-firmware", required_argument, 0, 130},
         {"soc-manifest", required_argument, 0, 131},
@@ -397,6 +802,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 128: // --no-stdin-uart
                 config.stdin_uart = 0;
+                break;
+            case 165: // --non-blocking-gdb
+                non_blocking_gdb = 1;
                 break;
             case 129: // --caliptra-rom
                 config.caliptra_rom_path = optarg;
@@ -554,9 +962,11 @@ int main(int argc, char *argv[]) {
 
     // Set up signal handlers for various termination signals
     signal(SIGINT, signal_handler);   // Ctrl+C
+#ifndef _WIN32
     signal(SIGTERM, signal_handler);  // Termination request
     signal(SIGHUP, signal_handler);   // Hangup
     signal(SIGQUIT, signal_handler);  // Quit signal
+#endif
     
     // Register cleanup function to run on normal exit
     atexit(cleanup_on_exit);
@@ -577,7 +987,11 @@ int main(int argc, char *argv[]) {
     enum EmulatorError result = emulator_init((struct CEmulator*)memory, &config);
     if (result != Success) {
         fprintf(stderr, "Failed to initialize emulator: %d\n", result);
+#ifdef _WIN32
+        _aligned_free(memory);
+#else
         free(memory);
+#endif
         return 1;
     }
 
@@ -587,16 +1001,23 @@ int main(int argc, char *argv[]) {
     // Check if we're in GDB mode
     if (emulator_is_gdb_mode(global_emulator)) {
         unsigned int port = emulator_get_gdb_port(global_emulator);
-        printf("GDB server available on port %u\n", port);
-        printf("Connect with: gdb -ex 'target remote :%u'\n", port);
         
-        // Start GDB server (blocking)
-        printf("Starting GDB server (this will block until GDB disconnects)\n");
-        enum EmulatorError gdb_result = emulator_run_gdb_server(global_emulator);
-        if (gdb_result == Success) {
-            printf("GDB session completed successfully\n");
+        if (non_blocking_gdb) {
+            // Non-blocking GDB mode - C controls execution
+            non_blocking_gdb_run(global_emulator);
         } else {
-            printf("GDB session failed with error %d\n", gdb_result);
+            // Traditional blocking GDB mode
+            printf("GDB server available on port %u\n", port);
+            printf("Connect with: gdb -ex 'target remote :%u'\n", port);
+            
+            // Start GDB server (blocking)
+            printf("Starting GDB server (this will block until GDB disconnects)\n");
+            enum EmulatorError gdb_result = emulator_run_gdb_server(global_emulator);
+            if (gdb_result == Success) {
+                printf("GDB session completed successfully\n");
+            } else {
+                printf("GDB session failed with error %d\n", gdb_result);
+            }
         }
     } else {
         // Normal mode - free run like main.rs
@@ -614,7 +1035,11 @@ int main(int argc, char *argv[]) {
     // Clean up
     disable_raw_mode(); // Ensure terminal is restored
     emulator_destroy(global_emulator);
+#ifdef _WIN32
+    _aligned_free(memory);
+#else
     free(memory);
+#endif
     
     printf("Emulator cleaned up\n");
     return 0;
