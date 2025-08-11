@@ -138,6 +138,14 @@ impl ModelFpgaRealtime {
                 .modify(Control::BootfsmBrkpoint::CLEAR);
         }
     }
+
+    fn reset_axi(&mut self) {
+        // Set AXI reset. Will self clear after several clocks.
+        self.wrapper.regs().control.modify(
+            Control::TriggerAxiReset.val((1) as u32),
+        );
+    }
+
     fn set_subsystem_reset(&mut self, reset: bool) {
         self.wrapper.regs().control.modify(
             Control::CptraSsRstB.val((!reset) as u32) + Control::CptraPwrgood.val((!reset) as u32),
@@ -1108,6 +1116,9 @@ impl McuHwModel for ModelFpgaRealtime {
         //     // notify MCU that we want to run the UDS provisioning flow
         //     m.set_mcu_generic_input_wires(&[1, 0]);
         // }
+
+        println!("Resetting AXI infrastucture");
+        m.reset_axi();
 
         println!("Putting subsystem into reset");
         m.set_subsystem_reset(true);
