@@ -877,88 +877,66 @@ module caliptra_ss_top
     //=========================================================================-
     
 
-logic i3c_rst;
-xpm_cdc_async_rst #(
-   .DEST_SYNC_FF(4),    // DECIMAL; range: 2-10
-   .INIT_SYNC_FF(0),    // DECIMAL; 0=disable simulation init values, 1=enable simulation init values
-   .RST_ACTIVE_HIGH(0)  // DECIMAL; 0=active low reset, 1=active high reset
-)
-i3c_rst_macro (
-   .dest_arst(i3c_rst), // 1-bit output: src_arst asynchronous reset signal synchronized to destination
-                          // clock domain. This output is registered. NOTE: Signal asserts asynchronously
-                          // but deasserts synchronously to dest_clk. Width of the reset signal is at least
-                          // (DEST_SYNC_FF*dest_clk) period.
+    logic i3c_rst_sync;
+    xpm_cdc_async_rst #(
+    .DEST_SYNC_FF(4),    // DECIMAL; range: 2-10
+    .INIT_SYNC_FF(0),    // DECIMAL; 0=disable simulation init values, 1=enable simulation init values
+    .RST_ACTIVE_HIGH(0)  // DECIMAL; 0=active low reset, 1=active high reset
+    )
+    xpm_cdc_i3c_rst (
+    .dest_arst(i3c_rst_sync), // 1-bit output: src_arst asynchronous reset signal synchronized to destination
+                            // clock domain. This output is registered. NOTE: Signal asserts asynchronously
+                            // but deasserts synchronously to dest_clk. Width of the reset signal is at least
+                            // (DEST_SYNC_FF*dest_clk) period.
 
-   .dest_clk(cptra_i3c_clk_i),   // 1-bit input: Destination clock.
-   .src_arst(cptra_ss_rst_b_o)    // 1-bit input: Source asynchronous reset signal.
-);
+    .dest_clk(cptra_i3c_clk_i),   // 1-bit input: Destination clock.
+    .src_arst(cptra_ss_rst_b_o)    // 1-bit input: Source asynchronous reset signal.
+    );
 
-logic payload_available_o_presync;
-xpm_cdc_single #(
-   .DEST_SYNC_FF(4),   // DECIMAL; range: 2-10
-   .INIT_SYNC_FF(0),   // DECIMAL; 0=disable simulation init values, 1=enable simulation init values
-   .SIM_ASSERT_CHK(0), // DECIMAL; 0=disable simulation messages, 1=enable simulation messages
-   .SRC_INPUT_REG(1)   // DECIMAL; 0=do not register input, 1=register input
-)
-xpm_cdc_single_payload_available_inst (
-   .dest_out(cptra_ss_i3c_recovery_payload_available_o), // 1-bit output: src_in synchronized to the destination clock domain. This output is
-                        // registered.
+    // I3C CLK -> SS CLK
+    logic cptra_ss_i3c_recovery_payload_available_o_presync;
+    logic cptra_ss_i3c_recovery_image_activated_o_presync;
+    logic i3c_peripheral_reset_presync;
+    logic i3c_escalated_reset_presync;
+    logic i3c_irq_o_presync;
+    xpm_cdc_array_single #(
+    .DEST_SYNC_FF(4),   // DECIMAL; range: 2-10
+    .INIT_SYNC_FF(0),   // DECIMAL; 0=disable simulation init values, 1=enable simulation init values
+    .SIM_ASSERT_CHK(0), // DECIMAL; 0=disable simulation messages, 1=enable simulation messages
+    .SRC_INPUT_REG(1),  // DECIMAL; 0=do not register input, 1=register input
+    .WIDTH(5)         // DECIMAL; range: 1-1024
+    )
+    xpm_cdc_i3c_outputs_inst (
+    .src_clk(cptra_i3c_clk_i),  // 1-bit input: optional; required when SRC_INPUT_REG = 1
+    .dest_clk(cptra_ss_clk_i), // 1-bit input: Clock signal for the destination clock domain.
 
-   .dest_clk(cptra_ss_clk_i), // 1-bit input: Clock signal for the destination clock domain.
-   .src_clk(cptra_i3c_clk_i),   // 1-bit input: optional; required when SRC_INPUT_REG = 1
-   .src_in(payload_available_o_presync)      // 1-bit input: Input signal to be synchronized to dest_clk domain.
-);
+    .src_in(  {cptra_ss_i3c_recovery_payload_available_o_presync, cptra_ss_i3c_recovery_image_activated_o_presync, i3c_peripheral_reset_presync, i3c_escalated_reset_presync, i3c_irq_o_presync}),
+    .dest_out({cptra_ss_i3c_recovery_payload_available_o,         cptra_ss_i3c_recovery_image_activated_o,         i3c_peripheral_reset,         i3c_escalated_reset,         i3c_irq_o})
+    );
 
-logic image_activated_o_presync;
-xpm_cdc_single #(
-   .DEST_SYNC_FF(4),   // DECIMAL; range: 2-10
-   .INIT_SYNC_FF(0),   // DECIMAL; 0=disable simulation init values, 1=enable simulation init values
-   .SIM_ASSERT_CHK(0), // DECIMAL; 0=disable simulation messages, 1=enable simulation messages
-   .SRC_INPUT_REG(1)   // DECIMAL; 0=do not register input, 1=register input
-)
-xpm_cdc_single_image_activated_inst (
-   .dest_out(cptra_ss_i3c_recovery_image_activated_o), // 1-bit output: src_in synchronized to the destination clock domain. This output is
-                        // registered.
+    // SS CLK -> I3C CLK
+    logic [31:0]  cptra_ss_strap_caliptra_dma_axi_user_i_synch;
+    logic [31:0] cptra_ss_strap_mcu_lsu_axi_user_i_synch;
+    logic disable_id_filtering_i_synch;
+    xpm_cdc_array_single #(
+        .DEST_SYNC_FF(4),   // DECIMAL; range: 2-10
+        .INIT_SYNC_FF(0),   // DECIMAL; 0=disable simulation init values, 1=enable simulation init values
+        .SIM_ASSERT_CHK(0), // DECIMAL; 0=disable simulation messages, 1=enable simulation messages
+        .SRC_INPUT_REG(1),  // DECIMAL; 0=do not register input, 1=register input
+        .WIDTH(65)         // DECIMAL; range: 1-1024
+    )
+    xpm_cdc_i3c_inputs_inst (
+        .src_clk(cptra_ss_clk_i),  // 1-bit input: optional; required when SRC_INPUT_REG = 1
+        .dest_clk(cptra_i3c_clk_i), // 1-bit input: Clock signal for the destination clock domain.
 
-   .dest_clk(cptra_ss_clk_i), // 1-bit input: Clock signal for the destination clock domain.
-   .src_clk(cptra_i3c_clk_i),   // 1-bit input: optional; required when SRC_INPUT_REG = 1
-   .src_in(image_activated_o_presync)      // 1-bit input: Input signal to be synchronized to dest_clk domain.
-);
-logic i3c_peripheral_reset_presync;
-xpm_cdc_single #(
-   .DEST_SYNC_FF(4),   // DECIMAL; range: 2-10
-   .INIT_SYNC_FF(0),   // DECIMAL; 0=disable simulation init values, 1=enable simulation init values
-   .SIM_ASSERT_CHK(0), // DECIMAL; 0=disable simulation messages, 1=enable simulation messages
-   .SRC_INPUT_REG(1)   // DECIMAL; 0=do not register input, 1=register input
-)
-xpm_cdc_single_i3c_peripheral_reset_inst (
-   .dest_out(i3c_peripheral_reset), // 1-bit output: src_in synchronized to the destination clock domain. This output is
-                        // registered.
-
-   .dest_clk(cptra_ss_clk_i), // 1-bit input: Clock signal for the destination clock domain.
-   .src_clk(cptra_i3c_clk_i),   // 1-bit input: optional; required when SRC_INPUT_REG = 1
-   .src_in(i3c_peripheral_reset_presync)      // 1-bit input: Input signal to be synchronized to dest_clk domain.
-);
-logic i3c_escalated_reset_presync;
-xpm_cdc_single #(
-   .DEST_SYNC_FF(4),   // DECIMAL; range: 2-10
-   .INIT_SYNC_FF(0),   // DECIMAL; 0=disable simulation init values, 1=enable simulation init values
-   .SIM_ASSERT_CHK(0), // DECIMAL; 0=disable simulation messages, 1=enable simulation messages
-   .SRC_INPUT_REG(1)   // DECIMAL; 0=do not register input, 1=register input
-)
-xpm_cdc_single_i3c_escalated_reset_inst (
-   .dest_out(i3c_escalated_reset), // 1-bit output: src_in synchronized to the destination clock domain. This output is
-                        // registered.
-
-   .dest_clk(cptra_ss_clk_i), // 1-bit input: Clock signal for the destination clock domain.
-   .src_clk(cptra_i3c_clk_i),   // 1-bit input: optional; required when SRC_INPUT_REG = 1
-   .src_in(i3c_escalated_reset_presync)      // 1-bit input: Input signal to be synchronized to dest_clk domain.
-);
+        .src_in(  {cptra_ss_strap_caliptra_dma_axi_user_i,       cptra_ss_strap_mcu_lsu_axi_user_i,       disable_id_filtering_i}),
+        .dest_out({cptra_ss_strap_caliptra_dma_axi_user_i_synch, cptra_ss_strap_mcu_lsu_axi_user_i_synch, disable_id_filtering_i_synch})
+    );
 
     assign priv_ids[0] = 32'd0;
     assign priv_ids[1] = 32'd0;
-    assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i;
-    assign priv_ids[3] = cptra_ss_strap_mcu_lsu_axi_user_i;
+    assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i_synch;
+    assign priv_ids[3] = cptra_ss_strap_mcu_lsu_axi_user_i_synch;
 
     assign disable_id_filtering_i = ~cptra_i3c_axi_user_id_filtering_enable_i;
 
@@ -969,7 +947,7 @@ xpm_cdc_single_i3c_escalated_reset_inst (
         .AxiIdWidth  (`AXI_ID_WIDTH)
     ) i3c (
         .clk_i (cptra_i3c_clk_i),
-        .rst_ni(i3c_rst),
+        .rst_ni(i3c_rst_sync),
 
         // Read Address Channel
         .arvalid_i                      (cptra_ss_i3c_s_axi_if_r_sub.arvalid),
@@ -1028,17 +1006,17 @@ xpm_cdc_single_i3c_escalated_reset_inst (
         // Additional signals
         .sel_od_pp_o                    (cptra_ss_sel_od_pp_o),
 
-        .recovery_payload_available_o(payload_available_o_presync),
-        .recovery_image_activated_o(image_activated_o_presync),
+        .recovery_payload_available_o(cptra_ss_i3c_recovery_payload_available_o_presync),
+        .recovery_image_activated_o(cptra_ss_i3c_recovery_image_activated_o_presync),
         .peripheral_reset_o(i3c_peripheral_reset_presync),
         .peripheral_reset_done_i(1'b1),
         .escalated_reset_o(i3c_escalated_reset_presync),
 
         // Interrupts
-        .irq_o                          (i3c_irq_o),
+        .irq_o                          (i3c_irq_o_presync),
 
         // id filtering
-        .disable_id_filtering_i         (disable_id_filtering_i),
+        .disable_id_filtering_i         (disable_id_filtering_i_synch),
         .priv_ids_i                     (priv_ids)
     
     );
