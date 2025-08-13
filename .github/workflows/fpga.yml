@@ -8,11 +8,47 @@ jobs:
   build_test_binaries:
     runs-on: [e2-standard-8]
     timeout-minutes: 60
+    env:
+      SCCACHE_VERSION: 0.10.0
+      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
+      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
+      SCCACHE_GHA_ENABLED: "on"
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
           submodules: 'true'
+
+      - name: Restore sccache binary
+        uses: actions/cache/restore@v3
+        id: sccache_bin_restore
+        with:
+          path: ~/.cargo/bin/sccache
+          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
+
+      - name: Install sccache
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        run: |
+          rustup install 1.85
+          cargo +1.85 install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
+
+      # Save the sccache binary immediately so we can reuse it in future runs
+      # even if the rest of the current run fails.
+      - name: Save sccache binary
+        uses: actions/cache/save@v3
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        with:
+          path: ~/.cargo/bin/sccache
+          key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
+
+      - name: Configure sccache
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
+            core.exportVariable('ACTIONS_RESULTS_URL', process.env.ACTIONS_RESULTS_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+            core.exportVariable('ACTIONS_CACHE_SERVICE_V2', 'on');
           
       - name: Install cross compiler
         run: |
@@ -25,10 +61,12 @@ jobs:
         run: |
           # Build ROM and runtime binaries
           cargo xtask all-build --platform fpga
+          sccache --show-stats
 
           # Cross compile xtask for the ARM core
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="aarch64-linux-gnu-gcc"
           cargo build -p xtask --features fpga_realtime --target aarch64-unknown-linux-gnu
+          sccache --show-stats
 
           mkdir -p /tmp/caliptra-binaries
           tar -cvz -f /tmp/caliptra-binaries/caliptra-binaries.tar.gz \
@@ -41,6 +79,7 @@ jobs:
             --release \
             --target=aarch64-unknown-linux-gnu \
             --archive-file=/tmp/caliptra-test-binaries.tar.zst
+          sccache --show-stats
 
           mkdir /tmp/caliptra-test-binaries/
           tar xvf /tmp/caliptra-test-binaries.tar.zst -C /tmp/caliptra-test-binaries/
