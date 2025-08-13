@@ -2638,6 +2638,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-mbox-comm"
+version = "0.1.0"
+dependencies = [
+ "kernel",
+]
+
+[[package]]
+name = "mcu-mbox-driver"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "kernel",
+ "mcu-mbox-comm",
+ "registers-generated",
+]
+
+[[package]]
 name = "mcu-platforms-common"
 version = "0.1.0"
 dependencies = [
@@ -2728,6 +2745,8 @@ dependencies = [
  "mcu-components",
  "mcu-config",
  "mcu-config-emulator",
+ "mcu-mbox-comm",
+ "mcu-mbox-driver",
  "mcu-platforms-common",
  "mcu-tock-veer",
  "registers-generated",
@@ -2778,6 +2797,7 @@ dependencies = [
  "i3c-driver",
  "kernel",
  "mcu-config",
+ "mcu-mbox-driver",
  "registers-generated",
  "riscv 0.1.0",
  "riscv-csr",

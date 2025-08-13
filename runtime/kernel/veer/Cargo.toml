@@ -15,6 +15,7 @@ components.workspace = true
 i3c-driver.workspace = true
 kernel.workspace = true
 mcu-config.workspace = true
+mcu-mbox-driver.workspace = true
 registers-generated.workspace = true
 riscv-csr.workspace = true
 riscv.workspace = true
