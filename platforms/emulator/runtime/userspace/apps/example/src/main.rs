@@ -36,7 +36,7 @@ mod test_caliptra_certs;
 #[cfg(feature = "test-log-flash-usermode")]
 mod test_logging_flash;
 
-#[cfg(feature = "test-mci")]
+#[cfg(any(feature = "test-mci", feature = "test-warm-reset"))]
 mod test_mci;
 
 #[cfg(target_arch = "riscv32")]
@@ -228,6 +228,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
     #[cfg(feature = "test-mci")]
     {
         test_mci::test_mci_read_write().await;
+        romtime::test_exit(0);
+    }
+
+    #[cfg(feature = "test-warm-reset")]
+    {
+        test_mci::test_mci_warm_reset().await;
         romtime::test_exit(0);
     }
 
