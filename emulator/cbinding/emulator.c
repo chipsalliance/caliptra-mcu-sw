@@ -35,25 +35,260 @@ Build Instructions:
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <signal.h>
 #include <errno.h>
-#include <getopt.h>
-#include <termios.h>
-#include <fcntl.h>
-#include <sys/select.h>
+
+#ifdef _WIN32
+    #include <windows.h>
+    #include <conio.h>
+    #include <io.h>
+    #include <malloc.h>
+    #define STDIN_FILENO 0
+    
+    // Windows doesn't have getopt, so we'll use a simplified version
+    char *optarg = NULL;
+    int optind = 1;
+    int opterr = 1;
+    int optopt = 0;
+    
+    // Windows getopt_long structures and constants
+    struct option {
+        const char *name;
+        int has_arg;
+        int *flag;
+        int val;
+    };
+    
+    #define no_argument 0
+    #define required_argument 1
+    #define optional_argument 2
+    
+    int getopt(int argc, char * const argv[], const char *optstring);
+    int getopt_long(int argc, char * const argv[], const char *optstring, 
+                   const struct option *longopts, int *longindex);
+    
+    // Windows signal handling
+    #include <signal.h>
+    
+    // Windows equivalent of aligned_alloc
+    #define aligned_alloc(alignment, size) _aligned_malloc(size, alignment)
+    
+    // Windows POSIX function mappings
+    #define read _read
+    
+#else
+    #include <unistd.h>
+    #include <signal.h>
+    #include <getopt.h>
+    #include <termios.h>
+    #include <fcntl.h>
+    #include <sys/select.h>
+#endif
+
+#ifdef _WIN32
+// Windows implementation of getopt
+int getopt(int argc, char * const argv[], const char *optstring) {
+    static int sp = 1;
+    int c;
+    char *cp;
+
+    if (sp == 1) {
+        if (optind >= argc || argv[optind][0] != '-' || argv[optind][1] == '\0')
+            return -1;
+        else if (strcmp(argv[optind], "--") == 0) {
+            optind++;
+            return -1;
+        }
+    }
+    optopt = c = argv[optind][sp];
+    if (c == ':' || (cp = strchr(optstring, c)) == NULL) {
+        if (opterr)
+            fprintf(stderr, "illegal option -- %c\n", c);
+        if (argv[optind][++sp] == '\0') {
+            optind++;
+            sp = 1;
+        }
+        return '?';
+    }
+    if (*++cp == ':') {
+        if (argv[optind][sp+1] != '\0')
+            optarg = &argv[optind++][sp+1];
+        else if (++optind >= argc) {
+            if (opterr)
+                fprintf(stderr, "option requires an argument -- %c\n", c);
+            sp = 1;
+            return '?';
+        } else
+            optarg = argv[optind++];
+        sp = 1;
+    } else {
+        if (argv[optind][++sp] == '\0') {
+            sp = 1;
+            optind++;
+        }
+        optarg = NULL;
+    }
+    return c;
+}
+
+// Windows implementation of getopt_long
+int getopt_long(int argc, char * const argv[], const char *optstring, 
+               const struct option *longopts, int *longindex) {
+    static int sp = 1;
+    int c;
+    char *cp;
+    
+    if (longindex) *longindex = -1;
+    
+    if (sp == 1) {
+        if (optind >= argc || argv[optind][0] != '-' || argv[optind][1] == '\0')
+            return -1;
+        else if (strcmp(argv[optind], "--") == 0) {
+            optind++;
+            return -1;
+        } else if (argv[optind][0] == '-' && argv[optind][1] == '-') {
+            // Long option
+            char *long_name = argv[optind] + 2;
+            char *equals_pos = strchr(long_name, '=');
+            int name_len = equals_pos ? (int)(equals_pos - long_name) : (int)strlen(long_name);
+            
+            // Find matching long option
+            for (int i = 0; longopts[i].name; i++) {
+                if (strncmp(longopts[i].name, long_name, name_len) == 0 && 
+                    strlen(longopts[i].name) == name_len) {
+                    if (longindex) *longindex = i;
+                    
+                    if (longopts[i].has_arg == required_argument) {
+                        if (equals_pos) {
+                            optarg = equals_pos + 1;
+                        } else if (++optind >= argc) {
+                            if (opterr)
+                                fprintf(stderr, "option '--%s' requires an argument\n", longopts[i].name);
+                            return '?';
+                        } else {
+                            optarg = argv[optind];
+                        }
+                        optind++;
+                    } else {
+                        if (equals_pos) {
+                            if (opterr)
+                                fprintf(stderr, "option '--%s' doesn't allow an argument\n", longopts[i].name);
+                            return '?';
+                        }
+                        optarg = NULL;
+                        optind++;
+                    }
+                    
+                    return longopts[i].val;
+                }
+            }
+            
+            if (opterr)
+                fprintf(stderr, "unrecognized option '--%.*s'\n", name_len, long_name);
+            optind++;
+            return '?';
+        }
+    }
+    
+    // Short option - use regular getopt logic
+    optopt = c = argv[optind][sp];
+    if (c == ':' || (cp = strchr(optstring, c)) == NULL) {
+        if (opterr)
+            fprintf(stderr, "illegal option -- %c\n", c);
+        if (argv[optind][++sp] == '\0') {
+            optind++;
+            sp = 1;
+        }
+        return '?';
+    }
+    if (*++cp == ':') {
+        if (argv[optind][sp+1] != '\0')
+            optarg = &argv[optind++][sp+1];
+        else if (++optind >= argc) {
+            if (opterr)
+                fprintf(stderr, "option requires an argument -- %c\n", c);
+            sp = 1;
+            return '?';
+        } else
+            optarg = argv[optind++];
+        sp = 1;
+    } else {
+        if (argv[optind][++sp] == '\0') {
+            sp = 1;
+            optind++;
+        }
+        optarg = NULL;
+    }
+    return c;
+}
+
+// Windows sleep function (usleep equivalent)
+void usleep(unsigned int microseconds) {
+    Sleep(microseconds / 1000); // Sleep takes milliseconds
+}
+
+// Windows version of kbhit check
+int kbhit_available() {
+    return _kbhit();
+}
+
+// Windows version of getch 
+int getch_char() {
+    return _getch();
+}
+
+#else
+
+// Unix versions
+int kbhit_available() {
+    fd_set read_fds;
+    struct timeval timeout;
+    
+    FD_ZERO(&read_fds);
+    FD_SET(STDIN_FILENO, &read_fds);
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+    
+    return select(STDIN_FILENO + 1, &read_fds, NULL, NULL, &timeout) > 0;
+}
+
+int getch_char() {
+    return getchar();
+}
+
+#endif
 
 // Global emulator pointer for signal handler
 static struct CEmulator* global_emulator = NULL;
 
+// Function declarations
+void free_run(struct CEmulator* emulator);
+
 // Terminal settings for raw input
-static struct termios original_termios;
-static int terminal_raw_mode = 0;
+#ifdef _WIN32
+    static DWORD original_console_mode;
+    static int terminal_raw_mode = 0;
+#else
+    static struct termios original_termios;
+    static int terminal_raw_mode = 0;
+#endif
 
 // Function to enable raw terminal mode for immediate character input
 void enable_raw_mode() {
     if (terminal_raw_mode) return;
     
+#ifdef _WIN32
+    HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+    if (hStdin == INVALID_HANDLE_VALUE) return;
+    
+    if (!GetConsoleMode(hStdin, &original_console_mode)) return;
+    
+    DWORD new_mode = original_console_mode;
+    new_mode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+    
+    if (SetConsoleMode(hStdin, new_mode)) {
+        terminal_raw_mode = 1;
+    }
+#else
     if (tcgetattr(STDIN_FILENO, &original_termios) == -1) {
         return; // Not a terminal
     }
@@ -69,16 +304,25 @@ void enable_raw_mode() {
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == 0) {
         terminal_raw_mode = 1;
     }
+#endif
 }
 
 // Function to restore terminal mode
 void disable_raw_mode() {
     if (terminal_raw_mode) {
+#ifdef _WIN32
+        HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+        if (hStdin != INVALID_HANDLE_VALUE) {
+            SetConsoleMode(hStdin, original_console_mode);
+        }
+        terminal_raw_mode = 0;
+#else
         if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_termios) == 0) {
             terminal_raw_mode = 0;
         }
         // Even if tcsetattr fails, reset our flag to avoid repeated attempts
         terminal_raw_mode = 0;
+#endif
     }
 }
 
@@ -87,9 +331,11 @@ void signal_handler(int sig) {
     const char* sig_name = "UNKNOWN";
     switch (sig) {
         case SIGINT: sig_name = "SIGINT"; break;
+#ifndef _WIN32
         case SIGTERM: sig_name = "SIGTERM"; break;
         case SIGHUP: sig_name = "SIGHUP"; break;
         case SIGQUIT: sig_name = "SIGQUIT"; break;
+#endif
     }
     
     printf("\nReceived %s, requesting exit...\n", sig_name);
@@ -192,8 +438,13 @@ void free_run(struct CEmulator* emulator) {
     int step_count = 0;
     while (1) {
         // Check for console input and send to UART RX if available
+#ifdef _WIN32
+        if (kbhit_available()) {
+            char input_char = (char)getch_char();
+#else
         char input_char;
         if (read(STDIN_FILENO, &input_char, 1) == 1) {
+#endif
             // Handle special characters
             if (input_char == 3) { // Ctrl+C
                 break;
@@ -554,9 +805,11 @@ int main(int argc, char *argv[]) {
 
     // Set up signal handlers for various termination signals
     signal(SIGINT, signal_handler);   // Ctrl+C
+#ifndef _WIN32
     signal(SIGTERM, signal_handler);  // Termination request
     signal(SIGHUP, signal_handler);   // Hangup
     signal(SIGQUIT, signal_handler);  // Quit signal
+#endif
     
     // Register cleanup function to run on normal exit
     atexit(cleanup_on_exit);
@@ -577,7 +830,11 @@ int main(int argc, char *argv[]) {
     enum EmulatorError result = emulator_init((struct CEmulator*)memory, &config);
     if (result != Success) {
         fprintf(stderr, "Failed to initialize emulator: %d\n", result);
+#ifdef _WIN32
+        _aligned_free(memory);
+#else
         free(memory);
+#endif
         return 1;
     }
 
@@ -587,6 +844,8 @@ int main(int argc, char *argv[]) {
     // Check if we're in GDB mode
     if (emulator_is_gdb_mode(global_emulator)) {
         unsigned int port = emulator_get_gdb_port(global_emulator);
+        
+        // Traditional blocking GDB mode
         printf("GDB server available on port %u\n", port);
         printf("Connect with: gdb -ex 'target remote :%u'\n", port);
         
@@ -614,7 +873,11 @@ int main(int argc, char *argv[]) {
     // Clean up
     disable_raw_mode(); // Ensure terminal is restored
     emulator_destroy(global_emulator);
+#ifdef _WIN32
+    _aligned_free(memory);
+#else
     free(memory);
+#endif
     
     printf("Emulator cleaned up\n");
     return 0;
