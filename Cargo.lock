@@ -4686,6 +4686,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cc",
  "clap 4.5.40",
  "clap-num",
  "crc32fast",
