@@ -6,13 +6,14 @@ on:
   pull_request:
 jobs:
   build_test_binaries:
-    runs-on: [e2-standard-8]
+    runs-on: [e2-standard-32]
     timeout-minutes: 60
     env:
       SCCACHE_VERSION: 0.10.0
       SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
       SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
       SCCACHE_GHA_ENABLED: "on"
+      CACHE_BUSTER: 9ff0db888888
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
@@ -24,7 +25,7 @@ jobs:
         id: sccache_bin_restore
         with:
           path: ~/.cargo/bin/sccache
-          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
+          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.CACHE_BUSTER }}
 
       - name: Install sccache
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
