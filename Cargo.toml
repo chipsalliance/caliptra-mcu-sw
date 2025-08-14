@@ -27,6 +27,7 @@ members = [
     "platforms/emulator/runtime/kernel/capsules",
     "platforms/emulator/runtime/kernel/drivers/dma",
     "platforms/emulator/runtime/kernel/drivers/doe_mbox",
+    "platforms/emulator/runtime/kernel/drivers/mcu_mbox",
     "platforms/emulator/runtime/userspace/api/caliptra-api",
     "platforms/emulator/runtime/userspace/apps/example",
     "platforms/emulator/runtime/userspace/apps/user",
@@ -39,6 +40,7 @@ members = [
     "runtime/kernel/components",
     "runtime/kernel/drivers/i3c",
     "runtime/kernel/drivers/doe",
+    "runtime/kernel/drivers/mcu_mbox",
     "runtime/kernel/veer",
     "runtime/userspace/api/caliptra-api",
     "runtime/userspace/api/pldm-lib",
@@ -163,6 +165,8 @@ mcu-builder = { path = "builder" }
 mcu-config = { path = "common/config" }
 mcu-config-emulator = { path = "platforms/emulator/config" }
 mcu-config-fpga = { path = "platforms/fpga/config" }
+mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" }
+mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
 mcu-hw-model = { path = "hw/model" }
 mcu-platforms-common = { path = "platforms/common" }
 mcu-rom-common = { path = "rom" }

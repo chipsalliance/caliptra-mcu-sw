@@ -688,7 +688,8 @@ pub unsafe fn main() {
         feature = "test-flash-storage-read-write",
         feature = "test-flash-storage-erase",
         feature = "test-log-flash-linear",
-        feature = "test-log-flash-circular"
+        feature = "test-log-flash-circular",
+        feature = "test-mcu-mbox",
     ))]
     {
         PLATFORM = Some(veer);
@@ -739,6 +740,9 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-log-flash-linear") {
         debug!("Executing test-log-flash-linear");
         crate::tests::linear_log_test::run(mux_alarm, &emulator_peripherals.primary_flash_ctrl)
+    } else if cfg!(feature = "test-mcu-mbox") {
+        debug!("Executing test-mcu-mbox");
+        crate::tests::mcu_mbox_test::test_mcu_mbox()
     } else {
         None
     };
