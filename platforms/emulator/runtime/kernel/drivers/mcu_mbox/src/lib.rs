@@ -78,6 +78,8 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
 
     fn reset_before_use(&self) {
         let mbox_sram_size = (self.registers.mcu_mbox0_csr_mbox_sram.len() * 4) as u32;
+        // MCU acquires the lock to allow SRAM clearing.
+        self.registers.mcu_mbox0_csr_mbox_lock.get();
         self.registers.mcu_mbox0_csr_mbox_dlen.set(mbox_sram_size);
         self.registers.mcu_mbox0_csr_mbox_execute.set(0);
     }

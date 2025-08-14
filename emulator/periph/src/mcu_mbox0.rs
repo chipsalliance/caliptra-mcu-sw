@@ -151,8 +151,8 @@ impl From<u32> for MciMailboxRequester {
 }
 
 impl MciMailboxImpl {
-    const LOCK_VAL: u32 = 1;
-    const USER_VAL: u32 = 0xFFFF_FFFF;
+    const LOCK_VAL: u32 = 0x0;
+    const USER_VAL: u32 = 0x0;
     const TARGET_USER_VAL: u32 = 0x0;
     const TARGET_USER_VALID_VAL: u32 = 0x0;
     const CMD_VAL: u32 = 0x0;
@@ -165,7 +165,7 @@ impl MciMailboxImpl {
     pub fn new(clock: &Clock) -> Self {
         Self {
             sram: MciMailboxRam::new(),
-            lock: ReadOnlyRegister::new(Self::LOCK_VAL), // Mailbox starts being locked by MCU
+            lock: ReadOnlyRegister::new(Self::LOCK_VAL),
             user: ReadOnlyRegister::new(Self::USER_VAL),
             target_user: ReadWriteRegister::new(Self::TARGET_USER_VAL),
             target_user_valid: ReadWriteRegister::new(Self::TARGET_USER_VALID_VAL),
@@ -187,6 +187,8 @@ impl MciMailboxImpl {
     // The MCU must set MBOX_DLEN to the full SRAM size and write 0 to MBOX_EXECUTE
     // to release and wipe the mailbox SRAM before allowing further use.
     pub fn reset(&mut self) {
+        self.read_mcu_mbox0_csr_mbox_lock();
+        assert!(self.is_locked(), "MCU can't acquire MCU mailbox lock");
         self.write_mcu_mbox0_csr_mbox_dlen(MCU_MAILBOX0_SRAM_SIZE as u32);
         self.write_mcu_mbox0_csr_mbox_execute(caliptra_emu_bus::ReadWriteRegister::new(
             MboxExecute::Execute::CLEAR.value,
@@ -569,10 +571,6 @@ mod tests {
         let dummy_clock = Clock::new();
         let mcu_mailbox0 = McuMailbox0Internal::new(&dummy_clock);
         let mut bus = test_helper_setup_autobus(&dummy_clock, &mcu_mailbox0);
-        assert!(
-            mcu_mailbox0.regs.borrow().is_locked(),
-            "Mailbox should start locked"
-        );
 
         mcu_mailbox0.regs.borrow_mut().reset();
         assert!(
