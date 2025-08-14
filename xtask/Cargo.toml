@@ -33,3 +33,6 @@ toml.workspace = true
 walkdir.workspace = true
 zerocopy.workspace = true
 cc.workspace = true
+
+[build-dependencies]
+cc.workspace = true
