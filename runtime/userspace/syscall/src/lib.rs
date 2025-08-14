@@ -9,6 +9,7 @@ pub mod logging;
 pub mod mailbox;
 pub mod mci;
 pub mod mctp;
+pub mod mcu_mbox;
 
 #[cfg(target_arch = "riscv32")]
 pub type DefaultSyscalls = libtock_runtime::TockSyscalls;
