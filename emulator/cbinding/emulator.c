@@ -223,7 +223,11 @@ int getopt_long(int argc, char * const argv[], const char *optstring,
 
 // Windows sleep function (usleep equivalent)
 void usleep(unsigned int microseconds) {
-    Sleep(microseconds / 1000); // Sleep takes milliseconds
+    if (microseconds >= 1000) {
+        Sleep(microseconds / 1000); // Sleep takes milliseconds
+    } else if (microseconds > 0) {
+        Sleep(1); // Minimum 1ms sleep for sub-millisecond requests
+    }
 }
 
 // Windows version of kbhit check
@@ -438,24 +442,27 @@ void free_run(struct CEmulator* emulator) {
     int step_count = 0;
     while (1) {
         // Check for console input and send to UART RX if available
+        // Only check input every 100 steps to reduce overhead
+        if (step_count % 100 == 0) {
 #ifdef _WIN32
-        if (kbhit_available()) {
-            char input_char = (char)getch_char();
+            if (kbhit_available()) {
+                char input_char = (char)getch_char();
 #else
-        char input_char;
-        if (read(STDIN_FILENO, &input_char, 1) == 1) {
+            char input_char;
+            if (read(STDIN_FILENO, &input_char, 1) == 1) {
 #endif
-            // Handle special characters
-            if (input_char == 3) { // Ctrl+C
-                break;
-            } else if (input_char == 127) { // Backspace
-                input_char = 8; // Convert to ASCII backspace
-            }
-            
-            // Try to send character to UART RX
-            if (emulator_uart_rx_ready(emulator)) {
-                emulator_send_uart_char(emulator, input_char);
-                // No local echo - let the UART output handle display
+                // Handle special characters
+                if (input_char == 3) { // Ctrl+C
+                    break;
+                } else if (input_char == 127) { // Backspace
+                    input_char = 8; // Convert to ASCII backspace
+                }
+                
+                // Try to send character to UART RX
+                if (emulator_uart_rx_ready(emulator)) {
+                    emulator_send_uart_char(emulator, input_char);
+                    // No local echo - let the UART output handle display
+                }
             }
         }
         
