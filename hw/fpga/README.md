@@ -18,7 +18,7 @@ FPGA provides a fast environment for software development and testing that uses 
 The FPGA's Programmable Logic is programmed with the Caliptra RTL and FPGA specific SoC wrapper logic including a connection to the Processing System AXI bus.
 The Processing System ARM cores then act as the SoC Security Processor with memory mapped access to Caliptra's public register space.
 
-![](./images/fpga_module_diagram.svg)
+![](./images/caliptra_ss_fpga_block_diagram.svg)
 
 ### Requirements: ###
  - Vivado
@@ -27,12 +27,11 @@ The Processing System ARM cores then act as the SoC Security Processor with memo
    - Version must match Vivado
  - FPGA
    - [VCK190](https://www.xilinx.com/products/boards-and-kits/vck190.html)
-   - VMK180 will be supported soon.
 
 ### Versal ###
 #### Processing system one time setup: ####
-1. Download VCK190 SD card image and install to a microSD card. The Versal is packaged with a blank microSD card in the box that can be used for the OS.
-   - Insert the SD card into the slot on top of the board.
+1. Download Ubuntu VCK190 SD card image and install to a microSD card. The Versal is packaged with a blank microSD card in the box that can be used for the OS.
+   - Insert the OS SD card into the slot on top of the board.
      - The slot below the board is for the System Controller and the card there should be left inserted.
    - https://ubuntu.com/download/amd-xilinx
 1. Configure SW1 to boot from SD1: [Image](./images/versal_boot_switch.jpg)
@@ -67,36 +66,23 @@ Serial port settings for the PS UART:
  - Flow control: None
 
 ### FPGA build steps: ###
-The FPGA build process uses Vivado's batch mode to procedurally create the Vivado project using fpga_configuration.tcl.
+The FPGA build process uses Vivado's batch mode to procedurally create the Vivado project using fpga_configuration.tcl and optionally create the caliptra_build/caliptra_fpga.xsa needed for the next step.
 This script provides a number of configuration options for features that can be enabled using "-tclargs OPTION=VALUE OPTION=VALUE"
+
+`vivado -nolog -nojournal -mode batch -source fpga_configuration.tcl -tclargs BUILD=TRUE`
 
 | Option      | Purpose
 | ------      | -------
-| BUILD       | Automatically start building the FPGA.
-| GUI         | Open the Vivado GUI.
-| ITRNG       | Enable Caliptra's ITRNG.
-| CG_EN       | Removes FPGA optimizations and allows clock gating.
-| RTL_VERSION | RTL directory under hw/. latest or 1.0.
-| BOARD       | VCK190 or VMK180 (TODO: VMK180 not fully enabled)
-
- - Build FPGA image without GUI
-    - `vivado -mode batch -source fpga_configuration.tcl -tclargs BUILD=TRUE`
-    - Above command creates a Vivado Hardware Platform located at: caliptra_build/caliptra_fpga.xsa
- - Launch Vivado with GUI
-    - `vivado -mode batch -source fpga_configuration.tcl -tclargs GUI=TRUE`
-    - Run Synthesis: `launch_runs synth_1`
-    - [Optional] Set Up Debug signals on Synthesized Design
-    - Run Implementation: `launch_runs impl_1`
-    - Generate Device Image: `write_device_image $outputDir/caliptra_fpga`
-    - Export hardware: `write_hw_platform -fixed -include_bit -force -file $outputDir/caliptra_fpga.xsa`
+| BUILD=TRUE  | Automatically start building the FPGA.
+| GUI=TRUE    | Open the Vivado GUI.
 
 ### Build boot.bin: ###
  - Source PetaLinux tools from the PetaLinux installation directory. *PetaLinux Tools must match Vivado version*
    - `source settings.sh`
  - Execute [create_boot_bin.sh](create_boot_bin.sh) to create a BOOT.BIN
-   - `./create_boot_bin.sh /path/to/caliptra_fpga_project_bd_wrapper.xsa`
+   - `./create_boot_bin.sh caliptra_build/caliptra_fpga.xsa`
  - (Optional) After the BOOT.BIN is created once, update_boot_bin.sh can be used to incorporate a new xsa.
-   - `./update_boot_bin.sh /path/to/caliptra_fpga_project_bd_wrapper.xsa`
+   - `./update_boot_bin.sh caliptra_build/caliptra_fpga.xsa`
  - Copy petalinux_project/images/linux/BOOT.BIN to the boot partition as boot1900.bin
    - If the Ubuntu image is booted, it will mount the boot partition at /boot/firmware/
    - If boot1900.bin fails to boot the system will fallback to the default boot1901.bin
@@ -105,7 +91,7 @@ This script provides a number of configuration options for features that can be 
    cp BOOT.BIN /boot/firmware/boot1900.bin
    reboot
    ```
-- Verify the correct image is loaded
+- Verify the correct image is loaded by checking FPGA wrapper registers.
    - fpga_magic (0xA4010000) contains 0x52545043.
    - fpga_version (0xA4010004) contains the hash of the git HEAD commit.
 
@@ -116,13 +102,15 @@ sudo apt update
 sudo apt install make gcc
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # Clone this repo
-git clone https://github.com/chipsalliance/caliptra-sw.git
+git clone https://github.com/chipsalliance/caliptra-mcu-sw.git
 git submodule init
 git submodule update
-# Compile and install the kernel module
-sudo ./hw/fpga/setup_fpga.sh
 
-CPTRA_UIO_NUM=0 cargo test --features=fpga_realtime,itrng -p caliptra-test smoke_test::smoke_test
+# Compile and install the kernel module
+cargo xtask fpga-install-kernel-modules
+# Run new_unbooted_test
+TODO: These steps already out of date. Need to define CPTRA_FIRMWARE_BUNDLE
+cargo t -p mcu-hw-model --features fpga_realtime -- --test model_fpga_realtime::test::test_new_unbooted --exact --nocapture
 ```
 
 ### Processing System - Programmable Logic interfaces ###
