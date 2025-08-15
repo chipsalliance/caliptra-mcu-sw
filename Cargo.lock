@@ -850,6 +850,7 @@ dependencies = [
  "doe-transport",
  "i3c-driver",
  "kernel",
+ "mcu-mbox-comm",
  "registers-generated",
  "romtime",
  "ureg",

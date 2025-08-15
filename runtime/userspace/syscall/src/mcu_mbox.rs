@@ -9,6 +9,30 @@ use libtockasync::TockSubscribe;
 static MCU_MBOX_MUTEX: Mutex<CriticalSectionRawMutex, u32> = Mutex::new(0);
 pub type CmdCode = u32;
 
+/// Represents the current status of the MCU mailbox.
+#[derive(Debug, Copy, Clone)]
+pub enum MbxCmdStatus {
+    /// The command is still being processed.
+    Busy,
+    /// Data is available to be read.
+    DataReady,
+    /// The command completed successfully.
+    Complete,
+    /// The command failed.
+    Failure,
+}
+
+impl From<MbxCmdStatus> for u32 {
+    fn from(status: MbxCmdStatus) -> Self {
+        match status {
+            MbxCmdStatus::Busy => 0,
+            MbxCmdStatus::DataReady => 1,
+            MbxCmdStatus::Complete => 2,
+            MbxCmdStatus::Failure => 3,
+        }
+    }
+}
+
 pub struct McuMbox<S: Syscalls = DefaultSyscalls> {
     _syscall: PhantomData<S>,
     driver_num: u32,
@@ -93,7 +117,11 @@ impl<S: Syscalls> McuMbox<S> {
     /// # Returns
     ///
     /// Returns the number of bytes sent, or an error if the operation fails.
-    pub async fn send_response(&self, data: &[u8]) -> Result<usize, ErrorCode> {
+    pub async fn send_response(
+        &self,
+        data: &[u8],
+        status: MbxCmdStatus,
+    ) -> Result<usize, ErrorCode> {
         if data.is_empty() {
             return Err(ErrorCode::Invalid);
         }
@@ -107,7 +135,7 @@ impl<S: Syscalls> McuMbox<S> {
                 data,
             );
 
-            if let Err(e) = S::command(self.driver_num, command::SEND_RESPONSE, 0, 0)
+            if let Err(e) = S::command(self.driver_num, command::SEND_RESPONSE, status.into(), 0)
                 .to_result::<(), ErrorCode>()
             {
                 S::unallow_ro(self.driver_num, allow_ro::RESPONSE);
