@@ -14,7 +14,9 @@ use mcu_mbox_driver::McuMailbox;
 use mcu_tock_veer::timers::InternalTimers;
 use registers_generated::mbox::regs::Mbox;
 use registers_generated::mci;
+use registers_generated::mci::bits::MboxCmdStatus;
 use romtime::println;
+use tock_registers::interfaces::ReadWriteable;
 
 const TEST_BUF_LEN: usize = 64;
 static mut MCU_MAILBOX_TESTER: Option<&'static McuMailboxTester> = None;
@@ -101,15 +103,20 @@ impl MailboxClient for McuMailboxTester {
             self.state.set(IoState::Error);
             return;
         }
-        self.state.set(IoState::Received);
+
         // Copy received data directly into tester's rx_buf
-        recv[..dw_len].copy_from_slice(&rx_buf[..dw_len]);
+        for i in 0..dw_len {
+            recv[i] = rx_buf[i];
+        }
+
         // store data len
         self.data_len.set(dw_len);
         // Restore driver buffers
         self.driver.set_rx_buffer(rx_buf);
         // Restore buffers for next test
         self.rx_buf.replace(recv);
+
+        self.state.set(IoState::Received);
     }
 
     fn send_done(&self, result: Result<(), kernel::ErrorCode>) {
@@ -218,6 +225,57 @@ impl<'a> EmulatedMbxSender<'a> {
     pub fn finish(&self) {
         self.regs.mcu_mbox0_csr_mbox_execute.set(0);
     }
+
+    pub fn send_response(&self, req_payload: &[u32]) {
+        for (i, &word) in req_payload.iter().enumerate() {
+            self.regs.mcu_mbox0_csr_mbox_sram[i].set(word);
+        }
+        let req_len_in_bytes = req_payload.len() * 4; // Convert dwords to bytes
+        self.regs
+            .mcu_mbox0_csr_mbox_dlen
+            .set(req_len_in_bytes as u32);
+        self.regs
+            .mcu_mbox0_csr_mbox_cmd_status
+            .modify(MboxCmdStatus::Status::CmdComplete);
+    }
+
+    pub fn poll_request(
+        &self,
+        tester: &McuMailboxTester,
+        resp_buf: &mut [u32],
+        timeout: Option<usize>,
+    ) -> Result<(u32, usize), ()> {
+        let mut waited = 0;
+        let mut sent = false;
+
+        loop {
+            if let Some(timeout) = timeout {
+                if waited >= timeout {
+                    break;
+                }
+            }
+            // Advance kernel ops to invoke interrupt handling and deferred callback.
+            run_kernel_op(1);
+            if tester.get_io_state() == IoState::Received {
+                sent = true;
+                break;
+            }
+            waited += 1;
+        }
+        assert!(
+            sent,
+            "Receiver did not send response after {:?} kernel loops",
+            timeout
+        );
+
+        let dlen = (self.regs.mcu_mbox0_csr_mbox_dlen.get() / 4) as usize;
+        let cmd = self.regs.mcu_mbox0_csr_mbox_cmd.get();
+        // Copy the response data from mailbox sram into resp buf.
+        for i in 0..dlen {
+            resp_buf[i] = self.regs.mcu_mbox0_csr_mbox_sram[i].get();
+        }
+        Ok((cmd, dlen))
+    }
 }
 
 pub fn test_mcu_mbox() -> Option<u32> {
@@ -240,6 +298,27 @@ fn test_mcu_mbox_loopback() {
 fn test_mcu_mbox_custom_response() {
     romtime::println!("Starting MCU mailbox test custom response");
     run_mcu_mailbox_test(0x77, req_pattern, Some(reverse_half), reverse_half);
+}
+
+pub fn test_mcu_mbox_soc_requester_loopback() -> Option<u32> {
+    debug!("Starting MCU mailbox SoC requester test loopback");
+    let mcu_mailbox_tester = get_mailbox_tester();
+    // Reset tester before starting a new test.
+    mcu_mailbox_tester.reset();
+    let regs: StaticRef<mci::regs::Mci> =
+        unsafe { StaticRef::new(mci::MCI_TOP_ADDR as *const mci::regs::Mci) };
+    let soc_sender = EmulatedMbxSender::new(&*regs);
+
+    let mut soc_recv_resp = [0x0u32; TEST_BUF_LEN];
+    for _ in 0..2 {
+        let (_, resp_len) = soc_sender
+            .poll_request(mcu_mailbox_tester, &mut soc_recv_resp, None)
+            .unwrap();
+
+        soc_sender.send_response(&soc_recv_resp[..resp_len]);
+    }
+
+    Some(0)
 }
 
 fn run_mcu_mailbox_test(
