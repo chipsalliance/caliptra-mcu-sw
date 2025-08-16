@@ -31,6 +31,11 @@ mod test {
         soc_images_paths: Vec<PathBuf>,
         primary_flash_image_path: Option<PathBuf>,
         secondary_flash_image_path: Option<PathBuf>,
+        update_flash_image_path: Option<PathBuf>,
+        update_caliptra_fw: Option<PathBuf>,
+        update_soc_manifest: Option<PathBuf>,
+        update_soc_images_paths: Vec<PathBuf>,
+        update_runtime_firmware: Option<PathBuf>,
         pldm_fw_pkg_path: Option<PathBuf>,
         partition_table: Option<PartitionTable>,
         builder: Option<CaliptraBuilder>,
@@ -206,7 +211,7 @@ mod test {
         )
     }
 
-    fn create_update_package() -> PathBuf {
+    fn create_update_package() -> (PathBuf, PathBuf, PathBuf, String, PathBuf, Vec<PathBuf>) {
         // Build the update PLDM firmware package
         let update_soc_image_fw_1 = [0x66u8; 512];
         let update_soc_image_fw_2 = [0xBBu8; 256];
@@ -255,9 +260,19 @@ mod test {
         let update_soc_manifest = update_builder
             .get_soc_manifest()
             .expect("Failed to build SOC manifest for update");
+
+        let temp_soc_manifest = tempfile::NamedTempFile::new()
+            .expect("Failed to create temp file")
+            .path()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        std::fs::copy(update_soc_manifest.clone(), temp_soc_manifest.clone())
+            .expect("Failed to copy SOC manifest");
         let (_, update_flash_image_path) = create_flash_image(
             Some(update_caliptra_fw.clone()),
-            Some(update_soc_manifest.clone()),
+            Some(temp_soc_manifest.clone().into()),
             Some(update_runtime_firmware.clone()),
             None,
             0,
@@ -269,13 +284,156 @@ mod test {
         let flash_image =
             std::fs::read(update_flash_image_path.clone()).expect("Failed to read flash image");
         let pldm_manifest = get_streaming_boot_pldm_fw_manifest(&device_uuid, &flash_image);
-        create_pldm_fw_package(&pldm_manifest)
+        (
+            create_pldm_fw_package(&pldm_manifest),
+            update_flash_image_path,
+            update_caliptra_fw,
+            temp_soc_manifest,
+            update_runtime_firmware,
+            update_soc_images_paths,
+        )
+    }
+
+    fn fast_update_options(success_opts: &TestOptions) -> TestOptions {
+        // Note: This is a hack to speed up testing.
+        // This function creates a new option that essentially skips the PLDM download phase of the firmware package.
+        // In a full update test, the PLDM FW package contains all the necessary firmware components (e.g., Caliptra Image, MCU Image, etc)
+        // The device downloads the flash image component of the PLDM FW package in the staging area, which is the secondary flash.
+        // For this hack, we will initialize the secondary flash already with the update flash image.
+        // We will truncate the flash image component of the PLDM FW package to the first 1024 bytes.
+        // The device will then download only the first 1024 bytes of the full flash image to the secondary flash.
+        // But since the secondary flash already contains the full flash image, it essentially didn't change after the PLDM download.
+        // The device will then continue with the firmware update with the full flash update image in the secondary flash.
+
+        let mut new_opts = success_opts.clone();
+        let update_flash_image_path = new_opts.update_flash_image_path.as_ref().unwrap().clone();
+        let flash_image =
+            std::fs::read(update_flash_image_path.clone()).expect("Failed to read flash image");
+        // Retain the first 1024 bytes flash_image in the PLDM package.
+        let truncated_flash_image = &flash_image[..1024];
+        let pldm_manifest =
+            get_streaming_boot_pldm_fw_manifest(&get_device_uuid(), truncated_flash_image);
+        let pldm_fw_pkg_path = create_pldm_fw_package(&pldm_manifest);
+        new_opts.pldm_fw_pkg_path = Some(pldm_fw_pkg_path);
+        new_opts.secondary_flash_image_path = Some(update_flash_image_path.clone());
+        new_opts
     }
 
     /// Test case: happy path
     fn test_successful_update(opts: &TestOptions) {
         let test = run_runtime_with_options(opts);
         assert_eq!(0, test.code().unwrap_or_default());
+    }
+
+    fn test_successful_fast_update(opts: &TestOptions) {
+        let fast_update_opts = fast_update_options(opts);
+        let test = run_runtime_with_options(&fast_update_opts);
+        assert_eq!(0, test.code().unwrap_or_default());
+    }
+
+    fn test_missing_caliptra_image(opts: &TestOptions) {
+        let mut opts = opts.clone();
+
+        // Create a new PLDM package without Caliptra Image
+        let (_, update_flash_image_path) = create_flash_image(
+            None,
+            opts.update_soc_manifest.clone(),
+            opts.update_runtime_firmware.clone(),
+            None,
+            0,
+            opts.update_soc_images_paths.clone(),
+        );
+
+        opts.update_flash_image_path = Some(update_flash_image_path);
+        let opts = fast_update_options(&opts);
+        let test = run_runtime_with_options(&opts);
+        assert_ne!(0, test.code().unwrap_or_default());
+    }
+
+    fn test_invalid_manifest(opts: &TestOptions) {
+        let mut opts = opts.clone();
+
+        // Create a temp file of 1024 bytes with just 0xdeadbeef
+        let invalid_manifest_path = tempfile::NamedTempFile::new()
+            .expect("Failed to create temp file")
+            .path()
+            .to_path_buf();
+        std::fs::write(
+            &invalid_manifest_path,
+            [0xde, 0xad, 0xbe, 0xef].repeat(1024),
+        )
+        .expect("Failed to write invalid manifest");
+
+        // Create a new PLDM package without Caliptra Image
+        let (_, update_flash_image_path) = create_flash_image(
+            opts.update_caliptra_fw.clone(),
+            Some(invalid_manifest_path),
+            opts.update_runtime_firmware.clone(),
+            None,
+            0,
+            opts.update_soc_images_paths.clone(),
+        );
+
+        opts.update_flash_image_path = Some(update_flash_image_path);
+        let opts = fast_update_options(&opts);
+        let test = run_runtime_with_options(&opts);
+        assert_ne!(0, test.code().unwrap_or_default());
+    }
+
+    fn test_invalid_mcu_image(opts: &TestOptions) {
+        let mut opts = opts.clone();
+
+        // Create a temp file of 1024 bytes with just 0xdeadbeef
+        let invalid_mcu_path = tempfile::NamedTempFile::new()
+            .expect("Failed to create temp file")
+            .path()
+            .to_path_buf();
+        std::fs::write(&invalid_mcu_path, [0xde, 0xad, 0xbe, 0xef].repeat(1024))
+            .expect("Failed to write invalid manifest");
+
+        // Create a new PLDM package without Caliptra Image
+        let (_, update_flash_image_path) = create_flash_image(
+            opts.update_caliptra_fw.clone(),
+            opts.update_soc_manifest.clone(),
+            Some(invalid_mcu_path),
+            None,
+            0,
+            opts.update_soc_images_paths.clone(),
+        );
+
+        opts.update_flash_image_path = Some(update_flash_image_path);
+        let opts = fast_update_options(&opts);
+        let test = run_runtime_with_options(&opts);
+        assert_ne!(0, test.code().unwrap_or_default());
+    }
+
+    fn test_invalid_soc_image(opts: &TestOptions) {
+        let mut opts = opts.clone();
+
+        // Create a temp file of 1024 bytes with just 0xdeadbeef
+        let invalid_soc_path = tempfile::NamedTempFile::new()
+            .expect("Failed to create temp file")
+            .path()
+            .to_path_buf();
+        std::fs::write(&invalid_soc_path, [0xde, 0xad, 0xbe, 0xef].repeat(1024))
+            .expect("Failed to write invalid manifest");
+
+        let invalid_soc_image_paths = vec![invalid_soc_path];
+
+        // Create a new PLDM package without Caliptra Image
+        let (_, update_flash_image_path) = create_flash_image(
+            opts.update_caliptra_fw.clone(),
+            opts.update_soc_manifest.clone(),
+            opts.update_runtime_firmware.clone(),
+            None,
+            0,
+            invalid_soc_image_paths,
+        );
+
+        opts.update_flash_image_path = Some(update_flash_image_path);
+        let opts = fast_update_options(&opts);
+        let test = run_runtime_with_options(&opts);
+        assert_ne!(0, test.code().unwrap_or_default());
     }
 
     // Common test function for both flash-based and streaming boot
@@ -291,7 +449,14 @@ mod test {
         let soc_image_fw_2 = [0xAAu8; 256]; // Example firmware data for SOC image 2
 
         // Build the PLDM firmware update package
-        let pldm_fw_pkg_path = create_update_package();
+        let (
+            pldm_fw_pkg_path,
+            update_flash_image_path,
+            update_caliptra_fw,
+            update_soc_manifest,
+            update_runtime_firmware,
+            update_soc_images_paths,
+        ) = create_update_package();
 
         // Compile the runtime once with the appropriate feature
         let test_runtime = compile_runtime(feature, false);
@@ -393,6 +558,11 @@ mod test {
             soc_images_paths: soc_images_paths.clone(),
             primary_flash_image_path: flash_image_path.clone(),
             secondary_flash_image_path: flash_image_path.clone(),
+            update_flash_image_path: Some(update_flash_image_path),
+            update_caliptra_fw: Some(update_caliptra_fw),
+            update_soc_manifest: Some(PathBuf::from(update_soc_manifest)),
+            update_runtime_firmware: Some(update_runtime_firmware),
+            update_soc_images_paths,
             pldm_fw_pkg_path: Some(pldm_fw_pkg_path),
             partition_table: None,
             builder: Some(builder.clone()),
@@ -400,6 +570,11 @@ mod test {
         };
 
         run_test!(test_successful_update, &pass_options.clone());
+        run_test!(test_successful_fast_update, &pass_options.clone());
+        run_test!(test_missing_caliptra_image, &pass_options.clone());
+        run_test!(test_invalid_manifest, &pass_options.clone());
+        run_test!(test_invalid_mcu_image, &pass_options.clone());
+        run_test!(test_invalid_soc_image, &pass_options.clone());
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
