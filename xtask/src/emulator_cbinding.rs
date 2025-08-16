@@ -65,55 +65,130 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
 
     println!("Linking C emulator with library directory: {}", lib_dir);
 
-    // First compile the CFI stubs
-    let cfi_stubs_status = Command::new("gcc")
-        .args([
-            "-std=c11",
-            "-Wall",
-            "-Wextra",
-            "-O2",
-            "-c",
-            "cfi_stubs.c",
-            "-o",
-            "cfi_stubs.o",
-        ])
-        .current_dir(&cbinding_dir)
-        .status()?;
+    // First compile the CFI stubs using cc crate for cross-platform compatibility
+    let cc_build = cc::Build::new();
 
-    if !cfi_stubs_status.success() {
+    // Set required environment variables for cc crate when used outside build script
+    std::env::set_var("OPT_LEVEL", if release { "3" } else { "0" });
+    std::env::set_var(
+        "TARGET",
+        std::env::var("TARGET").unwrap_or_else(|_| {
+            if cfg!(target_os = "windows") {
+                "x86_64-pc-windows-msvc".to_string()
+            } else {
+                "x86_64-unknown-linux-gnu".to_string()
+            }
+        }),
+    );
+    std::env::set_var(
+        "HOST",
+        std::env::var("HOST").unwrap_or_else(|_| {
+            if cfg!(target_os = "windows") {
+                "x86_64-pc-windows-msvc".to_string()
+            } else {
+                "x86_64-unknown-linux-gnu".to_string()
+            }
+        }),
+    );
+
+    let tool = cc_build.get_compiler();
+
+    let cfi_stubs_obj = if cfg!(windows) {
+        cbinding_dir.join("cfi_stubs.obj")
+    } else {
+        cbinding_dir.join("cfi_stubs.o")
+    };
+
+    let mut cmd = tool.to_command();
+
+    // Use platform-specific compiler flags
+    #[cfg(windows)]
+    {
+        cmd.arg("/std:c11")
+            .arg(if release { "/O2" } else { "/Od" })
+            .arg("/c")
+            .arg("cfi_stubs.c")
+            .arg("/Fo")
+            .arg(&cfi_stubs_obj);
+    }
+
+    #[cfg(not(windows))]
+    {
+        cmd.args(["-std=c11", "-Wall", "-Wextra"])
+            .arg(if release { "-O2" } else { "-O0" })
+            .arg("-c")
+            .arg("cfi_stubs.c")
+            .arg("-o")
+            .arg(&cfi_stubs_obj);
+    }
+
+    cmd.current_dir(&cbinding_dir);
+
+    let status = cmd.status()?;
+    if !status.success() {
         anyhow::bail!("Failed to compile CFI stubs");
     }
 
     println!("CFI stubs compiled successfully");
 
-    // Now link the main emulator with stubs
-    let status = Command::new("gcc")
-        .args([
-            "-std=c11",
-            "-Wall",
-            "-Wextra",
-            "-O2",
-            "-I.",
-            "-o",
-            "emulator",
-            "emulator.c",
-            "cfi_stubs.o", // Include the compiled stubs
-            "-L",
-            lib_dir,
-            "-lemulator_cbinding",
-            "-lpthread",
-            "-ldl",
-            "-lm",
-            "-lrt", // POSIX real-time extensions (for mq_*, timer_*, aio_* functions)
-        ])
-        .current_dir(&cbinding_dir)
-        .status()?;
+    // Now link the main emulator with stubs using cc for cross-platform compatibility
+    let cc_build = cc::Build::new();
+    let tool = cc_build.get_compiler();
+
+    let mut cmd = tool.to_command();
+
+    // Use platform-specific compiler and linker flags
+    #[cfg(windows)]
+    {
+        let emulator_exe = cbinding_dir.join("emulator.exe");
+        let lib_path = target_build_dir.join("emulator_cbinding.lib");
+        cmd.arg("/std:c11")
+            .arg(if release { "/O2" } else { "/Od" })
+            .arg("emulator.c")
+            .arg("cfi_stubs.obj") // MSVC uses .obj extension
+            .arg(format!("/Fe:{}", emulator_exe.display()))
+            .arg(&lib_path) // Use full path to library
+            .arg("ws2_32.lib")
+            .arg("userenv.lib")
+            .arg("bcrypt.lib")
+            .arg("ntdll.lib") // For NtReadFile, NtWriteFile, etc.
+            .arg("user32.lib") // For GetForegroundWindow, MessageBoxW, etc.
+            .arg("advapi32.lib") // For CryptAcquireContextW, RegisterEventSourceW, etc.
+            .arg("crypt32.lib") // For CertCloseStore, CertFindCertificateInStore, etc.
+            .arg("kernel32.lib") // General Windows kernel functions
+            .arg("ole32.lib") // Additional Windows system functions
+            .arg("shell32.lib"); // Additional Windows shell functions
+    }
+
+    #[cfg(not(windows))]
+    {
+        cmd.args(["-std=c11", "-Wall", "-Wextra"])
+            .arg(if release { "-O2" } else { "-O0" })
+            .arg("-I.")
+            .arg("-o")
+            .arg("emulator")
+            .arg("emulator.c")
+            .arg("cfi_stubs.o")
+            .arg("-L")
+            .arg(lib_dir)
+            .arg("-lemulator_cbinding")
+            .args(["-lpthread", "-ldl", "-lm", "-lrt"]);
+    }
+
+    cmd.current_dir(&cbinding_dir);
+
+    let status = cmd.status()?;
 
     if !status.success() {
         anyhow::bail!("Failed to build C emulator binary");
     }
 
-    let emulator_path = cbinding_dir.join("emulator");
+    let emulator_path = if cfg!(windows) {
+        cbinding_dir.join("emulator.exe")
+    } else {
+        cbinding_dir.join("emulator")
+    };
+
     if !emulator_path.exists() {
         anyhow::bail!(
             "Emulator binary was not created at expected location: {:?}",
@@ -139,13 +214,28 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
         std::fs::copy(&header_src, &header_dst)?;
     }
 
-    let emulator_dst = target_cbinding_dir.join("emulator");
+    let emulator_dst = if cfg!(windows) {
+        target_cbinding_dir.join("emulator.exe")
+    } else {
+        target_cbinding_dir.join("emulator")
+    };
+
     if emulator_path.exists() {
         std::fs::rename(&emulator_path, &emulator_dst)?;
     }
 
-    let cfi_stubs_src = cbinding_dir.join("cfi_stubs.o");
-    let cfi_stubs_dst = target_cbinding_dir.join("cfi_stubs.o");
+    let cfi_stubs_src = if cfg!(windows) {
+        cbinding_dir.join("cfi_stubs.obj")
+    } else {
+        cbinding_dir.join("cfi_stubs.o")
+    };
+
+    let cfi_stubs_dst = if cfg!(windows) {
+        target_cbinding_dir.join("cfi_stubs.obj")
+    } else {
+        target_cbinding_dir.join("cfi_stubs.o")
+    };
+
     if cfi_stubs_src.exists() {
         std::fs::rename(&cfi_stubs_src, &cfi_stubs_dst)?;
     }
@@ -154,8 +244,13 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
     println!("All artifacts organized in {:?}", target_cbinding_dir);
     println!("  - {}", lib_name);
     println!("  - emulator_cbinding.h");
-    println!("  - emulator");
-    println!("  - cfi_stubs.o");
+    if cfg!(windows) {
+        println!("  - emulator.exe");
+        println!("  - cfi_stubs.obj");
+    } else {
+        println!("  - emulator");
+        println!("  - cfi_stubs.o");
+    }
     Ok(())
 }
 
@@ -174,9 +269,17 @@ pub(crate) fn clean(release: bool) -> Result<()> {
 
     // Clean C artifacts from original locations (in case they weren't moved)
     let cbinding_dir = PROJECT_ROOT.join(CBINDING_DIR);
-    let emulator_binary = cbinding_dir.join("emulator");
+    let emulator_binary = if cfg!(windows) {
+        cbinding_dir.join("emulator.exe")
+    } else {
+        cbinding_dir.join("emulator")
+    };
     let header_file = cbinding_dir.join("emulator_cbinding.h");
-    let cfi_stubs_obj = cbinding_dir.join("cfi_stubs.o");
+    let cfi_stubs_obj = if cfg!(windows) {
+        cbinding_dir.join("cfi_stubs.obj")
+    } else {
+        cbinding_dir.join("cfi_stubs.o")
+    };
 
     if emulator_binary.exists() {
         std::fs::remove_file(&emulator_binary)?;
