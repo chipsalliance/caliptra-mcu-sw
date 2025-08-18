@@ -140,9 +140,9 @@ Requirements:
 - gdb-multiarch
 
 #### Debugger launch procedure ####
-Caliptra's JTAG pins are directly connected to EMIO GPIO pins bridging the PS and PL. OpenOCD is run on the ARM core and uses SysFs to interface with the GPIO pins.
+JTAG connectivity is provided using EMIO GPIO pins bridging the PS and PL. OpenOCD is run on the ARM core and uses SysFs to interface with the GPIO pins. The Caliptra, MCU, and LCC JTAGs are each connected to their own set of EMIO pins and can be used independently.
 1. Invoke OpenOCD server
-    - `sudo openocd --file caliptra-mcu-sw/hw/fpga/openocd_ss.txt`
+    - `./caliptra-sw/hw/fpga/launch_openocd.sh [core/mcu/lcc]`
 1. Connect client(s) for debug
     - GDB: `gdb-multiarch [bin] -ex 'target remote localhost:3333'`
     - Telnet: `telnet localhost 4444`
