@@ -121,22 +121,38 @@ fn handle_i3c_socket_connection(
 
                 let mut data = vec![0u8; cmd.data_len()];
                 stream.set_nonblocking(false).unwrap();
-                stream
-                    .read_exact(&mut data)
-                    .expect("Failed to read message from socket");
-                stream.set_nonblocking(true).unwrap();
-                let bus_command = I3cBusCommand {
-                    addr: incoming_header.to_addr.into(),
-                    cmd: I3cTcriCommandXfer { cmd, data },
-                };
-                bus_command_tx.send(bus_command).unwrap();
+                match stream.read_exact(&mut data) {
+                    Ok(()) => {
+                        stream.set_nonblocking(true).unwrap();
+                        let bus_command = I3cBusCommand {
+                            addr: incoming_header.to_addr.into(),
+                            cmd: I3cTcriCommandXfer { cmd, data },
+                        };
+                        bus_command_tx.send(bus_command).unwrap();
+                    }
+                    Err(e) => {
+                        stream.set_nonblocking(true).unwrap();
+                        println!("Failed to read data payload from socket: {}", e);
+                        if e.kind() == ErrorKind::UnexpectedEof {
+                            println!("Client disconnected while sending data");
+                            break;
+                        }
+                    }
+                }
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
             Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
                 println!("handle_i3c_socket_connection: Connection reset by client");
                 break;
             }
-            Err(e) => panic!("Error reading message from socket: {}", e),
+            Err(ref e) if e.kind() == ErrorKind::UnexpectedEof => {
+                println!("handle_i3c_socket_connection: Client disconnected unexpectedly");
+                break;
+            }
+            Err(e) => {
+                println!("Error reading message from socket: {}", e);
+                break;
+            }
         }
         if let Ok(response) = bus_response_rx.recv_timeout(Duration::from_millis(10)) {
             let data_len = response.resp.resp.data_length() as usize;
@@ -273,7 +289,14 @@ pub fn receive_ibi(stream: &mut TcpStream, target_addr: u8) -> bool {
             }
         }
         Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
-        Err(e) => panic!("Error reading message from socket: {}", e),
+        Err(ref e) if e.kind() == ErrorKind::UnexpectedEof => {
+            println!("receive_ibi: Client disconnected unexpectedly");
+            return false;
+        }
+        Err(e) => {
+            println!("Error reading message from socket: {}", e);
+            return false;
+        }
     }
     false
 }
@@ -291,10 +314,16 @@ pub fn receive_private_read(stream: &mut TcpStream, target_addr: u8) -> Option<V
             let mut data = vec![0u8; data_len];
 
             stream.set_nonblocking(false).unwrap();
-            stream
-                .read_exact(&mut data)
-                .expect("Failed to read message from socket");
-            stream.set_nonblocking(true).unwrap();
+            match stream.read_exact(&mut data) {
+                Ok(()) => {
+                    stream.set_nonblocking(true).unwrap();
+                }
+                Err(e) => {
+                    stream.set_nonblocking(true).unwrap();
+                    println!("Failed to read private data from socket: {}", e);
+                    return None;
+                }
+            }
 
             let pec = calculate_crc8((target_addr << 1) | 1, &data[..data.len() - 1]);
             if pec != data[data.len() - 1] {
@@ -309,7 +338,14 @@ pub fn receive_private_read(stream: &mut TcpStream, target_addr: u8) -> Option<V
             return Some(data[..data.len() - 1].to_vec());
         }
         Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
-        Err(e) => panic!("Error reading message from socket: {}", e),
+        Err(ref e) if e.kind() == ErrorKind::UnexpectedEof => {
+            println!("receive_private_read: Client disconnected unexpectedly");
+            return None;
+        }
+        Err(e) => {
+            println!("Error reading message from socket: {}", e);
+            return None;
+        }
     }
     None
 }

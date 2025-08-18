@@ -134,14 +134,14 @@ impl MctpUtil {
         let mut i3c_state = I3cControllerState::Start;
         let msg_type = msg[0];
 
-        let mut retry = 45;
+        let mut retry = 100;
 
         while EMULATOR_RUNNING.load(Ordering::Relaxed) && retry > 0 {
             match i3c_state {
                 I3cControllerState::Start => {
                     // Add some delay before sending the first packet.
                     // The MCU might need some time to boot up and be ready to receive the request.
-                    sleep_emulator_ticks(5_000_000);
+                    sleep_emulator_ticks(6_000_000);
                     i3c_state = I3cControllerState::SendPrivateWrite;
                 }
 
@@ -321,7 +321,7 @@ impl MctpUtil {
                         if retry == 0 {
                             println!(
                                 "MCTP_UTIL: IBI not received. Exiting after {} retries...",
-                                retry_count
+                                500
                             );
                             pkts.clear();
                             break;
