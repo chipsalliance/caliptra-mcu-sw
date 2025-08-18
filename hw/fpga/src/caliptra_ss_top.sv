@@ -922,13 +922,6 @@ module caliptra_ss_top
     .dest_out({cptra_ss_i3c_recovery_payload_available_o,         cptra_ss_i3c_recovery_image_activated_o,         i3c_peripheral_reset,         i3c_escalated_reset,         i3c_irq_o})
     );
 
-    assign priv_ids[0] = 32'd0;
-    assign priv_ids[1] = 32'd0;
-    assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i_synch;
-    assign priv_ids[3] = cptra_ss_strap_mcu_lsu_axi_user_i_synch;
-
-    assign disable_id_filtering_i = ~cptra_i3c_axi_user_id_filtering_enable_i;
-
     // SS CLK -> I3C CLK
     logic [31:0]  cptra_ss_strap_caliptra_dma_axi_user_i_synch;
     logic [31:0] cptra_ss_strap_mcu_lsu_axi_user_i_synch;
@@ -947,6 +940,13 @@ module caliptra_ss_top
         .src_in(  {cptra_ss_strap_caliptra_dma_axi_user_i,       cptra_ss_strap_mcu_lsu_axi_user_i,       disable_id_filtering_i}),
         .dest_out({cptra_ss_strap_caliptra_dma_axi_user_i_synch, cptra_ss_strap_mcu_lsu_axi_user_i_synch, disable_id_filtering_i_synch})
     );
+
+    assign priv_ids[0] = 32'd0;
+    assign priv_ids[1] = 32'd0;
+    assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i_synch;
+    assign priv_ids[3] = cptra_ss_strap_mcu_lsu_axi_user_i_synch;
+
+    assign disable_id_filtering_i = ~cptra_i3c_axi_user_id_filtering_enable_i;
 
     i3c_wrapper #(
         .AxiDataWidth(`AXI_DATA_WIDTH),
