@@ -18,7 +18,6 @@ doe-transport.workspace = true
 i3c-driver.workspace = true
 kernel.workspace = true
 mcu-config.workspace = true
-mcu-config-emulator.workspace = true
 mcu-tock-veer.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true

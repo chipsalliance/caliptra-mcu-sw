@@ -8,10 +8,10 @@ use crate::spdm::cert_store::cert_chain::EndorsementCertChainTrait;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use libapi_caliptra::certificate::CertContext;
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
+use libapi_caliptra::crypto::asym::AsymAlgo;
+use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use libapi_caliptra::error::CaliptraApiError;
 use spdm_lib::cert_store::{CertStoreError, CertStoreResult};
-use spdm_lib::protocol::{AsymAlgo, SHA384_HASH_SIZE};
 
 // Example implementation of Endorsement cert chain
 pub struct EndorsementCertChain<'b> {

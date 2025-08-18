@@ -36,6 +36,9 @@ mod test_caliptra_certs;
 #[cfg(feature = "test-log-flash-usermode")]
 mod test_logging_flash;
 
+#[cfg(feature = "test-mci")]
+mod test_mci;
+
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
@@ -192,6 +195,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_crypto::test_caliptra_rng().await;
         test_caliptra_crypto::test_caliptra_ecdh().await;
         test_caliptra_crypto::test_caliptra_hmac().await;
+        test_caliptra_crypto::test_caliptra_aes_gcm_cipher().await;
         romtime::test_exit(0);
     }
 
@@ -219,6 +223,11 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_logging_flash::test_logging_flash_simple().await;
         test_logging_flash::test_logging_flash_various_entries().await;
         test_logging_flash::test_logging_flash_invalid_inputs().await;
+        romtime::test_exit(0);
+    }
+    #[cfg(feature = "test-mci")]
+    {
+        test_mci::test_mci_read_write().await;
         romtime::test_exit(0);
     }
 

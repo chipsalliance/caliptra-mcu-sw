@@ -5,9 +5,9 @@ use core::mem::offset_of;
 
 use zerocopy::{byteorder::U32, FromBytes, Immutable, IntoBytes, KnownLayout};
 
-pub const CALIPTRA_FMC_RT_IDENTIFIER: u32 = 0x00000001;
-pub const SOC_MANIFEST_IDENTIFIER: u32 = 0x00000002;
-pub const MCU_RT_IDENTIFIER: u32 = 0x00000003;
+pub const CALIPTRA_FMC_RT_IDENTIFIER: u32 = 0x00000000;
+pub const SOC_MANIFEST_IDENTIFIER: u32 = 0x00000001;
+pub const MCU_RT_IDENTIFIER: u32 = 0x00000002;
 pub const SOC_IMAGES_BASE_IDENTIFIER: u32 = 0x00001000;
 
 pub const FLASH_IMAGE_MAGIC_NUMBER: u32 = u32::from_be_bytes(*b"FLSH");

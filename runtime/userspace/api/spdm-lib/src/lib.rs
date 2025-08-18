@@ -32,3 +32,9 @@ pub mod measurements;
 
 // Chunking context for large messages
 pub mod chunk_ctx;
+
+// Secure session management
+pub mod session;
+
+// Spdm PCI-SIG standard vendor defined message interface
+pub mod pci_sig;

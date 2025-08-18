@@ -9,7 +9,8 @@ use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
 use core::mem::size_of;
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
+use libapi_caliptra::crypto::asym::AsymAlgo;
+use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
@@ -125,10 +126,10 @@ async fn generate_digests_response<'a>(
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Ensure the selected hash algorithm is SHA384 and retrieve the asymmetric algorithm (currently only ECC-P384 is supported)
-    ctx.verify_selected_hash_algo()
+    ctx.verify_negotiated_hash_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
     let asym_algo = ctx
-        .selected_base_asym_algo()
+        .negotiated_base_asym_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
 
     // Get the supported and provisioned slot masks.
@@ -169,10 +170,13 @@ async fn generate_digests_response<'a>(
     // Fill the multi-key connection response data if applicable
     if connection_version >= SpdmVersion::V13 && ctx.state.connection_info.multi_key_conn_rsp() {
         payload_len += encode_multi_key_conn_rsp_data(ctx, provisioned_slot_mask, rsp).await?;
+        // Append the response message to the DIGESTS transcript. This is needed later for TH1/TH2 calculation.
+        ctx.append_message_to_transcript(rsp, TranscriptContext::Digests, None)
+            .await?;
     }
 
     // Append the response message to the M1 transcript
-    ctx.append_message_to_transcript(rsp, TranscriptContext::M1)
+    ctx.append_message_to_transcript(rsp, TranscriptContext::M1, None)
         .await?;
 
     // Push data offset up by total payload length
@@ -270,7 +274,7 @@ async fn process_get_digests<'a>(
     ctx.reset_transcript_via_req_code(ReqRespCode::GetDigests);
 
     // Append the request message to the M1 transcript
-    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1)
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1, None)
         .await
 }
 

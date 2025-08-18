@@ -18,9 +18,10 @@ pub(crate) mod leaf;
 use crate::spdm::cert_store::cert_chain::device::{DeviceCertIndex, DpeCertChain};
 pub use crate::spdm::cert_store::cert_chain::endorsement::EndorsementCertChainTrait;
 use crate::spdm::cert_store::cert_chain::leaf::DpeLeafCert;
+use libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use spdm_lib::cert_store::CertStoreError;
 use spdm_lib::cert_store::CertStoreResult;
-use spdm_lib::protocol::{AsymAlgo, ECC_P384_SIGNATURE_SIZE, SHA384_HASH_SIZE};
 
 /// Generic certificate chain that combines all certificate components
 pub struct CertChain {

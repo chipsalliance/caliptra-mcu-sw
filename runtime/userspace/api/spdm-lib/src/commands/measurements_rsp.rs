@@ -12,8 +12,10 @@ use crate::measurements::common::{
 };
 use crate::protocol::*;
 use crate::state::ConnectionState;
-use crate::transcript::{TranscriptContext, TranscriptManager};
+use crate::transcript::{Transcript, TranscriptContext};
 use bitfield::bitfield;
+use libapi_caliptra::crypto::asym::*;
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use libapi_caliptra::crypto::rng::Rng;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
@@ -97,7 +99,7 @@ impl MeasurementsResponse {
     pub async fn get_chunk(
         &self,
         measurements: &mut SpdmMeasurements,
-        transcript_mgr: &mut TranscriptManager,
+        shared_transcript: &mut Transcript,
         cert_store: &dyn SpdmCertStore,
         offset: usize,
         chunk_buf: &mut [u8],
@@ -167,9 +169,9 @@ impl MeasurementsResponse {
             rem_len -= copy_len;
         }
 
-        // Append the chunk to the L1 transcript
-        transcript_mgr
-            .append(TranscriptContext::L1, &chunk_buf[..copied])
+        // Append the chunk to the L1 transcript (TODO: check session ID)
+        shared_transcript
+            .append(TranscriptContext::L1, None, &chunk_buf[..copied])
             .await
             .map_err(|e| (false, CommandError::Transcript(e)))?;
 
@@ -180,7 +182,7 @@ impl MeasurementsResponse {
             && offset + copied >= signature_start
         {
             let signature = self
-                .l1_signature(self.asym_algo, transcript_mgr, cert_store)
+                .l1_signature(self.asym_algo, shared_transcript, cert_store)
                 .await?;
             let sig_offset = (offset + copied) - signature_start;
             let copy_len = (signature.len() - sig_offset).min(rem_len);
@@ -297,7 +299,7 @@ impl MeasurementsResponse {
     async fn l1_signature(
         &self,
         asym_algo: AsymAlgo,
-        transcript: &mut TranscriptManager,
+        transcript: &mut Transcript,
         cert_store: &dyn SpdmCertStore,
     ) -> CommandResult<[u8; ECC_P384_SIGNATURE_SIZE]> {
         let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
@@ -312,15 +314,16 @@ impl MeasurementsResponse {
     async fn encode_l1_signature(
         &self,
         asym_algo: AsymAlgo,
-        transcript: &mut TranscriptManager,
+        transcript: &mut Transcript,
         cert_store: &dyn SpdmCertStore,
         buf: &mut MessageBuf<'_>,
     ) -> CommandResult<usize> {
         // Get the L1 transcript hash
         let mut l1_transcript_hash = [0u8; SHA384_HASH_SIZE];
 
+        // TODO: check Session ID
         transcript
-            .hash(TranscriptContext::L1, &mut l1_transcript_hash)
+            .hash(TranscriptContext::L1, None, &mut l1_transcript_hash, true)
             .await
             .map_err(|e| (false, CommandError::Transcript(e)))?;
 
@@ -432,11 +435,11 @@ async fn process_get_measurements<'a>(
     // Reset the transcript for the GET_MEASUREMENTS request
     ctx.reset_transcript_via_req_code(ReqRespCode::GetMeasurements);
 
-    // Append the request to the transcript
-    ctx.append_message_to_transcript(req_payload, TranscriptContext::L1)
+    // Append the request to the transcript (TODO: check session_info)
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::L1, None)
         .await?;
 
-    let asym_algo = ctx.selected_base_asym_algo().map_err(|_| {
+    let asym_algo = ctx.negotiated_base_asym_algo().map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
     })?;
 
@@ -475,7 +478,7 @@ pub(crate) async fn generate_measurements_response<'a>(
         let payload_len = rsp_ctx
             .get_chunk(
                 &mut ctx.measurements,
-                &mut ctx.transcript_mgr,
+                &mut ctx.shared_transcript,
                 ctx.device_certs_store,
                 0,
                 rsp_buf,
@@ -517,7 +520,7 @@ pub(crate) async fn handle_get_measurements<'a>(
 
     // Verify that the DMTF measurement spec is selected and the measurement hash algorithm is SHA384
     let meas_spec_sel = selected_measurement_specification(ctx);
-    if meas_spec_sel.dmtf_measurement_spec() == 0 || ctx.verify_selected_hash_algo().is_err() {
+    if meas_spec_sel.dmtf_measurement_spec() == 0 || ctx.verify_negotiated_hash_algo().is_err() {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 

@@ -17,6 +17,7 @@ Abstract:
 use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
 use crate::ColdBoot;
+use crate::FwHitlessUpdate;
 use crate::LifecycleControllerState;
 use crate::LifecycleHashedTokens;
 use crate::LifecycleToken;
@@ -27,6 +28,13 @@ use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use registers_generated::soc;
 use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
+
+// values in fuses
+const LMS_FUSE_VALUE: u8 = 1;
+const MLDSA_FUSE_VALUE: u8 = 0;
+// values when setting in Caliptra
+const MLDSA_CALIPTRA_VALUE: u8 = 1;
+const LMS_CALIPTRA_VALUE: u8 = 3;
 
 /// Trait for different boot flows (cold boot, warm reset, firmware update)
 pub trait BootFlow {
@@ -121,8 +129,13 @@ impl Soc {
         self.registers.ss_uds_seed_base_addr_l.set(offset as u32);
         self.registers.ss_uds_seed_base_addr_h.set(0);
 
-        // TODO[cap2]: the OTP map doesn't have this value yet, so we hardcode it for now
-        self.registers.fuse_pqc_key_type.set(3); // LMS
+        let pqc_type = match fuses.cptra_core_pqc_key_type_0() & 1 {
+            MLDSA_FUSE_VALUE => MLDSA_CALIPTRA_VALUE,
+            LMS_FUSE_VALUE => LMS_CALIPTRA_VALUE,
+            _ => unreachable!(),
+        };
+        self.registers.fuse_pqc_key_type.set(pqc_type as u32);
+        romtime::println!("[mcu-fuse-write] Setting vendor PQC type to {}", pqc_type);
 
         // TODO: vendor-specific fuses when those are supported
         self.registers
@@ -258,9 +271,8 @@ pub fn rom_start(params: RomParameters) {
             fatal_error(0x1002); // Error code for unimplemented firmware boot update
         }
         McuResetReason::FirmwareHitlessUpdate => {
-            // TODO: Implement firmware hitless update flow
-            romtime::println!("[mcu-rom] TODO: Firmware hitless update flow not implemented");
-            fatal_error(0x1003); // Error code for unimplemented firmware hitless update
+            romtime::println!("[mcu-rom] Starting firmware hitless update flow");
+            FwHitlessUpdate::run(&mut env, params);
         }
         McuResetReason::Invalid => {
             romtime::println!("[mcu-rom] Invalid reset reason: multiple bits set");

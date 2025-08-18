@@ -15,6 +15,7 @@ Abstract:
 use crate::otp_digest;
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_types::{RvAddr, RvData};
+use caliptra_image_types::FwVerificationPqcKeyType;
 use registers_generated::fuses::{self};
 use registers_generated::otp_ctrl::bits::{DirectAccessCmd, OtpStatus};
 use serde::{Deserialize, Serialize};
@@ -25,10 +26,10 @@ use std::path::PathBuf;
 #[allow(unused_imports)] // Rust compiler doesn't like these
 use tock_registers::interfaces::{Readable, Writeable};
 
-/// OTP Digest constant, randomly generated. Usually read from configuration file.
-const DIGEST_CONST: u128 = 0xfc2f4d648d4a45b482924470b96f0cee;
-/// OTP Digest IV, randomly generated. Usually read from configuration file.
-const DIGEST_IV: u64 = 0x25b5e5a1627a3557;
+/// OTP Digest constant default from caliptra-ss/src/fuse_ctrl/rtl/otp_ctrl_part_pkg.sv
+const DIGEST_CONST: u128 = 0xF98C48B1F93772844A22D4B78FE0266F;
+/// OTP Digest IV default from caliptra-ss/src/fuse_ctrl/rtl/otp_ctrl_part_pkg.sv
+const DIGEST_IV: u64 = 0x90C7F21F6224F027;
 
 const TOTAL_SIZE: usize = fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE;
 
@@ -134,8 +135,10 @@ impl Otp {
     pub fn new(
         clock: &Clock,
         file_name: Option<PathBuf>,
+        raw_memory: Option<Vec<u8>>,
         _owner_pk_hash: Option<[u8; 48]>,
         vendor_pk_hash: Option<[u8; 48]>,
+        vendor_pqc_type: FwVerificationPqcKeyType,
     ) -> Result<Self, std::io::Error> {
         let file = if let Some(path) = file_name {
             Some(
@@ -149,6 +152,18 @@ impl Otp {
         } else {
             None
         };
+
+        let mut partitions = vec![0u8; TOTAL_SIZE];
+
+        if let Some(raw_memory) = raw_memory {
+            if raw_memory.len() > TOTAL_SIZE {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Raw memory is too large",
+                ))?;
+            }
+            partitions[..raw_memory.len()].copy_from_slice(&raw_memory);
+        }
 
         let mut otp = Self {
             file,
@@ -168,6 +183,12 @@ impl Otp {
                 ..fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48]
                 .copy_from_slice(&vendor_pk_hash);
         }
+        // encode as a single bit, MLDSA as the default
+        let val = match vendor_pqc_type {
+            FwVerificationPqcKeyType::MLDSA => 0,
+            FwVerificationPqcKeyType::LMS => 1,
+        };
+        otp.partitions[fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48] = val;
         // if there were digests that were pending a reset, then calculate them now
         otp.calculate_digests()?;
         Ok(otp)
@@ -361,7 +382,15 @@ mod test {
     #[test]
     fn test_bootup() {
         let clock = Clock::new();
-        let mut otp = Otp::new(&clock, None, None, None).unwrap();
+        let mut otp = Otp::new(
+            &clock,
+            None,
+            None,
+            None,
+            None,
+            FwVerificationPqcKeyType::MLDSA,
+        )
+        .unwrap();
         // simulate post-bootup flow
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         otp.write_integrity_check_period(0x3_FFFFu32);
@@ -384,7 +413,15 @@ mod test {
     #[test]
     fn test_write_and_read() {
         let clock = Clock::new();
-        let mut otp = Otp::new(&clock, None, None, None).unwrap();
+        let mut otp = Otp::new(
+            &clock,
+            None,
+            None,
+            None,
+            None,
+            FwVerificationPqcKeyType::MLDSA,
+        )
+        .unwrap();
         // write the vendor partition
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         for i in 0..fuses::VENDOR_TEST_PARTITION_BYTE_SIZE {
@@ -431,7 +468,15 @@ mod test {
     #[test]
     fn test_digest() {
         let clock = Clock::new();
-        let mut otp = Otp::new(&clock, None, None, None).unwrap();
+        let mut otp = Otp::new(
+            &clock,
+            None,
+            None,
+            None,
+            None,
+            FwVerificationPqcKeyType::MLDSA,
+        )
+        .unwrap();
         // write the vendor partition
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         for i in 0..fuses::VENDOR_TEST_PARTITION_BYTE_SIZE {
@@ -466,12 +511,12 @@ mod test {
         // check that we are idle with no errors
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         // check that the digest is invalid
-        assert_ne!(otp.digests[18], 0xd7e4a117);
-        assert_ne!(otp.digests[19], 0x421763fd);
+        assert_ne!(otp.digests[18], 0xb01d0fde);
+        assert_ne!(otp.digests[19], 0x3fc74486);
         // reset
         otp.warm_reset();
         // check that the digest is valid
-        assert_eq!(otp.digests[18], 0xd7e4a117);
-        assert_eq!(otp.digests[19], 0x421763fd);
+        assert_eq!(otp.digests[18], 0xb01d0fde);
+        assert_eq!(otp.digests[19], 0x3fc74486);
     }
 }

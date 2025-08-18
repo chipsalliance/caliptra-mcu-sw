@@ -3,14 +3,16 @@
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
 use core::panic;
-use mcu_builder::SocImage;
+use mcu_builder::ImageCfg;
 use std::path::PathBuf;
 
 mod cargo_lock;
 mod clippy;
 mod deps;
 mod docs;
+mod emulator_cbinding;
 mod format;
+#[cfg(feature = "fpga_realtime")]
 mod fpga;
 mod header;
 mod pldm_fw_pkg;
@@ -72,7 +74,7 @@ enum Commands {
         /// List of SoC images with format: <path>,<load_addr>,<image_id>
         /// Example: --soc_image image1.bin,0x80000000,2
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
-        soc_images: Option<Vec<SocImage>>,
+        soc_images: Option<Vec<ImageCfg>>,
 
         /// Path to the Flash image to be used in streaming boot
         #[arg(long)]
@@ -182,8 +184,10 @@ enum Commands {
     /// Check dependencies
     Deps,
     /// Build and install the FPGA kernel modules for uio and the ROM backdoors
+    #[cfg(feature = "fpga_realtime")]
     FpgaInstallKernelModules,
     /// Run firmware on the FPGA
+    #[cfg(feature = "fpga_realtime")]
     FpgaRun {
         /// ZIP with all images.
         #[arg(long)]
@@ -216,11 +220,20 @@ enum Commands {
         /// Whether to disable the recovery interface and I3C
         #[arg(long, default_value_t = false)]
         no_recovery: bool,
+
+        /// Lifecycle controller state to set (raw, test_unlocked0, manufacturing, prod, etc.).
+        #[arg(long)]
+        lifecycle: Option<String>,
     },
     /// Utility to create and parse PLDM firmware packages
     PldmFirmware {
         #[command(subcommand)]
         subcommand: PldmFirmwareCommands,
+    },
+    /// Emulator C binding utilities
+    EmulatorCbinding {
+        #[command(subcommand)]
+        subcommand: EmulatorCbindingCommands,
     },
 }
 
@@ -282,6 +295,34 @@ enum PldmFirmwareCommands {
         /// Output directory for manifest and components
         #[arg(short, long, value_name = "DIRECTORY", required = true)]
         dir: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum EmulatorCbindingCommands {
+    /// Build all emulator C binding components (library, header, and binary)
+    Build {
+        /// Build in release mode (optimized)
+        #[arg(long, default_value_t = false)]
+        release: bool,
+    },
+    /// Build only the Rust static library and generate C header
+    BuildLib {
+        /// Build in release mode (optimized)
+        #[arg(long, default_value_t = false)]
+        release: bool,
+    },
+    /// Build only the C emulator binary
+    BuildEmulator {
+        /// Build in release mode (optimized)
+        #[arg(long, default_value_t = false)]
+        release: bool,
+    },
+    /// Clean all build artifacts
+    Clean {
+        /// Clean release mode artifacts (otherwise cleans debug artifacts)
+        #[arg(long, default_value_t = false)]
+        release: bool,
     },
 }
 
@@ -372,11 +413,23 @@ fn main() {
             addrmap,
         } => registers::autogen(*check, files, addrmap),
         Commands::Deps => deps::check(),
+        #[cfg(feature = "fpga_realtime")]
         Commands::FpgaRun { .. } => fpga::fpga_run(cli.xtask),
+        #[cfg(feature = "fpga_realtime")]
         Commands::FpgaInstallKernelModules => fpga::fpga_install_kernel_modules(),
         Commands::PldmFirmware { subcommand } => match subcommand {
             PldmFirmwareCommands::Create { manifest, file } => pldm_fw_pkg::create(manifest, file),
             PldmFirmwareCommands::Decode { package, dir } => pldm_fw_pkg::decode(package, dir),
+        },
+        Commands::EmulatorCbinding { subcommand } => match subcommand {
+            EmulatorCbindingCommands::Build { release } => emulator_cbinding::build_all(*release),
+            EmulatorCbindingCommands::BuildLib { release } => {
+                emulator_cbinding::build_lib(*release)
+            }
+            EmulatorCbindingCommands::BuildEmulator { release } => {
+                emulator_cbinding::build_emulator(*release)
+            }
+            EmulatorCbindingCommands::Clean { release } => emulator_cbinding::clean(*release),
         },
     };
     result.unwrap_or_else(|e| {

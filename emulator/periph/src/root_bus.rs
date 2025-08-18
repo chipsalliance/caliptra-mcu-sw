@@ -15,7 +15,7 @@ Abstract:
 use crate::{spi_host::SpiHost, EmuCtrl, Uart};
 use caliptra_emu_bus::{Bus, BusError, Clock, Ram, Rom};
 use caliptra_emu_bus::{Device, Event, EventData};
-use caliptra_emu_cpu::{Pic, PicMmioRegisters};
+use caliptra_emu_cpu::{Irq, Pic, PicMmioRegisters};
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use emulator_consts::{
     DIRECT_READ_FLASH_ORG, DIRECT_READ_FLASH_SIZE, EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE,
@@ -97,6 +97,7 @@ pub struct McuRootBus {
     pub pic_regs: PicMmioRegisters,
     pub external_test_sram: Rc<RefCell<Ram>>,
     pub direct_read_flash: Rc<RefCell<Ram>>,
+    pub mci_irq: Rc<RefCell<Irq>>,
     event_sender: Option<mpsc::Sender<Event>>,
     offsets: McuRootBusOffsets,
 }
@@ -122,6 +123,7 @@ impl McuRootBus {
         let rom_sram = Ram::new(vec![0; ROM_DEDICATED_RAM_SIZE as usize]);
         let external_test_sram = Ram::new(vec![0; EXTERNAL_TEST_SRAM_SIZE as usize]);
         let direct_read_flash = Ram::new(vec![0; DIRECT_READ_FLASH_SIZE as usize]);
+        let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
 
         Ok(Self {
             rom,
@@ -135,6 +137,7 @@ impl McuRootBus {
             external_test_sram: Rc::new(RefCell::new(external_test_sram)),
             direct_read_flash: Rc::new(RefCell::new(direct_read_flash)),
             offsets: args.offsets,
+            mci_irq: Rc::new(RefCell::new(mci_irq)),
         })
     }
 
@@ -384,20 +387,36 @@ impl Bus for McuRootBus {
                 let ram = self.external_test_sram.borrow();
                 let ram_size = ram.len() as usize;
                 let len = len.min(ram_size - start);
+                let data = ram.data()[start..start + len].to_vec();
+
+                // Caliptra DMA processes the data in 4-byte chunks
+                let data: Vec<u8> = data
+                    .chunks(4)
+                    .flat_map(|chunk| {
+                        if chunk.len() == 4 {
+                            chunk.iter().rev().cloned().collect::<Vec<u8>>()
+                        } else {
+                            chunk.to_vec()
+                        }
+                    })
+                    .collect();
 
                 if let Some(event_sender) = self.event_sender.as_ref() {
                     event_sender
                         .send(Event {
                             src: Device::MCU,
                             dest: event.src,
-                            event: EventData::MemoryReadResponse {
-                                start_addr,
-                                data: ram.data()[start..start + len].to_vec(),
-                            },
+                            event: EventData::MemoryReadResponse { start_addr, data },
                         })
                         .unwrap();
                 }
             }
+        }
+
+        if let (Device::MCU, EventData::MciInterrupt { asserted }) =
+            (event.dest, event.event.clone())
+        {
+            self.mci_irq.borrow_mut().set_level(asserted);
         }
     }
 }

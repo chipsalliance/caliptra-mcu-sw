@@ -8,3 +8,4 @@ pub(crate) mod i3c_target_test;
 pub(crate) mod linear_log_test;
 #[cfg(feature = "test-mctp-capsule-loopback")]
 pub(crate) mod mctp_test;
+pub(crate) mod mcu_mbox_test;

@@ -5,17 +5,21 @@
 use registers_generated::interface_regs::bits::{Control};
 use registers_generated::interface_regs::regs::InterfaceRegs;
 use registers_generated::fifo_regs::bits::{LogFifoData, LogFifoStatus, ItrngFifoStatus, DbgFifoStatus};
-use registers_generated::fifo_regs::regs::FifoRegs;
+use registers_generated::fifo_regs::regs::FifoRegs;use crate::otp_provision::{lc_generate_memory, otp_generate_lifecycle_tokens_mem};
 use crate::output::ExitStatus;
-use crate::{xi3c, InitParams, McuHwModel, Output, SecurityState};
+use crate::{xi3c, InitParams, McuHwModel, McuManager, Output, DEFAULT_LIFECYCLE_RAW_TOKENS};
 use anyhow::{anyhow, bail, Error, Result};
-use caliptra_emu_bus::{Device, Event, EventData, RecoveryCommandCode};
-use caliptra_hw_model_types::{DEFAULT_FIELD_ENTROPY, DEFAULT_UDS_SEED};
+use caliptra_api::SocManager;
+use caliptra_emu_bus::{Bus, BusError, BusMmio, Device, Event, EventData, RecoveryCommandCode};
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
+use caliptra_hw_model_types::{HexSlice, DEFAULT_FIELD_ENTROPY, DEFAULT_UDS_SEED};
+use caliptra_image_types::FwVerificationPqcKeyType;
 use emulator_bmc::Bmc;
-use registers_generated::i3c;
 use registers_generated::i3c::bits::{DeviceStatus0, StbyCrDeviceAddr, StbyCrVirtDeviceAddr};
 use registers_generated::mci::bits::Go::Go;
+use registers_generated::{fuses, i3c};
 use std::io::Write;
+use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::process::exit;
@@ -101,11 +105,12 @@ pub struct ModelFpgaRealtime {
     mcu_rom_backdoor: *mut u8,
     otp_mem_backdoor: *mut u8,
     otp_init: Vec<u8>,
-    lifecycle_controller_state: Option<u32>,
     mci: Mci,
     i3c_mmio: *mut u32,
     i3c_controller_mmio: *mut u32,
     i3c_controller: xi3c::Controller,
+    otp_mmio: *mut u32,
+    lc_mmio: *mut u32,
 
     realtime_thread: Option<thread::JoinHandle<()>>,
     realtime_thread_exit_flag: Arc<AtomicBool>,
@@ -881,28 +886,6 @@ impl ModelFpgaRealtime {
         // println!("Acknowledge received");
     }
 
-    #[allow(dead_code)]
-    fn write_lc(&mut self, offset: u32, data: &[u16]) {
-        let shift = 0;
-        //let offset = offset / 2;
-        for (i, x) in data.iter().copied().enumerate() {
-            let i = (offset as isize + i as isize * 2) << shift;
-            println!("OTP memory write {:04x} = {:02x}", i, (x >> 8) & 0xff);
-            unsafe { core::ptr::write_volatile(self.otp_mem_backdoor.offset(i), (x >> 8) as u8) };
-            println!(
-                "OTP memory write {:04x} = {:02x}",
-                i + (1 << shift),
-                x & 0xff
-            );
-            unsafe {
-                core::ptr::write_volatile(
-                    self.otp_mem_backdoor.offset(i + (1 << shift)),
-                    (x & 0xff) as u8,
-                )
-            };
-        }
-    }
-
     fn otp_slice(&self) -> &mut [u8] {
         unsafe { core::slice::from_raw_parts_mut(self.otp_mem_backdoor, OTP_SIZE) }
     }
@@ -948,6 +931,21 @@ impl ModelFpgaRealtime {
         self.openocd = Some(socket);
         Ok(())
     }
+
+    pub fn mci_flow_status(&mut self) -> u32 {
+        self.mci.regs().mci_reg_fw_flow_status.get()
+    }
+
+    fn caliptra_axi_bus(&mut self) -> FpgaRealtimeBus<'_> {
+        FpgaRealtimeBus {
+            caliptra_mmio: self.caliptra_mmio.ptr,
+            i3c_mmio: self.i3c_mmio,
+            mci_mmio: self.mci.ptr,
+            otp_mmio: self.otp_mmio,
+            lc_mmio: self.lc_mmio,
+            phantom: Default::default(),
+        }
+    }
 }
 
 impl McuHwModel for ModelFpgaRealtime {
@@ -979,6 +977,9 @@ impl McuHwModel for ModelFpgaRealtime {
         let mcu_rom_backdoor = devs[MCU_ROM_MAPPING.0]
             .map_mapping(MCU_ROM_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u8;
+        let mcu_rom_size = devs[MCU_ROM_MAPPING.0]
+            .map_size(MCU_ROM_MAPPING.1)
+            .map_err(fmt_uio_error)?;
         let mci_ptr = devs[MCI_MAPPING.0]
             .map_mapping(MCI_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u32;
@@ -991,10 +992,10 @@ impl McuHwModel for ModelFpgaRealtime {
         let i3c_controller_mmio = devs[I3C_CONTROLLER_MAPPING.0]
             .map_mapping(I3C_CONTROLLER_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u32;
-        let _lc_mmio = devs[LC_MAPPING.0]
+        let lc_mmio = devs[LC_MAPPING.0]
             .map_mapping(LC_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u32;
-        let _otp_mmio = devs[OTP_MAPPING.0]
+        let otp_mmio = devs[OTP_MAPPING.0]
             .map_mapping(OTP_MAPPING.1)
             .map_err(fmt_uio_error)? as *mut u32;
 
@@ -1048,9 +1049,10 @@ impl McuHwModel for ModelFpgaRealtime {
             i3c_controller_mmio,
             i3c_controller,
             otp_init: params.otp_memory.map(|m| m.to_vec()).unwrap_or_default(),
-            lifecycle_controller_state: params.lifecycle_controller_state,
             realtime_thread,
             realtime_thread_exit_flag,
+            otp_mmio,
+            lc_mmio,
 
             output,
             recovery_started: false,
@@ -1069,14 +1071,6 @@ impl McuHwModel for ModelFpgaRealtime {
         // Set generic input wires.
         let input_wires = [0, (!params.uds_granularity_32 as u32) << 31];
         m.set_generic_input_wires(&input_wires);
-
-        // Set Security State signal wires
-        // println!(
-        //     "Set security state to 0x{:x}",
-        //     u32::from(params.security_state)
-        // );
-        // TODO: use lifecycle transitions for this
-        // m.set_security_state(params.security_state);
 
         println!("Set itrng divider");
         // Set divisor for ITRNG throttling
@@ -1138,17 +1132,61 @@ impl McuHwModel for ModelFpgaRealtime {
                 );
             }
             otp_mem[..m.otp_init.len()].copy_from_slice(&m.otp_init);
-            //m.print_otp_memory();
         }
 
-        // TODO: support directly setting lifecycle state
-        if let Some(_lifecycle_state) = m.lifecycle_controller_state {
-            //println!("Setting LC state to 1");
-            // let lc_cnt_start = 0xfa8;
-            // let lc_state_start = 0xfd8;
-            // count1.reverse();
-            // test_unlocked1.reverse();
+        if let Some(state) = params.lifecycle_controller_state {
+            println!("Setting lifecycle controller state to {}", state);
+            let mem = lc_generate_memory(state, 1)?;
+            // TODO: use the autogenerated offset when we update caliptra-ss
+            let offset = 4008;
+            otp_mem[offset..offset + mem.len()].copy_from_slice(&mem);
+            // otp_mem[fuses::LIFE_CYCLE_BYTE_OFFSET..fuses::LIFE_CYCLE_BYTE_OFFSET + mem.len()]
+            //     .copy_from_slice(&mem);
+
+            let tokens = params
+                .lifecycle_tokens
+                .as_ref()
+                .unwrap_or(&DEFAULT_LIFECYCLE_RAW_TOKENS);
+            let mem = otp_generate_lifecycle_tokens_mem(tokens)?;
+            // TODO: use the autogenerated offset when we update caliptra-ss
+            let offset = 1184;
+            otp_mem[offset..offset + mem.len()].copy_from_slice(&mem);
+
+            // otp_mem[fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET
+            //     ..fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET
+            //         + fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_SIZE]
+            //     .copy_from_slice(&mem);
         }
+
+        if let Some(vendor_pk_hash) = params.vendor_pk_hash.as_ref() {
+            println!(
+                "Setting vendor public key hash to {:x?}",
+                HexSlice(vendor_pk_hash)
+            );
+            // swap endianness to match expected hardware format
+            let len = vendor_pk_hash.len();
+            let mut vendor_pk_hash = vendor_pk_hash.to_vec();
+            for i in (0..len).step_by(4) {
+                vendor_pk_hash[i..i + 4].reverse();
+            }
+            let otp_mem = m.otp_slice();
+            let offset = fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET;
+            otp_mem[offset..offset + len].copy_from_slice(&vendor_pk_hash);
+        }
+        let vendor_pqc_type = params
+            .vendor_pqc_type
+            .unwrap_or(FwVerificationPqcKeyType::LMS);
+        println!(
+            "Setting vendor public key pqc type to {:x?}",
+            vendor_pqc_type
+        );
+        let val = match vendor_pqc_type {
+            FwVerificationPqcKeyType::MLDSA => 0,
+            FwVerificationPqcKeyType::LMS => 1,
+        };
+        let otp_mem = m.otp_slice();
+        let offset = fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48;
+        otp_mem[offset] = val;
 
         println!("Clearing fifo");
         // Sometimes there's garbage in here; clean it out
@@ -1167,10 +1205,9 @@ impl McuHwModel for ModelFpgaRealtime {
         while caliptra_rom_data.len() % 8 != 0 {
             caliptra_rom_data.push(0);
         }
-        let mut mcu_rom_data = params.mcu_rom.to_vec();
-        while mcu_rom_data.len() % 8 != 0 {
-            mcu_rom_data.push(0);
-        }
+
+        let mut mcu_rom_data = vec![0; mcu_rom_size];
+        mcu_rom_data[..params.mcu_rom.len()].clone_from_slice(params.mcu_rom);
 
         // copy the ROM data
         let caliptra_rom_slice = unsafe {
@@ -1180,7 +1217,7 @@ impl McuHwModel for ModelFpgaRealtime {
         caliptra_rom_slice.copy_from_slice(&caliptra_rom_data);
         println!("Writing MCU ROM");
         let mcu_rom_slice =
-            unsafe { core::slice::from_raw_parts_mut(m.mcu_rom_backdoor, mcu_rom_data.len()) };
+            unsafe { core::slice::from_raw_parts_mut(m.mcu_rom_backdoor, mcu_rom_size) };
         mcu_rom_slice.copy_from_slice(&mcu_rom_data);
 
         // set the reset vector to point to the ROM backdoor
@@ -1258,10 +1295,6 @@ impl McuHwModel for ModelFpgaRealtime {
         self.wrapper.regs().itrng_divisor.set(divider - 1);
     }
 
-    fn set_security_state(&mut self, _value: SecurityState) {
-        // todo!() // this is no yet supported in FPGA
-    }
-
     fn set_generic_input_wires(&mut self, value: &[u32; 2]) {
         for (i, wire) in value.iter().copied().enumerate() {
             self.wrapper.regs().generic_input_wires[i].set(wire);
@@ -1289,6 +1322,104 @@ impl McuHwModel for ModelFpgaRealtime {
     fn save_otp_memory(&self, path: &Path) -> Result<()> {
         let s = crate::vmem::write_otp_vmem_data(self.otp_slice())?;
         Ok(std::fs::write(path, s.as_bytes())?)
+    }
+
+    fn mcu_manager(&mut self) -> impl McuManager {
+        self
+    }
+
+    fn caliptra_soc_manager(&mut self) -> impl SocManager {
+        self
+    }
+}
+
+pub struct FpgaRealtimeBus<'a> {
+    caliptra_mmio: *mut u32,
+    i3c_mmio: *mut u32,
+    mci_mmio: *mut u32,
+    otp_mmio: *mut u32,
+    lc_mmio: *mut u32,
+    phantom: PhantomData<&'a mut ()>,
+}
+
+impl FpgaRealtimeBus<'_> {
+    fn ptr_for_addr(&mut self, addr: RvAddr) -> Option<*mut u32> {
+        let addr = addr as usize;
+        unsafe {
+            match addr {
+                0x2000_4000..0x2000_5000 => Some(self.i3c_mmio.add((addr - 0x2000_4000) / 4)),
+                0x2100_0000..0x21e0_0000 => Some(self.mci_mmio.add((addr - 0x2100_0000) / 4)),
+                0x3002_0000..0x3004_0000 => Some(self.caliptra_mmio.add((addr - 0x3000_0000) / 4)),
+                0x7000_0000..0x7000_0140 => Some(self.otp_mmio.add((addr - 0x7000_0000) / 4)),
+                0x7000_0400..0x7000_048c => Some(self.lc_mmio.add((addr - 0x7000_0400) / 4)),
+                _ => {
+                    println!("Invalid FPGA address 0x{addr:x}");
+                    None
+                }
+            }
+        }
+    }
+}
+
+impl Bus for FpgaRealtimeBus<'_> {
+    fn read(&mut self, _size: RvSize, addr: RvAddr) -> Result<RvData, BusError> {
+        if let Some(ptr) = self.ptr_for_addr(addr) {
+            Ok(unsafe { ptr.read_volatile() })
+        } else {
+            println!("Error LoadAccessFault");
+            Err(BusError::LoadAccessFault)
+        }
+    }
+
+    fn write(&mut self, _size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
+        if let Some(ptr) = self.ptr_for_addr(addr) {
+            // TODO: support 16-bit and 8-bit writes
+            unsafe { ptr.write_volatile(val) };
+            Ok(())
+        } else {
+            Err(BusError::StoreAccessFault)
+        }
+    }
+}
+
+impl McuManager for &mut ModelFpgaRealtime {
+    type TMmio<'a>
+        = BusMmio<FpgaRealtimeBus<'a>>
+    where
+        Self: 'a;
+
+    fn mmio_mut(&mut self) -> Self::TMmio<'_> {
+        BusMmio::new(self.caliptra_axi_bus())
+    }
+
+    const I3C_ADDR: u32 = 0x2000_4000;
+    const MCI_ADDR: u32 = 0x2100_0000;
+    const TRACE_BUFFER_ADDR: u32 = 0x2101_0000;
+    const MBOX_0_ADDR: u32 = 0x2140_0000;
+    const MBOX_1_ADDR: u32 = 0x2180_0000;
+    const MCU_SRAM_ADDR: u32 = 0x21c0_0000;
+    const OTP_CTRL_ADDR: u32 = 0x7000_0000;
+    const LC_CTRL_ADDR: u32 = 0x7000_0400;
+}
+
+impl SocManager for &mut ModelFpgaRealtime {
+    const SOC_IFC_ADDR: u32 = 0x3003_0000;
+    const SOC_IFC_TRNG_ADDR: u32 = 0x3003_0000;
+    const SOC_MBOX_ADDR: u32 = 0x3002_0000;
+
+    const MAX_WAIT_CYCLES: u32 = 20_000_000;
+
+    type TMmio<'a>
+        = BusMmio<FpgaRealtimeBus<'a>>
+    where
+        Self: 'a;
+
+    fn mmio_mut(&mut self) -> Self::TMmio<'_> {
+        BusMmio::new(self.caliptra_axi_bus())
+    }
+
+    fn delay(&mut self) {
+        self.step();
     }
 }
 
@@ -1322,87 +1453,23 @@ impl Drop for ModelFpgaRealtime {
 #[cfg(test)]
 mod test {
     use crate::{DefaultHwModel, InitParams, McuHwModel};
+    use mcu_builder::FirmwareBinaries;
+    use mcu_rom_common::McuRomBootStatus;
 
-    // TODO: Put this back before pushing
-    //#[ignore]
     #[test]
     fn test_new_unbooted() {
-        let mcu_rom = mcu_builder::rom_build(Some("fpga"), "").expect("Could not build MCU ROM");
-        let mcu_runtime = &mcu_builder::runtime_build_with_apps_cached(
-            &[],
-            Some("fpga-runtime.bin"),
-            false,
-            Some("fpga"),
-            Some(&mcu_config_fpga::FPGA_MEMORY_MAP),
-            false,
-            None,
-            None,
-            None,
-        )
-        .expect("Could not build MCU runtime");
-        let mut caliptra_builder = mcu_builder::CaliptraBuilder::new(
-            true,
-            None,
-            None,
-            None,
-            None,
-            Some(mcu_runtime.into()),
-            None,
-        );
-        let caliptra_rom = caliptra_builder
-            .get_caliptra_rom()
-            .expect("Could not build Caliptra ROM");
-        let caliptra_fw = caliptra_builder
-            .get_caliptra_fw()
-            .expect("Could not build Caliptra FW bundle");
-        // TODO: pass this in to the MCU through the OTP
-        let vendor_pk_hash = caliptra_builder
-            .get_vendor_pk_hash()
-            .expect("Could not get vendor PK hash");
-        println!("Vendor PK hash: {:x?}", vendor_pk_hash);
-        let soc_manifest = caliptra_builder
-            .get_soc_manifest()
-            .expect("Could not get SOC manifest");
-        use tock_registers::interfaces::Readable;
-
-        let caliptra_rom = std::fs::read(caliptra_rom).unwrap();
-        let caliptra_fw = std::fs::read(caliptra_fw).unwrap();
-        let mcu_rom = std::fs::read(mcu_rom).unwrap();
-        let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
-        let soc_manifest = std::fs::read(soc_manifest).unwrap();
-
+        let firmware_bundle = FirmwareBinaries::from_env().unwrap();
         let mut model = DefaultHwModel::new_unbooted(InitParams {
-            caliptra_rom: &caliptra_rom,
-            caliptra_firmware: &caliptra_fw,
-            mcu_rom: &mcu_rom,
-            mcu_firmware: &mcu_runtime,
-            soc_manifest: &soc_manifest,
+            caliptra_rom: &firmware_bundle.caliptra_rom,
+            caliptra_firmware: &firmware_bundle.caliptra_fw,
+            mcu_rom: &firmware_bundle.mcu_rom,
+            mcu_firmware: &firmware_bundle.mcu_runtime,
+            soc_manifest: &firmware_bundle.soc_manifest,
             active_mode: true,
             ..Default::default()
         })
         .unwrap();
-        println!("Waiting on I3C target to be configured");
-        let mut xi3c_configured = false;
-        for _ in 0..2_000_000 {
-            model.step();
-            if !xi3c_configured && model.i3c_target_configured() {
-                xi3c_configured = true;
-                println!("I3C target configured");
-                model.configure_i3c_controller();
-                println!("Starting recovery flow (BMC)");
-                println!(
-                    "Mode {}",
-                    if (model.caliptra_mmio.soc().cptra_hw_config.get() >> 5) & 1 == 1 {
-                        "subsystem"
-                    } else {
-                        "passive"
-                    }
-                );
 
-                model.start_recovery_bmc();
-            }
-        }
-
-        println!("Ending");
+        model.step_until(|m| m.mci_flow_status() == u32::from(McuRomBootStatus::I3cInitialized));
     }
 }

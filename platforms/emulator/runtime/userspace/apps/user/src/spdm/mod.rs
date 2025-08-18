@@ -77,6 +77,8 @@ async fn spdm_mctp_responder() {
         max_spdm_msg_size: max_mctp_spdm_msg_size,
     };
 
+    let local_algorithms = LocalDeviceAlgorithms::default();
+
     // Create a wrapper for the global certificate store
     let shared_cert_store = SharedCertStore::new();
 
@@ -84,6 +86,7 @@ async fn spdm_mctp_responder() {
         SPDM_VERSIONS,
         &mut mctp_spdm_transport,
         local_capabilities,
+        local_algorithms,
         &shared_cert_store,
     ) {
         Ok(ctx) => ctx,
@@ -120,12 +123,26 @@ async fn spdm_doe_responder() {
 
     let max_doe_spdm_msg_size = (MAX_RESPONDER_BUF_SIZE - doe_spdm_transport.header_size()) as u32;
 
+    let doe_capability_flags = CapabilityFlags::default();
+    // TODO: Enable the following once secure sessions are implemented
+    // doe_capability_flags.set_key_ex_cap(1);
+    // doe_capability_flags.set_mac_cap(1);
+    // doe_capability_flags.set_encrypt_cap(1);
+
     let local_capabilities = DeviceCapabilities {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
-        flags: CapabilityFlags::default(),
+        flags: doe_capability_flags,
         data_transfer_size: max_doe_spdm_msg_size,
         max_spdm_msg_size: max_doe_spdm_msg_size,
     };
+
+    let device_doe_algorithms = DeviceAlgorithms::default();
+    // TODO: Enable the following once secure sessions are implemented
+    // device_doe_algorithms.set_dhe_group();
+    // device_doe_algorithms.set_aead_cipher_suite();
+    // device_doe_algorithms.set_spdm_key_schedule();
+
+    let local_algorithms = LocalDeviceAlgorithms::new(device_doe_algorithms);
 
     // Create a wrapper for the global certificate store
     let shared_cert_store = SharedCertStore::new();
@@ -134,6 +151,7 @@ async fn spdm_doe_responder() {
         SPDM_VERSIONS,
         &mut doe_spdm_transport,
         local_capabilities,
+        local_algorithms,
         &shared_cert_store,
     ) {
         Ok(ctx) => ctx,

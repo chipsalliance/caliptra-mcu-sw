@@ -234,11 +234,11 @@ async fn process_get_capabilities<'a>(
     ctx.reset_transcript_via_req_code(ReqRespCode::GetCapabilities);
 
     // Set the SPDM version in the transcript manager
-    ctx.transcript_mgr
+    ctx.shared_transcript
         .set_spdm_version(ctx.state.connection_info.version_number());
 
     // Append GET_CAPABILITIES to the transcript VCA context
-    ctx.append_message_to_transcript(req_payload, TranscriptContext::Vca)
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::Vca, None)
         .await
 }
 
@@ -278,7 +278,7 @@ async fn generate_capabilities_response<'a>(
     }
 
     // Append CAPABILITIES to the transcript VCA context
-    ctx.append_message_to_transcript(rsp_buf, TranscriptContext::Vca)
+    ctx.append_message_to_transcript(rsp_buf, TranscriptContext::Vca, None)
         .await?;
 
     rsp_buf
@@ -302,6 +302,14 @@ pub(crate) async fn handle_get_capabilities<'a>(
     // Generate CAPABILITIES response
     ctx.prepare_response_buffer(req_payload)?;
     generate_capabilities_response(ctx, req_payload).await?;
+
+    // Set handshake_in_the_clear flag based on local and peer capabilities
+    let local_flags = ctx.local_capabilities.flags;
+    let peer_flags = ctx.state.connection_info.peer_capabilities().flags;
+    if local_flags.handshake_in_the_clear_cap() != 0 && peer_flags.handshake_in_the_clear_cap() != 0
+    {
+        ctx.state.connection_info.set_handshake_in_the_clear();
+    }
 
     // Set state to AfterCapabilities
     ctx.state

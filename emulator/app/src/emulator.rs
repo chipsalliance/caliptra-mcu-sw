@@ -24,6 +24,7 @@ use caliptra_emu_bus::{Bus, Clock, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
 use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
+use caliptra_image_types::FwVerificationPqcKeyType;
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
@@ -31,8 +32,8 @@ use emulator_bmc::Bmc;
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
 use emulator_periph::{
-    DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci, McuRootBus,
-    McuRootBusArgs, McuRootBusOffsets, Otp,
+    CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
+    McuMailbox0Internal, McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp,
 };
 use emulator_registers_generated::dma::DmaPeripheral;
 use emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
@@ -50,6 +51,28 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tests::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
 use tests::pldm_request_response_test::PldmRequestResponseTest;
+
+// Type aliases for external shim callbacks
+pub type ExternalReadCallback =
+    Box<dyn Fn(caliptra_emu_types::RvSize, caliptra_emu_types::RvAddr, &mut u32) -> bool>;
+pub type ExternalWriteCallback = Box<
+    dyn Fn(
+        caliptra_emu_types::RvSize,
+        caliptra_emu_types::RvAddr,
+        caliptra_emu_types::RvData,
+    ) -> bool,
+>;
+
+fn parse_vendor_pqc_type(s: &str) -> Result<FwVerificationPqcKeyType, String> {
+    match s.to_lowercase().trim() {
+        "mldsa" => Ok(FwVerificationPqcKeyType::MLDSA),
+        "lms" => Ok(FwVerificationPqcKeyType::LMS),
+        _ => Err(format!(
+            "Invalid vendor PQC type: {}. Supported types are 'mldsa' and 'lms'.",
+            s
+        )),
+    }
+}
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None, name = "Caliptra MCU Emulator")]
@@ -109,6 +132,10 @@ pub struct EmulatorArgs {
 
     #[arg(long)]
     pub owner_pk_hash: Option<String>,
+
+    /// mldsa or lms (default)
+    #[arg(long, value_parser = parse_vendor_pqc_type, default_value = "lms")]
+    pub vendor_pqc_type: FwVerificationPqcKeyType,
 
     /// Path to the streaming boot PLDM firmware package
     #[arg(long)]
@@ -246,7 +273,18 @@ pub struct Emulator {
 }
 
 impl Emulator {
+    /// Create an Emulator from command line arguments without external callbacks
     pub fn from_args(cli: EmulatorArgs, capture_uart_output: bool) -> std::io::Result<Self> {
+        Self::from_args_with_callbacks(cli, capture_uart_output, None, None)
+    }
+
+    /// Create an Emulator from command line arguments with optional external callbacks
+    pub fn from_args_with_callbacks(
+        cli: EmulatorArgs,
+        capture_uart_output: bool,
+        external_read_callback: Option<ExternalReadCallback>,
+        external_write_callback: Option<ExternalWriteCallback>,
+    ) -> std::io::Result<Self> {
         let args_rom = &cli.rom;
         let args_log_dir = &cli.log_dir.unwrap_or_else(|| PathBuf::from("/tmp"));
 
@@ -428,6 +466,18 @@ impl Emulator {
             clock: clock.clone(),
         };
         let root_bus = McuRootBus::new(bus_args).unwrap();
+
+        // Create external communication bus
+        let mut caliptra_to_ext = CaliptraToExtBus::new();
+
+        // Set external callbacks if provided
+        if let Some(read_callback) = external_read_callback {
+            caliptra_to_ext.set_read_callback(read_callback);
+        }
+        if let Some(write_callback) = external_write_callback {
+            caliptra_to_ext.set_write_callback(write_callback);
+        }
+
         let dma_ram = root_bus.ram.clone();
         let dma_rom_sram = root_bus.rom_sram.clone();
         let direct_read_flash = root_bus.direct_read_flash.clone();
@@ -668,8 +718,13 @@ impl Emulator {
         .unwrap();
 
         emulator_periph::DummyDmaCtrl::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
+        let mci_irq = root_bus.mci_irq.clone();
 
-        let delegates: Vec<Box<dyn Bus>> = vec![Box::new(root_bus), Box::new(soc_to_caliptra)];
+        let delegates: Vec<Box<dyn Bus>> = vec![
+            Box::new(root_bus),
+            Box::new(soc_to_caliptra),
+            Box::new(caliptra_to_ext),
+        ];
 
         let vendor_pk_hash = cli.vendor_pk_hash.map(|hash| {
             let v = hex::decode(hash).unwrap();
@@ -681,8 +736,22 @@ impl Emulator {
         });
 
         let lc = LcCtrl::new();
-        let otp = Otp::new(&clock.clone(), cli.otp, owner_pk_hash, vendor_pk_hash)?;
-        let mci = Mci::new(&clock.clone(), ext_mci);
+
+        let otp = Otp::new(
+            &clock.clone(),
+            cli.otp,
+            None,
+            owner_pk_hash,
+            vendor_pk_hash,
+            cli.vendor_pqc_type,
+        )?;
+        let mci = Mci::new(
+            &clock.clone(),
+            ext_mci,
+            mci_irq,
+            Some(McuMailbox0Internal::new(&clock.clone())),
+        );
+
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
             Some(auto_root_bus_offsets),
@@ -960,6 +1029,11 @@ impl Emulator {
         }
 
         action
+    }
+
+    /// Get the current program counter (PC) of the MCU CPU
+    pub fn get_pc(&self) -> u32 {
+        self.mcu_cpu.read_pc()
     }
 }
 

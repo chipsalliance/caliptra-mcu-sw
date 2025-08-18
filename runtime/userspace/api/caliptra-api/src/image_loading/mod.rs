@@ -9,14 +9,15 @@ mod pldm_fdops;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{
-    AuthorizeAndStashReq, AuthorizeAndStashResp, GetImageInfoReq, GetImageInfoResp,
-    ImageHashSource, MailboxReqHeader, Request,
+    AuthorizeAndStashReq, AuthorizeAndStashResp, CommandId, GetImageInfoReq, GetImageInfoResp,
+    ImageHashSource, MailboxReqHeader, MailboxRespHeader, Request,
 };
 use caliptra_auth_man_types::ImageMetadataFlags;
 use embassy_executor::Spawner;
-use flash_image::FlashHeader;
+use flash_image::{FlashHeader, SOC_MANIFEST_IDENTIFIER};
+use libsyscall_caliptra::dma::DMAMapping;
 use libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
-use libsyscall_caliptra::mailbox::MailboxError;
+use libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
 use libsyscall_caliptra::{dma::AXIAddr, mailbox::Mailbox};
 use libtock_platform::ErrorCode;
 use libtockasync::TockExecutor;
@@ -24,7 +25,7 @@ use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use pldm_common::protocol::firmware_update::Descriptor;
 use pldm_lib::daemon::PldmService;
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const IMAGE_AUTHORIZED: u32 = 0xDEADC0DE;
 
@@ -46,15 +47,17 @@ pub trait ImageLoader {
     async fn load_and_authorize(&self, image_id: u32) -> Result<(), ErrorCode>;
 }
 
-pub struct FlashImageLoader {
+pub struct FlashImageLoader<D: DMAMapping + 'static> {
     mailbox: Mailbox,
     flash: FlashSyscall,
+    dma_mapping: &'static D,
 }
 
-pub struct PldmImageLoader<'a> {
+pub struct PldmImageLoader<'a, D: DMAMapping + 'static> {
     mailbox: Mailbox,
     spawner: Spawner,
     params: &'a PldmFirmwareDeviceParams<'a>,
+    dma_mapping: &'static D,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -63,36 +66,96 @@ pub struct PldmFirmwareDeviceParams<'a> {
     pub fw_params: &'a FirmwareParameters,
 }
 
-impl FlashImageLoader {
-    pub fn new(flash_syscall: FlashSyscall) -> Self {
+impl<D: DMAMapping + 'static> FlashImageLoader<D> {
+    pub fn new(flash_syscall: FlashSyscall, dma_mapping: &'static D) -> Self {
         Self {
             mailbox: Mailbox::new(),
             flash: flash_syscall,
+            dma_mapping,
         }
     }
 }
 
 #[async_trait(?Send)]
-impl ImageLoader for FlashImageLoader {
+impl<D: DMAMapping + 'static> ImageLoader for FlashImageLoader<D> {
     async fn load_and_authorize(&self, image_id: u32) -> Result<(), ErrorCode> {
-        let load_address = get_image_load_address(&self.mailbox, image_id).await?;
+        let load_address =
+            get_image_load_address(&self.mailbox, image_id, self.dma_mapping).await?;
         let mut header: [u8; core::mem::size_of::<FlashHeader>()] =
             [0; core::mem::size_of::<FlashHeader>()];
         flash_client::flash_read_header(&self.flash, &mut header).await?;
         let (offset, size) = flash_client::flash_read_toc(&self.flash, &header, image_id).await?;
-        flash_client::flash_load_image(&self.flash, load_address, offset as usize, size as usize)
-            .await?;
+        flash_client::flash_load_image(
+            &self.flash,
+            load_address,
+            offset as usize,
+            size as usize,
+            self.dma_mapping,
+        )
+        .await?;
         authorize_image(&self.mailbox, image_id, size).await?;
         Ok(())
     }
 }
 
-impl<'a> PldmImageLoader<'a> {
-    pub fn new(params: &'a PldmFirmwareDeviceParams, spawner: Spawner) -> Self {
+impl<D: DMAMapping + 'static> FlashImageLoader<D> {
+    pub async fn set_auth_manifest(&self) -> Result<(), ErrorCode> {
+        let mut header: [u8; core::mem::size_of::<FlashHeader>()] =
+            [0; core::mem::size_of::<FlashHeader>()];
+        flash_client::flash_read_header(&self.flash, &mut header).await?;
+        let (offset, size) =
+            flash_client::flash_read_toc(&self.flash, &header, SOC_MANIFEST_IDENTIFIER).await?;
+
+        let mut stream =
+            FlashMailboxPayloadStream::new(&self.flash, offset as usize, size as usize);
+
+        let mut req = AuthManifestReqHeader {
+            chksum: 0,
+            manifest_size: size,
+        };
+
+        // Calculate the mailbox checksum
+        let mut checksum = stream.get_bytesum().await;
+        for b in CommandId::VERIFY_AUTH_MANIFEST.0.to_le_bytes().iter() {
+            checksum = checksum.wrapping_add(u32::from(*b));
+        }
+        for b in req.as_mut_bytes().iter() {
+            checksum = checksum.wrapping_add(u32::from(*b));
+        }
+        req.chksum = 0u32.wrapping_sub(checksum);
+
+        let response_buffer = &mut [0u8; core::mem::size_of::<MailboxRespHeader>()];
+        let header = req.as_mut_bytes();
+        loop {
+            let result = self
+                .mailbox
+                .execute_with_payload_stream(
+                    CommandId::VERIFY_AUTH_MANIFEST.into(),
+                    Some(header),
+                    &mut stream,
+                    response_buffer,
+                )
+                .await;
+            match result {
+                Ok(_) => return Ok(()),
+                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
+                Err(_) => return Err(ErrorCode::Fail),
+            }
+        }
+    }
+}
+
+impl<'a, D: DMAMapping + 'static> PldmImageLoader<'a, D> {
+    pub fn new(
+        params: &'a PldmFirmwareDeviceParams,
+        spawner: Spawner,
+        dma_mapping: &'static D,
+    ) -> Self {
         Self {
             mailbox: Mailbox::new(),
             spawner,
             params,
+            dma_mapping,
         }
     }
     pub async fn finalize(&self) -> Result<(), ErrorCode> {
@@ -101,15 +164,17 @@ impl<'a> PldmImageLoader<'a> {
 }
 
 #[async_trait(?Send)]
-impl ImageLoader for PldmImageLoader<'_> {
+impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
     async fn load_and_authorize(&self, image_id: u32) -> Result<(), ErrorCode> {
-        let load_address = get_image_load_address(&self.mailbox, image_id).await?;
+        let load_address =
+            get_image_load_address(&self.mailbox, image_id, self.dma_mapping).await?;
 
         let result: Result<(), ErrorCode> = {
             pldm_client::initialize_pldm(
                 self.spawner,
                 self.params.descriptors,
                 self.params.fw_params,
+                self.dma_mapping,
             )
             .await?;
             let (offset, size) = pldm_client::pldm_download_toc(image_id).await?;
@@ -125,26 +190,11 @@ impl ImageLoader for PldmImageLoader<'_> {
     }
 }
 
-const MCU_SRAM_HI_OFFSET: u64 = 0x1000_0000;
-pub fn local_ram_to_axi_address(addr: u32) -> u64 {
-    // Convert a local address to an AXI address
-    (MCU_SRAM_HI_OFFSET << 32) | (addr as u64)
-}
-
-pub fn caliptra_axi_addr_to_dma_addr(addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
-    // Convert Caliptra's AXI address to this device DMA address
-    // Caliptra's External SRAM is mapped at 0x0000_0000_8000_0000
-    // that is mapped to this device's DMA 0x2000_0000_8000_0000
-    const CALIPTRA_EXTERNAL_SRAM_BASE: u64 = 0x0000_0000_8000_0000;
-    const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0x2000_0000_0000_0000;
-    if addr < CALIPTRA_EXTERNAL_SRAM_BASE {
-        return Err(ErrorCode::Invalid);
-    }
-
-    Ok(addr - CALIPTRA_EXTERNAL_SRAM_BASE + DEVICE_EXTERNAL_SRAM_BASE)
-}
-
-async fn get_image_load_address(mailbox: &Mailbox, image_id: u32) -> Result<AXIAddr, ErrorCode> {
+async fn get_image_load_address(
+    mailbox: &Mailbox,
+    image_id: u32,
+    dma_mapping: &impl DMAMapping,
+) -> Result<AXIAddr, ErrorCode> {
     let mut req = GetImageInfoReq {
         hdr: MailboxReqHeader::default(),
         fw_id: image_id.to_le_bytes(),
@@ -172,7 +222,9 @@ async fn get_image_load_address(mailbox: &Mailbox, image_id: u32) -> Result<AXIA
             let caliptra_axi_addr =
                 (resp.image_load_address_high as u64) << 32 | resp.image_load_address_low as u64;
 
-            caliptra_axi_addr_to_dma_addr(caliptra_axi_addr)
+            dma_mapping
+                .cptra_axi_to_mcu_axi(caliptra_axi_addr)
+                .map_err(|_| ErrorCode::Fail)
         }
         Err(_) => Err(ErrorCode::Fail),
     }
@@ -216,4 +268,68 @@ async fn authorize_image(mailbox: &Mailbox, image_id: u32, size: u32) -> Result<
         return Err(ErrorCode::Fail);
     }
     Ok(())
+}
+
+pub struct FlashMailboxPayloadStream<'a> {
+    pub flash: &'a FlashSyscall,
+    pub offset: usize,
+    pub cursor: usize,
+    pub len: usize,
+}
+
+impl<'a> FlashMailboxPayloadStream<'a> {
+    pub fn new(flash: &'a FlashSyscall, starting_offset: usize, len: usize) -> Self {
+        Self {
+            flash,
+            offset: starting_offset,
+            cursor: starting_offset,
+            len,
+        }
+    }
+    pub fn reset(&mut self) {
+        // Reset the cursor to the starting offset
+        self.cursor = self.offset;
+    }
+    pub async fn get_bytesum(&mut self) -> u32 {
+        self.reset();
+        let mut sum = 0u32;
+        let mut buffer = [0u8; 256];
+        while let Ok(bytes_read) = self.read(&mut buffer).await {
+            if bytes_read == 0 {
+                break; // No more data to read
+            }
+            for byte in &buffer[..bytes_read] {
+                sum = sum.wrapping_add(u32::from(*byte));
+            }
+        }
+        self.reset();
+        sum
+    }
+}
+
+#[async_trait(?Send)]
+impl PayloadStream for FlashMailboxPayloadStream<'_> {
+    fn size(&self) -> usize {
+        self.len
+    }
+
+    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
+        if (self.cursor - self.offset) >= self.len {
+            return Ok(0); // No more data to read
+        }
+
+        let bytes_to_read = (self.len - (self.cursor - self.offset)).min(buffer.len());
+        self.flash
+            .read(self.cursor, bytes_to_read, &mut buffer[..bytes_to_read])
+            .await?;
+        self.cursor += bytes_to_read;
+        Ok(bytes_to_read)
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, FromBytes, IntoBytes, Clone, Copy, Immutable, KnownLayout)]
+pub struct AuthManifestReqHeader {
+    pub chksum: u32,
+    pub manifest_size: u32,
 }

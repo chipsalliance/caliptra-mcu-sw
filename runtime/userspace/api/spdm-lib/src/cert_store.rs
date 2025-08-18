@@ -3,12 +3,14 @@
 extern crate alloc;
 
 use crate::error::{SpdmError, SpdmResult};
-use crate::protocol::algorithms::{AsymAlgo, ECC_P384_SIGNATURE_SIZE, SHA384_HASH_SIZE};
 use crate::protocol::certs::{CertificateInfo, KeyUsageMask};
 use crate::protocol::SpdmCertChainHeader;
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
+use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use libapi_caliptra::error::CaliptraApiError;
+use libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 
 pub const MAX_CERT_SLOTS_SUPPORTED: u8 = 2;
 pub const SPDM_CERT_CHAIN_METADATA_LEN: u16 =
@@ -167,4 +169,43 @@ pub(crate) async fn cert_slot_mask(cert_store: &dyn SpdmCertStore) -> (u8, u8) {
     }
 
     (supported_slot_mask, provisioned_slot_mask)
+}
+
+/// Get the hash of the certificate chain.
+/// The certificate chain is in ASN.1 DER-encoded X.509 v3 format.
+/// The type of the certificate chain is indicated by the asym_algo parameter.
+///
+/// # Arguments
+/// * `cert_store` - The certificate store to retrieve the certificate chain from.
+/// * `slot_id` - The slot ID of the certificate chain.
+/// * `asym_algo` - The asymmetric algorithm to indicate the type of Certificate chain.
+///
+/// # Returns
+/// * `hash` - The hash of the certificate chain.
+pub(crate) async fn hash_cert_chain(
+    cert_store: &dyn SpdmCertStore,
+    slot_id: u8,
+    asym_algo: AsymAlgo,
+) -> CertStoreResult<[u8; SHA384_HASH_SIZE]> {
+    let mut buffer = [0u8; MAX_CRYPTO_MBOX_DATA_SIZE];
+    let mut hash = [0u8; SHA384_HASH_SIZE];
+    let mut ctx = HashContext::new();
+    ctx.init(HashAlgoType::SHA384, None)
+        .await
+        .map_err(CertStoreError::CaliptraApi)?;
+
+    let len = cert_store.cert_chain_len(asym_algo, slot_id).await?;
+    for i in (0..len).step_by(buffer.len()) {
+        let chunk_len = buffer.len().min(len - i);
+        cert_store
+            .get_cert_chain(slot_id, asym_algo, i, &mut buffer[..chunk_len])
+            .await?;
+        ctx.update(&buffer[..chunk_len])
+            .await
+            .map_err(CertStoreError::CaliptraApi)?;
+    }
+    ctx.finalize(&mut hash)
+        .await
+        .map_err(CertStoreError::CaliptraApi)?;
+    Ok(hash)
 }

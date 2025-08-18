@@ -118,10 +118,6 @@ set_property file_type SystemVerilog [get_files *.v]
 # Exception: caliptra_package_top.v needs to be Verilog to be included in a Block Diagram.
 set_property file_type Verilog [get_files  $fpgaDir/src/caliptra_package_top.v]
 
-# Add include paths - TODO: This may get discarded during packaging. Checking if removing causes a build failure
-#set_property include_dirs $caliptrartlDir/src/integration/rtl [current_fileset]
-
-
 # Set caliptra_package_top as top in case next steps fail so that the top is something useful.
 if {$APB} {
   set_property top caliptra_package_apb_top [current_fileset]

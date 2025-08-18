@@ -1,14 +1,20 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Result};
+use caliptra_image_types::ImageManifest;
 use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
 };
+use zerocopy::FromBytes;
 use zip::{
     write::{FileOptions, SimpleFileOptions},
     ZipWriter,
 };
+
+use crate::CaliptraBuilder;
+
+use std::{env::var, sync::OnceLock};
 
 #[derive(Default)]
 pub struct FirmwareBinaries {
@@ -25,6 +31,25 @@ impl FirmwareBinaries {
     const MCU_ROM_NAME: &'static str = "mcu_rom.bin";
     const MCU_RUNTIME_NAME: &'static str = "mcu_runtime.bin";
     const SOC_MANIFEST_NAME: &'static str = "soc_manifest.bin";
+
+    /// Reads the environment variable `CPTRA_FIRMWARE_BUNDLE`.
+    ///
+    /// returns `FirmwareBinaries` if `CPTRA_FIRMWARE_BUNDLE` points to a valid zip file.
+    ///
+    /// This function is safe to call multiple times. The returned `FirmwareBinaries` is cached
+    /// after the first invocation to avoid multiple decompressions.
+    pub fn from_env() -> Result<&'static Self> {
+        // TODO: Consider falling back to building the firmware if CPTRA_FIRMWARE_BUNDLE is unset.
+        let bundle_path = var("CPTRA_FIRMWARE_BUNDLE")
+            .expect("Set the environment variable CPTRA_FIRMWARE_BUNDLE ");
+
+        static BINARIES: OnceLock<FirmwareBinaries> = OnceLock::new();
+        let binaries = BINARIES.get_or_init(|| {
+            Self::read_from_zip(&bundle_path.clone().into()).expect("failed to unzip archive")
+        });
+
+        Ok(binaries)
+    }
 
     pub fn read_from_zip(path: &PathBuf) -> Result<Self> {
         let file = std::fs::File::open(path)?;
@@ -48,6 +73,14 @@ impl FirmwareBinaries {
         }
 
         Ok(binaries)
+    }
+
+    pub fn vendor_pk_hash(&self) -> Option<[u8; 48]> {
+        if let Ok((manifest, _)) = ImageManifest::ref_from_prefix(&self.caliptra_fw) {
+            CaliptraBuilder::vendor_pk_hash(manifest).ok()
+        } else {
+            None
+        }
     }
 }
 
@@ -80,8 +113,16 @@ pub fn all_build(
     )?;
 
     let fpga = platform == "fpga";
-    let mut caliptra_builder =
-        crate::CaliptraBuilder::new(fpga, None, None, None, None, Some(mcu_runtime.into()), None);
+    let mut caliptra_builder = crate::CaliptraBuilder::new(
+        fpga,
+        None,
+        None,
+        None,
+        None,
+        Some(mcu_runtime.into()),
+        None,
+        None,
+    );
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_fw = caliptra_builder.get_caliptra_fw()?;
     let vendor_pk_hash = caliptra_builder.get_vendor_pk_hash()?;

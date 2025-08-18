@@ -2,39 +2,40 @@
 
 use anyhow::{bail, Result};
 pub use api::mailbox::mbox_write_fifo;
-pub use api_types::{DbgManufServiceRegReq, DeviceLifecycle, Fuses, SecurityState, U4};
-use caliptra_api::{self as api};
+pub use api_types::{DbgManufServiceRegReq, DeviceLifecycle, Fuses, U4};
+use caliptra_api::{self as api, SocManager};
 use caliptra_api_types as api_types;
 use caliptra_emu_bus::Event;
 pub use caliptra_emu_cpu::{CodeRange, ImageInfo, StackInfo, StackRange};
 use caliptra_hw_model_types::{
-    ErrorInjectionMode, EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles,
-    DEFAULT_CPTRA_OBF_KEY,
+    EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
 };
+use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_registers::soc_ifc::regs::{
     CptraItrngEntropyConfig0WriteVal, CptraItrngEntropyConfig1WriteVal,
 };
-//use registers_generated::interface_regs;
+pub use mcu_mgr::McuManager;
+use mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
 pub use model_emulated::ModelEmulated;
 use output::ExitStatus;
 pub use output::Output;
 use rand::{rngs::StdRng, SeedableRng};
+use sha2::Digest;
 use std::io::{stdout, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::mpsc;
+pub use vmem::read_otp_vmem_data;
 
 mod bus_logger;
-//mod fpga_regs;
-mod lifecycle_controller;
+mod mcu_mgr;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
 mod model_fpga_realtime;
+mod otp_provision;
 mod output;
 mod vmem;
 mod xi3c;
-
-pub use vmem::read_otp_vmem_data;
 
 pub enum ShaAccMode {
     Sha384Stream,
@@ -61,34 +62,70 @@ pub const DEFAULT_APB_PAUSER: u32 = 0x01;
 
 const EXPECTED_CALIPTRA_BOOT_TIME_IN_CYCLES: u64 = 40_000_000; // 40 million cycles
 
+// This is a random number, but should be kept in sync with what is the default value in the FPGA ROM.
+const DEFAULT_LIFECYCLE_RAW_TOKEN: LifecycleToken =
+    LifecycleToken(0x05edb8c608fcc830de181732cfd65e57u128.to_le_bytes());
+
+const DEFAULT_LIFECYCLE_RAW_TOKENS: LifecycleRawTokens = LifecycleRawTokens {
+    test_unlock: [DEFAULT_LIFECYCLE_RAW_TOKEN; 7],
+    manuf: DEFAULT_LIFECYCLE_RAW_TOKEN,
+    manuf_to_prod: DEFAULT_LIFECYCLE_RAW_TOKEN,
+    prod_to_prod_end: DEFAULT_LIFECYCLE_RAW_TOKEN,
+    rma: DEFAULT_LIFECYCLE_RAW_TOKEN,
+};
+
+/// Constructs an HwModel based on the cargo features and environment
+/// variables. Most test cases that need to construct a HwModel should use this
+/// function over HwModel::new_unbooted().
+///
+/// The model returned by this function does not have any fuses programmed and
+/// is not yet ready to execute code in the microcontroller. Most test cases
+/// should use [`new`] instead.
+pub fn new_unbooted<M: McuHwModel>(params: InitParams) -> Result<M> {
+    let summary = params.summary();
+    M::new_unbooted(params).inspect(|hw| {
+        println!("Using hardware-model {}", hw.type_name());
+        println!("{summary:#?}");
+    })
+}
+
 pub struct InitParams<'a> {
-    // The contents of the Caliptra ROM
+    /// The contents of the Caliptra ROM
     pub caliptra_rom: &'a [u8],
-    // Caliptra's firmware bundle.
+    /// Caliptra's firmware bundle.
     pub caliptra_firmware: &'a [u8],
-    // SoC manifest
+    /// SoC manifest
     pub soc_manifest: &'a [u8],
-    // The contents of the MCU ROM
+    /// The contents of the MCU ROM
     pub mcu_rom: &'a [u8],
-    // The contents of the MCU firmware
+    /// The contents of the MCU firmware
     pub mcu_firmware: &'a [u8],
 
-    // The initial contents of the DCCM SRAM
+    /// The initial contents of the DCCM SRAM
     pub caliptra_dccm: &'a [u8],
 
-    // The initial contents of the ICCM SRAM
+    /// The initial contents of the ICCM SRAM
     pub caliptra_iccm: &'a [u8],
 
-    // The initial contents of the OTP memory
+    /// The initial contents of the OTP memory
     pub otp_memory: Option<&'a [u8]>,
 
-    // The initial lifecycle controller state of the device.
-    // If otp_memory is set, this will be ignored.
-    pub lifecycle_controller_state: Option<u32>,
+    /// The initial lifecycle controller state of the device.
+    /// This will override any otp_memory contents.
+    pub lifecycle_controller_state: Option<LifecycleControllerState>,
+
+    /// Lifecycle tokens (raw) to burn into the OTP memory.
+    /// This will override any otp_memory contents.
+    pub lifecycle_tokens: Option<LifecycleRawTokens>,
+
+    /// Vendor public key hash.
+    /// This will override any otp_memory contents.
+    pub vendor_pk_hash: Option<[u8; 48]>,
+    /// PQC key type for vendor public key.
+    /// This will override any otp_memory contents.
+    pub vendor_pqc_type: Option<FwVerificationPqcKeyType>,
 
     pub log_writer: Box<dyn std::io::Write>,
-
-    pub security_state: SecurityState,
 
     pub dbg_manuf_service: DbgManufServiceRegReq,
 
@@ -132,6 +169,16 @@ pub struct InitParams<'a> {
     // overflows.
     pub stack_info: Option<StackInfo>,
 }
+
+impl InitParams<'_> {
+    pub fn summary(&self) -> InitParamsSummary {
+        InitParamsSummary {
+            rom_sha384: sha2::Sha384::digest(self.mcu_rom).into(),
+            obf_key: self.cptra_obf_key,
+        }
+    }
+}
+
 impl Default for InitParams<'_> {
     fn default() -> Self {
         let seed = std::env::var("CPTRA_TRNG_SEED")
@@ -157,9 +204,8 @@ impl Default for InitParams<'_> {
             caliptra_iccm: Default::default(),
             otp_memory: None,
             lifecycle_controller_state: None,
+            lifecycle_tokens: None,
             log_writer: Box::new(stdout()),
-            security_state: *SecurityState::default()
-                .set_device_lifecycle(DeviceLifecycle::Unprovisioned),
             dbg_manuf_service: Default::default(),
             uds_granularity_32: false, // 64-bit granularity
             bootfsm_break: false,
@@ -175,6 +221,8 @@ impl Default for InitParams<'_> {
             stack_info: None,
             csr_hmac_key: [1; 16],
             soc_manifest: Default::default(),
+            vendor_pk_hash: None,
+            vendor_pqc_type: None,
         }
     }
 }
@@ -182,14 +230,12 @@ impl Default for InitParams<'_> {
 pub struct InitParamsSummary {
     rom_sha384: [u8; 48],
     obf_key: [u32; 8],
-    security_state: SecurityState,
 }
 impl std::fmt::Debug for InitParamsSummary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InitParamsSummary")
             .field("rom_sha384", &HexBytes(&self.rom_sha384))
             .field("obf_key", &HexSlice(&self.obf_key))
-            .field("security_state", &self.security_state)
             .finish()
     }
 }
@@ -270,6 +316,10 @@ pub trait McuHwModel {
         self.copy_output_until_exit_success(std::io::Sink::default())
     }
 
+    fn mcu_manager(&mut self) -> impl McuManager;
+
+    fn caliptra_soc_manager(&mut self) -> impl SocManager;
+
     fn copy_output_until_exit_success(
         &mut self,
         mut w: impl std::io::Write,
@@ -338,17 +388,13 @@ pub trait McuHwModel {
         Ok(())
     }
 
-    fn cover_fw_mage(&mut self, _image: &[u8]) {}
+    fn cover_fw_image(&mut self, _image: &[u8]) {}
 
     fn tracing_hint(&mut self, enable: bool);
-
-    fn ecc_error_injection(&mut self, _mode: ErrorInjectionMode) {}
 
     fn set_axi_user(&mut self, axi_user: u32);
 
     fn set_itrng_divider(&mut self, _divider: u32) {}
-
-    fn set_security_state(&mut self, _value: SecurityState) {}
 
     fn set_generic_input_wires(&mut self, _value: &[u32; 2]) {}
 
@@ -359,4 +405,8 @@ pub trait McuHwModel {
     fn events_from_caliptra(&mut self) -> Vec<Event>;
 
     fn events_to_caliptra(&mut self) -> mpsc::Sender<Event>;
+
+    fn mci_flow_status(&mut self) -> u32 {
+        0
+    }
 }

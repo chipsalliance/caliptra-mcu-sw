@@ -2,23 +2,44 @@
 
 use crate::bus_logger::BusLogger;
 use crate::bus_logger::LogFile;
+use crate::otp_provision::lc_generate_memory;
+use crate::otp_provision::otp_generate_lifecycle_tokens_mem;
 use crate::trace_path_or_env;
 use crate::InitParams;
 use crate::McuHwModel;
+use crate::McuManager;
 use crate::Output;
+use crate::DEFAULT_LIFECYCLE_RAW_TOKENS;
 use anyhow::Result;
+use caliptra_api::SocManager;
+use caliptra_emu_bus::Bus;
+use caliptra_emu_bus::BusError;
+use caliptra_emu_bus::BusMmio;
 use caliptra_emu_bus::{Clock, Event};
 use caliptra_emu_cpu::{Cpu, CpuArgs, InstrTracer, Pic};
+use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_periph::{
     ActionCb, CaliptraRootBus, CaliptraRootBusArgs, MailboxRequester, ReadyForFwCb, TbServicesCb,
 };
+use caliptra_emu_types::RvAddr;
+use caliptra_emu_types::RvData;
+use caliptra_emu_types::RvSize;
+use caliptra_hw_model::DeviceLifecycle;
 use caliptra_hw_model::ModelError;
-use caliptra_hw_model_types::ErrorInjectionMode;
+use caliptra_hw_model::SecurityState;
+use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
-use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp};
+use emulator_periph::McuRootBusOffsets;
+use emulator_periph::{
+    I3c, I3cController, Mci, McuMailbox0Internal, McuRootBus, McuRootBusArgs, Otp,
+};
 use emulator_registers_generated::root_bus::AutoRootBus;
+use mcu_config::McuMemoryMap;
+use mcu_rom_common::LifecycleControllerState;
+use registers_generated::fuses;
 use semver::Version;
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use std::io::Write;
@@ -32,6 +53,7 @@ const DEFAULT_AXI_PAUSER: u32 = 0xaaaa_aaaa;
 /// Emulated model
 pub struct ModelEmulated {
     cpu: Cpu<BusLogger<AutoRootBus>>,
+    soc_to_caliptra_bus: SocToCaliptraBus,
     output: Output,
     caliptra_trace_fn: Option<Box<InstrTracer<'static>>>,
     ready_for_fw: Rc<Cell<bool>>,
@@ -73,6 +95,23 @@ impl McuHwModel for ModelEmulated {
 
         let output_sink = output.sink().clone();
 
+        let security_state_unprovisioned = SecurityState::default();
+        let security_state_manufacturing =
+            *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Manufacturing);
+        let security_state_prod =
+            *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Production);
+
+        let security_state = match params
+            .lifecycle_controller_state
+            .unwrap_or(LifecycleControllerState::Raw)
+        {
+            LifecycleControllerState::Raw
+            | LifecycleControllerState::Prod
+            | LifecycleControllerState::ProdEnd => security_state_prod,
+            LifecycleControllerState::Dev => security_state_manufacturing,
+            _ => security_state_unprovisioned,
+        };
+
         let bus_args = CaliptraRootBusArgs {
             rom: params.caliptra_rom.into(),
             tb_services_cb: TbServicesCb::new(move |ch| {
@@ -85,7 +124,7 @@ impl McuHwModel for ModelEmulated {
             bootfsm_go_cb: ActionCb::new(move || {
                 cpu_enabled_cloned.set(true);
             }),
-            security_state: params.security_state,
+            security_state,
             dbg_manuf_service_req: params.dbg_manuf_service,
             subsystem_mode: params.active_mode,
             prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs,
@@ -124,9 +163,6 @@ impl McuHwModel for ModelEmulated {
             .soc_reg
             .set_hw_config((1 | if params.active_mode { 1 << 5 } else { 0 }).into());
 
-        let _soc_to_caliptra_bus =
-            root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(DEFAULT_AXI_PAUSER));
-
         let soc_to_caliptra_bus =
             root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(DEFAULT_AXI_PAUSER));
 
@@ -134,10 +170,19 @@ impl McuHwModel for ModelEmulated {
         std::hash::Hash::hash_slice(params.caliptra_rom, &mut hasher);
         let image_tag = hasher.finish();
 
+        let memory_map = McuMemoryMap::default();
+        let offsets = McuRootBusOffsets {
+            rom_offset: memory_map.rom_offset,
+            ram_offset: memory_map.sram_offset,
+            ram_size: memory_map.sram_size,
+            ..Default::default()
+        };
+
         let bus_args = McuRootBusArgs {
             rom: params.mcu_rom.into(),
             pic: pic.clone(),
             clock: clock.clone(),
+            offsets,
             ..Default::default()
         };
         let mcu_root_bus = McuRootBus::new(bus_args).unwrap();
@@ -149,9 +194,43 @@ impl McuHwModel for ModelEmulated {
             i3c_irq,
             Version::new(2, 0, 0),
         );
-        let otp = Otp::new(&clock.clone(), None, None, None)?;
+        let mut otp_mem = vec![0u8; fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE];
+        if let Some(state) = params.lifecycle_controller_state {
+            println!("Setting lifecycle controller state to {}", state);
+            let mem = lc_generate_memory(state, 1)?;
+            otp_mem[fuses::LIFE_CYCLE_BYTE_OFFSET..fuses::LIFE_CYCLE_BYTE_OFFSET + mem.len()]
+                .copy_from_slice(&mem);
+
+            let tokens = params
+                .lifecycle_tokens
+                .as_ref()
+                .unwrap_or(&DEFAULT_LIFECYCLE_RAW_TOKENS);
+
+            let mem = otp_generate_lifecycle_tokens_mem(tokens)?;
+            otp_mem[fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET
+                ..fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET
+                    + fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_SIZE]
+                .copy_from_slice(&mem);
+        }
+
+        let otp = Otp::new(
+            &clock.clone(),
+            None,
+            Some(otp_mem),
+            None,
+            params.vendor_pk_hash,
+            params
+                .vendor_pqc_type
+                .unwrap_or(FwVerificationPqcKeyType::LMS),
+        )?;
         let ext_mci = root_bus.mci_external_regs();
-        let mci = Mci::new(&clock.clone(), ext_mci);
+        let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
+        let mci = Mci::new(
+            &clock.clone(),
+            ext_mci,
+            Rc::new(RefCell::new(mci_irq)),
+            Some(McuMailbox0Internal::new(&clock.clone())),
+        );
 
         let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
             vec![Box::new(mcu_root_bus), Box::new(soc_to_caliptra_bus)];
@@ -177,14 +256,18 @@ impl McuHwModel for ModelEmulated {
 
         let args = CpuArgs::default();
         let mut cpu = Cpu::new(BusLogger::new(auto_root_bus), clock, pic, args);
+        cpu.write_pc(McuMemoryMap::default().rom_offset);
 
         if let Some(stack_info) = params.stack_info {
             cpu.with_stack_info(stack_info);
         }
 
         let (events_to_caliptra, events_from_caliptra) = cpu.register_events();
+        let soc_to_caliptra_bus =
+            root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(DEFAULT_AXI_PAUSER));
 
         let mut m = ModelEmulated {
+            soc_to_caliptra_bus,
             output,
             cpu,
             caliptra_trace_fn: None,
@@ -226,7 +309,7 @@ impl McuHwModel for ModelEmulated {
         &mut self.output
     }
 
-    fn cover_fw_mage(&mut self, fw_image: &[u8]) {
+    fn cover_fw_image(&mut self, fw_image: &[u8]) {
         let iccm_image = &fw_image[IMAGE_MANIFEST_BYTE_SIZE..];
         self.iccm_image_tag = Some(hash_slice(iccm_image));
     }
@@ -255,10 +338,6 @@ impl McuHwModel for ModelEmulated {
         }))
     }
 
-    fn ecc_error_injection(&mut self, _mode: ErrorInjectionMode) {
-        unimplemented!();
-    }
-
     fn set_axi_user(&mut self, _axi_user: u32) {
         unimplemented!();
     }
@@ -278,16 +357,109 @@ impl McuHwModel for ModelEmulated {
     fn save_otp_memory(&self, _path: &Path) -> Result<()> {
         unimplemented!()
     }
+
+    fn mci_flow_status(&mut self) -> u32 {
+        self.cpu
+            .bus
+            .bus
+            .mci_periph
+            .as_mut()
+            .unwrap()
+            .periph
+            .read_mci_reg_fw_flow_status()
+    }
+
+    fn mcu_manager(&mut self) -> impl McuManager {
+        self
+    }
+
+    fn caliptra_soc_manager(&mut self) -> impl caliptra_api::SocManager {
+        self
+    }
+}
+
+impl ModelEmulated {
+    fn caliptra_axi_bus(&mut self) -> EmulatedAxiBus<'_> {
+        EmulatedAxiBus { model: self }
+    }
+}
+
+pub struct EmulatedAxiBus<'a> {
+    model: &'a mut ModelEmulated,
+}
+
+impl Bus for EmulatedAxiBus<'_> {
+    fn read(&mut self, size: RvSize, addr: RvAddr) -> Result<RvData, BusError> {
+        let bus: &mut dyn Bus = match addr {
+            0x3002_0000..=0x3003_ffff => &mut self.model.soc_to_caliptra_bus,
+            _ => &mut self.model.cpu.bus,
+        };
+        let result = bus.read(size, addr);
+        self.model.cpu.bus.log_read("SoC", size, addr, result);
+        result
+    }
+    fn write(&mut self, size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
+        let bus: &mut dyn Bus = match addr {
+            0x3002_0000..=0x3003_ffff => &mut self.model.soc_to_caliptra_bus,
+            _ => &mut self.model.cpu.bus,
+        };
+        let result = bus.write(size, addr, val);
+        self.model.cpu.bus.log_write("SoC", size, addr, val, result);
+        result
+    }
+}
+
+impl McuManager for &mut ModelEmulated {
+    type TMmio<'a>
+        = BusMmio<EmulatedAxiBus<'a>>
+    where
+        Self: 'a;
+
+    fn mmio_mut(&mut self) -> Self::TMmio<'_> {
+        BusMmio::new(self.caliptra_axi_bus())
+    }
+
+    const I3C_ADDR: u32 = 0x2000_4000;
+    const MCI_ADDR: u32 = 0x2100_0000;
+    const TRACE_BUFFER_ADDR: u32 = 0x2101_0000;
+    const MBOX_0_ADDR: u32 = 0x2140_0000;
+    const MBOX_1_ADDR: u32 = 0x2180_0000;
+    const MCU_SRAM_ADDR: u32 = 0x21c0_0000;
+    const OTP_CTRL_ADDR: u32 = 0x7000_0000;
+    const LC_CTRL_ADDR: u32 = 0x7000_0400;
+}
+
+impl SocManager for &mut ModelEmulated {
+    type TMmio<'a>
+        = BusMmio<EmulatedAxiBus<'a>>
+    where
+        Self: 'a;
+
+    fn delay(&mut self) {
+        self.step();
+    }
+
+    fn mmio_mut(&mut self) -> Self::TMmio<'_> {
+        BusMmio::new(self.caliptra_axi_bus())
+    }
+
+    const SOC_IFC_ADDR: u32 = 0x3003_0000;
+    const SOC_IFC_TRNG_ADDR: u32 = 0x3003_0000;
+    const SOC_MBOX_ADDR: u32 = 0x3002_0000;
+
+    const MAX_WAIT_CYCLES: u32 = 20_000_000;
 }
 
 #[cfg(test)]
 mod test {
+    use mcu_rom_common::McuRomBootStatus;
+
     use crate::{InitParams, McuHwModel, ModelEmulated};
 
     #[test]
     fn test_new_unbooted() {
-        let _mcu_rom = mcu_builder::rom_build(None, "").expect("Could not build MCU ROM");
-        let _mcu_runtime = &mcu_builder::runtime_build_with_apps_cached(
+        let mcu_rom = mcu_builder::rom_build(None, "").expect("Could not build MCU ROM");
+        let mcu_runtime = &mcu_builder::runtime_build_with_apps_cached(
             &[],
             None,
             false,
@@ -299,29 +471,58 @@ mod test {
             None,
         )
         .expect("Could not build MCU runtime");
-        let mut caliptra_builder =
-            mcu_builder::CaliptraBuilder::new(false, None, None, None, None, None, None);
+        let mut caliptra_builder = mcu_builder::CaliptraBuilder::new(
+            false,
+            None,
+            None,
+            None,
+            None,
+            Some(mcu_rom.clone().into()),
+            None,
+            None,
+        );
         let caliptra_rom = caliptra_builder
             .get_caliptra_rom()
             .expect("Could not build Caliptra ROM");
         let caliptra_fw = caliptra_builder
             .get_caliptra_fw()
             .expect("Could not build Caliptra FW bundle");
-        let _vendor_pk_hash = caliptra_builder
+        let vendor_pk_hash = caliptra_builder
             .get_vendor_pk_hash()
             .expect("Could not get vendor PK hash");
+        println!("Vendor PK hash: {:x?}", vendor_pk_hash);
+        let vendor_pk_hash = hex::decode(vendor_pk_hash).unwrap().try_into().unwrap();
+        let soc_manifest = caliptra_builder.get_soc_manifest().unwrap();
 
+        let mcu_rom = std::fs::read(mcu_rom).unwrap();
+        let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
+        let soc_manifest = std::fs::read(soc_manifest).unwrap();
         let caliptra_rom = std::fs::read(caliptra_rom).unwrap();
         let caliptra_fw = std::fs::read(caliptra_fw).unwrap();
 
         let mut model = ModelEmulated::new_unbooted(InitParams {
+            mcu_rom: &mcu_rom,
+            mcu_firmware: &mcu_runtime,
+            soc_manifest: &soc_manifest,
             caliptra_rom: &caliptra_rom,
             caliptra_firmware: &caliptra_fw,
+            vendor_pk_hash: Some(vendor_pk_hash),
             ..Default::default()
         })
         .unwrap();
-        for _ in 0..1000 {
+        model.cpu_enabled.set(true);
+        for _ in 0..10_000 {
             model.step();
         }
+        use std::io::Write;
+        let mut w = std::io::Sink::default();
+        if !model.output().peek().is_empty() {
+            w.write_all(model.output().take(usize::MAX).as_bytes())
+                .unwrap();
+        }
+        assert_eq!(
+            u32::from(McuRomBootStatus::CaliptraBootGoAsserted),
+            model.mci_flow_status()
+        );
     }
 }
