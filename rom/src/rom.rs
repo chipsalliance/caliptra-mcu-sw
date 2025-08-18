@@ -145,6 +145,9 @@ impl Soc {
             );
             romtime::print!("{}", HexWord(word));
             self.registers.fuse_vendor_pk_hash[i].set(word);
+            if i < 8 {
+                self.registers.fuse_hek_seed[i].set(word);
+            }
         }
         romtime::println!("");
 
