@@ -77,6 +77,7 @@ bitfield = "0.14.0"
 bit-vec = "0.6.3"
 cargo_metadata = "0.20.0"
 cbindgen = "0.24"
+cc = "1.0"
 chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.23", features = [
     "cargo",
