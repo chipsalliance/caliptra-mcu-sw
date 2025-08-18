@@ -10,12 +10,15 @@ use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use libtock_platform::ErrorCode;
+use pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
+use pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use pldm_common::protocol::firmware_update::Descriptor;
 use pldm_lib::daemon::PldmService;
 use pldm_lib::firmware_device::fd_ops::FdOps;
 
 pub static FW_UPDATE_TASK_YIELD: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+pub static PLDM_DAEMON_TASK_YIELD: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 #[embassy_executor::task]
 async fn pldm_service_task(pldm_ops: &'static dyn FdOps, spawner: Spawner) {
@@ -69,11 +72,29 @@ pub async fn initialize_pldm(
     Ok(())
 }
 
-pub async fn pldm_wait_completion() -> Result<(), ErrorCode> {
+pub async fn pldm_wait(wait_state: State) -> Result<(), ErrorCode> {
     FW_UPDATE_TASK_YIELD.wait().await;
     let state = PLDM_STATE.lock(|state| *state.borrow());
-    if state != State::ImageDownloadComplete {
+    if state != wait_state {
         return Err(ErrorCode::Fail);
     }
     Ok(())
+}
+
+pub fn pldm_set_verification_result(verify_result: VerifyResult) {
+    DOWNLOAD_CTX.lock(|ctx| {
+        let mut ctx = ctx.borrow_mut();
+        ctx.verify_result = verify_result;
+    });
+    // Yield to the PLDM daemon task to complete verification
+    PLDM_DAEMON_TASK_YIELD.signal(());
+}
+
+pub fn pldm_set_apply_result(apply_result: ApplyResult) {
+    DOWNLOAD_CTX.lock(|ctx| {
+        let mut ctx = ctx.borrow_mut();
+        ctx.apply_result = apply_result;
+    });
+    // Yield to the PLDM daemon task to complete application
+    PLDM_DAEMON_TASK_YIELD.signal(());
 }

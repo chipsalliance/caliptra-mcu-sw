@@ -9,15 +9,15 @@ mod pldm_fdops;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{
-    AuthorizeAndStashReq, AuthorizeAndStashResp, GetImageInfoReq, GetImageInfoResp,
-    ImageHashSource, MailboxReqHeader, Request,
+    AuthorizeAndStashReq, AuthorizeAndStashResp, CommandId, GetImageInfoReq, GetImageInfoResp,
+    ImageHashSource, MailboxReqHeader, MailboxRespHeader, Request,
 };
 use caliptra_auth_man_types::ImageMetadataFlags;
 use embassy_executor::Spawner;
-use flash_image::FlashHeader;
+use flash_image::{FlashHeader, SOC_MANIFEST_IDENTIFIER};
 use libsyscall_caliptra::dma::DMAMapping;
 use libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
-use libsyscall_caliptra::mailbox::MailboxError;
+use libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
 use libsyscall_caliptra::{dma::AXIAddr, mailbox::Mailbox};
 use libtock_platform::ErrorCode;
 use libtockasync::TockExecutor;
@@ -25,7 +25,7 @@ use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use pldm_common::protocol::firmware_update::Descriptor;
 use pldm_lib::daemon::PldmService;
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const IMAGE_AUTHORIZED: u32 = 0xDEADC0DE;
 
@@ -95,6 +95,53 @@ impl<D: DMAMapping + 'static> ImageLoader for FlashImageLoader<D> {
         .await?;
         authorize_image(&self.mailbox, image_id, size).await?;
         Ok(())
+    }
+}
+
+impl<D: DMAMapping + 'static> FlashImageLoader<D> {
+    pub async fn set_auth_manifest(&self) -> Result<(), ErrorCode> {
+        let mut header: [u8; core::mem::size_of::<FlashHeader>()] =
+            [0; core::mem::size_of::<FlashHeader>()];
+        flash_client::flash_read_header(&self.flash, &mut header).await?;
+        let (offset, size) =
+            flash_client::flash_read_toc(&self.flash, &header, SOC_MANIFEST_IDENTIFIER).await?;
+
+        let mut stream =
+            FlashMailboxPayloadStream::new(&self.flash, offset as usize, size as usize);
+
+        let mut req = AuthManifestReqHeader {
+            chksum: 0,
+            manifest_size: size,
+        };
+
+        // Calculate the mailbox checksum
+        let mut checksum = stream.get_bytesum().await;
+        for b in CommandId::VERIFY_AUTH_MANIFEST.0.to_le_bytes().iter() {
+            checksum = checksum.wrapping_add(u32::from(*b));
+        }
+        for b in req.as_mut_bytes().iter() {
+            checksum = checksum.wrapping_add(u32::from(*b));
+        }
+        req.chksum = 0u32.wrapping_sub(checksum);
+
+        let response_buffer = &mut [0u8; core::mem::size_of::<MailboxRespHeader>()];
+        let header = req.as_mut_bytes();
+        loop {
+            let result = self
+                .mailbox
+                .execute_with_payload_stream(
+                    CommandId::VERIFY_AUTH_MANIFEST.into(),
+                    Some(header),
+                    &mut stream,
+                    response_buffer,
+                )
+                .await;
+            match result {
+                Ok(_) => return Ok(()),
+                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
+                Err(_) => return Err(ErrorCode::Fail),
+            }
+        }
     }
 }
 
@@ -221,4 +268,68 @@ async fn authorize_image(mailbox: &Mailbox, image_id: u32, size: u32) -> Result<
         return Err(ErrorCode::Fail);
     }
     Ok(())
+}
+
+pub struct FlashMailboxPayloadStream<'a> {
+    pub flash: &'a FlashSyscall,
+    pub offset: usize,
+    pub cursor: usize,
+    pub len: usize,
+}
+
+impl<'a> FlashMailboxPayloadStream<'a> {
+    pub fn new(flash: &'a FlashSyscall, starting_offset: usize, len: usize) -> Self {
+        Self {
+            flash,
+            offset: starting_offset,
+            cursor: starting_offset,
+            len,
+        }
+    }
+    pub fn reset(&mut self) {
+        // Reset the cursor to the starting offset
+        self.cursor = self.offset;
+    }
+    pub async fn get_bytesum(&mut self) -> u32 {
+        self.reset();
+        let mut sum = 0u32;
+        let mut buffer = [0u8; 256];
+        while let Ok(bytes_read) = self.read(&mut buffer).await {
+            if bytes_read == 0 {
+                break; // No more data to read
+            }
+            for byte in &buffer[..bytes_read] {
+                sum = sum.wrapping_add(u32::from(*byte));
+            }
+        }
+        self.reset();
+        sum
+    }
+}
+
+#[async_trait(?Send)]
+impl PayloadStream for FlashMailboxPayloadStream<'_> {
+    fn size(&self) -> usize {
+        self.len
+    }
+
+    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
+        if (self.cursor - self.offset) >= self.len {
+            return Ok(0); // No more data to read
+        }
+
+        let bytes_to_read = (self.len - (self.cursor - self.offset)).min(buffer.len());
+        self.flash
+            .read(self.cursor, bytes_to_read, &mut buffer[..bytes_to_read])
+            .await?;
+        self.cursor += bytes_to_read;
+        Ok(bytes_to_read)
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, FromBytes, IntoBytes, Clone, Copy, Immutable, KnownLayout)]
+pub struct AuthManifestReqHeader {
+    pub chksum: u32,
+    pub manifest_size: u32,
 }
