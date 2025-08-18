@@ -100,21 +100,17 @@ remove_files [ glob $caliptrartlDir/src/ecc/rtl/ecc_ram_tdp_file.sv ]
 # Replace caliptra_ss_top with version modified with faster I3C clocks
 remove_files [ glob $ssrtlDir/src/integration/rtl/caliptra_ss_top.sv ]
 
-# TODO: Copy aes_clk_wrapper.sv to apply workaround
-file copy [ glob $caliptrartlDir/src/aes/rtl/aes_clp_wrapper.sv ] $outputDir/aes_clk_wrapper.sv
-exec sed -i {1i `include \"kv_macros.svh\"} $outputDir/aes_clk_wrapper.sv
+# TODO: Should the RTL be changed? Copy aes_clp_wrapper.sv to apply workaround
+file copy [ glob $caliptrartlDir/src/aes/rtl/aes_clp_wrapper.sv ] $outputDir/aes_clp_wrapper.sv
+exec sed -i {1i `include \"kv_macros.svh\"\n`include \"caliptra_reg_field_defines.svh\"} $outputDir/aes_clp_wrapper.sv
 remove_files [ glob $caliptrartlDir/src/aes/rtl/aes_clp_wrapper.sv ]
-add_files $outputDir/aes_clk_wrapper.sv
+add_files $outputDir/aes_clp_wrapper.sv
 
 # Mark all Verilog sources as SystemVerilog because some of them have SystemVerilog syntax.
 set_property file_type SystemVerilog [get_files *.v]
 
 # Exception: caliptra_package_top.v needs to be Verilog to be included in a Block Diagram.
 set_property file_type Verilog [get_files  $fpgaDir/src/caliptra_package_top.v]
-
-# Add include paths
-set_property include_dirs $caliptrartlDir/src/integration/rtl [current_fileset]
-
 
 # Set caliptra_package_top as top in case next steps fail so that the top is something useful.
 if {$APB} {

@@ -9,6 +9,8 @@ set RTL_VERSION latest
 set BOARD VCK190
 set ITRNG TRUE
 set FAST_I3C TRUE
+set CORE_CLK_MHZ 20
+set I3C_CLK_MHZ 200
 
 set I3C_OUTSIDE FALSE
 set APB FALSE
@@ -88,7 +90,6 @@ if {$BOARD eq "VCK190"} {
 ##### Caliptra Package #####
 source create_caliptra_package.tcl
 ##### Caliptra Package #####
-
 
 # Create a project for the SOC connections
 create_project caliptra_fpga_project $outputDir -part $PART
@@ -185,17 +186,6 @@ set_property -dict [list \
 # Create CDC for AXI I3C
 create_bd_cell -type ip -vlnv xilinx.com:ip:xpm_cdc_gen:1.0 xpm_cdc_gen_0
 set_property CONFIG.CDC_TYPE {xpm_cdc_sync_rst} [get_bd_cells xpm_cdc_gen_0]
-
-# TODO: Consider removing
-# Move blocks around on the block diagram. This step is optional.
-#set_property location {1 177 345} [get_bd_cells ps_0]
-#set_property location {2 707 654} [get_bd_cells proc_sys_reset_0]
-#set_property location {2 696 373} [get_bd_cells axi_interconnect_0]
-#set_property location {3 696 373} [get_bd_cells axi_interconnect_1]
-#set_property location {3 1151 617} [get_bd_cells cptra_rom_backdoor_bram_0]
-#set_property location {4 1335 456} [get_bd_cells caliptra_package_top_0]
-#set_property location {4 1951 1027} [get_bd_cells xilinx_i3c_0]
-#set_property location {3 1483 1226} [get_bd_cells xpm_cdc_gen_0]
 
 #### axi_interconnect_0 ####
 # AXI Managers
@@ -297,7 +287,7 @@ connect_bd_net \
   [get_bd_pins axi_firewall_0/aclk]
 # Create clock connection for I3C
 if {$FAST_I3C} {
-  # Use faster clock so that I3C bus speed is correct. TODO: Fails to meet timing
+  # Use faster clock so that I3C bus speed is correct.
   connect_bd_net \
     [get_bd_pins ps_0/pl1_ref_clk] \
     [get_bd_pins axi_interconnect_1/aclk1] \
@@ -355,11 +345,6 @@ connect_bd_net [get_bd_pins caliptra_package_top_0/ARM_USER] [get_bd_pins axi_fi
 connect_bd_net [get_bd_pins caliptra_package_top_0/ARM_USER] [get_bd_pins axi_firewall_0/s_axi_aruser]
 connect_bd_net [get_bd_pins caliptra_package_top_0/ARM_USER] [get_bd_pins axi_firewall_0/s_axi_wuser]
 
-#### Firewall error signals ####
-# TODO: Do these need to be connected?
-#connect_bd_net [get_bd_pins axi_firewall_0/si_w_error] [get_bd_pins caliptra_package_top_0/si_w_error]
-#connect_bd_net [get_bd_pins axi_firewall_0/si_r_error] [get_bd_pins caliptra_package_top_0/si_r_error]
-
 # Create address segments for all AXI managers
 set managers {ps_0/M_AXI_FPD caliptra_package_top_0/M_AXI_MCU_IFU caliptra_package_top_0/M_AXI_MCU_LSU caliptra_package_top_0/M_AXI_MCU_SB caliptra_package_top_0/M_AXI_CALIPTRA}
 
@@ -386,8 +371,7 @@ foreach manager $managers {
   } else {
     assign_bd_address -offset 0xA4100000 -range 0x00100000 -target_address_space [get_bd_addr_spaces $manager] [get_bd_addr_segs caliptra_package_top_0/S_AXI_CALIPTRA/reg0] -force
   }
-  # MCI needs 0x200000. TODO: What is a reasonable size for this? MCU SRAM starts at 0x200000 so assume this needs extra.
-  # TODO: integration spec has this take 0x0100_0000
+  # MCI
   assign_bd_address -offset 0xA8000000 -range 0x01000000 -target_address_space [get_bd_addr_spaces $manager] [get_bd_addr_segs caliptra_package_top_0/S_AXI_MCI/reg0] -force
 }
 
@@ -423,7 +407,7 @@ add_files -fileset constrs_1 $fpgaDir/src/ddr4_constraints.xdc
 
 if {$FAST_I3C} {
 } else {
-  # TODO: Weird why this couldn't be earlier
+  # TODO: This did not function when issues earlier
   set_property CONFIG.SCL_CLK_FREQ {12500} [get_bd_cells xilinx_i3c_0]
 }
 
