@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use super::pldm_client::FW_UPDATE_TASK_YIELD;
+use super::pldm_client::{FW_UPDATE_TASK_YIELD, PLDM_DAEMON_TASK_YIELD};
 use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
 use alloc::boxed::Box;
 use async_trait::async_trait;
@@ -186,7 +186,17 @@ impl FdOps for UpdateFdOps {
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
     ) -> Result<VerifyResult, FdOpsError> {
-        // TODO: Implement authentication of the images, for now we just do simple verification
+        // Transition to Verify state
+        PLDM_STATE.lock(|state| {
+            let mut state = state.borrow_mut();
+            *state = State::Verifying;
+        });
+        // Pass control to firmware update task
+        FW_UPDATE_TASK_YIELD.signal(());
+
+        // Wait for the firmware update task to complete verification
+        PLDM_DAEMON_TASK_YIELD.wait().await;
+
         *progress_percent = ProgressPercent::new(100).unwrap();
         let verify_result = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().verify_result);
         Ok(verify_result)
@@ -197,9 +207,20 @@ impl FdOps for UpdateFdOps {
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
     ) -> Result<ApplyResult, FdOpsError> {
-        // TODO: Implement apply logic, for now we just simulate a successful apply
+        // Transition to Verify state
+        PLDM_STATE.lock(|state| {
+            let mut state = state.borrow_mut();
+            *state = State::Apply;
+        });
+        // Pass control to firmware update task
+        FW_UPDATE_TASK_YIELD.signal(());
+
+        // Wait for the firmware update task to complete verification
+        PLDM_DAEMON_TASK_YIELD.wait().await;
+
         *progress_percent = ProgressPercent::new(100).unwrap();
-        Ok(ApplyResult::ApplySuccess)
+        let apply_result = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().apply_result);
+        Ok(apply_result)
     }
 
     async fn cancel_update_component(
@@ -216,7 +237,10 @@ impl FdOps for UpdateFdOps {
         estimated_time: &mut u16,
     ) -> Result<u8, FdOpsError> {
         *estimated_time = 0;
-        // TODO: Implement activation logic
+        PLDM_STATE.lock(|state| {
+            let mut state = state.borrow_mut();
+            *state = State::Activate;
+        });
         FW_UPDATE_TASK_YIELD.signal(());
         Ok(0) // PLDM completion code for success
     }

@@ -22,7 +22,7 @@ pub mod i3c_socket;
 pub mod mctp_transport;
 pub mod tests;
 
-pub use emulator::{Emulator, EmulatorArgs};
+pub use emulator::{Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback};
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex};

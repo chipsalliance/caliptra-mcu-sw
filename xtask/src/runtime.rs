@@ -55,6 +55,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         vendor_pk_hash,
         Some(tock_binary.clone()),
         soc_images,
+        None,
     );
 
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;

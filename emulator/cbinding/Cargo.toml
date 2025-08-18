@@ -1,0 +1,21 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "emulator-cbinding"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "emulator_cbinding"
+crate-type = ["staticlib"]
+
+[dependencies]
+emulator.workspace = true
+libc.workspace = true
+caliptra-emu-cpu.workspace = true
+caliptra-emu-types.workspace = true
+caliptra-image-types.workspace = true
+semver.workspace = true
+
+[build-dependencies]
+cbindgen.workspace = true

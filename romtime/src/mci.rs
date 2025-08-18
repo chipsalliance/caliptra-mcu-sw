@@ -47,6 +47,10 @@ impl Mci {
         self.registers.mci_reg_cptra_boot_go.set(1);
     }
 
+    pub fn set_flow_status(&self, status: u32) {
+        self.registers.mci_reg_fw_flow_status.set(status);
+    }
+
     pub fn flow_status(&self) -> u32 {
         self.registers.mci_reg_fw_flow_status.get()
     }
@@ -127,5 +131,36 @@ impl Mci {
     /// Check if this is a firmware hitless update reset
     pub fn is_fw_hitless_update_reset(&self) -> bool {
         self.reset_reason_enum() == McuResetReason::FirmwareHitlessUpdate
+    }
+
+    pub fn read_notif0_intr_trig_r(&self) -> u32 {
+        self.registers.intr_block_rf_notif0_intr_trig_r.get()
+    }
+
+    pub fn write_notif0_intr_trig_r(&self, value: u32) {
+        self.registers.intr_block_rf_notif0_intr_trig_r.set(value);
+    }
+
+    pub fn read_wdt_timer1_en(&self) -> u32 {
+        self.registers.mci_reg_wdt_timer1_en.get()
+    }
+    pub fn write_wdt_timer1_en(&self, value: u32) {
+        self.registers.mci_reg_wdt_timer1_en.set(value);
+    }
+
+    // Interrupt handler for MCI interrupts
+    /// This function checks the MCI interrupt status registers
+    /// and determines which interrupt has occurred.
+    /// The interrupt handler is responsible for clearing the interrupt
+    /// and performing the necessary actions based on the interrupt type.
+    pub fn handle_interrupt(&self) {
+        const NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK: u32 = 0x2;
+        let intr_status = self.read_notif0_intr_trig_r();
+        if intr_status & NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK != 0 {
+            // Clear interrupt
+            self.write_notif0_intr_trig_r(NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK);
+            // Request MCU reset
+            self.registers.mci_reg_reset_request.set(1); // Any value will trigger reset
+        }
     }
 }

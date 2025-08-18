@@ -18,6 +18,14 @@ pub struct DMA<S: Syscalls = DefaultSyscalls> {
 /// Define type for AXI address (64-bit wide).
 pub type AXIAddr = u64;
 
+/// DMA address conversion utility.
+pub trait DMAMapping: Send + Sync {
+    /// Convert a local address in MCU SRAM to an AXI address addressable by the MCU DMA controller.
+    fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode>;
+    /// Convert a Caliptra AXI address to the MCU DMA accessible address.
+    fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode>;
+}
+
 /// Configuration parameters for a DMA transfer.
 #[derive(Debug, Clone)]
 pub struct DMATransaction<'a> {

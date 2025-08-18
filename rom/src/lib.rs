@@ -14,6 +14,8 @@ Abstract:
 
 #![no_std]
 
+pub mod boot_status;
+pub use boot_status::*;
 pub mod flash;
 pub use flash::*;
 mod fuses;
@@ -28,6 +30,9 @@ mod recovery;
 // Boot flow modules
 mod cold_boot;
 pub use cold_boot::ColdBoot;
+
+mod fw_hitless_update;
+pub use fw_hitless_update::FwHitlessUpdate;
 
 pub trait FatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> !;

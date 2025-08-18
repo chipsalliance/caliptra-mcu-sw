@@ -3,8 +3,9 @@
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use libapi_caliptra::certificate::CertContext;
+use libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use spdm_lib::cert_store::{CertStoreError, CertStoreResult};
-use spdm_lib::protocol::{AsymAlgo, ECC_P384_SIGNATURE_SIZE, SHA384_HASH_SIZE};
 
 const DPE_LEAF_CERT_SIZE: usize = 2048; // Size of the DPE leaf certificate buffer.
 

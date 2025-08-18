@@ -4,9 +4,9 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use libapi_caliptra::crypto::asym::AsymAlgo;
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use spdm_lib::cert_store::CertStoreResult;
-use spdm_lib::protocol::algorithms::AsymAlgo;
-use spdm_lib::protocol::SHA384_HASH_SIZE;
 
 #[async_trait]
 pub trait EndorsementCertChainTrait: Send + Sync {

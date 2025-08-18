@@ -88,34 +88,12 @@ pub static mut PROCESS_PRINTER: Option<
     &'static capsules_system::process_printer::ProcessPrinterText,
 > = None;
 
-#[cfg(any(
-    feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page",
-    feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase",
-    feature = "test-log-flash-linear",
-    feature = "test-log-flash-circular"
-))]
+// used in tests
+#[allow(unused)]
 static mut BOARD: Option<&'static kernel::Kernel> = None;
-
-#[cfg(any(
-    feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page",
-    feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase",
-    feature = "test-log-flash-linear",
-    feature = "test-log-flash-circular"
-))]
+#[allow(unused)]
 static mut PLATFORM: Option<&'static VeeR> = None;
-
-#[cfg(any(
-    feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page",
-    feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase",
-    feature = "test-log-flash-linear",
-    feature = "test-log-flash-circular"
-))]
+#[allow(unused)]
 static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = None;
 
 // How should the kernel respond when a process faults.
@@ -164,6 +142,7 @@ struct VeeR {
     >,
     dma: &'static capsules_emulator::dma::Dma<'static>,
     logging_flash: &'static capsules_emulator::logging::driver::LoggingFlashDriver<'static>,
+    mci: &'static capsules_runtime::mci::Mci,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -185,6 +164,7 @@ impl SyscallDriverLookup for VeeR {
             capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM => f(Some(self.doe_spdm)),
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
+            capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
             mcu_config_emulator::flash::DRIVER_NUM_START
                 ..=mcu_config_emulator::flash::DRIVER_NUM_END => {
                 for index in 0..mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT {
@@ -483,6 +463,13 @@ pub unsafe fn main() {
         VeeRDefaultPeripherals::new(emulator_peripherals, mux_alarm, &MCU_MEMORY_MAP)
     );
 
+    let mci = mcu_components::mci::MciComponent::new(
+        board_kernel,
+        capsules_runtime::mci::DRIVER_NUM,
+        &peripherals.mci,
+    )
+    .finalize(kernel::static_buf!(capsules_runtime::mci::Mci));
+
     let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
     chip.init(addr_of!(_pic_vector_table) as u32);
     CHIP = Some(chip);
@@ -671,6 +658,7 @@ pub unsafe fn main() {
             mailbox,
             dma,
             logging_flash,
+            mci,
         }
     );
 
@@ -700,7 +688,8 @@ pub unsafe fn main() {
         feature = "test-flash-storage-read-write",
         feature = "test-flash-storage-erase",
         feature = "test-log-flash-linear",
-        feature = "test-log-flash-circular"
+        feature = "test-log-flash-circular",
+        feature = "test-mcu-mbox",
     ))]
     {
         PLATFORM = Some(veer);
@@ -751,6 +740,9 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-log-flash-linear") {
         debug!("Executing test-log-flash-linear");
         crate::tests::linear_log_test::run(mux_alarm, &emulator_peripherals.primary_flash_ctrl)
+    } else if cfg!(feature = "test-mcu-mbox") {
+        debug!("Executing test-mcu-mbox");
+        crate::tests::mcu_mbox_test::test_mcu_mbox()
     } else {
         None
     };
@@ -769,14 +761,7 @@ pub unsafe fn main() {
     board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
 }
 
-#[cfg(any(
-    feature = "test-flash-ctrl-read-write-page",
-    feature = "test-flash-ctrl-erase-page",
-    feature = "test-flash-storage-read-write",
-    feature = "test-flash-storage-erase",
-    feature = "test-log-flash-linear",
-    feature = "test-log-flash-circular"
-))]
+#[allow(unused)]
 pub fn run_kernel_op(loops: usize) {
     unsafe {
         for _i in 0..loops {

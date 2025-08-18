@@ -9,6 +9,8 @@ use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
+use libapi_caliptra::crypto::asym::AsymAlgo;
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[derive(FromBytes, IntoBytes, Immutable)]
@@ -130,10 +132,10 @@ async fn generate_certificate_response<'a>(
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Ensure the selected hash algorithm is SHA384 and retrieve the asymmetric algorithm (currently only ECC-P384 is supported)
-    ctx.verify_selected_hash_algo()
+    ctx.verify_negotiated_hash_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
     let asym_algo = ctx
-        .selected_base_asym_algo()
+        .negotiated_base_asym_algo()
         .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
 
     let connection_version = ctx.state.connection_info.version_number();
@@ -226,7 +228,7 @@ async fn generate_certificate_response<'a>(
     }
 
     // Append the response message to the M1 transcript
-    ctx.append_message_to_transcript(rsp, TranscriptContext::M1)
+    ctx.append_message_to_transcript(rsp, TranscriptContext::M1, None)
         .await?;
 
     rsp.push_data(payload_len)
@@ -277,7 +279,7 @@ async fn process_get_certificate<'a>(
     ctx.reset_transcript_via_req_code(ReqRespCode::GetCertificate);
 
     // Append the request to the M1 transcript
-    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1)
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1, None)
         .await?;
 
     Ok((slot_id, offset, length))

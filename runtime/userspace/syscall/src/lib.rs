@@ -7,6 +7,7 @@ pub mod doe;
 pub mod flash;
 pub mod logging;
 pub mod mailbox;
+pub mod mci;
 pub mod mctp;
 
 #[cfg(target_arch = "riscv32")]

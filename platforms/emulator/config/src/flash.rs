@@ -52,7 +52,7 @@ pub struct FlashDeviceConfig {
     pub partitions: &'static [&'static FlashPartition], // partitions on the flash device
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub struct FlashPartition {
     pub name: &'static str, // name of the partition
     pub offset: usize,      // flash partition offset in bytes
@@ -148,7 +148,7 @@ impl PartitionTable {
     }
 
     pub fn populate_checksum<C: ChecksumCalculator>(&mut self, calculator: &C) {
-        self.checksum = calculator.calc_checksum(self.as_bytes());
+        self.checksum = calculator.calc_checksum(&self.as_bytes()[0..offset_of!(Self, checksum)]);
     }
 
     pub fn verify_checksum<C: ChecksumCalculator>(&self, calculator: &C) -> bool {

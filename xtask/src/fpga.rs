@@ -3,8 +3,10 @@
 use anyhow::{anyhow, bail, Result};
 use mcu_builder::{FirmwareBinaries, PROJECT_ROOT};
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
+use mcu_rom_common::LifecycleControllerState;
 use std::path::Path;
 use std::process::Command;
+use std::str::FromStr;
 
 pub fn fpga_install_kernel_modules() -> Result<()> {
     let dir = &PROJECT_ROOT.join("hw").join("fpga").join("kernel-modules");
@@ -137,6 +139,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         uds,
         steps,
         no_recovery,
+        lifecycle,
     } = args
     else {
         panic!("Must call fpga_run with Commands::FpgaRun");
@@ -150,6 +153,14 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
     if mcu_rom.is_none() && zip.is_none() {
         bail!("Must specify either --mcu-rom or --zip");
     }
+
+    let lifecycle_controller_state = match lifecycle {
+        Some(s) => Some(
+            LifecycleControllerState::from_str(&s.to_lowercase())
+                .map_err(|_| anyhow!("Invalid lifecycle controller state: {}", s))?,
+        ),
+        None => None,
+    };
 
     let blank = [0u8; 256]; // Placeholder for empty firmware
 
@@ -195,6 +206,8 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         otp_memory: Some(&otp_memory),
         uds_program_req: uds,
         bootfsm_break,
+        lifecycle_controller_state,
+        vendor_pk_hash: binaries.vendor_pk_hash(),
         ..Default::default()
     })
     .unwrap();
@@ -228,6 +241,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         model.step();
     }
     println!("Ending FPGA run");
+    println!("MCI flow status: {:x}", model.mci_flow_status());
     if save_otp {
         println!(
             "Saving OTP memory to file {}",

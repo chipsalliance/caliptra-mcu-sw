@@ -93,7 +93,14 @@ pub unsafe fn run(
     log.set_append_client(test);
     test.alarm.set_alarm_client(test);
 
-    test.run();
+    // schedule the test to be run
+    test.schedule_next();
+
+    // Integration tests are executed before kernel loop.
+    // Explicitly advance the kernel to handle deferred calls and interrupt processing.
+    while test.state.get() == TestState::Operate {
+        crate::board::run_kernel_op(1);
+    }
     Some(0)
 }
 
@@ -201,10 +208,6 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
                     TestOp::BadSeek(entry_id) => self.bad_seek(entry_id),
                     TestOp::Erase => self.erase(),
                 }
-                // Integration tests are executed before kernel loop starts.
-                // Explicitly advance the kernel to handle deferred calls and interrupt processing.
-                #[cfg(feature = "test-log-flash-circular")]
-                crate::board::run_kernel_op(200);
             }
             TestState::CleanUp => {
                 romtime::println!(
@@ -229,10 +232,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
             }
             _ => panic!("Could not erase log storage!"),
         }
-        // Integration tests are executed before kernel loop.
-        // Explicitly advance the kernel to handle deferred calls and interrupt processing.
-        #[cfg(feature = "test-log-flash-circular")]
-        crate::board::run_kernel_op(200);
+        self.schedule_next();
     }
 
     fn read(&self) {
@@ -267,7 +267,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
                                 self.log.log_end()
                             );
                             self.next_op();
-                            self.run();
+                            self.schedule_next();
                         }
                         ErrorCode::BUSY => {
                             romtime::println!("Flash busy, waiting before reattempting read");
@@ -312,7 +312,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
             .unwrap();
 
         self.next_op();
-        self.run();
+        self.schedule_next();
     }
 
     fn write(&self) {
@@ -378,7 +378,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
         // Make sure that append offset was not changed by failed writes.
         assert_eq!(original_offset, self.log.log_end());
         self.next_op();
-        self.run();
+        self.schedule_next();
     }
 
     fn sync(&self) {
@@ -414,7 +414,13 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
         // Make sure that read offset was not changed by failed seek.
         assert_eq!(original_offset, self.log.next_read_entry_id());
         self.next_op();
-        self.run();
+        self.schedule_next();
+    }
+
+    fn schedule_next(&self) {
+        let delay = self.alarm.ticks_from_ms(1);
+        let now = self.alarm.now();
+        self.alarm.set_alarm(now, delay);
     }
 
     fn wait(&self) {
@@ -476,7 +482,7 @@ impl<A: Alarm<'static>> LogReadClient for LogTest<A> {
         if self.state.get() == TestState::Operate {
             self.next_op();
         }
-        self.run();
+        self.schedule_next();
     }
 }
 
@@ -548,7 +554,7 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
         }
 
         self.next_op();
-        self.run();
+        self.schedule_next();
     }
 
     fn erase_done(&self, error: Result<(), ErrorCode>) {
@@ -590,7 +596,7 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
                 romtime::println!("Log Storage erased");
                 //self.state.set(TestState::Operate);
                 self.next_op();
-                self.run();
+                self.schedule_next();
             }
             Err(ErrorCode::BUSY) => {
                 // Flash busy, try again.
