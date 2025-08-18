@@ -145,10 +145,19 @@ impl Soc {
             );
             romtime::print!("{}", HexWord(word));
             self.registers.fuse_vendor_pk_hash[i].set(word);
-            //if i < 8 {
-            //    self.registers.fuse_hek_seed[i].set(word);
-            //}
         }
+        romtime::println!("");
+
+        romtime::println!(
+            "[mcu-fuse-write] Attempting to write OCP LOCK fuses"
+        );
+
+        for i in 0..8 {
+            self.registers.fuse_hek_seed[i].set(0xFA_FF & (0xFA_F0 | i) as u32);
+        }
+        romtime::println!(
+            "[mcu-fuse-write] Finished writing OCP LOCK fuses"
+        );
         romtime::println!("");
 
         // TODO: this seems to not exist any more
