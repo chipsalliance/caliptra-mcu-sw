@@ -151,8 +151,8 @@ impl From<u32> for MciMailboxRequester {
 }
 
 impl MciMailboxImpl {
-    const LOCK_VAL: u32 = 0;
-    const USER_VAL: u32 = 0;
+    const LOCK_VAL: u32 = 0x0;
+    const USER_VAL: u32 = 0x0;
     const TARGET_USER_VAL: u32 = 0x0;
     const TARGET_USER_VALID_VAL: u32 = 0x0;
     const CMD_VAL: u32 = 0x0;
@@ -181,6 +181,18 @@ impl MciMailboxImpl {
             timer: Timer::new(clock),
             max_dlen_in_lock_session: 0,
         }
+    }
+
+    // The mailbox starts locked by the MCU to prevent data leaks across warm resets.
+    // The MCU must set MBOX_DLEN to the full SRAM size and write 0 to MBOX_EXECUTE
+    // to release and wipe the mailbox SRAM before allowing further use.
+    pub fn reset(&mut self) {
+        self.read_mcu_mbox0_csr_mbox_lock();
+        assert!(self.is_locked(), "MCU can't acquire MCU mailbox lock");
+        self.write_mcu_mbox0_csr_mbox_dlen(MCU_MAILBOX0_SRAM_SIZE as u32);
+        self.write_mcu_mbox0_csr_mbox_execute(caliptra_emu_bus::ReadWriteRegister::new(
+            MboxExecute::Execute::CLEAR.value,
+        ));
     }
 
     pub fn set_requester(&mut self, requester: MciMailboxRequester) {
@@ -340,7 +352,6 @@ impl MciMailboxImpl {
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.execute.reg.get())
     }
-
     pub fn write_mcu_mbox0_csr_mbox_execute(
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
@@ -352,25 +363,19 @@ impl MciMailboxImpl {
             panic!("Cannot write mcu_mbox0 execute when mailbox is unlocked");
         }
 
-        const EXECUTE_SET: u32 = MboxExecute::Execute::SET.value;
-        const EXECUTE_CLR: u32 = MboxExecute::Execute::CLEAR.value;
         let new_val = val.reg.get();
-        let prev_val = self.execute.reg.get();
-        if new_val != prev_val {
-            self.execute.reg.set(new_val);
-            match (prev_val, new_val) {
-                (EXECUTE_CLR, EXECUTE_SET) => {
-                    if matches!(self.user.reg.get().into(), MciMailboxRequester::SocAgent(_)) {
-                        self.irq = true;
-                        self.last_irq_event = Some(IrqEventToMcu::Mbox0CmdAvailable);
-                        self.timer.schedule_poll_in(1);
-                    }
-                }
-                (EXECUTE_SET, EXECUTE_CLR) => {
-                    self.mailbox_zeroization();
-                }
-                _ => unreachable!(),
+        self.execute.reg.set(new_val);
+        if new_val == MboxExecute::Execute::SET.value {
+            // Workaround: temporarily lift the check for mailbox requester to support integration tests
+            if cfg!(feature = "test-mcu-mbox")
+                || matches!(self.user.reg.get().into(), MciMailboxRequester::SocAgent(_))
+            {
+                self.irq = true;
+                self.last_irq_event = Some(IrqEventToMcu::Mbox0CmdAvailable);
+                self.timer.schedule_poll_in(1);
             }
+        } else if new_val == MboxExecute::Execute::CLEAR.value {
+            self.mailbox_zeroization();
         }
     }
 
@@ -567,6 +572,12 @@ mod tests {
         let mcu_mailbox0 = McuMailbox0Internal::new(&dummy_clock);
         let mut bus = test_helper_setup_autobus(&dummy_clock, &mcu_mailbox0);
 
+        mcu_mailbox0.regs.borrow_mut().reset();
+        assert!(
+            !mcu_mailbox0.regs.borrow().is_locked(),
+            "Mailbox should be unlocked after reset"
+        );
+
         let lock_val = bus
             .read(RvSize::Word, MCI_BASE_ADDR + MBOX_LOCK_OFFSET)
             .expect("Lock read failed");
@@ -669,6 +680,13 @@ mod tests {
     fn test_soc_send_mcu_receive() {
         let dummy_clock = Clock::new();
         let mcu_mailbox0 = McuMailbox0Internal::new(&dummy_clock);
+
+        mcu_mailbox0.regs.borrow_mut().reset();
+        assert!(
+            !mcu_mailbox0.regs.borrow().is_locked(),
+            "Mailbox should be unlocked after reset"
+        );
+
         let mut bus = test_helper_setup_autobus(&dummy_clock, &mcu_mailbox0);
 
         let en_bit = Notif0IntrEnT::NotifMbox0CmdAvailEn::SET.value;
@@ -801,6 +819,12 @@ mod tests {
         let dummy_clock = Clock::new();
         let mcu_mailbox0 = McuMailbox0Internal::new(&dummy_clock);
         let mut bus = test_helper_setup_autobus(&dummy_clock, &mcu_mailbox0);
+
+        mcu_mailbox0.regs.borrow_mut().reset();
+        assert!(
+            !mcu_mailbox0.regs.borrow().is_locked(),
+            "Mailbox should be unlocked after reset"
+        );
 
         let en_bit = Notif0IntrEnT::NotifMbox0TargetDoneEn::SET.value;
         // Enable the TARGET_DONE interrupt
