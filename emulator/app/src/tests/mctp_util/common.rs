@@ -134,7 +134,7 @@ impl MctpUtil {
         let mut i3c_state = I3cControllerState::Start;
         let msg_type = msg[0];
 
-        let mut retry = 45;
+        let mut retry = 100;
 
         while EMULATOR_RUNNING.load(Ordering::Relaxed) && retry > 0 {
             match i3c_state {
@@ -308,7 +308,7 @@ impl MctpUtil {
         let mut i3c_state = I3cControllerState::WaitForIbi;
         let mut pkts: VecDeque<Vec<u8>> = VecDeque::new();
         stream.set_nonblocking(true).unwrap();
-        let mut retry = 50;
+        let mut retry = retry_count;
 
         while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match i3c_state {
