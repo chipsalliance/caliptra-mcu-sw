@@ -41,6 +41,7 @@ source adams-bridge-files.tcl
 
 # Add Caliptra headers and packages
 add_files [ glob $caliptrartlDir/src/*/rtl/*.svh ]
+add_files [ glob $caliptrartlDir/src/*/rtl/*/*.svh ]
 add_files [ glob $caliptrartlDir/src/*/rtl/*_pkg.sv ]
 # Add Caliptra sources
 add_files [ glob $caliptrartlDir/src/*/rtl/*.sv ]
