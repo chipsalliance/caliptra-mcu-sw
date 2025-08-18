@@ -698,6 +698,8 @@ impl Emulator {
             None,
             None,
             None,
+            None,
+            None,
         );
 
         // Set the DMA RAM for Primary Flash Controller
