@@ -47,7 +47,7 @@ fn test_emulator_args_creation() {
         i3c_port: None,
         manufacturing_mode: false,
         vendor_pk_hash: None,
-        vendor_pqc_type: FwVerificationPqcKeyType::LMS.into(),
+        vendor_pqc_type: FwVerificationPqcKeyType::LMS,
         owner_pk_hash: None,
         streaming_boot: None,
         primary_flash_image: None,
