@@ -1,3 +1,4 @@
+# Licensed under the Apache-2.0 license
 
 # Default settings:
 set BUILD FALSE
@@ -107,13 +108,6 @@ create_bd_cell -type ip -vlnv design:user:caliptra_package_top:1.0 caliptra_pack
 
 #### Add Versal PS ####
 source create_versal_cips.tcl
-# Connections to PS:
-# set ps_m_axi ps_0/M_AXI_FPD
-# set ps_pl_clk ps_0/pl0_ref_clk
-# set ps_axi_aclk ps_0/m_axi_fpd_aclk
-# set ps_pl_resetn ps_0/pl0_resetn
-# set ps_gpio_i ps_0/LPD_GPIO_i
-# set ps_gpio_o ps_0/LPD_GPIO_o
 
 # Create XDC file with jtag constraints
 set xdc_fd [ open $outputDir/jtag_constraints.xdc w ]
@@ -160,7 +154,6 @@ if {$APB} {
     CONFIG.C_APB_NUM_SLAVES {1} \
     CONFIG.C_M_APB_PROTOCOL {apb4} \
     ] [get_bd_cells axi_apb_bridge_0]
-  #set_property location {3 1041 439} [get_bd_cells axi_apb_bridge_0]
 }
 
 # Add AXI BRAM Controller for backdoor access to Caliptra ROM
@@ -181,9 +174,9 @@ set_property -dict [list \
   CONFIG.ENABLE_PEC {1} \
   CONFIG.HJ_CAPABLE {1} \
   CONFIG.IBI_CAPABLE {1} \
-  #CONFIG.SCL_CLK_FREQ {12500} \
   ] [get_bd_cells xilinx_i3c_0]
-# Create CDC for AXI I3C
+
+# Create CDC for AXI I3C reset
 create_bd_cell -type ip -vlnv xilinx.com:ip:xpm_cdc_gen:1.0 xpm_cdc_gen_0
 set_property CONFIG.CDC_TYPE {xpm_cdc_sync_rst} [get_bd_cells xpm_cdc_gen_0]
 
@@ -337,7 +330,6 @@ if {FALSE} {
 
   connect_bd_net [get_bd_pins xilinx_i3c_0/s_axi_aresetn] [get_bd_pins xpm_cdc_gen_0/dest_rst_out]
   connect_bd_net [get_bd_pins xpm_cdc_gen_0/src_rst] [get_bd_pins caliptra_package_top_0/xilinx_i3c_aresetn]
-  #connect_bd_net [get_bd_pins xpm_cdc_gen_0/dest_clk] [get_bd_pins ps_0/pl1_ref_clk]
 }
 
 #### ARM Core USER value ####
@@ -399,18 +391,13 @@ create_ip_run [get_files *caliptra_fpga_project_bd.bd]
 set_property STEPS.SYNTH_DESIGN.ARGS.GATED_CLOCK_CONVERSION $GATED_CLOCK_CONVERSION [get_runs caliptra_fpga_project_bd_caliptra_package_top_0_0_synth_1]
 
 # Add DDR pin placement constraints
-add_files -fileset constrs_1 $fpgaDir/src/ddr4_constraints.xdc
+file copy $fpgaDir/src/ddr4_constraints.xdc $outputDir/ddr4_constraints.xdc
+add_files -fileset constrs_1 $outputDir/ddr4_constraints.xdc
 
+# Xilinx I3C requires that the AXI clock be > 14 * SCL_CLK_FREQ. This needs to be set late in the script so that Vivado recognizes the higher AXI clock.
+set_property CONFIG.SCL_CLK_FREQ {12500} [get_bd_cells xilinx_i3c_0]
 
-# Consider constraint:
-# set_max_delay -from [get_clocks clk_pl_0] -to [get_clocks clk_pl_1] 25.0
-
-if {$FAST_I3C} {
-} else {
-  # TODO: This did not function when issues earlier
-  set_property CONFIG.SCL_CLK_FREQ {12500} [get_bd_cells xilinx_i3c_0]
-}
-
+#### Set up ILAs for debug signals ####
 # Mark AXI interfaces for debugging
 set_property HDL_ATTRIBUTE.DEBUG true [get_bd_intf_nets { \
   ps_0_M_AXI_FPD \
@@ -431,14 +418,13 @@ set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {si_w_error }]
 connect_bd_net -net si_r_error [get_bd_pins axi_firewall_0/si_r_error]
 set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {si_r_error }]
 
-# Mark Caliptra and MCU VEER program counters for debug
+# Mark signals exposed by the package for debug
 connect_bd_net -net caliptra_ifu_i0_pc [get_bd_pins caliptra_package_top_0/caliptra_ifu_i0_pc]
 set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {caliptra_ifu_i0_pc}]
 connect_bd_net -net mcu_ifu_i0_pc [get_bd_pins caliptra_package_top_0/mcu_ifu_i0_pc]
 set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {mcu_ifu_i0_pc}]
 connect_bd_net -net ifu_i0_instr [get_bd_pins caliptra_package_top_0/ifu_i0_instr]
 set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {ifu_i0_instr}]
-
 connect_bd_net -net mci_boot_fsm [get_bd_pins caliptra_package_top_0/mci_boot_fsm]
 set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {mci_boot_fsm}]
 connect_bd_net -net caliptra_log [get_bd_pins caliptra_package_top_0/caliptra_log]

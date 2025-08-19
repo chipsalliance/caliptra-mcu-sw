@@ -1,3 +1,5 @@
+# Licensed under the Apache-2.0 license
+
 # Create interface ports
 set ddr4_dimm1 [ create_bd_intf_port -mode Master -vlnv xilinx.com:interface:ddr4_rtl:1.0 ddr4_dimm1 ]
 
