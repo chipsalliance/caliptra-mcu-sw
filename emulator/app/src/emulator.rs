@@ -52,6 +52,9 @@ use std::sync::{Arc, Mutex};
 use tests::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
 use tests::pldm_request_response_test::PldmRequestResponseTest;
 
+#[cfg(feature = "test-mcu-mbox-soc-requester-loopback")]
+use emulator_periph::MciMailboxRequester;
+
 // Type aliases for external shim callbacks
 pub type ExternalReadCallback =
     Box<dyn Fn(caliptra_emu_types::RvSize, caliptra_emu_types::RvAddr, &mut u32) -> bool>;
