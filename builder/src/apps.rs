@@ -16,7 +16,7 @@ pub const APPS: &[App] = &[
     App {
         name: "user-app",
         permissions: vec![],
-        minimum_ram: 92 * 1024,
+        minimum_ram: 100 * 1024,
     },
 ];
 
