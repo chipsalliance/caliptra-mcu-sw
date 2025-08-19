@@ -119,8 +119,6 @@ impl SpdmTransport for DoeTransport {
             Err(TransportError::InvalidMessage)?;
         }
 
-        //TODO: May have to resize the buffer based on the length field
-
         let data_object_type: DataObjectType = header
             .data_object_type()
             .try_into()

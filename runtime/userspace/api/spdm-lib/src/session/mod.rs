@@ -107,7 +107,6 @@ impl SessionManager {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub fn delete_session(&mut self, session_id: u32) -> SessionResult<()> {
         let session_index = self
             .sessions
@@ -147,7 +146,7 @@ impl SessionManager {
     pub async fn encode_secure_message(
         &mut self,
         transport: &dyn SpdmTransport,
-        app_data: &[u8],
+        app_data_buffer: &[u8],
         secure_message: &mut MessageBuf<'_>,
     ) -> SessionResult<()> {
         let session_id = self
@@ -169,10 +168,10 @@ impl SessionManager {
         let mut encrypted_data = [0u8; MAX_SPDM_RESPONDER_BUF_SIZE];
         let mut plaintext_data = [0u8; MAX_SPDM_RESPONDER_BUF_SIZE];
         // copy app_data_length + app_data + random data to encrypt using aead.
-        let app_data_len = app_data.len() as u16;
+        let app_data_len = app_data_buffer.len() as u16;
         plaintext_data[..2].copy_from_slice(&app_data_len.to_le_bytes());
-        plaintext_data[2..2 + app_data.len()].copy_from_slice(app_data);
-        let encrypted_len = 2 + app_data.len();
+        plaintext_data[2..2 + app_data_buffer.len()].copy_from_slice(app_data_buffer);
+        let encrypted_len = 2 + app_data_buffer.len();
         if transport.random_data_size_bytes() > 0 {
             todo!("Handle random data bytes");
         }
@@ -185,7 +184,7 @@ impl SessionManager {
         let aead_data = aead_buf.data(aead_len).map_err(SessionError::Codec)?;
 
         let (encrypted_size, tag) = session_info
-            .encrypt_secure_message(aead_data, app_data, &mut encrypted_data)
+            .encrypt_secure_message(aead_data, app_data_buffer, &mut encrypted_data)
             .await?;
 
         let mut secure_message_len = session_id
