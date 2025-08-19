@@ -84,11 +84,6 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
         self.registers.mcu_mbox0_csr_mbox_execute.set(0);
     }
 
-    // Restores the data buffer after it has been taken. This method is intended to be called by client.
-    pub fn set_rx_buffer(&self, rx_buf: &'static mut [u32]) {
-        self.data_buf.replace(rx_buf);
-    }
-
     pub fn handle_interrupt(&self) {
         let intr_status = self
             .registers
@@ -130,7 +125,7 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
 
         if let Some(client) = self.client.get() {
             if let Some(buf) = self.data_buf.take() {
-                // It is expected that the client restores buffer with set_rx_buffer().
+                // It is expected that the client will call restore_rx_buffer().
                 client.request_received(command, buf, dw_len);
             } else {
                 panic!("MCU_MBOX_DRIVER: No data buffer available for incoming request.");
@@ -171,13 +166,22 @@ impl<'a, A: Alarm<'a>> AlarmClient for McuMailbox<'a, A> {
 }
 
 impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
-    fn send_request(&self, _command: u32, _request_data: &[u32]) -> Result<(), ErrorCode> {
+    fn send_request(
+        &self,
+        _command: u32,
+        _request_data: impl Iterator<Item = u32>,
+        _dw_len: usize,
+    ) -> Result<(), ErrorCode> {
         unimplemented!("MCU_MBOX_DRIVER only supports receiver mode");
     }
 
-    fn send_response(&self, response_data: &[u32], status: MailboxStatus) -> Result<(), ErrorCode> {
-        let resp_len = response_data.len();
-        if resp_len > self.data_buf_len {
+    fn send_response(
+        &self,
+        response_data: impl Iterator<Item = u32>,
+        dw_len: usize,
+        status: MailboxStatus,
+    ) -> Result<(), ErrorCode> {
+        if dw_len > self.data_buf_len {
             return Err(ErrorCode::INVAL);
         }
 
@@ -185,8 +189,16 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
 
         if let Some(buf) = self.data_buf.take() {
             // Copy response data into driver buffer which maps to mailbox sram directly.
-            buf[..resp_len].copy_from_slice(response_data);
+            for (i, data) in response_data.take(dw_len).enumerate() {
+                buf[i] = data;
+            }
+
             self.data_buf.replace(buf);
+
+            // Set mbox data length register (in bytes).
+            self.registers
+                .mcu_mbox0_csr_mbox_dlen
+                .set((dw_len * 4) as u32);
 
             // Set cmd_status register
             self.registers
@@ -208,6 +220,11 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
 
     fn max_mbox_sram_dw_size(&self) -> usize {
         self.registers.mcu_mbox0_csr_mbox_sram.len()
+    }
+
+    // Restores the data buffer after it has been taken. This method is intended to be called by client.
+    fn restore_rx_buffer(&self, rx_buf: &'static mut [u32]) {
+        self.data_buf.replace(rx_buf);
     }
 
     fn set_client(&self, client: &'a dyn MailboxClient) {

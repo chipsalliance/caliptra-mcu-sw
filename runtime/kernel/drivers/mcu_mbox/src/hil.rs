@@ -16,29 +16,48 @@ pub trait Mailbox<'a> {
     /// # Arguments
     ///
     /// * `command` - The command identifier to send.
-    /// * `request_data` - The data payload to transmit.
+    /// * `request_data` - Iterator yielding the request payload dwords to transmit.
+    /// * `dw_len` - Number of dwords to send from `request_data`.
     ///
     /// # Returns
     ///
     /// * `Ok(())` on success.
     /// * `Err(ErrorCode)` if the operation fails.
-    fn send_request(&self, command: u32, request_data: &[u32]) -> Result<(), ErrorCode>;
+    fn send_request(
+        &self,
+        command: u32,
+        request_data: impl Iterator<Item = u32>,
+        dw_len: usize,
+    ) -> Result<(), ErrorCode>;
 
     /// Writes a response to the MCU mailbox (Receiver mode).
     ///
     /// # Arguments
     ///
-    /// * `response_data` - The response payload to write.
-    /// * `status` - The status to set for the mailbox.
+    /// * `response_data` - Iterator yielding the response payload dwords to write.
+    /// * `dw_len` - Number of dwords to write from `response_data`.
+    /// * `status` - The status to set for the mailbox after writing the response.
     ///
     /// # Returns
     ///
     /// * `Ok(())` on success.
     /// * `Err(ErrorCode)` if the operation fails.
-    fn send_response(&self, response_data: &[u32], status: MailboxStatus) -> Result<(), ErrorCode>;
+    fn send_response(
+        &self,
+        response_data: impl Iterator<Item = u32>,
+        dw_len: usize,
+        status: MailboxStatus,
+    ) -> Result<(), ErrorCode>;
 
     /// Returns the maximum size (in dword) of the MCU mailbox SRAM.
     fn max_mbox_sram_dw_size(&self) -> usize;
+
+    /// Restores the receive buffer for the mailbox. This method is intended to be called by the client.
+    ///
+    /// # Arguments
+    ///
+    /// * `rx_buf` - The buffer to restore for receiving data.
+    fn restore_rx_buffer(&self, rx_buf: &'static mut [u32]);
 
     /// Registers a client to receive MCU mailbox event callbacks.
     ///
