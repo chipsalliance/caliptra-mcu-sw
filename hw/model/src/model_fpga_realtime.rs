@@ -2,10 +2,7 @@
 
 #![allow(clippy::mut_from_ref)]
 
-use registers_generated::interface_regs::bits::{Control};
-use registers_generated::interface_regs::regs::InterfaceRegs;
-use registers_generated::fifo_regs::bits::{LogFifoData, LogFifoStatus, ItrngFifoStatus, DbgFifoStatus};
-use registers_generated::fifo_regs::regs::FifoRegs;use crate::otp_provision::{lc_generate_memory, otp_generate_lifecycle_tokens_mem};
+use crate::otp_provision::{lc_generate_memory, otp_generate_lifecycle_tokens_mem};
 use crate::output::ExitStatus;
 use crate::{xi3c, InitParams, McuHwModel, McuManager, Output, DEFAULT_LIFECYCLE_RAW_TOKENS};
 use anyhow::{anyhow, bail, Error, Result};
@@ -15,7 +12,13 @@ use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use caliptra_hw_model_types::{HexSlice, DEFAULT_FIELD_ENTROPY, DEFAULT_UDS_SEED};
 use caliptra_image_types::FwVerificationPqcKeyType;
 use emulator_bmc::Bmc;
+use registers_generated::fifo_regs::bits::{
+    DbgFifoStatus, ItrngFifoStatus, LogFifoData, LogFifoStatus,
+};
+use registers_generated::fifo_regs::regs::FifoRegs;
 use registers_generated::i3c::bits::{DeviceStatus0, StbyCrDeviceAddr, StbyCrVirtDeviceAddr};
+use registers_generated::interface_regs::bits::Control;
+use registers_generated::interface_regs::regs::InterfaceRegs;
 use registers_generated::mci::bits::Go::Go;
 use registers_generated::{fuses, i3c};
 use std::io::Write;
@@ -146,9 +149,10 @@ impl ModelFpgaRealtime {
 
     fn reset_axi(&mut self) {
         // Set AXI reset. Will self clear after several clocks.
-        self.wrapper.regs().control.modify(
-            Control::TriggerAxiReset.val((1) as u32),
-        );
+        self.wrapper
+            .regs()
+            .control
+            .modify(Control::TriggerAxiReset.val((1) as u32));
     }
 
     fn set_subsystem_reset(&mut self, reset: bool) {
@@ -195,11 +199,7 @@ impl ModelFpgaRealtime {
             {
                 break;
             }
-            let _ = self
-                .wrapper
-                .fifo_regs()
-                .dbg_fifo_pop
-                .get();
+            let _ = self.wrapper.fifo_regs().dbg_fifo_pop.get();
         }
     }
 
@@ -228,7 +228,7 @@ impl ModelFpgaRealtime {
                 self.output()
                     .sink()
                     .push_uart_char(data.read(LogFifoData::NextChar) as u8);
-                    //.push_uart_char(data & 0xF as u8);
+                //.push_uart_char(data & 0xF as u8);
             }
         }
 
