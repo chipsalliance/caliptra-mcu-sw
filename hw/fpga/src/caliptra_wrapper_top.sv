@@ -14,16 +14,12 @@
 //
 `default_nettype wire
 
-`include "common_defines.sv"
-`include "config_defines.svh"
-`include "caliptra_reg_defines.svh"
-`include "caliptra_macros.svh"
+// Testing to see if these are needed
+//`include "common_defines.sv"
+//`include "config_defines.svh"
+//`include "caliptra_reg_defines.svh"
+//`include "caliptra_macros.svh"
 
-// TODO: This never gets included?
-//`include "css_mcu0_el2_pdef.vh"
-
-// TODO: Not sure if axi_struct_pkg needs to be imported. Currently getting errors
-//`include "tlul_pkg.sv"
 import axi_struct_pkg::*;
 import caliptra_fpga_realtime_regs_pkg::*;
 
@@ -537,18 +533,7 @@ module caliptra_wrapper_top (
     input	wire                      S_AXI_WRAPPER_RREADY,
     output	wire [31:0]               S_AXI_WRAPPER_RDATA,
     output	wire [1:0]                S_AXI_WRAPPER_RRESP
-
-    // I3C
-    //output logic SDA_UP,
-    //output logic SDA_PUSH,
-    //output logic SDA_PULL,
-    //input  logic SDA,
-    //output logic SCL_UP,
-    //output logic SCL_PUSH,
-    //output logic SCL_PULL,
-    //input  logic SCL
     );
-
 
     axi4lite_intf wrapper_s_axil ();
 
@@ -612,11 +597,8 @@ module caliptra_wrapper_top (
         end
     end
 
-    // TODO: Rearrange this to be more logically located
-    logic [127:0] ss_generic_fw_exec_ctrl;
-    assign mcu_sram_fw_exec_region_lock = ss_generic_fw_exec_ctrl[2];
-
-    import soc_ifc_pkg::*;
+    // TODO: Checking if this is needed
+    //import soc_ifc_pkg::*;
 
     logic                       BootFSM_BrkPoint;
 
@@ -1081,7 +1063,6 @@ trng_fifo_inst (
 `endif
 
 // Track how many cycles Caliptra has been out of reset for timestamping events
-// TODO: Changed this to track ss reset because ctpra_rst_b no longer in scope. Should this still track that signal using xmr?
 reg [31:0] cycle_count;
 always@(posedge core_clk or negedge hwif_out.interface_regs.control.cptra_ss_rst_b.value) begin
     if (~hwif_out.interface_regs.control.cptra_ss_rst_b.value) begin
@@ -1817,9 +1798,6 @@ mcu_rom (
     |         1 |      0 |           0 | -> |    1 |    1 |  1 | -> | push pull low  |
     |         1 |      1 |           1 | -> |    0 |    0 |  1 | -> | push pull high |
     */
-    //logic cptra_ss_i3c_scl_o;
-    //logic cptra_ss_i3c_sda_o;
-    //logic cptra_ss_sel_od_pp_o;
     (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_sel_od_pp_o;
     (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_scl_o;
     (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_sda_o;

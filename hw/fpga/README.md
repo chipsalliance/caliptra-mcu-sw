@@ -14,9 +14,18 @@ See the License for the specific language governing permissions and<BR>
 limitations under the License.*_<BR>
 
 # **Caliptra FPGA Guide** #
-FPGA provides a fast environment for software development and testing that uses Caliptra RTL.
-The FPGA's Programmable Logic is programmed with the Caliptra RTL and FPGA specific SoC wrapper logic including a connection to the Processing System AXI bus.
-The Processing System ARM cores then act as the SoC Security Processor with memory mapped access to Caliptra's public register space.
+FPGA provides a fast environment for software development and testing that is built on Caliptra Core and Subsystem RTL.
+The ARM CPU takes the place of an SOC manager and can drive stimulus to Caliptra SS over an AXI bus. In addition the Caliptra Core, MCU, and LCC JTAGs are connected to GPIO pins for debug and testing from the ARM CPU.
+
+### FPGA Block Diagram Components ###
+- Wrapper Registers
+  - Controls resets, straps, and FPGA wrapper utilities such as the log and debug FIFOs.
+- AXI Interconnect
+  - SS requires the integrator to connect the various SS AXI busses to an interconnect to allow MMIO access both from the SOC manager and SS components with an AXI manager interface.
+- Backdoor memory interfaces
+  - The Caliptra Core, MCU, and OTP ROMs are implemented as dual port SRAM's to allow them to be reconfigured without rebuilding. These SRAMs are mapped into the ARM CPU to allow them to be written by the hw-model before taking SS out of reset.
+- Xilinx I3C
+  - The FPGA instantiates an I3C host controller to communicate with the SS I3C. In order for the I3C controllers to reach I3C bus speeds a higher clock is needed. The FPGA modifies caliptra_ss_top to insert CDC logic and run the SS I3C at the same clock.
 
 ![](./images/caliptra_ss_fpga_block_diagram.svg)
 
@@ -52,9 +61,9 @@ The Processing System ARM cores then act as the SoC Security Processor with memo
      - Issue 'saveenv' command to uboot, which creates an env file in the boot partition for use in subsequent boots.
 
 #### Serial port configuration: ####
-The USB Type-C connecter J207 provides UART and JTAG access to the board.
-1. VCK190 JTAG chain
-2. PS UART (First COM port)
+The USB Type-C connecter J207 on the VCK190 provides UART and JTAG access to the board using an FTDI USB to quad UART/Serial converter.
+1. VCK190 JTAG chain for waveform capture and management.
+2. PS UART (First COM port) is a serial port used to access the operating system running on the ARM core.
 3. PL UART (Currently unused)
 4. System Controller UART (Third COM port)
 

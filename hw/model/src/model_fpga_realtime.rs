@@ -1111,6 +1111,9 @@ impl McuHwModel for ModelFpgaRealtime {
         //     m.set_mcu_generic_input_wires(&[1, 0]);
         // }
 
+        println!("Resetting AXI infrastucture");
+        m.reset_axi();
+
         println!("Putting subsystem into reset");
         m.set_subsystem_reset(true);
 

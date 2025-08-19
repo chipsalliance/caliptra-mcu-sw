@@ -1,3 +1,4 @@
+# Licensed under the Apache-2.0 license
 
 # Create a project to package Caliptra.
 # Packaging Caliptra allows Vivado to recognize the APB bus as an endpoint for the memory map.
@@ -86,8 +87,7 @@ add_files [ glob $i3cDir/src/*/*/*.sv ]
 add_files [ glob $i3cDir/src/*/*.sv ]
 add_files [ glob $i3cDir/src/*.sv ]
 
-# Remove spi_host files that aren't used yet and are flagged as having syntax errors
-# TODO: Re-include these files when spi_host is used.
+# Remove unused spi_host files.
 remove_files [ glob $caliptrartlDir/src/spi_host/rtl/*.sv ]
 
 # Add FPGA specific sources

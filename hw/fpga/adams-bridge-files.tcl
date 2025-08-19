@@ -1,3 +1,4 @@
+# Licensed under the Apache-2.0 license
 
 set adbDir $ssrtlDir/third_party/caliptra-rtl/submodules/adams-bridge
 
