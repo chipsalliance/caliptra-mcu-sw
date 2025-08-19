@@ -148,8 +148,10 @@ pub(crate) async fn handle_get_version<'a>(
     ctx.prepare_response_buffer(req_payload)?;
     generate_version_response(ctx, req_payload, ctx.supported_versions).await?;
 
-    // Set connection state
-    ctx.state.reset();
+    // Invalidate state and reset session info
+    ctx.reset();
+
+    // Set connection state to after version
     ctx.state
         .connection_info
         .set_state(ConnectionState::AfterVersion);

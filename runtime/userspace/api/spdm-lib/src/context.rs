@@ -195,6 +195,11 @@ impl<'a> SpdmContext<'a> {
         }
     }
 
+    pub(crate) fn reset(&mut self) {
+        self.state.reset();
+        self.session_mgr.reset();
+    }
+
     pub(crate) fn prepare_response_buffer(&self, rsp_buf: &mut MessageBuf) -> CommandResult<()> {
         rsp_buf.reset();
         rsp_buf
