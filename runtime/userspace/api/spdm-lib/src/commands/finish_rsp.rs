@@ -227,19 +227,26 @@ pub(crate) async fn handle_finish<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
-    if !ctx.state.connection_info.handshake_in_the_clear() && !ctx.session_mgr.session_active() {
-        // If session handshake is not in the clear, we must have an active session
-        Err(ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None))?;
-    } else if ctx.state.connection_info.handshake_in_the_clear() && ctx.session_mgr.session_active()
-    {
-        // If session handshake is in the clear, we must not have an active session
-        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
-    }
-
-    // TODO: Get the current session ID if handshake in the clear is not set
-    let session_id = ctx.session_mgr.active_session_id().ok_or_else(|| {
-        ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
-    })?;
+    // Validate session state based on handshake in the clear mode
+    let session_id = if ctx.state.connection_info.handshake_in_the_clear() {
+        // For handshake in the clear: must have handshake phase session, no active session
+        if ctx.session_mgr.active_session_id().is_some() {
+            Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
+        }
+        ctx.session_mgr
+            .handshake_phase_session_id()
+            .ok_or_else(|| {
+                ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
+            })?
+    } else {
+        // For handshake not in the clear: must have active session, no handshake phase session
+        if ctx.session_mgr.handshake_phase_session_id().is_some() {
+            Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
+        }
+        ctx.session_mgr.active_session_id().ok_or_else(|| {
+            ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
+        })?
+    };
 
     let session_info = ctx.session_mgr.session_info(session_id).map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
@@ -254,15 +261,31 @@ pub(crate) async fn handle_finish<'a>(
         .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
 
     // Process FINISH request
-    process_finish(ctx, session_id, spdm_hdr, req_payload).await?;
+    match process_finish(ctx, session_id, spdm_hdr, req_payload).await {
+        Ok(()) => {}
+        Err(e) => {
+            let _ = ctx.session_mgr.delete_session(session_id);
+            Err(e)?;
+        }
+    }
 
     // Generate FINISH response
     ctx.prepare_response_buffer(req_payload)?;
-    generate_finish_response(ctx, session_id, req_payload).await?;
+    match generate_finish_response(ctx, session_id, req_payload).await {
+        Ok(()) => {}
+        Err(e) => {
+            let _ = ctx.session_mgr.delete_session(session_id);
+            Err(e)?;
+        }
+    }
 
     // Set the session state to SessionEstablished
     ctx.session_mgr
         .set_session_state(session_id, SessionState::SessionEstablished)
         .map_err(|e| (false, CommandError::Session(e)))?;
+
+    // Reset handshake phase session ID
+    ctx.session_mgr.reset_handshake_phase_session_id();
+
     Ok(())
 }

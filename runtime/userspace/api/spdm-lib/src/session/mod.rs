@@ -39,6 +39,7 @@ pub type SessionResult<T> = Result<T, SessionError>;
 #[derive(Default)]
 pub(crate) struct SessionManager {
     active_session_id: Option<u32>,
+    handshake_phase_session_id: Option<u32>,
     sessions: [Option<SessionInfo>; MAX_NUM_SESSIONS],
     cur_responder_session_id: u16,
 }
@@ -47,6 +48,7 @@ impl SessionManager {
     pub fn new() -> Self {
         Self {
             active_session_id: None,
+            handshake_phase_session_id: None,
             sessions: [None; MAX_NUM_SESSIONS],
             cur_responder_session_id: 0,
         }
@@ -59,10 +61,6 @@ impl SessionManager {
         (session_id, rsp_session_id)
     }
 
-    pub fn session_active(&self) -> bool {
-        self.active_session_id.is_some()
-    }
-
     pub fn set_active_session_id(&mut self, session_id: u32) {
         self.active_session_id = Some(session_id);
     }
@@ -73,6 +71,18 @@ impl SessionManager {
 
     pub fn active_session_id(&self) -> Option<u32> {
         self.active_session_id
+    }
+
+    pub fn handshake_phase_session_id(&self) -> Option<u32> {
+        self.handshake_phase_session_id
+    }
+
+    pub fn set_handshake_phase_session_id(&mut self, session_id: u32) {
+        self.handshake_phase_session_id = Some(session_id);
+    }
+
+    pub fn reset_handshake_phase_session_id(&mut self) {
+        self.handshake_phase_session_id = None;
     }
 
     pub fn create_session(&mut self, session_id: u32) -> SessionResult<()> {
@@ -98,8 +108,25 @@ impl SessionManager {
     }
 
     #[allow(dead_code)]
-    pub fn delete_session(&mut self, _session_id: u32) -> Option<usize> {
-        todo!("Delete Session");
+    pub fn delete_session(&mut self, session_id: u32) -> SessionResult<()> {
+        let session_index = self
+            .sessions
+            .iter()
+            .position(|s| {
+                s.as_ref()
+                    .map(|info| info.session_id == session_id)
+                    .unwrap_or(false)
+            })
+            .ok_or(SessionError::InvalidSessionId)?;
+
+        self.sessions[session_index] = None;
+        if self.active_session_id == Some(session_id) {
+            self.reset_active_session_id();
+        }
+        if self.handshake_phase_session_id == Some(session_id) {
+            self.reset_handshake_phase_session_id();
+        }
+        Ok(())
     }
 
     #[allow(dead_code)]
@@ -158,7 +185,7 @@ impl SessionManager {
         let aead_data = aead_buf.data(aead_len).map_err(SessionError::Codec)?;
 
         let (encrypted_size, tag) = session_info
-            .encrypt_secure_message(&aead_data, app_data, &mut encrypted_data)
+            .encrypt_secure_message(aead_data, app_data, &mut encrypted_data)
             .await?;
 
         let mut secure_message_len = session_id
@@ -184,43 +211,45 @@ impl SessionManager {
         &mut self,
         transport: &dyn SpdmTransport,
         secure_message: &mut MessageBuf<'_>,
-        app_buffer: &mut [u8],
+        app_data_buffer: &mut [u8],
     ) -> SessionResult<usize> {
         let mut aead_data = [0u8; MAX_SPDM_AEAD_ASSOCIATED_DATA_SIZE];
+        let mut aead_buf = MessageBuf::new(&mut aead_data);
         let mut plaintext_buffer = [0u8; MAX_SPDM_RESPONDER_BUF_SIZE];
         // Decode u32 session id first
-        let session_id = u32::decode(secure_message).map_err(|e| SessionError::Codec(e))?;
+        let session_id = u32::decode(secure_message).map_err(SessionError::Codec)?;
 
         let session_info = self.session_info_mut(session_id)?;
 
-        aead_data.copy_from_slice(session_id.to_le_bytes().as_ref());
-        let mut aead_data_size = 4; // Size of session_id in bytes
+        let mut aead_len = session_id
+            .encode(&mut aead_buf)
+            .map_err(SessionError::Codec)?;
 
-        let sequence_number_size = transport.sequence_num_size_bytes();
-
-        if sequence_number_size > 0 {
+        if transport.sequence_num_size_bytes() > 0 {
+            // Decode sequence number if exists and process
             todo!("Decode sequence number if exists and process");
         }
 
-        let length = u16::decode(secure_message).map_err(SessionError::Codec)? as usize;
-        if length > app_buffer.len() {
+        let length = u16::decode(secure_message).map_err(SessionError::Codec)?;
+        if length as usize > app_data_buffer.len() {
             return Err(SessionError::BufferTooSmall);
         }
-        aead_data[aead_data_size..aead_data_size + 2]
-            .copy_from_slice(length.to_le_bytes().as_ref());
-        aead_data_size += 2;
 
-        let secure_msg_payload_len = secure_message.msg_len();
-        // Secure message length may be bigger than the length field for alignment purposes
-        if secure_msg_payload_len < length {
+        // prepare associated data
+        aead_len += length.encode(&mut aead_buf).map_err(SessionError::Codec)?;
+        aead_buf.pull_data(aead_len).map_err(SessionError::Codec)?;
+        let associated_data = aead_buf.data(aead_len).map_err(SessionError::Codec)?;
+
+        // Secure message payload length may be bigger than the length field for alignment purposes
+        if secure_message.msg_len() < length as usize {
             return Err(SessionError::DecodeAeadError);
         }
 
         let secure_msg_payload = secure_message
-            .data_mut(length)
+            .data_mut(length as usize)
             .map_err(SessionError::Codec)?;
         let tag_len = size_of::<Aes256GcmTag>();
-        let encrypted_data_len = length - tag_len;
+        let encrypted_data_len = length as usize - tag_len;
 
         let encrypted_data = &secure_msg_payload[..encrypted_data_len];
         let tag_slice = &secure_msg_payload[encrypted_data_len..encrypted_data_len + tag_len];
@@ -229,12 +258,7 @@ impl SessionManager {
             .map_err(|_| SessionError::DecodeAeadError)?;
 
         let decrypted_size = session_info
-            .decrypt_secure_message(
-                &aead_data[..aead_data_size],
-                encrypted_data,
-                &mut plaintext_buffer,
-                tag,
-            )
+            .decrypt_secure_message(associated_data, encrypted_data, &mut plaintext_buffer, tag)
             .await?;
 
         let mut plaintext_msg = MessageBuf::from(&mut plaintext_buffer[..decrypted_size]);
@@ -245,8 +269,8 @@ impl SessionManager {
             .data(app_data_len)
             .map_err(SessionError::Codec)?;
 
-        self.active_session_id = Some(session_id);
-        app_buffer[..app_data_len].copy_from_slice(app_data);
+        self.set_active_session_id(session_id);
+        app_data_buffer[..app_data_len].copy_from_slice(app_data);
         Ok(app_data_len)
     }
 }

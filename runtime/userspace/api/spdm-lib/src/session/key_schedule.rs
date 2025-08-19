@@ -156,7 +156,7 @@ impl KeySchedule {
             .map_err(KeyScheduleError::CaliptraApi)?;
 
         // Increment the sequence number after encryption
-        self.increment_sequence_number(session_key_type);
+        self.increment_sequence_number(session_key_type)?;
 
         Ok(result)
     }
@@ -189,7 +189,7 @@ impl KeySchedule {
             .map_err(KeyScheduleError::CaliptraApi)?;
 
         // Increment the sequence number after decryption
-        self.increment_sequence_number(session_key_type);
+        self.increment_sequence_number(session_key_type)?;
 
         Ok(decrypted_size)
     }

@@ -114,6 +114,13 @@ impl SpdmTransport for DoeTransport {
             .map_err(TransportError::Codec)?;
 
         let header = DoeHeader::decode(req).map_err(TransportError::Codec)?;
+
+        if header.vendor_id() != DOE_PCI_SIG_VENDOR_ID {
+            Err(TransportError::InvalidMessage)?;
+        }
+
+        //TODO: May have to resize the buffer based on the length field
+
         let data_object_type: DataObjectType = header
             .data_object_type()
             .try_into()

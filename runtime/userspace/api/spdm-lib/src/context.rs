@@ -71,7 +71,7 @@ impl<'a> SpdmContext<'a> {
             .map_err(SpdmError::Transport)?;
 
         // Reset active session_id
-        // self.session_mgr.reset_active_session_id();
+        self.session_mgr.reset_active_session_id();
 
         if secure {
             // Create a temporary buffer for decrypted application data
@@ -89,10 +89,6 @@ impl<'a> SpdmContext<'a> {
             encode_u8_slice(&app_data[..app_data_len], msg_buf)
                 .map_err(|_| SpdmError::Command(crate::error::CommandError::BufferTooSmall))?;
         }
-
-        // TODO: Get session ID from the message if secure.
-        // TODO: Set active session ID if it is valid
-        // TODO: Get Session info from the session ID and call decrypt() method on session_info if secure.
 
         // Process message
         match self.handle_request(msg_buf).await {
@@ -125,6 +121,20 @@ impl<'a> SpdmContext<'a> {
         if req_code != ReqRespCode::ChunkGet && self.large_resp_context.in_progress() {
             // Reset large response context if the request is not a CHUNK_GET
             self.large_resp_context.reset();
+        }
+
+        // The following requests are prohibited within session
+        if self.session_mgr.active_session_id().is_some() {
+            match req_code {
+                ReqRespCode::GetVersion
+                | ReqRespCode::GetCapabilities
+                | ReqRespCode::NegotiateAlgorithms
+                | ReqRespCode::Challenge
+                | ReqRespCode::KeyExchange => {
+                    Err(self.generate_error_response(req, ErrorCode::UnexpectedRequest, 0, None))?;
+                }
+                _ => {}
+            }
         }
 
         match req_code {
