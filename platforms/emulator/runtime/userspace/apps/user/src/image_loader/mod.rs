@@ -68,8 +68,8 @@ pub async fn image_loading_task() {
             Ok(_) => {}
             Err(_) => romtime::test_exit(1),
         }
+        romtime::test_exit(0);
     }
-    romtime::test_exit(0);
 }
 
 #[allow(dead_code)]
