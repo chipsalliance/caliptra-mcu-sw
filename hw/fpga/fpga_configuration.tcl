@@ -10,8 +10,8 @@ set RTL_VERSION latest
 set BOARD VCK190
 set ITRNG TRUE
 set FAST_I3C TRUE
-set CORE_CLK_MHZ 20
-set I3C_CLK_MHZ 200
+set CORE_CLK_MHZ 18
+set I3C_CLK_MHZ 190
 
 set I3C_OUTSIDE FALSE
 set APB FALSE
@@ -495,4 +495,12 @@ if {$BUILD} {
   puts stderr "FPGA Implementation took [expr {($time_finish_impl-$time_start_impl)/60000.}] minutes"
   puts stderr "FPGA Write HW Plat  took [expr {($time_finish_hw_platform-$time_start_hw_platform)/60000.}] minutes"
   puts stderr "FPGA overall build  took [expr {($time_finish_hw_platform-$time_start_synth)/60000.}] minutes"
+
+  set build_time [ open $outputDir/jtag_constraints.xdc w ]
+  puts $build_time "Built from $VERSION"
+  puts $build_time "FPGA Synthesis      took [expr {($time_finish_synth-$time_start_synth)/60000.}] minutes"
+  puts $build_time "FPGA Implementation took [expr {($time_finish_impl-$time_start_impl)/60000.}] minutes"
+  puts $build_time "FPGA Write HW Plat  took [expr {($time_finish_hw_platform-$time_start_hw_platform)/60000.}] minutes"
+  puts $build_time "FPGA overall build  took [expr {($time_finish_hw_platform-$time_start_synth)/60000.}] minutes"
+  close $build_time
 }
