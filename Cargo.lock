@@ -1547,6 +1547,7 @@ dependencies = [
  "emulator-bmc",
  "emulator-caliptra",
  "emulator-consts",
+ "emulator-mcu-mbox",
  "emulator-periph",
  "emulator-registers-generated",
  "gdbstub",
@@ -1621,6 +1622,16 @@ name = "emulator-consts"
 version = "0.1.0"
 dependencies = [
  "caliptra-emu-cpu",
+]
+
+[[package]]
+name = "emulator-mcu-mbox"
+version = "0.1.0"
+dependencies = [
+ "caliptra-emu-bus",
+ "emulator-periph",
+ "registers-generated",
+ "tock-registers",
 ]
 
 [[package]]
