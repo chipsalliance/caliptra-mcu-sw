@@ -31,6 +31,8 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_bmc::Bmc;
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
+#[allow(unused_imports)]
+use emulator_periph::MciMailboxRequester;
 use emulator_periph::{
     CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
     McuMailbox0Internal, McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp,
@@ -51,9 +53,6 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tests::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
 use tests::pldm_request_response_test::PldmRequestResponseTest;
-
-#[cfg(feature = "test-mcu-mbox-soc-requester-loopback")]
-use emulator_periph::MciMailboxRequester;
 
 // Type aliases for external shim callbacks
 pub type ExternalReadCallback =
@@ -847,7 +846,11 @@ impl Emulator {
             bmc.push_recovery_image(mcu_firmware);
             println!("Active mode enabled with 3 recovery images");
         }
-        #[cfg(feature = "test-mcu-mbox-soc-requester-loopback")]
+
+        #[cfg(any(
+            feature = "test-mcu-mbox-soc-requester-loopback",
+            feature = "test-mcu-mbox-usermode"
+        ))]
         {
             const SOC_AGENT_ID: u32 = 0x1;
             use emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;

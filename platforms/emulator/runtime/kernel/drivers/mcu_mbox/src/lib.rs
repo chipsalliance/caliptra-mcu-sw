@@ -67,7 +67,7 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
         self.reset_before_use();
         self.state.set(McuMboxState::RxWait);
     }
-
+    /*
     pub fn enable(&self) {
         self.enable_interrupts();
     }
@@ -75,6 +75,7 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
     pub fn disable(&self) {
         self.disable_interrupts();
     }
+    */
 
     fn reset_before_use(&self) {
         let mbox_sram_size = (self.registers.mcu_mbox0_csr_mbox_sram.len() * 4) as u32;
@@ -225,6 +226,14 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
     // Restores the data buffer after it has been taken. This method is intended to be called by client.
     fn restore_rx_buffer(&self, rx_buf: &'static mut [u32]) {
         self.data_buf.replace(rx_buf);
+    }
+
+    fn enable(&self) {
+        self.enable_interrupts();
+    }
+
+    fn disable(&self) {
+        self.disable_interrupts();
     }
 
     fn set_client(&self, client: &'a dyn MailboxClient) {

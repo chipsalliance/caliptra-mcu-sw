@@ -379,6 +379,7 @@ impl MciMailboxImpl {
                 self.irq = true;
                 self.last_irq_event = Some(IrqEventToMcu::Mbox0CmdAvailable);
                 self.timer.schedule_poll_in(1);
+                println!("[xs debug]mcu_mbox emulator: Command available interrupt generated");
             }
         } else if new_val == MboxExecute::Execute::CLEAR.value {
             self.mailbox_zeroization();

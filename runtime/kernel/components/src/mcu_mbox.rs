@@ -5,7 +5,6 @@ use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
 use mcu_mbox_comm::hil;
-use mcu_mbox_comm::hil::Mailbox;
 
 #[macro_export]
 macro_rules! mcu_mbox_component_static {
@@ -48,6 +47,8 @@ impl<T: hil::Mailbox<'static>> Component for McuMboxComponent<T> {
         ));
 
         self.physical_driver.set_client(mcu_mbox_driver);
+
+        self.physical_driver.enable();
 
         mcu_mbox_driver
     }

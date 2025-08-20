@@ -96,6 +96,11 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
     ) -> Result<(), ErrorCode> {
         self.current_app.set(process_id);
 
+        romtime::println!(
+            "[xs debug]MCU_MBOX_CAPSULE: Sending response to app {:?}",
+            process_id
+        );
+
         let _result = kernel_data
             .get_readonly_processbuffer(ro_allow::RESPONSE)
             .map_err(|e| {
@@ -124,6 +129,10 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
 
 impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
     fn request_received(&self, command: u32, rx_buf: &'static mut [u32], dw_len: usize) {
+        romtime::println!(
+            "[xs debug]MCU_MBOX_CAPSULE: Request received with command {}",
+            command
+        );
         if let Some(_process_id) = self.current_app.take() {
             // Sanity check buffer len
             if dw_len > rx_buf.len() {
@@ -174,6 +183,12 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
 
                 match process_result  {
                     Ok(Ok(len)) => {
+                        romtime::println!(
+                            "[xs debug]Capsule invoke upcall: Received request with command {}, length {}",
+                            command,
+                            len
+                        );
+
                         kernel_data
                             .schedule_upcall(upcall::REQUEST_RECEIVED, (command as usize, len, 0))
                             .ok();
@@ -232,8 +247,12 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
             0 => CommandReturn::success(),
             1 => {
                 if self.current_app.is_some() {
+                    println!(
+                        "[xs debug]MCU_MBOX_CAPSULE: Application already has a pending request"
+                    );
                     return CommandReturn::failure(ErrorCode::BUSY);
                 }
+                romtime::println!("[xs debug]MCU_MBOX_CAPSULE: entering Receive request command");
                 // Receive Request Message
                 let res = self.apps.enter(process_id, |app, _| {
                     if app.waiting_rx.get() {
@@ -250,7 +269,9 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
                 }
             }
             2 => {
+                romtime::println!("[xs debug]MCU_MBOX_CAPSULE: entering Send response command");
                 if self.current_app.is_some() {
+                    romtime::println!("[xs debug]MCU_MBOX_CAPSULE: Application already has a pending response BUSY");
                     return CommandReturn::failure(ErrorCode::BUSY);
                 }
                 // Send response, arg1 is MailboxStatus as usize
@@ -265,6 +286,7 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
                     .apps
                     .enter(process_id, |app, kernel_data| {
                         if app.pending_tx.get() {
+                            println!("[xs debug]MCU_MBOX_CAPSULE: Application already has a pending response");
                             return Err(ErrorCode::BUSY);
                         }
                         self.send_app_response(process_id, app, kernel_data, status)

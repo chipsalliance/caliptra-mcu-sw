@@ -59,6 +59,12 @@ pub trait Mailbox<'a> {
     /// * `rx_buf` - The buffer to restore for receiving data.
     fn restore_rx_buffer(&self, rx_buf: &'static mut [u32]);
 
+    /// Enables the MCU mailbox driver instance.
+    fn enable(&self);
+
+    /// Disables the MCU mailbox driver instance.
+    fn disable(&self);
+
     /// Registers a client to receive MCU mailbox event callbacks.
     ///
     /// # Arguments

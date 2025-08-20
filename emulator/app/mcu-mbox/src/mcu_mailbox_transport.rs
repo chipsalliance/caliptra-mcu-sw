@@ -63,8 +63,11 @@ impl McuMailboxTransport {
 
     pub fn get_execute_response(&self) -> Result<McuMailboxResponse, McuMailboxError> {
         if !self.is_response_available() {
+            println!("[xs debug] McuMailboxTransport: No response available");
             return Err(McuMailboxError::Busy);
         }
+
+        println!("[xs debug] McuMailboxTransport: Response available");
 
         // Read the status code
         let status_code = self
