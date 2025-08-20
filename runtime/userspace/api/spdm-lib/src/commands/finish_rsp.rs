@@ -163,7 +163,7 @@ async fn generate_finish_response<'a>(
     // Prepare the response buffer
     // Spdm Header first
     let connection_version = ctx.state.connection_info.version_number();
-    let spdm_hdr = SpdmMsgHdr::new(connection_version, ReqRespCode::Finish);
+    let spdm_hdr = SpdmMsgHdr::new(connection_version, ReqRespCode::FinishRsp);
     let mut payload_len = spdm_hdr
         .encode(rsp)
         .map_err(|e| (false, CommandError::Codec(e)))?;
@@ -279,9 +279,9 @@ pub(crate) async fn handle_finish<'a>(
         }
     }
 
-    // Set the session state to SessionEstablished
+    // Set the session state to Established
     ctx.session_mgr
-        .set_session_state(session_id, SessionState::SessionEstablished)
+        .set_session_state(session_id, SessionState::Established)
         .map_err(|e| (false, CommandError::Session(e)))?;
 
     // Reset handshake phase session ID

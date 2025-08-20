@@ -25,7 +25,8 @@ bitfield! {
 pub(crate) enum SessionState {
     HandshakeNotStarted, // Before KEY_EXCHANGE and after END_SESSION
     HandshakeInProgress, // After KEY_EXCHANGE and before FINISH
-    SessionEstablished,  // After FINISH
+    Established,         // After FINISH
+    Terminating,         // When END_SESSION is received
 }
 
 #[derive(Debug, PartialEq)]
@@ -139,7 +140,9 @@ impl SessionInfo {
         let session_key_type = match self.session_state {
             SessionState::HandshakeNotStarted => return Err(SessionError::InvalidState),
             SessionState::HandshakeInProgress => SessionKeyType::ResponseHandshakeEncDecKey,
-            SessionState::SessionEstablished => SessionKeyType::ResponseDataEncDecKey,
+            SessionState::Established | SessionState::Terminating => {
+                SessionKeyType::ResponseDataEncDecKey
+            }
         };
 
         self.key_schedule_ctx
@@ -163,7 +166,9 @@ impl SessionInfo {
         let session_key_type = match self.session_state {
             SessionState::HandshakeNotStarted => return Err(SessionError::InvalidState),
             SessionState::HandshakeInProgress => SessionKeyType::RequestHandshakeEncDecKey,
-            SessionState::SessionEstablished => SessionKeyType::RequestDataEncDecKey,
+            SessionState::Established | SessionState::Terminating => {
+                SessionKeyType::RequestDataEncDecKey
+            }
         };
 
         self.key_schedule_ctx

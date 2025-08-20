@@ -208,6 +208,12 @@ impl SessionManager {
 
         secure_message_len += encode_u8_slice(&tag, secure_message).map_err(SessionError::Codec)?;
 
+        // If this is response message for END_SESSION request, clear the session.
+        if session_info.session_state == SessionState::Terminating {
+            self.delete_session(session_id)?;
+            self.reset_active_session_id();
+        }
+
         secure_message
             .pull_data(secure_message_len)
             .map_err(SessionError::Codec)
