@@ -28,9 +28,9 @@ or to run a set of ROMs and firmware:
 
 You can build firmware binaries (ROM, runtime, manifest, etc.) using a combination of:
 
-* `cargo xtask rom-build --platform fpga`
-* `cargo xtask runtime-build --platform fpga`
-* `cargo xtask all-build --platform fpga`
+* `cargo xtask-fpga rom-build --platform fpga`
+* `cargo xtask-fpga runtime-build --platform fpga`
+* `cargo xtask-fpga all-build --platform fpga`
 
 The `all-build` command will build Caliptra ROM, Caliptra firmware bundle, MCU ROM, MCU runtime, and the SoC manifest and package them all together in a ZIP file, which the `fpga-run` xtask can run.
 
@@ -38,7 +38,7 @@ These commands can be run on any host. It is not recommended to run them on the 
 
 ## Running ROM and firmware
 
-`cargo xtask fpga-run` or `./xtask-bin fpga-run` can be used to run ROMs and firmware, either directly or from a ZIP file, e.g.,
+`cargo xtask-fpga fpga-run` or `./xtask-bin fpga-run` can be used to run ROMs and firmware, either directly or from a ZIP file, e.g.,
 
 ```shell
 ./xtask-bin fpga-run --zip all-fw.zip
