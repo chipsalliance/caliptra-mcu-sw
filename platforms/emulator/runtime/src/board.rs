@@ -690,6 +690,7 @@ pub unsafe fn main() {
         feature = "test-log-flash-linear",
         feature = "test-log-flash-circular",
         feature = "test-mcu-mbox",
+        feature = "test-mcu-mbox-soc-requester-loopback",
     ))]
     {
         PLATFORM = Some(veer);
@@ -743,6 +744,10 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-mcu-mbox") {
         debug!("Executing test-mcu-mbox");
         crate::tests::mcu_mbox_test::test_mcu_mbox()
+    } else if cfg!(feature = "test-mcu-mbox-soc-requester-loopback") {
+        debug!("Executing test-mcu-mbox-soc-requester-loopback");
+        crate::tests::mcu_mbox_driver_loopback_test::test_mcu_mbox_soc_requester_loopback();
+        None
     } else {
         None
     };

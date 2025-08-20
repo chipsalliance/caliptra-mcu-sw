@@ -18,7 +18,7 @@ use romtime::println;
 const TEST_BUF_LEN: usize = 64;
 static mut MCU_MAILBOX_TESTER: Option<&'static McuMailboxTester> = None;
 
-fn get_mailbox_tester() -> &'static McuMailboxTester {
+pub(crate) fn get_mailbox_tester() -> &'static McuMailboxTester {
     unsafe {
         MCU_MAILBOX_TESTER.unwrap_or_else(|| {
             let chip = crate::CHIP.unwrap();
@@ -102,9 +102,10 @@ impl MailboxClient for McuMailboxTester {
             self.state.set(IoState::Error);
             return;
         }
-        self.state.set(IoState::Received);
         // Copy received data directly into tester's rx_buf
-        recv[..dw_len].copy_from_slice(&rx_buf[..dw_len]);
+        for i in 0..dw_len {
+            recv[i] = rx_buf[i];
+        }
         // store data len
         self.data_len.set(dw_len);
         // store command
@@ -113,6 +114,8 @@ impl MailboxClient for McuMailboxTester {
         self.driver.restore_rx_buffer(rx_buf);
         // Restore buffers for next test
         self.rx_buf.replace(recv);
+        self.state.set(IoState::Received);
+        self.deferred_call.set();
     }
 
     fn send_done(&self, result: Result<(), kernel::ErrorCode>) {
