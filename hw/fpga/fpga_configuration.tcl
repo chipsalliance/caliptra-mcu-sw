@@ -474,6 +474,8 @@ apply_bd_automation -rule xilinx.com:bd_rule:debug -dict [list \
     [get_bd_nets dbg_log] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
   ]
 set_property CONFIG.C_DATA_DEPTH {8192} [get_bd_cells axis_ila_0]
+set_property CONFIG.C_INPUT_PIPE_STAGES {2} [get_bd_cells axis_ila_0]
+set_property CONFIG.C_INPUT_PIPE_STAGES {2} [get_bd_cells axis_ila_1]
 save_bd_design
 
 # Start build
@@ -499,7 +501,7 @@ if {$BUILD} {
   puts stderr "FPGA Write HW Plat  took [expr {($time_finish_hw_platform-$time_start_hw_platform)/60000.}] minutes"
   puts stderr "FPGA overall build  took [expr {($time_finish_hw_platform-$time_start_synth)/60000.}] minutes"
 
-  set build_time [ open $outputDir/jtag_constraints.xdc w ]
+  set build_time [ open $outputDir/build_time.txt w ]
   puts $build_time "Built from $VERSION"
   puts $build_time "FPGA Synthesis      took [expr {($time_finish_synth-$time_start_synth)/60000.}] minutes"
   puts $build_time "FPGA Implementation took [expr {($time_finish_impl-$time_start_impl)/60000.}] minutes"
