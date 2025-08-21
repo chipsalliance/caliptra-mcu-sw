@@ -57,6 +57,11 @@ pub async fn image_loading_task() {
             Ok(_) => {}
             Err(_) => romtime::test_exit(1),
         }
+        #[cfg(not(any(
+            feature = "test-firmware-update-streaming",
+            feature = "test-firmware-update-flash"
+        )))]
+        romtime::test_exit(0);
     }
     // After image loading, proceed to firmware update if enabled
     #[cfg(any(
@@ -65,10 +70,9 @@ pub async fn image_loading_task() {
     ))]
     {
         match crate::firmware_update::firmware_update(&EMULATED_DMA_MAPPING).await {
-            Ok(_) => {}
+            Ok(_) => romtime::test_exit(0),
             Err(_) => romtime::test_exit(1),
         }
-        romtime::test_exit(0);
     }
 }
 
