@@ -10,6 +10,7 @@ fpga_realtime = ["mcu-hw-model/fpga_realtime"]
 
 [dependencies]
 anyhow.workspace = true
+cc.workspace = true
 clap.workspace = true
 clap-num.workspace = true
 crc32fast.workspace = true
@@ -32,7 +33,6 @@ tempfile.workspace = true
 toml.workspace = true
 walkdir.workspace = true
 zerocopy.workspace = true
-cc.workspace = true
 
 [build-dependencies]
 cc.workspace = true
