@@ -17,6 +17,8 @@ The FPGA should have the following installed:
 
 - rsync
 - git
+- make
+- gcc
 
 **Suggestion**: Download the latest FPGA Image from the Caliptra-SW main-2.x branch's FPGA Image build [job](https://github.com/chipsalliance/caliptra-sw/actions/workflows/fpga-image.yml?query=branch%3Amain-2.x). This ensures you are testing with the same system used in the FPGA CI.
 
