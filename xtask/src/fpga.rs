@@ -6,13 +6,12 @@ use mcu_builder::{FirmwareBinaries, PROJECT_ROOT};
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
 use mcu_rom_common::LifecycleControllerState;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::str::FromStr;
 
 #[derive(Subcommand)]
 pub(crate) enum Fpga {
     /// Bootstraps an FPGA. This command should be run after each boot
-    // TODO(clundin): Refactor this command to run over ssh.
     Bootstrap {
         #[arg(long)]
         target_host: Option<String>,
@@ -114,10 +113,9 @@ fn run_command_with_output(
             .args([target_host, "-t", command])
             .output()?)
     } else {
-        let mut command = command.split_whitespace();
-        Ok(Command::new(command.next().expect("Expected a command"))
+        Ok(Command::new("sh")
             .current_dir(&*PROJECT_ROOT)
-            .args(command)
+            .args(["-c", command])
             .output()?)
     }
 }
@@ -129,16 +127,17 @@ fn run_command(target_host: Option<&str>, command: &str) -> Result<()> {
         let status = Command::new("ssh")
             .current_dir(&*PROJECT_ROOT)
             .args([target_host, "-t", command])
+            .stdin(Stdio::inherit())
             .status()?;
         if !status.success() {
             bail!("\"{command}\" failed to run on FPGA over ssh");
         }
     } else {
         println!("Running command: {command}");
-        let mut command = command.split_whitespace();
-        let status = Command::new(command.next().expect("Expected a command"))
+        let status = Command::new("sh")
             .current_dir(&*PROJECT_ROOT)
-            .args(command)
+            .args(["-c", command])
+            .stdin(Stdio::inherit())
             .status()?;
         if !status.success() {
             bail!("Failed to run command");
@@ -149,8 +148,7 @@ fn run_command(target_host: Option<&str>, command: &str) -> Result<()> {
 }
 
 pub fn fpga_install_kernel_modules(target_host: Option<&str>) -> Result<()> {
-    // TODO(clundin): Port this over SSH and then re-enable.
-    // disable_all_cpus_idle()?;
+    disable_all_cpus_idle(target_host)?;
 
     // Make file assumes we are in the same directory.
     // TODO(clundin): Need to test this, the Ubuntu FPGA is in a bad state and seems to not be able
@@ -159,79 +157,54 @@ pub fn fpga_install_kernel_modules(target_host: Option<&str>) -> Result<()> {
         target_host,
         "(cd caliptra-mcu-sw/hw/fpga/kernel-modules && make)",
     )?;
+
+    // TODO(clundin): Need to test this, the Ubuntu FPGA is in a bad state and seems to not be able
+    // to build kernel modules.
     run_command(
         target_host,
         "sudo insmod caliptra-mcu-sw/hw/fpga/kernel-modules/io_module.ko",
     )?;
 
-    // TODO(clundin): Port this over SSH and then re-enable.
-    // fix_permissions()?;
+    fix_permissions(target_host)?;
 
     Ok(())
 }
 
-#[allow(dead_code)]
-fn disable_all_cpus_idle() -> Result<()> {
+fn disable_all_cpus_idle(target_host: Option<&str>) -> Result<()> {
     println!("Disabling idle on CPUs");
-    let mut cpu = 0;
-    while disable_cpu_idle(cpu).is_ok() {
-        cpu += 1;
+    for i in 0..2 {
+        disable_cpu_idle(i, target_host)?;
     }
     Ok(())
 }
 
-#[allow(dead_code)]
-fn disable_cpu_idle(cpu: usize) -> Result<()> {
-    sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
-    let cpu_sysfs = format!("/sys/devices/system/cpu/cpu{}/cpuidle/state1/disable", cpu);
-    let cpu_path = Path::new(&cpu_sysfs);
-    if !cpu_path.exists() {
-        bail!("cpu[{}] does not exist", cpu);
-    }
-    std::fs::write(cpu_path, b"1")?;
-    println!("    |- cpu[{}]", cpu);
-
-    // verify options were set
-    let value = std::fs::read_to_string(&cpu_sysfs)?.trim().to_string();
-    if value != "1" {
-        bail!("[-] error setting cpu[{}] into idle state", cpu);
-    }
-    Ok(())
-}
-
-#[allow(dead_code)]
-fn fix_permissions() -> Result<()> {
-    let uio_path = Path::new("/dev/uio0");
-    if uio_path.exists() {
-        sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
-        if !Command::new("chmod")
-            .arg("666")
-            .arg(uio_path)
-            .status()?
-            .success()
-        {
-            bail!("Failed to change permissions on uio device");
-        }
-    }
-    let uio_path = Path::new("/dev/uio1");
-    if uio_path.exists() {
-        sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
-        if !Command::new("chmod")
-            .arg("666")
-            .arg(uio_path)
-            .status()?
-            .success()
-        {
-            bail!("Failed to change permissions on uio device");
-        }
+fn disable_cpu_idle(cpu: usize, target_host: Option<&str>) -> Result<()> {
+    // Need to use bash -c to avoid misinterpreting this line...
+    run_command(
+        target_host,
+        &format!(
+            "sudo bash -c \"echo 1 > /sys/devices/system/cpu/cpu{cpu}/cpuidle/state1/disable\""
+        ),
+    )?;
+    let state = run_command_with_output(
+        target_host,
+        &format!("cat /sys/devices/system/cpu/cpu{cpu}/cpuidle/state1/disable"),
+    )?;
+    let state = String::from_utf8(state.stdout)?;
+    if state.trim_end() != "1" {
+        bail!("[-] error setting cpu[{cpu}] into idle state");
     }
     Ok(())
 }
 
-#[allow(dead_code)]
-fn is_module_loaded(module: &str) -> Result<bool> {
-    let output = Command::new("lsmod").output()?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
+fn fix_permissions(target_host: Option<&str>) -> Result<()> {
+    run_command(target_host, "sudo chmod 666 /dev/uio0")?;
+    run_command(target_host, "sudo chmod 666 /dev/uio1")?;
+    Ok(())
+}
+
+fn is_module_loaded(module: &str, target_host: Option<&str>) -> Result<bool> {
+    let stdout = String::from_utf8(run_command_with_output(target_host, "lsmod")?.stdout)?;
     Ok(stdout
         .lines()
         .any(|line| line.split_whitespace().next() == Some(module)))
@@ -284,6 +257,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
         }
         Fpga::Test { target_host } => {
             println!("Running test suite on FPGA");
+            is_module_loaded("io_module", target_host.as_deref())?;
             // Clear old test logs
             run_command(target_host.as_deref(), "(sudo rm /tmp/junit.xml || true)")?;
             // Run caliptra-mcu-sw test suite.
