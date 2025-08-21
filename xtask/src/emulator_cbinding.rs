@@ -7,7 +7,7 @@ use std::process::Command;
 const CBINDING_DIR: &str = "emulator/cbinding";
 
 /// Helper function to manage environment variables for cc crate
-fn with_cc_env<F, R>(release: bool, f: F) -> R 
+fn with_cc_env<F, R>(release: bool, f: F) -> R
 where
     F: FnOnce() -> R,
 {
@@ -27,7 +27,7 @@ where
                 "x86_64-pc-windows-msvc"
             } else {
                 "x86_64-unknown-linux-gnu"
-            }
+            },
         );
     }
     if original_host.is_none() {
@@ -37,7 +37,7 @@ where
                 "x86_64-pc-windows-msvc"
             } else {
                 "x86_64-unknown-linux-gnu"
-            }
+            },
         );
     }
 
