@@ -29,18 +29,18 @@ module caliptra_wrapper_top (
 
     output wire[31:0] ARM_USER,
     output wire xilinx_i3c_aresetn,
-    (* syn_keep = "true", mark_debug = "true" *) output reg axi_reset,
+    output reg axi_reset,
 
     // I3C signals from AXI I3C
-    (* syn_keep = "true", mark_debug = "true" *) input wire axi_i3c_scl_t,
-    (* syn_keep = "true", mark_debug = "true" *) input wire axi_i3c_scl_o,
-    (* syn_keep = "true", mark_debug = "true" *) input wire axi_i3c_scl_pullup_en,
-    (* syn_keep = "true", mark_debug = "true" *) input wire axi_i3c_sda_t,
-    (* syn_keep = "true", mark_debug = "true" *) input wire axi_i3c_sda_o,
-    (* syn_keep = "true", mark_debug = "true" *) input wire axi_i3c_sda_pullup_en,
+    input wire axi_i3c_scl_t,
+    input wire axi_i3c_scl_o,
+    input wire axi_i3c_scl_pullup_en,
+    input wire axi_i3c_sda_t,
+    input wire axi_i3c_sda_o,
+    input wire axi_i3c_sda_pullup_en,
     // I3C signals back to AXI I3C
-    (* syn_keep = "true", mark_debug = "true" *) output reg SCL,
-    (* syn_keep = "true", mark_debug = "true" *) output reg SDA,
+    output reg SCL,
+    output reg SDA,
 
     // Caliptra S_AXI Interface
     input  wire [31:0] S_AXI_CALIPTRA_AWADDR,
@@ -582,8 +582,8 @@ module caliptra_wrapper_top (
     assign xilinx_i3c_aresetn = hwif_out.interface_regs.control.cptra_ss_rst_b.value;
 
     // When sw sets trigger_axi_reset, assert the reset for 0xF cycles (requirement is 4 cycles).
-    (* syn_keep = "true", mark_debug = "true" *) reg [3:0] axi_reset_counter;
-    (* syn_keep = "true", mark_debug = "true" *) reg axi_reset_triggered;
+    reg [3:0] axi_reset_counter;
+    reg axi_reset_triggered;
     always@(posedge core_clk) begin
         axi_reset_triggered <= hwif_out.interface_regs.control.trigger_axi_reset.value;
         if (hwif_out.interface_regs.control.trigger_axi_reset.value && ~axi_reset_triggered) begin
@@ -1725,8 +1725,8 @@ mcu_rom (
     assign S_AXI_OTP_RVALID  = cptra_ss_otp_core_axi_rd_rsp_o.rvalid;
 
 
-    (* syn_keep = "true", mark_debug = "true" *) otp_ctrl_pkg::prim_generic_otp_outputs_t cptra_ss_fuse_macro_outputs_tb;
-    (* syn_keep = "true", mark_debug = "true" *) otp_ctrl_pkg::prim_generic_otp_inputs_t  cptra_ss_fuse_macro_inputs_tb;
+    otp_ctrl_pkg::prim_generic_otp_outputs_t cptra_ss_fuse_macro_outputs_tb;
+    otp_ctrl_pkg::prim_generic_otp_inputs_t  cptra_ss_fuse_macro_inputs_tb;
 
     backdoor_otp #(
         .Width            ( otp_ctrl_pkg::OtpWidth            ),
@@ -1798,9 +1798,9 @@ mcu_rom (
     |         1 |      0 |           0 | -> |    1 |    1 |  1 | -> | push pull low  |
     |         1 |      1 |           1 | -> |    0 |    0 |  1 | -> | push pull high |
     */
-    (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_sel_od_pp_o;
-    (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_scl_o;
-    (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_sda_o;
+    logic i3c_core_sel_od_pp_o;
+    logic i3c_core_scl_o;
+    logic i3c_core_sda_o;
 
 
     // TODO: Connect OE signals from i3c-core

@@ -399,7 +399,7 @@ add_files -fileset constrs_1 $outputDir/ddr4_constraints.xdc
 
 # Xilinx I3C requires that the AXI clock be > 14 * SCL_CLK_FREQ. This needs to be set late in the script so that Vivado recognizes the higher AXI clock.
 set_property CONFIG.SCL_CLK_FREQ "$I3C_SCL_RATE_KHZ" [get_bd_cells xilinx_i3c_0]
-
+if {FALSE} {
 #### Set up ILAs for debug signals ####
 # Mark AXI interfaces for debugging
 set_property HDL_ATTRIBUTE.DEBUG true [get_bd_intf_nets { \
@@ -476,6 +476,8 @@ apply_bd_automation -rule xilinx.com:bd_rule:debug -dict [list \
 set_property CONFIG.C_DATA_DEPTH {8192} [get_bd_cells axis_ila_0]
 set_property CONFIG.C_INPUT_PIPE_STAGES {2} [get_bd_cells axis_ila_0]
 set_property CONFIG.C_INPUT_PIPE_STAGES {2} [get_bd_cells axis_ila_1]
+}
+
 save_bd_design
 
 # Start build
