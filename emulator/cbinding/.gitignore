@@ -3,5 +3,6 @@
 *.so
 *.dll
 *.o
+*.obj
 emulator
 emulator_cbinding.h
