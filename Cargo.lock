@@ -850,6 +850,7 @@ dependencies = [
  "doe-transport",
  "i3c-driver",
  "kernel",
+ "mcu-mbox-comm",
  "registers-generated",
  "romtime",
  "ureg",
@@ -1547,6 +1548,7 @@ dependencies = [
  "emulator-bmc",
  "emulator-caliptra",
  "emulator-consts",
+ "emulator-mcu-mbox",
  "emulator-periph",
  "emulator-registers-generated",
  "gdbstub",
@@ -1622,6 +1624,16 @@ name = "emulator-consts"
 version = "0.1.0"
 dependencies = [
  "caliptra-emu-cpu",
+]
+
+[[package]]
+name = "emulator-mcu-mbox"
+version = "0.1.0"
+dependencies = [
+ "caliptra-emu-bus",
+ "emulator-periph",
+ "registers-generated",
+ "tock-registers",
 ]
 
 [[package]]
@@ -2573,6 +2585,8 @@ dependencies = [
  "i3c-driver",
  "kernel",
  "mcu-config",
+ "mcu-mbox-comm",
+ "mcu-mbox-driver",
  "mcu-tock-veer",
  "registers-generated",
  "romtime",
@@ -2636,6 +2650,23 @@ dependencies = [
  "uio",
  "ureg",
  "zerocopy",
+]
+
+[[package]]
+name = "mcu-mbox-comm"
+version = "0.1.0"
+dependencies = [
+ "kernel",
+]
+
+[[package]]
+name = "mcu-mbox-driver"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "kernel",
+ "mcu-mbox-comm",
+ "registers-generated",
 ]
 
 [[package]]
@@ -2729,6 +2760,8 @@ dependencies = [
  "mcu-components",
  "mcu-config",
  "mcu-config-emulator",
+ "mcu-mbox-comm",
+ "mcu-mbox-driver",
  "mcu-platforms-common",
  "mcu-tock-veer",
  "registers-generated",
@@ -2779,6 +2812,7 @@ dependencies = [
  "i3c-driver",
  "kernel",
  "mcu-config",
+ "mcu-mbox-driver",
  "registers-generated",
  "riscv 0.1.0",
  "riscv-csr",

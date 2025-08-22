@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 fn main() {
-    // On Windows, we need to provide CFI stubs since FPGA functionality is not available
+    // On Windows, we need to provide CFI stubs
     #[cfg(windows)]
     {
         // Compile the CFI stubs for Windows

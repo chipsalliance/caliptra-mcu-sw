@@ -16,9 +16,10 @@ Abstract:
 
 #[cfg(target_arch = "riscv32")]
 use crate::MCU_MEMORY_MAP;
-use crate::{BootFlow, RomEnv, RomParameters};
-use caliptra_api::SocManager;
+use crate::{fatal_error, BootFlow, RomEnv, RomParameters};
+use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
 use core::fmt::Write;
+use romtime::HexWord;
 
 pub struct FwHitlessUpdate {}
 
@@ -31,7 +32,23 @@ impl BootFlow for FwHitlessUpdate {
         let soc = &env.soc;
 
         // Release mailbox from activate command before device reboot
-        soc_manager.soc_mbox().execute().write(|w| w.execute(false));
+        if let Err(err) = soc_manager.finish_mailbox_resp(
+            core::mem::size_of::<MailboxRespHeader>(),
+            core::mem::size_of::<MailboxRespHeader>(),
+        ) {
+            match err {
+                CaliptraApiError::MailboxCmdFailed(code) => {
+                    romtime::println!(
+                        "[mcu-rom] Error finishing mailbox command: {}",
+                        HexWord(code)
+                    );
+                }
+                _ => {
+                    romtime::println!("[mcu-rom] Error finishing mailbox command");
+                }
+            }
+            fatal_error(7);
+        };
 
         while !soc.fw_ready() {}
 
