@@ -6,6 +6,61 @@ use std::process::Command;
 
 const CBINDING_DIR: &str = "emulator/cbinding";
 
+/// Helper function to manage environment variables for cc crate
+fn with_cc_env<F, R>(release: bool, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    // Save existing environment variables
+    let original_opt_level = std::env::var("OPT_LEVEL").ok();
+    let original_target = std::env::var("TARGET").ok();
+    let original_host = std::env::var("HOST").ok();
+
+    // Set required environment variables for cc crate when used outside build script
+    if original_opt_level.is_none() {
+        std::env::set_var("OPT_LEVEL", if release { "3" } else { "0" });
+    }
+    if original_target.is_none() {
+        std::env::set_var(
+            "TARGET",
+            if cfg!(target_os = "windows") {
+                "x86_64-pc-windows-msvc"
+            } else {
+                "x86_64-unknown-linux-gnu"
+            },
+        );
+    }
+    if original_host.is_none() {
+        std::env::set_var(
+            "HOST",
+            if cfg!(target_os = "windows") {
+                "x86_64-pc-windows-msvc"
+            } else {
+                "x86_64-unknown-linux-gnu"
+            },
+        );
+    }
+
+    // Execute the closure
+    let result = f();
+
+    // Restore original environment variables
+    match original_opt_level {
+        Some(val) => std::env::set_var("OPT_LEVEL", val),
+        None => std::env::remove_var("OPT_LEVEL"),
+    }
+    match original_target {
+        Some(val) => std::env::set_var("TARGET", val),
+        None => std::env::remove_var("TARGET"),
+    }
+    match original_host {
+        Some(val) => std::env::set_var("HOST", val),
+        None => std::env::remove_var("HOST"),
+    }
+
+    result
+}
+
 /// Get the static library name with the correct extension for the target platform
 fn get_lib_name() -> &'static str {
     if cfg!(target_os = "windows") {
@@ -66,32 +121,10 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
     println!("Linking C emulator with library directory: {}", lib_dir);
 
     // First compile the CFI stubs using cc crate for cross-platform compatibility
-    let cc_build = cc::Build::new();
-
-    // Set required environment variables for cc crate when used outside build script
-    std::env::set_var("OPT_LEVEL", if release { "3" } else { "0" });
-    std::env::set_var(
-        "TARGET",
-        std::env::var("TARGET").unwrap_or_else(|_| {
-            if cfg!(target_os = "windows") {
-                "x86_64-pc-windows-msvc".to_string()
-            } else {
-                "x86_64-unknown-linux-gnu".to_string()
-            }
-        }),
-    );
-    std::env::set_var(
-        "HOST",
-        std::env::var("HOST").unwrap_or_else(|_| {
-            if cfg!(target_os = "windows") {
-                "x86_64-pc-windows-msvc".to_string()
-            } else {
-                "x86_64-unknown-linux-gnu".to_string()
-            }
-        }),
-    );
-
-    let tool = cc_build.get_compiler();
+    let tool = with_cc_env(release, || {
+        let cc_build = cc::Build::new();
+        cc_build.get_compiler()
+    });
 
     let cfi_stubs_obj = if cfg!(windows) {
         cbinding_dir.join("cfi_stubs.obj")
@@ -132,8 +165,10 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
     println!("CFI stubs compiled successfully");
 
     // Now link the main emulator with stubs using cc for cross-platform compatibility
-    let cc_build = cc::Build::new();
-    let tool = cc_build.get_compiler();
+    let tool = with_cc_env(release, || {
+        let cc_build = cc::Build::new();
+        cc_build.get_compiler()
+    });
 
     let mut cmd = tool.to_command();
 
