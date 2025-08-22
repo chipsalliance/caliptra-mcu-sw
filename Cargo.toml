@@ -7,6 +7,7 @@ members = [
     "common/flash-image",
     "common/pldm",
     "emulator/app",
+    "emulator/app/mcu-mbox",
     "emulator/bmc/pldm-ua",
     "emulator/bmc/pldm-fw-pkg",
     "emulator/caliptra",
@@ -27,6 +28,7 @@ members = [
     "platforms/emulator/runtime/kernel/capsules",
     "platforms/emulator/runtime/kernel/drivers/dma",
     "platforms/emulator/runtime/kernel/drivers/doe_mbox",
+    "platforms/emulator/runtime/kernel/drivers/mcu_mbox",
     "platforms/emulator/runtime/userspace/api/caliptra-api",
     "platforms/emulator/runtime/userspace/apps/example",
     "platforms/emulator/runtime/userspace/apps/user",
@@ -39,6 +41,7 @@ members = [
     "runtime/kernel/components",
     "runtime/kernel/drivers/i3c",
     "runtime/kernel/drivers/doe",
+    "runtime/kernel/drivers/mcu_mbox",
     "runtime/kernel/veer",
     "runtime/userspace/api/caliptra-api",
     "runtime/userspace/api/pldm-lib",
@@ -77,6 +80,7 @@ bitfield = "0.14.0"
 bit-vec = "0.6.3"
 cargo_metadata = "0.20.0"
 cbindgen = "0.24"
+cc = "1.0"
 chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.23", features = [
     "cargo",
@@ -152,6 +156,7 @@ emulator = { path = "emulator/app" }
 emulator-bmc = { path = "emulator/bmc" }
 emulator-caliptra = { "path" = "emulator/caliptra" }
 emulator-consts = { "path" = "emulator/consts" }
+emulator-mcu-mbox = { path = "emulator/app/mcu-mbox"}
 emulator-periph = { path = "emulator/periph" }
 emulator-registers-generated = { path = "registers/generated-emulator" }
 flash-driver = { path = "platforms/emulator/runtime/kernel/drivers/flash" }
@@ -162,6 +167,8 @@ mcu-builder = { path = "builder" }
 mcu-config = { path = "common/config" }
 mcu-config-emulator = { path = "platforms/emulator/config" }
 mcu-config-fpga = { path = "platforms/fpga/config" }
+mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" }
+mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
 mcu-hw-model = { path = "hw/model" }
 mcu-platforms-common = { path = "platforms/common" }
 mcu-rom-common = { path = "rom" }

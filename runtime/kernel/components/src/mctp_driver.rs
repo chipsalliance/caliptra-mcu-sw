@@ -34,6 +34,7 @@ use capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
+use kernel::deferred_call::DeferredCallClient;
 use kernel::hil::time::Alarm;
 use kernel::utilities::leasable_buffer::SubSliceMut;
 
@@ -55,7 +56,15 @@ macro_rules! mctp_driver_component_static {
         let rx_msg_buf = kernel::static_buf!([u8; MCTP_MAX_MESSAGE_SIZE]);
         let tx_msg_buf = kernel::static_buf!([u8; MCTP_MAX_MESSAGE_SIZE]);
         let mctp_driver = kernel::static_buf!(MCTPDriver<'static>);
-        (tx_state, rx_state, rx_msg_buf, tx_msg_buf, mctp_driver)
+        let buffered_rx_msg = kernel::static_buf!([u8; MCTP_MAX_MESSAGE_SIZE]);
+        (
+            tx_state,
+            rx_state,
+            rx_msg_buf,
+            tx_msg_buf,
+            mctp_driver,
+            buffered_rx_msg,
+        )
     }};
 }
 
@@ -95,6 +104,7 @@ impl<A: Alarm<'static>> Component for MCTPDriverComponent<A> {
         &'static mut MaybeUninit<[u8; MCTP_MAX_MESSAGE_SIZE]>,
         &'static mut MaybeUninit<[u8; MCTP_MAX_MESSAGE_SIZE]>,
         &'static mut MaybeUninit<MCTPDriver<'static>>,
+        &'static mut MaybeUninit<[u8; MCTP_MAX_MESSAGE_SIZE]>,
     );
     type Output = &'static MCTPDriver<'static>;
 
@@ -103,6 +113,7 @@ impl<A: Alarm<'static>> Component for MCTPDriverComponent<A> {
 
         let rx_msg_buf = static_buffer.2.write([0; MCTP_MAX_MESSAGE_SIZE]);
         let tx_msg_buf = static_buffer.3.write([0; MCTP_MAX_MESSAGE_SIZE]);
+        let buffered_rx_msg = static_buffer.5.write([0; MCTP_MAX_MESSAGE_SIZE]);
 
         let tx_state = static_buffer.0.write(MCTPTxState::new(self.mux_mctp));
 
@@ -116,11 +127,13 @@ impl<A: Alarm<'static>> Component for MCTPDriverComponent<A> {
             self.msg_type,
             MCTP_MAX_MESSAGE_SIZE,
             SubSliceMut::new(tx_msg_buf),
+            buffered_rx_msg,
         ));
 
         tx_state.set_client(mctp_driver);
         rx_state.set_client(mctp_driver);
         self.mux_mctp.add_receiver(rx_state);
+        mctp_driver.register();
         mctp_driver
     }
 }
