@@ -141,6 +141,12 @@ impl ModelFpgaRealtime {
                 .modify(Control::BootfsmBrkpoint::CLEAR);
         }
     }
+
+    fn axi_reset(&mut self) {
+        self.wrapper.regs().control.modify(Control::AxiReset.val(1));
+        self.wrapper.regs().control.modify(Control::AxiReset.val(0));
+    }
+
     fn set_subsystem_reset(&mut self, reset: bool) {
         self.wrapper.regs().control.modify(
             Control::CptraSsRstB.val((!reset) as u32) + Control::CptraPwrgood.val((!reset) as u32),
@@ -1058,6 +1064,9 @@ impl McuHwModel for ModelFpgaRealtime {
             openocd: None,
         };
 
+        println!("AXI reset");
+        m.axi_reset();
+
         // Set generic input wires.
         let input_wires = [0, (!params.uds_granularity_32 as u32) << 31];
         m.set_generic_input_wires(&input_wires);
@@ -1424,6 +1433,9 @@ impl Drop for ModelFpgaRealtime {
         // ensure that we put the I3C target into a state where we will reset it properly
         self.i3c_target.stdby_ctrl_mode_stby_cr_device_addr.set(0);
         self.set_subsystem_reset(true);
+
+        // reset the AXI bus as we leave
+        self.axi_reset();
 
         // Unmap UIO memory space so that the file lock is released
         self.unmap_mapping(self.wrapper.ptr, FPGA_WRAPPER_MAPPING);
