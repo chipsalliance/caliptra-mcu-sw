@@ -251,9 +251,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             }
 
             // Need to clone caliptra-mcu-sw to run tests.
-            // TODO(clundin): Maybe we can skip recurse-submodules. Also should check if the repo
-            // exists to make errors easier.
-            run_command(target_host.as_deref(), "git clone https://github.com/chipsalliance/caliptra-mcu-sw --branch=main --recurse-submodules").expect("failed to clone caliptra-mcu-sw repo");
+            run_command(target_host.as_deref(), "[ -d caliptra-mcu-sw ] || git clone https://github.com/chipsalliance/caliptra-mcu-sw --branch=main --depth=1").expect("failed to clone caliptra-mcu-sw repo");
         }
         Fpga::Test { target_host } => {
             println!("Running test suite on FPGA");
