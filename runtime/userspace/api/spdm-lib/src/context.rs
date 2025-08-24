@@ -2,11 +2,11 @@
 
 use crate::cert_store::*;
 use crate::chunk_ctx::LargeResponseCtx;
-use crate::codec::{Codec, MessageBuf};
+use crate::codec::{encode_u8_slice, Codec, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
     algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, chunk_get_rsp,
-    digests_rsp, measurements_rsp, version_rsp,
+    digests_rsp, end_session_rsp, finish_rsp, key_exchange_rsp, measurements_rsp, version_rsp,
 };
 use crate::error::*;
 use crate::measurements::common::SpdmMeasurements;
@@ -20,6 +20,9 @@ use crate::transcript::{Transcript, TranscriptContext};
 use crate::transport::common::SpdmTransport;
 use libapi_caliptra::crypto::asym::*;
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+
+// Maximum SPDM responder buffer size
+pub const MAX_SPDM_RESPONDER_BUF_SIZE: usize = 2048;
 
 pub struct SpdmContext<'a> {
     transport: &'a mut dyn SpdmTransport,
@@ -70,9 +73,22 @@ impl<'a> SpdmContext<'a> {
         // Reset active session_id
         self.session_mgr.reset_active_session_id();
 
-        // TODO: Get session ID from the message if secure.
-        // TODO: Set active session ID if it is valid
-        // TODO: Get Session info from the session ID and call decrypt() method on session_info if secure.
+        if secure {
+            // Create a temporary buffer for decrypted application data
+            let mut app_data = [0u8; MAX_SPDM_RESPONDER_BUF_SIZE];
+            let app_data_len = self
+                .session_mgr
+                .decode_secure_message(self.transport, msg_buf, &mut app_data)
+                .await
+                .map_err(SpdmError::Session)?;
+
+            // Replace msg_buf contents with the decrypted application data
+            msg_buf.reset();
+
+            // Copy decrypted data into msg_buf using encode_u8_slice
+            encode_u8_slice(&app_data[..app_data_len], msg_buf)
+                .map_err(|_| SpdmError::Command(crate::error::CommandError::BufferTooSmall))?;
+        }
 
         // Process message
         match self.handle_request(msg_buf).await {
@@ -107,6 +123,20 @@ impl<'a> SpdmContext<'a> {
             self.large_resp_context.reset();
         }
 
+        // The following requests are prohibited within session
+        if self.session_mgr.active_session_id().is_some() {
+            match req_code {
+                ReqRespCode::GetVersion
+                | ReqRespCode::GetCapabilities
+                | ReqRespCode::NegotiateAlgorithms
+                | ReqRespCode::Challenge
+                | ReqRespCode::KeyExchange => {
+                    Err(self.generate_error_response(req, ErrorCode::UnexpectedRequest, 0, None))?;
+                }
+                _ => {}
+            }
+        }
+
         match req_code {
             ReqRespCode::GetVersion => {
                 version_rsp::handle_get_version(self, req_msg_header, req).await?
@@ -132,18 +162,47 @@ impl<'a> SpdmContext<'a> {
             ReqRespCode::ChunkGet => {
                 chunk_get_rsp::handle_chunk_get(self, req_msg_header, req).await?
             }
-
+            ReqRespCode::KeyExchange => {
+                key_exchange_rsp::handle_key_exchange(self, req_msg_header, req).await?
+            }
+            ReqRespCode::Finish => finish_rsp::handle_finish(self, req_msg_header, req).await?,
+            ReqRespCode::EndSession => {
+                end_session_rsp::handle_end_session(self, req_msg_header, req).await?
+            }
             _ => Err((false, CommandError::UnsupportedRequest))?,
         }
         Ok(())
     }
 
     async fn send_response(&mut self, resp: &mut MessageBuf<'a>, secure: bool) -> SpdmResult<()> {
-        // TODO: Encrypt if secure.
-        self.transport
-            .send_response(resp, secure)
-            .await
-            .map_err(SpdmError::Transport)
+        if secure {
+            let mut secure_message = [0u8; MAX_SPDM_RESPONDER_BUF_SIZE];
+            let mut secure_message_buf = MessageBuf::new(&mut secure_message);
+            let app_data_len = resp.data_len();
+            let app_data = resp.data(app_data_len).map_err(SpdmError::Codec)?;
+
+            self.prepare_response_buffer(&mut secure_message_buf)
+                .map_err(|_| SpdmError::BufferTooSmall)?;
+            self.session_mgr
+                .encode_secure_message(self.transport, app_data, &mut secure_message_buf)
+                .await
+                .map_err(SpdmError::Session)?;
+            self.transport
+                .send_response(&mut secure_message_buf, secure)
+                .await
+                .map_err(SpdmError::Transport)
+        } else {
+            // Send response without encryption
+            self.transport
+                .send_response(resp, secure)
+                .await
+                .map_err(SpdmError::Transport)
+        }
+    }
+
+    pub(crate) fn reset(&mut self) {
+        self.state.reset();
+        self.session_mgr.reset();
     }
 
     pub(crate) fn prepare_response_buffer(&self, rsp_buf: &mut MessageBuf) -> CommandResult<()> {
@@ -246,7 +305,10 @@ impl<'a> SpdmContext<'a> {
         // If requester issued GET_MEASUREMENTS or KEY_EXCHANGE or FINISH request
         // and skipped CHALLENGE completion, reset M1 context.
         match req_code {
-            ReqRespCode::GetMeasurements | ReqRespCode::KeyExchange | ReqRespCode::Finish => {
+            ReqRespCode::GetMeasurements
+            | ReqRespCode::KeyExchange
+            | ReqRespCode::Finish
+            | ReqRespCode::EndSession => {
                 if self.state.connection_info.state() < ConnectionState::Authenticated {
                     self.shared_transcript.reset_context(TranscriptContext::M1);
                 }

@@ -12,14 +12,11 @@ use libsyscall_caliptra::mctp;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 use spdm_lib::codec::MessageBuf;
-use spdm_lib::context::SpdmContext;
+use spdm_lib::context::{SpdmContext, MAX_SPDM_RESPONDER_BUF_SIZE};
 use spdm_lib::protocol::*;
 use spdm_lib::transport::common::SpdmTransport;
 use spdm_lib::transport::doe::DoeTransport;
 use spdm_lib::transport::mctp::MctpTransport;
-
-// Maximum SPDM responder buffer size
-const MAX_RESPONDER_BUF_SIZE: usize = 2048;
 
 // Caliptra supported SPDM versions
 const SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12, SpdmVersion::V13];
@@ -63,12 +60,12 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
 
 #[embassy_executor::task]
 async fn spdm_mctp_responder() {
-    let mut raw_buffer = [0; MAX_RESPONDER_BUF_SIZE];
+    let mut raw_buffer = [0; MAX_SPDM_RESPONDER_BUF_SIZE];
     let mut cw = Console::<DefaultSyscalls>::writer();
     let mut mctp_spdm_transport: MctpTransport = MctpTransport::new(mctp::driver_num::MCTP_SPDM);
 
     let max_mctp_spdm_msg_size =
-        (MAX_RESPONDER_BUF_SIZE - mctp_spdm_transport.header_size()) as u32;
+        (MAX_SPDM_RESPONDER_BUF_SIZE - mctp_spdm_transport.header_size()) as u32;
 
     let local_capabilities = DeviceCapabilities {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
@@ -117,11 +114,12 @@ async fn spdm_mctp_responder() {
 
 #[embassy_executor::task]
 async fn spdm_doe_responder() {
-    let mut raw_buffer = [0; MAX_RESPONDER_BUF_SIZE];
+    let mut raw_buffer = [0; MAX_SPDM_RESPONDER_BUF_SIZE];
     let mut cw = Console::<DefaultSyscalls>::writer();
     let mut doe_spdm_transport: DoeTransport = DoeTransport::new(doe::driver_num::DOE_SPDM);
 
-    let max_doe_spdm_msg_size = (MAX_RESPONDER_BUF_SIZE - doe_spdm_transport.header_size()) as u32;
+    let max_doe_spdm_msg_size =
+        (MAX_SPDM_RESPONDER_BUF_SIZE - doe_spdm_transport.header_size()) as u32;
 
     let doe_capability_flags = CapabilityFlags::default();
     // TODO: Enable the following once secure sessions are implemented

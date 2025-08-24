@@ -95,6 +95,42 @@ pub fn decode_u8_slice(buffer: &mut MessageBuf, data: &mut [u8]) -> CodecResult<
     Ok(())
 }
 
+impl Codec for u8 {
+    fn encode(&self, buffer: &mut MessageBuf) -> CodecResult<usize> {
+        let bytes = [*self];
+        encode_u8_slice(&bytes, buffer)
+    }
+    fn decode(buffer: &mut MessageBuf) -> CodecResult<Self> {
+        let mut value = [0u8; 1];
+        decode_u8_slice(buffer, &mut value)?;
+        Ok(value[0])
+    }
+}
+
+impl Codec for u16 {
+    fn encode(&self, buffer: &mut MessageBuf) -> CodecResult<usize> {
+        let bytes = self.to_le_bytes();
+        encode_u8_slice(&bytes, buffer)
+    }
+    fn decode(buffer: &mut MessageBuf) -> CodecResult<Self> {
+        let mut value = [0u8; 2];
+        decode_u8_slice(buffer, &mut value)?;
+        Ok(u16::from_le_bytes(value))
+    }
+}
+
+impl Codec for u32 {
+    fn encode(&self, buffer: &mut MessageBuf) -> CodecResult<usize> {
+        let bytes = self.to_le_bytes();
+        encode_u8_slice(&bytes, buffer)
+    }
+    fn decode(buffer: &mut MessageBuf) -> CodecResult<Self> {
+        let mut value = [0u8; 4];
+        decode_u8_slice(buffer, &mut value)?;
+        Ok(u32::from_le_bytes(value))
+    }
+}
+
 impl<'a> From<&'a mut [u8]> for MessageBuf<'a> {
     fn from(buffer: &'a mut [u8]) -> Self {
         let tail = buffer.len();

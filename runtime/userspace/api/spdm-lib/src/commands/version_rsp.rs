@@ -141,10 +141,6 @@ pub(crate) async fn handle_get_version<'a>(
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    // GET_VERSION request is prohibited within session
-    if ctx.session_mgr.session_active() {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
-    }
     // Process GET_VERSION request
     process_get_version(ctx, spdm_hdr, req_payload).await?;
 
@@ -152,8 +148,10 @@ pub(crate) async fn handle_get_version<'a>(
     ctx.prepare_response_buffer(req_payload)?;
     generate_version_response(ctx, req_payload, ctx.supported_versions).await?;
 
-    // Set connection state
-    ctx.state.reset();
+    // Invalidate state and reset session info
+    ctx.reset();
+
+    // Set connection state to after version
     ctx.state
         .connection_info
         .set_state(ConnectionState::AfterVersion);

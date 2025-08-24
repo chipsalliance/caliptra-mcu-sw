@@ -3,8 +3,7 @@
 // DOE Transport Implementation
 
 extern crate alloc;
-use crate::codec::MessageBuf;
-use crate::codec::{Codec, CommonCodec, DataKind};
+use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
 use crate::transport::common::{SpdmTransport, TransportError, TransportResult};
 use alloc::boxed::Box;
 use async_trait::async_trait;
@@ -115,6 +114,11 @@ impl SpdmTransport for DoeTransport {
             .map_err(TransportError::Codec)?;
 
         let header = DoeHeader::decode(req).map_err(TransportError::Codec)?;
+
+        if header.vendor_id() != DOE_PCI_SIG_VENDOR_ID {
+            Err(TransportError::InvalidMessage)?;
+        }
+
         let data_object_type: DataObjectType = header
             .data_object_type()
             .try_into()

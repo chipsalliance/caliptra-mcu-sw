@@ -171,6 +171,8 @@ async fn process_key_exchange<'a>(
         ctx.generate_error_response(req_payload, ErrorCode::SessionLimitExceeded, 0, None)
     })?;
 
+    ctx.session_mgr.set_handshake_phase_session_id(session_id);
+
     let session_info = ctx
         .session_mgr
         .session_info_mut(session_id)
@@ -370,11 +372,6 @@ pub(crate) async fn handle_key_exchange<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnsupportedRequest, 0, None))?;
     }
 
-    // KEY_EXCHANGE request is prohibited within session
-    if ctx.session_mgr.session_active() {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
-    }
-
     // Check if KEY_EX_CAP is supported
     if ctx.local_capabilities.flags.key_ex_cap() == 0 {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnsupportedRequest, 0, None))?;
@@ -400,11 +397,22 @@ pub(crate) async fn handle_key_exchange<'a>(
 
     // Process KEY_EXCHANGE request
     let (slot_id, meas_summary_hash_type, resp_exchange_data, resp_session_id, session_id) =
-        process_key_exchange(ctx, asym_algo, spdm_hdr, req_payload).await?;
+        match process_key_exchange(ctx, asym_algo, spdm_hdr, req_payload).await {
+            Ok(result) => result,
+            Err(e) => {
+                if ctx.session_mgr.handshake_phase_session_id().is_some() {
+                    let session_id = ctx.session_mgr.handshake_phase_session_id().unwrap();
+                    let _ = ctx.session_mgr.delete_session(session_id);
+                }
+                return Err(e);
+            }
+        };
 
     // Generate KEY_EXCHANGE response
     ctx.prepare_response_buffer(req_payload)?;
-    generate_key_exchange_response(
+
+    // Generate response with automatic cleanup on error
+    if let Err(e) = generate_key_exchange_response(
         ctx,
         asym_algo,
         slot_id,
@@ -414,10 +422,17 @@ pub(crate) async fn handle_key_exchange<'a>(
         session_id,
         req_payload,
     )
-    .await?;
+    .await
+    {
+        // Clean up session on error
+        if ctx.session_mgr.handshake_phase_session_id().is_some() {
+            let _ = ctx.session_mgr.delete_session(session_id); // Ignore cleanup errors
+        }
+        return Err(e);
+    }
 
     if !ctx.state.connection_info.handshake_in_the_clear() {
-        ctx.session_mgr.set_active_session_id(session_id);
+        ctx.session_mgr.set_handshake_phase_session_id(session_id);
     }
 
     ctx.session_mgr
