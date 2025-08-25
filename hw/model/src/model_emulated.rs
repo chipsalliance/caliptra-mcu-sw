@@ -250,8 +250,6 @@ impl McuHwModel for ModelEmulated {
             None,
             None,
             None,
-            None,
-            None,
         );
 
         let args = CpuArgs::default();

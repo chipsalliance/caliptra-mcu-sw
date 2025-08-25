@@ -28,6 +28,7 @@ use std::sync::mpsc;
 pub use vmem::read_otp_vmem_data;
 
 mod bus_logger;
+mod fpga_regs;
 mod mcu_mgr;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]

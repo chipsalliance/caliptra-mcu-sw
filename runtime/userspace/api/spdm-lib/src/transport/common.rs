@@ -26,6 +26,12 @@ pub trait SpdmTransport {
     ) -> TransportResult<()>;
     fn max_message_size(&self) -> TransportResult<usize>;
     fn header_size(&self) -> usize;
+    fn sequence_num_size_bytes(&self) -> usize {
+        0 // No secure message sequence number by default
+    }
+    fn random_data_size_bytes(&self) -> usize {
+        0 // No secure message random data by default
+    }
 }
 
 #[derive(Debug)]

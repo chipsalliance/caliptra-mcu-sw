@@ -54,7 +54,6 @@ pub(crate) fn autogen(
     let rdl_files = [
         "hw/caliptra-ss/src/integration/rtl/soc_address_map.rdl",
         "hw/mcu.rdl",
-        "hw/fpga/src/caliptra_fpga_realtime_regs.rdl",
     ];
     let mut rdl_files: Vec<PathBuf> = rdl_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
     rdl_files.extend_from_slice(extra_files);
@@ -192,8 +191,7 @@ pub(crate) fn autogen(
 
     let addrmap = scope.lookup_typedef("soc").unwrap();
     let addrmap2 = scope.lookup_typedef("mcu").unwrap();
-    let addrmap3 = scope.lookup_typedef("caliptra_fpga_realtime_regs").unwrap();
-    let mut scopes = vec![addrmap, addrmap2, addrmap3];
+    let mut scopes = vec![addrmap, addrmap2];
     if !extra_addrmap.is_empty() {
         let addrmap3 = scope.lookup_typedef("extra").unwrap();
         scopes.push(addrmap3);

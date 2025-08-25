@@ -9,3 +9,4 @@ pub mod doe;
 pub mod mailbox;
 pub mod mci;
 pub mod mctp;
+pub mod mcu_mbox;
