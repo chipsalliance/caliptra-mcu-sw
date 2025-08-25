@@ -95,11 +95,17 @@ This script provides a number of configuration options for features that can be 
  - Copy petalinux_project/images/linux/BOOT.BIN to the boot partition as boot1900.bin
    - If the Ubuntu image is booted, it will mount the boot partition at /boot/firmware/
    - If boot1900.bin fails to boot the system will fallback to the default boot1901.bin
+   - [!WARNING]
+     ```reboot``` seems to skip the image selector and will load from the same filename as the previous boot. If the fallback image is the last one booted then the proper procedure is ```shutdown``` and to toggle the power switch. In the serial boot log the fallback image uses PLM from 2022 while for any valid Caliptra FPGA image the PLM will be 2024.
    ```shell
    sudo su
    cp BOOT.BIN /boot/firmware/boot1900.bin
    reboot
+   # OR
+   shutdown
+   # Toggle power switch
    ```
+
 - Verify the correct image is loaded by checking FPGA wrapper registers.
    - fpga_magic (0xA4010000) contains 0x52545043.
    - fpga_version (0xA4010004) contains the hash of the git HEAD commit.
