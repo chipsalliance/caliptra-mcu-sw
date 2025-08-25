@@ -16,6 +16,9 @@
 `define MCU_RV_LSU_BUS_TAG_local 1
 `define INCLUDE_FUSE_CTRL = 1
 
+// README
+// TODO: Copying this file from the caliptra-ss repo is bad. Issue to track resolution: https://github.com/chipsalliance/caliptra-mcu-sw/issues/373
+
 `include "common_defines.sv"
 `include "config_defines.svh"
 `include "caliptra_reg_defines.svh"

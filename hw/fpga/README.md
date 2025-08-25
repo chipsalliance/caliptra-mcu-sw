@@ -104,7 +104,18 @@ This script provides a number of configuration options for features that can be 
    - fpga_magic (0xA4010000) contains 0x52545043.
    - fpga_version (0xA4010004) contains the hash of the git HEAD commit.
 
-### Running Caliptra tests from the FPGA: ###
+### Cross compiling tests for FPGA: ###
+```shell
+# TODO: Fix these flows: https://github.com/chipsalliance/caliptra-mcu-sw/issues/367
+# From an X86 build machine create run collateral
+cargo xtask-fpga all-build --platform fpga
+
+
+# Compile and install the kernel module
+cargo xtask fpga-install-kernel-modules
+```
+
+### Compiling and running Caliptra tests from the FPGA: ###
 ```shell
 # Install dependencies
 sudo apt update
@@ -115,11 +126,9 @@ git clone https://github.com/chipsalliance/caliptra-mcu-sw.git
 git submodule init
 git submodule update
 
+
 # Compile and install the kernel module
 cargo xtask fpga-install-kernel-modules
-# Run new_unbooted_test
-TODO: These steps already out of date. Need to define CPTRA_FIRMWARE_BUNDLE
-cargo t -p mcu-hw-model --features fpga_realtime -- --test model_fpga_realtime::test::test_new_unbooted --exact --nocapture
 ```
 
 ### Processing System - Programmable Logic interfaces ###

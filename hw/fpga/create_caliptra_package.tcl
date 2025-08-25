@@ -7,7 +7,7 @@ if {$BOARD eq "VCK190"} {
   set_property board_part xilinx.com:vck190:part0:3.1 [current_project]
 }
 
-# TODO: Check these SS defines
+# TODO: Check these SS defines: https://github.com/chipsalliance/caliptra-mcu-sw/issues/368
 lappend VERILOG_OPTIONS TECH_SPECIFIC_ICG
 lappend VERILOG_OPTIONS USER_ICG=fpga_fake_icg
 lappend VERILOG_OPTIONS RV_FPGA_OPTIMIZE
@@ -100,7 +100,7 @@ remove_files [ glob $caliptrartlDir/src/ecc/rtl/ecc_ram_tdp_file.sv ]
 # Replace caliptra_ss_top with version modified with faster I3C clocks
 remove_files [ glob $ssrtlDir/src/integration/rtl/caliptra_ss_top.sv ]
 
-# TODO: Should the RTL be changed? Copy aes_clp_wrapper.sv to apply workaround
+# TODO: Should the RTL be changed? Copy aes_clp_wrapper.sv to apply workaround: https://github.com/chipsalliance/caliptra-rtl/issues/977
 file copy [ glob $caliptrartlDir/src/aes/rtl/aes_clp_wrapper.sv ] $outputDir/aes_clp_wrapper.sv
 exec sed -i {1i `include \"kv_macros.svh\"\n`include \"caliptra_reg_field_defines.svh\"} $outputDir/aes_clp_wrapper.sv
 remove_files [ glob $caliptrartlDir/src/aes/rtl/aes_clp_wrapper.sv ]
