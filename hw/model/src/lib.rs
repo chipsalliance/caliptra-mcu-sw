@@ -7,18 +7,14 @@ use caliptra_api::{self as api, SocManager};
 use caliptra_api_types as api_types;
 use caliptra_emu_bus::Event;
 pub use caliptra_emu_cpu::{CodeRange, ImageInfo, StackInfo, StackRange};
+use caliptra_hw_model::{BootParams, ExitStatus, Output};
 use caliptra_hw_model_types::{
     EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
 };
 use caliptra_image_types::FwVerificationPqcKeyType;
-use caliptra_registers::soc_ifc::regs::{
-    CptraItrngEntropyConfig0WriteVal, CptraItrngEntropyConfig1WriteVal,
-};
 pub use mcu_mgr::McuManager;
 use mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
 pub use model_emulated::ModelEmulated;
-use output::ExitStatus;
-pub use output::Output;
 use rand::{rngs::StdRng, SeedableRng};
 use sha2::Digest;
 use std::io::{stdout, ErrorKind};
@@ -34,7 +30,6 @@ mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
 mod model_fpga_realtime;
 mod otp_provision;
-mod output;
 mod vmem;
 mod xi3c;
 
@@ -61,8 +56,6 @@ pub type DefaultHwModel = ModelFpgaRealtime;
 
 pub const DEFAULT_APB_PAUSER: u32 = 0x01;
 
-const EXPECTED_CALIPTRA_BOOT_TIME_IN_CYCLES: u64 = 40_000_000; // 40 million cycles
-
 // This is a random number, but should be kept in sync with what is the default value in the FPGA ROM.
 const DEFAULT_LIFECYCLE_RAW_TOKEN: LifecycleToken =
     LifecycleToken(0x05edb8c608fcc830de181732cfd65e57u128.to_le_bytes());
@@ -82,12 +75,22 @@ const DEFAULT_LIFECYCLE_RAW_TOKENS: LifecycleRawTokens = LifecycleRawTokens {
 /// The model returned by this function does not have any fuses programmed and
 /// is not yet ready to execute code in the microcontroller. Most test cases
 /// should use [`new`] instead.
-pub fn new_unbooted<M: McuHwModel>(params: InitParams) -> Result<M> {
+pub fn new_unbooted(params: InitParams) -> Result<DefaultHwModel> {
     let summary = params.summary();
-    M::new_unbooted(params).inspect(|hw| {
+    DefaultHwModel::new_unbooted(params).inspect(|hw| {
         println!("Using hardware-model {}", hw.type_name());
         println!("{summary:#?}");
     })
+}
+
+/// Constructs an HwModel based on the cargo features and environment variables,
+/// and boot it to the point where CPU execution can occur. This includes
+/// programming the fuses, initializing the boot_fsm state machine, and
+/// (optionally) uploading firmware. Most test cases that need to construct a
+/// HwModel should use this function over [`HwModel::new()`] and
+/// [`crate::new_unbooted`].
+pub fn new(init_params: InitParams, boot_params: BootParams) -> Result<DefaultHwModel> {
+    DefaultHwModel::new(init_params, boot_params)
 }
 
 pub struct InitParams<'a> {
@@ -248,36 +251,6 @@ fn trace_path_or_env(trace_path: Option<PathBuf>) -> Option<PathBuf> {
     std::env::var("CPTRA_TRACE_PATH").ok().map(PathBuf::from)
 }
 
-pub struct BootParams<'a> {
-    pub fuses: Fuses,
-    pub fw_image: Option<&'a [u8]>,
-    pub initial_dbg_manuf_service_reg: u32,
-    pub initial_repcnt_thresh_reg: Option<CptraItrngEntropyConfig1WriteVal>,
-    pub initial_adaptp_thresh_reg: Option<CptraItrngEntropyConfig0WriteVal>,
-    pub valid_axi_user: Vec<u32>,
-    pub wdt_timeout_cycles: u64,
-    // SoC manifest passed via the recovery interface
-    pub soc_manifest: Option<&'a [u8]>,
-    // MCU firmware image passed via the recovery interface
-    pub mcu_fw_image: Option<&'a [u8]>,
-}
-
-impl Default for BootParams<'_> {
-    fn default() -> Self {
-        Self {
-            fuses: Default::default(),
-            fw_image: Default::default(),
-            initial_dbg_manuf_service_reg: Default::default(),
-            initial_repcnt_thresh_reg: Default::default(),
-            initial_adaptp_thresh_reg: Default::default(),
-            valid_axi_user: vec![0, 1, 2, 3, 4],
-            wdt_timeout_cycles: EXPECTED_CALIPTRA_BOOT_TIME_IN_CYCLES,
-            soc_manifest: Default::default(),
-            mcu_fw_image: Default::default(),
-        }
-    }
-}
-
 // Represents a emulator or simulation of the caliptra core hardware, to be called
 // from tests. Typically, test cases should use [`crate::new()`] to create a model
 // based on the cargo features (and any model-specific environment variables).
@@ -285,6 +258,34 @@ pub trait McuHwModel {
     /// Create a model. Most high-level tests should use [`new()`]
     /// instead.
     fn new_unbooted(params: InitParams) -> Result<Self>
+    where
+        Self: Sized;
+
+    /// Create a model, and boot it to the point where CPU execution can
+    /// occur. This includes programming the fuses, initializing the
+    /// boot_fsm state machine, and (optionally) uploading firmware.
+    fn new(init_params: InitParams, boot_params: BootParams) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let init_params_summary = init_params.summary();
+
+        let mut hw: Self = McuHwModel::new_unbooted(init_params)?;
+        let mc_generation = hw.mcu_manager().mci().hw_rev_id().read().mc_generation();
+        let cptra_hw_rev_id = hw.caliptra_soc_manager().soc_ifc().cptra_hw_rev_id().read();
+        println!(
+            "Using hardware-model {} mc_generation={:04x} cptra_hw_rev_id={{cptra_generation=0x{:04x}, soc_stepping_id={:04x}}}",
+            hw.type_name(), mc_generation, cptra_hw_rev_id.cptra_generation(), cptra_hw_rev_id.soc_stepping_id()
+        );
+        println!("{init_params_summary:#?}");
+
+        hw.boot(boot_params)?;
+
+        Ok(hw)
+    }
+
+    // TODO this should have a common boot function similar to the Caliptra HW model.
+    fn boot(&mut self, boot_params: BootParams) -> Result<()>
     where
         Self: Sized;
 
@@ -410,4 +411,45 @@ pub trait McuHwModel {
     fn mci_flow_status(&mut self) -> u32 {
         0
     }
+}
+
+#[test]
+fn reg_access_test() {
+    let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
+    let mut hw = new(
+        InitParams {
+            caliptra_rom: &binaries.caliptra_rom,
+            mcu_rom: &binaries.mcu_rom,
+            vendor_pk_hash: binaries.vendor_pk_hash(),
+            active_mode: true,
+            ..Default::default()
+        },
+        BootParams {
+            fw_image: Some(&binaries.caliptra_fw),
+            soc_manifest: Some(&binaries.soc_manifest),
+            mcu_fw_image: Some(&binaries.mcu_runtime),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    // Check Caliptra reports 2.x
+    assert_eq!(
+        u32::from(hw.caliptra_soc_manager().soc_ifc().cptra_hw_rev_id().read()),
+        0x102
+    );
+
+    let mut mcu_mgr = hw.mcu_manager();
+
+    // // Check the I3C periph reports the right HCI version
+    assert_eq!(mcu_mgr.i3c().i3c_base().hci_version().read(), 0x120);
+
+    // Check the MCU HW generation reports 1.0.0
+    assert_eq!(mcu_mgr.mci().hw_rev_id().read().mc_generation(), 0x1000);
+
+    // Check the OTP periph reports idle
+    assert!(mcu_mgr.otp_ctrl().status().read().dai_idle());
+
+    // TODO: Check the LC periph reports correct revision
+    // assert_eq!(u32::from(mcu_mgr.lc_ctrl().hw_revision0().read()), 0x0);
 }

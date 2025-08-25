@@ -569,6 +569,13 @@ impl MciPeripheral for Mci {
             .read_mcu_mbox0_csr_mbox_hw_status()
     }
 
+    fn read_mci_reg_hw_rev_id(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwRevId::Register>
+    {
+        caliptra_emu_bus::ReadWriteRegister::new(0x1000)
+    }
+
     fn poll(&mut self) {
         if self.timer.fired(&mut self.op_wdt_timer1_expired_action) {
             // Set T1Timeout in WDT status register
