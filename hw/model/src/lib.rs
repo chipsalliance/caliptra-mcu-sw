@@ -38,6 +38,11 @@ mod output;
 mod vmem;
 pub mod xi3c;
 
+pub trait I3cSendRecv: Send + Sync {
+    fn i3c_write(&mut self, data: &[u8]);
+    fn i3c_read(&mut self, len: usize) -> Vec<u8>;
+}
+
 pub enum ShaAccMode {
     Sha384Stream,
     Sha512Stream,

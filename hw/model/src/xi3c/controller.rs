@@ -110,6 +110,10 @@ pub struct Config {
     pub known_static_addrs: Vec<u8>, // if entdaa is disabled, we have to know the static addresses to do SETDASA
 }
 
+// necessary to share the pointer
+unsafe impl Send for Config {}
+unsafe impl Sync for Config {}
+
 #[derive(Copy, Clone, Default)]
 pub struct Command {
     /// I3C command type. 0 = legacy i2c, 1 = SDR, 2+ reserve
@@ -142,7 +146,7 @@ pub struct Controller {
     pub ready: bool,
     pub error: u8,
     pub cur_device_count: u8,
-    pub status_handler: Option<Box<dyn ErrorHandler>>,
+    pub status_handler: Option<Box<dyn ErrorHandler + Send + Sync>>,
     pub target_info_table: [TargetInfo; 108],
 }
 
@@ -784,7 +788,7 @@ impl Controller {
     }
 
     #[allow(dead_code)]
-    pub fn set_status_handler(&mut self, handler: Box<dyn ErrorHandler>) {
+    pub fn set_status_handler(&mut self, handler: Box<dyn ErrorHandler + Send + Sync>) {
         assert!(self.ready);
         self.status_handler = Some(handler);
     }
