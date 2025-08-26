@@ -417,8 +417,6 @@ async fn process_get_measurements<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
     }
 
-    // let req_len = req_payload.msg_len() - req_payload.data_offset();
-
     // Decode the request
     let req_common = GetMeasurementsReqCommon::decode(req_payload).map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)

@@ -233,17 +233,12 @@ pub(crate) async fn handle_finish<'a>(
         if ctx.session_mgr.active_session_id().is_some() {
             Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
         }
-        ctx.session_mgr
-            .handshake_phase_session_id()
-            .ok_or_else(|| {
-                ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
-            })?
+        ctx.session_mgr.handshake_phase_session_id()
     } else {
-        // For handshake not in the clear: must have active session
-        ctx.session_mgr.active_session_id().ok_or_else(|| {
-            ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
-        })?
-    };
+        // If handshake is not in the clear, we must use the active session ID
+        ctx.session_mgr.active_session_id()
+    }
+    .ok_or_else(|| ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None))?;
 
     let session_info = ctx.session_mgr.session_info(session_id).map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
