@@ -1,28 +1,76 @@
-# Running with an FPGA
+# Testing with an FPGA
+
+## Pre Requisites
+
+### Host System 
+
+The machine that is used for development and cross compilation should have:
+
+- Rust
+- Docker
+- rsync
+- git
+
+### FPGA System 
+
+The FPGA should have the following installed:
+
+- rsync
+- git
+- make
+- gcc
+
+**Suggestion**: Download the latest FPGA Image from the Caliptra-SW main-2.x branch's FPGA Image build [job](https://github.com/chipsalliance/caliptra-sw/actions/workflows/fpga-image.yml?query=branch%3Amain-2.x). This ensures you are testing with the same system used in the FPGA CI.
+
+## Suggested Development Flow
+
+Prefer to develop on your main machine and use xtask to test your changes on the FPGA via ssh.
+
+### Setup SSH config
+
+xtask will access the FPGA over SSH. You will need an SSH config to define how to do this.
+
+This config should be added to `~/.ssh/config`.
+
+```
+Host <FPGA-NAME> # Update me!
+  Hostname <FPGA-IP-ADDRESS> # Update me!
+  User ubuntu # Use "root" on CI image.
+
+```
 
 ## Cross compiling
 
-### Linux binaries
+### Firmware
 
-You can use [`cross-rs`](https://github.com/cross-rs/cross) to make it easier to cross compile binaries for the FPGA host.
+Run `cargo xtask-fpga fpga build --target-host $SSH-FPGA-NAME` to create a firmware bundle. Using the `--target-host` flag will automatically copy the firmware to the FPGA host.
 
-For example,
+This command should be re-run after making any firmware changes.
 
-```shell
-CARGO_BUILD_TARGET=aarch64-unknown-linux-gnu CARGO_TARGET_DIR=target/build/aarch64-unknown-linux-gnu cross build -p xtask --features fpga_realtime --bin xtask --target=aarch64-unknown-linux-gnu
+### Test Binaries
+
+Run `cargo xtask-fpga fpga build-test --target-host $SSH-FPGA-NAME` to create a test archive. Using the `--target-host` flag will automatically copy the test binaries to the FPGA host.
+
+This command should be re-run after making any test changes.
+
+## FPGA bootstrap
+
+The FPGA needs to be bootstrapped each time it is booted. This ensures that the kernel modules we use in this repo are present.
+
+Run `cargo xtask-fpga fpga bootstrap --target-host $SSH-FPGA-NAME` to bootstrap the FPGA.
+
+# Test Workflow
+
+A developer verifying changes against an FPGA should use the following sequence.
+
+```
+$ cargo xtask-fpga fpga bootstrap --target-host $SSH-FPGA-NAME # Run this only once per boot.
+$ cargo xtask-fpga fpga build --target-host $SSH-FPGA-NAME # Build firmware. Re-run every time firmware changes.
+$ cargo xtask-fpga fpga build-test --target-host $SSH-FPGA-NAME # Build test binaries. Re-run every time tests change.
+$ cargo xtask-fpga fpga test --target-host $SSH-FPGA-NAME # Run test suite on FPGA.
 ```
 
-will build the a binary that runs `xtask` that can be used on the FPGA, which can then be used to install the FPGA kernel modules (assuming the `caliptra-mcu-sw` repository is checked out and the `xtask` binary is renamed to `xtask-bin`):
-
-```shell
-./xtask-bin fpga-install-kernel-modules
-```
-
-or to run a set of ROMs and firmware:
-
-```shell
-./xtask-bin fpga-run --zip all-fw.zip
-```
+# Running on FPGA
 
 ### Firmware files
 

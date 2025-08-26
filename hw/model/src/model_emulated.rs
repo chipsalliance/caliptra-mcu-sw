@@ -8,7 +8,6 @@ use crate::trace_path_or_env;
 use crate::InitParams;
 use crate::McuHwModel;
 use crate::McuManager;
-use crate::Output;
 use crate::DEFAULT_LIFECYCLE_RAW_TOKENS;
 use anyhow::Result;
 use caliptra_api::SocManager;
@@ -26,6 +25,7 @@ use caliptra_emu_types::RvData;
 use caliptra_emu_types::RvSize;
 use caliptra_hw_model::DeviceLifecycle;
 use caliptra_hw_model::ModelError;
+use caliptra_hw_model::Output;
 use caliptra_hw_model::SecurityState;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
@@ -36,6 +36,7 @@ use emulator_periph::{
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
 use mcu_rom_common::LifecycleControllerState;
+use mcu_rom_common::McuRomBootStatus;
 use registers_generated::fuses;
 use semver::Version;
 use std::cell::Cell;
@@ -282,6 +283,28 @@ impl McuHwModel for ModelEmulated {
         m.tracing_hint(true);
 
         Ok(m)
+    }
+
+    fn boot(&mut self, _boot_params: crate::BootParams) -> Result<()>
+    where
+        Self: Sized,
+    {
+        self.cpu_enabled.set(true);
+        for _ in 0..10_000 {
+            self.step();
+        }
+        use std::io::Write;
+        let mut w = std::io::Sink::default();
+        if !self.output().peek().is_empty() {
+            w.write_all(self.output().take(usize::MAX).as_bytes())
+                .unwrap();
+        }
+        assert_eq!(
+            u32::from(McuRomBootStatus::CaliptraBootGoAsserted),
+            self.mci_flow_status()
+        );
+        // TODO: load caliptra and MCU firmware
+        Ok(())
     }
 
     fn type_name(&self) -> &'static str {
