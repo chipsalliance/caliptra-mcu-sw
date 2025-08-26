@@ -19,6 +19,7 @@ pub struct RequestResponseTest {
 pub struct ExpectedMessagePair {
     // Important! Ensure that data are 4-byte aligned
     // Message Sent
+    pub cmd: u32,
     pub request: Vec<u8>,
     // Expected Message Response to receive
     pub response: Vec<u8>,
@@ -26,42 +27,57 @@ pub struct ExpectedMessagePair {
 
 impl RequestResponseTest {
     pub fn new(mbox: McuMailboxTransport) -> Self {
-        let mut test_messages: Vec<ExpectedMessagePair> = Vec::new();
-
-        test_messages.push(ExpectedMessagePair {
-            request: vec![0x01, 0x02, 0x03, 0x04],
-            response: vec![0x01, 0x02, 0x03, 0x04],
-        });
-
-        test_messages.push(ExpectedMessagePair {
-            request: {
-                let mut req = Vec::new();
-                for i in 0..64 {
-                    req.push(i as u8);
-                }
-                req
-            },
-            response: {
-                let mut req = Vec::new();
-                for i in 0..64 {
-                    req.push(i as u8);
-                }
-                req
-            },
-        });
-
+        let test_messages: Vec<ExpectedMessagePair> = Vec::new();
         Self {
             test_messages,
             mbox,
         }
     }
 
+    fn prep_test_messages(&mut self) {
+        if cfg!(feature = "test-mcu-mbox-soc-requester-loopback") {
+            println!("Running test-mcu-mbox-soc-requester-loopback test");
+            // Example test messages for SOC requester loopback
+            self.push(
+                0x01,
+                vec![0x01, 0x02, 0x03, 0x04],
+                vec![0x01, 0x02, 0x03, 0x04],
+            );
+            self.push(
+                0x02,
+                (0..64).map(|i| i as u8).collect(),
+                (0..64).map(|i| i as u8).collect(),
+            );
+        } else if cfg!(feature = "test-mcu-mbox-usermode") {
+            println!("Running test-mcu-mbox-usermode test");
+            // Example test messages for usermode loopback
+            self.push(
+                0x03,
+                vec![0x01, 0x02, 0x03, 0x04],
+                vec![0x01, 0x02, 0x03, 0x04],
+            );
+            self.push(
+                0x04,
+                (0..128).map(|i| i as u8).collect(),
+                (0..128).map(|i| i as u8).collect(),
+            );
+        }
+    }
+
+    fn push(&mut self, cmd: u32, req_payload: Vec<u8>, resp_payload: Vec<u8>) {
+        self.test_messages.push(ExpectedMessagePair {
+            cmd,
+            request: req_payload,
+            response: resp_payload,
+        });
+    }
+
     #[allow(clippy::result_unit_err)]
     fn test_send_receive(&mut self) -> Result<(), ()> {
-        let mut cmd = 0xaaaa;
+        self.prep_test_messages();
         for message_pair in &self.test_messages {
             self.mbox
-                .execute(cmd, &message_pair.request)
+                .execute(message_pair.cmd, &message_pair.request)
                 .map_err(|_| ())?;
             loop {
                 let response_int = self.mbox.get_execute_response();
@@ -81,7 +97,6 @@ impl RequestResponseTest {
                     },
                 }
             }
-            cmd += 0xa;
         }
         Ok(())
     }
@@ -94,7 +109,7 @@ impl RequestResponseTest {
                 exit(-1);
             }
             sleep(std::time::Duration::from_secs(5));
-            print!("Emulator: Running MCU MBOX Loopback Test: ",);
+            println!("Emulator: MCU MBOX Test Thread Starting: ",);
             let mut test = RequestResponseTest::new(transport_clone);
             if test.test_send_receive().is_err() {
                 println!("Failed");
