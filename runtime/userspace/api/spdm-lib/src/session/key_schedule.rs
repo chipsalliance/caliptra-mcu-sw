@@ -11,10 +11,8 @@ use libapi_caliptra::crypto::aes_gcm::{Aes256GcmTag, AesGcm};
 use libapi_caliptra::crypto::asym::ecdh::{CmKeyUsage, Ecdh, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE};
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use libapi_caliptra::crypto::hmac::{HkdfSalt, Hmac};
+use libapi_caliptra::crypto::import::Import;
 use libapi_caliptra::error::CaliptraApiError;
-
-// const AES_256_GCM_KEY_SIZE: usize = 256 >> 3; // 256 bits or 32 bytes
-// const AES_256_GCM_IV_SIZE: usize = 96 >> 3; // 96 bits or 12 bytes
 
 #[derive(Debug, PartialEq)]
 pub enum KeyScheduleError {
@@ -125,7 +123,7 @@ impl KeySchedule {
             .map_err(KeyScheduleError::CaliptraApi)?;
 
         let mut hmac_bytes = [0u8; SHA384_HASH_SIZE];
-        hmac_bytes.copy_from_slice(&hmac.mac);
+        hmac_bytes.copy_from_slice(&hmac.mac[..SHA384_HASH_SIZE]);
 
         Ok(hmac_bytes)
     }
@@ -379,7 +377,11 @@ impl KeySchedule {
 
         // Master-Secret = HKDF-Extract(Salt_1, 0_filled)
         let zero_filled = [0u8; SHA384_HASH_SIZE];
-        let extract_rsp = Hmac::hkdf_extract(HkdfSalt::Data(&zero_filled), &salt_1)
+        let zero_filled_ikm_cmk = Import::import(CmKeyUsage::Hmac, &zero_filled)
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?;
+
+        let extract_rsp = Hmac::hkdf_extract(HkdfSalt::Cmk(&salt_1), &zero_filled_ikm_cmk.cmk)
             .await
             .map_err(KeyScheduleError::CaliptraApi)?;
 

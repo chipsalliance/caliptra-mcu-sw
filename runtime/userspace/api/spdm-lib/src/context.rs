@@ -27,6 +27,7 @@ pub const MAX_SPDM_RESPONDER_BUF_SIZE: usize = 2048;
 pub struct SpdmContext<'a> {
     transport: &'a mut dyn SpdmTransport,
     pub(crate) supported_versions: &'a [SpdmVersion],
+    pub(crate) supported_secure_versions: &'a [SpdmVersion],
     pub(crate) state: State,
     pub(crate) shared_transcript: Transcript,
     pub(crate) local_capabilities: DeviceCapabilities,
@@ -40,6 +41,7 @@ pub struct SpdmContext<'a> {
 impl<'a> SpdmContext<'a> {
     pub fn new(
         supported_versions: &'a [SpdmVersion],
+        supported_secure_versions: &'a [SpdmVersion],
         spdm_transport: &'a mut dyn SpdmTransport,
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
@@ -51,6 +53,7 @@ impl<'a> SpdmContext<'a> {
 
         Ok(Self {
             supported_versions,
+            supported_secure_versions,
             transport: spdm_transport,
             state: State::new(),
             shared_transcript: Transcript::new(),
@@ -86,8 +89,8 @@ impl<'a> SpdmContext<'a> {
             msg_buf.reset();
 
             // Copy decrypted data into msg_buf using encode_u8_slice
-            encode_u8_slice(&app_data[..app_data_len], msg_buf)
-                .map_err(|_| SpdmError::Command(crate::error::CommandError::BufferTooSmall))?;
+            encode_u8_slice(&app_data[..app_data_len], msg_buf).map_err(SpdmError::Codec)?;
+            msg_buf.push_data(app_data_len).map_err(SpdmError::Codec)?;
         }
 
         // Process message

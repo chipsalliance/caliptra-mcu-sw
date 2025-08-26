@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::cert_store::{cert_slot_mask, SpdmCertStore};
+use crate::cert_store::{cert_slot_mask, compute_cert_chain_hash, SpdmCertStore};
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
@@ -10,7 +10,7 @@ use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
 use core::mem::size_of;
 use libapi_caliptra::crypto::asym::AsymAlgo;
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]
@@ -31,75 +31,6 @@ pub struct GetDigestsRespCommon {
 
 impl CommonCodec for GetDigestsRespCommon {}
 
-pub(crate) async fn compute_cert_chain_hash(
-    slot_id: u8,
-    cert_store: &dyn SpdmCertStore,
-    asym_algo: AsymAlgo,
-    hash: &mut [u8],
-) -> CommandResult<()> {
-    if hash.len() != SHA384_HASH_SIZE {
-        Err((false, CommandError::BufferTooSmall))?;
-    }
-
-    let crt_chain_len = cert_store
-        .cert_chain_len(asym_algo, slot_id)
-        .await
-        .map_err(|e| (false, CommandError::CertStore(e)))?;
-    let cert_chain_format_len = crt_chain_len + SPDM_CERT_CHAIN_METADATA_LEN as usize;
-
-    let header = SpdmCertChainHeader {
-        length: cert_chain_format_len as u16,
-        reserved: 0,
-    };
-
-    // Length and reserved fields
-    let header_bytes = header.as_bytes();
-    let mut hash_ctx = HashContext::new();
-    hash_ctx
-        .init(HashAlgoType::SHA384, Some(header_bytes))
-        .await
-        .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
-
-    // Root certificate hash
-    let mut root_hash = [0u8; SHA384_HASH_SIZE];
-
-    cert_store
-        .root_cert_hash(slot_id, asym_algo, &mut root_hash)
-        .await
-        .map_err(|e| (false, CommandError::CertStore(e)))?;
-    hash_ctx
-        .update(&root_hash)
-        .await
-        .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
-
-    // Hash the certificate chain
-    let mut cert_portion = [0u8; SPDM_MAX_CERT_CHAIN_PORTION_LEN as usize];
-    let mut offset = 0;
-
-    loop {
-        let bytes_read = cert_store
-            .get_cert_chain(slot_id, asym_algo, offset, &mut cert_portion)
-            .await
-            .map_err(|e| (false, CommandError::CertStore(e)))?;
-
-        hash_ctx
-            .update(&cert_portion[..bytes_read])
-            .await
-            .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
-
-        offset += bytes_read;
-
-        // If the bytes read is less than the length of the cert portion, it indicates the end of the chain
-        if bytes_read < cert_portion.len() {
-            break;
-        }
-    }
-    hash_ctx
-        .finalize(hash)
-        .await
-        .map_err(|e| (false, CommandError::CaliptraApi(e)))
-}
-
 async fn encode_cert_chain_digest(
     slot_id: u8,
     cert_store: &dyn SpdmCertStore,
@@ -113,7 +44,9 @@ async fn encode_cert_chain_digest(
         .data_mut(SHA384_HASH_SIZE)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
-    compute_cert_chain_hash(slot_id, cert_store, asym_algo, cert_chain_digest_buf).await?;
+    compute_cert_chain_hash(cert_store, slot_id, asym_algo, cert_chain_digest_buf)
+        .await
+        .map_err(|e| (false, CommandError::CertStore(e)))?;
 
     rsp.pull_data(SHA384_HASH_SIZE)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
