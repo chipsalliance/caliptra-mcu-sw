@@ -34,3 +34,9 @@ test_certs
 
 # ld scripts
 layout.ld
+
+# Zstandard Archives (e.g. cargo nextest test archive)
+**/*.tar.zst
+**/*.zip
+
+cross-target/

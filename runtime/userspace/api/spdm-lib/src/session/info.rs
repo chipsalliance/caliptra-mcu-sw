@@ -4,6 +4,7 @@ use super::{KeySchedule, SessionError, SessionKeyType, SessionResult};
 use crate::protocol::SpdmVersion;
 use crate::transcript::SessionTranscript;
 use bitfield::bitfield;
+use libapi_caliptra::crypto::aes_gcm::Aes256GcmTag;
 use libapi_caliptra::crypto::asym::ecdh::CMB_ECDH_EXCHANGE_DATA_MAX_SIZE;
 use libapi_caliptra::crypto::asym::AsymAlgo;
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
@@ -125,6 +126,54 @@ impl SessionInfo {
     ) -> SessionResult<[u8; SHA384_HASH_SIZE]> {
         self.key_schedule_ctx
             .hmac(session_key_type, data)
+            .await
+            .map_err(SessionError::KeySchedule)
+    }
+
+    pub async fn encrypt_secure_message(
+        &mut self,
+        aad_data: &[u8],
+        plaintext_message: &[u8],
+        encrypted_message: &mut [u8],
+    ) -> SessionResult<(usize, Aes256GcmTag)> {
+        let session_key_type = match self.session_state {
+            SessionState::HandshakeNotStarted => return Err(SessionError::InvalidState),
+            SessionState::HandshakeInProgress => SessionKeyType::ResponseHandshakeEncDecKey,
+            SessionState::SessionEstablished => SessionKeyType::ResponseDataEncDecKey,
+        };
+
+        self.key_schedule_ctx
+            .encrypt_message(
+                session_key_type,
+                aad_data,
+                plaintext_message,
+                encrypted_message,
+            )
+            .await
+            .map_err(SessionError::KeySchedule)
+    }
+
+    pub async fn decrypt_secure_message(
+        &mut self,
+        aad_data: &[u8],
+        encrypted_message: &[u8],
+        plaintext_message: &mut [u8],
+        tag: Aes256GcmTag,
+    ) -> SessionResult<usize> {
+        let session_key_type = match self.session_state {
+            SessionState::HandshakeNotStarted => return Err(SessionError::InvalidState),
+            SessionState::HandshakeInProgress => SessionKeyType::RequestHandshakeEncDecKey,
+            SessionState::SessionEstablished => SessionKeyType::RequestDataEncDecKey,
+        };
+
+        self.key_schedule_ctx
+            .decrypt_message(
+                session_key_type,
+                aad_data,
+                encrypted_message,
+                plaintext_message,
+                tag,
+            )
             .await
             .map_err(SessionError::KeySchedule)
     }

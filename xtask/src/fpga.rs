@@ -1,134 +1,283 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
+use clap::Subcommand;
 use mcu_builder::{FirmwareBinaries, PROJECT_ROOT};
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
 use mcu_rom_common::LifecycleControllerState;
-use std::path::Path;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::str::FromStr;
 
-pub fn fpga_install_kernel_modules() -> Result<()> {
-    let dir = &PROJECT_ROOT.join("hw").join("fpga").join("kernel-modules");
+#[derive(Subcommand)]
+pub(crate) enum Fpga {
+    /// Bootstraps an FPGA. This command should be run after each boot
+    Bootstrap {
+        #[arg(long)]
+        target_host: Option<String>,
+    },
+    /// Run firmware on Fpga
+    /// NOTE: THIS COMMAND HAS NOT YET BEEN TESTED
+    // TODO(clundin): Refactor this command to run over ssh.
+    Run {
+        /// ZIP with all images.
+        #[arg(long)]
+        zip: Option<PathBuf>,
 
-    disable_all_cpus_idle()?;
+        /// Where to load the MCU ROM from.
+        #[arg(long)]
+        mcu_rom: Option<PathBuf>,
 
-    // need to wrap it in bash so that the current_dir is propagated to make correctly
-    if !Command::new("bash")
-        .args(["-c", "make"])
-        .current_dir(dir)
-        .status()
-        .expect("Failed to build modules")
-        .success()
-    {
-        bail!("Failed to build modules");
+        /// Where to load the Caliptra ROM from.
+        #[arg(long)]
+        caliptra_rom: Option<PathBuf>,
+
+        /// Where to load and save OTP memory.
+        #[arg(long)]
+        otp: Option<PathBuf>,
+
+        /// Save OTP memory to a file after running.
+        #[arg(long, default_value_t = false)]
+        save_otp: bool,
+
+        /// Run UDS provisioning flow
+        #[arg(long, default_value_t = false)]
+        uds: bool,
+
+        /// Number of "steps" to run the FPGA before stopping
+        #[arg(long, default_value_t = 1_000_000)]
+        steps: u64,
+
+        /// Whether to disable the recovery interface and I3C
+        #[arg(long, default_value_t = false)]
+        no_recovery: bool,
+
+        /// Lifecycle controller state to set (raw, test_unlocked0, manufacturing, prod, etc.).
+        #[arg(long)]
+        lifecycle: Option<String>,
+    },
+    /// Build FPGA firmware
+    Build {
+        /// When set copy firmware to `target_host`
+        #[arg(long)]
+        target_host: Option<String>,
+    },
+    /// Build FPGA test binaries
+    BuildTest {
+        /// When copy test binaries to `target_host`
+        #[arg(long)]
+        target_host: Option<String>,
+    },
+    /// Run FPGA tests
+    Test {
+        /// When set run commands over ssh to `target_host`
+        #[arg(long)]
+        target_host: Option<String>,
+        // TODO(clundin): Add support for passing in test filter
+    },
+}
+
+// Copies a file to FPGA over rsync to the FPGA home folder.
+fn rsync_file(target_host: &str, file: &str, from_fpga: bool) -> Result<()> {
+    // TODO(clundin): We assume are files are dropped in the root / home folder. May want to find a
+    // put things in their own directory.
+    let copy = if from_fpga {
+        format!("{target_host}:{file}")
+    } else {
+        format!("{target_host}:.")
+    };
+    let args = if from_fpga {
+        ["-avxz", &copy, file]
+    } else {
+        ["-avxz", file, &copy]
+    };
+    let status = Command::new("rsync")
+        .current_dir(&*PROJECT_ROOT)
+        .args(args)
+        .status()?;
+    if !status.success() {
+        bail!("failed rsync file: {file} to {target_host}");
     }
+    Ok(())
+}
 
-    if !is_module_loaded("uio")? {
-        sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
-        if !Command::new("modprobe")
-            .arg("uio")
-            .status()
-            .expect("Could not load uio kernel module")
-            .success()
-        {
-            bail!("Could not load uio kernel module");
+/// Runs a command over SSH if `target_host` is `Some`. Otherwise runs command on current machine.
+fn run_command_with_output(
+    target_host: Option<&str>,
+    command: &str,
+) -> Result<std::process::Output> {
+    // TODO(clundin): Refactor to share code with `run_command`
+    if let Some(target_host) = target_host {
+        Ok(Command::new("ssh")
+            .current_dir(&*PROJECT_ROOT)
+            .args([target_host, "-t", command])
+            .output()?)
+    } else {
+        Ok(Command::new("sh")
+            .current_dir(&*PROJECT_ROOT)
+            .args(["-c", command])
+            .output()?)
+    }
+}
+
+/// Runs a command over SSH if `target_host` is `Some`. Otherwise runs command on current machine.
+fn run_command(target_host: Option<&str>, command: &str) -> Result<()> {
+    if let Some(target_host) = target_host {
+        println!("[FPGA HOST] Running command: {command}");
+        let status = Command::new("ssh")
+            .current_dir(&*PROJECT_ROOT)
+            .args([target_host, "-t", command])
+            .stdin(Stdio::inherit())
+            .status()?;
+        if !status.success() {
+            bail!("\"{command}\" failed to run on FPGA over ssh");
+        }
+    } else {
+        println!("Running command: {command}");
+        let status = Command::new("sh")
+            .current_dir(&*PROJECT_ROOT)
+            .args(["-c", command])
+            .stdin(Stdio::inherit())
+            .status()?;
+        if !status.success() {
+            bail!("Failed to run command");
         }
     }
-
-    for module in [
-        "io_module",
-        "rom_backdoor_class",
-        "caliptra_rom_backdoor",
-        "mcu_rom_backdoor",
-    ] {
-        let module_path = dir.join(format!("{}.ko", module));
-        if !module_path.exists() {
-            bail!("Module {} not found", module_path.display());
-        }
-        if is_module_loaded(module)? {
-            println!("Module {} already loaded", module);
-            continue;
-        }
-
-        sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
-        if !Command::new("insmod")
-            .arg(module_path.to_str().unwrap())
-            .status()?
-            .success()
-        {
-            bail!("Failed to insert module {}", module_path.display());
-        }
-    }
-
-    fix_permissions()?;
 
     Ok(())
 }
 
-fn disable_all_cpus_idle() -> Result<()> {
+pub fn fpga_install_kernel_modules(target_host: Option<&str>) -> Result<()> {
+    disable_all_cpus_idle(target_host)?;
+
+    // Make file assumes we are in the same directory.
+    // TODO(clundin): Need to test this, the Ubuntu FPGA is in a bad state and seems to not be able
+    // to build kernel modules.
+    run_command(
+        target_host,
+        "(cd caliptra-mcu-sw/hw/fpga/kernel-modules && make)",
+    )?;
+
+    // TODO(clundin): Need to test this, the Ubuntu FPGA is in a bad state and seems to not be able
+    // to build kernel modules.
+    run_command(
+        target_host,
+        "sudo insmod caliptra-mcu-sw/hw/fpga/kernel-modules/io_module.ko",
+    )?;
+
+    fix_permissions(target_host)?;
+
+    Ok(())
+}
+
+fn disable_all_cpus_idle(target_host: Option<&str>) -> Result<()> {
     println!("Disabling idle on CPUs");
-    let mut cpu = 0;
-    while disable_cpu_idle(cpu).is_ok() {
-        cpu += 1;
+    for i in 0..2 {
+        disable_cpu_idle(i, target_host)?;
     }
     Ok(())
 }
 
-fn disable_cpu_idle(cpu: usize) -> Result<()> {
-    sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
-    let cpu_sysfs = format!("/sys/devices/system/cpu/cpu{}/cpuidle/state1/disable", cpu);
-    let cpu_path = Path::new(&cpu_sysfs);
-    if !cpu_path.exists() {
-        bail!("cpu[{}] does not exist", cpu);
-    }
-    std::fs::write(cpu_path, b"1")?;
-    println!("    |- cpu[{}]", cpu);
-
-    // verify options were set
-    let value = std::fs::read_to_string(&cpu_sysfs)?.trim().to_string();
-    if value != "1" {
-        bail!("[-] error setting cpu[{}] into idle state", cpu);
-    }
-    Ok(())
-}
-
-fn fix_permissions() -> Result<()> {
-    let uio_path = Path::new("/dev/uio0");
-    if uio_path.exists() {
-        sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
-        if !Command::new("chmod")
-            .arg("666")
-            .arg(uio_path)
-            .status()?
-            .success()
-        {
-            bail!("Failed to change permissions on uio device");
-        }
-    }
-    let uio_path = Path::new("/dev/uio1");
-    if uio_path.exists() {
-        sudo::escalate_if_needed().map_err(|e| anyhow!("{}", e))?;
-        if !Command::new("chmod")
-            .arg("666")
-            .arg(uio_path)
-            .status()?
-            .success()
-        {
-            bail!("Failed to change permissions on uio device");
-        }
+fn disable_cpu_idle(cpu: usize, target_host: Option<&str>) -> Result<()> {
+    // Need to use bash -c to avoid misinterpreting this line...
+    run_command(
+        target_host,
+        &format!(
+            "sudo bash -c \"echo 1 > /sys/devices/system/cpu/cpu{cpu}/cpuidle/state1/disable\""
+        ),
+    )?;
+    let state = run_command_with_output(
+        target_host,
+        &format!("cat /sys/devices/system/cpu/cpu{cpu}/cpuidle/state1/disable"),
+    )?;
+    let state = String::from_utf8(state.stdout)?;
+    if state.trim_end() != "1" {
+        bail!("[-] error setting cpu[{cpu}] into idle state");
     }
     Ok(())
 }
 
-fn is_module_loaded(module: &str) -> Result<bool> {
-    let output = Command::new("lsmod").output()?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
+fn fix_permissions(target_host: Option<&str>) -> Result<()> {
+    run_command(target_host, "sudo chmod 666 /dev/uio0")?;
+    run_command(target_host, "sudo chmod 666 /dev/uio1")?;
+    Ok(())
+}
+
+fn is_module_loaded(module: &str, target_host: Option<&str>) -> Result<bool> {
+    let stdout = String::from_utf8(run_command_with_output(target_host, "lsmod")?.stdout)?;
     Ok(stdout
         .lines()
         .any(|line| line.split_whitespace().next() == Some(module)))
 }
 
+pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
+    match args {
+        Fpga::Build { target_host } => {
+            println!("Building FPGA firmware");
+            // TODO(clundin): Modify `mcu_builder::all_build` to return the zip instead of writing it?
+            // TODO(clundin): Place FPGA xtask artifacts in a specific folder?
+            mcu_builder::all_build(Some("all-fw.zip"), Some("fpga"), false, None, None)?;
+
+            // We want to copy the zip to the FPGA if `target_host` is specified.
+            if let Some(target_host) = target_host {
+                rsync_file(&target_host, "all-fw.zip", false)?;
+            }
+        }
+        Fpga::BuildTest { target_host } => {
+            println!("Building FPGA test");
+            // Build test binaries in a docker container
+            let home = std::env::var("HOME").unwrap();
+            let project_root = PROJECT_ROOT.clone();
+            let project_root = project_root.display();
+
+            // TODO(clundin): Clean this docker command up.
+            Command::new("docker")
+                .current_dir(&*PROJECT_ROOT)
+                .args(["run", "--rm", &format!("-v{project_root}:/work-dir"), "-w/work-dir", &format!("-v{home}/.cargo/registry:/root/.cargo/registry"), &format!("-v{home}/.cargo/git:/root/.cargo/git"), "ghcr.io/chipsalliance/caliptra-build-image:latest", "/bin/bash", "-c", "(cd /work-dir && echo 'Cross compiling tests' && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_realtime --target=aarch64-unknown-linux-gnu --archive-file=caliptra-test-binaries.tar.zst --target-dir cross-target/ )"])
+                .status()?;
+
+            if let Some(target_host) = target_host {
+                rsync_file(target_host, "caliptra-test-binaries.tar.zst", false)?;
+            }
+        }
+        Fpga::Bootstrap { target_host } => {
+            println!("Bootstrapping FPGA");
+            let hostname = run_command_with_output(target_host.as_deref(), "hostname")?;
+            let hostname = String::from_utf8(hostname.stdout).expect("Failed to parse hostname");
+
+            // skip this step for CI images. Kernel modules are already installed.
+            if hostname.trim_end() != "caliptra-fpga" {
+                fpga_install_kernel_modules(target_host.as_deref())?;
+            }
+
+            // Need to clone caliptra-mcu-sw to run tests.
+            run_command(target_host.as_deref(), "[ -d caliptra-mcu-sw ] || git clone https://github.com/chipsalliance/caliptra-mcu-sw --branch=main --depth=1").expect("failed to clone caliptra-mcu-sw repo");
+        }
+        Fpga::Test { target_host } => {
+            println!("Running test suite on FPGA");
+            is_module_loaded("io_module", target_host.as_deref())?;
+            // Clear old test logs
+            run_command(target_host.as_deref(), "(sudo rm /tmp/junit.xml || true)")?;
+            // Run caliptra-mcu-sw test suite.
+            // Ignore error so we still copy the logs.
+            let _ = run_command(target_host.as_deref(), "(cd caliptra-mcu-sw && \
+                sudo CPTRA_FIRMWARE_BUNDLE=\"${HOME}/all-fw.zip\" \
+                cargo-nextest nextest run \
+                --workspace-remap=. --archive-file $HOME/caliptra-test-binaries.tar.zst \
+                -E \"package(mcu-hw-model) - test(model_emulated::test::test_new_unbooted)\" --test-threads=1 --no-fail-fast --profile=nightly)");
+
+            if let Some(target_host) = target_host {
+                println!("Copying test log from FPGA to junit.xml");
+                rsync_file(target_host, "/tmp/junit.xml", true)?;
+            }
+        }
+        _ => todo!("implement this command"),
+    }
+
+    Ok(())
+}
+
+// TODO(clundin): Refactor to match rest of module
 pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
     let crate::Commands::FpgaRun {
         zip,
@@ -148,7 +297,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
     let recovery = !no_recovery;
 
     if !Path::new("/dev/uio0").exists() {
-        fpga_install_kernel_modules()?;
+        fpga_install_kernel_modules(None)?;
     }
     if mcu_rom.is_none() && zip.is_none() {
         bail!("Must specify either --mcu-rom or --zip");

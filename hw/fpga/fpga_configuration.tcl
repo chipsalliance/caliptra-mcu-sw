@@ -474,6 +474,8 @@ apply_bd_automation -rule xilinx.com:bd_rule:debug -dict [list \
     [get_bd_nets dbg_log] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
   ]
 set_property CONFIG.C_DATA_DEPTH {8192} [get_bd_cells axis_ila_0]
+set_property CONFIG.C_INPUT_PIPE_STAGES {2} [get_bd_cells axis_ila_0]
+set_property CONFIG.C_INPUT_PIPE_STAGES {2} [get_bd_cells axis_ila_1]
 save_bd_design
 
 # Start build

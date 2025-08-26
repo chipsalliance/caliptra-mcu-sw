@@ -14,12 +14,6 @@
 //
 `default_nettype wire
 
-// Testing to see if these are needed
-//`include "common_defines.sv"
-//`include "config_defines.svh"
-//`include "caliptra_reg_defines.svh"
-//`include "caliptra_macros.svh"
-
 import axi_struct_pkg::*;
 import caliptra_fpga_realtime_regs_pkg::*;
 
@@ -596,9 +590,6 @@ module caliptra_wrapper_top (
             axi_reset <= 1;
         end
     end
-
-    // TODO: Checking if this is needed
-    //import soc_ifc_pkg::*;
 
     logic                       BootFSM_BrkPoint;
 
@@ -1781,6 +1772,7 @@ mcu_rom (
         .cptra_ss_mcu0_el2_mem_export
     );
 
+    // TODO: Cleanup I3C connection code https://github.com/chipsalliance/caliptra-mcu-sw/issues/369
     /*
     Line Driver logic
     sel_od_pp == 1 indicates push-pull
@@ -1913,6 +1905,7 @@ logic cptra_ss_mcu_halt_ack;
 logic i3c_recovery_payload_available;
 logic i3c_recovery_image_activated;
 
+// TODO: Unconnected signals issue: https://github.com/chipsalliance/caliptra-mcu-sw/issues/370
 caliptra_ss_top caliptra_ss_top_0 (
 
     .cptra_ss_clk_i(core_clk),

@@ -95,16 +95,33 @@ This script provides a number of configuration options for features that can be 
  - Copy petalinux_project/images/linux/BOOT.BIN to the boot partition as boot1900.bin
    - If the Ubuntu image is booted, it will mount the boot partition at /boot/firmware/
    - If boot1900.bin fails to boot the system will fallback to the default boot1901.bin
+   - [!WARNING]
+     ```reboot``` seems to skip the image selector and will load from the same filename as the previous boot. If the fallback image is the last one booted then the proper procedure is ```shutdown``` and to toggle the power switch. In the serial boot log the fallback image uses PLM from 2022 while for any valid Caliptra FPGA image the PLM will be 2024.
    ```shell
    sudo su
    cp BOOT.BIN /boot/firmware/boot1900.bin
    reboot
+   # OR
+   shutdown
+   # Toggle power switch
    ```
+
 - Verify the correct image is loaded by checking FPGA wrapper registers.
    - fpga_magic (0xA4010000) contains 0x52545043.
    - fpga_version (0xA4010004) contains the hash of the git HEAD commit.
 
-### Running Caliptra tests from the FPGA: ###
+### Cross compiling tests for FPGA: ###
+```shell
+# TODO: Fix these flows: https://github.com/chipsalliance/caliptra-mcu-sw/issues/367
+# From an X86 build machine create run collateral
+cargo xtask-fpga all-build --platform fpga
+
+
+# Compile and install the kernel module
+cargo xtask fpga-install-kernel-modules
+```
+
+### Compiling and running Caliptra tests from the FPGA: ###
 ```shell
 # Install dependencies
 sudo apt update
@@ -115,11 +132,9 @@ git clone https://github.com/chipsalliance/caliptra-mcu-sw.git
 git submodule init
 git submodule update
 
+
 # Compile and install the kernel module
 cargo xtask fpga-install-kernel-modules
-# Run new_unbooted_test
-TODO: These steps already out of date. Need to define CPTRA_FIRMWARE_BUNDLE
-cargo t -p mcu-hw-model --features fpga_realtime -- --test model_fpga_realtime::test::test_new_unbooted --exact --nocapture
 ```
 
 ### Processing System - Programmable Logic interfaces ###

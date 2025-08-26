@@ -332,7 +332,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .read_mcu_mbox0_csr_mbox_sram(index)
     }
 
@@ -341,7 +342,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .write_mcu_mbox0_csr_mbox_sram(val, index)
     }
 
@@ -353,7 +355,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .read_mcu_mbox0_csr_mbox_lock()
     }
 
@@ -362,7 +365,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .read_mcu_mbox0_csr_mbox_user()
     }
 
@@ -371,7 +375,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .read_mcu_mbox0_csr_mbox_target_user()
     }
 
@@ -380,7 +385,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .write_mcu_mbox0_csr_mbox_target_user(val);
     }
 
@@ -394,7 +400,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .read_mcu_mbox0_csr_mbox_target_user_valid()
     }
 
@@ -409,7 +416,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .write_mcu_mbox0_csr_mbox_target_user_valid(val);
     }
 
@@ -418,7 +426,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .read_mcu_mbox0_csr_mbox_cmd()
     }
 
@@ -427,7 +436,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .write_mcu_mbox0_csr_mbox_cmd(val);
     }
 
@@ -436,7 +446,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .read_mcu_mbox0_csr_mbox_dlen()
     }
 
@@ -445,7 +456,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .write_mcu_mbox0_csr_mbox_dlen(val);
     }
 
@@ -459,7 +471,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .read_mcu_mbox0_csr_mbox_execute()
     }
 
@@ -474,7 +487,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .write_mcu_mbox0_csr_mbox_execute(val);
     }
 
@@ -488,7 +502,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .read_mcu_mbox0_csr_mbox_target_status()
     }
 
@@ -503,7 +518,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .write_mcu_mbox0_csr_mbox_target_status(val);
     }
 
@@ -517,7 +533,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .read_mcu_mbox0_csr_mbox_cmd_status()
     }
 
@@ -532,7 +549,8 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .write_mcu_mbox0_csr_mbox_cmd_status(val);
     }
 
@@ -546,8 +564,16 @@ impl MciPeripheral for Mci {
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .read_mcu_mbox0_csr_mbox_hw_status()
+    }
+
+    fn read_mci_reg_hw_rev_id(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwRevId::Register>
+    {
+        caliptra_emu_bus::ReadWriteRegister::new(0x1000)
     }
 
     fn poll(&mut self) {

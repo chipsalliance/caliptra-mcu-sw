@@ -513,16 +513,6 @@ module caliptra_package_axi_top (
     input	wire                      S_AXI_WRAPPER_RREADY,
     output	wire [31:0]               S_AXI_WRAPPER_RDATA,
     output	wire [1:0]                S_AXI_WRAPPER_RRESP
-
-    // I3C
-    //output SDA_UP,
-    //output SDA_PUSH,
-    //output SDA_PULL,
-    //input  SDA,
-    //output SCL_UP,
-    //output SCL_PUSH,
-    //output SCL_PULL,
-    //input  SCL
     );
 
 caliptra_wrapper_top cptra_wrapper (
@@ -1022,14 +1012,5 @@ caliptra_wrapper_top cptra_wrapper (
     .S_AXI_WRAPPER_RREADY(S_AXI_WRAPPER_RREADY),
     .S_AXI_WRAPPER_RDATA(S_AXI_WRAPPER_RDATA),
     .S_AXI_WRAPPER_RRESP(S_AXI_WRAPPER_RRESP)
-
-    //.SDA_UP(SDA_UP),
-    //.SDA_PUSH(SDA_PUSH),
-    //.SDA_PULL(SDA_PULL),
-    //.SDA(SDA),
-    //.SCL_UP(SCL_UP),
-    //.SCL_PUSH(SCL_PUSH),
-    //.SCL_PULL(SCL_PULL),
-    //.SCL(SCL)
 );
 endmodule
