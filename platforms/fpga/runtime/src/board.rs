@@ -5,6 +5,7 @@ use crate::MCU_MEMORY_MAP;
 use arrayvec::ArrayVec;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_runtime::mctp::base_protocol::MessageType;
+use capsules_runtime::mcu_mbox::McuMboxDriver;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
 use kernel::component::Component;
@@ -21,6 +22,7 @@ use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
 use mcu_components::mctp_driver_component_static;
 use mcu_components::mctp_mux_component_static;
+use mcu_components::mcu_mbox_component_static;
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
@@ -139,6 +141,10 @@ struct VeeR {
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
     //dma: &'static capsules_emulator::dma::Dma<'static>,
+    mcu_mbox0: &'static capsules_runtime::mcu_mbox::McuMboxDriver<
+        'static,
+        mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>,
+    >,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -165,6 +171,7 @@ impl SyscallDriverLookup for VeeR {
             // }
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             //capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
+            capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => f(Some(self.mcu_mbox0)),
             _ => f(None),
         }
     }
@@ -518,6 +525,16 @@ pub unsafe fn main() {
     peripherals.init();
     romtime::println!("[mcu-runtime] Peripherals initialized");
 
+    // MCU mailbox0 capsule
+    let mcu_mbox0 = mcu_components::mcu_mbox::McuMboxComponent::new(
+        board_kernel,
+        capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
+        &peripherals.mcu_mbox0,
+    )
+    .finalize(mcu_mbox_component_static!(
+        mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>
+    ));
+
     // Need to enable all interrupts for Tock Kernel
     chip.enable_pic_interrupts();
     chip.enable_timer_interrupts();
@@ -556,6 +573,7 @@ pub unsafe fn main() {
             //recovery_image_par,
             mailbox,
             //dma,
+            mcu_mbox0,
         }
     );
 
