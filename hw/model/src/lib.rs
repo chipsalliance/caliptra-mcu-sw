@@ -24,6 +24,7 @@ use std::sync::mpsc;
 pub use vmem::read_otp_vmem_data;
 
 mod bus_logger;
+mod fpga_regs;
 mod mcu_mgr;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
@@ -270,12 +271,7 @@ pub trait McuHwModel {
         let init_params_summary = init_params.summary();
 
         let mut hw: Self = McuHwModel::new_unbooted(init_params)?;
-        let mc_generation = hw.mcu_manager().mci().hw_rev_id().read().mc_generation();
-        let cptra_hw_rev_id = hw.caliptra_soc_manager().soc_ifc().cptra_hw_rev_id().read();
-        println!(
-            "Using hardware-model {} mc_generation={:04x} cptra_hw_rev_id={{cptra_generation=0x{:04x}, soc_stepping_id={:04x}}}",
-            hw.type_name(), mc_generation, cptra_hw_rev_id.cptra_generation(), cptra_hw_rev_id.soc_stepping_id()
-        );
+        println!("Using hardware-model {}", hw.type_name());
         println!("{init_params_summary:#?}");
 
         hw.boot(boot_params)?;

@@ -54,7 +54,6 @@ pub(crate) fn autogen(
     let rdl_files = [
         "hw/caliptra-ss/src/integration/rtl/soc_address_map.rdl",
         "hw/mcu.rdl",
-        "hw/fpga/src/caliptra_fpga_realtime_regs.rdl",
     ];
     let mut rdl_files: Vec<PathBuf> = rdl_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
     rdl_files.extend_from_slice(extra_files);

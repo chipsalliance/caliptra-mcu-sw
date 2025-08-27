@@ -9,8 +9,12 @@ edition = "2021"
 fpga_realtime = ["mcu-hw-model/fpga_realtime"]
 
 [dependencies]
+caliptra-api-types.workspace = true
 anyhow.workspace = true
 cc.workspace = true
+caliptra-image-gen.workspace = true
+caliptra-image-types.workspace = true
+caliptra-hw-model.workspace = true
 clap.workspace = true
 clap-num.workspace = true
 crc32fast.workspace = true
