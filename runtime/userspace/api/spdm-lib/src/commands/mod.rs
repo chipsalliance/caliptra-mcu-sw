@@ -6,6 +6,7 @@ pub mod certificate_rsp;
 pub mod challenge_auth_rsp;
 pub mod chunk_get_rsp;
 pub mod digests_rsp;
+pub mod end_session_rsp;
 pub mod error_rsp;
 pub mod finish_rsp;
 pub mod key_exchange_rsp;

@@ -16,7 +16,7 @@ pub const APPS: &[App] = &[
     App {
         name: "user-app",
         permissions: vec![],
-        minimum_ram: 100 * 1024,
+        minimum_ram: 108 * 1024,
     },
 ];
 
@@ -175,7 +175,7 @@ fn app_build(
 /* Licensed under the Apache-2.0 license */
 TBF_HEADER_SIZE = 0x{:x};
 FLASH_START = 0x{:x};
-FLASH_LENGTH = 0x40000;
+FLASH_LENGTH = 0x48200;
 RAM_START = 0x{:x};
 RAM_LENGTH = 0x{:x};
 INCLUDE platforms/emulator/runtime/userspace/apps/app_layout.ld",

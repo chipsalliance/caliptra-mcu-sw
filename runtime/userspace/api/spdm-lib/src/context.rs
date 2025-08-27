@@ -6,7 +6,7 @@ use crate::codec::{encode_u8_slice, Codec, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
     algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, chunk_get_rsp,
-    digests_rsp, measurements_rsp, version_rsp,
+    digests_rsp, end_session_rsp, finish_rsp, key_exchange_rsp, measurements_rsp, version_rsp,
 };
 use crate::error::*;
 use crate::measurements::common::SpdmMeasurements;
@@ -162,14 +162,19 @@ impl<'a> SpdmContext<'a> {
             ReqRespCode::ChunkGet => {
                 chunk_get_rsp::handle_chunk_get(self, req_msg_header, req).await?
             }
-
+            ReqRespCode::KeyExchange => {
+                key_exchange_rsp::handle_key_exchange(self, req_msg_header, req).await?
+            }
+            ReqRespCode::Finish => finish_rsp::handle_finish(self, req_msg_header, req).await?,
+            ReqRespCode::EndSession => {
+                end_session_rsp::handle_end_session(self, req_msg_header, req).await?
+            }
             _ => Err((false, CommandError::UnsupportedRequest))?,
         }
         Ok(())
     }
 
     async fn send_response(&mut self, resp: &mut MessageBuf<'a>, secure: bool) -> SpdmResult<()> {
-        // TODO: Encrypt if secure.
         if secure {
             let mut secure_message = [0u8; MAX_SPDM_RESPONDER_BUF_SIZE];
             let mut secure_message_buf = MessageBuf::new(&mut secure_message);
@@ -300,7 +305,10 @@ impl<'a> SpdmContext<'a> {
         // If requester issued GET_MEASUREMENTS or KEY_EXCHANGE or FINISH request
         // and skipped CHALLENGE completion, reset M1 context.
         match req_code {
-            ReqRespCode::GetMeasurements | ReqRespCode::KeyExchange | ReqRespCode::Finish => {
+            ReqRespCode::GetMeasurements
+            | ReqRespCode::KeyExchange
+            | ReqRespCode::Finish
+            | ReqRespCode::EndSession => {
                 if self.state.connection_info.state() < ConnectionState::Authenticated {
                     self.shared_transcript.reset_context(TranscriptContext::M1);
                 }
