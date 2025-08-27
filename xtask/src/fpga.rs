@@ -1,6 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
+use caliptra_hw_model::BootParams;
+use caliptra_image_gen::to_hw_format;
+use caliptra_image_types::FwVerificationPqcKeyType;
 use clap::Subcommand;
 use mcu_builder::{FirmwareBinaries, PROJECT_ROOT};
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
@@ -360,6 +363,20 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         ..Default::default()
     })
     .unwrap();
+    model.boot(BootParams {
+        fuses: caliptra_api_types::Fuses {
+            vendor_pk_hash: binaries
+                .vendor_pk_hash()
+                .map(|h| to_hw_format(&h))
+                .unwrap_or([0u32; 12]),
+            fuse_pqc_key_type: u8::from(FwVerificationPqcKeyType::LMS).into(),
+            ..Default::default()
+        },
+        fw_image: Some(binaries.caliptra_fw.as_slice()),
+        soc_manifest: Some(binaries.soc_manifest.as_slice()),
+        mcu_fw_image: Some(binaries.mcu_runtime.as_slice()),
+        ..Default::default()
+    })?;
 
     let mut uds_requested = false;
     let mut xi3c_configured = false;

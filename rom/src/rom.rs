@@ -129,7 +129,7 @@ impl Soc {
         self.registers.ss_uds_seed_base_addr_l.set(offset as u32);
         self.registers.ss_uds_seed_base_addr_h.set(0);
 
-        let pqc_type = match fuses.cptra_core_pqc_key_type_0() & 1 {
+        let pqc_type = match fuses.cptra_core_pqc_key_type_0()[0] & 1 {
             MLDSA_FUSE_VALUE => MLDSA_CALIPTRA_VALUE,
             LMS_FUSE_VALUE => LMS_CALIPTRA_VALUE,
             _ => unreachable!(),
