@@ -76,7 +76,9 @@ pub(crate) enum Fpga {
         /// When set run commands over ssh to `target_host`
         #[arg(long)]
         target_host: Option<String>,
-        // TODO(clundin): Add support for passing in test filter
+        /// A specific test filter to apply.
+        #[arg(long)]
+        test_filter: Option<String>,
     },
 }
 
@@ -256,18 +258,33 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             // Need to clone caliptra-mcu-sw to run tests.
             run_command(target_host.as_deref(), "[ -d caliptra-mcu-sw ] || git clone https://github.com/chipsalliance/caliptra-mcu-sw --branch=main --depth=1").expect("failed to clone caliptra-mcu-sw repo");
         }
-        Fpga::Test { target_host } => {
+        Fpga::Test {
+            target_host,
+            test_filter,
+        } => {
             println!("Running test suite on FPGA");
             is_module_loaded("io_module", target_host.as_deref())?;
             // Clear old test logs
             run_command(target_host.as_deref(), "(sudo rm /tmp/junit.xml || true)")?;
             // Run caliptra-mcu-sw test suite.
             // Ignore error so we still copy the logs.
-            let _ = run_command(target_host.as_deref(), "(cd caliptra-mcu-sw && \
-                sudo CPTRA_FIRMWARE_BUNDLE=\"${HOME}/all-fw.zip\" \
+            let tf = if let Some(tf) = test_filter {
+                // Specific test filter to apply.
+                tf
+            } else {
+                // Default test suite to run.
+                "package(mcu-hw-model) - test(model_emulated::test::test_new_unbooted)"
+            };
+            let test_command = format!(
+                "(cd caliptra-mcu-sw && \
+                sudo CPTRA_FIRMWARE_BUNDLE=$HOME/all-fw.zip \
                 cargo-nextest nextest run \
                 --workspace-remap=. --archive-file $HOME/caliptra-test-binaries.tar.zst \
-                -E \"package(mcu-hw-model) - test(model_emulated::test::test_new_unbooted)\" --test-threads=1 --no-fail-fast --profile=nightly)");
+                --test-threads=1 --no-fail-fast --profile=nightly \
+                -E \"{}\")",
+                tf
+            );
+            let _ = run_command(target_host.as_deref(), test_command.as_str());
 
             if let Some(target_host) = target_host {
                 println!("Copying test log from FPGA to junit.xml");
