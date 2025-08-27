@@ -79,6 +79,9 @@ pub(crate) enum Fpga {
         /// A specific test filter to apply.
         #[arg(long)]
         test_filter: Option<String>,
+        /// Print test output during execution.
+        #[arg(long, default_value_t = false)]
+        test_output: bool,
     },
 }
 
@@ -261,6 +264,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
         Fpga::Test {
             target_host,
             test_filter,
+            test_output,
         } => {
             println!("Running test suite on FPGA");
             is_module_loaded("io_module", target_host.as_deref())?;
@@ -275,14 +279,19 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                 // Default test suite to run.
                 "package(mcu-hw-model) - test(model_emulated::test::test_new_unbooted)"
             };
+            let to = if *test_output {
+                "--success-output=immediate"
+            } else {
+                ""
+            };
             let test_command = format!(
                 "(cd caliptra-mcu-sw && \
                 sudo CPTRA_FIRMWARE_BUNDLE=$HOME/all-fw.zip \
                 cargo-nextest nextest run \
                 --workspace-remap=. --archive-file $HOME/caliptra-test-binaries.tar.zst \
-                --test-threads=1 --no-fail-fast --profile=nightly \
+                --test-threads=1 --no-fail-fast --profile=nightly {} \
                 -E \"{}\")",
-                tf
+                to, tf
             );
             let _ = run_command(target_host.as_deref(), test_command.as_str());
 
