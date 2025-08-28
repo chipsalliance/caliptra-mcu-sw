@@ -23,6 +23,7 @@ use capsules_runtime::mctp::transport_binding::{MCTPI3CBinding, MCTPTransportBin
 use core::mem::MaybeUninit;
 use i3c_driver::core::MAX_READ_WRITE_SIZE;
 use kernel::component::Component;
+use kernel::deferred_call::DeferredCallClient;
 use kernel::hil::time::Alarm;
 
 // Setup static space for the objects.
@@ -106,6 +107,7 @@ impl<A: Alarm<'static>> Component for MCTPMuxComponent<A> {
         mctp_device.set_tx_client(mux_mctp_driver);
         mctp_device.set_rx_client(mux_mctp_driver);
 
+        mux_mctp_driver.register();
         mux_mctp_driver
     }
 }

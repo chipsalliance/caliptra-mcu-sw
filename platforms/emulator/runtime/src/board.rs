@@ -646,6 +646,9 @@ pub unsafe fn main() {
         .modify(csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::BIT29::SET);
     csr::CSR.mstatus.modify(csr::mstatus::mstatus::mie::SET);
 
+    debug!("MUX MCTP enable");
+    mux_mctp.enable();
+
     debug!("MCU initialization complete.");
     debug!("Entering main loop.");
 

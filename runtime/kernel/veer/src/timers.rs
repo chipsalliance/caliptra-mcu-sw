@@ -185,7 +185,9 @@ impl<'a> time::Alarm<'a> for InternalTimers<'a> {
     }
 
     fn get_alarm(&self) -> Self::Ticks {
-        Ticks64::from(self.mitb0.read(mitb0::bound) as u32)
+        let bound = self.mitb0.read(mitb0::bound) as u64;
+        let now = self.now().into_u64();
+        (now + bound).into()
     }
 
     fn disarm(&self) -> Result<(), ErrorCode> {
