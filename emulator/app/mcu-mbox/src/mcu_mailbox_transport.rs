@@ -61,6 +61,11 @@ impl McuMailboxTransport {
                 MboxExecute::Execute::SET.value,
             ));
 
+        println!(
+            "[xs debug]emulator MCU mbox execute: cmd={:?}, payload ={:?}",
+            cmd, payload
+        );
+
         Ok(())
     }
 
@@ -99,6 +104,11 @@ impl McuMailboxTransport {
         }
         // Truncate to the actual data length
         data.truncate(len as usize);
+
+        println!(
+            "[xs debug]emulator: mbox_get_response: paylaod_len={:?}, dw_len={:?}",
+            len, dw_len
+        );
 
         self.finalize();
 

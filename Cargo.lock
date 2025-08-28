@@ -1560,6 +1560,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "log",
+ "mcu-mbox-common",
  "p384",
  "pldm-common",
  "pldm-fw-pkg",
@@ -1729,6 +1730,13 @@ dependencies = [
  "portable-atomic",
  "romtime",
  "zerocopy",
+]
+
+[[package]]
+name = "external-cmds-common"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
 ]
 
 [[package]]
@@ -2663,6 +2671,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-mbox-common"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api",
+ "zerocopy",
+]
+
+[[package]]
 name = "mcu-mbox-driver"
 version = "0.1.0"
 dependencies = [
@@ -2670,6 +2686,25 @@ dependencies = [
  "kernel",
  "mcu-mbox-comm",
  "registers-generated",
+ "romtime",
+]
+
+[[package]]
+name = "mcu-mbox-lib"
+version = "0.1.0"
+dependencies = [
+ "embassy-executor",
+ "embassy-sync",
+ "external-cmds-common",
+ "libsyscall-caliptra",
+ "libtock_alarm",
+ "libtock_console",
+ "libtock_platform",
+ "libtock_runtime",
+ "libtockasync",
+ "mcu-mbox-common",
+ "romtime",
+ "zerocopy",
 ]
 
 [[package]]
@@ -4226,6 +4261,7 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
+ "external-cmds-common",
  "libapi-caliptra",
  "libapi-emulated-caliptra",
  "libsyscall-caliptra",
@@ -4238,6 +4274,7 @@ dependencies = [
  "libtockasync",
  "mcu-config",
  "mcu-config-emulator",
+ "mcu-mbox-lib",
  "pldm-common",
  "pldm-lib",
  "portable-atomic",

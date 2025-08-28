@@ -103,16 +103,25 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
 
     fn handle_incoming_request(&self) {
         if self.state.get() != McuMboxState::RxWait {
+            romtime::println!("[xs debug]mbox driver: ERROR ignore incoming request");
             return;
         }
         let command = self.registers.mcu_mbox0_csr_mbox_cmd.get();
         let dlen = self.registers.mcu_mbox0_csr_mbox_dlen.get() as usize;
         let dw_len = dlen.div_ceil(4);
+
+        romtime::println!(
+            "[xs debug]mbox driver: handle_incoming request: command={:?}, dlen={:?}, dw_len={:?}",
+            command,
+            dlen,
+            dw_len
+        );
         if dw_len > self.data_buf_len {
             debug!("MCU_MBOX_DRIVER: Incoming request length exceeds buffer size");
             self.registers
                 .mcu_mbox0_csr_mbox_cmd_status
                 .write(MboxCmdStatus::Status::CmdFailure);
+            romtime::println!("[xs debug]mbox driver: ERROR dw_len too large");
             return;
         }
 
@@ -125,6 +134,7 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
             }
         } else {
             debug!("MCU_MBOX_DRIVER: No client registered for incoming request.");
+            panic!("[xs debug]mbox driver: handle incoming request: no client registered ");
         }
     }
 

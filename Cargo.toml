@@ -5,6 +5,7 @@ members = [
     "builder",
     "common/config",
     "common/flash-image",
+    "common/mcu-mbox",
     "common/pldm",
     "emulator/app",
     "emulator/app/mcu-mbox",
@@ -46,6 +47,8 @@ members = [
     "runtime/userspace/api/caliptra-api",
     "runtime/userspace/api/pldm-lib",
     "runtime/userspace/api/spdm-lib",
+    "runtime/userspace/api/mcu-mbox-lib",
+    "runtime/userspace/api/external-cmds-common",
     "runtime/userspace/libtock/apis/interface/console",
     "runtime/userspace/libtock/apis/kernel/low_level_debug",
     "runtime/userspace/libtock/apis/peripherals/alarm",
@@ -169,6 +172,7 @@ mcu-config-emulator = { path = "platforms/emulator/config" }
 mcu-config-fpga = { path = "platforms/fpga/config" }
 mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" }
 mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
+mcu-mbox-common = { path = "common/mcu-mbox" }
 mcu-hw-model = { path = "hw/model" }
 mcu-platforms-common = { path = "platforms/common" }
 mcu-rom-common = { path = "rom" }
@@ -184,8 +188,10 @@ registers-systemrdl-new = { path = "registers/systemrdl-new" }
 romtime = { path = "romtime" }
 
 # App related dependencies
+mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
 pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
 spdm-lib = { path = "runtime/userspace/api/spdm-lib" }
+external-cmds-common = { path = "runtime/userspace/api/external-cmds-common" }
 libsyscall-caliptra = { path = "runtime/userspace/syscall" }
 libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }
 libapi-emulated-caliptra = { path = "platforms/emulator/runtime/userspace/api/caliptra-api" }

@@ -11,3 +11,5 @@ capsules-core.workspace = true
 mcu-mbox-comm.workspace = true
 kernel.workspace = true
 registers-generated.workspace = true
+
+romtime.workspace = true

@@ -18,6 +18,8 @@ mod firmware_update;
 mod image_loader;
 mod spdm;
 
+mod mcu_mbox;
+
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
@@ -72,6 +74,12 @@ pub(crate) async fn async_main() {
         .get()
         .spawner()
         .spawn(image_loader::image_loading_task())
+        .unwrap();
+
+    EXECUTOR
+        .get()
+        .spawner()
+        .spawn(mcu_mbox::mcu_mbox_task())
         .unwrap();
 
     loop {

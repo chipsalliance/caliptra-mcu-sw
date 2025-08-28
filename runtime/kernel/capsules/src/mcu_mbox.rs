@@ -171,6 +171,7 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
 
                 match process_result  {
                     Ok(Ok(len)) => {
+                        println!("[xs debug]MCU_MBOX_CAPSULE: request_received: cmd={:?}, len={:?} schedule upcall", command, len);
                         kernel_data
                             .schedule_upcall(upcall::REQUEST_RECEIVED, (command as usize, len, 0))
                             .ok();
@@ -183,6 +184,8 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
                     }
                 }
             });
+        } else {
+            panic!("[xs debug]MCU_MBOX_CAPSULE: request_received: no process_id associated with current app");
         }
 
         // Restore driver rx buffer
@@ -226,15 +229,18 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
             0 => CommandReturn::success(),
             1 => {
                 if self.current_app.is_some() {
+                    println!("[xs debug]mbox capsule syscall Driver Command: receive_command BUSY ERROR 1");
                     return CommandReturn::failure(ErrorCode::BUSY);
                 }
                 // Receive request message
                 let res = self.apps.enter(process_id, |app, _| {
                     if app.waiting_rx.get() {
+                         println!("[xs debug]mbox capsule syscall Driver Command: receive_command BUSY ERROR 2");
                         return Err(ErrorCode::BUSY);
                     }
                     app.waiting_rx.set(true);
                     self.current_app.set(process_id);
+                    println!("[xs debug]mbox capsule syscall Driver Command: process_id is SET tp current app");
                     Ok(())
                 });
 
