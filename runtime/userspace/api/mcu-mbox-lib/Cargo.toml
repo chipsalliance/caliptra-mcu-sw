@@ -1,0 +1,19 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-mbox-lib"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+mcu-mbox-common.workspace = true
+libsyscall-caliptra.workspace = true
+zerocopy.workspace = true
+external-cmds-common.workspace = true
+embassy-executor.workspace = true
+embassy-sync.workspace = true
+libtockasync.workspace = true
+libtock_alarm.workspace = true
+libtock_platform.workspace = true
+libtock_runtime.workspace = true

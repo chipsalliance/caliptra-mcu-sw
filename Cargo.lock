@@ -1732,6 +1732,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "external-cmds-common"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2663,6 +2670,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-mbox-common"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api",
+ "zerocopy",
+]
+
+[[package]]
 name = "mcu-mbox-driver"
 version = "0.1.0"
 dependencies = [
@@ -2670,6 +2685,22 @@ dependencies = [
  "kernel",
  "mcu-mbox-comm",
  "registers-generated",
+]
+
+[[package]]
+name = "mcu-mbox-lib"
+version = "0.1.0"
+dependencies = [
+ "embassy-executor",
+ "embassy-sync",
+ "external-cmds-common",
+ "libsyscall-caliptra",
+ "libtock_alarm",
+ "libtock_platform",
+ "libtock_runtime",
+ "libtockasync",
+ "mcu-mbox-common",
+ "zerocopy",
 ]
 
 [[package]]
