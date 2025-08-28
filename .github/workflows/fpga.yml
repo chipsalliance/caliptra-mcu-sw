@@ -168,7 +168,7 @@ jobs:
           retention-days: 1
 
   test_artifacts:
-    runs-on: vck190-subsystem-2.0
+    runs-on: vck190-subsystem-2.1
     needs: build_test_binaries
     timeout-minutes: 120
 
