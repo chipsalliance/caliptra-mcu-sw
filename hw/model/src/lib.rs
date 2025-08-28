@@ -431,7 +431,7 @@ fn reg_access_test() {
     // Check Caliptra reports 2.x
     assert_eq!(
         u32::from(hw.caliptra_soc_manager().soc_ifc().cptra_hw_rev_id().read()),
-        0x102
+        2
     );
 
     let mut mcu_mgr = hw.mcu_manager();
