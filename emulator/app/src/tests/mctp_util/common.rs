@@ -1,11 +1,10 @@
 // Licensed under the Apache-2.0 license
 
-use crate::i3c_socket::{receive_ibi, receive_private_read, send_private_write};
+use crate::i3c_socket::BufferedStream;
 use crate::sleep_emulator_ticks;
 use crate::tests::mctp_util::base_protocol::{MCTPHdr, LOCAL_TEST_ENDPOINT_EID, MCTP_HDR_SIZE};
 use crate::EMULATOR_RUNNING;
 use std::collections::VecDeque;
-use std::net::TcpStream;
 use std::sync::atomic::Ordering;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -125,7 +124,7 @@ impl MctpUtil {
         &mut self,
         msg_tag: u8,
         msg: &[u8],
-        stream: &mut TcpStream,
+        stream: &mut BufferedStream,
         target_addr: u8,
     ) -> Option<Vec<u8>> {
         self.new_req(msg_tag);
@@ -147,13 +146,13 @@ impl MctpUtil {
 
                 I3cControllerState::SendPrivateWrite => {
                     let write_pkt = pkts.front().unwrap().clone();
-                    if send_private_write(stream, target_addr, write_pkt) {
+                    if stream.send_private_write(target_addr, write_pkt) {
                         i3c_state = I3cControllerState::WaitForIbi;
                         sleep_emulator_ticks(100_000);
                     }
                 }
                 I3cControllerState::WaitForIbi => {
-                    if receive_ibi(stream, target_addr) {
+                    if stream.receive_ibi(target_addr) {
                         i3c_state = I3cControllerState::ReceivePrivateRead;
                     } else {
                         retry -= 1;
@@ -162,7 +161,7 @@ impl MctpUtil {
                     }
                 }
                 I3cControllerState::ReceivePrivateRead => {
-                    if let Some(data) = receive_private_read(stream, target_addr) {
+                    if let Some(data) = stream.receive_private_read(target_addr) {
                         if data[4] == msg_type {
                             let mut resp_pkts = VecDeque::new();
                             let message_identifier = MessageIdentifier {
@@ -201,7 +200,7 @@ impl MctpUtil {
         &mut self,
         msg_tag: u8,
         msg: &[u8],
-        stream: &mut TcpStream,
+        stream: &mut BufferedStream,
         target_addr: u8,
     ) {
         self.new_req(msg_tag);
@@ -216,7 +215,7 @@ impl MctpUtil {
     /// * `msg` - The message to be sent
     /// * `stream` - The TCP stream to I3C socket
     /// * `target_addr` - The target address of the I3C device
-    pub fn send_response(&mut self, msg: &[u8], stream: &mut TcpStream, target_addr: u8) {
+    pub fn send_response(&mut self, msg: &[u8], stream: &mut BufferedStream, target_addr: u8) {
         self.new_resp();
         let pkts = self.packetize(msg);
         self.send_packets(pkts, stream, target_addr);
@@ -236,7 +235,7 @@ impl MctpUtil {
     ///
     pub fn receive_response(
         &mut self,
-        stream: &mut TcpStream,
+        stream: &mut BufferedStream,
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
@@ -262,7 +261,7 @@ impl MctpUtil {
     /// * `Vec<u8>` - The assembled request message
     pub fn receive_request(
         &mut self,
-        stream: &mut TcpStream,
+        stream: &mut BufferedStream,
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
@@ -288,7 +287,7 @@ impl MctpUtil {
     /// * `Vec<u8>` - The assembled request message
     pub fn receive(
         &mut self,
-        stream: &mut TcpStream,
+        stream: &mut BufferedStream,
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
@@ -300,7 +299,7 @@ impl MctpUtil {
 
     fn receive_packets(
         &mut self,
-        stream: &mut TcpStream,
+        stream: &mut BufferedStream,
         target_addr: u8,
         message_identifier: &mut MessageIdentifier,
         retry_count: u32,
@@ -313,7 +312,7 @@ impl MctpUtil {
         while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             match i3c_state {
                 I3cControllerState::WaitForIbi => {
-                    if receive_ibi(stream, target_addr) {
+                    if stream.receive_ibi(target_addr) {
                         i3c_state = I3cControllerState::ReceivePrivateRead;
                     } else if retry > 0 {
                         sleep_emulator_ticks(100_000);
@@ -329,7 +328,7 @@ impl MctpUtil {
                     }
                 }
                 I3cControllerState::ReceivePrivateRead => {
-                    if let Some(data) = receive_private_read(stream, target_addr) {
+                    if let Some(data) = stream.receive_private_read(target_addr) {
                         if self.receive_packet(&mut pkts, data, message_identifier) {
                             break;
                         } else {
@@ -450,12 +449,17 @@ impl MctpUtil {
         msg
     }
 
-    fn send_packets(&mut self, pkts: VecDeque<Vec<u8>>, stream: &mut TcpStream, target_addr: u8) {
+    fn send_packets(
+        &mut self,
+        pkts: VecDeque<Vec<u8>>,
+        stream: &mut BufferedStream,
+        target_addr: u8,
+    ) {
         let mut pkts = pkts;
         stream.set_nonblocking(true).unwrap();
         while EMULATOR_RUNNING.load(Ordering::Relaxed) {
             if let Some(write_pkt) = pkts.pop_front() {
-                if !send_private_write(stream, target_addr, write_pkt) {
+                if !stream.send_private_write(target_addr, write_pkt) {
                     break;
                 }
             } else {

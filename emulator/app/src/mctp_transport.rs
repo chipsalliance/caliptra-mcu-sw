@@ -5,6 +5,7 @@
 // The `MctpPldmSocket` struct represents a socket for sending and receiving PLDM messages over MCTP.
 // The `MctpTransport` struct is responsible for creating and managing `MctpPldmSocket` instances.
 
+use crate::i3c_socket::BufferedStream;
 use crate::tests::mctp_util::common::MctpUtil;
 use core::time::Duration;
 use emulator_periph::DynamicI3cAddress;
@@ -31,7 +32,7 @@ pub struct MctpPldmSocket {
     target_addr: u8,
     msg_tag: u8,
     context: Arc<(Mutex<MctpPldmSocketData>, Condvar)>,
-    stream: TcpStream,
+    stream: BufferedStream,
     response_msg_tag: Arc<Mutex<u8>>,
 }
 
@@ -190,6 +191,7 @@ impl PldmTransport<MctpPldmSocket> for MctpTransport {
     ) -> Result<MctpPldmSocket, PldmTransportError> {
         let addr = SocketAddr::from(([127, 0, 0, 1], self.port));
         let stream = TcpStream::connect(addr).map_err(|_| PldmTransportError::Disconnected)?;
+        let stream = BufferedStream::new(stream);
         let msg_tag = 0u8;
         Ok(MctpPldmSocket {
             source,
