@@ -3,6 +3,7 @@ mod test_firmware_update;
 mod test_soc_boot;
 #[cfg(test)]
 mod test {
+    use flash_image::mcu::McuImageHeader;
     use mcu_builder::{CaliptraBuilder, ImageCfg, TARGET};
     use std::process::ExitStatus;
     use std::sync::atomic::AtomicU32;
@@ -62,6 +63,7 @@ mod test {
             None,
             None,
             Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG),
+            None,
         )
         .expect("Runtime build failed");
         assert!(output.exists());
@@ -402,5 +404,63 @@ mod test {
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_mcu_svn() {
+                let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let feature = "test-mcu-svn";
+        println!("Compiling test firmware {}", &feature);
+
+        let test_runtime = target_binary(&format!("runtime-{}.bin", feature));
+        let output_name = format!("{}", test_runtime.display());
+        mcu_builder::runtime_build_with_apps_cached(
+            &[feature],
+            Some(&output_name),
+            true,
+            None,
+            None,
+            false,
+            None,
+            None,
+            None,
+            Some(McuImageHeader {
+                svn: 51,
+            }),
+        )
+        .expect("Runtime build failed");
+        assert!(test_runtime.exists());
+        
+
+
+
+
+
+
+
+
+
+        let i3c_port = "65534".to_string();
+        let test = run_runtime(
+            &feature,
+            get_rom_with_feature(&feature),
+            test_runtime,
+            i3c_port,
+            true,
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(0, test.code().unwrap_or_default());
+
+        // force the compiler to keep the lock
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
     }
 }

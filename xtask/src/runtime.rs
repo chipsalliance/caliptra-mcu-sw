@@ -44,6 +44,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         dccm_offset,
         dccm_size,
         None,
+        None,
     )?
     .into();
 

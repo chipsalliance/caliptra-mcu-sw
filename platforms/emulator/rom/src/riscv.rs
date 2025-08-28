@@ -58,7 +58,7 @@ pub extern "C" fn rom_entry() -> ! {
         romtime::set_exiter(&mut EMULATOR_EXITER);
     }
 
-    #[cfg(feature = "test-flash-based-boot")]
+    if cfg!(feature = "test-flash-based-boot")
     {
         // Initialize the flash controller for testing purposes
 
@@ -126,10 +126,21 @@ pub extern "C" fn rom_entry() -> ! {
             ..Default::default()
         });
     }
-    #[cfg(not(feature = "test-flash-based-boot"))]
-    {
+    else if cfg!(feature = "test-mcu-svn") {
+
+        use crate::mcu_image_verifier::McuImageVerifier;
+        let mcu_image_verifier = McuImageVerifier;
+        let rom_parameters = RomParameters {
+            image_verifier: Some(&mcu_image_verifier),
+
+            ..Default::default()
+        };
+        mcu_rom_common::rom_start(rom_parameters);
+    }
+    else {
         mcu_rom_common::rom_start(RomParameters::default());
     }
+    
 
     #[cfg(feature = "test-mcu-rom-flash-access")]
     {

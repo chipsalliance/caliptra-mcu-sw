@@ -2,6 +2,7 @@
 
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
+use flash_image::mcu::McuImageHeader;
 use core::panic;
 use mcu_builder::ImageCfg;
 use std::path::PathBuf;
@@ -113,6 +114,7 @@ enum Commands {
 
         #[arg(long, value_parser=maybe_hex::<u32>)]
         dccm_size: Option<u32>,
+
     },
     /// Build ROM
     RomBuild {
@@ -379,6 +381,8 @@ fn main() {
                     Some("fpga") => None,
                     _ => panic!("Unsupported platform"),
                 },
+                None,
+
             )
             .map(|_| ())
         }

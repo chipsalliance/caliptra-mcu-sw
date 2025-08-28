@@ -15,6 +15,7 @@ clap.workspace = true
 clap-num.workspace = true
 crc32fast.workspace = true
 elf.workspace = true
+flash-image.workspace = true
 mcu-builder.workspace = true
 mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true

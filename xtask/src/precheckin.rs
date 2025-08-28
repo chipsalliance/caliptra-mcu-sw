@@ -18,6 +18,7 @@ pub(crate) fn precheckin() -> Result<()> {
         None,
         None,
         None,
+        None,
     )?;
     mcu_builder::runtime_build_with_apps_cached(
         &[],
@@ -26,6 +27,7 @@ pub(crate) fn precheckin() -> Result<()> {
         Some("fpga"),
         Some(&mcu_config_fpga::FPGA_MEMORY_MAP),
         false,
+        None,
         None,
         None,
         None,

@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 #![no_std]
 
+pub mod mcu;
+
 use core::mem::offset_of;
 
 use zerocopy::{byteorder::U32, FromBytes, Immutable, IntoBytes, KnownLayout};

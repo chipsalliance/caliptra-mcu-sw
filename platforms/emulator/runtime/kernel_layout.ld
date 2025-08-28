@@ -337,7 +337,6 @@ SECTIONS
         /*BYTE(75)*/ /* K */
     /*}  > rom*/
 
-
     /* Discard RISC-V relevant .eh_frame, we are not doing unwind on panic
        so it is not needed. */
     /DISCARD/ :

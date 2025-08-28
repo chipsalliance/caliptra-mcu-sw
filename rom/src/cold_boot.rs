@@ -15,13 +15,14 @@ Abstract:
 #![allow(clippy::empty_loop)]
 
 use crate::boot_status::McuRomBootStatus;
-use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
+use crate::{fatal_error, rom_env, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
 use caliptra_api::mailbox::{CommandId, FeProgReq, MailboxReqHeader};
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use core::fmt::Write;
 use romtime::{CaliptraSoC, HexWord};
 use zerocopy::{transmute, IntoBytes};
+use flash_image::mcu::McuImageHeader;
 
 pub struct ColdBoot {}
 
@@ -292,13 +293,29 @@ impl BootFlow for ColdBoot {
         romtime::println!("[mcu-rom] Firmware is ready");
         mci.set_flow_status(McuRomBootStatus::FirmwareReadyDetected.into());
 
+        if let Some(image_verifier) = params.image_verifier {
+            // Safety: firmware_ptr is valid and we checked above that it is not zero
+            // Safety: firmware_ptr points to the start of the loaded firmware image (validated above)
+            let header = unsafe {
+                // Read the header structure directly from SRAM
+                core::ptr::read_volatile(MCU_MEMORY_MAP.sram_offset as *const McuImageHeader)
+            };
+            romtime::println!("[mcu-rom] Verifying firmware header: SVN={}", header.svn);
+            if !image_verifier.verify_header(&header) {
+                romtime::println!("Firmware header verification failed; halting");
+                fatal_error(1);
+            }
+        }
+
         // Check that the firmware was actually loaded before jumping to it
-        let firmware_ptr = unsafe { MCU_MEMORY_MAP.sram_offset as *const u32 };
+        let firmware_ptr = unsafe { (MCU_MEMORY_MAP.sram_offset + core::mem::size_of::<McuImageHeader>() as u32) as *const u32 };
+        
         // Safety: this address is valid
         if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
             romtime::println!("Invalid firmware detected; halting");
             fatal_error(1);
         }
+        
         romtime::println!("[mcu-rom] Firmware load detected");
         mci.set_flow_status(McuRomBootStatus::FirmwareValidationComplete.into());
 
@@ -324,9 +341,21 @@ impl BootFlow for ColdBoot {
         romtime::println!("[mcu-rom] Jumping to firmware");
         mci.set_flow_status(McuRomBootStatus::ColdBootFlowComplete.into());
 
+        // print the first 16 bytes of MCU_SRAM
+        romtime::println!("[mcu-rom] MCU_SRAM contents:");
+        for i in 0..16 {
+            let byte = unsafe { core::ptr::read_volatile((MCU_MEMORY_MAP.sram_offset + i) as *const u8) };
+            romtime::print!("0x{:02x} ", byte);
+        }
+        romtime::println!();
+
         #[cfg(target_arch = "riscv32")]
         unsafe {
-            let firmware_entry = MCU_MEMORY_MAP.sram_offset;
+            let firmware_entry = MCU_MEMORY_MAP.sram_offset + core::mem::size_of::<McuImageHeader>() as u32;
+            romtime::println!(
+                "[mcu-rom] Jumping to firmware entry point at 0x{:x}",
+                firmware_entry
+            );
             core::arch::asm!(
                 "jr {0}",
                 in(reg) firmware_entry,

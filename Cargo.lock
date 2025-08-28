@@ -2714,6 +2714,7 @@ name = "mcu-rom-emulator"
 version = "0.1.0"
 dependencies = [
  "bitfield",
+ "flash-image",
  "mcu-builder",
  "mcu-config",
  "mcu-config-emulator",
@@ -2758,6 +2759,7 @@ dependencies = [
  "doe-mbox-driver",
  "doe-transport",
  "flash-driver",
+ "flash-image",
  "i3c-driver",
  "kernel",
  "mcu-components",
@@ -4709,6 +4711,7 @@ dependencies = [
  "clap-num",
  "crc32fast",
  "elf",
+ "flash-image",
  "mcu-builder",
  "mcu-config-emulator",
  "mcu-config-fpga",

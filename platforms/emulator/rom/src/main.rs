@@ -17,11 +17,13 @@ Abstract:
 
 #[cfg(target_arch = "riscv32")]
 mod io;
-#[cfg(target_arch = "riscv32")]
+//#[cfg(target_arch = "riscv32")]
 mod riscv;
 
 #[cfg(target_arch = "riscv32")]
 mod flash;
+
+mod mcu_image_verifier;
 
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]

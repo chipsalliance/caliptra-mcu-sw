@@ -18,8 +18,12 @@ use elf::ElfBytes;
 use mcu_config::McuMemoryMap;
 use mcu_config_emulator::flash::LoggingFlashConfig;
 use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::Command;
+use flash_image::mcu::McuImageHeader;
+use zerocopy::{FromBytes, IntoBytes};
 
 const DEFAULT_PLATFORM: &str = "emulator";
 const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
@@ -92,11 +96,9 @@ pub fn runtime_build_no_apps_uncached(
         (ram_start, DATA_RAM_SIZE)
     };
 
-    // TODO: print data usage after build from ELF file
-
     let ld_string = runtime_ld_script(
         memory_map,
-        memory_map.sram_offset,
+        memory_map.sram_offset + std::mem::size_of::<McuImageHeader>() as u32,
         kernel_size as u32,
         apps_offset as u32,
         apps_size as u32,
@@ -212,6 +214,7 @@ pub fn runtime_build_no_apps_uncached(
         .current_dir(tock_dir);
 
     println!("Executing {:?}", cmd);
+//    std::process::exit(1);
     if !cmd.status()?.success() {
         bail!("cargo rustc failed to build runtime");
     }
@@ -226,10 +229,13 @@ pub fn runtime_build_no_apps_uncached(
     if !cmd.status()?.success() {
         bail!("objcopy failed to build runtime");
     }
+    println!("Built runtime binary: {}", output_name);
 
     let kernel_size = std::fs::metadata(target_binary(output_name)).unwrap().len() as usize;
 
-    get_apps_memory_offset(target_binary(&bin)).map(|apps_offset| (kernel_size, apps_offset))
+    let x = get_apps_memory_offset(target_binary(&bin)).map(|apps_offset| (kernel_size, apps_offset));
+
+    x
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -289,6 +295,7 @@ pub fn runtime_build_with_apps_cached(
     dccm_offset: Option<u32>,
     dccm_size: Option<u32>,
     log_flash_config: Option<&LoggingFlashConfig>,
+    image_header: Option<McuImageHeader>,
 ) -> Result<String> {
     let memory_map = memory_map.unwrap_or(&mcu_config_emulator::EMULATOR_MEMORY_MAP);
     let mut app_offset = memory_map.sram_offset as usize;
@@ -347,7 +354,7 @@ pub fn runtime_build_with_apps_cached(
         }
     };
 
-    let runtime_bin_size = std::fs::metadata(&runtime_bin)?.len() as usize;
+    let runtime_bin_size = std::fs::metadata(&runtime_bin)?.len() as usize + std::mem::size_of::<McuImageHeader>();
     app_offset += runtime_bin_size;
     let runtime_end_offset = app_offset;
 
@@ -405,7 +412,15 @@ pub fn runtime_build_with_apps_cached(
 
     println!("Apps data memory offset is {:x}", apps_memory_offset);
 
-    let mut bin = std::fs::read(&runtime_bin)?;
+    let mut bin = Vec::new();
+
+    if let Some(mcu_image_header) = image_header {
+        bin.extend_from_slice(&mcu_image_header.as_bytes());
+    } else {
+        let mut mcu_image_header = McuImageHeader::default();
+        bin.extend_from_slice(&mcu_image_header.as_bytes());
+    }
+    bin.extend(std::fs::read(&runtime_bin)?);
     let kernel_size = bin.len();
     println!("Kernel binary built: {} bytes", kernel_size);
 
