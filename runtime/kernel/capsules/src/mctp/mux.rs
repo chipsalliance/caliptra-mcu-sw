@@ -60,6 +60,10 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         }
     }
 
+    pub fn enable(&self) {
+        self.mctp_device.enable();
+    }
+
     pub fn add_sender(&self, sender: &'a MCTPTxState<'a, A, M>) {
         let list_empty = self.sender_list.head().is_none();
 

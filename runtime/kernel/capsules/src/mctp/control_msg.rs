@@ -54,6 +54,7 @@ impl From<u8> for MCTPCtrlCmd {
         match val {
             1 => MCTPCtrlCmd::SetEID,
             2 => MCTPCtrlCmd::GetEID,
+            4 => MCTPCtrlCmd::GetVersionSupport,
             5 => MCTPCtrlCmd::GetMsgTypeSupport,
             _ => MCTPCtrlCmd::Unsupported,
         }
@@ -389,6 +390,7 @@ impl From<u8> for EIDType {
 }
 
 // Get Version Support Request
+#[derive(Debug)]
 enum VersionSupportType {
     BaseSpec,
     VendorControlled7E,
@@ -443,10 +445,10 @@ impl GetVersionSupportHeaderResp {
 #[repr(C)]
 #[derive(Clone, Debug, FromBytes, IntoBytes, Immutable)]
 pub struct GetVersionSupportEntryResp {
-    pub alpha: u8,
-    pub update: u8,
-    pub minor: u8,
     pub major: u8,
+    pub minor: u8,
+    pub update: u8,
+    pub alpha: u8,
 }
 
 impl Default for GetVersionSupportEntryResp {
