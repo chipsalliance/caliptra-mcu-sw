@@ -32,6 +32,7 @@ pub struct CaliptraBuilder {
     mcu_firmware: Option<PathBuf>,
     soc_images: Option<Vec<ImageCfg>>,
     mcu_image_cfg: Option<ImageCfg>,
+    soc_manifest_svn: Option<u32>,
 }
 
 impl CaliptraBuilder {
@@ -45,6 +46,7 @@ impl CaliptraBuilder {
         mcu_firmware: Option<PathBuf>,
         soc_images: Option<Vec<ImageCfg>>,
         mcu_image_cfg: Option<ImageCfg>,
+        soc_manifest_svn: Option<u32>,
     ) -> Self {
         Self {
             fpga,
@@ -55,6 +57,7 @@ impl CaliptraBuilder {
             mcu_firmware,
             soc_images,
             mcu_image_cfg,
+            soc_manifest_svn,
         }
     }
 
@@ -114,16 +117,21 @@ impl CaliptraBuilder {
             let mut metadata = vec![mcu_fw_metadata];
             metadata.extend(soc_images_metadata);
 
-            let path = Self::write_soc_manifest(metadata)?;
+            let path = Self::write_soc_manifest(metadata, self.soc_manifest_svn.unwrap_or(0))?;
             self.soc_manifest = Some(path);
         }
         Ok(self.soc_manifest.clone().unwrap())
     }
 
-    pub fn replace_manifest_metadata(&mut self, metadata: Vec<ImageCfg>) -> Result<PathBuf> {
+    pub fn replace_manifest_config(
+        &mut self,
+        metadata: Vec<ImageCfg>,
+        svn: Option<u32>,
+    ) -> Result<PathBuf> {
         println!("Replacing SoC manifest metadata with: {:?}", metadata);
         // Replace the current metadata
         self.soc_images = Some(metadata);
+        self.soc_manifest_svn = svn;
 
         self.soc_manifest = None; // Clear the cached manifest
 
@@ -204,8 +212,8 @@ impl CaliptraBuilder {
         })
     }
 
-    fn write_soc_manifest(metadata: Vec<AuthManifestImageMetadata>) -> Result<PathBuf> {
-        let manifest = Self::create_auth_manifest_with_metadata(metadata);
+    fn write_soc_manifest(metadata: Vec<AuthManifestImageMetadata>, svn: u32) -> Result<PathBuf> {
+        let manifest = Self::create_auth_manifest_with_metadata(metadata, svn);
 
         let path = target_dir().join("soc-manifest");
         std::fs::write(&path, manifest.as_bytes())?;
@@ -333,6 +341,7 @@ impl CaliptraBuilder {
 
     pub fn create_auth_manifest_with_metadata(
         image_metadata_list: Vec<AuthManifestImageMetadata>,
+        svn: u32,
     ) -> AuthorizationManifest {
         let vendor_fw_key_info: AuthManifestGeneratorKeyConfig = AuthManifestGeneratorKeyConfig {
             pub_keys: AuthManifestPubKeysConfig {
@@ -397,6 +406,7 @@ impl CaliptraBuilder {
             version: 1,
             flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
             pqc_key_type: FwVerificationPqcKeyType::LMS,
+            svn,
         };
 
         let gen = AuthManifestGenerator::new(Crypto::default());

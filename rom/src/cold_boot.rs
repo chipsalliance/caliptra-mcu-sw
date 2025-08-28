@@ -229,7 +229,13 @@ impl BootFlow for ColdBoot {
         mci.set_flow_status(McuRomBootStatus::FuseWriteComplete.into());
 
         romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for mbox",);
-        while !soc.ready_for_mbox() {}
+        while !soc.ready_for_mbox() {
+            if soc.cptra_fw_fatal_error() {
+                romtime::println!("[mcu-rom] Caliptra reported a fatal error");
+                fatal_error(3);
+            }
+        }
+
         romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
         mci.set_flow_status(McuRomBootStatus::CaliptraReadyForMailbox.into());
 
@@ -288,7 +294,12 @@ impl BootFlow for ColdBoot {
         }
 
         romtime::println!("[mcu-rom] Waiting for firmware to be ready");
-        while !soc.fw_ready() {}
+        while !soc.fw_ready() {
+            if soc.cptra_fw_fatal_error() {
+                romtime::println!("[mcu-rom] Caliptra reported a fatal error");
+                fatal_error(6);
+            }
+        }
         romtime::println!("[mcu-rom] Firmware is ready");
         mci.set_flow_status(McuRomBootStatus::FirmwareReadyDetected.into());
 

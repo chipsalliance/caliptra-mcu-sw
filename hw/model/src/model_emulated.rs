@@ -31,7 +31,7 @@ use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
 use emulator_periph::McuRootBusOffsets;
 use emulator_periph::{
-    I3c, I3cController, Mci, McuMailbox0Internal, McuRootBus, McuRootBusArgs, Otp,
+    I3c, I3cController, Mci, McuMailbox0Internal, McuRootBus, McuRootBusArgs, Otp, OtpArgs,
 };
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
@@ -216,13 +216,14 @@ impl McuHwModel for ModelEmulated {
 
         let otp = Otp::new(
             &clock.clone(),
-            None,
-            Some(otp_mem),
-            None,
-            params.vendor_pk_hash,
-            params
-                .vendor_pqc_type
-                .unwrap_or(FwVerificationPqcKeyType::LMS),
+            OtpArgs {
+                raw_memory: Some(otp_mem),
+                vendor_pk_hash: params.vendor_pk_hash,
+                vendor_pqc_type: params
+                    .vendor_pqc_type
+                    .unwrap_or(FwVerificationPqcKeyType::LMS),
+                ..Default::default()
+            },
         )?;
         let ext_mci = root_bus.mci_external_regs();
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
@@ -499,6 +500,7 @@ mod test {
             None,
             None,
             Some(mcu_rom.clone().into()),
+            None,
             None,
             None,
         );

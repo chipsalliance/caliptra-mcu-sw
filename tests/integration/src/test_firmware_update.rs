@@ -208,6 +208,8 @@ mod test {
             opts.secondary_flash_image_path.clone(),
             opts.builder.clone(),
             Some("2.1.0".to_string()),
+            None,
+            None,
         )
     }
 
@@ -253,6 +255,7 @@ mod test {
             Some(update_runtime_firmware.clone()),
             Some(update_soc_images.clone()),
             Some(mcu_cfg.clone()),
+            None,
         );
         let update_caliptra_fw = update_builder
             .get_caliptra_fw()
@@ -502,6 +505,7 @@ mod test {
             Some(test_runtime.clone()),
             Some(soc_images.clone()),
             Some(mcu_cfg.clone()),
+            None,
         );
 
         // Build Caliptra firmware
