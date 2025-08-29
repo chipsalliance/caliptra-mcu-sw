@@ -82,7 +82,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         romtime::println!("[mcu-runtime-i3c] Enabling I3C interrupts");
         self.registers
             .tti_interrupt_enable
-            .modify(InterruptEnable::RxDescStatEn::SET + InterruptEnable::TxDescStatEn::SET);
+            .modify(InterruptEnable::RxDescStatEn::SET);
     }
 
     pub fn disable_interrupts(&self) {
@@ -161,6 +161,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                     .write(InterruptStatus::TxDescTimeout::SET);
             }
             // There is a pending Read Transaction on the I3C Bus. Software should write data to the TX Descriptor Queue and the TX Data Queue
+            // TODO: we'll never service this in time, so this is disabled.
             if tti_interrupts.read(InterruptStatus::TxDescStat) != 0 {
                 self.handle_outgoing_read();
             }
@@ -249,7 +250,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let mut idx = self.tx_buffer_idx.replace(0);
         let size = self.tx_buffer_size.replace(0);
         if idx < size {
-            // TODO: get the correct structure of this descriptor
             self.registers
                 .tti_tx_desc_queue_port
                 .set((size - idx) as u32);
@@ -335,6 +335,8 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         self.tx_buffer_idx.set(0);
         self.tx_buffer_size.set(len);
         // TODO: check that this is for MCTP or something else
+        // immediately send the read to the I3C target interface and send an IBI so the controller knows we have data
+        self.handle_outgoing_read();
         self.send_ibi(MDB_PENDING_READ_MCTP, &[]);
         Ok(())
     }

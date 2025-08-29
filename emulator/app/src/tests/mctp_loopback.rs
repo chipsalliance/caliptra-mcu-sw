@@ -1,9 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use crate::i3c_socket::{MctpTestState, MctpTransportTest};
+use crate::i3c_socket::{BufferedStream, MctpTestState, MctpTransportTest};
 use crate::tests::mctp_util::common::MctpUtil;
 use crate::EMULATOR_RUNNING;
-use std::net::TcpStream;
 use std::sync::atomic::Ordering;
 
 pub(crate) fn generate_tests() -> Vec<Box<dyn MctpTransportTest + Send>> {
@@ -35,7 +34,7 @@ impl MctpTransportTest for Test {
         self.passed
     }
 
-    fn run_test(&mut self, stream: &mut TcpStream, target_addr: u8) {
+    fn run_test(&mut self, stream: &mut BufferedStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
 
         while EMULATOR_RUNNING.load(Ordering::Relaxed) {

@@ -211,13 +211,16 @@ impl I3c {
                 InterruptStatus::RxDescStat::SET
             });
 
-        self.irq
-            .set_level(self.interrupt_status.reg.any_matching_bits_set(
-                InterruptStatus::RxDescStat::SET
-                    + InterruptStatus::TxDescStat::SET
-                    + InterruptStatus::RxDescTimeout::SET
-                    + InterruptStatus::TxDescTimeout::SET,
-            ));
+        let status: ReadWriteRegister<u32, InterruptStatus::Register> = ReadWriteRegister::new(
+            self.interrupt_enable.reg.get() & self.interrupt_status.reg.get(),
+        );
+
+        self.irq.set_level(status.reg.any_matching_bits_set(
+            InterruptStatus::RxDescStat::SET
+                + InterruptStatus::TxDescStat::SET
+                + InterruptStatus::RxDescTimeout::SET
+                + InterruptStatus::TxDescTimeout::SET,
+        ));
     }
 
     // check if there area valid IBI descriptors and messages

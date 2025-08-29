@@ -397,6 +397,7 @@ impl CaliptraBuilder {
             version: 1,
             flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
             pqc_key_type: FwVerificationPqcKeyType::LMS,
+            svn: 0,
         };
 
         let gen = AuthManifestGenerator::new(Crypto::default());
