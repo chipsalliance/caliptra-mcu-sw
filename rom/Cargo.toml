@@ -25,3 +25,4 @@ rv32i.workspace = true
 [features]
 default = [] # default is 2.0
 hw-2-1 = []
+core_test = []
