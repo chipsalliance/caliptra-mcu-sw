@@ -115,6 +115,20 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
             return;
         }
 
+        // Pre-handle this command temporarily. This is to prove we are able to receive expected
+        // commands. This will be handled more permanently in a userspace client.
+        if command == 0x4D46_5756 {
+            let version = u32::from_be_bytes(*b"v0.1");
+            let response_data = [version];
+            self.send_response(
+                response_data.into_iter(),
+                response_data.len(),
+                MailboxStatus::Complete,
+            )
+            .unwrap();
+            return;
+        }
+
         if let Some(client) = self.client.get() {
             if let Some(buf) = self.data_buf.take() {
                 // It is expected that the client will call restore_rx_buffer().
