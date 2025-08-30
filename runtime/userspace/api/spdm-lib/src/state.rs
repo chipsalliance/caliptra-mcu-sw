@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::opaque_element::secure_message::SmVersion;
 use crate::protocol::{DeviceAlgorithms, DeviceCapabilities, SpdmVersion};
 
 pub(crate) struct State {
@@ -26,6 +27,7 @@ impl State {
 
 pub(crate) struct ConnectionInfo {
     version_number: SpdmVersion,
+    sec_msg_version: Option<SmVersion>,
     state: ConnectionState,
     peer_capabilities: DeviceCapabilities,
     peer_algorithms: DeviceAlgorithms,
@@ -37,6 +39,7 @@ impl Default for ConnectionInfo {
     fn default() -> Self {
         Self {
             version_number: SpdmVersion::default(),
+            sec_msg_version: None,
             state: ConnectionState::NotStarted,
             peer_capabilities: DeviceCapabilities::default(),
             peer_algorithms: DeviceAlgorithms::default(),
@@ -53,6 +56,10 @@ impl ConnectionInfo {
 
     pub fn set_version_number(&mut self, version_number: SpdmVersion) {
         self.version_number = version_number;
+    }
+
+    pub fn set_sec_msg_version(&mut self, sec_msg_version: SmVersion) {
+        self.sec_msg_version = Some(sec_msg_version);
     }
 
     pub fn state(&self) -> ConnectionState {

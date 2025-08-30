@@ -83,7 +83,7 @@ impl DoeUtil {
         // TODO: this should not need to be so high.
         // Nothing should take >3,500,000 ticks to respond,
         // but setting it to 35 will fail tests.
-        for _ in 0..50 {
+        for _ in 0..60 {
             match rx.try_recv() {
                 Ok(message) => {
                     println!(

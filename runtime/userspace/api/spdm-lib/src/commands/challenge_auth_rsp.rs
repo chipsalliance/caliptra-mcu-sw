@@ -1,8 +1,7 @@
 // Licensed under the Apache-2.0 license
-use crate::cert_store::MAX_CERT_SLOTS_SUPPORTED;
+use crate::cert_store::{compute_cert_chain_hash, MAX_CERT_SLOTS_SUPPORTED};
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::algorithms_rsp::selected_measurement_specification;
-use crate::commands::digests_rsp::compute_cert_chain_hash;
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
@@ -199,12 +198,13 @@ async fn encode_challenge_auth_rsp_base<'a>(
 
     // Get the certificate chain hash
     compute_cert_chain_hash(
-        slot_id,
         ctx.device_certs_store,
+        slot_id,
         asym_algo,
         &mut challenge_auth_rsp.cert_chain_hash,
     )
-    .await?;
+    .await
+    .map_err(|e| (false, CommandError::CertStore(e)))?;
 
     // Get the nonce
     Rng::generate_random_number(&mut challenge_auth_rsp.nonce)
@@ -271,8 +271,12 @@ async fn generate_challenge_auth_response<'a>(
             encode_measurement_summary_hash(ctx, asym_algo, meas_summary_hash_type, rsp).await?;
     }
 
+    let opaque_data = OpaqueData::default();
+
     // Encode the Opaque data length = 0
-    payload_len += encode_opaque_data(rsp, &[])?;
+    payload_len += opaque_data
+        .encode(rsp)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
 
     // if requester context is present, encode it
     if let Some(context) = requester_context {

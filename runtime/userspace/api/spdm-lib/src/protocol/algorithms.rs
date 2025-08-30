@@ -612,6 +612,12 @@ impl DeviceAlgorithms {
         key_schedule.set_spdm_key_schedule(1);
         self.key_schedule = key_schedule;
     }
+
+    pub fn set_other_param_support(&mut self) {
+        let mut other_param = OtherParamSupport::default();
+        other_param.set_opaque_data_fmt1(1);
+        self.other_param_support = other_param;
+    }
 }
 
 // Algorithm Priority Table set by the responder

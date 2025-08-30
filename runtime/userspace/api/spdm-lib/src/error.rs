@@ -5,6 +5,7 @@ use crate::chunk_ctx::ChunkError;
 use crate::codec::CodecError;
 use crate::commands::error_rsp::ErrorCode;
 use crate::measurements::common::MeasurementsError;
+use crate::protocol::opaque_data::OpaqueDataError;
 use crate::protocol::SignCtxError;
 use crate::session::SessionError;
 use crate::transcript::TranscriptError;
@@ -14,6 +15,7 @@ use libapi_caliptra::error::CaliptraApiError;
 #[derive(Debug)]
 pub enum SpdmError {
     UnsupportedVersion,
+    InvalidStandardsBodyId,
     InvalidParam,
     Codec(CodecError),
     Transport(TransportError),
@@ -23,6 +25,7 @@ pub enum SpdmError {
     CertStore(CertStoreError),
     CaliptraApi(CaliptraApiError),
     Session(SessionError),
+    OpaqueData(OpaqueDataError),
 }
 
 pub type SpdmResult<T> = Result<T, SpdmError>;
@@ -43,4 +46,5 @@ pub enum CommandError {
     Transcript(TranscriptError),
     Measurement(MeasurementsError),
     Session(SessionError),
+    OpaqueData(OpaqueDataError),
 }
