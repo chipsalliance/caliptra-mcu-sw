@@ -82,6 +82,10 @@ impl Soc {
             .is_set(soc::bits::CptraFlowStatus::ReadyForFuses)
     }
 
+    pub fn cptra_fw_fatal_error(&self) -> bool {
+        self.registers.cptra_fw_error_fatal.get() != 0
+    }
+
     pub fn set_cptra_wdt_cfg(&self, index: usize, value: u32) {
         self.registers.cptra_wdt_cfg[index].set(value);
     }
@@ -198,6 +202,27 @@ impl Soc {
             );
             self.registers.fuse_runtime_svn[i].set(word);
         }
+
+        // Set SoC Manifest SVN
+        if fuses.cptra_core_soc_manifest_svn().len()
+            != self.registers.fuse_soc_manifest_svn.len() * 4
+        {
+            romtime::println!("[mcu-fuse-write] SoC Manifest SVN length mismatch");
+            fatal_error(1);
+        }
+        for i in 0..fuses.cptra_core_soc_manifest_svn().len() / 4 {
+            let word = u32::from_le_bytes(
+                fuses.cptra_core_soc_manifest_svn()[i * 4..i * 4 + 4]
+                    .try_into()
+                    .unwrap(),
+            );
+            self.registers.fuse_soc_manifest_svn[i].set(word);
+        }
+
+        // Set SoC Manifest Max SVN
+        let word = u32::from_le_bytes(fuses.cptra_core_soc_manifest_max_svn().try_into().unwrap());
+        self.registers.fuse_soc_manifest_max_svn.set(word);
+
         // TODO
         // self.registers
         //     .fuse_anti_rollback_disable

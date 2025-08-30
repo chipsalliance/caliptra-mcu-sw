@@ -122,6 +122,7 @@ pub fn all_build(
         Some(mcu_runtime.into()),
         None,
         None,
+        None,
     );
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_fw = caliptra_builder.get_caliptra_fw()?;
