@@ -127,7 +127,6 @@ async fn spdm_doe_responder() {
     doe_capability_flags.set_key_ex_cap(1);
     doe_capability_flags.set_mac_cap(1);
     doe_capability_flags.set_encrypt_cap(1);
-    doe_capability_flags.set_handshake_in_the_clear_cap(1);
 
     let local_capabilities = DeviceCapabilities {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
