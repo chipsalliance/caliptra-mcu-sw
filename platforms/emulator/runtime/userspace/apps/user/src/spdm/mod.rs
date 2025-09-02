@@ -124,11 +124,10 @@ async fn spdm_doe_responder() {
         (MAX_SPDM_RESPONDER_BUF_SIZE - doe_spdm_transport.header_size()) as u32;
 
     let mut doe_capability_flags = CapabilityFlags::default();
-    // TODO: Enable the following once secure sessions are implemented
     doe_capability_flags.set_key_ex_cap(1);
     doe_capability_flags.set_mac_cap(1);
     doe_capability_flags.set_encrypt_cap(1);
-    // doe_capability_flags.set_handshake_in_the_clear_cap(1);
+    doe_capability_flags.set_handshake_in_the_clear_cap(1);
 
     let local_capabilities = DeviceCapabilities {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
@@ -138,7 +137,6 @@ async fn spdm_doe_responder() {
     };
 
     let mut device_doe_algorithms = DeviceAlgorithms::default();
-    // TODO: Enable the following once secure sessions are implemented
     device_doe_algorithms.set_dhe_group();
     device_doe_algorithms.set_aead_cipher_suite();
     device_doe_algorithms.set_spdm_key_schedule();
