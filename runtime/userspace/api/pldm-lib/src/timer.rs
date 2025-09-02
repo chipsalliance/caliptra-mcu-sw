@@ -53,8 +53,9 @@ impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
 
     pub async fn sleep(time: Milliseconds) {
         // bad things happen if multiple tasks try to use the alarm at once
-        ALARM_MUTEX.lock().await;
+        let guard = ALARM_MUTEX.lock().await;
         let _ = AsyncAlarm::<DefaultSyscalls>::sleep_for(time).await;
+        drop(guard);
     }
 }
 
