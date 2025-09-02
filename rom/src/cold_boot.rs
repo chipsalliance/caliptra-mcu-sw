@@ -228,9 +228,10 @@ impl BootFlow for ColdBoot {
         while soc.ready_for_fuses() {}
         mci.set_flow_status(McuRomBootStatus::FuseWriteComplete.into());
 
-        // Hang here when testing Caliptra Core when subsystem features aren't used
+        // If testing Caliptra Core, hang here until the test signals it to continue.
         if cfg!(feature = "core_test") {
-            loop {}
+            use tock_registers::interfaces::Readable;
+            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 31) == 0 {}
         }
 
         romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for mbox",);
