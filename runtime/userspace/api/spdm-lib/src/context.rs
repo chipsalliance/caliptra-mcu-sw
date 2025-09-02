@@ -18,6 +18,7 @@ use crate::session::SessionManager;
 use crate::state::{ConnectionState, State};
 use crate::transcript::{Transcript, TranscriptContext};
 use crate::transport::common::SpdmTransport;
+use crate::vdm_handler::VdmHandler;
 use libapi_caliptra::crypto::asym::*;
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 
@@ -36,6 +37,7 @@ pub struct SpdmContext<'a> {
     pub(crate) measurements: SpdmMeasurements,
     pub(crate) large_resp_context: LargeResponseCtx,
     pub(crate) session_mgr: SessionManager,
+    pub(crate) vdm_handlers: &'a [&'a dyn VdmHandler],
 }
 
 impl<'a> SpdmContext<'a> {
@@ -46,6 +48,7 @@ impl<'a> SpdmContext<'a> {
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
         device_certs_store: &'a dyn SpdmCertStore,
+        vdm_handlers: &'a [&'a dyn VdmHandler],
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -63,6 +66,7 @@ impl<'a> SpdmContext<'a> {
             measurements: SpdmMeasurements::default(),
             large_resp_context: LargeResponseCtx::default(),
             session_mgr: SessionManager::new(),
+            vdm_handlers,
         })
     }
 

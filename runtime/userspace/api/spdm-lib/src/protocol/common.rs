@@ -29,6 +29,8 @@ pub(crate) enum ReqRespCode {
     FinishRsp = 0x65,
     EndSession = 0xEC,
     EndSessionAck = 0x6C,
+    VendorDefinedRequest = 0xFE,
+    VendorDefinedResponse = 0x7E,
     Error = 0x7F,
 }
 
@@ -58,6 +60,8 @@ impl TryFrom<u8> for ReqRespCode {
             0x65 => Ok(ReqRespCode::FinishRsp),
             0xEC => Ok(ReqRespCode::EndSession),
             0x6C => Ok(ReqRespCode::EndSessionAck),
+            0xFE => Ok(ReqRespCode::VendorDefinedRequest),
+            0x7E => Ok(ReqRespCode::VendorDefinedResponse),
             _ => Err(SpdmError::UnsupportedRequest),
         }
     }

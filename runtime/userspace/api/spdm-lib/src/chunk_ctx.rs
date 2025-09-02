@@ -47,9 +47,14 @@ impl ChunkInfo {
 
 pub type ChunkResult<T> = Result<T, ChunkError>;
 
+// Currently it is empty. Can be extended depending on the needs
+#[derive(Debug, PartialEq)]
+pub enum VendorDefLargeResponse {}
+
 /// Represents a large message response type that can be split into chunks
 pub(crate) enum LargeResponse {
     Measurements(MeasurementsResponse),
+    Vendor(VendorDefLargeResponse),
 }
 
 /// Manages the context for ongoing large message responses

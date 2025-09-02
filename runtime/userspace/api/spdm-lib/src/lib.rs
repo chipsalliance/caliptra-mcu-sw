@@ -36,8 +36,8 @@ pub mod chunk_ctx;
 // Secure session management
 pub mod session;
 
-// Spdm PCI-SIG standard vendor defined message interface
-pub mod pci_sig;
+// Spdm standards body vendor defined message interface
+pub mod vdm_handler;
 
 // Opaque Element
 pub mod opaque_element;

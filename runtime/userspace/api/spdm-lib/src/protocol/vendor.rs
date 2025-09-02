@@ -2,7 +2,8 @@
 
 use crate::error::{SpdmError, SpdmResult};
 
-pub const MAX_SPDM_VENDOR_ID_LEN: u8 = u8::MAX;
+// Maximum length can be up to 255. Update MAX_SPDM_VENDOR_ID_LEN as needed.
+pub const MAX_SPDM_VENDOR_ID_LEN: u8 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StandardsBodyId {
@@ -37,9 +38,9 @@ impl StandardsBodyId {
     }
 }
 
-impl TryFrom<u8> for StandardsBodyId {
+impl TryFrom<u16> for StandardsBodyId {
     type Error = SpdmError;
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
         match value {
             0x0 => Ok(StandardsBodyId::Dmtf),
             0x1 => Ok(StandardsBodyId::Tcg),

@@ -10,6 +10,7 @@ use crate::protocol::SignCtxError;
 use crate::session::SessionError;
 use crate::transcript::TranscriptError;
 use crate::transport::common::TransportError;
+use crate::vdm_handler::VdmError;
 use libapi_caliptra::error::CaliptraApiError;
 
 #[derive(Debug)]
@@ -47,4 +48,5 @@ pub enum CommandError {
     Measurement(MeasurementsError),
     Session(SessionError),
     OpaqueData(OpaqueDataError),
+    VdmError(VdmError),
 }

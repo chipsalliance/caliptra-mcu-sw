@@ -171,6 +171,13 @@ async fn encode_chunk_data(
                     )
                     .await?;
             }
+            LargeResponse::Vendor(_vendor_rsp) => {
+                // Currently it is empty. Can be extended depending on the vendor defined response type
+                Err((
+                    false,
+                    CommandError::Chunk(ChunkError::NoLargeResponseInProgress),
+                ))?;
+            }
         }
     } else {
         Err((
