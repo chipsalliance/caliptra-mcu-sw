@@ -5,12 +5,12 @@ extern crate alloc;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use bitfield::bitfield;
-use zerocopy::{FromBytes, Immutable, IntoBytes, Unaligned};
+use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const IDE_STREAM_KEY_SIZE_DW: usize = 8;
 pub const IDE_STREAM_IV_SIZE_DW: usize = 2;
 
-#[derive(Debug, IntoBytes, FromBytes, Immutable, Unaligned, Default)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C, packed)]
 pub struct PortConfig {
     port_index: u8,
@@ -40,7 +40,7 @@ pub struct SelectiveIdeStreamRegBlock {
     rid_association_reg_2: u32,
 }
 
-#[derive(Default, Debug, Clone, Copy, IntoBytes, FromBytes, Unaligned)]
+#[derive(Default, Debug, Clone, Copy, IntoBytes, FromBytes)]
 #[repr(C, packed)]
 pub struct AddrAssociationRegBlock {
     reg1: u32,
