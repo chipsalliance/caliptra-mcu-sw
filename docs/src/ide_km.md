@@ -11,10 +11,7 @@ pub const IDE_STREAM_KEY_SIZE_DW: usize = 8;
 pub const IDE_STREAM_IV_SIZE_DW: usize = 2;
 
 /// Port Configuration structure contains the configuration and capabilities for a specific IDE port.
-pub struct PortConfig<
-    const LINK_IDE_REG_BLOCK_COUNT: usize,
-    const SELECTIVE_IDE_REG_BLOCK_COUNT: usize,
-> {
+pub struct PortConfig {
     port_index: u8,
     function_num: u8,
     bus_num: u8,
@@ -22,8 +19,6 @@ pub struct PortConfig<
     max_port_index: u8,
     ide_cap_reg: u32,
     ide_ctrl_reg: u32,
-    link_ide_stream_reg_block: [LinkIdeStreamRegBlock; LINK_IDE_REG_BLOCK_COUNT],
-    selective_ide_stream_reg_block: [SelectiveIdeStreamRegBlock<1>; SELECTIVE_IDE_REG_BLOCK_COUNT],
 }
 
 /// Link IDE Register Block
@@ -33,13 +28,12 @@ pub struct LinkIdeStreamRegBlock {
 }
 
 /// Selective IDE Stream Register Block
-pub struct SelectiveIdeStreamRegBlock<const ADDR_ASSOC_COUNT: usize> {
+pub struct SelectiveIdeStreamRegBlock {
     capability_reg: u32,
     ctrl_reg: u32,
     status_reg: u32,
     rid_association_reg_1: u32,
     rid_association_reg_2: u32,
-    addr_assoc_reg_blk: [AddrAssociationRegBlock; ADDR_ASSOC_COUNT],
 }
 
 /// IDE Address Association Register Block
@@ -80,38 +74,25 @@ bitfield! {
 ///
 /// Provides an interface for Integrity and Data Encryption (IDE) key management operations.
 /// This trait abstracts hardware-specific implementations for different platforms.
-///
-/// # Implementation Notes
-///
-/// When implementing this trait, you should define your `PortConfig` associated type
-/// using the generic `PortConfig` struct with your implementation's constants:
-///
-/// ```ignore
-/// type PortConfig = PortConfig<
-///     { Self::LINK_IDE_REG_BLOCK_COUNT },
-///     { Self::SELECTIVE_IDE_REG_BLOCK_COUNT }
-/// >;
-/// ```
+#[async_trait]
 pub trait IdeDriver {
-    /// Number of Link IDE register blocks supported by this implementation
-    const LINK_IDE_REG_BLOCK_COUNT: usize;
-
-    /// Number of Selective IDE register blocks supported by this implementation  
-    const SELECTIVE_IDE_REG_BLOCK_COUNT: usize;
-
-    /// Number of Address Association register blocks per Selective IDE block
-    const SELECTIVE_ADDR_ASSOCIATION_REG_BLOCK_COUNT: usize;
-
-    /// Associated type for PortConfig with implementation-specific array sizes.
+    /// Get the count of link IDE stream register blocks.
     ///
-    /// This should typically be defined as:
-    /// ```ignore
-    /// type PortConfig = PortConfig<
-    ///     { Self::LINK_IDE_REG_BLOCK_COUNT },
-    ///     { Self::SELECTIVE_IDE_REG_BLOCK_COUNT }
-    /// >;
-    /// ```
-    type PortConfig;
+    /// # Returns
+    /// The number of link IDE stream register blocks.
+    fn link_ide_stream_reg_block_count(&self) -> usize;
+
+    /// Get the count of selective IDE stream register blocks.
+    ///
+    /// # Returns
+    /// The number of selective IDE stream register blocks.
+    fn selective_ide_stream_reg_block_count(&self) -> usize;
+
+    /// Get the count of selective address association register blocks.
+    ///
+    /// # Returns
+    /// The number of selective address association register blocks.
+    fn selective_addr_association_reg_block_count(&self) -> usize;
 
     /// Get the port configuration for a given port index.
     ///
@@ -121,7 +102,7 @@ pub trait IdeDriver {
     /// # Returns
     /// A result containing the `PortConfig` for the specified port index, or an error
     /// if the port index is invalid or unsupported.
-    async fn port_config(&self, port_index: u8) -> IdeDriverResult<Self::PortConfig>;
+    async fn port_config(&self, port_index: u8) -> IdeDriverResult<PortConfig>;
 
     /// Key programming for a specific port and stream.
     ///
@@ -182,4 +163,5 @@ pub trait IdeDriver {
         port_index: u8,
     ) -> IdeDriverResult<KeyInfo>;
 }
+
 ```

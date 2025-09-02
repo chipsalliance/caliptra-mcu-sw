@@ -110,8 +110,7 @@ impl SpdmTransport for DoeTransport {
             Err(TransportError::InvalidMessage)?;
         }
 
-        req.resize(msg_len as usize)
-            .map_err(TransportError::Codec)?;
+        req.trim(msg_len as usize).map_err(TransportError::Codec)?;
 
         let header = DoeHeader::decode(req).map_err(TransportError::Codec)?;
 
@@ -144,8 +143,8 @@ impl SpdmTransport for DoeTransport {
         // Calculate padding size to align the message length to 4 bytes
         let pad_size = (4 - msg_len % 4) % 4;
         let total_len = msg_len + pad_size;
-        // Resize the buffer to accommodate the header and padding
-        resp.resize(total_len).map_err(TransportError::Codec)?;
+        // Expand the buffer to accommodate the padding bytes
+        resp.expand(pad_size).map_err(TransportError::Codec)?;
 
         let header = DoeHeader::new(data_object_type, total_len as u32);
         header.encode(resp).map_err(TransportError::Codec)?;

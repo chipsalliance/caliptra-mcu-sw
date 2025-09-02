@@ -10,12 +10,9 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, Unaligned};
 pub const IDE_STREAM_KEY_SIZE_DW: usize = 8;
 pub const IDE_STREAM_IV_SIZE_DW: usize = 2;
 
-#[derive(Debug, IntoBytes, FromBytes, Immutable, Unaligned)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, Unaligned, Default)]
 #[repr(C, packed)]
-pub struct PortConfig<
-    const LINK_IDE_REG_BLOCK_COUNT: usize,
-    const SELECTIVE_IDE_REG_BLOCK_COUNT: usize,
-> {
+pub struct PortConfig {
     port_index: u8,
     function_num: u8,
     bus_num: u8,
@@ -23,62 +20,27 @@ pub struct PortConfig<
     max_port_index: u8,
     ide_cap_reg: u32,
     ide_ctrl_reg: u32,
-    link_ide_stream_reg_block: [LinkIdeStreamRegBlock; LINK_IDE_REG_BLOCK_COUNT],
-    selective_ide_stream_reg_block: [SelectiveIdeStreamRegBlock<1>; SELECTIVE_IDE_REG_BLOCK_COUNT],
-}
-
-impl<const LINK_IDE_REG_BLOCK_COUNT: usize, const SELECTIVE_IDE_REG_BLOCK_COUNT: usize> Default
-    for PortConfig<LINK_IDE_REG_BLOCK_COUNT, SELECTIVE_IDE_REG_BLOCK_COUNT>
-{
-    fn default() -> Self {
-        Self {
-            port_index: 0,
-            function_num: 0,
-            bus_num: 0,
-            segment: 0,
-            max_port_index: 0,
-            ide_cap_reg: 0,
-            ide_ctrl_reg: 0,
-            link_ide_stream_reg_block: [LinkIdeStreamRegBlock::default(); LINK_IDE_REG_BLOCK_COUNT],
-            selective_ide_stream_reg_block: [SelectiveIdeStreamRegBlock::default();
-                SELECTIVE_IDE_REG_BLOCK_COUNT],
-        }
-    }
 }
 
 /// Link IDE Register Block
-#[derive(Default, Debug, Clone, Copy, IntoBytes, FromBytes, Immutable, Unaligned)]
+#[derive(Default, Debug, Clone, Copy, IntoBytes, FromBytes, Immutable)]
 #[repr(C, packed)]
 pub struct LinkIdeStreamRegBlock {
     ctrl_reg: u32,
     status_reg: u32,
 }
 
-#[derive(Debug, Clone, Copy, IntoBytes, FromBytes, Immutable, Unaligned)]
+#[derive(Debug, Clone, Copy, IntoBytes, FromBytes, Immutable, Default)]
 #[repr(C, packed)]
-pub struct SelectiveIdeStreamRegBlock<const ADDR_ASSOC_COUNT: usize> {
+pub struct SelectiveIdeStreamRegBlock {
     capability_reg: u32,
     ctrl_reg: u32,
     status_reg: u32,
     rid_association_reg_1: u32,
     rid_association_reg_2: u32,
-    addr_assoc_reg_blk: [AddrAssociationRegBlock; ADDR_ASSOC_COUNT],
 }
 
-impl<const ADDR_ASSOC_COUNT: usize> Default for SelectiveIdeStreamRegBlock<ADDR_ASSOC_COUNT> {
-    fn default() -> Self {
-        Self {
-            capability_reg: 0,
-            ctrl_reg: 0,
-            status_reg: 0,
-            rid_association_reg_1: 0,
-            rid_association_reg_2: 0,
-            addr_assoc_reg_blk: [AddrAssociationRegBlock::default(); ADDR_ASSOC_COUNT],
-        }
-    }
-}
-
-#[derive(Default, Debug, Clone, Copy, IntoBytes, FromBytes, Immutable, Unaligned)]
+#[derive(Default, Debug, Clone, Copy, IntoBytes, FromBytes, Unaligned)]
 #[repr(C, packed)]
 pub struct AddrAssociationRegBlock {
     reg1: u32,
@@ -131,39 +93,25 @@ impl KeyInfo {
 ///
 /// Provides an interface for Integrity and Data Encryption (IDE) key management operations.
 /// This trait abstracts hardware-specific implementations for different platforms.
-///
-/// # Implementation Notes
-///
-/// When implementing this trait, you should define your `PortConfig` associated type
-/// using the generic `PortConfig` struct with your implementation's constants:
-///
-/// ```ignore
-/// type PortConfig = PortConfig<
-///     { Self::LINK_IDE_REG_BLOCK_COUNT },
-///     { Self::SELECTIVE_IDE_REG_BLOCK_COUNT }
-/// >;
-/// ```
 #[async_trait]
 pub trait IdeDriver {
-    /// Number of Link IDE register blocks supported by this implementation
-    const LINK_IDE_REG_BLOCK_COUNT: usize;
-
-    /// Number of Selective IDE register blocks supported by this implementation
-    const SELECTIVE_IDE_REG_BLOCK_COUNT: usize;
-
-    /// Number of Address Association register blocks per Selective IDE block
-    const SELECTIVE_ADDR_ASSOCIATION_REG_BLOCK_COUNT: usize;
-
-    /// Associated type for PortConfig with implementation-specific array sizes.
+    /// Get the count of link IDE stream register blocks.
     ///
-    /// This should typically be defined as:
-    /// ```ignore
-    /// type PortConfig = PortConfig<
-    ///     { Self::LINK_IDE_REG_BLOCK_COUNT },
-    ///     { Self::SELECTIVE_IDE_REG_BLOCK_COUNT }
-    /// >;
-    /// ```
-    type PortConfig;
+    /// # Returns
+    /// The number of link IDE stream register blocks.
+    fn link_ide_stream_reg_block_count(&self) -> usize;
+
+    /// Get the count of selective IDE stream register blocks.
+    ///
+    /// # Returns
+    /// The number of selective IDE stream register blocks.
+    fn selective_ide_stream_reg_block_count(&self) -> usize;
+
+    /// Get the count of selective address association register blocks.
+    ///
+    /// # Returns
+    /// The number of selective address association register blocks.
+    fn selective_addr_association_reg_block_count(&self) -> usize;
 
     /// Get the port configuration for a given port index.
     ///
@@ -173,7 +121,7 @@ pub trait IdeDriver {
     /// # Returns
     /// A result containing the `PortConfig` for the specified port index, or an error
     /// if the port index is invalid or unsupported.
-    async fn port_config(&self, port_index: u8) -> IdeDriverResult<Self::PortConfig>;
+    async fn port_config(&self, port_index: u8) -> IdeDriverResult<PortConfig>;
 
     /// Key programming for a specific port and stream.
     ///
@@ -244,17 +192,21 @@ mod tests {
 
     #[async_trait]
     impl IdeDriver for ExampleIdeDriver {
-        const LINK_IDE_REG_BLOCK_COUNT: usize = 8;
-        const SELECTIVE_IDE_REG_BLOCK_COUNT: usize = 16; // Some test value
-        const SELECTIVE_ADDR_ASSOCIATION_REG_BLOCK_COUNT: usize = 2;
+        fn link_ide_stream_reg_block_count(&self) -> usize {
+            8 // Example constant
+        }
 
-        // Define the specific PortConfig type for this implementation
-        type PortConfig =
-            PortConfig<{ Self::LINK_IDE_REG_BLOCK_COUNT }, { Self::SELECTIVE_IDE_REG_BLOCK_COUNT }>;
+        fn selective_ide_stream_reg_block_count(&self) -> usize {
+            16 // Example constant
+        }
 
-        async fn port_config(&self, _port_index: u8) -> IdeDriverResult<Self::PortConfig> {
+        fn selective_addr_association_reg_block_count(&self) -> usize {
+            2 // Example constant
+        }
+
+        async fn port_config(&self, _port_index: u8) -> IdeDriverResult<PortConfig> {
             // Test implementation - return a default config
-            Ok(Self::PortConfig::default())
+            Ok(PortConfig::default())
         }
 
         async fn key_prog(
@@ -307,19 +259,11 @@ mod tests {
     }
 
     #[test]
-    fn test_driver_constants() {
-        // Test that the implementation has the expected constants
-        assert_eq!(ExampleIdeDriver::LINK_IDE_REG_BLOCK_COUNT, 8);
-        assert_eq!(ExampleIdeDriver::SELECTIVE_IDE_REG_BLOCK_COUNT, 16);
-    }
-
-    #[test]
     fn test_port_config_encode_decode() {
         use zerocopy::{FromBytes, IntoBytes};
 
         // Test that PortConfig supports zerocopy operations
-        type TestPortConfig = PortConfig<1, 1>;
-        let config = TestPortConfig {
+        let config = PortConfig {
             port_index: 1,
             function_num: 2,
             bus_num: 3,
@@ -333,7 +277,7 @@ mod tests {
         assert!(!bytes.is_empty());
 
         // Convert back from bytes
-        let parsed_config = TestPortConfig::read_from_bytes(bytes).unwrap();
+        let parsed_config = PortConfig::read_from_bytes(bytes).unwrap();
 
         // Basic verification that the round-trip worked
         assert_eq!(parsed_config.port_index, config.port_index);

@@ -173,7 +173,7 @@ impl<'a> MessageBuf<'a> {
         }
         self.data += header_len;
         self.tail += header_len;
-        self.head = header_len;
+        self.head += header_len;
         Ok(())
     }
 
@@ -236,16 +236,40 @@ impl<'a> MessageBuf<'a> {
         Ok(())
     }
 
-    /// Resize buffer length to the specified number of bytes from the data pointer.
-    /// If the new length is greater than the current, the tail is increased (if within capacity).
-    /// If the new length is less, the tail is reduced.
-    pub fn resize(&mut self, len: usize) -> CodecResult<()> {
-        let new_tail = len;
-        if new_tail > self.buffer.len() {
-            Err(CodecError::BufferOverflow)?;
+    // /// Resize buffer length to the specified number of bytes from the data pointer.
+    // /// If the new length is greater than the current, the tail is increased (if within capacity).
+    // /// If the new length is less, the tail is reduced.
+    // pub fn resize(&mut self, len: usize) -> CodecResult<()> {
+    //     let new_tail = len;
+    //     if new_tail > self.buffer.len() {
+    //         Err(CodecError::BufferOverflow)?;
+    //     }
+    //     if new_tail < self.data {
+    //         Err(CodecError::BufferUnderflow)?;
+    //     }
+    //     self.tail = new_tail;
+    //     Ok(())
+    // }
+
+    /// Trim buffer length to the specified number of bytes from the data pointer (reduce size).
+    /// Equivalent to skb_trim in sk_buff.
+    pub fn trim(&mut self, len: usize) -> CodecResult<()> {
+        if len < self.data {
+            return Err(CodecError::BufferUnderflow);
         }
-        if new_tail < self.data {
-            Err(CodecError::BufferUnderflow)?;
+        if len > self.tail {
+            return Err(CodecError::BufferOverflow);
+        }
+        self.tail = len;
+        Ok(())
+    }
+
+    /// Expand buffer length by the specified number of bytes from the current tail (increase size).
+    /// Equivalent to skb_put in sk_buff.
+    pub fn expand(&mut self, len: usize) -> CodecResult<()> {
+        let new_tail = self.tail + len;
+        if new_tail > self.buffer.len() {
+            return Err(CodecError::BufferOverflow);
         }
         self.tail = new_tail;
         Ok(())
@@ -355,7 +379,7 @@ mod tests {
         let data = msg_buf.data_mut(msg_len);
         assert!(data.is_ok());
         data.unwrap().copy_from_slice(&msg[..msg_len]);
-        assert!(msg_buf.resize(msg_len).is_ok());
+        assert!(msg_buf.trim(msg_len).is_ok());
         assert_eq!(msg_buf.tail, 48);
         assert_eq!(msg_buf.data_len(), 48);
         assert_eq!(msg_buf.data(48).unwrap(), &msg[..msg_len]);
@@ -454,5 +478,27 @@ mod tests {
 
         // Compare the response with the original message
         assert_eq!(msg_buf.data(msg_len).unwrap(), &msg[..]);
+    }
+
+    #[test]
+    fn test_trim_and_expand_edge_cases() {
+        let mut buffer = [0u8; 16];
+        let mut msg_buf = MessageBuf::new(&mut buffer);
+        // Put some data and move data ptr ahead
+        assert!(msg_buf.put_data(8).is_ok());
+        assert!(msg_buf.pull_data(8).is_ok());
+        assert!(msg_buf.data == 8);
+        // Expand to full capacity
+        assert!(msg_buf.expand(8).is_ok());
+        assert_eq!(msg_buf.tail, 16);
+        // Try to expand beyond capacity
+        assert!(msg_buf.expand(1).is_err());
+        // Trim to valid size
+        assert!(msg_buf.trim(10).is_ok());
+        assert_eq!(msg_buf.tail, 10);
+        // Try to trim below data pointer
+        assert!(msg_buf.trim(0).is_err());
+        // Try to trim above tail
+        assert!(msg_buf.trim(20).is_err());
     }
 }
