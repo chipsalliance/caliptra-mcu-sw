@@ -21,6 +21,7 @@ use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use core::fmt::Write;
 use romtime::{CaliptraSoC, HexWord};
+use tock_registers::interfaces::Readable;
 use zerocopy::{transmute, IntoBytes};
 
 pub struct ColdBoot {}
@@ -118,6 +119,11 @@ impl BootFlow for ColdBoot {
         romtime::println!("[mcu-rom] Setting Caliptra boot go");
         mci.caliptra_boot_go();
         mci.set_flow_status(McuRomBootStatus::CaliptraBootGoAsserted.into());
+
+        // If testing Caliptra Core, hang here until the test signals it to continue.
+        if cfg!(feature = "core_test") {
+            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 30) == 0 {}
+        }
 
         lc.init().unwrap();
         mci.set_flow_status(McuRomBootStatus::LifecycleControllerInitialized.into());
@@ -230,7 +236,6 @@ impl BootFlow for ColdBoot {
 
         // If testing Caliptra Core, hang here until the test signals it to continue.
         if cfg!(feature = "core_test") {
-            use tock_registers::interfaces::Readable;
             while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 31) == 0 {}
         }
 
