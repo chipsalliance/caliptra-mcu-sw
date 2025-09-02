@@ -392,10 +392,10 @@ impl<'a> MCTPDriver<'a> {
                     let rw_buffer: usize;
                     let rx_request: bool;
 
-                    let request_match = app.pending_rx_request.as_ref().map_or(false, |req_ctx| {
+                    let request_match = app.pending_rx_request.as_ref().is_some_and(|req_ctx| {
                         buffered_msg.matches_pending_operation(req_ctx)
                     });
-                    let response_match = app.pending_rx_response.as_ref().map_or(false, |rsp_ctx| {
+                    let response_match = app.pending_rx_response.as_ref().is_some_and(|rsp_ctx| {
                         buffered_msg.matches_pending_operation(rsp_ctx)
                     });
 
