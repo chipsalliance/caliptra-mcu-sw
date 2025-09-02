@@ -61,13 +61,40 @@ Run `cargo xtask-fpga fpga bootstrap --target-host $SSH-FPGA-NAME` to bootstrap 
 
 # Test Workflow
 
-A developer verifying changes against an FPGA should use the following sequence.
+## FPGA Bootstrapping and FW/Test Building
+
+A developer verifying changes against an FPGA should use the following sequence of commands to bootstrap their FPGA board by:
+1. downloading the caliptra-mcu-sw repo on their board,
+2. building all Caliptra Core and MCU firmware collateral, and
+3. building all FPGA tests for the FPGA environment.
 
 ```
 $ cargo xtask-fpga fpga bootstrap --target-host $SSH-FPGA-NAME # Run this only once per boot.
 $ cargo xtask-fpga fpga build --target-host $SSH-FPGA-NAME # Build firmware. Re-run every time firmware changes.
 $ cargo xtask-fpga fpga build-test --target-host $SSH-FPGA-NAME # Build test binaries. Re-run every time tests change.
-$ cargo xtask-fpga fpga test --target-host $SSH-FPGA-NAME # Run test suite on FPGA.
+```
+
+## Dispatching all FPGA Tests
+
+A developer verifying changes against an FPGA can dispatch the entire FPGA test in a single shot by running:
+
+```
+$ cargo xtask-fpga fpga test --target-host $SSH-FPGA-NAME
+```
+
+## Dispatching a Single FPGA Test
+
+A developer that only wishes to run a single test on the FPGA can replace the last command with the following:
+
+```
+# Run a single FPGA test.
+$ cargo xtask-fpga fpga test --target-host $SSH-FPGA-NAME \
+    --test-package <test package> \
+    --test <test>
+
+# For example:
+$ cargo xtask-fpga fpga test --target-host $SSH-FPGA-NAME \
+    --test-filter="package(mcu-hw-model) and test(test_hash_token)"
 ```
 
 # Running on FPGA
