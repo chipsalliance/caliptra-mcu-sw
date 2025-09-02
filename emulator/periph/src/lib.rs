@@ -41,7 +41,7 @@ pub use mci::Mci;
 pub use mcu_mbox0::{
     MciMailboxRequester, McuMailbox0External, McuMailbox0Internal, MCU_MAILBOX0_SRAM_SIZE,
 };
-pub use otp::Otp;
+pub use otp::{Otp, OtpArgs};
 pub use otp_digest::{otp_digest, otp_scramble, otp_unscramble};
 pub use reset_reason::ResetReasonEmulator;
 pub use root_bus::{McuRootBus, McuRootBusArgs, McuRootBusOffsets};

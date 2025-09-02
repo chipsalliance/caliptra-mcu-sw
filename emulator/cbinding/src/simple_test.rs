@@ -86,6 +86,8 @@ fn test_emulator_args_creation() {
         otp_size: None,
         lc_offset: None,
         lc_size: None,
+        fuse_soc_manifest_max_svn: None,
+        fuse_soc_manifest_svn: None,
     };
 
     println!("EmulatorArgs created successfully");

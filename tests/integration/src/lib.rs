@@ -82,6 +82,8 @@ mod test {
         secondary_flash_image_path: Option<PathBuf>,
         caliptra_builder: Option<CaliptraBuilder>,
         hw_revision: Option<String>,
+        fuse_soc_manifest_svn: Option<u8>,
+        fuse_soc_manifest_max_svn: Option<u8>,
     ) -> ExitStatus {
         let mut cargo_run_args = vec![
             "run",
@@ -179,6 +181,7 @@ mod test {
                 Some(runtime_path.clone()),
                 soc_images,
                 None,
+                None,
             )
         };
 
@@ -234,6 +237,20 @@ mod test {
                 cargo_run_args.push(secondary_flash_image.to_str().unwrap());
             }
 
+            let soc_manifest_svn_str;
+            if let Some(soc_manifest_svn) = fuse_soc_manifest_svn {
+                cargo_run_args.push("--fuse-soc-manifest-svn");
+                soc_manifest_svn_str = soc_manifest_svn.to_string();
+                cargo_run_args.push(soc_manifest_svn_str.as_str());
+            }
+
+            let soc_manifest_max_svn_str;
+            if let Some(soc_manifest_max_svn) = fuse_soc_manifest_max_svn {
+                cargo_run_args.push("--fuse-soc-manifest-max-svn");
+                soc_manifest_max_svn_str = soc_manifest_max_svn.to_string();
+                cargo_run_args.push(soc_manifest_max_svn_str.as_str());
+            }
+
             println!("Running test firmware {}", feature.replace("_", "-"));
             let mut cmd = Command::new("cargo");
             let cmd = cmd.args(&cargo_run_args).current_dir(&*PROJECT_ROOT);
@@ -261,6 +278,8 @@ mod test {
             i3c_port,
             true,  // active mode is always true
             false, //set this to true if you want to run in manufacturing mode
+            None,
+            None,
             None,
             None,
             None,
@@ -368,6 +387,8 @@ mod test {
             None,
             None,
             None,
+            None,
+            None,
         );
         assert_eq!(0, test.code().unwrap_or_default());
 
@@ -391,6 +412,8 @@ mod test {
             i3c_port,
             true,
             false,
+            None,
+            None,
             None,
             None,
             None,
