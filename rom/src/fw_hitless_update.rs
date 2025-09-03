@@ -57,7 +57,7 @@ impl BootFlow for FwHitlessUpdate {
 
         #[cfg(target_arch = "riscv32")]
         unsafe {
-            let firmware_entry = MCU_MEMORY_MAP.sram_offset;
+            let firmware_entry = MCU_MEMORY_MAP.sram_offset + _params.mcu_image_header_size as u32;
             core::arch::asm!(
                 "jr {0}",
                 in(reg) firmware_entry,

@@ -258,6 +258,8 @@ pub struct EmulatorArgs {
     #[arg(long, value_parser=maybe_hex::<u32>)]
     /// Soc Manifest Max SVN Fuse Value
     pub fuse_soc_manifest_max_svn: Option<u32>,
+    #[arg(long)]
+    pub fuse_vendor_hashes_prod_partition: Option<String>,
 }
 
 pub struct Emulator {
@@ -742,6 +744,9 @@ impl Emulator {
             let v = hex::decode(hash).unwrap();
             v.try_into().unwrap()
         });
+        let fuse_vendor_hashes_prod_partition = cli
+            .fuse_vendor_hashes_prod_partition
+            .map(|fuse| hex::decode(fuse).expect("Invalid hex in vendor_hashes_prod_partition"));
 
         let lc = LcCtrl::new();
 
@@ -756,6 +761,7 @@ impl Emulator {
                 vendor_pqc_type: cli.vendor_pqc_type,
                 soc_manifest_svn: cli.fuse_soc_manifest_svn.map(|v| v as u8),
                 soc_manifest_max_svn: cli.fuse_soc_manifest_max_svn.map(|v| v as u8),
+                vendor_hashes_prod_partition: fuse_vendor_hashes_prod_partition,
                 ..Default::default()
             },
         )?;

@@ -201,6 +201,7 @@ mod test {
             Some("2.1.0".to_string()),
             opts.fuse_soc_manifest_svn,
             opts.fuse_soc_manifest_max_svn,
+            None,
         )
     }
 

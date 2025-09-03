@@ -110,6 +110,7 @@ pub fn all_build(
         dccm_offset,
         dccm_size,
         None,
+        None,
     )?;
 
     let fpga = platform == "fpga";

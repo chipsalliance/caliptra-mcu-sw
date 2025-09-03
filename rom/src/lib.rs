@@ -20,6 +20,8 @@ pub mod flash;
 pub use flash::*;
 mod fuses;
 pub use fuses::*;
+pub mod image_verifier;
+pub use image_verifier::ImageVerifier;
 mod rom;
 pub use rom::*;
 mod rom_env;

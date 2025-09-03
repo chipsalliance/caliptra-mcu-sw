@@ -239,7 +239,11 @@ pub(crate) async fn async_main<S: Syscalls>() {
         writeln!(console_writer, "Running MCU mailbox usermode loopback test").unwrap();
         test_mcu_mbox_usermode::test_mcu_mbox_usermode_loopback().await;
     }
-
+    #[cfg(any(feature = "test-mcu-svn-gt-fuse", feature = "test-mcu-svn-lt-fuse"))]
+    {
+        writeln!(console_writer, "MCU Image SVN check passed").unwrap();
+        romtime::test_exit(0);
+    }
     writeln!(console_writer, "app finished").unwrap();
 }
 
