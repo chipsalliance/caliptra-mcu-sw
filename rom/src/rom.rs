@@ -161,6 +161,24 @@ impl Soc {
         }
         romtime::println!("");
 
+        // TODO(clundin): Pass OCP LOCK fuses as a parameter.
+        romtime::println!("[mcu-fuse-write] Attempting to write OCP LOCK fuses");
+
+        for i in 0..8 {
+            self.registers.fuse_hek_seed[i].set(0xABDE);
+        }
+
+        romtime::println!("[mcu-fuse-write] Writing key release fuses");
+        self.registers.ss_key_release_size.set(0x40);
+
+        let mci_base_addr: u64 = self.registers.ss_mci_base_addr_l.get() as u64 + ((self.registers.ss_mci_base_addr_h.get() as u64) << 32);
+        let mcu_sram_addr: u64 = 0xc0_0000 + mci_base_addr;
+        self.registers.ss_key_release_base_addr_h.set((mcu_sram_addr >> 32) as u32);
+        self.registers.ss_key_release_base_addr_l.set(mcu_sram_addr as u32);
+
+        romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
+        romtime::println!("");
+
         // TODO: this seems to not exist any more
         // self.registers.fuse_key_manifest_pk_hash_mask[0].set(fuses.key_manifest_pk_hash_mask());
         // if fuses.owner_pk_hash().len() != self.registers.cptra_owner_pk_hash.len() {
