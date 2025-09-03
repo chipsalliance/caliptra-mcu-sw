@@ -96,8 +96,9 @@ impl McuMailboxTester {
 }
 
 impl MailboxClient for McuMailboxTester {
-    fn request_received(&self, command: u32, rx_buf: &'static mut [u32], dw_len: usize) {
+    fn request_received(&self, command: u32, rx_buf: &'static mut [u32], dlen: usize) {
         let recv = self.rx_buf.take().expect("rx_buf missing");
+        let dw_len = dlen.div_ceil(4);
         if dw_len > recv.len() {
             self.state.set(IoState::Error);
             return;
@@ -151,7 +152,7 @@ impl DeferredCallClient for McuMailboxTester {
 
             let _ = self.driver.send_response(
                 tx_buf.iter().copied(),
-                tx_buf_len,
+                tx_buf_len * 4,
                 MailboxStatus::Complete,
             );
 

@@ -61,6 +61,12 @@ impl RequestResponseTest {
                 (0..128).map(|i| i as u8).collect(),
                 (0..128).map(|i| i as u8).collect(),
             );
+            // Example test payload that is not 4-byte aligned
+            self.push(
+                0x04,
+                (0..125).map(|i| i as u8).collect(),
+                (0..125).map(|i| i as u8).collect(),
+            );
         }
     }
 
