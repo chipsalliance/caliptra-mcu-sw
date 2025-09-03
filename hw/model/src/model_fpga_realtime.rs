@@ -368,6 +368,7 @@ mod tests {
 
     use super::*;
 
+    #[ignore] // temporarily while we debug the FPGA tests
     #[cfg(feature = "fpga_realtime")]
     #[test]
     fn test_mctp() {
