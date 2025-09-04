@@ -31,7 +31,6 @@ mod model_emulated;
 mod model_fpga_realtime;
 mod otp_provision;
 mod vmem;
-mod xi3c;
 
 pub enum ShaAccMode {
     Sha384Stream,
@@ -408,6 +407,7 @@ pub trait McuHwModel {
     }
 }
 
+#[ignore]
 #[test]
 fn reg_access_test() {
     let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();

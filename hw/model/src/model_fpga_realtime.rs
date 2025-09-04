@@ -53,7 +53,7 @@ impl ModelFpgaRealtime {
     }
 
     pub fn configure_i3c_controller(&mut self) {
-        self.base.configure_i3c_controller();
+        self.base.i3c_controller.configure()
     }
 
     pub fn start_recovery_bmc(&mut self) {
@@ -62,7 +62,11 @@ impl ModelFpgaRealtime {
 
     // send a recovery block write request to the I3C target
     pub fn send_i3c_write(&mut self, payload: &[u8]) {
-        self.base.send_i3c_write(payload);
+        self.base.i3c_controller.write(payload).unwrap();
+    }
+
+    pub fn recv_i3c(&mut self, len: u16) -> Vec<u8> {
+        self.base.i3c_controller.read(len).unwrap()
     }
 
     pub fn open_openocd(&mut self, port: u16) -> Result<()> {
@@ -355,5 +359,98 @@ impl Drop for ModelFpgaRealtime {
             .stdby_ctrl_mode()
             .stby_cr_device_addr()
             .write(|_| StbyCrDeviceAddrWriteVal::from(0));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::new;
+
+    use super::*;
+
+    #[ignore] // temporarily while we debug the FPGA tests
+    #[cfg(feature = "fpga_realtime")]
+    #[test]
+    fn test_mctp() {
+        use caliptra_hw_model::BootParams;
+
+        use crate::DefaultHwModel;
+
+        let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
+        let mut hw = new(
+            InitParams {
+                caliptra_rom: &binaries.caliptra_rom,
+                mcu_rom: &binaries.mcu_rom,
+                vendor_pk_hash: binaries.vendor_pk_hash(),
+                active_mode: true,
+                ..Default::default()
+            },
+            BootParams {
+                fw_image: Some(&binaries.caliptra_fw),
+                soc_manifest: Some(&binaries.soc_manifest),
+                mcu_fw_image: Some(&binaries.mcu_runtime),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        hw.step_until(|m| m.cycle_count() > 300_000_000);
+
+        let send_i3c = |model: &mut DefaultHwModel| {
+            println!("Sending I3C MCTP GET_VERSION command");
+
+            let dest_eid = 1;
+            let source_eid = 2;
+            let mut mctp_packet = vec![
+                0x01u8,     // MCTP v1
+                dest_eid,   // destination endpoint
+                source_eid, // source endpoint
+                0xc8,       // start of message, end of message seq num 0, tag 1
+            ];
+
+            let mctp_message_header = [
+                0x0u8, // message type: 0 (MCTP control), integrity check 0
+                0x80,  // request = 1, instance id = 0,
+                0x4,   // command: GET_VERSION
+                0,     // completion code
+            ];
+            let mctp_message_body = [
+                0xffu8, // MCTP base specification version
+            ];
+            mctp_packet.extend_from_slice(&mctp_message_header);
+            mctp_packet.extend_from_slice(&mctp_message_body);
+
+            model.send_i3c_write(&mctp_packet);
+        };
+
+        let recv_i3c = |model: &mut DefaultHwModel, len: u16| -> Vec<u8> {
+            println!(
+                "Host: checking for I3C MCTP response start, asking for {}",
+                len
+            );
+            let resp = model.recv_i3c(len);
+
+            println!("Host: received I3C MCTP response: {:x?}", resp);
+            resp
+        };
+
+        send_i3c(&mut hw);
+        for _ in 0..10000 {
+            hw.step();
+        }
+        let resp = recv_i3c(&mut hw, 9);
+        for _ in 0..10000 {
+            hw.step();
+        }
+        send_i3c(&mut hw);
+        for _ in 0..10000 {
+            hw.step();
+        }
+        let resp = recv_i3c(&mut hw, resp[8] as u16 * 4 + 9);
+        for _ in 0..10000 {
+            hw.step();
+        }
+        // simple sanity check
+        assert_eq!(resp[10], 0xff);
     }
 }

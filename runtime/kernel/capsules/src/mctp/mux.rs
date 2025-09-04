@@ -10,6 +10,7 @@ use crate::mctp::transport_binding::{MCTPTransportBinding, TransportRxClient, Tr
 use core::cell::Cell;
 use core::fmt::Write;
 use kernel::collections::list::List;
+use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::hil::time::{Alarm, Ticks};
 use kernel::utilities::cells::TakeCell;
 use kernel::utilities::leasable_buffer::SubSliceMut;
@@ -36,6 +37,7 @@ pub struct MuxMCTPDriver<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> {
     tx_pkt_buffer: TakeCell<'static, [u8]>, // Static buffer for tx packet.
     rx_pkt_buffer: TakeCell<'static, [u8]>, //Static buffer for rx packet
     clock: &'a A,
+    deferred_call: DeferredCall,
 }
 
 impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
@@ -57,7 +59,12 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
             tx_pkt_buffer: TakeCell::new(tx_pkt_buf),
             rx_pkt_buffer: TakeCell::new(rx_pkt_buf),
             clock,
+            deferred_call: DeferredCall::new(),
         }
+    }
+
+    pub fn enable(&self) {
+        self.mctp_device.enable();
     }
 
     pub fn add_sender(&self, sender: &'a MCTPTxState<'a, A, M>) {
@@ -66,6 +73,12 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         self.sender_list.push_tail(sender);
 
         if list_empty {
+            self.deferred_call.set();
+        }
+    }
+
+    fn deferred_send(&self) {
+        if let Some(sender) = self.sender_list.head() {
             self.send_next_packet(sender);
         }
     }
@@ -431,5 +444,15 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCT
         if let Some(rx_buf) = self.rx_pkt_buffer.take() {
             self.mctp_device.set_rx_buffer(rx_buf);
         };
+    }
+}
+
+impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> DeferredCallClient for MuxMCTPDriver<'a, A, M> {
+    fn handle_deferred_call(&self) {
+        self.deferred_send();
+    }
+
+    fn register(&'static self) {
+        self.deferred_call.register(self);
     }
 }

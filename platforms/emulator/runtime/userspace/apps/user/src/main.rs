@@ -5,6 +5,8 @@
 #![feature(impl_trait_in_assoc_type)]
 #![allow(static_mut_refs)]
 
+use core::fmt::Write;
+
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
@@ -33,6 +35,25 @@ impl romtime::Exit for EmulatorExiter {
     }
 }
 
+struct EmulatorWriter {}
+static mut EMULATOR_WRITER: EmulatorWriter = EmulatorWriter {};
+
+impl Write for EmulatorWriter {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        print_to_console(s);
+        Ok(())
+    }
+}
+
+fn print_to_console(buf: &str) {
+    for b in buf.bytes() {
+        // Print to this address for emulator output
+        unsafe {
+            core::ptr::write_volatile(0x1000_1041 as *mut u8, b);
+        }
+    }
+}
+
 pub static EXECUTOR: LazyLock<TockExecutor> = LazyLock::new(TockExecutor::new);
 
 #[cfg(not(target_arch = "riscv32"))]
@@ -57,6 +78,8 @@ async fn start() {
     unsafe {
         #[allow(static_mut_refs)]
         romtime::set_exiter(&mut EMULATOR_EXITER);
+        #[allow(static_mut_refs)]
+        romtime::set_printer(&mut EMULATOR_WRITER);
     }
     async_main().await;
 }
