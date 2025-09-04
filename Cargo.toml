@@ -16,6 +16,7 @@ members = [
     "emulator/consts",
     "emulator/periph",
     "hw/model",
+    "hw/model/test-fw",
     "registers/generated-emulator",
     "registers/generated-firmware",
     "registers/generator",
@@ -172,6 +173,7 @@ mcu-image-header = { path = "platforms/emulator/mcu-image-header" }
 mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" }
 mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
 mcu-hw-model = { path = "hw/model" }
+mcu-hw-model-test-fw = { path = "hw/model/test-fw" }
 mcu-platforms-common = { path = "platforms/common" }
 mcu-rom-common = { path = "rom" }
 mcu-components = { path = "runtime/kernel/components" }
@@ -224,6 +226,7 @@ caliptra-image-gen = { git = "https://github.com/chipsalliance/caliptra-sw", rev
 caliptra-image-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2b33b0dde6da3ef10666d813d1a874716ebf652e" }
 caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2b33b0dde6da3ef10666d813d1a874716ebf652e" }
 caliptra-test = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2b33b0dde6da3ef10666d813d1a874716ebf652e" }
+caliptra-test-harness = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2b33b0dde6da3ef10666d813d1a874716ebf652e" }
 caliptra-test-harness-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2b33b0dde6da3ef10666d813d1a874716ebf652e" }
 ureg = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2b33b0dde6da3ef10666d813d1a874716ebf652e" }
 dpe = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2b33b0dde6da3ef10666d813d1a874716ebf652e", default-features = false, features = ["dpe_profile_p384_sha384"] }
@@ -248,6 +251,7 @@ dpe = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2b33b0dde6d
 # caliptra-image-types = { path = "../caliptra-sw/image/types" }
 # caliptra-registers = { path = "../caliptra-sw/registers" }
 # caliptra-test = { path = "../caliptra-sw/test" }
+# caliptra-test-harness = { path = "../caliptra-sw/test-harness" }
 # caliptra-test-harness-types = { path = "../caliptra-sw/test-harness/types" }
 # ureg = { path = "../caliptra-sw/ureg" }
 # dpe = { path = "../caliptra-sw/dpe/dpe", default-features = false, features = ["dpe_profile_p384_sha384"] }
