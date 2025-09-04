@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use crate::codec::CommonCodec;
+use crate::codec::{Codec, CodecError, CodecResult, CommonCodec, MessageBuf};
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use bitfield::bitfield;
@@ -89,6 +89,7 @@ bitfield! {
     pub num_addr_association_reg_blocks, set_num_addr_association_reg_blocks: 3,0;
     reserved, _: 31,4;
 }
+impl CommonCodec for SelectiveIdeStreamCapabilityReg {}
 
 // Selective IDE Stream Control Register
 bitfield! {
@@ -112,6 +113,8 @@ bitfield! {
     pub stream_id, set_stream_id: 31,24;
 }
 
+impl CommonCodec for SelectiveIdeStreamControlReg {}
+
 // Selective IDE Stream Status Register
 bitfield! {
 #[derive(FromBytes, IntoBytes, Immutable, Clone, Copy)]
@@ -123,11 +126,13 @@ bitfield! {
     pub received_integrity_check_fail_msg, set_received_integrity_check_fail_msg: 31,4;
 }
 
+impl CommonCodec for SelectiveIdeStreamStatusReg {}
+
 // Selective IDE RID Association Register Block
 
 // Selective IDE RID Association Register 1
 bitfield! {
-#[derive(FromBytes, IntoBytes, Immutable, Clone, Copy)]
+#[derive(Default, FromBytes, IntoBytes, Immutable, Clone, Copy)]
 #[repr(C)]
     pub struct SelectiveIdeRidAssociationReg1(u32);
     impl Debug;
@@ -138,9 +143,11 @@ bitfield! {
     reserved2, _: 31,24;
 }
 
+impl CommonCodec for SelectiveIdeRidAssociationReg1 {}
+
 // Selective IDE RID Association Register 2
 bitfield! {
-#[derive(FromBytes, IntoBytes, Immutable, Clone, Copy)]
+#[derive(Default, FromBytes, IntoBytes, Immutable, Clone, Copy)]
 #[repr(C)]
     pub struct SelectiveIdeRidAssociationReg2(u32);
     impl Debug;
@@ -152,11 +159,13 @@ bitfield! {
     reserved2, _: 31,24;
 }
 
+impl CommonCodec for SelectiveIdeRidAssociationReg2 {}
+
 // Selective IDE Address Association Register Block
 
 // IDE Address Association Register 1
 bitfield! {
-#[derive(FromBytes, IntoBytes, Immutable, Clone, Copy)]
+#[derive(Default, FromBytes, IntoBytes, Immutable, Clone, Copy)]
 #[repr(C)]
     pub struct IdeAddrAssociationReg1(u32);
     impl Debug;
@@ -169,19 +178,20 @@ bitfield! {
 }
 
 // IDE Address Association Register 2
-#[derive(Debug, FromBytes, IntoBytes, Immutable, Clone, Copy)]
+#[derive(Debug, Default, FromBytes, IntoBytes, Immutable, Clone, Copy)]
 pub struct IdeAddrAssociationReg2 {
     pub memory_limit_upper: u32,
 }
 
 // IDE Address Association Register 3
-#[derive(Debug, FromBytes, IntoBytes, Immutable, Clone, Copy)]
+#[derive(Debug, Default, FromBytes, IntoBytes, Immutable, Clone, Copy)]
 #[repr(C)]
 pub struct IdeAddrAssociationReg3 {
     pub memory_base_upper: u32,
 }
 
-#[derive(Debug, IntoBytes, FromBytes, Immutable)]
+/// IDE Port configuration
+#[derive(Debug, Default, FromBytes, IntoBytes, Immutable)]
 #[repr(C, packed)]
 pub struct PortConfig {
     port_index: u8,
@@ -191,11 +201,13 @@ pub struct PortConfig {
     max_port_index: u8,
 }
 
+impl CommonCodec for PortConfig {}
+
 #[derive(Debug, IntoBytes, FromBytes, Immutable)]
 #[repr(C)]
 pub struct IdeRegBlock {
-    ide_cap_reg: IdeCapabilityReg,
-    ide_ctrl_reg: IdeControlReg,
+    pub ide_cap_reg: IdeCapabilityReg,
+    pub ide_ctrl_reg: IdeControlReg,
 }
 
 impl CommonCodec for IdeRegBlock {}
@@ -220,7 +232,72 @@ pub struct SelectiveIdeStreamRegBlock {
     addr_association_reg_block: [AddrAssociationRegBlock; MAX_SELECTIVE_IDE_ADDR_ASSOC_BLOCK_COUNT],
 }
 
-#[derive(Debug, Clone, Copy, IntoBytes, FromBytes, Immutable)]
+impl Default for SelectiveIdeStreamRegBlock {
+    fn default() -> Self {
+        SelectiveIdeStreamRegBlock {
+            capability_reg: SelectiveIdeStreamCapabilityReg(0),
+            ctrl_reg: SelectiveIdeStreamControlReg(0),
+            status_reg: SelectiveIdeStreamStatusReg(0),
+            rid_association_reg_1: SelectiveIdeRidAssociationReg1(0),
+            rid_association_reg_2: SelectiveIdeRidAssociationReg2(0),
+            addr_association_reg_block: [AddrAssociationRegBlock::default();
+                MAX_SELECTIVE_IDE_ADDR_ASSOC_BLOCK_COUNT],
+        }
+    }
+}
+
+impl Codec for SelectiveIdeStreamRegBlock {
+    fn encode(&self, buffer: &mut MessageBuf) -> CodecResult<usize> {
+        let cap_reg = self.capability_reg;
+        let num_addr_association_reg_blks = cap_reg.num_addr_association_reg_blocks() as usize;
+        if num_addr_association_reg_blks > MAX_SELECTIVE_IDE_ADDR_ASSOC_BLOCK_COUNT {
+            Err(CodecError::BufferOverflow)?;
+        }
+        let mut len = self.capability_reg.encode(buffer)?;
+        len += self.ctrl_reg.encode(buffer)?;
+        len += self.status_reg.encode(buffer)?;
+        len += self.rid_association_reg_1.encode(buffer)?;
+        len += self.rid_association_reg_2.encode(buffer)?;
+        for i in 0..num_addr_association_reg_blks {
+            len += self.addr_association_reg_block[i].encode(buffer)?;
+        }
+        Ok(len)
+    }
+
+    fn decode(buffer: &mut MessageBuf) -> CodecResult<Self> {
+        let capability_reg = SelectiveIdeStreamCapabilityReg::decode(buffer)?;
+        let num_addr_association_reg_blks =
+            capability_reg.num_addr_association_reg_blocks() as usize;
+        let ctrl_reg = SelectiveIdeStreamControlReg::decode(buffer)?;
+        let status_reg = SelectiveIdeStreamStatusReg::decode(buffer)?;
+        let rid_association_reg_1 = SelectiveIdeRidAssociationReg1::decode(buffer)?;
+        let rid_association_reg_2 = SelectiveIdeRidAssociationReg2::decode(buffer)?;
+
+        if num_addr_association_reg_blks > MAX_SELECTIVE_IDE_ADDR_ASSOC_BLOCK_COUNT {
+            Err(CodecError::BufferOverflow)?;
+        }
+
+        let mut addr_association_reg_block =
+            [AddrAssociationRegBlock::default(); MAX_SELECTIVE_IDE_ADDR_ASSOC_BLOCK_COUNT];
+        for reg in addr_association_reg_block
+            .iter_mut()
+            .take(num_addr_association_reg_blks)
+        {
+            *reg = AddrAssociationRegBlock::decode(buffer)?;
+        }
+
+        Ok(Self {
+            capability_reg,
+            ctrl_reg,
+            status_reg,
+            rid_association_reg_1,
+            rid_association_reg_2,
+            addr_association_reg_block,
+        })
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, IntoBytes, FromBytes, Immutable)]
 #[repr(C)]
 pub struct AddrAssociationRegBlock {
     reg1: IdeAddrAssociationReg1,
@@ -276,7 +353,7 @@ impl KeyInfo {
 /// Provides an interface for Integrity and Data Encryption (IDE) key management operations.
 /// This trait abstracts hardware-specific implementations for different platforms.
 #[async_trait]
-pub trait IdeDriver {
+pub trait IdeDriver: Send + Sync {
     /// Get the port configuration for a given port index.
     ///
     /// # Arguments
@@ -294,7 +371,7 @@ pub trait IdeDriver {
     ///
     /// # Returns
     /// A result containing the `IdeRegBlock` for the specified port, or an error
-    fn ide_register_block(&self, port_index: u8) -> IdeDriverResult<IdeRegBlock>;
+    fn ide_reg_block(&self, port_index: u8) -> IdeDriverResult<IdeRegBlock>;
 
     /// Get the link IDE register block for a specific port and block index.
     ///
@@ -415,7 +492,7 @@ mod tests {
             })
         }
 
-        fn ide_register_block(&self, port_index: u8) -> IdeDriverResult<IdeRegBlock> {
+        fn ide_reg_block(&self, port_index: u8) -> IdeDriverResult<IdeRegBlock> {
             if port_index != self.port_index {
                 Err(IdeDriverError::InvalidPortIndex)?;
             }
