@@ -109,7 +109,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 
     // TODO: use temp files
     let platform = platform.unwrap_or("emulator");
-    let rom_features = rom_features.unwrap_or("");
+    let rom_features = rom_features.unwrap_or_default();
     let mcu_rom = crate::rom_build(Some(platform), rom_features)?;
     let memory_map = match platform {
         "emulator" => &mcu_config_emulator::EMULATOR_MEMORY_MAP,
