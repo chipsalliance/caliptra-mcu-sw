@@ -9,6 +9,7 @@ To implement IDE_KM, devices must provide the `IdeDriver` trait implementation. 
 
 pub const IDE_STREAM_KEY_SIZE_DW: usize = 8;
 pub const IDE_STREAM_IV_SIZE_DW: usize = 2;
+pub const MAX_SELECTIVE_IDE_ADDR_ASSOC_BLOCK_COUNT: usize = 15;
 
 /// Port Configuration structure contains the configuration and capabilities for a specific IDE port.
 pub struct PortConfig {
@@ -17,30 +18,35 @@ pub struct PortConfig {
     bus_num: u8,
     segment: u8,
     max_port_index: u8,
-    ide_cap_reg: u32,
-    ide_ctrl_reg: u32,
+}
+
+/// IDE Capability and Control Register Block
+pub struct IdeRegBlock {
+    ide_cap_reg: IdeCapabilityReg,
+    ide_ctrl_reg: IdeControlReg,
 }
 
 /// Link IDE Register Block
 pub struct LinkIdeStreamRegBlock {
-    ctrl_reg: u32,
-    status_reg: u32,
+    ctrl_reg: LinkIdeStreamControlReg,
+    status_reg: LinkIdeStreamStatusReg,
 }
 
 /// Selective IDE Stream Register Block
 pub struct SelectiveIdeStreamRegBlock {
-    capability_reg: u32,
-    ctrl_reg: u32,
-    status_reg: u32,
-    rid_association_reg_1: u32,
-    rid_association_reg_2: u32,
+    capability_reg: SelectiveIdeStreamCapabilityReg,
+    ctrl_reg: SelectiveIdeStreamControlReg,
+    status_reg: SelectiveIdeStreamStatusReg,
+    rid_association_reg_1: SelectiveIdeRidAssociationReg1,
+    rid_association_reg_2: SelectiveIdeRidAssociationReg2,
+    addr_association_reg_block: [AddrAssociationRegBlock; MAX_SELECTIVE_IDE_ADDR_ASSOC_BLOCK_COUNT],
 }
 
 /// IDE Address Association Register Block
 pub struct AddrAssociationRegBlock {
-    reg1: u32,
-    reg2: u32,
-    reg3: u32,
+    reg1: IdeAddrAssociationReg1,
+    reg2: IdeAddrAssociationReg2,
+    reg3: IdeAddrAssociationReg3,
 }
 
 /// IDE Driver Error Types
@@ -76,24 +82,6 @@ bitfield! {
 /// This trait abstracts hardware-specific implementations for different platforms.
 #[async_trait]
 pub trait IdeDriver {
-    /// Get the count of link IDE stream register blocks.
-    ///
-    /// # Returns
-    /// The number of link IDE stream register blocks.
-    fn link_ide_stream_reg_block_count(&self) -> usize;
-
-    /// Get the count of selective IDE stream register blocks.
-    ///
-    /// # Returns
-    /// The number of selective IDE stream register blocks.
-    fn selective_ide_stream_reg_block_count(&self) -> usize;
-
-    /// Get the count of selective address association register blocks.
-    ///
-    /// # Returns
-    /// The number of selective address association register blocks.
-    fn selective_addr_association_reg_block_count(&self) -> usize;
-
     /// Get the port configuration for a given port index.
     ///
     /// # Arguments
@@ -102,7 +90,44 @@ pub trait IdeDriver {
     /// # Returns
     /// A result containing the `PortConfig` for the specified port index, or an error
     /// if the port index is invalid or unsupported.
-    async fn port_config(&self, port_index: u8) -> IdeDriverResult<PortConfig>;
+    fn port_config(&self, port_index: u8) -> IdeDriverResult<PortConfig>;
+
+    /// Get the IDE register block.
+    ///
+    /// # Arguments
+    /// * `port_index` - The index of the port.
+    ///
+    /// # Returns
+    /// A result containing the `IdeRegBlock` for the specified port, or an error
+    fn ide_register_block(&self, port_index: u8) -> IdeDriverResult<IdeRegBlock>;
+
+    /// Get the link IDE register block for a specific port and block index.
+    ///
+    /// # Arguments
+    /// * `port_index` - The index of the port.
+    /// * `block_index` - The index of the register block.
+    ///
+    /// # Returns
+    /// A result containing the `LinkIdeStreamRegBlock` for the specified port and block
+    fn link_ide_reg_block(
+        &self,
+        port_index: u8,
+        block_index: u8,
+    ) -> IdeDriverResult<LinkIdeStreamRegBlock>;
+
+    /// Get the selective IDE register block for a specific port and block index.
+    ///
+    /// # Arguments
+    /// * `port_index` - The index of the port.
+    /// * `block_index` - The index of the register block.
+    ///
+    /// # Returns
+    /// A result containing the `SelectiveIdeStreamRegBlock` for the specified port and block
+    fn selective_ide_reg_block(
+        &self,
+        port_index: u8,
+        block_index: u8,
+    ) -> IdeDriverResult<SelectiveIdeStreamRegBlock>;
 
     /// Key programming for a specific port and stream.
     ///
@@ -163,5 +188,4 @@ pub trait IdeDriver {
         port_index: u8,
     ) -> IdeDriverResult<KeyInfo>;
 }
-
 ```
