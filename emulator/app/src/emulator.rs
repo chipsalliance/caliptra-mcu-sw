@@ -31,6 +31,8 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_bmc::Bmc;
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
+#[allow(unused_imports)]
+use emulator_periph::MciMailboxRequester;
 use emulator_periph::{
     CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
     McuMailbox0Internal, McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp,
@@ -737,6 +739,8 @@ impl Emulator {
 
         let lc = LcCtrl::new();
 
+        let mcu_mailbox0 = McuMailbox0Internal::new(&clock.clone());
+
         let otp = Otp::new(
             &clock.clone(),
             cli.otp,
@@ -745,12 +749,7 @@ impl Emulator {
             vendor_pk_hash,
             cli.vendor_pqc_type,
         )?;
-        let mci = Mci::new(
-            &clock.clone(),
-            ext_mci,
-            mci_irq,
-            Some(McuMailbox0Internal::new(&clock.clone())),
-        );
+        let mci = Mci::new(&clock.clone(), ext_mci, mci_irq, Some(mcu_mailbox0.clone()));
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
@@ -846,6 +845,20 @@ impl Emulator {
             bmc.push_recovery_image(soc_manifest);
             bmc.push_recovery_image(mcu_firmware);
             println!("Active mode enabled with 3 recovery images");
+        }
+
+        #[cfg(any(
+            feature = "test-mcu-mbox-soc-requester-loopback",
+            feature = "test-mcu-mbox-usermode"
+        ))]
+        {
+            const SOC_AGENT_ID: u32 = 0x1;
+            use emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;
+            let transport = McuMailboxTransport::new(
+                mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(SOC_AGENT_ID)),
+            );
+            let test = crate::tests::emulator_mcu_mailbox_test::RequestResponseTest::new(transport);
+            test.run();
         }
 
         if cli.streaming_boot.is_some() {

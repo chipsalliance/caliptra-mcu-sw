@@ -22,6 +22,9 @@ mod rom;
 mod runtime;
 mod test;
 
+#[cfg(feature = "fpga_realtime")]
+use fpga::Fpga;
+
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Xtask {
@@ -183,9 +186,13 @@ enum Commands {
     },
     /// Check dependencies
     Deps,
-    /// Build and install the FPGA kernel modules for uio and the ROM backdoors
+    /// Manage FPGA Life cycle
     #[cfg(feature = "fpga_realtime")]
-    FpgaInstallKernelModules,
+    Fpga {
+        #[command(subcommand)]
+        subcommand: Fpga,
+    },
+    // TODO(clundin): Refactor into FPGA module.
     /// Run firmware on the FPGA
     #[cfg(feature = "fpga_realtime")]
     FpgaRun {
@@ -414,9 +421,10 @@ fn main() {
         } => registers::autogen(*check, files, addrmap),
         Commands::Deps => deps::check(),
         #[cfg(feature = "fpga_realtime")]
-        Commands::FpgaRun { .. } => fpga::fpga_run(cli.xtask),
+        Commands::Fpga { subcommand } => fpga::fpga_entry(subcommand),
+        // TODO(clundin): Refactor into FPGA module.
         #[cfg(feature = "fpga_realtime")]
-        Commands::FpgaInstallKernelModules => fpga::fpga_install_kernel_modules(),
+        Commands::FpgaRun { .. } => fpga::fpga_run(cli.xtask),
         Commands::PldmFirmware { subcommand } => match subcommand {
             PldmFirmwareCommands::Create { manifest, file } => pldm_fw_pkg::create(manifest, file),
             PldmFirmwareCommands::Decode { package, dir } => pldm_fw_pkg::decode(package, dir),

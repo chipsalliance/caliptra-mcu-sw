@@ -8,6 +8,7 @@ use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use capsules_runtime::doe::driver::DoeDriver;
 use capsules_runtime::mctp::base_protocol::MessageType;
+use capsules_runtime::mcu_mbox::McuMboxDriver;
 use core::ptr::{addr_of, addr_of_mut};
 use doe_mbox_driver::EmulatedDoeTransport;
 use kernel::capabilities;
@@ -27,6 +28,7 @@ use kernel::{create_capability, debug, static_init};
 use mcu_components::mctp_mux_component_static;
 use mcu_components::{
     doe_component_static, mailbox_component_static, mctp_driver_component_static,
+    mcu_mbox_component_static,
 };
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
@@ -127,9 +129,9 @@ struct VeeR {
     scheduler_timer:
         &'static VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>,
     mctp_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    mctp_secure_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    // mctp_secure_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    // mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     doe_spdm: &'static capsules_runtime::doe::driver::DoeDriver<
         'static,
         EmulatedDoeTransport<'static, InternalTimers<'static>>,
@@ -143,6 +145,10 @@ struct VeeR {
     dma: &'static capsules_emulator::dma::Dma<'static>,
     logging_flash: &'static capsules_emulator::logging::driver::LoggingFlashDriver<'static>,
     mci: &'static capsules_runtime::mci::Mci,
+    mcu_mbox0: &'static capsules_runtime::mcu_mbox::McuMboxDriver<
+        'static,
+        mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>,
+    >,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -156,11 +162,11 @@ impl SyscallDriverLookup for VeeR {
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
             capsules_core::low_level_debug::DRIVER_NUM => f(Some(self.lldb)),
             capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM => f(Some(self.mctp_spdm)),
-            capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM => {
-                f(Some(self.mctp_secure_spdm))
-            }
+            // capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM => {
+            //     f(Some(self.mctp_secure_spdm))
+            // }
             capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
-            capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
+            // capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
             capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM => f(Some(self.doe_spdm)),
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
@@ -179,6 +185,7 @@ impl SyscallDriverLookup for VeeR {
             capsules_emulator::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
                 f(Some(self.logging_flash))
             }
+            capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => f(Some(self.mcu_mbox0)),
 
             _ => f(None),
         }
@@ -525,13 +532,13 @@ pub unsafe fn main() {
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
 
-    let mctp_secure_spdm = mcu_components::mctp_driver::MCTPDriverComponent::new(
-        board_kernel,
-        capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM,
-        mux_mctp,
-        MessageType::SecureSpdm,
-    )
-    .finalize(mctp_driver_component_static!(InternalTimers));
+    // let mctp_secure_spdm = mcu_components::mctp_driver::MCTPDriverComponent::new(
+    //     board_kernel,
+    //     capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM,
+    //     mux_mctp,
+    //     MessageType::SecureSpdm,
+    // )
+    // .finalize(mctp_driver_component_static!(InternalTimers));
 
     let mctp_pldm = mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
@@ -541,13 +548,13 @@ pub unsafe fn main() {
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
 
-    let mctp_caliptra = mcu_components::mctp_driver::MCTPDriverComponent::new(
-        board_kernel,
-        capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM,
-        mux_mctp,
-        MessageType::Caliptra,
-    )
-    .finalize(mctp_driver_component_static!(InternalTimers));
+    // let mctp_caliptra = mcu_components::mctp_driver::MCTPDriverComponent::new(
+    //     board_kernel,
+    //     capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM,
+    //     mux_mctp,
+    //     MessageType::Caliptra,
+    // )
+    // .finalize(mctp_driver_component_static!(InternalTimers));
 
     // Set up a SPDM over DOE capsule.
     let doe_spdm = mcu_components::doe::DoeComponent::new(
@@ -619,6 +626,16 @@ pub unsafe fn main() {
     )
     .finalize(kernel::static_buf!(capsules_emulator::dma::Dma<'static>));
 
+    // MCU mailbox0 capsule
+    let mcu_mbox0 = mcu_components::mcu_mbox::McuMboxComponent::new(
+        board_kernel,
+        capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
+        &peripherals.mcu_mbox0,
+    )
+    .finalize(mcu_mbox_component_static!(
+        mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>
+    ));
+
     // Need to enable all interrupts for Tock Kernel
     chip.enable_pic_interrupts();
     chip.enable_timer_interrupts();
@@ -650,15 +667,16 @@ pub unsafe fn main() {
             scheduler,
             scheduler_timer,
             mctp_spdm,
-            mctp_secure_spdm,
+            // mctp_secure_spdm,
             mctp_pldm,
-            mctp_caliptra,
+            // mctp_caliptra,
             doe_spdm,
             flash_partitions,
             mailbox,
             dma,
             logging_flash,
             mci,
+            mcu_mbox0,
         }
     );
 
@@ -690,6 +708,7 @@ pub unsafe fn main() {
         feature = "test-log-flash-linear",
         feature = "test-log-flash-circular",
         feature = "test-mcu-mbox",
+        feature = "test-mcu-mbox-soc-requester-loopback",
     ))]
     {
         PLATFORM = Some(veer);
@@ -743,6 +762,10 @@ pub unsafe fn main() {
     } else if cfg!(feature = "test-mcu-mbox") {
         debug!("Executing test-mcu-mbox");
         crate::tests::mcu_mbox_test::test_mcu_mbox()
+    } else if cfg!(feature = "test-mcu-mbox-soc-requester-loopback") {
+        debug!("Executing test-mcu-mbox-soc-requester-loopback");
+        crate::tests::mcu_mbox_driver_loopback_test::test_mcu_mbox_soc_requester_loopback();
+        None
     } else {
         None
     };

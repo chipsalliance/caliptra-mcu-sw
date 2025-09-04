@@ -96,26 +96,28 @@ fn send_message_helper<P: PldmCodec>(
     debug!("Sent message: {:?}", std::any::type_name::<P>());
     let packet_buf = buffer[..sz].to_vec();
     *ctx.retry_count.lock().unwrap() = 0;
-    ctx.response_timer.schedule_periodic(
-        RESPONSE_TIMEOUT,
-        (
-            ctx.socket.clone(),
-            packet_buf.clone(),
-            ctx.retry_count.clone(),
-        ),
-        |(socket, packet_buf, retry_count)| {
-            if *retry_count.lock().unwrap() < MAX_RETRY_COUNT {
-                *retry_count.lock().unwrap() += 1;
-                info!(
-                    "Retrying request, attempt: {}",
-                    *retry_count.lock().unwrap()
-                );
-                socket.send(&packet_buf[..]).unwrap();
-            } else {
-                error!("Max retry count reached, giving up on request");
-            }
-        },
-    );
+    if ctx.is_initiator {
+        ctx.response_timer.schedule_periodic(
+            RESPONSE_TIMEOUT,
+            (
+                ctx.socket.clone(),
+                packet_buf.clone(),
+                ctx.retry_count.clone(),
+            ),
+            |(socket, packet_buf, retry_count)| {
+                if *retry_count.lock().unwrap() < MAX_RETRY_COUNT {
+                    *retry_count.lock().unwrap() += 1;
+                    info!(
+                        "Retrying request, attempt: {}",
+                        *retry_count.lock().unwrap()
+                    );
+                    socket.send(&packet_buf[..]).unwrap();
+                } else {
+                    error!("Max retry count reached, giving up on request");
+                }
+            },
+        );
+    }
     Ok(())
 }
 
@@ -695,6 +697,7 @@ pub trait StateMachineActions {
             request.hdr.instance_id(),
             PldmBaseCompletionCode::Success as u8,
         );
+        ctx.is_initiator = false;
         send_message_helper(ctx, &response)?;
 
         if request.tranfer_result == TransferResult::TransferSuccess as u8 {
@@ -895,6 +898,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
         info!("Apply success");
+        ctx.is_initiator = true;
         self.on_next_component(ctx)
     }
 
@@ -1152,6 +1156,7 @@ pub struct InnerContext<S: PldmSocket> {
     transferred_bytes: u32,
     response_timer: Timer,
     retry_count: Arc<Mutex<u8>>,
+    is_initiator: bool,
 }
 
 pub struct Context<T: StateMachineActions, S: PldmSocket> {
@@ -1182,6 +1187,7 @@ impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
                 transferred_bytes: 0,
                 response_timer: Timer::new(),
                 retry_count: Arc::new(Mutex::new(0)),
+                is_initiator: true,
             },
         }
     }

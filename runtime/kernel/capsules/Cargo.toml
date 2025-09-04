@@ -13,6 +13,7 @@ capsules-core.workspace = true
 capsules-extra.workspace = true
 doe-transport.workspace = true
 i3c-driver.workspace = true
+mcu-mbox-comm.workspace = true
 kernel.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true

@@ -4,21 +4,20 @@ use caliptra_emu_bus::BusError;
 use caliptra_emu_bus::{Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
 use caliptra_emu_types::{RvAddr, RvSize};
 use registers_generated::mci::bits::MboxExecute;
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{Readable, Writeable};
 
-const MCU_MAILBOX0_SRAM_SIZE: usize = 2 * 1024 * 1024; // Default size of the mailbox SRAM 2MB
+pub const MCU_MAILBOX0_SRAM_SIZE: usize = 2 * 1024 * 1024; // Default size of the mailbox SRAM 2MB
 
 #[derive(Clone)]
 pub struct MciMailboxRam {
-    ram: Rc<RefCell<Ram>>,
+    ram: Arc<Mutex<Ram>>,
 }
 
 impl MciMailboxRam {
     pub fn new() -> Self {
         Self {
-            ram: Rc::new(RefCell::new(Ram::new(vec![0u8; MCU_MAILBOX0_SRAM_SIZE]))),
+            ram: Arc::new(Mutex::new(Ram::new(vec![0u8; MCU_MAILBOX0_SRAM_SIZE]))),
         }
     }
 }
@@ -26,13 +25,13 @@ impl MciMailboxRam {
 //  MCU Mailbox 0 Interface used by MCU.
 #[derive(Clone)]
 pub struct McuMailbox0Internal {
-    pub regs: Rc<RefCell<MciMailboxImpl>>,
+    pub regs: Arc<Mutex<MciMailboxImpl>>,
 }
 
 impl McuMailbox0Internal {
     pub fn new(clock: &Clock) -> Self {
         Self {
-            regs: Rc::new(RefCell::new(MciMailboxImpl::new(clock))),
+            regs: Arc::new(Mutex::new(MciMailboxImpl::new(clock))),
         }
     }
 
@@ -44,7 +43,7 @@ impl McuMailbox0Internal {
     }
 
     pub fn get_notif_irq(&mut self) -> Option<IrqEventToMcu> {
-        let mut regs = self.regs.borrow_mut();
+        let mut regs = self.regs.lock().unwrap();
         if regs.irq {
             regs.irq = false;
             let event = regs.last_irq_event;
@@ -56,16 +55,17 @@ impl McuMailbox0Internal {
 
     #[cfg(test)]
     pub fn set_notif_irq(&mut self, event: IrqEventToMcu) {
-        let mut regs = self.regs.borrow_mut();
+        let mut regs = self.regs.lock().unwrap();
         regs.irq = true;
         regs.last_irq_event = Some(event);
     }
 }
 
 // External interface for MCU Mailbox 0, used by SoC agent.
+#[derive(Clone)]
 pub struct McuMailbox0External {
     pub soc_agent: MciMailboxRequester,
-    pub regs: Rc<RefCell<MciMailboxImpl>>,
+    pub regs: Arc<Mutex<MciMailboxImpl>>,
 }
 
 // MCU Mailbox 0 implementation.
@@ -203,11 +203,15 @@ impl MciMailboxImpl {
         self.lock.reg.get() != 0
     }
 
+    pub fn lock(&self) {
+        self.lock.reg.set(1);
+    }
+
     /// Clears mailbox SRAM and resets mailbox registers as per protocol
     pub fn mailbox_zeroization(&mut self) {
         // Start clearing SRAM from 0 to max DLEN seen in this lock session
         let dlen = self.max_dlen_in_lock_session;
-        let mut ram = self.sram.ram.borrow_mut();
+        let mut ram = self.sram.ram.lock().unwrap();
         for offset in (0..dlen).step_by(4) {
             if let Err(e) = ram.write(RvSize::Word, offset as u32, 0) {
                 panic!("Failed to zeroize mcu_mbox0 SRAM at offset {offset}: {e:?}");
@@ -234,7 +238,8 @@ impl MciMailboxImpl {
 
         self.sram
             .ram
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .read(RvSize::Word, (index * 4) as RvAddr)
             .unwrap_or_else(|e| {
                 if matches!(e, BusError::InstrAccessFault | BusError::LoadAccessFault) {
@@ -254,11 +259,12 @@ impl MciMailboxImpl {
         if index >= (MCU_MAILBOX0_SRAM_SIZE / 4) {
             panic!("Index out of bounds for mcu_mbox0 SRAM: {index}");
         }
-        if let Err(e) = self
-            .sram
-            .ram
-            .borrow_mut()
-            .write(RvSize::Word, (index * 4) as RvAddr, val)
+        if let Err(e) =
+            self.sram
+                .ram
+                .lock()
+                .unwrap()
+                .write(RvSize::Word, (index * 4) as RvAddr, val)
         {
             panic!("Failed to write mcu_mbox0 SRAM at index {index}: {e:?}");
         }
@@ -439,6 +445,8 @@ impl MciMailboxImpl {
 
 #[cfg(test)]
 mod tests {
+    use std::{cell::RefCell, rc::Rc};
+
     use super::*;
     use crate::mci::Mci;
     use crate::McuRootBus;
@@ -473,7 +481,7 @@ mod tests {
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
         let mci = Mci::new(
-            &clock,
+            clock,
             ext_mci_regs.clone(),
             Rc::new(RefCell::new(mci_irq)),
             Some(mcu_mailbox0.clone()),
@@ -497,7 +505,7 @@ mod tests {
     }
 
     fn test_mailbox_zeroization(test_dlen: u32, mcu_mailbox0: &McuMailbox0Internal) {
-        let mut regs = mcu_mailbox0.regs.borrow_mut();
+        let mut regs = mcu_mailbox0.regs.lock().unwrap();
         // Check SRAM is zeroized
         for i in 0..(test_dlen as usize / 4) {
             let val = regs.read_mcu_mbox0_csr_mbox_sram(i);
@@ -559,9 +567,8 @@ mod tests {
             "Last IRQ event should be cleared"
         );
         // Check that the mailbox is unlocked
-        assert_eq!(
-            regs.is_locked(),
-            false,
+        assert!(
+            !regs.is_locked(),
             "Mailbox should be unlocked after zeroization"
         );
     }
@@ -572,9 +579,9 @@ mod tests {
         let mcu_mailbox0 = McuMailbox0Internal::new(&dummy_clock);
         let mut bus = test_helper_setup_autobus(&dummy_clock, &mcu_mailbox0);
 
-        mcu_mailbox0.regs.borrow_mut().reset();
+        mcu_mailbox0.regs.lock().unwrap().reset();
         assert!(
-            !mcu_mailbox0.regs.borrow().is_locked(),
+            !mcu_mailbox0.regs.lock().unwrap().is_locked(),
             "Mailbox should be unlocked after reset"
         );
 
@@ -681,9 +688,9 @@ mod tests {
         let dummy_clock = Clock::new();
         let mcu_mailbox0 = McuMailbox0Internal::new(&dummy_clock);
 
-        mcu_mailbox0.regs.borrow_mut().reset();
+        mcu_mailbox0.regs.lock().unwrap().reset();
         assert!(
-            !mcu_mailbox0.regs.borrow().is_locked(),
+            !mcu_mailbox0.regs.lock().unwrap().is_locked(),
             "Mailbox should be unlocked after reset"
         );
 
@@ -704,7 +711,8 @@ mod tests {
 
         let soc = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(SOC_AGENT_ID));
         soc.regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .set_requester(MciMailboxRequester::SocAgent(SOC_AGENT_ID));
 
         let test_cmd = 0x55;
@@ -714,15 +722,14 @@ mod tests {
         let response_status = MboxCmdStatus::Status::CmdComplete.value;
 
         // SoC acquires the lock
-        soc.regs.borrow_mut().read_mcu_mbox0_csr_mbox_lock();
-        assert_eq!(
-            soc.regs.borrow().is_locked(),
-            true,
+        soc.regs.lock().unwrap().read_mcu_mbox0_csr_mbox_lock();
+        assert!(
+            soc.regs.lock().unwrap().is_locked(),
             "Mailbox should be locked after acquiring lock"
         );
 
         assert_eq!(
-            soc.regs.borrow_mut().read_mcu_mbox0_csr_mbox_user(),
+            soc.regs.lock().unwrap().read_mcu_mbox0_csr_mbox_user(),
             u32::from(MciMailboxRequester::SocAgent(SOC_AGENT_ID)),
             "User register should reflect SOC agent ID"
         );
@@ -730,17 +737,22 @@ mod tests {
         // SoC writes data to SRAM
         for (i, word) in test_data.iter().enumerate() {
             soc.regs
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .write_mcu_mbox0_csr_mbox_sram(*word, i);
         }
         // SoC writes DLEN
         soc.regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .write_mcu_mbox0_csr_mbox_dlen(test_dlen);
         // SoC writes CMD
-        soc.regs.borrow_mut().write_mcu_mbox0_csr_mbox_cmd(test_cmd);
+        soc.regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_cmd(test_cmd);
         // SoC writes 1 to EXECUTE
-        soc.regs.borrow_mut().write_mcu_mbox0_csr_mbox_execute(
+        soc.regs.lock().unwrap().write_mcu_mbox0_csr_mbox_execute(
             caliptra_emu_bus::ReadWriteRegister::new(MboxExecute::Execute::SET.value),
         );
 
@@ -792,14 +804,18 @@ mod tests {
 
         // SoC reads the response data and status via direct access (regs)
         for (i, word) in response_data.iter().enumerate() {
-            let val = soc.regs.borrow_mut().read_mcu_mbox0_csr_mbox_sram(i);
+            let val = soc.regs.lock().unwrap().read_mcu_mbox0_csr_mbox_sram(i);
             assert_eq!(
                 val, *word,
                 "SoC should read correct response data at word {}",
                 i
             );
         }
-        let cmd_status_val = soc.regs.borrow_mut().read_mcu_mbox0_csr_mbox_cmd_status();
+        let cmd_status_val = soc
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_cmd_status();
         assert_eq!(
             cmd_status_val.reg.get(),
             response_status,
@@ -807,7 +823,7 @@ mod tests {
         );
 
         // SoC writes 0 to EXECUTE to release the mailbox
-        soc.regs.borrow_mut().write_mcu_mbox0_csr_mbox_execute(
+        soc.regs.lock().unwrap().write_mcu_mbox0_csr_mbox_execute(
             caliptra_emu_bus::ReadWriteRegister::new(MboxExecute::Execute::CLEAR.value),
         );
 
@@ -820,9 +836,9 @@ mod tests {
         let mcu_mailbox0 = McuMailbox0Internal::new(&dummy_clock);
         let mut bus = test_helper_setup_autobus(&dummy_clock, &mcu_mailbox0);
 
-        mcu_mailbox0.regs.borrow_mut().reset();
+        mcu_mailbox0.regs.lock().unwrap().reset();
         assert!(
-            !mcu_mailbox0.regs.borrow().is_locked(),
+            !mcu_mailbox0.regs.lock().unwrap().is_locked(),
             "Mailbox should be unlocked after reset"
         );
 
@@ -844,13 +860,13 @@ mod tests {
         bus.read(RvSize::Word, MCI_BASE_ADDR + MBOX_LOCK_OFFSET)
             .unwrap();
         assert!(
-            mcu_mailbox0.regs.borrow().is_locked(),
+            mcu_mailbox0.regs.lock().unwrap().is_locked(),
             "Mailbox should be locked"
         );
 
         // Check user is set to MCU
         assert_eq!(
-            soc.regs.borrow_mut().read_mcu_mbox0_csr_mbox_user(),
+            soc.regs.lock().unwrap().read_mcu_mbox0_csr_mbox_user(),
             u32::from(MciMailboxRequester::Mcu),
             "User register should reflect MCU requester"
         );
@@ -897,21 +913,22 @@ mod tests {
 
         // SoC reads data and status via direct access (regs)
         for (i, word) in test_data.iter().enumerate() {
-            let val = soc.regs.borrow_mut().read_mcu_mbox0_csr_mbox_sram(i);
+            let val = soc.regs.lock().unwrap().read_mcu_mbox0_csr_mbox_sram(i);
             assert_eq!(
                 val, *word,
                 "SoC should read correct SRAM data at word {}",
                 i
             );
         }
-        let cmd_val = soc.regs.borrow_mut().read_mcu_mbox0_csr_mbox_cmd();
-        let dlen_val = soc.regs.borrow_mut().read_mcu_mbox0_csr_mbox_dlen();
+        let cmd_val = soc.regs.lock().unwrap().read_mcu_mbox0_csr_mbox_cmd();
+        let dlen_val = soc.regs.lock().unwrap().read_mcu_mbox0_csr_mbox_dlen();
         assert_eq!(cmd_val, test_cmd, "SoC should read correct CMD");
         assert_eq!(dlen_val, test_dlen, "SoC should read correct DLEN");
 
         // SoC writes target status (simulate command complete)
         soc.regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .write_mcu_mbox0_csr_mbox_target_status(caliptra_emu_bus::ReadWriteRegister::new(
                 response_status,
             ));
@@ -933,7 +950,8 @@ mod tests {
         for (i, word) in test_data.iter().enumerate() {
             let val = mcu_mailbox0
                 .regs
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .read_mcu_mbox0_csr_mbox_sram(i);
             assert_eq!(
                 val, *word,
@@ -943,7 +961,8 @@ mod tests {
         }
         let target_status_val = mcu_mailbox0
             .regs
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .read_mcu_mbox0_csr_mbox_target_status();
         assert_eq!(
             target_status_val.reg.get() & MboxTargetStatus::Status::CmdComplete.value,

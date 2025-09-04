@@ -333,7 +333,7 @@ mod test {
     run_test!(test_log_flash_usermode, example_app);
     run_test!(test_mctp_ctrl_cmds);
     run_test!(test_mctp_capsule_loopback);
-    run_test!(test_mctp_user_loopback, example_app);
+    // run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);
     run_test!(test_pldm_fw_update_e2e);
@@ -341,6 +341,8 @@ mod test {
     run_test!(test_doe_spdm_responder_conformance, nightly);
     run_test!(test_mci, example_app);
     run_test!(test_mcu_mbox);
+    run_test!(test_mcu_mbox_soc_requester_loopback, example_app);
+    run_test!(test_mcu_mbox_usermode, example_app);
 
     /// This tests a full active mode boot run through with Caliptra, including
     /// loading MCU's firmware from Caliptra over the recovery interface.

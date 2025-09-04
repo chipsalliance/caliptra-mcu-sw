@@ -38,7 +38,9 @@ pub use i3c::I3c;
 pub use i3c_protocol::*;
 pub use lc_ctrl::LcCtrl;
 pub use mci::Mci;
-pub use mcu_mbox0::McuMailbox0Internal;
+pub use mcu_mbox0::{
+    MciMailboxRequester, McuMailbox0External, McuMailbox0Internal, MCU_MAILBOX0_SRAM_SIZE,
+};
 pub use otp::Otp;
 pub use otp_digest::{otp_digest, otp_scramble, otp_unscramble};
 pub use reset_reason::ResetReasonEmulator;

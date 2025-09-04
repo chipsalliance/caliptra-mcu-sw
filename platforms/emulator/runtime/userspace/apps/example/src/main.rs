@@ -39,6 +39,9 @@ mod test_logging_flash;
 #[cfg(feature = "test-mci")]
 mod test_mci;
 
+#[cfg(feature = "test-mcu-mbox-usermode")]
+mod test_mcu_mbox_usermode;
+
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
@@ -229,6 +232,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
     {
         test_mci::test_mci_read_write().await;
         romtime::test_exit(0);
+    }
+
+    #[cfg(feature = "test-mcu-mbox-usermode")]
+    {
+        writeln!(console_writer, "Running MCU mailbox usermode loopback test").unwrap();
+        test_mcu_mbox_usermode::test_mcu_mbox_usermode_loopback().await;
     }
 
     writeln!(console_writer, "app finished").unwrap();
