@@ -8,7 +8,7 @@ mod rom;
 mod runtime;
 mod tbf;
 
-pub use all::{all_build, FirmwareBinaries};
+pub use all::{all_build, AllBuildArgs, FirmwareBinaries};
 pub use caliptra::{CaliptraBuilder, ImageCfg};
 pub use rom::{rom_build, rom_ld_script};
 pub use runtime::{
