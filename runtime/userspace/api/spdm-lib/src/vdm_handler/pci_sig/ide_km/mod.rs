@@ -9,9 +9,9 @@ use crate::vdm_handler::{VdmError, VdmProtocolMatcher, VdmResponder, VdmResult};
 use alloc::boxed::Box;
 use async_trait::async_trait;
 
-pub(crate) mod command;
+pub(crate) mod commands;
 pub mod driver;
-pub(crate) mod protocol;
+pub mod protocol;
 
 const IDE_KM_PROTOCOL_ID: u8 = 0x00;
 
@@ -50,16 +50,17 @@ impl VdmResponder for IdeKmResponder<'_> {
 
         len += match ide_km_cmd {
             IdeKmCommand::Query => {
-                command::handle_query(req_buf, rsp_buf, self.ide_km_driver).await?
+                commands::handle_query(req_buf, rsp_buf, self.ide_km_driver).await?
             }
             IdeKmCommand::KeyProg => {
-                command::handle_key_prog(req_buf, rsp_buf, self.ide_km_driver).await?
+                commands::handle_key_prog(req_buf, rsp_buf, self.ide_km_driver).await?
             }
             IdeKmCommand::KeySetGo => {
-                command::handle_key_set_go_stop(true, req_buf, rsp_buf, self.ide_km_driver).await?
+                commands::handle_key_set_go_stop(true, req_buf, rsp_buf, self.ide_km_driver).await?
             }
             IdeKmCommand::KeySetStop => {
-                command::handle_key_set_go_stop(false, req_buf, rsp_buf, self.ide_km_driver).await?
+                commands::handle_key_set_go_stop(false, req_buf, rsp_buf, self.ide_km_driver)
+                    .await?
             }
             _ => return Err(VdmError::InvalidVdmCommand),
         };
