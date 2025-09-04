@@ -3,14 +3,13 @@
 extern crate alloc;
 
 use crate::error::{SpdmError, SpdmResult};
-use crate::protocol::certs::{CertificateInfo, KeyUsageMask};
-use crate::protocol::SpdmCertChainHeader;
+use crate::protocol::*;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use libapi_caliptra::error::CaliptraApiError;
-use libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
+use zerocopy::IntoBytes;
 
 pub const MAX_CERT_SLOTS_SUPPORTED: u8 = 2;
 pub const SPDM_CERT_CHAIN_METADATA_LEN: u16 =
@@ -179,33 +178,70 @@ pub(crate) async fn cert_slot_mask(cert_store: &dyn SpdmCertStore) -> (u8, u8) {
 /// * `cert_store` - The certificate store to retrieve the certificate chain from.
 /// * `slot_id` - The slot ID of the certificate chain.
 /// * `asym_algo` - The asymmetric algorithm to indicate the type of Certificate chain.
+/// * `hash` - The output buffer to store the hash of the certificate chain.
 ///
 /// # Returns
 /// * `hash` - The hash of the certificate chain.
-pub(crate) async fn hash_cert_chain(
+pub(crate) async fn compute_cert_chain_hash(
     cert_store: &dyn SpdmCertStore,
     slot_id: u8,
     asym_algo: AsymAlgo,
-) -> CertStoreResult<[u8; SHA384_HASH_SIZE]> {
-    let mut buffer = [0u8; MAX_CRYPTO_MBOX_DATA_SIZE];
-    let mut hash = [0u8; SHA384_HASH_SIZE];
-    let mut ctx = HashContext::new();
-    ctx.init(HashAlgoType::SHA384, None)
+    hash: &mut [u8],
+) -> CertStoreResult<()> {
+    if hash.len() != SHA384_HASH_SIZE {
+        Err(CertStoreError::BufferTooSmall)?;
+    }
+
+    let crt_chain_len = cert_store.cert_chain_len(asym_algo, slot_id).await?;
+    let cert_chain_format_len = crt_chain_len + SPDM_CERT_CHAIN_METADATA_LEN as usize;
+
+    let header = SpdmCertChainHeader {
+        length: cert_chain_format_len as u16,
+        reserved: 0,
+    };
+
+    // Length and reserved fields
+    let header_bytes = header.as_bytes();
+    let mut hash_ctx = HashContext::new();
+    hash_ctx
+        .init(HashAlgoType::SHA384, Some(header_bytes))
         .await
         .map_err(CertStoreError::CaliptraApi)?;
 
-    let len = cert_store.cert_chain_len(asym_algo, slot_id).await?;
-    for i in (0..len).step_by(buffer.len()) {
-        let chunk_len = buffer.len().min(len - i);
-        cert_store
-            .get_cert_chain(slot_id, asym_algo, i, &mut buffer[..chunk_len])
-            .await?;
-        ctx.update(&buffer[..chunk_len])
-            .await
-            .map_err(CertStoreError::CaliptraApi)?;
-    }
-    ctx.finalize(&mut hash)
+    // Root certificate hash
+    let mut root_hash = [0u8; SHA384_HASH_SIZE];
+
+    cert_store
+        .root_cert_hash(slot_id, asym_algo, &mut root_hash)
+        .await?;
+    hash_ctx
+        .update(&root_hash)
         .await
         .map_err(CertStoreError::CaliptraApi)?;
-    Ok(hash)
+
+    // Hash the certificate chain
+    let mut cert_portion = [0u8; SPDM_MAX_CERT_CHAIN_PORTION_LEN as usize];
+    let mut offset = 0;
+
+    loop {
+        let bytes_read = cert_store
+            .get_cert_chain(slot_id, asym_algo, offset, &mut cert_portion)
+            .await?;
+
+        hash_ctx
+            .update(&cert_portion[..bytes_read])
+            .await
+            .map_err(CertStoreError::CaliptraApi)?;
+
+        offset += bytes_read;
+
+        // If the bytes read is less than the length of the cert portion, it indicates the end of the chain
+        if bytes_read < cert_portion.len() {
+            break;
+        }
+    }
+    hash_ctx
+        .finalize(hash)
+        .await
+        .map_err(CertStoreError::CaliptraApi)
 }

@@ -25,6 +25,7 @@ bitfield! {
 pub(crate) enum SessionState {
     HandshakeNotStarted, // Before KEY_EXCHANGE and after END_SESSION
     HandshakeInProgress, // After KEY_EXCHANGE and before FINISH
+    Establishing,        // When FINISH is successfully processed
     Established,         // After FINISH
     Terminating,         // When END_SESSION is received
 }
@@ -139,7 +140,9 @@ impl SessionInfo {
     ) -> SessionResult<(usize, Aes256GcmTag)> {
         let session_key_type = match self.session_state {
             SessionState::HandshakeNotStarted => return Err(SessionError::InvalidState),
-            SessionState::HandshakeInProgress => SessionKeyType::ResponseHandshakeEncDecKey,
+            SessionState::HandshakeInProgress | SessionState::Establishing => {
+                SessionKeyType::ResponseHandshakeEncDecKey
+            }
             SessionState::Established | SessionState::Terminating => {
                 SessionKeyType::ResponseDataEncDecKey
             }
@@ -165,7 +168,9 @@ impl SessionInfo {
     ) -> SessionResult<usize> {
         let session_key_type = match self.session_state {
             SessionState::HandshakeNotStarted => return Err(SessionError::InvalidState),
-            SessionState::HandshakeInProgress => SessionKeyType::RequestHandshakeEncDecKey,
+            SessionState::HandshakeInProgress | SessionState::Establishing => {
+                SessionKeyType::RequestHandshakeEncDecKey
+            }
             SessionState::Established | SessionState::Terminating => {
                 SessionKeyType::RequestDataEncDecKey
             }

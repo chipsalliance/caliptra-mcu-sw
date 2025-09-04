@@ -18,10 +18,11 @@ use spdm_lib::transport::common::SpdmTransport;
 use spdm_lib::transport::doe::DoeTransport;
 use spdm_lib::transport::mctp::MctpTransport;
 
-// Caliptra supported SPDM versions
+// Caliptra supported SPDM and Secure SPDM versions
 const SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12, SpdmVersion::V13];
+const SECURE_SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12];
 
-// Calitra Crypto timeout exponent (2^20 us)
+// Caliptra Crypto timeout exponent (2^20 us)
 const CALIPTRA_SPDM_CT_EXPONENT: u8 = 20;
 
 #[embassy_executor::task]
@@ -81,6 +82,7 @@ async fn spdm_mctp_responder() {
 
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
+        SECURE_SPDM_VERSIONS,
         &mut mctp_spdm_transport,
         local_capabilities,
         local_algorithms,
@@ -121,11 +123,10 @@ async fn spdm_doe_responder() {
     let max_doe_spdm_msg_size =
         (MAX_SPDM_RESPONDER_BUF_SIZE - doe_spdm_transport.header_size()) as u32;
 
-    let doe_capability_flags = CapabilityFlags::default();
-    // TODO: Enable the following once secure sessions are implemented
-    // doe_capability_flags.set_key_ex_cap(1);
-    // doe_capability_flags.set_mac_cap(1);
-    // doe_capability_flags.set_encrypt_cap(1);
+    let mut doe_capability_flags = CapabilityFlags::default();
+    doe_capability_flags.set_key_ex_cap(1);
+    doe_capability_flags.set_mac_cap(1);
+    doe_capability_flags.set_encrypt_cap(1);
 
     let local_capabilities = DeviceCapabilities {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
@@ -134,11 +135,11 @@ async fn spdm_doe_responder() {
         max_spdm_msg_size: max_doe_spdm_msg_size,
     };
 
-    let device_doe_algorithms = DeviceAlgorithms::default();
-    // TODO: Enable the following once secure sessions are implemented
-    // device_doe_algorithms.set_dhe_group();
-    // device_doe_algorithms.set_aead_cipher_suite();
-    // device_doe_algorithms.set_spdm_key_schedule();
+    let mut device_doe_algorithms = DeviceAlgorithms::default();
+    device_doe_algorithms.set_dhe_group();
+    device_doe_algorithms.set_aead_cipher_suite();
+    device_doe_algorithms.set_spdm_key_schedule();
+    device_doe_algorithms.set_other_param_support();
 
     let local_algorithms = LocalDeviceAlgorithms::new(device_doe_algorithms);
 
@@ -147,6 +148,7 @@ async fn spdm_doe_responder() {
 
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
+        SECURE_SPDM_VERSIONS,
         &mut doe_spdm_transport,
         local_capabilities,
         local_algorithms,

@@ -38,3 +38,6 @@ pub mod session;
 
 // Spdm PCI-SIG standard vendor defined message interface
 pub mod pci_sig;
+
+// Opaque Element
+pub mod opaque_element;
