@@ -95,7 +95,7 @@ fn rsync_file(target_host: &str, file: &str, from_fpga: bool) -> Result<()> {
         format!("{target_host}:.")
     };
     let args = if from_fpga {
-        ["-avxz", &copy, file]
+        ["-avxz", &copy, "."]
     } else {
         ["-avxz", file, &copy]
     };

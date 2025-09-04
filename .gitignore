@@ -40,3 +40,6 @@ layout.ld
 **/*.zip
 
 cross-target/
+
+# Test logs
+**/junit.xml
