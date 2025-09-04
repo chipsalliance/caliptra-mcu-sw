@@ -237,26 +237,27 @@ impl<'a> MCTPDriver<'a> {
                             // Slice the kernel buffer to the length of the message payload
                             kernel_msg_buf.slice(0..wpayload.len());
 
+                            app.pending_tx = Some(OpContext {
+                                msg_tag,
+                                peer_eid: dest_eid,
+                                op_type: OpType::Tx,
+                            });
+                            self.current_app.set(Some(process_id));
                             match self.sender.send_msg(
                                 self.msg_type as u8,
                                 dest_eid,
                                 msg_tag,
                                 kernel_msg_buf,
                             ) {
-                                Ok(_) => {
-                                    app.pending_tx = Some(OpContext {
-                                        msg_tag,
-                                        peer_eid: dest_eid,
-                                        op_type: OpType::Tx,
-                                    });
-                                    self.current_app.set(Some(process_id));
-                                    Ok(())
-                                }
+                                Ok(_) => Ok(()),
                                 Err(mut buf) => {
                                     println!("[MCTP-CAPSULE]: send_msg failed");
                                     // Reset the kernel buffer to original size and restore it
                                     buf.reset();
                                     self.kernel_msg_buf.replace(buf);
+                                    // clear
+                                    app.pending_tx.take();
+                                    self.current_app.take();
                                     Err(ErrorCode::FAIL)
                                 }
                             }
@@ -387,26 +388,25 @@ impl<'a> MCTPDriver<'a> {
             if let Some(rx_buf) = self.kernel_rx_buf.take() {
                 // Find the app that matches this buffered message
                 self.apps.each(|_, app, kernel_data| {
-                    // Check if this buffered message matches a pending request
+                    // Check if this buffered message matches a pending request or response
                     let rw_buffer: usize;
                     let rx_request: bool;
-                    if let Some(req_ctx) = &app.pending_rx_request {
-                        if buffered_msg.matches_pending_operation(req_ctx) {
-                            rw_buffer = rw_allow::READ_REQUEST;
-                            rx_request = true;
-                        } else {
-                            return; // No match, continue to next app
-                        }
-                    } else if let Some(rsp_ctx) = &app.pending_rx_response {
-                        if buffered_msg.matches_pending_operation(rsp_ctx) {
-                            rw_buffer = rw_allow::READ_RESPONSE;
-                            rx_request = false;
-                        } else {
-                            return; // No match, continue to next app
-                        }
+
+                    let request_match = app.pending_rx_request.as_ref().is_some_and(|req_ctx| {
+                        buffered_msg.matches_pending_operation(req_ctx)
+                    });
+                    let response_match = app.pending_rx_response.as_ref().is_some_and(|rsp_ctx| {
+                        buffered_msg.matches_pending_operation(rsp_ctx)
+                    });
+
+                    if request_match {
+                        rw_buffer = rw_allow::READ_REQUEST;
+                        rx_request = true;
+                    } else if response_match {
+                        rw_buffer = rw_allow::READ_RESPONSE;
+                        rx_request = false;
                     } else {
-                        // No pending operation for this app, continue to next
-                        return;
+                        return; // No match, continue to next app
                     }
 
                     // Copy the buffered message to the process buffer
@@ -436,8 +436,9 @@ impl<'a> MCTPDriver<'a> {
 
                         let msg_info =
                             (buffered_msg.op_context.peer_eid as usize) << 16 | (buffered_msg.msg_type as usize) << 8 | (buffered_msg.op_context.msg_tag as usize);
+
                         if let Err(e) = kernel_data.schedule_upcall(
-                            subscribe_num,
+                                subscribe_num,
                             (buffered_msg.msg_len, buffered_msg.recv_time as usize, msg_info),
                         ) {
                             println!("[MCTP-CAPSULE]::deliver_buffered_message upcall schedule failed: {:?}", e);
@@ -504,12 +505,11 @@ impl SyscallDriver for MCTPDriver<'_> {
                                 peer_eid,
                                 op_type: OpType::Rx,
                             };
+                            app.pending_rx_request = Some(req_rx_ctx);
                             // Check if we have a buffered message that matches this request
                             if self.check_buffered_message(&req_rx_ctx) {
                                 self.deferred_call.set();
-                                println!("[MCTP-CAPSULE]: Found matching buffered request message");
                             }
-                            app.pending_rx_request = Some(req_rx_ctx);
                             CommandReturn::success()
                         })
                         .unwrap_or_else(|err| CommandReturn::failure(err.into()))
@@ -524,9 +524,6 @@ impl SyscallDriver for MCTPDriver<'_> {
                             // Check if we have a buffered message that matches this response
                             if self.check_buffered_message(&rsp_rx_ctx) {
                                 self.deferred_call.set();
-                                println!(
-                                    "[MCTP-CAPSULE]: Found matching buffered response message"
-                                );
                             }
                             app.pending_rx_response = Some(rsp_rx_ctx);
                             CommandReturn::success()

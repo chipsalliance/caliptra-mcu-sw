@@ -13,6 +13,7 @@ embassy-sync.workspace = true
 libsyscall-caliptra.workspace = true
 libtockasync.workspace = true
 libtock_alarm.workspace = true
+libtock_console.workspace = true
 libtock_platform.workspace = true
 libtock_runtime.workspace = true
 pldm-common.workspace = true

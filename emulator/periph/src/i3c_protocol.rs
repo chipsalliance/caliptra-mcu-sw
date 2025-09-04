@@ -419,7 +419,7 @@ bitfield! {
 }
 
 bitfield! {
-    #[derive(Clone, Default, FromBytes, IntoBytes)]
+    #[derive(Clone, Copy, Default, FromBytes, IntoBytes)]
     pub struct ResponseDescriptor(u32);
     impl Debug;
 
