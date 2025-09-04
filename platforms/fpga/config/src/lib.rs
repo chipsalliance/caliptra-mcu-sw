@@ -48,7 +48,7 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
 
 pub const FPGA_MCU_STRAPS: McuStraps = McuStraps {
     i3c_static_addr: 0x3a,
-    axi_user: 0xcccc_cccc,
+    axi_user: 0x1,
     cptra_wdt_cfg0: 100_000_000,
     cptra_wdt_cfg1: 100_000_000,
     mcu_wdt_cfg0: 400_000_000, // the FPGA is slower to boot
