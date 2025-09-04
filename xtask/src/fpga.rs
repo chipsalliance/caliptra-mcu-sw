@@ -5,7 +5,7 @@ use caliptra_hw_model::BootParams;
 use caliptra_image_gen::to_hw_format;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use clap::Subcommand;
-use mcu_builder::{FirmwareBinaries, PROJECT_ROOT};
+use mcu_builder::{AllBuildArgs, FirmwareBinaries, PROJECT_ROOT};
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
 use mcu_rom_common::LifecycleControllerState;
 use std::path::{Path, PathBuf};
@@ -224,7 +224,12 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             println!("Building FPGA firmware");
             // TODO(clundin): Modify `mcu_builder::all_build` to return the zip instead of writing it?
             // TODO(clundin): Place FPGA xtask artifacts in a specific folder?
-            mcu_builder::all_build(Some("all-fw.zip"), Some("fpga"), false, None, None)?;
+            let args = AllBuildArgs {
+                output: Some("all-fw.zip"),
+                platform: Some("fpga"),
+                ..Default::default()
+            };
+            mcu_builder::all_build(args)?;
 
             // We want to copy the zip to the FPGA if `target_host` is specified.
             if let Some(target_host) = target_host {

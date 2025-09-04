@@ -84,24 +84,46 @@ impl FirmwareBinaries {
     }
 }
 
+#[derive(Default)]
+pub struct AllBuildArgs<'a> {
+    pub output: Option<&'a str>,
+    pub use_dccm_for_stack: bool,
+    pub dccm_offset: Option<u32>,
+    pub dccm_size: Option<u32>,
+    pub platform: Option<&'a str>,
+    pub rom_features: Option<&'a str>,
+    pub runtime_features: Option<&'a str>,
+}
+
 /// Build Caliptra ROM and firmware bundle, MCU ROM and runtime, and SoC manifest, and package them all together in a ZIP file.
-pub fn all_build(
-    output: Option<&str>,
-    platform: Option<&str>,
-    use_dccm_for_stack: bool,
-    dccm_offset: Option<u32>,
-    dccm_size: Option<u32>,
-) -> Result<()> {
+pub fn all_build(args: AllBuildArgs) -> Result<()> {
+    let AllBuildArgs {
+        output,
+        use_dccm_for_stack,
+        dccm_offset,
+        dccm_size,
+        platform,
+        rom_features,
+        runtime_features,
+    } = args;
+
     // TODO: use temp files
     let platform = platform.unwrap_or("emulator");
-    let mcu_rom = crate::rom_build(Some(platform), "")?;
+    let rom_features = rom_features.unwrap_or("");
+    let mcu_rom = crate::rom_build(Some(platform), rom_features)?;
     let memory_map = match platform {
         "emulator" => &mcu_config_emulator::EMULATOR_MEMORY_MAP,
         "fpga" => &mcu_config_fpga::FPGA_MEMORY_MAP,
         _ => bail!("Unknown platform: {:?}", platform),
     };
+    let runtime_features: Vec<&str> = if let Some(runtime_features) = runtime_features {
+        runtime_features.split(",").collect()
+    } else {
+        Vec::new()
+    };
+
     let mcu_runtime = &crate::runtime_build_with_apps_cached(
-        &[],
+        &runtime_features,
         None,
         false,
         Some(platform),
