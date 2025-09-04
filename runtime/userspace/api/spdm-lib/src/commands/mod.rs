@@ -11,4 +11,5 @@ pub mod error_rsp;
 pub mod finish_rsp;
 pub mod key_exchange_rsp;
 pub mod measurements_rsp;
+pub mod vendor_defined_rsp;
 pub mod version_rsp;

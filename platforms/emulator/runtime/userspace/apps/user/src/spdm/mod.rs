@@ -87,6 +87,7 @@ async fn spdm_mctp_responder() {
         local_capabilities,
         local_algorithms,
         &shared_cert_store,
+        None,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
@@ -153,6 +154,7 @@ async fn spdm_doe_responder() {
         local_capabilities,
         local_algorithms,
         &shared_cert_store,
+        None,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
