@@ -12,19 +12,19 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![no_main]
 
-#[cfg(target_arch = "riscv32")]
+// #[cfg(target_arch = "riscv32")]
 mod board;
-#[cfg(target_arch = "riscv32")]
+// #[cfg(target_arch = "riscv32")]
 mod components;
-#[cfg(target_arch = "riscv32")]
+// #[cfg(target_arch = "riscv32")]
 mod interrupts;
-#[cfg(target_arch = "riscv32")]
+// #[cfg(target_arch = "riscv32")]
 pub mod io;
 #[cfg(target_arch = "riscv32")]
 #[allow(unused_imports)]
 mod tests;
 
-#[cfg(target_arch = "riscv32")]
+// #[cfg(target_arch = "riscv32")]
 pub use board::*;
 
 use mcu_config::McuMemoryMap;

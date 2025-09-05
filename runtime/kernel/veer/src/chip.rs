@@ -65,7 +65,15 @@ impl<'a> VeeRDefaultPeripherals<'a> {
                 alarm,
             ),
             mci: mci_driver,
-            mcu_mbox0: mcu_mbox_driver::McuMailbox::new(mcu_mbox_driver::MCI_BASE, alarm),
+            mcu_mbox0: mcu_mbox_driver::McuMailbox::new(
+                mcu_mbox_driver::MCI_BASE, 
+                alarm,
+                mcu_mbox_driver::MCU_MBOX0_SRAM_BASE,
+                256*1024,
+                mcu_mbox_driver::MCU_MBOX0_SRAM_BASE + 512*1024,
+                256*1024,
+
+            ).unwrap(),
             additional_interrupt_handler,
         }
     }

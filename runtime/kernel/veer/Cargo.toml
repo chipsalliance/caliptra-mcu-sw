@@ -6,7 +6,8 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
-[target.'cfg(target_arch = "riscv32")'.dependencies]
+#[target.'cfg(target_arch = "riscv32")'.dependencies]
+[dependencies]
 capsules-core.workspace = true
 capsules-extra.workspace = true
 capsules-runtime.workspace = true

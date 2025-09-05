@@ -149,6 +149,7 @@ struct VeeR {
         'static,
         mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>,
     >,
+    mcu_mbox0_staging_sram: &'static capsules_runtime::mem_reg::MemoryRegion,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -186,6 +187,9 @@ impl SyscallDriverLookup for VeeR {
                 f(Some(self.logging_flash))
             }
             capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => f(Some(self.mcu_mbox0)),
+            capsules_runtime::mem_reg::DRIVER_NUM_MCU_MBOX_SRAM => {
+                f(Some(self.mcu_mbox0_staging_sram))
+            }
 
             _ => f(None),
         }
@@ -477,6 +481,13 @@ pub unsafe fn main() {
     )
     .finalize(kernel::static_buf!(capsules_runtime::mci::Mci));
 
+    let mcu_mbox0_staging_sram = mcu_components::mem_reg::MemRegComponent::new(
+        board_kernel,
+        capsules_runtime::mem_reg::DRIVER_NUM_MCU_MBOX_SRAM,
+        core::slice::from_raw_parts_mut((mcu_mbox_driver::MCU_MBOX0_SRAM_BASE+256*1024) as *mut u32, 256*1024),
+    )
+    .finalize(kernel::static_buf!(capsules_runtime::mem_reg::MemoryRegion));
+
     let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
     chip.init(addr_of!(_pic_vector_table) as u32);
     CHIP = Some(chip);
@@ -677,6 +688,7 @@ pub unsafe fn main() {
             logging_flash,
             mci,
             mcu_mbox0,
+            mcu_mbox0_staging_sram,
         }
     );
 

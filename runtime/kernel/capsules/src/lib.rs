@@ -7,6 +7,7 @@ pub mod test;
 
 pub mod doe;
 pub mod mailbox;
+pub mod mem_reg;
 pub mod mci;
 pub mod mctp;
 pub mod mcu_mbox;

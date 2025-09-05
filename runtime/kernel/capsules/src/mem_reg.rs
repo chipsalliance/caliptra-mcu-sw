@@ -1,0 +1,210 @@
+// Licensed under the Apache-2.0 license
+
+//! This provides the MCI capsule that calls the underlying MCI driver
+
+use core::cell::RefCell;
+
+use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
+use kernel::syscall::{CommandReturn, SyscallDriver};
+use kernel::utilities::cells::OptionalCell;
+use kernel::{ErrorCode, ProcessId};
+use kernel::processbuffer::{
+    ReadableProcessBuffer, ReadableProcessSlice, WriteableProcessBuffer, WriteableProcessSlice,
+};
+
+pub const DRIVER_NUM_MCU_MBOX_SRAM: usize = 0x9000_3000;
+
+
+
+#[derive(Default)]
+pub struct App { }
+
+pub struct MemoryRegion {
+    mem_ref: RefCell<&'static mut [u32]>,
+    // Per-app state.
+    apps: Grant<
+        App,
+        UpcallCount<{ upcall::COUNT }>,
+        AllowRoCount<{ ro_allow::COUNT }>,
+        AllowRwCount<{ rw_allow::COUNT }>,
+    >,
+    // Which app is currently using the storage.
+    current_app: OptionalCell<ProcessId>,
+}
+
+impl MemoryRegion {
+    pub fn new(
+        mem_ref: &'static mut [u32],
+        grant: Grant<
+            App,
+            UpcallCount<{ upcall::COUNT }>,
+            AllowRoCount<{ ro_allow::COUNT }>,
+            AllowRwCount<{ rw_allow::COUNT }>,
+        >,
+    ) -> MemoryRegion {
+        MemoryRegion {
+            mem_ref: RefCell::new(mem_ref),
+            apps: grant,
+            current_app: OptionalCell::empty(),
+        }
+    }
+
+    pub fn write(
+        &self,
+        offset: usize,
+        processid: ProcessId,
+    ) -> Result<(), ErrorCode> {
+        self.apps.enter(processid, |_app, kernel_data| {
+            // copy the request so we can write async
+            kernel_data
+                .get_readonly_processbuffer(ro_allow::WRITE_BUFFER)
+                .map_err(|_| {
+                    ErrorCode::FAIL
+                })
+                .and_then(|ro_buffer| {
+                    ro_buffer
+                        .enter(|app_buffer| {
+                            self.memory_write(offset, app_buffer)
+                        })
+                        .map_err(|_| {
+                            ErrorCode::FAIL
+                        })?
+                })
+        })?
+    }
+
+    pub fn read(
+        &self,
+        offset: usize,
+        processid: ProcessId,
+    ) -> Result<(), ErrorCode> {
+        self.apps.enter(processid, |_app, kernel_data| {
+            // copy the request so we can write async
+            kernel_data
+                .get_readwrite_processbuffer(rw_allow::READ_BUFFER)
+                .map_err(|_| {
+                    ErrorCode::FAIL
+                })
+                .and_then(|rw_buffer| {
+                    rw_buffer
+                        .mut_enter(|app_buffer| {
+                            self.memory_read(offset, app_buffer)
+                        })
+                        .map_err(|_| {
+                            ErrorCode::FAIL
+                        })?
+                })
+        })?
+    }
+
+    fn memory_write(
+        &self,
+        offset: usize,
+        app_buffer: &ReadableProcessSlice
+    ) -> Result<(), ErrorCode> {
+        let mut mem_ref = self.mem_ref.borrow_mut();
+        let len = core::cmp::min(mem_ref.len() - offset, app_buffer.len()/4);
+        for i in 0..len {
+            let mut dword = [0u8; 4];
+            app_buffer
+                .get(i*4..i*4+4)
+                .ok_or(ErrorCode::INVAL)?
+                .copy_to_slice(&mut dword);
+            mem_ref[offset + i] = u32::from_le_bytes(dword);
+        }
+        Ok(())
+
+    }
+
+    fn memory_read(
+        &self,
+        offset: usize,
+        app_buffer: &WriteableProcessSlice
+    ) -> Result<(), ErrorCode> {
+        let mem_ref = self.mem_ref.borrow();
+        let len = core::cmp::min(mem_ref.len() - offset, app_buffer.len()/4);
+        for i in 0..len {
+            let dword = mem_ref[offset + i].to_le_bytes();
+            app_buffer.get(i*4..i*4+4)
+                .ok_or(ErrorCode::INVAL)?
+                .copy_from_slice(&dword);
+        }
+        Ok(())
+
+    }
+
+    fn notify_done(
+        &self,
+        processid: ProcessId,
+        command: u32,
+    )  {
+        let _ = self.apps.enter(processid, |app, kernel_data| {
+            kernel_data
+                .schedule_upcall(upcall::DONE, (command as usize, 0, 0))
+                .map_err(|_| ErrorCode::FAIL)
+        });
+    }
+
+    
+}
+
+/// Provide an interface for userland.
+impl SyscallDriver for MemoryRegion {
+    fn command(
+        &self,
+        cmd: usize,
+        arg1: usize,
+        _: usize,
+        processid: ProcessId,
+    ) -> CommandReturn {
+         if self.current_app.is_some() {
+            return CommandReturn::failure(ErrorCode::BUSY);
+        }
+        let exec_result = match cmd as u32 {
+            cmd::MEMORY_READ => {
+                let res = self.read(arg1 as usize, processid);
+                self.notify_done(processid, cmd as u32);
+                res
+            }
+            cmd::MEMORY_WRITE => {
+                let res = self.write(arg1 as usize, processid);
+                self.notify_done(processid, cmd as u32);
+                res
+            }
+            _ => Err(ErrorCode::NOSUPPORT),
+        };
+        self.current_app.clear();
+        match exec_result {
+            Ok(()) => CommandReturn::success(),
+            Err(e) => CommandReturn::failure(e),
+        }
+        
+    }
+
+    fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
+        self.apps.enter(processid, |_, _| {})
+    }
+}
+
+mod cmd {
+    pub const MEMORY_READ: u32 = 1;
+    pub const MEMORY_WRITE: u32 = 2;
+}
+
+/// IDs for subscribed upcalls.
+mod upcall {
+    pub const DONE : usize = 0;
+    pub const COUNT: u8 = 1;
+}
+
+/// Ids for read-only allow buffers
+mod ro_allow {
+    pub const WRITE_BUFFER: usize = 0;
+    pub const COUNT: u8 = 1;
+}
+
+/// Ids for read-write allow buffers
+mod rw_allow {
+    pub const READ_BUFFER: usize = 0;
+    pub const COUNT: u8 = 1;
+}

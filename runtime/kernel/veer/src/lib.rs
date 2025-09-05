@@ -2,7 +2,7 @@
 
 #![no_std]
 
-#[cfg(target_arch = "riscv32")]
+// #[cfg(target_arch = "riscv32")]
 pub mod chip;
 #[cfg(target_arch = "riscv32")]
 pub mod pic;

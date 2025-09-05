@@ -39,6 +39,9 @@ mod test_logging_flash;
 #[cfg(feature = "test-mci")]
 mod test_mci;
 
+#[cfg(feature = "test-mem-reg")]
+mod test_mem_reg;
+
 #[cfg(feature = "test-mcu-mbox-usermode")]
 mod test_mcu_mbox_usermode;
 
@@ -238,6 +241,13 @@ pub(crate) async fn async_main<S: Syscalls>() {
     {
         writeln!(console_writer, "Running MCU mailbox usermode loopback test").unwrap();
         test_mcu_mbox_usermode::test_mcu_mbox_usermode_loopback().await;
+    }
+
+    #[cfg(feature = "test-mem-reg")]
+    {
+        writeln!(console_writer, "Running MEM-REG read/write test").unwrap();
+        test_mem_reg::test_mem_reg_read_write().await;
+        romtime::test_exit(0);
     }
 
     writeln!(console_writer, "app finished").unwrap();

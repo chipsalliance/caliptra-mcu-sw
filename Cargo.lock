@@ -2670,6 +2670,7 @@ dependencies = [
  "kernel",
  "mcu-mbox-comm",
  "registers-generated",
+ "romtime",
 ]
 
 [[package]]
@@ -2822,6 +2823,13 @@ dependencies = [
  "romtime",
  "rv32i",
  "tock-registers",
+]
+
+[[package]]
+name = "mem-reg-driver"
+version = "0.1.0"
+dependencies = [
+ "kernel",
 ]
 
 [[package]]

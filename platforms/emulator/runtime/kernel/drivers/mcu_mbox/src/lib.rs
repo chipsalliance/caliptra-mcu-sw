@@ -39,26 +39,51 @@ pub struct McuMailbox<'a, A: Alarm<'a>> {
     timer_mode: Cell<TimerMode>,
     alarm: VirtualMuxAlarm<'a, A>,
     client: OptionalCell<&'a dyn MailboxClient>,
+    staging_buf: TakeCell<'static, [u32]>,
+    staging_buf_len: usize,
 }
 
-fn mcu_mbox0_sram_static_ref(len: usize) -> &'static mut [u32] {
-    unsafe { core::slice::from_raw_parts_mut(MCU_MBOX0_SRAM_BASE as *mut u32, len) }
+fn mcu_mbox0_sram_static_ref(base: u32, len: usize) -> &'static mut [u32] {
+    unsafe { core::slice::from_raw_parts_mut(base as *mut u32, len) }
 }
 
 impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
     const DEFER_SEND_DONE_TICKS: u32 = 10000;
 
-    pub fn new(registers: StaticRef<mci::regs::Mci>, alarm: &'a MuxAlarm<'a, A>) -> Self {
+    pub fn new(
+            registers: StaticRef<mci::regs::Mci>, 
+            alarm: &'a MuxAlarm<'a, A>,
+            mbox_sram_base: u32,
+            mbox_sram_len: usize,
+            staging_sram_base: u32,
+            staging_sram_len: usize,
+        ) -> Result<Self, ErrorCode> {
         let dw_len = registers.mcu_mbox0_csr_mbox_sram.len();
-        McuMailbox {
+
+        if mbox_sram_len + staging_sram_len > dw_len {
+            romtime::println!("MCU_MBOX_DRIVER: Provided SRAM lengths exceed available SRAM size {}", dw_len);
+//            debug!("MCU_MBOX_DRIVER: Provided SRAM lengths exceed available SRAM size");
+            return Err(ErrorCode::INVAL);
+        }
+
+        // Check if mbox_sram and staging_sram memory regions will overlap
+        if Self::ranges_overlap(mbox_sram_base as usize, mbox_sram_len, staging_sram_base as usize, staging_sram_len) {
+            romtime::println!("MCU_MBOX_DRIVER: Provided SRAM regions overlap");
+//            debug!("MCU_MBOX_DRIVER: Provided SRAM regions overlap");
+            return Err(ErrorCode::INVAL);
+        }
+
+        Ok(McuMailbox {
             registers,
-            data_buf: TakeCell::new(mcu_mbox0_sram_static_ref(dw_len)),
+            data_buf: TakeCell::new(mcu_mbox0_sram_static_ref(mbox_sram_base, mbox_sram_len)),
             data_buf_len: dw_len,
             state: Cell::new(McuMboxState::Idle),
             timer_mode: Cell::new(TimerMode::NoTimer),
             alarm: VirtualMuxAlarm::new(alarm),
             client: OptionalCell::empty(),
-        }
+            staging_buf: TakeCell::new(mcu_mbox0_sram_static_ref(staging_sram_base, staging_sram_len)),
+            staging_buf_len: staging_sram_len,
+        })
     }
 
     pub fn init(&'static self) {
@@ -74,6 +99,20 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
         self.registers.mcu_mbox0_csr_mbox_lock.get();
         self.registers.mcu_mbox0_csr_mbox_dlen.set(mbox_sram_size);
         self.registers.mcu_mbox0_csr_mbox_execute.set(0);
+    }
+
+    fn ranges_overlap(a_start: usize, a_len: usize, b_start: usize, b_len: usize) -> bool {
+        // Empty ranges never overlap.
+        if a_len == 0 || b_len == 0 {
+            return false;
+        }
+
+        // Compare by distance, avoiding (start + len) addition overflow.
+        if a_start <= b_start {
+            b_start - a_start < a_len
+        } else {
+            a_start - b_start < b_len
+        }
     }
 
     pub fn handle_interrupt(&self) {
@@ -137,6 +176,13 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
         self.registers
             .intr_block_rf_notif0_intr_en_r
             .modify(Notif0IntrEnT::NotifMbox0CmdAvailEn::CLEAR);
+    }
+
+    pub fn write_staging(&self, offset: usize, data: &[u32]) {
+        self.staging_buf.map(|buf| {
+            let len = core::cmp::min(buf.len() - offset, data.len());
+            buf[offset..offset + len].copy_from_slice(&data[..len]);
+        });
     }
 }
 
