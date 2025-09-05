@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use crate::pci_sig::tdisp::protocol::FunctionId;
+use crate::vdm_handler::pci_sig::tdisp::protocol::FunctionId;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use bitfield::bitfield;

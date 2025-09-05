@@ -123,8 +123,7 @@ impl SpdmTransport for MctpTransport {
         }
 
         // Set the length of the message
-        rsp.resize(rsp_len as usize)
-            .map_err(TransportError::Codec)?;
+        rsp.trim(rsp_len as usize).map_err(TransportError::Codec)?;
 
         // Process the transport message header
         let header = MctpMsgHdr::decode(rsp).map_err(TransportError::Codec)?;
@@ -163,8 +162,7 @@ impl SpdmTransport for MctpTransport {
         }
 
         // Set the length of the message
-        req.resize(req_len as usize)
-            .map_err(TransportError::Codec)?;
+        req.trim(req_len as usize).map_err(TransportError::Codec)?;
 
         // Process the transport message header
         let header = MctpMsgHdr::decode(req).map_err(TransportError::Codec)?;
