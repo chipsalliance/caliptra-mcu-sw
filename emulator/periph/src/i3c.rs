@@ -6,13 +6,17 @@ Abstract:
     File contains I3C peripheral implementation.
 --*/
 
-use crate::i3c_protocol::{I3cController, I3cTarget, I3cTcriResponseXfer, ResponseDescriptor};
-use crate::{DynamicI3cAddress, I3cIncomingCommandClient, IbiDescriptor, ReguDataTransferCommand};
+use crate::i3c_protocol::I3cController;
+use crate::{I3cIncomingCommandClient, I3cTarget};
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_bus::{Device, Event, EventData};
 use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
 use emulator_registers_generated::i3c::I3cPeripheral;
+use mcu_testing_common::i3c::{
+    DynamicI3cAddress, I3cTcriCommand, I3cTcriResponseXfer, IbiDescriptor, ReguDataTransferCommand,
+    ResponseDescriptor,
+};
 use registers_generated::i3c::bits::{
     DeviceStatus0, ExtcapHeader, IndirectFifoCtrl0, IndirectFifoStatus0, InterruptEnable,
     InterruptStatus, RecIntfCfg, StbyCrCapabilities, StbyCrDeviceAddr, TtiQueueSize,
@@ -166,7 +170,7 @@ impl I3c {
             self.tti_rx_desc_queue_raw
                 .push_back(xfer.cmd.raw_data_len() as u32 | rnw);
             let data = match xfer.cmd.clone() {
-                crate::I3cTcriCommand::Immediate(imm) => vec![
+                I3cTcriCommand::Immediate(imm) => vec![
                     imm.data_byte_1(),
                     imm.data_byte_2(),
                     imm.data_byte_3(),
@@ -983,13 +987,13 @@ impl I3cPeripheral for I3c {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::i3c_protocol::{
-        DynamicI3cAddress, I3cTcriCommand, I3cTcriCommandXfer, ImmediateDataTransferCommand,
-    };
     use caliptra_emu_bus::Bus;
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::{RvAddr, RvSize};
     use emulator_registers_generated::root_bus::AutoRootBus;
+    use mcu_testing_common::i3c::{
+        DynamicI3cAddress, I3cTcriCommand, I3cTcriCommandXfer, ImmediateDataTransferCommand,
+    };
 
     const TTI_RX_DESC_QUEUE_PORT: RvAddr = 0x1dc;
 

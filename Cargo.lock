@@ -1576,6 +1576,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "log",
+ "mcu-testing-common",
  "p384",
  "pldm-common",
  "pldm-fw-pkg",
@@ -1635,6 +1636,7 @@ dependencies = [
  "cbindgen",
  "emulator",
  "libc",
+ "mcu-testing-common",
  "semver",
 ]
 
@@ -1670,6 +1672,7 @@ dependencies = [
  "emulator-consts",
  "emulator-registers-generated",
  "lazy_static",
+ "mcu-testing-common",
  "num_enum",
  "registers-generated",
  "semver",
@@ -2652,6 +2655,7 @@ dependencies = [
  "caliptra-registers",
  "caliptra-test-harness-types",
  "emulator-bmc",
+ "emulator-caliptra",
  "emulator-periph",
  "emulator-registers-generated",
  "hex",
@@ -2660,12 +2664,14 @@ dependencies = [
  "mcu-config",
  "mcu-config-fpga",
  "mcu-rom-common",
+ "mcu-testing-common",
  "nix 0.26.4",
  "rand",
  "registers-generated",
  "semver",
  "sha2",
  "sha3",
+ "tempfile",
  "tock-registers",
  "uio",
  "ureg",
@@ -2845,6 +2851,19 @@ dependencies = [
  "romtime",
  "rv32i",
  "tock-registers",
+]
+
+[[package]]
+name = "mcu-testing-common"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "crc",
+ "hex",
+ "pldm-common",
+ "pldm-ua",
+ "rand",
+ "zerocopy",
 ]
 
 [[package]]
@@ -3930,13 +3949,25 @@ version = "0.1.0"
 name = "tests-integration"
 version = "0.1.0"
 dependencies = [
+ "caliptra-hw-model",
+ "caliptra-hw-model-types",
+ "caliptra-image-types",
  "chrono",
+ "crc",
  "flash-image",
+ "hex",
+ "lazy_static",
+ "log",
  "mcu-builder",
  "mcu-config",
  "mcu-config-emulator",
+ "mcu-hw-model",
  "mcu-image-header",
+ "mcu-testing-common",
+ "pldm-common",
  "pldm-fw-pkg",
+ "pldm-ua",
+ "simple_logger",
  "tempfile",
  "uuid",
  "zerocopy",

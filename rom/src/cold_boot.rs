@@ -172,6 +172,7 @@ impl BootFlow for ColdBoot {
             loop {}
         }
 
+        romtime::println!("[mcu-rom] Reading fuses");
         let fuses = match otp.read_fuses() {
             Ok(fuses) => {
                 mci.set_flow_status(McuRomBootStatus::FusesReadFromOtp.into());
