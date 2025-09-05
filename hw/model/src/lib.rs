@@ -171,6 +171,8 @@ pub struct InitParams<'a> {
     // Information about the stack Caliptra is using. When set the emulator will check if the stack
     // overflows.
     pub stack_info: Option<StackInfo>,
+
+    pub i3c_port: Option<u16>,
 }
 
 impl InitParams<'_> {
@@ -226,6 +228,7 @@ impl Default for InitParams<'_> {
             soc_manifest: Default::default(),
             vendor_pk_hash: None,
             vendor_pqc_type: None,
+            i3c_port: None,
         }
     }
 }
@@ -316,6 +319,16 @@ pub trait McuHwModel {
 
     fn caliptra_soc_manager(&mut self) -> impl SocManager;
 
+    fn start_i3c_controller(&mut self);
+
+    fn i3c_address(&self) -> Option<u8>;
+
+    fn i3c_port(&self) -> Option<u16>;
+
+    fn exit_status(&self) -> Option<ExitStatus> {
+        None
+    }
+
     fn copy_output_until_exit_success(
         &mut self,
         mut w: impl std::io::Write,
@@ -324,7 +337,7 @@ pub trait McuHwModel {
             if !self.output().peek().is_empty() {
                 w.write_all(self.output().take(usize::MAX).as_bytes())?;
             }
-            match self.output().exit_status() {
+            match self.output().exit_status().or(self.exit_status()) {
                 Some(ExitStatus::Passed) => return Ok(()),
                 Some(ExitStatus::Failed) => {
                     return Err(std::io::Error::new(
