@@ -46,6 +46,10 @@ pub enum EmulatorError {
     InitializationFailed = -2,
     NullPointer = -3,
     InvalidEmulator = -4,
+    BusLoadAccessFault = -5,
+    BusStoreAccessFault = -6,
+    BusLoadAddrMisaligned = -7,
+    BusStoreAddrMisaligned = -8,
 }
 
 /// Step action results for C API
@@ -1206,7 +1210,11 @@ pub unsafe extern "C" fn emulator_read_auto_root_bus(
             *value = val;
             EmulatorError::Success
         }
-        Err(_) => EmulatorError::InvalidArgs,
+        Err(bus_error) => match bus_error {
+            caliptra_emu_bus::BusError::LoadAccessFault => EmulatorError::BusLoadAccessFault,
+            caliptra_emu_bus::BusError::LoadAddrMisaligned => EmulatorError::BusLoadAddrMisaligned,
+            _ => EmulatorError::InvalidArgs, // Fallback for other bus errors
+        },
     }
 }
 
@@ -1256,7 +1264,11 @@ pub unsafe extern "C" fn emulator_write_auto_root_bus(
 
     match result {
         Ok(_) => EmulatorError::Success,
-        Err(_) => EmulatorError::InvalidArgs,
+        Err(bus_error) => match bus_error {
+            caliptra_emu_bus::BusError::StoreAccessFault => EmulatorError::BusStoreAccessFault,
+            caliptra_emu_bus::BusError::StoreAddrMisaligned => EmulatorError::BusStoreAddrMisaligned,
+            _ => EmulatorError::InvalidArgs, // Fallback for other bus errors
+        },
     }
 }
 
