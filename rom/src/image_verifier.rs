@@ -13,7 +13,7 @@ use registers_generated::fuses::Fuses;
 ///   fuses:  Immutable view of device/programmed fuse values
 ///
 /// Returns:
-///   true iff every required check passes.
+///   true if every required check passes.
 ///   false on any structural, policy, or cryptographic failure.
 pub trait ImageVerifier {
     fn verify_header(&self, header: &[u8], fuses: &Fuses) -> bool;
