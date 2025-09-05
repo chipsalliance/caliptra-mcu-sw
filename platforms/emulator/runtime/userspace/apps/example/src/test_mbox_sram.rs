@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
 
 use core::fmt::Write;
-use libsyscall_caliptra::{mem_reg::{MemoryRegion,DRIVER_NUM_MCU_MBOX_SRAM}, DefaultSyscalls};
+use libsyscall_caliptra::{mbox_sram::{MboxSram,DRIVER_NUM_MCU_MBOX_SRAM}, DefaultSyscalls};
 use romtime::println;
 
 #[allow(unused)]
 pub(crate) async fn test_mem_reg_read_write() {
     println!("Starting test_mem_reg_read_write");
-    let mem_reg: MemoryRegion<DefaultSyscalls> = MemoryRegion::new(DRIVER_NUM_MCU_MBOX_SRAM);
+    let mem_reg: MboxSram<DefaultSyscalls> = MboxSram::new(DRIVER_NUM_MCU_MBOX_SRAM);
 
     let write_buffer = {
         let mut buf = [0u8; 64];

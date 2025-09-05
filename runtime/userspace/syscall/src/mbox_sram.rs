@@ -1,30 +1,26 @@
 // Licensed under the Apache-2.0 license
 
-//! # MemoryRegion Interface
 use crate::DefaultSyscalls;
 use core::marker::PhantomData;
 use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
 
-/// MemoryRegion interface user interface.
-///
-/// # Generics
-/// - `S`: The syscall implementation.
-pub struct MemoryRegion<S: Syscalls = DefaultSyscalls> {
+
+pub struct MboxSram<S: Syscalls = DefaultSyscalls> {
     syscall: PhantomData<S>,
     driver_num: u32,
 }
 
 
-impl<S: Syscalls> Default for MemoryRegion<S> {
+impl<S: Syscalls> Default for MboxSram<S> {
     fn default() -> Self {
         Self::new(DRIVER_NUM_MCU_MBOX_SRAM)
     }
 }
 
 
-impl<S: Syscalls> MemoryRegion<S> {
+impl<S: Syscalls> MboxSram<S> {
     pub fn new(driver_num : u32) -> Self {
         Self {
             syscall: PhantomData,

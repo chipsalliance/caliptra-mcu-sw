@@ -35,7 +35,7 @@ embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
 embedded-alloc.workspace = true
 
 [features]
-default = ["test-mem-reg"]
+default = ["test-mbox-sram"]
 hw-2-1 = []
 test-caliptra-certs = []
 test-caliptra-crypto = []
@@ -59,7 +59,7 @@ test-firmware-update-streaming = []
 test-log-flash-linear = []
 test-log-flash-circular = []
 test-log-flash-usermode = []
-test-mem-reg = []
+test-mbox-sram = []
 test-mci = []
 test-mctp-ctrl-cmds = []
 test-mctp-capsule-loopback = []

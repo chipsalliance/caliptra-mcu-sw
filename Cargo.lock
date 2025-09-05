@@ -2826,13 +2826,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mem-reg-driver"
-version = "0.1.0"
-dependencies = [
- "kernel",
-]
-
-[[package]]
 name = "memchr"
 version = "2.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

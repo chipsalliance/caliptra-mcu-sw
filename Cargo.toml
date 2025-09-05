@@ -41,7 +41,6 @@ members = [
     "runtime/kernel/components",
     "runtime/kernel/drivers/i3c",
     "runtime/kernel/drivers/doe",
-    "runtime/kernel/drivers/mem-reg-driver",
     "runtime/kernel/drivers/mcu_mbox",
     "runtime/kernel/veer",
     "runtime/userspace/api/caliptra-api",
@@ -164,7 +163,6 @@ flash-driver = { path = "platforms/emulator/runtime/kernel/drivers/flash" }
 flash-image = { path = "common/flash-image" }
 i3c-driver = { path = "runtime/kernel/drivers/i3c" }
 libtockasync = { path = "runtime/userspace/libtockasync" }
-mem-reg-driver = { path = "runtime/kernel/drivers/mem-reg-driver"}
 mcu-builder = { path = "builder" }
 mcu-config = { path = "common/config" }
 mcu-config-emulator = { path = "platforms/emulator/config" }

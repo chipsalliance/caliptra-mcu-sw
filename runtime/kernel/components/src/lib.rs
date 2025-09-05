@@ -4,7 +4,7 @@
 
 pub mod doe;
 pub mod mailbox;
-pub mod mem_reg;
+pub mod mbox_sram;
 pub mod mci;
 pub mod mctp_driver;
 pub mod mcu_mbox;

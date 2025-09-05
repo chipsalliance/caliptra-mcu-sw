@@ -19,7 +19,7 @@ pub const DRIVER_NUM_MCU_MBOX_SRAM: usize = 0x9000_3000;
 #[derive(Default)]
 pub struct App { }
 
-pub struct MemoryRegion {
+pub struct MboxSram {
     mem_ref: RefCell<&'static mut [u32]>,
     // Per-app state.
     apps: Grant<
@@ -32,7 +32,7 @@ pub struct MemoryRegion {
     current_app: OptionalCell<ProcessId>,
 }
 
-impl MemoryRegion {
+impl MboxSram {
     pub fn new(
         mem_ref: &'static mut [u32],
         grant: Grant<
@@ -41,8 +41,8 @@ impl MemoryRegion {
             AllowRoCount<{ ro_allow::COUNT }>,
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
-    ) -> MemoryRegion {
-        MemoryRegion {
+    ) -> MboxSram {
+        MboxSram {
             mem_ref: RefCell::new(mem_ref),
             apps: grant,
             current_app: OptionalCell::empty(),
@@ -149,7 +149,7 @@ impl MemoryRegion {
 }
 
 /// Provide an interface for userland.
-impl SyscallDriver for MemoryRegion {
+impl SyscallDriver for MboxSram {
     fn command(
         &self,
         cmd: usize,

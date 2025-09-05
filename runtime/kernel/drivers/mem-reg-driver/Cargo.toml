@@ -1,8 +1,0 @@
-[package]
-name = "mem-reg-driver"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-
-[dependencies]
-kernel.workspace = true
