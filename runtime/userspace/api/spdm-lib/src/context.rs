@@ -6,7 +6,8 @@ use crate::codec::{encode_u8_slice, Codec, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
     algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, chunk_get_rsp,
-    digests_rsp, end_session_rsp, finish_rsp, key_exchange_rsp, measurements_rsp, version_rsp,
+    digests_rsp, end_session_rsp, finish_rsp, key_exchange_rsp, measurements_rsp,
+    vendor_defined_rsp, version_rsp,
 };
 use crate::error::*;
 use crate::measurements::common::SpdmMeasurements;
@@ -18,6 +19,7 @@ use crate::session::SessionManager;
 use crate::state::{ConnectionState, State};
 use crate::transcript::{Transcript, TranscriptContext};
 use crate::transport::common::SpdmTransport;
+use crate::vdm_handler::VdmHandler;
 use libapi_caliptra::crypto::asym::*;
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 
@@ -36,6 +38,7 @@ pub struct SpdmContext<'a> {
     pub(crate) measurements: SpdmMeasurements,
     pub(crate) large_resp_context: LargeResponseCtx,
     pub(crate) session_mgr: SessionManager,
+    pub(crate) vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
 }
 
 impl<'a> SpdmContext<'a> {
@@ -46,6 +49,7 @@ impl<'a> SpdmContext<'a> {
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
         device_certs_store: &'a dyn SpdmCertStore,
+        vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -63,6 +67,7 @@ impl<'a> SpdmContext<'a> {
             measurements: SpdmMeasurements::default(),
             large_resp_context: LargeResponseCtx::default(),
             session_mgr: SessionManager::new(),
+            vdm_handlers,
         })
     }
 
@@ -171,6 +176,9 @@ impl<'a> SpdmContext<'a> {
             ReqRespCode::Finish => finish_rsp::handle_finish(self, req_msg_header, req).await?,
             ReqRespCode::EndSession => {
                 end_session_rsp::handle_end_session(self, req_msg_header, req).await?
+            }
+            ReqRespCode::VendorDefinedRequest => {
+                vendor_defined_rsp::handle_vendor_defined_request(self, req_msg_header, req).await?
             }
             _ => Err((false, CommandError::UnsupportedRequest))?,
         }

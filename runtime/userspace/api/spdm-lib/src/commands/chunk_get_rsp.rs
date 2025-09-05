@@ -171,6 +171,9 @@ async fn encode_chunk_data(
                     )
                     .await?;
             }
+            LargeResponse::Vdm(_vdm_rsp) => {
+                todo!("implement chunking logic for VDM response")
+            }
         }
     } else {
         Err((

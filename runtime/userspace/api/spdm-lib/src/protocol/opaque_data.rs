@@ -89,8 +89,8 @@ impl OpaqueData {
 
     fn validate_opaque_element(buf: &mut MessageBuf<'_>) -> OpaqueDataResult<usize> {
         let opaque_element_hdr = OpaqueElementHdr::decode(buf).map_err(OpaqueDataError::Codec)?;
-        let standards_body_id: StandardsBodyId = opaque_element_hdr
-            .standards_body_id
+        let stds_body_id = opaque_element_hdr.standards_body_id as u16;
+        let standards_body_id: StandardsBodyId = stds_body_id
             .try_into()
             .map_err(|_| OpaqueDataError::InvalidStandardsBodyId)?;
         let expected_vendor_id_len = standards_body_id
@@ -201,8 +201,8 @@ impl OpaqueElementHdr {
         exp_standards_body_id: StandardsBodyId,
         exp_vendor_id_len: u8,
     ) -> OpaqueDataResult<()> {
-        let standards_body_id: StandardsBodyId = self
-            .standards_body_id
+        let std_body_id = self.standards_body_id as u16;
+        let standards_body_id: StandardsBodyId = std_body_id
             .try_into()
             .map_err(|_| OpaqueDataError::InvalidStandardsBodyId)?;
 
