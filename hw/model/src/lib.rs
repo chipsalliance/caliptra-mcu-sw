@@ -447,6 +447,14 @@ fn reg_access_test() {
     )
     .unwrap();
 
+    assert_eq!(
+        hw.caliptra_soc_manager()
+            .soc_ifc()
+            .cptra_fw_error_fatal()
+            .read(),
+        0
+    );
+
     // Check Caliptra reports 2.x
     assert_eq!(
         u32::from(hw.caliptra_soc_manager().soc_ifc().cptra_hw_rev_id().read()),
