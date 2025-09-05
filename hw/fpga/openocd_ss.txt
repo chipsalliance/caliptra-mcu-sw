@@ -29,8 +29,8 @@ proc connect {target} {
 
     # Define pin numbers for sysfsgpio
     sysfsgpio tck_num [expr {$gpionum + 0}]
-    sysfsgpio tdi_num [expr {$gpionum + 1}]
-    sysfsgpio tms_num [expr {$gpionum + 2}]
+    sysfsgpio tms_num [expr {$gpionum + 1}]
+    sysfsgpio tdi_num [expr {$gpionum + 2}]
     sysfsgpio trst_num [expr {$gpionum + 3}]
     sysfsgpio tdo_num [expr {$gpionum + 4}]
 
