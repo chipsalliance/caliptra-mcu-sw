@@ -18,6 +18,7 @@ use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
 use crate::ColdBoot;
 use crate::FwHitlessUpdate;
+use crate::ImageVerifier;
 use crate::LifecycleControllerState;
 use crate::LifecycleHashedTokens;
 use crate::LifecycleToken;
@@ -263,6 +264,8 @@ pub struct RomParameters<'a> {
     pub flash_partition_driver: Option<&'a mut FlashPartition<'a>>,
     /// Whether or not to program field entropy after booting Caliptra runtime firmware
     pub program_field_entropy: [bool; 4],
+    pub mcu_image_header_size: usize,
+    pub mcu_image_verifier: Option<&'a dyn ImageVerifier>,
 }
 
 pub fn rom_start(params: RomParameters) {

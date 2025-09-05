@@ -13,6 +13,7 @@ flash-image.workspace = true
 mcu-builder.workspace = true
 mcu-config.workspace = true
 mcu-config-emulator.workspace = true
+mcu-image-header.workspace = true
 pldm-fw-pkg.workspace = true
 tempfile.workspace = true
 uuid.workspace = true

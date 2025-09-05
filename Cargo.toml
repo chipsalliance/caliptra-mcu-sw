@@ -23,6 +23,7 @@ members = [
     "registers/systemrdl-new",
     "platforms/common",
     "platforms/emulator/config",
+    "platforms/emulator/mcu-image-header",
     "platforms/emulator/rom",
     "platforms/emulator/runtime",
     "platforms/emulator/runtime/kernel/capsules",
@@ -167,6 +168,7 @@ mcu-builder = { path = "builder" }
 mcu-config = { path = "common/config" }
 mcu-config-emulator = { path = "platforms/emulator/config" }
 mcu-config-fpga = { path = "platforms/fpga/config" }
+mcu-image-header = { path = "platforms/emulator/mcu-image-header" }
 mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" }
 mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
 mcu-hw-model = { path = "hw/model" }
