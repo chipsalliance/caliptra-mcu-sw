@@ -746,6 +746,7 @@ impl Emulator {
         let lc = LcCtrl::new();
 
         let mcu_mailbox0 = McuMailbox0Internal::new(&clock.clone());
+        let mcu_mailbox1 = McuMailbox0Internal::new(&clock.clone());
 
         let otp = Otp::new(
             &clock.clone(),
@@ -759,7 +760,7 @@ impl Emulator {
                 ..Default::default()
             },
         )?;
-        let mci = Mci::new(&clock.clone(), ext_mci, mci_irq, Some(mcu_mailbox0.clone()));
+        let mci = Mci::new(&clock.clone(), ext_mci, mci_irq, Some(mcu_mailbox0.clone()), Some(mcu_mailbox1.clone()));
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
