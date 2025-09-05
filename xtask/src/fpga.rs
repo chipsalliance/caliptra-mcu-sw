@@ -70,6 +70,9 @@ pub(crate) enum Fpga {
         /// When copy test binaries to `target_host`
         #[arg(long)]
         target_host: Option<String>,
+        /// Local caliptra-sw path. Used in conjunction with the Cargo.toml change.
+        #[arg(long)]
+        caliptra_sw: Option<PathBuf>,
     },
     /// Run FPGA tests
     Test {
@@ -236,7 +239,10 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                 rsync_file(&target_host, "all-fw.zip", false)?;
             }
         }
-        Fpga::BuildTest { target_host } => {
+        Fpga::BuildTest {
+            target_host,
+            caliptra_sw,
+        } => {
             println!("Building FPGA test");
             // Build test binaries in a docker container
             let home = std::env::var("HOME").unwrap();
@@ -244,10 +250,30 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             let project_root = project_root.display();
 
             // TODO(clundin): Clean this docker command up.
-            Command::new("docker")
-                .current_dir(&*PROJECT_ROOT)
-                .args(["run", "--rm", &format!("-v{project_root}:/work-dir"), "-w/work-dir", &format!("-v{home}/.cargo/registry:/root/.cargo/registry"), &format!("-v{home}/.cargo/git:/root/.cargo/git"), "ghcr.io/chipsalliance/caliptra-build-image:latest", "/bin/bash", "-c", "(cd /work-dir && echo 'Cross compiling tests' && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_realtime --target=aarch64-unknown-linux-gnu --archive-file=caliptra-test-binaries.tar.zst --target-dir cross-target/ )"])
-                .status()?;
+            let mut cmd = Command::new("docker");
+            cmd.current_dir(&*PROJECT_ROOT).args([
+                "run",
+                "--rm",
+                &format!("-v{project_root}:/work-dir"),
+                "-w/work-dir",
+                &format!("-v{home}/.cargo/registry:/root/.cargo/registry"),
+                &format!("-v{home}/.cargo/git:/root/.cargo/git"),
+            ]);
+
+            // Add optional path to the caliptra-sw directory
+            if let Some(caliptra_sw) = caliptra_sw {
+                let basename = caliptra_sw.file_name().unwrap().to_str().unwrap();
+                cmd.arg(&format!(
+                    "-v{}:/{basename}",
+                    std::fs::canonicalize(&caliptra_sw)?.display()
+                ));
+            }
+
+            cmd.arg("ghcr.io/chipsalliance/caliptra-build-image:latest")
+                .arg("/bin/bash")
+                .arg("-c")
+                .arg("(cd /work-dir && echo 'Cross compiling tests' && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_realtime --target=aarch64-unknown-linux-gnu --archive-file=caliptra-test-binaries.tar.zst --target-dir cross-target/ )");
+            cmd.status()?;
 
             if let Some(target_host) = target_host {
                 rsync_file(target_host, "caliptra-test-binaries.tar.zst", false)?;
