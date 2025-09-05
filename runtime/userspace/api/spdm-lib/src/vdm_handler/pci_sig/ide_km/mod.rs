@@ -34,7 +34,7 @@ impl VdmProtocolMatcher for IdeKmResponder<'_> {
 #[async_trait]
 impl VdmResponder for IdeKmResponder<'_> {
     async fn handle_request(
-        &self,
+        &mut self,
         req_buf: &mut MessageBuf<'_>,
         rsp_buf: &mut MessageBuf<'_>,
     ) -> VdmResult<usize> {
@@ -42,28 +42,20 @@ impl VdmResponder for IdeKmResponder<'_> {
 
         let ide_km_cmd = IdeKmCommand::try_from(hdr.object_id)?;
 
-        // Encode response header
-        let resp_hdr = IdeKmHdr {
-            object_id: ide_km_cmd.response()? as u8,
-        };
-        let mut len = resp_hdr.encode(rsp_buf).map_err(VdmError::Codec)?;
-
-        len += match ide_km_cmd {
+        match ide_km_cmd {
             IdeKmCommand::Query => {
-                commands::handle_query(req_buf, rsp_buf, self.ide_km_driver).await?
+                commands::handle_query(req_buf, rsp_buf, self.ide_km_driver).await
             }
             IdeKmCommand::KeyProg => {
-                commands::handle_key_prog(req_buf, rsp_buf, self.ide_km_driver).await?
+                commands::handle_key_prog(req_buf, rsp_buf, self.ide_km_driver).await
             }
             IdeKmCommand::KeySetGo => {
-                commands::handle_key_set_go_stop(true, req_buf, rsp_buf, self.ide_km_driver).await?
+                commands::handle_key_set_go_stop(true, req_buf, rsp_buf, self.ide_km_driver).await
             }
             IdeKmCommand::KeySetStop => {
-                commands::handle_key_set_go_stop(false, req_buf, rsp_buf, self.ide_km_driver)
-                    .await?
+                commands::handle_key_set_go_stop(false, req_buf, rsp_buf, self.ide_km_driver).await
             }
-            _ => return Err(VdmError::InvalidVdmCommand),
-        };
-        Ok(len)
+            _ => Err(VdmError::InvalidVdmCommand),
+        }
     }
 }

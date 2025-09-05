@@ -38,7 +38,7 @@ pub struct SpdmContext<'a> {
     pub(crate) measurements: SpdmMeasurements,
     pub(crate) large_resp_context: LargeResponseCtx,
     pub(crate) session_mgr: SessionManager,
-    pub(crate) vdm_handlers: Option<&'a [&'a dyn VdmHandler]>,
+    pub(crate) vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
 }
 
 impl<'a> SpdmContext<'a> {
@@ -49,7 +49,7 @@ impl<'a> SpdmContext<'a> {
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
         device_certs_store: &'a dyn SpdmCertStore,
-        vdm_handlers: Option<&'a [&'a dyn VdmHandler]>,
+        vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 

@@ -38,7 +38,7 @@ pub type VdmResult<T> = Result<T, VdmError>;
 #[async_trait]
 pub trait VdmResponder {
     async fn handle_request(
-        &self,
+        &mut self,
         req_buf: &mut MessageBuf<'_>,
         rsp_buf: &mut MessageBuf<'_>,
     ) -> VdmResult<usize>;
@@ -57,6 +57,6 @@ pub trait VdmProtocolMatcher {
     fn match_protocol(&self, protocol_id: u8) -> bool;
 }
 
-pub trait VdmProtocolHandler: VdmResponder + VdmProtocolMatcher + Sync {}
+pub trait VdmProtocolHandler: VdmResponder + VdmProtocolMatcher + Send + Sync {}
 
-pub trait VdmHandler: VdmResponder + VdmRegistryMatcher + Sync {}
+pub trait VdmHandler: VdmResponder + VdmRegistryMatcher + Send + Sync {}

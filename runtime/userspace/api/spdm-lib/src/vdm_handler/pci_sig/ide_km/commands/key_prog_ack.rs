@@ -54,9 +54,15 @@ pub(crate) async fn handle_key_prog(
     // Process KEY_PROG request
     let status = process_key_prog(req_buf, &key_prog, ide_km_driver).await?;
 
+    // Generate KEY_PROG_ACK response
+    let ide_km_rsp_hdr = IdeKmHdr {
+        object_id: IdeKmCommand::KeyProgAck as u8,
+    };
+    let mut len = ide_km_rsp_hdr.encode(rsp_buf).map_err(VdmError::Codec)?;
+
     // Update status in the response
     key_prog.status = status;
 
-    // Generate KEY_PROG_ACK response
-    key_prog.encode(rsp_buf).map_err(VdmError::Codec)
+    len += key_prog.encode(rsp_buf).map_err(VdmError::Codec)?;
+    Ok(len)
 }

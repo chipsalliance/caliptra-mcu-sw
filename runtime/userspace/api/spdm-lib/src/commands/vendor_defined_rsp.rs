@@ -155,27 +155,16 @@ impl VendorLargeResponse {
     }
 }
 
-pub(crate) async fn handle_vendor_defined_request<'a>(
+async fn process_vendor_defined_request<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
-) -> CommandResult<()> {
-    // Check if the connection state is valid
-    if ctx.state.connection_info.state() < ConnectionState::AlgorithmsNegotiated {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
-    }
-
-    let session_id = ctx.session_mgr.active_session_id();
-    if let Some(session_id) = session_id {
-        let session_info = ctx.session_mgr.session_info(session_id).map_err(|_| {
-            ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
-        })?;
-        if session_info.session_state != SessionState::Established {
-            Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
-        }
-    }
-
-    // Process VENDOR_DEFINED_REQUEST
+) -> CommandResult<(
+    StandardsBodyId,
+    [u8; MAX_SPDM_VENDOR_ID_LEN as usize],
+    [u8; MAX_VENDOR_DEFINED_REQ_SIZE],
+    usize,
+)> {
     let connection_version = ctx.state.connection_info.version_number();
     if spdm_hdr.version().ok() != Some(connection_version) {
         Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
@@ -203,27 +192,25 @@ pub(crate) async fn handle_vendor_defined_request<'a>(
 
     let in_secure_session = ctx.session_mgr.active_session_id().is_some();
 
-    // Validate if the standards body commands are supported and get the handler.
-    let vdm_handler = ctx
-        .vdm_handlers
-        .as_ref()
-        .and_then(|handlers| {
-            handlers.iter().find(|handler| {
-                handler.match_id(
-                    standards_body_id,
-                    &vendor_id[..req_hdr.vendor_id_len as usize],
-                    in_secure_session,
-                )
-            })
-        })
-        .ok_or_else(|| {
-            ctx.generate_error_response(
-                req_payload,
-                ErrorCode::UnsupportedRequest,
-                ReqRespCode::VendorDefinedRequest as u8,
-                None,
+    // Check if any handler matches the request.
+    let handler_found = ctx.vdm_handlers.as_ref().is_some_and(|handlers| {
+        handlers.iter().any(|handler| {
+            handler.match_id(
+                standards_body_id,
+                &vendor_id[..req_hdr.vendor_id_len as usize],
+                in_secure_session,
             )
-        })?;
+        })
+    });
+
+    if !handler_found {
+        return Err(ctx.generate_error_response(
+            req_payload,
+            ErrorCode::UnsupportedRequest,
+            ReqRespCode::VendorDefinedRequest as u8,
+            None,
+        ));
+    }
 
     // Decode the VDM request length
     let vdm_req_len = u16::decode(req_payload).map_err(|e| (false, CommandError::Codec(e)))?;
@@ -236,23 +223,55 @@ pub(crate) async fn handle_vendor_defined_request<'a>(
     decode_u8_slice(req_payload, &mut vdm_req[..vdm_req_len as usize])
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    let mut vdm_req_buf = MessageBuf::new(&mut vdm_req[..vdm_req_len as usize]);
+    Ok((standards_body_id, vendor_id, vdm_req, vdm_req_len as usize))
+}
+
+async fn generate_vendor_defined_response<'a>(
+    ctx: &mut SpdmContext<'a>,
+    standard_id: StandardsBodyId,
+    vendor_id: [u8; MAX_SPDM_VENDOR_ID_LEN as usize],
+    vdm_req_buf: &mut MessageBuf<'_>,
+    rsp: &mut MessageBuf<'a>,
+) -> CommandResult<()> {
+    let vendor_id_len = standard_id
+        .vendor_id_len()
+        .map_err(|_| (false, CommandError::UnsupportedRequest))?;
+
+    let connection_version = ctx.state.connection_info.version_number();
+    let in_secure_session = ctx.session_mgr.active_session_id().is_some();
 
     let mut resp_hdr = VendorDefRespHdr::new(
         connection_version,
-        req_hdr.standard_id,
-        &vendor_id[..req_hdr.vendor_id_len as usize],
+        standard_id as u16,
+        &vendor_id[..vendor_id_len as usize],
     );
     let resp_hdr_len = resp_hdr.len();
 
-    let rsp = req_payload;
-    ctx.prepare_response_buffer(rsp)?;
     // Reserve headroom for the response header. This will be encoded once the response is generated.
     rsp.reserve(resp_hdr_len)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    // Generate VENDOR_DEFINED_RESPONSE
-    match vdm_handler.handle_request(&mut vdm_req_buf, rsp).await {
+    let vdm_handler = ctx.vdm_handlers.as_mut().and_then(|handlers| {
+        handlers.iter_mut().find(|handler| {
+            handler.match_id(
+                standard_id,
+                &vendor_id[..vendor_id_len as usize],
+                in_secure_session,
+            )
+        })
+    });
+    let vdm_handler = match vdm_handler {
+        Some(handler) => handler,
+        None => {
+            return Err(ctx.generate_error_response(
+                rsp,
+                ErrorCode::UnsupportedRequest,
+                ReqRespCode::VendorDefinedRequest as u8,
+                None,
+            ));
+        }
+    };
+    match vdm_handler.handle_request(vdm_req_buf, rsp).await {
         Ok(len) => {
             resp_hdr.set_resp_len(len as u16);
             resp_hdr
@@ -267,8 +286,8 @@ pub(crate) async fn handle_vendor_defined_request<'a>(
                     // Supported large response types, return context for chunking
                     let large_rsp_ctx = VendorLargeResponse::new(
                         connection_version,
-                        standards_body_id,
-                        &vendor_id[..req_hdr.vendor_id_len as usize],
+                        standard_id,
+                        &vendor_id[..vendor_id_len as usize],
                         resp_ctx,
                     );
                     let large_rsp = LargeResponse::Vdm(large_rsp_ctx);
@@ -286,4 +305,36 @@ pub(crate) async fn handle_vendor_defined_request<'a>(
             Err((false, CommandError::Vdm(e)))
         }
     }
+}
+
+pub(crate) async fn handle_vendor_defined_request<'a>(
+    ctx: &mut SpdmContext<'a>,
+    spdm_hdr: SpdmMsgHdr,
+    req_payload: &mut MessageBuf<'a>,
+) -> CommandResult<()> {
+    // Check if the connection state is valid
+    if ctx.state.connection_info.state() < ConnectionState::AlgorithmsNegotiated {
+        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
+    }
+
+    let session_id = ctx.session_mgr.active_session_id();
+    if let Some(session_id) = session_id {
+        let session_info = ctx.session_mgr.session_info(session_id).map_err(|_| {
+            ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
+        })?;
+        if session_info.session_state != SessionState::Established {
+            Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
+        }
+    }
+
+    // Process VENDOR_DEFINED_REQUEST
+    let (standard_id, vendor_id, mut vdm_req, vdm_req_len) =
+        process_vendor_defined_request(ctx, spdm_hdr, req_payload).await?;
+
+    let mut vdm_req_buf = MessageBuf::new(&mut vdm_req[..vdm_req_len]);
+    ctx.prepare_response_buffer(req_payload)?;
+
+    // Generate VENDOR_DEFINED_RESPONSE
+    generate_vendor_defined_response(ctx, standard_id, vendor_id, &mut vdm_req_buf, req_payload)
+        .await
 }

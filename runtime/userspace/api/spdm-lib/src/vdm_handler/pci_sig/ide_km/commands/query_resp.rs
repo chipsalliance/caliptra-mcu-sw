@@ -2,6 +2,7 @@
 
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::vdm_handler::pci_sig::ide_km::driver::IdeDriver;
+use crate::vdm_handler::pci_sig::ide_km::protocol::{IdeKmCommand, IdeKmHdr};
 use crate::vdm_handler::{VdmError, VdmResult};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
@@ -24,13 +25,18 @@ async fn generate_query_resp(
     ide_km_driver: &dyn IdeDriver,
     rsp_buf: &mut MessageBuf<'_>,
 ) -> VdmResult<usize> {
+    let ide_km_rsp_hdr = IdeKmHdr {
+        object_id: IdeKmCommand::QueryResp as u8,
+    };
+    let mut len = ide_km_rsp_hdr.encode(rsp_buf).map_err(VdmError::Codec)?;
+
     // Encode Query response header
     let query_resp_hdr = Query {
         reserved: 0,
         port_index,
     };
 
-    let mut len = query_resp_hdr.encode(rsp_buf).map_err(VdmError::Codec)?;
+    len += query_resp_hdr.encode(rsp_buf).map_err(VdmError::Codec)?;
 
     // Port configuration
     let port_config = ide_km_driver
@@ -68,6 +74,8 @@ async fn generate_query_resp(
                 .map_err(VdmError::Codec)?;
         }
     }
+
+    rsp_buf.push_data(len).map_err(VdmError::Codec)?;
 
     Ok(len)
 }

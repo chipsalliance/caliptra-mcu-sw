@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use crate::codec::{Codec, CommonCodec, MessageBuf};
+use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
 use crate::protocol::*;
 use crate::vdm_handler::{
     VdmError, VdmProtocolHandler, VdmRegistryMatcher, VdmResponder, VdmResult,
@@ -22,11 +22,13 @@ pub(crate) struct PciSigProtocolHdr {
     pub(crate) protocol_id: u8,
 }
 
-impl CommonCodec for PciSigProtocolHdr {}
+impl CommonCodec for PciSigProtocolHdr {
+    const DATA_KIND: DataKind = DataKind::Header;
+}
 
 pub struct PciSigCmdHandler<'a> {
     vendor_id: u16,
-    protocol_handlers: [Option<&'a (dyn VdmProtocolHandler + Sync)>; MAX_PCI_SIG_PROTOCOLS],
+    protocol_handlers: [Option<&'a mut (dyn VdmProtocolHandler + Sync)>; MAX_PCI_SIG_PROTOCOLS],
 }
 
 impl VdmRegistryMatcher for PciSigCmdHandler<'_> {
@@ -46,7 +48,7 @@ impl<'a> PciSigCmdHandler<'a> {
     #[allow(dead_code)]
     pub fn new(
         vendor_id: u16,
-        protocol_handlers: [Option<&'a (dyn VdmProtocolHandler + Sync)>; MAX_PCI_SIG_PROTOCOLS],
+        protocol_handlers: [Option<&'a mut (dyn VdmProtocolHandler + Sync)>; MAX_PCI_SIG_PROTOCOLS],
     ) -> Self {
         PciSigCmdHandler {
             vendor_id,
@@ -58,17 +60,20 @@ impl<'a> PciSigCmdHandler<'a> {
 #[async_trait]
 impl VdmResponder for PciSigCmdHandler<'_> {
     async fn handle_request(
-        &self,
+        &mut self,
         req_buf: &mut MessageBuf<'_>,
         rsp_buf: &mut MessageBuf<'_>,
     ) -> VdmResult<usize> {
         let pcisig_hdr = PciSigProtocolHdr::decode(req_buf).map_err(VdmError::Codec)?;
         let protocol_id = pcisig_hdr.protocol_id;
+        let hdr_len = size_of::<PciSigProtocolHdr>();
 
-        for handler in self.protocol_handlers.into_iter().flatten() {
+        for handler in self.protocol_handlers.iter_mut().flatten() {
             if handler.match_protocol(protocol_id) {
-                let mut len = protocol_id.encode(rsp_buf).map_err(VdmError::Codec)?;
-                len += handler.handle_request(req_buf, rsp_buf).await?;
+                rsp_buf.reserve(hdr_len).map_err(VdmError::Codec)?;
+                let mut len = handler.handle_request(req_buf, rsp_buf).await?;
+                let hdr = PciSigProtocolHdr { protocol_id };
+                len += hdr.encode(rsp_buf).map_err(VdmError::Codec)?;
                 return Ok(len);
             }
         }
