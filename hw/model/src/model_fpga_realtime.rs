@@ -349,7 +349,7 @@ impl McuHwModel for ModelFpgaRealtime {
     }
 
     fn start_i3c_controller(&mut self) {
-        self.base.i3c_controller.configure();
+        //self.base.i3c_controller.configure();
     }
 
     fn i3c_address(&self) -> Option<u8> {
