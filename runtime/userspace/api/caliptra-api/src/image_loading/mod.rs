@@ -12,7 +12,6 @@ use caliptra_api::mailbox::{
     AuthorizeAndStashReq, AuthorizeAndStashResp, CommandId, GetImageInfoReq, GetImageInfoResp,
     ImageHashSource, MailboxReqHeader, MailboxRespHeader, Request,
 };
-use caliptra_auth_man_types::ImageMetadataFlags;
 use embassy_executor::Spawner;
 use flash_image::{FlashHeader, SOC_MANIFEST_IDENTIFIER};
 use libsyscall_caliptra::dma::DMAMapping;
@@ -232,14 +231,10 @@ async fn get_image_load_address(
 
 /// Authorizes an image based on its ID.
 async fn authorize_image(mailbox: &Mailbox, image_id: u32, size: u32) -> Result<(), ErrorCode> {
-    let mut flags = ImageMetadataFlags(0);
-    flags.set_ignore_auth_check(false);
-    flags.set_image_source(ImageHashSource::LoadAddress as u32);
-
     let mut req = AuthorizeAndStashReq {
         hdr: MailboxReqHeader::default(),
         fw_id: image_id.to_le_bytes(),
-        flags: flags.0,
+        flags: 1, // Skip Stash
         source: ImageHashSource::LoadAddress as u32,
         image_size: size,
         ..Default::default()
