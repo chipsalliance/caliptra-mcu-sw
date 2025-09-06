@@ -282,11 +282,18 @@ impl MciMailboxImpl {
             self.lock.reg.set(1);
             // Reset max_dlen_in_lock_session for new session
             self.max_dlen_in_lock_session = 0;
+
+            // Return 0 to indicate lock is now held
+            caliptra_emu_bus::ReadWriteRegister::<
+                u32,
+                registers_generated::mbox::bits::MboxLock::Register,
+            >::new(0)            
+        } else {
+            caliptra_emu_bus::ReadWriteRegister::<
+                u32,
+                registers_generated::mbox::bits::MboxLock::Register,
+            >::new(self.lock.reg.get())
         }
-        caliptra_emu_bus::ReadWriteRegister::<
-            u32,
-            registers_generated::mbox::bits::MboxLock::Register,
-        >::new(self.lock.reg.get())
     }
 
     pub fn read_mcu_mbox0_csr_mbox_user(&mut self) -> caliptra_emu_types::RvData {

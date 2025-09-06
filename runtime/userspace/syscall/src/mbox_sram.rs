@@ -13,13 +13,6 @@ pub struct MboxSram<S: Syscalls = DefaultSyscalls> {
 }
 
 
-impl<S: Syscalls> Default for MboxSram<S> {
-    fn default() -> Self {
-        Self::new(DRIVER_NUM_MCU_MBOX_SRAM)
-    }
-}
-
-
 impl<S: Syscalls> MboxSram<S> {
     pub fn new(driver_num : u32) -> Self {
         Self {
@@ -83,18 +76,27 @@ impl<S: Syscalls> MboxSram<S> {
             Err(e) => Err(e),
         }
     }
+
+    pub fn acquire_lock(&self) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::ACQUIRE_LOCK, 0, 0)
+            .to_result::<(), ErrorCode>()
+    }
+
+    pub fn release_lock(&self) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::RELEASE_LOCK, 0, 0)
+            .to_result::<(), ErrorCode>()
+    }
 }
 
-// -----------------------------------------------------------------------------
-// Command IDs and MemoryRegion-specific constants
-// -----------------------------------------------------------------------------
 
-// Driver number for the MCU MBOX SRAM interface
-pub const DRIVER_NUM_MCU_MBOX_SRAM: u32 = 0x9000_3000;
+pub const DRIVER_NUM_MCU_MBOX0_SRAM: u32 = 0x9000_3000;
+pub const DRIVER_NUM_MCU_MBOX1_SRAM: u32 = 0x9000_3001;
 
 mod cmd {
     pub const MEMORY_READ: u32 = 1;
     pub const MEMORY_WRITE: u32 = 2;
+    pub const ACQUIRE_LOCK: u32 = 3;
+    pub const RELEASE_LOCK: u32 = 4;    
 }
 
 mod upcall {

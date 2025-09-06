@@ -857,6 +857,7 @@ dependencies = [
  "mcu-mbox-comm",
  "registers-generated",
  "romtime",
+ "tock-registers",
  "ureg",
  "zerocopy",
 ]

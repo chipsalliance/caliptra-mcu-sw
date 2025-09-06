@@ -7,12 +7,22 @@ use core::cell::RefCell;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::OptionalCell;
+use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{ErrorCode, ProcessId};
 use kernel::processbuffer::{
     ReadableProcessBuffer, ReadableProcessSlice, WriteableProcessBuffer, WriteableProcessSlice,
 };
+use registers_generated::mci;
+use registers_generated::mci::bits::{MboxCmdStatus, Notif0IntrEnT, Notif0IntrT};
+use registers_generated::mci::bits::MboxExecute;
+use romtime::StaticRef;
+use tock_registers::interfaces::Readable;
+use tock_registers::registers::ReadOnly;
 
-pub const DRIVER_NUM_MCU_MBOX_SRAM: usize = 0x9000_3000;
+use crate::doe::driver;
+
+pub const DRIVER_NUM_MCU_MBOX0_SRAM: usize = 0x9000_3000;
+pub const DRIVER_NUM_MCU_MBOX1_SRAM: usize = 0x9000_3001;
 
 
 
@@ -20,6 +30,8 @@ pub const DRIVER_NUM_MCU_MBOX_SRAM: usize = 0x9000_3000;
 pub struct App { }
 
 pub struct MboxSram {
+    driver_num : usize,
+    registers: StaticRef<mci::regs::Mci>,
     mem_ref: RefCell<&'static mut [u32]>,
     // Per-app state.
     apps: Grant<
@@ -34,6 +46,8 @@ pub struct MboxSram {
 
 impl MboxSram {
     pub fn new(
+        driver_num: usize,
+        registers: StaticRef<mci::regs::Mci>,
         mem_ref: &'static mut [u32],
         grant: Grant<
             App,
@@ -43,6 +57,8 @@ impl MboxSram {
         >,
     ) -> MboxSram {
         MboxSram {
+            driver_num,
+            registers,
             mem_ref: RefCell::new(mem_ref),
             apps: grant,
             current_app: OptionalCell::empty(),
@@ -79,6 +95,7 @@ impl MboxSram {
         processid: ProcessId,
     ) -> Result<(), ErrorCode> {
         self.apps.enter(processid, |_app, kernel_data| {
+
             // copy the request so we can write async
             kernel_data
                 .get_readwrite_processbuffer(rw_allow::READ_BUFFER)
@@ -145,6 +162,36 @@ impl MboxSram {
         });
     }
 
+    fn acquire_lock(&self) -> Result<(), ErrorCode> {
+        match self.driver_num {
+            DRIVER_NUM_MCU_MBOX0_SRAM => {
+                if self.registers.mcu_mbox0_csr_mbox_lock.get() != 0 {
+                    return Err(ErrorCode::BUSY);
+                }
+            }
+            DRIVER_NUM_MCU_MBOX1_SRAM => {
+                if self.registers.mcu_mbox1_csr_mbox_lock.get() != 0 {
+                    return Err(ErrorCode::BUSY);
+                }
+            }
+            _ => return Err(ErrorCode::INVAL),
+        }
+        Ok(())
+    }
+
+    fn release_lock(&self) -> Result<(), ErrorCode> {
+        match self.driver_num {
+            DRIVER_NUM_MCU_MBOX0_SRAM => {
+                self.registers.mcu_mbox0_csr_mbox_execute.modify(MboxExecute::Execute::CLEAR);
+            }
+            DRIVER_NUM_MCU_MBOX1_SRAM => {
+                self.registers.mcu_mbox1_csr_mbox_execute.modify(MboxExecute::Execute::CLEAR);
+            }
+            _ => return Err(ErrorCode::INVAL),
+        }
+        Ok(())
+    }
+
     
 }
 
@@ -171,6 +218,8 @@ impl SyscallDriver for MboxSram {
                 self.notify_done(processid, cmd as u32);
                 res
             }
+            cmd::ACQUIRE_LOCK => self.acquire_lock(),
+            cmd::RELEASE_LOCK => self.release_lock(),
             _ => Err(ErrorCode::NOSUPPORT),
         };
         self.current_app.clear();
@@ -189,6 +238,8 @@ impl SyscallDriver for MboxSram {
 mod cmd {
     pub const MEMORY_READ: u32 = 1;
     pub const MEMORY_WRITE: u32 = 2;
+    pub const ACQUIRE_LOCK: u32 = 3;
+    pub const RELEASE_LOCK: u32 = 4;
 }
 
 /// IDs for subscribed upcalls.

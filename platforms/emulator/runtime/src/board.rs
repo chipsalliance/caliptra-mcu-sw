@@ -149,7 +149,7 @@ struct VeeR {
         'static,
         mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>,
     >,
-    mcu_mbox0_staging_sram: &'static capsules_runtime::mbox_sram::MboxSram,
+    mcu_mbox1_staging_sram: &'static capsules_runtime::mbox_sram::MboxSram,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -187,8 +187,8 @@ impl SyscallDriverLookup for VeeR {
                 f(Some(self.logging_flash))
             }
             capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => f(Some(self.mcu_mbox0)),
-            capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX_SRAM => {
-                f(Some(self.mcu_mbox0_staging_sram))
+            capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
+                f(Some(self.mcu_mbox1_staging_sram))
             }
 
             _ => f(None),
@@ -481,10 +481,11 @@ pub unsafe fn main() {
     )
     .finalize(kernel::static_buf!(capsules_runtime::mci::Mci));
 
-    let mcu_mbox0_staging_sram = mcu_components::mbox_sram::MboxSramComponent::new(
+    let mcu_mbox1_staging_sram = mcu_components::mbox_sram::MboxSramComponent::new(
+        peripherals.mci.registers.clone(),
         board_kernel,
-        capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX_SRAM,
-        core::slice::from_raw_parts_mut((mcu_mbox_driver::MCU_MBOX0_SRAM_BASE+256*1024) as *mut u32, 256*1024),
+        capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
+        core::slice::from_raw_parts_mut(mcu_mbox_driver::MCU_MBOX1_SRAM_BASE as *mut u32, 256*1024),
     )
     .finalize(kernel::static_buf!(capsules_runtime::mbox_sram::MboxSram));
 
@@ -688,7 +689,7 @@ pub unsafe fn main() {
             logging_flash,
             mci,
             mcu_mbox0,
-            mcu_mbox0_staging_sram,
+            mcu_mbox1_staging_sram,
         }
     );
 

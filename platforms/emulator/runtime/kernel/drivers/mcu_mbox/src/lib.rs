@@ -17,6 +17,7 @@ pub const MCI_BASE: StaticRef<mci::regs::Mci> =
     unsafe { StaticRef::new(mci::MCI_TOP_ADDR as *const mci::regs::Mci) };
 
 pub const MCU_MBOX0_SRAM_BASE: u32 = mci::MCI_TOP_ADDR + 0x40_0000;
+pub const MCU_MBOX1_SRAM_BASE: u32 = mci::MCI_TOP_ADDR + 0x80_0000;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum McuMboxState {

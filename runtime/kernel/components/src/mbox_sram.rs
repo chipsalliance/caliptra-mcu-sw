@@ -6,8 +6,11 @@ use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::create_capability;
+use romtime::StaticRef;
+use registers_generated::mci;
 
 pub struct MboxSramComponent {
+    registers: StaticRef<mci::regs::Mci>,
     board_kernel: &'static kernel::Kernel,
     driver_num: usize,
     mem_ref: &'static mut [u32],
@@ -15,11 +18,13 @@ pub struct MboxSramComponent {
 
 impl MboxSramComponent {
     pub fn new(
+        registers: StaticRef<mci::regs::Mci>,
         board_kernel: &'static kernel::Kernel,
         driver_num: usize,
         mem_ref: &'static mut [u32],
     ) -> Self {
         Self {
+            registers,
             board_kernel,
             driver_num,
             mem_ref,
@@ -35,6 +40,8 @@ impl Component for MboxSramComponent {
     fn finalize(self, static_buffer: Self::StaticInput) -> Self::Output {
         let grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
         static_buffer.write(capsules_runtime::mbox_sram::MboxSram::new(
+            self.driver_num,
+            self.registers,
             self.mem_ref,
             self.board_kernel.create_grant(self.driver_num, &grant_cap),
         ))
