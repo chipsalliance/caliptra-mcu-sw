@@ -554,20 +554,6 @@ impl Emulator {
                 tests,
                 None,
             );
-        } else if cfg!(feature = "test-mctp-capsule-loopback") {
-            i3c_controller_join_handle = Some(i3c_controller.start());
-            println!(
-                "Starting loopback test thread for testing target {:?}",
-                i3c.get_dynamic_address().unwrap()
-            );
-
-            let tests = tests::mctp_loopback::generate_tests();
-            i3c_socket::run_tests(
-                cli.i3c_port.unwrap(),
-                i3c.get_dynamic_address().unwrap(),
-                tests,
-                None,
-            );
         } else if cfg!(feature = "test-mctp-user-loopback") {
             i3c_controller_join_handle = Some(i3c_controller.start());
             println!(

@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 mod i3c_socket;
 mod test_firmware_update;
+mod test_mctp_capsule_loopback;
 mod test_pldm_fw_update;
 mod test_soc_boot;
 
@@ -462,7 +463,7 @@ mod test {
     run_test!(test_log_flash_circular);
     run_test!(test_log_flash_usermode, example_app);
     run_test!(test_mctp_ctrl_cmds);
-    run_test!(test_mctp_capsule_loopback);
+    //run_test!(test_mctp_capsule_loopback);
     // run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);

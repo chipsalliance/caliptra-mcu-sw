@@ -22,6 +22,9 @@ pub mod io;
 #[cfg(target_arch = "riscv32")]
 pub use board::*;
 
+#[cfg(target_arch = "riscv32")]
+mod tests;
+
 use mcu_config::McuMemoryMap;
 
 // re-export this so the common runtime code can use it
