@@ -117,17 +117,13 @@ impl<S: Syscalls> McuMbox<S> {
     /// # Returns
     ///
     /// Returns the number of bytes sent, or an error if the operation fails.
-    pub async fn send_response(
-        &self,
-        data: &[u8],
-        status: MbxCmdStatus,
-    ) -> Result<usize, ErrorCode> {
+    pub async fn send_response(&self, data: &[u8], status: MbxCmdStatus) -> Result<(), ErrorCode> {
         if data.is_empty() {
             return Err(ErrorCode::Invalid);
         }
 
         let mutex = MCU_MBOX_MUTEX.lock().await;
-        let (sent_len, _, _) = share::scope::<(), _, _>(|_handle| {
+        let (_, _, _) = share::scope::<(), _, _>(|_handle| {
             let mut sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
                 self.driver_num,
                 subscribe::RESPONSE_SENT,
@@ -149,7 +145,7 @@ impl<S: Syscalls> McuMbox<S> {
 
         black_box(*mutex);
 
-        Ok(sent_len as usize)
+        Ok(())
     }
 }
 

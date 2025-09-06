@@ -70,18 +70,17 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
         status: hil::MailboxStatus,
     ) -> Result<(), ErrorCode> {
         let data_len_bytes = app_buf.len();
-        if data_len_bytes % 4 != 0 {
-            return Err(ErrorCode::INVAL);
-        }
-        let dword_count = data_len_bytes / 4;
+        let dword_count = data_len_bytes.div_ceil(4);
 
         self.driver.send_response(
-            app_buf.chunks(4).map(|chunk| {
+            (0..dword_count).map(|i| {
+                let start = i * 4;
+                let end = core::cmp::min(start + 4, data_len_bytes);
                 let mut dword = [0u8; 4];
-                chunk.copy_to_slice(&mut dword);
+                app_buf[start..end].copy_to_slice(&mut dword[..end - start]);
                 u32::from_le_bytes(dword)
             }),
-            dword_count,
+            data_len_bytes,
             status,
         )
     }
@@ -122,8 +121,9 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
 }
 
 impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
-    fn request_received(&self, command: u32, rx_buf: &'static mut [u32], dw_len: usize) {
+    fn request_received(&self, command: u32, rx_buf: &'static mut [u32], dlen: usize) {
         if let Some(_process_id) = self.current_app.take() {
+            let dw_len = dlen.div_ceil(4);
             if dw_len > rx_buf.len() {
                 println!(
                     "MCU_MBOX_CAPSULE: Received request with invalid length {}",
@@ -153,7 +153,7 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
                                         let bytes = data.to_le_bytes();
                                         buf[start..end].copy_from_slice(&bytes);
                                     }
-                                    Ok(copy_len_dw * 4)
+                                    Ok(core::cmp::min(copy_len_dw * 4, dlen))
                                 })
                                 .map_err(|e| {
                                     println!("MCU_MBOX_CAPSULE: Error entering WriteableProcessBuffer buffer: {:?}", e);
