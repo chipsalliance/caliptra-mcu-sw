@@ -14,7 +14,9 @@ use caliptra_hw_model::{
 };
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
 use mcu_rom_common::LifecycleControllerState;
-use mcu_testing_common::i3c::{I3cBusCommand, I3cBusResponse, I3cTcriCommand};
+use mcu_testing_common::i3c::{
+    I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
+};
 use mcu_testing_common::MCU_RUNNING;
 use std::io::Write;
 use std::marker::PhantomData;
@@ -49,6 +51,7 @@ pub struct ModelFpgaRealtime {
     i3c_port: Option<u16>,
     i3c_rx: Option<mpsc::Receiver<I3cBusCommand>>,
     i3c_tx: Option<mpsc::Sender<I3cBusResponse>>,
+    i3c_next_private_read_len: Option<u16>,
 }
 
 impl ModelFpgaRealtime {
@@ -129,7 +132,55 @@ impl ModelFpgaRealtime {
         // check if we need to read any I3C packets from Caliptra
         // TODO: add IBI support
         // TODO: somehow know how much to read
-        if let Some(tx) = self.i3c_tx.as_ref() {}
+        const MCTP_MDB: u8 = 0xae;
+        if let Some(tx) = self.i3c_tx.as_ref() {
+            if self.base.i3c_controller().ibi_ready() {
+                match self.base.i3c_controller().ibi_recv(None) {
+                    Ok(ibi) => {
+                        if ibi.len() != 3 || ibi[0] != MCTP_MDB {
+                            println!("Ignoring unexpected I3C IBI received: {:02x?}", ibi);
+                            return;
+                        }
+                        // forward the IBI
+                        tx.send(I3cBusResponse {
+                            addr: self.i3c_address().unwrap_or_default().into(),
+                            ibi: Some(MCTP_MDB),
+                            resp: I3cTcriResponseXfer {
+                                resp: ResponseDescriptor::default(),
+                                data: vec![],
+                            },
+                        })
+                        .expect("Failed to forward I3C IBI response to channel");
+                        self.i3c_next_private_read_len =
+                            Some(u16::from_be_bytes(ibi[1..3].try_into().unwrap()));
+                    }
+                    Err(e) => {
+                        println!("Error receiving I3C IBI: {:?}", e);
+                    }
+                }
+            }
+            // check if we should do attempt a private read
+            if let Some(private_read_len) = self.i3c_next_private_read_len.take() {
+                match self.base.i3c_controller().read(private_read_len) {
+                    Ok(data) => {
+                        // forward the private read
+                        let mut resp = ResponseDescriptor::default();
+                        resp.set_data_length(data.len() as u16);
+                        tx.send(I3cBusResponse {
+                            addr: self.i3c_address().unwrap_or_default().into(),
+                            ibi: None,
+                            resp: I3cTcriResponseXfer { resp, data },
+                        })
+                        .expect("Failed to forward I3C private read response to channel");
+                    }
+                    Err(e) => {
+                        println!("Error receiving I3C private read: {:?}", e);
+                        // retry
+                        self.i3c_next_private_read_len = Some(private_read_len);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -184,6 +235,7 @@ impl McuHwModel for ModelFpgaRealtime {
             soc_user: MailboxRequester::SocUser(DEFAULT_AXI_PAUSER),
             test_sram: None,
             mcu_rom: Some(params.mcu_rom),
+            enable_mcu_uart_log: true,
         };
         println!("Starting base model");
         let base = ModelFpgaSubsystem::new_unbooted(cptra_init)
@@ -210,6 +262,7 @@ impl McuHwModel for ModelFpgaRealtime {
             i3c_port: params.i3c_port,
             i3c_rx,
             i3c_tx,
+            i3c_next_private_read_len: None,
         };
 
         Ok(m)

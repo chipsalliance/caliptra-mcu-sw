@@ -19,6 +19,7 @@ lazy_static.workspace = true
 log.workspace = true
 mcu-builder.workspace = true
 mcu-config-emulator.workspace = true
+mcu-config-fpga.workspace = true
 mcu-config.workspace = true
 mcu-hw-model.workspace = true
 mcu-image-header.workspace = true

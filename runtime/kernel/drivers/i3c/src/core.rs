@@ -339,7 +339,8 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         // TODO: check that this is for MCTP or something else
         // immediately send the read to the I3C target interface and send an IBI so the controller knows we have data
         self.handle_outgoing_read();
-        self.send_ibi(MDB_PENDING_READ_MCTP, &[]);
+        // send the length as part of the IBI
+        self.send_ibi(MDB_PENDING_READ_MCTP, &((len as u16).to_be_bytes()));
         Ok(())
     }
 
