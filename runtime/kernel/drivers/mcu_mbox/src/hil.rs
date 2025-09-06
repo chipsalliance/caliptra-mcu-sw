@@ -46,8 +46,10 @@ pub trait Mailbox<'a> {
         &self,
         response_data: impl Iterator<Item = u32>,
         dlen: usize,
-        status: MailboxStatus,
+        //status: MailboxStatus,
     ) -> Result<(), ErrorCode>;
+
+    fn set_command_status(&self, status: MailboxStatus) -> Result<(), ErrorCode>;
 
     /// Returns the maximum size (in dword) of the MCU mailbox SRAM.
     fn max_mbox_sram_dw_size(&self) -> usize;

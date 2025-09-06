@@ -37,9 +37,6 @@ impl<'a> CmdInterface<'a> {
         &mut self,
         msg_buf: &mut [u8],
     ) -> Result<(), MsgHandlerError> {
-        let mut console_writer = Console::<DefaultSyscalls>::writer();
-        writeln!(console_writer, "[xs debug]handle_responder_msg enter").unwrap();
-
         // Receive command ID and request payload from transport layer
         let (cmd_id, req_len) = self
             .transport
@@ -56,6 +53,17 @@ impl<'a> CmdInterface<'a> {
             .await
             .map_err(|_| MsgHandlerError::Transport)?;
 
+        self.transport
+            .finalize_response(status)
+            .map_err(|_| MsgHandlerError::Transport)?;
+
+        Ok(())
+    }
+
+    pub fn finalize_response(&mut self, status: MbxCmdStatus) -> Result<(), MsgHandlerError> {
+        self.transport
+            .finalize_response(status)
+            .map_err(|_| MsgHandlerError::Transport)?;
         Ok(())
     }
 
@@ -65,9 +73,6 @@ impl<'a> CmdInterface<'a> {
         cmd: u32,
         req_len: usize,
     ) -> Result<(usize, MbxCmdStatus), MsgHandlerError> {
-        let mut console_writer = Console::<DefaultSyscalls>::writer();
-        writeln!(console_writer, "[xs debug]process_request  enter").unwrap();
-
         if self.busy.load(Ordering::SeqCst) {
             return Err(MsgHandlerError::NotReady);
         }
@@ -92,13 +97,9 @@ impl<'a> CmdInterface<'a> {
         msg_buf: &mut [u8],
         req_len: usize,
     ) -> Result<(usize, MbxCmdStatus), MsgHandlerError> {
-        let mut console_writer = Console::<DefaultSyscalls>::writer();
-        writeln!(console_writer, "[xs debug]handle_fw_version  enter").unwrap();
         // Parse the request
         let req: &FirmwareVersionReq = FirmwareVersionReq::ref_from_bytes(&msg_buf[..req_len])
             .map_err(|_| MsgHandlerError::InvalidParams)?;
-
-        romtime::println!("[xs debug]handle_fw_version req: {:?}", req);
 
         let index = req.index;
         let mut version = FirmwareVersion::default();
@@ -131,23 +132,6 @@ impl<'a> CmdInterface<'a> {
 
         // Encode resp into msg_buffer
         msg_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
-
-        // Printout for debug
-        //romtime::println!("[xs debug]handle_fw_version resp: {:?}", resp);
-        writeln!(
-            console_writer,
-            "[xs debug]handle_fw_version resp: {:02x?}",
-            resp
-        )
-        .unwrap();
-
-        // Print out encoded data
-        writeln!(
-            console_writer,
-            "[xs debug]handle_fw_version: encoded bytes: {:02x?}",
-            &msg_buf[..resp_bytes.len()]
-        )
-        .unwrap();
 
         Ok((resp_bytes.len(), mbox_cmd_status))
     }

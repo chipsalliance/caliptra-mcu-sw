@@ -7,6 +7,7 @@ use embassy_executor::Spawner;
 use external_cmds_common::UnifiedCommandHandler;
 //use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 //use embassy_sync::signal::Signal;
+use libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use libsyscall_caliptra::mcu_mbox::MCU_MBOX0_DRIVER_NUM;
 
 use libtock_alarm::Milliseconds;
@@ -94,9 +95,6 @@ pub async fn mcu_mbox_responder(
     running: &'static AtomicBool,
 ) {
     let mut msg_buffer = [0; MAX_MCU_MBOX_MSG_SIZE];
-
-    romtime::println!("[xs debug]mcu_mbox_responder started");
-
     while running.load(Ordering::SeqCst) {
         let _ = cmd_interface.handle_responder_msg(&mut msg_buffer).await;
     }

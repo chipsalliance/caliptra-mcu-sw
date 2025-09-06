@@ -117,7 +117,7 @@ impl<S: Syscalls> McuMbox<S> {
     /// # Returns
     ///
     /// Returns the number of bytes sent, or an error if the operation fails.
-    pub async fn send_response(&self, data: &[u8], status: MbxCmdStatus) -> Result<(), ErrorCode> {
+    pub async fn send_response(&self, data: &[u8], _status: MbxCmdStatus) -> Result<(), ErrorCode> {
         if data.is_empty() {
             return Err(ErrorCode::Invalid);
         }
@@ -131,7 +131,7 @@ impl<S: Syscalls> McuMbox<S> {
                 data,
             );
 
-            if let Err(e) = S::command(self.driver_num, command::SEND_RESPONSE, status.into(), 0)
+            if let Err(e) = S::command(self.driver_num, command::SEND_RESPONSE, 0, 0)
                 .to_result::<(), ErrorCode>()
             {
                 S::unallow_ro(self.driver_num, ro_allow::RESPONSE);
@@ -147,6 +147,10 @@ impl<S: Syscalls> McuMbox<S> {
 
         Ok(())
     }
+
+    pub fn finish_response(&self, status: MbxCmdStatus) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, command::FINISH, status.into(), 0).to_result::<(), ErrorCode>()
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -159,10 +163,12 @@ pub const MCU_MBOX0_DRIVER_NUM: u32 = 0x8000_0010;
 /// - `0` - Command to check if the MCU mailbox syscall driver exists
 /// - `1` - Receive request
 /// - `2` - Send response
+/// - `3` - Finish response by setting mailbox command status
 mod command {
     pub const EXISTS: u32 = 0;
     pub const RECEIVE_REQUEST: u32 = 1;
     pub const SEND_RESPONSE: u32 = 2;
+    pub const FINISH: u32 = 3;
 }
 
 // Read-only buffer to read the response from.

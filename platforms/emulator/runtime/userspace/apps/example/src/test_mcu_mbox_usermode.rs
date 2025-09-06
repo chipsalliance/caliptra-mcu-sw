@@ -33,5 +33,12 @@ pub async fn test_mcu_mbox_usermode_loopback() {
             "Failed to send response: {:?}",
             send_result.err()
         );
+
+        let finish_result = mcu_mbox0.finish_response(MbxCmdStatus::Complete);
+        assert!(
+            finish_result.is_ok(),
+            "Failed to finish response: {:?}",
+            finish_result.err()
+        );
     }
 }

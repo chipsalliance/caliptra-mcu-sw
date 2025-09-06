@@ -21,8 +21,9 @@ pub const MCU_MBOX0_SRAM_BASE: u32 = mci::MCI_TOP_ADDR + 0x40_0000;
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum McuMboxState {
     Idle,
-    RxWait,       // Driver waiting for data to be received from SoC.
-    TxInProgress, // Transmit is in progress. Need to wait for send_done.
+    RxWait,        // Driver waiting for data to be received from SoC.
+    TxInProgress,  // Transmit is in progress. Need to wait for send_done.
+    FinishPending, // Waiting for client to call finish_response.
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -103,25 +104,17 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
 
     fn handle_incoming_request(&self) {
         if self.state.get() != McuMboxState::RxWait {
-            romtime::println!("[xs debug]mbox driver: ERROR ignore incoming request");
             return;
         }
         let command = self.registers.mcu_mbox0_csr_mbox_cmd.get();
         let dlen = self.registers.mcu_mbox0_csr_mbox_dlen.get() as usize;
         let dw_len = dlen.div_ceil(4);
 
-        romtime::println!(
-            "[xs debug]mbox driver: handle_incoming request: command={:?}, dlen={:?}, dw_len={:?}",
-            command,
-            dlen,
-            dw_len
-        );
         if dw_len > self.data_buf_len {
             debug!("MCU_MBOX_DRIVER: Incoming request length exceeds buffer size");
             self.registers
                 .mcu_mbox0_csr_mbox_cmd_status
                 .write(MboxCmdStatus::Status::CmdFailure);
-            romtime::println!("[xs debug]mbox driver: ERROR dw_len too large");
             return;
         }
 
@@ -134,7 +127,6 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
             }
         } else {
             debug!("MCU_MBOX_DRIVER: No client registered for incoming request.");
-            panic!("[xs debug]mbox driver: handle incoming request: no client registered ");
         }
     }
 
@@ -161,7 +153,7 @@ impl<'a, A: Alarm<'a>> AlarmClient for McuMailbox<'a, A> {
                 } else {
                     debug!("MCU_MBOX_DRIVER: No client registered to receive send_done.");
                 }
-                self.state.set(McuMboxState::RxWait);
+                self.state.set(McuMboxState::FinishPending);
             }
         }
         self.timer_mode.set(TimerMode::NoTimer);
@@ -182,7 +174,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
         &self,
         response_data: impl Iterator<Item = u32>,
         dlen: usize,
-        status: MailboxStatus,
+        //status: MailboxStatus,
     ) -> Result<(), ErrorCode> {
         let dw_len = dlen.div_ceil(4);
         if dw_len > self.data_buf_len {
@@ -208,6 +200,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
             // Set mbox data length register (in bytes).
             self.registers.mcu_mbox0_csr_mbox_dlen.set(dlen as u32);
 
+            /* XS: temporirily move this into finish_response to avoid setting status too early
             // Set cmd_status register
             self.registers
                 .mcu_mbox0_csr_mbox_cmd_status
@@ -217,6 +210,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
                     MailboxStatus::DataReady => MboxCmdStatus::Status::DataReady,
                     MailboxStatus::Busy => MboxCmdStatus::Status::CmdBusy,
                 });
+                */
 
             self.schedule_send_done();
             Ok(())
@@ -226,6 +220,27 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
         }
     }
 
+    fn set_command_status(&self, status: MailboxStatus) -> Result<(), ErrorCode> {
+        if self.state.get() != McuMboxState::FinishPending {
+            romtime::println!(
+                "MCU_MBOX_DRIVER: Cannot set command status in state {:?}",
+                self.state.get()
+            );
+            return Err(ErrorCode::BUSY);
+        }
+
+        self.registers
+            .mcu_mbox0_csr_mbox_cmd_status
+            .write(match status {
+                MailboxStatus::Complete => MboxCmdStatus::Status::CmdComplete,
+                MailboxStatus::Failure => MboxCmdStatus::Status::CmdFailure,
+                MailboxStatus::DataReady => MboxCmdStatus::Status::DataReady,
+                MailboxStatus::Busy => MboxCmdStatus::Status::CmdBusy,
+            });
+
+        self.state.set(McuMboxState::RxWait);
+        Ok(())
+    }
     fn max_mbox_sram_dw_size(&self) -> usize {
         self.registers.mcu_mbox0_csr_mbox_sram.len()
     }

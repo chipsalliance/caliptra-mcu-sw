@@ -35,8 +35,6 @@ impl McuMboxTransport {
         &mut self,
         buf: &mut [u8],
     ) -> Result<(CmdCode, usize), TransportError> {
-        let mut console_writer = Console::<DefaultSyscalls>::writer();
-
         // Check buffer length before syscall
         if buf.len() < size_of::<MailboxReqHeader>() {
             return Err(TransportError::BufferTooSmall);
@@ -51,13 +49,15 @@ impl McuMboxTransport {
             .receive_command(buf)
             .await
             .map_err(|_| TransportError::DriverRxError)?;
-
+        /*
+        let mut console_writer = Console::<DefaultSyscalls>::writer();
         writeln!(
             console_writer,
-            "[xs debug]Mbox transport receive request: cmd_opcode: {:?}, req_len={:?}",
+            "[xs debug]mbox_transport: Received command: {:?}, length: {}",
             cmd_opcode, req_len
         )
-        .unwrap();
+        .ok(); */
+
         // Check request buffer length after receive
         if req_len < size_of::<MailboxReqHeader>() {
             return Err(TransportError::InvalidRequest);
@@ -73,7 +73,6 @@ impl McuMboxTransport {
             cmd_opcode,
             &buf[core::mem::size_of_val(&hdr.chksum)..req_len],
         ) {
-            writeln!(console_writer, "[xs debug]receive request: Chksum mismatch").unwrap();
             return Err(TransportError::ChkSumMismatch);
         }
 
@@ -83,7 +82,7 @@ impl McuMboxTransport {
     pub async fn send_response(
         &mut self,
         resp: &[u8],
-        status: MbxCmdStatus,
+        _status: MbxCmdStatus,
     ) -> Result<(), TransportError> {
         // Check response buffer length before syscall
         if resp.len() < size_of::<MailboxRespHeader>() {
@@ -92,10 +91,24 @@ impl McuMboxTransport {
 
         // Send response to MCU mailbox
         self.mbox
-            .send_response(resp, status)
+            .send_response(resp, _status)
             .await
             .map_err(|_| TransportError::DriverTxError)?;
 
         Ok(())
+    }
+
+    pub fn finalize_response(&self, status: MbxCmdStatus) -> Result<(), TransportError> {
+        /*
+        let mut console_writer = Console::<DefaultSyscalls>::writer();
+        writeln!(
+            console_writer,
+            "[xs debug]mbox_transport: finalize_response"
+        )
+        .ok(); */
+
+        self.mbox
+            .finish_response(status)
+            .map_err(|_| TransportError::DriverTxError)
     }
 }

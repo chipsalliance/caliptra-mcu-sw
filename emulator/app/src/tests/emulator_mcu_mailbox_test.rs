@@ -61,23 +61,7 @@ impl RequestResponseTest {
             );
         } else if cfg!(feature = "test-mcu-mbox-usermode") {
             println!("Running test-mcu-mbox-usermode test");
-            // Example test messages for usermode loopback
-            self.push(
-                0x03,
-                vec![0x01, 0x02, 0x03, 0x04],
-                vec![0x01, 0x02, 0x03, 0x04],
-            );
-            self.push(
-                0x04,
-                (0..128).map(|i| i as u8).collect(),
-                (0..128).map(|i| i as u8).collect(),
-            );
-            // Example test payload that is not 4-byte aligned
-            self.push(
-                0x04,
-                (0..125).map(|i| i as u8).collect(),
-                (0..125).map(|i| i as u8).collect(),
-            );
+            self.add_usermode_loopback_tests();
         } else if cfg!(feature = "test-mcu-mbox-cmds") {
             println!("Running test-mcu-mbox-cmds test");
             self.add_firmware_version_tests();
@@ -117,8 +101,6 @@ impl RequestResponseTest {
                     },
                 }
             }
-            // Fix: Add a delay between each test to avoid issuing another request while device is not finished send_done
-            sleep(std::time::Duration::from_millis(500));
         }
         Ok(())
     }
@@ -137,47 +119,64 @@ impl RequestResponseTest {
                 println!("Failed");
                 exit(-1);
             } else {
+                // print out how many test messages were sent
+                println!("Sent {} test messages", test.test_messages.len());
                 println!("Passed");
             }
             EMULATOR_RUNNING.store(false, Ordering::Relaxed);
         });
     }
 
+    fn add_usermode_loopback_tests(&mut self) {
+        // Construct 256 test messages with payload lengths from 1 to 256
+        for len in 1..=256 {
+            let payload: Vec<u8> = (0..len).map(|j| (j % 256) as u8).collect();
+            let cmd = if len % 2 == 0 { 0x03 } else { 0x04 };
+            self.push(cmd, payload.clone(), payload);
+        }
+        println!(
+            "Added {} usermode loopback test messages",
+            self.test_messages.len()
+        );
+    }
+
     fn add_firmware_version_tests(&mut self) {
-        // Add get_firmware_version command tests for index 0 to 2
-        for idx in 0..=2 {
-            let version_str = match idx {
-                0 => CALIPTRA_CORE_VERSION,
-                1 => MCU_RT_VERSION,
-                2 => SOC_FW_VERSION,
-                _ => unreachable!(),
-            };
+        // Repeat get_firmware_version command tests for index 0 to 2, 100 times (total 300 message pairs)
+        for _ in 0..100 {
+            for idx in 0..=2 {
+                let version_str = match idx {
+                    0 => CALIPTRA_CORE_VERSION,
+                    1 => MCU_RT_VERSION,
+                    2 => SOC_FW_VERSION,
+                    _ => unreachable!(),
+                };
 
-            let mut fw_version_req = McuMailboxReq::FirmwareVersion(FirmwareVersionReq {
-                hdr: MailboxReqHeader::default(),
-                index: idx,
-            });
-            let cmd = fw_version_req.cmd_code();
-            fw_version_req.populate_chksum().unwrap();
+                let mut fw_version_req = McuMailboxReq::FirmwareVersion(FirmwareVersionReq {
+                    hdr: MailboxReqHeader::default(),
+                    index: idx,
+                });
+                let cmd = fw_version_req.cmd_code();
+                fw_version_req.populate_chksum().unwrap();
 
-            let mut fw_version_resp = McuMailboxResp::FirmwareVersion(FirmwareVersionResp {
-                hdr: MailboxRespHeader::default(),
-                len: version_str.len() as u32,
-                version: {
-                    let mut ver = [0u8; 32];
-                    let bytes = version_str.as_bytes();
-                    let len = bytes.len().min(ver.len());
-                    ver[..len].copy_from_slice(&bytes[..len]);
-                    ver
-                },
-            });
-            fw_version_resp.populate_chksum().unwrap();
+                let mut fw_version_resp = McuMailboxResp::FirmwareVersion(FirmwareVersionResp {
+                    hdr: MailboxRespHeader::default(),
+                    len: version_str.len() as u32,
+                    version: {
+                        let mut ver = [0u8; 32];
+                        let bytes = version_str.as_bytes();
+                        let len = bytes.len().min(ver.len());
+                        ver[..len].copy_from_slice(&bytes[..len]);
+                        ver
+                    },
+                });
+                fw_version_resp.populate_chksum().unwrap();
 
-            self.push(
-                cmd.0,
-                fw_version_req.as_bytes().unwrap().to_vec(),
-                fw_version_resp.as_bytes().unwrap().to_vec(),
-            );
+                self.push(
+                    cmd.0,
+                    fw_version_req.as_bytes().unwrap().to_vec(),
+                    fw_version_resp.as_bytes().unwrap().to_vec(),
+                );
+            }
         }
     }
 }
