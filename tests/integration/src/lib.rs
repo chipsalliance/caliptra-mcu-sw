@@ -102,7 +102,7 @@ mod test {
     ) -> DefaultHwModel {
         // TODO: use FirmwareBinaries for all binaries to make FPGA easier
         let mut caliptra_builder = CaliptraBuilder::new(
-            false, // TODO: set correctly
+            cfg!(feature = "fpga_realtime"),
             None,
             None,
             None,
