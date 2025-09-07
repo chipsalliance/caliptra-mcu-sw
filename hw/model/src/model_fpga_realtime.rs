@@ -427,21 +427,23 @@ impl ModelFpgaRealtime {
                     .write(|w| 0.into());
                 self.print_i3c_registers();
                 println!("Manually sending IBI");
-                self.base
-                    .i3c_core()
-                    .tti()
-                    .tti_ibi_port()
-                    .write(|_| 0xae00_0008);
-                self.base
-                    .i3c_core()
-                    .tti()
-                    .tti_ibi_port()
-                    .write(|_| 0x01234_5678);
-                self.base
-                    .i3c_core()
-                    .tti()
-                    .tti_ibi_port()
-                    .write(|_| 0x9abc_defe);
+                for _ in 0..32 {
+                    self.base
+                        .i3c_core()
+                        .tti()
+                        .tti_ibi_port()
+                        .write(|_| 0xae00_0008);
+                    self.base
+                        .i3c_core()
+                        .tti()
+                        .tti_ibi_port()
+                        .write(|_| 0x01234_5678);
+                    self.base
+                        .i3c_core()
+                        .tti()
+                        .tti_ibi_port()
+                        .write(|_| 0x9abc_defe);
+                }
             }
         }
         if let Some(tx) = self.i3c_tx.as_ref() {
