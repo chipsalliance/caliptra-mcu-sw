@@ -381,6 +381,10 @@ impl BootFlow for ColdBoot {
             mci.set_flow_status(McuRomBootStatus::FieldEntropyProgrammingComplete.into());
         }
 
+        i3c.disable_recovery();
+
+        // TODO: set reset_req
+
         // Jump to firmware
         romtime::println!("[mcu-rom] Jumping to firmware");
         mci.set_flow_status(McuRomBootStatus::ColdBootFlowComplete.into());

@@ -136,15 +136,20 @@ impl ModelFpgaRealtime {
         // TODO: add IBI support
         // TODO: somehow know how much to read
         const MCTP_MDB: u8 = 0xae;
-        if self.cycle_count() > 420_000_000 && self.cycle_count() < 421_000_000 {
+        if self.cycle_count() > 420_000_000 && self.cycle_count() < 420_100_000 {
             if !self.ibi_sent {
                 self.ibi_sent = true;
+                self.base
+                    .i3c_core()
+                    .sec_fw_recovery_if()
+                    .device_status_0()
+                    .write(|_| 0.into());
                 println!("Manually sending IBI");
                 self.base
                     .i3c_core()
                     .tti()
                     .tti_ibi_port()
-                    .write(|_| 0xaf_00_00_04);
+                    .write(|_| 0x04_00_00_04);
                 self.base
                     .i3c_core()
                     .tti()
@@ -910,7 +915,7 @@ mod tests {
             core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_CONTROL_OFFSET), 0x3);
         }
         println!("Configuring I3C target");
-        configure_i3c_target(i3c_target, I3C_TARGET_ADDR, false);
+        configure_i3c_target(i3c_target, I3C_TARGET_ADDR, true);
 
         let xi3c_controller_ptr = dev0.map_mapping(3).unwrap() as *mut u32;
         let xi3c: &xi3c::XI3c = unsafe { &*(xi3c_controller_ptr as *const xi3c::XI3c) };
@@ -922,11 +927,11 @@ mod tests {
             input_clock_hz: AXI_CLOCK_HZ,
             rw_fifo_depth: 16,
             wr_threshold: 12,
-            device_count: 1,
+            device_count: 2,
             ibi_capable: true,
             hj_capable: false,
             entdaa_enable: true,
-            known_static_addrs: vec![I3C_TARGET_ADDR],
+            known_static_addrs: vec![I3C_TARGET_ADDR, I3C_TARGET_ADDR + 1],
         });
 
         i3c_controller.set_s_clk(AXI_CLOCK_HZ, I3C_CLOCK_HZ, 1);
