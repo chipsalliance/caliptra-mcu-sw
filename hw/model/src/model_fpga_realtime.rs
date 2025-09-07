@@ -118,6 +118,250 @@ impl ModelFpgaRealtime {
         }
     }
 
+    fn print_i3c_registers(&mut self) {
+        println!("Dumping registers");
+        println!(
+            "sec_fw_recovery_if_prot_cap_0: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .prot_cap_0()
+                .read()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_prot_cap_1: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .prot_cap_1()
+                .read()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_prot_cap_2: {:08x}",
+            u32::from(
+                self.base
+                    .i3c_core()
+                    .sec_fw_recovery_if()
+                    .prot_cap_2()
+                    .read()
+            )
+            .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_prot_cap_3: {:08x}",
+            u32::from(
+                self.base
+                    .i3c_core()
+                    .sec_fw_recovery_if()
+                    .prot_cap_3()
+                    .read()
+            )
+            .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_0: {:08x}",
+            u32::from(
+                self.base
+                    .i3c_core()
+                    .sec_fw_recovery_if()
+                    .device_id_0()
+                    .read()
+            )
+            .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_1: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .device_id_1()
+                .read()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_2: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .device_id_2()
+                .read()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_3: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .device_id_3()
+                .read()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_4: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .device_id_4()
+                .read()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_5: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .device_id_5()
+                .read()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_reserved: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .device_id_reserved()
+                .read()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_status_0: {:08x}",
+            u32::from(
+                self.base
+                    .i3c_core()
+                    .sec_fw_recovery_if()
+                    .device_status_0()
+                    .read()
+            )
+            .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_status_1: {:08x}",
+            u32::from(
+                self.base
+                    .i3c_core()
+                    .sec_fw_recovery_if()
+                    .device_status_1()
+                    .read()
+            )
+            .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_reset: {:08x}",
+            u32::from(
+                self.base
+                    .i3c_core()
+                    .sec_fw_recovery_if()
+                    .device_reset()
+                    .read()
+            )
+            .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_recovery_ctrl: {:08x}",
+            u32::from(
+                self.base
+                    .i3c_core()
+                    .sec_fw_recovery_if()
+                    .recovery_ctrl()
+                    .read()
+            )
+            .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_recovery_status: {:08x}",
+            u32::from(
+                self.base
+                    .i3c_core()
+                    .sec_fw_recovery_if()
+                    .recovery_status()
+                    .read()
+            )
+            .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_hw_status: {:08x}",
+            u32::from(self.base.i3c_core().sec_fw_recovery_if().hw_status().read()).swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_ctrl_0: {:08x}",
+            u32::from(
+                self.base
+                    .i3c_core()
+                    .sec_fw_recovery_if()
+                    .indirect_fifo_ctrl_0()
+                    .read()
+            )
+            .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_ctrl_1: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .indirect_fifo_ctrl_1()
+                .read()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_status_0: {:08x}",
+            u32::from(
+                self.base
+                    .i3c_core()
+                    .sec_fw_recovery_if()
+                    .indirect_fifo_status_0()
+                    .read()
+            )
+            .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_status_1: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .indirect_fifo_status_1()
+                .read()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_status_2: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .indirect_fifo_status_2()
+                .read()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_status_3: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .indirect_fifo_status_3()
+                .read()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_status_4: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .indirect_fifo_status_4()
+                .read()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_reserved: {:08x}",
+            self.base
+                .i3c_core()
+                .sec_fw_recovery_if()
+                .indirect_fifo_reserved()
+                .read()
+                .swap_bytes()
+        );
+    }
+
     fn handle_i3c(&mut self) {
         // check if we need to write any I3C packets to Caliptra
         if let Some(rx) = self.i3c_rx.as_ref() {
@@ -170,6 +414,7 @@ impl ModelFpgaRealtime {
             );
             if !self.ibi_sent {
                 self.ibi_sent = true;
+                self.print_i3c_registers();
                 self.base
                     .i3c_core()
                     .sec_fw_recovery_if()
