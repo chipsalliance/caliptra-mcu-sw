@@ -528,6 +528,8 @@ impl Drop for ModelFpgaRealtime {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use crate::new;
 
     use super::*;
@@ -618,6 +620,274 @@ mod tests {
         assert_eq!(resp[10], 0xff);
     }
 
+    use bitfield::bitfield;
+    use caliptra_hw_model::xi3c;
+    use caliptra_hw_model::xi3c::Ccc;
+    use registers_generated::i3c::bits::HcControl::{BusEnable, ModeSelector};
+    use registers_generated::i3c::bits::{
+        DeviceStatus0, IndirectFifoStatus0, ProtCap2, ProtCap3, QueueThldCtrl, RecoveryStatus,
+        RingHeadersSectionOffset, StbyCrCapabilities, StbyCrControl, StbyCrDeviceAddr,
+        StbyCrVirtDeviceAddr, TtiQueueThldCtrl,
+    };
+    use registers_generated::i3c::regs::I3c;
+    use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+    use uio::UioDevice;
+    use zerocopy::{FromBytes, IntoBytes};
+
+    // FPGA wrapper register offsets
+    const FPGA_WRAPPER_MAGIC_OFFSET: isize = 0x0000 / 4;
+    const FPGA_WRAPPER_VERSION_OFFSET: isize = 0x0004 / 4;
+    const FPGA_WRAPPER_CONTROL_OFFSET: isize = 0x0008 / 4;
+    const FPGA_WRAPPER_STATUS_OFFSET: isize = 0x000C / 4;
+    const FPGA_WRAPPER_PAUSER_OFFSET: isize = 0x0010 / 4;
+    const FPGA_WRAPPER_ITRNG_DIV_OFFSET: isize = 0x0014 / 4;
+    const FPGA_WRAPPER_CYCLE_COUNT_OFFSET: isize = 0x0018 / 4;
+    const _FPGA_WRAPPER_GENERIC_INPUT_OFFSET: isize = 0x0030 / 4;
+    const _FPGA_WRAPPER_GENERIC_OUTPUT_OFFSET: isize = 0x0038 / 4;
+    const FPGA_WRAPPER_DEOBF_KEY_OFFSET: isize = 0x0040 / 4;
+    const FPGA_WRAPPER_CSR_HMAC_KEY_OFFSET: isize = 0x0060 / 4;
+
+    const _FPGA_WRAPPER_LSU_USER_OFFSET: isize = 0x0100 / 4;
+    const _FPGA_WRAPPER_IFU_USER_OFFSET: isize = 0x0104 / 4;
+    const _FPGA_WRAPPER_CLP_USER_OFFSET: isize = 0x0108 / 4;
+    const _FPGA_WRAPPER_SOC_CFG_USER_OFFSET: isize = 0x010C / 4;
+    const _FPGA_WRAPPER_SRAM_CFG_USER_OFFSET: isize = 0x0110 / 4;
+    const FPGA_WRAPPER_MCU_RESET_VECTOR_OFFSET: isize = 0x0114 / 4;
+    const _FPGA_WRAPPER_MCI_ERROR: isize = 0x0118 / 4;
+    const _FPGA_WRAPPER_MCU_CONFIG: isize = 0x011C / 4;
+    const _FPGA_WRAPPER_MCI_GENERIC_INPUT_WIRES_0_OFFSET: isize = 0x0120 / 4;
+    const _FPGA_WRAPPER_MCI_GENERIC_INPUT_WIRES_1_OFFSET: isize = 0x0124 / 4;
+    const FPGA_WRAPPER_MCI_GENERIC_OUTPUT_WIRES_0_OFFSET: isize = 0x0128 / 4;
+    const FPGA_WRAPPER_MCI_GENERIC_OUTPUT_WIRES_1_OFFSET: isize = 0x012C / 4;
+    const FPGA_WRAPPER_LOG_FIFO_DATA_OFFSET: isize = 0x1000 / 4;
+    const FPGA_WRAPPER_LOG_FIFO_STATUS_OFFSET: isize = 0x1004 / 4;
+    const FPGA_WRAPPER_ITRNG_FIFO_DATA_OFFSET: isize = 0x1008 / 4;
+    const FPGA_WRAPPER_ITRNG_FIFO_STATUS_OFFSET: isize = 0x100C / 4;
+
+    bitfield! {
+        #[derive(Clone, FromBytes, IntoBytes)]
+        pub struct RxDescriptor(u32);
+        impl Debug;
+        pub u16, data_length, set_data_length: 15, 0;
+    }
+
+    fn configure_i3c_target(regs: &mut I3c, addr: u8, recovery_enabled: bool) {
+        println!("I3C HCI version: {:x}", regs.i3c_base_hci_version.get());
+
+        println!("Set TTI RESET_CONTROL");
+        regs.tti_tti_reset_control.set(0x3f);
+        println!("TTI RESET_CONTROL: {:x}", regs.tti_tti_reset_control.get());
+
+        // Evaluate RING_HEADERS_SECTION_OFFSET, the SECTION_OFFSET should read 0x0 as this controller doesn’t support the DMA mode
+        println!("Check ring headers section offset");
+        let rhso = regs
+            .i3c_base_ring_headers_section_offset
+            .read(RingHeadersSectionOffset::SectionOffset);
+        if rhso != 0 {
+            panic!("RING_HEADERS_SECTION_OFFSET is not 0");
+        }
+
+        println!("TTI QUEUE_SIZE: {:x}", regs.tti_tti_queue_size.get());
+
+        // initialize timing registers
+        println!("Initialize timing registers");
+
+        // AXI clock is ~200 MHz, I3C clock is 12.5 MHz
+        // values of all of these set to 0-5 seem to work for receiving data correctly
+        // 6-7 gets corrupted data but will ACK
+        // 8+ will fail to ACK
+        regs.soc_mgmt_if_t_r_reg.set(0); // rise time of both SDA and SCL in clock units
+        regs.soc_mgmt_if_t_f_reg.set(0); // rise time of both SDA and SCL in clock units
+
+        // if this is set to 6+ then ACKs start failing
+        regs.soc_mgmt_if_t_hd_dat_reg.set(0); // data hold time in clock units
+        regs.soc_mgmt_if_t_su_dat_reg.set(0); // data setup time in clock units
+
+        regs.soc_mgmt_if_t_high_reg.set(0); // High period of the SCL in clock units
+        regs.soc_mgmt_if_t_low_reg.set(0); // Low period of the SCL in clock units
+        regs.soc_mgmt_if_t_hd_sta_reg.set(0); // Hold time for (repeated) START in clock units
+        regs.soc_mgmt_if_t_su_sta_reg.set(0); // Setup time for repeated START in clock units
+        regs.soc_mgmt_if_t_su_sto_reg.set(0); // Setup time for STOP in clock units
+
+        // set this to 1 microsecond
+        regs.soc_mgmt_if_t_free_reg.set(200); // Bus free time in clock units before doing IBI
+
+        println!(
+            "Timing register t_r: {}, t_f: {}, t_hd_dat: {}, t_su_dat: {}, t_high: {}, t_low: {}, t_hd_sta: {}, t_su_sta: {}, t_su_sto: {}, t_free: {}",
+            regs.soc_mgmt_if_t_r_reg.get(),
+            regs.soc_mgmt_if_t_f_reg.get(),
+            regs.soc_mgmt_if_t_hd_dat_reg.get(),
+            regs.soc_mgmt_if_t_su_dat_reg.get(),
+            regs.soc_mgmt_if_t_high_reg.get(),
+            regs.soc_mgmt_if_t_low_reg.get(),
+            regs.soc_mgmt_if_t_hd_sta_reg.get(),
+            regs.soc_mgmt_if_t_su_sta_reg.get(),
+            regs.soc_mgmt_if_t_su_sto_reg.get(),
+            regs.soc_mgmt_if_t_free_reg.get(),
+        );
+
+        // Setup the threshold for the HCI queues (in the internal/private software data structures):
+        println!("Setup HCI queue thresholds");
+        regs.piocontrol_queue_thld_ctrl.modify(
+            QueueThldCtrl::CmdEmptyBufThld.val(0)
+                + QueueThldCtrl::RespBufThld.val(1)
+                + QueueThldCtrl::IbiStatusThld.val(1),
+        );
+
+        println!("Enable the target transaction interface");
+        regs.stdby_ctrl_mode_stby_cr_control.modify(
+            StbyCrControl::StbyCrEnableInit.val(2) // enable the standby controller
+                + StbyCrControl::TargetXactEnable::SET // enable Target Transaction Interface
+                + StbyCrControl::DaaEntdaaEnable::SET // enable ENTDAA dynamic address assignment
+                + StbyCrControl::DaaSetdasaEnable::SET // enable SETDASA dynamic address assignment
+                + StbyCrControl::BastCccIbiRing.val(0) // Set the IBI to use ring buffer 0
+                + StbyCrControl::PrimeAcceptGetacccr::CLEAR // // don't auto-accept primary controller role
+                + StbyCrControl::AcrFsmOpSelect::CLEAR, // don't become the active controller and set us as not the bus owner
+        );
+
+        println!(
+            "STBY_CR_CONTROL: {:x}",
+            regs.stdby_ctrl_mode_stby_cr_control.get()
+        );
+
+        // regs.stdby_ctrl_mode_stby_cr_capabilities
+        //     .write(StbyCrCapabilities::TargetXactSupport::SET);
+        println!(
+            "STBY_CR_CAPABILITIES: {:x}",
+            regs.stdby_ctrl_mode_stby_cr_capabilities.get()
+        );
+        if !regs
+            .stdby_ctrl_mode_stby_cr_capabilities
+            .is_set(StbyCrCapabilities::TargetXactSupport)
+        {
+            panic!("I3C target transaction support is not enabled");
+        }
+
+        // program a static address
+        println!("Setting static address to {:x}", addr);
+        regs.stdby_ctrl_mode_stby_cr_device_addr.write(
+            StbyCrDeviceAddr::StaticAddrValid::SET + StbyCrDeviceAddr::StaticAddr.val(addr as u32),
+        );
+        if recovery_enabled {
+            println!("Setting virtual device static address to {:x}", addr + 1);
+            regs.stdby_ctrl_mode_stby_cr_virt_device_addr.write(
+                StbyCrVirtDeviceAddr::VirtStaticAddrValid::SET
+                    + StbyCrVirtDeviceAddr::VirtStaticAddr.val((addr + 1) as u32),
+            );
+        }
+
+        println!("Set TTI queue thresholds");
+        // set TTI queue thresholds
+        regs.tti_tti_queue_thld_ctrl.modify(
+            TtiQueueThldCtrl::IbiThld.val(1)
+                + TtiQueueThldCtrl::RxDescThld.val(1)
+                + TtiQueueThldCtrl::TxDescThld.val(1),
+        );
+        println!(
+            "TTI queue thresholds: {:x}",
+            regs.tti_tti_queue_thld_ctrl.get()
+        );
+
+        println!(
+            "TTI data buffer thresholds ctrl: {:x}",
+            regs.tti_tti_data_buffer_thld_ctrl.get()
+        );
+
+        println!("Enable PHY to the bus");
+        // enable the PHY connection to the bus
+        regs.i3c_base_hc_control
+            .modify(ModeSelector::SET + BusEnable::CLEAR); // clear is enabled, set is suspended
+
+        println!("Enabling interrupts");
+        // regs.tti_interrupt_enable.modify(
+        //     InterruptEnable::IbiThldStatEn::SET
+        //         + InterruptEnable::RxDescThldStatEn::SET
+        //         + InterruptEnable::TxDescThldStatEn::SET
+        //         + InterruptEnable::RxDataThldStatEn::SET
+        //         + InterruptEnable::TxDataThldStatEn::SET,
+        // );
+        regs.tti_interrupt_enable.set(0xffff_ffff);
+        println!(
+            "I3C target interrupt enable {:x}",
+            regs.tti_interrupt_enable.get()
+        );
+
+        println!(
+            "I3C target status {:x}, interrupt status {:x}",
+            regs.tti_status.get(),
+            regs.tti_interrupt_status.get()
+        );
+
+        if recovery_enabled {
+            println!("Enabling recovery interface");
+            regs.sec_fw_recovery_if_prot_cap_2.write(
+                ProtCap2::RecProtVersion.val(0x101)
+                    + ProtCap2::AgentCaps.val(
+                        (1 << 0) | // device id
+                (1 << 4) | // device status
+                (1 << 5) | // indirect ctrl
+                (1 << 7), // push c-image support
+                    ),
+            );
+            regs.sec_fw_recovery_if_prot_cap_3.write(
+                ProtCap3::NumOfCmsRegions.val(1) + ProtCap3::MaxRespTime.val(20), // 1.048576 second maximum response time
+            );
+            regs.sec_fw_recovery_if_device_status_0
+                .write(DeviceStatus0::DevStatus.val(0x3)); // ready to accept recovery image
+        }
+
+        println!(
+            "I3C recovery prot_cap 2 and 3: {:08x} {:08x}",
+            regs.sec_fw_recovery_if_prot_cap_2.get(),
+            regs.sec_fw_recovery_if_prot_cap_3.get(),
+        );
+        println!(
+            "I3C recovery device status: {:x}",
+            regs.sec_fw_recovery_if_device_status_0
+                .read(DeviceStatus0::DevStatus)
+        );
+    }
+
+    fn empty_rx_queue(i3c: &I3c) {
+        while i3c.tti_interrupt_status.get() & 0x801 != 0 {
+            let packet = read_packet(i3c);
+            println!("Emptying I3C RX queue: {:x?}", packet);
+        }
+    }
+
+    fn read_packet(i3c: &I3c) -> Vec<u8> {
+        assert!(
+            i3c.tti_interrupt_status.get() & 0x801 != 0,
+            "Expected I3C target to have an RX descriptor waiting"
+        );
+        let desc0 = RxDescriptor(i3c.tti_rx_desc_queue_port.get());
+        println!("Read a descriptor: {:08x}", desc0.0,);
+        let mut len = desc0.data_length() as usize;
+        let mut data = vec![];
+        while len > 0 {
+            let dword = i3c.tti_rx_data_port.get();
+            let slice = dword.to_le_bytes();
+            let valid = len.min(4);
+            data.extend(&slice[0..valid]);
+            len -= valid;
+        }
+        data
+    }
+
+    fn send_packet(i3c: &I3c, mut data: &[u8]) {
+        let mut desc = RxDescriptor(0);
+        desc.set_data_length(data.len() as u16);
+        i3c.tti_tx_desc_queue_port.set(desc.0);
+        while data.len() > 0 {
+            let next = &data[..4.min(data.len())];
+            let mut word = [0, 0, 0, 0];
+            word[..next.len()].copy_from_slice(next);
+            let word = u32::from_le_bytes(word);
+            i3c.tti_tx_data_port.set(word);
+            data = &data[next.len()..];
+        }
+    }
+
     #[test]
     fn test_xi3c_ibi_private_read() {
         const AXI_CLOCK_HZ: u32 = 199_999_000;
@@ -626,7 +896,7 @@ mod tests {
         let dev1 = UioDevice::blocking_new(1).unwrap();
         let wrapper = dev0.map_mapping(0).unwrap() as *mut u32;
         let i3c_target_raw = dev1.map_mapping(2).unwrap();
-        let i3c_target: &I3c = unsafe { &*(i3c_target_raw as *const I3c) };
+        let i3c_target: &mut I3c = unsafe { &mut *(i3c_target_raw as *mut I3c) };
         const I3C_TARGET_ADDR: u8 = 0x5a;
         let use_dynamic_addr = true;
 
@@ -646,8 +916,7 @@ mod tests {
         let xi3c: &xi3c::XI3c = unsafe { &*(xi3c_controller_ptr as *const xi3c::XI3c) };
         println!("XI3C HW version = {:x}", xi3c.version.get());
 
-        let mut i3c_controller = xi3c::Controller::new(xi3c_controller_ptr);
-        let xi3c_config = xi3c::Config {
+        let mut i3c_controller = xi3c::Controller::new(xi3c::Config {
             device_id: 0,
             base_address: xi3c_controller_ptr,
             input_clock_hz: AXI_CLOCK_HZ,
@@ -658,28 +927,26 @@ mod tests {
             hj_capable: false,
             entdaa_enable: true,
             known_static_addrs: vec![I3C_TARGET_ADDR],
-        };
+        });
 
         i3c_controller.set_s_clk(AXI_CLOCK_HZ, I3C_CLOCK_HZ, 1);
-        i3c_controller
-            .cfg_initialize(&xi3c_config, xi3c_controller_ptr as usize)
-            .unwrap();
-        println!("I3C controller timing registers:");
-        println!(
-            "  od scl high: {}",
-            i3c_controller.regs().od_scl_high_time.get()
-        );
-        println!(
-            "  od scl low: {}",
-            i3c_controller.regs().od_scl_low_time.get()
-        );
-        println!("  scl high: {}", i3c_controller.regs().scl_high_time.get());
-        println!("  scl low: {}", i3c_controller.regs().scl_low_time.get());
-        println!("  sda hold: {}", i3c_controller.regs().sda_hold_time.get());
-        println!("  tsu start: {}", i3c_controller.regs().tsu_start.get());
-        println!("  tsu stop: {}", i3c_controller.regs().tsu_stop.get());
-        println!("  bus free time: {}", i3c_controller.regs().bus_idle.get());
-        println!("  thld start: {}", i3c_controller.regs().thd_start.get());
+        i3c_controller.cfg_initialize().unwrap();
+        // println!("I3C controller timing registers:");
+        // println!(
+        //     "  od scl high: {}",
+        //     i3c_controller.regs().od_scl_high_time.get()
+        // );
+        // println!(
+        //     "  od scl low: {}",
+        //     i3c_controller.regs().od_scl_low_time.get()
+        // );
+        // println!("  scl high: {}", i3c_controller.regs().scl_high_time.get());
+        // println!("  scl low: {}", i3c_controller.regs().scl_low_time.get());
+        // println!("  sda hold: {}", i3c_controller.regs().sda_hold_time.get());
+        // println!("  tsu start: {}", i3c_controller.regs().tsu_start.get());
+        // println!("  tsu stop: {}", i3c_controller.regs().tsu_stop.get());
+        // println!("  bus free time: {}", i3c_controller.regs().bus_idle.get());
+        // println!("  thld start: {}", i3c_controller.regs().thd_start.get());
 
         // check I3C target address
         let mut target_addr = I3C_TARGET_ADDR;
@@ -736,16 +1003,16 @@ mod tests {
             tx_data[i] = i as u8; // Test data
         }
 
-        println!(
-            "I3C fifo level status 1: {:x}",
-            i3c_controller.regs().fifo_lvl_status_1.get()
-        );
-        while i3c_controller.regs().fifo_lvl_status_1.get() >> 16 > 0 {
-            println!(
-                "I3C controller has response fifo: {:x}",
-                i3c_controller.regs().resp_status_fifo.get()
-            );
-        }
+        // println!(
+        //     "I3C fifo level status 1: {:x}",
+        //     i3c_controller.regs().fifo_lvl_status_1.get()
+        // );
+        // while i3c_controller.regs().fifo_lvl_status_1.get() >> 16 > 0 {
+        //     println!(
+        //         "I3C controller has response fifo: {:x}",
+        //         i3c_controller.regs().resp_status_fifo.get()
+        //     );
+        // }
 
         // let's send a message back
         println!("Writing data back to controller: {:x?}", tx_data);
@@ -764,33 +1031,27 @@ mod tests {
             i3c_target.tti_interrupt_status.get()
         );
 
-        println!(
-            "I3C controller status: {:x}",
-            i3c_controller.regs().sr.get()
-        );
+        println!("I3C controller status: {:x}", i3c_controller.status());
 
-        println!(
-            "I3C controller IBI target address: 0x{:x}",
-            i3c_controller.regs().target_addr_bcr.get()
-        );
+        // println!(
+        //     "I3C controller IBI target address: 0x{:x}",
+        //     i3c_controller.regs().target_addr_bcr.get()
+        // );
 
-        if i3c_controller.regs().sr.get() & 0x80 != 0 {
-            println!(
-                "I3C fifo level status 1: {:x}",
-                i3c_controller.regs().fifo_lvl_status_1.get()
-            );
-            println!(
-                "I3C controller has response fifo: {:x}",
-                i3c_controller.regs().resp_status_fifo.get()
-            );
-        }
-        println!(
-            "I3C controller status: {:x}",
-            i3c_controller.regs().sr.get()
-        );
+        // if i3c_controller.status() & 0x80 != 0 {
+        //     println!(
+        //         "I3C fifo level status 1: {:x}",
+        //         i3c_controller.regs().fifo_lvl_status_1.get()
+        //     );
+        //     println!(
+        //         "I3C controller has response fifo: {:x}",
+        //         i3c_controller.regs().resp_status_fifo.get()
+        //     );
+        // }
+        println!("I3C controller status: {:x}", i3c_controller.status());
 
         let ibi_data = i3c_controller
-            .ibi_recv_polled()
+            .ibi_recv_polled(Duration::from_secs(1))
             .expect("Should have received an IBI");
         println!("Got IBI data {:x?}", ibi_data);
 
