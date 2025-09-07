@@ -136,9 +136,10 @@ impl ModelFpgaRealtime {
         // TODO: add IBI support
         // TODO: somehow know how much to read
         const MCTP_MDB: u8 = 0xae;
-        if self.cycle_count() > 420_000_000 && self.cycle_count() < 430_000_000 {
+        if self.cycle_count() > 420_000_000 && self.cycle_count() < 421_000_000 {
             if !self.ibi_sent {
                 self.ibi_sent = true;
+                println!("Manually sending IBI");
                 self.base
                     .i3c_core()
                     .tti()
