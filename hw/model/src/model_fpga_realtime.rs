@@ -426,24 +426,31 @@ impl ModelFpgaRealtime {
                     .recovery_status()
                     .write(|w| 0.into());
                 self.print_i3c_registers();
-                println!("Manually sending IBI");
-                for _ in 0..32 {
-                    self.base
-                        .i3c_core()
-                        .tti()
-                        .tti_ibi_port()
-                        .write(|_| 0xae00_0008);
-                    self.base
-                        .i3c_core()
-                        .tti()
-                        .tti_ibi_port()
-                        .write(|_| 0x01234_5678);
-                    self.base
-                        .i3c_core()
-                        .tti()
-                        .tti_ibi_port()
-                        .write(|_| 0x9abc_defe);
-                }
+
+                println!("Manually sending private read and IBI");
+
+                self.base.i3c_core().tti().tx_desc_queue_port().write(|_| 4);
+                self.base
+                    .i3c_core()
+                    .tti()
+                    .tx_data_port()
+                    .write(|_| 0xabcd_ef01);
+
+                self.base
+                    .i3c_core()
+                    .tti()
+                    .tti_ibi_port()
+                    .write(|_| 0xae00_0008);
+                self.base
+                    .i3c_core()
+                    .tti()
+                    .tti_ibi_port()
+                    .write(|_| 0x01234_5678);
+                self.base
+                    .i3c_core()
+                    .tti()
+                    .tti_ibi_port()
+                    .write(|_| 0x9abc_defe);
             }
         }
         if let Some(tx) = self.i3c_tx.as_ref() {
