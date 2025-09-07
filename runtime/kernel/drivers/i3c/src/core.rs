@@ -293,6 +293,11 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     fn send_ibi(&self, mdb: u8, data: &[u8]) {
+        romtime::println!(
+            "[mcu-runtime-i3c] Sending I3C IBI with MDB {:02x} len {}",
+            mdb,
+            data.len()
+        );
         // write the descriptor first
         self.registers.tti_tti_ibi_port.set(
             (IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(data.len() as u32))

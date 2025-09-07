@@ -134,6 +134,17 @@ impl ModelFpgaRealtime {
         // TODO: add IBI support
         // TODO: somehow know how much to read
         const MCTP_MDB: u8 = 0xae;
+        if self.cycle_count() > 420_000_000 && self.cycle_count() < 430_000_000 {
+            println!(
+                "I3C status: {:x}",
+                self.base
+                    .i3c_controller()
+                    .controller
+                    .lock()
+                    .unwrap()
+                    .status()
+            );
+        }
         if let Some(tx) = self.i3c_tx.as_ref() {
             if self.base.i3c_controller().ibi_ready() {
                 println!("[hw-model-fpga] I3C IBI received");

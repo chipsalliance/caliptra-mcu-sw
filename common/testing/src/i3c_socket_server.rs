@@ -75,6 +75,7 @@ pub fn handle_i3c_socket_loop(
     while running.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, addr)) => {
+                println!("Accepting I3C socket connection from {:?}", addr);
                 handle_i3c_socket_connection(
                     running,
                     stream,
@@ -134,6 +135,10 @@ fn handle_i3c_socket_connection(
                     addr: incoming_header.to_addr.into(),
                     cmd: I3cTcriCommandXfer { cmd, data },
                 };
+                println!(
+                    "[i3c-socket-server] Received I3C command: {:?}",
+                    bus_command
+                );
                 bus_command_tx.send(bus_command).unwrap();
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
