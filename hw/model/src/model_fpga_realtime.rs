@@ -617,4 +617,207 @@ mod tests {
         // simple sanity check
         assert_eq!(resp[10], 0xff);
     }
+
+    #[test]
+    fn test_xi3c_ibi_private_read() {
+        const AXI_CLOCK_HZ: u32 = 199_999_000;
+        const I3C_CLOCK_HZ: u32 = 12_500_000;
+        let dev0 = UioDevice::blocking_new(0).unwrap();
+        let dev1 = UioDevice::blocking_new(1).unwrap();
+        let wrapper = dev0.map_mapping(0).unwrap() as *mut u32;
+        let i3c_target_raw = dev1.map_mapping(2).unwrap();
+        let i3c_target: &I3c = unsafe { &*(i3c_target_raw as *const I3c) };
+        const I3C_TARGET_ADDR: u8 = 0x5a;
+        let use_dynamic_addr = true;
+
+        let fpga_version =
+            unsafe { core::ptr::read_volatile(wrapper.offset(FPGA_WRAPPER_VERSION_OFFSET)) };
+        println!("FPGA version: {:08x}", fpga_version);
+
+        println!("Bring SS out of reset");
+        unsafe {
+            core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_CONTROL_OFFSET), 0);
+            core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_CONTROL_OFFSET), 0x3);
+        }
+        println!("Configuring I3C target");
+        configure_i3c_target(i3c_target, I3C_TARGET_ADDR, false);
+
+        let xi3c_controller_ptr = dev0.map_mapping(3).unwrap() as *mut u32;
+        let xi3c: &xi3c::XI3c = unsafe { &*(xi3c_controller_ptr as *const xi3c::XI3c) };
+        println!("XI3C HW version = {:x}", xi3c.version.get());
+
+        let mut i3c_controller = xi3c::Controller::new(xi3c_controller_ptr);
+        let xi3c_config = xi3c::Config {
+            device_id: 0,
+            base_address: xi3c_controller_ptr,
+            input_clock_hz: AXI_CLOCK_HZ,
+            rw_fifo_depth: 16,
+            wr_threshold: 12,
+            device_count: 1,
+            ibi_capable: true,
+            hj_capable: false,
+            entdaa_enable: true,
+            known_static_addrs: vec![I3C_TARGET_ADDR],
+        };
+
+        i3c_controller.set_s_clk(AXI_CLOCK_HZ, I3C_CLOCK_HZ, 1);
+        i3c_controller
+            .cfg_initialize(&xi3c_config, xi3c_controller_ptr as usize)
+            .unwrap();
+        println!("I3C controller timing registers:");
+        println!(
+            "  od scl high: {}",
+            i3c_controller.regs().od_scl_high_time.get()
+        );
+        println!(
+            "  od scl low: {}",
+            i3c_controller.regs().od_scl_low_time.get()
+        );
+        println!("  scl high: {}", i3c_controller.regs().scl_high_time.get());
+        println!("  scl low: {}", i3c_controller.regs().scl_low_time.get());
+        println!("  sda hold: {}", i3c_controller.regs().sda_hold_time.get());
+        println!("  tsu start: {}", i3c_controller.regs().tsu_start.get());
+        println!("  tsu stop: {}", i3c_controller.regs().tsu_stop.get());
+        println!("  bus free time: {}", i3c_controller.regs().bus_idle.get());
+        println!("  thld start: {}", i3c_controller.regs().thd_start.get());
+
+        // check I3C target address
+        let mut target_addr = I3C_TARGET_ADDR;
+        if i3c_target
+            .stdby_ctrl_mode_stby_cr_device_addr
+            .read(StbyCrDeviceAddr::DynamicAddrValid)
+            == 1
+        {
+            let addr = i3c_target
+                .stdby_ctrl_mode_stby_cr_device_addr
+                .read(StbyCrDeviceAddr::DynamicAddr);
+            println!("I3C target dynamic address: {:x}", addr,);
+            if use_dynamic_addr {
+                target_addr = addr as u8;
+            }
+        }
+        if i3c_target
+            .stdby_ctrl_mode_stby_cr_device_addr
+            .read(StbyCrDeviceAddr::StaticAddrValid)
+            == 1
+        {
+            println!(
+                "I3C target static address: {:x}",
+                i3c_target
+                    .stdby_ctrl_mode_stby_cr_device_addr
+                    .read(StbyCrDeviceAddr::StaticAddr) as u8,
+            );
+        }
+        println!("Using {:x} as target address", target_addr);
+
+        let mut cmd = xi3c::Command {
+            cmd_type: 1,
+            no_repeated_start: 1,
+            ..Default::default()
+        };
+        if !use_dynamic_addr {
+            const XI3C_CCC_BRDCAST_SETAASA: u8 = 0x29;
+            println!("Broadcast CCC SETAASA");
+            let result =
+                i3c_controller.send_transfer_cmd(&mut cmd, Ccc::Byte(XI3C_CCC_BRDCAST_SETAASA));
+            assert!(result.is_ok(), "Failed to ack broadcast CCC SETAASA");
+            println!("Acknowledge received");
+        }
+
+        println!(
+            "I3C target status {:x}, interrupt status {:x}",
+            i3c_target.tti_status.get(),
+            i3c_target.tti_interrupt_status.get()
+        );
+
+        // Fill data to buffer
+        let mut tx_data = [0u8; 50];
+        for i in 0..50 as usize {
+            tx_data[i] = i as u8; // Test data
+        }
+
+        println!(
+            "I3C fifo level status 1: {:x}",
+            i3c_controller.regs().fifo_lvl_status_1.get()
+        );
+        while i3c_controller.regs().fifo_lvl_status_1.get() >> 16 > 0 {
+            println!(
+                "I3C controller has response fifo: {:x}",
+                i3c_controller.regs().resp_status_fifo.get()
+            );
+        }
+
+        // let's send a message back
+        println!("Writing data back to controller: {:x?}", tx_data);
+        send_packet(i3c_target, &tx_data);
+
+        println!("Starting IBI 0xae with 8 bytes");
+
+        // trigger an IBI with value 0xae (MCTP pending read)
+        i3c_target.tti_tti_ibi_port.set(0xae00_0008);
+        i3c_target.tti_tti_ibi_port.set(0x01234_5678);
+        i3c_target.tti_tti_ibi_port.set(0x9abc_defe);
+
+        println!(
+            "I3C target status {:x}, interrupt status {:x}",
+            i3c_target.tti_status.get(),
+            i3c_target.tti_interrupt_status.get()
+        );
+
+        println!(
+            "I3C controller status: {:x}",
+            i3c_controller.regs().sr.get()
+        );
+
+        println!(
+            "I3C controller IBI target address: 0x{:x}",
+            i3c_controller.regs().target_addr_bcr.get()
+        );
+
+        if i3c_controller.regs().sr.get() & 0x80 != 0 {
+            println!(
+                "I3C fifo level status 1: {:x}",
+                i3c_controller.regs().fifo_lvl_status_1.get()
+            );
+            println!(
+                "I3C controller has response fifo: {:x}",
+                i3c_controller.regs().resp_status_fifo.get()
+            );
+        }
+        println!(
+            "I3C controller status: {:x}",
+            i3c_controller.regs().sr.get()
+        );
+
+        let ibi_data = i3c_controller
+            .ibi_recv_polled()
+            .expect("Should have received an IBI");
+        println!("Got IBI data {:x?}", ibi_data);
+
+        println!(
+            "I3C target status {:x}, interrupt status {:x}",
+            i3c_target.tti_status.get(),
+            i3c_target.tti_interrupt_status.get()
+        );
+
+        // now do the private read
+        println!("Sending a read request to the target");
+        cmd.target_addr = target_addr;
+        cmd.no_repeated_start = 1;
+        cmd.tid = 0;
+        cmd.pec = 0;
+        cmd.cmd_type = 1;
+        let recv = i3c_controller
+            .master_recv_polled(None, &mut cmd, 50)
+            .expect("Failed to start receive from target");
+
+        println!("Received data from target: {:x?}", recv);
+        assert_eq!(recv, tx_data);
+
+        println!(
+            "I3C target status {:x}, interrupt status {:x}",
+            i3c_target.tti_status.get(),
+            i3c_target.tti_interrupt_status.get()
+        );
+    }
 }
