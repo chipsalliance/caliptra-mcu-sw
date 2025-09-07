@@ -53,6 +53,7 @@ pub struct ModelFpgaRealtime {
     i3c_rx: Option<mpsc::Receiver<I3cBusCommand>>,
     i3c_tx: Option<mpsc::Sender<I3cBusResponse>>,
     i3c_next_private_read_len: Option<u16>,
+    ibi_sent: bool,
 }
 
 impl ModelFpgaRealtime {
@@ -136,6 +137,19 @@ impl ModelFpgaRealtime {
         // TODO: somehow know how much to read
         const MCTP_MDB: u8 = 0xae;
         if self.cycle_count() > 420_000_000 && self.cycle_count() < 430_000_000 {
+            if !self.ibi_sent {
+                self.ibi_sent = true;
+                self.base
+                    .i3c_core()
+                    .tti()
+                    .tti_ibi_port()
+                    .write(|_| 0xaf_00_00_04);
+                self.base
+                    .i3c_core()
+                    .tti()
+                    .tti_ibi_port()
+                    .write(|_| 0x12_34_56_67);
+            }
             println!(
                 "I3C status: {:x}",
                 self.base
@@ -290,6 +304,7 @@ impl McuHwModel for ModelFpgaRealtime {
             i3c_rx,
             i3c_tx,
             i3c_next_private_read_len: None,
+            ibi_sent: false,
         };
 
         Ok(m)
