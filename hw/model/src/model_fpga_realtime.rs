@@ -13,15 +13,16 @@ use caliptra_hw_model::{
     SecurityState,
 };
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
-use mcu_rom_common::LifecycleControllerState;
+use mcu_rom_common::{LifecycleControllerState, McuRomBootStatus};
 use mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
-use mcu_testing_common::MCU_RUNNING;
+use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
 use std::io::Write;
 use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -301,6 +302,19 @@ impl McuHwModel for ModelFpgaRealtime {
         self.base
             .boot(boot_params)
             .map_err(|e| anyhow::anyhow!("Failed to boot: {e}"))?;
+
+        const BOOT_CYCLES: u64 = 800_000_000;
+        self.step_until(|hw| {
+            hw.cycle_count() >= BOOT_CYCLES
+                || hw.mci_flow_status() == u32::from(McuRomBootStatus::ColdBootFlowComplete)
+        });
+        assert_eq!(
+            u32::from(McuRomBootStatus::ColdBootFlowComplete),
+            self.mci_flow_status()
+        );
+        MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
+        // turn off recovery
+        self.base.recovery_started = false;
         Ok(())
     }
 
