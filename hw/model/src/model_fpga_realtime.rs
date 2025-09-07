@@ -144,6 +144,11 @@ impl ModelFpgaRealtime {
                     .sec_fw_recovery_if()
                     .device_status_0()
                     .write(|_| 0.into());
+                self.base
+                    .i3c_core()
+                    .sec_fw_recovery_if()
+                    .recovery_status()
+                    .write(|w| 0.into());
                 println!("Manually sending IBI");
                 self.base
                     .i3c_core()
@@ -933,8 +938,8 @@ mod tests {
             base_address: xi3c_controller_ptr,
             input_clock_hz: AXI_CLOCK_HZ,
             rw_fifo_depth: 16,
-            wr_threshold: 12,
-            device_count: 2,
+            wr_threshold: 12 * 4,
+            device_count: 1,
             ibi_capable: true,
             hj_capable: false,
             entdaa_enable: true,
@@ -1030,6 +1035,7 @@ mod tests {
         println!("Writing data back to controller: {:x?}", tx_data);
         send_packet(i3c_target, &tx_data);
 
+        println!("I3C controller status: {:x}", i3c_controller.status());
         println!("Starting IBI 0xae with 8 bytes");
 
         // trigger an IBI with value 0xae (MCTP pending read)
@@ -1066,6 +1072,7 @@ mod tests {
             .ibi_recv_polled(Duration::from_secs(1))
             .expect("Should have received an IBI");
         println!("Got IBI data {:x?}", ibi_data);
+        println!("I3C controller status: {:x}", i3c_controller.status());
 
         println!(
             "I3C target status {:x}, interrupt status {:x}",
