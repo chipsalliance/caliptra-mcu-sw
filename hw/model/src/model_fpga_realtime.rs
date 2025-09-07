@@ -149,15 +149,21 @@ impl ModelFpgaRealtime {
                     .i3c_core()
                     .tti()
                     .tti_ibi_port()
-                    .write(|_| 0x04_00_00_04);
+                    .write(|_| 0xae00_0008);
                 self.base
                     .i3c_core()
                     .tti()
                     .tti_ibi_port()
-                    .write(|_| 0x12_34_56_67);
+                    .write(|_| 0x01234_5678);
+                self.base
+                    .i3c_core()
+                    .tti()
+                    .tti_ibi_port()
+                    .write(|_| 0x9abc_defe);
             }
             println!(
-                "I3C status: {:x}",
+                "{} I3C status: {:x}",
+                self.cycle_count(),
                 self.base
                     .i3c_controller()
                     .controller
@@ -166,7 +172,8 @@ impl ModelFpgaRealtime {
                     .status()
             );
             println!(
-                "I3C interrupt status: {:x}",
+                "{} I3C interrupt status: {:x}",
+                self.cycle_count(),
                 self.base
                     .i3c_controller()
                     .controller
