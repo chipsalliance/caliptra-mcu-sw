@@ -425,6 +425,7 @@ impl ModelFpgaRealtime {
                     .sec_fw_recovery_if()
                     .recovery_status()
                     .write(|w| 0.into());
+                self.print_i3c_registers();
                 println!("Manually sending IBI");
                 self.base
                     .i3c_core()
@@ -1118,6 +1119,126 @@ mod tests {
             "I3C recovery device status: {:x}",
             regs.sec_fw_recovery_if_device_status_0
                 .read(DeviceStatus0::DevStatus)
+        );
+    }
+
+    fn print_i3c_register(i3c: &I3c) {
+        println!("Dumping registers");
+        println!(
+            "sec_fw_recovery_if_prot_cap_0: {:08x}",
+            i3c.sec_fw_recovery_if_prot_cap_0.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_prot_cap_1: {:08x}",
+            i3c.sec_fw_recovery_if_prot_cap_1.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_prot_cap_2: {:08x}",
+            i3c.sec_fw_recovery_if_prot_cap_2.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_prot_cap_3: {:08x}",
+            i3c.sec_fw_recovery_if_prot_cap_3.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_0: {:08x}",
+            i3c.sec_fw_recovery_if_device_id_0.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_1: {:08x}",
+            i3c.sec_fw_recovery_if_device_id_1.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_2: {:08x}",
+            i3c.sec_fw_recovery_if_device_id_2.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_3: {:08x}",
+            i3c.sec_fw_recovery_if_device_id_3.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_4: {:08x}",
+            i3c.sec_fw_recovery_if_device_id_4.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_5: {:08x}",
+            i3c.sec_fw_recovery_if_device_id_5.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_id_reserved: {:08x}",
+            i3c.sec_fw_recovery_if_device_id_reserved.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_status_0: {:08x}",
+            i3c.sec_fw_recovery_if_device_status_0.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_status_1: {:08x}",
+            i3c.sec_fw_recovery_if_device_status_1.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_device_reset: {:08x}",
+            i3c.sec_fw_recovery_if_device_reset.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_recovery_ctrl: {:08x}",
+            i3c.sec_fw_recovery_if_recovery_ctrl.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_recovery_status: {:08x}",
+            i3c.sec_fw_recovery_if_recovery_status.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_hw_status: {:08x}",
+            i3c.sec_fw_recovery_if_hw_status.get().swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_ctrl_0: {:08x}",
+            i3c.sec_fw_recovery_if_indirect_fifo_ctrl_0
+                .get()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_ctrl_1: {:08x}",
+            i3c.sec_fw_recovery_if_indirect_fifo_ctrl_1
+                .get()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_status_0: {:08x}",
+            i3c.sec_fw_recovery_if_indirect_fifo_status_0
+                .get()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_status_1: {:08x}",
+            i3c.sec_fw_recovery_if_indirect_fifo_status_1
+                .get()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_status_2: {:08x}",
+            i3c.sec_fw_recovery_if_indirect_fifo_status_2
+                .get()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_status_3: {:08x}",
+            i3c.sec_fw_recovery_if_indirect_fifo_status_3
+                .get()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_status_4: {:08x}",
+            i3c.sec_fw_recovery_if_indirect_fifo_status_4
+                .get()
+                .swap_bytes()
+        );
+        println!(
+            "sec_fw_recovery_if_indirect_fifo_reserved: {:08x}",
+            i3c.sec_fw_recovery_if_indirect_fifo_reserved
+                .get()
+                .swap_bytes()
         );
     }
 
