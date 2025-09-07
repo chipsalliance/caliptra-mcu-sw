@@ -137,6 +137,37 @@ impl ModelFpgaRealtime {
         // TODO: somehow know how much to read
         const MCTP_MDB: u8 = 0xae;
         if self.cycle_count() > 420_000_000 && self.cycle_count() < 420_100_000 {
+            println!(
+                "{} I3C addr {:08x}",
+                self.cycle_count(),
+                u32::from(
+                    self.base
+                        .i3c_core()
+                        .stdby_ctrl_mode()
+                        .stby_cr_device_addr()
+                        .read()
+                )
+            );
+            println!(
+                "{} I3C status: {:x}",
+                self.cycle_count(),
+                self.base
+                    .i3c_controller()
+                    .controller
+                    .lock()
+                    .unwrap()
+                    .status()
+            );
+            println!(
+                "{} I3C interrupt status: {:x}",
+                self.cycle_count(),
+                self.base
+                    .i3c_controller()
+                    .controller
+                    .lock()
+                    .unwrap()
+                    .interrupt_status()
+            );
             if !self.ibi_sent {
                 self.ibi_sent = true;
                 self.base
@@ -166,26 +197,6 @@ impl ModelFpgaRealtime {
                     .tti_ibi_port()
                     .write(|_| 0x9abc_defe);
             }
-            println!(
-                "{} I3C status: {:x}",
-                self.cycle_count(),
-                self.base
-                    .i3c_controller()
-                    .controller
-                    .lock()
-                    .unwrap()
-                    .status()
-            );
-            println!(
-                "{} I3C interrupt status: {:x}",
-                self.cycle_count(),
-                self.base
-                    .i3c_controller()
-                    .controller
-                    .lock()
-                    .unwrap()
-                    .interrupt_status()
-            );
         }
         if let Some(tx) = self.i3c_tx.as_ref() {
             if self.base.i3c_controller().ibi_ready() {
