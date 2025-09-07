@@ -120,6 +120,7 @@ impl ModelFpgaRealtime {
         // check if we need to write any I3C packets to Caliptra
         if let Some(rx) = self.i3c_rx.as_ref() {
             for rx in rx.try_iter() {
+                println!("[hw-model-fpga] I3C command received: {:x?}", rx);
                 match rx.cmd.cmd {
                     I3cTcriCommand::Regular(_cmd) => {
                         let _ = self.base.i3c_controller().write_nowait(&rx.cmd.data);
@@ -135,6 +136,7 @@ impl ModelFpgaRealtime {
         const MCTP_MDB: u8 = 0xae;
         if let Some(tx) = self.i3c_tx.as_ref() {
             if self.base.i3c_controller().ibi_ready() {
+                println!("[hw-model-fpga] I3C IBI received");
                 match self.base.i3c_controller().ibi_recv(None) {
                     Ok(ibi) => {
                         if ibi.len() != 3 || ibi[0] != MCTP_MDB {
@@ -161,6 +163,10 @@ impl ModelFpgaRealtime {
             }
             // check if we should do attempt a private read
             if let Some(private_read_len) = self.i3c_next_private_read_len.take() {
+                println!(
+                    "[hw-model-fpga] I3C trying private read len {}",
+                    private_read_len
+                );
                 match self.base.i3c_controller().read(private_read_len) {
                     Ok(data) => {
                         // forward the private read

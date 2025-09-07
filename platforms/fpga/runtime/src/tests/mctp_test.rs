@@ -7,7 +7,6 @@ use capsules_runtime::test::mctp::MockMctp;
 use capsules_runtime::test::mctp::TestClient;
 use core::fmt::Write;
 use kernel::component::Component;
-use kernel::hil::time::Alarm;
 use kernel::static_init;
 use mcu_components::mock_mctp::MockMctpComponent;
 use mcu_components::mock_mctp_component_static;

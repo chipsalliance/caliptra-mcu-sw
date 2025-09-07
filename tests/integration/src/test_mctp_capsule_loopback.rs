@@ -7,31 +7,11 @@ mod test {
     use crate::test::{
         compile_runtime, finish_runtime_hw_model, start_runtime_hw_model, ROM, TEST_LOCK,
     };
-    use chrono::{TimeZone, Utc};
-    use lazy_static::lazy_static;
-    use log::{error, LevelFilter};
     use mcu_hw_model::McuHwModel;
     use mcu_testing_common::i3c_socket::{self, BufferedStream, MctpTestState, MctpTransportTest};
-    use mcu_testing_common::mctp_transport::{MctpPldmSocket, MctpTransport};
     use mcu_testing_common::mctp_util::common::MctpUtil;
-    use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
-    use pldm_common::protocol::firmware_update::*;
-    use pldm_fw_pkg::{
-        manifest::{
-            ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
-            PackageHeaderInformation, StringType,
-        },
-        FirmwareManifest,
-    };
-    use pldm_ua::daemon::Options;
-    use pldm_ua::daemon::PldmDaemon;
-    use pldm_ua::transport::{EndpointId, PldmSocket, PldmTransport};
-    use pldm_ua::{discovery_sm, update_sm};
-    use simple_logger::SimpleLogger;
-    use std::process::exit;
+    use mcu_testing_common::MCU_RUNNING;
     use std::sync::atomic::Ordering;
-    use std::time::Duration;
-    use uuid::Uuid;
 
     #[cfg_attr(feature = "fpga_realtime", ignore)]
     #[test]
@@ -47,13 +27,6 @@ mod test {
         let mut hw = start_runtime_hw_model(ROM.to_path_buf(), test_runtime, Some(65534));
 
         hw.start_i3c_controller();
-
-        // let pldm_transport =
-        //     MctpTransport::new(hw.i3c_port().unwrap(), hw.i3c_address().unwrap().into());
-        // let pldm_socket = pldm_transport
-        //     .create_socket(EndpointId(8), EndpointId(0))
-        //     .unwrap();
-        // PldmFwUpdateTest::run(pldm_socket);
 
         let tests = generate_tests();
         i3c_socket::run_tests(
