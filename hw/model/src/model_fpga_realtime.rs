@@ -144,6 +144,15 @@ impl ModelFpgaRealtime {
                     .unwrap()
                     .status()
             );
+            println!(
+                "I3C interrupt status: {:x}",
+                self.base
+                    .i3c_controller()
+                    .controller
+                    .lock()
+                    .unwrap()
+                    .interrupt_status()
+            );
         }
         if let Some(tx) = self.i3c_tx.as_ref() {
             if self.base.i3c_controller().ibi_ready() {
@@ -367,6 +376,12 @@ impl McuHwModel for ModelFpgaRealtime {
 
     fn start_i3c_controller(&mut self) {
         //self.base.i3c_controller.configure();
+        self.base
+            .i3c_controller
+            .controller
+            .lock()
+            .unwrap()
+            .interrupt_enable_set(0x80 | 0x8000);
     }
 
     fn i3c_address(&self) -> Option<u8> {
