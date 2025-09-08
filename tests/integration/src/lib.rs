@@ -4,6 +4,7 @@ mod test_soc_boot;
 #[cfg(test)]
 mod test {
     use mcu_builder::{CaliptraBuilder, ImageCfg, TARGET};
+    use mcu_image_header::McuImageHeader;
     use std::process::ExitStatus;
     use std::sync::atomic::AtomicU32;
     use std::sync::Mutex;
@@ -12,6 +13,7 @@ mod test {
         process::Command,
         sync::LazyLock,
     };
+    use zerocopy::IntoBytes;
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
         Path::new(&env!("CARGO_MANIFEST_DIR"))
@@ -62,6 +64,7 @@ mod test {
             None,
             None,
             Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG),
+            None,
         )
         .expect("Runtime build failed");
         assert!(output.exists());
@@ -84,6 +87,7 @@ mod test {
         hw_revision: Option<String>,
         fuse_soc_manifest_svn: Option<u8>,
         fuse_soc_manifest_max_svn: Option<u8>,
+        fuse_vendor_hashes_prod_partition: Option<Vec<u8>>,
     ) -> ExitStatus {
         let mut cargo_run_args = vec![
             "run",
@@ -251,6 +255,17 @@ mod test {
                 cargo_run_args.push(soc_manifest_max_svn_str.as_str());
             }
 
+            let fuse_vendor_hashes_prod_partition_str;
+            if let Some(fuse_vendor_hashes_prod_partition) = fuse_vendor_hashes_prod_partition {
+                let hex_string: String = fuse_vendor_hashes_prod_partition
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect();
+                cargo_run_args.push("--fuse-vendor-hashes-prod-partition");
+                fuse_vendor_hashes_prod_partition_str = hex_string;
+                cargo_run_args.push(fuse_vendor_hashes_prod_partition_str.as_str());
+            }
+
             println!("Running test firmware {}", feature.replace("_", "-"));
             let mut cmd = Command::new("cargo");
             let cmd = cmd.args(&cargo_run_args).current_dir(&*PROJECT_ROOT);
@@ -278,6 +293,7 @@ mod test {
             i3c_port,
             true,  // active mode is always true
             false, //set this to true if you want to run in manufacturing mode
+            None,
             None,
             None,
             None,
@@ -389,6 +405,7 @@ mod test {
             None,
             None,
             None,
+            None,
         );
         assert_eq!(0, test.code().unwrap_or_default());
 
@@ -420,8 +437,100 @@ mod test {
             None,
             None,
             None,
+            None,
         );
         assert_eq!(0, test.code().unwrap_or_default());
+
+        // force the compiler to keep the lock
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn test_mcu_svn(image_svn: u16, fuse_svn: u16) -> Option<i32> {
+        let feature = if image_svn >= fuse_svn {
+            "test-mcu-svn-gt-fuse"
+        } else {
+            "test-mcu-svn-lt-fuse"
+        };
+
+        println!("Compiling test firmware {}", &feature);
+
+        let test_runtime = target_binary(&format!("runtime-{}.bin", feature));
+        let output_name = format!("{}", test_runtime.display());
+        mcu_builder::runtime_build_with_apps_cached(
+            &[feature],
+            Some(&output_name),
+            true,
+            None,
+            None,
+            false,
+            None,
+            None,
+            None,
+            Some(
+                McuImageHeader {
+                    svn: image_svn,
+                    ..Default::default()
+                }
+                .as_bytes(),
+            ),
+        )
+        .expect("Runtime build failed");
+        assert!(test_runtime.exists());
+
+        let fuse_vendor_hashes_prod_partition = {
+            let n = if fuse_svn > 128 { 128 } else { fuse_svn };
+            let val: u128 = if n == 0 {
+                0
+            } else if n == 128 {
+                u128::MAX
+            } else {
+                (1u128 << n) - 1
+            };
+
+            val.to_le_bytes()
+        };
+
+        let i3c_port = "65534".to_string();
+        let test = run_runtime(
+            feature,
+            get_rom_with_feature(feature),
+            test_runtime,
+            i3c_port,
+            true,
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(fuse_vendor_hashes_prod_partition.to_vec()),
+        );
+
+        test.code()
+    }
+
+    #[test]
+    fn test_mcu_svn_gt_fuse() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let result = test_mcu_svn(100, 30);
+        assert_eq!(0, result.unwrap_or_default());
+
+        // force the compiler to keep the lock
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_mcu_svn_lt_fuse() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let result = test_mcu_svn(25, 40);
+        assert_ne!(0, result.unwrap_or_default());
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

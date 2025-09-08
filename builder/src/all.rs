@@ -132,6 +132,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         dccm_offset,
         dccm_size,
         None,
+        None,
     )?;
 
     let fpga = platform == "fpga";

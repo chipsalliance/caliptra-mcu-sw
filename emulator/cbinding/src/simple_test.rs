@@ -88,6 +88,7 @@ fn test_emulator_args_creation() {
         lc_size: None,
         fuse_soc_manifest_max_svn: None,
         fuse_soc_manifest_svn: None,
+        fuse_vendor_hashes_prod_partition: None,
     };
 
     println!("EmulatorArgs created successfully");

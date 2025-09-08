@@ -21,8 +21,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use tock_registers::interfaces::{Readable, Writeable};
 
-// Set to core_clk cycles per ITRNG sample.
-const DEFAULT_AXI_PAUSER: u32 = 0xcccc_cccc;
+const DEFAULT_AXI_PAUSER: u32 = 0x1;
 
 struct CaliptraMmio {
     ptr: *mut u32,
@@ -135,9 +134,9 @@ impl McuHwModel for ModelFpgaRealtime {
             .lifecycle_controller_state
             .unwrap_or(LifecycleControllerState::Raw)
         {
-            LifecycleControllerState::Raw
-            | LifecycleControllerState::Prod
-            | LifecycleControllerState::ProdEnd => security_state_prod,
+            LifecycleControllerState::Prod | LifecycleControllerState::ProdEnd => {
+                security_state_prod
+            }
             LifecycleControllerState::Dev => security_state_manufacturing,
             _ => security_state_unprovisioned,
         };

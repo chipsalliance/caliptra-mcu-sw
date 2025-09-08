@@ -58,8 +58,7 @@ pub extern "C" fn rom_entry() -> ! {
         romtime::set_exiter(&mut EMULATOR_EXITER);
     }
 
-    #[cfg(feature = "test-flash-based-boot")]
-    {
+    if cfg!(feature = "test-flash-based-boot") {
         // Initialize the flash controller for testing purposes
 
         let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
@@ -125,9 +124,19 @@ pub extern "C" fn rom_entry() -> ! {
             flash_partition_driver: Some(&mut flash_image_partition_driver),
             ..Default::default()
         });
-    }
-    #[cfg(not(feature = "test-flash-based-boot"))]
-    {
+    } else if cfg!(any(
+        feature = "test-mcu-svn-gt-fuse",
+        feature = "test-mcu-svn-lt-fuse"
+    )) {
+        use crate::mcu_image_verifier::McuImageVerifier;
+        let mcu_image_verifier = McuImageVerifier;
+        let rom_parameters = RomParameters {
+            mcu_image_verifier: Some(&mcu_image_verifier),
+            mcu_image_header_size: core::mem::size_of::<mcu_image_header::McuImageHeader>(),
+            ..Default::default()
+        };
+        mcu_rom_common::rom_start(rom_parameters);
+    } else {
         mcu_rom_common::rom_start(RomParameters::default());
     }
 

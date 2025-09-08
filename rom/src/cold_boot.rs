@@ -21,6 +21,7 @@ use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use core::fmt::Write;
 use romtime::{CaliptraSoC, HexWord};
+use tock_registers::interfaces::Readable;
 use zerocopy::{transmute, IntoBytes};
 
 pub struct ColdBoot {}
@@ -118,6 +119,11 @@ impl BootFlow for ColdBoot {
         romtime::println!("[mcu-rom] Setting Caliptra boot go");
         mci.caliptra_boot_go();
         mci.set_flow_status(McuRomBootStatus::CaliptraBootGoAsserted.into());
+
+        // If testing Caliptra Core, hang here until the test signals it to continue.
+        if cfg!(feature = "core_test") {
+            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 30) == 0 {}
+        }
 
         lc.init().unwrap();
         mci.set_flow_status(McuRomBootStatus::LifecycleControllerInitialized.into());
@@ -230,7 +236,6 @@ impl BootFlow for ColdBoot {
 
         // If testing Caliptra Core, hang here until the test signals it to continue.
         if cfg!(feature = "core_test") {
-            use tock_registers::interfaces::Readable;
             while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 31) == 0 {}
         }
 
@@ -309,8 +314,25 @@ impl BootFlow for ColdBoot {
         romtime::println!("[mcu-rom] Firmware is ready");
         mci.set_flow_status(McuRomBootStatus::FirmwareReadyDetected.into());
 
+        if let Some(image_verifier) = params.mcu_image_verifier {
+            let header = unsafe {
+                core::slice::from_raw_parts(
+                    MCU_MEMORY_MAP.sram_offset as *const u8,
+                    params.mcu_image_header_size,
+                )
+            };
+
+            romtime::println!("[mcu-rom] Verifying firmware header");
+            if !image_verifier.verify_header(header, &fuses) {
+                romtime::println!("Firmware header verification failed; halting");
+                fatal_error(1);
+            }
+        }
+
         // Check that the firmware was actually loaded before jumping to it
-        let firmware_ptr = unsafe { MCU_MEMORY_MAP.sram_offset as *const u32 };
+        let firmware_ptr = unsafe {
+            (MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32) as *const u32
+        };
         // Safety: this address is valid
         if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
             romtime::println!("Invalid firmware detected; halting");
@@ -343,7 +365,7 @@ impl BootFlow for ColdBoot {
 
         #[cfg(target_arch = "riscv32")]
         unsafe {
-            let firmware_entry = MCU_MEMORY_MAP.sram_offset;
+            let firmware_entry = MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32;
             core::arch::asm!(
                 "jr {0}",
                 in(reg) firmware_entry,

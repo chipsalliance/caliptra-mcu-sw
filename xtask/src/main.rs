@@ -389,6 +389,7 @@ fn main() {
                     Some("fpga") => None,
                     _ => panic!("Unsupported platform"),
                 },
+                None,
             )
             .map(|_| ())
         }
