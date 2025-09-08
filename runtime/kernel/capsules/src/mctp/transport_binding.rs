@@ -209,9 +209,10 @@ impl RxClient for MCTPI3CBinding<'_> {
             });
         } else {
             println!(
-                "MCTPI3CBinding: Invalid PEC {:02x} (expected {:02x}. Dropping packet.",
+                "MCTPI3CBinding: Invalid PEC {:02x} (expected {:02x}) for address {:02x}. Dropping packet.",
                 rx_buffer[len - 1],
-                pec
+                pec,
+                addr >> 1,
             );
             self.i3c_target.set_rx_buffer(rx_buffer);
         }
