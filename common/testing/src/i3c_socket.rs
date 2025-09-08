@@ -187,6 +187,10 @@ impl BufferedStream {
 
         let mut pkt = Vec::new();
         pkt.extend_from_slice(data.as_slice());
+        println!(
+            "Computing PEC {:02x} for target addr {:02}",
+            pec, target_addr
+        );
         pkt.push(pec);
 
         let pvt_write_cmd = prepare_private_write_cmd(addr, pkt.len() as u16);
