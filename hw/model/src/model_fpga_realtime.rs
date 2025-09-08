@@ -811,6 +811,10 @@ impl McuHwModel for ModelFpgaRealtime {
     fn i3c_port(&self) -> Option<u16> {
         self.i3c_port
     }
+
+    fn mci_flow_status(&mut self) -> u32 {
+        self.base.mci_flow_status()
+    }
 }
 
 pub struct FpgaRealtimeBus<'a> {
