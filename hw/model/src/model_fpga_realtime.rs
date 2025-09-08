@@ -553,7 +553,7 @@ impl ModelFpgaRealtime {
                         })
                         .expect("Failed to forward I3C IBI response to channel");
                         self.i3c_next_private_read_len =
-                            Some(u32::from_be_bytes(ibi[1..4].try_into().unwrap()));
+                            Some(u32::from_be_bytes(ibi[1..5].try_into().unwrap()));
                     }
                     Err(e) => {
                         println!("Error receiving I3C IBI: {:?}", e);
