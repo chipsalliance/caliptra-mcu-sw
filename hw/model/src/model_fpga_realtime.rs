@@ -386,7 +386,7 @@ impl ModelFpgaRealtime {
         // TODO: add IBI support
         // TODO: somehow know how much to read
         const MCTP_MDB: u8 = 0xae;
-        if self.cycle_count() > 410_000_000 && self.cycle_count() < 410_050_000 {
+        if self.cycle_count() > 410_000_000 && self.cycle_count() < 410_100_000 {
             println!(
                 "{} I3C addr {:08x}",
                 self.cycle_count(),
