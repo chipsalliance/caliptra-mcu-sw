@@ -454,6 +454,13 @@ impl ModelFpgaRealtime {
                     .unwrap()
                     .resume(1);
                 std::thread::sleep(Duration::from_millis(1));
+                self.base
+                    .i3c_controller
+                    .controller
+                    .lock()
+                    .unwrap()
+                    .reset_fifos();
+                std::thread::sleep(Duration::from_millis(1));
                 println!(
                     "{} I3C status: {:x}",
                     self.cycle_count(),
