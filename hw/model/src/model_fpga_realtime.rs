@@ -702,6 +702,11 @@ impl McuHwModel for ModelFpgaRealtime {
             hw.cycle_count() >= BOOT_CYCLES
                 || hw.mci_flow_status() == u32::from(McuRomBootStatus::ColdBootFlowComplete)
         });
+        println!(
+            "Boot completed at cycle count {}, flow status {}",
+            self.cycle_count(),
+            u32::from(self.mci_flow_status())
+        );
         assert_eq!(
             u32::from(McuRomBootStatus::ColdBootFlowComplete),
             self.mci_flow_status()
