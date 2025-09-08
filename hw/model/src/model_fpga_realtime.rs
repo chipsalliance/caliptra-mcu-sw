@@ -56,6 +56,7 @@ pub struct ModelFpgaRealtime {
     i3c_tx: Option<mpsc::Sender<I3cBusResponse>>,
     i3c_next_private_read_len: Option<u16>,
     ibi_sent: bool,
+    last_update: u64,
 }
 
 impl ModelFpgaRealtime {
@@ -577,6 +578,20 @@ impl McuHwModel for ModelFpgaRealtime {
     fn step(&mut self) {
         self.base.step();
         self.handle_i3c();
+        let now = self.cycle_count();
+        if now > self.last_update + 10_000 {
+            self.last_update = now;
+            println!(
+                "{} I3C controller status: {:x}",
+                now,
+                self.base
+                    .i3c_controller()
+                    .controller
+                    .lock()
+                    .unwrap()
+                    .status()
+            );
+        }
     }
 
     fn new_unbooted(params: InitParams) -> Result<Self>
@@ -653,6 +668,7 @@ impl McuHwModel for ModelFpgaRealtime {
             i3c_tx,
             i3c_next_private_read_len: None,
             ibi_sent: false,
+            last_update: 0,
         };
 
         Ok(m)
