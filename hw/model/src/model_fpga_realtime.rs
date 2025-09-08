@@ -25,6 +25,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
+use std::time::Duration;
 use tock_registers::interfaces::{Readable, Writeable};
 
 const DEFAULT_AXI_PAUSER: u32 = 0x1;
