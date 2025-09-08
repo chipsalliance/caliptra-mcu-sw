@@ -568,8 +568,13 @@ impl ModelFpgaRealtime {
                     "[hw-model-fpga] I3C trying private read len {}",
                     private_read_len
                 );
-                match self.base.i3c_controller().read(private_read_len as u16) {
+                match self
+                    .base
+                    .i3c_controller()
+                    .read(private_read_len.next_multiple_of(4) as u16)
+                {
                     Ok(data) => {
+                        let data = data[0..private_read_len as usize].to_vec();
                         // forward the private read
                         let mut resp = ResponseDescriptor::default();
                         resp.set_data_length(data.len() as u16);
