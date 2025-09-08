@@ -10,7 +10,7 @@ use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use caliptra_hw_model::{
     DeviceLifecycle, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem, Output,
-    SecurityState,
+    SecurityState, XI3CWrapper,
 };
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
 use mcu_rom_common::{LifecycleControllerState, McuRomBootStatus};
@@ -23,8 +23,9 @@ use std::io::Write;
 use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
-use std::sync::atomic::Ordering;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
+use std::thread::JoinHandle;
 use std::time::Duration;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
@@ -52,7 +53,7 @@ pub struct ModelFpgaRealtime {
 
     openocd: Option<TcpStream>,
     i3c_port: Option<u16>,
-    i3c_rx: Option<mpsc::Receiver<I3cBusCommand>>,
+    i3c_handle: Option<JoinHandle<()>>,
     i3c_tx: Option<mpsc::Sender<I3cBusResponse>>,
     i3c_next_private_read_len: Option<u32>,
     ibi_sent: bool,
@@ -369,15 +370,19 @@ impl ModelFpgaRealtime {
         );
     }
 
-    fn handle_i3c(&mut self) {
+    fn forward_i3c_to_controller(
+        running: Arc<AtomicBool>,
+        i3c_rx: mpsc::Receiver<I3cBusCommand>,
+        controller: XI3CWrapper,
+    ) {
         // check if we need to write any I3C packets to Caliptra
-        if let Some(rx) = self.i3c_rx.as_ref() {
-            for rx in rx.try_iter() {
+        while running.load(Ordering::Relaxed) {
+            for rx in i3c_rx.try_iter() {
                 println!("[hw-model-fpga] I3C command received: {:02x?}", rx);
                 match rx.cmd.cmd {
                     I3cTcriCommand::Regular(_cmd) => {
                         if rx.cmd.data.len() > 0 {
-                            let _ = self.base.i3c_controller().write_nowait(&rx.cmd.data);
+                            let _ = controller.write(&rx.cmd.data);
                         }
                     }
                     // these aren't used
@@ -385,6 +390,9 @@ impl ModelFpgaRealtime {
                 }
             }
         }
+    }
+
+    fn handle_i3c(&mut self) {
         // check if we need to read any I3C packets from Caliptra
         // TODO: add IBI support
         // TODO: somehow know how much to read
@@ -682,13 +690,25 @@ impl McuHwModel for ModelFpgaRealtime {
             (None, None)
         };
 
+        let i3c_handle = if let Some(i3c_rx) = i3c_rx {
+            // start a thread to forward I3C packets from the mpsc receiver to the I3C controller in the FPGA model
+            let running = base.realtime_thread_exit_flag.clone();
+            let controller = base.i3c_controller();
+            let i3c_handle = std::thread::spawn(move || {
+                Self::forward_i3c_to_controller(running, i3c_rx, controller);
+            });
+            Some(i3c_handle)
+        } else {
+            None
+        };
+
         let m = Self {
             base,
 
             openocd: None,
             // TODO: start the I3C socket and hook up to the FPGA model
             i3c_port: params.i3c_port,
-            i3c_rx,
+            i3c_handle,
             i3c_tx,
             i3c_next_private_read_len: None,
             ibi_sent: false,
@@ -926,6 +946,13 @@ impl Drop for ModelFpgaRealtime {
             .stdby_ctrl_mode()
             .stby_cr_device_addr()
             .write(|_| StbyCrDeviceAddrWriteVal::from(0));
+
+        self.base
+            .realtime_thread_exit_flag
+            .store(false, Ordering::Relaxed);
+        if let Some(handle) = self.i3c_handle.take() {
+            handle.join().expect("Failed to join I3C thread");
+        }
     }
 }
 
