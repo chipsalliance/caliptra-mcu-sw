@@ -176,10 +176,15 @@ impl Soc {
         romtime::println!("[mcu-fuse-write] Writing key release fuses");
         self.registers.ss_key_release_size.set(0x40);
 
-        let mci_base_addr: u64 = self.registers.ss_mci_base_addr_l.get() as u64 + ((self.registers.ss_mci_base_addr_h.get() as u64) << 32);
+        let mci_base_addr: u64 = self.registers.ss_mci_base_addr_l.get() as u64
+            + ((self.registers.ss_mci_base_addr_h.get() as u64) << 32);
         let mcu_sram_addr: u64 = 0xc0_0000 + mci_base_addr;
-        self.registers.ss_key_release_base_addr_h.set((mcu_sram_addr >> 32) as u32);
-        self.registers.ss_key_release_base_addr_l.set(mcu_sram_addr as u32);
+        self.registers
+            .ss_key_release_base_addr_h
+            .set((mcu_sram_addr >> 32) as u32);
+        self.registers
+            .ss_key_release_base_addr_l
+            .set(mcu_sram_addr as u32);
 
         romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
         romtime::println!("");
