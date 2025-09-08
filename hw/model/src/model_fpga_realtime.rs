@@ -26,7 +26,7 @@ use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::time::Duration;
-use tock_registers::interfaces::{Readable, Writeable};
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 const DEFAULT_AXI_PAUSER: u32 = 0x1;
 
@@ -436,13 +436,24 @@ impl ModelFpgaRealtime {
                     .lock()
                     .unwrap()
                     .reset_fifos();
+                std::thread::sleep(Duration::from_millis(1));
+                // abort
+                self.base
+                    .i3c_controller
+                    .controller
+                    .lock()
+                    .unwrap()
+                    .regs()
+                    .cr
+                    .set(9 | 2);
+                std::thread::sleep(Duration::from_millis(1));
                 self.base
                     .i3c_controller
                     .controller
                     .lock()
                     .unwrap()
                     .resume(1);
-                std::thread::sleep(Duration::from_millis(100));
+                std::thread::sleep(Duration::from_millis(1));
                 println!(
                     "{} I3C status: {:x}",
                     self.cycle_count(),
