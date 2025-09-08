@@ -413,6 +413,16 @@ impl ModelFpgaRealtime {
                     .unwrap()
                     .interrupt_status()
             );
+            println!(
+                "{} I3C recv data available: {:x}",
+                self.cycle_count(),
+                self.base
+                    .i3c_controller()
+                    .controller
+                    .lock()
+                    .unwrap()
+                    .recv_data_available()
+            );
             if !self.ibi_sent {
                 self.ibi_sent = true;
                 self.print_i3c_registers();
