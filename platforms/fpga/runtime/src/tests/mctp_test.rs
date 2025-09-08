@@ -48,9 +48,9 @@ impl<'a> TestClient for TestMctp<'a> {
             if passed { "PASSED" } else { "FAILED" }
         );
         if passed {
-            crate::io::exit_emulator(0);
+            crate::io::exit_fpga(0);
         } else {
-            crate::io::exit_emulator(1);
+            crate::io::exit_fpga(1);
         }
     }
 }
