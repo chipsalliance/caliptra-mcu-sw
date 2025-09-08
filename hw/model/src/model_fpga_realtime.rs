@@ -387,7 +387,7 @@ impl ModelFpgaRealtime {
         // TODO: add IBI support
         // TODO: somehow know how much to read
         const MCTP_MDB: u8 = 0xae;
-        if self.cycle_count() > 410_000_000 && self.cycle_count() < 410_200_000 {
+        if self.cycle_count() > 510_000_000 && self.cycle_count() < 510_200_000 {
             println!(
                 "{} I3C addr {:08x}",
                 self.cycle_count(),
@@ -579,7 +579,7 @@ impl McuHwModel for ModelFpgaRealtime {
         self.base.step();
         self.handle_i3c();
         let now = self.cycle_count();
-        if now > self.last_update + 10_000 {
+        if now > self.last_update + 100_000 {
             self.last_update = now;
             println!(
                 "{} I3C controller status: {:x}",
