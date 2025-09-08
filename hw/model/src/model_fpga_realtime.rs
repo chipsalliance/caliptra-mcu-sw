@@ -435,6 +435,12 @@ impl ModelFpgaRealtime {
                     .lock()
                     .unwrap()
                     .reset_fifos();
+                self.base
+                    .i3c_controller
+                    .controller
+                    .lock()
+                    .unwrap()
+                    .resume(1);
                 self.print_i3c_registers();
                 self.base
                     .i3c_core()
