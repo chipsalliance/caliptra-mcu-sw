@@ -122,6 +122,10 @@ impl ModelFpgaRealtime {
     fn print_i3c_registers(&mut self) {
         println!("Dumping registers");
         println!(
+            "tti_control: {:08x}",
+            u32::from(self.base.i3c_core().tti().control().read()).swap_bytes()
+        );
+        println!(
             "sec_fw_recovery_if_prot_cap_0: {:08x}",
             self.base
                 .i3c_core()
@@ -1151,6 +1155,7 @@ mod tests {
 
     fn print_i3c_register(i3c: &I3c) {
         println!("Dumping registers");
+        println!("tti_control {:08x}", i3c.tti_control.get().swap_bytes());
         println!(
             "sec_fw_recovery_if_prot_cap_0: {:08x}",
             i3c.sec_fw_recovery_if_prot_cap_0.get().swap_bytes()
@@ -1434,6 +1439,8 @@ mod tests {
         //         i3c_controller.regs().resp_status_fifo.get()
         //     );
         // }
+
+        print_i3c_register(i3c_target);
 
         // let's send a message back
         println!("Writing data back to controller: {:x?}", tx_data);
