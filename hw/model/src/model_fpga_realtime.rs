@@ -431,12 +431,12 @@ impl ModelFpgaRealtime {
             );
             if !self.ibi_sent {
                 self.ibi_sent = true;
-                println!("Resetting I3C core");
-                self.base
-                    .i3c_core()
-                    .i3c_base()
-                    .reset_control()
-                    .write(|_| ((1 << 6) - 1).into());
+                // println!("Resetting I3C core");
+                // self.base
+                //     .i3c_core()
+                //     .i3c_base()
+                //     .reset_control()
+                //     .write(|_| ((1 << 6) - 1).into());
                 println!("Resetting I3C controlller");
                 {
                     let ctrl = self.base.i3c_controller.controller.lock().unwrap();
