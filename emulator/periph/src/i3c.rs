@@ -157,6 +157,7 @@ impl I3c {
                         resp: resp_desc,
                         data: self.tti_tx_data_raw.pop_front().unwrap(),
                     };
+                    println!("i3c core set response {:x?}", resp);
                     self.i3c_target.set_response(resp);
                 }
             }
