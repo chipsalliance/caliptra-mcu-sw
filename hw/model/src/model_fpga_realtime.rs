@@ -506,21 +506,21 @@ impl ModelFpgaRealtime {
                 //     .write(|w| 0.into());
                 self.print_i3c_registers();
 
-                println!("Manually sending private read and IBI");
+                // println!("Manually sending private read and IBI");
 
-                let i3c = unsafe { &*(self.base.i3c_mmio as *const I3c) };
-                i3c.tti_tx_desc_queue_port.set(4);
-                i3c.tti_tx_data_port.set(0x01020304);
+                // let i3c = unsafe { &*(self.base.i3c_mmio as *const I3c) };
+                // i3c.tti_tx_desc_queue_port.set(4);
+                // i3c.tti_tx_data_port.set(0x01020304);
 
-                // self.base.i3c_core().tti().tx_desc_queue_port().write(|_| 4);
-                // self.base
-                //     .i3c_core()
-                //     .tti()
-                //     .tx_data_port()
-                //     .write(|_| 0xabcd_ef01);
-                i3c.tti_tti_ibi_port.set(0xae00_0008);
-                i3c.tti_tti_ibi_port.set(0x1234_5678);
-                i3c.tti_tti_ibi_port.set(0x9abc_defe);
+                // // self.base.i3c_core().tti().tx_desc_queue_port().write(|_| 4);
+                // // self.base
+                // //     .i3c_core()
+                // //     .tti()
+                // //     .tx_data_port()
+                // //     .write(|_| 0xabcd_ef01);
+                // i3c.tti_tti_ibi_port.set(0xae00_0008);
+                // i3c.tti_tti_ibi_port.set(0x1234_5678);
+                // i3c.tti_tti_ibi_port.set(0x9abc_defe);
 
                 // self.base
                 //     .i3c_core()
