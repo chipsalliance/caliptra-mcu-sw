@@ -3,12 +3,12 @@
 # Default settings:
 set BUILD FALSE
 set GUI   FALSE
-set JTAG  TRUE
 set ITRNG TRUE
 set CG_EN FALSE
 set RTL_VERSION latest
 set BOARD VCK190
 set ITRNG TRUE
+set DEBUG FALSE
 set FAST_I3C TRUE
 set CORE_CLK_MHZ 18
 # Xilinx core requires 100 - 300MHz. Actual clock usually rounds down
@@ -18,6 +18,8 @@ set I3C_SCL_RATE_KHZ 1000
 
 set I3C_OUTSIDE FALSE
 set APB FALSE
+set SEGMENTED FALSE
+set SEGMENTED_WRITE_NCR FALSE
 # Simplistic processing of command line arguments to override defaults
 foreach arg $argv {
   regexp {(.*)=(.*)} $arg fullmatch option value
@@ -42,7 +44,6 @@ file mkdir $caliptrapackageDir
 # Path to rtl
 set ssrtlDir $fpgaDir/../caliptra-ss
 set caliptrartlDir $ssrtlDir/third_party/caliptra-rtl
-puts "JTAG: $JTAG"
 puts "ITRNG: $ITRNG"
 puts "CG_EN: $CG_EN"
 puts "RTL_VERSION: $RTL_VERSION"
@@ -98,6 +99,9 @@ source create_caliptra_package.tcl
 # Create a project for the SOC connections
 create_project caliptra_fpga_project $outputDir -part $PART
 set_property board_part $BOARD_PART [current_project]
+if {$SEGMENTED} {
+  set_property segmented_configuration true [current_project]
+}
 
 # Include the packaged IP
 set_property  ip_repo_paths "$caliptrapackageDir" [current_project]
@@ -114,8 +118,18 @@ source create_versal_cips.tcl
 
 # Create XDC file with jtag constraints
 set xdc_fd [ open $outputDir/jtag_constraints.xdc w ]
-puts $xdc_fd {create_clock -period 5000.000 -name {jtag_clk} -waveform {0.000 2500.000} [get_pins {caliptra_fpga_project_bd_i/ps_0/inst/pspmc_0/inst/PS9_inst/EMIOGPIO2O[0]}]}
-puts $xdc_fd {set_clock_groups -asynchronous -group [get_clocks {jtag_clk}]}
+puts $xdc_fd {create_clock -period 5000.000 -name {cal_jtag_clk} -waveform {0.000 2500.000} [get_pins {caliptra_fpga_project_bd_i/ps_0/inst/pspmc_0/inst/PS9_inst/EMIOGPIO2O[0]}]}
+puts $xdc_fd {create_clock -period 5000.000 -name {lcc_jtag_clk} -waveform {0.000 2500.000} [get_pins {caliptra_fpga_project_bd_i/ps_0/inst/pspmc_0/inst/PS9_inst/EMIOGPIO2O[5]}]}
+puts $xdc_fd {create_clock -period 5000.000 -name {mcu_jtag_clk} -waveform {0.000 2500.000} [get_pins {caliptra_fpga_project_bd_i/ps_0/inst/pspmc_0/inst/PS9_inst/EMIOGPIO2O[10]}]}
+puts $xdc_fd {set_clock_groups -asynchronous -group [get_clocks {cal_jtag_clk}]}
+puts $xdc_fd {set_clock_groups -asynchronous -group [get_clocks {lcc_jtag_clk}]}
+puts $xdc_fd {set_clock_groups -asynchronous -group [get_clocks {mcu_jtag_clk}]}
+puts $xdc_fd {set_false_path -from [get_clocks {clk_pl_0}] -to [get_clocks {cal_jtag_clk}]}
+puts $xdc_fd {set_false_path -from [get_clocks {clk_pl_0}] -to [get_clocks {lcc_jtag_clk}]}
+puts $xdc_fd {set_false_path -from [get_clocks {clk_pl_0}] -to [get_clocks {mcu_jtag_clk}]}
+puts $xdc_fd {set_false_path -from [get_clocks {cal_jtag_clk}] -to [get_clocks {clk_pl_0}]}
+puts $xdc_fd {set_false_path -from [get_clocks {lcc_jtag_clk}] -to [get_clocks {clk_pl_0}]}
+puts $xdc_fd {set_false_path -from [get_clocks {mcu_jtag_clk}] -to [get_clocks {clk_pl_0}]}
 close $xdc_fd
 
 #### Add AXI Infrastructure
@@ -400,83 +414,95 @@ add_files -fileset constrs_1 $outputDir/ddr4_constraints.xdc
 # Xilinx I3C requires that the AXI clock be > 14 * SCL_CLK_FREQ. This needs to be set late in the script so that Vivado recognizes the higher AXI clock.
 set_property CONFIG.SCL_CLK_FREQ "$I3C_SCL_RATE_KHZ" [get_bd_cells xilinx_i3c_0]
 
-#### Set up ILAs for debug signals ####
-# Mark AXI interfaces for debugging
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_intf_nets { \
-  ps_0_M_AXI_FPD \
-    M_AXI_ARM \
-    S_AXI_FIREWALL \
-    M_AXI_FIREWALL \
-    S_AXI_CALIPTRA \
-    S_AXI_MCI \
-    S_AXI_MCU_ROM \
-    S_AXI_OTP \
-    M_AXI_MCU_LSU \
-    S_AXI_I3C \
-    M_AXI_CALIPTRA}]
+if {$DEBUG} {
+  #### Set up ILAs for debug signals ####
+  # Mark AXI interfaces for debugging
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_intf_nets { \
+    ps_0_M_AXI_FPD \
+      M_AXI_ARM \
+      S_AXI_FIREWALL \
+      M_AXI_FIREWALL \
+      S_AXI_CALIPTRA \
+      S_AXI_MCI \
+      S_AXI_MCU_ROM \
+      S_AXI_OTP \
+      M_AXI_MCU_LSU \
+      S_AXI_I3C \
+      M_AXI_CALIPTRA}]
 
-# Mark firewall error signals for debug
-connect_bd_net -net si_w_error [get_bd_pins axi_firewall_0/si_w_error]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {si_w_error }]
-connect_bd_net -net si_r_error [get_bd_pins axi_firewall_0/si_r_error]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {si_r_error }]
+  # Mark firewall error signals for debug
+  connect_bd_net -net si_w_error [get_bd_pins axi_firewall_0/si_w_error]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {si_w_error }]
+  connect_bd_net -net si_r_error [get_bd_pins axi_firewall_0/si_r_error]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {si_r_error }]
 
-# Mark signals exposed by the package for debug
-connect_bd_net -net caliptra_ifu_i0_pc [get_bd_pins caliptra_package_top_0/caliptra_ifu_i0_pc]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {caliptra_ifu_i0_pc}]
-connect_bd_net -net mcu_ifu_i0_pc [get_bd_pins caliptra_package_top_0/mcu_ifu_i0_pc]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {mcu_ifu_i0_pc}]
-connect_bd_net -net ifu_i0_instr [get_bd_pins caliptra_package_top_0/ifu_i0_instr]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {ifu_i0_instr}]
-connect_bd_net -net mci_boot_fsm [get_bd_pins caliptra_package_top_0/mci_boot_fsm]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {mci_boot_fsm}]
-connect_bd_net -net caliptra_log [get_bd_pins caliptra_package_top_0/caliptra_log]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {caliptra_log}]
-connect_bd_net -net dbg_log [get_bd_pins caliptra_package_top_0/dbg_log]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {dbg_log}]
+  # Mark signals exposed by the package for debug
+  connect_bd_net -net caliptra_ifu_i0_pc [get_bd_pins caliptra_package_top_0/caliptra_ifu_i0_pc]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {caliptra_ifu_i0_pc}]
+  connect_bd_net -net mcu_ifu_i0_pc [get_bd_pins caliptra_package_top_0/mcu_ifu_i0_pc]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {mcu_ifu_i0_pc}]
+  connect_bd_net -net ifu_i0_instr [get_bd_pins caliptra_package_top_0/ifu_i0_instr]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {ifu_i0_instr}]
+  connect_bd_net -net mci_boot_fsm [get_bd_pins caliptra_package_top_0/mci_boot_fsm]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {mci_boot_fsm}]
+  connect_bd_net -net caliptra_log [get_bd_pins caliptra_package_top_0/caliptra_log]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {caliptra_log}]
+  connect_bd_net -net dbg_log [get_bd_pins caliptra_package_top_0/dbg_log]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {dbg_log}]
 
-# Mark I3C signals for debugging
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {caliptra_package_top_0_SCL }]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {xilinx_i3c_0_scl_o }]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {xilinx_i3c_0_scl_t }]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {caliptra_package_top_0_SDA }]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {xilinx_i3c_0_sda_o }]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {xilinx_i3c_0_sda_t }]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {xilinx_i3c_0_sda_pullup_en }]
-set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {xilinx_i3c_0_scl_pullup_en }]
+  # Mark I3C signals for debugging
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {caliptra_package_top_0_SCL }]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {xilinx_i3c_0_scl_o }]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {xilinx_i3c_0_scl_t }]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {caliptra_package_top_0_SDA }]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {xilinx_i3c_0_sda_o }]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {xilinx_i3c_0_sda_t }]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {xilinx_i3c_0_sda_pullup_en }]
+  set_property HDL_ATTRIBUTE.DEBUG true [get_bd_nets {xilinx_i3c_0_scl_pullup_en }]
 
-apply_bd_automation -rule xilinx.com:bd_rule:debug -dict [list \
-    [get_bd_nets caliptra_package_top_0_SCL] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets caliptra_package_top_0_SDA] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets xilinx_i3c_0_scl_o] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets xilinx_i3c_0_scl_pullup_en] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets xilinx_i3c_0_scl_t] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets xilinx_i3c_0_sda_o] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets xilinx_i3c_0_sda_pullup_en] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets xilinx_i3c_0_sda_t] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets si_r_error] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets si_w_error] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_intf_nets M_AXI_ARM] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
-    [get_bd_intf_nets M_AXI_CALIPTRA] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
-    [get_bd_intf_nets M_AXI_MCU_LSU] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
-    [get_bd_intf_nets S_AXI_CALIPTRA] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
-    [get_bd_intf_nets S_AXI_FIREWALL] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
-    [get_bd_intf_nets M_AXI_FIREWALL] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
-    [get_bd_intf_nets S_AXI_MCI] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
-    [get_bd_intf_nets S_AXI_I3C] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
-    [get_bd_intf_nets S_AXI_MCU_ROM] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
-    [get_bd_intf_nets S_AXI_OTP] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
-    [get_bd_nets caliptra_ifu_i0_pc] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets mcu_ifu_i0_pc] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets ifu_i0_instr] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets mci_boot_fsm] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets caliptra_log] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
-    [get_bd_nets dbg_log] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
-  ]
-set_property CONFIG.C_DATA_DEPTH {8192} [get_bd_cells axis_ila_0]
-set_property CONFIG.C_INPUT_PIPE_STAGES {2} [get_bd_cells axis_ila_0]
-set_property CONFIG.C_INPUT_PIPE_STAGES {2} [get_bd_cells axis_ila_1]
+  apply_bd_automation -rule xilinx.com:bd_rule:debug -dict [list \
+      [get_bd_nets caliptra_package_top_0_SCL] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets caliptra_package_top_0_SDA] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets xilinx_i3c_0_scl_o] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets xilinx_i3c_0_scl_pullup_en] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets xilinx_i3c_0_scl_t] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets xilinx_i3c_0_sda_o] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets xilinx_i3c_0_sda_pullup_en] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets xilinx_i3c_0_sda_t] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets si_r_error] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets si_w_error] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_intf_nets M_AXI_ARM] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
+      [get_bd_intf_nets M_AXI_CALIPTRA] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
+      [get_bd_intf_nets M_AXI_MCU_LSU] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
+      [get_bd_intf_nets S_AXI_CALIPTRA] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
+      [get_bd_intf_nets S_AXI_FIREWALL] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
+      [get_bd_intf_nets M_AXI_FIREWALL] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
+      [get_bd_intf_nets S_AXI_MCI] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
+      [get_bd_intf_nets S_AXI_I3C] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl1_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
+      [get_bd_intf_nets S_AXI_MCU_ROM] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
+      [get_bd_intf_nets S_AXI_OTP] {AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" APC_EN "0" } \
+      [get_bd_nets caliptra_ifu_i0_pc] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets mcu_ifu_i0_pc] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets ifu_i0_instr] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets mci_boot_fsm] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets caliptra_log] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
+      [get_bd_nets dbg_log] {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
+    ]
+  set_property CONFIG.C_DATA_DEPTH {8192} [get_bd_cells axis_ila_0]
+  set_property CONFIG.C_INPUT_PIPE_STAGES {2} [get_bd_cells axis_ila_0]
+  set_property CONFIG.C_INPUT_PIPE_STAGES {2} [get_bd_cells axis_ila_1]
+}
 save_bd_design
+
+# Set initial boot property to make the NOC connections part of the boot PDI.
+if {$SEGMENTED} {
+  set_property initial_boot true [get_noc_logical_paths]
+}
+
+# Load a previous NCR
+if {$SEGMENTED} {
+  read_noc_solution -file $fpgaDir/saved_noc_solution.ncr
+}
 
 # Start build
 if {$BUILD} {
@@ -493,6 +519,22 @@ if {$BUILD} {
   set time_start_hw_platform [clock clicks -millisec]
   open_run impl_1
   report_utilization -file $outputDir/utilization.txt
+  if {$SEGMENTED} {
+    if {$SEGMENTED_WRITE_NCR} {
+      # Lock the NoC path segments and save the solution for later builds.
+      set_property lock true [get_noc_net_routes -of [get_noc_logical_paths -filter {initial_boot == 1}]]
+      write_noc_solution -file $fpgaDir/saved_noc_solution.ncr
+      file copy -force $outputDir/caliptra_fpga_project.runs/impl_1/caliptra_fpga_project_bd_wrapper_routed.dcp $fpgaDir/segmented_golden_routed.dcp
+      puts stderr "Replace file in GCS bucket: [exec realpath $fpgaDir/segmented_golden_routed.dcp]"
+    } else {
+      # Verify that the NoC Solutions are identical and the PLD images are compatible.
+      exec curl -s -O "https://storage.googleapis.com/caliptra-github-ci-bitstreams/scratch/fpga_2px_golden_routed.dcp"
+      pr_verify -initial $fpgaDir/fpga_2px_golden_routed.dcp -additional $outputDir/caliptra_fpga_project.runs/impl_1/caliptra_fpga_project_bd_wrapper_routed.dcp
+    }
+    # Copy the PDI containing runtime info to a more convenient location.
+    file copy $outputDir/caliptra_fpga_project.runs/impl_1/caliptra_fpga_project_bd_wrapper_pld.pdi $outputDir/runtime_$VERSION.pdi
+  }
+
   write_hw_platform -fixed -include_bit -force -file $outputDir/caliptra_fpga.xsa
   set time_finish_hw_platform [clock clicks -millisec]
 

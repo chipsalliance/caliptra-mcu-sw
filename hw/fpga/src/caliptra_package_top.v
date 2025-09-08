@@ -966,8 +966,8 @@ caliptra_wrapper_top cptra_wrapper (
 
     // EL2 JTAG interface
     .jtag_tck(jtag_in[0]),
-    .jtag_tdi(jtag_in[1]),
-    .jtag_tms(jtag_in[2]),
+    .jtag_tms(jtag_in[1]),
+    .jtag_tdi(jtag_in[2]),
     .jtag_trst_n(jtag_in[3]),
     .jtag_tdo(jtag_out[4]),
 
