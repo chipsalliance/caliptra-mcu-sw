@@ -437,6 +437,7 @@ impl ModelFpgaRealtime {
                         .rx_desc_rst(true)
                         .tx_data_rst(true)
                         .tx_desc_rst(true)
+                        .soft_rst(true)
                 });
                 self.base
                     .i3c_controller
