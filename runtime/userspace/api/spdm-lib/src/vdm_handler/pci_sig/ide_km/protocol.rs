@@ -1,8 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use crate::codec::{Codec, CodecError, CodecResult, CommonCodec, MessageBuf};
+use crate::vdm_handler::pci_sig::ide_km::commands::key_prog_ack::{KeyData, KeyProg};
+use crate::vdm_handler::pci_sig::ide_km::commands::key_set_go_stop_ack::KeySetGoStop;
+use crate::vdm_handler::pci_sig::ide_km::commands::query_resp::Query;
 use crate::vdm_handler::{VdmError, VdmResult};
 use bitfield::bitfield;
+use core::mem::size_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const IDE_STREAM_KEY_SIZE_DW: usize = 8;
@@ -26,6 +30,15 @@ impl IdeKmCommand {
             IdeKmCommand::KeyProg => Ok(IdeKmCommand::KeyProgAck),
             IdeKmCommand::KeySetGo | IdeKmCommand::KeySetStop => Ok(IdeKmCommand::KeyGoStopAck),
             _ => Err(VdmError::InvalidVdmCommand),
+        }
+    }
+
+    pub fn payload_len(&self) -> usize {
+        match self {
+            IdeKmCommand::Query => size_of::<Query>(),
+            IdeKmCommand::KeyProg => size_of::<KeyProg>() + size_of::<KeyData>(),
+            IdeKmCommand::KeySetGo | IdeKmCommand::KeySetStop => size_of::<KeySetGoStop>(),
+            _ => 0,
         }
     }
 }

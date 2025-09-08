@@ -7,7 +7,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
-struct KeyProg {
+pub struct KeyProg {
     reserved: u16,
     stream_id: u8,
     status: u8,
@@ -19,7 +19,7 @@ impl CommonCodec for KeyProg {}
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
-struct KeyData {
+pub struct KeyData {
     key: [u32; IDE_STREAM_KEY_SIZE_DW],
     iv: [u32; IDE_STREAM_IV_SIZE_DW],
 }

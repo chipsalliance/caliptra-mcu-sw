@@ -40,9 +40,13 @@ impl VdmResponder for IdeKmResponder<'_> {
     ) -> VdmResult<usize> {
         let hdr = IdeKmHdr::decode(req_buf).map_err(VdmError::Codec)?;
 
-        let ide_km_cmd = IdeKmCommand::try_from(hdr.object_id)?;
+        let ide_km_req = IdeKmCommand::try_from(hdr.object_id)?;
 
-        match ide_km_cmd {
+        if req_buf.data_len() != ide_km_req.payload_len() {
+            Err(VdmError::InvalidRequestPayload)?;
+        }
+
+        match ide_km_req {
             IdeKmCommand::Query => {
                 commands::handle_query(req_buf, rsp_buf, self.ide_km_driver).await
             }

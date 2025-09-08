@@ -8,7 +8,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
-struct KeySetGoStop {
+pub struct KeySetGoStop {
     reserved1: u16,
     stream_id: u8,
     reserved2: u8,

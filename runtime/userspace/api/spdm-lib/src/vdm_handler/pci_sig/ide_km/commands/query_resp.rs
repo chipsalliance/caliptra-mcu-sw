@@ -8,7 +8,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
-struct Query {
+pub struct Query {
     reserved: u8,
     port_index: u8,
 }
