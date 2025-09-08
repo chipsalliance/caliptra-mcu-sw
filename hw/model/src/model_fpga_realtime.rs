@@ -431,6 +431,13 @@ impl ModelFpgaRealtime {
             );
             if !self.ibi_sent {
                 self.ibi_sent = true;
+                self.base.i3c_core().tti().tti_reset_control().write(|w| {
+                    w.ibi_queue_rst(true)
+                        .rx_data_rst(true)
+                        .rx_desc_rst(true)
+                        .tx_data_rst(true)
+                        .tx_desc_rst(true)
+                });
                 self.base
                     .i3c_controller
                     .controller
