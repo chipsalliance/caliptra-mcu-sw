@@ -208,7 +208,11 @@ impl RxClient for MCTPI3CBinding<'_> {
                 client.receive(rx_buffer, len - 1);
             });
         } else {
-            println!("MCTPI3CBinding: Invalid PEC. Dropping packet.");
+            println!(
+                "MCTPI3CBinding: Invalid PEC {:02x} (expected {:02x}. Dropping packet.",
+                rx_buffer[len - 1],
+                pec
+            );
             self.i3c_target.set_rx_buffer(rx_buffer);
         }
     }

@@ -373,7 +373,7 @@ impl ModelFpgaRealtime {
         // check if we need to write any I3C packets to Caliptra
         if let Some(rx) = self.i3c_rx.as_ref() {
             for rx in rx.try_iter() {
-                println!("[hw-model-fpga] I3C command received: {:x?}", rx);
+                println!("[hw-model-fpga] I3C command received: {:02x?}", rx);
                 match rx.cmd.cmd {
                     I3cTcriCommand::Regular(_cmd) => {
                         let _ = self.base.i3c_controller().write_nowait(&rx.cmd.data);
@@ -571,6 +571,7 @@ impl ModelFpgaRealtime {
                         // forward the private read
                         let mut resp = ResponseDescriptor::default();
                         resp.set_data_length(data.len() as u16);
+                        println!("[hw-model-fpga] Forwarding private read {:02x?}", data);
                         tx.send(I3cBusResponse {
                             addr: self.i3c_address().unwrap_or_default().into(),
                             ibi: None,
