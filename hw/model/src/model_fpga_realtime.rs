@@ -431,44 +431,57 @@ impl ModelFpgaRealtime {
             );
             if !self.ibi_sent {
                 self.ibi_sent = true;
-                self.base.i3c_core().tti().tti_reset_control().write(|w| {
-                    w.ibi_queue_rst(true)
-                        .rx_data_rst(true)
-                        .rx_desc_rst(true)
-                        .tx_data_rst(true)
-                        .tx_desc_rst(true)
-                        .soft_rst(true)
-                });
+                println!("Resetting I3C core");
                 self.base
-                    .i3c_controller
-                    .controller
-                    .lock()
-                    .unwrap()
-                    .reset_fifos();
-                std::thread::sleep(Duration::from_millis(1));
-                // abort
-                self.base
-                    .i3c_controller
-                    .controller
-                    .lock()
-                    .unwrap()
-                    .regs()
-                    .cr
-                    .set(9 | 2);
-                std::thread::sleep(Duration::from_millis(1));
-                self.base
-                    .i3c_controller
-                    .controller
-                    .lock()
-                    .unwrap()
-                    .resume(1);
-                std::thread::sleep(Duration::from_millis(1));
-                self.base
-                    .i3c_controller
-                    .controller
-                    .lock()
-                    .unwrap()
-                    .reset_fifos();
+                    .i3c_core()
+                    .i3c_base()
+                    .reset_control()
+                    .write(|_| ((1 << 6) - 1).into());
+                println!("Resetting I3C controlller");
+                {
+                    let ctrl = self.base.i3c_controller.controller.lock().unwrap();
+                    ctrl.ready.set(false);
+                }
+                self.base.i3c_controller.configure();
+
+                // self.base.i3c_core().tti().tti_reset_control().write(|w| {
+                //     w.ibi_queue_rst(true)
+                //         .rx_data_rst(true)
+                //         .rx_desc_rst(true)
+                //         .tx_data_rst(true)
+                //         .tx_desc_rst(true)
+                //         .soft_rst(true)
+                // });
+                // self.base
+                //     .i3c_controller
+                //     .controller
+                //     .lock()
+                //     .unwrap()
+                //     .reset_fifos();
+                // std::thread::sleep(Duration::from_millis(1));
+                // // abort
+                // self.base
+                //     .i3c_controller
+                //     .controller
+                //     .lock()
+                //     .unwrap()
+                //     .regs()
+                //     .cr
+                //     .set(9 | 2);
+                // std::thread::sleep(Duration::from_millis(1));
+                // self.base
+                //     .i3c_controller
+                //     .controller
+                //     .lock()
+                //     .unwrap()
+                //     .resume(1);
+                // std::thread::sleep(Duration::from_millis(1));
+                // self.base
+                //     .i3c_controller
+                //     .controller
+                //     .lock()
+                //     .unwrap()
+                //     .reset_fifos();
                 std::thread::sleep(Duration::from_millis(1));
                 println!(
                     "{} I3C status: {:x}",
