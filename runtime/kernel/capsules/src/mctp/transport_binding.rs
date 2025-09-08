@@ -8,6 +8,7 @@ use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::cells::TakeCell;
 use kernel::ErrorCode;
 use romtime::println;
+use romtime::HexBytes;
 
 // TODO: Set the correct value for MCTP_I3C_MAXBUF.
 pub const MCTP_I3C_MAXBUF: usize = MCTP_HDR_SIZE + MCTP_BASELINE_TRANSMISSION_UNIT + 1; // 4 MCTP header + 64 baseline payload + 1 (PEC)
