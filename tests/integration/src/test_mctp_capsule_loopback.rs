@@ -88,6 +88,7 @@ mod test {
                         self.test_state = MctpTestState::SendResp;
                     }
                     MctpTestState::SendResp => {
+                        println!("Looping back message {:02x?}", self.loopback_msg);
                         self.mctp_util.send_response(
                             self.loopback_msg.as_slice(),
                             stream,
