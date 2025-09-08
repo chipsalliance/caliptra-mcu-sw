@@ -216,7 +216,7 @@ impl RxClient for MCTPI3CBinding<'_> {
                 addr >> 1,
             );
             println!("Length = {}", len);
-            println!("Received buffer: {}", HexBytes(&rx_buffer[..len]));
+            // println!("Received buffer: {}", HexBytes(&rx_buffer[..len]));
             self.i3c_target.set_rx_buffer(rx_buffer);
         }
     }
