@@ -376,7 +376,9 @@ impl ModelFpgaRealtime {
                 println!("[hw-model-fpga] I3C command received: {:02x?}", rx);
                 match rx.cmd.cmd {
                     I3cTcriCommand::Regular(_cmd) => {
-                        let _ = self.base.i3c_controller().write_nowait(&rx.cmd.data);
+                        if rx.cmd.data.len() > 0 {
+                            let _ = self.base.i3c_controller().write_nowait(&rx.cmd.data);
+                        }
                     }
                     // these aren't used
                     _ => todo!(),
