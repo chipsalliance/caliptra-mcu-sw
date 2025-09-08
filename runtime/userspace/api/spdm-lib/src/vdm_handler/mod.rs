@@ -7,6 +7,7 @@ use crate::protocol::*;
 use crate::vdm_handler::iana::ocp::envelope_signed_csr_rsp::EnvelopeSignedCsrRspCtx;
 use crate::vdm_handler::iana::ocp::get_eat_rsp::GetEatRspCtx;
 use crate::vdm_handler::pci_sig::ide_km::driver::IdeDriverError;
+use crate::vdm_handler::pci_sig::tdisp::driver::TdispDriverError;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 
@@ -28,9 +29,11 @@ pub enum VdmError {
     InvalidVdmCommand,
     SessionRequired,
     UnsupportedRequest,
+    UnsupportedTdispVersion,
     Codec(CodecError),
     LargeResp(usize, VdmLargeRespCtx),
-    IdeKmDriver(IdeDriverError),
+    Ide(IdeDriverError),
+    Tdisp(TdispDriverError),
 }
 
 pub type VdmResult<T> = Result<T, VdmError>;

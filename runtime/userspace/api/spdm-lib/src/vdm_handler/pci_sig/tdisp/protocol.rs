@@ -1,21 +1,36 @@
 // Licensed under the Apache-2.0 license
 
+use crate::codec::CommonCodec;
+use crate::vdm_handler::{VdmError, VdmResult};
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-bitfield! {
-#[derive(FromBytes, IntoBytes, Immutable, Default)]
-#[repr(C)]
-pub struct TdispVersion(u8);
-    impl Debug;
-    u8;
-    pub minor, set_minor: 3, 0; // Bits 3:0 Minor version
-    pub major, set_major: 7, 4; // Bits 7:4 Major version
+#[derive(Debug, PartialEq)]
+pub enum TdispVersion {
+    V10 = 0x10,
 }
 
-/// TdispReqRespCode represents the request/response code for TDISP messages.
-#[allow(dead_code)]
-pub(crate) enum TdispReqRespCode {
+impl TryFrom<u8> for TdispVersion {
+    type Error = VdmError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0x10 => Ok(TdispVersion::V10),
+            _ => Err(VdmError::UnsupportedTdispVersion),
+        }
+    }
+}
+
+impl TdispVersion {
+    pub fn to_u8(&self) -> u8 {
+        match self {
+            TdispVersion::V10 => 0x10,
+        }
+    }
+}
+
+/// TdispCommand represents the request/response code for TDISP messages.
+pub enum TdispCommand {
     /// Request to get the TDISP version.
     GetTdispVersion = 0x81,
     /// Response containing the TDISP version supported by device.
@@ -44,17 +59,136 @@ pub(crate) enum TdispReqRespCode {
     StopInterfaceRequest = 0x87,
     /// Response to a STOP_INTERFACE_REQUEST
     StopInterfaceResponse = 0x07,
+    /// Bind P2P sream request
+    BindP2PStreamRequest = 0x88,
+    /// Response to a BIND_P2P_STREAM_REQUEST
+    BindP2PStreamResponse = 0x08,
+    /// Unbind P2P stream request
+    UnbindP2PStreamRequest = 0x89,
+    /// Response to a UNBIND_P2P_STREAM_REQUEST
+    UnbindP2PStreamResponse = 0x09,
+    /// SET_MMIO_ATTRIBUTE_REQUEST
+    SetMmioAttributeRequest = 0x8A,
+    /// Response to a SET_MMIO_ATTRIBUTE_REQUEST
+    SetMmioAttributeResponse = 0x0A,
+    /// VDM_REQUEST
+    VdmRequest = 0x8B,
+    /// Response to a VDM_REQUEST
+    VdmResponse = 0x0B,
+    /// Error in handling request
+    ErrorResponse = 0x7F,
 }
 
-#[derive(FromBytes, IntoBytes, Immutable, Default)]
+impl TdispCommand {
+    pub fn response(&self) -> VdmResult<Self> {
+        match self {
+            TdispCommand::GetTdispVersion => Ok(TdispCommand::TdispVersion),
+            TdispCommand::GetTdispCapabilities => Ok(TdispCommand::TdispCapabilities),
+            TdispCommand::LockInterface => Ok(TdispCommand::LockInterfaceResponse),
+            TdispCommand::GetDeviceInterfaceReport => Ok(TdispCommand::DeviceInterfaceReport),
+            TdispCommand::GetDeviceInterfaceState => Ok(TdispCommand::DeviceInterfaceState),
+            TdispCommand::StartInterfaceRequest => Ok(TdispCommand::StartInterfaceResponse),
+            TdispCommand::StopInterfaceRequest => Ok(TdispCommand::StopInterfaceResponse),
+            TdispCommand::BindP2PStreamRequest => Ok(TdispCommand::BindP2PStreamResponse),
+            TdispCommand::UnbindP2PStreamRequest => Ok(TdispCommand::UnbindP2PStreamResponse),
+            TdispCommand::SetMmioAttributeRequest => Ok(TdispCommand::SetMmioAttributeResponse),
+            TdispCommand::VdmRequest => Ok(TdispCommand::VdmResponse),
+            _ => Err(VdmError::InvalidVdmCommand),
+        }
+    }
+
+    pub fn payload_size(&self) -> usize {
+        match self {
+            TdispCommand::GetTdispVersion => 0,
+            TdispCommand::GetTdispCapabilities => size_of::<TdispReqCapabilities>(),
+            TdispCommand::LockInterface => size_of::<TdispLockInterfaceParam>(),
+            TdispCommand::GetDeviceInterfaceReport => size_of::<GetDeviceIntfReportReq>(),
+            TdispCommand::GetDeviceInterfaceState => 0,
+            TdispCommand::StartInterfaceRequest => 0,
+            TdispCommand::StopInterfaceRequest => 0,
+            TdispCommand::BindP2PStreamRequest => 0,
+            TdispCommand::UnbindP2PStreamRequest => 0,
+            TdispCommand::SetMmioAttributeRequest => 0,
+            _ => 0,
+        }
+    }
+}
+
+impl TryFrom<u8> for TdispCommand {
+    type Error = VdmError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0x81 => Ok(TdispCommand::GetTdispVersion),
+            0x01 => Ok(TdispCommand::TdispVersion),
+            0x82 => Ok(TdispCommand::GetTdispCapabilities),
+            0x02 => Ok(TdispCommand::TdispCapabilities),
+            0x83 => Ok(TdispCommand::LockInterface),
+            0x03 => Ok(TdispCommand::LockInterfaceResponse),
+            0x84 => Ok(TdispCommand::GetDeviceInterfaceReport),
+            0x04 => Ok(TdispCommand::DeviceInterfaceReport),
+            0x85 => Ok(TdispCommand::GetDeviceInterfaceState),
+            0x05 => Ok(TdispCommand::DeviceInterfaceState),
+            0x86 => Ok(TdispCommand::StartInterfaceRequest),
+            0x06 => Ok(TdispCommand::StartInterfaceResponse),
+            0x87 => Ok(TdispCommand::StopInterfaceRequest),
+            0x07 => Ok(TdispCommand::StopInterfaceResponse),
+            0x88 => Ok(TdispCommand::BindP2PStreamRequest),
+            0x08 => Ok(TdispCommand::BindP2PStreamResponse),
+            0x89 => Ok(TdispCommand::UnbindP2PStreamRequest),
+            0x09 => Ok(TdispCommand::UnbindP2PStreamResponse),
+            0x8A => Ok(TdispCommand::SetMmioAttributeRequest),
+            0x0A => Ok(TdispCommand::SetMmioAttributeResponse),
+            0x8B => Ok(TdispCommand::VdmRequest),
+            0x0B => Ok(TdispCommand::VdmResponse),
+            0x7F => Ok(TdispCommand::ErrorResponse),
+            _ => Err(VdmError::InvalidVdmCommand),
+        }
+    }
+}
+
+pub enum TdispError {
+    InvalidRequest = 0x01,
+    Busy = 0x03,
+    InvalidInterfaceState = 0x04,
+    Unspecified = 0x05,
+    UnsupportedRequest = 0x07,
+    VersionMismatch = 0x41,
+    VendorSpecificError = 0xFF,
+    InvalidInterface = 0x101,
+    InvalidNonce = 0x102,
+    InsufficientEntropy = 0x103,
+    InvalidDeviceConfiguration = 0x104,
+}
+
+impl From<u32> for TdispError {
+    fn from(value: u32) -> Self {
+        match value {
+            0x01 => TdispError::InvalidRequest,
+            0x03 => TdispError::Busy,
+            0x04 => TdispError::InvalidInterfaceState,
+            0x05 => TdispError::Unspecified,
+            0x07 => TdispError::UnsupportedRequest,
+            0x41 => TdispError::VersionMismatch,
+            0xFF => TdispError::VendorSpecificError,
+            0x101 => TdispError::InvalidInterface,
+            0x102 => TdispError::InvalidNonce,
+            0x103 => TdispError::InsufficientEntropy,
+            0x104 => TdispError::InvalidDeviceConfiguration,
+            _ => TdispError::Unspecified,
+        }
+    }
+}
+
+#[derive(FromBytes, IntoBytes, Immutable, Default, Debug, Copy, Clone, PartialEq)]
 #[repr(C, packed)]
 pub struct InterfaceId {
-    function_id: FunctionId,
-    reserved: u64, // 8 bytes reserved
+    pub function_id: FunctionId,
+    pub reserved: u64, // 8 bytes reserved
 }
 
 bitfield! {
-    #[derive(FromBytes, IntoBytes, Immutable, Default)]
+    #[derive(FromBytes, IntoBytes, Immutable, Default, Copy, Clone, PartialEq)]
     #[repr(C)]
     pub struct FunctionId(u32);
     impl Debug;
@@ -69,8 +203,99 @@ bitfield! {
 #[derive(FromBytes, IntoBytes, Immutable, Default)]
 #[repr(C)]
 pub struct TdispMessageHeader {
-    version: TdispVersion,
-    message_type: u8,
-    reserved: u16,
-    interface_id: InterfaceId,
+    pub version: u8,
+    pub message_type: u8,
+    pub reserved: u16,
+    pub interface_id: InterfaceId,
+}
+
+impl CommonCodec for TdispMessageHeader {}
+
+impl TdispMessageHeader {
+    pub fn new(version: u8, message_type: TdispCommand, interface_id: InterfaceId) -> Self {
+        TdispMessageHeader {
+            version,
+            message_type: message_type as u8,
+            reserved: 0,
+            interface_id,
+        }
+    }
+}
+
+#[derive(FromBytes, IntoBytes, Immutable, Default)]
+#[repr(C)]
+pub struct TdispReqCapabilities {
+    pub tsm_caps: u32,
+}
+
+impl CommonCodec for TdispReqCapabilities {}
+
+#[derive(FromBytes, IntoBytes, Immutable, Default)]
+#[repr(C)]
+pub struct TdispRespCapabilities {
+    dsm_capabilities: u32,
+    req_msgs_supported: [u8; 16],
+    lock_interface_flags_supported: u16,
+    reserved: [u8; 3],
+    dev_addr_width: u8,
+    num_req_this: u8,
+    num_req_all: u8,
+}
+
+impl CommonCodec for TdispRespCapabilities {}
+
+bitfield! {
+#[derive(FromBytes, IntoBytes, Immutable, Default)]
+#[repr(C)]
+pub struct TdispLockInterfaceFlags(u16);
+impl Debug;
+u8;
+    pub no_fw_update, set_no_fw_update: 0, 0; // Bit 0 NO_FW_UPDATE
+    pub system_cache_line_size, set_system_cache_line_size: 1, 1; // Bits 1:1 SYSTEM_CACHE_LINE_SIZE
+    pub lock_msix, set_lock_msix: 2, 2; // Bit 2 LOCK_MSIX
+    pub bind_p2p, set_bind_p2p: 3, 3; // Bit 3 BIND_P2P
+    pub all_req_redirect, set_all_req_redirect: 4, 4; // Bit 4 ALL_REQUEST_REDIRECT
+    pub reserved, _: 15, 5; // Bits 15:5 Reserved
+}
+
+#[derive(FromBytes, IntoBytes, Immutable, Default)]
+#[repr(C)]
+pub struct TdispLockInterfaceParam {
+    flags: TdispLockInterfaceFlags,
+    default_stream_id: u8,
+    reserved: u8,
+    mmio_reporting_offset: [u8; 8],
+    bind_p2p_addr_mask: [u8; 8],
+}
+
+impl CommonCodec for TdispLockInterfaceParam {}
+
+#[derive(FromBytes, IntoBytes, Immutable)]
+#[repr(C)]
+pub struct GetDeviceIntfReportReq {
+    offset: u16,
+    length: u16,
+}
+
+impl CommonCodec for GetDeviceIntfReportReq {}
+
+#[derive(Debug, PartialEq)]
+pub enum TdiStatus {
+    ConfigUnlocked = 0,
+    ConfigLocked = 1,
+    Run = 2,
+    Error = 3,
+    Reserved,
+}
+
+impl From<u8> for TdiStatus {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => TdiStatus::ConfigUnlocked,
+            1 => TdiStatus::ConfigLocked,
+            2 => TdiStatus::Run,
+            3 => TdiStatus::Error,
+            _ => TdiStatus::Reserved,
+        }
+    }
 }
