@@ -18,6 +18,7 @@ use mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
 use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
+use registers_generated::i3c::regs::I3c;
 use std::io::Write;
 use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
@@ -429,28 +430,35 @@ impl ModelFpgaRealtime {
 
                 println!("Manually sending private read and IBI");
 
-                self.base.i3c_core().tti().tx_desc_queue_port().write(|_| 4);
-                self.base
-                    .i3c_core()
-                    .tti()
-                    .tx_data_port()
-                    .write(|_| 0xabcd_ef01);
+                let i3c = unsafe { &*(self.base.i3c_mmio as *const I3c) };
+                i3c.tti_tx_desc_queue_port.set(4);
+                i3c.tti_tx_data_port.set(0x01020304);
 
-                self.base
-                    .i3c_core()
-                    .tti()
-                    .tti_ibi_port()
-                    .write(|_| 0xae00_0008);
-                self.base
-                    .i3c_core()
-                    .tti()
-                    .tti_ibi_port()
-                    .write(|_| 0x01234_5678);
-                self.base
-                    .i3c_core()
-                    .tti()
-                    .tti_ibi_port()
-                    .write(|_| 0x9abc_defe);
+                // self.base.i3c_core().tti().tx_desc_queue_port().write(|_| 4);
+                // self.base
+                //     .i3c_core()
+                //     .tti()
+                //     .tx_data_port()
+                //     .write(|_| 0xabcd_ef01);
+                i3c.tti_tti_ibi_port.set(0xae00_0008);
+                i3c.tti_tti_ibi_port.set(0x1234_5678);
+                i3c.tti_tti_ibi_port.set(0x9abc_defe);
+
+                // self.base
+                //     .i3c_core()
+                //     .tti()
+                //     .tti_ibi_port()
+                //     .write(|_| 0xae00_0008);
+                // self.base
+                //     .i3c_core()
+                //     .tti()
+                //     .tti_ibi_port()
+                //     .write(|_| 0x01234_5678);
+                // self.base
+                //     .i3c_core()
+                //     .tti()
+                //     .tti_ibi_port()
+                //     .write(|_| 0x9abc_defe);
             }
         }
         if let Some(tx) = self.i3c_tx.as_ref() {
