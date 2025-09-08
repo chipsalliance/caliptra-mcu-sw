@@ -124,6 +124,7 @@ fn handle_i3c_socket_connection(
             Ok(()) => {
                 let incoming_header: IncomingHeader = transmute!(incoming_header_bytes);
                 let cmd: I3cTcriCommand = incoming_header.command.try_into().unwrap();
+                println!("[i3c-socket-server] Reading body length {}", cmd.data_len());
 
                 let mut data = vec![0u8; cmd.data_len()];
                 stream.set_nonblocking(false).unwrap();
