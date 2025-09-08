@@ -50,23 +50,7 @@ impl RequestResponseTest {
             );
         } else if cfg!(feature = "test-mcu-mbox-usermode") {
             println!("Running test-mcu-mbox-usermode test");
-            // Example test messages for usermode loopback
-            self.push(
-                0x03,
-                vec![0x01, 0x02, 0x03, 0x04],
-                vec![0x01, 0x02, 0x03, 0x04],
-            );
-            self.push(
-                0x04,
-                (0..128).map(|i| i as u8).collect(),
-                (0..128).map(|i| i as u8).collect(),
-            );
-            // Example test payload that is not 4-byte aligned
-            self.push(
-                0x04,
-                (0..125).map(|i| i as u8).collect(),
-                (0..125).map(|i| i as u8).collect(),
-            );
+            self.add_usermode_loopback_tests();
         }
     }
 
@@ -121,9 +105,24 @@ impl RequestResponseTest {
                 println!("Failed");
                 exit(-1);
             } else {
+                // print out how many test messages were sent
+                println!("Sent {} test messages", test.test_messages.len());
                 println!("Passed");
             }
             EMULATOR_RUNNING.store(false, Ordering::Relaxed);
         });
+    }
+
+    fn add_usermode_loopback_tests(&mut self) {
+        // Construct 256 test messages with payload lengths from 1 to 256
+        for len in 1..=256 {
+            let payload: Vec<u8> = (0..len).map(|j| (j % 256) as u8).collect();
+            let cmd = if len % 2 == 0 { 0x03 } else { 0x04 };
+            self.push(cmd, payload.clone(), payload);
+        }
+        println!(
+            "Added {} usermode loopback test messages",
+            self.test_messages.len()
+        );
     }
 }

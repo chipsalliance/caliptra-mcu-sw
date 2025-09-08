@@ -45,6 +45,7 @@ pub(crate) enum IoState {
     Idle,
     Received,
     Sent,
+    FinishResp,
     Error,
 }
 
@@ -122,6 +123,8 @@ impl MailboxClient for McuMailboxTester {
     fn send_done(&self, result: Result<(), kernel::ErrorCode>) {
         assert!(result.is_ok(), "Send failed");
         self.state.set(IoState::Sent);
+        // Schedule deferred call to handle finish response.
+        self.deferred_call.set();
     }
 
     fn response_received(
@@ -150,14 +153,15 @@ impl DeferredCallClient for McuMailboxTester {
                 dw_len
             };
 
-            let _ = self.driver.send_response(
-                tx_buf.iter().copied(),
-                tx_buf_len * 4,
-                MailboxStatus::Complete,
-            );
+            let _ = self
+                .driver
+                .send_response(tx_buf.iter().copied(), tx_buf_len * 4);
 
             self.tx_buf.replace(tx_buf);
             self.rx_buf.replace(rx_buf);
+        } else if self.state.get() == IoState::Sent {
+            let _ = self.driver.set_mbox_cmd_status(MailboxStatus::Complete);
+            self.state.set(IoState::FinishResp);
         }
     }
 
@@ -200,19 +204,19 @@ impl<'a> EmulatedMbxSender<'a> {
         timeout: usize,
     ) {
         let mut waited = 0;
-        let mut sent = false;
+        let mut resp_finished = false;
         while waited < timeout {
             // Advance kernel ops to invoke interrupt handling and deferred callback.
             run_kernel_op(1);
-            if tester.get_io_state() == IoState::Sent {
-                sent = true;
+            if tester.get_io_state() == IoState::FinishResp {
+                resp_finished = true;
                 break;
             }
             waited += 1;
         }
         assert!(
-            sent,
-            "Receiver did not send response after {} kernel loops",
+            resp_finished,
+            "Receiver did not finish response after {} kernel loops",
             timeout
         );
 

@@ -46,8 +46,17 @@ pub trait Mailbox<'a> {
         &self,
         response_data: impl Iterator<Item = u32>,
         dlen: usize,
-        status: MailboxStatus,
     ) -> Result<(), ErrorCode>;
+
+    /// Sets the command status of the MCU mailbox (Receiver mode).
+    ///
+    /// # Arguments
+    /// * `status` - The status to set for the mailbox.
+    ///
+    /// # Returns
+    /// * `Ok(())` on success.
+    /// * `Err(ErrorCode)` if the operation fails.
+    fn set_mbox_cmd_status(&self, status: MailboxStatus) -> Result<(), ErrorCode>;
 
     /// Returns the maximum size (in dword) of the MCU mailbox SRAM.
     fn max_mbox_sram_dw_size(&self) -> usize;
