@@ -145,7 +145,7 @@ impl MCTPTxClient for MockMctp<'_> {
         msg_payload.reset();
         self.mctp_msg_buf.replace(msg_payload);
         println!(
-            "Message sent of length : {}",
+            "Message sent of length: {}",
             TEST_MSG_LEN_ARR[self.cur_idx.get()]
         );
     }
