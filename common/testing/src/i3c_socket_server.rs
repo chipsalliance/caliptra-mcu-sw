@@ -139,7 +139,10 @@ fn handle_i3c_socket_connection(
                     "[i3c-socket-server] Received I3C command: {:?}",
                     bus_command
                 );
-                bus_command_tx.send(bus_command).unwrap();
+                match bus_command_tx.send(bus_command) {
+                    Ok(_) => {}
+                    Err(e) => panic!("Failed to send I3C command to bus: {:?}", e),
+                }
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
             Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
