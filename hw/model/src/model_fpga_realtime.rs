@@ -538,7 +538,7 @@ impl ModelFpgaRealtime {
                 println!("[hw-model-fpga] I3C IBI received");
                 match self.base.i3c_controller().ibi_recv(None) {
                     Ok(ibi) => {
-                        if ibi.len() != 5 || ibi[0] != MCTP_MDB {
+                        if ibi.len() < 5 || ibi[0] != MCTP_MDB {
                             println!("Ignoring unexpected I3C IBI received: {:02x?}", ibi);
                             return;
                         }
