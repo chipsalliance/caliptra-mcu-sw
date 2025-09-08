@@ -13,6 +13,7 @@ use kernel::utilities::StaticRef;
 use kernel::{debug, ErrorCode};
 use registers_generated::i3c::bits::{InterruptEnable, InterruptStatus, StbyCrDeviceAddr};
 use registers_generated::i3c::regs::I3c;
+use romtime::HexBytes;
 use tock_registers::{register_bitfields, LocalRegisterCopy};
 
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;

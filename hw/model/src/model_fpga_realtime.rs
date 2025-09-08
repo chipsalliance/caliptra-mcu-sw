@@ -437,12 +437,6 @@ impl ModelFpgaRealtime {
                 //     .i3c_base()
                 //     .reset_control()
                 //     .write(|_| ((1 << 6) - 1).into());
-                println!("Resetting I3C controlller");
-                {
-                    let ctrl = self.base.i3c_controller.controller.lock().unwrap();
-                    ctrl.ready.set(false);
-                }
-                self.base.i3c_controller.configure();
 
                 // self.base.i3c_core().tti().tti_reset_control().write(|w| {
                 //     w.ibi_queue_rst(true)
@@ -715,6 +709,13 @@ impl McuHwModel for ModelFpgaRealtime {
         MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         // turn off recovery
         self.base.recovery_started = false;
+        println!("Resetting I3C controlller");
+        {
+            let ctrl = self.base.i3c_controller.controller.lock().unwrap();
+            ctrl.ready.set(false);
+        }
+        self.base.i3c_controller.configure();
+
         Ok(())
     }
 
