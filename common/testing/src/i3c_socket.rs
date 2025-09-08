@@ -188,8 +188,10 @@ impl BufferedStream {
         let mut pkt = Vec::new();
         pkt.extend_from_slice(data.as_slice());
         println!(
-            "Computing PEC {:02x} for target addr {:02}",
-            pec, target_addr
+            "Computing PEC {:02x} for target addr {:02x} len {}",
+            pec,
+            target_addr,
+            pkt.len()
         );
         pkt.push(pec);
 

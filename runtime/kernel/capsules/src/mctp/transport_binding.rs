@@ -204,6 +204,11 @@ impl RxClient for MCTPI3CBinding<'_> {
         // Rx is a write operation from the I3C controller. Set the R/W bit at LSB to 0.
         let addr = self.device_address.get() << 1;
         let pec = MCTPI3CBinding::compute_pec(addr, rx_buffer, len - 1);
+        println!("MCTPI3CBinding: Length = {}", len);
+        println!(
+            "MCTPI3CBinding: Received buffer: {}",
+            HexBytes(&rx_buffer[..len])
+        );
         if pec == rx_buffer[len - 1] {
             self.rx_client.map(|client| {
                 client.receive(rx_buffer, len - 1);
@@ -215,8 +220,6 @@ impl RxClient for MCTPI3CBinding<'_> {
                 pec,
                 addr >> 1,
             );
-            println!("Length = {}", len);
-            println!("Received buffer: {}", HexBytes(&rx_buffer));
             self.i3c_target.set_rx_buffer(rx_buffer);
         }
     }
