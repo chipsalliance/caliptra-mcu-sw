@@ -54,7 +54,7 @@ pub struct ModelFpgaRealtime {
     i3c_port: Option<u16>,
     i3c_rx: Option<mpsc::Receiver<I3cBusCommand>>,
     i3c_tx: Option<mpsc::Sender<I3cBusResponse>>,
-    i3c_next_private_read_len: Option<u16>,
+    i3c_next_private_read_len: Option<u32>,
     ibi_sent: bool,
     last_update: u64,
 }
@@ -544,7 +544,7 @@ impl ModelFpgaRealtime {
                 println!("[hw-model-fpga] I3C IBI received");
                 match self.base.i3c_controller().ibi_recv(None) {
                     Ok(ibi) => {
-                        if ibi.len() != 3 || ibi[0] != MCTP_MDB {
+                        if ibi.len() != 5 || ibi[0] != MCTP_MDB {
                             println!("Ignoring unexpected I3C IBI received: {:02x?}", ibi);
                             return;
                         }
@@ -559,7 +559,7 @@ impl ModelFpgaRealtime {
                         })
                         .expect("Failed to forward I3C IBI response to channel");
                         self.i3c_next_private_read_len =
-                            Some(u16::from_be_bytes(ibi[1..3].try_into().unwrap()));
+                            Some(u32::from_be_bytes(ibi[1..4].try_into().unwrap()));
                     }
                     Err(e) => {
                         println!("Error receiving I3C IBI: {:?}", e);
@@ -572,7 +572,7 @@ impl ModelFpgaRealtime {
                     "[hw-model-fpga] I3C trying private read len {}",
                     private_read_len
                 );
-                match self.base.i3c_controller().read(private_read_len) {
+                match self.base.i3c_controller().read(private_read_len as u16) {
                     Ok(data) => {
                         // forward the private read
                         let mut resp = ResponseDescriptor::default();
