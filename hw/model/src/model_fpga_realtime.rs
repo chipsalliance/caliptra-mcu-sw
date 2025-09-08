@@ -419,12 +419,12 @@ impl ModelFpgaRealtime {
                     .i3c_core()
                     .sec_fw_recovery_if()
                     .device_status_0()
-                    .write(|_| 0.into());
-                self.base
-                    .i3c_core()
-                    .sec_fw_recovery_if()
-                    .recovery_status()
-                    .write(|w| 0.into());
+                    .write(|w| w.dev_status(3));
+                // self.base
+                //     .i3c_core()
+                //     .sec_fw_recovery_if()
+                //     .recovery_status()
+                //     .write(|w| 0.into());
                 self.print_i3c_registers();
 
                 println!("Manually sending private read and IBI");
@@ -1313,7 +1313,7 @@ mod tests {
             core::ptr::write_volatile(wrapper.offset(FPGA_WRAPPER_CONTROL_OFFSET), 0x3);
         }
         println!("Configuring I3C target");
-        configure_i3c_target(i3c_target, I3C_TARGET_ADDR, false);
+        configure_i3c_target(i3c_target, I3C_TARGET_ADDR, true);
 
         let xi3c_controller_ptr = dev0.map_mapping(3).unwrap() as *mut u32;
         let xi3c: &xi3c::XI3c = unsafe { &*(xi3c_controller_ptr as *const xi3c::XI3c) };
