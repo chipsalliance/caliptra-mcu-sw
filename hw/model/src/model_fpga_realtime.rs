@@ -429,6 +429,12 @@ impl ModelFpgaRealtime {
             );
             if !self.ibi_sent {
                 self.ibi_sent = true;
+                self.base
+                    .i3c_controller
+                    .controller
+                    .lock()
+                    .unwrap()
+                    .reset_fifos();
                 self.print_i3c_registers();
                 self.base
                     .i3c_core()
