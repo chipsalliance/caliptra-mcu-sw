@@ -249,6 +249,7 @@ unsafe fn handle_interrupt(intr: mcause::Interrupt, mcause: u32) {
         }
         mcause::Interrupt::MachineExternal => {
             // We received an interrupt, disable interrupts while we handle them
+            romtime::println!("[mcu-runtime-veer] Handling machine external interrupt");
             CSR.mie.modify(mie::mext::CLEAR);
 
             // Claim the interrupt, unwrap() as we know an interrupt exists.
@@ -258,6 +259,10 @@ unsafe fn handle_interrupt(intr: mcause::Interrupt, mcause: u32) {
             // and will rely on the PIC to trigger the next one
             // after we return.
             if let Some(irq) = PIC.next_pending() {
+                romtime::println!(
+                    "[mcu-runtime-veer] Handling machine external interrupt: got PIC {}",
+                    irq
+                );
                 PIC.save_interrupt(irq);
             }
 
