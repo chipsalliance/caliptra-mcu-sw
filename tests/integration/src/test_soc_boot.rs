@@ -15,7 +15,6 @@ mod test {
     };
     use pldm_fw_pkg::FirmwareManifest;
     use std::path::PathBuf;
-    use std::process::ExitStatus;
 
     const CALIPTRA_EXTERNAL_RAM_BASE: u64 = 0x8000_0000;
 
@@ -185,7 +184,7 @@ mod test {
         ]
     }
 
-    fn run_runtime_with_options(opts: &TestOptions) -> ExitStatus {
+    fn run_runtime_with_options(opts: &TestOptions) -> i32 {
         run_runtime(
             opts.feature,
             opts.rom.clone(),
@@ -208,7 +207,7 @@ mod test {
     /// Test case: happy path
     fn test_successful_boot(opts: &TestOptions) {
         let test = run_runtime_with_options(opts);
-        assert_eq!(0, test.code().unwrap_or_default());
+        assert_eq!(0, test);
     }
 
     fn test_soc_manifest_svn_lt_fuse(opts: &TestOptions) {
@@ -223,7 +222,7 @@ mod test {
         new_options.fuse_soc_manifest_max_svn = Some(13);
         new_options.manufacturing_mode = Some(true);
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     fn test_soc_manifest_svn_gt_max_svn(opts: &TestOptions) {
@@ -238,7 +237,7 @@ mod test {
         new_options.fuse_soc_manifest_max_svn = Some(13);
         new_options.manufacturing_mode = Some(true);
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     fn test_soc_manifest_good_svn(opts: &TestOptions) {
@@ -283,7 +282,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: Image ID in the SOC manifest is different from the one being authorized in the firmware
@@ -314,7 +313,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: The FW to be streamed has been altered making it unauthorized
@@ -365,7 +364,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: The load address in the SOC manifest is not a valid addressable AXI address
@@ -403,7 +402,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: Test booting from secondary flash
@@ -460,7 +459,7 @@ mod test {
         new_options.primary_flash_image_path = primary_flash_image_path.clone();
 
         let test = run_runtime_with_options(&new_options);
-        assert_eq!(0, test.code().unwrap_or_default());
+        assert_eq!(0, test);
     }
 
     // Test case: Partition table has invalid checksum
@@ -515,7 +514,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: The PLDM descriptor in the PLDM package is different from the device's descriptor
@@ -541,7 +540,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: The PLDM component ID in the PLDM package is not valid
@@ -564,7 +563,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: Corrupted PLDM FW package
@@ -587,7 +586,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: PLDM FW package has lower version than device's active image version
@@ -612,7 +611,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Common test function for both flash-based and streaming boot

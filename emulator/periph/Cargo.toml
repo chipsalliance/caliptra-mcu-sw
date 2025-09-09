@@ -18,6 +18,7 @@ caliptra-emu-periph.workspace = true
 emulator-consts.workspace = true
 emulator-registers-generated.workspace = true
 lazy_static.workspace = true
+mcu-testing-common.workspace = true
 num_enum.workspace = true
 registers-generated.workspace = true
 semver.workspace = true

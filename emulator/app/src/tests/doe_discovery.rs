@@ -3,7 +3,7 @@
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
 use crate::tests::doe_util::common::DoeUtil;
 use crate::tests::doe_util::protocol::*;
-use crate::{sleep_emulator_ticks, EMULATOR_RUNNING};
+use mcu_testing_common::{sleep_emulator_ticks, MCU_RUNNING};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
 use strum::IntoEnumIterator;
@@ -99,7 +99,7 @@ impl DoeTransportTest for Test {
 
         self.test_state = DoeTestState::Start;
 
-        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        while MCU_RUNNING.load(Ordering::Relaxed) {
             match self.test_state {
                 DoeTestState::Start => {
                     if wait_for_responder {

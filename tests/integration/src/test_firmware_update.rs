@@ -13,10 +13,8 @@ mod test {
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     };
-
     use pldm_fw_pkg::FirmwareManifest;
     use std::path::PathBuf;
-    use std::process::ExitStatus;
 
     const CALIPTRA_EXTERNAL_RAM_BASE: u64 = 0x8000_0000;
     const MCU_SRAM_OFFSET: u64 = 0xc0_0000;
@@ -189,7 +187,7 @@ mod test {
         ]
     }
 
-    fn run_runtime_with_options(opts: &TestOptions) -> ExitStatus {
+    fn run_runtime_with_options(opts: &TestOptions) -> i32 {
         // prevent warning on unused options, this will be used in the future
         let _ = &opts.soc_images_paths;
         let _ = &opts.partition_table;
@@ -326,13 +324,13 @@ mod test {
     /// Test case: happy path
     fn test_successful_update(opts: &TestOptions) {
         let test = run_runtime_with_options(opts);
-        assert_eq!(0, test.code().unwrap_or_default());
+        assert_eq!(0, test);
     }
 
     fn test_successful_fast_update(opts: &TestOptions) {
         let fast_update_opts = fast_update_options(opts);
         let test = run_runtime_with_options(&fast_update_opts);
-        assert_eq!(0, test.code().unwrap_or_default());
+        assert_eq!(0, test);
     }
 
     fn test_missing_caliptra_image(opts: &TestOptions) {
@@ -351,7 +349,7 @@ mod test {
         opts.update_flash_image_path = Some(update_flash_image_path);
         let opts = fast_update_options(&opts);
         let test = run_runtime_with_options(&opts);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     fn test_invalid_manifest(opts: &TestOptions) {
@@ -381,7 +379,7 @@ mod test {
         opts.update_flash_image_path = Some(update_flash_image_path);
         let opts = fast_update_options(&opts);
         let test = run_runtime_with_options(&opts);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     fn test_invalid_mcu_image(opts: &TestOptions) {
@@ -408,7 +406,7 @@ mod test {
         opts.update_flash_image_path = Some(update_flash_image_path);
         let opts = fast_update_options(&opts);
         let test = run_runtime_with_options(&opts);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     fn test_invalid_soc_image(opts: &TestOptions) {
@@ -437,7 +435,7 @@ mod test {
         opts.update_flash_image_path = Some(update_flash_image_path);
         let opts = fast_update_options(&opts);
         let test = run_runtime_with_options(&opts);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Common test function for both flash-based and streaming boot
