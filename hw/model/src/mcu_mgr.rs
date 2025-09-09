@@ -99,4 +99,11 @@ pub trait McuManager {
             )
         }
     }
+
+    fn with_regs<T, F>(&mut self, f: F) -> T
+    where
+        F: FnOnce(&mut Self) -> T,
+    {
+        f(self)
+    }
 }

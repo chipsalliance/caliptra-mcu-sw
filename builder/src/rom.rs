@@ -3,6 +3,7 @@
 use crate::objcopy;
 use crate::{PROJECT_ROOT, TARGET};
 use anyhow::{bail, Result};
+use caliptra_builder::FwId;
 use mcu_config::McuMemoryMap;
 use std::process::Command;
 
@@ -37,6 +38,67 @@ pub fn rom_build(platform: Option<&str>, feature: &str) -> Result<String> {
         .join(TARGET)
         .join("release")
         .join(&platform_pkg);
+
+    let rom_binary = PROJECT_ROOT
+        .join("target")
+        .join(TARGET)
+        .join("release")
+        .join(&platform_bin);
+
+    let objcopy = objcopy()?;
+    let objcopy_flags = "--strip-sections --strip-all";
+    let mut objcopy_cmd = Command::new(objcopy);
+    objcopy_cmd
+        .arg("--output-target=binary")
+        .args(objcopy_flags.split(' '))
+        .arg(&rom_elf)
+        .arg(&rom_binary);
+    println!("Executing {:?}", &objcopy_cmd);
+    if !objcopy_cmd.status()?.success() {
+        bail!("objcopy failed to build ROM");
+    }
+    println!(
+        "ROM binary ({}) is at {:?} ({} bytes)",
+        platform,
+        &rom_binary,
+        std::fs::metadata(&rom_binary)?.len()
+    );
+    Ok(rom_binary.to_string_lossy().to_string())
+}
+
+pub fn test_rom_build(platform: Option<&str>, fwid: &FwId) -> Result<String> {
+    let platform = platform.unwrap_or("emulator");
+
+    let platform_bin = format!("mcu-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(&*PROJECT_ROOT).args([
+        "build",
+        "-p",
+        fwid.crate_name,
+        "--release",
+        "--target",
+        TARGET,
+    ]);
+
+    let mut features = fwid.features.to_vec();
+    if !features.contains(&"riscv") {
+        features.push("riscv");
+    }
+    if platform != "emulator" {
+        features.push("fpga_realtime");
+    }
+    cmd.args(["--features", &features.join(",")]);
+
+    println!("Executing: {cmd:?}");
+    let status = cmd.status()?;
+    if !status.success() {
+        bail!("build ROM binary failed");
+    }
+    let rom_elf = PROJECT_ROOT
+        .join("target")
+        .join(TARGET)
+        .join("release")
+        .join(fwid.bin_name);
 
     let rom_binary = PROJECT_ROOT
         .join("target")
