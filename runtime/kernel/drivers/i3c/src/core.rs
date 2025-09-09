@@ -317,9 +317,12 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     fn ibi_done(&self) {
+        romtime::println!("[mcu-runtime-i3c] I3C IBI done interrupt received");
         if let Some((mdb, len)) = self.pending_ibi.take() {
             // check if IBI was successful
-            if self.registers.tti_status.read(Status::LastIbiStatus) == 0 {
+            let status = self.registers.tti_status.read(Status::LastIbiStatus);
+            romtime::println!("[mcu-runtime-i3c] I3C IBI done status {}", status);
+            if status == 0 {
                 // schedule a callback to handle any pending private reads
                 self.set_alarm(Self::RETRY_WAIT_TICKS);
             } else {
