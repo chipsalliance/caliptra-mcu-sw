@@ -20,6 +20,7 @@ use kernel::utilities::StaticRef;
 use mcu_config::McuMemoryMap;
 use registers_generated::i3c::regs::I3c;
 use registers_generated::mci;
+use romtime::HexWord;
 use rv32i::csr::{mcause, mie::mie, CSR};
 use rv32i::syscall::SysCall;
 
@@ -220,6 +221,10 @@ fn handle_exception(exception: mcause::Exception) {
 }
 
 unsafe fn handle_interrupt(intr: mcause::Interrupt, mcause: u32) {
+    romtime::println!(
+        "[mcu-runtime-veer] Handling interrupt mcause: {}",
+        HexWord(mcause)
+    );
     if mcause == 0x8000_001D {
         CSR.mie.modify(mie::BIT29::CLEAR);
         TIMERS.save_interrupt(0);
