@@ -12,7 +12,6 @@ use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use core::fmt::Write;
 use core::panic::PanicInfo;
-use core::ptr::write_volatile;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::debug;
 use kernel::debug::IoWrite;
@@ -22,7 +21,6 @@ use kernel::hil::time::{Alarm, AlarmClient, Ticks, Ticks64, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::ErrorCode;
 use mcu_tock_veer::timers::InternalTimers;
-use romtime::{Exit, HexWord};
 
 pub(crate) static mut WRITER: Writer = Writer {};
 const FPGA_UART_OUTPUT: *mut u32 = 0xa401_1014 as *mut u32;

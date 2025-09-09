@@ -393,213 +393,66 @@ impl ModelFpgaRealtime {
     }
 
     fn handle_i3c(&mut self) {
-        // check if we need to read any I3C packets from Caliptra
-        // TODO: add IBI support
-        // TODO: somehow know how much to read
         const MCTP_MDB: u8 = 0xae;
-        if self.cycle_count() > 510_000_000 && self.cycle_count() < 510_200_000 {
-            println!(
-                "{} I3C addr {:08x}",
-                self.cycle_count(),
-                u32::from(
-                    self.base
-                        .i3c_core()
-                        .stdby_ctrl_mode()
-                        .stby_cr_device_addr()
-                        .read()
-                )
-            );
-            println!(
-                "{} I3C status: {:x}",
-                self.cycle_count(),
-                self.base
-                    .i3c_controller()
-                    .controller
-                    .lock()
-                    .unwrap()
-                    .status()
-            );
-            println!(
-                "{} I3C interrupt status: {:x}",
-                self.cycle_count(),
-                self.base
-                    .i3c_controller()
-                    .controller
-                    .lock()
-                    .unwrap()
-                    .interrupt_status()
-            );
-            println!(
-                "{} I3C recv data available: {:x}",
-                self.cycle_count(),
-                self.base
-                    .i3c_controller()
-                    .controller
-                    .lock()
-                    .unwrap()
-                    .recv_data_available()
-            );
-            if !self.ibi_sent {
-                self.ibi_sent = true;
-                // println!("Resetting I3C core");
-                // self.base
-                //     .i3c_core()
-                //     .i3c_base()
-                //     .reset_control()
-                //     .write(|_| ((1 << 6) - 1).into());
-
-                // self.base.i3c_core().tti().tti_reset_control().write(|w| {
-                //     w.ibi_queue_rst(true)
-                //         .rx_data_rst(true)
-                //         .rx_desc_rst(true)
-                //         .tx_data_rst(true)
-                //         .tx_desc_rst(true)
-                //         .soft_rst(true)
-                // });
-                // self.base
-                //     .i3c_controller
-                //     .controller
-                //     .lock()
-                //     .unwrap()
-                //     .reset_fifos();
-                // std::thread::sleep(Duration::from_millis(1));
-                // // abort
-                // self.base
-                //     .i3c_controller
-                //     .controller
-                //     .lock()
-                //     .unwrap()
-                //     .regs()
-                //     .cr
-                //     .set(9 | 2);
-                // std::thread::sleep(Duration::from_millis(1));
-                // self.base
-                //     .i3c_controller
-                //     .controller
-                //     .lock()
-                //     .unwrap()
-                //     .resume(1);
-                // std::thread::sleep(Duration::from_millis(1));
-                // self.base
-                //     .i3c_controller
-                //     .controller
-                //     .lock()
-                //     .unwrap()
-                //     .reset_fifos();
-                std::thread::sleep(Duration::from_millis(1));
-                println!(
-                    "{} I3C status: {:x}",
-                    self.cycle_count(),
-                    self.base
-                        .i3c_controller()
-                        .controller
-                        .lock()
-                        .unwrap()
-                        .status()
-                );
-                self.print_i3c_registers();
-                self.base
-                    .i3c_core()
-                    .sec_fw_recovery_if()
-                    .device_status_0()
-                    .write(|w| w.dev_status(3));
-                // self.base
-                //     .i3c_core()
-                //     .sec_fw_recovery_if()
-                //     .recovery_status()
-                //     .write(|w| 0.into());
-                self.print_i3c_registers();
-
-                // println!("Manually sending private read and IBI");
-
-                // let i3c = unsafe { &*(self.base.i3c_mmio as *const I3c) };
-                // i3c.tti_tx_desc_queue_port.set(4);
-                // i3c.tti_tx_data_port.set(0x01020304);
-
-                // // self.base.i3c_core().tti().tx_desc_queue_port().write(|_| 4);
-                // // self.base
-                // //     .i3c_core()
-                // //     .tti()
-                // //     .tx_data_port()
-                // //     .write(|_| 0xabcd_ef01);
-                // i3c.tti_tti_ibi_port.set(0xae00_0008);
-                // i3c.tti_tti_ibi_port.set(0x1234_5678);
-                // i3c.tti_tti_ibi_port.set(0x9abc_defe);
-
-                // self.base
-                //     .i3c_core()
-                //     .tti()
-                //     .tti_ibi_port()
-                //     .write(|_| 0xae00_0008);
-                // self.base
-                //     .i3c_core()
-                //     .tti()
-                //     .tti_ibi_port()
-                //     .write(|_| 0x01234_5678);
-                // self.base
-                //     .i3c_core()
-                //     .tti()
-                //     .tti_ibi_port()
-                //     .write(|_| 0x9abc_defe);
-            }
-        }
-        if let Some(tx) = self.i3c_tx.as_ref() {
-            if self.base.i3c_controller().ibi_ready() {
-                println!("[hw-model-fpga] I3C IBI received");
-                match self.base.i3c_controller().ibi_recv(None) {
-                    Ok(ibi) => {
-                        if ibi.len() < 5 || ibi[0] != MCTP_MDB {
-                            println!("Ignoring unexpected I3C IBI received: {:02x?}", ibi);
-                            return;
-                        }
-                        // forward the IBI
-                        tx.send(I3cBusResponse {
-                            addr: self.i3c_address().unwrap_or_default().into(),
-                            ibi: Some(MCTP_MDB),
-                            resp: I3cTcriResponseXfer {
-                                resp: ResponseDescriptor::default(),
-                                data: vec![],
-                            },
-                        })
-                        .expect("Failed to forward I3C IBI response to channel");
-                        self.i3c_next_private_read_len =
-                            Some(u32::from_be_bytes(ibi[1..5].try_into().unwrap()));
+        let Some(tx) = self.i3c_tx.as_ref() else {
+            return;
+        };
+        // check if we need to read any I3C packets from Caliptra
+        if self.base.i3c_controller().ibi_ready() {
+            println!("[hw-model-fpga] I3C IBI received");
+            match self.base.i3c_controller().ibi_recv(None) {
+                Ok(ibi) => {
+                    if ibi.len() < 5 || ibi[0] != MCTP_MDB {
+                        println!("Ignoring unexpected I3C IBI received: {:02x?}", ibi);
+                        return;
                     }
-                    Err(e) => {
-                        println!("Error receiving I3C IBI: {:?}", e);
-                    }
+                    // forward the IBI
+                    tx.send(I3cBusResponse {
+                        addr: self.i3c_address().unwrap_or_default().into(),
+                        ibi: Some(MCTP_MDB),
+                        resp: I3cTcriResponseXfer {
+                            resp: ResponseDescriptor::default(),
+                            data: vec![],
+                        },
+                    })
+                    .expect("Failed to forward I3C IBI response to channel");
+                    self.i3c_next_private_read_len =
+                        Some(u32::from_be_bytes(ibi[1..5].try_into().unwrap()));
+                }
+                Err(e) => {
+                    println!("Error receiving I3C IBI: {:?}", e);
                 }
             }
-            // check if we should do attempt a private read
-            if let Some(private_read_len) = self.i3c_next_private_read_len.take() {
-                println!(
-                    "[hw-model-fpga] I3C trying private read len {}",
-                    private_read_len
-                );
-                match self
-                    .base
-                    .i3c_controller()
-                    //.read(private_read_len.next_multiple_of(4) as u16)
-                    .read(private_read_len as u16)
-                {
-                    Ok(data) => {
-                        let data = data[0..private_read_len as usize].to_vec();
-                        // forward the private read
-                        let mut resp = ResponseDescriptor::default();
-                        resp.set_data_length(data.len() as u16);
-                        println!("[hw-model-fpga] Forwarding private read {:02x?}", data);
-                        tx.send(I3cBusResponse {
-                            addr: self.i3c_address().unwrap_or_default().into(),
-                            ibi: None,
-                            resp: I3cTcriResponseXfer { resp, data },
-                        })
-                        .expect("Failed to forward I3C private read response to channel");
-                    }
-                    Err(e) => {
-                        println!("Error receiving I3C private read: {:?}", e);
-                        // retry
-                        self.i3c_next_private_read_len = Some(private_read_len);
-                    }
+        }
+        // check if we should do attempt a private read
+        if let Some(private_read_len) = self.i3c_next_private_read_len.take() {
+            println!(
+                "[hw-model-fpga] I3C trying private read len {}",
+                private_read_len
+            );
+            match self
+                .base
+                .i3c_controller()
+                //.read(private_read_len.next_multiple_of(4) as u16)
+                .read(private_read_len as u16)
+            {
+                Ok(data) => {
+                    let data = data[0..private_read_len as usize].to_vec();
+                    // forward the private read
+                    let mut resp = ResponseDescriptor::default();
+                    resp.set_data_length(data.len() as u16);
+                    println!("[hw-model-fpga] Forwarding private read {:02x?}", data);
+                    tx.send(I3cBusResponse {
+                        addr: self.i3c_address().unwrap_or_default().into(),
+                        ibi: None,
+                        resp: I3cTcriResponseXfer { resp, data },
+                    })
+                    .expect("Failed to forward I3C private read response to channel");
+                }
+                Err(e) => {
+                    println!("Error receiving I3C private read: {:?}", e);
+                    // retry
+                    self.i3c_next_private_read_len = Some(private_read_len);
                 }
             }
         }
@@ -610,20 +463,20 @@ impl McuHwModel for ModelFpgaRealtime {
     fn step(&mut self) {
         self.base.step();
         self.handle_i3c();
-        let now = self.cycle_count();
-        if now > self.last_update + 10_000_000 {
-            self.last_update = now;
-            println!(
-                "{} I3C controller status: {:x}",
-                now,
-                self.base
-                    .i3c_controller()
-                    .controller
-                    .lock()
-                    .unwrap()
-                    .status()
-            );
-        }
+        // let now = self.cycle_count();
+        // if now > self.last_update + 10_000_000 {
+        //     self.last_update = now;
+        //     println!(
+        //         "{} I3C controller status: {:x}",
+        //         now,
+        //         self.base
+        //             .i3c_controller()
+        //             .controller
+        //             .lock()
+        //             .unwrap()
+        //             .status()
+        //     );
+        // }
     }
 
     fn new_unbooted(params: InitParams) -> Result<Self>
@@ -1578,6 +1431,8 @@ mod tests {
         i3c_target.tti_tti_ibi_port.set(0xae00_0008);
         i3c_target.tti_tti_ibi_port.set(0x01234_5678);
         i3c_target.tti_tti_ibi_port.set(0x9abc_defe);
+
+        std::thread::sleep(Duration::from_millis(10));
 
         println!(
             "I3C target status {:x}, interrupt status {:x}",
