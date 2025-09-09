@@ -104,6 +104,10 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
 
     pub fn handle_interrupt(&self) {
         let tti_interrupts = self.registers.tti_interrupt_status.extract();
+        romtime::println!(
+            "[mcu-runtime-i3c] I3C interrupt received: {}",
+            HexWord(tti_interrupts.get())
+        );
         if tti_interrupts.get() != 0 {
             // Bus error occurred
             if tti_interrupts.read(InterruptStatus::TransferErrStat) != 0 {
@@ -328,6 +332,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         romtime::println!("[mcu-runtime-i3c] I3C IBI done interrupt received");
         if let Some((mdb, len)) = self.pending_ibi.take() {
             // check if IBI was successful
+            // Reading this will clear the IBI_DONE interrupt status bit.
             let status = self.registers.tti_status.read(Status::LastIbiStatus);
             romtime::println!("[mcu-runtime-i3c] I3C IBI done status {}", status);
             if status == 0 {
