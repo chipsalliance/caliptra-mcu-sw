@@ -1434,11 +1434,12 @@ mod tests {
 
         std::thread::sleep(Duration::from_millis(1));
 
+        let istatus = i3c_target.tti_interrupt_status.get();
         println!(
             "I3C target status {:x}, interrupt enable {:x}, interrupt status {:x}",
             i3c_target.tti_status.get(),
             i3c_target.tti_interrupt_enable.get(),
-            i3c_target.tti_interrupt_status.get()
+            istatus
         );
 
         println!("I3C controller status: {:x}", i3c_controller.status());
@@ -1451,12 +1452,13 @@ mod tests {
         // i3c_target.tti_tti_ibi_port.set(0x9abc_defe);
 
         std::thread::sleep(Duration::from_millis(1));
-
+        // read interrupt status first, as reading the tti_status will clear IBI_DONE
+        let istatus = i3c_target.tti_interrupt_status.get();
         println!(
             "I3C target status {:x}, interrupt enable {:x}, interrupt status {:x}",
             i3c_target.tti_status.get(),
             i3c_target.tti_interrupt_enable.get(),
-            i3c_target.tti_interrupt_status.get()
+            istatus
         );
 
         println!("I3C controller status: {:x}", i3c_controller.status());
