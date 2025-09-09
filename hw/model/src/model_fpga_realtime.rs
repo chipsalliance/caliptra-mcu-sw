@@ -394,6 +394,14 @@ impl ModelFpgaRealtime {
 
     fn handle_i3c(&mut self) {
         const MCTP_MDB: u8 = 0xae;
+        if self.cycle_count() > 500_000_000 && self.cycle_count() < 500_020_000 {
+            println!(
+                "[hw-model-fpga] I3C controller i3c_tx is_some {} ibi ready {} status: {:x}",
+                self.i3c_tx.as_ref().is_some(),
+                self.base.i3c_controller().ibi_ready(),
+                unsafe { self.base.i3c_controller().regs().sr.get() },
+            );
+        }
         let Some(tx) = self.i3c_tx.as_ref() else {
             return;
         };
