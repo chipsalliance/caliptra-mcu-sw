@@ -13,6 +13,7 @@ use kernel::utilities::StaticRef;
 use kernel::{debug, ErrorCode};
 use registers_generated::i3c::bits::{InterruptEnable, InterruptStatus, Status, StbyCrDeviceAddr};
 use registers_generated::i3c::regs::I3c;
+use romtime::HexWord;
 use tock_registers::{register_bitfields, LocalRegisterCopy};
 
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
@@ -83,10 +84,17 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     pub fn enable_interrupts(&self) {
-        romtime::println!("[mcu-runtime-i3c] Enabling I3C interrupts");
+        romtime::println!(
+            "[mcu-runtime-i3c] Enabling I3C interrupts, before: {}",
+            HexWord(self.registers.tti_interrupt_enable.get())
+        );
         self.registers
             .tti_interrupt_enable
             .modify(InterruptEnable::RxDescStatEn::SET + InterruptEnable::IbiDoneEn::SET);
+        romtime::println!(
+            "[mcu-runtime-i3c] Enabling I3C interrupts, after: {}",
+            HexWord(self.registers.tti_interrupt_enable.get())
+        );
     }
 
     pub fn disable_interrupts(&self) {
@@ -103,7 +111,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 // clear the interrupt
                 self.registers
                     .tti_interrupt_status
-                    .write(InterruptStatus::TransferErrStat::SET);
+                    .write(InterruptStatus::TransferErrStat::CLEAR);
             }
             // Bus aborted transaction
             if tti_interrupts.read(InterruptStatus::TransferAbortStat) != 0 {
@@ -111,14 +119,14 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 // clear the interrupt
                 self.registers
                     .tti_interrupt_status
-                    .write(InterruptStatus::TransferAbortStat::SET);
+                    .write(InterruptStatus::TransferAbortStat::CLEAR);
             }
             if tti_interrupts.read(InterruptStatus::IbiDone) != 0 {
                 self.ibi_done();
                 // clear the interrupt
                 self.registers
                     .tti_interrupt_status
-                    .write(InterruptStatus::IbiDone::SET);
+                    .write(InterruptStatus::IbiDone::CLEAR);
             }
             // TTI IBI Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI IBI Queue is >= the value defined in `TTI_IBI_THLD`
             if tti_interrupts.read(InterruptStatus::IbiThldStat) != 0 {
@@ -161,7 +169,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 // clear the interrupt
                 self.registers
                     .tti_interrupt_status
-                    .write(InterruptStatus::TxDescTimeout::SET);
+                    .write(InterruptStatus::TxDescTimeout::CLEAR);
             }
             // Pending Read was NACK’ed because the `RX_DESC_STAT` event was not handled in time
             if tti_interrupts.read(InterruptStatus::RxDescTimeout) != 0 {
@@ -169,7 +177,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 // clear the interrupt
                 self.registers
                     .tti_interrupt_status
-                    .write(InterruptStatus::TxDescTimeout::SET);
+                    .write(InterruptStatus::TxDescTimeout::CLEAR);
             }
             // There is a pending Read Transaction on the I3C Bus. Software should write data to the TX Descriptor Queue and the TX Data Queue
             // TODO: we'll never service this in time, so this is disabled.
