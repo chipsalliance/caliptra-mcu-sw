@@ -229,13 +229,17 @@ module caliptra_fpga_realtime_regs (
             logic soc_config_user;
             logic sram_config_user;
             logic mcu_reset_vector;
-            logic mci_error;
+            logic ss_all_error;
             logic mcu_config;
             logic uds_seed_base_addr;
             logic prod_debug_unlock_auth_pk_hash_reg_bank_offset;
             logic num_of_prod_debug_unlock_auth_pk_hashes;
             logic mci_generic_input_wires[2];
             logic mci_generic_output_wires[2];
+            logic ss_key_release_base_addr;
+            logic ss_key_release_key_size;
+            logic ss_external_staging_area_base_addr;
+            logic jtag_trst_n;
         } interface_regs;
         struct {
             logic log_fifo_data;
@@ -285,7 +289,7 @@ module caliptra_fpga_realtime_regs (
         decoded_reg_strb.interface_regs.soc_config_user = cpuif_req_masked & (cpuif_addr == 32'ha401010c);
         decoded_reg_strb.interface_regs.sram_config_user = cpuif_req_masked & (cpuif_addr == 32'ha4010110);
         decoded_reg_strb.interface_regs.mcu_reset_vector = cpuif_req_masked & (cpuif_addr == 32'ha4010114);
-        decoded_reg_strb.interface_regs.mci_error = cpuif_req_masked & (cpuif_addr == 32'ha4010118);
+        decoded_reg_strb.interface_regs.ss_all_error = cpuif_req_masked & (cpuif_addr == 32'ha4010118);
         decoded_reg_strb.interface_regs.mcu_config = cpuif_req_masked & (cpuif_addr == 32'ha401011c);
         decoded_reg_strb.interface_regs.uds_seed_base_addr = cpuif_req_masked & (cpuif_addr == 32'ha4010120);
         decoded_reg_strb.interface_regs.prod_debug_unlock_auth_pk_hash_reg_bank_offset = cpuif_req_masked & (cpuif_addr == 32'ha4010124);
@@ -296,6 +300,10 @@ module caliptra_fpga_realtime_regs (
         for(int i0=0; i0<2; i0++) begin
             decoded_reg_strb.interface_regs.mci_generic_output_wires[i0] = cpuif_req_masked & (cpuif_addr == 32'ha4010134 + (32)'(i0) * 32'h4);
         end
+        decoded_reg_strb.interface_regs.ss_key_release_base_addr = cpuif_req_masked & (cpuif_addr == 32'ha401013c);
+        decoded_reg_strb.interface_regs.ss_key_release_key_size = cpuif_req_masked & (cpuif_addr == 32'ha4010140);
+        decoded_reg_strb.interface_regs.ss_external_staging_area_base_addr = cpuif_req_masked & (cpuif_addr == 32'ha4010144);
+        decoded_reg_strb.interface_regs.jtag_trst_n = cpuif_req_masked & (cpuif_addr == 32'ha4010148);
         decoded_reg_strb.fifo_regs.log_fifo_data = cpuif_req_masked & (cpuif_addr == 32'ha4011000);
         decoded_reg_strb.fifo_regs.log_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha4011004);
         decoded_reg_strb.fifo_regs.itrng_fifo_data = cpuif_req_masked & (cpuif_addr == 32'ha4011008);
@@ -351,6 +359,18 @@ module caliptra_fpga_realtime_regs (
                     logic next;
                     logic load_next;
                 } i3c_axi_user_id_filtering;
+                struct {
+                    logic next;
+                    logic load_next;
+                } ocp_lock_en;
+                struct {
+                    logic next;
+                    logic load_next;
+                } lc_Allow_RMA_or_SCRAP_on_PPD;
+                struct {
+                    logic next;
+                    logic load_next;
+                } FIPS_ZEROIZATION_PPD;
                 struct {
                     logic next;
                     logic load_next;
@@ -480,12 +500,12 @@ module caliptra_fpga_realtime_regs (
                 struct {
                     logic next;
                     logic load_next;
-                } mci_error_fatal;
+                } ss_all_error_fatal;
                 struct {
                     logic next;
                     logic load_next;
-                } mci_error_non_fatal;
-            } mci_error;
+                } ss_all_error_non_fatal;
+            } ss_all_error;
             struct {
                 struct {
                     logic next;
@@ -542,6 +562,38 @@ module caliptra_fpga_realtime_regs (
                     logic load_next;
                 } value;
             } mci_generic_output_wires[2];
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } ss_key_release_base_addr;
+            } ss_key_release_base_addr;
+            struct {
+                struct {
+                    logic [15:0] next;
+                    logic load_next;
+                } ss_key_release_key_size;
+            } ss_key_release_key_size;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } ss_external_staging_area_base_addr;
+            } ss_external_staging_area_base_addr;
+            struct {
+                struct {
+                    logic next;
+                    logic load_next;
+                } core_jtag_trst_n;
+                struct {
+                    logic next;
+                    logic load_next;
+                } mcu_jtag_trst_n;
+                struct {
+                    logic next;
+                    logic load_next;
+                } lcc_jtag_trst_n;
+            } jtag_trst_n;
         } interface_regs;
         struct {
             struct {
@@ -641,6 +693,15 @@ module caliptra_fpga_realtime_regs (
                 } i3c_axi_user_id_filtering;
                 struct {
                     logic value;
+                } ocp_lock_en;
+                struct {
+                    logic value;
+                } lc_Allow_RMA_or_SCRAP_on_PPD;
+                struct {
+                    logic value;
+                } FIPS_ZEROIZATION_PPD;
+                struct {
+                    logic value;
                 } trigger_axi_reset;
             } control;
             struct {
@@ -744,11 +805,11 @@ module caliptra_fpga_realtime_regs (
             struct {
                 struct {
                     logic value;
-                } mci_error_fatal;
+                } ss_all_error_fatal;
                 struct {
                     logic value;
-                } mci_error_non_fatal;
-            } mci_error;
+                } ss_all_error_non_fatal;
+            } ss_all_error;
             struct {
                 struct {
                     logic value;
@@ -794,6 +855,32 @@ module caliptra_fpga_realtime_regs (
                     logic [31:0] value;
                 } value;
             } mci_generic_output_wires[2];
+            struct {
+                struct {
+                    logic [31:0] value;
+                } ss_key_release_base_addr;
+            } ss_key_release_base_addr;
+            struct {
+                struct {
+                    logic [15:0] value;
+                } ss_key_release_key_size;
+            } ss_key_release_key_size;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } ss_external_staging_area_base_addr;
+            } ss_external_staging_area_base_addr;
+            struct {
+                struct {
+                    logic value;
+                } core_jtag_trst_n;
+                struct {
+                    logic value;
+                } mcu_jtag_trst_n;
+                struct {
+                    logic value;
+                } lcc_jtag_trst_n;
+            } jtag_trst_n;
         } interface_regs;
         struct {
             struct {
@@ -1035,6 +1122,75 @@ module caliptra_fpga_realtime_regs (
         end
     end
     assign hwif_out.interface_regs.control.i3c_axi_user_id_filtering.value = field_storage.interface_regs.control.i3c_axi_user_id_filtering.value;
+    // Field: caliptra_fpga_realtime_regs.interface_regs.control.ocp_lock_en
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.interface_regs.control.ocp_lock_en.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.interface_regs.control && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.interface_regs.control.ocp_lock_en.value & ~decoded_wr_biten[9:9]) | (decoded_wr_data[9:9] & decoded_wr_biten[9:9]);
+            load_next_c = '1;
+        end
+        field_combo.interface_regs.control.ocp_lock_en.next = next_c;
+        field_combo.interface_regs.control.ocp_lock_en.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.interface_regs.control.ocp_lock_en.value <= 1'h1;
+        end else begin
+            if(field_combo.interface_regs.control.ocp_lock_en.load_next) begin
+                field_storage.interface_regs.control.ocp_lock_en.value <= field_combo.interface_regs.control.ocp_lock_en.next;
+            end
+        end
+    end
+    assign hwif_out.interface_regs.control.ocp_lock_en.value = field_storage.interface_regs.control.ocp_lock_en.value;
+    // Field: caliptra_fpga_realtime_regs.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.interface_regs.control && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.value & ~decoded_wr_biten[10:10]) | (decoded_wr_data[10:10] & decoded_wr_biten[10:10]);
+            load_next_c = '1;
+        end
+        field_combo.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.next = next_c;
+        field_combo.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.value <= 1'h0;
+        end else begin
+            if(field_combo.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.load_next) begin
+                field_storage.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.value <= field_combo.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.next;
+            end
+        end
+    end
+    assign hwif_out.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.value = field_storage.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.value;
+    // Field: caliptra_fpga_realtime_regs.interface_regs.control.FIPS_ZEROIZATION_PPD
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.interface_regs.control.FIPS_ZEROIZATION_PPD.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.interface_regs.control && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.interface_regs.control.FIPS_ZEROIZATION_PPD.value & ~decoded_wr_biten[11:11]) | (decoded_wr_data[11:11] & decoded_wr_biten[11:11]);
+            load_next_c = '1;
+        end
+        field_combo.interface_regs.control.FIPS_ZEROIZATION_PPD.next = next_c;
+        field_combo.interface_regs.control.FIPS_ZEROIZATION_PPD.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.interface_regs.control.FIPS_ZEROIZATION_PPD.value <= 1'h0;
+        end else begin
+            if(field_combo.interface_regs.control.FIPS_ZEROIZATION_PPD.load_next) begin
+                field_storage.interface_regs.control.FIPS_ZEROIZATION_PPD.value <= field_combo.interface_regs.control.FIPS_ZEROIZATION_PPD.next;
+            end
+        end
+    end
+    assign hwif_out.interface_regs.control.FIPS_ZEROIZATION_PPD.value = field_storage.interface_regs.control.FIPS_ZEROIZATION_PPD.value;
     // Field: caliptra_fpga_realtime_regs.interface_regs.control.trigger_axi_reset
     always_comb begin
         automatic logic [0:0] next_c;
@@ -1579,52 +1735,52 @@ module caliptra_fpga_realtime_regs (
         end
     end
     assign hwif_out.interface_regs.mcu_reset_vector.mcu_reset_vector.value = field_storage.interface_regs.mcu_reset_vector.mcu_reset_vector.value;
-    // Field: caliptra_fpga_realtime_regs.interface_regs.mci_error.mci_error_fatal
+    // Field: caliptra_fpga_realtime_regs.interface_regs.ss_all_error.ss_all_error_fatal
     always_comb begin
         automatic logic [0:0] next_c;
         automatic logic load_next_c;
-        next_c = field_storage.interface_regs.mci_error.mci_error_fatal.value;
+        next_c = field_storage.interface_regs.ss_all_error.ss_all_error_fatal.value;
         load_next_c = '0;
         
         // HW Write
-        next_c = hwif_in.interface_regs.mci_error.mci_error_fatal.next;
+        next_c = hwif_in.interface_regs.ss_all_error.ss_all_error_fatal.next;
         load_next_c = '1;
-        field_combo.interface_regs.mci_error.mci_error_fatal.next = next_c;
-        field_combo.interface_regs.mci_error.mci_error_fatal.load_next = load_next_c;
+        field_combo.interface_regs.ss_all_error.ss_all_error_fatal.next = next_c;
+        field_combo.interface_regs.ss_all_error.ss_all_error_fatal.load_next = load_next_c;
     end
     always_ff @(posedge clk) begin
         if(rst) begin
-            field_storage.interface_regs.mci_error.mci_error_fatal.value <= 1'h0;
+            field_storage.interface_regs.ss_all_error.ss_all_error_fatal.value <= 1'h0;
         end else begin
-            if(field_combo.interface_regs.mci_error.mci_error_fatal.load_next) begin
-                field_storage.interface_regs.mci_error.mci_error_fatal.value <= field_combo.interface_regs.mci_error.mci_error_fatal.next;
+            if(field_combo.interface_regs.ss_all_error.ss_all_error_fatal.load_next) begin
+                field_storage.interface_regs.ss_all_error.ss_all_error_fatal.value <= field_combo.interface_regs.ss_all_error.ss_all_error_fatal.next;
             end
         end
     end
-    assign hwif_out.interface_regs.mci_error.mci_error_fatal.value = field_storage.interface_regs.mci_error.mci_error_fatal.value;
-    // Field: caliptra_fpga_realtime_regs.interface_regs.mci_error.mci_error_non_fatal
+    assign hwif_out.interface_regs.ss_all_error.ss_all_error_fatal.value = field_storage.interface_regs.ss_all_error.ss_all_error_fatal.value;
+    // Field: caliptra_fpga_realtime_regs.interface_regs.ss_all_error.ss_all_error_non_fatal
     always_comb begin
         automatic logic [0:0] next_c;
         automatic logic load_next_c;
-        next_c = field_storage.interface_regs.mci_error.mci_error_non_fatal.value;
+        next_c = field_storage.interface_regs.ss_all_error.ss_all_error_non_fatal.value;
         load_next_c = '0;
         
         // HW Write
-        next_c = hwif_in.interface_regs.mci_error.mci_error_non_fatal.next;
+        next_c = hwif_in.interface_regs.ss_all_error.ss_all_error_non_fatal.next;
         load_next_c = '1;
-        field_combo.interface_regs.mci_error.mci_error_non_fatal.next = next_c;
-        field_combo.interface_regs.mci_error.mci_error_non_fatal.load_next = load_next_c;
+        field_combo.interface_regs.ss_all_error.ss_all_error_non_fatal.next = next_c;
+        field_combo.interface_regs.ss_all_error.ss_all_error_non_fatal.load_next = load_next_c;
     end
     always_ff @(posedge clk) begin
         if(rst) begin
-            field_storage.interface_regs.mci_error.mci_error_non_fatal.value <= 1'h0;
+            field_storage.interface_regs.ss_all_error.ss_all_error_non_fatal.value <= 1'h0;
         end else begin
-            if(field_combo.interface_regs.mci_error.mci_error_non_fatal.load_next) begin
-                field_storage.interface_regs.mci_error.mci_error_non_fatal.value <= field_combo.interface_regs.mci_error.mci_error_non_fatal.next;
+            if(field_combo.interface_regs.ss_all_error.ss_all_error_non_fatal.load_next) begin
+                field_storage.interface_regs.ss_all_error.ss_all_error_non_fatal.value <= field_combo.interface_regs.ss_all_error.ss_all_error_non_fatal.next;
             end
         end
     end
-    assign hwif_out.interface_regs.mci_error.mci_error_non_fatal.value = field_storage.interface_regs.mci_error.mci_error_non_fatal.value;
+    assign hwif_out.interface_regs.ss_all_error.ss_all_error_non_fatal.value = field_storage.interface_regs.ss_all_error.ss_all_error_non_fatal.value;
     // Field: caliptra_fpga_realtime_regs.interface_regs.mcu_config.mcu_no_rom_config
     always_comb begin
         automatic logic [0:0] next_c;
@@ -1882,6 +2038,144 @@ module caliptra_fpga_realtime_regs (
         end
         assign hwif_out.interface_regs.mci_generic_output_wires[i0].value.value = field_storage.interface_regs.mci_generic_output_wires[i0].value.value;
     end
+    // Field: caliptra_fpga_realtime_regs.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.value;
+        load_next_c = '0;
+        
+        // HW Write
+        next_c = hwif_in.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.next;
+        load_next_c = '1;
+        field_combo.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.next = next_c;
+        field_combo.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.value <= 32'h0;
+        end else begin
+            if(field_combo.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.load_next) begin
+                field_storage.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.value <= field_combo.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.next;
+            end
+        end
+    end
+    assign hwif_out.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.value = field_storage.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.value;
+    // Field: caliptra_fpga_realtime_regs.interface_regs.ss_key_release_key_size.ss_key_release_key_size
+    always_comb begin
+        automatic logic [15:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.interface_regs.ss_key_release_key_size.ss_key_release_key_size.value;
+        load_next_c = '0;
+        
+        // HW Write
+        next_c = hwif_in.interface_regs.ss_key_release_key_size.ss_key_release_key_size.next;
+        load_next_c = '1;
+        field_combo.interface_regs.ss_key_release_key_size.ss_key_release_key_size.next = next_c;
+        field_combo.interface_regs.ss_key_release_key_size.ss_key_release_key_size.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.interface_regs.ss_key_release_key_size.ss_key_release_key_size.value <= 16'h0;
+        end else begin
+            if(field_combo.interface_regs.ss_key_release_key_size.ss_key_release_key_size.load_next) begin
+                field_storage.interface_regs.ss_key_release_key_size.ss_key_release_key_size.value <= field_combo.interface_regs.ss_key_release_key_size.ss_key_release_key_size.next;
+            end
+        end
+    end
+    assign hwif_out.interface_regs.ss_key_release_key_size.ss_key_release_key_size.value = field_storage.interface_regs.ss_key_release_key_size.ss_key_release_key_size.value;
+    // Field: caliptra_fpga_realtime_regs.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.value;
+        load_next_c = '0;
+        
+        // HW Write
+        next_c = hwif_in.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.next;
+        load_next_c = '1;
+        field_combo.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.next = next_c;
+        field_combo.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.value <= 32'h0;
+        end else begin
+            if(field_combo.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.load_next) begin
+                field_storage.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.value <= field_combo.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.next;
+            end
+        end
+    end
+    assign hwif_out.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.value = field_storage.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.value;
+    // Field: caliptra_fpga_realtime_regs.interface_regs.jtag_trst_n.core_jtag_trst_n
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.interface_regs.jtag_trst_n.core_jtag_trst_n.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.interface_regs.jtag_trst_n && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.interface_regs.jtag_trst_n.core_jtag_trst_n.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+            load_next_c = '1;
+        end
+        field_combo.interface_regs.jtag_trst_n.core_jtag_trst_n.next = next_c;
+        field_combo.interface_regs.jtag_trst_n.core_jtag_trst_n.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.interface_regs.jtag_trst_n.core_jtag_trst_n.value <= 1'h1;
+        end else begin
+            if(field_combo.interface_regs.jtag_trst_n.core_jtag_trst_n.load_next) begin
+                field_storage.interface_regs.jtag_trst_n.core_jtag_trst_n.value <= field_combo.interface_regs.jtag_trst_n.core_jtag_trst_n.next;
+            end
+        end
+    end
+    assign hwif_out.interface_regs.jtag_trst_n.core_jtag_trst_n.value = field_storage.interface_regs.jtag_trst_n.core_jtag_trst_n.value;
+    // Field: caliptra_fpga_realtime_regs.interface_regs.jtag_trst_n.mcu_jtag_trst_n
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.interface_regs.jtag_trst_n && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value & ~decoded_wr_biten[1:1]) | (decoded_wr_data[1:1] & decoded_wr_biten[1:1]);
+            load_next_c = '1;
+        end
+        field_combo.interface_regs.jtag_trst_n.mcu_jtag_trst_n.next = next_c;
+        field_combo.interface_regs.jtag_trst_n.mcu_jtag_trst_n.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value <= 1'h1;
+        end else begin
+            if(field_combo.interface_regs.jtag_trst_n.mcu_jtag_trst_n.load_next) begin
+                field_storage.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value <= field_combo.interface_regs.jtag_trst_n.mcu_jtag_trst_n.next;
+            end
+        end
+    end
+    assign hwif_out.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value = field_storage.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value;
+    // Field: caliptra_fpga_realtime_regs.interface_regs.jtag_trst_n.lcc_jtag_trst_n
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.interface_regs.jtag_trst_n && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value & ~decoded_wr_biten[2:2]) | (decoded_wr_data[2:2] & decoded_wr_biten[2:2]);
+            load_next_c = '1;
+        end
+        field_combo.interface_regs.jtag_trst_n.lcc_jtag_trst_n.next = next_c;
+        field_combo.interface_regs.jtag_trst_n.lcc_jtag_trst_n.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value <= 1'h1;
+        end else begin
+            if(field_combo.interface_regs.jtag_trst_n.lcc_jtag_trst_n.load_next) begin
+                field_storage.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value <= field_combo.interface_regs.jtag_trst_n.lcc_jtag_trst_n.next;
+            end
+        end
+    end
+    assign hwif_out.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value = field_storage.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value;
     // Field: caliptra_fpga_realtime_regs.fifo_regs.log_fifo_data.next_char
     always_comb begin
         automatic logic [7:0] next_c;
@@ -2179,7 +2473,7 @@ module caliptra_fpga_realtime_regs (
     logic [31:0] readback_data;
 
     // Assign readback values to a flattened array
-    logic [31:0] readback_array[81];
+    logic [31:0] readback_array[85];
     assign readback_array[0][31:0] = (decoded_reg_strb.interface_regs.fpga_magic && !decoded_req_is_wr) ? 32'h52545043 : '0;
     assign readback_array[1][31:0] = (decoded_reg_strb.interface_regs.fpga_version && !decoded_req_is_wr) ? field_storage.interface_regs.fpga_version.fpga_version.value : '0;
     assign readback_array[2][0:0] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.cptra_pwrgood.value : '0;
@@ -2190,7 +2484,10 @@ module caliptra_fpga_realtime_regs (
     assign readback_array[2][6:6] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.bootfsm_brkpoint.value : '0;
     assign readback_array[2][7:7] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.ss_debug_intent.value : '0;
     assign readback_array[2][8:8] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.i3c_axi_user_id_filtering.value : '0;
-    assign readback_array[2][30:9] = '0;
+    assign readback_array[2][9:9] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.ocp_lock_en.value : '0;
+    assign readback_array[2][10:10] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.value : '0;
+    assign readback_array[2][11:11] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.FIPS_ZEROIZATION_PPD.value : '0;
+    assign readback_array[2][30:12] = '0;
     assign readback_array[2][31:31] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.trigger_axi_reset.value : '0;
     assign readback_array[3][0:0] = (decoded_reg_strb.interface_regs.status && !decoded_req_is_wr) ? field_storage.interface_regs.status.cptra_error_fatal.value : '0;
     assign readback_array[3][1:1] = (decoded_reg_strb.interface_regs.status && !decoded_req_is_wr) ? field_storage.interface_regs.status.cptra_error_non_fatal.value : '0;
@@ -2227,8 +2524,8 @@ module caliptra_fpga_realtime_regs (
     assign readback_array[62][31:0] = (decoded_reg_strb.interface_regs.soc_config_user && !decoded_req_is_wr) ? field_storage.interface_regs.soc_config_user.soc_config_user.value : '0;
     assign readback_array[63][31:0] = (decoded_reg_strb.interface_regs.sram_config_user && !decoded_req_is_wr) ? field_storage.interface_regs.sram_config_user.sram_config_user.value : '0;
     assign readback_array[64][31:0] = (decoded_reg_strb.interface_regs.mcu_reset_vector && !decoded_req_is_wr) ? field_storage.interface_regs.mcu_reset_vector.mcu_reset_vector.value : '0;
-    assign readback_array[65][0:0] = (decoded_reg_strb.interface_regs.mci_error && !decoded_req_is_wr) ? field_storage.interface_regs.mci_error.mci_error_fatal.value : '0;
-    assign readback_array[65][1:1] = (decoded_reg_strb.interface_regs.mci_error && !decoded_req_is_wr) ? field_storage.interface_regs.mci_error.mci_error_non_fatal.value : '0;
+    assign readback_array[65][0:0] = (decoded_reg_strb.interface_regs.ss_all_error && !decoded_req_is_wr) ? field_storage.interface_regs.ss_all_error.ss_all_error_fatal.value : '0;
+    assign readback_array[65][1:1] = (decoded_reg_strb.interface_regs.ss_all_error && !decoded_req_is_wr) ? field_storage.interface_regs.ss_all_error.ss_all_error_non_fatal.value : '0;
     assign readback_array[65][31:2] = '0;
     assign readback_array[66][0:0] = (decoded_reg_strb.interface_regs.mcu_config && !decoded_req_is_wr) ? field_storage.interface_regs.mcu_config.mcu_no_rom_config.value : '0;
     assign readback_array[66][1:1] = (decoded_reg_strb.interface_regs.mcu_config && !decoded_req_is_wr) ? field_storage.interface_regs.mcu_config.cptra_ss_mci_boot_seq_brkpoint_i.value : '0;
@@ -2246,22 +2543,30 @@ module caliptra_fpga_realtime_regs (
     for(genvar i0=0; i0<2; i0++) begin
         assign readback_array[i0 * 1 + 72][31:0] = (decoded_reg_strb.interface_regs.mci_generic_output_wires[i0] && !decoded_req_is_wr) ? field_storage.interface_regs.mci_generic_output_wires[i0].value.value : '0;
     end
-    assign readback_array[74][7:0] = (decoded_reg_strb.fifo_regs.log_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_data.next_char.value : '0;
-    assign readback_array[74][8:8] = (decoded_reg_strb.fifo_regs.log_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_data.char_valid.value : '0;
-    assign readback_array[74][31:9] = '0;
-    assign readback_array[75][0:0] = (decoded_reg_strb.fifo_regs.log_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_status.log_fifo_empty.value : '0;
-    assign readback_array[75][1:1] = (decoded_reg_strb.fifo_regs.log_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_status.log_fifo_full.value : '0;
-    assign readback_array[75][31:2] = '0;
-    assign readback_array[76][31:0] = (decoded_reg_strb.fifo_regs.itrng_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_data.itrng_data.value : '0;
-    assign readback_array[77][0:0] = (decoded_reg_strb.fifo_regs.itrng_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_status.itrng_fifo_empty.value : '0;
-    assign readback_array[77][1:1] = (decoded_reg_strb.fifo_regs.itrng_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_status.itrng_fifo_full.value : '0;
-    assign readback_array[77][2:2] = (decoded_reg_strb.fifo_regs.itrng_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_status.itrng_fifo_reset.value : '0;
+    assign readback_array[74][31:0] = (decoded_reg_strb.interface_regs.ss_key_release_base_addr && !decoded_req_is_wr) ? field_storage.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.value : '0;
+    assign readback_array[75][15:0] = (decoded_reg_strb.interface_regs.ss_key_release_key_size && !decoded_req_is_wr) ? field_storage.interface_regs.ss_key_release_key_size.ss_key_release_key_size.value : '0;
+    assign readback_array[75][31:16] = '0;
+    assign readback_array[76][31:0] = (decoded_reg_strb.interface_regs.ss_external_staging_area_base_addr && !decoded_req_is_wr) ? field_storage.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.value : '0;
+    assign readback_array[77][0:0] = (decoded_reg_strb.interface_regs.jtag_trst_n && !decoded_req_is_wr) ? field_storage.interface_regs.jtag_trst_n.core_jtag_trst_n.value : '0;
+    assign readback_array[77][1:1] = (decoded_reg_strb.interface_regs.jtag_trst_n && !decoded_req_is_wr) ? field_storage.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value : '0;
+    assign readback_array[77][2:2] = (decoded_reg_strb.interface_regs.jtag_trst_n && !decoded_req_is_wr) ? field_storage.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value : '0;
     assign readback_array[77][31:3] = '0;
-    assign readback_array[78][31:0] = (decoded_reg_strb.fifo_regs.dbg_fifo_pop && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_pop.out_data.value : '0;
-    assign readback_array[79][31:0] = (decoded_reg_strb.fifo_regs.dbg_fifo_push && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_push.in_data.value : '0;
-    assign readback_array[80][0:0] = (decoded_reg_strb.fifo_regs.dbg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_status.dbg_fifo_empty.value : '0;
-    assign readback_array[80][1:1] = (decoded_reg_strb.fifo_regs.dbg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_status.dbg_fifo_full.value : '0;
-    assign readback_array[80][31:2] = '0;
+    assign readback_array[78][7:0] = (decoded_reg_strb.fifo_regs.log_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_data.next_char.value : '0;
+    assign readback_array[78][8:8] = (decoded_reg_strb.fifo_regs.log_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_data.char_valid.value : '0;
+    assign readback_array[78][31:9] = '0;
+    assign readback_array[79][0:0] = (decoded_reg_strb.fifo_regs.log_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_status.log_fifo_empty.value : '0;
+    assign readback_array[79][1:1] = (decoded_reg_strb.fifo_regs.log_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_status.log_fifo_full.value : '0;
+    assign readback_array[79][31:2] = '0;
+    assign readback_array[80][31:0] = (decoded_reg_strb.fifo_regs.itrng_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_data.itrng_data.value : '0;
+    assign readback_array[81][0:0] = (decoded_reg_strb.fifo_regs.itrng_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_status.itrng_fifo_empty.value : '0;
+    assign readback_array[81][1:1] = (decoded_reg_strb.fifo_regs.itrng_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_status.itrng_fifo_full.value : '0;
+    assign readback_array[81][2:2] = (decoded_reg_strb.fifo_regs.itrng_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_status.itrng_fifo_reset.value : '0;
+    assign readback_array[81][31:3] = '0;
+    assign readback_array[82][31:0] = (decoded_reg_strb.fifo_regs.dbg_fifo_pop && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_pop.out_data.value : '0;
+    assign readback_array[83][31:0] = (decoded_reg_strb.fifo_regs.dbg_fifo_push && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_push.in_data.value : '0;
+    assign readback_array[84][0:0] = (decoded_reg_strb.fifo_regs.dbg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_status.dbg_fifo_empty.value : '0;
+    assign readback_array[84][1:1] = (decoded_reg_strb.fifo_regs.dbg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_status.dbg_fifo_full.value : '0;
+    assign readback_array[84][31:2] = '0;
 
     // Reduce the array
     always_comb begin
@@ -2269,7 +2574,7 @@ module caliptra_fpga_realtime_regs (
         readback_done = decoded_req & ~decoded_req_is_wr;
         readback_err = '0;
         readback_data_var = '0;
-        for(int i=0; i<81; i++) readback_data_var |= readback_array[i];
+        for(int i=0; i<85; i++) readback_data_var |= readback_array[i];
         readback_data = readback_data_var;
     end
 

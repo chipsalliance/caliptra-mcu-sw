@@ -21,7 +21,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 
 - Absolute Address: 0xA4010000
 - Base Offset: 0xA4010000
-- Size: 0x13C
+- Size: 0x14C
 
 |Offset|                  Identifier                  |Name|
 |------|----------------------------------------------|----|
@@ -90,7 +90,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 | 0x10C|                soc_config_user               |  — |
 | 0x110|               sram_config_user               |  — |
 | 0x114|               mcu_reset_vector               |  — |
-| 0x118|                   mci_error                  |  — |
+| 0x118|                 ss_all_error                 |  — |
 | 0x11C|                  mcu_config                  |  — |
 | 0x120|              uds_seed_base_addr              |  — |
 | 0x124|prod_debug_unlock_auth_pk_hash_reg_bank_offset|  — |
@@ -99,6 +99,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 | 0x130|          mci_generic_input_wires[1]          |  — |
 | 0x134|          mci_generic_output_wires[0]         |  — |
 | 0x138|          mci_generic_output_wires[1]         |  — |
+| 0x13C|           ss_key_release_base_addr           |  — |
+| 0x140|            ss_key_release_key_size           |  — |
+| 0x144|      ss_external_staging_area_base_addr      |  — |
+| 0x148|                  jtag_trst_n                 |  — |
 
 ### fpga_magic register
 
@@ -134,16 +138,27 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 - Base Offset: 0x8
 - Size: 0x4
 
-|Bits|         Identifier        |Access|Reset|Name|
-|----|---------------------------|------|-----|----|
-|  0 |       cptra_pwrgood       |  rw  | 0x0 |  — |
-|  1 |       cptra_ss_rst_b      |  rw  | 0x0 |  — |
-|  2 |   cptra_obf_uds_seed_vld  |  rw  | 0x0 |  — |
-|  3 |cptra_obf_field_entropy_vld|  rw  | 0x0 |  — |
-|  6 |      bootfsm_brkpoint     |  rw  | 0x0 |  — |
-|  7 |      ss_debug_intent      |  rw  | 0x0 |  — |
-|  8 | i3c_axi_user_id_filtering |  rw  | 0x0 |  — |
-| 31 |     trigger_axi_reset     |  rw  | 0x0 |  — |
+|Bits|         Identifier         |Access|Reset|Name|
+|----|----------------------------|------|-----|----|
+|  0 |        cptra_pwrgood       |  rw  | 0x0 |  — |
+|  1 |       cptra_ss_rst_b       |  rw  | 0x0 |  — |
+|  2 |   cptra_obf_uds_seed_vld   |  rw  | 0x0 |  — |
+|  3 | cptra_obf_field_entropy_vld|  rw  | 0x0 |  — |
+|  6 |      bootfsm_brkpoint      |  rw  | 0x0 |  — |
+|  7 |       ss_debug_intent      |  rw  | 0x0 |  — |
+|  8 |  i3c_axi_user_id_filtering |  rw  | 0x0 |  — |
+|  9 |         ocp_lock_en        |  rw  | 0x1 |  — |
+| 10 |lc_Allow_RMA_or_SCRAP_on_PPD|  rw  | 0x0 |  — |
+| 11 |    FIPS_ZEROIZATION_PPD    |  rw  | 0x0 |  — |
+| 31 |      trigger_axi_reset     |  rw  | 0x0 |  — |
+
+#### cptra_obf_uds_seed_vld field
+
+<p>RSVD in SS</p>
+
+#### cptra_obf_field_entropy_vld field
+
+<p>RSVD in SS</p>
 
 ### status register
 
@@ -955,16 +970,16 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 
 <p>MCU Reset Vector Strap</p>
 
-### mci_error register
+### ss_all_error register
 
 - Absolute Address: 0xA4010118
 - Base Offset: 0x118
 - Size: 0x4
 
-|Bits|     Identifier    |Access|Reset|Name|
-|----|-------------------|------|-----|----|
-|  0 |  mci_error_fatal  |   r  | 0x0 |  — |
-|  1 |mci_error_non_fatal|   r  | 0x0 |  — |
+|Bits|      Identifier      |Access|Reset|Name|
+|----|----------------------|------|-----|----|
+|  0 |  ss_all_error_fatal  |   r  | 0x0 |  — |
+|  1 |ss_all_error_non_fatal|   r  | 0x0 |  — |
 
 ### mcu_config register
 
@@ -1062,6 +1077,48 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0|   value  |   r  | 0x0 |  — |
+
+### ss_key_release_base_addr register
+
+- Absolute Address: 0xA401013C
+- Base Offset: 0x13C
+- Size: 0x4
+
+|Bits|       Identifier       |Access|Reset|Name|
+|----|------------------------|------|-----|----|
+|31:0|ss_key_release_base_addr|   r  | 0x0 |  — |
+
+### ss_key_release_key_size register
+
+- Absolute Address: 0xA4010140
+- Base Offset: 0x140
+- Size: 0x4
+
+|Bits|       Identifier      |Access|Reset|Name|
+|----|-----------------------|------|-----|----|
+|15:0|ss_key_release_key_size|   r  | 0x0 |  — |
+
+### ss_external_staging_area_base_addr register
+
+- Absolute Address: 0xA4010144
+- Base Offset: 0x144
+- Size: 0x4
+
+|Bits|            Identifier            |Access|Reset|Name|
+|----|----------------------------------|------|-----|----|
+|31:0|ss_external_staging_area_base_addr|   r  | 0x0 |  — |
+
+### jtag_trst_n register
+
+- Absolute Address: 0xA4010148
+- Base Offset: 0x148
+- Size: 0x4
+
+|Bits|   Identifier   |Access|Reset|Name|
+|----|----------------|------|-----|----|
+|  0 |core_jtag_trst_n|  rw  | 0x1 |  — |
+|  1 | mcu_jtag_trst_n|  rw  | 0x1 |  — |
+|  2 | lcc_jtag_trst_n|  rw  | 0x1 |  — |
 
 ## fifo_regs register file
 

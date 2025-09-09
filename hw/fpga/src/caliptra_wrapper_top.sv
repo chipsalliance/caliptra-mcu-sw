@@ -481,23 +481,20 @@ module caliptra_wrapper_top (
     input  logic        otp_mem_backdoor_rst,
 
     // JTAG Interface
-    input logic                       jtag_tck,    // JTAG clk
-    input logic                       jtag_tms,    // JTAG tms
-    input logic                       jtag_tdi,    // JTAG tdi
-    input logic                       jtag_trst_n, // JTAG reset
-    output logic                      jtag_tdo,    // JTAG tdo
+    input logic                       core_jtag_tck,
+    input logic                       core_jtag_tms,
+    input logic                       core_jtag_tdi,
+    output logic                      core_jtag_tdo,
 
     input logic                       mcu_jtag_tck_i,
     input logic                       mcu_jtag_tms_i,
     input logic                       mcu_jtag_tdi_i,
-    input logic                       mcu_jtag_trst_n_i,
     output logic                      mcu_jtag_tdo_o,
 
-    input logic                       lc_jtag_tck_i,
-    input logic                       lc_jtag_tms_i,
-    input logic                       lc_jtag_tdi_i,
-    input logic                       lc_jtag_trst_n_i,
-    output logic                      lc_jtag_tdo_o,
+    input logic                       lcc_jtag_tck_i,
+    input logic                       lcc_jtag_tms_i,
+    input logic                       lcc_jtag_tdi_i,
+    output logic                      lcc_jtag_tdo_o,
 
     output logic [31:0]               caliptra_ifu_i0_pc,
     output logic [31:0]               mcu_ifu_i0_pc,
@@ -591,8 +588,6 @@ module caliptra_wrapper_top (
         end
     end
 
-    logic                       BootFSM_BrkPoint;
-
     logic mbox_sram_cs;
     logic mbox_sram_we;
     logic [15:0] mbox_sram_addr;
@@ -621,12 +616,12 @@ module caliptra_wrapper_top (
     end
 
     jtag_pkg::jtag_req_t cptra_ss_lc_ctrl_jtag_i;
-    assign cptra_ss_lc_ctrl_jtag_i.tck = lc_jtag_tck_i;
-    assign cptra_ss_lc_ctrl_jtag_i.tms = lc_jtag_tms_i;
-    assign cptra_ss_lc_ctrl_jtag_i.tdi = lc_jtag_tdi_i;
-    assign cptra_ss_lc_ctrl_jtag_i.trst_n = lc_jtag_trst_n_i;
+    assign cptra_ss_lc_ctrl_jtag_i.tck = lcc_jtag_tck_i;
+    assign cptra_ss_lc_ctrl_jtag_i.tms = lcc_jtag_tms_i;
+    assign cptra_ss_lc_ctrl_jtag_i.tdi = lcc_jtag_tdi_i;
+    assign cptra_ss_lc_ctrl_jtag_i.trst_n = hwif_out.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value;
     jtag_pkg::jtag_rsp_t cptra_ss_lc_ctrl_jtag_o;
-    assign lc_jtag_tdo_o = cptra_ss_lc_ctrl_jtag_o.tdo;
+    assign lcc_jtag_tdo_o = cptra_ss_lc_ctrl_jtag_o.tdo;
 
 `ifndef CALIPTRA_APB
     axi_if #(
@@ -725,10 +720,6 @@ module caliptra_wrapper_top (
 `endif
     el2_mem_if el2_mem_export();
     abr_mem_if abr_memory_export();
-
-    initial begin
-        BootFSM_BrkPoint = 1'b1; //Set to 1 even before anything starts
-    end
 
     // TRNG Interface
     logic etrng_req;
@@ -1999,11 +1990,11 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_cptra_csr_hmac_key_i(cptra_csr_hmac_key),
 
     // Caliptra JTAG Interface
-    .cptra_ss_cptra_core_jtag_tck_i(jtag_tck),
-    .cptra_ss_cptra_core_jtag_tdi_i(jtag_tdi),
-    .cptra_ss_cptra_core_jtag_tms_i(jtag_tms),
-    .cptra_ss_cptra_core_jtag_trst_n_i(jtag_trst_n),
-    .cptra_ss_cptra_core_jtag_tdo_o(jtag_tdo),
+    .cptra_ss_cptra_core_jtag_tck_i(core_jtag_tck),
+    .cptra_ss_cptra_core_jtag_tdi_i(core_jtag_tdi),
+    .cptra_ss_cptra_core_jtag_tms_i(core_jtag_tms),
+    .cptra_ss_cptra_core_jtag_trst_n_i(hwif_out.interface_regs.jtag_trst_n.core_jtag_trst_n.value),
+    .cptra_ss_cptra_core_jtag_tdo_o(core_jtag_tdo),
     .cptra_ss_cptra_core_jtag_tdoEn_o(),
     //output logic [124:0]               cptra_ss_cptra_generic_fw_exec_ctrl_o, // TODO
     .cptra_ss_cptra_generic_fw_exec_ctrl_o(),
@@ -2031,7 +2022,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_cptra_core_imem_addr_o(imem_addr),
     .cptra_ss_cptra_core_imem_rdata_i(imem_rdata),
 
-    .cptra_ss_cptra_core_bootfsm_bp_i(BootFSM_BrkPoint),
+    .cptra_ss_cptra_core_bootfsm_bp_i(hwif_out.interface_regs.control.bootfsm_brkpoint.value),
 
 // TRNG Interface
 `ifdef CALIPTRA_INTERNAL_TRNG
@@ -2068,18 +2059,18 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_mcu_no_rom_config_i(hwif_out.interface_regs.mcu_config.mcu_no_rom_config.value),
     .cptra_ss_mci_boot_seq_brkpoint_i(hwif_out.interface_regs.mcu_config.cptra_ss_mci_boot_seq_brkpoint_i.value),
 
-    .cptra_ss_lc_Allow_RMA_or_SCRAP_on_PPD_i(1'b0), // TODO: Connect to wrapper?
-    .cptra_ss_FIPS_ZEROIZATION_PPD_i(1'b0), // TODO: Connect to wrapper? Physical pin to trigger zeroization
+    .cptra_ss_lc_Allow_RMA_or_SCRAP_on_PPD_i(hwif_out.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.value),
+    .cptra_ss_FIPS_ZEROIZATION_PPD_i(hwif_out.interface_regs.control.FIPS_ZEROIZATION_PPD.value),
 
-    .cptra_ss_all_error_fatal_o(hwif_in.interface_regs.mci_error.mci_error_fatal.next), // TODO: Update name in wrapper
-    .cptra_ss_all_error_non_fatal_o(hwif_in.interface_regs.mci_error.mci_error_non_fatal.next), // TODO: Update name in wrapper
+    .cptra_ss_all_error_fatal_o(hwif_in.interface_regs.ss_all_error.ss_all_error_fatal.next),
+    .cptra_ss_all_error_non_fatal_o(hwif_in.interface_regs.ss_all_error.ss_all_error_non_fatal.next),
 
     .cptra_ss_mcu_ext_int(0), // TODO: Should SW drive this to something? SOC interrupts
     // MCU JTAG
     .cptra_ss_mcu_jtag_tck_i(mcu_jtag_tck_i),
     .cptra_ss_mcu_jtag_tms_i(mcu_jtag_tms_i),
     .cptra_ss_mcu_jtag_tdi_i(mcu_jtag_tdi_i),
-    .cptra_ss_mcu_jtag_trst_n_i(mcu_jtag_trst_n_i),
+    .cptra_ss_mcu_jtag_trst_n_i(hwif_out.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value),
     .cptra_ss_mcu_jtag_tdo_o(mcu_jtag_tdo_o),
     .cptra_ss_mcu_jtag_tdoEn_o(mcu_jtag_tdoEn_o),
 
@@ -2089,9 +2080,9 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_strap_recovery_ifc_base_addr_i (64'hA4030100), // I3C controller SecFwRecoveryIf
     .cptra_ss_strap_otp_fc_base_addr_i       (64'hA4060000),
     .cptra_ss_strap_uds_seed_base_addr_i     ({32'h00000000, hwif_out.interface_regs.uds_seed_base_addr.uds_seed_base_addr.value}),
-    .cptra_ss_strap_ss_key_release_base_addr_i(),             //input logic [63:0]  TODO: Connect?
-    .cptra_ss_strap_ss_key_release_key_size_i(),              //input logic [15:0]  TODO: Connect?
-    .cptra_ss_strap_ss_external_staging_area_base_addr_i(),   //input logic [63:0]  TODO: Connect?
+    .cptra_ss_strap_ss_key_release_base_addr_i({32'h00000000, hwif_out.interface_regs.ss_key_release_key_size.ss_key_release_key_size.value}),
+    .cptra_ss_strap_ss_key_release_key_size_i(hwif_out.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.value),
+    .cptra_ss_strap_ss_external_staging_area_base_addr_i({32'h00000000, hwif_out.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.value}),
     .cptra_ss_strap_prod_debug_unlock_auth_pk_hash_reg_bank_offset_i(hwif_out.interface_regs.prod_debug_unlock_auth_pk_hash_reg_bank_offset.prod_debug_unlock_auth_pk_hash_reg_bank_offset.value),
     .cptra_ss_strap_num_of_prod_debug_unlock_auth_pk_hashes_i(hwif_out.interface_regs.num_of_prod_debug_unlock_auth_pk_hashes.num_of_prod_debug_unlock_auth_pk_hashes.value),
     .cptra_ss_strap_caliptra_dma_axi_user_i(hwif_out.interface_regs.dma_axi_user.dma_axi_user.value),
@@ -2100,7 +2091,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_strap_generic_2_i(32'h0),
     .cptra_ss_strap_generic_3_i(32'h0),
     .cptra_ss_debug_intent_i(hwif_out.interface_regs.control.ss_debug_intent.value),            // Debug intent signal
-    .cptra_ss_ocp_lock_en_i(1'b1), // TODO: Make this configurable?
+    .cptra_ss_ocp_lock_en_i(hwif_out.interface_regs.control.ocp_lock_en.value),
 
     // TODO: Connect
     /*output logic        */ .cptra_ss_dbg_manuf_enable_o(),
