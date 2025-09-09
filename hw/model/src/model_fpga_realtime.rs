@@ -1432,11 +1432,12 @@ mod tests {
         i3c_target.tti_tti_ibi_port.set(0x01234_5678);
         i3c_target.tti_tti_ibi_port.set(0x9abc_defe);
 
-        std::thread::sleep(Duration::from_millis(10));
+        std::thread::sleep(Duration::from_millis(1));
 
         println!(
-            "I3C target status {:x}, interrupt status {:x}",
+            "I3C target status {:x}, interrupt enable {:x}, interrupt status {:x}",
             i3c_target.tti_status.get(),
+            i3c_target.tti_interrupt_enable.get(),
             i3c_target.tti_interrupt_status.get()
         );
 
