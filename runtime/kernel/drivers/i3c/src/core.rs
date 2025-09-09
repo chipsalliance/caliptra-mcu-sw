@@ -11,9 +11,8 @@ use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::{debug, ErrorCode};
-use registers_generated::i3c::bits::{InterruptEnable, InterruptStatus, StbyCrDeviceAddr};
+use registers_generated::i3c::bits::{InterruptEnable, InterruptStatus, Status, StbyCrDeviceAddr};
 use registers_generated::i3c::regs::I3c;
-use romtime::HexBytes;
 use tock_registers::{register_bitfields, LocalRegisterCopy};
 
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
@@ -50,6 +49,7 @@ pub struct I3CCore<'a, A: Alarm<'a>> {
     alarm: VirtualMuxAlarm<'a, A>,
     retry_outgoing_read: Cell<bool>,
     retry_incoming_write: Cell<bool>,
+    pending_ibi: OptionalCell<(u8, u32)>,
 }
 
 impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
@@ -72,6 +72,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             alarm: VirtualMuxAlarm::new(alarm),
             retry_outgoing_read: Cell::new(false),
             retry_incoming_write: Cell::new(false),
+            pending_ibi: OptionalCell::empty(),
         }
     }
 
@@ -85,7 +86,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         romtime::println!("[mcu-runtime-i3c] Enabling I3C interrupts");
         self.registers
             .tti_interrupt_enable
-            .modify(InterruptEnable::RxDescStatEn::SET);
+            .modify(InterruptEnable::RxDescStatEn::SET + InterruptEnable::IbiDoneEn::SET);
     }
 
     pub fn disable_interrupts(&self) {
@@ -111,6 +112,13 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 self.registers
                     .tti_interrupt_status
                     .write(InterruptStatus::TransferAbortStat::SET);
+            }
+            if tti_interrupts.read(InterruptStatus::IbiDone) != 0 {
+                self.ibi_done();
+                // clear the interrupt
+                self.registers
+                    .tti_interrupt_status
+                    .write(InterruptStatus::IbiDone::SET);
             }
             // TTI IBI Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI IBI Queue is >= the value defined in `TTI_IBI_THLD`
             if tti_interrupts.read(InterruptStatus::IbiThldStat) != 0 {
@@ -293,25 +301,33 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // TODO: we have no way to send this to the client
     }
 
-    fn send_ibi(&self, mdb: u8, data: &[u8]) {
+    fn send_ibi(&self, mdb: u8, len: u32) {
         romtime::println!(
             "[mcu-runtime-i3c] Sending I3C IBI with MDB {:02x} len {}",
             mdb,
-            data.len()
+            len
         );
         // write the descriptor first
-        self.registers.tti_tti_ibi_port.set(
-            (IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(data.len() as u32))
-                .into(),
-        );
+        self.registers
+            .tti_tti_ibi_port
+            .set((IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(len)).into());
+        // write length in big-endian format
+        self.registers.tti_tti_ibi_port.set(len.swap_bytes());
+        self.pending_ibi.set((mdb, len));
+    }
 
-        // write payload
-        data.chunks(4).for_each(|chunk| {
-            let mut bytes = [0; 4];
-            bytes[..chunk.len()].copy_from_slice(chunk);
-            let word = u32::from_le_bytes(bytes);
-            self.registers.tti_tti_ibi_port.set(word);
-        });
+    fn ibi_done(&self) {
+        if let Some((mdb, len)) = self.pending_ibi.take() {
+            // check if IBI was successful
+            if self.registers.tti_status.read(Status::LastIbiStatus) == 0 {
+                // schedule a callback to handle any pending private reads
+                self.set_alarm(Self::RETRY_WAIT_TICKS);
+            } else {
+                // re-send IBI
+                self.send_ibi(mdb, len);
+            }
+            return;
+        }
     }
 }
 
@@ -336,7 +352,9 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         tx_buf: &'static mut [u8],
         len: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
-        if self.tx_buffer.is_some() {
+        // we have to wait for the last IBI to be done before we can send another packet
+        // otherwise we can confuse the I3C controller's buffers
+        if self.tx_buffer.is_some() || self.pending_ibi.is_some() {
             return Err((ErrorCode::BUSY, tx_buf));
         }
         self.tx_buffer.replace(tx_buf);
@@ -346,7 +364,7 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         // immediately send the read to the I3C target interface and send an IBI so the controller knows we have data
         self.handle_outgoing_read();
         // send the length as part of the IBI
-        self.send_ibi(MDB_PENDING_READ_MCTP, &((len as u32).to_be_bytes()));
+        self.send_ibi(MDB_PENDING_READ_MCTP, len as u32);
         Ok(())
     }
 
