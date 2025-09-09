@@ -17,7 +17,7 @@ pub trait Mailbox<'a> {
     ///
     /// * `command` - The command identifier to send.
     /// * `request_data` - Iterator yielding the request payload dwords to transmit.
-    /// * `dw_len` - Number of dwords to send from `request_data`.
+    /// * `dlen` - Number of bytes to send from `request_data`.
     ///
     /// # Returns
     ///
@@ -27,7 +27,7 @@ pub trait Mailbox<'a> {
         &self,
         command: u32,
         request_data: impl Iterator<Item = u32>,
-        dw_len: usize,
+        dlen: usize,
     ) -> Result<(), ErrorCode>;
 
     /// Writes a response to the MCU mailbox (Receiver mode).
@@ -35,7 +35,7 @@ pub trait Mailbox<'a> {
     /// # Arguments
     ///
     /// * `response_data` - Iterator yielding the response payload dwords to write.
-    /// * `dw_len` - Number of dwords to write from `response_data`.
+    /// * `dlen` - Number of bytes to write from `response_data`.
     /// * `status` - The status to set for the mailbox after writing the response.
     ///
     /// # Returns
@@ -45,9 +45,18 @@ pub trait Mailbox<'a> {
     fn send_response(
         &self,
         response_data: impl Iterator<Item = u32>,
-        dw_len: usize,
-        status: MailboxStatus,
+        dlen: usize,
     ) -> Result<(), ErrorCode>;
+
+    /// Sets the command status of the MCU mailbox (Receiver mode).
+    ///
+    /// # Arguments
+    /// * `status` - The status to set for the mailbox.
+    ///
+    /// # Returns
+    /// * `Ok(())` on success.
+    /// * `Err(ErrorCode)` if the operation fails.
+    fn set_mbox_cmd_status(&self, status: MailboxStatus) -> Result<(), ErrorCode>;
 
     /// Returns the maximum size (in dword) of the MCU mailbox SRAM.
     fn max_mbox_sram_dw_size(&self) -> usize;
@@ -96,8 +105,8 @@ pub trait MailboxClient {
     ///
     /// * `command` - The command identifier of the received request.
     /// * `rx_buf` - Buffer containing the received data.
-    /// * `length` - Number of valid bytes in `rx_buf`.
-    fn request_received(&self, command: u32, rx_buf: &'static mut [u32], dw_len: usize);
+    /// * `dlen` - Number of valid bytes in `rx_buf`.
+    fn request_received(&self, command: u32, rx_buf: &'static mut [u32], dlen: usize);
 
     /// Called when a response is received (Sender mode).
     ///
@@ -105,8 +114,8 @@ pub trait MailboxClient {
     ///
     /// * `status` - The status of the mailbox after the response.
     /// * `rx_buf` - Buffer containing the response data.
-    /// * `length` - Number of valid bytes in `rx_buf`.
-    fn response_received(&self, status: MailboxStatus, rx_buf: &'static mut [u32], dw_len: usize);
+    /// * `dlen` - Number of valid bytes in `rx_buf`.
+    fn response_received(&self, status: MailboxStatus, rx_buf: &'static mut [u32], dlen: usize);
 
     /// Called when a send operation completes.
     ///

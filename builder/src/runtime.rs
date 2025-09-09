@@ -246,8 +246,8 @@ struct CachedValues {
 impl Default for CachedValues {
     fn default() -> Self {
         CachedValues {
-            kernel_size: 136 * 1024,
-            apps_offset: (mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset + 136 * 1024)
+            kernel_size: 140 * 1024,
+            apps_offset: (mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset + 140 * 1024)
                 as usize,
             apps_size: 80 * 1024,
         }
