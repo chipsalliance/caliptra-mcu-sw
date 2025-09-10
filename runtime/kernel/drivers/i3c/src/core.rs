@@ -322,7 +322,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // write the descriptor first
         self.registers
             .tti_tti_ibi_port
-            .set((IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(len)).into());
+            .set((IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(4)).into());
         // write length in big-endian format
         self.registers.tti_tti_ibi_port.set(len.swap_bytes());
         self.pending_ibi.set((mdb, len));
