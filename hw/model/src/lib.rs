@@ -512,6 +512,14 @@ mod tests {
             mbox.mbox_execute().write(|w| w.execute(true));
         });
 
+        // The hardware does not send the interrupt because it thinks MCU controls the mailbox. We
+        // need to manually trigger it.
+        model.mcu_manager().with_mci(|mci| {
+            mci.intr_block_rf()
+                .notif0_intr_trig_r()
+                .write(|w| w.notif_mbox0_cmd_avail_trig(true));
+        });
+
         while cmd_status(&mut model).cmd_busy() {
             model.step();
         }
@@ -519,7 +527,9 @@ mod tests {
         model.mcu_manager().with_mbox0(|mbox| {
             assert!(!mbox.mbox_cmd_status().read().status().cmd_failure());
             assert!(mbox.mbox_cmd_status().read().status().data_ready());
+            assert_eq!(mbox.mbox_dlen().read(), 4);
             assert_eq!(mbox.mbox_sram().at(0).read(), 0x1000_0000);
+            mbox.mbox_execute().write(|w| w.execute(false));
         });
     }
 }
