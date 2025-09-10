@@ -333,11 +333,14 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             ]);
 
             // Add optional path to the caliptra-sw directory
-            if let Some(caliptra_sw) = caliptra_sw {
+            let basename = if let Some(caliptra_sw) = caliptra_sw {
                 let basename = caliptra_sw.file_name().unwrap().to_str().unwrap();
                 let caliptra_sw = std::fs::canonicalize(&caliptra_sw)?;
                 cmd.arg(&format!("-v{}:/{basename}", caliptra_sw.display()));
-            }
+                basename
+            } else {
+                ""
+            };
 
             let config = Configuration::from_cmd(target_host.as_deref())?;
 
@@ -348,12 +351,13 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             // Assumes you are using `../caliptra-sw` as your crate path in Cargo.toml
             // TODO(clundin): Clean this up...
             let (features, work_dir) = match config {
-                Configuration::Subsystem => ("fpga_realtime", "/work-dir"),
+                Configuration::Subsystem => ("fpga_realtime", "/work-dir".to_string()),
                 Configuration::CoreOnSubsystem => {
                     if caliptra_sw.is_none() {
                         bail!("have to set `caliptra-sw` flag when using core-on-subsystem");
                     }
-                    ("fpga_subsystem,itrng", "/caliptra-sw")
+
+                    ("fpga_subsystem,itrng", format!("/{basename}"))
                 }
             };
 
