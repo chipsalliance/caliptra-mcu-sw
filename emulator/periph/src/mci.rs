@@ -255,6 +255,16 @@ impl MciPeripheral for Mci {
             .regs
             .borrow_mut()
             .intr_block_rf_notif0_intr_trig_r = new_val;
+
+        let cur_value = self
+            .read_mci_reg_intr_block_rf_notif0_internal_intr_r()
+            .reg
+            .get();
+        let new_val = cur_value | val.reg.get();
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_notif0_internal_intr_r = new_val;
     }
 
     fn write_mci_reg_reset_request(
