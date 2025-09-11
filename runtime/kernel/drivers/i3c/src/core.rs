@@ -50,7 +50,7 @@ pub struct I3CCore<'a, A: Alarm<'a>> {
     alarm: VirtualMuxAlarm<'a, A>,
     retry_outgoing_read: Cell<bool>,
     retry_incoming_write: Cell<bool>,
-    pending_ibi: OptionalCell<(u8, u32)>,
+    pending_ibi: OptionalCell<(u8, u16)>,
 }
 
 impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
@@ -240,7 +240,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // TODO: we have no way to send this to the client
     }
 
-    fn send_ibi(&self, mdb: u8, len: u32) {
+    fn send_ibi(&self, mdb: u8, len: u16) {
         romtime::println!(
             "[mcu-runtime-i3c] Sending I3C IBI with MDB {:02x} len {}",
             mdb,
@@ -249,14 +249,11 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // write the descriptor first
         self.registers
             .tti_tti_ibi_port
-            .set((IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(3)).into());
+            .set((IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(2)).into());
 
-        // Note: we only write 3 bytes so that the IBI is 4 bytes long, which makes the controller
-        // happier.
-
-        // write length in big-endian format so that it is read in little-endian by
-        // the controller, confusingly.
-        self.registers.tti_tti_ibi_port.set(len.swap_bytes());
+        // Note: we only write 2 bytes so that the IBI is <=4 bytes long so that
+        // the controller can read it in one dword.
+        self.registers.tti_tti_ibi_port.set(len.swap_bytes() as u32);
         self.pending_ibi.set((mdb, len));
     }
 
@@ -310,7 +307,7 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         // immediately send the read to the I3C target interface and send an IBI so the controller knows we have data
         self.handle_outgoing_read();
         // send the length as part of the IBI
-        self.send_ibi(MDB_PENDING_READ_MCTP, len as u32);
+        self.send_ibi(MDB_PENDING_READ_MCTP, len as u16);
         Ok(())
     }
 
