@@ -56,6 +56,7 @@ impl Default for VendorDefRespHdr {
 impl VendorDefRespHdr {
     fn new(spdm_version: SpdmVersion, standard_id: u16, vendor_id: &[u8]) -> Self {
         let mut vid = [0u8; MAX_SPDM_VENDOR_ID_LEN as usize];
+        assert!(vendor_id.len() <= MAX_SPDM_VENDOR_ID_LEN as usize);
         vid[..vendor_id.len()].copy_from_slice(vendor_id);
         Self {
             spdm_version: spdm_version.into(),
@@ -107,6 +108,9 @@ impl Codec for VendorDefRespHdr {
         let param2 = u8::decode(buffer)?;
         let standard_id = u16::decode(buffer)?;
         let vendor_id_len = u8::decode(buffer)?;
+        if vendor_id_len as usize > MAX_SPDM_VENDOR_ID_LEN as usize {
+            Err(CodecError::BufferOverflow)?;
+        }
         let mut vendor_id = [0u8; MAX_SPDM_VENDOR_ID_LEN as usize];
         decode_u8_slice(buffer, &mut vendor_id[..vendor_id_len as usize])?;
         let resp_len = u16::decode(buffer)?;
@@ -263,12 +267,7 @@ async fn generate_vendor_defined_response<'a>(
     let vdm_handler = match vdm_handler {
         Some(handler) => handler,
         None => {
-            return Err(ctx.generate_error_response(
-                rsp,
-                ErrorCode::UnsupportedRequest,
-                ReqRespCode::VendorDefinedRequest as u8,
-                None,
-            ));
+            return Err((false, CommandError::MissingVdmHandler));
         }
     };
     match vdm_handler.handle_request(vdm_req_buf, rsp).await {
