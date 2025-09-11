@@ -17,6 +17,7 @@ pub const MCI_BASE: StaticRef<mci::regs::Mci> =
     unsafe { StaticRef::new(mci::MCI_TOP_ADDR as *const mci::regs::Mci) };
 
 pub const MCU_MBOX0_SRAM_BASE: u32 = mci::MCI_TOP_ADDR + 0x40_0000;
+pub const MCU_MBOX1_SRAM_BASE: u32 = mci::MCI_TOP_ADDR + 0x80_0000;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum McuMboxState {
@@ -42,18 +43,22 @@ pub struct McuMailbox<'a, A: Alarm<'a>> {
     client: OptionalCell<&'a dyn MailboxClient>,
 }
 
-fn mcu_mbox0_sram_static_ref(len: usize) -> &'static mut [u32] {
-    unsafe { core::slice::from_raw_parts_mut(MCU_MBOX0_SRAM_BASE as *mut u32, len) }
+fn mcu_mbox0_sram_static_ref(base: u32, len: usize) -> &'static mut [u32] {
+    unsafe { core::slice::from_raw_parts_mut(base as *mut u32, len) }
 }
 
 impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
     const DEFER_SEND_DONE_TICKS: u32 = 1000;
 
-    pub fn new(registers: StaticRef<mci::regs::Mci>, alarm: &'a MuxAlarm<'a, A>) -> Self {
+    pub fn new(
+        registers: StaticRef<mci::regs::Mci>,
+        sram_base: u32,
+        alarm: &'a MuxAlarm<'a, A>,
+    ) -> Self {
         let dw_len = registers.mcu_mbox0_csr_mbox_sram.len();
         McuMailbox {
             registers,
-            data_buf: TakeCell::new(mcu_mbox0_sram_static_ref(dw_len)),
+            data_buf: TakeCell::new(mcu_mbox0_sram_static_ref(sram_base, dw_len)),
             data_buf_len: dw_len,
             state: Cell::new(McuMboxState::Idle),
             timer_mode: Cell::new(TimerMode::NoTimer),

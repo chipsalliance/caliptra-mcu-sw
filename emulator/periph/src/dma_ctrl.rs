@@ -21,6 +21,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
+use crate::McuMailbox0Internal;
+
 pub enum DmaCtrlIntType {
     Error = 1,
     Event = 2,
@@ -29,6 +31,8 @@ pub enum DmaCtrlIntType {
 pub enum AXIPeripheral {
     McuSram = 0,
     ExternalSram = 1,
+    McuMboxSram0 = 2,
+    McuMboxSram1 = 3,
 }
 
 #[derive(Clone, Copy)]
@@ -52,6 +56,16 @@ const EXTERNAL_SRAM_END_ADDR: AxiAddr = AxiAddr {
     hi: 0x2000_0000,
 };
 
+const MCU_MBOX0_SRAM_END_ADDR: AxiAddr = AxiAddr {
+    lo: 0xffff_ffff,
+    hi: 0x3000_0000,
+};
+
+const MCU_MBOX1_SRAM_END_ADDR: AxiAddr = AxiAddr {
+    lo: 0xffff_ffff,
+    hi: 0x4000_0000,
+};
+
 /// A dummy dma controller peripheral for emulation purposes.
 pub struct DummyDmaCtrl {
     interrupt_state: ReadWriteRegister<u32, DmaInterruptState::Register>,
@@ -65,6 +79,8 @@ pub struct DummyDmaCtrl {
     op_status: ReadWriteRegister<u32, DmaOpStatus::Register>,
     mcu_sram: Option<Rc<RefCell<Ram>>>,
     external_sram: Option<Rc<RefCell<Ram>>>,
+    mcu_mailbox0: Option<McuMailbox0Internal>,
+    mcu_mailbox1: Option<McuMailbox0Internal>,
     timer: Timer,
     operation_start: Option<ActionHandle>,
     error_irq: Irq,
@@ -79,12 +95,15 @@ impl DummyDmaCtrl {
         error_irq: Irq,
         event_irq: Irq,
         external_sram: Option<Rc<RefCell<Ram>>>,
+        mcu_mailbox0: Option<McuMailbox0Internal>,
+        mcu_mailbox1: Option<McuMailbox0Internal>,
     ) -> Result<Self, std::io::Error> {
         let timer = Timer::new(clock);
-
         Ok(Self {
             mcu_sram: None,
             external_sram,
+            mcu_mailbox0,
+            mcu_mailbox1,
             interrupt_state: ReadWriteRegister::new(0x0000_0000),
             interrupt_enable: ReadWriteRegister::new(0x0000_0000),
 
@@ -166,14 +185,21 @@ impl DummyDmaCtrl {
             AxiAddr { hi, .. } if hi <= EXTERNAL_SRAM_END_ADDR.hi => {
                 Some(AXIPeripheral::ExternalSram)
             }
+            AxiAddr { hi, .. } if hi <= MCU_MBOX0_SRAM_END_ADDR.hi => {
+                Some(AXIPeripheral::McuMboxSram0)
+            }
+            AxiAddr { hi, .. } if hi <= MCU_MBOX1_SRAM_END_ADDR.hi => {
+                Some(AXIPeripheral::McuMboxSram1)
+            }
             _ => None,
         }
     }
 
-    fn get_axi_ram(&self, peripeheral: AXIPeripheral) -> Option<Rc<RefCell<Ram>>> {
-        match peripeheral {
+    fn get_axi_ram(&self, peripheral: AXIPeripheral) -> Option<Rc<RefCell<Ram>>> {
+        match peripheral {
             AXIPeripheral::McuSram => self.mcu_sram.clone(),
             AXIPeripheral::ExternalSram => self.external_sram.clone(),
+            _ => None,
         }
     }
 
@@ -184,6 +210,8 @@ impl DummyDmaCtrl {
         match peripheral {
             AXIPeripheral::McuSram => Some(addr.lo - RAM_ORG),
             AXIPeripheral::ExternalSram => Some(addr.lo),
+            AXIPeripheral::McuMboxSram0 => Some(addr.lo),
+            AXIPeripheral::McuMboxSram1 => Some(addr.lo),
         }
     }
 
@@ -208,6 +236,47 @@ impl DummyDmaCtrl {
 
         let source_addr = Self::ram_address_to_offset(source_addr).unwrap() as usize;
         let dest_addr = Self::ram_address_to_offset(dest_addr).unwrap() as usize;
+
+        if dest_ram == Some(AXIPeripheral::McuMboxSram0) {
+            let source_ram = self.get_axi_ram(source_ram.unwrap()).unwrap();
+            let source_ram = source_ram.borrow_mut();
+            let source_data = &source_ram.data()[source_addr..source_addr + xfer_size];
+
+            if let Some(mbox0) = &self.mcu_mailbox0 {
+                for (index, chunk) in source_data.chunks(4).enumerate() {
+                    let mut data = [0u8; 4];
+                    data[..chunk.len()].copy_from_slice(chunk);
+                    let value = u32::from_le_bytes(data);
+                    let regs = &mbox0.regs;
+                    regs.lock()
+                        .unwrap()
+                        .write_mcu_mbox0_csr_mbox_sram(value, index + dest_addr);
+                }
+                return Ok(());
+            } else {
+                return Err(DmaOpError::WriteError);
+            }
+        } else if dest_ram == Some(AXIPeripheral::McuMboxSram1) {
+            let source_ram = self.get_axi_ram(source_ram.unwrap()).unwrap();
+            let source_ram = source_ram.borrow_mut();
+            let source_data = &source_ram.data()[source_addr..source_addr + xfer_size];
+
+            if let Some(mbox1) = &self.mcu_mailbox1 {
+                for (index, chunk) in source_data.chunks(4).enumerate() {
+                    let mut data = [0u8; 4];
+                    data[..chunk.len()].copy_from_slice(chunk);
+                    let value = u32::from_le_bytes(data);
+                    let regs = &mbox1.regs;
+                    regs.lock()
+                        .unwrap()
+                        .write_mcu_mbox0_csr_mbox_sram(value, index + dest_addr.div_ceil(4));
+                }
+                return Ok(());
+            } else {
+                return Err(DmaOpError::WriteError);
+            }
+        }
+
         if source_ram == dest_ram {
             let ram = self.get_axi_ram(source_ram.unwrap()).unwrap();
             let mut ram = ram.borrow_mut();
@@ -445,8 +514,15 @@ mod test {
         let (dma_ctrl_error_irq, dma_ctrl_event_irq) = (pic.register_irq(23), pic.register_irq(24));
 
         let mut dma_controller = Box::new(
-            DummyDmaCtrl::new(clock, dma_ctrl_error_irq, dma_ctrl_event_irq, external_sram)
-                .unwrap(),
+            DummyDmaCtrl::new(
+                clock,
+                dma_ctrl_error_irq,
+                dma_ctrl_event_irq,
+                external_sram,
+                None,
+                None,
+            )
+            .unwrap(),
         );
 
         if let Some(mcu_sram) = mcu_sram {

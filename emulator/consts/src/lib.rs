@@ -35,3 +35,5 @@ pub const ROM_DEDICATED_RAM_ORG: u32 = 0x5000_0000;
 pub const ROM_DEDICATED_RAM_SIZE: u32 = 256 * 1024;
 pub const DIRECT_READ_FLASH_ORG: u32 = 0x3800_0000;
 pub const DIRECT_READ_FLASH_SIZE: u32 = 64 * 1024 * 1024; // Memory-mapped primary flash (64MB)
+pub const MCU_MAILBOX0_SRAM_SIZE: u32 = 2 * 1024 * 1024;
+pub const MCU_MAILBOX1_SRAM_SIZE: u32 = 2 * 1024 * 1024;
