@@ -49,16 +49,24 @@ The ARM CPU takes the place of an SOC manager and can drive stimulus to Caliptra
    - Initial boot requires connecting over serial. The first serial port is for the PS. See below for settings.
    - Initial credentials
      - User: ubuntu Pass: ubuntu
+   - Update the date to avoid apt/git failures
+     ```
+     sudo dpkg-reconfigure tzdata
+     sudo date -s 'yyyy-mm-dd hh:mm'
+     ```
    - Install software dependencies - *Do not update the system*
      ```shell
      sudo apt update
      sudo apt install make gcc
      ```
    - Install rustup using Unix directions: https://rustup.rs/#
+     ```
+     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+     ```
    - [Optional] Assign a hostname for SSH access.
    - [Optional] Save uboot environment variables to avoid the MAC being randomized each boot.
      - When connected to the serial port interrupt uboot at the message "Hit any key to stop autoboot:  0"
-     - Issue 'saveenv' command to uboot, which creates an env file in the boot partition for use in subsequent boots.
+     - Issue ```saveenv``` command to uboot, which creates an env file in the boot partition for use in subsequent boots.
 
 #### Serial port configuration: ####
 The USB Type-C connecter J207 on the VCK190 provides UART and JTAG access to the board using an FTDI USB to quad UART/Serial converter.
@@ -137,6 +145,12 @@ git submodule update
 cargo xtask fpga-install-kernel-modules
 ```
 
+### Common Issues ###
+- Caliptra logic missing or system hang when attempting to access FPGA Wrapper
+  - ```sudo shutdown now``` and use power switch to reboot system
+- Failures accessing GitHub or package repositories
+  - Date incorrect. Fix date using: ```sudo date -s 'yyyy-mm-dd hh::mm'```
+
 ### Processing System - Programmable Logic interfaces ###
 [FPGA Wrapper Registers](fpga_wrapper_regs.md)
 
@@ -155,6 +169,15 @@ cargo xtask fpga-install-kernel-modules
 | AXI Firewall Control                | Always               | 4 KiB        | 0xA409_0000   | 0xA409_0FFF |
 | Caliptra                            | SS reset to Caliptra | 1 MiB        | 0xA410_0000   | 0xA41F_FFFF |
 | MCI                                 | cptra_ss_rst_b       | 16 MiB       | 0xA800_0000   | 0xA8FF_FFFF |
+
+### Waveform Debug ###
+If built with DEBUG=TRUE common signals for debug will be connected to ILAs. In addition images may be built with additional debug signals. This is a general procedure for loading a probes file when consuming an image built by someone else. If the image was built locally, this is unnecessary because the probes file will be loaded automatically.
+- Open Vivado 2024.2. Under "Tasks" there is an option for "Open Hardware Manager"
+- Open target
+  - If the machine running Vivado is directly connected over USB it can be opened automatically. Alternatively Vivado can connect to a remote host running the hw-server that is connected to the FPGA.
+- Load the ltx
+  - Under the "Hardware Device Properties" menu specify the "Probes file" by selecting the "..." button on the right.
+- Open the ILA in the main window to view the waveform window.
 
 ### JTAG debug
 Requirements:

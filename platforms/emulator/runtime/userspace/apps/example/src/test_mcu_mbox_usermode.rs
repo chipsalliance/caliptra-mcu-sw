@@ -24,14 +24,18 @@ pub async fn test_mcu_mbox_usermode_loopback() {
 
         // Echo the received payload back as the response
         let response_data = &request_buffer[..payload_len];
-        let send_result = mcu_mbox0
-            .send_response(response_data, MbxCmdStatus::Complete)
-            .await;
-
+        let send_result = mcu_mbox0.send_response(response_data).await;
         assert!(
             send_result.is_ok(),
             "Failed to send response: {:?}",
             send_result.err()
+        );
+
+        let finish_result = mcu_mbox0.finish_response(MbxCmdStatus::Complete);
+        assert!(
+            finish_result.is_ok(),
+            "Failed to finish response: {:?}",
+            finish_result.err()
         );
     }
 }
