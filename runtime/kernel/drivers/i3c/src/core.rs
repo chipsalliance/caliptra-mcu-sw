@@ -241,6 +241,13 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     fn send_ibi(&self, mdb: u8, len: u16) {
+        if self.pending_ibi.is_some() {
+            // we can only have one IBI pending at a time
+            romtime::println!(
+                "[mcu-runtime-i3c] Attempted to send IBI while another is pending, ignoring"
+            );
+            return;
+        }
         romtime::println!(
             "[mcu-runtime-i3c] Sending I3C IBI with MDB {:02x} len {}",
             mdb,
