@@ -12,6 +12,8 @@ Abstract:
 
 --*/
 
+use bitflags::bitflags;
+
 const ROM_INITIALIZATION_BASE: u32 = 1;
 const LIFECYCLE_MANAGEMENT_BASE: u32 = 65;
 const OTP_FUSE_OPERATIONS_BASE: u32 = 129;
@@ -86,5 +88,29 @@ impl From<McuRomBootStatus> for u32 {
     /// Converts to this type from the input type.
     fn from(status: McuRomBootStatus) -> u32 {
         status as u32
+    }
+}
+
+pub struct McuBootMilestones(u8);
+
+bitflags! {
+    impl McuBootMilestones: u8 {
+        const ROM_STARTED                   = 0b1 << 0;
+        const CPTRA_BOOT_GO_ASSERTED        = 0b1 << 1;
+        const CPTRA_FUSES_WRITTEN           = 0b1 << 2;
+        const RI_DOWNLOAD_COMPLETED         = 0b1 << 3;
+        const FLASH_RECOVERY_FLOW_COMPLETED = 0b1 << 4;
+    }
+}
+
+impl From<u8> for McuBootMilestones {
+    fn from(value: u8) -> McuBootMilestones {
+        McuBootMilestones(value)
+    }
+}
+
+impl From<McuBootMilestones> for u8 {
+    fn from(value: McuBootMilestones) -> u8 {
+        value.0
     }
 }
