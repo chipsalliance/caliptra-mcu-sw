@@ -499,30 +499,27 @@ mod tests {
         .unwrap();
 
         fn cmd_status(model: &mut DefaultHwModel) -> MboxStatusE {
-            model.mcu_manager().with_regs(|mcu| {
-                let mbox0 = mcu.mbox0();
-                mbox0.mbox_cmd_status().read().status()
-            })
+            model
+                .mcu_manager()
+                .with_mbox0(|mbox| mbox.mbox_cmd_status().read().status())
         }
 
         // TODO: Make a cleaner command/response API similar to Caliptra HW model
         // Send command that echoes the command and input message
-        model.mcu_manager().with_regs(|mcu| {
-            let mbox0 = mcu.mbox0();
-            assert!(mbox0.mbox_lock().read().lock());
-            mbox0.mbox_cmd().write(|_| 0x1000_0000);
-            mbox0.mbox_execute().write(|w| w.execute(true));
+        model.mcu_manager().with_mbox0(|mbox| {
+            assert!(mbox.mbox_lock().read().lock());
+            mbox.mbox_cmd().write(|_| 0x1000_0000);
+            mbox.mbox_execute().write(|w| w.execute(true));
         });
 
         while cmd_status(&mut model).cmd_busy() {
             model.step();
         }
 
-        model.mcu_manager().with_regs(|mcu| {
-            let mbox0 = mcu.mbox0();
-            assert!(!mbox0.mbox_cmd_status().read().status().cmd_failure());
-            assert!(mbox0.mbox_cmd_status().read().status().data_ready());
-            assert_eq!(mbox0.mbox_sram().at(0).read(), 0x1000_0000);
+        model.mcu_manager().with_mbox0(|mbox| {
+            assert!(!mbox.mbox_cmd_status().read().status().cmd_failure());
+            assert!(mbox.mbox_cmd_status().read().status().data_ready());
+            assert_eq!(mbox.mbox_sram().at(0).read(), 0x1000_0000);
         });
     }
 }
