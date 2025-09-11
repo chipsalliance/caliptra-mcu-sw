@@ -266,6 +266,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 self.set_alarm(Self::RETRY_WAIT_TICKS);
             } else {
                 // re-send IBI
+                romtime::println!("[mcu-runtime-i3c] I3C IBI failed, resending");
                 self.send_ibi(mdb, len);
             }
             return;
