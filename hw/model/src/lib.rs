@@ -475,3 +475,51 @@ fn reg_access_test() {
     // TODO: Check the LC periph reports correct revision
     // assert_eq!(u32::from(mcu_mgr.lc_ctrl().hw_revision0().read()), 0x0);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
+    use mcu_builder::firmware;
+
+    #[test]
+    pub fn test_mailbox_execute() {
+        let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
+        let mcu_rom = binaries
+            .test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)
+            .unwrap();
+
+        let mut model = new(
+            InitParams {
+                mcu_rom: &mcu_rom,
+                ..Default::default()
+            },
+            BootParams::default(),
+        )
+        .unwrap();
+
+        fn cmd_status(model: &mut DefaultHwModel) -> MboxStatusE {
+            model
+                .mcu_manager()
+                .with_mbox0(|mbox| mbox.mbox_cmd_status().read().status())
+        }
+
+        // TODO: Make a cleaner command/response API similar to Caliptra HW model
+        // Send command that echoes the command and input message
+        model.mcu_manager().with_mbox0(|mbox| {
+            assert!(mbox.mbox_lock().read().lock());
+            mbox.mbox_cmd().write(|_| 0x1000_0000);
+            mbox.mbox_execute().write(|w| w.execute(true));
+        });
+
+        while cmd_status(&mut model).cmd_busy() {
+            model.step();
+        }
+
+        model.mcu_manager().with_mbox0(|mbox| {
+            assert!(!mbox.mbox_cmd_status().read().status().cmd_failure());
+            assert!(mbox.mbox_cmd_status().read().status().data_ready());
+            assert_eq!(mbox.mbox_sram().at(0).read(), 0x1000_0000);
+        });
+    }
+}

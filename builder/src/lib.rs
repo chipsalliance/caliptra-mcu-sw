@@ -3,6 +3,7 @@
 mod all;
 mod apps;
 mod caliptra;
+pub mod firmware;
 pub mod flash_image;
 mod rom;
 mod runtime;
@@ -10,7 +11,7 @@ mod tbf;
 
 pub use all::{all_build, AllBuildArgs, FirmwareBinaries};
 pub use caliptra::{CaliptraBuilder, ImageCfg};
-pub use rom::{rom_build, rom_ld_script};
+pub use rom::{rom_build, rom_ld_script, test_rom_build};
 pub use runtime::{
     runtime_build_no_apps_uncached, runtime_build_with_apps_cached, runtime_ld_script,
 };

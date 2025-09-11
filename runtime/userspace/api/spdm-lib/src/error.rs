@@ -43,6 +43,7 @@ pub enum CommandError {
     UnsupportedLargeResponse,
     SignCtx(SignCtxError),
     InvalidChunkContext,
+    MissingVdmHandler,
     Chunk(ChunkError),
     CertStore(CertStoreError),
     CaliptraApi(CaliptraApiError),
