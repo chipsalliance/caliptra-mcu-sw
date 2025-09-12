@@ -17,5 +17,6 @@ mcu-mbox-comm.workspace = true
 kernel.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true
+tock-registers.workspace = true
 ureg.workspace = true
 zerocopy.workspace = true

@@ -507,7 +507,7 @@ mod tests {
         // TODO: Make a cleaner command/response API similar to Caliptra HW model
         // Send command that echoes the command and input message
         model.mcu_manager().with_mbox0(|mbox| {
-            assert!(mbox.mbox_lock().read().lock());
+            assert!(!mbox.mbox_lock().read().lock());
             mbox.mbox_cmd().write(|_| 0x1000_0000);
             mbox.mbox_execute().write(|w| w.execute(true));
         });

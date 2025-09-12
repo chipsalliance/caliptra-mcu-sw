@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use emulator_periph::{McuMailbox0External, MCU_MAILBOX0_SRAM_SIZE};
+use emulator_consts::MCU_MAILBOX0_SRAM_SIZE;
+use emulator_periph::McuMailbox0External;
 use registers_generated::mci::bits::MboxExecute;
 use tock_registers::interfaces::Readable;
 
@@ -15,7 +16,7 @@ impl McuMailboxTransport {
     }
 
     pub fn execute(&self, cmd: u32, payload: &[u8]) -> Result<(), McuMailboxError> {
-        if payload.len() > MCU_MAILBOX0_SRAM_SIZE {
+        if payload.len() > MCU_MAILBOX0_SRAM_SIZE as usize {
             return Err(McuMailboxError::Overflow);
         }
 

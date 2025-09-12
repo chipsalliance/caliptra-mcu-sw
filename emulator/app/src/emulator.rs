@@ -35,7 +35,7 @@ use emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
 use emulator_periph::MciMailboxRequester;
 use emulator_periph::{
     CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
-    McuMailbox0Internal, McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp, OtpArgs,
+    McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp, OtpArgs,
 };
 use emulator_registers_generated::dma::DmaPeripheral;
 use emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
@@ -724,11 +724,16 @@ impl Emulator {
             pic.register_irq(McuRootBus::DMA_ERROR_IRQ),
             pic.register_irq(McuRootBus::DMA_EVENT_IRQ),
             Some(root_bus.external_test_sram.clone()),
+            Some(root_bus.mcu_mailbox0.clone()),
+            Some(root_bus.mcu_mailbox1.clone()),
         )
         .unwrap();
 
         emulator_periph::DummyDmaCtrl::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
         let mci_irq = root_bus.mci_irq.clone();
+
+        let mcu_mailbox0 = root_bus.mcu_mailbox0.clone();
+        let mcu_mailbox1 = root_bus.mcu_mailbox1.clone();
 
         let delegates: Vec<Box<dyn Bus>> = vec![
             Box::new(root_bus),
@@ -750,8 +755,6 @@ impl Emulator {
 
         let lc = LcCtrl::new();
 
-        let mcu_mailbox0 = McuMailbox0Internal::new(&clock.clone());
-
         let otp = Otp::new(
             &clock.clone(),
             OtpArgs {
@@ -765,7 +768,18 @@ impl Emulator {
                 ..Default::default()
             },
         )?;
-        let mci = Mci::new(&clock.clone(), ext_mci, mci_irq, Some(mcu_mailbox0.clone()));
+        #[cfg(any(
+            feature = "test-mcu-mbox-soc-requester-loopback",
+            feature = "test-mcu-mbox-usermode"
+        ))]
+        let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
+        let mci = Mci::new(
+            &clock.clone(),
+            ext_mci,
+            mci_irq,
+            Some(mcu_mailbox0),
+            Some(mcu_mailbox1),
+        );
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
@@ -870,9 +884,7 @@ impl Emulator {
         {
             const SOC_AGENT_ID: u32 = 0x1;
             use emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;
-            let transport = McuMailboxTransport::new(
-                mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(SOC_AGENT_ID)),
-            );
+            let transport = McuMailboxTransport::new(ext_mcu_mailbox0);
             let test = crate::tests::emulator_mcu_mailbox_test::RequestResponseTest::new(transport);
             test.run();
         }

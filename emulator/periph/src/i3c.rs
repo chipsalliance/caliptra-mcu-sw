@@ -932,6 +932,12 @@ impl I3cPeripheral for I3c {
                     Device::ExternalTestSram => {
                         self.events_to_mcu.as_mut().unwrap().send(event).unwrap();
                     }
+                    Device::McuMbox0Sram => {
+                        self.events_to_mcu.as_mut().unwrap().send(event).unwrap();
+                    }
+                    Device::McuMbox1Sram => {
+                        self.events_to_mcu.as_mut().unwrap().send(event).unwrap();
+                    }
                     _ => {}
                 }
             }

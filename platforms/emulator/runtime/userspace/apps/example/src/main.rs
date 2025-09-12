@@ -42,6 +42,9 @@ mod test_mci;
 #[cfg(feature = "test-mcu-mbox-usermode")]
 mod test_mcu_mbox_usermode;
 
+#[cfg(feature = "test-mbox-sram")]
+mod test_mbox_sram;
+
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
@@ -242,6 +245,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
     #[cfg(any(feature = "test-mcu-svn-gt-fuse", feature = "test-mcu-svn-lt-fuse"))]
     {
         writeln!(console_writer, "MCU Image SVN check passed").unwrap();
+        romtime::test_exit(0);
+    }
+    #[cfg(feature = "test-mbox-sram")]
+    {
+        writeln!(console_writer, "Running MEM-REG read/write test").unwrap();
+        test_mbox_sram::test_mem_reg_read_write().await;
         romtime::test_exit(0);
     }
     writeln!(console_writer, "app finished").unwrap();

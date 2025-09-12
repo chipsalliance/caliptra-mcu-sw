@@ -14,10 +14,14 @@ mod test {
         PackageHeaderInformation, StringType,
     };
     use pldm_fw_pkg::FirmwareManifest;
+    use std::env;
     use std::path::PathBuf;
     use std::process::ExitStatus;
 
-    const CALIPTRA_EXTERNAL_RAM_BASE: u64 = 0x8000_0000;
+    // Set an arbitrary MCI base address
+    const MCI_BASE_AXI_ADDRESS: u64 = 0xAAAAAAAA_00000000;
+
+    const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
 
     #[derive(Clone)]
     struct TestOptions {
@@ -618,6 +622,11 @@ mod test {
     // Common test function for both flash-based and streaming boot
     fn test_soc_boot(is_flash_based_boot: bool) {
         let lock = TEST_LOCK.lock().unwrap();
+        env::set_var(
+            "CPTRA_EMULATOR_SS_MCI_OFFSET",
+            format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
+        );
+
         let feature = if is_flash_based_boot {
             "test-flash-based-boot"
         } else {
@@ -639,13 +648,15 @@ mod test {
         let soc_images = vec![
             ImageCfg {
                 path: soc_images_paths[0].clone(),
-                load_addr: CALIPTRA_EXTERNAL_RAM_BASE,
+                load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
                 image_id: 4096,
                 ..Default::default()
             },
             ImageCfg {
                 path: soc_images_paths[1].clone(),
-                load_addr: CALIPTRA_EXTERNAL_RAM_BASE + soc_image_fw_1.len() as u64,
+                load_addr: MCI_BASE_AXI_ADDRESS
+                    + MCU_MBOX_SRAM1_OFFSET
+                    + soc_image_fw_1.len() as u64,
                 image_id: 4097,
                 ..Default::default()
             },

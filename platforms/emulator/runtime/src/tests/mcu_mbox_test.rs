@@ -182,7 +182,7 @@ impl<'a> EmulatedMbxSender<'a> {
 
     pub fn send_request(&self, cmd: u32, req_payload: &[u32]) {
         let lock = self.regs.mcu_mbox0_csr_mbox_lock.get();
-        assert!(lock == 1, "lock not acquired");
+        assert!(lock == 0, "lock not acquired");
         self.regs.mcu_mbox0_csr_mbox_cmd.set(cmd);
         for (i, &word) in req_payload.iter().enumerate() {
             self.regs.mcu_mbox0_csr_mbox_sram[i].set(word);

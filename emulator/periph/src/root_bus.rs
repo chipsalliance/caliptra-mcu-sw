@@ -12,14 +12,15 @@ Abstract:
 
 --*/
 
+use crate::McuMailbox0Internal;
 use crate::{spi_host::SpiHost, EmuCtrl, Uart};
 use caliptra_emu_bus::{Bus, BusError, Clock, Ram, Rom};
 use caliptra_emu_bus::{Device, Event, EventData};
 use caliptra_emu_cpu::{Irq, Pic, PicMmioRegisters};
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use emulator_consts::{
-    DIRECT_READ_FLASH_ORG, DIRECT_READ_FLASH_SIZE, EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE,
-    ROM_DEDICATED_RAM_ORG, ROM_DEDICATED_RAM_SIZE,
+    DIRECT_READ_FLASH_ORG, DIRECT_READ_FLASH_SIZE, EXTERNAL_TEST_SRAM_SIZE, MCU_MAILBOX0_SRAM_SIZE,
+    MCU_MAILBOX1_SRAM_SIZE, RAM_SIZE, ROM_DEDICATED_RAM_ORG, ROM_DEDICATED_RAM_SIZE,
 };
 use std::{
     cell::RefCell,
@@ -96,6 +97,8 @@ pub struct McuRootBus {
     pub rom_sram: Rc<RefCell<Ram>>,
     pub pic_regs: PicMmioRegisters,
     pub external_test_sram: Rc<RefCell<Ram>>,
+    pub mcu_mailbox0: McuMailbox0Internal,
+    pub mcu_mailbox1: McuMailbox0Internal,
     pub direct_read_flash: Rc<RefCell<Ram>>,
     pub mci_irq: Rc<RefCell<Irq>>,
     event_sender: Option<mpsc::Sender<Event>>,
@@ -124,6 +127,8 @@ impl McuRootBus {
         let external_test_sram = Ram::new(vec![0; EXTERNAL_TEST_SRAM_SIZE as usize]);
         let direct_read_flash = Ram::new(vec![0; DIRECT_READ_FLASH_SIZE as usize]);
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
+        let mcu_mailbox0 = McuMailbox0Internal::new(&clock.clone());
+        let mcu_mailbox1 = McuMailbox0Internal::new(&clock.clone());
 
         Ok(Self {
             rom,
@@ -138,6 +143,8 @@ impl McuRootBus {
             direct_read_flash: Rc::new(RefCell::new(direct_read_flash)),
             offsets: args.offsets,
             mci_irq: Rc::new(RefCell::new(mci_irq)),
+            mcu_mailbox0,
+            mcu_mailbox1,
         })
     }
 
@@ -367,6 +374,82 @@ impl Bus for McuRootBus {
                 let ram_size = ram.len() as usize;
                 let len = data.len().min(ram_size - start);
                 ram.data_mut()[start..start + len].copy_from_slice(&data[..len]);
+            }
+        }
+
+        if let (Device::McuMbox0Sram, EventData::MemoryRead { start_addr, len }) =
+            (event.dest, event.event.clone())
+        {
+            let start = start_addr as usize;
+            let len = len as usize;
+            if start >= MCU_MAILBOX0_SRAM_SIZE as usize
+                || start + len >= MCU_MAILBOX0_SRAM_SIZE as usize
+            {
+                println!(
+                    "Ignoring invalid MCU MBOX0 SRAM read from {}..{}",
+                    start,
+                    start + len
+                );
+            } else {
+                let data = (start..start + len).step_by(4).map(|index| {
+                    self.mcu_mailbox0
+                        .regs
+                        .lock()
+                        .unwrap()
+                        .read_mcu_mbox0_csr_mbox_sram(index)
+                });
+                let data: Vec<u8> = data
+                    .flat_map(|val| val.to_be_bytes().to_vec())
+                    .take(len)
+                    .collect();
+
+                if let Some(event_sender) = self.event_sender.as_ref() {
+                    event_sender
+                        .send(Event {
+                            src: Device::MCU,
+                            dest: event.src,
+                            event: EventData::MemoryReadResponse { start_addr, data },
+                        })
+                        .unwrap();
+                }
+            }
+        }
+
+        if let (Device::McuMbox1Sram, EventData::MemoryRead { start_addr, len }) =
+            (event.dest, event.event.clone())
+        {
+            let start = start_addr as usize;
+            let len = len as usize;
+            if start >= MCU_MAILBOX1_SRAM_SIZE as usize
+                || start + len >= MCU_MAILBOX1_SRAM_SIZE as usize
+            {
+                println!(
+                    "Ignoring invalid MCU MBOX1 SRAM read from {}..{}",
+                    start,
+                    start + len
+                );
+            } else {
+                let data = (start..start + len).step_by(4).map(|index| {
+                    self.mcu_mailbox1
+                        .regs
+                        .lock()
+                        .unwrap()
+                        .read_mcu_mbox0_csr_mbox_sram(index.div_ceil(4))
+                });
+                let data: Vec<u8> = data
+                    .flat_map(|val| val.to_be_bytes().to_vec())
+                    .take(len)
+                    .collect();
+
+                if let Some(event_sender) = self.event_sender.as_ref() {
+                    event_sender
+                        .send(Event {
+                            src: Device::MCU,
+                            dest: event.src,
+                            event: EventData::MemoryReadResponse { start_addr, data },
+                        })
+                        .unwrap();
+                }
             }
         }
 
