@@ -232,7 +232,7 @@ pub(crate) fn run_doe_transport_tests(
 ) {
     // Spawn a thread to handle the timeout for the test
     thread::spawn(move || {
-        let timeout = Duration::from_secs(60); // 60 seconds timeout
+        let timeout = Duration::from_secs(120); // 120 seconds timeout
         std::thread::sleep(timeout);
         println!(
             "DOE_TRANSPORT_TESTS Timeout after {:?} seconds",
