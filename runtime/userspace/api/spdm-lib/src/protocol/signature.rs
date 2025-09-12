@@ -4,10 +4,6 @@ use crate::protocol::*;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use libapi_caliptra::error::CaliptraApiError;
 
-pub const NONCE_LEN: usize = 32;
-
-pub const REQUESTER_CONTEXT_LEN: usize = 8;
-
 // This is the `combined_spdm_prefix` length for signing context
 pub const SPDM_SIGNING_CONTEXT_LEN: usize = SPDM_PREFIX_LEN + SPDM_CONTEXT_LEN;
 

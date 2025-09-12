@@ -1,0 +1,22 @@
+[package]
+name = "coset"
+version = "0.3.8"
+authors = ["David Drysdale <drysdale@google.com>", "Paul Crowley <paulcrowley@google.com>"]
+edition = "2018"
+license = "Apache-2.0"
+description = "Set of types for supporting COSE"
+repository = "https://github.com/google/coset"
+keywords = ["cryptography", "cose"]
+categories = ["cryptography"]
+
+[features]
+default = []
+# `std` feature enables an `Error` impl for `CoseError`
+std = []
+
+[dependencies]
+ciborium = { version = "^0.2.1", default-features = false }
+ciborium-io = { version = "^0.2.0", features = ["alloc"] }
+
+[dev-dependencies]
+hex = "^0.4.2"

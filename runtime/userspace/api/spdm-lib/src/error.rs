@@ -39,6 +39,7 @@ pub enum CommandError {
     BufferTooSmall,
     Codec(CodecError),
     ErrorCode(ErrorCode),
+    UnsupportedAsymAlgo,
     UnsupportedRequest,
     UnsupportedLargeResponse,
     SignCtx(SignCtxError),

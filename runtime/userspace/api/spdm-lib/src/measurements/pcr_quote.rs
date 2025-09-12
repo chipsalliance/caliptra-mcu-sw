@@ -13,7 +13,7 @@ use zerocopy::IntoBytes;
 const MAX_MEASUREMENT_RECORD_SIZE: usize =
     PCR_QUOTE_BUFFER_SIZE + size_of::<DmtfMeasurementBlockMetadata>();
 
-/// Structure to hold the Freeform manifest data
+/// Structure to hold the PCR Quote as Freeform manifest data
 /// The measurement record consists of 1 measurement block whose value is the PCR quote from Caliptra.
 /// The strucuture of the measurement record is as follows:
 /// _________________________________________________________________________________________________
@@ -24,35 +24,45 @@ const MAX_MEASUREMENT_RECORD_SIZE: usize =
 /// | - MeasurementSize: 2 bytes (size of the PCR Quote in DMTF measurement specification format)   |
 /// | - MeasurementBlock: measurement block (PCR Quote in DMTF measurement specification format)    |
 /// ________________________________________________________________________________________________|
-pub struct FreeformManifest {
+pub struct PcrQuote {
     measurement_record: [u8; MAX_MEASUREMENT_RECORD_SIZE],
     data_size: usize,
+    nonce: Option<[u8; 32]>,
+    asym_algo: Option<AsymAlgo>,
 }
 
-impl Default for FreeformManifest {
+impl Default for PcrQuote {
     fn default() -> Self {
-        FreeformManifest {
+        PcrQuote {
             measurement_record: [0; MAX_MEASUREMENT_RECORD_SIZE],
             data_size: 0,
+            nonce: None,
+            asym_algo: None,
         }
     }
 }
 
-#[allow(dead_code)]
-impl FreeformManifest {
+impl PcrQuote {
+    pub(crate) fn set_nonce(&mut self, nonce: [u8; 32]) {
+        self.nonce = Some(nonce);
+    }
+
+    pub(crate) fn set_asym_algo(&mut self, asym_algo: AsymAlgo) {
+        self.asym_algo = Some(asym_algo);
+    }
+
     pub(crate) fn total_measurement_count(&self) -> usize {
         1
     }
 
     pub(crate) async fn measurement_block_size(
         &mut self,
-        asym_algo: AsymAlgo,
         index: u8,
         _raw_bit_stream: bool,
     ) -> MeasurementsResult<usize> {
         if index == SPDM_MEASUREMENT_MANIFEST_INDEX || index == 0xFF {
             if self.data_size == 0 {
-                self.refresh_measurement_record(asym_algo).await?;
+                self.refresh_measurement_record().await?;
             }
             Ok(self.data_size)
         } else {
@@ -62,7 +72,6 @@ impl FreeformManifest {
 
     pub(crate) async fn measurement_block(
         &mut self,
-        asym_algo: AsymAlgo,
         index: u8,
         _raw_bit_stream: bool,
         offset: usize,
@@ -70,7 +79,7 @@ impl FreeformManifest {
     ) -> MeasurementsResult<usize> {
         if index == SPDM_MEASUREMENT_MANIFEST_INDEX || index == 0xFF {
             if self.data_size == 0 {
-                self.refresh_measurement_record(asym_algo).await?;
+                self.refresh_measurement_record().await?;
             }
             if offset >= self.data_size {
                 return Err(MeasurementsError::InvalidOffset);
@@ -91,11 +100,10 @@ impl FreeformManifest {
 
     pub(crate) async fn measurement_summary_hash(
         &mut self,
-        asym_algo: AsymAlgo,
         _measurement_summary_hash_type: u8,
         hash: &mut [u8; SHA384_HASH_SIZE],
     ) -> MeasurementsResult<()> {
-        self.refresh_measurement_record(asym_algo).await?;
+        self.refresh_measurement_record().await?;
 
         let mut offset = 0;
         let mut hash_ctx = HashContext::new();
@@ -128,7 +136,8 @@ impl FreeformManifest {
             .map_err(MeasurementsError::CaliptraApi)
     }
 
-    async fn refresh_measurement_record(&mut self, asym_algo: AsymAlgo) -> MeasurementsResult<()> {
+    async fn refresh_measurement_record(&mut self) -> MeasurementsResult<()> {
+        let asym_algo = self.asym_algo.ok_or(MeasurementsError::MissingParam("AsymAlgo"))?;
         let with_pqc_sig = asym_algo != AsymAlgo::EccP384;
         let measurement_record = &mut self.measurement_record;
         let measurement_value_size = Evidence::pcr_quote_size(with_pqc_sig);

@@ -120,7 +120,7 @@ impl MeasurementsResponse {
         let raw_bitstream_requested = self.req_attr.raw_bitstream_requested() == 1;
 
         let measurement_record_len = measurements
-            .measurement_block_size(self.asym_algo, self.meas_op, raw_bitstream_requested)
+            .measurement_block_size(self.meas_op, raw_bitstream_requested)
             .await
             .map_err(|e| (false, CommandError::Measurement(e)))?;
         // Fill the chunk buffer with the appropriate response sections
@@ -146,7 +146,6 @@ impl MeasurementsResponse {
             let bytes_to_copy = (measurement_record_len - meas_block_offset).min(rem_len);
             let bytes_filled = measurements
                 .measurement_block(
-                    self.asym_algo,
                     self.meas_op,
                     raw_bitstream_requested,
                     meas_block_offset,
@@ -217,11 +216,7 @@ impl MeasurementsResponse {
         measurements: &mut SpdmMeasurements,
     ) -> CommandResult<usize> {
         let measurement_record_size = measurements
-            .measurement_block_size(
-                self.asym_algo,
-                self.meas_op,
-                self.req_attr.raw_bitstream_requested() == 1,
-            )
+            .measurement_block_size(self.meas_op, self.req_attr.raw_bitstream_requested() == 1)
             .await
             .map_err(|e| (false, CommandError::Measurement(e)))?;
         let total_measurement_count = measurements.total_measurement_count() as u8;
@@ -383,7 +378,7 @@ impl MeasurementsResponse {
         if self.meas_op > 0 {
             // return the size of a measurement block or all measurement blocks
             rsp_size += measurements
-                .measurement_block_size(self.asym_algo, self.meas_op, false)
+                .measurement_block_size(self.meas_op, false)
                 .await
                 .map_err(|e| (false, CommandError::Measurement(e)))?;
         };
@@ -441,6 +436,9 @@ async fn process_get_measurements<'a>(
             GetMeasurementsReqSignature::decode(req_payload).map_err(|_| {
                 ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
             })?;
+        // Set the nonce in the measurements module
+        ctx.measurements
+            .set_nonce(req_signature_fields.requester_nonce);
         Some(req_signature_fields.slot_id)
     };
 

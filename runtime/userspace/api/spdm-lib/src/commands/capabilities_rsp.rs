@@ -233,9 +233,10 @@ async fn process_get_capabilities<'a>(
     // Reset the transcript depending on request code
     ctx.reset_transcript_via_req_code(ReqRespCode::GetCapabilities);
 
-    // Set the SPDM version in the transcript manager
-    ctx.shared_transcript
-        .set_spdm_version(ctx.state.connection_info.version_number());
+    // Set the SPDM version in the transcript manager and measurements module
+    let spdm_version = ctx.state.connection_info.version_number();
+    ctx.shared_transcript.set_spdm_version(spdm_version);
+    ctx.measurements.set_spdm_version(spdm_version);
 
     // Append GET_CAPABILITIES to the transcript VCA context
     ctx.append_message_to_transcript(req_payload, TranscriptContext::Vca, None)

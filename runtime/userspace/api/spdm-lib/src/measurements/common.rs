@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
-use crate::measurements::freeform_manifest::FreeformManifest;
-use crate::protocol::MeasurementSpecification;
+
+use crate::measurements::ocp_cwt::OcpCwt;
+use crate::measurements::pcr_quote::PcrQuote;
+use crate::protocol::*;
 use bitfield::bitfield;
 use libapi_caliptra::crypto::asym::AsymAlgo;
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
@@ -19,6 +21,7 @@ pub enum MeasurementsError {
     InvalidBuffer,
     InvalidOperation,
     InvalidSlotId,
+    MissingParam(&'static str),
     MeasurementSizeMismatch,
     CaliptraApi(CaliptraApiError),
 }
@@ -31,24 +34,56 @@ pub enum MeasurementChangeStatus {
 }
 
 pub(crate) enum SpdmMeasurements {
-    FreeformManifest(FreeformManifest),
+    PcrQuote(PcrQuote),
+    Ocp(OcpCwt),
 }
 
 impl Default for SpdmMeasurements {
     fn default() -> Self {
-        SpdmMeasurements::FreeformManifest(FreeformManifest::default())
+        SpdmMeasurements::PcrQuote(PcrQuote::default())
+    }
+}
+
+impl SpdmMeasurements {
+    pub(crate) fn new_pcr_quote() -> Self {
+        SpdmMeasurements::PcrQuote(PcrQuote::default())
+    }
+
+    pub(crate) fn new_ocp_cwt() -> Self {
+        SpdmMeasurements::Ocp(OcpCwt::default())
     }
 }
 
 #[allow(dead_code)]
 impl SpdmMeasurements {
+    pub(crate) fn set_nonce(&mut self, nonce: [u8; 32]) {
+        match self {
+            SpdmMeasurements::PcrQuote(manifest) => manifest.set_nonce(nonce),
+            SpdmMeasurements::Ocp(manifest) => manifest.set_nonce(nonce),
+        }
+    }
+
+    pub(crate) fn set_spdm_version(&mut self, version: SpdmVersion) {
+        if let SpdmMeasurements::Ocp(manifest) = self {
+            manifest.set_spdm_version(version);
+        }
+    }
+
+    pub(crate) fn set_asym_algo(&mut self, asym_algo: AsymAlgo) {
+        match self {
+            SpdmMeasurements::PcrQuote(manifest) => manifest.set_asym_algo(asym_algo),
+            SpdmMeasurements::Ocp(manifest) => manifest.set_asym_algo(asym_algo),
+        }
+    }
+
     /// Returns the total number of measurement blocks.
     ///
     /// # Returns
     /// The total number of measurement blocks.
     pub(crate) fn total_measurement_count(&self) -> usize {
         match self {
-            SpdmMeasurements::FreeformManifest(manifest) => manifest.total_measurement_count(),
+            SpdmMeasurements::PcrQuote(manifest) => manifest.total_measurement_count(),
+            SpdmMeasurements::Ocp(manifest) => manifest.total_measurement_count(),
         }
     }
 
@@ -57,7 +92,6 @@ impl SpdmMeasurements {
     /// when index is 0xFF, it returns the size of all measurement blocks.
     ///
     /// # Arguments
-    /// * `asym_algo` - The asymmetric algorithm negotiated.
     /// * `index` - The index of the measurement block.
     /// * `raw_bit_stream` - If true, returns the raw bit stream.
     ///
@@ -65,7 +99,6 @@ impl SpdmMeasurements {
     /// The size of the measurement block.
     pub(crate) async fn measurement_block_size(
         &mut self,
-        asym_algo: AsymAlgo,
         index: u8,
         raw_bit_stream: bool,
     ) -> MeasurementsResult<usize> {
@@ -74,10 +107,11 @@ impl SpdmMeasurements {
         }
 
         match self {
-            SpdmMeasurements::FreeformManifest(manifest) => {
-                manifest
-                    .measurement_block_size(asym_algo, index, raw_bit_stream)
-                    .await
+            SpdmMeasurements::PcrQuote(manifest) => {
+                manifest.measurement_block_size(index, raw_bit_stream).await
+            }
+            SpdmMeasurements::Ocp(manifest) => {
+                manifest.measurement_block_size(index, raw_bit_stream).await
             }
         }
     }
@@ -85,7 +119,6 @@ impl SpdmMeasurements {
     /// Returns the measurement block for the given index.
     ///
     /// # Arguments
-    /// * `asym_algo` - The asymmetric algorithm negotiated.
     /// * `index` - The index of the measurement block. Should be between 1 and 0xFE.
     /// * `raw_bit_stream` - If true, returns the raw bit stream.
     /// * `offset` - The offset to start reading from.
@@ -95,16 +128,20 @@ impl SpdmMeasurements {
     /// A result indicating success or failure.
     pub(crate) async fn measurement_block(
         &mut self,
-        asym_algo: AsymAlgo,
         index: u8,
         raw_bit_stream: bool,
         offset: usize,
         measurement_chunk: &mut [u8],
     ) -> MeasurementsResult<usize> {
         match self {
-            SpdmMeasurements::FreeformManifest(manifest) => {
+            SpdmMeasurements::PcrQuote(manifest) => {
                 manifest
-                    .measurement_block(asym_algo, index, raw_bit_stream, offset, measurement_chunk)
+                    .measurement_block(index, raw_bit_stream, offset, measurement_chunk)
+                    .await
+            }
+            SpdmMeasurements::Ocp(manifest) => {
+                manifest
+                    .measurement_block(index, raw_bit_stream, offset, measurement_chunk)
                     .await
             }
         }
@@ -114,7 +151,6 @@ impl SpdmMeasurements {
     /// This is a hash of all the measurement blocks
     ///
     /// # Arguments
-    /// * `asym_algo` - The asymmetric algorithm negotiated.
     /// * `hash` - The buffer to store the hash.
     /// * `measurement_summary_hash_type` - The type of the measurement summary hash to be calculated.
     ///   1 - TCB measurements only
@@ -124,14 +160,18 @@ impl SpdmMeasurements {
     /// A result indicating success or failure.
     pub(crate) async fn measurement_summary_hash(
         &mut self,
-        asym_algo: AsymAlgo,
         measurement_summary_hash_type: u8,
         hash: &mut [u8; SHA384_HASH_SIZE],
     ) -> MeasurementsResult<()> {
         match self {
-            SpdmMeasurements::FreeformManifest(manifest) => {
+            SpdmMeasurements::PcrQuote(manifest) => {
                 manifest
-                    .measurement_summary_hash(asym_algo, measurement_summary_hash_type, hash)
+                    .measurement_summary_hash(measurement_summary_hash_type, hash)
+                    .await
+            }
+            SpdmMeasurements::Ocp(manifest) => {
+                manifest
+                    .measurement_summary_hash(measurement_summary_hash_type, hash)
                     .await
             }
         }
