@@ -632,11 +632,9 @@ mod tests {
     use mcu_builder::firmware;
 
     #[test]
-    pub fn test_mailbox_execute() {
+    pub fn test_mailbox_execute() -> Result<()> {
         let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
-        let mcu_rom = binaries
-            .test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)
-            .unwrap();
+        let mcu_rom = binaries.test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)?;
 
         let mut model = new(
             InitParams {
@@ -644,14 +642,53 @@ mod tests {
                 ..Default::default()
             },
             BootParams::default(),
-        )
-        .unwrap();
+        )?;
+
+        // Send command that echoes the command and input message
+        assert_eq!(
+            model.mailbox_execute(0x1000_0000, &[])?,
+            Some(vec![0x00, 0x00, 0x00, 0x10]),
+        );
+
         let message: [u8; 10] = [0x90, 0x5e, 0x1f, 0xad, 0x8b, 0x60, 0xb0, 0xbf, 0x1c, 0x7e];
 
         // Send command that echoes the command and input message
         assert_eq!(
-            model.mailbox_execute(0x1000_0000, &message).unwrap(),
+            model.mailbox_execute(0x1000_0000, &message)?,
             Some([[0x00, 0x00, 0x00, 0x10].as_slice(), &message].concat()),
         );
+
+        // Send command that echoes the command and input message that is word aligned
+        assert_eq!(
+            model.mailbox_execute(0x1000_0000, &message[..8])?,
+            Some(vec![
+                0x00, 0x00, 0x00, 0x10, 0x90, 0x5e, 0x1f, 0xad, 0x8b, 0x60, 0xb0, 0xbf
+            ]),
+        );
+
+        // Send command that returns 7 bytes of output
+        assert_eq!(
+            model.mailbox_execute(0x1000_1000, &[])?,
+            Some(vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd])
+        );
+
+        // Send command that returns 7 bytes of output, and doesn't consume input
+        assert_eq!(
+            model.mailbox_execute(0x1000_1000, &[42])?,
+            Some(vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd]),
+        );
+
+        // TODO(zhalvorsen): doorbell commands seem to be hanging the interrupt controller.
+        // Re-enable these when it is working correctly.
+
+        // // Send command that returns 0 bytes of output
+        // assert_eq!(model.mailbox_execute(0x1000_2000, &[])?, Some(vec![]));
+
+        // // Send command that returns success with no output
+        // assert_eq!(model.mailbox_execute(0x2000_0000, &[])?, None);
+
+        // Send command that returns failure
+        assert!(model.mailbox_execute(0x4000_0000, &message).is_err());
+        Ok(())
     }
 }
