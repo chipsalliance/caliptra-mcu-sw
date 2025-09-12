@@ -427,12 +427,12 @@ pub trait McuHwModel {
             .with_mci(|mci| mci.fw_flow_status().read())
     }
 
-    fn mci_boot_checkpoint(&mut self) -> u32 {
-        self.mci_flow_status() & 0x00ff_ffff
+    fn mci_boot_checkpoint(&mut self) -> u16 {
+        (self.mci_flow_status() & 0x0000_ffff) as u16
     }
 
     fn mci_boot_milestones(&mut self) -> McuBootMilestones {
-        McuBootMilestones::from((self.mci_flow_status() >> 24) as u8)
+        McuBootMilestones::from((self.mci_flow_status() >> 16) as u16)
     }
 
     /// Executes `cmd` with request data `buf`. Returns `Ok(Some(_))` if

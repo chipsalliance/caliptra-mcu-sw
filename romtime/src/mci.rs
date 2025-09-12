@@ -56,24 +56,23 @@ impl Mci {
     }
 
     /// Overwrite current checkpoint, but not the milestone
-    pub fn set_flow_checkpoint(&self, status: u32) {
-        let milestone = (self.flow_milestone() as u32) << 24;
-        let checkpoint = status & 0x00ff_ffff;
-        self.set_flow_status(milestone | checkpoint);
+    pub fn set_flow_checkpoint(&self, checkpoint: u16) {
+        let milestone = u32::from(self.flow_milestone()) << 16;
+        self.set_flow_status(milestone | u32::from(checkpoint));
     }
 
-    pub fn flow_checkpoint(&self) -> u32 {
-        self.flow_status() & 0x00ff_ffff
+    pub fn flow_checkpoint(&self) -> u16 {
+        (self.flow_status() & 0x0000_ffff) as u16
     }
 
     /// Union of current milestones with incoming milestones
-    pub fn set_flow_milestone(&self, milestone: u8) {
-        let milestone = (milestone as u32) << 24;
+    pub fn set_flow_milestone(&self, milestone: u16) {
+        let milestone = u32::from(milestone) << 16;
         self.set_flow_status(milestone | self.flow_status());
     }
 
-    pub fn flow_milestone(&self) -> u8 {
-        (self.flow_status() >> 24) as u8
+    pub fn flow_milestone(&self) -> u16 {
+        (self.flow_status() >> 16) as u16
     }
 
     pub fn hw_flow_status(&self) -> u32 {
