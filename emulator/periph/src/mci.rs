@@ -105,19 +105,20 @@ impl MciPeripheral for Mci {
 
     //  mtime mcu_rv_mtime_l and cu_rv_mtime_h
     fn read_mci_reg_mcu_rv_mtime_l(&mut self) -> caliptra_emu_types::RvData {
-        self.ext_mci_regs.regs.borrow().mcu_rv_mtime_l
+
+         self.timer.now() as u32
     }
 
     fn write_mci_reg_mcu_rv_mtime_l(&mut self, val: caliptra_emu_types::RvData) {
-        self.ext_mci_regs.regs.borrow_mut().mcu_rv_mtime_l = val
+        
     }
 
     fn read_mci_reg_mcu_rv_mtime_h(&mut self) -> caliptra_emu_types::RvData {
-        self.ext_mci_regs.regs.borrow().mcu_rv_mtime_h
+        (self.timer.now() >> 32) as u32
     }
 
     fn write_mci_reg_mcu_rv_mtime_h(&mut self, val: caliptra_emu_types::RvData) {
-        self.ext_mci_regs.regs.borrow_mut().mcu_rv_mtime_h = val
+       
     }
 
     //  mtime mcu_rv_mtimecmp_l and cu_rv_mtimecmp_h
