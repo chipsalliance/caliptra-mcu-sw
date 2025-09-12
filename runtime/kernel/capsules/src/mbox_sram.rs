@@ -4,6 +4,9 @@
 
 use core::cell::RefCell;
 
+use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use kernel::hil::time::{Alarm, AlarmClient, Time};
+
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::processbuffer::{
     ReadableProcessBuffer, ReadableProcessSlice, WriteableProcessBuffer, WriteableProcessSlice,
@@ -23,7 +26,7 @@ pub const DRIVER_NUM_MCU_MBOX1_SRAM: usize = 0x9000_3001;
 #[derive(Default)]
 pub struct App {}
 
-pub struct MboxSram {
+pub struct MboxSram<'a, A: Alarm<'a>> {
     driver_num: usize,
     registers: StaticRef<mci::regs::Mci>,
     mem_ref: RefCell<&'static mut [u32]>,
@@ -36,9 +39,12 @@ pub struct MboxSram {
     >,
     // Which app is currently using the storage.
     current_app: OptionalCell<ProcessId>,
+    alarm: VirtualMuxAlarm<'a, A>,
 }
 
-impl MboxSram {
+impl<'a, A: Alarm<'a>> MboxSram<'a, A> {
+    const DEFER_SEND_DONE_TICKS: u32 = 1000;
+
     pub fn new(
         driver_num: usize,
         registers: StaticRef<mci::regs::Mci>,
@@ -49,17 +55,28 @@ impl MboxSram {
             AllowRoCount<{ ro_allow::COUNT }>,
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
-    ) -> MboxSram {
+        alarm: &'a MuxAlarm<'a, A>,
+    ) -> MboxSram<'a, A> {
         MboxSram {
             driver_num,
             registers,
             mem_ref: RefCell::new(mem_ref),
             apps: grant,
+            alarm: VirtualMuxAlarm::new(alarm),
             current_app: OptionalCell::empty(),
         }
     }
 
+    pub fn init(&'static self) {
+        self.alarm.setup();
+        self.alarm.set_alarm_client(self);
+    }
+
     pub fn write(&self, offset: usize, processid: ProcessId) -> Result<(), ErrorCode> {
+        if self.current_app.is_some() {
+            return Err(ErrorCode::BUSY);
+        }
+        self.current_app.set(processid);
         self.apps.enter(processid, |_app, kernel_data| {
             // copy the request so we can write async
             kernel_data
@@ -74,6 +91,10 @@ impl MboxSram {
     }
 
     pub fn read(&self, offset: usize, processid: ProcessId) -> Result<(), ErrorCode> {
+        if self.current_app.is_some() {
+            return Err(ErrorCode::BUSY);
+        }
+        self.current_app.set(processid);
         self.apps.enter(processid, |_app, kernel_data| {
             // copy the request so we can write async
             kernel_data
@@ -122,10 +143,16 @@ impl MboxSram {
         Ok(())
     }
 
-    fn notify_done(&self, processid: ProcessId, command: u32) {
+    fn schedule_notify_done(&self) {
+        let now = self.alarm.now();
+        self.alarm
+            .set_alarm(now, Self::DEFER_SEND_DONE_TICKS.into());
+    }
+
+    fn notify_done(&self, processid: ProcessId) {
         let _ = self.apps.enter(processid, |_, kernel_data| {
             kernel_data
-                .schedule_upcall(upcall::DONE, (command as usize, 0, 0))
+                .schedule_upcall(upcall::DONE, (0, 0, 0))
                 .map_err(|_| ErrorCode::FAIL)
         });
     }
@@ -165,8 +192,16 @@ impl MboxSram {
     }
 }
 
+impl<'a, A: Alarm<'a>> AlarmClient for MboxSram<'a, A> {
+    fn alarm(&self) {
+        if let Some(process_id) = self.current_app.take() {
+            self.notify_done(process_id);
+        }
+    }
+}
+
 /// Provide an interface for userland.
-impl SyscallDriver for MboxSram {
+impl<'a, A: Alarm<'a>> SyscallDriver for MboxSram<'a, A> {
     fn command(&self, cmd: usize, arg1: usize, _: usize, processid: ProcessId) -> CommandReturn {
         if self.current_app.is_some() {
             return CommandReturn::failure(ErrorCode::BUSY);
@@ -174,12 +209,12 @@ impl SyscallDriver for MboxSram {
         let exec_result = match cmd as u32 {
             cmd::MEMORY_READ => {
                 let res = self.read(arg1, processid);
-                self.notify_done(processid, cmd as u32);
+                self.schedule_notify_done();
                 res
             }
             cmd::MEMORY_WRITE => {
                 let res = self.write(arg1, processid);
-                self.notify_done(processid, cmd as u32);
+                self.schedule_notify_done();
                 res
             }
             cmd::ACQUIRE_LOCK => self.acquire_lock(),

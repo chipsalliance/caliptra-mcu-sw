@@ -149,7 +149,8 @@ struct VeeR {
         'static,
         mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>,
     >,
-    mcu_mbox1_staging_sram: &'static capsules_runtime::mbox_sram::MboxSram,
+    mcu_mbox1_staging_sram:
+        &'static capsules_runtime::mbox_sram::MboxSram<'static, InternalTimers<'static>>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -489,8 +490,11 @@ pub unsafe fn main() {
             mcu_mbox_driver::MCU_MBOX1_SRAM_BASE as *mut u32,
             1024 * 1024, // Allocate 1MB
         ),
+        mux_alarm,
     )
-    .finalize(kernel::static_buf!(capsules_runtime::mbox_sram::MboxSram));
+    .finalize(kernel::static_buf!(
+        capsules_runtime::mbox_sram::MboxSram<'static, InternalTimers<'static>>
+    ));
 
     let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
     chip.init(addr_of!(_pic_vector_table) as u32);
