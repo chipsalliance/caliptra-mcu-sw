@@ -2731,6 +2731,7 @@ name = "mcu-rom-common"
 version = "0.1.0"
 dependencies = [
  "bitfield",
+ "bitflags 2.9.1",
  "caliptra-api",
  "flash-image",
  "mcu-config",

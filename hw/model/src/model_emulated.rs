@@ -36,7 +36,7 @@ use emulator_periph::{
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
 use mcu_rom_common::LifecycleControllerState;
-use mcu_rom_common::McuRomBootStatus;
+use mcu_rom_common::McuBootMilestones;
 use registers_generated::fuses;
 use semver::Version;
 use std::cell::Cell;
@@ -300,10 +300,9 @@ impl McuHwModel for ModelEmulated {
             w.write_all(self.output().take(usize::MAX).as_bytes())
                 .unwrap();
         }
-        assert_eq!(
-            u32::from(McuRomBootStatus::CaliptraBootGoAsserted),
-            self.mci_flow_status()
-        );
+        assert!(self
+            .mci_boot_milestones()
+            .contains(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED));
         // TODO: load caliptra and MCU firmware
         Ok(())
     }
@@ -378,17 +377,6 @@ impl McuHwModel for ModelEmulated {
 
     fn save_otp_memory(&self, _path: &Path) -> Result<()> {
         unimplemented!()
-    }
-
-    fn mci_flow_status(&mut self) -> u32 {
-        self.cpu
-            .bus
-            .bus
-            .mci_periph
-            .as_mut()
-            .unwrap()
-            .periph
-            .read_mci_reg_fw_flow_status()
     }
 
     fn mcu_manager(&mut self) -> impl McuManager {
@@ -474,8 +462,7 @@ impl SocManager for &mut ModelEmulated {
 
 #[cfg(test)]
 mod test {
-    use mcu_rom_common::McuRomBootStatus;
-
+    use super::*;
     use crate::{InitParams, McuHwModel, ModelEmulated};
 
     #[test]
@@ -544,9 +531,8 @@ mod test {
             w.write_all(model.output().take(usize::MAX).as_bytes())
                 .unwrap();
         }
-        assert_eq!(
-            u32::from(McuRomBootStatus::CaliptraBootGoAsserted),
-            model.mci_flow_status()
-        );
+        assert!(model
+            .mci_boot_milestones()
+            .contains(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED));
     }
 }
