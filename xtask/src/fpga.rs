@@ -417,9 +417,9 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             };
 
             let to = if *test_output {
-                "--success-output=immediate"
+                "--no-capture"
             } else {
-                ""
+                "--test-threads=1"
             };
 
             let (prelude, test_dir) = match config {
@@ -434,9 +434,8 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                 sudo {prelude} \
                 cargo-nextest nextest run \
                 --workspace-remap=. --archive-file $HOME/caliptra-test-binaries.tar.zst \
-                --test-threads=1 --no-fail-fast --profile=nightly {} \
-                -E \"{}\")",
-                to, tf
+                {to} --no-fail-fast --profile=nightly \
+                -E \"{tf}\")"
             );
 
             // Run test suite.
