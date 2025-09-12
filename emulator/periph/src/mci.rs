@@ -103,12 +103,46 @@ impl MciPeripheral for Mci {
         self.ext_mci_regs.regs.borrow().wdt_cfg[index]
     }
 
+    //  mtime mcu_rv_mtime_l and cu_rv_mtime_h
+    fn read_mci_reg_mcu_rv_mtime_l(&mut self) -> caliptra_emu_types::RvData {
+        self.ext_mci_regs.regs.borrow().mcu_rv_mtime_l
+    }
+
+    fn write_mci_reg_mcu_rv_mtime_l(&mut self, val: caliptra_emu_types::RvData) {
+        self.ext_mci_regs.regs.borrow_mut().mcu_rv_mtime_l = val
+    }
+
+    fn read_mci_reg_mcu_rv_mtime_h(&mut self) -> caliptra_emu_types::RvData {
+        self.ext_mci_regs.regs.borrow().mcu_rv_mtime_h
+    }
+
+    fn write_mci_reg_mcu_rv_mtime_h(&mut self, val: caliptra_emu_types::RvData) {
+        self.ext_mci_regs.regs.borrow_mut().mcu_rv_mtime_h = val
+    }
+
+    //  mtime mcu_rv_mtimecmp_l and cu_rv_mtimecmp_h
+    fn read_mci_reg_mcu_rv_mtimecmp_l(&mut self) -> caliptra_emu_types::RvData {
+        self.ext_mci_regs.regs.borrow().mcu_rv_mtimecmp_l
+    }
+
+    fn write_mci_reg_mcu_rv_mtimecmp_l(&mut self, val: caliptra_emu_types::RvData) {
+        self.ext_mci_regs.regs.borrow_mut().mcu_rv_mtimecmp_l = val
+    }
+
+    fn read_mci_reg_mcu_rv_mtimecmp_h(&mut self) -> caliptra_emu_types::RvData {
+        self.ext_mci_regs.regs.borrow().mcu_rv_mtimecmp_h
+    }
+
+    fn write_mci_reg_mcu_rv_mtimecmp_h(&mut self, val: caliptra_emu_types::RvData) {
+        self.ext_mci_regs.regs.borrow_mut().mcu_rv_mtimecmp_h = val
+    }
+
     fn read_mci_reg_reset_reason(&mut self) -> ReadWriteRegister<u32, ResetReason::Register> {
         ReadWriteRegister::new(self.reset_reason.get())
     }
 
     fn write_mci_reg_reset_reason(&mut self, val: ReadWriteRegister<u32, ResetReason::Register>) {
-        self.reset_reason.set(val.reg.get());
+         self.reset_reason.set(val.reg.get());
     }
 
     fn write_mci_reg_wdt_timer1_en(&mut self, val: ReadWriteRegister<u32, WdtTimer1En::Register>) {
