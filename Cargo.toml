@@ -48,6 +48,7 @@ members = [
     "runtime/userspace/api/caliptra-api",
     "runtime/userspace/api/pldm-lib",
     "runtime/userspace/api/spdm-lib",
+    "runtime/userspace/coset",
     "runtime/userspace/libtock/apis/interface/console",
     "runtime/userspace/libtock/apis/kernel/low_level_debug",
     "runtime/userspace/libtock/apis/peripherals/alarm",
@@ -151,6 +152,7 @@ zip = { version = "4.3.0", default-features = false, features = ["chrono", "defl
 # local dependencies
 capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
 capsules-runtime = { path = "runtime/kernel/capsules" }
+coset  = { path = "runtime/userspace/coset" }
 dma-driver = { path = "platforms/emulator/runtime/kernel/drivers/dma" }
 doe-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/doe_mbox" }
 doe-transport = { path = "runtime/kernel/drivers/doe"}

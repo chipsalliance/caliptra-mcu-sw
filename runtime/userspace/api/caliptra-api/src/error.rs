@@ -19,4 +19,5 @@ pub enum CaliptraApiError {
     AesGcmTagVerifyFailed,
     InvalidResponse,
     UnprovisionedCsr,
+    CosetSerializeError,
 }

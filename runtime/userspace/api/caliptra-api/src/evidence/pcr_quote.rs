@@ -16,9 +16,16 @@ const ECC384_QUOTE_RSP_LEN: usize = size_of::<QuotePcrsEcc384Resp>() - PCR_QUOTE
 const MLDSA87_QUOTE_RSP_LEN: usize = size_of::<QuotePcrsMldsa87Resp>() - PCR_QUOTE_RSP_START;
 pub const PCR_QUOTE_BUFFER_SIZE: usize = MLDSA87_QUOTE_RSP_LEN;
 
-pub struct Evidence;
+pub struct PcrQuote;
 
-impl Evidence {
+impl PcrQuote {
+    pub fn len(with_pqc_sig: bool) -> usize {
+        match with_pqc_sig {
+            true => MLDSA87_QUOTE_RSP_LEN,
+            false => ECC384_QUOTE_RSP_LEN,
+        }
+    }
+
     pub async fn pcr_quote(buffer: &mut [u8], with_pqc_sig: bool) -> CaliptraApiResult<usize> {
         if with_pqc_sig {
             Self::pcr_quote_mldsa(buffer).await
@@ -103,12 +110,5 @@ impl Evidence {
             &resp_bytes[PCR_QUOTE_RSP_START..PCR_QUOTE_RSP_START + ECC384_QUOTE_RSP_LEN],
         );
         Ok(ECC384_QUOTE_RSP_LEN)
-    }
-
-    pub fn pcr_quote_size(with_pqc_sig: bool) -> usize {
-        match with_pqc_sig {
-            true => MLDSA87_QUOTE_RSP_LEN,
-            false => ECC384_QUOTE_RSP_LEN,
-        }
     }
 }
