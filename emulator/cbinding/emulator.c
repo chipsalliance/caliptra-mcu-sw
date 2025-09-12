@@ -266,6 +266,7 @@ static struct CEmulator* global_emulator = NULL;
 
 // Function declarations
 void free_run(struct CEmulator* emulator);
+void non_blocking_gdb_run(struct CEmulator* emulator);
 
 // Terminal settings for raw input
 #ifdef _WIN32
@@ -374,6 +375,7 @@ void print_usage(const char* program_name) {
     printf("  -l, --log-dir <LOG_DIR>              Directory in which to log execution artifacts\n");
     printf("  -t, --trace-instr                    Trace instructions\n");
     printf("      --no-stdin-uart                  Don't pass stdin to the MCU UART Rx\n");
+    printf("      --non-blocking-gdb               Use non-blocking GDB mode (C controls execution)\n");
     printf("      --i3c-port <I3C_PORT>            I3C socket port\n");
     printf("      --manufacturing-mode             Enable manufacturing mode\n");
     printf("      --vendor-pk-hash <VENDOR_PK_HASH>\n");
@@ -509,6 +511,154 @@ void free_run(struct CEmulator* emulator) {
     free(uart_buffer);
 }
 
+// Non-blocking GDB run function - demonstrates non-blocking GDB usage pattern
+void non_blocking_gdb_run(struct CEmulator* emulator) {
+    printf("Running emulator in non-blocking GDB mode...\n");
+    printf("GDB server available on port %u\n", emulator_get_gdb_port(emulator));
+    printf("Connect with: gdb -ex 'target remote localhost:%u'\n", emulator_get_gdb_port(emulator));
+
+    // Start the non-blocking GDB server
+    enum EmulatorError result = emulator_start_nonblocking_gdb_server(emulator);
+    if (result != Success) {
+        fprintf(stderr, "Failed to start GDB server: %d\n", result);
+        return;
+    }
+
+    printf("Non-blocking GDB server started\n");
+
+    // Buffer for UART output (streaming mode)
+    const size_t uart_buffer_size = 1024;
+    char* uart_buffer = malloc(uart_buffer_size);
+    if (!uart_buffer) {
+        fprintf(stderr, "Failed to allocate UART buffer\n");
+        return;
+    }
+
+    // Main execution loop
+    int gdb_connected = 0;
+    int step_count = 0;
+    
+    while (1) {
+        // Try to accept GDB connections (non-blocking)
+        if (!gdb_connected) {
+            int accept_result = emulator_gdb_try_accept(emulator);
+            if (accept_result == 1) {
+                printf("GDB client connected!\n");
+                gdb_connected = 1;
+            } else if (accept_result == -1) {
+                fprintf(stderr, "Error accepting GDB connection\n");
+                break;
+            }
+        }
+
+        // Process GDB messages if connected 
+        // Note: This will block when GDB is in break mode (stopped at breakpoint, etc.)
+        // and return immediately when GDB is in running mode
+        if (gdb_connected) {
+            int process_result = emulator_gdb_process_messages(emulator);
+            if (process_result == 0) {
+                printf("GDB client disconnected\n");
+                gdb_connected = 0;
+            } else if (process_result == -1) {
+                fprintf(stderr, "Error processing GDB messages\n");
+                break;
+            }
+        }
+
+        // Check if GDB wants us to stop before stepping
+        if (gdb_connected) {
+            int should_stop_before = emulator_gdb_should_stop_before_step(emulator);
+            if (should_stop_before == 1) {
+                // GDB wants us to stop (breakpoint at current PC, interrupt, etc.)
+                continue; // Skip stepping and continue processing GDB messages
+            } else if (should_stop_before == -1) {
+                fprintf(stderr, "Error checking GDB stop condition before step\n");
+                break;
+            }
+        }
+
+        // Step the emulator (C controls the execution pace)
+        enum CStepAction action = emulator_step(emulator);
+        step_count++;
+        
+        // Check if GDB wants us to stop after stepping
+        if (gdb_connected) {
+            int should_stop_after = emulator_gdb_should_stop_after_step(emulator);
+            if (should_stop_after == 1) {
+                // GDB wants us to stop (single step completed)
+                // Report the stop to GDB
+                int report_result = emulator_gdb_report_stop(emulator, action);
+                if (report_result == 0) {
+                    printf("GDB client disconnected during stop report\n");
+                    gdb_connected = 0;
+                } else if (report_result == -1) {
+                    fprintf(stderr, "Error reporting stop to GDB\n");
+                    // Continue anyway - don't break the loop
+                }
+                continue; // Skip normal processing and let GDB handle the stop
+            } else if (should_stop_after == -1) {
+                fprintf(stderr, "Error checking GDB stop condition after step\n");
+                break;
+            }
+        }
+
+        // Always report step results to GDB if connected for other stop conditions
+        if (gdb_connected && (action == Break || action == ExitSuccess || action == ExitFailure)) {
+            int report_result = emulator_gdb_report_stop(emulator, action);
+            if (report_result == 0) {
+                printf("GDB client disconnected during stop report\n");
+                gdb_connected = 0;
+            } else if (report_result == -1) {
+                fprintf(stderr, "Error reporting stop to GDB\n");
+                // Continue anyway - don't break the loop
+            }
+        }
+
+        // Check for UART output (streaming mode)
+        int uart_len = emulator_get_uart_output_streaming(emulator, uart_buffer, uart_buffer_size);
+        if (uart_len > 0) {
+            // Print UART output to stderr to match Rust emulator behavior
+            fprintf(stderr, "%.*s", uart_len, uart_buffer);
+            fflush(stderr);
+        }
+        
+        switch (action) {
+            case Continue:
+                // Normal execution continues
+                break;
+                
+            case Break:
+                printf("Emulator hit a breakpoint at step %d\n", step_count);
+                // GDB will handle this automatically via report_stop above
+                break;
+                
+            case ExitSuccess:
+                printf("Emulator exited successfully at step %d\n", step_count);
+                free(uart_buffer);
+                return;
+                
+            case ExitFailure:
+                printf("Emulator exited with failure at step %d\n", step_count);
+                free(uart_buffer);
+                return;
+        }
+
+        // Print progress periodically
+        if (step_count % 10000 == 0) {
+            printf("Executed %d steps, PC: 0x%08x, GDB connected: %s\n", 
+                   step_count, 
+                   emulator_get_pc(emulator),
+                   gdb_connected ? "yes" : "no");
+        }
+
+        // Small delay to prevent busy-waiting (optional)
+        usleep(1);
+    }
+
+    printf("Non-blocking GDB execution completed\n");
+    free(uart_buffer);
+}
+
 unsigned int parse_hex_or_decimal(const char* str) {
     if (strncmp(str, "0x", 2) == 0 || strncmp(str, "0X", 2) == 0) {
         return (unsigned int)strtoul(str, NULL, 16);
@@ -518,6 +668,9 @@ unsigned int parse_hex_or_decimal(const char* str) {
 }
 
 int main(int argc, char *argv[]) {
+    // Flag to track non-blocking GDB mode
+    int non_blocking_gdb = 0;
+    
     // Initialize config with defaults
     struct CEmulatorConfig config = {
         .rom_path = NULL,
@@ -589,6 +742,7 @@ int main(int argc, char *argv[]) {
         {"log-dir", required_argument, 0, 'l'},
         {"trace-instr", no_argument, 0, 't'},
         {"no-stdin-uart", no_argument, 0, 128},
+        {"non-blocking-gdb", no_argument, 0, 165},
         {"caliptra-rom", required_argument, 0, 129},
         {"caliptra-firmware", required_argument, 0, 130},
         {"soc-manifest", required_argument, 0, 131},
@@ -655,6 +809,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 128: // --no-stdin-uart
                 config.stdin_uart = 0;
+                break;
+            case 165: // --non-blocking-gdb
+                non_blocking_gdb = 1;
                 break;
             case 129: // --caliptra-rom
                 config.caliptra_rom_path = optarg;
@@ -852,17 +1009,22 @@ int main(int argc, char *argv[]) {
     if (emulator_is_gdb_mode(global_emulator)) {
         unsigned int port = emulator_get_gdb_port(global_emulator);
         
-        // Traditional blocking GDB mode
-        printf("GDB server available on port %u\n", port);
-        printf("Connect with: gdb -ex 'target remote :%u'\n", port);
-        
-        // Start GDB server (blocking)
-        printf("Starting GDB server (this will block until GDB disconnects)\n");
-        enum EmulatorError gdb_result = emulator_run_gdb_server(global_emulator);
-        if (gdb_result == Success) {
-            printf("GDB session completed successfully\n");
+        if (non_blocking_gdb) {
+            // Non-blocking GDB mode - C controls execution
+            non_blocking_gdb_run(global_emulator);
         } else {
-            printf("GDB session failed with error %d\n", gdb_result);
+            // Traditional blocking GDB mode
+            printf("GDB server available on port %u\n", port);
+            printf("Connect with: gdb -ex 'target remote :%u'\n", port);
+            
+            // Start GDB server (blocking)
+            printf("Starting GDB server (this will block until GDB disconnects)\n");
+            enum EmulatorError gdb_result = emulator_run_gdb_server(global_emulator);
+            if (gdb_result == Success) {
+                printf("GDB session completed successfully\n");
+            } else {
+                printf("GDB session failed with error %d\n", gdb_result);
+            }
         }
     } else {
         // Normal mode - free run like main.rs
