@@ -219,6 +219,11 @@ int emulator_get_uart_output_streaming(struct CEmulator* emulator, char* buffer,
 
 ## GDB Integration
 
+The emulator provides comprehensive GDB debugging support with two main modes of operation:
+
+1. **Traditional Blocking Mode**: GDB controls execution completely
+2. **Non-Blocking Mode**: C code controls execution while GDB provides debugging features
+
 ### Basic GDB Setup
 ```c
 struct CEmulatorConfig config = {
@@ -234,25 +239,160 @@ if (emulator_is_gdb_mode(memory)) {
 }
 ```
 
-### GDB Usage Patterns
+### Key Non-Blocking GDB Functions
 
-**C-Controlled Execution with GDB Available:**
+#### `emulator_gdb_should_stop_before_step()`
+Checks if GDB wants the emulator to stop **before** executing the next instruction. This is crucial for:
+- **Immediate breakpoint detection**: Detects if there's a breakpoint at the current PC without executing the instruction
+- **Interrupt handling**: Responds to Ctrl+C from GDB immediately
+- **Responsive debugging**: Avoids executing instructions when GDB wants to stop
+
+**Usage**: Call this before `emulator_step()` to check for stop conditions at the current PC location.
+
+#### `emulator_gdb_should_stop_after_step()`  
+Checks if GDB wants the emulator to stop **after** executing an instruction. This handles:
+- **Single stepping**: Detects when a single step operation should complete
+- **Step completion**: Ensures proper GDB single-step behavior
+- **Controlled execution**: Manages when GDB should regain control after stepping
+
+**Usage**: Call this after `emulator_step()` to check if the step should trigger a stop.
+
+#### `emulator_gdb_report_stop()`
+Reports stop conditions to GDB and converts C step actions to appropriate GDB stop reasons. This function:
+- **Converts step actions**: Translates `CStepAction` to GDB stop reasons (breakpoint, exit, etc.)
+- **Notifies GDB**: Sends proper stop notifications to GDB client
+- **Handles state transitions**: Moves GDB from running to stopped state when needed
+
+**Usage**: Call this when a stop condition is detected or when `emulator_step()` returns a non-Continue action.
+
+### Mode 1: Traditional Blocking GDB
+
+In this mode, GDB controls all execution. The GDB server handles all emulator stepping and execution commands.
+
 ```c
-// Your C code controls stepping, GDB available for inspection
-while (1) {
+// Initialize emulator with GDB port
+struct CEmulatorConfig config = { .gdb_port = 3333, /* ... */ };
+emulator_init(memory, &config);
+
+// Start blocking GDB server (GDB controls everything)
+// This function blocks until GDB disconnects
+emulator_run_gdb_server(memory);
+```
+
+**Important:** Do NOT call `emulator_step()` while `emulator_run_gdb_server()` is running, as GDB controls all execution.
+
+### Mode 2: Non-Blocking GDB with C Control
+
+In this mode, C code maintains full control over execution timing while GDB provides debugging features. This is useful when you need to integrate GDB debugging into existing control loops or when you need responsive execution control.
+
+#### Architecture
+- **C Code Controls Execution**: C code maintains full control over when `emulator_step()` is called
+- **GDB Handles Protocol**: GDB server handles debugging protocol without controlling execution  
+- **Blocking on Breakpoints**: When GDB hits a breakpoint, `process_messages()` blocks until GDB sends continue command
+- **Clean Separation**: Clear separation between execution control (C side) and debugging protocol (GDB side)
+
+#### Usage Pattern
+```c
+// Initialize emulator with GDB port  
+struct CEmulatorConfig config = { .gdb_port = 3333, /* ... */ };
+emulator_init(memory, &config);
+
+// Start non-blocking GDB server
+emulator_start_nonblocking_gdb_server(memory);
+
+int gdb_connected = 0;
+while (running) {
+    // 1. Try to accept GDB connections (non-blocking)
+    if (!gdb_connected) {
+        int accept_result = emulator_gdb_try_accept(memory);
+        if (accept_result == 1) {
+            printf("GDB client connected!\n");
+            gdb_connected = 1;
+        }
+    }
+
+    // 2. Process GDB messages (blocks when GDB is in break mode)
+    if (gdb_connected) {
+        int process_result = emulator_gdb_process_messages(memory);
+        if (process_result == 0) {
+            printf("GDB client disconnected\n");
+            gdb_connected = 0;
+        }
+    }
+
+    // 3. Check if GDB wants us to stop BEFORE stepping (for immediate breakpoint detection)
+    if (gdb_connected) {
+        int should_stop_before = emulator_gdb_should_stop_before_step(memory);
+        if (should_stop_before == 1) {
+            // GDB wants us to stop (breakpoint at current PC, interrupt, etc.)
+            continue; // Skip stepping and continue processing GDB messages
+        }
+    }
+
+    // 4. Step the emulator (C controls execution pace)
     enum CStepAction action = emulator_step(memory);
-    // Handle UART, check state, etc.
-    if (action != Continue) break;
+    
+    // 5. Check if GDB wants us to stop AFTER stepping (for single step completion)
+    if (gdb_connected) {
+        int should_stop_after = emulator_gdb_should_stop_after_step(memory);
+        if (should_stop_after == 1) {
+            // GDB wants us to stop (single step completed)
+            emulator_gdb_report_stop(memory, action);
+            continue; // Skip normal processing and let GDB handle the stop
+        }
+    }
+    
+    // 6. Report other stop conditions to GDB (breakpoints, watchpoints, exits)
+    if (gdb_connected && (action == Break || action == ExitSuccess || action == ExitFailure)) {
+        emulator_gdb_report_stop(memory, action);
+    }
+    
+    // 7. Handle step action results
+    if (action == ExitSuccess || action == ExitFailure) {
+        break; // Exit main loop
+    }
 }
 ```
 
-**GDB-Controlled Execution:**
-```c
-// GDB controls all execution (blocking)
-if (emulator_is_gdb_mode(memory)) {
-    emulator_run_gdb_server(memory);  // Blocks until GDB disconnects
-}
-```
+#### State Machine Behavior
+
+**When GDB is Not Connected:**
+- `emulator_gdb_try_accept()` checks for incoming connections
+- `emulator_gdb_process_messages()` returns immediately (no GDB client)
+- `emulator_step()` executes normally
+- `emulator_gdb_report_stop()` returns immediately (no GDB client)
+
+**When GDB is Connected and Running:**
+- `emulator_gdb_try_accept()` returns immediately (already connected)
+- `emulator_gdb_process_messages()` checks for incoming data (Ctrl+C) and returns quickly
+- `emulator_step()` executes normally
+- `emulator_gdb_report_stop()` checks for breakpoints/watchpoints and reports to GDB if needed
+
+**When GDB is Connected and in Break Mode:**
+- `emulator_gdb_try_accept()` returns immediately (already connected)
+- `emulator_gdb_process_messages()` **BLOCKS** until GDB sends continue/step command
+- `emulator_step()` executes normally when GDB allows
+- `emulator_gdb_report_stop()` reports the step result to GDB
+
+#### Benefits of Non-Blocking Mode
+
+1. **Full C Control**: C code maintains complete control over execution timing
+2. **Responsive GDB**: GDB commands are processed immediately when in break mode
+3. **Integration Friendly**: Easy to integrate into existing control loops and event systems
+4. **Non-blocking When Running**: Doesn't slow down execution when GDB is not stopping
+5. **Complete GDB Support**: Supports all GDB features without compromising functionality
+6. **Clean Architecture**: Clear separation of concerns between execution and debugging
+
+### GDB Features Supported
+
+- ✅ Breakpoints (software)
+- ✅ Watchpoints (hardware)  
+- ✅ Single stepping
+- ✅ Continue execution
+- ✅ Register inspection/modification
+- ✅ Memory read/write
+- ✅ Interrupt handling (Ctrl+C)
+- ✅ Connection management
 
 ### Connecting with GDB
 ```bash
@@ -260,6 +400,18 @@ gdb firmware.elf
 (gdb) target remote :3333
 (gdb) break main
 (gdb) continue
+
+# Interrupt execution
+(gdb) ^C
+
+# Inspect registers
+(gdb) info registers
+
+# Read memory
+(gdb) x/10x 0x40000000
+
+# Single step
+(gdb) stepi
 ```
 
 ## API Reference
@@ -297,10 +449,29 @@ enum CStepAction {
 ```
 
 ### GDB Functions
+
+#### Basic GDB Functions
 ```c
-int emulator_is_gdb_mode(struct CEmulator* memory);
-unsigned int emulator_get_gdb_port(struct CEmulator* memory);
-enum EmulatorError emulator_run_gdb_server(struct CEmulator* memory);
+int emulator_is_gdb_mode(struct CEmulator* memory);              // Check if in GDB mode
+unsigned int emulator_get_gdb_port(struct CEmulator* memory);    // Get GDB port number
+enum EmulatorError emulator_run_gdb_server(struct CEmulator* memory);  // Blocking GDB server
+```
+
+#### Non-Blocking GDB Functions
+```c
+// Server management
+enum EmulatorError emulator_start_nonblocking_gdb_server(struct CEmulator* memory);
+int emulator_gdb_try_accept(struct CEmulator* memory);           // Returns: 1=connected, 0=no connection, -1=error
+int emulator_gdb_process_messages(struct CEmulator* memory);     // Returns: 1=active, 0=disconnected, -1=error
+
+// Connection status and control
+int emulator_gdb_is_connected(struct CEmulator* memory);         // Returns: 1=connected, 0=not connected
+enum EmulatorError emulator_gdb_interrupt(struct CEmulator* memory);  // Send Ctrl+C interrupt
+
+// Stop condition handling
+int emulator_gdb_should_stop_before_step(struct CEmulator* memory);   // Returns: 1=should stop, 0=continue, -1=error
+int emulator_gdb_should_stop_after_step(struct CEmulator* memory);    // Returns: 1=should stop, 0=continue, -1=error
+int emulator_gdb_report_stop(struct CEmulator* memory, enum CStepAction action);  // Returns: 1=active, 0=disconnected, -1=error
 ```
 
 ### Utility Functions
@@ -360,7 +531,8 @@ The included `emulator.c` demonstrates:
 - Complete command line argument parsing
 - Real-time console input handling with raw terminal mode
 - Live UART output streaming
-- GDB integration
+- GDB integration (both traditional blocking and non-blocking modes)
+- Non-blocking GDB implementation with C-controlled execution
 - Proper cleanup and error handling
 - Signal handling (Ctrl+C)
 
@@ -369,9 +541,14 @@ Run with console input:
 ./emulator --rom rom.bin --firmware fw.bin --caliptra-rom crom.bin --caliptra-firmware cfw.bin --soc-manifest manifest.bin
 ```
 
-Run with GDB:
+Run with traditional blocking GDB:
 ```bash
 ./emulator --gdb-port 3333 --rom rom.bin --firmware fw.bin --caliptra-rom crom.bin --caliptra-firmware cfw.bin --soc-manifest manifest.bin
+```
+
+Run with non-blocking GDB (C controls execution):
+```bash
+./emulator --gdb-port 3333 --non-blocking-gdb --rom rom.bin --firmware fw.bin --caliptra-rom crom.bin --caliptra-firmware cfw.bin --soc-manifest manifest.bin
 ```
 
 This provides a complete, production-ready C interface to the Caliptra MCU Emulator with full feature parity and real-time interaction capabilities.
