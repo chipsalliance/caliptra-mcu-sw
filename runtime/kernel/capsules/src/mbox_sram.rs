@@ -4,8 +4,7 @@
 
 use core::cell::RefCell;
 
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
-use kernel::hil::time::{Alarm, AlarmClient, Time};
+use kernel::hil::time::{Alarm, AlarmClient};
 
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::processbuffer::{
@@ -39,7 +38,7 @@ pub struct MboxSram<'a, A: Alarm<'a>> {
     >,
     // Which app is currently using the storage.
     current_app: OptionalCell<ProcessId>,
-    alarm: VirtualMuxAlarm<'a, A>,
+    alarm: &'a A,
 }
 
 impl<'a, A: Alarm<'a>> MboxSram<'a, A> {
@@ -55,20 +54,19 @@ impl<'a, A: Alarm<'a>> MboxSram<'a, A> {
             AllowRoCount<{ ro_allow::COUNT }>,
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
-        alarm: &'a MuxAlarm<'a, A>,
+        alarm: &'a A,
     ) -> MboxSram<'a, A> {
         MboxSram {
             driver_num,
             registers,
             mem_ref: RefCell::new(mem_ref),
             apps: grant,
-            alarm: VirtualMuxAlarm::new(alarm),
+            alarm,
             current_app: OptionalCell::empty(),
         }
     }
 
     pub fn init(&'static self) {
-        self.alarm.setup();
         self.alarm.set_alarm_client(self);
     }
 
@@ -221,7 +219,6 @@ impl<'a, A: Alarm<'a>> SyscallDriver for MboxSram<'a, A> {
             cmd::RELEASE_LOCK => self.release_lock(),
             _ => Err(ErrorCode::NOSUPPORT),
         };
-        self.current_app.clear();
         match exec_result {
             Ok(()) => CommandReturn::success(),
             Err(e) => CommandReturn::failure(e),

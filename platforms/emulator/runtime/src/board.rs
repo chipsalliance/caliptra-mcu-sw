@@ -27,8 +27,8 @@ use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
 use mcu_components::mctp_mux_component_static;
 use mcu_components::{
-    doe_component_static, mailbox_component_static, mctp_driver_component_static,
-    mcu_mbox_component_static,
+    doe_component_static, mailbox_component_static, mbox_sram_component_static,
+    mctp_driver_component_static, mcu_mbox_component_static,
 };
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
@@ -149,8 +149,10 @@ struct VeeR {
         'static,
         mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>,
     >,
-    mcu_mbox1_staging_sram:
-        &'static capsules_runtime::mbox_sram::MboxSram<'static, InternalTimers<'static>>,
+    mcu_mbox1_staging_sram: &'static capsules_runtime::mbox_sram::MboxSram<
+        'static,
+        VirtualMuxAlarm<'static, InternalTimers<'static>>,
+    >,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -492,9 +494,7 @@ pub unsafe fn main() {
         ),
         mux_alarm,
     )
-    .finalize(kernel::static_buf!(
-        capsules_runtime::mbox_sram::MboxSram<'static, InternalTimers<'static>>
-    ));
+    .finalize(mbox_sram_component_static!(InternalTimers<'static>));
 
     let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
     chip.init(addr_of!(_pic_vector_table) as u32);
