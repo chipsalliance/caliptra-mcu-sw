@@ -5,9 +5,11 @@
 use crate::{InitParams, McuHwModel, McuManager};
 use anyhow::{bail, Result};
 use caliptra_api::SocManager;
+use caliptra_api_types::Fuses;
 use caliptra_emu_bus::{Bus, BusError, BusMmio, Event};
 use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
+use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap, OpenOcdJtagTap};
 use caliptra_hw_model::{
     DeviceLifecycle, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem, Output,
     SecurityState,
@@ -43,8 +45,8 @@ impl CaliptraMmio {
 }
 
 pub struct ModelFpgaRealtime {
-    base: ModelFpgaSubsystem,
-
+    pub base: ModelFpgaSubsystem,
+    // TODO(timothytrippel): remove old mechanism of connecting to OpenOCD.
     openocd: Option<TcpStream>,
     i3c_port: Option<u16>,
     i3c_rx: Option<mpsc::Receiver<I3cBusCommand>>,
@@ -52,6 +54,14 @@ pub struct ModelFpgaRealtime {
 }
 
 impl ModelFpgaRealtime {
+    pub fn init_fuses(&mut self, fuses: &Fuses) {
+        HwModel::init_fuses(&mut self.base, fuses);
+    }
+
+    pub fn set_subsystem_reset(&mut self, reset: bool) {
+        self.base.set_subsystem_reset(reset);
+    }
+
     pub fn i3c_target_configured(&mut self) -> bool {
         self.base.i3c_target_configured()
     }
@@ -69,6 +79,16 @@ impl ModelFpgaRealtime {
         self.base.i3c_controller.read(len).unwrap()
     }
 
+    /// Connect to a JTAG TAP by spawning an OpenOCD process.
+    pub fn jtag_tap_connect(
+        &mut self,
+        params: &JtagParams,
+        tap: JtagTap,
+    ) -> Result<Box<OpenOcdJtagTap>> {
+        self.base.jtag_tap_connect(params, tap)
+    }
+
+    // TODO(timothytrippel): remove old mechanism of connecting to OpenOCD.
     pub fn open_openocd(&mut self, port: u16) -> Result<()> {
         let addr = SocketAddr::from(([127, 0, 0, 1], port));
         let stream = TcpStream::connect(addr)?;
@@ -159,7 +179,16 @@ impl McuHwModel for ModelFpgaRealtime {
                 security_state_prod
             }
             LifecycleControllerState::Dev => security_state_manufacturing,
-            _ => security_state_unprovisioned,
+            LifecycleControllerState::Raw
+            | LifecycleControllerState::TestUnlocked0
+            | LifecycleControllerState::TestUnlocked1
+            | LifecycleControllerState::TestUnlocked2
+            | LifecycleControllerState::TestUnlocked3
+            | LifecycleControllerState::TestUnlocked4
+            | LifecycleControllerState::TestUnlocked5
+            | LifecycleControllerState::TestUnlocked6
+            | LifecycleControllerState::TestUnlocked7
+            | _ => security_state_unprovisioned,
         };
 
         let cptra_init = CaliptraInitParams {
@@ -184,7 +213,7 @@ impl McuHwModel for ModelFpgaRealtime {
             soc_user: MailboxRequester::SocUser(DEFAULT_AXI_PAUSER),
             test_sram: None,
             mcu_rom: Some(params.mcu_rom),
-            enable_mcu_uart_log: false,
+            enable_mcu_uart_log: params.enable_mcu_uart_log,
         };
         println!("Starting base model");
         let base = ModelFpgaSubsystem::new_unbooted(cptra_init)

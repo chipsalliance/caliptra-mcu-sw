@@ -326,6 +326,8 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             cmd.current_dir(&*PROJECT_ROOT).args([
                 "run",
                 "--rm",
+                "-e",
+                "\"TERM=xterm-256color\"",
                 &format!("-v{project_root}:/work-dir"),
                 "-w/work-dir",
                 &format!("-v{home}/.cargo/registry:/root/.cargo/registry"),
