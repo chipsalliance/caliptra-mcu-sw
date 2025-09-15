@@ -232,6 +232,7 @@ impl McuHwModel for ModelEmulated {
             ext_mci,
             Rc::new(RefCell::new(mci_irq)),
             Some(McuMailbox0Internal::new(&clock.clone())),
+            None,
         );
 
         let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
