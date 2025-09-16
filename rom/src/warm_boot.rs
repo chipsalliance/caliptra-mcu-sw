@@ -21,7 +21,7 @@ use core::fmt::Write;
 pub struct WarmBoot {}
 
 impl BootFlow for WarmBoot {
-    fn run(env: &mut RomEnv, _params: RomParameters) -> ! {
+    fn run(env: &mut RomEnv, params: RomParameters) -> ! {
         romtime::println!("[mcu-rom] Starting warm boot flow");
 
         romtime::println!("[mcu-rom] Clearing Caliptra mailbox lock from previous session");
@@ -32,7 +32,9 @@ impl BootFlow for WarmBoot {
             .write(|w| w.execute(false));
 
         // Check that the firmware was actually loaded before jumping to it
-        let firmware_ptr = unsafe { MCU_MEMORY_MAP.sram_offset as *const u32 };
+        let firmware_ptr = unsafe {
+            (MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32) as *const u32
+        };
         // Safety: this address is valid
         if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
             romtime::println!("Invalid firmware detected; halting");
@@ -44,7 +46,7 @@ impl BootFlow for WarmBoot {
 
         #[cfg(target_arch = "riscv32")]
         unsafe {
-            let firmware_entry = MCU_MEMORY_MAP.sram_offset;
+            let firmware_entry = MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32;
             core::arch::asm!(
                 "jr {0}",
                 in(reg) firmware_entry,

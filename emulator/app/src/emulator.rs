@@ -12,8 +12,6 @@ Abstract:
 
 --*/
 
-use tock_registers::interfaces::Readable;
-
 use crate::dis;
 use crate::doe_mbox_fsm;
 use crate::elf;
@@ -56,6 +54,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use tests::pldm_request_response_test::PldmRequestResponseTest;
+use tock_registers::interfaces::Readable;
 
 // Type aliases for external shim callbacks
 pub type ExternalReadCallback =
