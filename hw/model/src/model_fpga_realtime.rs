@@ -149,7 +149,7 @@ impl ModelFpgaRealtime {
         // check if we need to read any I3C packets from Caliptra
         // TODO: add IBI support
         // TODO: somehow know how much to read
-        if let Some(tx) = self.i3c_tx.as_ref() {}
+        if let Some(_tx) = self.i3c_tx.as_ref() {}
     }
 }
 

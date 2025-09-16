@@ -25,6 +25,7 @@ fn run() -> ! {
 
     // This is used to tell the hardware model it is ready to start testing
     mci.set_flow_status(McuRomBootStatus::CaliptraBootGoAsserted.into());
+    mci.set_flow_status(McuRomBootStatus::ColdBootFlowComplete.into());
 
     loop {
         let status = &mci.registers.mcu_mbox0_csr_mbox_cmd_status;
