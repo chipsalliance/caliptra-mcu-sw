@@ -172,6 +172,9 @@ pub struct InitParams<'a> {
     // overflows.
     pub stack_info: Option<StackInfo>,
 
+    // Consume MCU UART log with Caliptra UART log.
+    pub enable_mcu_uart_log: bool,
+
     pub i3c_port: Option<u16>,
 }
 
@@ -224,6 +227,7 @@ impl Default for InitParams<'_> {
             random_sram_puf: true,
             trace_path: None,
             stack_info: None,
+            enable_mcu_uart_log: false,
             csr_hmac_key: [1; 16],
             soc_manifest: Default::default(),
             vendor_pk_hash: None,

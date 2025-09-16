@@ -14,15 +14,25 @@ proc connect {target} {
     # 26-30 -> Caliptra Core JTAG
     # 31-35 -> MCU JTAG
     # 36-41 -> LCC JTAG
-    if {$target == "core"} {
-        puts "Connecting to Caliptra Core"
-        set gpionum [expr {$gpionum + 26}]
-    } elseif {$target == "mcu"} {
-        puts "Connecting to MCU"
-        set gpionum [expr {$gpionum + 31}]
+
+    if {$target == "core" || $target == "mcu"} {
+        set _CHIPNAME riscv
+        set _TAPNAME cpu
+        if {$target == "core"} {
+            puts "Connecting to Caliptra Core"
+            set gpionum [expr {$gpionum + 26}]
+            set _IDCODE 0x00000001
+        } else {
+            puts "Connecting to MCU"
+            set gpionum [expr {$gpionum + 31}]
+            set _IDCODE 0x00000001
+        }
     } elseif {$target == "lcc"} {
         puts "Connecting to LCC"
         set gpionum [expr {$gpionum + 36}]
+        set _CHIPNAME lcc
+        set _TAPNAME tap
+        set _IDCODE 0x00000001
     } else {
         puts stderr "Please include -c [target]"
     }
@@ -40,46 +50,51 @@ proc connect {target} {
     reset_config srst_nogate
     reset_config connect_assert_srst
 
-    set chain_length 5
-    set _CHIPNAME riscv
-    jtag newtap $_CHIPNAME cpu -irlen $chain_length
-
-    set _TARGETNAME_0 $_CHIPNAME.cpu
-
-    target create $_TARGETNAME_0 riscv -chain-position $_TARGETNAME_0
+    set _CHAIN_LENGTH 5
+    set _TARGETNAME $_CHIPNAME.$_TAPNAME
+    jtag newtap $_CHIPNAME $_TAPNAME -irlen $_CHAIN_LENGTH -expected-id $_IDCODE
+    target create $_TARGETNAME riscv -chain-position $_TARGETNAME -rtos hwthread
     
-    $_TARGETNAME_0 configure -work-area-phys 0 -work-area-size 0x8000 -work-area-backup 1
-
     if {$target == "core" || $target == "mcu"} {
+        $_TARGETNAME configure -work-area-phys 0 -work-area-size 0x8000 -work-area-backup 1
         # Define custom VEER CSRs. This syntax is for OpenOCD 0.11.0
         # reg csrxxx
-        $_TARGETNAME_0 riscv expose_csrs 1984,1986,1992,1993,1994,1995,2032,2041,2047,4032
+        $_TARGETNAME riscv expose_csrs 1984,1986,1992,1993,1994,1995,2032,2041,2047,4032
     }
 
     gdb_report_data_abort enable
-
     init
 
-    if {$target == "core"} {
-        # Check if we can read/write CPTRA_DBG_MANUF_SERVICE_REG to see if Caliptra JTAG registers are accessible
-        set manuf [riscv dmi_read 0x60]
-        riscv dmi_write 0x60 [expr {0xFFFFFFFF - $manuf}]
-        set manuf_inv [riscv dmi_read 0x60]
-        # Restore original value
-        riscv dmi_write 0x60 [format %08X $manuf]
-        if { $manuf == $manuf_inv } {
-            puts stderr "Caliptra not accessible"
+    if {$target == "core" || $target == "mcu"} {
+        if {$target == "core"} {
+            # Check if we can read/write CPTRA_DBG_MANUF_SERVICE_REG to see if Caliptra JTAG registers are accessible
+            set manuf [riscv dmi_read 0x60]
+            riscv dmi_write 0x60 [expr {0xFFFFFFFF - $manuf}]
+            set manuf_inv [riscv dmi_read 0x60]
+            # Restore original value
+              riscv dmi_write 0x60 [format %08X $manuf]
+            if { $manuf == $manuf_inv } {
+                puts stderr "Caliptra Core not accessible"
+            } else {
+                puts stderr "Caliptra Core accessible"
+            }
+        }
+        set dmstatus [riscv dmi_read 0x11]
+        if {0x0 == $dmstatus} {
+            puts stderr "CPU not accessible"
         } else {
-            puts stderr "Caliptra accessible"
+            puts stderr "CPU accessible"
+            halt
+        }
+    } else {
+        # Address 0x4 (word address 0x01) is the lc_ctrl STATUS register.
+        set lcc_status [riscv dmi_read 0x01]
+        if {0x0 == $lcc_status} {
+            puts stderr [format "LCC not accessible; STATUS: %x" $lcc_status]
+        } else {
+            puts stderr "LCC accessible"
         }
     }
 
-    set dmstatus [riscv dmi_read 0x11]
-    if {0x0 == $dmstatus} {
-        puts stderr "CPU not accessible"
-    } else {
-        puts stderr "CPU accessible"
-        halt
-    }
     puts stderr "OpenOCD setup finished"
 }
