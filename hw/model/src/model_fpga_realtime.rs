@@ -362,7 +362,7 @@ impl McuHwModel for ModelFpgaRealtime {
         MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         // turn off recovery
         self.base.recovery_started = false;
-        println!("Resetting I3C controlller");
+        println!("Resetting I3C controller");
         {
             let ctrl = self.base.i3c_controller.controller.lock().unwrap();
             ctrl.ready.set(false);
