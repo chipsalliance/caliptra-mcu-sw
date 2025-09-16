@@ -20,7 +20,7 @@ fn cargo_test() -> Result<()> {
             "test",
             "--workspace",
             "--",
-            "--ignore",
+            "--skip",
             "test_mailbox_execute",
         ])
         .status()?;
