@@ -4,6 +4,7 @@ mod i3c_socket;
 mod test_firmware_update;
 #[cfg(feature = "fpga_realtime")]
 mod test_jtag_taps;
+mod test_mctp_capsule_loopback;
 mod test_pldm_fw_update;
 mod test_soc_boot;
 
@@ -12,6 +13,7 @@ mod test {
     use caliptra_hw_model::BootParams;
     use caliptra_image_types::FwVerificationPqcKeyType;
     use mcu_builder::{CaliptraBuilder, ImageCfg, TARGET};
+    use mcu_config::McuMemoryMap;
     use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
     use mcu_image_header::McuImageHeader;
     use std::sync::atomic::AtomicU32;
@@ -51,8 +53,25 @@ mod test {
         compile_rom(feature)
     }
 
+    fn platform() -> &'static str {
+        if cfg!(feature = "fpga_realtime") {
+            "fpga"
+        } else {
+            "emulator"
+        }
+    }
+
+    fn memory_map() -> &'static McuMemoryMap {
+        if cfg!(feature = "fpga_realtime") {
+            &mcu_config_fpga::FPGA_MEMORY_MAP
+        } else {
+            &mcu_config_emulator::EMULATOR_MEMORY_MAP
+        }
+    }
+
     fn compile_rom(feature: &str) -> PathBuf {
-        let output: PathBuf = mcu_builder::rom_build(None, feature)
+        // TODO: use environment firmware binaries
+        let output: PathBuf = mcu_builder::rom_build(Some(platform()), feature)
             .expect("ROM build failed")
             .into();
         assert!(output.exists());
@@ -60,14 +79,15 @@ mod test {
     }
 
     pub fn compile_runtime(feature: &str, example_app: bool) -> PathBuf {
-        let output = target_binary(&format!("runtime-{}.bin", feature));
+        // TODO: use environment firmware binaries
+        let output = target_binary(&format!("runtime-{}-{}.bin", feature, platform()));
         let output_name = format!("{}", output.display());
         mcu_builder::runtime_build_with_apps_cached(
             &[feature],
             Some(&output_name),
             example_app,
-            None,
-            None,
+            Some(platform()),
+            Some(memory_map()),
             false,
             None,
             None,
@@ -86,7 +106,7 @@ mod test {
     ) -> DefaultHwModel {
         // TODO: use FirmwareBinaries for all binaries to make FPGA easier
         let mut caliptra_builder = CaliptraBuilder::new(
-            false, // TODO: set correctly
+            cfg!(feature = "fpga_realtime"),
             None,
             None,
             None,
@@ -446,7 +466,6 @@ mod test {
     run_test!(test_log_flash_circular);
     run_test!(test_log_flash_usermode, example_app);
     run_test!(test_mctp_ctrl_cmds);
-    run_test!(test_mctp_capsule_loopback);
     // run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);

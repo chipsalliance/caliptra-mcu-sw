@@ -75,6 +75,7 @@ pub fn handle_i3c_socket_loop(
     while running.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, addr)) => {
+                println!("Accepting I3C socket connection from {:?}", addr);
                 handle_i3c_socket_connection(
                     running,
                     stream,
@@ -123,7 +124,6 @@ fn handle_i3c_socket_connection(
             Ok(()) => {
                 let incoming_header: IncomingHeader = transmute!(incoming_header_bytes);
                 let cmd: I3cTcriCommand = incoming_header.command.try_into().unwrap();
-
                 let mut data = vec![0u8; cmd.data_len()];
                 stream.set_nonblocking(false).unwrap();
                 stream
@@ -134,7 +134,10 @@ fn handle_i3c_socket_connection(
                     addr: incoming_header.to_addr.into(),
                     cmd: I3cTcriCommandXfer { cmd, data },
                 };
-                bus_command_tx.send(bus_command).unwrap();
+                match bus_command_tx.send(bus_command) {
+                    Ok(_) => {}
+                    Err(e) => panic!("Failed to send I3C command to bus: {:?}", e),
+                }
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
             Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {

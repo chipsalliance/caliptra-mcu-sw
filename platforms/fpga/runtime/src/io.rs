@@ -12,7 +12,6 @@ use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use core::fmt::Write;
 use core::panic::PanicInfo;
-use core::ptr::write_volatile;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::debug;
 use kernel::debug::IoWrite;
@@ -24,6 +23,7 @@ use kernel::ErrorCode;
 use mcu_tock_veer::timers::InternalTimers;
 
 pub(crate) static mut WRITER: Writer = Writer {};
+const FPGA_UART_OUTPUT: *mut u32 = 0xa401_1014 as *mut u32;
 
 /// Panic handler.
 ///
@@ -42,17 +42,18 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         &*addr_of!(CHIP),
         &*addr_of!(PROCESS_PRINTER),
     );
-    exit_emulator(1);
+    exit_fpga(1);
 }
 
-/// Exit the emulator
-pub fn exit_emulator(exit_code: u32) -> ! {
-    // Safety: This is a safe memory address to write to for exiting the emulator.
+/// Exit the FPGA
+pub fn exit_fpga(exit_code: u32) -> ! {
+    // Safety: This is a safe memory address to write to for exiting the FPGA.
     unsafe {
-        // By writing to this address we can exit the emulator.
-        write_volatile(0x1000_2000 as *mut u32, exit_code);
+        // By writing to this address we can exit the FPGA.
+        let b = if exit_code == 0 { 0xff } else { 0x01 };
+        core::ptr::write_volatile(FPGA_UART_OUTPUT, b as u32 | 0x100);
     }
-    unreachable!()
+    loop {}
 }
 
 pub struct Writer {}
