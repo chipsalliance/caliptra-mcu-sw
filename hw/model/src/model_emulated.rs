@@ -303,6 +303,8 @@ impl McuHwModel for ModelEmulated {
             pic.register_irq(McuRootBus::DMA_ERROR_IRQ),
             pic.register_irq(McuRootBus::DMA_EVENT_IRQ),
             Some(mcu_root_bus.external_test_sram.clone()),
+            None,
+            None,
         )
         .unwrap();
 
