@@ -38,9 +38,7 @@ use emulator_caliptra::StartCaliptraArgs;
 use emulator_periph::DummyFlashCtrl;
 use emulator_periph::LcCtrl;
 use emulator_periph::McuRootBusOffsets;
-use emulator_periph::{
-    I3c, I3cController, Mci, McuMailbox0Internal, McuRootBus, McuRootBusArgs, Otp, OtpArgs,
-};
+use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp, OtpArgs};
 use emulator_registers_generated::dma::DmaPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
@@ -303,8 +301,8 @@ impl McuHwModel for ModelEmulated {
             pic.register_irq(McuRootBus::DMA_ERROR_IRQ),
             pic.register_irq(McuRootBus::DMA_EVENT_IRQ),
             Some(mcu_root_bus.external_test_sram.clone()),
-            None,
-            None,
+            Some(mcu_root_bus.mcu_mailbox0.clone()),
+            Some(mcu_root_bus.mcu_mailbox1.clone()),
         )
         .unwrap();
 
@@ -330,13 +328,16 @@ impl McuHwModel for ModelEmulated {
         })
         .expect("Failed to start Caliptra CPU");
 
+        let mcu_mailbox0 = mcu_root_bus.mcu_mailbox0.clone();
+        let mcu_mailbox1 = mcu_root_bus.mcu_mailbox1.clone();
+
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
         let mci = Mci::new(
             &clock.clone(),
             ext_mci,
             Rc::new(RefCell::new(mci_irq)),
-            Some(McuMailbox0Internal::new(&clock.clone())),
-            None,
+            Some(mcu_mailbox0),
+            Some(mcu_mailbox1),
         );
 
         let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
