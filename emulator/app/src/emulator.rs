@@ -15,20 +15,16 @@ Abstract:
 use crate::dis;
 use crate::doe_mbox_fsm;
 use crate::elf;
-use crate::i3c_socket;
-use crate::i3c_socket::start_i3c_socket;
-use crate::mctp_transport::MctpTransport;
 use crate::tests;
-use crate::{EMULATOR_RUNNING, EMULATOR_TICKS, MCU_RUNTIME_STARTED, TICK_COND};
 use caliptra_emu_bus::{Bus, Clock, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
-use caliptra_emu_cpu::{Cpu as CaliptraMainCpu, StepAction as CaliptraMainStepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_bmc::Bmc;
+use emulator_caliptra::BytesOrPath;
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
 #[allow(unused_imports)]
@@ -39,6 +35,11 @@ use emulator_periph::{
 };
 use emulator_registers_generated::dma::DmaPeripheral;
 use emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
+use mcu_testing_common::i3c_socket;
+use mcu_testing_common::i3c_socket_server::start_i3c_socket;
+use mcu_testing_common::mctp_transport::MctpTransport;
+use mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
+use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND};
 use pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::daemon::PldmDaemon;
 use pldm_ua::transport::{EndpointId, PldmTransport};
@@ -51,7 +52,7 @@ use std::process::exit;
 use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use tests::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
+use std::thread::JoinHandle;
 use tests::pldm_request_response_test::PldmRequestResponseTest;
 
 // Type aliases for external shim callbacks
@@ -264,7 +265,7 @@ pub struct EmulatorArgs {
 
 pub struct Emulator {
     pub mcu_cpu: Cpu<AutoRootBus>,
-    pub caliptra_cpu: CaliptraMainCpu<CaliptraMainRootBus>,
+    pub caliptra_cpu: Cpu<CaliptraMainRootBus>,
     pub bmc: Option<Bmc>,
     pub timer: Timer,
     pub trace_file: Option<File>,
@@ -280,6 +281,8 @@ pub struct Emulator {
     pub i3c_controller: I3cController,
     #[allow(dead_code)]
     pub doe_mbox_fsm: doe_mbox_fsm::DoeMboxFsm,
+    pub i3c_address: Option<u8>,
+    pub i3c_controller_join_handle: Option<JoinHandle<()>>,
 }
 
 impl Emulator {
@@ -326,7 +329,7 @@ impl Emulator {
         }
 
         let (mut caliptra_cpu, soc_to_caliptra, ext_mci) = start_caliptra(&StartCaliptraArgs {
-            rom: cli.caliptra_rom,
+            rom: BytesOrPath::Path(cli.caliptra_rom),
             device_lifecycle,
             req_idevid_csr,
             use_mcu_recovery_interface,
@@ -497,7 +500,7 @@ impl Emulator {
         println!("Starting I3C Socket, port {}", cli.i3c_port.unwrap_or(0));
 
         let mut i3c_controller = if let Some(i3c_port) = cli.i3c_port {
-            let (rx, tx) = start_i3c_socket(i3c_port);
+            let (rx, tx) = start_i3c_socket(&MCU_RUNNING, i3c_port);
             I3cController::new(rx, tx)
         } else {
             I3cController::default()
@@ -519,6 +522,8 @@ impl Emulator {
 
         println!("Starting DOE mailbox transport thread");
 
+        let mut i3c_controller_join_handle = None;
+
         // Feature flag based test setup
         if cfg!(feature = "test-doe-transport-loopback") {
             let (test_rx, test_tx) = doe_mbox_fsm.start();
@@ -536,7 +541,7 @@ impl Emulator {
             let tests = tests::doe_user_loopback::generate_tests();
             doe_mbox_fsm::run_doe_transport_tests(test_tx, test_rx, tests);
         } else if cfg!(feature = "test-mctp-ctrl-cmds") {
-            i3c_controller.start();
+            i3c_controller_join_handle = Some(i3c_controller.start());
             println!(
                 "Starting test-mctp-ctrl-cmds test thread for testing target {:?}",
                 i3c.get_dynamic_address().unwrap()
@@ -550,7 +555,7 @@ impl Emulator {
                 None,
             );
         } else if cfg!(feature = "test-mctp-capsule-loopback") {
-            i3c_controller.start();
+            i3c_controller_join_handle = Some(i3c_controller.start());
             println!(
                 "Starting loopback test thread for testing target {:?}",
                 i3c.get_dynamic_address().unwrap()
@@ -564,14 +569,14 @@ impl Emulator {
                 None,
             );
         } else if cfg!(feature = "test-mctp-user-loopback") {
-            i3c_controller.start();
+            i3c_controller_join_handle = Some(i3c_controller.start());
             println!(
                 "Starting loopback test thread for testing target {:?}",
                 i3c.get_dynamic_address().unwrap()
             );
 
             let spdm_loopback_tests = tests::mctp_user_loopback::MctpUserAppTests::generate_tests(
-                tests::mctp_util::base_protocol::MctpMsgType::Caliptra as u8,
+                mcu_testing_common::mctp_util::base_protocol::MctpMsgType::Caliptra as u8,
             );
 
             i3c_socket::run_tests(
@@ -585,7 +590,7 @@ impl Emulator {
                 println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
                 exit(0);
             }
-            i3c_controller.start();
+            i3c_controller_join_handle = Some(i3c_controller.start());
             crate::tests::spdm_responder_validator::mctp::run_mctp_spdm_conformance_test(
                 cli.i3c_port.unwrap(),
                 i3c.get_dynamic_address().unwrap(),
@@ -609,23 +614,13 @@ impl Emulator {
             feature = "test-pldm-discovery",
             feature = "test-pldm-fw-update",
         )) {
-            i3c_controller.start();
+            i3c_controller_join_handle = Some(i3c_controller.start());
             let pldm_transport =
                 MctpTransport::new(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
             let pldm_socket = pldm_transport
                 .create_socket(EndpointId(0), EndpointId(1))
                 .unwrap();
             PldmRequestResponseTest::run(pldm_socket);
-        }
-
-        if cfg!(feature = "test-pldm-fw-update-e2e") {
-            i3c_controller.start();
-            let pldm_transport =
-                MctpTransport::new(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
-            let pldm_socket = pldm_transport
-                .create_socket(EndpointId(8), EndpointId(0))
-                .unwrap();
-            tests::pldm_fw_update_test::PldmFwUpdateTest::run(pldm_socket);
         }
 
         let create_flash_controller =
@@ -910,7 +905,7 @@ impl Emulator {
             }
 
             // Start the PLDM Daemon
-            i3c_controller.start();
+            i3c_controller_join_handle = Some(i3c_controller.start());
             let pldm_transport = MctpTransport::new(cli.i3c_port.unwrap(), i3c_dynamic_address);
             let pldm_socket = pldm_transport
                 .create_socket(EndpointId(LOCAL_TEST_ENDPOINT_EID), EndpointId(1))
@@ -962,13 +957,15 @@ impl Emulator {
             uart_output,
             i3c_controller,
             doe_mbox_fsm,
+            Some(i3c_dynamic_address.into()),
+            i3c_controller_join_handle,
         ))
     }
 
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         mcu_cpu: Cpu<AutoRootBus>,
-        caliptra_cpu: CaliptraMainCpu<CaliptraMainRootBus>,
+        caliptra_cpu: Cpu<CaliptraMainRootBus>,
         trace_path: Option<PathBuf>,
         stdin_uart: Option<Arc<Mutex<Option<u8>>>>,
         bmc: Option<Bmc>,
@@ -978,6 +975,8 @@ impl Emulator {
         uart_output: Option<Rc<RefCell<Vec<u8>>>>,
         i3c_controller: I3cController,
         doe_mbox_fsm: doe_mbox_fsm::DoeMboxFsm,
+        i3c_address: Option<u8>,
+        i3c_controller_join_handle: Option<JoinHandle<()>>,
     ) -> Self {
         // read from the console in a separate thread to prevent blocking
         let stdin_uart_clone = stdin_uart.clone();
@@ -999,16 +998,28 @@ impl Emulator {
             uart_output,
             i3c_controller,
             doe_mbox_fsm,
+            i3c_address,
+            i3c_controller_join_handle,
+        }
+    }
+
+    pub fn get_i3c_addr(&self) -> Option<u8> {
+        self.i3c_address
+    }
+
+    pub fn start_i3c_controller(&mut self) {
+        if self.i3c_controller_join_handle.is_none() {
+            self.i3c_controller_join_handle = Some(self.i3c_controller.start());
         }
     }
 
     pub fn step(&mut self) -> StepAction {
-        if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        if !MCU_RUNNING.load(Ordering::Relaxed) {
             return StepAction::Break;
         }
 
         let now = self.mcu_cpu.clock.now();
-        EMULATOR_TICKS.store(now, Ordering::Relaxed);
+        MCU_TICKS.store(now, Ordering::Relaxed);
         if now % 1000 == 0 {
             TICK_COND.notify_all();
         }
@@ -1059,7 +1070,7 @@ impl Emulator {
         };
 
         match caliptra_action {
-            CaliptraMainStepAction::Continue => {}
+            StepAction::Continue => {}
             _ => {
                 println!("Caliptra CPU Halted");
             }
@@ -1090,7 +1101,7 @@ fn disassemble(pc: u32, instr: u32) -> String {
 fn read_console(stdin_uart: Option<Arc<Mutex<Option<u8>>>>) {
     let mut buffer = vec![];
     if let Some(ref stdin_uart) = stdin_uart {
-        while EMULATOR_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
+        while MCU_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
             if buffer.is_empty() {
                 match crossterm::event::read() {
                     Ok(Event::Key(KeyEvent {

@@ -1,9 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use crate::i3c_socket::BufferedStream;
-use crate::sleep_emulator_ticks;
-use crate::tests::mctp_util::base_protocol::{MCTPHdr, LOCAL_TEST_ENDPOINT_EID, MCTP_HDR_SIZE};
-use crate::EMULATOR_RUNNING;
+use crate::mctp_util::base_protocol::{MCTPHdr, LOCAL_TEST_ENDPOINT_EID, MCTP_HDR_SIZE};
+use crate::{sleep_emulator_ticks, MCU_RUNNING};
 use std::collections::VecDeque;
 use std::sync::atomic::Ordering;
 use zerocopy::{FromBytes, IntoBytes};
@@ -135,7 +134,7 @@ impl MctpUtil {
 
         let mut retry = 100;
 
-        while EMULATOR_RUNNING.load(Ordering::Relaxed) && retry > 0 {
+        while MCU_RUNNING.load(Ordering::Relaxed) && retry > 0 {
             match i3c_state {
                 I3cControllerState::Start => {
                     // Add some delay before sending the first packet.
@@ -309,7 +308,7 @@ impl MctpUtil {
         stream.set_nonblocking(true).unwrap();
         let mut retry = retry_count;
 
-        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        while MCU_RUNNING.load(Ordering::Relaxed) {
             match i3c_state {
                 I3cControllerState::WaitForIbi => {
                     if stream.receive_ibi(target_addr) {
@@ -457,7 +456,7 @@ impl MctpUtil {
     ) {
         let mut pkts = pkts;
         stream.set_nonblocking(true).unwrap();
-        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        while MCU_RUNNING.load(Ordering::Relaxed) {
             if let Some(write_pkt) = pkts.pop_front() {
                 if !stream.send_private_write(target_addr, write_pkt) {
                     break;

@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
-use crate::{sleep_emulator_ticks, EMULATOR_RUNNING};
+use mcu_testing_common::{sleep_emulator_ticks, MCU_RUNNING};
 use rand::Rng;
 const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_DWORDS: usize = 2; // minimum size of test vectors
@@ -46,7 +46,7 @@ impl DoeTransportTest for Test {
 
         self.state = DoeTestState::Start;
 
-        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        while MCU_RUNNING.load(Ordering::Relaxed) {
             match self.state {
                 DoeTestState::Start => {
                     // waits for the responder to be ready if this is the first message to send

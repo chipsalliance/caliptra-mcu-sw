@@ -14,6 +14,8 @@ use caliptra_hw_model::{
 };
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
 use mcu_rom_common::LifecycleControllerState;
+use mcu_testing_common::i3c::{I3cBusCommand, I3cBusResponse, I3cTcriCommand};
+use mcu_testing_common::MCU_RUNNING;
 use std::io::Write;
 use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
@@ -44,15 +46,14 @@ pub struct ModelFpgaRealtime {
     base: ModelFpgaSubsystem,
 
     openocd: Option<TcpStream>,
+    i3c_port: Option<u16>,
+    i3c_rx: Option<mpsc::Receiver<I3cBusCommand>>,
+    i3c_tx: Option<mpsc::Sender<I3cBusResponse>>,
 }
 
 impl ModelFpgaRealtime {
     pub fn i3c_target_configured(&mut self) -> bool {
         self.base.i3c_target_configured()
-    }
-
-    pub fn configure_i3c_controller(&mut self) {
-        self.base.i3c_controller.configure()
     }
 
     pub fn start_recovery_bmc(&mut self) {
@@ -111,11 +112,31 @@ impl ModelFpgaRealtime {
             phantom: Default::default(),
         }
     }
+
+    fn handle_i3c(&mut self) {
+        // check if we need to write any I3C packets to Caliptra
+        if let Some(rx) = self.i3c_rx.as_ref() {
+            for rx in rx.try_iter() {
+                match rx.cmd.cmd {
+                    I3cTcriCommand::Regular(_cmd) => {
+                        let _ = self.base.i3c_controller().write_nowait(&rx.cmd.data);
+                    }
+                    // these aren't used
+                    _ => todo!(),
+                }
+            }
+        }
+        // check if we need to read any I3C packets from Caliptra
+        // TODO: add IBI support
+        // TODO: somehow know how much to read
+        if let Some(tx) = self.i3c_tx.as_ref() {}
+    }
 }
 
 impl McuHwModel for ModelFpgaRealtime {
     fn step(&mut self) {
         self.base.step();
+        self.handle_i3c();
     }
 
     fn new_unbooted(params: InitParams) -> Result<Self>
@@ -169,10 +190,27 @@ impl McuHwModel for ModelFpgaRealtime {
         let base = ModelFpgaSubsystem::new_unbooted(cptra_init)
             .map_err(|e| anyhow::anyhow!("Failed to initialized base model: {e}"))?;
 
+        let (i3c_rx, i3c_tx) = if let Some(i3c_port) = params.i3c_port {
+            println!(
+                "Starting I3C socket on port {} and connected to hardware",
+                i3c_port
+            );
+            let (rx, tx) =
+                mcu_testing_common::i3c_socket_server::start_i3c_socket(&MCU_RUNNING, i3c_port);
+
+            (Some(rx), Some(tx))
+        } else {
+            (None, None)
+        };
+
         let m = Self {
             base,
 
             openocd: None,
+            // TODO: start the I3C socket and hook up to the FPGA model
+            i3c_port: params.i3c_port,
+            i3c_rx,
+            i3c_tx,
         };
 
         Ok(m)
@@ -256,6 +294,18 @@ impl McuHwModel for ModelFpgaRealtime {
 
     fn caliptra_soc_manager(&mut self) -> impl SocManager {
         self
+    }
+
+    fn start_i3c_controller(&mut self) {
+        self.base.i3c_controller.configure();
+    }
+
+    fn i3c_address(&self) -> Option<u8> {
+        Some(self.base.i3c_controller.get_primary_addr())
+    }
+
+    fn i3c_port(&self) -> Option<u16> {
+        self.i3c_port
     }
 }
 

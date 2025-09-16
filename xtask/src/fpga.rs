@@ -568,7 +568,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         } else if recovery && !xi3c_configured && model.i3c_target_configured() {
             xi3c_configured = true;
             println!("I3C target configured");
-            model.configure_i3c_controller();
+            model.start_i3c_controller();
             println!("Starting recovery flow (BMC)");
             model.start_recovery_bmc();
         }
