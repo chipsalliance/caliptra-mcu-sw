@@ -11,6 +11,7 @@ Abstract:
     File contains exports for for Caliptra Emulator Peripheral library.
 
 --*/
+mod axicdma;
 mod caliptra_to_ext_bus;
 mod dma_ctrl;
 mod doe_mbox;
@@ -29,6 +30,7 @@ mod spi_flash;
 mod spi_host;
 mod uart;
 
+pub use axicdma::AxiCDMA;
 pub use caliptra_to_ext_bus::CaliptraToExtBus;
 pub use dma_ctrl::DummyDmaCtrl;
 pub use doe_mbox::{DoeMboxPeriph, DummyDoeMbox};

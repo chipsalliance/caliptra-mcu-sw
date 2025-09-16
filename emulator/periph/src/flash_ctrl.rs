@@ -849,6 +849,7 @@ mod test {
                 None,
                 None,
                 None,
+                None,
             ),
             FlashType::ImagePartitionB => AutoRootBus::new(
                 vec![],
@@ -856,6 +857,7 @@ mod test {
                 None,
                 None,
                 Some(flash_controller),
+                None,
                 None,
                 None,
                 None,

@@ -378,10 +378,10 @@ pub unsafe fn main() {
         execute: false,
     });
 
-    // TODO: Why is this not in the McuMemoryMap? What is this?
+    // AXICDMA
     platform_regions.push(PlatformRegion {
-        start_addr: 0x3000_0000 as *const u8,
-        size: 0x20000,
+        start_addr: registers_generated::axicdma::AXICDMA_ADDR as *const u8,
+        size: 0x1000,
         is_mmio: true,
         user_accessible: false,
         read: true,

@@ -33,7 +33,7 @@ use emulator_periph::{
     CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
     McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp, OtpArgs,
 };
-use emulator_registers_generated::dma::DmaPeripheral;
+use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
 use mcu_testing_common::i3c_socket;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
@@ -714,7 +714,7 @@ impl Emulator {
             None,
         );
 
-        let mut dma_ctrl = emulator_periph::DummyDmaCtrl::new(
+        let mut dma_ctrl = emulator_periph::AxiCDMA::new(
             &clock.clone(),
             pic.register_irq(McuRootBus::DMA_ERROR_IRQ),
             pic.register_irq(McuRootBus::DMA_EVENT_IRQ),
@@ -724,7 +724,7 @@ impl Emulator {
         )
         .unwrap();
 
-        emulator_periph::DummyDmaCtrl::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
+        emulator_periph::AxiCDMA::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
         let mci_irq = root_bus.mci_irq.clone();
 
         let mcu_mailbox0 = root_bus.mcu_mailbox0.clone();
@@ -784,13 +784,14 @@ impl Emulator {
             Some(Box::new(secondary_flash_controller)),
             Some(Box::new(mci)),
             Some(Box::new(doe_mbox)),
-            Some(Box::new(dma_ctrl)),
+            None,
             None,
             Some(Box::new(otp)),
             Some(Box::new(lc)),
             None,
             None,
             None,
+            Some(Box::new(dma_ctrl)),
         );
 
         // Set the DMA RAM for Primary Flash Controller

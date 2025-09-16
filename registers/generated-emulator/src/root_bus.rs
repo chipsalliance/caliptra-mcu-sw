@@ -29,6 +29,8 @@ pub struct AutoRootBusOffsets {
     pub sha512_acc_size: u32,
     pub soc_offset: u32,
     pub soc_size: u32,
+    pub axicdma_offset: u32,
+    pub axicdma_size: u32,
 }
 impl Default for AutoRootBusOffsets {
     fn default() -> Self {
@@ -57,6 +59,8 @@ impl Default for AutoRootBusOffsets {
             sha512_acc_size: 0xa14,
             soc_offset: 0xa003_0000,
             soc_size: 0x5e0,
+            axicdma_offset: 0xa408_4000,
+            axicdma_size: 0x2c,
         }
     }
 }
@@ -75,6 +79,7 @@ pub struct AutoRootBus {
     pub mbox_periph: Option<crate::mbox::MboxBus>,
     pub sha512_acc_periph: Option<crate::sha512_acc::Sha512AccBus>,
     pub soc_periph: Option<crate::soc::SocBus>,
+    pub axicdma_periph: Option<crate::axicdma::AxicdmaBus>,
 }
 impl AutoRootBus {
     #[allow(clippy::too_many_arguments)]
@@ -93,6 +98,7 @@ impl AutoRootBus {
         mbox_periph: Option<Box<dyn crate::mbox::MboxPeripheral>>,
         sha512_acc_periph: Option<Box<dyn crate::sha512_acc::Sha512AccPeripheral>>,
         soc_periph: Option<Box<dyn crate::soc::SocPeripheral>>,
+        axicdma_periph: Option<Box<dyn crate::axicdma::AxicdmaPeripheral>>,
     ) -> Self {
         Self {
             delegates,
@@ -112,6 +118,7 @@ impl AutoRootBus {
             sha512_acc_periph: sha512_acc_periph
                 .map(|p| crate::sha512_acc::Sha512AccBus { periph: p }),
             soc_periph: soc_periph.map(|p| crate::soc::SocBus { periph: p }),
+            axicdma_periph: axicdma_periph.map(|p| crate::axicdma::AxicdmaBus { periph: p }),
         }
     }
 }
@@ -196,6 +203,13 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         {
             if let Some(periph) = self.soc_periph.as_mut() {
                 return periph.read(size, addr - self.offsets.soc_offset);
+            }
+        }
+        if addr >= self.offsets.axicdma_offset
+            && addr < self.offsets.axicdma_offset + self.offsets.axicdma_size
+        {
+            if let Some(periph) = self.axicdma_periph.as_mut() {
+                return periph.read(size, addr - self.offsets.axicdma_offset);
             }
         }
         for delegate in self.delegates.iter_mut() {
@@ -289,6 +303,13 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
                 return periph.write(size, addr - self.offsets.soc_offset, val);
             }
         }
+        if addr >= self.offsets.axicdma_offset
+            && addr < self.offsets.axicdma_offset + self.offsets.axicdma_size
+        {
+            if let Some(periph) = self.axicdma_periph.as_mut() {
+                return periph.write(size, addr - self.offsets.axicdma_offset, val);
+            }
+        }
         for delegate in self.delegates.iter_mut() {
             let result = delegate.write(size, addr, val);
             if !matches!(result, Err(caliptra_emu_bus::BusError::StoreAccessFault)) {
@@ -334,6 +355,9 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         if let Some(periph) = self.soc_periph.as_mut() {
             periph.poll();
         }
+        if let Some(periph) = self.axicdma_periph.as_mut() {
+            periph.poll();
+        }
         for delegate in self.delegates.iter_mut() {
             delegate.poll();
         }
@@ -373,6 +397,9 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
             periph.warm_reset();
         }
         if let Some(periph) = self.soc_periph.as_mut() {
+            periph.warm_reset();
+        }
+        if let Some(periph) = self.axicdma_periph.as_mut() {
             periph.warm_reset();
         }
         for delegate in self.delegates.iter_mut() {
@@ -416,6 +443,9 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         if let Some(periph) = self.soc_periph.as_mut() {
             periph.update_reset();
         }
+        if let Some(periph) = self.axicdma_periph.as_mut() {
+            periph.update_reset();
+        }
         for delegate in self.delegates.iter_mut() {
             delegate.update_reset();
         }
@@ -455,6 +485,9 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
             periph.incoming_event(event.clone());
         }
         if let Some(periph) = self.soc_periph.as_mut() {
+            periph.incoming_event(event.clone());
+        }
+        if let Some(periph) = self.axicdma_periph.as_mut() {
             periph.incoming_event(event.clone());
         }
         for delegate in self.delegates.iter_mut() {
@@ -499,6 +532,9 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
             periph.register_outgoing_events(sender.clone());
         }
         if let Some(periph) = self.soc_periph.as_mut() {
+            periph.register_outgoing_events(sender.clone());
+        }
+        if let Some(periph) = self.axicdma_periph.as_mut() {
             periph.register_outgoing_events(sender.clone());
         }
         for delegate in self.delegates.iter_mut() {
