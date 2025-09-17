@@ -4038,6 +4038,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "caliptra-api",
+ "caliptra-api-types",
  "caliptra-builder",
  "caliptra-hw-model",
  "caliptra-hw-model-types",

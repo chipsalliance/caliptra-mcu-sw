@@ -19,6 +19,9 @@ pub fn platform() -> &'static str {
 }
 
 #[cfg(test)]
+mod rom;
+
+#[cfg(test)]
 mod test {
     use caliptra_hw_model::BootParams;
     use caliptra_image_types::FwVerificationPqcKeyType;
