@@ -341,10 +341,18 @@ impl McuHwModel for ModelFpgaRealtime {
     where
         Self: Sized,
     {
+        let skip_recovery = boot_params.fw_image.is_none();
+
         self.base
             .boot(boot_params)
             .map_err(|e| anyhow::anyhow!("Failed to boot: {e}"))?;
 
+        if skip_recovery {
+            self.base.recovery_started = false;
+            return Ok(());
+        }
+
+        // wait until firmware is booted
         const BOOT_CYCLES: u64 = 800_000_000;
         self.step_until(|hw| {
             hw.cycle_count() >= BOOT_CYCLES
