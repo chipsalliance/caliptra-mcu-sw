@@ -2712,6 +2712,7 @@ dependencies = [
  "kernel",
  "mcu-mbox-comm",
  "registers-generated",
+ "romtime",
 ]
 
 [[package]]
