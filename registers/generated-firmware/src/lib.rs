@@ -6,7 +6,6 @@
 #![no_std]
 pub mod axicdma;
 pub mod defines;
-pub mod dma_ctrl;
 pub mod doe_mbox;
 pub mod el2_pic_ctrl;
 pub mod fuses;

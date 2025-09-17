@@ -352,7 +352,6 @@ impl McuHwModel for ModelEmulated {
             Some(Box::new(mci)),
             None,
             None,
-            None,
             Some(Box::new(otp)),
             Some(Box::new(lc)),
             None,

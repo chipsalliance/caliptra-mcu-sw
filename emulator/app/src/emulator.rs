@@ -438,12 +438,6 @@ impl Emulator {
         if let Some(mci_size) = cli.mci_size {
             auto_root_bus_offsets.mci_size = mci_size;
         }
-        if let Some(dma_offset) = cli.dma_offset {
-            auto_root_bus_offsets.dma_offset = dma_offset;
-        }
-        if let Some(dma_size) = cli.dma_size {
-            auto_root_bus_offsets.dma_size = dma_size;
-        }
         if let Some(mbox_offset) = cli.mbox_offset {
             auto_root_bus_offsets.mbox_offset = mbox_offset;
         }
@@ -784,7 +778,6 @@ impl Emulator {
             Some(Box::new(secondary_flash_controller)),
             Some(Box::new(mci)),
             Some(Box::new(doe_mbox)),
-            None,
             None,
             Some(Box::new(otp)),
             Some(Box::new(lc)),
