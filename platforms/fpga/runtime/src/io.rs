@@ -66,7 +66,7 @@ impl IoWrite for Writer {
         for b in buf {
             // Print to this address for FPGA output
             unsafe {
-                core::ptr::write_volatile(0xa401_1014 as *mut u32, *b as u32 | 0x100);
+                core::ptr::write_volatile(FPGA_UART_OUTPUT, *b as u32 | 0x100);
             }
         }
         buf.len()
