@@ -392,6 +392,7 @@ impl BootFlow for ColdBoot {
         // Jump to firmware
         romtime::println!("[mcu-rom] Jumping to firmware");
         mci.set_flow_checkpoint(McuRomBootStatus::ColdBootFlowComplete.into());
+        mci.set_flow_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
 
         #[cfg(target_arch = "riscv32")]
         unsafe {

@@ -27,8 +27,8 @@ fn run() -> ! {
     // TODO: remove the checkpoints when the HW model supports milestones
     mci.set_flow_checkpoint(McuRomBootStatus::CaliptraBootGoAsserted.into());
     mci.set_flow_checkpoint(McuRomBootStatus::ColdBootFlowComplete.into());
-    mci.set_boot_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
-    mci.set_boot_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
+    mci.set_flow_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
+    mci.set_flow_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
 
     loop {
         let status = &mci.registers.mcu_mbox0_csr_mbox_cmd_status;

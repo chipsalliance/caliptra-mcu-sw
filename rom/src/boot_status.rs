@@ -100,6 +100,7 @@ bitflags! {
         const CPTRA_FUSES_WRITTEN           = 0b1 << 2;
         const RI_DOWNLOAD_COMPLETED         = 0b1 << 3;
         const FLASH_RECOVERY_FLOW_COMPLETED = 0b1 << 4;
+        const COLD_BOOT_FLOW_COMPLETE       = 0b1 << 5;
     }
 }
 

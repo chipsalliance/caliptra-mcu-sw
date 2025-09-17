@@ -15,7 +15,7 @@ use caliptra_hw_model::{
     SecurityState, XI3CWrapper,
 };
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
-use mcu_rom_common::{LifecycleControllerState, McuRomBootStatus};
+use mcu_rom_common::{LifecycleControllerState, McuBootMilestones};
 use mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
@@ -356,17 +356,18 @@ impl McuHwModel for ModelFpgaRealtime {
         const BOOT_CYCLES: u64 = 800_000_000;
         self.step_until(|hw| {
             hw.cycle_count() >= BOOT_CYCLES
-                || hw.mci_flow_status() == u32::from(McuRomBootStatus::ColdBootFlowComplete)
+                || hw
+                    .mci_boot_milestones()
+                    .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
         });
         println!(
             "Boot completed at cycle count {}, flow status {}",
             self.cycle_count(),
             u32::from(self.mci_flow_status())
         );
-        assert_eq!(
-            u32::from(McuRomBootStatus::ColdBootFlowComplete),
-            self.mci_flow_status()
-        );
+        assert!(self
+            .mci_boot_milestones()
+            .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE));
         MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         // turn off recovery
         self.base.recovery_started = false;

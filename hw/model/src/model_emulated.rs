@@ -421,7 +421,9 @@ impl McuHwModel for ModelEmulated {
         self.cpu_enabled.set(true);
         self.step_until(|hw| {
             hw.cycle_count() >= BOOT_CYCLES
-                || hw.mci_flow_status() == u32::from(McuRomBootStatus::ColdBootFlowComplete)
+                || hw
+                    .mci_boot_milestones()
+                    .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
         });
         use std::io::Write;
         let mut w = std::io::Sink::default();
