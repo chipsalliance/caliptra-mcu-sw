@@ -7,17 +7,14 @@ use core::cell::Cell;
 use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
-use kernel::utilities::StaticRef;
 use kernel::{debug, ErrorCode};
 use mcu_mbox_comm::hil::{Mailbox, MailboxClient, MailboxStatus};
 use registers_generated::mci;
 use registers_generated::mci::bits::{MboxCmdStatus, Notif0IntrEnT, Notif0IntrT};
+use romtime::StaticRef;
 
-pub const MCI_BASE: StaticRef<mci::regs::Mci> =
-    unsafe { StaticRef::new(mci::MCI_TOP_ADDR as *const mci::regs::Mci) };
-
-pub const MCU_MBOX0_SRAM_BASE: u32 = mci::MCI_TOP_ADDR + 0x40_0000;
-pub const MCU_MBOX1_SRAM_BASE: u32 = mci::MCI_TOP_ADDR + 0x80_0000;
+pub const MCU_MBOX0_SRAM_OFFSET: u32 = 0x40_0000;
+pub const MCU_MBOX1_SRAM_OFFSET: u32 = 0x80_0000;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum McuMboxState {

@@ -536,6 +536,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         bootfsm_break,
         lifecycle_controller_state,
         vendor_pk_hash: binaries.vendor_pk_hash(),
+        enable_mcu_uart_log: true,
         ..Default::default()
     })
     .unwrap();

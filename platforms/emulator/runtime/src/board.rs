@@ -489,7 +489,7 @@ pub unsafe fn main() {
         board_kernel,
         capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
         core::slice::from_raw_parts_mut(
-            mcu_mbox_driver::MCU_MBOX1_SRAM_BASE as *mut u32,
+            (MCU_MEMORY_MAP.mci_offset + mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET) as *mut u32,
             1024 * 1024, // Allocate 1MB
         ),
         mux_alarm,

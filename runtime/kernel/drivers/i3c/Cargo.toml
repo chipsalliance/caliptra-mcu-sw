@@ -11,4 +11,5 @@ capsules-core.workspace = true
 kernel.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true
+rv32i.workspace = true
 tock-registers.workspace = true
