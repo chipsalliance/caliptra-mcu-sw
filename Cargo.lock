@@ -772,15 +772,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliptra-test-harness"
-version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=aef4b352cb23e4dafd866da4e34fc57e37b2a35e#aef4b352cb23e4dafd866da4e34fc57e37b2a35e"
-dependencies = [
- "caliptra-drivers",
- "cfg-if",
-]
-
-[[package]]
 name = "caliptra-test-harness-types"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=aef4b352cb23e4dafd866da4e34fc57e37b2a35e#aef4b352cb23e4dafd866da4e34fc57e37b2a35e"
@@ -2685,12 +2676,12 @@ version = "0.1.0"
 dependencies = [
  "caliptra-api",
  "caliptra-registers",
- "caliptra-test-harness",
  "mcu-builder",
  "mcu-config",
  "mcu-config-emulator",
  "mcu-config-fpga",
  "mcu-rom-common",
+ "mcu-test-harness",
  "registers-generated",
  "riscv-csr",
  "romtime",
@@ -2851,6 +2842,21 @@ dependencies = [
  "riscv-csr",
  "romtime",
  "rv32i",
+ "tock-registers",
+]
+
+[[package]]
+name = "mcu-test-harness"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api",
+ "caliptra-registers",
+ "mcu-config",
+ "mcu-config-emulator",
+ "mcu-config-fpga",
+ "mcu-rom-common",
+ "registers-generated",
+ "romtime",
  "tock-registers",
 ]
 

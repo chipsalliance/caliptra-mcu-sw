@@ -411,25 +411,12 @@ impl McuHwModel for ModelEmulated {
         Self: Sized,
     {
         // load the firmware images and SoC manifest into the recovery interface emulator
-        self.bmc.push_recovery_image(
-            boot_params
-                .fw_image
-                .expect("Caliptra FW bundle is required")
-                .to_vec(),
-        );
-        self.bmc.push_recovery_image(
-            boot_params
-                .soc_manifest
-                .expect("SoC manifest is required")
-                .to_vec(),
-        );
-        self.bmc.push_recovery_image(
-            boot_params
-                .mcu_fw_image
-                .expect("MCU firmware is required")
-                .to_vec(),
-        );
-        println!("Active mode enabled with 3 recovery images");
+        self.bmc
+            .push_recovery_image(boot_params.fw_image.unwrap_or_default().to_vec());
+        self.bmc
+            .push_recovery_image(boot_params.soc_manifest.unwrap_or_default().to_vec());
+        self.bmc
+            .push_recovery_image(boot_params.mcu_fw_image.unwrap_or_default().to_vec());
 
         self.cpu_enabled.set(true);
         self.step_until(|hw| {

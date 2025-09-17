@@ -210,7 +210,7 @@ jobs:
               --binaries-metadata="${TEST_BIN}/target/nextest/binaries-metadata.json"
               --target-dir-remap="${TEST_BIN}/target"
               --workspace-remap=.
-              -E 'package(mcu-hw-model) - test(model_emulated::test::test_new_unbooted) - test(tests::test_mailbox_execute)'
+              -E 'package(mcu-hw-model) - test(model_emulated::test::test_new_unbooted)'
               -E 'package(tests-integration) and test(test_jtag_taps)' # Modify this as we onboard crates to the FPGA test suite.
           )
 

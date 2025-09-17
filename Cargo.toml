@@ -38,6 +38,7 @@ members = [
     "platforms/fpga/config",
     "platforms/fpga/rom",
     "platforms/fpga/runtime",
+    "platforms/test_harness",
     "rom",
     "romtime",
     "runtime/kernel/capsules",
@@ -178,6 +179,7 @@ mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
 mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" }
 mcu-platforms-common = { path = "platforms/common" }
 mcu-rom-common = { path = "rom" }
+mcu-test-harness = {path = "platforms/test_harness"}
 mcu-testing-common = { path = "common/testing" }
 mcu-tock-veer = { path = "runtime/kernel/veer" }
 pldm-common = { path = "common/pldm"}
@@ -253,7 +255,6 @@ dpe = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "aef4b352cb2
 # caliptra-image-types = { path = "../caliptra-sw/image/types" }
 # caliptra-registers = { path = "../caliptra-sw/registers" }
 # caliptra-test = { path = "../caliptra-sw/test" }
-# caliptra-test-harness = { path = "../caliptra-sw/test-harness" }
 # caliptra-test-harness-types = { path = "../caliptra-sw/test-harness/types" }
 # ureg = { path = "../caliptra-sw/ureg" }
 # dpe = { path = "../caliptra-sw/dpe/dpe", default-features = false, features = ["dpe_profile_p384_sha384"] }
