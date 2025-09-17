@@ -353,7 +353,9 @@ impl MciPeripheral for Mci {
         self.ext_mci_regs.regs.borrow_mut().reset_request = val.reg.get();
 
         if val.reg.is_set(ResetRequest::McuReq) {
-            if (self.reset_reason.get() & ResetReason::FwHitlessUpdReset::SET.mask()) == 0 {
+            let reason = self.reset_reason.get();
+            // If the reason isn't set or it is set to warm reset, perform a warm reset
+            if reason == 0 || reason == ResetReason::WarmReset::SET.mask() {
                 // Set warm reset reason immediately
                 self.reset_reason.handle_warm_reset();
             }

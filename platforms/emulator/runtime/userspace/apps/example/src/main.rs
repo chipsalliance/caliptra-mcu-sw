@@ -256,7 +256,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
     }
     #[cfg(feature = "test-warm-reset")]
     {
-        test_mci::test_mci_warm_reset().await;
+        test_mci::test_mci_fw_boot_reset().await;
         romtime::test_exit(0);
     }
 
