@@ -30,6 +30,10 @@ pub struct Mci {
     reset_reason: ResetReasonEmulator,
     irq: Rc<RefCell<Irq>>,
     mcu_mailbox0: Option<McuMailbox0Internal>,
+
+    // machine timer compare
+    mtimecmp: u64,
+    op_mtimecmp_due_action: Option<ActionHandle>,
 }
 
 impl Mci {
@@ -58,7 +62,33 @@ impl Mci {
             reset_reason,
             irq,
             mcu_mailbox0,
+
+            // --- init mtimecmp ---
+            mtimecmp: u64::MAX,
+            op_mtimecmp_due_action: None,
         }
+    }
+
+    fn arm_mtime_interrupt(&mut self) {
+        // clean up previous pending timers
+
+        if let Some(old) = self.op_mtimecmp_due_action.take() {
+            self.timer.cancel(old);
+        }
+
+        //If we’re already past  (now >= mtimecmp), set a minimal positive delay of 1
+        // tick so the event fires on the next clock increment.
+
+        //Otherwise, schedule exactly the difference (mtimecmp - now).
+        let now = self.timer.now();
+        let delay = if now >= self.mtimecmp {
+            1
+        } else {
+            self.mtimecmp - now
+        };
+
+        //the timer  calls poll() after delay ticks,
+        self.op_mtimecmp_due_action = Some(self.timer.schedule_poll_in(delay));
     }
 }
 
@@ -105,37 +135,34 @@ impl MciPeripheral for Mci {
 
     //  mtime mcu_rv_mtime_l and cu_rv_mtime_h
     fn read_mci_reg_mcu_rv_mtime_l(&mut self) -> caliptra_emu_types::RvData {
-
-         self.timer.now() as u32
+        self.timer.now() as u32
     }
 
-    fn write_mci_reg_mcu_rv_mtime_l(&mut self, val: caliptra_emu_types::RvData) {
-        
-    }
+    fn write_mci_reg_mcu_rv_mtime_l(&mut self, _val: caliptra_emu_types::RvData) {}
 
     fn read_mci_reg_mcu_rv_mtime_h(&mut self) -> caliptra_emu_types::RvData {
         (self.timer.now() >> 32) as u32
     }
 
-    fn write_mci_reg_mcu_rv_mtime_h(&mut self, val: caliptra_emu_types::RvData) {
-       
-    }
+    fn write_mci_reg_mcu_rv_mtime_h(&mut self, _val: caliptra_emu_types::RvData) {}
 
     //  mtime mcu_rv_mtimecmp_l and cu_rv_mtimecmp_h
     fn read_mci_reg_mcu_rv_mtimecmp_l(&mut self) -> caliptra_emu_types::RvData {
-        self.ext_mci_regs.regs.borrow().mcu_rv_mtimecmp_l
+        (self.mtimecmp) as u32
     }
 
     fn write_mci_reg_mcu_rv_mtimecmp_l(&mut self, val: caliptra_emu_types::RvData) {
-        self.ext_mci_regs.regs.borrow_mut().mcu_rv_mtimecmp_l = val
+        self.mtimecmp = (self.mtimecmp & 0xffff_ffff_0000_0000) | val as u64;
+        self.arm_mtime_interrupt();
     }
 
     fn read_mci_reg_mcu_rv_mtimecmp_h(&mut self) -> caliptra_emu_types::RvData {
-        self.ext_mci_regs.regs.borrow().mcu_rv_mtimecmp_h
+        (self.mtimecmp >> 32) as u32
     }
 
     fn write_mci_reg_mcu_rv_mtimecmp_h(&mut self, val: caliptra_emu_types::RvData) {
-        self.ext_mci_regs.regs.borrow_mut().mcu_rv_mtimecmp_h = val
+        self.mtimecmp = (self.mtimecmp & 0x0000_0000_ffff_ffff) | ((val as u64) << 32);
+        self.arm_mtime_interrupt();
     }
 
     fn read_mci_reg_reset_reason(&mut self) -> ReadWriteRegister<u32, ResetReason::Register> {
@@ -143,7 +170,7 @@ impl MciPeripheral for Mci {
     }
 
     fn write_mci_reg_reset_reason(&mut self, val: ReadWriteRegister<u32, ResetReason::Register>) {
-         self.reset_reason.set(val.reg.get());
+        self.reset_reason.set(val.reg.get());
     }
 
     fn write_mci_reg_wdt_timer1_en(&mut self, val: ReadWriteRegister<u32, WdtTimer1En::Register>) {
