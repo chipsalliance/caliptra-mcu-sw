@@ -143,6 +143,7 @@ mod test {
                 active_mode: true,
                 vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
                 i3c_port,
+                enable_mcu_uart_log: true,
                 ..Default::default()
             },
             BootParams {
