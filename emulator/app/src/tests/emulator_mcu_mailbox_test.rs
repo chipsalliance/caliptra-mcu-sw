@@ -6,8 +6,8 @@
 use emulator_mcu_mbox::mcu_mailbox_transport::{McuMailboxError, McuMailboxTransport};
 use mcu_mbox_common::messages::{
     DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq, DeviceInfoResp,
-    FirmwareVersionReq, FirmwareVersionResp, MailboxReqHeader, MailboxRespHeader, McuMailboxReq,
-    McuMailboxResp, DEVICE_CAPS_SIZE,
+    FirmwareVersionReq, FirmwareVersionResp, MailboxReqHeader, MailboxRespHeader,
+    MailboxRespHeaderVarSize, McuMailboxReq, McuMailboxResp, DEVICE_CAPS_SIZE,
 };
 use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
 use std::process::exit;
@@ -153,8 +153,10 @@ impl RequestResponseTest {
             fw_version_req.populate_chksum().unwrap();
 
             let mut fw_version_resp = McuMailboxResp::FirmwareVersion(FirmwareVersionResp {
-                hdr: MailboxRespHeader::default(),
-                len: version_str.len() as u32,
+                hdr: MailboxRespHeaderVarSize {
+                    data_len: version_str.len() as u32,
+                    ..Default::default()
+                },
                 version: {
                     let mut ver = [0u8; 32];
                     let bytes = version_str.as_bytes();
@@ -228,8 +230,10 @@ impl RequestResponseTest {
 
         let test_uid = &mcu_mbox_common::config::TEST_UID;
         let mut device_info_resp = McuMailboxResp::DeviceInfo(DeviceInfoResp {
-            hdr: MailboxRespHeader::default(),
-            data_size: test_uid.len() as u32,
+            hdr: MailboxRespHeaderVarSize {
+                data_len: test_uid.len() as u32,
+                ..Default::default()
+            },
             data: {
                 let mut u = [0u8; 32];
                 let len = test_uid.len().min(u.len());

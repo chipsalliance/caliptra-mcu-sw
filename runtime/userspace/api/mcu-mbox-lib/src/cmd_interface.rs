@@ -8,8 +8,8 @@ use external_cmds_common::{
 use libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
-    DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, MailboxRespHeader, McuMailboxResp,
-    DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
+    DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, MailboxRespHeader,
+    MailboxRespHeaderVarSize, McuMailboxResp, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
 };
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -118,8 +118,10 @@ impl<'a> CmdInterface<'a> {
 
         let mut resp = if mbox_cmd_status == MbxCmdStatus::Complete {
             McuMailboxResp::FirmwareVersion(FirmwareVersionResp {
-                hdr: MailboxRespHeader::default(),
-                len: version.len as u32,
+                hdr: MailboxRespHeaderVarSize {
+                    data_len: version.len as u32,
+                    ..Default::default()
+                },
                 version: version.ver_str,
             })
         } else {
@@ -256,8 +258,10 @@ impl<'a> CmdInterface<'a> {
             let mut data = [0u8; MAX_UID_LEN];
             data[..uid.len].copy_from_slice(&uid.unique_chip_id[..uid.len]);
             McuMailboxResp::DeviceInfo(DeviceInfoResp {
-                hdr: MailboxRespHeader::default(),
-                data_size: uid.len as u32,
+                hdr: MailboxRespHeaderVarSize {
+                    data_len: uid.len as u32,
+                    ..Default::default()
+                },
                 data,
             })
         } else {

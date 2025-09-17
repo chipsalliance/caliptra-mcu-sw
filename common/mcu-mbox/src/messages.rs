@@ -1,9 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-pub use caliptra_api::mailbox::{
-    populate_checksum, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, Response,
-    ResponseVarSize, VarSizeDataResp,
-};
+pub use caliptra_api::mailbox::{MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize};
 pub use caliptra_api::{calc_checksum, verify_checksum};
 use core::convert::From;
 use core::num::NonZeroU32;
@@ -12,6 +9,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
 pub const DEVICE_CAPS_SIZE: usize = 32;
+pub const MAX_UUID_SIZE: usize = 32;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct McuMboxError(pub NonZeroU32);
@@ -35,6 +33,17 @@ impl McuMboxError {
 pub trait Request: IntoBytes + FromBytes + Immutable + KnownLayout {
     const ID: CommandId;
     type Resp: Response;
+}
+
+/// A trait implemented by response types.
+pub trait Response: IntoBytes + FromBytes
+where
+    Self: Sized,
+{
+    /// The minimum size (in bytes) of this response. Transports that receive at
+    /// least this much data should pad the missing data with zeroes. If they
+    /// receive fewer bytes than MIN_SIZE, they should error.
+    const MIN_SIZE: usize = core::mem::size_of::<Self>();
 }
 
 #[derive(PartialEq, Eq)]
@@ -140,6 +149,38 @@ pub enum McuMailboxResp {
     ClearLog(ClearLogResp),
 }
 
+/// A trait for responses with variable size data.
+pub trait McuResponseVarSize: IntoBytes + FromBytes + Immutable + KnownLayout {
+    fn data(&self) -> McuMboxResult<&[u8]> {
+        let (hdr, data) = MailboxRespHeaderVarSize::ref_from_prefix(self.as_bytes())
+            .map_err(|_| McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE)?;
+        data.get(..hdr.data_len as usize)
+            .ok_or(McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE)
+    }
+
+    fn partial_len(&self) -> McuMboxResult<usize> {
+        let (hdr, _) = MailboxRespHeaderVarSize::ref_from_prefix(self.as_bytes())
+            .map_err(|_| McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE)?;
+        Ok(core::mem::size_of::<MailboxRespHeaderVarSize>() + hdr.data_len as usize)
+    }
+
+    fn as_bytes_partial(&self) -> McuMboxResult<&[u8]> {
+        self.as_bytes()
+            .get(..self.partial_len()?)
+            .ok_or(McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE)
+    }
+
+    fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]> {
+        let partial_len = self.partial_len()?;
+        self.as_mut_bytes()
+            .get_mut(..partial_len)
+            .ok_or(McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE)
+    }
+}
+impl<T: McuResponseVarSize> Response for T {
+    const MIN_SIZE: usize = core::mem::size_of::<MailboxRespHeaderVarSize>();
+}
+
 impl McuMailboxResp {
     pub fn as_bytes(&self) -> McuMboxResult<&[u8]> {
         match self {
@@ -212,31 +253,10 @@ impl Request for FirmwareVersionReq {
 #[repr(C)]
 #[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct FirmwareVersionResp {
-    pub hdr: MailboxRespHeader,
-    pub len: u32,
-    pub version: [u8; FirmwareVersionResp::MAX_FW_VERSION_LEN], // variable length
+    pub hdr: MailboxRespHeaderVarSize,
+    pub version: [u8; MAX_FW_VERSION_STR_LEN], // variable length
 }
-impl Response for FirmwareVersionResp {}
-
-impl FirmwareVersionResp {
-    pub const MAX_FW_VERSION_LEN: usize = 32;
-
-    pub fn as_bytes_partial(&self) -> McuMboxResult<&[u8]> {
-        if self.len as usize > Self::MAX_FW_VERSION_LEN {
-            return Err(McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE);
-        }
-        let unused_byte_count = Self::MAX_FW_VERSION_LEN - self.len as usize;
-        Ok(&self.as_bytes()[..size_of::<Self>() - unused_byte_count])
-    }
-
-    pub fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]> {
-        if self.len as usize > Self::MAX_FW_VERSION_LEN {
-            return Err(McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE);
-        }
-        let unused_byte_count = Self::MAX_FW_VERSION_LEN - self.len as usize;
-        Ok(&mut self.as_mut_bytes()[..size_of::<Self>() - unused_byte_count])
-    }
-}
+impl McuResponseVarSize for FirmwareVersionResp {}
 
 #[repr(C)]
 #[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
@@ -288,34 +308,13 @@ impl Request for DeviceInfoReq {
     const ID: CommandId = CommandId::MC_DEVICE_INFO;
     type Resp = DeviceInfoResp;
 }
-
 #[repr(C)]
 #[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct DeviceInfoResp {
-    pub hdr: MailboxRespHeader,
-    pub data_size: u32,
-    pub data: [u8; DeviceInfoResp::MAX_UUID_SIZE], // variable length
+    pub hdr: MailboxRespHeaderVarSize,
+    pub data: [u8; MAX_UUID_SIZE], // variable length
 }
-impl Response for DeviceInfoResp {}
-
-impl DeviceInfoResp {
-    const MAX_UUID_SIZE: usize = 32;
-    pub fn as_bytes_partial(&self) -> McuMboxResult<&[u8]> {
-        if self.data_size as usize > Self::MAX_UUID_SIZE {
-            return Err(McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE);
-        }
-        let unused_byte_count = Self::MAX_UUID_SIZE - self.data_size as usize;
-        Ok(&self.as_bytes()[..size_of::<Self>() - unused_byte_count])
-    }
-
-    pub fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]> {
-        if self.data_size as usize > Self::MAX_UUID_SIZE {
-            return Err(McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE);
-        }
-        let unused_byte_count = Self::MAX_UUID_SIZE - self.data_size as usize;
-        Ok(&mut self.as_mut_bytes()[..size_of::<Self>() - unused_byte_count])
-    }
-}
+impl McuResponseVarSize for DeviceInfoResp {}
 
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u32)]
@@ -338,37 +337,17 @@ impl Request for GetLogReq {
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct GetLogResp {
-    pub hdr: MailboxRespHeader,
-    pub data_size: u32,
+    pub hdr: MailboxRespHeaderVarSize,
     pub data: [u8; MAX_RESP_DATA_SIZE], // variable length
 }
-impl Response for GetLogResp {}
+impl McuResponseVarSize for GetLogResp {}
 
 impl Default for GetLogResp {
     fn default() -> Self {
         Self {
-            hdr: MailboxRespHeader::default(),
-            data_size: 0,
-            data: [0; MAX_RESP_DATA_SIZE],
+            hdr: MailboxRespHeaderVarSize::default(),
+            data: [0u8; MAX_RESP_DATA_SIZE],
         }
-    }
-}
-
-impl GetLogResp {
-    pub fn as_bytes_partial(&self) -> McuMboxResult<&[u8]> {
-        if self.data_size as usize > MAX_RESP_DATA_SIZE {
-            return Err(McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE);
-        }
-        let unused_byte_count = MAX_RESP_DATA_SIZE - self.data_size as usize;
-        Ok(&self.as_bytes()[..size_of::<Self>() - unused_byte_count])
-    }
-
-    pub fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]> {
-        if self.data_size as usize > MAX_RESP_DATA_SIZE {
-            return Err(McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE);
-        }
-        let unused_byte_count = MAX_RESP_DATA_SIZE - self.data_size as usize;
-        Ok(&mut self.as_mut_bytes()[..size_of::<Self>() - unused_byte_count])
     }
 }
 
