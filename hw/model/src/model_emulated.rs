@@ -39,7 +39,7 @@ use emulator_periph::DummyFlashCtrl;
 use emulator_periph::LcCtrl;
 use emulator_periph::McuRootBusOffsets;
 use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp, OtpArgs};
-use emulator_registers_generated::dma::DmaPeripheral;
+use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
 use mcu_rom_common::LifecycleControllerState;
@@ -296,7 +296,7 @@ impl McuHwModel for ModelEmulated {
             None,
         );
 
-        let mut dma_ctrl = emulator_periph::DummyDmaCtrl::new(
+        let mut dma_ctrl = emulator_periph::AxiCDMA::new(
             &clock.clone(),
             pic.register_irq(McuRootBus::DMA_ERROR_IRQ),
             pic.register_irq(McuRootBus::DMA_EVENT_IRQ),
@@ -306,7 +306,7 @@ impl McuHwModel for ModelEmulated {
         )
         .unwrap();
 
-        emulator_periph::DummyDmaCtrl::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
+        emulator_periph::AxiCDMA::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
 
         let device_lifecycle: Option<String> = match params.lifecycle_controller_state {
             Some(LifecycleControllerState::Dev) => Some("manufacturing".into()),
@@ -351,14 +351,14 @@ impl McuHwModel for ModelEmulated {
             Some(Box::new(secondary_flash_controller)),
             Some(Box::new(mci)),
             None,
-            Some(Box::new(dma_ctrl)),
+            None,
             None,
             Some(Box::new(otp)),
             Some(Box::new(lc)),
             None,
             None,
             None,
-            None,
+            Some(Box::new(dma_ctrl)),
         );
 
         let args = CpuArgs::default();
