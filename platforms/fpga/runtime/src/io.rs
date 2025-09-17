@@ -47,12 +47,8 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
 
 /// Exit the FPGA
 pub fn exit_fpga(exit_code: u32) -> ! {
-    // Safety: This is a safe memory address to write to for exiting the FPGA.
-    unsafe {
-        // By writing to this address we can exit the FPGA.
-        let b = if exit_code == 0 { 0xff } else { 0x01 };
-        core::ptr::write_volatile(FPGA_UART_OUTPUT, b as u32 | 0x100);
-    }
+    let b = if exit_code == 0 { 0xff } else { 0x01 };
+    Writer {}.write(&[b]);
     loop {}
 }
 
