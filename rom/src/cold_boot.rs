@@ -102,7 +102,27 @@ impl ColdBoot {
 
 impl BootFlow for ColdBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
-        romtime::println!("[mcu-rom] Starting cold boot flow");
+        #[cfg(target_arch = "riscv32")]
+        {
+            use tock_registers::register_bitfields;
+            register_bitfields![usize,
+                value [
+                    value OFFSET(0) NUMBITS(32) [],
+                ],
+            ];
+            let mcycle: riscv_csr::csr::ReadWriteRiscvCsr<
+                usize,
+                value::Register,
+                { riscv_csr::csr::MCYCLE },
+            > = riscv_csr::csr::ReadWriteRiscvCsr::new();
+            let mcycleh: riscv_csr::csr::ReadWriteRiscvCsr<
+                usize,
+                value::Register,
+                { riscv_csr::csr::MCYCLEH },
+            > = riscv_csr::csr::ReadWriteRiscvCsr::new();
+            let cycle = (mcycleh.get() as u64) << 32 | (mcycle.get() as u64);
+            romtime::println!("[mcu-rom] Starting cold boot flow at time {}", cycle);
+        }
         env.mci
             .set_flow_status(McuRomBootStatus::ColdBootFlowStarted.into());
 
@@ -172,6 +192,7 @@ impl BootFlow for ColdBoot {
             loop {}
         }
 
+        romtime::println!("[mcu-rom] Reading fuses");
         let fuses = match otp.read_fuses() {
             Ok(fuses) => {
                 mci.set_flow_status(McuRomBootStatus::FusesReadFromOtp.into());
@@ -226,6 +247,7 @@ impl BootFlow for ColdBoot {
         soc.set_ss_caliptra_dma_axi_user(straps.axi_user);
         mci.set_flow_status(McuRomBootStatus::AxiUsersConfigured.into());
 
+        romtime::println!("[mcu-rom] Populating fuses");
         soc.populate_fuses(&fuses, params.program_field_entropy.iter().any(|x| *x));
         mci.set_flow_status(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
@@ -260,7 +282,7 @@ impl BootFlow for ColdBoot {
                     romtime::println!("[mcu-rom] Error sending mailbox command: {}", HexWord(code));
                 }
                 _ => {
-                    romtime::println!("[mcu-rom] Error sending mailbox command");
+                    romtime::println!("[mcu-rom] Error sending mailbox command: {:?}", err);
                 }
             }
             fatal_error(4);
@@ -358,6 +380,10 @@ impl BootFlow for ColdBoot {
             Self::program_field_entropy(&params.program_field_entropy, soc_manager, mci);
             mci.set_flow_status(McuRomBootStatus::FieldEntropyProgrammingComplete.into());
         }
+
+        i3c.disable_recovery();
+
+        // TODO: set reset_req
 
         // Jump to firmware
         romtime::println!("[mcu-rom] Jumping to firmware");

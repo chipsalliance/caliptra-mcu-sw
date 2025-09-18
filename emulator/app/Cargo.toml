@@ -34,6 +34,7 @@ gdbstub.workspace = true
 hex.workspace = true
 log.workspace = true
 lazy_static.workspace = true
+mcu-testing-common.workspace = true
 p384.workspace = true
 pldm-common.workspace = true
 pldm-fw-pkg.workspace = true
@@ -67,6 +68,9 @@ test-caliptra-mailbox = []
 test-dma = []
 test-doe-transport-loopback = ["emulator-periph/test-doe-transport-loopback"]
 test-doe-discovery = ["emulator-periph/test-doe-discovery"]
+test-doe-spdm-responder-conformance = [
+    "emulator-periph/test-doe-spdm-responder-conformance",
+]
 test-doe-user-loopback = ["emulator-periph/test-doe-user-loopback"]
 test-i3c-simple = []
 test-i3c-constant-writes = ["emulator-periph/test-i3c-constant-writes"]
@@ -82,18 +86,19 @@ test-firmware-update-streaming = []
 test-log-flash-linear = []
 test-log-flash-circular = []
 test-log-flash-usermode = []
+test-mbox-sram = []
 test-mci = []
 test-mctp-ctrl-cmds = ["emulator-periph/test-mctp-ctrl-cmds"]
-test-mctp-capsule-loopback = []
 test-mctp-user-loopback = ["emulator-periph/test-mctp-user-loopback"]
-test-mctp-spdm-responder-conformance = ["emulator-periph/test-mctp-spdm-responder-conformance"]
+test-mctp-spdm-responder-conformance = [
+    "emulator-periph/test-mctp-spdm-responder-conformance",
+]
 test-mcu-mbox = ["emulator-periph/test-mcu-mbox"]
 test-mcu-mbox-soc-requester-loopback = []
 test-mcu-mbox-usermode = []
 test-mcu-rom-flash-access = []
 test-mcu-svn-gt-fuse = []
 test-mcu-svn-lt-fuse = []
-test-doe-spdm-responder-conformance = ["emulator-periph/test-doe-spdm-responder-conformance"]
 test-exit-immediately = []
 test-pldm-request-response = []
 test-pldm-discovery = []

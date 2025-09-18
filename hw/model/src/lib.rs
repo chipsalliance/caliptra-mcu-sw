@@ -12,6 +12,7 @@ use caliptra_hw_model_types::{
     EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
 };
 use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
 pub use mcu_mgr::McuManager;
 use mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
 pub use model_emulated::ModelEmulated;
@@ -171,6 +172,11 @@ pub struct InitParams<'a> {
     // Information about the stack Caliptra is using. When set the emulator will check if the stack
     // overflows.
     pub stack_info: Option<StackInfo>,
+
+    // Consume MCU UART log with Caliptra UART log.
+    pub enable_mcu_uart_log: bool,
+
+    pub i3c_port: Option<u16>,
 }
 
 impl InitParams<'_> {
@@ -222,10 +228,12 @@ impl Default for InitParams<'_> {
             random_sram_puf: true,
             trace_path: None,
             stack_info: None,
+            enable_mcu_uart_log: false,
             csr_hmac_key: [1; 16],
             soc_manifest: Default::default(),
             vendor_pk_hash: None,
             vendor_pqc_type: None,
+            i3c_port: None,
         }
     }
 }
@@ -316,6 +324,16 @@ pub trait McuHwModel {
 
     fn caliptra_soc_manager(&mut self) -> impl SocManager;
 
+    fn start_i3c_controller(&mut self);
+
+    fn i3c_address(&self) -> Option<u8>;
+
+    fn i3c_port(&self) -> Option<u16>;
+
+    fn exit_status(&self) -> Option<ExitStatus> {
+        None
+    }
+
     fn copy_output_until_exit_success(
         &mut self,
         mut w: impl std::io::Write,
@@ -324,7 +342,7 @@ pub trait McuHwModel {
             if !self.output().peek().is_empty() {
                 w.write_all(self.output().take(usize::MAX).as_bytes())?;
             }
-            match self.output().exit_status() {
+            match self.output().exit_status().or(self.exit_status()) {
                 Some(ExitStatus::Passed) => return Ok(()),
                 Some(ExitStatus::Failed) => {
                     return Err(std::io::Error::new(
@@ -405,6 +423,138 @@ pub trait McuHwModel {
     fn mci_flow_status(&mut self) -> u32 {
         0
     }
+
+    /// Executes `cmd` with request data `buf`. Returns `Ok(Some(_))` if
+    /// the uC responded with data, `Ok(None)` if the uC indicated success
+    /// without data, Err(ModelError::MailboxCmdFailed) if the microcontroller
+    /// responded with an error, or other model errors if there was a problem
+    /// communicating with the mailbox.
+    fn mailbox_execute(&mut self, cmd: u32, buf: &[u8]) -> Result<Option<Vec<u8>>> {
+        self.start_mailbox_execute(cmd, buf)?;
+        self.finish_mailbox_execute()
+    }
+
+    /// Send a command to the mailbox but don't wait for the response
+    fn start_mailbox_execute(&mut self, cmd: u32, buf: &[u8]) -> Result<()> {
+        // Read a 0 to get the lock
+        while !(self.mcu_manager().mbox0().mbox_lock().read().lock()) {
+            self.step();
+        }
+
+        // Mailbox lock value should read 1 now
+        // If not, the reads are likely being blocked by the AXI_USER check or some other issue
+        if !(self.mcu_manager().mbox0().mbox_lock().read().lock()) {
+            bail!("Mailbox lock is not set");
+        }
+
+        println!(
+            "<<< Executing mbox cmd 0x{cmd:08x} ({} bytes) from SoC",
+            buf.len()
+        );
+
+        self.mcu_manager().with_mbox0(|mbox| {
+            mbox.mbox_cmd().write(|_| cmd);
+            mbox.mbox_dlen().write(|_| buf.len() as u32);
+
+            // Write the data to the mailbox SRAM. NOTE: all access to SRAM must be in words.
+            let len_words = buf.len() / size_of::<u32>();
+            let word_bytes = &buf[..len_words * size_of::<u32>()];
+            for (i, word) in word_bytes.chunks_exact(4).enumerate() {
+                let word = u32::from_le_bytes(word.try_into().unwrap());
+                mbox.mbox_sram().at(i).write(|_| word);
+            }
+
+            let remaining = &buf[word_bytes.len()..];
+            if !remaining.is_empty() {
+                let mut word_bytes = [0u8; 4];
+                word_bytes[..remaining.len()].copy_from_slice(remaining);
+                let word = u32::from_le_bytes(word_bytes);
+                mbox.mbox_sram().at(len_words).write(|_| word);
+            }
+
+            // Ask the microcontroller to execute this command
+            mbox.mbox_execute().write(|w| w.execute(true));
+        });
+
+        // The hardware does not send the interrupt because it thinks MCU controls the mailbox. We
+        // need to manually trigger it.
+        self.mcu_manager().with_mci(|mci| {
+            mci.intr_block_rf()
+                .notif0_intr_trig_r()
+                .write(|w| w.notif_mbox0_cmd_avail_trig(true));
+        });
+
+        Ok(())
+    }
+
+    fn cmd_status(&mut self) -> MboxStatusE {
+        self.mcu_manager()
+            .with_mbox0(|mbox| mbox.mbox_cmd_status().read().status())
+    }
+
+    /// Wait for the response to a previous call to `start_mailbox_execute()`.
+    fn finish_mailbox_execute(&mut self) -> Result<Option<Vec<u8>>> {
+        // Wait for the microcontroller to finish executing
+        let mut timeout_cycles = 40000000; // 100ms @400MHz
+        while self.cmd_status().cmd_busy() {
+            self.step();
+            timeout_cycles -= 1;
+            if timeout_cycles == 0 {
+                bail!("Mailbox command timed out");
+            }
+        }
+
+        let status = self.cmd_status();
+
+        if status.cmd_failure() {
+            println!(">>> mbox cmd response: failed");
+            self.mcu_manager().with_mbox0(|mbox| {
+                mbox.mbox_execute().write(|w| w.execute(false));
+            });
+            return self.mcu_manager().with_mci(|mci| {
+                let fatal = mci.fw_error_fatal().read();
+                if fatal != 0 {
+                    bail!("Fatal firmware error {fatal:08x}")
+                }
+                let non_fatal = mci.fw_error_non_fatal().read();
+                if non_fatal != 0 {
+                    bail!("Non-fatal firmware error {non_fatal:08x}")
+                }
+                bail!("Unknown firmware error")
+            });
+        }
+
+        self.mcu_manager().with_mbox0(|mbox| {
+            if status.cmd_complete() {
+                println!(">>> mbox cmd response: success");
+                mbox.mbox_execute().write(|w| w.execute(false));
+                return Ok(None);
+            }
+            if !status.data_ready() {
+                bail!("Unknown mailbox status {:x}", u32::from(status));
+            }
+
+            let dlen = mbox.mbox_dlen().read() as usize;
+            let mut output = Vec::with_capacity(dlen);
+            println!(">>> mbox cmd response data ({dlen} bytes)");
+
+            // Read the output from the mailbox SRAM. NOTE: all access to SRAM must be in words.
+            let len_words = dlen / size_of::<u32>();
+            for i in 0..len_words {
+                let word = mbox.mbox_sram().at(i).read();
+                output.extend_from_slice(&word.to_le_bytes());
+            }
+
+            let remaining = dlen % size_of::<u32>();
+            if remaining > 0 {
+                let word = mbox.mbox_sram().at(len_words).read();
+                output.extend_from_slice(&word.to_le_bytes()[..remaining]);
+            }
+
+            mbox.mbox_execute().write(|w| w.execute(false));
+            Ok(Some(output))
+        })
+    }
 }
 
 #[ignore]
@@ -479,7 +629,6 @@ fn reg_access_test() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
     use mcu_builder::firmware;
 
     #[test]
@@ -497,29 +646,12 @@ mod tests {
             BootParams::default(),
         )
         .unwrap();
+        let message: [u8; 10] = [0x90, 0x5e, 0x1f, 0xad, 0x8b, 0x60, 0xb0, 0xbf, 0x1c, 0x7e];
 
-        fn cmd_status(model: &mut DefaultHwModel) -> MboxStatusE {
-            model
-                .mcu_manager()
-                .with_mbox0(|mbox| mbox.mbox_cmd_status().read().status())
-        }
-
-        // TODO: Make a cleaner command/response API similar to Caliptra HW model
         // Send command that echoes the command and input message
-        model.mcu_manager().with_mbox0(|mbox| {
-            assert!(mbox.mbox_lock().read().lock());
-            mbox.mbox_cmd().write(|_| 0x1000_0000);
-            mbox.mbox_execute().write(|w| w.execute(true));
-        });
-
-        while cmd_status(&mut model).cmd_busy() {
-            model.step();
-        }
-
-        model.mcu_manager().with_mbox0(|mbox| {
-            assert!(!mbox.mbox_cmd_status().read().status().cmd_failure());
-            assert!(mbox.mbox_cmd_status().read().status().data_ready());
-            assert_eq!(mbox.mbox_sram().at(0).read(), 0x1000_0000);
-        });
+        assert_eq!(
+            model.mailbox_execute(0x1000_0000, &message).unwrap(),
+            Some([[0x00, 0x00, 0x00, 0x10].as_slice(), &message].concat()),
+        );
     }
 }

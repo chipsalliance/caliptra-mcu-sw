@@ -2,8 +2,8 @@
 //! This module tests the PLDM request/response interaction between the emulator and the device.
 //! The emulator sends out different PLDM requests and expects a corresponding response for those requests.
 
-use crate::mctp_transport::MctpPldmSocket;
-use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
+use mcu_testing_common::mctp_transport::MctpPldmSocket;
+use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
 use pldm_common::codec::PldmCodec;
 use pldm_common::message::control::*;
 use pldm_common::message::firmware_update::get_fw_params::{
@@ -92,7 +92,7 @@ impl PldmRequestResponseTest {
     pub fn run(socket: MctpPldmSocket) {
         std::thread::spawn(move || {
             wait_for_runtime_start();
-            if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
+            if !MCU_RUNNING.load(Ordering::Relaxed) {
                 exit(-1);
             }
             print!("Emulator: Running PLDM Loopback Test: ",);
@@ -103,7 +103,7 @@ impl PldmRequestResponseTest {
             } else {
                 println!("Passed");
             }
-            EMULATOR_RUNNING.store(false, Ordering::Relaxed);
+            MCU_RUNNING.store(false, Ordering::Relaxed);
         });
     }
 

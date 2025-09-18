@@ -5,37 +5,35 @@
 #![no_main]
 #![no_std]
 
-use mcu_config::McuMemoryMap;
 use mcu_rom_common::{McuRomBootStatus, RomEnv};
 use registers_generated::mci;
-use tock_registers::interfaces::{Readable, Writeable};
-
-// re-export these so the common ROM can use it
-#[cfg(feature = "fpga_realtime")]
-#[no_mangle]
-#[used]
-pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_fpga::FPGA_MEMORY_MAP;
-#[cfg(not(feature = "fpga_realtime"))]
-#[no_mangle]
-#[used]
-pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_emulator::EMULATOR_MEMORY_MAP;
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 // Needed to bring in startup code
 #[allow(unused)]
-use caliptra_test_harness;
+use mcu_test_harness;
 
-#[no_mangle]
-pub extern "C" fn main() {
+fn run() -> ! {
     let env = RomEnv::new();
-    let mci = env.mci;
+    let mci = &env.mci;
 
+    mci.registers
+        .intr_block_rf_notif0_intr_en_r
+        .modify(mci::bits::Notif0IntrEnT::NotifMbox0CmdAvailEn::SET);
+
+    mci.caliptra_boot_go();
+
+    // This is used to tell the hardware model it is ready to start testing
     mci.set_flow_status(McuRomBootStatus::CaliptraBootGoAsserted.into());
+    mci.set_flow_status(McuRomBootStatus::ColdBootFlowComplete.into());
 
     loop {
         let status = &mci.registers.mcu_mbox0_csr_mbox_cmd_status;
-        while mci.registers.mcu_mbox0_csr_mbox_execute.get() == 0 {
+        let notif0 = &mci.registers.intr_block_rf_notif0_internal_intr_r;
+        while notif0.read(mci::bits::Notif0IntrT::NotifMbox0CmdAvailSts) == 0 {
             // Wait for a request from the SoC.
         }
+        notif0.modify(mci::bits::Notif0IntrT::NotifMbox0CmdAvailSts::SET);
         let cmd = mci.registers.mcu_mbox0_csr_mbox_cmd.get();
 
         let dlen = &mci.registers.mcu_mbox0_csr_mbox_dlen;
@@ -63,4 +61,10 @@ pub extern "C" fn main() {
             }
         }
     }
+}
+
+#[no_mangle]
+pub extern "C" fn main() {
+    mcu_test_harness::set_printer();
+    run();
 }

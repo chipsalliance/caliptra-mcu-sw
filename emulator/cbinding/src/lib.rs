@@ -14,9 +14,8 @@ Abstract:
 
 use caliptra_emu_cpu::StepAction;
 use caliptra_emu_types::RvSize;
-use emulator::{
-    gdb, Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback, EMULATOR_RUNNING,
-};
+use emulator::{gdb, Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback};
+use mcu_testing_common::MCU_RUNNING;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_longlong, c_uchar, c_uint};
 use std::ptr;
@@ -743,7 +742,7 @@ pub unsafe extern "C" fn emulator_get_pc(emulator_memory: *mut CEmulator) -> c_u
 /// * `EmulatorError::Success` on success
 #[no_mangle]
 pub extern "C" fn emulator_trigger_exit() -> EmulatorError {
-    EMULATOR_RUNNING.store(false, Ordering::Relaxed);
+    MCU_RUNNING.store(false, Ordering::Relaxed);
     EmulatorError::Success
 }
 

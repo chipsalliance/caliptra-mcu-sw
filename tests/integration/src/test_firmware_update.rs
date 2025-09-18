@@ -13,12 +13,12 @@ mod test {
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     };
-
     use pldm_fw_pkg::FirmwareManifest;
+    use std::env;
     use std::path::PathBuf;
-    use std::process::ExitStatus;
 
-    const CALIPTRA_EXTERNAL_RAM_BASE: u64 = 0x8000_0000;
+    const MCI_BASE_AXI_ADDRESS: u64 = 0xAAAAAAAA_00000000;
+    const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
     const MCU_SRAM_OFFSET: u64 = 0xc0_0000;
 
     #[derive(Clone)]
@@ -189,7 +189,7 @@ mod test {
         ]
     }
 
-    fn run_runtime_with_options(opts: &TestOptions) -> ExitStatus {
+    fn run_runtime_with_options(opts: &TestOptions) -> i32 {
         // prevent warning on unused options, this will be used in the future
         let _ = &opts.soc_images_paths;
         let _ = &opts.partition_table;
@@ -225,14 +225,16 @@ mod test {
         let update_soc_images = vec![
             ImageCfg {
                 path: update_soc_images_paths[0].clone(),
-                load_addr: CALIPTRA_EXTERNAL_RAM_BASE,
+                load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
                 image_id: SOC_IMAGES_BASE_IDENTIFIER,
                 exec_bit: 100,
                 ..Default::default()
             },
             ImageCfg {
                 path: update_soc_images_paths[1].clone(),
-                load_addr: CALIPTRA_EXTERNAL_RAM_BASE + update_soc_image_fw_1.len() as u64,
+                load_addr: MCI_BASE_AXI_ADDRESS
+                    + MCU_MBOX_SRAM1_OFFSET
+                    + update_soc_image_fw_1.len() as u64,
                 image_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
                 exec_bit: 101,
                 ..Default::default()
@@ -242,7 +244,7 @@ mod test {
         let mcu_cfg = ImageCfg {
             path: update_runtime_firmware.clone(),
             load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
-            staging_addr: CALIPTRA_EXTERNAL_RAM_BASE + (512 * 1024) as u64,
+            staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
             image_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
         };
@@ -326,13 +328,13 @@ mod test {
     /// Test case: happy path
     fn test_successful_update(opts: &TestOptions) {
         let test = run_runtime_with_options(opts);
-        assert_eq!(0, test.code().unwrap_or_default());
+        assert_eq!(0, test);
     }
 
     fn test_successful_fast_update(opts: &TestOptions) {
         let fast_update_opts = fast_update_options(opts);
         let test = run_runtime_with_options(&fast_update_opts);
-        assert_eq!(0, test.code().unwrap_or_default());
+        assert_eq!(0, test);
     }
 
     fn test_missing_caliptra_image(opts: &TestOptions) {
@@ -351,7 +353,7 @@ mod test {
         opts.update_flash_image_path = Some(update_flash_image_path);
         let opts = fast_update_options(&opts);
         let test = run_runtime_with_options(&opts);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     fn test_invalid_manifest(opts: &TestOptions) {
@@ -381,7 +383,7 @@ mod test {
         opts.update_flash_image_path = Some(update_flash_image_path);
         let opts = fast_update_options(&opts);
         let test = run_runtime_with_options(&opts);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     fn test_invalid_mcu_image(opts: &TestOptions) {
@@ -408,7 +410,7 @@ mod test {
         opts.update_flash_image_path = Some(update_flash_image_path);
         let opts = fast_update_options(&opts);
         let test = run_runtime_with_options(&opts);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     fn test_invalid_soc_image(opts: &TestOptions) {
@@ -437,7 +439,7 @@ mod test {
         opts.update_flash_image_path = Some(update_flash_image_path);
         let opts = fast_update_options(&opts);
         let test = run_runtime_with_options(&opts);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Common test function for both flash-based and streaming boot
@@ -448,6 +450,13 @@ mod test {
         } else {
             "test-firmware-update-streaming"
         };
+        // Set an arbitrary MCI base address
+        let mci_base: u64 = 0xAAAAAAAA_00000000;
+        env::set_var(
+            "CPTRA_EMULATOR_SS_MCI_OFFSET",
+            format!("0x{:016x}", mci_base),
+        );
+
         let i3c_port = 65500;
         let soc_image_fw_1 = [0x55u8; 512]; // Example firmware data for SOC image 1
         let soc_image_fw_2 = [0xAAu8; 256]; // Example firmware data for SOC image 2
@@ -474,14 +483,16 @@ mod test {
         let soc_images = vec![
             ImageCfg {
                 path: soc_images_paths[0].clone(),
-                load_addr: CALIPTRA_EXTERNAL_RAM_BASE,
+                load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
                 image_id: SOC_IMAGES_BASE_IDENTIFIER,
                 exec_bit: 100,
                 ..Default::default()
             },
             ImageCfg {
                 path: soc_images_paths[1].clone(),
-                load_addr: CALIPTRA_EXTERNAL_RAM_BASE + soc_image_fw_1.len() as u64,
+                load_addr: MCI_BASE_AXI_ADDRESS
+                    + MCU_MBOX_SRAM1_OFFSET
+                    + soc_image_fw_1.len() as u64,
                 image_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
                 exec_bit: 101,
                 ..Default::default()
@@ -491,7 +502,7 @@ mod test {
         let mcu_cfg = ImageCfg {
             path: test_runtime.clone(),
             load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
-            staging_addr: CALIPTRA_EXTERNAL_RAM_BASE + (512 * 1024) as u64,
+            staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
             image_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
         };

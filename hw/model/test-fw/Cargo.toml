@@ -2,14 +2,14 @@
 
 [package]
 name = "mcu-hw-model-test-fw"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [features]
 default = []
-riscv = ["caliptra-test-harness/riscv"]
-emu = ["caliptra-test-harness/emu"]
-fpga_realtime = []
+riscv = []
+emu = []
+fpga_realtime = ["mcu-test-harness/fpga_realtime"]
 
 [build-dependencies]
 mcu-builder.workspace = true
@@ -19,11 +19,11 @@ mcu-config-fpga.workspace = true
 [dependencies]
 caliptra-api.workspace = true
 caliptra-registers.workspace = true
-caliptra-test-harness.workspace = true
 mcu-config.workspace = true
 mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true
 mcu-rom-common.workspace = true
+mcu-test-harness.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true
 tock-registers.workspace = true
