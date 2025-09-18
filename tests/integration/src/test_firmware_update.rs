@@ -240,7 +240,7 @@ mod test {
                 ..Default::default()
             },
         ];
-        let update_runtime_firmware = compile_runtime("test-flash-based-boot", false);
+        let update_runtime_firmware = compile_runtime(Some("test-flash-based-boot"), false);
         let mcu_cfg = ImageCfg {
             path: update_runtime_firmware.clone(),
             load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
@@ -264,7 +264,7 @@ mod test {
             .get_caliptra_fw()
             .expect("Failed to build Caliptra firmware for update");
         let update_soc_manifest = update_builder
-            .get_soc_manifest()
+            .get_soc_manifest(None)
             .expect("Failed to build SOC manifest for update");
 
         let temp_soc_manifest = tempfile::NamedTempFile::new()
@@ -472,7 +472,7 @@ mod test {
         ) = create_update_package();
 
         // Compile the runtime once with the appropriate feature
-        let test_runtime = compile_runtime(feature, false);
+        let test_runtime = compile_runtime(Some(feature), false);
 
         let soc_images_paths = create_soc_images(vec![
             soc_image_fw_1.clone().to_vec(),
@@ -526,7 +526,7 @@ mod test {
             .expect("Failed to build Caliptra firmware");
 
         let soc_manifest = builder
-            .get_soc_manifest()
+            .get_soc_manifest(None)
             .expect("Failed to build SOC manifest");
 
         // Generate a flash image file to write to the primary flash

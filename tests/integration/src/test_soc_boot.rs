@@ -268,7 +268,7 @@ mod test {
                 .builder
                 .as_mut()
                 .unwrap()
-                .get_soc_manifest()
+                .get_soc_manifest(None)
                 .ok(),
             Some(opts.runtime.clone()),
             opts.partition_table.clone(),
@@ -340,7 +340,7 @@ mod test {
                 .builder
                 .as_mut()
                 .unwrap()
-                .get_soc_manifest()
+                .get_soc_manifest(None)
                 .ok(),
             Some(opts.runtime.clone()),
             opts.partition_table.clone(),
@@ -433,7 +433,7 @@ mod test {
                     .builder
                     .as_mut()
                     .unwrap()
-                    .get_soc_manifest()
+                    .get_soc_manifest(None)
                     .ok(),
                 Some(opts.runtime.clone()),
                 None,
@@ -489,7 +489,7 @@ mod test {
                     .builder
                     .as_mut()
                     .unwrap()
-                    .get_soc_manifest()
+                    .get_soc_manifest(None)
                     .ok(),
                 Some(new_options.runtime.clone()),
                 None,
@@ -636,7 +636,7 @@ mod test {
         let soc_image_fw_2 = [0xAAu8; 256]; // Example firmware data for SOC image 2
 
         // Compile the runtime once with the appropriate feature
-        let test_runtime = compile_runtime(feature, false);
+        let test_runtime = compile_runtime(Some(feature), false);
 
         let soc_images_paths = create_soc_images(vec![
             soc_image_fw_1.clone().to_vec(),
@@ -680,7 +680,7 @@ mod test {
             .expect("Failed to build Caliptra firmware");
 
         let soc_manifest = builder
-            .get_soc_manifest()
+            .get_soc_manifest(None)
             .expect("Failed to build SOC manifest");
 
         // Generate a valid flash image file
