@@ -70,7 +70,6 @@ mod test {
     }
 
     fn compile_rom(feature: &str) -> PathBuf {
-        // TODO: use environment firmware binaries
         let output: PathBuf = mcu_builder::rom_build(Some(platform()), feature)
             .expect("ROM build failed")
             .into();
