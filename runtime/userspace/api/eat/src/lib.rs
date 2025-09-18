@@ -2,12 +2,12 @@
 #![no_std]
 
 //! OCP EAT (Entity Attestation Token) encoder library
-//! 
+//!
 //! This library provides a no_std compatible implementation for encoding
 //! OCP Profile Entity Attestation Tokens using CBOR and COSE Sign1.
 //!
 //! # Features
-//! 
+//!
 //! - No standard library dependencies (`no_std` compatible)
 //! - Type-safe structured evidence API
 //! - CBOR encoding with minimal memory footprint
@@ -18,7 +18,7 @@
 //!
 //! ```rust,no_run
 //! use ocp_eat::{
-//!     ConciseEvidenceMap, EnvironmentMap, ClassMap, MeasurementMap, 
+//!     ConciseEvidenceMap, EnvironmentMap, ClassMap, MeasurementMap,
 //!     MeasurementValue, MeasurementFormat, EvidenceTripleRecord, EvTriplesMap, ConciseEvidence
 //! };
 //!
@@ -62,54 +62,43 @@ pub mod eat_encoder;
 
 // Re-export main types for easier usage
 pub use eat_encoder::{
+    CborEncoder,
+
+    ClassMap,
+    ConciseEvidence,
     // Core structures
     ConciseEvidenceMap,
-    ConciseEvidence,
-    EnvironmentMap,
-    ClassMap,
-    MeasurementMap,
-    MeasurementValue,
-    DigestEntry,
-    MeasurementFormat,
-    OcpEatClaims,
-    DloaType,
     CorimLocatorMap,
-    PrivateClaim,
-    
-    // Evidence triple structures
-    EvidenceTripleRecord,
-    EvTriplesMap,
-    
-    // COSE structures
-    ProtectedHeader,
     CoseHeaderPair,
-    
+
     // Enums and constants
     DebugStatus,
-    EatError,
-    
+    DigestEntry,
+    DloaType,
     // Encoder
     EatEncoder,
-    CborEncoder,
-    
+    EatError,
+
+    EnvironmentMap,
+    EvTriplesMap,
+
+    // Evidence triple structures
+    EvidenceTripleRecord,
+    MeasurementFormat,
+    MeasurementMap,
+    MeasurementValue,
+    OcpEatClaims,
+    PrivateClaim,
+
+    // COSE structures
+    ProtectedHeader,
     // Constants modules
     cose_headers,
 };
 
 // Re-export claim key constants
 pub use eat_encoder::{
-    CLAIM_KEY_ISSUER,
-    CLAIM_KEY_CTI,
-    CLAIM_KEY_NONCE,
-    CLAIM_KEY_DBGSTAT,
-    CLAIM_KEY_EAT_PROFILE,
-    CLAIM_KEY_MEASUREMENTS,
-    CLAIM_KEY_UEID,
-    CLAIM_KEY_OEMID,
-    CLAIM_KEY_HWMODEL,
-    CLAIM_KEY_UPTIME,
-    CLAIM_KEY_BOOTCOUNT,
-    CLAIM_KEY_BOOTSEED,
-    CLAIM_KEY_DLOAS,
-    CLAIM_KEY_RIM_LOCATORS,
+    CLAIM_KEY_BOOTCOUNT, CLAIM_KEY_BOOTSEED, CLAIM_KEY_CTI, CLAIM_KEY_DBGSTAT, CLAIM_KEY_DLOAS,
+    CLAIM_KEY_EAT_PROFILE, CLAIM_KEY_HWMODEL, CLAIM_KEY_ISSUER, CLAIM_KEY_MEASUREMENTS,
+    CLAIM_KEY_NONCE, CLAIM_KEY_OEMID, CLAIM_KEY_RIM_LOCATORS, CLAIM_KEY_UEID, CLAIM_KEY_UPTIME,
 };

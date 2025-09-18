@@ -27,7 +27,7 @@ crypto = ["dep:p384", "dep:ecdsa", "dep:sha2", "dep:rand"]
 # Core dependencies (no_std compatible - none needed for basic CBOR encoding)
 
 # Cryptographic dependencies (optional, used by binary example)
-p384 = { version = "0.13", optional = true }
-ecdsa = { version = "0.16", optional = true }
-sha2 = { version = "0.10", optional = true }
-rand = { version = "0.8", optional = true }
+p384 = { workspace = true, optional = true }
+ecdsa = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }

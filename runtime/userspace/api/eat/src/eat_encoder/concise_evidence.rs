@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 // Concise Evidence structures and encoding for RATS CoRIM compliance
-use super::eat::EatError;
 use super::cbor::CborEncoder;
+use super::eat::EatError;
 
 // CBOR tag for tagged concise evidence
 const CBOR_TAG_CONCISE_EVIDENCE: u64 = 571;
@@ -27,7 +27,7 @@ pub const CE_AUTHORIZED_BY: i32 = 2;
 
 #[derive(Debug, Clone, Copy)]
 pub struct DigestEntry<'a> {
-    pub alg_id: i32, // Algorithm identifier (e.g., SHA-256 = -16)
+    pub alg_id: i32,     // Algorithm identifier (e.g., SHA-256 = -16)
     pub value: &'a [u8], // Digest value
 }
 
@@ -157,7 +157,7 @@ pub struct EvTriplesMap<'a> {
     pub identity_triples: Option<&'a [EvIdentityTripleRecord<'a>]>, // key 1
     pub dependency_triples: Option<&'a [EvDependencyTripleRecord<'a>]>, // key 2
     pub membership_triples: Option<&'a [EvMembershipTripleRecord<'a>]>, // key 3
-    pub coswid_triples: Option<&'a [EvCoswidTripleRecord<'a>]>, // key 4
+    pub coswid_triples: Option<&'a [EvCoswidTripleRecord<'a>]>,   // key 4
     pub attest_key_triples: Option<&'a [EvAttestKeyTripleRecord<'a>]>, // key 5
 }
 
@@ -183,7 +183,7 @@ pub enum ConciseEvidence<'a> {
 }
 
 // Extension methods for CborEncoder to handle concise evidence encoding
-impl<'a> CborEncoder<'a> {
+impl CborEncoder<'_> {
     // Encode digest entry
     pub fn encode_digest_entry(&mut self, digest: &DigestEntry) -> Result<(), EatError> {
         self.encode_array_header(2)?; // [alg_id, value]
@@ -193,7 +193,10 @@ impl<'a> CborEncoder<'a> {
     }
 
     // Encode integrity register identifier choice
-    pub fn encode_integrity_register_id(&mut self, id: &IntegrityRegisterIdChoice) -> Result<(), EatError> {
+    pub fn encode_integrity_register_id(
+        &mut self,
+        id: &IntegrityRegisterIdChoice,
+    ) -> Result<(), EatError> {
         match id {
             IntegrityRegisterIdChoice::Uint(value) => self.encode_uint(*value),
             IntegrityRegisterIdChoice::Text(text) => self.encode_text(text),
@@ -201,30 +204,45 @@ impl<'a> CborEncoder<'a> {
     }
 
     // Encode integrity register entry
-    pub fn encode_integrity_register_entry(&mut self, entry: &IntegrityRegisterEntry) -> Result<(), EatError> {
+    pub fn encode_integrity_register_entry(
+        &mut self,
+        entry: &IntegrityRegisterEntry,
+    ) -> Result<(), EatError> {
         // Encode the key (register ID)
         self.encode_integrity_register_id(&entry.id)?;
-        
+
         // Encode the value (digests array)
         self.encode_array_header(entry.digests.len() as u64)?;
         for digest in entry.digests {
             self.encode_digest_entry(digest)?;
         }
-        
+
         Ok(())
     }
 
     // Encode measurement value
     pub fn encode_measurement_value(&mut self, mval: &MeasurementValue) -> Result<(), EatError> {
         let mut map_entries = 0u64;
-        
+
         // Count entries
-        if mval.version.is_some() { map_entries = map_entries.saturating_add(1); }
-        if mval.svn.is_some() { map_entries = map_entries.saturating_add(1); }
-        if mval.digests.is_some() { map_entries = map_entries.saturating_add(1); }
-        if mval.integrity_registers.is_some() { map_entries = map_entries.saturating_add(1); }
-        if mval.raw_value.is_some() { map_entries = map_entries.saturating_add(1); }
-        if mval.raw_value_mask.is_some() { map_entries = map_entries.saturating_add(1); }
+        if mval.version.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+        if mval.svn.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+        if mval.digests.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+        if mval.integrity_registers.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+        if mval.raw_value.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+        if mval.raw_value_mask.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
 
         self.encode_map_header(map_entries)?;
 
@@ -278,23 +296,27 @@ impl<'a> CborEncoder<'a> {
     // Encode measurement map
     pub fn encode_measurement_map(&mut self, measurement: &MeasurementMap) -> Result<(), EatError> {
         self.encode_map_header(2)?; // key and mval
-        
+
         // Key 0: mkey (measured element type)
         self.encode_int(0)?;
         self.encode_uint(measurement.key)?;
-        
+
         // Key 1: mval (measurement values)
         self.encode_int(1)?;
         self.encode_measurement_value(&measurement.mval)?;
-        
+
         Ok(())
     }
 
     // Encode class map
     pub fn encode_class_map(&mut self, class: &ClassMap) -> Result<(), EatError> {
         let mut entries = 1u64; // class-id is mandatory
-        if class.vendor.is_some() { entries = entries.saturating_add(1); }
-        if class.model.is_some() { entries = entries.saturating_add(1); }
+        if class.vendor.is_some() {
+            entries = entries.saturating_add(1);
+        }
+        if class.model.is_some() {
+            entries = entries.saturating_add(1);
+        }
 
         self.encode_map_header(entries)?;
 
@@ -342,44 +364,63 @@ impl<'a> CborEncoder<'a> {
     }
 
     // Encode concise evidence map
-    pub fn encode_concise_evidence_map(&mut self, evidence: &ConciseEvidenceMap) -> Result<(), EatError> {
+    pub fn encode_concise_evidence_map(
+        &mut self,
+        evidence: &ConciseEvidenceMap,
+    ) -> Result<(), EatError> {
         let mut map_entries = 1u64; // ev_triples is mandatory
-        if evidence.evidence_id.is_some() { map_entries = map_entries.saturating_add(1); }
-        if evidence.profile.is_some() { map_entries = map_entries.saturating_add(1); }
-        
+        if evidence.evidence_id.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+        if evidence.profile.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+
         self.encode_map_header(map_entries)?;
-        
+
         // Key 0: ev-triples (mandatory)
         self.encode_int(CE_EV_TRIPLES as i64)?;
         self.encode_ev_triples_map(&evidence.ev_triples)?;
-        
+
         // Key 1: evidence-id (optional)
         if let Some(evidence_id) = &evidence.evidence_id {
             self.encode_int(CE_EVIDENCE_ID as i64)?;
             self.encode_evidence_id_type_choice(evidence_id)?;
         }
-        
+
         // Key 2: profile (optional)
         if let Some(profile) = &evidence.profile {
             self.encode_int(CE_PROFILE as i64)?;
             self.encode_profile_type_choice(profile)?;
         }
-        
+
         Ok(())
     }
 
     // Encode evidence triples map
     pub fn encode_ev_triples_map(&mut self, triples: &EvTriplesMap) -> Result<(), EatError> {
         let mut map_entries = 0u64;
-        if triples.evidence_triples.is_some() { map_entries = map_entries.saturating_add(1); }
-        if triples.identity_triples.is_some() { map_entries = map_entries.saturating_add(1); }
-        if triples.dependency_triples.is_some() { map_entries = map_entries.saturating_add(1); }
-        if triples.membership_triples.is_some() { map_entries = map_entries.saturating_add(1); }
-        if triples.coswid_triples.is_some() { map_entries = map_entries.saturating_add(1); }
-        if triples.attest_key_triples.is_some() { map_entries = map_entries.saturating_add(1); }
-        
+        if triples.evidence_triples.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+        if triples.identity_triples.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+        if triples.dependency_triples.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+        if triples.membership_triples.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+        if triples.coswid_triples.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+        if triples.attest_key_triples.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+
         self.encode_map_header(map_entries)?;
-        
+
         // Key 0: evidence-triples
         if let Some(evidence_triples) = triples.evidence_triples {
             self.encode_int(CE_EVIDENCE_TRIPLES as i64)?;
@@ -388,7 +429,7 @@ impl<'a> CborEncoder<'a> {
                 self.encode_evidence_triple_record(triple)?;
             }
         }
-        
+
         // Key 1: identity-triples
         if let Some(identity_triples) = triples.identity_triples {
             self.encode_int(CE_IDENTITY_TRIPLES as i64)?;
@@ -397,7 +438,7 @@ impl<'a> CborEncoder<'a> {
                 self.encode_identity_triple_record(triple)?;
             }
         }
-        
+
         // Key 2: dependency-triples
         if let Some(dependency_triples) = triples.dependency_triples {
             self.encode_int(CE_DEPENDENCY_TRIPLES as i64)?;
@@ -406,7 +447,7 @@ impl<'a> CborEncoder<'a> {
                 self.encode_dependency_triple_record(triple)?;
             }
         }
-        
+
         // Key 3: membership-triples
         if let Some(membership_triples) = triples.membership_triples {
             self.encode_int(CE_MEMBERSHIP_TRIPLES as i64)?;
@@ -415,7 +456,7 @@ impl<'a> CborEncoder<'a> {
                 self.encode_membership_triple_record(triple)?;
             }
         }
-        
+
         // Key 4: coswid-triples
         if let Some(coswid_triples) = triples.coswid_triples {
             self.encode_int(CE_COSWID_TRIPLES as i64)?;
@@ -424,7 +465,7 @@ impl<'a> CborEncoder<'a> {
                 self.encode_coswid_triple_record(triple)?;
             }
         }
-        
+
         // Key 5: attest-key-triples
         if let Some(attest_key_triples) = triples.attest_key_triples {
             self.encode_int(CE_ATTEST_KEY_TRIPLES as i64)?;
@@ -433,12 +474,15 @@ impl<'a> CborEncoder<'a> {
                 self.encode_attest_key_triple_record(triple)?;
             }
         }
-        
+
         Ok(())
     }
 
     // Encode evidence ID type choice
-    pub fn encode_evidence_id_type_choice(&mut self, id: &EvidenceIdTypeChoice) -> Result<(), EatError> {
+    pub fn encode_evidence_id_type_choice(
+        &mut self,
+        id: &EvidenceIdTypeChoice,
+    ) -> Result<(), EatError> {
         match id {
             EvidenceIdTypeChoice::TaggedUuid(uuid) => {
                 // Encode tagged UUID (needs proper tag)
@@ -448,7 +492,10 @@ impl<'a> CborEncoder<'a> {
     }
 
     // Encode profile type choice
-    pub fn encode_profile_type_choice(&mut self, profile: &ProfileTypeChoice) -> Result<(), EatError> {
+    pub fn encode_profile_type_choice(
+        &mut self,
+        profile: &ProfileTypeChoice,
+    ) -> Result<(), EatError> {
         match profile {
             ProfileTypeChoice::Uri(uri) => self.encode_text(uri),
             ProfileTypeChoice::Oid(oid) => {
@@ -467,7 +514,10 @@ impl<'a> CborEncoder<'a> {
     }
 
     // Encode crypto key type choice
-    pub fn encode_crypto_key_type_choice(&mut self, key: &CryptoKeyTypeChoice) -> Result<(), EatError> {
+    pub fn encode_crypto_key_type_choice(
+        &mut self,
+        key: &CryptoKeyTypeChoice,
+    ) -> Result<(), EatError> {
         match key {
             CryptoKeyTypeChoice::PublicKey(key_bytes) => self.encode_bytes(key_bytes),
             CryptoKeyTypeChoice::KeyId(key_id) => self.encode_bytes(key_id),
@@ -475,119 +525,144 @@ impl<'a> CborEncoder<'a> {
     }
 
     // Encode evidence triple record: [environment-map, [+ measurement-map]]
-    pub fn encode_evidence_triple_record(&mut self, triple: &EvidenceTripleRecord) -> Result<(), EatError> {
+    pub fn encode_evidence_triple_record(
+        &mut self,
+        triple: &EvidenceTripleRecord,
+    ) -> Result<(), EatError> {
         self.encode_array_header(2)?;
-        
+
         // Single environment map
         self.encode_environment_map(&triple.environment)?;
-        
+
         // Measurements array
         self.encode_array_header(triple.measurements.len() as u64)?;
         for measurement in triple.measurements {
             self.encode_measurement_map(measurement)?;
         }
-        
+
         Ok(())
     }
 
     // Encode identity triple record: [environment-map, [+ crypto-key]]
-    pub fn encode_identity_triple_record(&mut self, triple: &EvIdentityTripleRecord) -> Result<(), EatError> {
+    pub fn encode_identity_triple_record(
+        &mut self,
+        triple: &EvIdentityTripleRecord,
+    ) -> Result<(), EatError> {
         self.encode_array_header(2)?;
-        
+
         // Environment map
         self.encode_environment_map(&triple.environment)?;
-        
+
         // Crypto keys array
         self.encode_array_header(triple.crypto_keys.len() as u64)?;
         for key in triple.crypto_keys {
             self.encode_crypto_key_type_choice(key)?;
         }
-        
+
         Ok(())
     }
 
     // Encode attest key triple record: [environment-map, [+ crypto-key]]
-    pub fn encode_attest_key_triple_record(&mut self, triple: &EvAttestKeyTripleRecord) -> Result<(), EatError> {
+    pub fn encode_attest_key_triple_record(
+        &mut self,
+        triple: &EvAttestKeyTripleRecord,
+    ) -> Result<(), EatError> {
         self.encode_array_header(2)?;
-        
+
         // Environment map
         self.encode_environment_map(&triple.environment)?;
-        
+
         // Crypto keys array
         self.encode_array_header(triple.crypto_keys.len() as u64)?;
         for key in triple.crypto_keys {
             self.encode_crypto_key_type_choice(key)?;
         }
-        
+
         Ok(())
     }
 
     // Encode dependency triple record: [domain, [+ domain]]
-    pub fn encode_dependency_triple_record(&mut self, triple: &EvDependencyTripleRecord) -> Result<(), EatError> {
+    pub fn encode_dependency_triple_record(
+        &mut self,
+        triple: &EvDependencyTripleRecord,
+    ) -> Result<(), EatError> {
         self.encode_array_header(2)?;
-        
+
         // Domain
         self.encode_domain_type_choice(&triple.domain)?;
-        
+
         // Dependencies array
         self.encode_array_header(triple.dependencies.len() as u64)?;
         for dep in triple.dependencies {
             self.encode_domain_type_choice(dep)?;
         }
-        
+
         Ok(())
     }
 
     // Encode membership triple record: [domain, [+ environment-map]]
-    pub fn encode_membership_triple_record(&mut self, triple: &EvMembershipTripleRecord) -> Result<(), EatError> {
+    pub fn encode_membership_triple_record(
+        &mut self,
+        triple: &EvMembershipTripleRecord,
+    ) -> Result<(), EatError> {
         self.encode_array_header(2)?;
-        
+
         // Domain
         self.encode_domain_type_choice(&triple.domain)?;
-        
+
         // Environments array
         self.encode_array_header(triple.environments.len() as u64)?;
         for env in triple.environments {
             self.encode_environment_map(env)?;
         }
-        
+
         Ok(())
     }
 
     // Encode CoSWID triple record: [environment-map, [+ ev-coswid-evidence-map]]
-    pub fn encode_coswid_triple_record(&mut self, triple: &EvCoswidTripleRecord) -> Result<(), EatError> {
+    pub fn encode_coswid_triple_record(
+        &mut self,
+        triple: &EvCoswidTripleRecord,
+    ) -> Result<(), EatError> {
         self.encode_array_header(2)?;
-        
+
         // Environment map
         self.encode_environment_map(&triple.environment)?;
-        
+
         // CoSWID evidence array
         self.encode_array_header(triple.coswid_evidence.len() as u64)?;
         for evidence in triple.coswid_evidence {
             self.encode_coswid_evidence_map(evidence)?;
         }
-        
+
         Ok(())
     }
 
     // Encode CoSWID evidence map
-    pub fn encode_coswid_evidence_map(&mut self, evidence: &EvCoswidEvidenceMap) -> Result<(), EatError> {
+    pub fn encode_coswid_evidence_map(
+        &mut self,
+        evidence: &EvCoswidEvidenceMap,
+    ) -> Result<(), EatError> {
         let mut map_entries = 1u64; // coswid_evidence is mandatory
-        if evidence.coswid_tag_id.is_some() { map_entries = map_entries.saturating_add(1); }
-        if evidence.authorized_by.is_some() { map_entries = map_entries.saturating_add(1); }
-        
+        if evidence.coswid_tag_id.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+        if evidence.authorized_by.is_some() {
+            map_entries = map_entries.saturating_add(1);
+        }
+
         self.encode_map_header(map_entries)?;
-        
+
         // Key 0: coswid-tag-id (optional)
         if let Some(tag_id) = evidence.coswid_tag_id {
             self.encode_int(CE_COSWID_TAG_ID as i64)?;
             self.encode_bytes(tag_id)?;
         }
-        
+
         // Key 1: coswid-evidence (mandatory)
         self.encode_int(CE_COSWID_EVIDENCE as i64)?;
         self.encode_bytes(evidence.coswid_evidence)?;
-        
+
         // Key 2: authorized-by (optional)
         if let Some(authorized_by) = evidence.authorized_by {
             self.encode_int(CE_AUTHORIZED_BY as i64)?;
@@ -596,7 +671,7 @@ impl<'a> CborEncoder<'a> {
                 self.encode_crypto_key_type_choice(key)?;
             }
         }
-        
+
         Ok(())
     }
 }

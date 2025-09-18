@@ -11,16 +11,13 @@ pub struct CborEncoder<'a> {
 
 impl<'a> CborEncoder<'a> {
     pub fn new(buffer: &'a mut [u8]) -> Self {
-        Self {
-            buffer,
-            pos: 0,
-        }
+        Self { buffer, pos: 0 }
     }
 
     pub fn len(&self) -> usize {
         self.pos
     }
-    
+
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.pos == 0
@@ -40,7 +37,10 @@ impl<'a> CborEncoder<'a> {
     }
 
     fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), EatError> {
-        let end_pos = self.pos.checked_add(bytes.len()).ok_or(EatError::BufferTooSmall)?;
+        let end_pos = self
+            .pos
+            .checked_add(bytes.len())
+            .ok_or(EatError::BufferTooSmall)?;
         if end_pos > self.buffer.len() {
             return Err(EatError::BufferTooSmall);
         }
@@ -56,7 +56,7 @@ impl<'a> CborEncoder<'a> {
     // Encode major type + additional info according to CBOR rules
     fn encode_type_value(&mut self, major_type: u8, value: u64) -> Result<(), EatError> {
         let major = major_type << 5;
-        
+
         if value <= 23 {
             self.write_byte(major | value as u8)?;
         } else if value <= 0xff {
@@ -89,8 +89,9 @@ impl<'a> CborEncoder<'a> {
             return Err(EatError::InvalidData);
         }
         // Safe arithmetic: for negative value, -1 - value is always positive
-        let positive_value = (value.checked_mul(-1).ok_or(EatError::InvalidData)?).
-            checked_sub(1).ok_or(EatError::InvalidData)? as u64;
+        let positive_value = (value.checked_mul(-1).ok_or(EatError::InvalidData)?)
+            .checked_sub(1)
+            .ok_or(EatError::InvalidData)? as u64;
         self.encode_type_value(1, positive_value)
     }
 

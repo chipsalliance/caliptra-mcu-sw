@@ -41,7 +41,7 @@ pub enum DebugStatus {
 
 #[derive(Debug, Clone, Copy)]
 pub struct MeasurementFormat<'a> {
-    pub content_type: u16, // CoAP content format
+    pub content_type: u16,                     // CoAP content format
     pub concise_evidence: ConciseEvidence<'a>, // Structured evidence (required)
 }
 
@@ -61,7 +61,7 @@ pub struct CorimLocatorMap<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct PrivateClaim<'a> {
-    pub key: i32, // Must be < -65536
+    pub key: i32,        // Must be < -65536
     pub value: &'a [u8], // Limited to 100 bytes
 }
 
@@ -69,23 +69,23 @@ pub struct PrivateClaim<'a> {
 #[derive(Debug, Clone, Copy)]
 pub struct OcpEatClaims<'a> {
     // Mandatory claims
-    pub issuer: &'a str, // iss claim (key 1)
-    pub cti: &'a [u8], // CTI claim for token uniqueness (key 7) 
-    pub nonce: &'a [u8], // Nonce for freshness (key 10)
-    pub dbgstat: DebugStatus, // Debug status (key 263)
-    pub eat_profile: &'a str, // EAT Profile OID (key 265)
+    pub issuer: &'a str,                           // iss claim (key 1)
+    pub cti: &'a [u8],                             // CTI claim for token uniqueness (key 7)
+    pub nonce: &'a [u8],                           // Nonce for freshness (key 10)
+    pub dbgstat: DebugStatus,                      // Debug status (key 263)
+    pub eat_profile: &'a str,                      // EAT Profile OID (key 265)
     pub measurements: &'a [MeasurementFormat<'a>], // Concise evidence (key 273)
-    
+
     // Optional claims
-    pub ueid: Option<&'a [u8]>, // Unique Entity ID (key 256)
-    pub oemid: Option<&'a [u8]>, // OEM ID (key 258)
-    pub hwmodel: Option<&'a [u8]>, // Hardware model (key 259)
-    pub uptime: Option<u64>, // Uptime in seconds (key 261)
-    pub bootcount: Option<u64>, // Boot count (key 267)
-    pub bootseed: Option<&'a [u8]>, // Boot seed (key 268)
+    pub ueid: Option<&'a [u8]>,            // Unique Entity ID (key 256)
+    pub oemid: Option<&'a [u8]>,           // OEM ID (key 258)
+    pub hwmodel: Option<&'a [u8]>,         // Hardware model (key 259)
+    pub uptime: Option<u64>,               // Uptime in seconds (key 261)
+    pub bootcount: Option<u64>,            // Boot count (key 267)
+    pub bootseed: Option<&'a [u8]>,        // Boot seed (key 268)
     pub dloas: Option<&'a [DloaType<'a>]>, // DLOA claim (key 269)
     pub rim_locators: Option<&'a [CorimLocatorMap<'a>]>, // RIM locators (key -70001)
-    
+
     // Private claims (up to 5, keys < -65536)
     pub private_claims: &'a [PrivateClaim<'a>],
 }
@@ -107,50 +107,58 @@ pub struct ProtectedHeader {
 pub struct EatEncoder;
 
 // Extension methods for CborEncoder to handle EAT-specific encoding
-impl<'a> CborEncoder<'a> {
+impl CborEncoder<'_> {
     // Encode debug status
     pub fn encode_debug_status(&mut self, status: DebugStatus) -> Result<(), EatError> {
         self.encode_uint(status as u64)
     }
 
     // Encode measurement format using structured concise evidence
-    pub fn encode_measurement_format(&mut self, format: &MeasurementFormat) -> Result<(), EatError> {
+    pub fn encode_measurement_format(
+        &mut self,
+        format: &MeasurementFormat,
+    ) -> Result<(), EatError> {
         self.encode_array_header(2)?; // [content_type, content_format]
         self.encode_uint(format.content_type as u64)?;
-        
+
         const MAX_EVIDENCE_SIZE: usize = 4096;
         let mut evidence_buffer = [0u8; MAX_EVIDENCE_SIZE];
         let mut evidence_encoder = CborEncoder::new(&mut evidence_buffer);
-        
+
         // Encode the structured concise evidence
         evidence_encoder.encode_concise_evidence(&format.concise_evidence)?;
         let encoded_len = evidence_encoder.len();
-        
+
         // Encode the structured concise evidence as a byte string
-        let evidence_slice = evidence_buffer.get(..encoded_len)
+        let evidence_slice = evidence_buffer
+            .get(..encoded_len)
             .ok_or(EatError::BufferTooSmall)?;
         self.encode_bytes(evidence_slice)?;
-        
+
         Ok(())
     }
 
     // Encode DLOA type
     pub fn encode_dloa_type(&mut self, dloa: &DloaType) -> Result<(), EatError> {
         // DLOA is encoded as an array [registrar, platform_label, ?application_label]
-        let array_len = if dloa.application_label.is_some() { 3 } else { 2 };
+        let array_len = if dloa.application_label.is_some() {
+            3
+        } else {
+            2
+        };
         self.encode_array_header(array_len)?;
-        
+
         // dloa_registrar: general-uri (text string) - using endorsement_id as registrar
         self.encode_text(dloa.endorsement_id)?;
-        
+
         // dloa_platform_label: text
         self.encode_text(dloa.platform_label)?;
-        
+
         // dloa_application_label: text (optional)
         if let Some(app_label) = dloa.application_label {
             self.encode_text(app_label)?;
         }
-        
+
         Ok(())
     }
 
@@ -158,17 +166,17 @@ impl<'a> CborEncoder<'a> {
     pub fn encode_corim_locator(&mut self, locator: &CorimLocatorMap) -> Result<(), EatError> {
         let entries = if locator.thumbprint.is_some() { 2 } else { 1 };
         self.encode_map_header(entries)?;
-        
+
         // Key 0: href (can be uri or [+ uri])
         self.encode_int(0)?;
         self.encode_text(locator.href)?;
-        
+
         // Key 1: thumbprint (optional)
         if let Some(thumbprint) = locator.thumbprint {
             self.encode_int(1)?;
             self.encode_bytes(thumbprint)?;
         }
-        
+
         Ok(())
     }
 
@@ -177,14 +185,30 @@ impl<'a> CborEncoder<'a> {
         let mut count: u64 = 6; // Mandatory claims: issuer, cti, nonce, dbgstat, eat_profile, measurements
 
         // Count optional claims
-        if claims.ueid.is_some() { count = count.saturating_add(1); }
-        if claims.oemid.is_some() { count = count.saturating_add(1); }
-        if claims.hwmodel.is_some() { count = count.saturating_add(1); }
-        if claims.uptime.is_some() { count = count.saturating_add(1); }
-        if claims.bootcount.is_some() { count = count.saturating_add(1); }
-        if claims.bootseed.is_some() { count = count.saturating_add(1); }
-        if claims.dloas.is_some() { count = count.saturating_add(1); }
-        if claims.rim_locators.is_some() { count = count.saturating_add(1); }
+        if claims.ueid.is_some() {
+            count = count.saturating_add(1);
+        }
+        if claims.oemid.is_some() {
+            count = count.saturating_add(1);
+        }
+        if claims.hwmodel.is_some() {
+            count = count.saturating_add(1);
+        }
+        if claims.uptime.is_some() {
+            count = count.saturating_add(1);
+        }
+        if claims.bootcount.is_some() {
+            count = count.saturating_add(1);
+        }
+        if claims.bootseed.is_some() {
+            count = count.saturating_add(1);
+        }
+        if claims.dloas.is_some() {
+            count = count.saturating_add(1);
+        }
+        if claims.rim_locators.is_some() {
+            count = count.saturating_add(1);
+        }
 
         // Count private claims (safe cast since len() returns usize which fits in u64)
         count = count.saturating_add(claims.private_claims.len() as u64);
@@ -286,8 +310,12 @@ impl<'a> CborEncoder<'a> {
     // Encode COSE protected header
     pub fn encode_protected_header(&mut self, header: &ProtectedHeader) -> Result<(), EatError> {
         let mut entries = 1u64; // alg is mandatory
-        if header.content_type.is_some() { entries = entries.saturating_add(1); }
-        if header.kid.is_some() { entries = entries.saturating_add(1); }
+        if header.content_type.is_some() {
+            entries = entries.saturating_add(1);
+        }
+        if header.kid.is_some() {
+            entries = entries.saturating_add(1);
+        }
 
         self.encode_map_header(entries)?;
 
@@ -311,14 +339,17 @@ impl<'a> CborEncoder<'a> {
     }
 
     // Encode COSE unprotected header
-    pub fn encode_unprotected_header(&mut self, headers: &[CoseHeaderPair]) -> Result<(), EatError> {
+    pub fn encode_unprotected_header(
+        &mut self,
+        headers: &[CoseHeaderPair],
+    ) -> Result<(), EatError> {
         self.encode_map_header(headers.len() as u64)?;
-        
+
         for header in headers {
             self.encode_int(header.key as i64)?;
             self.encode_bytes(header.value)?;
         }
-        
+
         Ok(())
     }
 }
@@ -336,7 +367,7 @@ impl EatEncoder {
         // Use temporary buffer for protected header
         const MAX_PROTECTED_SIZE: usize = 256;
         let mut protected_buffer = [0u8; MAX_PROTECTED_SIZE];
-        
+
         // First encode the protected header
         let mut protected_encoder = CborEncoder::new(&mut protected_buffer);
         protected_encoder.encode_protected_header(protected_header)?;
@@ -344,32 +375,33 @@ impl EatEncoder {
         if protected_len > MAX_PROTECTED_SIZE {
             return Err(EatError::BufferTooSmall);
         }
-        
+
         // Now encode the final structure
         let mut encoder = CborEncoder::new(buffer);
-        
+
         // Encode the complete COSE_Sign1 structure with tags
         encoder.encode_self_described_cbor()?; // Tag 55799
         encoder.encode_cwt_tag()?; // Tag 61
         encoder.encode_cose_sign1_tag()?; // Tag 18
-        
+
         // Now encode the COSE_Sign1 array
         encoder.encode_array_header(4)?;
-        
+
         // Protected header as byte string
-        let protected_slice = protected_buffer.get(..protected_len)
+        let protected_slice = protected_buffer
+            .get(..protected_len)
             .ok_or(EatError::BufferTooSmall)?;
         encoder.encode_bytes(protected_slice)?;
-        
+
         // Unprotected header as map
         encoder.encode_unprotected_header(unprotected_headers)?;
-        
+
         // Payload as byte string (use provided pre-encoded payload)
         encoder.encode_bytes(payload)?;
-        
+
         // Signature as byte string
         encoder.encode_bytes(signature)?;
-        
+
         Ok(encoder.len())
     }
 
@@ -380,42 +412,42 @@ impl EatEncoder {
         if claims.issuer.is_empty() {
             return Err(EatError::MissingMandatoryClaim);
         }
-        
+
         if claims.cti.len() < 8 || claims.cti.len() > 64 {
             return Err(EatError::InvalidClaimSize);
         }
-        
+
         if claims.nonce.len() < 8 || claims.nonce.len() > 64 {
             return Err(EatError::InvalidClaimSize);
         }
-        
+
         if claims.eat_profile.is_empty() {
             return Err(EatError::MissingMandatoryClaim);
         }
-        
+
         if claims.measurements.is_empty() {
             return Err(EatError::MissingMandatoryClaim);
         }
-        
+
         // Validate optional claims size constraints
         if let Some(ueid) = claims.ueid {
             if ueid.len() < 7 || ueid.len() > 33 {
                 return Err(EatError::InvalidClaimSize);
             }
         }
-        
+
         if let Some(hwmodel) = claims.hwmodel {
             if hwmodel.is_empty() || hwmodel.len() > 32 {
                 return Err(EatError::InvalidClaimSize);
             }
         }
-        
+
         if let Some(bootseed) = claims.bootseed {
             if bootseed.len() < 32 || bootseed.len() > 64 {
                 return Err(EatError::InvalidClaimSize);
             }
         }
-        
+
         // Validate private claims
         for private_claim in claims.private_claims {
             if private_claim.key >= -65536 {
@@ -425,10 +457,10 @@ impl EatEncoder {
                 return Err(EatError::InvalidClaimSize);
             }
         }
-        
+
         // Validate measurements format - structured evidence is always valid
         // No additional validation needed for structured concise evidence
-        
+
         Ok(())
     }
 
@@ -436,22 +468,24 @@ impl EatEncoder {
     #[allow(dead_code)]
     pub fn estimate_buffer_size(claims: &OcpEatClaims) -> usize {
         let mut size: usize = 0;
-        
+
         // Base overhead for CBOR structure
         size = size.saturating_add(100); // Tags, headers, map structures
-        
+
         // Mandatory claims
         size = size.saturating_add(claims.issuer.len()).saturating_add(10);
         size = size.saturating_add(claims.cti.len()).saturating_add(10);
         size = size.saturating_add(claims.nonce.len()).saturating_add(10);
-        size = size.saturating_add(claims.eat_profile.len()).saturating_add(10);
+        size = size
+            .saturating_add(claims.eat_profile.len())
+            .saturating_add(10);
         size = size.saturating_add(10); // dbgstat
-        
+
         // Measurements (estimated based on structured evidence)
         for _measurement in claims.measurements {
             size = size.saturating_add(200); // Estimated size for structured concise evidence
         }
-        
+
         // Optional claims
         if let Some(ueid) = claims.ueid {
             size = size.saturating_add(ueid.len()).saturating_add(10);
@@ -467,7 +501,8 @@ impl EatEncoder {
         }
         if let Some(dloas) = claims.dloas {
             for dloa in dloas {
-                size = size.saturating_add(dloa.endorsement_id.len())
+                size = size
+                    .saturating_add(dloa.endorsement_id.len())
                     .saturating_add(dloa.locator.len())
                     .saturating_add(20);
             }
@@ -480,12 +515,14 @@ impl EatEncoder {
                 }
             }
         }
-        
+
         // Private claims
         for private_claim in claims.private_claims {
-            size = size.saturating_add(private_claim.value.len()).saturating_add(10);
+            size = size
+                .saturating_add(private_claim.value.len())
+                .saturating_add(10);
         }
-        
+
         // Add 20% safety margin using saturating arithmetic
         size.saturating_add(size / 5)
     }
@@ -545,7 +582,7 @@ impl ProtectedHeader {
 
 // Constants for common COSE header parameters
 pub mod cose_headers {
-    pub const X5CHAIN: i32 = 33;      // X.509 Certificate Chain
+    pub const X5CHAIN: i32 = 33; // X.509 Certificate Chain
 }
 
 // COSE Sign1 signature context creation (as per RFC 8152)
@@ -561,23 +598,23 @@ pub fn create_sign1_context(
     //    external_aad,   // Empty for basic use
     //    payload         // The payload to be signed
     // ]
-    
+
     let mut encoder = CborEncoder::new(buffer);
-    
+
     // CBOR encode the Sig_structure array
     encoder.encode_array_header(4)?; // Array of 4 items
-    
+
     // "Signature1" as text string
     encoder.encode_text("Signature1")?;
-    
+
     // Protected header as byte string
     encoder.encode_bytes(protected_header)?;
-    
+
     // External AAD as empty byte string
     encoder.encode_bytes(&[])?;
-    
+
     // Payload as byte string
     encoder.encode_bytes(payload)?;
-    
+
     Ok(encoder.len())
 }
