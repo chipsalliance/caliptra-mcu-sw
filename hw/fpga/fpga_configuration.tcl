@@ -132,7 +132,7 @@ close $xdc_fd
 # AXI Interconnect (before firewall)
 create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect:1.0 axi_interconnect_0
 set_property -dict [list \
-  CONFIG.NUM_MI {6} \
+  CONFIG.NUM_MI {4} \
   CONFIG.NUM_SI {1} \
   CONFIG.NUM_CLKS {1} \
   ] [get_bd_cells axi_interconnect_0]
@@ -140,7 +140,7 @@ set_property -dict [list \
 # AXI Interconnect for Caliptra IPs (behind firewall)
 create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect:1.0 axi_interconnect_1
 set_property -dict [list \
-  CONFIG.NUM_MI {9} \
+  CONFIG.NUM_MI {11} \
   CONFIG.NUM_SI {6} \
   CONFIG.NUM_CLKS {2} \
   ] [get_bd_cells axi_interconnect_1]
@@ -168,18 +168,17 @@ register_axi_subordinate axi_interconnect_1 M00_AXI  0xA4100000 0x00100000 calip
 register_axi_subordinate axi_interconnect_1 M01_AXI  0xA4030000 0x00002000 caliptra_package_top_0/S_AXI_I3C      reg0    S_AXI_I3C          TRUE
 register_axi_subordinate axi_interconnect_1 M02_AXI  0xA4040000 0x00002000 caliptra_package_top_0/S_AXI_LCC      reg0    S_AXI_LCC          FALSE
 register_axi_subordinate axi_interconnect_1 M03_AXI  0xA8000000 0x01000000 caliptra_package_top_0/S_AXI_MCI      reg0    S_AXI_MCI          TRUE
-
 register_axi_subordinate axi_interconnect_1 M04_AXI  0xB0040000 0x00020000 caliptra_package_top_0/S_AXI_MCU_ROM  reg0    S_AXI_MCU_ROM      TRUE
 register_axi_subordinate axi_interconnect_1 M05_AXI  0xA4060000 0x00002000 caliptra_package_top_0/S_AXI_OTP      reg0    S_AXI_OTP          TRUE
-register_axi_subordinate axi_interconnect_1 M06_AXI  0xB0080000 0x00010000 otp_ram_bram_ctrl_0/S_AXI             Mem0    S_AXI_OTP_RAM      TRUE
-register_axi_subordinate axi_interconnect_1 M07_AXI  0xB00C0000 0x00040000 staging_sram_bram_ctrl_0/S_AXI        Mem0    S_AXI_STAGING_SRAM FALSE
-register_axi_subordinate axi_interconnect_1 M08_AXI  0xA4080000 0x00001000 xilinx_i3c_0/S_AXI                    Reg     S_AXI_XILINX_I3C   FALSE
+register_axi_subordinate axi_interconnect_1 M06_AXI  0xA4010000 0x00002000 caliptra_package_top_0/S_AXI_WRAPPER  reg0    S_AXI_WRAPPER      FALSE
+register_axi_subordinate axi_interconnect_1 M07_AXI  0xB0080000 0x00010000 otp_ram_bram_ctrl_0/S_AXI             Mem0    S_AXI_OTP_RAM      TRUE
+register_axi_subordinate axi_interconnect_1 M08_AXI  0xB00C0000 0x00040000 staging_sram_bram_ctrl_0/S_AXI        Mem0    S_AXI_STAGING_SRAM FALSE
+register_axi_subordinate axi_interconnect_1 M09_AXI  0xA4080000 0x00001000 xilinx_i3c_0/S_AXI                    Reg     S_AXI_XILINX_I3C   FALSE
+register_axi_subordinate axi_interconnect_1 M10_AXI  0xA4081000 0x00001000 axi_cdma_0/S_AXI_LITE                 Reg     S_AXI_XILINX_DMA   FALSE
 
-register_axi_subordinate axi_interconnect_0 M01_AXI  0xA4090000 0x00001000 axi_firewall_0/S_AXI_CTL              Control S_AXI_CTL_FIREWALL TRUE
+register_axi_subordinate axi_interconnect_0 M01_AXI  0xA4090000 0x00001000 axi_firewall_0/S_AXI_CTL              Control S_AXI_CTL_FIREWALL FALSE
 register_axi_subordinate axi_interconnect_0 M02_AXI  0xB0000000 0x00018000 cptra_rom_backdoor_bram_0/S_AXI       Mem0    S_AXI_CALIPTRA_ROM FALSE
 register_axi_subordinate axi_interconnect_0 M03_AXI  0xB0020000 0x00020000 mcu_rom_backdoor_bram_0/S_AXI         Mem0    S_AXI_SS_ROM       FALSE
-register_axi_subordinate axi_interconnect_0 M04_AXI  0xA4010000 0x00002000 caliptra_package_top_0/S_AXI_WRAPPER  reg0    S_AXI_WRAPPER      FALSE
-register_axi_subordinate axi_interconnect_0 M05_AXI  0xA4084000 0x00001000 axi_cdma_0/S_AXI_LITE                 Reg     S_AXI_XILINX_DMA   FALSE
 
 
 
@@ -378,7 +377,7 @@ connect_bd_net [get_bd_pins caliptra_package_top_0/ARM_USER] [get_bd_pins axi_fi
 connect_bd_net [get_bd_pins caliptra_package_top_0/ARM_USER] [get_bd_pins axi_firewall_0/s_axi_wuser]
 
 #### Assign address segments for all AXI managers ####
-set managers {ps_0/M_AXI_FPD caliptra_package_top_0/M_AXI_MCU_IFU caliptra_package_top_0/M_AXI_MCU_LSU caliptra_package_top_0/M_AXI_MCU_SB caliptra_package_top_0/M_AXI_CALIPTRA}
+set managers {ps_0/M_AXI_FPD caliptra_package_top_0/M_AXI_MCU_IFU caliptra_package_top_0/M_AXI_MCU_LSU caliptra_package_top_0/M_AXI_MCU_SB caliptra_package_top_0/M_AXI_CALIPTRA axi_cdma_0/Data}
 set base_offsets {0 0 0 0 0}
 
 foreach manager $managers base_offset $base_offsets {
