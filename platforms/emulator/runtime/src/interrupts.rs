@@ -18,7 +18,7 @@ pub struct EmulatorPeripherals<'a> {
     pub uart: SemihostUart<'a>,
     pub primary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
     pub secondary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
-    pub dma: dma_driver::dma_ctrl::EmulatedDmaCtrl<'a>,
+    pub dma: dma_driver::axicdma::AxiCDMA<'a>,
     pub doe_transport: doe_mbox_driver::EmulatedDoeTransport<'a, InternalTimers<'a>>,
 }
 
@@ -32,7 +32,7 @@ impl<'a> EmulatorPeripherals<'a> {
             secondary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
                 flash_driver::flash_ctrl::SECONDARY_FLASH_CTRL_BASE,
             ),
-            dma: dma_driver::dma_ctrl::EmulatedDmaCtrl::new(dma_driver::dma_ctrl::DMA_CTRL_BASE),
+            dma: dma_driver::axicdma::AxiCDMA::new(dma_driver::axicdma::DMA_CTRL_BASE),
             doe_transport: doe_mbox_driver::EmulatedDoeTransport::new(
                 doe_mbox_driver::DOE_MBOX_BASE,
                 alarm,
