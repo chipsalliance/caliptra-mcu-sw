@@ -1,0 +1,33 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "ocp-eat"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "ocp_eat"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ocp-eat"
+path = "src/main.rs"
+
+
+[profile.release]
+debug = true
+opt-level = 1
+
+[features]
+default = ["std", "crypto"]
+std = []
+crypto = ["dep:p384", "dep:ecdsa", "dep:sha2", "dep:rand"]
+
+[dependencies]
+# Core dependencies (no_std compatible - none needed for basic CBOR encoding)
+
+# Cryptographic dependencies (optional, used by binary example)
+p384 = { version = "0.13", optional = true }
+ecdsa = { version = "0.16", optional = true }
+sha2 = { version = "0.10", optional = true }
+rand = { version = "0.8", optional = true }
