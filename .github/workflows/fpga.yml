@@ -134,7 +134,7 @@ jobs:
           # Build ROM and runtime binaries
           echo "Cross compiling FPGA binaries"
           cargo xtask-fpga all-build --platform fpga \
-            --features test-mctp-capsule-loopback,test-pldm-fw-update-e2e \
+            --runtime-features test-mctp-capsule-loopback,test-pldm-fw-update-e2e \
             --separate-runtimes
           sccache --show-stats
 
