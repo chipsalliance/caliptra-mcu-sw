@@ -11,7 +11,6 @@ mod test {
     use mcu_testing_common::MCU_RUNNING;
     use std::sync::atomic::Ordering;
 
-    #[cfg_attr(feature = "fpga_realtime", ignore)]
     #[test]
     fn test_mctp_capsule_loopback() {
         let feature = "test-mctp-capsule-loopback";
