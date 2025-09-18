@@ -481,20 +481,23 @@ module caliptra_wrapper_top (
     input  logic        otp_mem_backdoor_rst,
 
     // JTAG Interface
-    input logic                       core_jtag_tck,
-    input logic                       core_jtag_tms,
-    input logic                       core_jtag_tdi,
-    output logic                      core_jtag_tdo,
+    input logic                       jtag_tck,    // JTAG clk
+    input logic                       jtag_tms,    // JTAG tms
+    input logic                       jtag_tdi,    // JTAG tdi
+    input logic                       jtag_trst_n, // JTAG reset
+    output logic                      jtag_tdo,    // JTAG tdo
 
     input logic                       mcu_jtag_tck_i,
     input logic                       mcu_jtag_tms_i,
     input logic                       mcu_jtag_tdi_i,
+    input logic                       mcu_jtag_trst_n_i,
     output logic                      mcu_jtag_tdo_o,
 
-    input logic                       lcc_jtag_tck_i,
-    input logic                       lcc_jtag_tms_i,
-    input logic                       lcc_jtag_tdi_i,
-    output logic                      lcc_jtag_tdo_o,
+    input logic                       lc_jtag_tck_i,
+    input logic                       lc_jtag_tms_i,
+    input logic                       lc_jtag_tdi_i,
+    input logic                       lc_jtag_trst_n_i,
+    output logic                      lc_jtag_tdo_o,
 
     output logic [31:0]               caliptra_ifu_i0_pc,
     output logic [31:0]               mcu_ifu_i0_pc,
@@ -616,12 +619,12 @@ module caliptra_wrapper_top (
     end
 
     jtag_pkg::jtag_req_t cptra_ss_lc_ctrl_jtag_i;
-    assign cptra_ss_lc_ctrl_jtag_i.tck = lcc_jtag_tck_i;
-    assign cptra_ss_lc_ctrl_jtag_i.tms = lcc_jtag_tms_i;
-    assign cptra_ss_lc_ctrl_jtag_i.tdi = lcc_jtag_tdi_i;
-    assign cptra_ss_lc_ctrl_jtag_i.trst_n = hwif_out.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value;
+    assign cptra_ss_lc_ctrl_jtag_i.tck = lc_jtag_tck_i;
+    assign cptra_ss_lc_ctrl_jtag_i.tms = lc_jtag_tms_i;
+    assign cptra_ss_lc_ctrl_jtag_i.tdi = lc_jtag_tdi_i;
+    assign cptra_ss_lc_ctrl_jtag_i.trst_n = lc_jtag_trst_n_i;
     jtag_pkg::jtag_rsp_t cptra_ss_lc_ctrl_jtag_o;
-    assign lcc_jtag_tdo_o = cptra_ss_lc_ctrl_jtag_o.tdo;
+    assign lc_jtag_tdo_o = cptra_ss_lc_ctrl_jtag_o.tdo;
 
 `ifndef CALIPTRA_APB
     axi_if #(
@@ -1990,11 +1993,11 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_cptra_csr_hmac_key_i(cptra_csr_hmac_key),
 
     // Caliptra JTAG Interface
-    .cptra_ss_cptra_core_jtag_tck_i(core_jtag_tck),
-    .cptra_ss_cptra_core_jtag_tdi_i(core_jtag_tdi),
-    .cptra_ss_cptra_core_jtag_tms_i(core_jtag_tms),
-    .cptra_ss_cptra_core_jtag_trst_n_i(hwif_out.interface_regs.jtag_trst_n.core_jtag_trst_n.value),
-    .cptra_ss_cptra_core_jtag_tdo_o(core_jtag_tdo),
+    .cptra_ss_cptra_core_jtag_tck_i(jtag_tck),
+    .cptra_ss_cptra_core_jtag_tdi_i(jtag_tdi),
+    .cptra_ss_cptra_core_jtag_tms_i(jtag_tms),
+    .cptra_ss_cptra_core_jtag_trst_n_i(jtag_trst_n),
+    .cptra_ss_cptra_core_jtag_tdo_o(jtag_tdo),
     .cptra_ss_cptra_core_jtag_tdoEn_o(),
     //output logic [124:0]               cptra_ss_cptra_generic_fw_exec_ctrl_o, // TODO
     .cptra_ss_cptra_generic_fw_exec_ctrl_o(),
@@ -2070,7 +2073,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_mcu_jtag_tck_i(mcu_jtag_tck_i),
     .cptra_ss_mcu_jtag_tms_i(mcu_jtag_tms_i),
     .cptra_ss_mcu_jtag_tdi_i(mcu_jtag_tdi_i),
-    .cptra_ss_mcu_jtag_trst_n_i(hwif_out.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value),
+    .cptra_ss_mcu_jtag_trst_n_i(mcu_jtag_trst_n_i),
     .cptra_ss_mcu_jtag_tdo_o(mcu_jtag_tdo_o),
     .cptra_ss_mcu_jtag_tdoEn_o(mcu_jtag_tdoEn_o),
 

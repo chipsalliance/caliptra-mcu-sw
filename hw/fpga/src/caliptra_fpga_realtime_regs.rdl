@@ -39,11 +39,11 @@ regfile interface_regs {
         field { sw=rw; hw=r; desc = "RSVD in SS"; } cptra_obf_field_entropy_vld[3:3] = 1'b0;
 
         field { sw=rw; hw=r; } bootfsm_brkpoint[6:6] = 1'b0;
-        field { sw=rw; hw=r; } ss_debug_intent[7:7] = 1'b0;
-        field { sw=rw; hw=r; } i3c_axi_user_id_filtering[8:8] = 1'b0;
-        field { sw=rw; hw=r; } ocp_lock_en[9:9] = 1'b1;
-        field { sw=rw; hw=r; } lc_Allow_RMA_or_SCRAP_on_PPD[10:10] = 1'b0;
-        field { sw=rw; hw=r; } FIPS_ZEROIZATION_PPD[11:11] = 1'b0;
+        field { sw=rw; hw=r; desc = "RSVD in core"; } ss_debug_intent[7:7] = 1'b0;
+        field { sw=rw; hw=r; desc = "RSVD in core"; } i3c_axi_user_id_filtering[8:8] = 1'b0;
+        field { sw=rw; hw=r; desc = "RSVD in core"; } ocp_lock_en[9:9] = 1'b1;
+        field { sw=rw; hw=r; desc = "RSVD in core"; } lc_Allow_RMA_or_SCRAP_on_PPD[10:10] = 1'b0;
+        field { sw=rw; hw=r; desc = "RSVD in core"; } FIPS_ZEROIZATION_PPD[11:11] = 1'b0;
         field { sw=rw; hw=r; singlepulse=true; } trigger_axi_reset[31:31] = 1'b0;
     } control;
 
@@ -168,8 +168,8 @@ regfile interface_regs {
         } mcu_reset_vector[32] = 32'b0;
     } mcu_reset_vector;
     reg {
-        field { sw=r; hw=rw; } ss_all_error_fatal = 1'b0;
-        field { sw=r; hw=rw; } ss_all_error_non_fatal = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in core"; } ss_all_error_fatal = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in core"; } ss_all_error_non_fatal = 1'b0;
     } ss_all_error;
     reg {
         field { sw=rw; hw=r; } mcu_no_rom_config = 1'b0;
@@ -209,23 +209,20 @@ regfile interface_regs {
     } mci_generic_output_wires[2];
 
     reg {
-        field { sw=r; hw=rw; } ss_key_release_base_addr[32] = 32'b0;
+        field { sw=r; hw=rw; desc = "RSVD in core"; } ss_key_release_base_addr[32] = 32'b0;
     } ss_key_release_base_addr;
 
     reg {
-        field { sw=r; hw=rw; } ss_key_release_key_size[16] = 32'b0;
+        field { sw=r; hw=rw; desc = "RSVD in core"; } ss_key_release_key_size[16] = 32'b0;
     } ss_key_release_key_size;
 
     reg {
-        field { sw=r; hw=rw; } ss_external_staging_area_base_addr[32] = 32'b0;
+        field { sw=r; hw=rw; desc = "RSVD in core"; } ss_external_staging_area_base_addr[32] = 32'b0;
     } ss_external_staging_area_base_addr;
 
     reg {
-        field { sw=rw; hw=r; } core_jtag_trst_n = 1'b1;
-        field { sw=rw; hw=r; } mcu_jtag_trst_n = 1'b1;
-        field { sw=rw; hw=r; } lcc_jtag_trst_n = 1'b1;
-        
-    } jtag_trst_n;
+        field { sw=rw; hw=r; desc = "RSVD in core"; } cptra_ss_mcu_ext_int[31:3] = 29'b0;
+    } cptra_ss_mcu_ext_int;
 };
 
 regfile fifo_regs {

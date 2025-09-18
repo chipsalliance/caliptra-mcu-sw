@@ -102,7 +102,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 | 0x13C|           ss_key_release_base_addr           |  — |
 | 0x140|            ss_key_release_key_size           |  — |
 | 0x144|      ss_external_staging_area_base_addr      |  — |
-| 0x148|                  jtag_trst_n                 |  — |
+| 0x148|             cptra_ss_mcu_ext_int             |  — |
 
 ### fpga_magic register
 
@@ -159,6 +159,26 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 #### cptra_obf_field_entropy_vld field
 
 <p>RSVD in SS</p>
+
+#### ss_debug_intent field
+
+<p>RSVD in core</p>
+
+#### i3c_axi_user_id_filtering field
+
+<p>RSVD in core</p>
+
+#### ocp_lock_en field
+
+<p>RSVD in core</p>
+
+#### lc_Allow_RMA_or_SCRAP_on_PPD field
+
+<p>RSVD in core</p>
+
+#### FIPS_ZEROIZATION_PPD field
+
+<p>RSVD in core</p>
 
 ### status register
 
@@ -981,6 +1001,14 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |  0 |  ss_all_error_fatal  |   r  | 0x0 |  — |
 |  1 |ss_all_error_non_fatal|   r  | 0x0 |  — |
 
+#### ss_all_error_fatal field
+
+<p>RSVD in core</p>
+
+#### ss_all_error_non_fatal field
+
+<p>RSVD in core</p>
+
 ### mcu_config register
 
 - Absolute Address: 0xA401011C
@@ -1088,6 +1116,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|------------------------|------|-----|----|
 |31:0|ss_key_release_base_addr|   r  | 0x0 |  — |
 
+#### ss_key_release_base_addr field
+
+<p>RSVD in core</p>
+
 ### ss_key_release_key_size register
 
 - Absolute Address: 0xA4010140
@@ -1097,6 +1129,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|       Identifier      |Access|Reset|Name|
 |----|-----------------------|------|-----|----|
 |15:0|ss_key_release_key_size|   r  | 0x0 |  — |
+
+#### ss_key_release_key_size field
+
+<p>RSVD in core</p>
 
 ### ss_external_staging_area_base_addr register
 
@@ -1108,17 +1144,23 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|----------------------------------|------|-----|----|
 |31:0|ss_external_staging_area_base_addr|   r  | 0x0 |  — |
 
-### jtag_trst_n register
+#### ss_external_staging_area_base_addr field
+
+<p>RSVD in core</p>
+
+### cptra_ss_mcu_ext_int register
 
 - Absolute Address: 0xA4010148
 - Base Offset: 0x148
 - Size: 0x4
 
-|Bits|   Identifier   |Access|Reset|Name|
-|----|----------------|------|-----|----|
-|  0 |core_jtag_trst_n|  rw  | 0x1 |  — |
-|  1 | mcu_jtag_trst_n|  rw  | 0x1 |  — |
-|  2 | lcc_jtag_trst_n|  rw  | 0x1 |  — |
+|Bits|     Identifier     |Access|Reset|Name|
+|----|--------------------|------|-----|----|
+|31:3|cptra_ss_mcu_ext_int|  rw  | 0x0 |  — |
+
+#### cptra_ss_mcu_ext_int field
+
+<p>RSVD in core</p>
 
 ## fifo_regs register file
 

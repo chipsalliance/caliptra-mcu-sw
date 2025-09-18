@@ -112,27 +112,27 @@ create_bd_cell -type ip -vlnv design:user:caliptra_package_top:1.0 caliptra_pack
 #### Add Versal PS ####
 source create_versal_cips.tcl
 
-## Create XDC file with jtag constraints
-#set xdc_fd [ open $outputDir/jtag_constraints.xdc w ]
-#puts $xdc_fd {create_clock -period 5000.000 -name {cal_jtag_clk} -waveform {0.000 2500.000} [get_pins {caliptra_fpga_project_bd_i/ps_0/inst/pspmc_0/inst/PS9_inst/EMIOGPIO2O[0]}]}
-#puts $xdc_fd {create_clock -period 5000.000 -name {lcc_jtag_clk} -waveform {0.000 2500.000} [get_pins {caliptra_fpga_project_bd_i/ps_0/inst/pspmc_0/inst/PS9_inst/EMIOGPIO2O[5]}]}
-#puts $xdc_fd {create_clock -period 5000.000 -name {mcu_jtag_clk} -waveform {0.000 2500.000} [get_pins {caliptra_fpga_project_bd_i/ps_0/inst/pspmc_0/inst/PS9_inst/EMIOGPIO2O[10]}]}
-#puts $xdc_fd {set_clock_groups -asynchronous -group [get_clocks {cal_jtag_clk}]}
-#puts $xdc_fd {set_clock_groups -asynchronous -group [get_clocks {lcc_jtag_clk}]}
-#puts $xdc_fd {set_clock_groups -asynchronous -group [get_clocks {mcu_jtag_clk}]}
-#puts $xdc_fd {set_false_path -from [get_clocks {clk_pl_0}] -to [get_clocks {cal_jtag_clk}]}
-#puts $xdc_fd {set_false_path -from [get_clocks {clk_pl_0}] -to [get_clocks {lcc_jtag_clk}]}
-#puts $xdc_fd {set_false_path -from [get_clocks {clk_pl_0}] -to [get_clocks {mcu_jtag_clk}]}
-#puts $xdc_fd {set_false_path -from [get_clocks {cal_jtag_clk}] -to [get_clocks {clk_pl_0}]}
-#puts $xdc_fd {set_false_path -from [get_clocks {lcc_jtag_clk}] -to [get_clocks {clk_pl_0}]}
-#puts $xdc_fd {set_false_path -from [get_clocks {mcu_jtag_clk}] -to [get_clocks {clk_pl_0}]}
-#close $xdc_fd
+# Create XDC file with jtag constraints
+set xdc_fd [ open $outputDir/jtag_constraints.xdc w ]
+puts $xdc_fd {create_clock -period 5000.000 -name {cal_jtag_clk} -waveform {0.000 2500.000} [get_pins {caliptra_fpga_project_bd_i/ps_0/inst/pspmc_0/inst/PS9_inst/EMIOGPIO2O[0]}]}
+puts $xdc_fd {create_clock -period 5000.000 -name {lcc_jtag_clk} -waveform {0.000 2500.000} [get_pins {caliptra_fpga_project_bd_i/ps_0/inst/pspmc_0/inst/PS9_inst/EMIOGPIO2O[5]}]}
+puts $xdc_fd {create_clock -period 5000.000 -name {mcu_jtag_clk} -waveform {0.000 2500.000} [get_pins {caliptra_fpga_project_bd_i/ps_0/inst/pspmc_0/inst/PS9_inst/EMIOGPIO2O[10]}]}
+puts $xdc_fd {set_clock_groups -asynchronous -group [get_clocks {cal_jtag_clk}]}
+puts $xdc_fd {set_clock_groups -asynchronous -group [get_clocks {lcc_jtag_clk}]}
+puts $xdc_fd {set_clock_groups -asynchronous -group [get_clocks {mcu_jtag_clk}]}
+puts $xdc_fd {set_false_path -from [get_clocks {clk_pl_0}] -to [get_clocks {cal_jtag_clk}]}
+puts $xdc_fd {set_false_path -from [get_clocks {clk_pl_0}] -to [get_clocks {lcc_jtag_clk}]}
+puts $xdc_fd {set_false_path -from [get_clocks {clk_pl_0}] -to [get_clocks {mcu_jtag_clk}]}
+puts $xdc_fd {set_false_path -from [get_clocks {cal_jtag_clk}] -to [get_clocks {clk_pl_0}]}
+puts $xdc_fd {set_false_path -from [get_clocks {lcc_jtag_clk}] -to [get_clocks {clk_pl_0}]}
+puts $xdc_fd {set_false_path -from [get_clocks {mcu_jtag_clk}] -to [get_clocks {clk_pl_0}]}
+close $xdc_fd
 
 #### Add AXI Infrastructure
 # AXI Interconnect (before firewall)
 create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect:1.0 axi_interconnect_0
 set_property -dict [list \
-  CONFIG.NUM_MI {10} \
+  CONFIG.NUM_MI {6} \
   CONFIG.NUM_SI {1} \
   CONFIG.NUM_CLKS {1} \
   ] [get_bd_cells axi_interconnect_0]
@@ -179,12 +179,7 @@ register_axi_subordinate axi_interconnect_0 M01_AXI  0xA4090000 0x00001000 axi_f
 register_axi_subordinate axi_interconnect_0 M02_AXI  0xB0000000 0x00018000 cptra_rom_backdoor_bram_0/S_AXI       Mem0    S_AXI_CALIPTRA_ROM FALSE
 register_axi_subordinate axi_interconnect_0 M03_AXI  0xB0020000 0x00020000 mcu_rom_backdoor_bram_0/S_AXI         Mem0    S_AXI_SS_ROM       FALSE
 register_axi_subordinate axi_interconnect_0 M04_AXI  0xA4010000 0x00002000 caliptra_package_top_0/S_AXI_WRAPPER  reg0    S_AXI_WRAPPER      FALSE
-# JTAG adapters
-register_axi_subordinate axi_interconnect_0 M05_AXI  0xA4081000 0x00001000 axi_jtag_core/S_AXI                   reg0    S_AXI_JTAG_CORE    FALSE
-register_axi_subordinate axi_interconnect_0 M06_AXI  0xA4082000 0x00001000 axi_jtag_lcc/S_AXI                    reg0    S_AXI_JTAG_LCC     FALSE
-register_axi_subordinate axi_interconnect_0 M07_AXI  0xA4083000 0x00001000 axi_jtag_mcu/S_AXI                    reg0    S_AXI_JTAG_MCU     FALSE
-
-register_axi_subordinate axi_interconnect_0 M08_AXI  0xA4084000 0x00001000 axi_cdma_0/S_AXI_LITE                 Reg     S_AXI_XILINX_DMA   FALSE
+register_axi_subordinate axi_interconnect_0 M05_AXI  0xA4084000 0x00001000 axi_cdma_0/S_AXI_LITE                 Reg     S_AXI_XILINX_DMA   FALSE
 
 
 
@@ -224,11 +219,6 @@ set_property -dict [list \
   CONFIG.IBI_CAPABLE {1} \
   ] [get_bd_cells xilinx_i3c_0]
 
-# Add AXI to JTAG Converters
-create_bd_cell -type ip -vlnv xilinx.com:ip:axi_jtag:1.0 axi_jtag_core
-create_bd_cell -type ip -vlnv xilinx.com:ip:axi_jtag:1.0 axi_jtag_lcc
-create_bd_cell -type ip -vlnv xilinx.com:ip:axi_jtag:1.0 axi_jtag_mcu
-
 # Add memory for Staging SRAM
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_bram_ctrl:4.1 staging_sram_bram_ctrl_0
 set_property CONFIG.SINGLE_PORT_BRAM {1} [get_bd_cells staging_sram_bram_ctrl_0]
@@ -252,15 +242,15 @@ set_property CONFIG.CDC_TYPE {xpm_cdc_sync_rst} [get_bd_cells xpm_cdc_gen_0]
 connect_bd_intf_net [get_bd_intf_pins $ps_m_axi] [get_bd_intf_pins axi_interconnect_0/S00_AXI]
 set_property name M_AXI_ARM [get_bd_intf_nets ps_0_M_AXI_FPD]
 
-## AXI Subordinates
-## Firewall
+# AXI Subordinates
+# Firewall
 connect_bd_intf_net [get_bd_intf_pins axi_interconnect_0/M00_AXI] [get_bd_intf_pins axi_firewall_0/S_AXI]
 set_property name S_AXI_FIREWALL [get_bd_intf_nets axi_interconnect_0_M00_AXI]
 
-connect_bd_intf_net [get_bd_intf_pins caliptra_package_top_0/rom_backdoor] [get_bd_intf_pins cptra_rom_backdoor_bram_0/BRAM_PORTA]
+# Connect BRAM controllers to FPGA wrapper
+connect_bd_intf_net [get_bd_intf_pins caliptra_package_top_0/rom_backdoor]     [get_bd_intf_pins cptra_rom_backdoor_bram_0/BRAM_PORTA]
 connect_bd_intf_net [get_bd_intf_pins caliptra_package_top_0/mcu_rom_backdoor] [get_bd_intf_pins mcu_rom_backdoor_bram_0/BRAM_PORTA]
 connect_bd_intf_net [get_bd_intf_pins caliptra_package_top_0/otp_mem_backdoor] [get_bd_intf_pins otp_ram_bram_ctrl_0/BRAM_PORTA]
-
 
 #### axi_interconnect_1 ####
 # AXI Managers for second AXI Interconnect
@@ -382,22 +372,6 @@ if {FALSE} {
   connect_bd_net [get_bd_pins xpm_cdc_gen_0/src_rst] [get_bd_pins caliptra_package_top_0/xilinx_i3c_aresetn]
 }
 
-#### JTAG Connections ####
-connect_bd_net [get_bd_pins /caliptra_package_top_0/core_jtag_tck] [get_bd_pins axi_jtag_core/tck]
-connect_bd_net [get_bd_pins /caliptra_package_top_0/core_jtag_tms] [get_bd_pins axi_jtag_core/tms]
-connect_bd_net [get_bd_pins /caliptra_package_top_0/core_jtag_tdi] [get_bd_pins axi_jtag_core/tdi]
-connect_bd_net [get_bd_pins /caliptra_package_top_0/core_jtag_tdo] [get_bd_pins axi_jtag_core/tdo]
-
-connect_bd_net [get_bd_pins /caliptra_package_top_0/mcu_jtag_tck_i] [get_bd_pins axi_jtag_mcu/tck]
-connect_bd_net [get_bd_pins /caliptra_package_top_0/mcu_jtag_tms_i] [get_bd_pins axi_jtag_mcu/tms]
-connect_bd_net [get_bd_pins /caliptra_package_top_0/mcu_jtag_tdi_i] [get_bd_pins axi_jtag_mcu/tdi]
-connect_bd_net [get_bd_pins /caliptra_package_top_0/mcu_jtag_tdo_o] [get_bd_pins axi_jtag_mcu/tdo]
-
-connect_bd_net [get_bd_pins /caliptra_package_top_0/lcc_jtag_tck_i] [get_bd_pins axi_jtag_lcc/tck]
-connect_bd_net [get_bd_pins /caliptra_package_top_0/lcc_jtag_tms_i] [get_bd_pins axi_jtag_lcc/tms]
-connect_bd_net [get_bd_pins /caliptra_package_top_0/lcc_jtag_tdi_i] [get_bd_pins axi_jtag_lcc/tdi]
-connect_bd_net [get_bd_pins /caliptra_package_top_0/lcc_jtag_tdo_o] [get_bd_pins axi_jtag_lcc/tdo]
-
 #### ARM Core USER value ####
 connect_bd_net [get_bd_pins caliptra_package_top_0/ARM_USER] [get_bd_pins axi_firewall_0/s_axi_awuser]
 connect_bd_net [get_bd_pins caliptra_package_top_0/ARM_USER] [get_bd_pins axi_firewall_0/s_axi_aruser]
@@ -414,8 +388,12 @@ foreach manager $managers base_offset $base_offsets {
   }
 }
 
+# Connect JTAG signals to PS GPIO pins
+connect_bd_net [get_bd_pins caliptra_package_top_0/jtag_out] [get_bd_pins $ps_gpio_i]
+connect_bd_net [get_bd_pins caliptra_package_top_0/jtag_in] [get_bd_pins $ps_gpio_o]
+
 # Add constraints for JTAG signals
-#add_files -fileset constrs_1 $outputDir/jtag_constraints.xdc
+add_files -fileset constrs_1 $outputDir/jtag_constraints.xdc
 
 save_bd_design
 puts "Fileset when setting defines the second time: [current_fileset]"

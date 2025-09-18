@@ -239,7 +239,7 @@ module caliptra_fpga_realtime_regs (
             logic ss_key_release_base_addr;
             logic ss_key_release_key_size;
             logic ss_external_staging_area_base_addr;
-            logic jtag_trst_n;
+            logic cptra_ss_mcu_ext_int;
         } interface_regs;
         struct {
             logic log_fifo_data;
@@ -303,7 +303,7 @@ module caliptra_fpga_realtime_regs (
         decoded_reg_strb.interface_regs.ss_key_release_base_addr = cpuif_req_masked & (cpuif_addr == 32'ha401013c);
         decoded_reg_strb.interface_regs.ss_key_release_key_size = cpuif_req_masked & (cpuif_addr == 32'ha4010140);
         decoded_reg_strb.interface_regs.ss_external_staging_area_base_addr = cpuif_req_masked & (cpuif_addr == 32'ha4010144);
-        decoded_reg_strb.interface_regs.jtag_trst_n = cpuif_req_masked & (cpuif_addr == 32'ha4010148);
+        decoded_reg_strb.interface_regs.cptra_ss_mcu_ext_int = cpuif_req_masked & (cpuif_addr == 32'ha4010148);
         decoded_reg_strb.fifo_regs.log_fifo_data = cpuif_req_masked & (cpuif_addr == 32'ha4011000);
         decoded_reg_strb.fifo_regs.log_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha4011004);
         decoded_reg_strb.fifo_regs.itrng_fifo_data = cpuif_req_masked & (cpuif_addr == 32'ha4011008);
@@ -582,18 +582,10 @@ module caliptra_fpga_realtime_regs (
             } ss_external_staging_area_base_addr;
             struct {
                 struct {
-                    logic next;
+                    logic [28:0] next;
                     logic load_next;
-                } core_jtag_trst_n;
-                struct {
-                    logic next;
-                    logic load_next;
-                } mcu_jtag_trst_n;
-                struct {
-                    logic next;
-                    logic load_next;
-                } lcc_jtag_trst_n;
-            } jtag_trst_n;
+                } cptra_ss_mcu_ext_int;
+            } cptra_ss_mcu_ext_int;
         } interface_regs;
         struct {
             struct {
@@ -872,15 +864,9 @@ module caliptra_fpga_realtime_regs (
             } ss_external_staging_area_base_addr;
             struct {
                 struct {
-                    logic value;
-                } core_jtag_trst_n;
-                struct {
-                    logic value;
-                } mcu_jtag_trst_n;
-                struct {
-                    logic value;
-                } lcc_jtag_trst_n;
-            } jtag_trst_n;
+                    logic [28:0] value;
+                } cptra_ss_mcu_ext_int;
+            } cptra_ss_mcu_ext_int;
         } interface_regs;
         struct {
             struct {
@@ -2107,75 +2093,29 @@ module caliptra_fpga_realtime_regs (
         end
     end
     assign hwif_out.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.value = field_storage.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.value;
-    // Field: caliptra_fpga_realtime_regs.interface_regs.jtag_trst_n.core_jtag_trst_n
+    // Field: caliptra_fpga_realtime_regs.interface_regs.cptra_ss_mcu_ext_int.cptra_ss_mcu_ext_int
     always_comb begin
-        automatic logic [0:0] next_c;
+        automatic logic [28:0] next_c;
         automatic logic load_next_c;
-        next_c = field_storage.interface_regs.jtag_trst_n.core_jtag_trst_n.value;
+        next_c = field_storage.interface_regs.cptra_ss_mcu_ext_int.cptra_ss_mcu_ext_int.value;
         load_next_c = '0;
-        if(decoded_reg_strb.interface_regs.jtag_trst_n && decoded_req_is_wr) begin // SW write
-            next_c = (field_storage.interface_regs.jtag_trst_n.core_jtag_trst_n.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+        if(decoded_reg_strb.interface_regs.cptra_ss_mcu_ext_int && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.interface_regs.cptra_ss_mcu_ext_int.cptra_ss_mcu_ext_int.value & ~decoded_wr_biten[31:3]) | (decoded_wr_data[31:3] & decoded_wr_biten[31:3]);
             load_next_c = '1;
         end
-        field_combo.interface_regs.jtag_trst_n.core_jtag_trst_n.next = next_c;
-        field_combo.interface_regs.jtag_trst_n.core_jtag_trst_n.load_next = load_next_c;
+        field_combo.interface_regs.cptra_ss_mcu_ext_int.cptra_ss_mcu_ext_int.next = next_c;
+        field_combo.interface_regs.cptra_ss_mcu_ext_int.cptra_ss_mcu_ext_int.load_next = load_next_c;
     end
     always_ff @(posedge clk) begin
         if(rst) begin
-            field_storage.interface_regs.jtag_trst_n.core_jtag_trst_n.value <= 1'h1;
+            field_storage.interface_regs.cptra_ss_mcu_ext_int.cptra_ss_mcu_ext_int.value <= 29'h0;
         end else begin
-            if(field_combo.interface_regs.jtag_trst_n.core_jtag_trst_n.load_next) begin
-                field_storage.interface_regs.jtag_trst_n.core_jtag_trst_n.value <= field_combo.interface_regs.jtag_trst_n.core_jtag_trst_n.next;
+            if(field_combo.interface_regs.cptra_ss_mcu_ext_int.cptra_ss_mcu_ext_int.load_next) begin
+                field_storage.interface_regs.cptra_ss_mcu_ext_int.cptra_ss_mcu_ext_int.value <= field_combo.interface_regs.cptra_ss_mcu_ext_int.cptra_ss_mcu_ext_int.next;
             end
         end
     end
-    assign hwif_out.interface_regs.jtag_trst_n.core_jtag_trst_n.value = field_storage.interface_regs.jtag_trst_n.core_jtag_trst_n.value;
-    // Field: caliptra_fpga_realtime_regs.interface_regs.jtag_trst_n.mcu_jtag_trst_n
-    always_comb begin
-        automatic logic [0:0] next_c;
-        automatic logic load_next_c;
-        next_c = field_storage.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value;
-        load_next_c = '0;
-        if(decoded_reg_strb.interface_regs.jtag_trst_n && decoded_req_is_wr) begin // SW write
-            next_c = (field_storage.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value & ~decoded_wr_biten[1:1]) | (decoded_wr_data[1:1] & decoded_wr_biten[1:1]);
-            load_next_c = '1;
-        end
-        field_combo.interface_regs.jtag_trst_n.mcu_jtag_trst_n.next = next_c;
-        field_combo.interface_regs.jtag_trst_n.mcu_jtag_trst_n.load_next = load_next_c;
-    end
-    always_ff @(posedge clk) begin
-        if(rst) begin
-            field_storage.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value <= 1'h1;
-        end else begin
-            if(field_combo.interface_regs.jtag_trst_n.mcu_jtag_trst_n.load_next) begin
-                field_storage.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value <= field_combo.interface_regs.jtag_trst_n.mcu_jtag_trst_n.next;
-            end
-        end
-    end
-    assign hwif_out.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value = field_storage.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value;
-    // Field: caliptra_fpga_realtime_regs.interface_regs.jtag_trst_n.lcc_jtag_trst_n
-    always_comb begin
-        automatic logic [0:0] next_c;
-        automatic logic load_next_c;
-        next_c = field_storage.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value;
-        load_next_c = '0;
-        if(decoded_reg_strb.interface_regs.jtag_trst_n && decoded_req_is_wr) begin // SW write
-            next_c = (field_storage.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value & ~decoded_wr_biten[2:2]) | (decoded_wr_data[2:2] & decoded_wr_biten[2:2]);
-            load_next_c = '1;
-        end
-        field_combo.interface_regs.jtag_trst_n.lcc_jtag_trst_n.next = next_c;
-        field_combo.interface_regs.jtag_trst_n.lcc_jtag_trst_n.load_next = load_next_c;
-    end
-    always_ff @(posedge clk) begin
-        if(rst) begin
-            field_storage.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value <= 1'h1;
-        end else begin
-            if(field_combo.interface_regs.jtag_trst_n.lcc_jtag_trst_n.load_next) begin
-                field_storage.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value <= field_combo.interface_regs.jtag_trst_n.lcc_jtag_trst_n.next;
-            end
-        end
-    end
-    assign hwif_out.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value = field_storage.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value;
+    assign hwif_out.interface_regs.cptra_ss_mcu_ext_int.cptra_ss_mcu_ext_int.value = field_storage.interface_regs.cptra_ss_mcu_ext_int.cptra_ss_mcu_ext_int.value;
     // Field: caliptra_fpga_realtime_regs.fifo_regs.log_fifo_data.next_char
     always_comb begin
         automatic logic [7:0] next_c;
@@ -2547,10 +2487,8 @@ module caliptra_fpga_realtime_regs (
     assign readback_array[75][15:0] = (decoded_reg_strb.interface_regs.ss_key_release_key_size && !decoded_req_is_wr) ? field_storage.interface_regs.ss_key_release_key_size.ss_key_release_key_size.value : '0;
     assign readback_array[75][31:16] = '0;
     assign readback_array[76][31:0] = (decoded_reg_strb.interface_regs.ss_external_staging_area_base_addr && !decoded_req_is_wr) ? field_storage.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.value : '0;
-    assign readback_array[77][0:0] = (decoded_reg_strb.interface_regs.jtag_trst_n && !decoded_req_is_wr) ? field_storage.interface_regs.jtag_trst_n.core_jtag_trst_n.value : '0;
-    assign readback_array[77][1:1] = (decoded_reg_strb.interface_regs.jtag_trst_n && !decoded_req_is_wr) ? field_storage.interface_regs.jtag_trst_n.mcu_jtag_trst_n.value : '0;
-    assign readback_array[77][2:2] = (decoded_reg_strb.interface_regs.jtag_trst_n && !decoded_req_is_wr) ? field_storage.interface_regs.jtag_trst_n.lcc_jtag_trst_n.value : '0;
-    assign readback_array[77][31:3] = '0;
+    assign readback_array[77][2:0] = '0;
+    assign readback_array[77][31:3] = (decoded_reg_strb.interface_regs.cptra_ss_mcu_ext_int && !decoded_req_is_wr) ? field_storage.interface_regs.cptra_ss_mcu_ext_int.cptra_ss_mcu_ext_int.value : '0;
     assign readback_array[78][7:0] = (decoded_reg_strb.fifo_regs.log_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_data.next_char.value : '0;
     assign readback_array[78][8:8] = (decoded_reg_strb.fifo_regs.log_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_data.char_valid.value : '0;
     assign readback_array[78][31:9] = '0;

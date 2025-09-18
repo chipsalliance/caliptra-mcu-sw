@@ -541,22 +541,12 @@ package caliptra_fpga_realtime_regs_pkg;
     } interface_regs__ss_external_staging_area_base_addr__out_t;
 
     typedef struct {
-        logic value;
-    } interface_regs__jtag_trst_n__core_jtag_trst_n__out_t;
+        logic [28:0] value;
+    } interface_regs__cptra_ss_mcu_ext_int__cptra_ss_mcu_ext_int__out_t;
 
     typedef struct {
-        logic value;
-    } interface_regs__jtag_trst_n__mcu_jtag_trst_n__out_t;
-
-    typedef struct {
-        logic value;
-    } interface_regs__jtag_trst_n__lcc_jtag_trst_n__out_t;
-
-    typedef struct {
-        interface_regs__jtag_trst_n__core_jtag_trst_n__out_t core_jtag_trst_n;
-        interface_regs__jtag_trst_n__mcu_jtag_trst_n__out_t mcu_jtag_trst_n;
-        interface_regs__jtag_trst_n__lcc_jtag_trst_n__out_t lcc_jtag_trst_n;
-    } interface_regs__jtag_trst_n__out_t;
+        interface_regs__cptra_ss_mcu_ext_int__cptra_ss_mcu_ext_int__out_t cptra_ss_mcu_ext_int;
+    } interface_regs__cptra_ss_mcu_ext_int__out_t;
 
     typedef struct {
         interface_regs__fpga_magic__out_t fpga_magic;
@@ -588,7 +578,7 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__ss_key_release_base_addr__out_t ss_key_release_base_addr;
         interface_regs__ss_key_release_key_size__out_t ss_key_release_key_size;
         interface_regs__ss_external_staging_area_base_addr__out_t ss_external_staging_area_base_addr;
-        interface_regs__jtag_trst_n__out_t jtag_trst_n;
+        interface_regs__cptra_ss_mcu_ext_int__out_t cptra_ss_mcu_ext_int;
     } interface_regs__out_t;
 
     typedef struct {

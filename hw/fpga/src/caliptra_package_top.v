@@ -479,20 +479,8 @@ module caliptra_package_axi_top (
 
 
     // JTAG Interface
-    input  wire                       core_jtag_tck,
-    input  wire                       core_jtag_tms,
-    input  wire                       core_jtag_tdi,
-    output wire                       core_jtag_tdo,
-
-    input  wire                       mcu_jtag_tck_i,
-    input  wire                       mcu_jtag_tms_i,
-    input  wire                       mcu_jtag_tdi_i,
-    output wire                       mcu_jtag_tdo_o,
-
-    input  wire                       lcc_jtag_tck_i,
-    input  wire                       lcc_jtag_tms_i,
-    input  wire                       lcc_jtag_tdi_i,
-    output wire                       lcc_jtag_tdo_o,
+    input wire [14:0]                  jtag_in,     // JTAG input signals concatenated
+    output wire [14:0]                 jtag_out,    // JTAG tdo
 
     output wire [31:0]                 caliptra_ifu_i0_pc,
     output wire [31:0]                 mcu_ifu_i0_pc,
@@ -974,21 +962,24 @@ caliptra_wrapper_top cptra_wrapper (
     .otp_mem_backdoor_rst(otp_mem_backdoor_rst),
 
     // EL2 JTAG interface
-    .core_jtag_tck(core_jtag_tck),
-    .core_jtag_tms(core_jtag_tms),
-    .core_jtag_tdi(core_jtag_tdi),
-    .core_jtag_tdo(core_jtag_tdo),
+    .jtag_tck(jtag_in[0]),
+    .jtag_tms(jtag_in[1]),
+    .jtag_tdi(jtag_in[2]),
+    .jtag_trst_n(jtag_in[3]),
+    .jtag_tdo(jtag_out[4]),
 
     // MCU
-    .mcu_jtag_tck_i(mcu_jtag_tck_i),
-    .mcu_jtag_tms_i(mcu_jtag_tms_i),
-    .mcu_jtag_tdi_i(mcu_jtag_tdi_i),
-    .mcu_jtag_tdo_o(mcu_jtag_tdo_o),
+    .mcu_jtag_tck_i(jtag_in[5]),
+    .mcu_jtag_tms_i(jtag_in[6]),
+    .mcu_jtag_tdi_i(jtag_in[7]),
+    .mcu_jtag_trst_n_i(jtag_in[8]),
+    .mcu_jtag_tdo_o(jtag_out[9]),
 
-    .lcc_jtag_tck_i(lcc_jtag_tck_i),
-    .lcc_jtag_tms_i(lcc_jtag_tms_i),
-    .lcc_jtag_tdi_i(lcc_jtag_tdi_i),
-    .lcc_jtag_tdo_o(lcc_jtag_tdo_o),
+    .lc_jtag_tck_i(jtag_in[10]),
+    .lc_jtag_tms_i(jtag_in[11]),
+    .lc_jtag_tdi_i(jtag_in[12]),
+    .lc_jtag_trst_n_i(jtag_in[13]),
+    .lc_jtag_tdo_o(jtag_out[14]),
 
     .caliptra_ifu_i0_pc(caliptra_ifu_i0_pc),
     .mcu_ifu_i0_pc(mcu_ifu_i0_pc),
