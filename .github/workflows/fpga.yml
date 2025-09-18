@@ -213,7 +213,7 @@ jobs:
               --target-dir-remap="${TEST_BIN}/target"
               --workspace-remap=.
               -E 'package(mcu-hw-model) - test(model_emulated::test::test_new_unbooted)'
-              -E 'package(tests-integration) and (test(test_jtag_taps) | test(mctp_capsule_loopback))' # Modify this as we onboard crates to the FPGA test suite.
+              -E 'package(tests-integration) and (test(test_jtag_taps) | test(test_mctp_capsule_loopback))' # Modify this as we onboard crates to the FPGA test suite.
           )
 
           cargo-nextest nextest list \
