@@ -1761,6 +1761,7 @@ dependencies = [
  "caliptra-api",
  "caliptra-auth-man-types",
  "caliptra-error",
+ "coset",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
@@ -1775,6 +1776,7 @@ dependencies = [
  "libtock_unittest",
  "libtockasync",
  "mcu-config-emulator",
+ "ocp-eat",
  "pldm-common",
  "portable-atomic",
  "romtime",
@@ -2382,7 +2384,6 @@ dependencies = [
  "caliptra-api",
  "caliptra-auth-man-types",
  "caliptra-error",
- "coset",
  "dpe",
  "embassy-executor",
  "embassy-sync",
@@ -3076,6 +3077,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c7398b9c8b70908f6371f47ed36737907c87c52af34c268fed0bf0ceb92ead9"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "ocp-eat"
+version = "0.1.0"
+dependencies = [
+ "coset",
+ "libapi-caliptra",
 ]
 
 [[package]]
@@ -3862,6 +3871,7 @@ dependencies = [
  "libsyscall-caliptra",
  "libtock_console",
  "libtock_platform",
+ "ocp-eat",
  "rand",
  "zerocopy",
 ]

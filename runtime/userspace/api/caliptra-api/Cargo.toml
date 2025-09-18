@@ -23,7 +23,6 @@ libtock_runtime.workspace = true
 pldm-common.workspace = true
 pldm-lib.workspace = true
 zerocopy.workspace = true
-coset.workspace = true
 
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]

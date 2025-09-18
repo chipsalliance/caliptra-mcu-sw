@@ -8,9 +8,9 @@ use crate::protocol::*;
 use libapi_caliptra::certificate::KEY_LABEL_SIZE;
 use libapi_caliptra::crypto::asym::AsymAlgo;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
-use libapi_caliptra::evidence::ocp_eat_cwt::{OcpEatCwt, OcpEatType};
 use libapi_caliptra::evidence::pcr_quote::{PcrQuote, PCR_QUOTE_BUFFER_SIZE};
 use libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
+use ocp_eat::token::{OcpEatCwt, OcpEatType};
 use zerocopy::IntoBytes;
 
 const MAX_MEASUREMENT_RECORD_SIZE: usize =
@@ -35,17 +35,19 @@ pub struct MeasurementManifest {
     asym_algo: Option<AsymAlgo>,
     measurement_record: [u8; MAX_MEASUREMENT_RECORD_SIZE],
     data_size: usize,
+    refresh_record: bool,
 }
 
 impl Default for MeasurementManifest {
     fn default() -> Self {
         MeasurementManifest {
-            meas_value_format: MeasurementValueFormat::PcrQuote,
+            meas_value_format: MeasurementValueFormat::OcpCwt,
             spdm_version: None,
             nonce: None,
             asym_algo: None,
             measurement_record: [0; MAX_MEASUREMENT_RECORD_SIZE],
             data_size: 0,
+            refresh_record: true,
         }
     }
 }
@@ -68,6 +70,7 @@ impl MeasurementManifest {
 
     pub(crate) fn set_nonce(&mut self, nonce: [u8; NONCE_LEN]) {
         self.nonce = Some(nonce);
+        self.refresh_record = true;
     }
 
     pub(crate) fn total_measurement_count(&self) -> usize {
@@ -80,7 +83,7 @@ impl MeasurementManifest {
         _raw_bit_stream: bool,
     ) -> MeasurementsResult<usize> {
         if index == SPDM_MEASUREMENT_MANIFEST_INDEX || index == 0xFF {
-            if self.data_size == 0 {
+            if self.refresh_record || self.data_size == 0 {
                 self.refresh_measurement_record().await?;
             }
             Ok(self.data_size)
@@ -97,7 +100,7 @@ impl MeasurementManifest {
         measurement_chunk: &mut [u8],
     ) -> MeasurementsResult<usize> {
         if index == SPDM_MEASUREMENT_MANIFEST_INDEX || index == 0xFF {
-            if self.data_size == 0 {
+            if self.refresh_record || self.data_size == 0 {
                 self.refresh_measurement_record().await?;
             }
             if offset >= self.data_size {
@@ -124,11 +127,13 @@ impl MeasurementManifest {
     ) -> MeasurementsResult<()> {
         self.refresh_measurement_record().await?;
 
+        let meas_rec_len = self.data_size;
+
         let mut offset = 0;
         let mut hash_ctx = HashContext::new();
 
-        while offset < self.measurement_record.len() {
-            let chunk_size = MAX_CRYPTO_MBOX_DATA_SIZE.min(self.measurement_record.len() - offset);
+        while offset < meas_rec_len {
+            let chunk_size = MAX_CRYPTO_MBOX_DATA_SIZE.min(meas_rec_len - offset);
 
             if offset == 0 {
                 hash_ctx
@@ -191,12 +196,13 @@ impl MeasurementManifest {
         }
 
         self.data_size = MEAS_BLOCK_METADATA_SIZE + measurement_value_size;
+        self.refresh_record = false;
 
         Ok(())
     }
 
     async fn refresh_ocp_cwt_record(&mut self) -> MeasurementsResult<()> {
-        let nonce = self.nonce.ok_or(MeasurementsError::MissingParam("Nonce"))?;
+        let nonce = self.nonce.unwrap_or_default();
         let asym_algo = self
             .asym_algo
             .ok_or(MeasurementsError::MissingParam("AsymAlgo"))?;
@@ -208,13 +214,6 @@ impl MeasurementManifest {
         } else {
             MeasurementValueType::StructuredManifest
         };
-
-        let mut metadata = DmtfMeasurementBlockMetadata::new(
-            SPDM_MEASUREMENT_MANIFEST_INDEX,
-            0,
-            false,
-            meas_val_type,
-        )?;
 
         let ocp_cwt_slice = &mut self.measurement_record[MEAS_BLOCK_METADATA_SIZE..];
 
@@ -230,7 +229,12 @@ impl MeasurementManifest {
             .generate_ocp_eat(ocp_cwt_slice)
             .await
             .map_err(MeasurementsError::CaliptraApi)?;
-        metadata.set_measurement_value_size(ocp_cwt_size as u16);
+        let metadata = DmtfMeasurementBlockMetadata::new(
+            SPDM_MEASUREMENT_MANIFEST_INDEX,
+            ocp_cwt_size as u16,
+            false,
+            meas_val_type,
+        )?;
         self.measurement_record[0..MEAS_BLOCK_METADATA_SIZE].copy_from_slice(metadata.as_bytes());
         self.data_size = MEAS_BLOCK_METADATA_SIZE + ocp_cwt_size;
 

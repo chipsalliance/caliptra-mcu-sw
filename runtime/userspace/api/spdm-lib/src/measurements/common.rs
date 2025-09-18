@@ -355,8 +355,4 @@ impl DmtfMeasurementBlockMetadata {
     pub fn measurement_block_value_hdr_size() -> usize {
         size_of::<DmtfSpecMeasurementValueHeader>()
     }
-
-    pub fn set_measurement_value_size(&mut self, len: u16) {
-        self.meas_size = len;
-    }
 }

@@ -2,16 +2,17 @@
 
 extern crate alloc;
 
-use crate::certificate::{CertContext, KEY_LABEL_SIZE};
-use crate::crypto::asym::AsymAlgo;
-use crate::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
-use crate::error::{CaliptraApiError, CaliptraApiResult};
+use crate::profile_config::*;
+use alloc::string::ToString;
+use alloc::vec;
 use alloc::vec::Vec;
-use coset::{cbor::value::Value, iana, CborSerializable, Header};
-
-// Temp value, to be replaced with actual max size
-const OCP_MIN_EAT_NONCE_SIZE: usize = 8;
-const OCP_MAX_EAT_NONCE_SIZE: usize = 64;
+use coset::{cbor::value::Value, cwt::ClaimsSetBuilder, iana, CborSerializable, Header};
+use libapi_caliptra::certificate::{CertContext, KEY_LABEL_SIZE};
+use libapi_caliptra::crypto::asym::AsymAlgo;
+use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
+use libapi_caliptra::crypto::rng::Rng;
+use libapi_caliptra::error::{CaliptraApiError, CaliptraApiResult};
+use libapi_caliptra::evidence::concise_evidence::generate_concise_evidence;
 
 pub enum OcpEatType {
     EatClaims,
@@ -48,7 +49,7 @@ impl OcpEatCwt {
     pub async fn generate_ocp_eat(&self, ocp_cwt_slice: &mut [u8]) -> CaliptraApiResult<usize> {
         let protected = self.protected_header()?;
         let unprotected = self.unprotected_header(Some(&self.leaf_cert_label)).await?;
-        let payload = self.generate_payload(&self.eat_nonce)?;
+        let payload = self.generate_payload(&self.eat_nonce).await?;
         let aad = b"";
 
         let protected_hdr = coset::ProtectedHeader {
@@ -83,14 +84,14 @@ impl OcpEatCwt {
             .to_vec()
             .map_err(|_| CaliptraApiError::CosetSerializeError)?;
 
-        ocp_cwt_slice.copy_from_slice(&sign1_data);
+        ocp_cwt_slice[..sign1_data.len()].copy_from_slice(&sign1_data);
         Ok(sign1_data.len())
     }
 
     fn key_id(&self) -> &'static str {
         match self.eat_type {
-            OcpEatType::EatClaims => "OCP EAT Claims",
-            OcpEatType::EnvelopeCsr => "OCP Envelope CSR",
+            OcpEatType::EatClaims => OCP_EAT_CLAIMS_KEY_ID,
+            OcpEatType::EnvelopeCsr => OCP_ENVELOPE_CSR_KEY_ID,
         }
     }
 
@@ -127,10 +128,60 @@ impl OcpEatCwt {
         Ok(unprotected)
     }
 
-    fn generate_payload(&self, eat_nonce: &[u8]) -> CaliptraApiResult<Vec<u8>> {
+    async fn generate_payload(&self, eat_nonce: &[u8]) -> CaliptraApiResult<Vec<u8>> {
         if eat_nonce.len() < OCP_MIN_EAT_NONCE_SIZE || eat_nonce.len() > OCP_MAX_EAT_NONCE_SIZE {
             return Err(CaliptraApiError::InvalidArgument("eat_nonce"));
         }
+        match self.eat_type {
+            OcpEatType::EatClaims => self.generate_eat_claims(eat_nonce).await,
+            OcpEatType::EnvelopeCsr => self.generate_envelope_csr(eat_nonce).await,
+        }
+    }
+
+    async fn generate_envelope_csr(&self, _eat_nonce: &[u8]) -> CaliptraApiResult<Vec<u8>> {
         Ok(Vec::new())
+    }
+
+    async fn generate_eat_claims(&self, eat_nonce: &[u8]) -> CaliptraApiResult<Vec<u8>> {
+        let eat_nonce = eat_nonce.to_vec();
+        let measurements = generate_concise_evidence().await?;
+        let mut cti: Vec<u8> = vec![0; eat_nonce.len()];
+        let debug_state: u8 = DEFAULT_DEBUG_STATE; //TODO: Update based on actual debug state
+        Rng::generate_random_number(cti.as_mut_slice()).await?;
+        let claims = ClaimsSetBuilder::new()
+            .issuer("Caliptra EAT Leaf Attestation Key".to_string())
+            .cwt_id(cti)
+            .claim(iana::CwtClaimName::EatNonce, Value::Bytes(eat_nonce))
+            .claim(
+                iana::CwtClaimName::Dbgstat,
+                Value::Integer(debug_state.into()),
+            )
+            .claim(iana::CwtClaimName::Measurements, Value::Bytes(measurements))
+            .claim(
+                iana::CwtClaimName::EatProfile,
+                Value::Bytes(OCP_SECURITY_OID.to_vec()),
+            )
+            .private_claim(
+                -70_000,
+                Value::Array(vec![Value::Text(DEFAULT_RIM_LOCATOR.to_string())]),
+            )
+            // .claim(
+            // iana::CwtClaimName::Dloas,
+            // Value::Array(vec![Value::Text("US".to_string())]),
+            // )
+            // .claim(iana::CwtClaimName::Ueid, Value::Bytes(DUMMY_UEID.to_vec()))
+            // .claim(iana::CwtClaimName::Oemid, Value::Bytes(OEM_ID.to_vec()))
+            // .claim(iana::CwtClaimName::Hwmodel, Value::Bytes(HW_MODEL.to_vec()))
+            // .claim(iana::CwtClaimName::Uptime, Value::Integer(123456.into()))
+            // .claim(iana::CwtClaimName::Bootcount, Value::Integer(1.into()))
+            // .claim(
+            //     iana::CwtClaimName::Bootseed,
+            //     Value::Bytes([0xABu8; 32].to_vec()),
+            // )
+            .build();
+        let claims_bytes = claims
+            .to_vec()
+            .map_err(|_| CaliptraApiError::CosetSerializeError)?;
+        Ok(claims_bytes)
     }
 }
