@@ -163,4 +163,8 @@ impl Mci {
             self.registers.mci_reg_reset_request.set(1); // Any value will trigger reset
         }
     }
+
+    pub fn trigger_warm_reset(&self) {
+        self.registers.mci_reg_reset_request.set(1);
+    }
 }
