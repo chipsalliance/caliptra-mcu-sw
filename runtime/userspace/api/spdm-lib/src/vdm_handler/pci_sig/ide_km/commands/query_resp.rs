@@ -41,13 +41,13 @@ async fn generate_query_resp(
     // Port configuration
     let port_config = ide_km_driver
         .port_config(port_index)
-        .map_err(VdmError::IdeKmDriver)?;
+        .map_err(VdmError::Ide)?;
     len += port_config.encode(rsp_buf).map_err(VdmError::Codec)?;
 
     // IDE capability and control registers
     let ide_reg_blk = ide_km_driver
         .ide_reg_block(port_index)
-        .map_err(VdmError::IdeKmDriver)?;
+        .map_err(VdmError::Ide)?;
     len += ide_reg_blk.encode(rsp_buf).map_err(VdmError::Codec)?;
 
     // Link IDE register blocks
@@ -57,7 +57,7 @@ async fn generate_query_resp(
         for blk_idx in 0..num_link_ide_streams {
             let link_ide_reg_blk = ide_km_driver
                 .link_ide_reg_block(port_index, blk_idx)
-                .map_err(VdmError::IdeKmDriver)?;
+                .map_err(VdmError::Ide)?;
             len += link_ide_reg_blk.encode(rsp_buf).map_err(VdmError::Codec)?;
         }
     }
@@ -68,7 +68,7 @@ async fn generate_query_resp(
         for blk_idx in 0..num_selective_ide_streams {
             let selective_ide_reg_blk = ide_km_driver
                 .selective_ide_reg_block(port_index, blk_idx)
-                .map_err(VdmError::IdeKmDriver)?;
+                .map_err(VdmError::Ide)?;
             len += selective_ide_reg_blk
                 .encode(rsp_buf)
                 .map_err(VdmError::Codec)?;
