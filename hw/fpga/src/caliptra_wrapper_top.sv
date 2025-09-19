@@ -979,6 +979,73 @@ dbg_fifo_inst (
 // End debug FIFO
 
 
+// ========================== Message FIFO ==========================
+
+// Valid = !Empty
+logic msg_fifo_empty;
+//assign hwif_in.fifo_regs.log_fifo_data.char_valid.next = ~log_fifo_empty;
+assign hwif_in.fifo_regs.msg_fifo_status.msg_fifo_empty.next = msg_fifo_empty;
+
+// When rd_swacc is asserted, use the value of "valid" from when it was sampled.
+reg msg_fifo_valid_f;
+// wr_swacc might be asserting before the data is available. Try delaying by a clock.
+reg msg_fifo_wr_en;
+always@(posedge core_clk) begin
+    msg_fifo_valid_f <= ~msg_fifo_empty;
+    msg_fifo_wr_en <= hwif_out.fifo_regs.msg_fifo_push.in_data.wr_swacc;
+end
+
+xpm_fifo_sync #(
+    .CASCADE_HEIGHT     (0       ),         // DECIMAL
+    .DOUT_RESET_VALUE   ("0"     ),     // String
+    .ECC_MODE           ("no_ecc"),        // String
+    .FIFO_MEMORY_TYPE   ("block" ), // String
+    .FIFO_READ_LATENCY  (0       ),      // DECIMAL
+    .FIFO_WRITE_DEPTH   (8192    ),    // DECIMAL
+    .FULL_RESET_VALUE   (0       ),       // DECIMAL
+    .PROG_EMPTY_THRESH  (10      ),     // DECIMAL
+    .PROG_FULL_THRESH   (7168    ),    // DECIMAL Currently unused
+    .RD_DATA_COUNT_WIDTH(14      ),   // DECIMAL
+    .READ_DATA_WIDTH    (32      ),       // DECIMAL
+    .READ_MODE          ("fwft"  ),         // String
+    .SIM_ASSERT_CHK     (0       ),         // DECIMAL; 0=disable simulation messages, 1=enable simulation messages
+    .USE_ADV_FEATURES   ("0000"  ),  // String
+    .WAKEUP_TIME        (0       ),            // DECIMAL
+    .WRITE_DATA_WIDTH   (32      ),      // DECIMAL
+    .WR_DATA_COUNT_WIDTH(14      )    // DECIMAL
+)
+msg_fifo_inst (
+    .almost_empty (                                                                    ),
+    .almost_full  (                                                                    ),
+    .data_valid   (                                                                    ),
+    .dbiterr      (                                                                    ),
+    .dout         (hwif_in.fifo_regs.msg_fifo_pop.out_data.next                        ),
+    .empty        (msg_fifo_empty                                                      ),
+    .full         (hwif_in.fifo_regs.msg_fifo_status.msg_fifo_full.next                ),
+    .overflow     (                                                                    ),
+    .prog_empty   (                                                                    ),
+    .prog_full    (                                                                    ),
+    .rd_data_count(                                                                    ),
+    .rd_rst_busy  (                                                                    ),
+    .sbiterr      (                                                                    ),
+    .underflow    (                                                                    ),
+    .wr_ack       (                                                                    ),
+    .wr_data_count(                                                                    ),
+    .wr_rst_busy  (                                                                    ),
+    .din          (hwif_out.fifo_regs.msg_fifo_push.in_data.value                      ),
+    .injectdbiterr(0                                                                   ),
+    .injectsbiterr(0                                                                   ),
+    .rd_en        (msg_fifo_valid_f & hwif_out.fifo_regs.msg_fifo_pop.out_data.rd_swacc),
+    .rst          (~S_AXI_WRAPPER_ARESETN                                              ),
+    .sleep        (0                                                                   ),
+    .wr_clk       (core_clk                                                            ),
+    .wr_en        (msg_fifo_wr_en                                                      )
+);
+
+
+// ========================== End Message FIFO ==========================
+
+
 `ifdef CALIPTRA_INTERNAL_TRNG
 // Registers and FIFO for ITRNG entropy
 
