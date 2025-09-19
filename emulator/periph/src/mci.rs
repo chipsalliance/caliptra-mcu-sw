@@ -922,4 +922,148 @@ mod tests {
             Notif0IntrT::NotifMbox0TargetDoneSts::SET.value,
         );
     }
+
+    #[test]
+    fn test_mtimecmp_write_high_then_low() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+
+        let hi: u32 = 0x1122_3344;
+        let lo: u32 = 0x5566_7788;
+
+        mci.write_mci_reg_mcu_rv_mtimecmp_h(hi);
+        mci.write_mci_reg_mcu_rv_mtimecmp_l(lo);
+
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_h(), hi);
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_l(), lo);
+
+        let combined: u64 = ((mci.read_mci_reg_mcu_rv_mtimecmp_h() as u64) << 32)
+            | (mci.read_mci_reg_mcu_rv_mtimecmp_l() as u64);
+        assert_eq!(combined, 0x1122_3344_5566_7788u64);
+    }
+
+    #[test]
+    fn test_mtimecmp_write_low_then_high() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+
+        let lo: u32 = 0x0000_FFFF;
+        let hi: u32 = 0x1234_5678;
+
+        mci.write_mci_reg_mcu_rv_mtimecmp_l(lo);
+        mci.write_mci_reg_mcu_rv_mtimecmp_h(hi);
+
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_l(), lo);
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_h(), hi);
+
+        let combined: u64 = ((mci.read_mci_reg_mcu_rv_mtimecmp_h() as u64) << 32)
+            | (mci.read_mci_reg_mcu_rv_mtimecmp_l() as u64);
+        assert_eq!(combined, 0x1234_5678_0000_FFFFu64);
+    }
+
+    #[test]
+    fn test_mtimecmp_write_low_multiple_times() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+
+        // Seed a known value.
+        mci.write_mci_reg_mcu_rv_mtimecmp_h(0xAABB_CCDD);
+        mci.write_mci_reg_mcu_rv_mtimecmp_l(0x0123_4567);
+
+        // Change only the low half.
+        mci.write_mci_reg_mcu_rv_mtimecmp_l(0x89AB_CDEF);
+
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_h(), 0xAABB_CCDD);
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_l(), 0x89AB_CDEF);
+    }
+
+    #[test]
+    fn test_mtimecmp_write_high_multiple_times() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+
+        // Seed a known value.
+        mci.write_mci_reg_mcu_rv_mtimecmp_h(0x0000_0001);
+        mci.write_mci_reg_mcu_rv_mtimecmp_l(0xFFFF_FFFE);
+
+        // Change only the high half.
+        mci.write_mci_reg_mcu_rv_mtimecmp_h(0xDEAD_BEEF);
+
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_l(), 0xFFFF_FFFE);
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_h(), 0xDEAD_BEEF);
+    }
+
+    #[test]
+    fn test_mtime_reads() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+
+        // Initial time is 0
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtime_l(), 0);
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtime_h(), 0);
+
+        // Advance to an arbitrary large timestamp and check split
+        clock.increment(0x1234_5678_0000_0000);
+        let now = clock.now();
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtime_l(), now as u32);
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtime_h(), (now >> 32) as u32);
+    }
+
+    #[test]
+    fn test_mtime_writes() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+
+        // Move time to a known value.
+        clock.increment(1234);
+        let now = clock.now();
+        assert_eq!(now, 1234);
+
+        // Writes should be ignored (no-ops).
+        mci.write_mci_reg_mcu_rv_mtime_l(0xDEAD_BEEF);
+        mci.write_mci_reg_mcu_rv_mtime_h(0xFEED_FACE);
+
+        // Reads still reflect clock time, not the written values.
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtime_l(), now as u32);
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtime_h(), (now >> 32) as u32);
+
+        // Advance time again and ensure reads keep tracking time.
+        clock.increment(1);
+        let now2 = clock.now();
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtime_l(), now2 as u32);
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtime_h(), (now2 >> 32) as u32);
+    }
+
+    #[test]
+    fn test_mtime_after_clock_advance_32bit() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+
+        // Advance by 2^32 + 1 -> high = 1, low = 1, as clock start at 0
+        clock.increment(0x1_0000_0001);
+        let now = clock.now();
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtime_l(), now as u32);
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtime_h(), (now >> 32) as u32);
+    }
 }
