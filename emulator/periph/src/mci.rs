@@ -49,6 +49,11 @@ impl Mci {
         let mut reset_reason = ResetReasonEmulator::new(ext_mci_regs.clone());
         reset_reason.handle_power_up();
 
+        let timer = Timer::new(clock);
+
+        // Reasonable default: ~4B ticks in the future (within scheduling horizon).
+        let default_mtimecmp = timer.now().wrapping_add(1u64 << 32);
+
         Self {
             ext_mci_regs,
 
@@ -64,7 +69,7 @@ impl Mci {
             mcu_mailbox0,
 
             // --- init mtimecmp ---
-            mtimecmp: u64::MAX,
+            mtimecmp: default_mtimecmp,
             op_mtimecmp_due_action: None,
         }
     }
@@ -954,7 +959,7 @@ mod tests {
         let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
 
         let lo: u32 = 0x0000_FFFF;
-        let hi: u32 = 0x0000_0078;
+        let hi: u32 = 0x0000_5678;
 
         mci.write_mci_reg_mcu_rv_mtimecmp_l(lo);
         mci.write_mci_reg_mcu_rv_mtimecmp_h(hi);
