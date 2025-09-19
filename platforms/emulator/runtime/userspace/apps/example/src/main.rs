@@ -202,6 +202,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_crypto::test_caliptra_ecdh().await;
         test_caliptra_crypto::test_caliptra_hmac().await;
         test_caliptra_crypto::test_caliptra_aes_gcm_cipher().await;
+        test_caliptra_crypto::test_caliptra_ecdsa().await;
         romtime::test_exit(0);
     }
 
