@@ -6,7 +6,7 @@ This binary provides both generation and decoding of OCP EAT (Entity Attestation
 
 ### Generation Mode
 - Automatically creates an `output/` folder and saves all generated CBOR tokens there
-- Supports structured concise evidence with RATS CoRIM format
+- Supports structured concise evidence with IETF CoRIM format
 - Generates cryptographically signed tokens with X.509 certificates
 
 ### Decode Mode  
