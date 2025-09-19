@@ -273,8 +273,10 @@ impl MciPeripheral for Mci {
         self.ext_mci_regs.regs.borrow_mut().reset_request = val.reg.get();
 
         if val.reg.is_set(ResetRequest::McuReq) {
-            // Set warm reset reason immediately
-            self.reset_reason.handle_warm_reset();
+            if (self.reset_reason.get() & ResetReason::FwHitlessUpdReset::SET.mask()) == 0 {
+                // Set warm reset reason immediately
+                self.reset_reason.handle_warm_reset();
+            }
 
             // Schedule the reset status assertion
             self.op_mcu_reset_request_action = Some(self.timer.schedule_poll_in(100));
@@ -920,9 +922,8 @@ impl MciPeripheral for Mci {
             // MCU is now in reset, assert the reset status
             self.ext_mci_regs.regs.borrow_mut().reset_status |= RESET_STATUS_MCU_RESET_MASK;
 
-            // Also set the reset_request register so emulator can see it
-            // This ensures the emulator will perform the actual CPU reset
-            self.ext_mci_regs.regs.borrow_mut().reset_request = RESET_REQUEST_MCU_REQ_MASK;
+            // At this point MCU is already reset, clear reset request
+            self.ext_mci_regs.regs.borrow_mut().reset_request &= !RESET_REQUEST_MCU_REQ_MASK;
 
             self.op_mcu_assert_mcu_reset_status_action = None;
             // Allow enough time for Caliptra to process the reset status before deasserting it
