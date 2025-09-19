@@ -34,8 +34,6 @@ pub enum MeasurementChangeStatus {
 }
 
 pub(crate) enum SpdmMeasurements {
-    // PcrQuote(PcrQuote),
-    // Ocp(OcpCwt),
     Manifest(MeasurementManifest),
 }
 

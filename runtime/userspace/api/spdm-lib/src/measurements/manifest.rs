@@ -53,13 +53,6 @@ impl Default for MeasurementManifest {
 }
 
 impl MeasurementManifest {
-    // pub(crate) fn reset(&mut self) {
-    //     self.measurement_record.clear();
-    //     self.spdm_version = None;
-    //     self.asym_algo = None;
-    //     self.nonce = None;
-    // }
-
     pub(crate) fn set_spdm_version(&mut self, version: SpdmVersion) {
         self.spdm_version = Some(version);
     }
