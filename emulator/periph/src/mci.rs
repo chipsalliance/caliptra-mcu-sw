@@ -931,7 +931,7 @@ mod tests {
         let irq = pic.register_irq(1);
         let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
 
-        let hi: u32 = 0x1122_3344;
+        let hi: u32 = 0x0022_3344;
         let lo: u32 = 0x5566_7788;
 
         mci.write_mci_reg_mcu_rv_mtimecmp_h(hi);
@@ -942,7 +942,7 @@ mod tests {
 
         let combined: u64 = ((mci.read_mci_reg_mcu_rv_mtimecmp_h() as u64) << 32)
             | (mci.read_mci_reg_mcu_rv_mtimecmp_l() as u64);
-        assert_eq!(combined, 0x1122_3344_5566_7788u64);
+        assert_eq!(combined, 0x0022_3344_5566_7788u64);
     }
 
     #[test]
@@ -954,7 +954,7 @@ mod tests {
         let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
 
         let lo: u32 = 0x0000_FFFF;
-        let hi: u32 = 0x1234_5678;
+        let hi: u32 = 0x0000_0078;
 
         mci.write_mci_reg_mcu_rv_mtimecmp_l(lo);
         mci.write_mci_reg_mcu_rv_mtimecmp_h(hi);
@@ -964,7 +964,7 @@ mod tests {
 
         let combined: u64 = ((mci.read_mci_reg_mcu_rv_mtimecmp_h() as u64) << 32)
             | (mci.read_mci_reg_mcu_rv_mtimecmp_l() as u64);
-        assert_eq!(combined, 0x1234_5678_0000_FFFFu64);
+        assert_eq!(combined, 0x0000_5678_0000_FFFFu64);
     }
 
     #[test]
@@ -976,17 +976,18 @@ mod tests {
         let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
 
         // Seed a known value.
-        mci.write_mci_reg_mcu_rv_mtimecmp_h(0xAABB_CCDD);
+        mci.write_mci_reg_mcu_rv_mtimecmp_h(0x00BB_CCDD);
         mci.write_mci_reg_mcu_rv_mtimecmp_l(0x0123_4567);
 
         // Change only the low half.
         mci.write_mci_reg_mcu_rv_mtimecmp_l(0x89AB_CDEF);
 
-        assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_h(), 0xAABB_CCDD);
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_h(), 0x00BB_CCDD);
         assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_l(), 0x89AB_CDEF);
     }
 
     #[test]
+
     fn test_mtimecmp_write_high_multiple_times() {
         let clock = Clock::new();
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
@@ -994,15 +995,19 @@ mod tests {
         let irq = pic.register_irq(1);
         let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
 
-        // Seed a known value.
-        mci.write_mci_reg_mcu_rv_mtimecmp_h(0x0000_0001);
+        // use a safe 48-bit range: 0x0000_DEAD_FFFF_FFFE
+        mci.write_mci_reg_mcu_rv_mtimecmp_h(0x0000_DEAD);
         mci.write_mci_reg_mcu_rv_mtimecmp_l(0xFFFF_FFFE);
 
-        // Change only the high half.
-        mci.write_mci_reg_mcu_rv_mtimecmp_h(0xDEAD_BEEF);
+        // Change only the high half; low must remain unchanged.
+        mci.write_mci_reg_mcu_rv_mtimecmp_h(0x0000_BEEF);
 
         assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_l(), 0xFFFF_FFFE);
-        assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_h(), 0xDEAD_BEEF);
+        assert_eq!(mci.read_mci_reg_mcu_rv_mtimecmp_h(), 0x0000_BEEF);
+
+        let combined = ((mci.read_mci_reg_mcu_rv_mtimecmp_h() as u64) << 32)
+            | (mci.read_mci_reg_mcu_rv_mtimecmp_l() as u64);
+        assert_eq!(combined, 0x0000_BEEF_FFFF_FFFEu64);
     }
 
     #[test]
