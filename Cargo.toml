@@ -48,6 +48,7 @@ members = [
     "runtime/kernel/drivers/mcu_mbox",
     "runtime/kernel/veer",
     "runtime/userspace/api/caliptra-api",
+    "runtime/userspace/api/eat",
     "runtime/userspace/api/pldm-lib",
     "runtime/userspace/api/spdm-lib",
     "runtime/userspace/libtock/apis/interface/console",
