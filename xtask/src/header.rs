@@ -28,6 +28,7 @@ const IGNORED_DIRS: &[&str] = &[
     "libtock",
     "out",
     "target",
+    "coset",
 ];
 
 pub(crate) fn fix() -> Result<()> {
