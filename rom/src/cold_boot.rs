@@ -330,13 +330,8 @@ impl BootFlow for ColdBoot {
             }
         }
 
-        romtime::println!("[mcu-rom] Waiting for firmware to be ready");
-        while !soc.fw_ready() {
-            if soc.cptra_fw_fatal_error() {
-                romtime::println!("[mcu-rom] Caliptra reported a fatal error");
-                fatal_error(6);
-            }
-        }
+        romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
+        soc.wait_for_firmware_ready(mci);
         romtime::println!("[mcu-rom] Firmware is ready");
         mci.set_flow_checkpoint(McuRomBootStatus::FirmwareReadyDetected.into());
 
