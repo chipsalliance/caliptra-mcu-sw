@@ -182,24 +182,24 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         test_roms.push((bin_path, filename));
     }
 
-    let (base_runtime_features, separate_runtimes) =
-        if separate_runtimes && runtime_features.is_some() {
-            // build a separate runtime for each feature flag, since they are used as tests
-            if runtime_features.is_none() || runtime_features.unwrap().is_empty() {
-                bail!("Must specify runtime features when building separate runtimes");
-            }
-            (
-                Vec::new(),
-                runtime_features.unwrap().split(",").collect::<Vec<&str>>(),
-            )
-        } else {
-            // build one runtime with all feature flags
-            if let Some(runtime_features) = runtime_features {
-                (runtime_features.split(",").collect(), Vec::new())
-            } else {
-                (Vec::new(), Vec::new())
-            }
-        };
+    if separate_runtimes && (runtime_features.is_none() || runtime_features.unwrap().is_empty()) {
+        bail!("Must specify runtime features when building separate runtimes");
+    }
+
+    let runtime_features = match runtime_features {
+        Some(r) if !r.is_empty() => r.split(",").collect::<Vec<&str>>(),
+        _ => vec![],
+    };
+
+    let mut base_runtime_features = vec![];
+    let mut separate_features = vec![];
+    if separate_runtimes {
+        // build a separate runtime for each feature flag, since they are used as tests
+        separate_features = runtime_features;
+    } else {
+        // build one runtime with all feature flags
+        base_runtime_features = runtime_features;
+    }
 
     let base_runtime_file = tempfile::NamedTempFile::new().unwrap();
     let base_runtime_path = base_runtime_file.path().to_str().unwrap();
@@ -236,7 +236,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let soc_manifest = caliptra_builder.get_soc_manifest(None)?;
 
     let mut test_runtimes = vec![];
-    for feature in separate_runtimes.iter() {
+    for feature in separate_features.iter() {
         let feature_runtime_file = tempfile::NamedTempFile::new().unwrap();
         let feature_runtime_path = feature_runtime_file.path().to_str().unwrap().to_string();
 
