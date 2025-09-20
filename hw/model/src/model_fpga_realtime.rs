@@ -15,6 +15,7 @@ use caliptra_hw_model::{
     SecurityState, XI3CWrapper,
 };
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
+use crossterm::event::{KeyCode, KeyEvent};
 use mcu_rom_common::{LifecycleControllerState, McuBootMilestones};
 use mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
@@ -25,7 +26,7 @@ use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 use tock_registers::interfaces::{Readable, Writeable};
@@ -230,6 +231,45 @@ impl ModelFpgaRealtime {
             }
         }
     }
+
+    fn read_console(stdin_uart: Arc<Mutex<Option<u8>>>) {
+        let mut buffer = vec![];
+        while MCU_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
+            if buffer.is_empty() {
+                match crossterm::event::read() {
+                    Ok(crossterm::event::Event::Key(KeyEvent {
+                        code: KeyCode::Char(ch),
+                        ..
+                    })) => {
+                        buffer.extend_from_slice(ch.to_string().as_bytes());
+                    }
+                    Ok(crossterm::event::Event::Key(KeyEvent {
+                        code: KeyCode::Enter,
+                        ..
+                    })) => {
+                        buffer.push(b'\n');
+                    }
+                    Ok(crossterm::event::Event::Key(KeyEvent {
+                        code: KeyCode::Backspace,
+                        ..
+                    })) => {
+                        if !buffer.is_empty() {
+                            buffer.pop();
+                        } else {
+                            buffer.push(8);
+                        }
+                    }
+                    _ => {} // ignore other keys
+                }
+            } else {
+                let mut stdin_uart = stdin_uart.lock().unwrap();
+                if stdin_uart.is_none() {
+                    *stdin_uart = Some(buffer.remove(0));
+                }
+            }
+            std::thread::yield_now();
+        }
+    }
 }
 
 impl McuHwModel for ModelFpgaRealtime {
@@ -322,6 +362,9 @@ impl McuHwModel for ModelFpgaRealtime {
         } else {
             None
         };
+
+        let stdin_uart_clone = base.stdin_uart.clone();
+        std::thread::spawn(move || Self::read_console(stdin_uart_clone));
 
         let m = Self {
             base,
