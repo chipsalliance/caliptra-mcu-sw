@@ -207,7 +207,7 @@ regfile interface_regs {
 
     reg {
         field { sw=rw; } key[32] = 32'h0;
-    } ocp_lock_key_release_reg[16] @ 0xA4010200;
+    } ocp_lock_key_release_reg[16] @ 0x200;
 };
 
 regfile fifo_regs {
