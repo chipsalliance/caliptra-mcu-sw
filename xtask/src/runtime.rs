@@ -62,7 +62,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
 
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_firmware = caliptra_builder.get_caliptra_fw()?;
-    let soc_manifest = caliptra_builder.get_soc_manifest()?;
+    let soc_manifest = caliptra_builder.get_soc_manifest(None)?;
     let vendor_pk_hash = caliptra_builder.get_vendor_pk_hash()?;
     let hw_revision = hw_revision.to_string();
     let mut cargo_run_args = vec![

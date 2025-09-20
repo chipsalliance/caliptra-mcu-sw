@@ -153,6 +153,9 @@ enum Commands {
 
         #[arg(long)]
         runtime_features: Option<String>,
+
+        #[arg(long, default_value_t = false)]
+        separate_runtimes: bool,
     },
     /// Commands related to flash images
     FlashImage {
@@ -350,6 +353,7 @@ fn main() {
             dccm_size,
             rom_features,
             runtime_features,
+            separate_runtimes,
         } => mcu_builder::all_build(mcu_builder::AllBuildArgs {
             output: output.as_deref(),
             platform: platform.as_deref(),
@@ -358,6 +362,7 @@ fn main() {
             dccm_size: *dccm_size,
             rom_features: rom_features.as_deref(),
             runtime_features: runtime_features.as_deref(),
+            separate_runtimes: *separate_runtimes,
         }),
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),
         Commands::RuntimeBuild {

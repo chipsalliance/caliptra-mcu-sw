@@ -102,7 +102,7 @@ impl CaliptraBuilder {
         Ok(metadata)
     }
 
-    pub fn get_soc_manifest(&mut self) -> Result<PathBuf> {
+    pub fn get_soc_manifest(&mut self, name: Option<&str>) -> Result<PathBuf> {
         if self.soc_manifest.is_none() {
             let _ = self.get_caliptra_fw()?;
         }
@@ -117,7 +117,8 @@ impl CaliptraBuilder {
             let mut metadata = vec![mcu_fw_metadata];
             metadata.extend(soc_images_metadata);
 
-            let path = Self::write_soc_manifest(metadata, self.soc_manifest_svn.unwrap_or(0))?;
+            let path =
+                Self::write_soc_manifest(metadata, self.soc_manifest_svn.unwrap_or(0), name)?;
             self.soc_manifest = Some(path);
         }
         Ok(self.soc_manifest.clone().unwrap())
@@ -137,7 +138,7 @@ impl CaliptraBuilder {
 
         // Rebuild the SoC manifest
         println!("Rebuilding SoC manifest with new metadata");
-        self.get_soc_manifest()
+        self.get_soc_manifest(None)
     }
 
     pub fn get_vendor_pk_hash(&mut self) -> Result<&str> {
@@ -212,10 +213,16 @@ impl CaliptraBuilder {
         })
     }
 
-    fn write_soc_manifest(metadata: Vec<AuthManifestImageMetadata>, svn: u32) -> Result<PathBuf> {
+    fn write_soc_manifest(
+        metadata: Vec<AuthManifestImageMetadata>,
+        svn: u32,
+        name: Option<&str>,
+    ) -> Result<PathBuf> {
         let manifest = Self::create_auth_manifest_with_metadata(metadata, svn);
 
-        let path = target_dir().join("soc-manifest");
+        let path = name
+            .map(PathBuf::from)
+            .unwrap_or(target_dir().join("soc-manifest"));
         std::fs::write(&path, manifest.as_bytes())?;
         Ok(path)
     }
