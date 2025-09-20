@@ -8,6 +8,8 @@ use std::path::PathBuf;
 
 mod cargo_lock;
 mod clippy;
+#[cfg(feature = "fpga_realtime")]
+mod demo;
 mod deps;
 mod docs;
 mod emulator_cbinding;
@@ -248,6 +250,8 @@ enum Commands {
         #[command(subcommand)]
         subcommand: EmulatorCbindingCommands,
     },
+    #[cfg(feature = "fpga_realtime")]
+    Demo,
 }
 
 #[derive(Subcommand)]
@@ -436,6 +440,8 @@ fn main() {
         // TODO(clundin): Refactor into FPGA module.
         #[cfg(feature = "fpga_realtime")]
         Commands::FpgaRun { .. } => fpga::fpga_run(cli.xtask),
+        #[cfg(feature = "fpga_realtime")]
+        Commands::Demo => demo::demo(),
         Commands::PldmFirmware { subcommand } => match subcommand {
             PldmFirmwareCommands::Create { manifest, file } => pldm_fw_pkg::create(manifest, file),
             PldmFirmwareCommands::Decode { package, dir } => pldm_fw_pkg::decode(package, dir),
