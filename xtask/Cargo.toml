@@ -37,6 +37,7 @@ tempfile.workspace = true
 toml.workspace = true
 walkdir.workspace = true
 zerocopy.workspace = true
+ratatui = { version = "0.29.0", features = ["palette", "macros", "scrolling-regions", "all-widgets"] }
 
 [build-dependencies]
 cc.workspace = true
