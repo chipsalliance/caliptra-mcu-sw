@@ -9,14 +9,14 @@ use kernel::component::Component;
 use kernel::create_capability;
 
 pub struct DmaComponent {
-    driver: &'static dma_driver::dma_ctrl::EmulatedDmaCtrl<'static>,
+    driver: &'static dma_driver::axicdma::AxiCDMA<'static>,
     board_kernel: &'static kernel::Kernel,
     driver_num: usize,
 }
 
 impl DmaComponent {
     pub fn new(
-        driver: &'static dma_driver::dma_ctrl::EmulatedDmaCtrl<'static>,
+        driver: &'static dma_driver::axicdma::AxiCDMA<'static>,
         board_kernel: &'static kernel::Kernel,
         driver_num: usize,
     ) -> Self {

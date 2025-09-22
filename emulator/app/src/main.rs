@@ -14,7 +14,8 @@ Abstract:
 
 use caliptra_emu_cpu::StepAction;
 use clap::Parser;
-use emulator::{gdb, Emulator, EmulatorArgs, EMULATOR_RUNNING};
+use emulator::{gdb, Emulator, EmulatorArgs};
+use mcu_testing_common::MCU_RUNNING;
 use std::cell::RefCell;
 use std::io;
 use std::io::IsTerminal;
@@ -22,7 +23,7 @@ use std::rc::Rc;
 
 // CPU Main Loop (free_run no GDB)
 fn free_run(mut emulator: Emulator) {
-    while EMULATOR_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
+    while MCU_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
         match emulator.step() {
             StepAction::Break => break,
             StepAction::Fatal => break,
@@ -40,7 +41,7 @@ fn run(cli: EmulatorArgs, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     // exit cleanly on Ctrl-C so that we save any state.
     if io::stdout().is_terminal() {
         ctrlc::set_handler(move || {
-            EMULATOR_RUNNING.store(false, std::sync::atomic::Ordering::Relaxed);
+            MCU_RUNNING.store(false, std::sync::atomic::Ordering::Relaxed);
         })
         .unwrap();
     }

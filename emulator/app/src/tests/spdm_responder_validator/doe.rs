@@ -5,7 +5,7 @@ use crate::tests::spdm_responder_validator::common::{
     execute_spdm_validator, SpdmValidatorRunner, SERVER_LISTENING,
 };
 use crate::tests::spdm_responder_validator::transport::{Transport, SOCKET_TRANSPORT_TYPE_PCI_DOE};
-use crate::{sleep_emulator_ticks, wait_for_runtime_start, EMULATOR_RUNNING};
+use mcu_testing_common::{sleep_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
 use std::net::TcpListener;
 use std::process::exit;
 use std::sync::atomic::Ordering;
@@ -46,7 +46,7 @@ impl Transport for DoeTransport {
         let mut resp = None;
         let mut retry_count = 0;
 
-        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        while MCU_RUNNING.load(Ordering::Relaxed) {
             match self.tx_rx_state {
                 TxRxState::Start => {
                     if wait_for_responder {
@@ -128,7 +128,7 @@ pub fn run_doe_spdm_conformance_test(
         // give time for the app to be loaded and ready
         sleep_emulator_ticks(1_000_000);
 
-        if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        if !MCU_RUNNING.load(Ordering::Relaxed) {
             exit(-1);
         }
 

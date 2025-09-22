@@ -1,101 +1,91 @@
 // Licensed under the Apache-2.0 license
 
-// Dma controller driver for the dummy dma controller in the emulator.
+// This is a driver for the  AMD LogiCORE IP AXI Central Direct Memory Access (CDMA) core.
+// Reference: https://docs.amd.com/r/en-US/pg034-axi-cdma
+// This driver only supports simple transfer mode.
+
+use core::cell::RefCell;
 
 use crate::hil::{DMAClient, DMAError};
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
-use registers_generated::dma_ctrl::{bits::*, regs::*, DMA_CTRL_ADDR};
+use registers_generated::axicdma::{bits::*, regs::*, AXICDMA_ADDR};
 
-pub const DMA_CTRL_BASE: StaticRef<DmaCtrl> =
-    unsafe { StaticRef::new(DMA_CTRL_ADDR as *const DmaCtrl) };
+pub const DMA_CTRL_BASE: StaticRef<Axicdma> =
+    unsafe { StaticRef::new(AXICDMA_ADDR as *const Axicdma) };
 
-pub struct EmulatedDmaCtrl<'a> {
-    registers: StaticRef<DmaCtrl>,
+pub struct AxiCDMA<'a> {
+    registers: StaticRef<Axicdma>,
     dma_client: OptionalCell<&'a dyn DMAClient>,
+    btt: RefCell<u32>,
 }
 
-impl<'a> EmulatedDmaCtrl<'a> {
-    pub fn new(base: StaticRef<DmaCtrl>) -> EmulatedDmaCtrl<'a> {
-        EmulatedDmaCtrl {
+impl<'a> AxiCDMA<'a> {
+    pub fn new(base: StaticRef<Axicdma>) -> AxiCDMA<'a> {
+        AxiCDMA {
             registers: base,
             dma_client: OptionalCell::empty(),
+            btt: RefCell::new(0),
         }
     }
 
     pub fn init(&self) {
-        self.registers
-            .dma_op_status
-            .modify(DmaOpStatus::Err::CLEAR + DmaOpStatus::Done::CLEAR);
-
+        self.reset();
         self.clear_error_interrupt();
         self.clear_event_interrupt();
     }
 
     fn enable_interrupts(&self) {
         self.registers
-            .dma_interrupt_enable
-            .modify(DmaInterruptEnable::Error::SET + DmaInterruptEnable::Event::SET);
+            .axicdma_control
+            .modify(AxicdmaControl::ErrIrqEn::SET + AxicdmaControl::IocIrqEn::SET);
     }
 
     fn disable_interrupts(&self) {
         self.registers
-            .dma_interrupt_enable
-            .modify(DmaInterruptEnable::Error::CLEAR + DmaInterruptEnable::Event::CLEAR);
+            .axicdma_control
+            .modify(AxicdmaControl::ErrIrqEn::CLEAR + AxicdmaControl::IocIrqEn::CLEAR);
+    }
+
+    fn reset(&self) {
+        // Reset the DMA controller. Write 1 to reset
+        self.registers
+            .axicdma_control
+            .modify(AxicdmaControl::Reset::SET);
+        while self.registers.axicdma_control.is_set(AxicdmaControl::Reset) {}
     }
 
     fn clear_error_interrupt(&self) {
         // Clear the error interrupt. Write 1 to clear
         self.registers
-            .dma_interrupt_state
-            .modify(DmaInterruptState::Error::SET);
+            .axicdma_status
+            .modify(AxicdmaStatus::IrqError::SET);
     }
 
     fn clear_event_interrupt(&self) {
         // Clear the event interrupt. Write 1 to clear
         self.registers
-            .dma_interrupt_state
-            .modify(DmaInterruptState::Event::SET);
+            .axicdma_status
+            .modify(AxicdmaStatus::IrqIoc::SET);
     }
 
     pub fn handle_interrupt(&self) {
-        let dmactrl_intr = self.registers.dma_interrupt_state.extract();
+        let dmactrl_intr = self.registers.axicdma_status.extract();
         self.disable_interrupts();
 
         // Handling error interrupt
-        if dmactrl_intr.is_set(DmaInterruptState::Error) {
-            // Read the op_status register
-            let op_status = self.registers.dma_op_status.extract();
-
-            // Clear the op_status register
-            self.registers.dma_op_status.modify(DmaOpStatus::Err::CLEAR);
-
+        if dmactrl_intr.is_set(AxicdmaStatus::IrqError) {
             self.clear_error_interrupt();
-
-            if op_status.is_set(DmaOpStatus::Err) {
-                self.dma_client.map(move |client| {
-                    client.transfer_error(DMAError::AxiWriteError);
-                });
-            } else {
-                self.dma_client.map(move |client| {
-                    client.transfer_error(DMAError::AxiReadError);
-                });
-            }
+            self.dma_client.map(move |client| {
+                client.transfer_error(DMAError::AxiWriteError);
+            });
         }
 
         // Handling event interrupt (normal completion)
-        if dmactrl_intr.is_set(DmaInterruptState::Event) {
-            // Clear the op_status register
-            self.registers
-                .dma_op_status
-                .modify(DmaOpStatus::Done::CLEAR);
-
-            // Clear the interrupt before callback as it is possible that the callback will start another operation.
-            // Otherwise, emulated dma ctrl won't allow starting another operation if the previous one is not cleared.
+        if dmactrl_intr.is_set(AxicdmaStatus::IrqIoc) {
             self.clear_event_interrupt();
-
             self.dma_client.map(move |client| {
                 client.transfer_complete(crate::hil::DMAStatus::TxnDone);
             });
@@ -103,7 +93,7 @@ impl<'a> EmulatedDmaCtrl<'a> {
     }
 }
 
-impl crate::hil::DMA for EmulatedDmaCtrl<'_> {
+impl crate::hil::DMA for AxiCDMA<'_> {
     fn configure_transfer(
         &self,
         byte_count: usize,
@@ -120,23 +110,29 @@ impl crate::hil::DMA for EmulatedDmaCtrl<'_> {
         if src_addr.is_none() || dest_addr.is_none() {
             return Err(ErrorCode::INVAL);
         }
+        if !self.registers.axicdma_status.is_set(AxicdmaStatus::Idle) {
+            // DMA is not idle
+            return Err(ErrorCode::BUSY);
+        }
+
+        self.enable_interrupts();
 
         // Set the source and destination addresses
         self.registers
-            .source_addr_lower
+            .axicdma_src_addr
             .set(src_addr.unwrap() as u32);
         self.registers
-            .source_addr_high
+            .axicdma_src_addr_msb
             .set((src_addr.unwrap() >> 32) as u32);
         self.registers
-            .dest_addr_lower
+            .axicdma_dst_addr
             .set(dest_addr.unwrap() as u32);
         self.registers
-            .dest_addr_high
+            .axicdma_dst_addr_msb
             .set((dest_addr.unwrap() >> 32) as u32);
 
         // Set the transfer size
-        self.registers.xfer_size.set(byte_count as u32);
+        *self.btt.borrow_mut() = byte_count as u32;
 
         Ok(())
     }
@@ -155,18 +151,27 @@ impl crate::hil::DMA for EmulatedDmaCtrl<'_> {
             // Only AxiToAxi route is supported
             return Err(ErrorCode::INVAL);
         }
-        self.enable_interrupts();
-        self.registers.dma_control.modify(DmaControl::Start::SET);
+        if !self.registers.axicdma_status.is_set(AxicdmaStatus::Idle) {
+            // DMA is not idle
+            return Err(ErrorCode::BUSY);
+        }
+
+        self.registers
+            .axicdma_bytes_to_transfer
+            .set(*self.btt.borrow());
         Ok(())
     }
 
     fn poll_status(&self) -> Result<crate::hil::DMAStatus, DMAError> {
         // Read the op_status register
-        let op_status = self.registers.dma_op_status.extract();
-        if op_status.is_set(DmaOpStatus::Done) {
+        let op_status = self.registers.axicdma_status.extract();
+        if op_status.is_set(AxicdmaStatus::Idle) {
             return Ok(crate::hil::DMAStatus::TxnDone);
         }
-        if op_status.is_set(DmaOpStatus::Err) {
+        if op_status.is_set(AxicdmaStatus::ErrInternal)
+            || op_status.is_set(AxicdmaStatus::ErrSlave)
+            || op_status.is_set(AxicdmaStatus::ErrDecode)
+        {
             return Err(DMAError::CommandError);
         }
         Ok(crate::hil::DMAStatus::RdFifoNotEmpty)

@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
-use crate::i3c_socket::{BufferedStream, MctpTestState, MctpTransportTest};
-use crate::tests::mctp_util::base_protocol::{MCTPMsgHdr, MCTP_MSG_HDR_SIZE};
-use crate::tests::mctp_util::common::MctpUtil;
-use crate::tests::mctp_util::ctrl_protocol::*;
-use crate::EMULATOR_RUNNING;
+use mcu_testing_common::i3c_socket::{BufferedStream, MctpTestState, MctpTransportTest};
+use mcu_testing_common::mctp_util::base_protocol::{MCTPMsgHdr, MCTP_MSG_HDR_SIZE};
+use mcu_testing_common::mctp_util::common::MctpUtil;
+use mcu_testing_common::mctp_util::ctrl_protocol::*;
+use mcu_testing_common::MCU_RUNNING;
 use std::sync::atomic::Ordering;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -201,7 +201,7 @@ impl MctpTransportTest for Test {
 
     fn run_test(&mut self, stream: &mut BufferedStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
-        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        while MCU_RUNNING.load(Ordering::Relaxed) {
             match self.test_state {
                 MctpTestState::Start => {
                     println!("Starting test: {}", self.name);
