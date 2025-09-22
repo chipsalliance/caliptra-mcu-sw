@@ -92,8 +92,11 @@ impl Mci {
             self.mtimecmp - now
         };
 
-        //the timer  calls poll() after delay ticks,
-        self.op_mtimecmp_due_action = Some(self.timer.schedule_poll_in(delay));
+        // Directly schedule the machine timer interrupt
+        self.op_mtimecmp_due_action = Some(
+            self.timer
+                .schedule_action_in(delay, TimerAction::MachineTimerInterrupt),
+        );
     }
 }
 
