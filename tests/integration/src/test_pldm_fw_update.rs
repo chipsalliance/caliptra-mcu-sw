@@ -4,9 +4,7 @@
 
 #[cfg(test)]
 mod test {
-    use crate::test::{
-        compile_runtime, finish_runtime_hw_model, start_runtime_hw_model, ROM, TEST_LOCK,
-    };
+    use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TEST_LOCK};
     use chrono::{TimeZone, Utc};
     use lazy_static::lazy_static;
     use log::{error, LevelFilter};
@@ -35,14 +33,11 @@ mod test {
     #[test]
     fn test_fw_update_e2e() {
         let feature = "test-pldm-fw-update-e2e";
-        let example_app = false;
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        println!("Compiling test firmware {}", feature);
         let feature = feature.replace("_", "-");
-        let test_runtime = compile_runtime(&feature, example_app);
-        let mut hw = start_runtime_hw_model(ROM.to_path_buf(), test_runtime, Some(65534));
+        let mut hw = start_runtime_hw_model(Some(&feature), Some(65534));
 
         hw.start_i3c_controller();
 
