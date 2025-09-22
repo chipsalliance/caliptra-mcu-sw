@@ -9,11 +9,11 @@ use embedded_alloc::Heap;
 use libtock::console::Console;
 use libtock::runtime::{set_main, stack_size};
 
-const HEAP_SIZE: usize = 0x2000;
+const HEAP_SIZE: usize = 0x1800;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-stack_size! {0xb000}
+stack_size! {0xc000}
 set_main! {main}
 
 fn main() {

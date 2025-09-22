@@ -34,7 +34,7 @@ pub type SpdmResult<T> = Result<T, SpdmError>;
 
 pub type CommandResult<T> = Result<T, (bool, CommandError)>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum CommandError {
     BufferTooSmall,
     Codec(CodecError),

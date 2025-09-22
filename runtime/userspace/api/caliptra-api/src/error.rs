@@ -2,10 +2,11 @@
 
 use libsyscall_caliptra::mailbox::MailboxError;
 use libtock_platform::ErrorCode;
+use ocp_eat::eat_encoder::EatError;
 
 pub type CaliptraApiResult<T> = Result<T, CaliptraApiError>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum CaliptraApiError {
     MailboxBusy,
     Mailbox(MailboxError),
@@ -19,5 +20,6 @@ pub enum CaliptraApiError {
     AesGcmTagVerifyFailed,
     InvalidResponse,
     UnprovisionedCsr,
-    CosetSerializeError,
+    UnsupportedAlgorithm,
+    Eat(EatError),
 }

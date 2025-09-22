@@ -14,7 +14,7 @@ use libapi_caliptra::crypto::hmac::{HkdfSalt, Hmac};
 use libapi_caliptra::crypto::import::Import;
 use libapi_caliptra::error::CaliptraApiError;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum KeyScheduleError {
     BufferTooSmall,
     InvalidSessionKeyType,

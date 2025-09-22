@@ -12,7 +12,7 @@ pub const SPDM_MAX_MEASUREMENT_RECORD_SIZE: u32 = 0xFFFFFF;
 pub const SPDM_MEASUREMENT_MANIFEST_INDEX: u8 = 0xFD;
 pub const SPDM_DEVICE_MODE_INDEX: u8 = 0xFE;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum MeasurementsError {
     InvalidIndex,
     InvalidOffset,

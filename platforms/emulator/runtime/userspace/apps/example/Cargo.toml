@@ -10,7 +10,6 @@ edition.workspace = true
 caliptra-api.workspace = true
 caliptra-error.workspace = true
 caliptra-auth-man-types.workspace = true
-coset.workspace = true
 critical-section.workspace = true
 embassy-executor.workspace = true
 libapi-caliptra.workspace = true

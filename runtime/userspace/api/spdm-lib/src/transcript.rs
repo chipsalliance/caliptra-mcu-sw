@@ -7,7 +7,7 @@ use arrayvec::ArrayVec;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use libapi_caliptra::error::CaliptraApiError;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum TranscriptError {
     BufferOverflow,
     InvalidState,
