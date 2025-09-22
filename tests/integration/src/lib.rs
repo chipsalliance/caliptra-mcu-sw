@@ -4,6 +4,8 @@ mod i3c_socket;
 mod test_firmware_update;
 #[cfg(feature = "fpga_realtime")]
 mod test_jtag_taps;
+#[cfg(feature = "fpga_realtime")]
+mod test_lc_transitions;
 mod test_mctp_capsule_loopback;
 mod test_pldm_fw_update;
 mod test_soc_boot;
