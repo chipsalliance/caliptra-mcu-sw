@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::runtime::bit_flags;
 use crate::tbf::TbfHeader;
 use crate::{objcopy, target_binary, OBJCOPY_FLAGS};
 use crate::{PROJECT_ROOT, TARGET};
@@ -16,7 +17,7 @@ pub const APPS: &[App] = &[
     App {
         name: "user-app",
         permissions: vec![],
-        minimum_ram: 108 * 1024,
+        minimum_ram: 112 * 1024,
     },
 ];
 
@@ -47,6 +48,7 @@ pub const BASE_PERMISSIONS: &[(u32, u32)] = &[
 // Generates a single flat binary containing the apps built with their TBF headers.
 // If `example_app` is true, only the example app is included; otherwise, all other apps are included.
 pub fn apps_build_flat_tbf(
+    platform: &str,
     start: usize,
     ram_start: usize,
     features: &[&str],
@@ -60,7 +62,14 @@ pub fn apps_build_flat_tbf(
             continue;
         }
         println!("Building TBF for app {}", app.name);
-        let app_bin = app_build_tbf(app, offset, ram_start, app.minimum_ram as usize, features)?;
+        let app_bin = app_build_tbf(
+            app,
+            platform,
+            offset,
+            ram_start,
+            app.minimum_ram as usize,
+            features,
+        )?;
         bin.extend_from_slice(&app_bin);
         offset += app_bin.len();
         ram_start += app.minimum_ram as usize;
@@ -82,6 +91,7 @@ pub fn apps_build_flat_tbf(
 // creates a flat binary of the app with the TBF header
 fn app_build_tbf(
     app: &App,
+    platform: &str,
     start: usize,
     ram_start: usize,
     ram_length: usize,
@@ -107,6 +117,7 @@ fn app_build_tbf(
 
     app_build(
         app.name,
+        platform,
         start,
         ram_start,
         ram_length,
@@ -152,6 +163,7 @@ fn app_build_tbf(
 // creates an ELF of the app
 fn app_build(
     app_name: &str,
+    platform: &str,
     offset: usize,
     ram_start: usize,
     ram_length: usize,
@@ -161,7 +173,7 @@ fn app_build(
     let app_ld_filename = format!("{}-layout.ld", app_name);
     let layout_ld = &PROJECT_ROOT
         .join("platforms")
-        .join("emulator")
+        .join("emulator") // TODO: build platform-specific
         .join("runtime")
         .join("userspace")
         .join("apps")
@@ -175,7 +187,7 @@ fn app_build(
 /* Licensed under the Apache-2.0 license */
 TBF_HEADER_SIZE = 0x{:x};
 FLASH_START = 0x{:x};
-FLASH_LENGTH = 0x49000;
+FLASH_LENGTH = 0x4a500;
 RAM_START = 0x{:x};
 RAM_LENGTH = 0x{:x};
 INCLUDE platforms/emulator/runtime/userspace/apps/app_layout.ld",
@@ -204,6 +216,7 @@ INCLUDE platforms/emulator/runtime/userspace/apps/app_layout.ld",
             TARGET,
             "--",
         ])
+        .args(bit_flags(platform).split(' '))
         .args(ld_flag.split(' '))
         .status()?;
     if !status.success() {

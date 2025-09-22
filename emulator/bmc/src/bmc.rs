@@ -52,6 +52,12 @@ impl Bmc {
                 Device::ExternalTestSram => {
                     self.events_to_mcu.send(event).unwrap();
                 }
+                Device::McuMbox0Sram => {
+                    self.events_to_mcu.send(event).unwrap();
+                }
+                Device::McuMbox1Sram => {
+                    self.events_to_mcu.send(event).unwrap();
+                }
                 _ => {}
             }
         }

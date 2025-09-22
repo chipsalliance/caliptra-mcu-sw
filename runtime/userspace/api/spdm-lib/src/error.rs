@@ -10,6 +10,7 @@ use crate::protocol::SignCtxError;
 use crate::session::SessionError;
 use crate::transcript::TranscriptError;
 use crate::transport::common::TransportError;
+use crate::vdm_handler::VdmError;
 use libapi_caliptra::error::CaliptraApiError;
 
 #[derive(Debug)]
@@ -17,15 +18,16 @@ pub enum SpdmError {
     UnsupportedVersion,
     InvalidStandardsBodyId,
     InvalidParam,
+    BufferTooSmall,
+    UnsupportedRequest,
     Codec(CodecError),
     Transport(TransportError),
     Command(CommandError),
-    BufferTooSmall,
-    UnsupportedRequest,
     CertStore(CertStoreError),
     CaliptraApi(CaliptraApiError),
     Session(SessionError),
     OpaqueData(OpaqueDataError),
+    Vdm(VdmError),
 }
 
 pub type SpdmResult<T> = Result<T, SpdmError>;
@@ -38,8 +40,10 @@ pub enum CommandError {
     Codec(CodecError),
     ErrorCode(ErrorCode),
     UnsupportedRequest,
+    UnsupportedLargeResponse,
     SignCtx(SignCtxError),
     InvalidChunkContext,
+    MissingVdmHandler,
     Chunk(ChunkError),
     CertStore(CertStoreError),
     CaliptraApi(CaliptraApiError),
@@ -47,4 +51,5 @@ pub enum CommandError {
     Measurement(MeasurementsError),
     Session(SessionError),
     OpaqueData(OpaqueDataError),
+    Vdm(VdmError),
 }

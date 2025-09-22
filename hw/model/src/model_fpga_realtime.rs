@@ -5,20 +5,29 @@
 use crate::{InitParams, McuHwModel, McuManager};
 use anyhow::{bail, Result};
 use caliptra_api::SocManager;
+use caliptra_api_types::Fuses;
 use caliptra_emu_bus::{Bus, BusError, BusMmio, Event};
 use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
+use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap, OpenOcdJtagTap};
 use caliptra_hw_model::{
     DeviceLifecycle, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem, Output,
-    SecurityState,
+    SecurityState, XI3CWrapper,
 };
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
-use mcu_rom_common::LifecycleControllerState;
+use mcu_rom_common::{LifecycleControllerState, McuBootMilestones};
+use mcu_testing_common::i3c::{
+    I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
+};
+use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
 use std::io::Write;
 use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
+use std::thread::JoinHandle;
+use std::time::Duration;
 use tock_registers::interfaces::{Readable, Writeable};
 
 const DEFAULT_AXI_PAUSER: u32 = 0x1;
@@ -41,18 +50,26 @@ impl CaliptraMmio {
 }
 
 pub struct ModelFpgaRealtime {
-    base: ModelFpgaSubsystem,
-
+    pub base: ModelFpgaSubsystem,
+    // TODO(timothytrippel): remove old mechanism of connecting to OpenOCD.
     openocd: Option<TcpStream>,
+    i3c_port: Option<u16>,
+    i3c_handle: Option<JoinHandle<()>>,
+    i3c_tx: Option<mpsc::Sender<I3cBusResponse>>,
+    i3c_next_private_read_len: Option<u16>,
 }
 
 impl ModelFpgaRealtime {
-    pub fn i3c_target_configured(&mut self) -> bool {
-        self.base.i3c_target_configured()
+    pub fn init_fuses(&mut self, fuses: &Fuses) {
+        HwModel::init_fuses(&mut self.base, fuses);
     }
 
-    pub fn configure_i3c_controller(&mut self) {
-        self.base.i3c_controller.configure()
+    pub fn set_subsystem_reset(&mut self, reset: bool) {
+        self.base.set_subsystem_reset(reset);
+    }
+
+    pub fn i3c_target_configured(&mut self) -> bool {
+        self.base.i3c_target_configured()
     }
 
     pub fn start_recovery_bmc(&mut self) {
@@ -68,6 +85,16 @@ impl ModelFpgaRealtime {
         self.base.i3c_controller.read(len).unwrap()
     }
 
+    /// Connect to a JTAG TAP by spawning an OpenOCD process.
+    pub fn jtag_tap_connect(
+        &mut self,
+        params: &JtagParams,
+        tap: JtagTap,
+    ) -> Result<Box<OpenOcdJtagTap>> {
+        self.base.jtag_tap_connect(params, tap)
+    }
+
+    // TODO(timothytrippel): remove old mechanism of connecting to OpenOCD.
     pub fn open_openocd(&mut self, port: u16) -> Result<()> {
         let addr = SocketAddr::from(([127, 0, 0, 1], port));
         let stream = TcpStream::connect(addr)?;
@@ -111,11 +138,104 @@ impl ModelFpgaRealtime {
             phantom: Default::default(),
         }
     }
+
+    fn forward_i3c_to_controller(
+        running: Arc<AtomicBool>,
+        i3c_rx: mpsc::Receiver<I3cBusCommand>,
+        controller: XI3CWrapper,
+    ) {
+        // check if we need to write any I3C packets to Caliptra
+        while running.load(Ordering::Relaxed) {
+            for rx in i3c_rx.try_iter() {
+                match rx.cmd.cmd {
+                    I3cTcriCommand::Regular(_cmd) => {
+                        if rx.cmd.data.len() > 0 {
+                            // wait for space in the write FIFOs
+                            while controller.cmd_fifo_level() == 0
+                                || controller.write_fifo_level() < 16
+                            {
+                                std::thread::sleep(Duration::from_millis(1));
+                            }
+                            match controller.write(&rx.cmd.data) {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    println!("[hw-model-fpga] Error writing I3C data: {:?}", e)
+                                }
+                            }
+                            // add a delay after writing to not overwhelm the firmware buffers
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                    }
+                    // these aren't used
+                    _ => todo!(),
+                }
+            }
+        }
+    }
+
+    fn handle_i3c(&mut self) {
+        const MCTP_MDB: u8 = 0xae;
+        let Some(tx) = self.i3c_tx.as_ref() else {
+            return;
+        };
+        // check if we need to read any I3C packets from Caliptra
+        if self.base.i3c_controller().ibi_ready() {
+            match self.base.i3c_controller().ibi_recv(None) {
+                Ok(ibi) => {
+                    // process each IBI in the buffer (each is 4 bytes)
+                    for ibi in ibi.chunks(4) {
+                        if ibi.len() < 4 || ibi[0] != MCTP_MDB {
+                            println!("Ignoring unexpected I3C IBI received: {:02x?}", ibi);
+                            continue;
+                        }
+                        // forward the IBI
+                        tx.send(I3cBusResponse {
+                            addr: self.i3c_address().unwrap_or_default().into(),
+                            ibi: Some(MCTP_MDB),
+                            resp: I3cTcriResponseXfer {
+                                resp: ResponseDescriptor::default(),
+                                data: vec![],
+                            },
+                        })
+                        .expect("Failed to forward I3C IBI response to channel");
+                        self.i3c_next_private_read_len =
+                            Some(u16::from_be_bytes(ibi[1..3].try_into().unwrap()));
+                    }
+                }
+                Err(e) => {
+                    println!("Error receiving I3C IBI: {:?}", e);
+                }
+            }
+        }
+        // check if we should do attempt a private read
+        if let Some(private_read_len) = self.i3c_next_private_read_len.take() {
+            match self.base.i3c_controller().read(private_read_len) {
+                Ok(data) => {
+                    let data = data[0..private_read_len as usize].to_vec();
+                    // forward the private read
+                    let mut resp = ResponseDescriptor::default();
+                    resp.set_data_length(data.len() as u16);
+                    tx.send(I3cBusResponse {
+                        addr: self.i3c_address().unwrap_or_default().into(),
+                        ibi: None,
+                        resp: I3cTcriResponseXfer { resp, data },
+                    })
+                    .expect("Failed to forward I3C private read response to channel");
+                }
+                Err(e) => {
+                    println!("Error receiving I3C private read: {:?}", e);
+                    // retry
+                    self.i3c_next_private_read_len = Some(private_read_len);
+                }
+            }
+        }
+    }
 }
 
 impl McuHwModel for ModelFpgaRealtime {
     fn step(&mut self) {
         self.base.step();
+        self.handle_i3c();
     }
 
     fn new_unbooted(params: InitParams) -> Result<Self>
@@ -138,7 +258,16 @@ impl McuHwModel for ModelFpgaRealtime {
                 security_state_prod
             }
             LifecycleControllerState::Dev => security_state_manufacturing,
-            _ => security_state_unprovisioned,
+            LifecycleControllerState::Raw
+            | LifecycleControllerState::TestUnlocked0
+            | LifecycleControllerState::TestUnlocked1
+            | LifecycleControllerState::TestUnlocked2
+            | LifecycleControllerState::TestUnlocked3
+            | LifecycleControllerState::TestUnlocked4
+            | LifecycleControllerState::TestUnlocked5
+            | LifecycleControllerState::TestUnlocked6
+            | LifecycleControllerState::TestUnlocked7
+            | _ => security_state_unprovisioned,
         };
 
         let cptra_init = CaliptraInitParams {
@@ -163,15 +292,46 @@ impl McuHwModel for ModelFpgaRealtime {
             soc_user: MailboxRequester::SocUser(DEFAULT_AXI_PAUSER),
             test_sram: None,
             mcu_rom: Some(params.mcu_rom),
+            enable_mcu_uart_log: params.enable_mcu_uart_log,
         };
         println!("Starting base model");
         let base = ModelFpgaSubsystem::new_unbooted(cptra_init)
             .map_err(|e| anyhow::anyhow!("Failed to initialized base model: {e}"))?;
 
+        let (i3c_rx, i3c_tx) = if let Some(i3c_port) = params.i3c_port {
+            println!(
+                "Starting I3C socket on port {} and connected to hardware",
+                i3c_port
+            );
+            let (rx, tx) =
+                mcu_testing_common::i3c_socket_server::start_i3c_socket(&MCU_RUNNING, i3c_port);
+
+            (Some(rx), Some(tx))
+        } else {
+            (None, None)
+        };
+
+        let i3c_handle = if let Some(i3c_rx) = i3c_rx {
+            // start a thread to forward I3C packets from the mpsc receiver to the I3C controller in the FPGA model
+            let running = base.realtime_thread_exit_flag.clone();
+            let controller = base.i3c_controller();
+            let i3c_handle = std::thread::spawn(move || {
+                Self::forward_i3c_to_controller(running, i3c_rx, controller);
+            });
+            Some(i3c_handle)
+        } else {
+            None
+        };
+
         let m = Self {
             base,
 
             openocd: None,
+            // TODO: start the I3C socket and hook up to the FPGA model
+            i3c_port: params.i3c_port,
+            i3c_handle,
+            i3c_tx,
+            i3c_next_private_read_len: None,
         };
 
         Ok(m)
@@ -181,9 +341,43 @@ impl McuHwModel for ModelFpgaRealtime {
     where
         Self: Sized,
     {
+        let skip_recovery = boot_params.fw_image.is_none();
+
         self.base
             .boot(boot_params)
             .map_err(|e| anyhow::anyhow!("Failed to boot: {e}"))?;
+
+        if skip_recovery {
+            self.base.recovery_started = false;
+            return Ok(());
+        }
+
+        // wait until firmware is booted
+        const BOOT_CYCLES: u64 = 800_000_000;
+        self.step_until(|hw| {
+            hw.cycle_count() >= BOOT_CYCLES
+                || hw
+                    .mci_boot_milestones()
+                    .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
+        });
+        println!(
+            "Boot completed at cycle count {}, flow status {}",
+            self.cycle_count(),
+            u32::from(self.mci_flow_status())
+        );
+        assert!(self
+            .mci_boot_milestones()
+            .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE));
+        MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
+        // turn off recovery
+        self.base.recovery_started = false;
+        println!("Resetting I3C controller");
+        {
+            let ctrl = self.base.i3c_controller.controller.lock().unwrap();
+            ctrl.ready.set(false);
+        }
+        self.base.i3c_controller.configure();
+
         Ok(())
     }
 
@@ -255,6 +449,27 @@ impl McuHwModel for ModelFpgaRealtime {
 
     fn caliptra_soc_manager(&mut self) -> impl SocManager {
         self
+    }
+
+    fn start_i3c_controller(&mut self) {
+        self.base
+            .i3c_controller
+            .controller
+            .lock()
+            .unwrap()
+            .interrupt_enable_set(0x80 | 0x8000);
+    }
+
+    fn i3c_address(&self) -> Option<u8> {
+        Some(self.base.i3c_controller.get_primary_addr())
+    }
+
+    fn i3c_port(&self) -> Option<u16> {
+        self.i3c_port
+    }
+
+    fn mci_flow_status(&mut self) -> u32 {
+        self.base.mci_flow_status()
     }
 }
 
@@ -358,14 +573,21 @@ impl Drop for ModelFpgaRealtime {
             .stdby_ctrl_mode()
             .stby_cr_device_addr()
             .write(|_| StbyCrDeviceAddrWriteVal::from(0));
+
+        self.base
+            .realtime_thread_exit_flag
+            .store(false, Ordering::Relaxed);
+        if let Some(handle) = self.i3c_handle.take() {
+            handle.join().expect("Failed to join I3C thread");
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::new;
-
     use super::*;
+    use crate::new;
+    use std::time::Duration;
 
     #[ignore] // temporarily while we debug the FPGA tests
     #[cfg(feature = "fpga_realtime")]

@@ -2,8 +2,8 @@
 
 use registers_generated::i3c;
 use registers_generated::i3c::bits::{
-    HcControl, IndirectFifoCtrl0, QueueThldCtrl, RingHeadersSectionOffset, StbyCrCapabilities,
-    StbyCrControl, StbyCrDeviceAddr, StbyCrVirtDeviceAddr, TtiQueueThldCtrl,
+    DeviceStatus0, HcControl, IndirectFifoCtrl0, QueueThldCtrl, RingHeadersSectionOffset,
+    StbyCrCapabilities, StbyCrControl, StbyCrDeviceAddr, StbyCrVirtDeviceAddr, TtiQueueThldCtrl,
 };
 use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -165,5 +165,11 @@ impl I3c {
                 // clear is bus enabled, set is suspended
                 HcControl::BusEnable::CLEAR,
         );
+    }
+
+    pub fn disable_recovery(&mut self) {
+        self.registers
+            .sec_fw_recovery_if_device_status_0
+            .write(DeviceStatus0::DevStatus.val(0));
     }
 }

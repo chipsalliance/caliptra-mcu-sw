@@ -32,9 +32,37 @@ use tock_registers::registers::InMemoryRegister;
 /// Mailbox user for accessing Caliptra mailbox.
 const MAILBOX_USER: MailboxRequester = MailboxRequester::SocUser(1);
 
+#[derive(Debug)]
+pub enum BytesOrPath {
+    Bytes(Vec<u8>),
+    Path(PathBuf),
+}
+
+impl Default for BytesOrPath {
+    fn default() -> Self {
+        BytesOrPath::Bytes(Vec::new())
+    }
+}
+
+impl BytesOrPath {
+    fn exists(&self) -> bool {
+        match self {
+            BytesOrPath::Bytes(_) => true,
+            BytesOrPath::Path(p) => p.exists(),
+        }
+    }
+
+    fn read(&self) -> io::Result<Vec<u8>> {
+        match self {
+            BytesOrPath::Bytes(b) => Ok(b.clone()),
+            BytesOrPath::Path(p) => std::fs::read(p),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct StartCaliptraArgs {
-    pub rom: PathBuf,
+    pub rom: BytesOrPath,
     pub req_idevid_csr: Option<bool>,
     pub device_lifecycle: Option<String>,
     pub use_mcu_recovery_interface: bool,
@@ -72,7 +100,7 @@ pub fn start_caliptra(
     }
 
     let req_idevid_csr = args.req_idevid_csr.unwrap_or(false);
-    let rom_buffer = std::fs::read(&args.rom)?;
+    let rom_buffer = args.rom.read()?;
 
     if rom_buffer.len() > CaliptraRootBus::ROM_SIZE {
         Err(io::Error::new(

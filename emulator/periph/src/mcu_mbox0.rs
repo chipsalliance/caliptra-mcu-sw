@@ -3,21 +3,29 @@
 use caliptra_emu_bus::BusError;
 use caliptra_emu_bus::{Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
 use caliptra_emu_types::{RvAddr, RvSize};
+use emulator_consts::MCU_MAILBOX0_SRAM_SIZE;
 use registers_generated::mci::bits::MboxExecute;
 use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{Readable, Writeable};
 
-pub const MCU_MAILBOX0_SRAM_SIZE: usize = 2 * 1024 * 1024; // Default size of the mailbox SRAM 2MB
-
 #[derive(Clone)]
 pub struct MciMailboxRam {
-    ram: Arc<Mutex<Ram>>,
+    pub ram: Arc<Mutex<Ram>>,
+}
+
+impl Default for MciMailboxRam {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MciMailboxRam {
     pub fn new() -> Self {
         Self {
-            ram: Arc::new(Mutex::new(Ram::new(vec![0u8; MCU_MAILBOX0_SRAM_SIZE]))),
+            ram: Arc::new(Mutex::new(Ram::new(vec![
+                0u8;
+                MCU_MAILBOX0_SRAM_SIZE as usize
+            ]))),
         }
     }
 }
@@ -71,7 +79,7 @@ pub struct McuMailbox0External {
 // MCU Mailbox 0 implementation.
 pub struct MciMailboxImpl {
     /// Mailbox SRAM
-    sram: MciMailboxRam,
+    pub sram: MciMailboxRam,
 
     /// Mailbox Lock register
     lock: ReadOnlyRegister<u32>,
@@ -189,7 +197,7 @@ impl MciMailboxImpl {
     pub fn reset(&mut self) {
         self.read_mcu_mbox0_csr_mbox_lock();
         assert!(self.is_locked(), "MCU can't acquire MCU mailbox lock");
-        self.write_mcu_mbox0_csr_mbox_dlen(MCU_MAILBOX0_SRAM_SIZE as u32);
+        self.write_mcu_mbox0_csr_mbox_dlen(MCU_MAILBOX0_SRAM_SIZE);
         self.write_mcu_mbox0_csr_mbox_execute(caliptra_emu_bus::ReadWriteRegister::new(
             MboxExecute::Execute::CLEAR.value,
         ));
@@ -232,7 +240,7 @@ impl MciMailboxImpl {
     }
 
     pub fn read_mcu_mbox0_csr_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
-        if index >= (MCU_MAILBOX0_SRAM_SIZE / 4) {
+        if index >= (MCU_MAILBOX0_SRAM_SIZE as usize / 4) {
             panic!("Index out of bounds for mcu_mbox0 SRAM: {index}");
         }
 
@@ -256,7 +264,7 @@ impl MciMailboxImpl {
             panic!("Cannot write to mcu_mbox0 SRAM when mailbox is unlocked");
         }
 
-        if index >= (MCU_MAILBOX0_SRAM_SIZE / 4) {
+        if index >= (MCU_MAILBOX0_SRAM_SIZE as usize / 4) {
             panic!("Index out of bounds for mcu_mbox0 SRAM: {index}");
         }
         if let Err(e) =
@@ -282,11 +290,18 @@ impl MciMailboxImpl {
             self.lock.reg.set(1);
             // Reset max_dlen_in_lock_session for new session
             self.max_dlen_in_lock_session = 0;
+
+            // Return 0 to indicate lock is now held
+            caliptra_emu_bus::ReadWriteRegister::<
+                u32,
+                registers_generated::mbox::bits::MboxLock::Register,
+            >::new(0)
+        } else {
+            caliptra_emu_bus::ReadWriteRegister::<
+                u32,
+                registers_generated::mbox::bits::MboxLock::Register,
+            >::new(self.lock.reg.get())
         }
-        caliptra_emu_bus::ReadWriteRegister::<
-            u32,
-            registers_generated::mbox::bits::MboxLock::Register,
-        >::new(self.lock.reg.get())
     }
 
     pub fn read_mcu_mbox0_csr_mbox_user(&mut self) -> caliptra_emu_types::RvData {
@@ -339,7 +354,7 @@ impl MciMailboxImpl {
     }
 
     pub fn write_mcu_mbox0_csr_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
-        if val > MCU_MAILBOX0_SRAM_SIZE as u32 {
+        if val > MCU_MAILBOX0_SRAM_SIZE {
             panic!("DLEN value {val} exceeds mcu_mbox0 SRAM size");
         }
         self.dlen.reg.set(val);
@@ -485,6 +500,7 @@ mod tests {
             ext_mci_regs.clone(),
             Rc::new(RefCell::new(mci_irq)),
             Some(mcu_mailbox0.clone()),
+            None,
         );
         AutoRootBus::new(
             vec![],
@@ -588,6 +604,13 @@ mod tests {
         let lock_val = bus
             .read(RvSize::Word, MCI_BASE_ADDR + MBOX_LOCK_OFFSET)
             .expect("Lock read failed");
+        // When locking, the MCU should get 0 back to indicate it has acquired the lock
+        assert_eq!(lock_val, 0, "Lock register should be 0");
+
+        // When read again, it should now be 1
+        let lock_val = bus
+            .read(RvSize::Word, MCI_BASE_ADDR + MBOX_LOCK_OFFSET)
+            .expect("Lock read failed");
         assert_eq!(lock_val, 1, "Lock register should be 1");
 
         let user_val = bus
@@ -600,7 +623,7 @@ mod tests {
         );
 
         let sram_base = MCI_BASE_ADDR + MCU_MAILBOX0_SRAM_OFFSET;
-        let sram_words = (MCU_MAILBOX0_SRAM_SIZE / 4) as u32;
+        let sram_words = MCU_MAILBOX0_SRAM_SIZE / 4;
         for i in 0..sram_words {
             let addr = sram_base + i * 4;
             let pattern = 0xA5A50000 | (i & 0xFFFF);

@@ -7,13 +7,14 @@ use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
 use emulator_registers_generated::mci::MciPeripheral;
 use registers_generated::mci::bits::{
-    Error0IntrT, Notif0IntrEnT, Notif0IntrT, ResetReason, WdtStatus, WdtTimer1Ctrl, WdtTimer1En,
-    WdtTimer2Ctrl, WdtTimer2En,
+    Error0IntrT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest, WdtStatus, WdtTimer1Ctrl,
+    WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
 };
 use std::{cell::RefCell, rc::Rc};
 use tock_registers::interfaces::{ReadWriteable, Readable};
 
 const RESET_STATUS_MCU_RESET_MASK: u32 = 0x2;
+const RESET_REQUEST_MCU_REQ_MASK: u32 = 0x1; // McuReq bit (bit 0)
 
 pub struct Mci {
     ext_mci_regs: caliptra_emu_periph::mci::Mci,
@@ -34,6 +35,7 @@ pub struct Mci {
     // machine timer compare
     mtimecmp: u64,
     op_mtimecmp_due_action: Option<ActionHandle>,
+    mcu_mailbox1: Option<McuMailbox0Internal>,
 }
 
 impl Mci {
@@ -42,6 +44,7 @@ impl Mci {
         ext_mci_regs: caliptra_emu_periph::mci::Mci,
         irq: Rc<RefCell<Irq>>,
         mcu_mailbox0: Option<McuMailbox0Internal>,
+        mcu_mailbox1: Option<McuMailbox0Internal>,
     ) -> Self {
         // Clear the reset status, MCU and Caiptra are out of reset
         ext_mci_regs.regs.borrow_mut().reset_status = 0;
@@ -71,6 +74,7 @@ impl Mci {
             // --- init mtimecmp ---
             mtimecmp: default_mtimecmp,
             op_mtimecmp_due_action: None,
+            mcu_mailbox1,
         }
     }
 
@@ -179,6 +183,10 @@ impl MciPeripheral for Mci {
 
     fn write_mci_reg_reset_reason(&mut self, val: ReadWriteRegister<u32, ResetReason::Register>) {
         self.reset_reason.set(val.reg.get());
+    }
+
+    fn read_mci_reg_reset_request(&mut self) -> ReadWriteRegister<u32, ResetRequest::Register> {
+        ReadWriteRegister::new(self.ext_mci_regs.regs.borrow().reset_request)
     }
 
     fn write_mci_reg_wdt_timer1_en(&mut self, val: ReadWriteRegister<u32, WdtTimer1En::Register>) {
@@ -322,16 +330,37 @@ impl MciPeripheral for Mci {
             .regs
             .borrow_mut()
             .intr_block_rf_notif0_intr_trig_r = new_val;
+
+        let cur_value = self
+            .read_mci_reg_intr_block_rf_notif0_internal_intr_r()
+            .reg
+            .get();
+        let new_val = cur_value | val.reg.get();
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_notif0_internal_intr_r = new_val;
     }
 
     fn write_mci_reg_reset_request(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::ResetRequest::Register,
         >,
     ) {
-        self.op_mcu_reset_request_action = Some(self.timer.schedule_poll_in(100));
+        // Store value in shared ext_mci register (will be consumed by emulator)
+        self.ext_mci_regs.regs.borrow_mut().reset_request = val.reg.get();
+
+        if val.reg.is_set(ResetRequest::McuReq) {
+            if (self.reset_reason.get() & ResetReason::FwHitlessUpdReset::SET.mask()) == 0 {
+                // Set warm reset reason immediately
+                self.reset_reason.handle_warm_reset();
+            }
+
+            // Schedule the reset status assertion
+            self.op_mcu_reset_request_action = Some(self.timer.schedule_poll_in(100));
+        }
     }
 
     fn read_mci_reg_intr_block_rf_notif0_internal_intr_r(
@@ -639,6 +668,248 @@ impl MciPeripheral for Mci {
             .read_mcu_mbox0_csr_mbox_hw_status()
     }
 
+    fn read_mcu_mbox1_csr_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_sram(index)
+    }
+
+    fn write_mcu_mbox1_csr_mbox_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_sram(val, index)
+    }
+
+    fn read_mcu_mbox1_csr_mbox_lock(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_lock()
+    }
+
+    fn read_mcu_mbox1_csr_mbox_user(&mut self) -> caliptra_emu_types::RvData {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_user()
+    }
+
+    fn read_mcu_mbox1_csr_mbox_target_user(&mut self) -> caliptra_emu_types::RvData {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_target_user()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_target_user(&mut self, val: caliptra_emu_types::RvData) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_target_user(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_target_user_valid(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxTargetUserValid::Register,
+    > {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_target_user_valid()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_target_user_valid(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::MboxTargetUserValid::Register,
+        >,
+    ) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_target_user_valid(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_cmd(&mut self) -> caliptra_emu_types::RvData {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_cmd()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_cmd(&mut self, val: caliptra_emu_types::RvData) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_cmd(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_dlen()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_dlen(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_execute(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::MboxExecute::Register,
+    > {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_execute()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_execute(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mbox::bits::MboxExecute::Register,
+        >,
+    ) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_execute(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_target_status(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxTargetStatus::Register,
+    > {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_target_status()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_target_status(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::MboxTargetStatus::Register,
+        >,
+    ) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_target_status(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_cmd_status(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxCmdStatus::Register,
+    > {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_cmd_status()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_cmd_status(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::MboxCmdStatus::Register,
+        >,
+    ) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_cmd_status(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_hw_status(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxHwStatus::Register,
+    > {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_hw_status()
+    }
+
     fn read_mci_reg_hw_rev_id(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwRevId::Register>
@@ -730,6 +1001,10 @@ impl MciPeripheral for Mci {
         {
             // MCU is now in reset, assert the reset status
             self.ext_mci_regs.regs.borrow_mut().reset_status |= RESET_STATUS_MCU_RESET_MASK;
+
+            // At this point MCU is already reset, clear reset request
+            self.ext_mci_regs.regs.borrow_mut().reset_request &= !RESET_REQUEST_MCU_REQ_MASK;
+
             self.op_mcu_assert_mcu_reset_status_action = None;
             // Allow enough time for Caliptra to process the reset status before deasserting it
             self.op_mcu_deassert_mcu_reset_status_action = Some(self.timer.schedule_poll_in(1000));
@@ -814,7 +1089,7 @@ mod tests {
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
         let pic = caliptra_emu_cpu::Pic::new();
         let irq = pic.register_irq(1);
-        let mci_reg: Mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+        let mci_reg: Mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None, None);
         let mut mci_bus = MciBus {
             periph: Box::new(mci_reg),
         };
@@ -906,6 +1181,7 @@ mod tests {
             ext_mci_regs.clone(),
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
+            None,
         );
         let mut mcu_mailbox = mci_reg.mcu_mailbox0.clone().unwrap();
         let mut mci_bus = MciBus {
@@ -937,7 +1213,13 @@ mod tests {
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
         let pic = caliptra_emu_cpu::Pic::new();
         let irq = pic.register_irq(1);
-        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs,
+            Rc::new(RefCell::new(irq)),
+            Some(McuMailbox0Internal::new(&clock)),
+            None,
+        );
 
         let hi: u32 = 0x0022_3344;
         let lo: u32 = 0x5566_7788;
@@ -959,7 +1241,13 @@ mod tests {
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
         let pic = caliptra_emu_cpu::Pic::new();
         let irq = pic.register_irq(1);
-        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs,
+            Rc::new(RefCell::new(irq)),
+            Some(McuMailbox0Internal::new(&clock)),
+            None,
+        );
 
         let lo: u32 = 0x0000_FFFF;
         let hi: u32 = 0x0000_5678;
@@ -981,7 +1269,13 @@ mod tests {
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
         let pic = caliptra_emu_cpu::Pic::new();
         let irq = pic.register_irq(1);
-        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs,
+            Rc::new(RefCell::new(irq)),
+            Some(McuMailbox0Internal::new(&clock)),
+            None,
+        );
 
         // Seed a known value.
         mci.write_mci_reg_mcu_rv_mtimecmp_h(0x00BB_CCDD);
@@ -1001,7 +1295,13 @@ mod tests {
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
         let pic = caliptra_emu_cpu::Pic::new();
         let irq = pic.register_irq(1);
-        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs,
+            Rc::new(RefCell::new(irq)),
+            Some(McuMailbox0Internal::new(&clock)),
+            None,
+        );
 
         // use a safe 48-bit range: 0x0000_DEAD_FFFF_FFFE
         mci.write_mci_reg_mcu_rv_mtimecmp_h(0x0000_DEAD);
@@ -1024,7 +1324,13 @@ mod tests {
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
         let pic = caliptra_emu_cpu::Pic::new();
         let irq = pic.register_irq(1);
-        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs,
+            Rc::new(RefCell::new(irq)),
+            Some(McuMailbox0Internal::new(&clock)),
+            None,
+        );
 
         // Initial time is 0
         assert_eq!(mci.read_mci_reg_mcu_rv_mtime_l(), 0);
@@ -1043,7 +1349,13 @@ mod tests {
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
         let pic = caliptra_emu_cpu::Pic::new();
         let irq = pic.register_irq(1);
-        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs,
+            Rc::new(RefCell::new(irq)),
+            Some(McuMailbox0Internal::new(&clock)),
+            None,
+        );
 
         // Move time to a known value.
         clock.increment(1234);
@@ -1071,7 +1383,13 @@ mod tests {
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
         let pic = caliptra_emu_cpu::Pic::new();
         let irq = pic.register_irq(1);
-        let mut mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs,
+            Rc::new(RefCell::new(irq)),
+            Some(McuMailbox0Internal::new(&clock)),
+            None,
+        );
 
         // Advance by 2^32 + 1 -> high = 1, low = 1, as clock start at 0
         clock.increment(0x1_0000_0001);

@@ -1,7 +1,10 @@
 // Licensed under the Apache-2.0 license
 pub mod ecdh;
+pub mod ecdsa;
 
 pub const ECC_P384_SIGNATURE_SIZE: usize = 96;
+pub const ECC_P384_PARAM_X_SIZE: usize = 48;
+pub const ECC_P384_PARAM_Y_SIZE: usize = 48;
 
 pub enum KeyExchScheme {
     Ecdh,

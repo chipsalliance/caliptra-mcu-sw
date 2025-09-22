@@ -26,6 +26,8 @@ pub struct FirmwareBinaries {
     pub mcu_runtime: Vec<u8>,
     pub soc_manifest: Vec<u8>,
     pub test_roms: Vec<(String, Vec<u8>)>,
+    pub test_soc_manifests: Vec<(String, Vec<u8>)>,
+    pub test_runtimes: Vec<(String, Vec<u8>)>,
 }
 
 impl FirmwareBinaries {
@@ -44,7 +46,7 @@ impl FirmwareBinaries {
     pub fn from_env() -> Result<&'static Self> {
         // TODO: Consider falling back to building the firmware if CPTRA_FIRMWARE_BUNDLE is unset.
         let bundle_path = var("CPTRA_FIRMWARE_BUNDLE")
-            .expect("Set the environment variable CPTRA_FIRMWARE_BUNDLE ");
+            .map_err(|_| anyhow::anyhow!("Set the environment variable CPTRA_FIRMWARE_BUNDLE"))?;
 
         static BINARIES: OnceLock<FirmwareBinaries> = OnceLock::new();
         let binaries = BINARIES.get_or_init(|| {
@@ -71,6 +73,12 @@ impl FirmwareBinaries {
                 Self::MCU_ROM_NAME => binaries.mcu_rom = data,
                 Self::MCU_RUNTIME_NAME => binaries.mcu_runtime = data,
                 Self::SOC_MANIFEST_NAME => binaries.soc_manifest = data,
+                name if name.contains("mcu-test-soc-manifest") => {
+                    binaries.test_soc_manifests.push((name.to_string(), data));
+                }
+                name if name.contains("mcu-test-runtime") => {
+                    binaries.test_runtimes.push((name.to_string(), data));
+                }
                 name if name.contains("mcu-test-rom") => {
                     binaries.test_roms.push((name.to_string(), data));
                 }
@@ -101,6 +109,30 @@ impl FirmwareBinaries {
             fwid
         ))
     }
+
+    pub fn test_soc_manifest(&self, feature: &str) -> Result<Vec<u8>> {
+        let expected_name = format!("mcu-test-soc-manifest-{}.bin", feature);
+        for (name, data) in self.test_soc_manifests.iter() {
+            if &expected_name == name {
+                return Ok(data.clone());
+            }
+        }
+        Err(anyhow::anyhow!(
+            "SoC Manifest not found. File name: {expected_name}, feature: {feature}"
+        ))
+    }
+
+    pub fn test_runtime(&self, feature: &str) -> Result<Vec<u8>> {
+        let expected_name = format!("mcu-test-runtime-{}.bin", feature);
+        for (name, data) in self.test_runtimes.iter() {
+            if &expected_name == name {
+                return Ok(data.clone());
+            }
+        }
+        Err(anyhow::anyhow!(
+            "Runtime not found. File name: {expected_name}, feature: {feature}"
+        ))
+    }
 }
 
 #[derive(Default)]
@@ -112,6 +144,7 @@ pub struct AllBuildArgs<'a> {
     pub platform: Option<&'a str>,
     pub rom_features: Option<&'a str>,
     pub runtime_features: Option<&'a str>,
+    pub separate_runtimes: bool,
 }
 
 /// Build Caliptra ROM and firmware bundle, MCU ROM and runtime, and SoC manifest, and package them all together in a ZIP file.
@@ -124,6 +157,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         platform,
         rom_features,
         runtime_features,
+        separate_runtimes,
     } = args;
 
     // TODO: use temp files
@@ -148,15 +182,31 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         test_roms.push((bin_path, filename));
     }
 
-    let runtime_features: Vec<&str> = if let Some(runtime_features) = runtime_features {
-        runtime_features.split(",").collect()
-    } else {
-        Vec::new()
+    if separate_runtimes && (runtime_features.is_none() || runtime_features.unwrap().is_empty()) {
+        bail!("Must specify runtime features when building separate runtimes");
+    }
+
+    let runtime_features = match runtime_features {
+        Some(r) if !r.is_empty() => r.split(",").collect::<Vec<&str>>(),
+        _ => vec![],
     };
 
+    let mut base_runtime_features = vec![];
+    let mut separate_features = vec![];
+    if separate_runtimes {
+        // build a separate runtime for each feature flag, since they are used as tests
+        separate_features = runtime_features;
+    } else {
+        // build one runtime with all feature flags
+        base_runtime_features = runtime_features;
+    }
+
+    let base_runtime_file = tempfile::NamedTempFile::new().unwrap();
+    let base_runtime_path = base_runtime_file.path().to_str().unwrap();
+
     let mcu_runtime = &crate::runtime_build_with_apps_cached(
-        &runtime_features,
-        None,
+        &base_runtime_features,
+        Some(base_runtime_path),
         false,
         Some(platform),
         Some(memory_map),
@@ -181,9 +231,47 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     );
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_fw = caliptra_builder.get_caliptra_fw()?;
-    let vendor_pk_hash = caliptra_builder.get_vendor_pk_hash()?;
+    let vendor_pk_hash = caliptra_builder.get_vendor_pk_hash()?.to_string();
     println!("Vendor PK hash: {:x?}", vendor_pk_hash);
-    let soc_manifest = caliptra_builder.get_soc_manifest()?;
+    let soc_manifest = caliptra_builder.get_soc_manifest(None)?;
+
+    let mut test_runtimes = vec![];
+    for feature in separate_features.iter() {
+        let feature_runtime_file = tempfile::NamedTempFile::new().unwrap();
+        let feature_runtime_path = feature_runtime_file.path().to_str().unwrap().to_string();
+
+        crate::runtime_build_with_apps_cached(
+            &[feature],
+            Some(&feature_runtime_path),
+            false,
+            Some(platform),
+            Some(memory_map),
+            use_dccm_for_stack,
+            dccm_offset,
+            dccm_size,
+            None,
+            None,
+        )?;
+
+        let mut caliptra_builder = crate::CaliptraBuilder::new(
+            fpga,
+            Some(caliptra_rom.clone()),
+            Some(caliptra_fw.clone()),
+            None,
+            Some(vendor_pk_hash.clone()),
+            Some(feature_runtime_file.path().to_path_buf()),
+            None,
+            None,
+            None,
+        );
+        let feature_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
+        caliptra_builder.get_soc_manifest(feature_soc_manifest_file.path().to_str())?;
+        test_runtimes.push((
+            feature.to_string(),
+            feature_runtime_file,
+            feature_soc_manifest_file,
+        ));
+    }
 
     let default_path = crate::target_dir().join("all-fw.zip");
     let path = output.map(Path::new).unwrap_or(&default_path);
@@ -227,6 +315,30 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     )?;
     for (test_rom, name) in test_roms {
         add_to_zip(&test_rom, &name, &mut zip, options)?;
+    }
+
+    for (feature, runtime, soc_manifest) in test_runtimes {
+        let runtime_name = format!("mcu-test-runtime-{}.bin", feature);
+        println!("Adding {} -> {}", runtime.path().display(), runtime_name);
+        add_to_zip(
+            &runtime.path().to_path_buf(),
+            &runtime_name,
+            &mut zip,
+            options,
+        )?;
+
+        let soc_manifest_name = format!("mcu-test-soc-manifest-{}.bin", feature);
+        println!(
+            "Adding {} -> {}",
+            soc_manifest.path().display(),
+            soc_manifest_name
+        );
+        add_to_zip(
+            &soc_manifest.path().to_path_buf(),
+            &soc_manifest_name,
+            &mut zip,
+            options,
+        )?;
     }
 
     zip.finish()?;

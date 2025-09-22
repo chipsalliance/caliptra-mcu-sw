@@ -1,12 +1,12 @@
+`include "axicdma.rdl"
 `include "el2_pic_ctrl.rdl"
 `include "flash_ctrl.rdl"
-`include "dma.rdl"
 `include "doe_mbox.rdl"
 
 addrmap mcu {
     el2_pic_ctrl el2_pic_ctrl @ 0x6000_0000;
     flash_ctrl primary_flash_ctrl @ 0x2000_8000;
     flash_ctrl secondary_flash_ctrl @ 0x2000_8800;
-    dma_ctrl dma_ctrl @ 0x3000_0000;
+    axicdma axicdma @ 0xA4084000;
     doe_mbox doe_mbox @ 0x2F00_0000;
 };

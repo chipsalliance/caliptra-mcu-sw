@@ -6,13 +6,16 @@ Abstract:
     File contains I3C peripheral implementation.
 --*/
 
-use crate::i3c_protocol::{I3cController, I3cTarget, I3cTcriResponseXfer, ResponseDescriptor};
-use crate::{DynamicI3cAddress, I3cIncomingCommandClient, IbiDescriptor, ReguDataTransferCommand};
+use crate::i3c_protocol::I3cController;
+use crate::{I3cIncomingCommandClient, I3cTarget};
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_bus::{Device, Event, EventData};
 use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
 use emulator_registers_generated::i3c::I3cPeripheral;
+use mcu_testing_common::i3c::{
+    DynamicI3cAddress, I3cTcriCommand, I3cTcriResponseXfer, IbiDescriptor, ResponseDescriptor,
+};
 use registers_generated::i3c::bits::{
     DeviceStatus0, ExtcapHeader, IndirectFifoCtrl0, IndirectFifoStatus0, InterruptEnable,
     InterruptStatus, RecIntfCfg, StbyCrCapabilities, StbyCrDeviceAddr, TtiQueueSize,
@@ -77,6 +80,7 @@ pub struct I3c {
 
     interrupt_status: ReadWriteRegister<u32, InterruptStatus::Register>,
     interrupt_enable: ReadWriteRegister<u32, InterruptEnable::Register>,
+    ibi_status: Option<u32>,
 
     events_to_caliptra: Option<mpsc::Sender<Event>>,
     events_from_caliptra: Option<mpsc::Receiver<Event>>,
@@ -128,6 +132,7 @@ impl I3c {
             indirect_fifo_data: Vec::new(),
             interrupt_status: ReadWriteRegister::new(0),
             interrupt_enable: ReadWriteRegister::new(0),
+            ibi_status: None,
             events_to_caliptra: None,
             events_from_caliptra: None,
             events_to_mcu: None,
@@ -166,7 +171,7 @@ impl I3c {
             self.tti_rx_desc_queue_raw
                 .push_back(xfer.cmd.raw_data_len() as u32 | rnw);
             let data = match xfer.cmd.clone() {
-                crate::I3cTcriCommand::Immediate(imm) => vec![
+                I3cTcriCommand::Immediate(imm) => vec![
                     imm.data_byte_1(),
                     imm.data_byte_2(),
                     imm.data_byte_3(),
@@ -181,26 +186,13 @@ impl I3c {
     fn check_interrupts(&mut self) {
         // TODO: implement the timeout interrupts
 
-        // Set TxDescStat interrupt if there is a pending Read transaction (i.e., data needs to be written to the tx registers)
-
-        // TODO: this is incorrect, and we will not be able to service this interrupt
-        // in time. Instead, we should start writing our private writes in a callback
-        // (until the TX buffer is full).
-        let pending_read = self
-            .tti_rx_desc_queue_raw
-            .front()
-            .map(|x| {
-                ReguDataTransferCommand::read_from_bytes(&(*x as u64).to_le_bytes())
-                    .unwrap()
-                    .rnw()
-                    == 1
-            })
-            .unwrap_or(false);
-        self.interrupt_status.reg.modify(if pending_read {
-            InterruptStatus::TxDescStat::SET
-        } else {
-            InterruptStatus::TxDescStat::CLEAR
-        });
+        self.interrupt_status
+            .reg
+            .modify(if self.ibi_status.is_some() {
+                InterruptStatus::IbiDone::SET
+            } else {
+                InterruptStatus::IbiDone::CLEAR
+            });
 
         // Set RxDescStat interrupt if there is a pending write (i.e., data to read from rx registers)
         self.interrupt_status
@@ -219,7 +211,8 @@ impl I3c {
             InterruptStatus::RxDescStat::SET
                 + InterruptStatus::TxDescStat::SET
                 + InterruptStatus::RxDescTimeout::SET
-                + InterruptStatus::TxDescTimeout::SET,
+                + InterruptStatus::TxDescTimeout::SET
+                + InterruptStatus::IbiDone::SET,
         ));
     }
 
@@ -239,6 +232,7 @@ impl I3c {
 
             // TODO: support sending more bytes of IBI to target
             self.i3c_target.send_ibi((desc.0 >> 24) as u8);
+            self.ibi_status = Some(0);
             self.tti_ibi_buffer.drain(0..(len + 4).next_multiple_of(4));
         }
     }
@@ -509,6 +503,18 @@ impl I3cPeripheral for I3c {
         RvData::from(Self::HCI_VERSION)
     }
 
+    fn read_i3c_ec_tti_status(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::lc_ctrl::bits::Status::Register,
+    > {
+        // TODO: the type of this status register is not correct
+        // so we manually shift the IBI status to the correct position
+        // This clears the interrupt.
+        caliptra_emu_bus::ReadWriteRegister::new(self.ibi_status.take().unwrap_or(0) << 14)
+    }
+
     fn read_i3c_ec_tti_interrupt_enable(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
@@ -557,6 +563,7 @@ impl I3cPeripheral for I3c {
         self.tti_ibi_buffer
             .extend_from_slice(val.to_le_bytes().as_ref());
         self.check_ibi_buffer();
+        self.check_interrupts();
     }
 
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
@@ -932,6 +939,12 @@ impl I3cPeripheral for I3c {
                     Device::ExternalTestSram => {
                         self.events_to_mcu.as_mut().unwrap().send(event).unwrap();
                     }
+                    Device::McuMbox0Sram => {
+                        self.events_to_mcu.as_mut().unwrap().send(event).unwrap();
+                    }
+                    Device::McuMbox1Sram => {
+                        self.events_to_mcu.as_mut().unwrap().send(event).unwrap();
+                    }
                     _ => {}
                 }
             }
@@ -967,7 +980,7 @@ impl I3cPeripheral for I3c {
                 unsafe {
                     COUNTER += 1;
                 }
-                self.tti_rx_desc_queue_raw.push_back(100 << 16);
+                self.tti_rx_desc_queue_raw.push_back(100);
                 self.tti_rx_data_raw.push_back(vec![0xff; 100]);
             }
         }
@@ -977,13 +990,13 @@ impl I3cPeripheral for I3c {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::i3c_protocol::{
-        DynamicI3cAddress, I3cTcriCommand, I3cTcriCommandXfer, ImmediateDataTransferCommand,
-    };
     use caliptra_emu_bus::Bus;
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::{RvAddr, RvSize};
     use emulator_registers_generated::root_bus::AutoRootBus;
+    use mcu_testing_common::i3c::{
+        DynamicI3cAddress, I3cTcriCommand, I3cTcriCommandXfer, ImmediateDataTransferCommand,
+    };
 
     const TTI_RX_DESC_QUEUE_PORT: RvAddr = 0x1dc;
 

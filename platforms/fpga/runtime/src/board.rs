@@ -617,7 +617,7 @@ pub unsafe fn main() {
     }
 
     if let Some(exit) = exit {
-        crate::io::exit_emulator(exit);
+        crate::io::exit_fpga(exit);
     }
 
     // Disable WDT1 before running the loop
