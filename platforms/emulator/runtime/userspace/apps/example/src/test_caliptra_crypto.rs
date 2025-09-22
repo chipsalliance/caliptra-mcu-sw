@@ -2,9 +2,12 @@
 
 use caliptra_api::mailbox::CmKeyUsage;
 use caliptra_api::mailbox::Cmk;
+use libapi_caliptra::certificate::{CertContext, KEY_LABEL_SIZE};
 use libapi_caliptra::crypto::aes_gcm::AesGcm;
-use libapi_caliptra::crypto::asym::ecdh::Ecdh;
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
+use libapi_caliptra::crypto::asym::{
+    ecdh::Ecdh, ecdsa::Ecdsa, ECC_P384_PARAM_X_SIZE, ECC_P384_PARAM_Y_SIZE, ECC_P384_SIGNATURE_SIZE,
+};
+use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use libapi_caliptra::crypto::hmac::{HkdfSalt, Hmac};
 use libapi_caliptra::crypto::import::Import;
 use libapi_caliptra::crypto::rng::Rng;
@@ -439,4 +442,65 @@ async fn test_caliptra_aes_gcm_spdm() {
         &plaintext[..],
         "Decrypted plaintext does not match original plaintext"
     );
+}
+
+pub async fn test_caliptra_ecdsa() {
+    println!("Starting Caliptra mailbox ECDSA test");
+    test_ecdsa().await;
+    println!("ECDSA test completed successfully");
+}
+
+async fn test_ecdsa() {
+    println!("Testing ECDSA");
+    let test_key_label: [u8; KEY_LABEL_SIZE] = [0x44; KEY_LABEL_SIZE];
+
+    let mut cert_ctx = CertContext::new();
+    let mut pubkey_x = [0u8; ECC_P384_PARAM_X_SIZE];
+    let mut pubkey_y = [0u8; ECC_P384_PARAM_Y_SIZE];
+    let mut cert_buf = [0u8; 1024];
+
+    let message: [u8; 128] = [0x55; 128];
+
+    let size = cert_ctx
+        .certify_key(
+            &mut cert_buf,
+            Some(&test_key_label),
+            Some(&mut pubkey_x),
+            Some(&mut pubkey_y),
+        )
+        .await
+        .map_err(|e| {
+            println!("Failed to get DPE leaf cert: {:?}", e);
+            test_exit(1);
+        })
+        .unwrap();
+
+    let mut msg_hash = [0u8; SHA384_HASH_SIZE];
+    HashContext::hash_all(HashAlgoType::SHA384, &message, &mut msg_hash)
+        .await
+        .map_err(|e| {
+            println!("Failed to hash message: {:?}", e);
+            test_exit(1);
+        })
+        .unwrap();
+
+    let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
+    cert_ctx
+        .sign(Some(&test_key_label), &msg_hash, &mut signature)
+        .await
+        .map_err(|e| {
+            println!("Failed to sign data: {:?}", e);
+            test_exit(1);
+        })
+        .unwrap();
+
+    match Ecdsa::ecdsa_verify(pubkey_x, pubkey_y, &signature, msg_hash).await {
+        Ok(_) => {
+            println!("ECDSA signature verified successfully");
+        }
+        Err(e) => {
+            println!("Failed to verify ECDSA signature: {:?}", e);
+            test_exit(1);
+        }
+    }
 }

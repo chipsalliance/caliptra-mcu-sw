@@ -11,6 +11,9 @@ Abstract:
     File contains exports for for Caliptra Emulator Peripheral library.
 
 --*/
+
+#![feature(cell_update)]
+
 mod axicdma;
 mod caliptra_to_ext_bus;
 mod doe_mbox;

@@ -14,7 +14,9 @@ use caliptra_hw_model_types::{
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
 pub use mcu_mgr::McuManager;
-use mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
+use mcu_rom_common::{
+    LifecycleControllerState, LifecycleRawTokens, LifecycleToken, McuBootMilestones,
+};
 pub use model_emulated::ModelEmulated;
 use rand::{rngs::StdRng, SeedableRng};
 use sha2::Digest;
@@ -421,7 +423,16 @@ pub trait McuHwModel {
     fn events_to_caliptra(&mut self) -> mpsc::Sender<Event>;
 
     fn mci_flow_status(&mut self) -> u32 {
-        0
+        self.mcu_manager()
+            .with_mci(|mci| mci.fw_flow_status().read())
+    }
+
+    fn mci_boot_checkpoint(&mut self) -> u16 {
+        (self.mci_flow_status() & 0x0000_ffff) as u16
+    }
+
+    fn mci_boot_milestones(&mut self) -> McuBootMilestones {
+        McuBootMilestones::from((self.mci_flow_status() >> 16) as u16)
     }
 
     /// Executes `cmd` with request data `buf`. Returns `Ok(Some(_))` if
@@ -631,12 +642,28 @@ mod tests {
     use super::*;
     use mcu_builder::firmware;
 
+    fn platform() -> &'static str {
+        if cfg!(feature = "fpga_realtime") {
+            "fpga"
+        } else {
+            "emulator"
+        }
+    }
+
     #[test]
     pub fn test_mailbox_execute() {
-        let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
-        let mcu_rom = binaries
-            .test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)
+        let mcu_rom = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+            binaries
+                .test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)
+                .unwrap()
+        } else {
+            let rom_file = mcu_builder::test_rom_build(
+                Some(platform()),
+                &firmware::hw_model_tests::MAILBOX_RESPONDER,
+            )
             .unwrap();
+            std::fs::read(&rom_file).unwrap()
+        };
 
         let mut model = new(
             InitParams {

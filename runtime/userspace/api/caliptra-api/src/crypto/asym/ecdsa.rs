@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::crypto::asym::{ECC_P384_PARAM_X_SIZE, ECC_P384_PARAM_Y_SIZE, ECC_P384_SIGNATURE_SIZE};
-use crate::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
+use crate::crypto::hash::SHA384_HASH_SIZE;
 use crate::error::CaliptraApiResult;
 use crate::mailbox_api::execute_mailbox_cmd;
 use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, Request};
@@ -15,12 +15,9 @@ impl Ecdsa {
         pub_key_x: [u8; ECC_P384_PARAM_X_SIZE],
         pub_key_y: [u8; ECC_P384_PARAM_Y_SIZE],
         signature: &[u8; ECC_P384_SIGNATURE_SIZE],
-        message: &[u8],
+        msg_hash: [u8; SHA384_HASH_SIZE],
     ) -> CaliptraApiResult<()> {
         let mailbox = Mailbox::new();
-
-        let mut hash = [0; SHA384_HASH_SIZE];
-        HashContext::hash_all(HashAlgoType::SHA384, message, &mut hash).await?;
 
         let mut sig_r = [0u8; 48];
         let mut sig_s = [0u8; 48];
@@ -33,7 +30,7 @@ impl Ecdsa {
             pub_key_y,
             signature_r: sig_r,
             signature_s: sig_s,
-            hash,
+            hash: msg_hash,
         };
 
         let mut rsp = MailboxRespHeader::default();

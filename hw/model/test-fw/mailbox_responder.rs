@@ -5,7 +5,7 @@
 #![no_main]
 #![no_std]
 
-use mcu_rom_common::{McuRomBootStatus, RomEnv};
+use mcu_rom_common::{McuBootMilestones, McuRomBootStatus, RomEnv};
 use registers_generated::mci;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
@@ -24,8 +24,11 @@ fn run() -> ! {
     mci.caliptra_boot_go();
 
     // This is used to tell the hardware model it is ready to start testing
-    mci.set_flow_status(McuRomBootStatus::CaliptraBootGoAsserted.into());
-    mci.set_flow_status(McuRomBootStatus::ColdBootFlowComplete.into());
+    // TODO: remove the checkpoints when the HW model supports milestones
+    mci.set_flow_checkpoint(McuRomBootStatus::CaliptraBootGoAsserted.into());
+    mci.set_flow_checkpoint(McuRomBootStatus::ColdBootFlowComplete.into());
+    mci.set_flow_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
+    mci.set_flow_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
 
     loop {
         let status = &mci.registers.mcu_mbox0_csr_mbox_cmd_status;
