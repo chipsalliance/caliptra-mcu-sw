@@ -41,3 +41,8 @@ required-features = ["riscv"]
 name = "mailbox_responder"
 path = "mailbox_responder.rs"
 required-features = ["riscv"]
+
+[[bin]]
+name = "axi_bypass"
+path = "axi_bypass.rs"
+required-features = ["riscv"]
