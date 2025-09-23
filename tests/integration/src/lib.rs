@@ -5,6 +5,8 @@ mod i3c_socket;
 mod jtag;
 #[cfg(test)]
 mod rom;
+#[cfg(feature = "fpga_realtime")]
+mod test_axi_bypass;
 mod test_firmware_update;
 mod test_mctp_capsule_loopback;
 mod test_pldm_fw_update;
