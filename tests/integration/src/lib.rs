@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 mod i3c_socket;
+#[cfg(feature = "fpga_realtime")]
+mod test_axi_bypass;
 mod test_firmware_update;
 #[cfg(feature = "fpga_realtime")]
 mod test_jtag_taps;
