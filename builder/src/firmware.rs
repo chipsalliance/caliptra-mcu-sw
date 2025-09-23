@@ -15,6 +15,14 @@ pub mod hw_model_tests {
         bin_name: "mailbox_responder",
         ..BASE_FWID
     };
+
+    pub const AXI_BYPASS: FwId = FwId {
+        bin_name: "axi_bypass",
+        ..BASE_FWID
+    };
 }
 
-pub const REGISTERED_FW: &[&FwId] = &[&hw_model_tests::MAILBOX_RESPONDER];
+pub const REGISTERED_FW: &[&FwId] = &[
+    &hw_model_tests::MAILBOX_RESPONDER,
+    &hw_model_tests::AXI_BYPASS,
+];
