@@ -910,7 +910,6 @@ log_fifo_inst (
 
 // Valid = !Empty
 logic dbg_fifo_empty;
-//assign hwif_in.fifo_regs.log_fifo_data.char_valid.next = ~log_fifo_empty;
 assign hwif_in.fifo_regs.dbg_fifo_status.dbg_fifo_empty.next = dbg_fifo_empty;
 
 // When rd_swacc is asserted, use the value of "valid" from when it was sampled.
@@ -2135,7 +2134,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_i3c_axi_user_id_filtering_enable_i(hwif_out.interface_regs.control.i3c_axi_user_id_filtering.value),
 
     .cptra_ss_cptra_core_generic_input_wires_i({hwif_out.interface_regs.generic_input_wires[0].value.value, hwif_out.interface_regs.generic_input_wires[1].value.value}),
-    .cptra_ss_cptra_core_scan_mode_i(),
+    .cptra_ss_cptra_core_scan_mode_i(hwif_out.interface_regs.control.scan_mode.value),
     .cptra_error_fatal(),
     .cptra_error_non_fatal()
 );

@@ -217,6 +217,9 @@ set_property -dict [list \
   CONFIG.ENABLE_PEC {1} \
   CONFIG.HJ_CAPABLE {1} \
   CONFIG.IBI_CAPABLE {1} \
+  CONFIG.CMD_RESP_FIFO_DEPTH {64} \
+  CONFIG.WR_FIFO_PROG_FULL_THRESHOLD {125} \
+  CONFIG.WR_RD_FIFO_DEPTH {128} \
   ] [get_bd_cells xilinx_i3c_0]
 
 # Add memory for Staging SRAM

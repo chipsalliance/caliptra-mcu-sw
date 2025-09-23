@@ -479,8 +479,8 @@ module caliptra_package_axi_top (
 
 
     // JTAG Interface
-    input wire [14:0]                  jtag_in,     // JTAG input signals concatenated
-    output wire [14:0]                 jtag_out,    // JTAG tdo
+    (* keep = "true" *) input wire [14:0]                  jtag_in,     // JTAG input signals concatenated
+    (* keep = "true" *) output wire [14:0]                 jtag_out,    // JTAG tdo
 
     output wire [31:0]                 caliptra_ifu_i0_pc,
     output wire [31:0]                 mcu_ifu_i0_pc,

@@ -127,7 +127,6 @@ puts "Fileset when packaging: [current_fileset]"
 puts "\n\nVERILOG DEFINES: [get_property verilog_define [current_fileset]]"
 ipx::package_project -root_dir $caliptrapackageDir -vendor design -library user -taxonomy /UserIP -import_files
 # Infer interfaces
-ipx::infer_bus_interfaces xilinx.com:interface:apb_rtl:1.0 [ipx::current_core]
 ipx::infer_bus_interfaces xilinx.com:interface:bram_rtl:1.0 [ipx::current_core]
 ipx::add_bus_parameter MASTER_TYPE [ipx::get_bus_interfaces rom_backdoor -of_objects [ipx::current_core]]
 ipx::add_bus_parameter MASTER_TYPE [ipx::get_bus_interfaces mcu_rom_backdoor -of_objects [ipx::current_core]]
