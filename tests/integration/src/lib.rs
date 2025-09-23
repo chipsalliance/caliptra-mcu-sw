@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 mod i3c_socket;
-mod test_firmware_update;
 #[cfg(feature = "fpga_realtime")]
-mod test_jtag_taps;
+mod jtag;
+mod test_firmware_update;
 mod test_mctp_capsule_loopback;
 mod test_pldm_fw_update;
 mod test_soc_boot;
