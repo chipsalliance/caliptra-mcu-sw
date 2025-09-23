@@ -16,6 +16,7 @@ itrng = []
 caliptra-hw-model-types.workspace = true
 caliptra-hw-model.workspace = true
 caliptra-image-types.workspace = true
+caliptra-builder.workspace = true
 chrono.workspace = true
 crc.workspace = true
 flash-image.workspace = true
