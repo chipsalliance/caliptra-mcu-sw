@@ -556,6 +556,7 @@ mod test {
     run_test!(test_mcu_mbox);
     run_test!(test_mcu_mbox_soc_requester_loopback, example_app);
     run_test!(test_mcu_mbox_usermode, example_app);
+    run_test!(test_mcu_mbox_cmds);
     run_test!(test_mbox_sram, example_app);
 
     run_test!(test_warm_reset, example_app);
