@@ -2,8 +2,6 @@
 
 use crate::bus_logger::BusLogger;
 use crate::bus_logger::LogFile;
-use crate::otp_provision::lc_generate_memory;
-use crate::otp_provision::otp_generate_lifecycle_tokens_mem;
 use crate::trace_path_or_env;
 use crate::InitParams;
 use crate::McuHwModel;
@@ -24,6 +22,9 @@ use caliptra_emu_periph::{
 use caliptra_emu_types::RvAddr;
 use caliptra_emu_types::RvData;
 use caliptra_emu_types::RvSize;
+use caliptra_hw_model::otp_provision::{
+    lc_generate_memory, otp_generate_lifecycle_tokens_mem, LifecycleControllerState,
+};
 use caliptra_hw_model::DeviceLifecycle;
 use caliptra_hw_model::ExitStatus;
 use caliptra_hw_model::ModelError;
@@ -42,7 +43,6 @@ use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp, 
 use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
-use mcu_rom_common::LifecycleControllerState;
 use mcu_rom_common::McuBootMilestones;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};

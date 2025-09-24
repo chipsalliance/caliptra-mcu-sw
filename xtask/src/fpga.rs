@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
+use caliptra_hw_model::otp_provision::LifecycleControllerState;
 use caliptra_hw_model::BootParams;
 use caliptra_image_gen::to_hw_format;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use clap::{Subcommand, ValueEnum};
 use mcu_builder::{AllBuildArgs, FirmwareBinaries, PROJECT_ROOT};
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
-use mcu_rom_common::LifecycleControllerState;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::str::FromStr;
