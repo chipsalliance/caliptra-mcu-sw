@@ -157,8 +157,6 @@ winnow = "0.7.4"
 zerocopy = { version = "0.8.17", features = ["derive"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_derive"] }
 zip = { version = "4.3.0", default-features = false, features = ["chrono", "deflate"] }
-ciborium = { version = "^0.2.1", default-features = false }
-ciborium-io = { version = "^0.2.0", features = ["alloc"] }
 
 # local dependencies
 capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
