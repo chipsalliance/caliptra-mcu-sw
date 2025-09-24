@@ -249,17 +249,19 @@ impl McuHwModel for ModelFpgaRealtime {
             *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Manufacturing);
         let security_state_prod =
             *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Production);
+        let security_state_raw =
+            *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Reserved2);
 
         let security_state = match params
             .lifecycle_controller_state
             .unwrap_or(LifecycleControllerState::Raw)
         {
+            LifecycleControllerState::Raw => security_state_raw,
             LifecycleControllerState::Prod | LifecycleControllerState::ProdEnd => {
                 security_state_prod
             }
             LifecycleControllerState::Dev => security_state_manufacturing,
-            LifecycleControllerState::Raw
-            | LifecycleControllerState::TestUnlocked0
+            LifecycleControllerState::TestUnlocked0
             | LifecycleControllerState::TestUnlocked1
             | LifecycleControllerState::TestUnlocked2
             | LifecycleControllerState::TestUnlocked3
@@ -587,7 +589,6 @@ impl Drop for ModelFpgaRealtime {
 mod tests {
     use super::*;
     use crate::new;
-    use std::time::Duration;
 
     #[ignore] // temporarily while we debug the FPGA tests
     #[cfg(feature = "fpga_realtime")]

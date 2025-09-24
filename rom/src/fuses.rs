@@ -70,7 +70,7 @@ pub struct LifecycleHashedTokens {
     pub rma: LifecycleHashedToken,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum LifecycleControllerState {
     Raw = 0,
@@ -94,6 +94,7 @@ pub enum LifecycleControllerState {
     ProdEnd = 18,
     Rma = 19,
     Scrap = 20,
+    PostTransition = 21,
 }
 
 impl core::fmt::Display for LifecycleControllerState {
@@ -120,6 +121,7 @@ impl core::fmt::Display for LifecycleControllerState {
             LifecycleControllerState::ProdEnd => write!(f, "prod_end"),
             LifecycleControllerState::Rma => write!(f, "rma"),
             LifecycleControllerState::Scrap => write!(f, "scrap"),
+            LifecycleControllerState::PostTransition => write!(f, "post_transition"),
         }
     }
 }
@@ -150,6 +152,7 @@ impl core::str::FromStr for LifecycleControllerState {
             "prod_end" => Ok(LifecycleControllerState::ProdEnd),
             "rma" => Ok(LifecycleControllerState::Rma),
             "scrap" => Ok(LifecycleControllerState::Scrap),
+            "post_transition" => Ok(LifecycleControllerState::PostTransition),
             _ => Err("Invalid lifecycle state"),
         }
     }
@@ -179,6 +182,7 @@ impl From<LifecycleControllerState> for u8 {
             LifecycleControllerState::ProdEnd => 18,
             LifecycleControllerState::Rma => 19,
             LifecycleControllerState::Scrap => 20,
+            LifecycleControllerState::PostTransition => 21,
         }
     }
 }
@@ -206,6 +210,7 @@ impl From<u8> for LifecycleControllerState {
             18 => LifecycleControllerState::ProdEnd,
             19 => LifecycleControllerState::Rma,
             20 => LifecycleControllerState::Scrap,
+            21 => LifecycleControllerState::PostTransition,
             _ => LifecycleControllerState::Raw,
         }
     }
@@ -249,7 +254,7 @@ impl Lifecycle {
         self.registers.status.get()
     }
 
-    fn calc_lc_state_mnemonic(state: LifecycleControllerState) -> u32 {
+    pub fn calc_lc_state_mnemonic(state: LifecycleControllerState) -> u32 {
         let state = u8::from(state);
         let next_lc_state_5bit = (state & 0x1F) as u32;
 
