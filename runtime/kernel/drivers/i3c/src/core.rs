@@ -6,17 +6,19 @@ use crate::hil::I3CTargetInfo;
 use crate::hil::{RxClient, TxClient};
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
+use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
-use kernel::{debug, ErrorCode};
-use registers_generated::i3c::bits::{InterruptEnable, InterruptStatus, StbyCrDeviceAddr};
+use kernel::ErrorCode;
+use registers_generated::i3c::bits::{InterruptEnable, InterruptStatus, Status, StbyCrDeviceAddr};
 use registers_generated::i3c::regs::I3c;
 use tock_registers::{register_bitfields, LocalRegisterCopy};
 
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
 pub const MAX_READ_WRITE_SIZE: usize = 250;
+const WRITE_DELAY_CYCLES: usize = 100;
 
 register_bitfields! {
     u32,
@@ -49,6 +51,8 @@ pub struct I3CCore<'a, A: Alarm<'a>> {
     alarm: VirtualMuxAlarm<'a, A>,
     retry_outgoing_read: Cell<bool>,
     retry_incoming_write: Cell<bool>,
+    pending_ibi: OptionalCell<(u8, u16)>,
+    deferred_call: DeferredCall,
 }
 
 impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
@@ -71,6 +75,8 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             alarm: VirtualMuxAlarm::new(alarm),
             retry_outgoing_read: Cell::new(false),
             retry_incoming_write: Cell::new(false),
+            pending_ibi: OptionalCell::empty(),
+            deferred_call: DeferredCall::new(),
         }
     }
 
@@ -78,13 +84,14 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // Most of the I3C setup is done by the ROM.
         self.alarm.setup();
         self.alarm.set_alarm_client(self);
+        self.register();
     }
 
     pub fn enable_interrupts(&self) {
         romtime::println!("[mcu-runtime-i3c] Enabling I3C interrupts");
         self.registers
             .tti_interrupt_enable
-            .modify(InterruptEnable::RxDescStatEn::SET);
+            .modify(InterruptEnable::RxDescStatEn::SET + InterruptEnable::IbiDoneEn::SET);
     }
 
     pub fn disable_interrupts(&self) {
@@ -93,83 +100,19 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     pub fn handle_interrupt(&self) {
-        let tti_interrupts = self.registers.tti_interrupt_status.extract();
+        let mut tti_interrupts = self.registers.tti_interrupt_status.extract();
         if tti_interrupts.get() != 0 {
-            // Bus error occurred
-            if tti_interrupts.read(InterruptStatus::TransferErrStat) != 0 {
-                self.transfer_error();
-                // clear the interrupt
-                self.registers
-                    .tti_interrupt_status
-                    .write(InterruptStatus::TransferErrStat::SET);
-            }
-            // Bus aborted transaction
-            if tti_interrupts.read(InterruptStatus::TransferAbortStat) != 0 {
-                self.transfer_error();
-                // clear the interrupt
-                self.registers
-                    .tti_interrupt_status
-                    .write(InterruptStatus::TransferAbortStat::SET);
-            }
-            // TTI IBI Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI IBI Queue is >= the value defined in `TTI_IBI_THLD`
-            if tti_interrupts.read(InterruptStatus::IbiThldStat) != 0 {
-                debug!("Ignoring I3C IBI threshold interrupt");
-                self.registers
-                    .tti_interrupt_enable
-                    .modify(InterruptEnable::IbiThldStatEn::CLEAR);
-            }
-            // TTI RX Descriptor Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI RX Descriptor Queue is >= the value defined in `TTI_RX_DESC_THLD`
-            if tti_interrupts.read(InterruptStatus::RxDescThldStat) != 0 {
-                debug!("Ignoring I3C RX descriptor buffer threshold interrupt");
-                self.registers
-                    .tti_interrupt_enable
-                    .modify(InterruptEnable::RxDescThldStatEn::CLEAR);
-            }
-            // TTI TX Descriptor Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI TX Descriptor Queue is >= the value defined in `TTI_TX_DESC_THLD`
-            if tti_interrupts.read(InterruptStatus::TxDescThldStat) != 0 {
-                debug!("Ignoring I3C TX descriptor buffer threshold interrupt");
-                self.registers
-                    .tti_interrupt_enable
-                    .modify(InterruptEnable::TxDescThldStatEn::CLEAR);
-            }
-            // TTI RX Data Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of entries in the TTI RX Data Queue is >= the value defined in `TTI_RX_DATA_THLD`
-            if tti_interrupts.read(InterruptStatus::RxDataThldStat) != 0 {
-                debug!("Ignoring I3C RX data buffer buffer threshold interrupt");
-                self.registers
-                    .tti_interrupt_enable
-                    .modify(InterruptEnable::RxDataThldStatEn::CLEAR);
-            }
-            // TTI TX Data Buffer Threshold Status, the Target Controller shall set this bit to 1 when the number of available entries in the TTI TX Data Queue is >= the value defined in TTI_TX_DATA_THLD
-            if tti_interrupts.read(InterruptStatus::TxDataThldStat) != 0 {
-                debug!("Ignoring I3C TX data buffer buffer threshold interrupt");
-                self.registers
-                    .tti_interrupt_enable
-                    .modify(InterruptEnable::TxDataThldStatEn::CLEAR);
-            }
-            // Pending Write was NACK’ed because the `TX_DESC_STAT` event was not handled in time
-            if tti_interrupts.read(InterruptStatus::TxDescTimeout) != 0 {
-                self.pending_write_nack();
-                // clear the interrupt
-                self.registers
-                    .tti_interrupt_status
-                    .write(InterruptStatus::TxDescTimeout::SET);
-            }
-            // Pending Read was NACK’ed because the `RX_DESC_STAT` event was not handled in time
-            if tti_interrupts.read(InterruptStatus::RxDescTimeout) != 0 {
-                self.pending_read_nack();
-                // clear the interrupt
-                self.registers
-                    .tti_interrupt_status
-                    .write(InterruptStatus::TxDescTimeout::SET);
-            }
-            // There is a pending Read Transaction on the I3C Bus. Software should write data to the TX Descriptor Queue and the TX Data Queue
-            // TODO: we'll never service this in time, so this is disabled.
-            if tti_interrupts.read(InterruptStatus::TxDescStat) != 0 {
-                self.handle_outgoing_read();
+            if tti_interrupts.read(InterruptStatus::IbiDone) != 0 {
+                // we have to read the IBI status to clear the interrupt
+                let ibi_status = self.registers.tti_status.read(Status::LastIbiStatus);
+                self.ibi_done(ibi_status);
             }
             // There is a pending Write Transaction. Software should read data from the RX Descriptor Queue and the RX Data Queue
-            if tti_interrupts.read(InterruptStatus::RxDescStat) != 0 {
-                self.handle_incoming_write();
+            while tti_interrupts.read(InterruptStatus::RxDescStat) != 0 {
+                if !self.handle_incoming_write() {
+                    break;
+                }
+                tti_interrupts = self.registers.tti_interrupt_status.extract();
             }
         }
     }
@@ -180,7 +123,8 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     // called when TTI has a private Write with data for us to grab
-    pub fn handle_incoming_write(&self) {
+    // Returns false if we could not process the write (e.g., no buffer available)
+    pub fn handle_incoming_write(&self) -> bool {
         self.retry_incoming_write.set(false);
         if self.rx_buffer.is_none() {
             self.rx_client.map(|client| {
@@ -192,16 +136,19 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             // try again later
             self.retry_incoming_write.set(true);
             self.set_alarm(Self::RETRY_WAIT_TICKS);
-            return;
+            return false;
         }
-
-        let rx_buffer = self.rx_buffer.take().unwrap();
-        let mut buf_idx = self.rx_buffer_idx.get();
-        let buf_size = self.rx_buffer_size.get();
 
         let desc = self.registers.tti_rx_desc_queue_port.get();
         let desc = LocalRegisterCopy::<u32, RxDesc::Register>::new(desc);
         let len = desc.read(RxDesc::DataLength) as usize;
+        if len == 0 {
+            // we're done
+            return false;
+        }
+        let rx_buffer = self.rx_buffer.take().unwrap();
+        let mut buf_idx = self.rx_buffer_idx.get();
+        let buf_size = self.rx_buffer_size.get();
 
         // read everything
         let mut full = false;
@@ -235,6 +182,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         self.rx_client.map(|client| {
             client.receive_write(rx_buffer, len.min(buf_size));
         });
+        true
     }
 
     // called when TTI wants us to send data for a private Read
@@ -265,47 +213,55 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 self.registers.tti_tx_data_port.set(word);
             }
         }
-        // we're done
-        self.tx_client.map(|client| {
-            client.send_done(buf, Ok(()));
-        });
+        // we're done; call send_done in a deferred callback so that the
+        // IBI is sent before we try to send another read
+
+        // add a small delay to ensure that the write is finished buffering
+        for _ in 0..WRITE_DELAY_CYCLES {
+            rv32i::support::nop();
+        }
+
+        self.tx_buffer.put(Some(buf));
+        self.deferred_call.set();
         // TODO: if no tx_client then we just drop the buffer?
     }
 
-    fn transfer_error(&self) {
-        if self.tx_buffer.is_some() {
-            self.tx_client.map(|client| {
-                client.send_done(self.tx_buffer.take().unwrap(), Err(ErrorCode::FAIL))
-            });
+    fn deferred_done(&self) {
+        if self.tx_buffer.is_none() {
+            return;
         }
-    }
-
-    fn pending_read_nack(&self) {
-        if self.tx_buffer.is_some() {
-            self.tx_client.map(|client| {
-                client.send_done(self.tx_buffer.take().unwrap(), Err(ErrorCode::CANCEL));
-            });
-        }
-    }
-
-    fn pending_write_nack(&self) {
-        // TODO: we have no way to send this to the client
-    }
-
-    fn send_ibi(&self, mdb: u8, data: &[u8]) {
-        // write the descriptor first
-        self.registers.tti_tti_ibi_port.set(
-            (IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(data.len() as u32))
-                .into(),
-        );
-
-        // write payload
-        data.chunks(4).for_each(|chunk| {
-            let mut bytes = [0; 4];
-            bytes[..chunk.len()].copy_from_slice(chunk);
-            let word = u32::from_le_bytes(bytes);
-            self.registers.tti_tti_ibi_port.set(word);
+        self.tx_client.map(|client| {
+            client.send_done(self.tx_buffer.take().unwrap(), Ok(()));
         });
+    }
+
+    fn send_ibi(&self, mdb: u8, len: u16) {
+        if self.pending_ibi.is_some() {
+            // we can only have one IBI pending at a time
+            return;
+        }
+        // write the descriptor first
+        self.registers
+            .tti_tti_ibi_port
+            .set((IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(2)).into());
+
+        // Note: we only write 2 bytes so that the IBI is <=4 bytes long so that
+        // the controller can read it in one dword.
+        self.registers.tti_tti_ibi_port.set(len.swap_bytes() as u32);
+        self.pending_ibi.set((mdb, len));
+    }
+
+    fn ibi_done(&self, ibi_status: u32) {
+        if let Some((mdb, len)) = self.pending_ibi.take() {
+            // check if IBI was successful
+            if ibi_status == 0 {
+                // schedule a callback to handle any pending private reads
+                self.set_alarm(Self::RETRY_WAIT_TICKS);
+            } else {
+                // re-send IBI
+                self.send_ibi(mdb, len);
+            }
+        }
     }
 }
 
@@ -330,7 +286,10 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         tx_buf: &'static mut [u8],
         len: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
-        if self.tx_buffer.is_some() {
+        // we have to wait for the last IBI to be done before we can send another packet
+        // otherwise we can confuse the I3C controller's buffers
+        if self.tx_buffer.is_some() || self.pending_ibi.is_some() {
+            romtime::println!("[mcu-runtime-i3c] transmit_read called but previous IBI still pending or tx_buffer in use: {} {}", self.tx_buffer.is_some(), self.pending_ibi.is_some());
             return Err((ErrorCode::BUSY, tx_buf));
         }
         self.tx_buffer.replace(tx_buf);
@@ -339,7 +298,8 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         // TODO: check that this is for MCTP or something else
         // immediately send the read to the I3C target interface and send an IBI so the controller knows we have data
         self.handle_outgoing_read();
-        self.send_ibi(MDB_PENDING_READ_MCTP, &[]);
+        // send the length as part of the IBI
+        self.send_ibi(MDB_PENDING_READ_MCTP, len as u16);
         Ok(())
     }
 
@@ -397,5 +357,15 @@ impl<'a, A: Alarm<'a>> AlarmClient for I3CCore<'a, A> {
         if self.retry_incoming_write.get() {
             self.handle_interrupt();
         }
+    }
+}
+
+impl<'a, A: Alarm<'a>> DeferredCallClient for I3CCore<'a, A> {
+    fn handle_deferred_call(&self) {
+        self.deferred_done();
+    }
+
+    fn register(&'static self) {
+        self.deferred_call.register(self);
     }
 }

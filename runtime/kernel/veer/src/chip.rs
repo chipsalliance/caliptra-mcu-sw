@@ -58,8 +58,6 @@ impl<'a> VeeRDefaultPeripherals<'a> {
     ) -> Self {
         let mci: romtime::StaticRef<mci::regs::Mci> =
             unsafe { romtime::StaticRef::new(memory_map.mci_offset as *const mci::regs::Mci) };
-        let mci2: StaticRef<mci::regs::Mci> =
-            unsafe { StaticRef::new(memory_map.mci_offset as *const mci::regs::Mci) };
         let mci_driver = romtime::Mci::new(mci);
         Self {
             i3c: i3c_driver::core::I3CCore::new(
@@ -67,7 +65,11 @@ impl<'a> VeeRDefaultPeripherals<'a> {
                 alarm,
             ),
             mci: mci_driver,
-            mcu_mbox0: mcu_mbox_driver::McuMailbox::new(mci2, alarm),
+            mcu_mbox0: mcu_mbox_driver::McuMailbox::new(
+                mci,
+                memory_map.mci_offset + mcu_mbox_driver::MCU_MBOX0_SRAM_OFFSET,
+                alarm,
+            ),
             additional_interrupt_handler,
         }
     }

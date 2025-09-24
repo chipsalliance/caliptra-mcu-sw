@@ -1,0 +1,18 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-testing-common"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+bitfield.workspace = true
+crc.workspace = true
+pldm-common.workspace = true
+pldm-ua.workspace = true
+zerocopy.workspace = true
+
+[dev-dependencies]
+hex.workspace = true
+rand.workspace = true

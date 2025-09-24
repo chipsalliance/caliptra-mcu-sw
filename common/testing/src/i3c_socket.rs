@@ -33,137 +33,24 @@ Abstract:
 
 --*/
 
-use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
-use emulator_periph::{
-    DynamicI3cAddress, I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriCommandXfer,
-    ReguDataTransferCommand, ResponseDescriptor,
-};
+use crate::i3c::{DynamicI3cAddress, ReguDataTransferCommand};
+use crate::i3c_socket_server::{IncomingHeader, OutgoingHeader, CRC8_SMBUS};
+use crate::{wait_for_runtime_start, MCU_RUNNING};
 use std::collections::VecDeque;
 use std::io::{ErrorKind, Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpStream};
 use std::process::exit;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc;
-use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 use std::vec;
-use zerocopy::{transmute, FromBytes, IntoBytes};
+use zerocopy::{transmute, FromBytes};
 
-const CRC8_SMBUS: crc::Crc<u8> = crc::Crc::<u8>::new(&crc::CRC_8_SMBUS);
-
-pub(crate) fn start_i3c_socket(port: u16) -> (Receiver<I3cBusCommand>, Sender<I3cBusResponse>) {
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
-        .expect("Failed to bind TCP socket for port");
-
-    let (bus_command_tx, bus_command_rx) = mpsc::channel::<I3cBusCommand>();
-    let (bus_response_tx, bus_response_rx) = mpsc::channel::<I3cBusResponse>();
-    std::thread::spawn(move || handle_i3c_socket_loop(listener, bus_response_rx, bus_command_tx));
-
-    (bus_command_rx, bus_response_tx)
-}
-
-fn handle_i3c_socket_loop(
-    listener: TcpListener,
-    mut bus_response_rx: Receiver<I3cBusResponse>,
-    mut bus_command_tx: Sender<I3cBusCommand>,
-) {
-    listener
-        .set_nonblocking(true)
-        .expect("Could not set non-blocking");
-    while EMULATOR_RUNNING.load(Ordering::Relaxed) {
-        match listener.accept() {
-            Ok((stream, addr)) => {
-                handle_i3c_socket_connection(
-                    stream,
-                    addr,
-                    &mut bus_response_rx,
-                    &mut bus_command_tx,
-                );
-            }
-            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
-            Err(e) => panic!("Error accepting connection: {}", e),
-        }
-    }
-}
-
-#[derive(FromBytes, IntoBytes)]
-#[repr(C, packed)]
-struct IncomingHeader {
-    to_addr: u8,
-    command: [u32; 2],
-}
-
-#[derive(Clone, Copy, FromBytes, IntoBytes)]
-#[repr(C, packed)]
-struct OutgoingHeader {
-    ibi: u8,
-    from_addr: u8,
-    response_descriptor: ResponseDescriptor,
-}
-
-fn handle_i3c_socket_connection(
-    mut stream: TcpStream,
-    _addr: SocketAddr,
-    bus_response_rx: &mut Receiver<I3cBusResponse>,
-    bus_command_tx: &mut Sender<I3cBusCommand>,
-) {
-    let stream = &mut stream;
-    stream.set_nonblocking(true).unwrap();
-
-    while EMULATOR_RUNNING.load(Ordering::Relaxed) {
-        // try reading
-        let mut incoming_header_bytes = [0u8; 9];
-        match stream.read_exact(&mut incoming_header_bytes) {
-            Ok(()) => {
-                let incoming_header: IncomingHeader = transmute!(incoming_header_bytes);
-                let cmd: I3cTcriCommand = incoming_header.command.try_into().unwrap();
-
-                let mut data = vec![0u8; cmd.data_len()];
-                stream.set_nonblocking(false).unwrap();
-                stream
-                    .read_exact(&mut data)
-                    .expect("Failed to read message from socket");
-                stream.set_nonblocking(true).unwrap();
-                let bus_command = I3cBusCommand {
-                    addr: incoming_header.to_addr.into(),
-                    cmd: I3cTcriCommandXfer { cmd, data },
-                };
-                bus_command_tx.send(bus_command).unwrap();
-            }
-            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
-            Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
-                println!("handle_i3c_socket_connection: Connection reset by client");
-                break;
-            }
-            Err(e) => panic!("Error reading message from socket: {}", e),
-        }
-        if let Ok(response) = bus_response_rx.recv_timeout(Duration::from_millis(10)) {
-            let data_len = response.resp.resp.data_length() as usize;
-            if data_len > 255 {
-                panic!("Cannot write more than 255 bytes to socket");
-            }
-            let outgoing_header = OutgoingHeader {
-                ibi: response.ibi.unwrap_or_default(),
-                from_addr: response.addr.into(),
-                response_descriptor: response.resp.resp,
-            };
-            let header_bytes: [u8; 6] = transmute!(outgoing_header);
-            stream.write_all(&header_bytes).unwrap();
-            if data_len > 0 {
-                stream.write_all(&response.resp.data[..data_len]).unwrap();
-            }
-        }
-    }
-}
-
-pub(crate) trait MctpTransportTest {
+pub trait MctpTransportTest {
     fn run_test(&mut self, stream: &mut BufferedStream, target_addr: u8);
     fn is_passed(&self) -> bool;
 }
 
-pub(crate) fn run_tests(
+pub fn run_tests(
     port: u16,
     target_addr: DynamicI3cAddress,
     tests: Vec<Box<dyn MctpTransportTest + Send>>,
@@ -183,7 +70,7 @@ pub(crate) fn run_tests(
     });
     std::thread::spawn(move || {
         wait_for_runtime_start();
-        if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        if !MCU_RUNNING.load(Ordering::Relaxed) {
             exit(-1);
         }
         let mut test_runner =
@@ -235,7 +122,7 @@ impl MctpTestRunner {
             self.passed,
             self.tests.len()
         );
-        EMULATOR_RUNNING.store(false, Ordering::Relaxed);
+        MCU_RUNNING.store(false, Ordering::Relaxed);
         if self.passed == self.tests.len() {
             exit(0);
         } else {
@@ -343,6 +230,10 @@ impl BufferedStream {
 
         match packet.or_else(|| self.read_packet(target_addr)) {
             Some(Packet { data, .. }) => {
+                if data.is_empty() {
+                    println!("Received empty data packet");
+                    return None;
+                }
                 let pec = calculate_crc8((target_addr << 1) | 1, &data[..data.len() - 1]);
                 if pec != data[data.len() - 1] {
                     println!(
@@ -398,7 +289,7 @@ fn calculate_crc8(addr: u8, data: &[u8]) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use crate::i3c_socket::*;
+    use crate::{i3c::ResponseDescriptor, i3c_socket::*};
     use zerocopy::transmute;
 
     #[test]

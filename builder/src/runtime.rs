@@ -45,6 +45,14 @@ fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize> {
     x.ok_or(anyhow!("error finding _sappmem symbol"))
 }
 
+pub(crate) fn bit_flags(platform: &str) -> &str {
+    match platform {
+        // TODO: remove this hack when the FPGA has another apeture for MCU SRAM
+        "fpga" => "-C target-feature=+relax", // no-op since this is already included
+        _ => "-C target-feature=+unaligned-scalar-mem",
+    }
+}
+
 /// Build the runtime kernel binary without any applications.
 /// If parameters are not provided with the offsets and sizes for the kernel and apps, then placeholders
 /// will be used.
@@ -212,6 +220,7 @@ pub fn runtime_build_no_apps_uncached(
         .arg("--release")
         .args(features)
         .arg("--")
+        .args(bit_flags(platform).split(' '))
         .args(rustc_flags_for_bin.split(' '))
         .current_dir(tock_dir);
 
@@ -364,7 +373,13 @@ pub fn runtime_build_with_apps_cached(
     let padding = apps_offset - runtime_end_offset;
 
     // build the apps with the data memory at some incorrect offset
-    let apps_bin = apps_build_flat_tbf(apps_offset, apps_memory_offset, features, example_app)?;
+    let apps_bin = apps_build_flat_tbf(
+        platform,
+        apps_offset,
+        apps_memory_offset,
+        features,
+        example_app,
+    )?;
     let apps_bin_len = apps_bin.len();
     println!("Apps built: {} bytes", apps_bin_len);
 
@@ -403,7 +418,13 @@ pub fn runtime_build_with_apps_cached(
         println!("Rebuilding apps with correct offsets");
 
         // re-link the applications with the correct data memory offsets
-        let apps_bin = apps_build_flat_tbf(apps_offset, apps_memory_offset, features, example_app)?;
+        let apps_bin = apps_build_flat_tbf(
+            platform,
+            apps_offset,
+            apps_memory_offset,
+            features,
+            example_app,
+        )?;
         assert_eq!(
             apps_bin_len,
             apps_bin.len(),

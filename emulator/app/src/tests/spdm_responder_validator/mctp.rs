@@ -1,15 +1,15 @@
 // Licensed under the Apache-2.0 license
 
-use crate::i3c_socket::BufferedStream;
-use crate::tests::mctp_util::common::MctpUtil;
 use crate::tests::spdm_responder_validator::common::{
     execute_spdm_validator, SpdmValidatorRunner, SERVER_LISTENING,
 };
 use crate::tests::spdm_responder_validator::transport::{
     Transport, MAX_CMD_TIMEOUT_SECONDS, SOCKET_TRANSPORT_TYPE_MCTP,
 };
-use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
-use emulator_periph::DynamicI3cAddress;
+use mcu_testing_common::i3c::DynamicI3cAddress;
+use mcu_testing_common::i3c_socket::BufferedStream;
+use mcu_testing_common::mctp_util::common::MctpUtil;
+use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::process::exit;
 use std::sync::atomic::Ordering;
@@ -54,7 +54,7 @@ impl MctpTransport {
         let mut resp = None;
         let mut cur_retry_count = 0;
 
-        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        while MCU_RUNNING.load(Ordering::Relaxed) {
             match self.tx_rx_state {
                 TxRxState::Start => {
                     // This is to give some time for send_done upcall to be invoked by the kernel to the app.
@@ -168,7 +168,7 @@ pub fn run_mctp_spdm_conformance_test(
     thread::spawn(move || {
         wait_for_runtime_start();
 
-        if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        if !MCU_RUNNING.load(Ordering::Relaxed) {
             exit(-1);
         }
         let listener =

@@ -6,6 +6,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+emulator-consts.workspace = true
 emulator-periph.workspace = true
 caliptra-emu-bus.workspace = true
 registers-generated.workspace = true
