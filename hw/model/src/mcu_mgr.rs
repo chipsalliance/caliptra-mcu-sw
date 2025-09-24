@@ -99,4 +99,67 @@ pub trait McuManager {
             )
         }
     }
+
+    fn with_regs<T, F>(&mut self, f: F) -> T
+    where
+        F: FnOnce(&mut Self) -> T,
+    {
+        f(self)
+    }
+
+    fn with_i3c<T, F>(&mut self, f: F) -> T
+    where
+        F: FnOnce(caliptra_registers::i3ccsr::RegisterBlock<Self::TMmio<'_>>) -> T,
+    {
+        f(self.i3c())
+    }
+
+    fn with_mci<T, F>(&mut self, f: F) -> T
+    where
+        F: FnOnce(caliptra_registers::mci::RegisterBlock<Self::TMmio<'_>>) -> T,
+    {
+        f(self.mci())
+    }
+
+    fn with_trace_buffer<T, F>(&mut self, f: F) -> T
+    where
+        F: FnOnce(caliptra_registers::mcu_trace_buffer::RegisterBlock<Self::TMmio<'_>>) -> T,
+    {
+        f(self.trace_buffer())
+    }
+
+    fn with_mbox0<T, F>(&mut self, f: F) -> T
+    where
+        F: FnOnce(caliptra_registers::mcu_mbox0::RegisterBlock<Self::TMmio<'_>>) -> T,
+    {
+        f(self.mbox0())
+    }
+
+    fn with_mbox1<T, F>(&mut self, f: F) -> T
+    where
+        F: FnOnce(caliptra_registers::mcu_mbox1::RegisterBlock<Self::TMmio<'_>>) -> T,
+    {
+        f(self.mbox1())
+    }
+
+    fn with_mcu_sram<T, F>(&mut self, f: F) -> T
+    where
+        F: FnOnce(caliptra_registers::mcu_sram::RegisterBlock<Self::TMmio<'_>>) -> T,
+    {
+        f(self.mcu_sram())
+    }
+
+    fn with_otp<T, F>(&mut self, f: F) -> T
+    where
+        F: FnOnce(caliptra_registers::otp_ctrl::RegisterBlock<Self::TMmio<'_>>) -> T,
+    {
+        f(self.otp_ctrl())
+    }
+
+    fn with_lc<T, F>(&mut self, f: F) -> T
+    where
+        F: FnOnce(caliptra_registers::lc_ctrl::RegisterBlock<Self::TMmio<'_>>) -> T,
+    {
+        f(self.lc_ctrl())
+    }
 }

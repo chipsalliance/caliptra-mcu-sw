@@ -6,6 +6,7 @@ use crate::firmware_device::fd_context::FirmwareDeviceContext;
 use crate::firmware_device::fd_ops::FdOps;
 use crate::timer::AsyncAlarm;
 use crate::transport::MctpTransport;
+use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -13,6 +14,7 @@ use embassy_sync::signal::Signal;
 use libsyscall_caliptra::mctp::driver_num;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_alarm::Milliseconds;
+use libtock_console::Console;
 
 pub const MAX_MCTP_PLDM_MSG_SIZE: usize = 1024;
 
@@ -121,6 +123,7 @@ pub async fn pldm_initiator(
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
+    let mut console_writer = Console::<DefaultSyscalls>::writer();
     loop {
         // Wait for signal from responder before starting the loop
         initiator_signal.wait().await;
@@ -137,9 +140,20 @@ pub async fn pldm_initiator(
             }
 
             // Handle initiator messages
-            let _ = cmd_interface
+            match cmd_interface
                 .handle_initiator_msg(&mut transport, &mut msg_buffer)
-                .await;
+                .await
+            {
+                Ok(_) => {}
+                Err(e) => {
+                    writeln!(
+                        console_writer,
+                        "PLDM_APP: Error handling initiator msg: {:?}",
+                        e
+                    )
+                    .unwrap();
+                }
+            }
 
             // Sleep to yield control to other tasks.
             AsyncAlarm::<DefaultSyscalls>::sleep(Milliseconds(1)).await;
@@ -155,11 +169,23 @@ pub async fn pldm_responder(
     let mut transport = MctpTransport::new(driver_num::MCTP_PLDM);
 
     let mut msg_buffer = [0; MAX_MCTP_PLDM_MSG_SIZE];
+    let mut console_writer = Console::<DefaultSyscalls>::writer();
 
     while running.load(Ordering::SeqCst) {
-        let _ = cmd_interface
+        match cmd_interface
             .handle_responder_msg(&mut transport, &mut msg_buffer)
-            .await;
+            .await
+        {
+            Ok(_) => {}
+            Err(e) => {
+                writeln!(
+                    console_writer,
+                    "PLDM_APP: Error handling responder msg: {:?}",
+                    e
+                )
+                .unwrap();
+            }
+        }
 
         // When FD state is download state, signal the initiator task
         if cmd_interface.should_start_initiator_mode().await && !initiator_signal.signaled() {

@@ -6,7 +6,8 @@ use crate::codec::{encode_u8_slice, Codec, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
     algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, chunk_get_rsp,
-    digests_rsp, measurements_rsp, version_rsp,
+    digests_rsp, end_session_rsp, finish_rsp, key_exchange_rsp, measurements_rsp,
+    vendor_defined_rsp, version_rsp,
 };
 use crate::error::*;
 use crate::measurements::common::SpdmMeasurements;
@@ -18,6 +19,7 @@ use crate::session::SessionManager;
 use crate::state::{ConnectionState, State};
 use crate::transcript::{Transcript, TranscriptContext};
 use crate::transport::common::SpdmTransport;
+use crate::vdm_handler::VdmHandler;
 use libapi_caliptra::crypto::asym::*;
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 
@@ -27,6 +29,7 @@ pub const MAX_SPDM_RESPONDER_BUF_SIZE: usize = 2048;
 pub struct SpdmContext<'a> {
     transport: &'a mut dyn SpdmTransport,
     pub(crate) supported_versions: &'a [SpdmVersion],
+    pub(crate) supported_secure_versions: &'a [SpdmVersion],
     pub(crate) state: State,
     pub(crate) shared_transcript: Transcript,
     pub(crate) local_capabilities: DeviceCapabilities,
@@ -35,15 +38,18 @@ pub struct SpdmContext<'a> {
     pub(crate) measurements: SpdmMeasurements,
     pub(crate) large_resp_context: LargeResponseCtx,
     pub(crate) session_mgr: SessionManager,
+    pub(crate) vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
 }
 
 impl<'a> SpdmContext<'a> {
     pub fn new(
         supported_versions: &'a [SpdmVersion],
+        supported_secure_versions: &'a [SpdmVersion],
         spdm_transport: &'a mut dyn SpdmTransport,
         local_capabilities: DeviceCapabilities,
         local_algorithms: LocalDeviceAlgorithms<'a>,
         device_certs_store: &'a dyn SpdmCertStore,
+        vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -51,6 +57,7 @@ impl<'a> SpdmContext<'a> {
 
         Ok(Self {
             supported_versions,
+            supported_secure_versions,
             transport: spdm_transport,
             state: State::new(),
             shared_transcript: Transcript::new(),
@@ -60,6 +67,7 @@ impl<'a> SpdmContext<'a> {
             measurements: SpdmMeasurements::default(),
             large_resp_context: LargeResponseCtx::default(),
             session_mgr: SessionManager::new(),
+            vdm_handlers,
         })
     }
 
@@ -86,8 +94,8 @@ impl<'a> SpdmContext<'a> {
             msg_buf.reset();
 
             // Copy decrypted data into msg_buf using encode_u8_slice
-            encode_u8_slice(&app_data[..app_data_len], msg_buf)
-                .map_err(|_| SpdmError::Command(crate::error::CommandError::BufferTooSmall))?;
+            encode_u8_slice(&app_data[..app_data_len], msg_buf).map_err(SpdmError::Codec)?;
+            msg_buf.push_data(app_data_len).map_err(SpdmError::Codec)?;
         }
 
         // Process message
@@ -162,14 +170,22 @@ impl<'a> SpdmContext<'a> {
             ReqRespCode::ChunkGet => {
                 chunk_get_rsp::handle_chunk_get(self, req_msg_header, req).await?
             }
-
+            ReqRespCode::KeyExchange => {
+                key_exchange_rsp::handle_key_exchange(self, req_msg_header, req).await?
+            }
+            ReqRespCode::Finish => finish_rsp::handle_finish(self, req_msg_header, req).await?,
+            ReqRespCode::EndSession => {
+                end_session_rsp::handle_end_session(self, req_msg_header, req).await?
+            }
+            ReqRespCode::VendorDefinedRequest => {
+                vendor_defined_rsp::handle_vendor_defined_request(self, req_msg_header, req).await?
+            }
             _ => Err((false, CommandError::UnsupportedRequest))?,
         }
         Ok(())
     }
 
     async fn send_response(&mut self, resp: &mut MessageBuf<'a>, secure: bool) -> SpdmResult<()> {
-        // TODO: Encrypt if secure.
         if secure {
             let mut secure_message = [0u8; MAX_SPDM_RESPONDER_BUF_SIZE];
             let mut secure_message_buf = MessageBuf::new(&mut secure_message);
@@ -300,7 +316,10 @@ impl<'a> SpdmContext<'a> {
         // If requester issued GET_MEASUREMENTS or KEY_EXCHANGE or FINISH request
         // and skipped CHALLENGE completion, reset M1 context.
         match req_code {
-            ReqRespCode::GetMeasurements | ReqRespCode::KeyExchange | ReqRespCode::Finish => {
+            ReqRespCode::GetMeasurements
+            | ReqRespCode::KeyExchange
+            | ReqRespCode::Finish
+            | ReqRespCode::EndSession => {
                 if self.state.connection_info.state() < ConnectionState::Authenticated {
                     self.shared_transcript.reset_context(TranscriptContext::M1);
                 }

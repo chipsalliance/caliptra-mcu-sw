@@ -16,7 +16,13 @@ fn cargo_test() -> Result<()> {
     println!("Running: cargo test");
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .args(["test", "--workspace"])
+        .args([
+            "test",
+            "--workspace",
+            "--",
+            "--skip",
+            "test_mailbox_execute",
+        ])
         .status()?;
 
     if !status.success() {

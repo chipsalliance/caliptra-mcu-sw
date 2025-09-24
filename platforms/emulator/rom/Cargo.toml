@@ -14,6 +14,7 @@ mcu-config-emulator.workspace = true
 bitfield.workspace = true
 mcu-config.workspace = true
 mcu-config-emulator.workspace = true
+mcu-image-header.workspace = true
 mcu-rom-common.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true
@@ -27,9 +28,12 @@ rv32i.workspace = true
 
 [features]
 default = []
+core_test = ["mcu-rom-common/core_test"]
 hw-2-1 = ["mcu-rom-common/hw-2-1"]
 test-firmware-update-flash = []
 test-firmware-update-streaming = []
 test-mcu-rom-flash-access = []
+test-mcu-svn-gt-fuse = []
+test-mcu-svn-lt-fuse = []
 test-flash-based-boot = ["hw-2-1"]
 test-pldm-streaming-boot = []

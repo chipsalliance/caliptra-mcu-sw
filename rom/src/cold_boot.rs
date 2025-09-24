@@ -21,6 +21,7 @@ use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use core::fmt::Write;
 use romtime::{CaliptraSoC, HexWord};
+use tock_registers::interfaces::Readable;
 use zerocopy::{transmute, IntoBytes};
 
 pub struct ColdBoot {}
@@ -101,7 +102,27 @@ impl ColdBoot {
 
 impl BootFlow for ColdBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
-        romtime::println!("[mcu-rom] Starting cold boot flow");
+        #[cfg(target_arch = "riscv32")]
+        {
+            use tock_registers::register_bitfields;
+            register_bitfields![usize,
+                value [
+                    value OFFSET(0) NUMBITS(32) [],
+                ],
+            ];
+            let mcycle: riscv_csr::csr::ReadWriteRiscvCsr<
+                usize,
+                value::Register,
+                { riscv_csr::csr::MCYCLE },
+            > = riscv_csr::csr::ReadWriteRiscvCsr::new();
+            let mcycleh: riscv_csr::csr::ReadWriteRiscvCsr<
+                usize,
+                value::Register,
+                { riscv_csr::csr::MCYCLEH },
+            > = riscv_csr::csr::ReadWriteRiscvCsr::new();
+            let cycle = (mcycleh.get() as u64) << 32 | (mcycle.get() as u64);
+            romtime::println!("[mcu-rom] Starting cold boot flow at time {}", cycle);
+        }
         env.mci
             .set_flow_status(McuRomBootStatus::ColdBootFlowStarted.into());
 
@@ -118,6 +139,11 @@ impl BootFlow for ColdBoot {
         romtime::println!("[mcu-rom] Setting Caliptra boot go");
         mci.caliptra_boot_go();
         mci.set_flow_status(McuRomBootStatus::CaliptraBootGoAsserted.into());
+
+        // If testing Caliptra Core, hang here until the test signals it to continue.
+        if cfg!(feature = "core_test") {
+            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 30) == 0 {}
+        }
 
         lc.init().unwrap();
         mci.set_flow_status(McuRomBootStatus::LifecycleControllerInitialized.into());
@@ -166,6 +192,7 @@ impl BootFlow for ColdBoot {
             loop {}
         }
 
+        romtime::println!("[mcu-rom] Reading fuses");
         let fuses = match otp.read_fuses() {
             Ok(fuses) => {
                 mci.set_flow_status(McuRomBootStatus::FusesReadFromOtp.into());
@@ -220,6 +247,7 @@ impl BootFlow for ColdBoot {
         soc.set_ss_caliptra_dma_axi_user(straps.axi_user);
         mci.set_flow_status(McuRomBootStatus::AxiUsersConfigured.into());
 
+        romtime::println!("[mcu-rom] Populating fuses");
         soc.populate_fuses(&fuses, params.program_field_entropy.iter().any(|x| *x));
         mci.set_flow_status(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
@@ -228,8 +256,19 @@ impl BootFlow for ColdBoot {
         while soc.ready_for_fuses() {}
         mci.set_flow_status(McuRomBootStatus::FuseWriteComplete.into());
 
+        // If testing Caliptra Core, hang here until the test signals it to continue.
+        if cfg!(feature = "core_test") {
+            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 31) == 0 {}
+        }
+
         romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for mbox",);
-        while !soc.ready_for_mbox() {}
+        while !soc.ready_for_mbox() {
+            if soc.cptra_fw_fatal_error() {
+                romtime::println!("[mcu-rom] Caliptra reported a fatal error");
+                fatal_error(3);
+            }
+        }
+
         romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
         mci.set_flow_status(McuRomBootStatus::CaliptraReadyForMailbox.into());
 
@@ -243,7 +282,7 @@ impl BootFlow for ColdBoot {
                     romtime::println!("[mcu-rom] Error sending mailbox command: {}", HexWord(code));
                 }
                 _ => {
-                    romtime::println!("[mcu-rom] Error sending mailbox command");
+                    romtime::println!("[mcu-rom] Error sending mailbox command: {:?}", err);
                 }
             }
             fatal_error(4);
@@ -288,12 +327,34 @@ impl BootFlow for ColdBoot {
         }
 
         romtime::println!("[mcu-rom] Waiting for firmware to be ready");
-        while !soc.fw_ready() {}
+        while !soc.fw_ready() {
+            if soc.cptra_fw_fatal_error() {
+                romtime::println!("[mcu-rom] Caliptra reported a fatal error");
+                fatal_error(6);
+            }
+        }
         romtime::println!("[mcu-rom] Firmware is ready");
         mci.set_flow_status(McuRomBootStatus::FirmwareReadyDetected.into());
 
+        if let Some(image_verifier) = params.mcu_image_verifier {
+            let header = unsafe {
+                core::slice::from_raw_parts(
+                    MCU_MEMORY_MAP.sram_offset as *const u8,
+                    params.mcu_image_header_size,
+                )
+            };
+
+            romtime::println!("[mcu-rom] Verifying firmware header");
+            if !image_verifier.verify_header(header, &fuses) {
+                romtime::println!("Firmware header verification failed; halting");
+                fatal_error(1);
+            }
+        }
+
         // Check that the firmware was actually loaded before jumping to it
-        let firmware_ptr = unsafe { MCU_MEMORY_MAP.sram_offset as *const u32 };
+        let firmware_ptr = unsafe {
+            (MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32) as *const u32
+        };
         // Safety: this address is valid
         if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
             romtime::println!("Invalid firmware detected; halting");
@@ -320,13 +381,17 @@ impl BootFlow for ColdBoot {
             mci.set_flow_status(McuRomBootStatus::FieldEntropyProgrammingComplete.into());
         }
 
+        i3c.disable_recovery();
+
+        // TODO: set reset_req
+
         // Jump to firmware
         romtime::println!("[mcu-rom] Jumping to firmware");
         mci.set_flow_status(McuRomBootStatus::ColdBootFlowComplete.into());
 
         #[cfg(target_arch = "riscv32")]
         unsafe {
-            let firmware_entry = MCU_MEMORY_MAP.sram_offset;
+            let firmware_entry = MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32;
             core::arch::asm!(
                 "jr {0}",
                 in(reg) firmware_entry,

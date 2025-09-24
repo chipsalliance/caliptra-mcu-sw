@@ -1,14 +1,15 @@
 // Licensed under the Apache-2.0 license
 
-use crate::tests::mctp_util::common::MctpUtil;
 use crate::tests::spdm_responder_validator::common::{
     execute_spdm_validator, SpdmValidatorRunner, SERVER_LISTENING,
 };
 use crate::tests::spdm_responder_validator::transport::{
     Transport, MAX_CMD_TIMEOUT_SECONDS, SOCKET_TRANSPORT_TYPE_MCTP,
 };
-use crate::{wait_for_runtime_start, EMULATOR_RUNNING};
-use emulator_periph::DynamicI3cAddress;
+use mcu_testing_common::i3c::DynamicI3cAddress;
+use mcu_testing_common::i3c_socket::BufferedStream;
+use mcu_testing_common::mctp_util::common::MctpUtil;
+use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::process::exit;
 use std::sync::atomic::Ordering;
@@ -26,7 +27,7 @@ enum TxRxState {
 }
 
 pub struct MctpTransport {
-    stream: TcpStream,
+    stream: BufferedStream,
     mctp_util: MctpUtil,
     target_addr: u8,
     msg_tag: u8,
@@ -35,7 +36,7 @@ pub struct MctpTransport {
 }
 
 impl MctpTransport {
-    pub fn new(stream: TcpStream, target_addr: u8, retry_count: usize) -> Self {
+    pub fn new(stream: BufferedStream, target_addr: u8, retry_count: usize) -> Self {
         Self {
             stream,
             mctp_util: MctpUtil::new(),
@@ -53,7 +54,7 @@ impl MctpTransport {
         let mut resp = None;
         let mut cur_retry_count = 0;
 
-        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        while MCU_RUNNING.load(Ordering::Relaxed) {
             match self.tx_rx_state {
                 TxRxState::Start => {
                     // This is to give some time for send_done upcall to be invoked by the kernel to the app.
@@ -152,7 +153,7 @@ pub fn run_mctp_spdm_conformance_test(
 ) {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let stream = TcpStream::connect(addr).unwrap();
-    let transport = MctpTransport::new(stream, target_addr.into(), 1);
+    let transport = MctpTransport::new(BufferedStream::new(stream), target_addr.into(), 1);
 
     thread::spawn(move || {
         thread::sleep(test_timeout_seconds);
@@ -167,7 +168,7 @@ pub fn run_mctp_spdm_conformance_test(
     thread::spawn(move || {
         wait_for_runtime_start();
 
-        if !EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        if !MCU_RUNNING.load(Ordering::Relaxed) {
             exit(-1);
         }
         let listener =

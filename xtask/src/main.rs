@@ -147,6 +147,12 @@ enum Commands {
 
         #[arg(long, value_parser=maybe_hex::<u32>)]
         dccm_size: Option<u32>,
+
+        #[arg(long)]
+        rom_features: Option<String>,
+
+        #[arg(long)]
+        runtime_features: Option<String>,
     },
     /// Commands related to flash images
     FlashImage {
@@ -342,13 +348,17 @@ fn main() {
             use_dccm_for_stack,
             dccm_offset,
             dccm_size,
-        } => mcu_builder::all_build(
-            output.as_deref(),
-            platform.as_deref(),
-            *use_dccm_for_stack,
-            *dccm_offset,
-            *dccm_size,
-        ),
+            rom_features,
+            runtime_features,
+        } => mcu_builder::all_build(mcu_builder::AllBuildArgs {
+            output: output.as_deref(),
+            platform: platform.as_deref(),
+            use_dccm_for_stack: *use_dccm_for_stack,
+            dccm_offset: *dccm_offset,
+            dccm_size: *dccm_size,
+            rom_features: rom_features.as_deref(),
+            runtime_features: runtime_features.as_deref(),
+        }),
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),
         Commands::RuntimeBuild {
             features,
@@ -379,6 +389,7 @@ fn main() {
                     Some("fpga") => None,
                     _ => panic!("Unsupported platform"),
                 },
+                None,
             )
             .map(|_| ())
         }

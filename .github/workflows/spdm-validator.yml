@@ -78,7 +78,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: parvathib/spdm-emu
-          ref: pbhogaraju/get-measurements
+          ref: pbhogaraju/full_suite
           path: spdm-emu
           submodules: recursive
 

@@ -163,7 +163,7 @@ async fn generate_finish_response<'a>(
     // Prepare the response buffer
     // Spdm Header first
     let connection_version = ctx.state.connection_info.version_number();
-    let spdm_hdr = SpdmMsgHdr::new(connection_version, ReqRespCode::Finish);
+    let spdm_hdr = SpdmMsgHdr::new(connection_version, ReqRespCode::FinishRsp);
     let mut payload_len = spdm_hdr
         .encode(rsp)
         .map_err(|e| (false, CommandError::Codec(e)))?;
@@ -233,20 +233,12 @@ pub(crate) async fn handle_finish<'a>(
         if ctx.session_mgr.active_session_id().is_some() {
             Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
         }
-        ctx.session_mgr
-            .handshake_phase_session_id()
-            .ok_or_else(|| {
-                ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
-            })?
+        ctx.session_mgr.handshake_phase_session_id()
     } else {
-        // For handshake not in the clear: must have active session, no handshake phase session
-        if ctx.session_mgr.handshake_phase_session_id().is_some() {
-            Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
-        }
-        ctx.session_mgr.active_session_id().ok_or_else(|| {
-            ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
-        })?
-    };
+        // If handshake is not in the clear, we must use the active session ID
+        ctx.session_mgr.active_session_id()
+    }
+    .ok_or_else(|| ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None))?;
 
     let session_info = ctx.session_mgr.session_info(session_id).map_err(|_| {
         ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
@@ -261,27 +253,15 @@ pub(crate) async fn handle_finish<'a>(
         .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
 
     // Process FINISH request
-    match process_finish(ctx, session_id, spdm_hdr, req_payload).await {
-        Ok(()) => {}
-        Err(e) => {
-            let _ = ctx.session_mgr.delete_session(session_id);
-            Err(e)?;
-        }
-    }
+    process_finish(ctx, session_id, spdm_hdr, req_payload).await?;
 
     // Generate FINISH response
     ctx.prepare_response_buffer(req_payload)?;
-    match generate_finish_response(ctx, session_id, req_payload).await {
-        Ok(()) => {}
-        Err(e) => {
-            let _ = ctx.session_mgr.delete_session(session_id);
-            Err(e)?;
-        }
-    }
+    generate_finish_response(ctx, session_id, req_payload).await?;
 
-    // Set the session state to SessionEstablished
+    // Set the session state to Establishing
     ctx.session_mgr
-        .set_session_state(session_id, SessionState::SessionEstablished)
+        .set_session_state(session_id, SessionState::Establishing)
         .map_err(|e| (false, CommandError::Session(e)))?;
 
     // Reset handshake phase session ID

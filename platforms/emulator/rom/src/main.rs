@@ -23,6 +23,8 @@ mod riscv;
 #[cfg(target_arch = "riscv32")]
 mod flash;
 
+mod mcu_image_verifier;
+
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub extern "C" fn main() {

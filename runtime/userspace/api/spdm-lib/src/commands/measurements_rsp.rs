@@ -11,6 +11,7 @@ use crate::measurements::common::{
     MeasurementChangeStatus, MeasurementsError, SpdmMeasurements, SPDM_MAX_MEASUREMENT_RECORD_SIZE,
 };
 use crate::protocol::*;
+use crate::session::{SessionInfo, SessionState};
 use crate::state::ConnectionState;
 use crate::transcript::{Transcript, TranscriptContext};
 use bitfield::bitfield;
@@ -103,6 +104,7 @@ impl MeasurementsResponse {
         cert_store: &dyn SpdmCertStore,
         offset: usize,
         chunk_buf: &mut [u8],
+        mut session_info: Option<&mut SessionInfo>,
     ) -> CommandResult<usize> {
         // Calculate the size of the response
         let response_size = self.response_size(measurements).await?;
@@ -168,10 +170,13 @@ impl MeasurementsResponse {
             copied += copy_len;
             rem_len -= copy_len;
         }
-
-        // Append the chunk to the L1 transcript (TODO: check session ID)
+        // Append the chunk to the L1 transcript
         shared_transcript
-            .append(TranscriptContext::L1, None, &chunk_buf[..copied])
+            .append(
+                TranscriptContext::L1,
+                session_info.as_deref_mut(),
+                &chunk_buf[..copied],
+            )
             .await
             .map_err(|e| (false, CommandError::Transcript(e)))?;
 
@@ -182,7 +187,7 @@ impl MeasurementsResponse {
             && offset + copied >= signature_start
         {
             let signature = self
-                .l1_signature(self.asym_algo, shared_transcript, cert_store)
+                .l1_signature(self.asym_algo, shared_transcript, session_info, cert_store)
                 .await?;
             let sig_offset = (offset + copied) - signature_start;
             let copy_len = (signature.len() - sig_offset).min(rem_len);
@@ -300,12 +305,19 @@ impl MeasurementsResponse {
         &self,
         asym_algo: AsymAlgo,
         transcript: &mut Transcript,
+        session_info: Option<&mut SessionInfo>,
         cert_store: &dyn SpdmCertStore,
     ) -> CommandResult<[u8; ECC_P384_SIGNATURE_SIZE]> {
         let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
         let mut signature_buf = MessageBuf::new(&mut signature);
         let _ = self
-            .encode_l1_signature(asym_algo, transcript, cert_store, &mut signature_buf)
+            .encode_l1_signature(
+                asym_algo,
+                transcript,
+                session_info,
+                cert_store,
+                &mut signature_buf,
+            )
             .await?;
 
         Ok(signature)
@@ -315,15 +327,20 @@ impl MeasurementsResponse {
         &self,
         asym_algo: AsymAlgo,
         transcript: &mut Transcript,
+        session_info: Option<&mut SessionInfo>,
         cert_store: &dyn SpdmCertStore,
         buf: &mut MessageBuf<'_>,
     ) -> CommandResult<usize> {
         // Get the L1 transcript hash
         let mut l1_transcript_hash = [0u8; SHA384_HASH_SIZE];
 
-        // TODO: check Session ID
         transcript
-            .hash(TranscriptContext::L1, None, &mut l1_transcript_hash, true)
+            .hash(
+                TranscriptContext::L1,
+                session_info,
+                &mut l1_transcript_hash,
+                true,
+            )
             .await
             .map_err(|e| (false, CommandError::Transcript(e)))?;
 
@@ -406,6 +423,10 @@ async fn process_get_measurements<'a>(
     })?;
 
     let slot_id = if req_common.req_attr.signature_requested() == 0 {
+        if GetMeasurementsReqSignature::decode(req_payload).is_ok() {
+            // If signature is not requested, the signature fields must not be present
+            Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
+        }
         None
     } else {
         // check if responder capabilities support signature
@@ -435,8 +456,10 @@ async fn process_get_measurements<'a>(
     // Reset the transcript for the GET_MEASUREMENTS request
     ctx.reset_transcript_via_req_code(ReqRespCode::GetMeasurements);
 
+    let session_id = ctx.session_mgr.active_session_id();
+
     // Append the request to the transcript (TODO: check session_info)
-    ctx.append_message_to_transcript(req_payload, TranscriptContext::L1, None)
+    ctx.append_message_to_transcript(req_payload, TranscriptContext::L1, session_id)
         .await?;
 
     let asym_algo = ctx.negotiated_base_asym_algo().map_err(|_| {
@@ -468,6 +491,14 @@ pub(crate) async fn generate_measurements_response<'a>(
         let handle = ctx.large_resp_context.init(large_rsp, rsp_len);
         Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, handle, None))?
     } else {
+        let session_info = match ctx.session_mgr.active_session_id() {
+            Some(session_id) => match ctx.session_mgr.session_info_mut(session_id) {
+                Ok(info) => Some(info),
+                Err(e) => Err((false, CommandError::Session(e)))?,
+            },
+            None => None,
+        };
+
         // If the response fits in a single message, prepare it directly
         // Encode the response fixed fields
         rsp.put_data(rsp_len)
@@ -482,6 +513,7 @@ pub(crate) async fn generate_measurements_response<'a>(
                 ctx.device_certs_store,
                 0,
                 rsp_buf,
+                session_info,
             )
             .await?;
         if rsp_len != payload_len {
@@ -506,6 +538,21 @@ pub(crate) async fn handle_get_measurements<'a>(
     // Check that the connection state is Negotiated
     if ctx.state.connection_info.state() < ConnectionState::AlgorithmsNegotiated {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
+    }
+
+    // If GET_MEASUREMENTS is received within a session, ensure the session is established
+    if let Some(session_id) = ctx.session_mgr.active_session_id() {
+        match ctx.session_mgr.session_info(session_id) {
+            Ok(session_info) if session_info.session_state == SessionState::Established => {}
+            _ => {
+                return Err(ctx.generate_error_response(
+                    req_payload,
+                    ErrorCode::UnexpectedRequest,
+                    0,
+                    None,
+                ))
+            }
+        }
     }
 
     // Check if the measurement capability is supported

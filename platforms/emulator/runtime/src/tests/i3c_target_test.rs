@@ -102,7 +102,6 @@ impl<'a> DeferredCallClient for I3CConstantWritesTest<'a> {
                 "Too many deferred calls; failing test; only got {}",
                 self.count.get()
             );
-            // TODO: this test is actually failing, but we succeed for now while we debug it
             fail();
         }
         // try again in the next kernel loop

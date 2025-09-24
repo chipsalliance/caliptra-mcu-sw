@@ -1,0 +1,21 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-test-harness"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+fpga_realtime = []
+
+[dependencies]
+caliptra-api.workspace = true
+caliptra-registers.workspace = true
+mcu-config.workspace = true
+mcu-config-emulator.workspace = true
+mcu-config-fpga.workspace = true
+mcu-rom-common.workspace = true
+registers-generated.workspace = true
+romtime.workspace = true
+tock-registers.workspace = true

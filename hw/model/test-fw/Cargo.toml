@@ -1,0 +1,38 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-hw-model-test-fw"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+riscv = []
+emu = []
+fpga_realtime = ["mcu-test-harness/fpga_realtime"]
+
+[build-dependencies]
+mcu-builder.workspace = true
+mcu-config-emulator.workspace = true
+mcu-config-fpga.workspace = true
+
+[dependencies]
+caliptra-api.workspace = true
+caliptra-registers.workspace = true
+mcu-config.workspace = true
+mcu-config-emulator.workspace = true
+mcu-config-fpga.workspace = true
+mcu-rom-common.workspace = true
+mcu-test-harness.workspace = true
+registers-generated.workspace = true
+romtime.workspace = true
+tock-registers.workspace = true
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+riscv-csr.workspace = true
+rv32i.workspace = true
+
+[[bin]]
+name = "mailbox_responder"
+path = "mailbox_responder.rs"
+required-features = ["riscv"]

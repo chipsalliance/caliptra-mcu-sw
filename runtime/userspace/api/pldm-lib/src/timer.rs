@@ -1,5 +1,7 @@
 // Licensed under the Apache-2.0 license
 
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_alarm::{Convert, Hz, Milliseconds};
 use libtock_platform::{self as platform};
@@ -10,6 +12,8 @@ pub struct AsyncAlarm<S: Syscalls = DefaultSyscalls, C: platform::subscribe::Con
     S,
     C,
 );
+
+static ALARM_MUTEX: Mutex<CriticalSectionRawMutex, ()> = Mutex::new(());
 
 impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
     /// Run a check against the console capsule to ensure it is present.
@@ -48,7 +52,10 @@ impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
     }
 
     pub async fn sleep(time: Milliseconds) {
+        // bad things happen if multiple tasks try to use the alarm at once
+        let guard = ALARM_MUTEX.lock().await;
         let _ = AsyncAlarm::<DefaultSyscalls>::sleep_for(time).await;
+        drop(guard);
     }
 }
 

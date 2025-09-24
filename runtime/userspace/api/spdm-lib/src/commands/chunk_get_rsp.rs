@@ -167,8 +167,12 @@ async fn encode_chunk_data(
                         ctx.device_certs_store,
                         offset,
                         chunk_buf,
+                        None,
                     )
                     .await?;
+            }
+            LargeResponse::Vdm(_vdm_rsp) => {
+                todo!("implement chunking logic for VDM response")
             }
         }
     } else {

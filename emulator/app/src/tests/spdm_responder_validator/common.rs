@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::tests::spdm_responder_validator::transport::Transport;
-use crate::EMULATOR_RUNNING;
+use mcu_testing_common::MCU_RUNNING;
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::TcpStream;
@@ -57,7 +57,7 @@ impl SpdmValidatorRunner {
     }
 
     pub fn run_test(&mut self, stream: &mut TcpStream) {
-        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        while MCU_RUNNING.load(Ordering::Relaxed) {
             match self.state {
                 SpdmServerState::Start => {
                     self.state = SpdmServerState::ReceiveRequest;
@@ -106,7 +106,7 @@ impl SpdmValidatorRunner {
 
         let mut command: u32 = 0;
         let mut transport_type: u32 = 0;
-        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        while MCU_RUNNING.load(Ordering::Relaxed) {
             let s = spdm_stream
                 .read(&mut buffer[buffer_size..])
                 .expect("socket read error!");
@@ -256,7 +256,7 @@ pub fn execute_spdm_validator(transport: &'static str) {
 
         match start_spdm_device_validator(transport) {
             Ok(mut child) => {
-                while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+                while MCU_RUNNING.load(Ordering::Relaxed) {
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             println!(

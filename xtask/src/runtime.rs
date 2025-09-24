@@ -44,6 +44,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         dccm_offset,
         dccm_size,
         None,
+        None,
     )?
     .into();
 
@@ -55,6 +56,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         vendor_pk_hash,
         Some(tock_binary.clone()),
         soc_images,
+        None,
         None,
     );
 

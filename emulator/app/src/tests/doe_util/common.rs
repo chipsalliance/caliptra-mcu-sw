@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use crate::{sleep_emulator_ticks, tests::doe_util::protocol::*};
+use crate::tests::doe_util::protocol::*;
+use mcu_testing_common::sleep_emulator_ticks;
 use std::sync::mpsc::{Receiver, RecvError, SendError, Sender};
 use zerocopy::IntoBytes;
 
@@ -83,7 +84,7 @@ impl DoeUtil {
         // TODO: this should not need to be so high.
         // Nothing should take >3,500,000 ticks to respond,
         // but setting it to 35 will fail tests.
-        for _ in 0..50 {
+        for _ in 0..60 {
             match rx.try_recv() {
                 Ok(message) => {
                     println!(

@@ -656,12 +656,12 @@ impl Otp {
             &mut fuses.vendor_hashes_manuf_partition,
         )?;
         // TODO: read these again when the offsets are fixed
-        // romtime::println!("[mcu-rom-otp] Reading vendor hashes production partition");
-        // self.read_data(
-        //     fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET,
-        //     fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
-        //     &mut fuses.vendor_hashes_prod_partition,
-        // )?;
+        romtime::println!("[mcu-rom-otp] Reading vendor hashes production partition");
+        self.read_data(
+            fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET,
+            fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
+            &mut fuses.vendor_hashes_prod_partition,
+        )?;
         // romtime::println!("[mcu-rom-otp] Reading vendor revocations production partition");
         // self.read_data(
         //     fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,

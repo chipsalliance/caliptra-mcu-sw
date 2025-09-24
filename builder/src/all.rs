@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Result};
+use caliptra_builder::FwId;
 use caliptra_image_types::ImageManifest;
 use std::{
     io::{Read, Write},
@@ -12,6 +13,7 @@ use zip::{
     ZipWriter,
 };
 
+use crate::firmware;
 use crate::CaliptraBuilder;
 
 use std::{env::var, sync::OnceLock};
@@ -23,6 +25,7 @@ pub struct FirmwareBinaries {
     pub mcu_rom: Vec<u8>,
     pub mcu_runtime: Vec<u8>,
     pub soc_manifest: Vec<u8>,
+    pub test_roms: Vec<(String, Vec<u8>)>,
 }
 
 impl FirmwareBinaries {
@@ -68,6 +71,9 @@ impl FirmwareBinaries {
                 Self::MCU_ROM_NAME => binaries.mcu_rom = data,
                 Self::MCU_RUNTIME_NAME => binaries.mcu_runtime = data,
                 Self::SOC_MANIFEST_NAME => binaries.soc_manifest = data,
+                name if name.contains("mcu-test-rom") => {
+                    binaries.test_roms.push((name.to_string(), data));
+                }
                 _ => continue,
             }
         }
@@ -82,26 +88,74 @@ impl FirmwareBinaries {
             None
         }
     }
+
+    pub fn test_rom(&self, fwid: &FwId) -> Result<Vec<u8>> {
+        let expected_name = format!("mcu-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
+        for (name, data) in self.test_roms.iter() {
+            if &expected_name == name {
+                return Ok(data.clone());
+            }
+        }
+        Err(anyhow::anyhow!(
+            "FwId not found. File name: {expected_name}, FwId: {:?}",
+            fwid
+        ))
+    }
+}
+
+#[derive(Default)]
+pub struct AllBuildArgs<'a> {
+    pub output: Option<&'a str>,
+    pub use_dccm_for_stack: bool,
+    pub dccm_offset: Option<u32>,
+    pub dccm_size: Option<u32>,
+    pub platform: Option<&'a str>,
+    pub rom_features: Option<&'a str>,
+    pub runtime_features: Option<&'a str>,
 }
 
 /// Build Caliptra ROM and firmware bundle, MCU ROM and runtime, and SoC manifest, and package them all together in a ZIP file.
-pub fn all_build(
-    output: Option<&str>,
-    platform: Option<&str>,
-    use_dccm_for_stack: bool,
-    dccm_offset: Option<u32>,
-    dccm_size: Option<u32>,
-) -> Result<()> {
+pub fn all_build(args: AllBuildArgs) -> Result<()> {
+    let AllBuildArgs {
+        output,
+        use_dccm_for_stack,
+        dccm_offset,
+        dccm_size,
+        platform,
+        rom_features,
+        runtime_features,
+    } = args;
+
     // TODO: use temp files
     let platform = platform.unwrap_or("emulator");
-    let mcu_rom = crate::rom_build(Some(platform), "")?;
+    let rom_features = rom_features.unwrap_or_default();
+    let mcu_rom = crate::rom_build(Some(platform), rom_features)?;
     let memory_map = match platform {
         "emulator" => &mcu_config_emulator::EMULATOR_MEMORY_MAP,
         "fpga" => &mcu_config_fpga::FPGA_MEMORY_MAP,
         _ => bail!("Unknown platform: {:?}", platform),
     };
+
+    let mut used_filenames = std::collections::HashSet::new();
+    let mut test_roms = vec![];
+    for fwid in firmware::REGISTERED_FW {
+        let bin_path = PathBuf::from(crate::test_rom_build(Some(platform), fwid)?);
+        let filename = bin_path.file_name().unwrap().to_str().unwrap().to_string();
+        if !used_filenames.insert(filename.clone()) {
+            panic!("Multiple fwids with filename {filename}")
+        }
+
+        test_roms.push((bin_path, filename));
+    }
+
+    let runtime_features: Vec<&str> = if let Some(runtime_features) = runtime_features {
+        runtime_features.split(",").collect()
+    } else {
+        Vec::new()
+    };
+
     let mcu_runtime = &crate::runtime_build_with_apps_cached(
-        &[],
+        &runtime_features,
         None,
         false,
         Some(platform),
@@ -109,6 +163,7 @@ pub fn all_build(
         use_dccm_for_stack,
         dccm_offset,
         dccm_size,
+        None,
         None,
     )?;
 
@@ -120,6 +175,7 @@ pub fn all_build(
         None,
         None,
         Some(mcu_runtime.into()),
+        None,
         None,
         None,
     );
@@ -169,6 +225,10 @@ pub fn all_build(
         &mut zip,
         options,
     )?;
+    for (test_rom, name) in test_roms {
+        add_to_zip(&test_rom, &name, &mut zip, options)?;
+    }
+
     zip.finish()?;
 
     Ok(())

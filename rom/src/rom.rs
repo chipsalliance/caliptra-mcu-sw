@@ -18,6 +18,7 @@ use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
 use crate::ColdBoot;
 use crate::FwHitlessUpdate;
+use crate::ImageVerifier;
 use crate::LifecycleControllerState;
 use crate::LifecycleHashedTokens;
 use crate::LifecycleToken;
@@ -80,6 +81,10 @@ impl Soc {
         self.registers
             .cptra_flow_status
             .is_set(soc::bits::CptraFlowStatus::ReadyForFuses)
+    }
+
+    pub fn cptra_fw_fatal_error(&self) -> bool {
+        self.registers.cptra_fw_error_fatal.get() != 0
     }
 
     pub fn set_cptra_wdt_cfg(&self, index: usize, value: u32) {
@@ -171,10 +176,15 @@ impl Soc {
         romtime::println!("[mcu-fuse-write] Writing key release fuses");
         self.registers.ss_key_release_size.set(0x40);
 
-        let mci_base_addr: u64 = self.registers.ss_mci_base_addr_l.get() as u64 + ((self.registers.ss_mci_base_addr_h.get() as u64) << 32);
+        let mci_base_addr: u64 = self.registers.ss_mci_base_addr_l.get() as u64
+            + ((self.registers.ss_mci_base_addr_h.get() as u64) << 32);
         let mcu_sram_addr: u64 = 0xc0_0000 + mci_base_addr;
-        self.registers.ss_key_release_base_addr_h.set((mcu_sram_addr >> 32) as u32);
-        self.registers.ss_key_release_base_addr_l.set(mcu_sram_addr as u32);
+        self.registers
+            .ss_key_release_base_addr_h
+            .set((mcu_sram_addr >> 32) as u32);
+        self.registers
+            .ss_key_release_base_addr_l
+            .set(mcu_sram_addr as u32);
 
         romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
         romtime::println!("");
@@ -198,6 +208,27 @@ impl Soc {
             );
             self.registers.fuse_runtime_svn[i].set(word);
         }
+
+        // Set SoC Manifest SVN
+        if fuses.cptra_core_soc_manifest_svn().len()
+            != self.registers.fuse_soc_manifest_svn.len() * 4
+        {
+            romtime::println!("[mcu-fuse-write] SoC Manifest SVN length mismatch");
+            fatal_error(1);
+        }
+        for i in 0..fuses.cptra_core_soc_manifest_svn().len() / 4 {
+            let word = u32::from_le_bytes(
+                fuses.cptra_core_soc_manifest_svn()[i * 4..i * 4 + 4]
+                    .try_into()
+                    .unwrap(),
+            );
+            self.registers.fuse_soc_manifest_svn[i].set(word);
+        }
+
+        // Set SoC Manifest Max SVN
+        let word = u32::from_le_bytes(fuses.cptra_core_soc_manifest_max_svn().try_into().unwrap());
+        self.registers.fuse_soc_manifest_max_svn.set(word);
+
         // TODO
         // self.registers
         //     .fuse_anti_rollback_disable
@@ -238,6 +269,8 @@ pub struct RomParameters<'a> {
     pub flash_partition_driver: Option<&'a mut FlashPartition<'a>>,
     /// Whether or not to program field entropy after booting Caliptra runtime firmware
     pub program_field_entropy: [bool; 4],
+    pub mcu_image_header_size: usize,
+    pub mcu_image_verifier: Option<&'a dyn ImageVerifier>,
 }
 
 pub fn rom_start(params: RomParameters) {

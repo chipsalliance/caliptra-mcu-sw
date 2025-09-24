@@ -104,6 +104,18 @@ struct OtpState {
     digests: Vec<u32>,
 }
 
+#[derive(Default, Clone)]
+pub struct OtpArgs {
+    pub file_name: Option<PathBuf>,
+    pub raw_memory: Option<Vec<u8>>,
+    pub owner_pk_hash: Option<[u8; 48]>,
+    pub vendor_pk_hash: Option<[u8; 48]>,
+    pub vendor_pqc_type: FwVerificationPqcKeyType,
+    pub soc_manifest_svn: Option<u8>,
+    pub soc_manifest_max_svn: Option<u8>,
+    pub vendor_hashes_prod_partition: Option<Vec<u8>>,
+}
+
 //#[derive(Bus)]
 #[allow(dead_code)]
 pub struct Otp {
@@ -132,15 +144,8 @@ impl Drop for Otp {
 
 #[allow(dead_code)]
 impl Otp {
-    pub fn new(
-        clock: &Clock,
-        file_name: Option<PathBuf>,
-        raw_memory: Option<Vec<u8>>,
-        _owner_pk_hash: Option<[u8; 48]>,
-        vendor_pk_hash: Option<[u8; 48]>,
-        vendor_pqc_type: FwVerificationPqcKeyType,
-    ) -> Result<Self, std::io::Error> {
-        let file = if let Some(path) = file_name {
+    pub fn new(clock: &Clock, args: OtpArgs) -> Result<Self, std::io::Error> {
+        let file = if let Some(path) = args.file_name {
             Some(
                 std::fs::File::options()
                     .read(true)
@@ -155,7 +160,7 @@ impl Otp {
 
         let mut partitions = vec![0u8; TOTAL_SIZE];
 
-        if let Some(raw_memory) = raw_memory {
+        if let Some(raw_memory) = args.raw_memory {
             if raw_memory.len() > TOTAL_SIZE {
                 Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -177,18 +182,35 @@ impl Otp {
             digests: [0; PARTITIONS.len() * 2],
         };
         otp.read_from_file()?;
-        if let Some(mut vendor_pk_hash) = vendor_pk_hash {
+        if let Some(mut vendor_pk_hash) = args.vendor_pk_hash {
             swap_endianness(&mut vendor_pk_hash);
             otp.partitions[fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET
                 ..fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48]
                 .copy_from_slice(&vendor_pk_hash);
         }
         // encode as a single bit, MLDSA as the default
-        let val = match vendor_pqc_type {
+        let val = match args.vendor_pqc_type {
             FwVerificationPqcKeyType::MLDSA => 0,
             FwVerificationPqcKeyType::LMS => 1,
         };
         otp.partitions[fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48] = val;
+        otp.partitions[fuses::SVN_PARTITION_BYTE_OFFSET + 36] =
+            args.soc_manifest_max_svn.unwrap_or(0);
+        if let Some(soc_manifest_svn) = args.soc_manifest_svn {
+            let svn_bitmap = Self::svn_to_bitmap(soc_manifest_svn as u32);
+            otp.partitions
+                [fuses::SVN_PARTITION_BYTE_OFFSET + 20..fuses::SVN_PARTITION_BYTE_OFFSET + 36]
+                .copy_from_slice(&svn_bitmap);
+        }
+
+        if let Some(vendor_hashes_prod_partition) = args.vendor_hashes_prod_partition {
+            let dst_start = fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET;
+            let max_len = fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE;
+            let copy_len = vendor_hashes_prod_partition.len().min(max_len);
+            otp.partitions[dst_start..dst_start + copy_len]
+                .copy_from_slice(&vendor_hashes_prod_partition[..copy_len]);
+        }
+
         // if there were digests that were pending a reset, then calculate them now
         otp.calculate_digests()?;
         Ok(otp)
@@ -258,6 +280,22 @@ impl Otp {
             .iter()
             .flat_map(|x| x.to_le_bytes().to_vec())
             .collect()
+    }
+
+    pub fn svn_to_bitmap(svn: u32) -> [u8; 16] {
+        let n = if svn > 128 { 128 } else { svn };
+
+        // Build a 128-bit value with the lowest `n` bits set.
+        // Shifting by 128 is invalid, so handle that case explicitly.
+        let val: u128 = if n == 0 {
+            0
+        } else if n == 128 {
+            u128::MAX
+        } else {
+            (1u128 << n) - 1
+        };
+
+        val.to_le_bytes()
     }
 }
 
@@ -384,13 +422,20 @@ mod test {
         let clock = Clock::new();
         let mut otp = Otp::new(
             &clock,
-            None,
-            None,
-            None,
-            None,
-            FwVerificationPqcKeyType::MLDSA,
+            OtpArgs {
+                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
+                ..Default::default()
+            },
         )
         .unwrap();
+        // simulate post-bootup flow
+        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
+        otp.write_integrity_check_period(0x3_FFFFu32);
+        otp.write_consistency_check_period(0x3FF_FFFFu32);
+        otp.write_check_timeout(0b10_0000u32);
+        otp.write_check_regwen(0u32.into());
+        // one-off integrity check
+        otp.write_check_trigger(0b11u32.into());
         // simulate post-bootup flow
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         otp.write_integrity_check_period(0x3_FFFFu32);
@@ -415,13 +460,20 @@ mod test {
         let clock = Clock::new();
         let mut otp = Otp::new(
             &clock,
-            None,
-            None,
-            None,
-            None,
-            FwVerificationPqcKeyType::MLDSA,
+            OtpArgs {
+                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
+                ..Default::default()
+            },
         )
         .unwrap();
+        // write the vendor partition
+        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
+        for i in 0..fuses::VENDOR_TEST_PARTITION_BYTE_SIZE {
+            otp.write_dai_wdata_rf_direct_access_wdata_0(i as u32);
+            otp.write_direct_access_address(
+                ((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
+            );
+        }
         // write the vendor partition
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         for i in 0..fuses::VENDOR_TEST_PARTITION_BYTE_SIZE {
@@ -470,11 +522,10 @@ mod test {
         let clock = Clock::new();
         let mut otp = Otp::new(
             &clock,
-            None,
-            None,
-            None,
-            None,
-            FwVerificationPqcKeyType::MLDSA,
+            OtpArgs {
+                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
+                ..Default::default()
+            },
         )
         .unwrap();
         // write the vendor partition

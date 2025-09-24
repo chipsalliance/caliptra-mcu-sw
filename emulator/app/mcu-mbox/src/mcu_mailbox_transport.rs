@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use emulator_periph::{McuMailbox0External, MCU_MAILBOX0_SRAM_SIZE};
+use emulator_consts::MCU_MAILBOX0_SRAM_SIZE;
+use emulator_periph::McuMailbox0External;
 use registers_generated::mci::bits::MboxExecute;
 use tock_registers::interfaces::Readable;
 
@@ -15,7 +16,7 @@ impl McuMailboxTransport {
     }
 
     pub fn execute(&self, cmd: u32, payload: &[u8]) -> Result<(), McuMailboxError> {
-        if payload.len() > MCU_MAILBOX0_SRAM_SIZE {
+        if payload.len() > MCU_MAILBOX0_SRAM_SIZE as usize {
             return Err(McuMailboxError::Overflow);
         }
 
@@ -27,13 +28,16 @@ impl McuMailboxTransport {
 
         // Sender writes data to MBOX_SRAM
         for (index, chunk) in payload.chunks(4).enumerate() {
-            let val = u32::from_le_bytes(chunk.try_into().unwrap_or([0; 4]));
+            let mut padded = [0u8; 4];
+            padded[..chunk.len()].copy_from_slice(chunk);
+            let val = u32::from_le_bytes(padded);
             self.mbox
                 .regs
                 .lock()
                 .unwrap()
                 .write_mcu_mbox0_csr_mbox_sram(val, index);
         }
+
         // Sender writes data length in bytes to MBOX_DLEN
         self.mbox
             .regs
@@ -82,10 +86,10 @@ impl McuMailboxTransport {
             .lock()
             .unwrap()
             .read_mcu_mbox0_csr_mbox_dlen();
-        // Assert that dlen is a multiple of 4
-        assert!(len % 4 == 0, "Data length is not a multiple of 4");
-        let dlen = len / 4;
-        for i in 0..dlen as usize {
+
+        // Round up to the nearest multiple of 4 for dword alignment
+        let dw_len = len.div_ceil(4) as usize;
+        for i in 0..dw_len {
             let val = self
                 .mbox
                 .regs
@@ -94,6 +98,8 @@ impl McuMailboxTransport {
                 .read_mcu_mbox0_csr_mbox_sram(i);
             data.extend_from_slice(&val.to_le_bytes());
         }
+        // Truncate to the actual data length
+        data.truncate(len as usize);
 
         self.finalize();
 
@@ -118,6 +124,7 @@ impl McuMailboxTransport {
             }
         }
     }
+
     pub fn is_response_available(&self) -> bool {
         self.mbox
             .regs

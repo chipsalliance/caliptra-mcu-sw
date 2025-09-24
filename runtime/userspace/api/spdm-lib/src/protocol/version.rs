@@ -45,6 +45,11 @@ impl From<SpdmVersion> for u8 {
 }
 
 impl SpdmVersion {
+    pub fn new(major: u8, minor: u8) -> SpdmResult<Self> {
+        let ver = major << 4 | minor;
+        SpdmVersion::try_from(ver)
+    }
+
     fn to_u8(self) -> u8 {
         match self {
             SpdmVersion::V10 => 0x10,

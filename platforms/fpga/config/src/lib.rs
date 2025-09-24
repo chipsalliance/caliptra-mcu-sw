@@ -15,7 +15,7 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     dccm_properties: MemoryRegionType::MEMORY,
 
     sram_offset: 0xa8c0_0000,
-    sram_size: 384 * 1024,
+    sram_size: 512 * 1024,
     sram_properties: MemoryRegionType::MEMORY,
 
     pic_offset: 0x6000_0000,
@@ -48,9 +48,9 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
 
 pub const FPGA_MCU_STRAPS: McuStraps = McuStraps {
     i3c_static_addr: 0x3a,
-    axi_user: 0xcccc_cccc,
-    cptra_wdt_cfg0: 100_000_000,
-    cptra_wdt_cfg1: 100_000_000,
-    mcu_wdt_cfg0: 400_000_000, // the FPGA is slower to boot
+    axi_user: 0x1,
+    cptra_wdt_cfg0: 200_000_000,
+    cptra_wdt_cfg1: 200_000_000,
+    mcu_wdt_cfg0: 800_000_000, // the FPGA is slower to boot
     mcu_wdt_cfg1: 1,
 };

@@ -1,9 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use crate::i3c_socket::{MctpTestState, MctpTransportTest};
-use crate::tests::mctp_util::common::MctpUtil;
-use crate::EMULATOR_RUNNING;
-use std::net::TcpStream;
+use mcu_testing_common::i3c_socket::{BufferedStream, MctpTestState, MctpTransportTest};
+use mcu_testing_common::mctp_util::common::MctpUtil;
+use mcu_testing_common::MCU_RUNNING;
 use std::sync::atomic::Ordering;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -89,7 +88,7 @@ impl Test {
         matches!(self.test_name.as_str(), "MctpAppResponderReady")
     }
 
-    fn wait_for_responder(&mut self, stream: &mut TcpStream, target_addr: u8) {
+    fn wait_for_responder(&mut self, stream: &mut BufferedStream, target_addr: u8) {
         let resp_msg = self.mctp_util.wait_for_responder(
             self.msg_tag,
             self.req_msg_buf.as_slice(),
@@ -107,9 +106,9 @@ impl Test {
         );
     }
 
-    fn run_loopback_test(&mut self, stream: &mut TcpStream, target_addr: u8) {
+    fn run_loopback_test(&mut self, stream: &mut BufferedStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
-        while EMULATOR_RUNNING.load(Ordering::Relaxed) {
+        while MCU_RUNNING.load(Ordering::Relaxed) {
             match self.test_state {
                 MctpTestState::Start => {
                     self.test_state = MctpTestState::SendReq;
@@ -150,7 +149,7 @@ impl MctpTransportTest for Test {
         self.passed
     }
 
-    fn run_test(&mut self, stream: &mut TcpStream, target_addr: u8) {
+    fn run_test(&mut self, stream: &mut BufferedStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
         if self.responder_ready_test() {
             self.wait_for_responder(stream, target_addr);

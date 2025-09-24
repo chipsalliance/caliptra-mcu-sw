@@ -1,10 +1,21 @@
 // Licensed under the Apache-2.0 license
+
+mod i3c_socket;
 mod test_firmware_update;
+#[cfg(feature = "fpga_realtime")]
+mod test_jtag_taps;
+mod test_mctp_capsule_loopback;
+mod test_pldm_fw_update;
 mod test_soc_boot;
+
 #[cfg(test)]
 mod test {
+    use caliptra_hw_model::BootParams;
+    use caliptra_image_types::FwVerificationPqcKeyType;
     use mcu_builder::{CaliptraBuilder, ImageCfg, TARGET};
-    use std::process::ExitStatus;
+    use mcu_config::McuMemoryMap;
+    use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
+    use mcu_image_header::McuImageHeader;
     use std::sync::atomic::AtomicU32;
     use std::sync::Mutex;
     use std::{
@@ -12,6 +23,7 @@ mod test {
         process::Command,
         sync::LazyLock,
     };
+    use zerocopy::IntoBytes;
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
         Path::new(&env!("CARGO_MANIFEST_DIR"))
@@ -41,8 +53,25 @@ mod test {
         compile_rom(feature)
     }
 
+    fn platform() -> &'static str {
+        if cfg!(feature = "fpga_realtime") {
+            "fpga"
+        } else {
+            "emulator"
+        }
+    }
+
+    fn memory_map() -> &'static McuMemoryMap {
+        if cfg!(feature = "fpga_realtime") {
+            &mcu_config_fpga::FPGA_MEMORY_MAP
+        } else {
+            &mcu_config_emulator::EMULATOR_MEMORY_MAP
+        }
+    }
+
     fn compile_rom(feature: &str) -> PathBuf {
-        let output: PathBuf = mcu_builder::rom_build(None, feature)
+        // TODO: use environment firmware binaries
+        let output: PathBuf = mcu_builder::rom_build(Some(platform()), feature)
             .expect("ROM build failed")
             .into();
         assert!(output.exists());
@@ -50,22 +79,96 @@ mod test {
     }
 
     pub fn compile_runtime(feature: &str, example_app: bool) -> PathBuf {
-        let output = target_binary(&format!("runtime-{}.bin", feature));
+        // TODO: use environment firmware binaries
+        let output = target_binary(&format!("runtime-{}-{}.bin", feature, platform()));
         let output_name = format!("{}", output.display());
         mcu_builder::runtime_build_with_apps_cached(
             &[feature],
             Some(&output_name),
             example_app,
-            None,
-            None,
+            Some(platform()),
+            Some(memory_map()),
             false,
             None,
             None,
             Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG),
+            None,
         )
         .expect("Runtime build failed");
         assert!(output.exists());
         output
+    }
+
+    pub fn start_runtime_hw_model(
+        rom_path: PathBuf,
+        runtime_path: PathBuf,
+        i3c_port: Option<u16>,
+    ) -> DefaultHwModel {
+        // TODO: use FirmwareBinaries for all binaries to make FPGA easier
+        let mut caliptra_builder = CaliptraBuilder::new(
+            cfg!(feature = "fpga_realtime"),
+            None,
+            None,
+            None,
+            None,
+            Some(runtime_path.clone()),
+            None,
+            None,
+            None,
+        );
+
+        // let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
+        let caliptra_rom = std::fs::read(caliptra_builder.get_caliptra_rom().unwrap()).unwrap();
+        let mcu_rom = std::fs::read(rom_path).unwrap();
+        let caliptra_fw = std::fs::read(caliptra_builder.get_caliptra_fw().unwrap()).unwrap();
+        let soc_manifest = std::fs::read(caliptra_builder.get_soc_manifest().unwrap()).unwrap();
+        let mcu_runtime = std::fs::read(runtime_path).unwrap();
+        let vendor_pk_hash_u8 = hex::decode(caliptra_builder.get_vendor_pk_hash().unwrap())
+            .expect("Invalid hex string for vendor_pk_hash");
+        let vendor_pk_hash: Vec<u32> = vendor_pk_hash_u8
+            .chunks(4)
+            .map(|chunk| {
+                let mut array = [0u8; 4];
+                array.copy_from_slice(chunk);
+                u32::from_be_bytes(array)
+            })
+            .collect();
+        let vendor_pk_hash: [u32; 12] = vendor_pk_hash.as_slice().try_into().unwrap();
+
+        mcu_hw_model::new(
+            InitParams {
+                caliptra_rom: &caliptra_rom,
+                mcu_rom: &mcu_rom,
+                vendor_pk_hash: Some(vendor_pk_hash_u8.try_into().unwrap()),
+                active_mode: true,
+                vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
+                i3c_port,
+                enable_mcu_uart_log: true,
+                ..Default::default()
+            },
+            BootParams {
+                fw_image: Some(&caliptra_fw),
+                soc_manifest: Some(&soc_manifest),
+                mcu_fw_image: Some(&mcu_runtime),
+                fuses: Fuses {
+                    fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
+                    vendor_pk_hash,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    }
+
+    pub fn finish_runtime_hw_model(hw: &mut DefaultHwModel) -> i32 {
+        match hw.step_until_exit_success() {
+            Ok(_) => 0,
+            Err(e) => {
+                eprintln!("Emulator exited with error: {}", e);
+                1
+            }
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -82,7 +185,10 @@ mod test {
         secondary_flash_image_path: Option<PathBuf>,
         caliptra_builder: Option<CaliptraBuilder>,
         hw_revision: Option<String>,
-    ) -> ExitStatus {
+        fuse_soc_manifest_svn: Option<u8>,
+        fuse_soc_manifest_max_svn: Option<u8>,
+        fuse_vendor_hashes_prod_partition: Option<Vec<u8>>,
+    ) -> i32 {
         let mut cargo_run_args = vec![
             "run",
             "-p",
@@ -179,6 +285,7 @@ mod test {
                 Some(runtime_path.clone()),
                 soc_images,
                 None,
+                None,
             )
         };
 
@@ -234,15 +341,40 @@ mod test {
                 cargo_run_args.push(secondary_flash_image.to_str().unwrap());
             }
 
+            let soc_manifest_svn_str;
+            if let Some(soc_manifest_svn) = fuse_soc_manifest_svn {
+                cargo_run_args.push("--fuse-soc-manifest-svn");
+                soc_manifest_svn_str = soc_manifest_svn.to_string();
+                cargo_run_args.push(soc_manifest_svn_str.as_str());
+            }
+
+            let soc_manifest_max_svn_str;
+            if let Some(soc_manifest_max_svn) = fuse_soc_manifest_max_svn {
+                cargo_run_args.push("--fuse-soc-manifest-max-svn");
+                soc_manifest_max_svn_str = soc_manifest_max_svn.to_string();
+                cargo_run_args.push(soc_manifest_max_svn_str.as_str());
+            }
+
+            let fuse_vendor_hashes_prod_partition_str;
+            if let Some(fuse_vendor_hashes_prod_partition) = fuse_vendor_hashes_prod_partition {
+                let hex_string: String = fuse_vendor_hashes_prod_partition
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect();
+                cargo_run_args.push("--fuse-vendor-hashes-prod-partition");
+                fuse_vendor_hashes_prod_partition_str = hex_string;
+                cargo_run_args.push(fuse_vendor_hashes_prod_partition_str.as_str());
+            }
+
             println!("Running test firmware {}", feature.replace("_", "-"));
             let mut cmd = Command::new("cargo");
             let cmd = cmd.args(&cargo_run_args).current_dir(&*PROJECT_ROOT);
-            cmd.status().unwrap()
+            cmd.status().unwrap().code().unwrap_or(1)
         } else {
             println!("Running test firmware {}", feature.replace("_", "-"));
             let mut cmd = Command::new("cargo");
             let cmd = cmd.args(&cargo_run_args).current_dir(&*PROJECT_ROOT);
-            cmd.status().unwrap()
+            cmd.status().unwrap().code().unwrap_or(1)
         }
     }
 
@@ -267,8 +399,11 @@ mod test {
             None,
             None,
             None,
+            None,
+            None,
+            None,
         );
-        assert_eq!(0, test.code().unwrap_or_default());
+        assert_eq!(0, test);
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -332,17 +467,16 @@ mod test {
     run_test!(test_log_flash_circular);
     run_test!(test_log_flash_usermode, example_app);
     run_test!(test_mctp_ctrl_cmds);
-    run_test!(test_mctp_capsule_loopback);
     // run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);
-    run_test!(test_pldm_fw_update_e2e);
     run_test!(test_mctp_spdm_responder_conformance, nightly);
     run_test!(test_doe_spdm_responder_conformance, nightly);
     run_test!(test_mci, example_app);
     run_test!(test_mcu_mbox);
     run_test!(test_mcu_mbox_soc_requester_loopback, example_app);
     run_test!(test_mcu_mbox_usermode, example_app);
+    run_test!(test_mbox_sram, example_app);
 
     /// This tests a full active mode boot run through with Caliptra, including
     /// loading MCU's firmware from Caliptra over the recovery interface.
@@ -368,8 +502,11 @@ mod test {
             None,
             None,
             None,
+            None,
+            None,
+            None,
         );
-        assert_eq!(0, test.code().unwrap_or_default());
+        assert_eq!(0, test);
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -397,8 +534,100 @@ mod test {
             None,
             None,
             None,
+            None,
+            None,
+            None,
         );
-        assert_eq!(0, test.code().unwrap_or_default());
+        assert_eq!(0, test);
+
+        // force the compiler to keep the lock
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn test_mcu_svn(image_svn: u16, fuse_svn: u16) -> Option<i32> {
+        let feature = if image_svn >= fuse_svn {
+            "test-mcu-svn-gt-fuse"
+        } else {
+            "test-mcu-svn-lt-fuse"
+        };
+
+        println!("Compiling test firmware {}", &feature);
+
+        let test_runtime = target_binary(&format!("runtime-{}.bin", feature));
+        let output_name = format!("{}", test_runtime.display());
+        mcu_builder::runtime_build_with_apps_cached(
+            &[feature],
+            Some(&output_name),
+            true,
+            None,
+            None,
+            false,
+            None,
+            None,
+            None,
+            Some(
+                McuImageHeader {
+                    svn: image_svn,
+                    ..Default::default()
+                }
+                .as_bytes(),
+            ),
+        )
+        .expect("Runtime build failed");
+        assert!(test_runtime.exists());
+
+        let fuse_vendor_hashes_prod_partition = {
+            let n = if fuse_svn > 128 { 128 } else { fuse_svn };
+            let val: u128 = if n == 0 {
+                0
+            } else if n == 128 {
+                u128::MAX
+            } else {
+                (1u128 << n) - 1
+            };
+
+            val.to_le_bytes()
+        };
+
+        let i3c_port = "65534".to_string();
+        Some(run_runtime(
+            feature,
+            get_rom_with_feature(feature),
+            test_runtime,
+            i3c_port,
+            true,
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(fuse_vendor_hashes_prod_partition.to_vec()),
+        ))
+    }
+
+    #[test]
+    fn test_mcu_svn_gt_fuse() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let result = test_mcu_svn(100, 30);
+        assert_eq!(0, result.unwrap_or_default());
+
+        // force the compiler to keep the lock
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_mcu_svn_lt_fuse() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let result = test_mcu_svn(25, 40);
+        assert_ne!(0, result.unwrap_or_default());
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

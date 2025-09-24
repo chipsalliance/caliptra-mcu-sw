@@ -1,0 +1,10 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-image-header"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+zerocopy.workspace = true

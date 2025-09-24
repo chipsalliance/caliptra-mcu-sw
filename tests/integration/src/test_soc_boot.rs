@@ -14,10 +14,13 @@ mod test {
         PackageHeaderInformation, StringType,
     };
     use pldm_fw_pkg::FirmwareManifest;
+    use std::env;
     use std::path::PathBuf;
-    use std::process::ExitStatus;
 
-    const CALIPTRA_EXTERNAL_RAM_BASE: u64 = 0x8000_0000;
+    // Set an arbitrary MCI base address
+    const MCI_BASE_AXI_ADDRESS: u64 = 0xAAAAAAAA_00000000;
+
+    const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
 
     #[derive(Clone)]
     struct TestOptions {
@@ -33,6 +36,9 @@ mod test {
         partition_table: Option<PartitionTable>,
         builder: Option<CaliptraBuilder>,
         flash_offset: usize,
+        fuse_soc_manifest_svn: Option<u8>,
+        fuse_soc_manifest_max_svn: Option<u8>,
+        manufacturing_mode: Option<bool>,
     }
 
     macro_rules! run_test {
@@ -182,27 +188,105 @@ mod test {
         ]
     }
 
-    fn run_runtime_with_options(opts: &TestOptions) -> ExitStatus {
+    fn run_runtime_with_options(opts: &TestOptions) -> i32 {
         run_runtime(
             opts.feature,
             opts.rom.clone(),
             opts.runtime.clone(),
             opts.i3c_port.to_string(),
             true,
-            false,
+            opts.manufacturing_mode.unwrap_or(false),
             Some(opts.soc_images.clone()),
             opts.pldm_fw_pkg_path.clone(),
             opts.primary_flash_image_path.clone(),
             opts.secondary_flash_image_path.clone(),
             opts.builder.clone(),
             Some("2.1.0".to_string()),
+            opts.fuse_soc_manifest_svn,
+            opts.fuse_soc_manifest_max_svn,
+            None,
         )
     }
 
     /// Test case: happy path
     fn test_successful_boot(opts: &TestOptions) {
         let test = run_runtime_with_options(opts);
-        assert_eq!(0, test.code().unwrap_or_default());
+        assert_eq!(0, test);
+    }
+
+    fn test_soc_manifest_svn_lt_fuse(opts: &TestOptions) {
+        let mut new_options = opts.clone();
+        new_options
+            .builder
+            .as_mut()
+            .unwrap()
+            .replace_manifest_config(new_options.soc_images.clone(), Some(10))
+            .unwrap();
+        new_options.fuse_soc_manifest_svn = Some(12);
+        new_options.fuse_soc_manifest_max_svn = Some(13);
+        new_options.manufacturing_mode = Some(true);
+        let test = run_runtime_with_options(&new_options);
+        assert_ne!(0, test);
+    }
+
+    fn test_soc_manifest_svn_gt_max_svn(opts: &TestOptions) {
+        let mut new_options = opts.clone();
+        new_options
+            .builder
+            .as_mut()
+            .unwrap()
+            .replace_manifest_config(new_options.soc_images.clone(), Some(14))
+            .unwrap();
+        new_options.fuse_soc_manifest_svn = Some(12);
+        new_options.fuse_soc_manifest_max_svn = Some(13);
+        new_options.manufacturing_mode = Some(true);
+        let test = run_runtime_with_options(&new_options);
+        assert_ne!(0, test);
+    }
+
+    fn test_soc_manifest_good_svn(opts: &TestOptions) {
+        let mut new_options = opts.clone();
+        new_options
+            .builder
+            .as_mut()
+            .unwrap()
+            .replace_manifest_config(new_options.soc_images.clone(), Some(10))
+            .unwrap();
+        new_options.fuse_soc_manifest_svn = Some(9);
+        new_options.fuse_soc_manifest_max_svn = Some(13);
+        new_options.manufacturing_mode = Some(true);
+
+        // Replace the SoC Manifest in the PLDM package
+        let flash_offset = opts
+            .partition_table
+            .as_ref()
+            .and_then(|pt| pt.get_active_partition().1.as_ref().map(|p| p.offset))
+            .unwrap_or(0);
+        let (_, flash_image_path) = create_flash_image(
+            new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
+            new_options
+                .builder
+                .as_mut()
+                .unwrap()
+                .get_soc_manifest()
+                .ok(),
+            Some(opts.runtime.clone()),
+            opts.partition_table.clone(),
+            flash_offset,
+            new_options.soc_images_paths.clone(),
+        );
+        new_options.pldm_fw_pkg_path = if opts.pldm_fw_pkg_path.is_some() {
+            let device_uuid = get_device_uuid();
+            let flash_image =
+                std::fs::read(flash_image_path.clone()).expect("Failed to read flash image");
+            let pldm_manifest = get_streaming_boot_pldm_fw_manifest(&device_uuid, &flash_image);
+            Some(create_pldm_fw_package(&pldm_manifest))
+        } else {
+            None
+        };
+
+        let test = run_runtime_with_options(&new_options);
+        assert_ne!(0, test);
     }
 
     // Test case: Image ID in the SOC manifest is different from the one being authorized in the firmware
@@ -213,7 +297,7 @@ mod test {
             .builder
             .as_mut()
             .unwrap()
-            .replace_manifest_metadata(new_options.soc_images.clone())
+            .replace_manifest_config(new_options.soc_images.clone(), None)
             .unwrap();
 
         // Update the SOC manifest in the flash image
@@ -233,7 +317,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: The FW to be streamed has been altered making it unauthorized
@@ -284,7 +368,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: The load address in the SOC manifest is not a valid addressable AXI address
@@ -296,14 +380,14 @@ mod test {
             .builder
             .as_mut()
             .unwrap()
-            .replace_manifest_metadata(new_options.soc_images.clone())
+            .replace_manifest_config(new_options.soc_images.clone(), None)
             .unwrap();
 
         let soc_manifest = new_options
             .builder
             .as_mut()
             .unwrap()
-            .replace_manifest_metadata(new_options.soc_images.clone())
+            .replace_manifest_config(new_options.soc_images.clone(), None)
             .unwrap();
 
         // Update the SOC manifest in the flash image
@@ -322,7 +406,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: Test booting from secondary flash
@@ -379,7 +463,7 @@ mod test {
         new_options.primary_flash_image_path = primary_flash_image_path.clone();
 
         let test = run_runtime_with_options(&new_options);
-        assert_eq!(0, test.code().unwrap_or_default());
+        assert_eq!(0, test);
     }
 
     // Test case: Partition table has invalid checksum
@@ -434,7 +518,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: The PLDM descriptor in the PLDM package is different from the device's descriptor
@@ -460,7 +544,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: The PLDM component ID in the PLDM package is not valid
@@ -483,7 +567,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: Corrupted PLDM FW package
@@ -506,7 +590,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Test case: PLDM FW package has lower version than device's active image version
@@ -531,12 +615,17 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test.code().unwrap_or_default());
+        assert_ne!(0, test);
     }
 
     // Common test function for both flash-based and streaming boot
     fn test_soc_boot(is_flash_based_boot: bool) {
         let lock = TEST_LOCK.lock().unwrap();
+        env::set_var(
+            "CPTRA_EMULATOR_SS_MCI_OFFSET",
+            format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
+        );
+
         let feature = if is_flash_based_boot {
             "test-flash-based-boot"
         } else {
@@ -558,13 +647,15 @@ mod test {
         let soc_images = vec![
             ImageCfg {
                 path: soc_images_paths[0].clone(),
-                load_addr: CALIPTRA_EXTERNAL_RAM_BASE,
+                load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
                 image_id: 4096,
                 ..Default::default()
             },
             ImageCfg {
                 path: soc_images_paths[1].clone(),
-                load_addr: CALIPTRA_EXTERNAL_RAM_BASE + soc_image_fw_1.len() as u64,
+                load_addr: MCI_BASE_AXI_ADDRESS
+                    + MCU_MBOX_SRAM1_OFFSET
+                    + soc_image_fw_1.len() as u64,
                 image_id: 4097,
                 ..Default::default()
             },
@@ -579,6 +670,7 @@ mod test {
             None,
             Some(test_runtime.clone()),
             Some(soc_images.clone()),
+            None,
             None,
         );
 
@@ -653,6 +745,9 @@ mod test {
             partition_table: Some(partition_table.clone()),
             builder: Some(builder.clone()),
             flash_offset,
+            fuse_soc_manifest_svn: None,
+            fuse_soc_manifest_max_svn: None,
+            manufacturing_mode: None,
         };
 
         if !is_flash_based_boot {
@@ -665,6 +760,9 @@ mod test {
             run_test!(test_incorrect_pldm_component_id, &pass_options.clone());
             run_test!(test_corrupted_pldm_fw_package, &pass_options.clone());
             run_test!(test_lower_version_pldm_fw_package, &pass_options.clone());
+            run_test!(test_soc_manifest_svn_lt_fuse, &pass_options.clone());
+            run_test!(test_soc_manifest_svn_gt_max_svn, &pass_options.clone());
+            run_test!(test_soc_manifest_good_svn, &pass_options.clone());
         } else {
             // Flash-based boot-only tests
             run_test!(test_successful_boot, &pass_options.clone());

@@ -186,12 +186,16 @@ impl SessionManager {
         let tag_length = size_of::<Aes256GcmTag>();
         let length: u16 = encrypted_len as u16 + tag_length as u16;
         aead_len += length.encode(&mut aead_buf).map_err(SessionError::Codec)?;
-        aead_buf.pull_data(aead_len).map_err(SessionError::Codec)?;
-
-        let aead_data = aead_buf.data(aead_len).map_err(SessionError::Codec)?;
+        let associated_data = aead_buf
+            .message_slice(aead_len)
+            .map_err(SessionError::Codec)?;
 
         let (encrypted_size, tag) = session_info
-            .encrypt_secure_message(aead_data, app_data_buffer, &mut encrypted_data)
+            .encrypt_secure_message(
+                associated_data,
+                &plaintext_data[..encrypted_len],
+                &mut encrypted_data,
+            )
             .await?;
 
         let mut secure_message_len = session_id
@@ -208,9 +212,21 @@ impl SessionManager {
 
         secure_message_len += encode_u8_slice(&tag, secure_message).map_err(SessionError::Codec)?;
 
+        if session_info.session_state == SessionState::Establishing {
+            // If this is the response message for the FINISH request, set the session state to Established.
+            session_info.set_session_state(SessionState::Established);
+        }
+
+        // If this is response message for END_SESSION request, clear the session.
+        if session_info.session_state == SessionState::Terminating {
+            self.delete_session(session_id)?;
+            self.reset_active_session_id();
+        }
+
         secure_message
-            .pull_data(secure_message_len)
-            .map_err(SessionError::Codec)
+            .push_data(secure_message_len)
+            .map_err(SessionError::Codec)?;
+        Ok(())
     }
 
     pub async fn decode_secure_message(
@@ -240,11 +256,11 @@ impl SessionManager {
         if length as usize > app_data_buffer.len() {
             return Err(SessionError::BufferTooSmall);
         }
-
         // prepare associated data
         aead_len += length.encode(&mut aead_buf).map_err(SessionError::Codec)?;
-        aead_buf.pull_data(aead_len).map_err(SessionError::Codec)?;
-        let associated_data = aead_buf.data(aead_len).map_err(SessionError::Codec)?;
+        let associated_data = aead_buf
+            .message_slice(aead_len)
+            .map_err(SessionError::Codec)?;
 
         // Secure message payload length may be bigger than the length field for alignment purposes
         if secure_message.msg_len() < length as usize {
@@ -270,7 +286,6 @@ impl SessionManager {
         let mut plaintext_msg = MessageBuf::from(&mut plaintext_buffer[..decrypted_size]);
 
         let app_data_len = u16::decode(&mut plaintext_msg).map_err(SessionError::Codec)? as usize;
-
         let app_data = plaintext_msg
             .data(app_data_len)
             .map_err(SessionError::Codec)?;

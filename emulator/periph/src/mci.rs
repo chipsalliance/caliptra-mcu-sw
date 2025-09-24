@@ -30,6 +30,7 @@ pub struct Mci {
     reset_reason: ResetReasonEmulator,
     irq: Rc<RefCell<Irq>>,
     mcu_mailbox0: Option<McuMailbox0Internal>,
+    mcu_mailbox1: Option<McuMailbox0Internal>,
 }
 
 impl Mci {
@@ -38,6 +39,7 @@ impl Mci {
         ext_mci_regs: caliptra_emu_periph::mci::Mci,
         irq: Rc<RefCell<Irq>>,
         mcu_mailbox0: Option<McuMailbox0Internal>,
+        mcu_mailbox1: Option<McuMailbox0Internal>,
     ) -> Self {
         // Clear the reset status, MCU and Caiptra are out of reset
         ext_mci_regs.regs.borrow_mut().reset_status = 0;
@@ -58,6 +60,7 @@ impl Mci {
             reset_reason,
             irq,
             mcu_mailbox0,
+            mcu_mailbox1,
         }
     }
 }
@@ -252,6 +255,16 @@ impl MciPeripheral for Mci {
             .regs
             .borrow_mut()
             .intr_block_rf_notif0_intr_trig_r = new_val;
+
+        let cur_value = self
+            .read_mci_reg_intr_block_rf_notif0_internal_intr_r()
+            .reg
+            .get();
+        let new_val = cur_value | val.reg.get();
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_notif0_internal_intr_r = new_val;
     }
 
     fn write_mci_reg_reset_request(
@@ -569,6 +582,248 @@ impl MciPeripheral for Mci {
             .read_mcu_mbox0_csr_mbox_hw_status()
     }
 
+    fn read_mcu_mbox1_csr_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_sram(index)
+    }
+
+    fn write_mcu_mbox1_csr_mbox_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_sram(val, index)
+    }
+
+    fn read_mcu_mbox1_csr_mbox_lock(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_lock()
+    }
+
+    fn read_mcu_mbox1_csr_mbox_user(&mut self) -> caliptra_emu_types::RvData {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_user()
+    }
+
+    fn read_mcu_mbox1_csr_mbox_target_user(&mut self) -> caliptra_emu_types::RvData {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_target_user()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_target_user(&mut self, val: caliptra_emu_types::RvData) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_target_user(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_target_user_valid(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxTargetUserValid::Register,
+    > {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_target_user_valid()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_target_user_valid(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::MboxTargetUserValid::Register,
+        >,
+    ) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_target_user_valid(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_cmd(&mut self) -> caliptra_emu_types::RvData {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_cmd()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_cmd(&mut self, val: caliptra_emu_types::RvData) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_cmd(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_dlen()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_dlen(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_execute(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::MboxExecute::Register,
+    > {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_execute()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_execute(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mbox::bits::MboxExecute::Register,
+        >,
+    ) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_execute(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_target_status(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxTargetStatus::Register,
+    > {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_target_status()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_target_status(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::MboxTargetStatus::Register,
+        >,
+    ) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_target_status(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_cmd_status(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxCmdStatus::Register,
+    > {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_cmd_status()
+    }
+
+    fn write_mcu_mbox1_csr_mbox_cmd_status(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::MboxCmdStatus::Register,
+        >,
+    ) {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .write_mcu_mbox0_csr_mbox_cmd_status(val);
+    }
+
+    fn read_mcu_mbox1_csr_mbox_hw_status(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxHwStatus::Register,
+    > {
+        self.mcu_mailbox1
+            .as_mut()
+            .expect("mcu_mbox1 is not initialized")
+            .regs
+            .lock()
+            .unwrap()
+            .read_mcu_mbox0_csr_mbox_hw_status()
+    }
+
     fn read_mci_reg_hw_rev_id(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwRevId::Register>
@@ -744,7 +999,7 @@ mod tests {
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
         let pic = caliptra_emu_cpu::Pic::new();
         let irq = pic.register_irq(1);
-        let mci_reg: Mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None);
+        let mci_reg: Mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None, None);
         let mut mci_bus = MciBus {
             periph: Box::new(mci_reg),
         };
@@ -836,6 +1091,7 @@ mod tests {
             ext_mci_regs.clone(),
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
+            None,
         );
         let mut mcu_mailbox = mci_reg.mcu_mailbox0.clone().unwrap();
         let mut mci_bus = MciBus {
