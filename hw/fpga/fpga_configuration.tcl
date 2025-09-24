@@ -8,7 +8,7 @@ set CG_EN FALSE
 set RTL_VERSION latest
 set BOARD VCK190
 set ITRNG TRUE
-set DEBUG FALSE
+set DEBUG TRUE
 set FAST_I3C TRUE
 set CORE_CLK_MHZ 18
 # Xilinx core requires 100 - 300MHz. Actual clock usually rounds down
@@ -166,7 +166,7 @@ set axi_subordinates(ID) 0
 
 #                        src_block          src_port address    size       dst                                   addrseg name               debug  clock
 register_axi_subordinate axi_interconnect_1 M00_AXI  0xA4100000 0x00100000 caliptra_package_top_0/S_AXI_CALIPTRA reg0    S_AXI_CALIPTRA     TRUE   "/ps_0/pl0_ref_clk"
-register_axi_subordinate axi_interconnect_1 M01_AXI  0xA4030000 0x00002000 caliptra_package_top_0/S_AXI_I3C      reg0    S_AXI_I3C          TRUE   "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_1 M01_AXI  0xA4030000 0x00002000 caliptra_package_top_0/S_AXI_I3C      reg0    S_AXI_I3C          TRUE   "/ps_0/pl1_ref_clk"
 register_axi_subordinate axi_interconnect_1 M02_AXI  0xA4040000 0x00002000 caliptra_package_top_0/S_AXI_LCC      reg0    S_AXI_LCC          FALSE  "/ps_0/pl0_ref_clk"
 register_axi_subordinate axi_interconnect_1 M03_AXI  0xA8000000 0x01000000 caliptra_package_top_0/S_AXI_MCI      reg0    S_AXI_MCI          TRUE   "/ps_0/pl0_ref_clk"
 register_axi_subordinate axi_interconnect_1 M04_AXI  0xB0040000 0x00020000 caliptra_package_top_0/S_AXI_MCU_ROM  reg0    S_AXI_MCU_ROM      TRUE   "/ps_0/pl0_ref_clk"
@@ -191,7 +191,7 @@ set_property -dict [list \
   CONFIG.BUSER_WIDTH {32} \
   CONFIG.RUSER_WIDTH {32} \
   CONFIG.WUSER_WIDTH {32} \
-  CONFIG.FIREWALL_MODE {MI_SIDE} \
+  CONFIG.FIREWALL_MODE {SI_SIDE} \
   ] [get_bd_cells axi_firewall_0]
 
 # Create reset block
@@ -480,7 +480,7 @@ if {$DEBUG} {
       [get_bd_nets dbg_log]                    {PROBE_TYPE "Data and Trigger" CLK_SRC "/ps_0/pl0_ref_clk" AXIS_ILA "Auto" } \
     ]
   for {set i 1} {$i <= $axi_subordinates(ID)} {incr i} {
-    puts "$i $axi_subordinates($i,name)"
+    puts "$i $axi_subordinates($i,name) $axi_subordinates($i,clock)"
     if {$axi_subordinates($i,debug)} {
 
       apply_bd_automation -rule xilinx.com:bd_rule:debug -dict [list [get_bd_intf_nets $axi_subordinates($i,name)] [list AXI_R_ADDRESS "Data and Trigger" AXI_R_DATA "Data and Trigger" AXI_W_ADDRESS "Data and Trigger" AXI_W_DATA "Data and Trigger" AXI_W_RESPONSE "Data and Trigger" CLK_SRC $axi_subordinates($i,clock) AXIS_ILA "Auto" APC_EN "0" ]]
