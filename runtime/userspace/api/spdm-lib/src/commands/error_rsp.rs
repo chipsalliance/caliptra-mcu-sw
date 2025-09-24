@@ -124,10 +124,10 @@ mod test {
         let error_code = ErrorCode::InvalidRequest;
         let error_data = 0x01;
 
-        assert!(
-            encode_error_response(&mut buf, SpdmVersion::V10, error_code, error_data, None)
-                == (true, CommandError::ErrorCode(error_code))
-        );
+        let (success, cmd_error) =
+            encode_error_response(&mut buf, SpdmVersion::V10, error_code, error_data, None);
+        assert!(success);
+        assert!(matches!(cmd_error, CommandError::ErrorCode(ec) if ec as u8 == error_code as u8));
         assert_eq!(buf.data_len(), 4);
         assert!(raw_buf[0] == SpdmVersion::V10.into());
         assert!(raw_buf[1] == ReqRespCode::Error.into());
@@ -144,15 +144,15 @@ mod test {
         let extended_raw_data = [0x02; 32];
         let extended_data = Some(&extended_raw_data[..]);
 
-        assert!(
-            encode_error_response(
-                &mut buf,
-                SpdmVersion::V10,
-                error_code,
-                error_data,
-                extended_data
-            ) == (true, CommandError::ErrorCode(error_code))
+        let (success, cmd_error) = encode_error_response(
+            &mut buf,
+            SpdmVersion::V10,
+            error_code,
+            error_data,
+            extended_data,
         );
+        assert!(success);
+        assert!(matches!(cmd_error, CommandError::ErrorCode(ec) if ec as u8 == error_code as u8));
         assert_eq!(buf.data_len(), 36);
         assert!(raw_buf[0] == SpdmVersion::V10.into());
         assert!(raw_buf[1] == ReqRespCode::Error.into());
@@ -170,15 +170,15 @@ mod test {
         let extended_raw_data = [0x02; 33];
         let extended_data = Some(&extended_raw_data[..]);
 
-        assert!(
-            encode_error_response(
-                &mut buf,
-                SpdmVersion::V10,
-                error_code,
-                error_data,
-                extended_data
-            ) == (false, CommandError::BufferTooSmall)
+        let (success, cmd_error) = encode_error_response(
+            &mut buf,
+            SpdmVersion::V10,
+            error_code,
+            error_data,
+            extended_data,
         );
+        assert!(!success);
+        assert!(matches!(cmd_error, CommandError::BufferTooSmall));
         assert_eq!(buf.data_len(), 0);
     }
 }
