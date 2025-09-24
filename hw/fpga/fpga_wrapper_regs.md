@@ -144,12 +144,15 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |  1 |       cptra_ss_rst_b       |  rw  | 0x0 |  — |
 |  2 |   cptra_obf_uds_seed_vld   |  rw  | 0x0 |  — |
 |  3 | cptra_obf_field_entropy_vld|  rw  | 0x0 |  — |
-|  6 |      bootfsm_brkpoint      |  rw  | 0x0 |  — |
-|  7 |       ss_debug_intent      |  rw  | 0x0 |  — |
-|  8 |  i3c_axi_user_id_filtering |  rw  | 0x0 |  — |
-|  9 |         ocp_lock_en        |  rw  | 0x1 |  — |
-| 10 |lc_Allow_RMA_or_SCRAP_on_PPD|  rw  | 0x0 |  — |
-| 11 |    FIPS_ZEROIZATION_PPD    |  rw  | 0x0 |  — |
+|  4 |       ss_debug_locked      |  rw  | 0x0 |  — |
+| 6:5|     ss_device_lifecycle    |  rw  | 0x0 |  — |
+|  7 |      bootfsm_brkpoint      |  rw  | 0x1 |  — |
+|  8 |          scan_mode         |  rw  | 0x0 |  — |
+| 16 |       ss_debug_intent      |  rw  | 0x0 |  — |
+| 17 |  i3c_axi_user_id_filtering |  rw  | 0x0 |  — |
+| 18 |         ocp_lock_en        |  rw  | 0x1 |  — |
+| 19 |lc_Allow_RMA_or_SCRAP_on_PPD|  rw  | 0x0 |  — |
+| 20 |    FIPS_ZEROIZATION_PPD    |  rw  | 0x0 |  — |
 | 31 |      trigger_axi_reset     |  rw  | 0x0 |  — |
 
 #### cptra_obf_uds_seed_vld field
@@ -159,6 +162,18 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 #### cptra_obf_field_entropy_vld field
 
 <p>RSVD in SS</p>
+
+#### ss_debug_locked field
+
+<p>RSVD in SS</p>
+
+#### ss_device_lifecycle field
+
+<p>RSVD in SS</p>
+
+#### scan_mode field
+
+<p>Scan mode for Caliptra Core</p>
 
 #### ss_debug_intent field
 
@@ -180,21 +195,53 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 
 <p>RSVD in core</p>
 
+#### trigger_axi_reset field
+
+<p>RSVD in core</p>
+
 ### status register
 
 - Absolute Address: 0xA401000C
 - Base Offset: 0xC
 - Size: 0x4
 
-|Bits|      Identifier     |Access|Reset|Name|
-|----|---------------------|------|-----|----|
-|  0 |  cptra_error_fatal  |   r  | 0x0 |  — |
-|  1 |cptra_error_non_fatal|   r  | 0x0 |  — |
-|  2 |   ready_for_fuses   |   r  | 0x0 |  — |
-|  3 |  ready_for_fw_push  |   r  | 0x0 |  — |
-|  4 |  ready_for_runtime  |   r  | 0x0 |  — |
-|  5 |  mailbox_data_avail |   r  | 0x0 |  — |
-|  6 |  mailbox_flow_done  |   r  | 0x0 |  — |
+|Bits|       Identifier      |Access|Reset|Name|
+|----|-----------------------|------|-----|----|
+|  0 |   cptra_error_fatal   |   r  | 0x0 |  — |
+|  1 | cptra_error_non_fatal |   r  | 0x0 |  — |
+|  2 |    ready_for_fuses    |   r  | 0x0 |  — |
+|  3 |ready_for_mb_processing|   r  | 0x0 |  — |
+|  4 |   ready_for_runtime   |   r  | 0x0 |  — |
+|  5 |   mailbox_data_avail  |   r  | 0x0 |  — |
+|  6 |   mailbox_flow_done   |   r  | 0x0 |  — |
+
+#### cptra_error_fatal field
+
+<p>RSVD in SS</p>
+
+#### cptra_error_non_fatal field
+
+<p>RSVD in SS</p>
+
+#### ready_for_fuses field
+
+<p>RSVD in SS</p>
+
+#### ready_for_mb_processing field
+
+<p>RSVD in SS</p>
+
+#### ready_for_runtime field
+
+<p>RSVD in SS</p>
+
+#### mailbox_data_avail field
+
+<p>RSVD in SS</p>
+
+#### mailbox_flow_done field
+
+<p>RSVD in SS</p>
 
 ### arm_user register
 
@@ -1232,6 +1279,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|----------|------|-----|----|
 |31:0| out_data |   r  | 0x0 |  — |
 
+#### out_data field
+
+<p>RSVD in core</p>
+
 ### dbg_fifo_push register
 
 - Absolute Address: 0xA4011014
@@ -1241,6 +1292,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0|  in_data |  rw  | 0x0 |  — |
+
+#### in_data field
+
+<p>RSVD in core</p>
 
 ### dbg_fifo_status register
 
@@ -1252,3 +1307,11 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|--------------|------|-----|----|
 |  0 |dbg_fifo_empty|   r  | 0x0 |  — |
 |  1 | dbg_fifo_full|   r  | 0x0 |  — |
+
+#### dbg_fifo_empty field
+
+<p>RSVD in core</p>
+
+#### dbg_fifo_full field
+
+<p>RSVD in core</p>

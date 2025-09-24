@@ -28,7 +28,7 @@ package caliptra_fpga_realtime_regs_pkg;
 
     typedef struct {
         logic next;
-    } interface_regs__status__ready_for_fw_push__in_t;
+    } interface_regs__status__ready_for_mb_processing__in_t;
 
     typedef struct {
         logic next;
@@ -46,7 +46,7 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__status__cptra_error_fatal__in_t cptra_error_fatal;
         interface_regs__status__cptra_error_non_fatal__in_t cptra_error_non_fatal;
         interface_regs__status__ready_for_fuses__in_t ready_for_fuses;
-        interface_regs__status__ready_for_fw_push__in_t ready_for_fw_push;
+        interface_regs__status__ready_for_mb_processing__in_t ready_for_mb_processing;
         interface_regs__status__ready_for_runtime__in_t ready_for_runtime;
         interface_regs__status__mailbox_data_avail__in_t mailbox_data_avail;
         interface_regs__status__mailbox_flow_done__in_t mailbox_flow_done;
@@ -232,7 +232,19 @@ package caliptra_fpga_realtime_regs_pkg;
 
     typedef struct {
         logic value;
+    } interface_regs__control__ss_debug_locked__out_t;
+
+    typedef struct {
+        logic [1:0] value;
+    } interface_regs__control__ss_device_lifecycle__out_t;
+
+    typedef struct {
+        logic value;
     } interface_regs__control__bootfsm_brkpoint__out_t;
+
+    typedef struct {
+        logic value;
+    } interface_regs__control__scan_mode__out_t;
 
     typedef struct {
         logic value;
@@ -263,7 +275,10 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__control__cptra_ss_rst_b__out_t cptra_ss_rst_b;
         interface_regs__control__cptra_obf_uds_seed_vld__out_t cptra_obf_uds_seed_vld;
         interface_regs__control__cptra_obf_field_entropy_vld__out_t cptra_obf_field_entropy_vld;
+        interface_regs__control__ss_debug_locked__out_t ss_debug_locked;
+        interface_regs__control__ss_device_lifecycle__out_t ss_device_lifecycle;
         interface_regs__control__bootfsm_brkpoint__out_t bootfsm_brkpoint;
+        interface_regs__control__scan_mode__out_t scan_mode;
         interface_regs__control__ss_debug_intent__out_t ss_debug_intent;
         interface_regs__control__i3c_axi_user_id_filtering__out_t i3c_axi_user_id_filtering;
         interface_regs__control__ocp_lock_en__out_t ocp_lock_en;
@@ -286,7 +301,7 @@ package caliptra_fpga_realtime_regs_pkg;
 
     typedef struct {
         logic value;
-    } interface_regs__status__ready_for_fw_push__out_t;
+    } interface_regs__status__ready_for_mb_processing__out_t;
 
     typedef struct {
         logic value;
@@ -304,7 +319,7 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__status__cptra_error_fatal__out_t cptra_error_fatal;
         interface_regs__status__cptra_error_non_fatal__out_t cptra_error_non_fatal;
         interface_regs__status__ready_for_fuses__out_t ready_for_fuses;
-        interface_regs__status__ready_for_fw_push__out_t ready_for_fw_push;
+        interface_regs__status__ready_for_mb_processing__out_t ready_for_mb_processing;
         interface_regs__status__ready_for_runtime__out_t ready_for_runtime;
         interface_regs__status__mailbox_data_avail__out_t mailbox_data_avail;
         interface_regs__status__mailbox_flow_done__out_t mailbox_flow_done;
