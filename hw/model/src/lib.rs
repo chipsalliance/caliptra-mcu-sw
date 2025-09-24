@@ -655,8 +655,7 @@ mod tests {
     #[test]
     pub fn test_mailbox_execute() -> Result<()> {
         let mcu_rom = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
-            binaries
-                .test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)?
+            binaries.test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)?
         } else {
             let rom_file = mcu_builder::test_rom_build(
                 Some(platform()),
