@@ -1,4 +1,5 @@
-// use coset::{cbor::value::Value, cwt::ClaimsSetBuilder, iana, CborSerializable, Header};
+// Licensed under the Apache-2.0 license
+
 use crate::certificate::{CertContext, KEY_LABEL_SIZE, MAX_ECC_CERT_SIZE};
 use crate::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
 use crate::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
@@ -54,30 +55,6 @@ impl<'a> OcpEatCwt<'a> {
         }
     }
 
-    fn initialize_concise_evidence(&self, tagged: bool) -> ConciseEvidence {
-        let ev_triples_map = EvTriplesMap {
-            evidence_triples: None,
-            identity_triples: None,
-            dependency_triples: None,
-            membership_triples: None,
-            coswid_triples: None,
-            attest_key_triples: None,
-        };
-        let evidence_map = ConciseEvidenceMap {
-            ev_triples: ev_triples_map,
-            evidence_id: None,
-            profile: None,
-        };
-
-        let evidence_map = match tagged {
-            true => ConciseEvidence::Tagged(TaggedConciseEvidence {
-                concise_evidence: evidence_map,
-            }),
-            false => ConciseEvidence::Map(evidence_map),
-        };
-
-        evidence_map
-    }
 
     async fn generate_evidence_claims(&self, eat_buffer: &mut [u8]) -> CaliptraApiResult<usize> {
         // Measurements - tagged concise evidence
@@ -101,7 +78,7 @@ impl<'a> OcpEatCwt<'a> {
             &cti[..cti_len],
             self.eat_nonce,
             debug_status,
-            &OCP_SECURITY_OID,
+            OCP_SECURITY_OID,
             &measurements_array,
         );
 
@@ -182,18 +159,18 @@ impl<'a> OcpEatCwt<'a> {
 
         let mut sig_context_buffer = [0u8; MAX_SIG_CONTEXT_SIZE];
         let sig_context_len =
-            eat_encoder::create_sign1_context(&mut sig_context_buffer, &protected_hdr, &payload)
+            eat_encoder::create_sign1_context(&mut sig_context_buffer, protected_hdr, payload)
                 .map_err(CaliptraApiError::Eat)?;
 
         let tbs = &sig_context_buffer[..sig_context_len];
 
         let mut hash = [0u8; SHA384_HASH_SIZE];
-        HashContext::hash_all(HashAlgoType::SHA384, &tbs, &mut hash).await?;
+        HashContext::hash_all(HashAlgoType::SHA384, tbs, &mut hash).await?;
         let mut cert_context = CertContext::new();
         let mut sig = [0u8; ECC_P384_SIGNATURE_SIZE];
 
         cert_context
-            .sign(Some(&self.leaf_cert_label), &hash, &mut sig)
+            .sign(Some(self.leaf_cert_label), &hash, &mut sig)
             .await?;
 
         Ok(sig)

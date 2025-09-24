@@ -50,7 +50,7 @@ members = [
     "runtime/userspace/api/caliptra-api",
     "runtime/userspace/api/pldm-lib",
     "runtime/userspace/api/spdm-lib",
-    "runtime/userspace/eat",
+    "runtime/userspace/api/eat",
     "runtime/userspace/libtock/apis/interface/console",
     "runtime/userspace/libtock/apis/kernel/low_level_debug",
     "runtime/userspace/libtock/apis/peripherals/alarm",
@@ -186,7 +186,7 @@ mcu-rom-common = { path = "rom" }
 mcu-test-harness = {path = "platforms/test_harness"}
 mcu-testing-common = { path = "common/testing" }
 mcu-tock-veer = { path = "runtime/kernel/veer" }
-ocp-eat = { path = "runtime/userspace/eat", default-features = false }
+ocp-eat = { path = "runtime/userspace/api/eat", default-features = false }
 pldm-common = { path = "common/pldm"}
 pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
 pldm-ua = { path = "emulator/bmc/pldm-ua"}

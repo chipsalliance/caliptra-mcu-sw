@@ -10,4 +10,3 @@ pub mod evidence;
 pub mod firmware_update;
 pub mod image_loading;
 pub mod mailbox_api;
-pub mod ocp_eat_cwt;

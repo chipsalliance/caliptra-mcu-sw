@@ -8,10 +8,9 @@ use crate::protocol::*;
 use libapi_caliptra::certificate::KEY_LABEL_SIZE;
 use libapi_caliptra::crypto::asym::AsymAlgo;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
+use libapi_caliptra::evidence::ocp_eat_claims::{OcpEatCwt, OcpEatType};
 use libapi_caliptra::evidence::pcr_quote::{PcrQuote, PCR_QUOTE_BUFFER_SIZE};
 use libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
-// use ocp_eat::token::{OcpEatCwt, OcpEatType};
-use libapi_caliptra::ocp_eat_cwt::{OcpEatCwt, OcpEatType};
 use zerocopy::IntoBytes;
 
 const MAX_MEASUREMENT_RECORD_SIZE: usize =
