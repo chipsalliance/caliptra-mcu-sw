@@ -9,12 +9,11 @@ use libapi_caliptra::certificate::KEY_LABEL_SIZE;
 use libapi_caliptra::crypto::asym::AsymAlgo;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use libapi_caliptra::evidence::ocp_eat_claims::{OcpEatCwt, OcpEatType};
-use libapi_caliptra::evidence::pcr_quote::{PcrQuote, PCR_QUOTE_BUFFER_SIZE};
+use libapi_caliptra::evidence::pcr_quote::PcrQuote;
 use libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use zerocopy::IntoBytes;
 
-const MAX_MEASUREMENT_RECORD_SIZE: usize =
-    PCR_QUOTE_BUFFER_SIZE + size_of::<DmtfMeasurementBlockMetadata>();
+const MAX_MEASUREMENT_RECORD_SIZE: usize = 4096;
 const MEAS_BLOCK_METADATA_SIZE: usize = size_of::<DmtfMeasurementBlockMetadata>();
 
 const DPE_EAT_AK_LEAF_CERT_LABEL: [u8; KEY_LABEL_SIZE] = [
@@ -181,7 +180,7 @@ impl MeasurementManifest {
         measurement_record[0..MEAS_BLOCK_METADATA_SIZE].copy_from_slice(metadata.as_bytes());
 
         let quote_slice = &mut measurement_record
-            [MEAS_BLOCK_METADATA_SIZE..MEAS_BLOCK_METADATA_SIZE + PCR_QUOTE_BUFFER_SIZE];
+            [MEAS_BLOCK_METADATA_SIZE..MEAS_BLOCK_METADATA_SIZE + measurement_value_size];
 
         let copied_len = PcrQuote::pcr_quote(quote_slice, with_pqc_sig)
             .await
