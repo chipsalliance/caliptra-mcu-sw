@@ -1,0 +1,11 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-mbox-common"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+caliptra-api.workspace = true
+zerocopy.workspace = true

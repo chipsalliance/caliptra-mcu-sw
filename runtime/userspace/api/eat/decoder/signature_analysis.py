@@ -1,6 +1,5 @@
-# Licensed under the Apache-2.0 license
-
 #!/usr/bin/env python3
+# Licensed under the Apache-2.0 license
 """
 Enhanced COSE signature analysis for decode.py
 """

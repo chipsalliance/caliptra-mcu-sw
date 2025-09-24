@@ -1,6 +1,5 @@
-# Licensed under the Apache-2.0 license
-
 #!/usr/bin/env python3
+# Licensed under the Apache-2.0 license
 """
 Simple COSE Sign1 / EAT Token Decoder
 
