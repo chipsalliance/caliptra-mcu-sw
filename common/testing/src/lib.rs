@@ -32,15 +32,25 @@ pub fn wait_for_runtime_start() {
 /// the emulator is very slow (<1,000 ticks per second), in which case it
 /// the exact number of ticks slept may vary by up to 1,000.
 pub fn sleep_emulator_ticks(ticks: u32) {
-    let wait = ticks as u64;
-    let start = MCU_TICKS.load(Ordering::Relaxed);
-    while MCU_RUNNING.load(Ordering::Relaxed) {
-        let now = MCU_TICKS.load(Ordering::Relaxed);
-        if now - start >= wait {
-            break;
+    #[cfg(not(feature = "fpga_realtime"))]
+    {
+        let wait = ticks as u64;
+        let start = MCU_TICKS.load(Ordering::Relaxed);
+        while MCU_RUNNING.load(Ordering::Relaxed) {
+            let now = MCU_TICKS.load(Ordering::Relaxed);
+            if now - start >= wait {
+                break;
+            }
+            let lock = TICK_LOCK.lock().unwrap();
+            let _ = TICK_COND.wait_timeout(lock, Duration::from_secs(1));
         }
-        let lock = TICK_LOCK.lock().unwrap();
-        let _ = TICK_COND.wait_timeout(lock, Duration::from_secs(1));
+   
+
+        return;
+    }
+    #[cfg(feature = "fpga_realtime")]
+    {
+        std::thread::sleep(Duration::from_micros(ticks as u64));
     }
 }
 

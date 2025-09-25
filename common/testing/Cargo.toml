@@ -13,6 +13,9 @@ pldm-common.workspace = true
 pldm-ua.workspace = true
 zerocopy.workspace = true
 
+[features]
+fpga_realtime = []
+
 [dev-dependencies]
 hex.workspace = true
 rand.workspace = true
