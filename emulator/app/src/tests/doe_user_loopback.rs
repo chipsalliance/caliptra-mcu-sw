@@ -11,6 +11,8 @@ use crate::tests::doe_util::protocol::DataObjectType;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
 
+const TEST_NAME: &str = "DOE_USER_LOOPBACK_TEST";
+
 struct Test {
     test_vector: Vec<u8>,
     test_state: DoeTestState,
@@ -44,7 +46,8 @@ impl DoeTransportTest for Test {
         wait_for_responder: bool,
     ) {
         println!(
-            "DOE_USER_LOOPBACK: Running test with test vector len {}",
+            "{}: Running test with test vector len {}",
+            TEST_NAME,
             self.test_vector.len()
         );
 
@@ -55,6 +58,8 @@ impl DoeTransportTest for Test {
                 DoeTestState::Start => {
                     if wait_for_responder {
                         sleep_emulator_ticks(1_000_000);
+                    } else {
+                        sleep_emulator_ticks(100_000);
                     }
                     self.test_state = DoeTestState::SendData;
                 }
@@ -65,7 +70,7 @@ impl DoeTransportTest for Test {
                         self.test_state = DoeTestState::ReceiveData;
                         sleep_emulator_ticks(100_000);
                     } else {
-                        println!("DOE_USER_LOOPBACK: Failed to send request");
+                        println!("{}: Failed to send request", TEST_NAME);
                         self.passed = false;
                         self.test_state = DoeTestState::Finish;
                     }
@@ -74,14 +79,15 @@ impl DoeTransportTest for Test {
                     Ok(response) if !response.is_empty() => {
                         if response == self.test_vector {
                             println!(
-                                "DOE_USER_LOOPBACK: Received response matches expected with len {}",
+                                "{}: Received response matches expected with len {}",
+                                TEST_NAME,
                                 response.len()
                             );
                             self.passed = true;
                         } else {
                             println!(
-                                "DOE_USER_LOOPBACK: Received response does not match expected: {:?} != {:?}",
-                                response, self.test_vector
+                                "{}: Received response does not match expected: {:?} != {:?}",
+                                TEST_NAME, response, self.test_vector
                             );
                             self.passed = false;
                         }
@@ -93,24 +99,28 @@ impl DoeTransportTest for Test {
                             // Stay in ReceiveData state and yield for a bit
                             std::thread::sleep(std::time::Duration::from_millis(300));
                             println!(
-                                "DOE_USER_LOOPBACK: No response received, retrying... ({} retries left)",
-                                self.retry_count
+                                "{}: No response received, retrying... ({} retries left)",
+                                TEST_NAME, self.retry_count
                             );
                         } else {
-                            println!("DOE_USER_LOOPBACK: No response received after retries, failing test");
+                            println!(
+                                "{}: No response received after retries, failing test",
+                                TEST_NAME
+                            );
                             self.passed = false;
                             self.test_state = DoeTestState::Finish;
                         }
                     }
                     Err(e) => {
-                        println!("DOE_USER_LOOPBACK: Failed to receive response: {:?}", e);
+                        println!("{}: Failed to receive response: {:?}", TEST_NAME, e);
                         self.passed = false;
                         self.test_state = DoeTestState::Finish;
                     }
                 },
                 DoeTestState::Finish => {
                     println!(
-                        "DOE_DISCOVERY_TEST: Test with data len {} {}",
+                        "{}: Test with data len {} {}",
+                        TEST_NAME,
                         self.test_vector.len(),
                         if self.passed { "passed!" } else { "failed!" }
                     );

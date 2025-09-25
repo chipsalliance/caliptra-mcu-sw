@@ -26,6 +26,8 @@ pub enum LccUtilError {
     MutexAlreadyClaimed,
     #[error("Failed to claim the LCC transition mutex (value = 0x{0:x}).")]
     FailedToClaimMutex(u32),
+    #[error("Status errors encountered (STATUS = {0:#b}).")]
+    StatusErrors(LcCtrlStatus),
     #[error("Bad post transition state (state = {0}).")]
     BadPostTransitionState(String),
     #[error("Functionality unimplemented.")]
@@ -144,7 +146,7 @@ fn wait_for_status(
         // we are looking for in this comparison, since otherwise this
         // function would just bail.
         if polled_status.intersects(LcCtrlStatus::ERRORS & !status) {
-            bail!("status {polled_status:#b} has error bits set");
+            bail!(LccUtilError::StatusErrors(polled_status));
         }
 
         Ok(polled_status.contains(status))

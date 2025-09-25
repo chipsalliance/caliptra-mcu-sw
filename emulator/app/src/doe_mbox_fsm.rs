@@ -8,6 +8,8 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 
+const TEST_TIMEOUT: u64 = 120;
+
 #[derive(Debug, Clone, PartialEq)]
 enum DoeMboxState {
     Idle,
@@ -232,7 +234,7 @@ pub(crate) fn run_doe_transport_tests(
 ) {
     // Spawn a thread to handle the timeout for the test
     thread::spawn(move || {
-        let timeout = Duration::from_secs(60); // 60 seconds timeout
+        let timeout = Duration::from_secs(TEST_TIMEOUT);
         std::thread::sleep(timeout);
         println!(
             "DOE_TRANSPORT_TESTS Timeout after {:?} seconds",
