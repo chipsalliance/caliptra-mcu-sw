@@ -103,7 +103,10 @@ impl DoeTransportTest for Test {
                                 TEST_NAME, self.retry_count
                             );
                         } else {
-                            println!("{}: No response received after retries, failing test", TEST_NAME);
+                            println!(
+                                "{}: No response received after retries, failing test",
+                                TEST_NAME
+                            );
                             self.passed = false;
                             self.test_state = DoeTestState::Finish;
                         }
