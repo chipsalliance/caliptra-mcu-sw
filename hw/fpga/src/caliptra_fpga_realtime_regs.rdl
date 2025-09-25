@@ -206,7 +206,7 @@ regfile interface_regs {
     } mci_generic_output_wires[2];
 
     reg {
-        field { sw=rw; } key[32] = 32'h0;
+        field { sw=rw; hw=na; } key[32] = 32'h0;
     } ocp_lock_key_release_reg[16] @ 0x200;
 };
 
