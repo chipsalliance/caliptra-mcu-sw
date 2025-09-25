@@ -160,8 +160,8 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |  1 |       cptra_ss_rst_b       |  rw  | 0x0 |  — |
 |  2 |   cptra_obf_uds_seed_vld   |  rw  | 0x0 |  — |
 |  3 | cptra_obf_field_entropy_vld|  rw  | 0x0 |  — |
-|  4 |       ss_debug_locked      |  rw  | 0x0 |  — |
-| 6:5|     ss_device_lifecycle    |  rw  | 0x0 |  — |
+|  4 |        debug_locked        |  rw  | 0x0 |  — |
+| 6:5|      device_lifecycle      |  rw  | 0x0 |  — |
 |  7 |      bootfsm_brkpoint      |  rw  | 0x1 |  — |
 |  8 |          scan_mode         |  rw  | 0x0 |  — |
 | 16 |       ss_debug_intent      |  rw  | 0x0 |  — |
@@ -179,11 +179,11 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 
 <p>RSVD in SS</p>
 
-#### ss_debug_locked field
+#### debug_locked field
 
 <p>RSVD in SS</p>
 
-#### ss_device_lifecycle field
+#### device_lifecycle field
 
 <p>RSVD in SS</p>
 

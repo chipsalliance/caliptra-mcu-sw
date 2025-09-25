@@ -2060,8 +2060,8 @@ caliptra_ss_top caliptra_ss_top_0 (
 
     // Caliptra JTAG Interface
     .cptra_ss_cptra_core_jtag_tck_i(jtag_tck),
-    .cptra_ss_cptra_core_jtag_tdi_i(jtag_tdi),
     .cptra_ss_cptra_core_jtag_tms_i(jtag_tms),
+    .cptra_ss_cptra_core_jtag_tdi_i(jtag_tdi),
     .cptra_ss_cptra_core_jtag_trst_n_i(jtag_trst_n),
     .cptra_ss_cptra_core_jtag_tdo_o(jtag_tdo),
     .cptra_ss_cptra_core_jtag_tdoEn_o(),

@@ -38,8 +38,8 @@ regfile interface_regs {
         field { sw=rw; hw=r; desc = "RSVD in SS"; } cptra_obf_uds_seed_vld[2:2] = 1'b0;
         field { sw=rw; hw=r; desc = "RSVD in SS"; } cptra_obf_field_entropy_vld[3:3] = 1'b0;
 
-        field { sw=rw; hw=r; desc = "RSVD in SS"; } ss_debug_locked[4:4] = 1'b0;
-        field { sw=rw; hw=r; desc = "RSVD in SS"; } ss_device_lifecycle[6:5] = 2'b0;
+        field { sw=rw; hw=r; desc = "RSVD in SS"; } debug_locked[4:4] = 1'b0;
+        field { sw=rw; hw=r; desc = "RSVD in SS"; } device_lifecycle[6:5] = 2'b0;
         field { sw=rw; hw=r; } bootfsm_brkpoint[7:7] = 1'b1;
         field { sw=rw; hw=r; desc = "Scan mode for Caliptra Core"; } scan_mode[8:8] = 1'b0;
 

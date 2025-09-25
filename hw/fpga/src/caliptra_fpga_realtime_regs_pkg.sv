@@ -256,11 +256,11 @@ package caliptra_fpga_realtime_regs_pkg;
 
     typedef struct {
         logic value;
-    } interface_regs__control__ss_debug_locked__out_t;
+    } interface_regs__control__debug_locked__out_t;
 
     typedef struct {
         logic [1:0] value;
-    } interface_regs__control__ss_device_lifecycle__out_t;
+    } interface_regs__control__device_lifecycle__out_t;
 
     typedef struct {
         logic value;
@@ -299,8 +299,8 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__control__cptra_ss_rst_b__out_t cptra_ss_rst_b;
         interface_regs__control__cptra_obf_uds_seed_vld__out_t cptra_obf_uds_seed_vld;
         interface_regs__control__cptra_obf_field_entropy_vld__out_t cptra_obf_field_entropy_vld;
-        interface_regs__control__ss_debug_locked__out_t ss_debug_locked;
-        interface_regs__control__ss_device_lifecycle__out_t ss_device_lifecycle;
+        interface_regs__control__debug_locked__out_t debug_locked;
+        interface_regs__control__device_lifecycle__out_t device_lifecycle;
         interface_regs__control__bootfsm_brkpoint__out_t bootfsm_brkpoint;
         interface_regs__control__scan_mode__out_t scan_mode;
         interface_regs__control__ss_debug_intent__out_t ss_debug_intent;

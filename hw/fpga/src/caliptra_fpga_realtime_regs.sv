@@ -369,11 +369,11 @@ module caliptra_fpga_realtime_regs (
                 struct {
                     logic next;
                     logic load_next;
-                } ss_debug_locked;
+                } debug_locked;
                 struct {
                     logic [1:0] next;
                     logic load_next;
-                } ss_device_lifecycle;
+                } device_lifecycle;
                 struct {
                     logic next;
                     logic load_next;
@@ -735,10 +735,10 @@ module caliptra_fpga_realtime_regs (
                 } cptra_obf_field_entropy_vld;
                 struct {
                     logic value;
-                } ss_debug_locked;
+                } debug_locked;
                 struct {
                     logic [1:0] value;
-                } ss_device_lifecycle;
+                } device_lifecycle;
                 struct {
                     logic value;
                 } bootfsm_brkpoint;
@@ -1130,52 +1130,52 @@ module caliptra_fpga_realtime_regs (
         end
     end
     assign hwif_out.interface_regs.control.cptra_obf_field_entropy_vld.value = field_storage.interface_regs.control.cptra_obf_field_entropy_vld.value;
-    // Field: caliptra_fpga_realtime_regs.interface_regs.control.ss_debug_locked
+    // Field: caliptra_fpga_realtime_regs.interface_regs.control.debug_locked
     always_comb begin
         automatic logic [0:0] next_c;
         automatic logic load_next_c;
-        next_c = field_storage.interface_regs.control.ss_debug_locked.value;
+        next_c = field_storage.interface_regs.control.debug_locked.value;
         load_next_c = '0;
         if(decoded_reg_strb.interface_regs.control && decoded_req_is_wr) begin // SW write
-            next_c = (field_storage.interface_regs.control.ss_debug_locked.value & ~decoded_wr_biten[4:4]) | (decoded_wr_data[4:4] & decoded_wr_biten[4:4]);
+            next_c = (field_storage.interface_regs.control.debug_locked.value & ~decoded_wr_biten[4:4]) | (decoded_wr_data[4:4] & decoded_wr_biten[4:4]);
             load_next_c = '1;
         end
-        field_combo.interface_regs.control.ss_debug_locked.next = next_c;
-        field_combo.interface_regs.control.ss_debug_locked.load_next = load_next_c;
+        field_combo.interface_regs.control.debug_locked.next = next_c;
+        field_combo.interface_regs.control.debug_locked.load_next = load_next_c;
     end
     always_ff @(posedge clk) begin
         if(rst) begin
-            field_storage.interface_regs.control.ss_debug_locked.value <= 1'h0;
+            field_storage.interface_regs.control.debug_locked.value <= 1'h0;
         end else begin
-            if(field_combo.interface_regs.control.ss_debug_locked.load_next) begin
-                field_storage.interface_regs.control.ss_debug_locked.value <= field_combo.interface_regs.control.ss_debug_locked.next;
+            if(field_combo.interface_regs.control.debug_locked.load_next) begin
+                field_storage.interface_regs.control.debug_locked.value <= field_combo.interface_regs.control.debug_locked.next;
             end
         end
     end
-    assign hwif_out.interface_regs.control.ss_debug_locked.value = field_storage.interface_regs.control.ss_debug_locked.value;
-    // Field: caliptra_fpga_realtime_regs.interface_regs.control.ss_device_lifecycle
+    assign hwif_out.interface_regs.control.debug_locked.value = field_storage.interface_regs.control.debug_locked.value;
+    // Field: caliptra_fpga_realtime_regs.interface_regs.control.device_lifecycle
     always_comb begin
         automatic logic [1:0] next_c;
         automatic logic load_next_c;
-        next_c = field_storage.interface_regs.control.ss_device_lifecycle.value;
+        next_c = field_storage.interface_regs.control.device_lifecycle.value;
         load_next_c = '0;
         if(decoded_reg_strb.interface_regs.control && decoded_req_is_wr) begin // SW write
-            next_c = (field_storage.interface_regs.control.ss_device_lifecycle.value & ~decoded_wr_biten[6:5]) | (decoded_wr_data[6:5] & decoded_wr_biten[6:5]);
+            next_c = (field_storage.interface_regs.control.device_lifecycle.value & ~decoded_wr_biten[6:5]) | (decoded_wr_data[6:5] & decoded_wr_biten[6:5]);
             load_next_c = '1;
         end
-        field_combo.interface_regs.control.ss_device_lifecycle.next = next_c;
-        field_combo.interface_regs.control.ss_device_lifecycle.load_next = load_next_c;
+        field_combo.interface_regs.control.device_lifecycle.next = next_c;
+        field_combo.interface_regs.control.device_lifecycle.load_next = load_next_c;
     end
     always_ff @(posedge clk) begin
         if(rst) begin
-            field_storage.interface_regs.control.ss_device_lifecycle.value <= 2'h0;
+            field_storage.interface_regs.control.device_lifecycle.value <= 2'h0;
         end else begin
-            if(field_combo.interface_regs.control.ss_device_lifecycle.load_next) begin
-                field_storage.interface_regs.control.ss_device_lifecycle.value <= field_combo.interface_regs.control.ss_device_lifecycle.next;
+            if(field_combo.interface_regs.control.device_lifecycle.load_next) begin
+                field_storage.interface_regs.control.device_lifecycle.value <= field_combo.interface_regs.control.device_lifecycle.next;
             end
         end
     end
-    assign hwif_out.interface_regs.control.ss_device_lifecycle.value = field_storage.interface_regs.control.ss_device_lifecycle.value;
+    assign hwif_out.interface_regs.control.device_lifecycle.value = field_storage.interface_regs.control.device_lifecycle.value;
     // Field: caliptra_fpga_realtime_regs.interface_regs.control.bootfsm_brkpoint
     always_comb begin
         automatic logic [0:0] next_c;
@@ -2698,8 +2698,8 @@ module caliptra_fpga_realtime_regs (
     assign readback_array[2][1:1] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.cptra_ss_rst_b.value : '0;
     assign readback_array[2][2:2] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.cptra_obf_uds_seed_vld.value : '0;
     assign readback_array[2][3:3] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.cptra_obf_field_entropy_vld.value : '0;
-    assign readback_array[2][4:4] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.ss_debug_locked.value : '0;
-    assign readback_array[2][6:5] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.ss_device_lifecycle.value : '0;
+    assign readback_array[2][4:4] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.debug_locked.value : '0;
+    assign readback_array[2][6:5] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.device_lifecycle.value : '0;
     assign readback_array[2][7:7] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.bootfsm_brkpoint.value : '0;
     assign readback_array[2][8:8] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.scan_mode.value : '0;
     assign readback_array[2][15:9] = '0;
