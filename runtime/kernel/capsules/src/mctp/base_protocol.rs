@@ -6,7 +6,6 @@
 //!
 
 use bitfield::bitfield;
-use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const MCTP_TEST_MSG_TYPE: u8 = 0x70;
 
@@ -22,31 +21,29 @@ pub const MCTP_BROADCAST_EID: u8 = 0xFF;
 pub const MCTP_BASELINE_TRANSMISSION_UNIT: usize = 64;
 
 bitfield! {
-    #[repr(C)]
-    #[derive(Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
-    pub struct MCTPHeader(MSB0 [u8]);
-    impl Debug;
+    #[derive(Clone, Copy)]
+    pub struct MCTPHeader(u32);
     u8;
-    rsvd, _: 4, 0;
-    pub hdr_version, set_hdr_version: 7, 4;
+    pub hdr_version, set_hdr_version: 3, 0;
+    rsvd, _: 7, 4;
     pub dest_eid, set_dest_eid: 15, 8;
     pub src_eid, set_src_eid: 23, 16;
-    pub som, set_som: 24, 24;
-    pub eom, set_eom: 25, 25;
-    pub pkt_seq, set_pkt_seq: 27, 26;
-    pub tag_owner, set_tag_owner: 28, 28;
-    pub msg_tag, set_msg_tag: 31, 29;
+    pub msg_tag, set_msg_tag: 26, 24;
+    pub tag_owner, set_tag_owner: 27, 27;
+    pub pkt_seq, set_pkt_seq: 29, 28;
+    pub eom, set_eom: 30, 30;
+    pub som, set_som: 31, 31;
 }
 
-impl Default for MCTPHeader<[u8; MCTP_HDR_SIZE]> {
+impl Default for MCTPHeader {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MCTPHeader<[u8; MCTP_HDR_SIZE]> {
+impl MCTPHeader {
     pub fn new() -> Self {
-        MCTPHeader([0; MCTP_HDR_SIZE])
+        MCTPHeader(0)
     }
 
     #[allow(clippy::too_many_arguments)]

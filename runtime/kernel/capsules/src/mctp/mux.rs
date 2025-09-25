@@ -16,7 +16,6 @@ use kernel::utilities::cells::TakeCell;
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
 use romtime::println;
-use zerocopy::{FromBytes, IntoBytes};
 
 /// MUX struct that manages multiple MCTP driver users (clients).
 ///
@@ -109,10 +108,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         msg_tag
     }
 
-    fn interpret_packet(
-        &self,
-        packet: &[u8],
-    ) -> (MCTPHeader<[u8; MCTP_HDR_SIZE]>, Option<MessageType>, usize) {
+    fn interpret_packet(&self, packet: &[u8]) -> (MCTPHeader, Option<MessageType>, usize) {
         let mut msg_type = None;
         let mut mctp_header = MCTPHeader::new();
         let mut payload_offset = 0;
@@ -121,12 +117,9 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
             return (mctp_header, msg_type, payload_offset);
         }
 
-        mctp_header = match MCTPHeader::read_from_bytes(&packet[0..MCTP_HDR_SIZE]) {
-            Ok(header) => header,
-            Err(_) => {
-                return (mctp_header, msg_type, payload_offset);
-            }
-        };
+        mctp_header = MCTPHeader(u32::from_le_bytes(
+            packet[0..MCTP_HDR_SIZE].try_into().unwrap(),
+        ));
 
         if mctp_header.hdr_version() != 1 {
             return (mctp_header, msg_type, payload_offset);
@@ -144,48 +137,41 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
 
     fn fill_mctp_ctrl_hdr_resp(
         &self,
-        mctp_ctrl_msg_hdr_resp: MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]>,
+        mctp_ctrl_msg_hdr_resp: MCTPCtrlMsgHdr,
         resp_buf: &mut [u8],
     ) -> Result<(), ErrorCode> {
         if resp_buf.len() < MCTP_CTRL_MSG_HEADER_LEN {
             return Err(ErrorCode::INVAL);
         }
-
-        mctp_ctrl_msg_hdr_resp.write_to(&mut resp_buf[0..MCTP_CTRL_MSG_HEADER_LEN]).map_err(|_| {
-            println!("MuxMCTPDriver: Failed to write MCTP Control message header. Dropping tx packet.");
-            ErrorCode::FAIL
-        })
+        resp_buf[0..MCTP_CTRL_MSG_HEADER_LEN]
+            .copy_from_slice(&mctp_ctrl_msg_hdr_resp.0.to_le_bytes()[..MCTP_CTRL_MSG_HEADER_LEN]);
+        Ok(())
     }
 
     fn fill_mctp_hdr_resp(
         &self,
-        mctp_hdr_resp: MCTPHeader<[u8; MCTP_HDR_SIZE]>,
+        mctp_hdr_resp: MCTPHeader,
         resp_buf: &mut [u8],
     ) -> Result<(), ErrorCode> {
         if resp_buf.len() < MCTP_HDR_SIZE {
             return Err(ErrorCode::INVAL);
         }
-
-        mctp_hdr_resp
-            .write_to(&mut resp_buf[0..MCTP_HDR_SIZE])
-            .map_err(|_| {
-                println!("MuxMCTPDriver: Failed to write MCTP header. Dropping tx packet.");
-                ErrorCode::FAIL
-            })
+        resp_buf[0..MCTP_HDR_SIZE].copy_from_slice(&mctp_hdr_resp.0.to_le_bytes());
+        Ok(())
     }
 
     fn process_mctp_control_msg(
         &self,
-        mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>,
+        mctp_hdr: MCTPHeader,
         msg_buf: &[u8],
     ) -> Result<(), ErrorCode> {
         if msg_buf.len() < MCTP_CTRL_MSG_HEADER_LEN {
             return Err(ErrorCode::INVAL);
         }
 
-        let mctp_ctrl_msg_hdr: MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]> =
-            MCTPCtrlMsgHdr::read_from_bytes(&msg_buf[0..MCTP_CTRL_MSG_HEADER_LEN])
-                .map_err(|_| ErrorCode::FAIL)?;
+        let mut hdr = [0; 4];
+        hdr[0..MCTP_CTRL_MSG_HEADER_LEN].copy_from_slice(&msg_buf[0..MCTP_CTRL_MSG_HEADER_LEN]);
+        let mctp_ctrl_msg_hdr = MCTPCtrlMsgHdr(u32::from_le_bytes(hdr));
 
         if mctp_ctrl_msg_hdr.rq() != 1 || mctp_ctrl_msg_hdr.datagram() != 0 {
             // Only Command/Request messages are handled
@@ -320,7 +306,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
 
     fn process_first_packet(
         &self,
-        mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>,
+        mctp_hdr: MCTPHeader,
         msg_type: MessageType,
         pkt_payload: &[u8],
     ) {
@@ -346,7 +332,8 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         }
     }
 
-    fn process_packet(&self, mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>, pkt_payload: &[u8]) {
+    #[inline(never)]
+    fn process_packet(&self, mctp_hdr: MCTPHeader, pkt_payload: &[u8]) {
         if self.local_eid != mctp_hdr.dest_eid().into() {
             println!("MuxMCTPDriver: Packet not for this Endpoint. Dropping packet.");
             return;
@@ -360,7 +347,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         let rx_state = self
             .receiver_list
             .iter()
-            .find(|rx_state| rx_state.is_next_packet(&mctp_hdr, pkt_payload.len()));
+            .find(|rx_state| rx_state.is_next_packet(mctp_hdr, pkt_payload.len()));
 
         match rx_state {
             Some(rx_state) => {
