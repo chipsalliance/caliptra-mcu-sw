@@ -15,6 +15,7 @@ use caliptra_emu_bus::Bus;
 use caliptra_emu_bus::BusError;
 use caliptra_emu_bus::BusMmio;
 use caliptra_emu_bus::{Clock, Event};
+use caliptra_emu_cpu::CpuOrgArgs;
 use caliptra_emu_cpu::{Cpu, CpuArgs, InstrTracer, Pic};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::SocToCaliptraBus;
@@ -360,9 +361,13 @@ impl McuHwModel for ModelEmulated {
             Some(Box::new(dma_ctrl)),
         );
 
-        let args = CpuArgs::default();
+        let args = CpuArgs {
+            org: CpuOrgArgs {
+                reset_vector: McuMemoryMap::default().rom_offset,
+                ..Default::default()
+            },
+        };
         let mut cpu = Cpu::new(BusLogger::new(auto_root_bus), clock, pic, args);
-        cpu.write_pc(McuMemoryMap::default().rom_offset);
 
         if let Some(stack_info) = params.stack_info {
             cpu.with_stack_info(stack_info);
@@ -423,7 +428,7 @@ impl McuHwModel for ModelEmulated {
             hw.cycle_count() >= BOOT_CYCLES
                 || hw
                     .mci_boot_milestones()
-                    .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
+                    .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
         });
         use std::io::Write;
         let mut w = std::io::Sink::default();
@@ -433,7 +438,7 @@ impl McuHwModel for ModelEmulated {
         }
         assert!(self
             .mci_boot_milestones()
-            .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE));
+            .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
         MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         Ok(())
     }
