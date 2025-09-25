@@ -43,6 +43,7 @@ struct MctpPldmSocketData {
 
 impl PldmSocket for MctpPldmSocket {
     fn send(&self, payload: &[u8]) -> Result<(), PldmTransportError> {
+        println!("PldmSocket send");
         let mut mctp_util = MctpUtil::new();
         mctp_util.set_pkt_payload_size(MAX_PLDM_PAYLOAD_SIZE);
         let mut mctp_common_header = MctpCommonHeader(0);
@@ -65,6 +66,7 @@ impl PldmSocket for MctpPldmSocket {
              * so we wait for a response for the first message
              */
             mctp_util.new_req(self.msg_tag);
+            println!("Sending 1 first request with msg_tag {}", self.msg_tag);
             let response = mctp_util.wait_for_responder(
                 self.msg_tag,
                 mctp_payload.as_mut_slice(),
@@ -75,6 +77,7 @@ impl PldmSocket for MctpPldmSocket {
             context.state = MctpPldmSocketState::FirstResponse;
             cvar.notify_all();
         } else if payload[0] & 0x80 == 0x80 {
+            println!("Sending 2 request with msg_tag {}", self.msg_tag);
             mctp_util.send_request(
                 self.msg_tag,
                 mctp_payload.as_mut_slice(),
@@ -82,6 +85,7 @@ impl PldmSocket for MctpPldmSocket {
                 self.target_addr,
             );
         } else {
+            println!("Sending 3 response with msg_tag {}", *self.response_msg_tag.lock().unwrap());
             let msg_tag = *self.response_msg_tag.lock().unwrap();
             mctp_util.set_src_eid(self.dest.0);
             mctp_util.set_dest_eid(self.source.0);

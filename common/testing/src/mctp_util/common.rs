@@ -134,9 +134,12 @@ impl MctpUtil {
 
         let mut retry = 100;
 
+        println!("MCTP_UTIL: Waiting for responder...");
         while MCU_RUNNING.load(Ordering::Relaxed) && retry > 0 {
+            println!("MCTP_UTIL: Retry count {}", retry);
             match i3c_state {
                 I3cControllerState::Start => {
+                    println!("I3cControllerState::Start");
                     // Add some delay before sending the first packet.
                     // The MCU might need some time to boot up and be ready to receive the request.
                     sleep_emulator_ticks(5_000_000);
@@ -144,6 +147,7 @@ impl MctpUtil {
                 }
 
                 I3cControllerState::SendPrivateWrite => {
+                    println!("I3cControllerState::SendPrivateWrite");
                     let write_pkt = pkts.front().unwrap().clone();
                     if stream.send_private_write(target_addr, write_pkt) {
                         i3c_state = I3cControllerState::WaitForIbi;
@@ -151,6 +155,7 @@ impl MctpUtil {
                     }
                 }
                 I3cControllerState::WaitForIbi => {
+                    println!("I3cControllerState::WaitForIbi");
                     if stream.receive_ibi(target_addr) {
                         i3c_state = I3cControllerState::ReceivePrivateRead;
                     } else {
@@ -160,6 +165,7 @@ impl MctpUtil {
                     }
                 }
                 I3cControllerState::ReceivePrivateRead => {
+                    println!("I3cControllerState::ReceivePrivateRead");
                     if let Some(data) = stream.receive_private_read(target_addr) {
                         if data[4] == msg_type {
                             let mut resp_pkts = VecDeque::new();
@@ -179,11 +185,12 @@ impl MctpUtil {
                     }
                 }
                 I3cControllerState::Finish => {
+                    println!("I3cControllerState::Finish");
                     break;
                 }
             }
         }
-
+        println!("MCTP_UTIL: No response received. Exiting after retries...");
         None
     }
 

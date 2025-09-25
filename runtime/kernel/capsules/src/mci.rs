@@ -100,6 +100,10 @@ impl SyscallDriver for Mci {
         arg2: usize,
         processid: ProcessId,
     ) -> CommandReturn {
+        romtime::println!(
+            "MCI driver command: cmd={} arg1={:#X} arg2={:#X}",
+            mci_cmd, arg1, arg2
+        );
         match mci_cmd as u32 {
             cmd::MCI_READ => self.read_reg(processid),
             cmd::MCI_WRITE => self.write_reg(arg1 as u32, processid),

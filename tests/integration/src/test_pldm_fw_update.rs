@@ -29,7 +29,7 @@ mod test {
     use std::time::Duration;
     use uuid::Uuid;
 
-    #[cfg_attr(feature = "fpga_realtime", ignore)]
+    //#[cfg_attr(feature = "fpga_realtime", ignore)]
     #[test]
     fn test_fw_update_e2e() {
         let feature = "test-pldm-fw-update-e2e";
@@ -39,6 +39,7 @@ mod test {
         let feature = feature.replace("_", "-");
         let mut hw = start_runtime_hw_model(Some(&feature), Some(65534));
 
+        wait_for_runtime_start();
         hw.start_i3c_controller();
 
         let pldm_transport =
@@ -195,6 +196,11 @@ mod test {
                 wait_for_runtime_start();
                 if !MCU_RUNNING.load(Ordering::Relaxed) {
                     exit(-1);
+                }
+                let secs_left = 10;
+                for i in 0..secs_left {
+                    println!("\r{} seconds left...", secs_left - i);
+                    std::thread::sleep(Duration::from_secs(1));
                 }
                 print!("Emulator: Running PLDM Loopback Test: ",);
                 let mut test = PldmFwUpdateTest::new(socket);

@@ -70,6 +70,7 @@ pub async fn image_loading_task() {
         feature = "test-pldm-fw-update-e2e",
     ))]
     {
+        mbox_sram.release_lock().unwrap();
         mbox_sram.acquire_lock().unwrap();
         match image_loading(&EMULATED_DMA_MAPPING).await {
             Ok(_) => {}

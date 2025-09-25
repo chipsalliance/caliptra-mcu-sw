@@ -4,7 +4,9 @@
 
 use crate::DefaultSyscalls;
 use core::marker::PhantomData;
+use libtock_console::Console;
 use libtock_platform::{ErrorCode, Syscalls};
+use core::fmt::Write;
 
 pub struct Mci<S: Syscalls = DefaultSyscalls> {
     syscall: PhantomData<S>,
@@ -26,6 +28,7 @@ impl<S: Syscalls> Mci<S> {
     }
 
     pub fn read(&self, reg_offset: u32, index: u32) -> Result<u32, ErrorCode> {
+        writeln!(Console::<DefaultSyscalls>::writer(),"MCU MCI Read: reg_offset={:#X}, index={:#X}", reg_offset, index).ok();
         S::command(self.driver_num, cmd::MCI_SET_REGISTER, reg_offset, index)
             .to_result::<(), ErrorCode>()?;
 

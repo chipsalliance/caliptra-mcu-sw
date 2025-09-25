@@ -262,7 +262,6 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 [[package]]
 name = "caliptra-api"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "bitflags 2.9.4",
  "caliptra-api-types",
@@ -277,7 +276,6 @@ dependencies = [
 [[package]]
 name = "caliptra-api-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "caliptra-image-types",
 ]
@@ -285,7 +283,6 @@ dependencies = [
 [[package]]
 name = "caliptra-auth-man-gen"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "anyhow",
  "bitflags 2.9.4",
@@ -300,7 +297,6 @@ dependencies = [
 [[package]]
 name = "caliptra-auth-man-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "bitfield",
  "bitflags 2.9.4",
@@ -315,7 +311,6 @@ dependencies = [
 [[package]]
 name = "caliptra-builder"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "anyhow",
  "caliptra-image-crypto",
@@ -340,7 +335,6 @@ dependencies = [
 [[package]]
 name = "caliptra-cfi-derive"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "paste",
  "proc-macro2",
@@ -362,7 +356,6 @@ dependencies = [
 [[package]]
 name = "caliptra-cfi-lib"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "caliptra-error",
  "caliptra-registers",
@@ -377,7 +370,6 @@ source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=a98e499d279e
 [[package]]
 name = "caliptra-coverage"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "anyhow",
  "bit-vec",
@@ -395,7 +387,6 @@ dependencies = [
 [[package]]
 name = "caliptra-cpu"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "caliptra-drivers",
  "caliptra-registers",
@@ -405,7 +396,6 @@ dependencies = [
 [[package]]
 name = "caliptra-drivers"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "arrayvec",
  "bitfield",
@@ -431,7 +421,6 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-bus"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "caliptra-emu-types",
  "tock-registers",
@@ -441,7 +430,6 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-cpu"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "bit-vec",
  "bitfield",
@@ -455,7 +443,6 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-crypto"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -470,7 +457,6 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-derive"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "caliptra-emu-bus",
  "caliptra-emu-types",
@@ -481,7 +467,6 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-periph"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "aes",
  "arrayref",
@@ -508,17 +493,14 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 
 [[package]]
 name = "caliptra-error"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 
 [[package]]
 name = "caliptra-gen-linker-scripts"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "caliptra_common",
 ]
@@ -526,7 +508,6 @@ dependencies = [
 [[package]]
 name = "caliptra-hw-model"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "anyhow",
  "bit-vec",
@@ -563,7 +544,6 @@ dependencies = [
 [[package]]
 name = "caliptra-hw-model-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "caliptra-api-types",
  "rand",
@@ -572,7 +552,6 @@ dependencies = [
 [[package]]
 name = "caliptra-image-crypto"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "anyhow",
  "caliptra-image-gen",
@@ -592,7 +571,6 @@ dependencies = [
 [[package]]
 name = "caliptra-image-elf"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "anyhow",
  "caliptra-image-gen",
@@ -603,7 +581,6 @@ dependencies = [
 [[package]]
 name = "caliptra-image-fake-keys"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "caliptra-image-gen",
  "caliptra-image-types",
@@ -614,7 +591,6 @@ dependencies = [
 [[package]]
 name = "caliptra-image-gen"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "anyhow",
  "bitflags 2.9.4",
@@ -631,7 +607,6 @@ dependencies = [
 [[package]]
 name = "caliptra-image-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "caliptra-cfi-derive",
  "caliptra-cfi-lib",
@@ -647,7 +622,6 @@ dependencies = [
 [[package]]
 name = "caliptra-image-verify"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "bitflags 2.9.4",
  "caliptra-cfi-derive",
@@ -662,7 +636,6 @@ dependencies = [
 [[package]]
 name = "caliptra-kat"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "caliptra-drivers",
  "caliptra-lms-types",
@@ -674,7 +647,6 @@ dependencies = [
 [[package]]
 name = "caliptra-lms-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "caliptra-cfi-derive",
  "caliptra-cfi-lib",
@@ -687,7 +659,6 @@ dependencies = [
 [[package]]
 name = "caliptra-registers"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "caliptra-registers-latest",
 ]
@@ -695,7 +666,6 @@ dependencies = [
 [[package]]
 name = "caliptra-registers-latest"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "ureg",
 ]
@@ -703,7 +673,6 @@ dependencies = [
 [[package]]
 name = "caliptra-runtime"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "arrayvec",
  "bitfield",
@@ -736,7 +705,6 @@ dependencies = [
 [[package]]
 name = "caliptra-test"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "anyhow",
  "asn1",
@@ -768,12 +736,10 @@ dependencies = [
 [[package]]
 name = "caliptra-test-harness-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 
 [[package]]
 name = "caliptra-x509"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "zeroize",
 ]
@@ -781,7 +747,6 @@ dependencies = [
 [[package]]
 name = "caliptra_common"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "bitfield",
  "bitflags 2.9.4",
@@ -1218,7 +1183,6 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "arrayvec",
  "caliptra-cfi-derive-git",
@@ -1416,7 +1380,6 @@ dependencies = [
 [[package]]
 name = "dpe"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "bitflags 2.9.4",
  "caliptra-cfi-derive-git",
@@ -2881,6 +2844,7 @@ dependencies = [
  "mcu-components",
  "mcu-config",
  "mcu-config-fpga",
+ "mcu-mbox-driver",
  "mcu-platforms-common",
  "mcu-tock-veer",
  "registers-generated",
@@ -3242,7 +3206,6 @@ checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 [[package]]
 name = "platform"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 dependencies = [
  "arrayvec",
  "cfg-if",
@@ -4366,7 +4329,6 @@ dependencies = [
 [[package]]
 name = "ureg"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1#386d3dc97853311ebd3d5a5b3944e9a1d5bfb9c1"
 
 [[package]]
 name = "url"

@@ -232,7 +232,7 @@ impl Default for InitParams<'_> {
             random_sram_puf: true,
             trace_path: None,
             stack_info: None,
-            enable_mcu_uart_log: false,
+            enable_mcu_uart_log: true,
             csr_hmac_key: [1; 16],
             soc_manifest: Default::default(),
             vendor_pk_hash: None,

@@ -199,6 +199,7 @@ impl<'a> MCTPRxState<'a> {
         pkt_payload: &[u8],
         recv_time: u32,
     ) {
+        println!("MCTP Receive driver");
         if mctp_hdr.som() != 1 {
             println!("MuxMCTPDriver - Received first packet without SOM. Dropping packet.");
             return;
