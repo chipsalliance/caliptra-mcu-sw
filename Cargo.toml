@@ -296,36 +296,9 @@ tock-registers = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86
 
 # Always optimize the emulator during tests, as it is a major bottleneck for
 # test speed.
-[profile.test.package.emulator]
+[profile.test]
 opt-level = 3
-[profile.test.package.emulator-caliptra]
-opt-level = 3
-[profile.test.package.emulator-periph]
-opt-level = 3
-[profile.test.package.tock-registers]
-opt-level = 3
-[profile.test.package.caliptra-emu-bus]
-opt-level = 3
-[profile.test.package.caliptra-emu-cpu]
-opt-level = 3
-[profile.test.package.caliptra-emu-crypto]
-opt-level = 3
-[profile.test.package.caliptra-emu-periph]
-opt-level = 3
-[profile.test.package.caliptra-emu-types]
-opt-level = 3
-[profile.test.package.caliptra-hw-model]
-opt-level = 3
-[profile.test.package.mcu-hw-model]
-opt-level = 3
-# optimize registers too
-[profile.test.package.ureg]
-opt-level = 3
-[profile.test.package.registers-generated]
-opt-level = 3
-[profile.test.package.emulator-registers-generated]
-opt-level = 3
-
+lto = "thin"
 
 [profile.release]
 debug = true      # Keep debug symbols in the release ELF so that we can debug more easily.
