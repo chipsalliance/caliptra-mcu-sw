@@ -42,7 +42,7 @@ async fn process_key_prog(
             &key_data.iv,
         )
         .await
-        .map_err(VdmError::IdeKmDriver)
+        .map_err(VdmError::Ide)
 }
 
 pub(crate) async fn handle_key_prog(
