@@ -113,19 +113,12 @@ set_property file_type SystemVerilog [get_files *.v]
 set_property file_type Verilog [get_files  $fpgaDir/src/caliptra_package_top.v]
 
 # Set caliptra_package_top as top in case next steps fail so that the top is something useful.
-if {$APB} {
-  set_property top caliptra_package_apb_top [current_fileset]
-} else {
-  set_property top caliptra_package_axi_top [current_fileset]
-}
+set_property top caliptra_package_axi_top [current_fileset]
 
 # Create block diagram that includes an instance of caliptra_package_top
 create_bd_design "caliptra_package_bd"
-if {$APB} {
-  create_bd_cell -type module -reference caliptra_package_apb_top caliptra_package_top_0
-} else {
-  create_bd_cell -type module -reference caliptra_package_axi_top caliptra_package_top_0
-}
+create_bd_cell -type module -reference caliptra_package_axi_top caliptra_package_top_0
+
 save_bd_design
 close_bd_design [get_bd_designs caliptra_package_bd]
 
@@ -134,7 +127,6 @@ puts "Fileset when packaging: [current_fileset]"
 puts "\n\nVERILOG DEFINES: [get_property verilog_define [current_fileset]]"
 ipx::package_project -root_dir $caliptrapackageDir -vendor design -library user -taxonomy /UserIP -import_files
 # Infer interfaces
-ipx::infer_bus_interfaces xilinx.com:interface:apb_rtl:1.0 [ipx::current_core]
 ipx::infer_bus_interfaces xilinx.com:interface:bram_rtl:1.0 [ipx::current_core]
 ipx::add_bus_parameter MASTER_TYPE [ipx::get_bus_interfaces rom_backdoor -of_objects [ipx::current_core]]
 ipx::add_bus_parameter MASTER_TYPE [ipx::get_bus_interfaces mcu_rom_backdoor -of_objects [ipx::current_core]]

@@ -90,7 +90,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 | 0x10C|                soc_config_user               |  — |
 | 0x110|               sram_config_user               |  — |
 | 0x114|               mcu_reset_vector               |  — |
-| 0x118|                   mci_error                  |  — |
+| 0x118|                 ss_all_error                 |  — |
 | 0x11C|                  mcu_config                  |  — |
 | 0x120|              uds_seed_base_addr              |  — |
 | 0x124|prod_debug_unlock_auth_pk_hash_reg_bank_offset|  — |
@@ -99,6 +99,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 | 0x130|          mci_generic_input_wires[1]          |  — |
 | 0x134|          mci_generic_output_wires[0]         |  — |
 | 0x138|          mci_generic_output_wires[1]         |  — |
+| 0x13C|           ss_key_release_base_addr           |  — |
+| 0x140|            ss_key_release_key_size           |  — |
+| 0x144|      ss_external_staging_area_base_addr      |  — |
+| 0x148|             cptra_ss_mcu_ext_int             |  — |
 | 0x200|          ocp_lock_key_release_reg[0]         |  — |
 | 0x204|          ocp_lock_key_release_reg[1]         |  — |
 | 0x208|          ocp_lock_key_release_reg[2]         |  — |
@@ -150,16 +154,66 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 - Base Offset: 0x8
 - Size: 0x4
 
-|Bits|         Identifier        |Access|Reset|Name|
-|----|---------------------------|------|-----|----|
-|  0 |       cptra_pwrgood       |  rw  | 0x0 |  — |
-|  1 |       cptra_ss_rst_b      |  rw  | 0x0 |  — |
-|  2 |   cptra_obf_uds_seed_vld  |  rw  | 0x0 |  — |
-|  3 |cptra_obf_field_entropy_vld|  rw  | 0x0 |  — |
-|  6 |      bootfsm_brkpoint     |  rw  | 0x0 |  — |
-|  7 |      ss_debug_intent      |  rw  | 0x0 |  — |
-|  8 | i3c_axi_user_id_filtering |  rw  | 0x0 |  — |
-| 31 |     trigger_axi_reset     |  rw  | 0x0 |  — |
+|Bits|         Identifier         |Access|Reset|Name|
+|----|----------------------------|------|-----|----|
+|  0 |        cptra_pwrgood       |  rw  | 0x0 |  — |
+|  1 |       cptra_ss_rst_b       |  rw  | 0x0 |  — |
+|  2 |   cptra_obf_uds_seed_vld   |  rw  | 0x0 |  — |
+|  3 | cptra_obf_field_entropy_vld|  rw  | 0x0 |  — |
+|  4 |        debug_locked        |  rw  | 0x0 |  — |
+| 6:5|      device_lifecycle      |  rw  | 0x0 |  — |
+|  7 |      bootfsm_brkpoint      |  rw  | 0x1 |  — |
+|  8 |          scan_mode         |  rw  | 0x0 |  — |
+| 16 |       ss_debug_intent      |  rw  | 0x0 |  — |
+| 17 |  i3c_axi_user_id_filtering |  rw  | 0x0 |  — |
+| 18 |         ocp_lock_en        |  rw  | 0x1 |  — |
+| 19 |lc_Allow_RMA_or_SCRAP_on_PPD|  rw  | 0x0 |  — |
+| 20 |    FIPS_ZEROIZATION_PPD    |  rw  | 0x0 |  — |
+| 31 |      trigger_axi_reset     |  rw  | 0x0 |  — |
+
+#### cptra_obf_uds_seed_vld field
+
+<p>RSVD in SS</p>
+
+#### cptra_obf_field_entropy_vld field
+
+<p>RSVD in SS</p>
+
+#### debug_locked field
+
+<p>RSVD in SS</p>
+
+#### device_lifecycle field
+
+<p>RSVD in SS</p>
+
+#### scan_mode field
+
+<p>Scan mode for Caliptra Core</p>
+
+#### ss_debug_intent field
+
+<p>RSVD in core</p>
+
+#### i3c_axi_user_id_filtering field
+
+<p>RSVD in core</p>
+
+#### ocp_lock_en field
+
+<p>RSVD in core</p>
+
+#### lc_Allow_RMA_or_SCRAP_on_PPD field
+
+<p>RSVD in core</p>
+
+#### FIPS_ZEROIZATION_PPD field
+
+<p>RSVD in core</p>
+
+#### trigger_axi_reset field
+
+<p>RSVD in core</p>
 
 ### status register
 
@@ -167,15 +221,43 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 - Base Offset: 0xC
 - Size: 0x4
 
-|Bits|      Identifier     |Access|Reset|Name|
-|----|---------------------|------|-----|----|
-|  0 |  cptra_error_fatal  |   r  | 0x0 |  — |
-|  1 |cptra_error_non_fatal|   r  | 0x0 |  — |
-|  2 |   ready_for_fuses   |   r  | 0x0 |  — |
-|  3 |  ready_for_fw_push  |   r  | 0x0 |  — |
-|  4 |  ready_for_runtime  |   r  | 0x0 |  — |
-|  5 |  mailbox_data_avail |   r  | 0x0 |  — |
-|  6 |  mailbox_flow_done  |   r  | 0x0 |  — |
+|Bits|       Identifier      |Access|Reset|Name|
+|----|-----------------------|------|-----|----|
+|  0 |   cptra_error_fatal   |   r  | 0x0 |  — |
+|  1 | cptra_error_non_fatal |   r  | 0x0 |  — |
+|  2 |    ready_for_fuses    |   r  | 0x0 |  — |
+|  3 |ready_for_mb_processing|   r  | 0x0 |  — |
+|  4 |   ready_for_runtime   |   r  | 0x0 |  — |
+|  5 |   mailbox_data_avail  |   r  | 0x0 |  — |
+|  6 |   mailbox_flow_done   |   r  | 0x0 |  — |
+
+#### cptra_error_fatal field
+
+<p>RSVD in SS</p>
+
+#### cptra_error_non_fatal field
+
+<p>RSVD in SS</p>
+
+#### ready_for_fuses field
+
+<p>RSVD in SS</p>
+
+#### ready_for_mb_processing field
+
+<p>RSVD in SS</p>
+
+#### ready_for_runtime field
+
+<p>RSVD in SS</p>
+
+#### mailbox_data_avail field
+
+<p>RSVD in SS</p>
+
+#### mailbox_flow_done field
+
+<p>RSVD in SS</p>
 
 ### arm_user register
 
@@ -971,16 +1053,24 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 
 <p>MCU Reset Vector Strap</p>
 
-### mci_error register
+### ss_all_error register
 
 - Absolute Address: 0xA4010118
 - Base Offset: 0x118
 - Size: 0x4
 
-|Bits|     Identifier    |Access|Reset|Name|
-|----|-------------------|------|-----|----|
-|  0 |  mci_error_fatal  |   r  | 0x0 |  — |
-|  1 |mci_error_non_fatal|   r  | 0x0 |  — |
+|Bits|      Identifier      |Access|Reset|Name|
+|----|----------------------|------|-----|----|
+|  0 |  ss_all_error_fatal  |   r  | 0x0 |  — |
+|  1 |ss_all_error_non_fatal|   r  | 0x0 |  — |
+
+#### ss_all_error_fatal field
+
+<p>RSVD in core</p>
+
+#### ss_all_error_non_fatal field
+
+<p>RSVD in core</p>
 
 ### mcu_config register
 
@@ -1078,6 +1168,62 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0|   value  |   r  | 0x0 |  — |
+
+### ss_key_release_base_addr register
+
+- Absolute Address: 0xA401013C
+- Base Offset: 0x13C
+- Size: 0x4
+
+|Bits|       Identifier       |Access|Reset|Name|
+|----|------------------------|------|-----|----|
+|31:0|ss_key_release_base_addr|   r  | 0x0 |  — |
+
+#### ss_key_release_base_addr field
+
+<p>RSVD in core</p>
+
+### ss_key_release_key_size register
+
+- Absolute Address: 0xA4010140
+- Base Offset: 0x140
+- Size: 0x4
+
+|Bits|       Identifier      |Access|Reset|Name|
+|----|-----------------------|------|-----|----|
+|15:0|ss_key_release_key_size|   r  | 0x0 |  — |
+
+#### ss_key_release_key_size field
+
+<p>RSVD in core</p>
+
+### ss_external_staging_area_base_addr register
+
+- Absolute Address: 0xA4010144
+- Base Offset: 0x144
+- Size: 0x4
+
+|Bits|            Identifier            |Access|Reset|Name|
+|----|----------------------------------|------|-----|----|
+|31:0|ss_external_staging_area_base_addr|   r  | 0x0 |  — |
+
+#### ss_external_staging_area_base_addr field
+
+<p>RSVD in core</p>
+
+### cptra_ss_mcu_ext_int register
+
+- Absolute Address: 0xA4010148
+- Base Offset: 0x148
+- Size: 0x4
+
+|Bits|     Identifier     |Access|Reset|Name|
+|----|--------------------|------|-----|----|
+|31:3|cptra_ss_mcu_ext_int|  rw  | 0x0 |  — |
+
+#### cptra_ss_mcu_ext_int field
+
+<p>RSVD in core</p>
 
 ### ocp_lock_key_release_reg register
 
@@ -1360,6 +1506,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|----------|------|-----|----|
 |31:0| out_data |   r  | 0x0 |  — |
 
+#### out_data field
+
+<p>RSVD in core</p>
+
 ### dbg_fifo_push register
 
 - Absolute Address: 0xA4011014
@@ -1369,6 +1519,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0|  in_data |  rw  | 0x0 |  — |
+
+#### in_data field
+
+<p>RSVD in core</p>
 
 ### dbg_fifo_status register
 
@@ -1381,6 +1535,14 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |  0 |dbg_fifo_empty|   r  | 0x0 |  — |
 |  1 | dbg_fifo_full|   r  | 0x0 |  — |
 
+#### dbg_fifo_empty field
+
+<p>RSVD in core</p>
+
+#### dbg_fifo_full field
+
+<p>RSVD in core</p>
+
 ### msg_fifo_pop register
 
 - Absolute Address: 0xA401101C
@@ -1390,6 +1552,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0| out_data |   r  | 0x0 |  — |
+
+#### out_data field
+
+<p>RSVD in core</p>
 
 ### msg_fifo_push register
 
@@ -1401,6 +1567,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|----------|------|-----|----|
 |31:0|  in_data |  rw  | 0x0 |  — |
 
+#### in_data field
+
+<p>RSVD in core</p>
+
 ### msg_fifo_status register
 
 - Absolute Address: 0xA4011024
@@ -1411,3 +1581,11 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|--------------|------|-----|----|
 |  0 |msg_fifo_empty|   r  | 0x0 |  — |
 |  1 | msg_fifo_full|   r  | 0x0 |  — |
+
+#### msg_fifo_empty field
+
+<p>RSVD in core</p>
+
+#### msg_fifo_full field
+
+<p>RSVD in core</p>

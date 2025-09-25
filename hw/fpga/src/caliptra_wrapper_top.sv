@@ -591,8 +591,6 @@ module caliptra_wrapper_top (
         end
     end
 
-    logic                       BootFSM_BrkPoint;
-
     logic mbox_sram_cs;
     logic mbox_sram_we;
     logic [15:0] mbox_sram_addr;
@@ -725,10 +723,6 @@ module caliptra_wrapper_top (
 `endif
     el2_mem_if el2_mem_export();
     abr_mem_if abr_memory_export();
-
-    initial begin
-        BootFSM_BrkPoint = 1'b1; //Set to 1 even before anything starts
-    end
 
     // TRNG Interface
     logic etrng_req;
@@ -916,7 +910,6 @@ log_fifo_inst (
 
 // Valid = !Empty
 logic dbg_fifo_empty;
-//assign hwif_in.fifo_regs.log_fifo_data.char_valid.next = ~log_fifo_empty;
 assign hwif_in.fifo_regs.dbg_fifo_status.dbg_fifo_empty.next = dbg_fifo_empty;
 
 // When rd_swacc is asserted, use the value of "valid" from when it was sampled.
@@ -2067,8 +2060,8 @@ caliptra_ss_top caliptra_ss_top_0 (
 
     // Caliptra JTAG Interface
     .cptra_ss_cptra_core_jtag_tck_i(jtag_tck),
-    .cptra_ss_cptra_core_jtag_tdi_i(jtag_tdi),
     .cptra_ss_cptra_core_jtag_tms_i(jtag_tms),
+    .cptra_ss_cptra_core_jtag_tdi_i(jtag_tdi),
     .cptra_ss_cptra_core_jtag_trst_n_i(jtag_trst_n),
     .cptra_ss_cptra_core_jtag_tdo_o(jtag_tdo),
     .cptra_ss_cptra_core_jtag_tdoEn_o(),
@@ -2098,7 +2091,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_cptra_core_imem_addr_o(imem_addr),
     .cptra_ss_cptra_core_imem_rdata_i(imem_rdata),
 
-    .cptra_ss_cptra_core_bootfsm_bp_i(BootFSM_BrkPoint),
+    .cptra_ss_cptra_core_bootfsm_bp_i(hwif_out.interface_regs.control.bootfsm_brkpoint.value),
 
 // TRNG Interface
 `ifdef CALIPTRA_INTERNAL_TRNG
@@ -2135,11 +2128,11 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_mcu_no_rom_config_i(hwif_out.interface_regs.mcu_config.mcu_no_rom_config.value),
     .cptra_ss_mci_boot_seq_brkpoint_i(hwif_out.interface_regs.mcu_config.cptra_ss_mci_boot_seq_brkpoint_i.value),
 
-    .cptra_ss_lc_Allow_RMA_or_SCRAP_on_PPD_i(1'b0), // TODO: Connect to wrapper?
-    .cptra_ss_FIPS_ZEROIZATION_PPD_i(1'b0), // TODO: Connect to wrapper? Physical pin to trigger zeroization
+    .cptra_ss_lc_Allow_RMA_or_SCRAP_on_PPD_i(hwif_out.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.value),
+    .cptra_ss_FIPS_ZEROIZATION_PPD_i(hwif_out.interface_regs.control.FIPS_ZEROIZATION_PPD.value),
 
-    .cptra_ss_all_error_fatal_o(hwif_in.interface_regs.mci_error.mci_error_fatal.next), // TODO: Update name in wrapper
-    .cptra_ss_all_error_non_fatal_o(hwif_in.interface_regs.mci_error.mci_error_non_fatal.next), // TODO: Update name in wrapper
+    .cptra_ss_all_error_fatal_o(hwif_in.interface_regs.ss_all_error.ss_all_error_fatal.next),
+    .cptra_ss_all_error_non_fatal_o(hwif_in.interface_regs.ss_all_error.ss_all_error_non_fatal.next),
 
     .cptra_ss_mcu_ext_int(0), // TODO: Should SW drive this to something? SOC interrupts
     // MCU JTAG
@@ -2156,9 +2149,9 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_strap_recovery_ifc_base_addr_i (64'hA4030100), // I3C controller SecFwRecoveryIf
     .cptra_ss_strap_otp_fc_base_addr_i       (64'hA4060000),
     .cptra_ss_strap_uds_seed_base_addr_i     ({32'h00000000, hwif_out.interface_regs.uds_seed_base_addr.uds_seed_base_addr.value}),
-    .cptra_ss_strap_ss_key_release_base_addr_i(),             //input logic [63:0]  TODO: Connect?
-    .cptra_ss_strap_ss_key_release_key_size_i(),              //input logic [15:0]  TODO: Connect?
-    .cptra_ss_strap_ss_external_staging_area_base_addr_i(),   //input logic [63:0]  TODO: Connect?
+    .cptra_ss_strap_ss_key_release_base_addr_i({32'h00000000, hwif_out.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.value}),
+    .cptra_ss_strap_ss_key_release_key_size_i(hwif_out.interface_regs.ss_key_release_key_size.ss_key_release_key_size.value),
+    .cptra_ss_strap_ss_external_staging_area_base_addr_i({32'h00000000, hwif_out.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.value}),
     .cptra_ss_strap_prod_debug_unlock_auth_pk_hash_reg_bank_offset_i(hwif_out.interface_regs.prod_debug_unlock_auth_pk_hash_reg_bank_offset.prod_debug_unlock_auth_pk_hash_reg_bank_offset.value),
     .cptra_ss_strap_num_of_prod_debug_unlock_auth_pk_hashes_i(hwif_out.interface_regs.num_of_prod_debug_unlock_auth_pk_hashes.num_of_prod_debug_unlock_auth_pk_hashes.value),
     .cptra_ss_strap_caliptra_dma_axi_user_i(hwif_out.interface_regs.dma_axi_user.dma_axi_user.value),
@@ -2167,7 +2160,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_strap_generic_2_i(32'h0),
     .cptra_ss_strap_generic_3_i(32'h0),
     .cptra_ss_debug_intent_i(hwif_out.interface_regs.control.ss_debug_intent.value),            // Debug intent signal
-    .cptra_ss_ocp_lock_en_i(1'b1), // TODO: Make this configurable?
+    .cptra_ss_ocp_lock_en_i(hwif_out.interface_regs.control.ocp_lock_en.value),
 
     // TODO: Connect
     /*output logic        */ .cptra_ss_dbg_manuf_enable_o(),
@@ -2208,7 +2201,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_i3c_axi_user_id_filtering_enable_i(hwif_out.interface_regs.control.i3c_axi_user_id_filtering.value),
 
     .cptra_ss_cptra_core_generic_input_wires_i({hwif_out.interface_regs.generic_input_wires[0].value.value, hwif_out.interface_regs.generic_input_wires[1].value.value}),
-    .cptra_ss_cptra_core_scan_mode_i(),
+    .cptra_ss_cptra_core_scan_mode_i(hwif_out.interface_regs.control.scan_mode.value),
     .cptra_error_fatal(),
     .cptra_error_non_fatal()
 );
