@@ -10,7 +10,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 
 - Absolute Address: 0x0
 - Base Offset: 0x0
-- Size: 0xA401101C
+- Size: 0xA4011028
 
 |  Offset  |  Identifier  |Name|
 |----------|--------------|----|
@@ -21,7 +21,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 
 - Absolute Address: 0xA4010000
 - Base Offset: 0xA4010000
-- Size: 0x13C
+- Size: 0x240
 
 |Offset|                  Identifier                  |Name|
 |------|----------------------------------------------|----|
@@ -99,6 +99,22 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 | 0x130|          mci_generic_input_wires[1]          |  — |
 | 0x134|          mci_generic_output_wires[0]         |  — |
 | 0x138|          mci_generic_output_wires[1]         |  — |
+| 0x200|          ocp_lock_key_release_reg[0]         |  — |
+| 0x204|          ocp_lock_key_release_reg[1]         |  — |
+| 0x208|          ocp_lock_key_release_reg[2]         |  — |
+| 0x20C|          ocp_lock_key_release_reg[3]         |  — |
+| 0x210|          ocp_lock_key_release_reg[4]         |  — |
+| 0x214|          ocp_lock_key_release_reg[5]         |  — |
+| 0x218|          ocp_lock_key_release_reg[6]         |  — |
+| 0x21C|          ocp_lock_key_release_reg[7]         |  — |
+| 0x220|          ocp_lock_key_release_reg[8]         |  — |
+| 0x224|          ocp_lock_key_release_reg[9]         |  — |
+| 0x228|         ocp_lock_key_release_reg[10]         |  — |
+| 0x22C|         ocp_lock_key_release_reg[11]         |  — |
+| 0x230|         ocp_lock_key_release_reg[12]         |  — |
+| 0x234|         ocp_lock_key_release_reg[13]         |  — |
+| 0x238|         ocp_lock_key_release_reg[14]         |  — |
+| 0x23C|         ocp_lock_key_release_reg[15]         |  — |
 
 ### fpga_magic register
 
@@ -1063,11 +1079,219 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|----------|------|-----|----|
 |31:0|   value  |   r  | 0x0 |  — |
 
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA4010200
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA4010204
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA4010208
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA401020C
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA4010210
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA4010214
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA4010218
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA401021C
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA4010220
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA4010224
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA4010228
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA401022C
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA4010230
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA4010234
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA4010238
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
+### ocp_lock_key_release_reg register
+
+- Absolute Address: 0xA401023C
+- Base Offset: 0x200
+- Size: 0x4
+- Array Dimensions: [16]
+- Array Stride: 0x4
+- Total Size: 0x40
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|    key   |  rw  | 0x0 |  — |
+
 ## fifo_regs register file
 
 - Absolute Address: 0xA4011000
 - Base Offset: 0xA4011000
-- Size: 0x1C
+- Size: 0x28
 
 |Offset|    Identifier   |Name|
 |------|-----------------|----|
@@ -1078,6 +1302,9 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 | 0x10 |   dbg_fifo_pop  |  — |
 | 0x14 |  dbg_fifo_push  |  — |
 | 0x18 | dbg_fifo_status |  — |
+| 0x1C |   msg_fifo_pop  |  — |
+| 0x20 |  msg_fifo_push  |  — |
+| 0x24 | msg_fifo_status |  — |
 
 ### log_fifo_data register
 
@@ -1153,3 +1380,34 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|--------------|------|-----|----|
 |  0 |dbg_fifo_empty|   r  | 0x0 |  — |
 |  1 | dbg_fifo_full|   r  | 0x0 |  — |
+
+### msg_fifo_pop register
+
+- Absolute Address: 0xA401101C
+- Base Offset: 0x1C
+- Size: 0x4
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0| out_data |   r  | 0x0 |  — |
+
+### msg_fifo_push register
+
+- Absolute Address: 0xA4011020
+- Base Offset: 0x20
+- Size: 0x4
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|  in_data |  rw  | 0x0 |  — |
+
+### msg_fifo_status register
+
+- Absolute Address: 0xA4011024
+- Base Offset: 0x24
+- Size: 0x4
+
+|Bits|  Identifier  |Access|Reset|Name|
+|----|--------------|------|-----|----|
+|  0 |msg_fifo_empty|   r  | 0x0 |  — |
+|  1 | msg_fifo_full|   r  | 0x0 |  — |
