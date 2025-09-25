@@ -9,7 +9,7 @@ use std::{
 
 use mcu_builder::PROJECT_ROOT;
 
-// Copies a file to FPGA over rsync to the FPGA home folder.
+/// Copies a file to FPGA over rsync to the FPGA home folder.
 pub fn rsync_file(target_host: &str, file: &str, dest_file: &str, from_fpga: bool) -> Result<()> {
     // TODO(clundin): We assume are files are dropped in the root / home folder. May want to find a
     // put things in their own directory.
