@@ -9,6 +9,50 @@ use std::{
 
 use mcu_builder::PROJECT_ROOT;
 
+/// Check that host system has all the tools that the xtask FPGA flows depends on.
+pub fn check_host_dependencies() -> Result<()> {
+    let tools = [
+        (
+            "docker --version",
+            "'docker' not found on PATH. Please install docker.",
+        ),
+        (
+            "rsync --version",
+            "'rsync' not found on PATH. Please install rsync.",
+        ),
+        (
+            "cargo nextest --version",
+            "'cargo-nextest' not found on PATH. Please install with `cargo install cargo-nextest`.",
+        ),
+    ];
+    check_dependencies(None, &tools)
+}
+
+/// Check that FPGA  has all the tools that the xtask FPGA flows depends on.
+pub fn check_fpga_dependencies(target_host: Option<&str>) -> Result<()> {
+    let tools = [
+        (
+            "rsync --version",
+            "'rsync' not found on FPGA PATH. Please install rsync on FPGA.",
+        ),
+        (
+            "cargo-nextest --version",
+            "'cargo-nextest' not found on FPGA PATH. Please install with `cargo install cargo-nextest` on FPGA.",
+        ),
+    ];
+    check_dependencies(target_host, &tools)
+}
+
+fn check_dependencies(target_host: Option<&str>, tools: &[(&str, &str)]) -> Result<()> {
+    for (command_str, error_msg) in tools {
+        if run_command(target_host, command_str, true).is_err() {
+            let error_msg = error_msg.to_string();
+            bail!(error_msg);
+        }
+    }
+    Ok(())
+}
+
 /// Copies a file to FPGA over rsync to the FPGA home folder.
 pub fn rsync_file(target_host: &str, file: &str, dest_file: &str, from_fpga: bool) -> Result<()> {
     // TODO(clundin): We assume are files are dropped in the root / home folder. May want to find a
@@ -55,23 +99,36 @@ pub fn run_command_with_output(target_host: Option<&str>, command: &str) -> Resu
 }
 
 /// Runs a command over SSH if `target_host` is `Some`. Otherwise runs command on current machine.
-pub fn run_command(target_host: Option<&str>, command: &str) -> Result<()> {
+pub fn run_command(target_host: Option<&str>, command: &str, silence_output: bool) -> Result<()> {
+    let (stdout, stderr) = if silence_output {
+        (Stdio::null(), Stdio::null())
+    } else {
+        (Stdio::inherit(), Stdio::inherit())
+    };
     if let Some(target_host) = target_host {
-        println!("[FPGA HOST] Running command: {command}");
+        if !silence_output {
+            println!("[FPGA] Running command: {command}");
+        }
         let status = Command::new("ssh")
             .current_dir(&*PROJECT_ROOT)
             .args([target_host, "-t", command])
             .stdin(Stdio::inherit())
+            .stdout(stdout)
+            .stderr(stderr)
             .status()?;
         if !status.success() {
             bail!("\"{command}\" failed to run on FPGA over ssh");
         }
     } else {
-        println!("Running command: {command}");
+        if !silence_output {
+            println!("[HOST] Running command: {command}");
+        }
         let status = Command::new("sh")
             .current_dir(&*PROJECT_ROOT)
             .args(["-c", command])
             .stdin(Stdio::inherit())
+            .stdout(stdout)
+            .stderr(stderr)
             .status()?;
         if !status.success() {
             bail!("Failed to run command");
@@ -130,7 +187,7 @@ pub fn run_test_suite(
     );
     // Run test suite.
     // Ignore error so we still copy the logs.
-    let _ = run_command(target_host, test_command.as_str());
+    let _ = run_command(target_host, test_command.as_str(), false);
     if let Some(target_host) = target_host {
         println!("Copying test log from FPGA to junit.xml");
         rsync_file(target_host, "/tmp/junit.xml", ".", true)?;

@@ -11,7 +11,9 @@ use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
 use mcu_rom_common::LifecycleControllerState;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use utils::{run_command, run_command_with_output};
+use utils::{
+    check_fpga_dependencies, check_host_dependencies, run_command, run_command_with_output,
+};
 
 mod configurations;
 
@@ -125,6 +127,7 @@ pub fn fpga_install_kernel_modules(target_host: Option<&str>) -> Result<()> {
     run_command(
         target_host,
         "(cd caliptra-mcu-sw/hw/fpga/kernel-modules && make)",
+        false,
     )?;
 
     // TODO(clundin): Need to test this, the Ubuntu FPGA is in a bad state and seems to not be able
@@ -132,6 +135,7 @@ pub fn fpga_install_kernel_modules(target_host: Option<&str>) -> Result<()> {
     run_command(
         target_host,
         "sudo insmod caliptra-mcu-sw/hw/fpga/kernel-modules/io_module.ko",
+        false,
     )?;
 
     fix_permissions(target_host)?;
@@ -154,6 +158,7 @@ fn disable_cpu_idle(cpu: usize, target_host: Option<&str>) -> Result<()> {
         &format!(
             "sudo bash -c \"echo 1 > /sys/devices/system/cpu/cpu{cpu}/cpuidle/state1/disable\""
         ),
+        false,
     )?;
     let state = run_command_with_output(
         target_host,
@@ -166,8 +171,8 @@ fn disable_cpu_idle(cpu: usize, target_host: Option<&str>) -> Result<()> {
 }
 
 fn fix_permissions(target_host: Option<&str>) -> Result<()> {
-    run_command(target_host, "sudo chmod 666 /dev/uio0")?;
-    run_command(target_host, "sudo chmod 666 /dev/uio1")?;
+    run_command(target_host, "sudo chmod 666 /dev/uio0", false)?;
+    run_command(target_host, "sudo chmod 666 /dev/uio1", false)?;
     Ok(())
 }
 
@@ -179,6 +184,7 @@ fn is_module_loaded(module: &str, target_host: Option<&str>) -> Result<bool> {
 }
 
 pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
+    check_host_dependencies()?;
     match args {
         Fpga::Build {
             target_host,
@@ -214,6 +220,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             println!("configuration: {:?}", configuration);
 
             let target_host = target_host.as_deref();
+            check_fpga_dependencies(target_host)?;
             let hostname = run_command_with_output(target_host, "hostname")?;
 
             // skip this step for CI images. Kernel modules are already installed.
@@ -222,9 +229,11 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             }
 
             let cache_function = |config_marker| {
+                // Cache FPGA configuration in RAM. We need to re-bootstrap on power cycles.
                 run_command(
                     target_host,
-                    &format!("echo \"{config_marker}\" > /tmp/fpga-config"),
+                    &format!("echo \"{config_marker}\" > /dev/shm/fpga-config"),
+                    false,
                 )
             };
 
@@ -243,7 +252,11 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             is_module_loaded("io_module", target_host.as_deref())?;
 
             // Clear old test logs
-            run_command(target_host.as_deref(), "(sudo rm /tmp/junit.xml || true)")?;
+            run_command(
+                target_host.as_deref(),
+                "(sudo rm /tmp/junit.xml || true)",
+                false,
+            )?;
 
             let config = Configuration::from_cmd(target_host.as_deref())?;
             config
