@@ -29,6 +29,15 @@ module caliptra_fpga_realtime_regs (
     logic cpuif_wr_ack;
     logic cpuif_wr_err;
 
+    `ifndef SYNTHESIS
+        initial begin
+            assert_bad_addr_width: assert($bits(s_axil.ARADDR) >= caliptra_fpga_realtime_regs_pkg::CALIPTRA_FPGA_REALTIME_REGS_MIN_ADDR_WIDTH)
+                else $error("Interface address width of %0d is too small. Shall be at least %0d bits", $bits(s_axil.ARADDR), caliptra_fpga_realtime_regs_pkg::CALIPTRA_FPGA_REALTIME_REGS_MIN_ADDR_WIDTH);
+            assert_bad_data_width: assert($bits(s_axil.WDATA) == caliptra_fpga_realtime_regs_pkg::CALIPTRA_FPGA_REALTIME_REGS_DATA_WIDTH)
+                else $error("Interface data width of %0d is incorrect. Shall be %0d bits", $bits(s_axil.WDATA), caliptra_fpga_realtime_regs_pkg::CALIPTRA_FPGA_REALTIME_REGS_DATA_WIDTH);
+        end
+    `endif
+
     // Max Outstanding Transactions: 2
     logic [1:0] axil_n_in_flight;
     logic axil_prev_was_rd;
@@ -236,6 +245,7 @@ module caliptra_fpga_realtime_regs (
             logic num_of_prod_debug_unlock_auth_pk_hashes;
             logic mci_generic_input_wires[2];
             logic mci_generic_output_wires[2];
+            logic ocp_lock_key_release_reg[16];
         } interface_regs;
         struct {
             logic log_fifo_data;
@@ -245,6 +255,9 @@ module caliptra_fpga_realtime_regs (
             logic dbg_fifo_pop;
             logic dbg_fifo_push;
             logic dbg_fifo_status;
+            logic msg_fifo_pop;
+            logic msg_fifo_push;
+            logic msg_fifo_status;
         } fifo_regs;
     } decoded_reg_strb_t;
     decoded_reg_strb_t decoded_reg_strb;
@@ -296,6 +309,9 @@ module caliptra_fpga_realtime_regs (
         for(int i0=0; i0<2; i0++) begin
             decoded_reg_strb.interface_regs.mci_generic_output_wires[i0] = cpuif_req_masked & (cpuif_addr == 32'ha4010134 + (32)'(i0) * 32'h4);
         end
+        for(int i0=0; i0<16; i0++) begin
+            decoded_reg_strb.interface_regs.ocp_lock_key_release_reg[i0] = cpuif_req_masked & (cpuif_addr == 32'ha4010200 + (32)'(i0) * 32'h4);
+        end
         decoded_reg_strb.fifo_regs.log_fifo_data = cpuif_req_masked & (cpuif_addr == 32'ha4011000);
         decoded_reg_strb.fifo_regs.log_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha4011004);
         decoded_reg_strb.fifo_regs.itrng_fifo_data = cpuif_req_masked & (cpuif_addr == 32'ha4011008);
@@ -303,6 +319,9 @@ module caliptra_fpga_realtime_regs (
         decoded_reg_strb.fifo_regs.dbg_fifo_pop = cpuif_req_masked & (cpuif_addr == 32'ha4011010);
         decoded_reg_strb.fifo_regs.dbg_fifo_push = cpuif_req_masked & (cpuif_addr == 32'ha4011014);
         decoded_reg_strb.fifo_regs.dbg_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha4011018);
+        decoded_reg_strb.fifo_regs.msg_fifo_pop = cpuif_req_masked & (cpuif_addr == 32'ha401101c);
+        decoded_reg_strb.fifo_regs.msg_fifo_push = cpuif_req_masked & (cpuif_addr == 32'ha4011020);
+        decoded_reg_strb.fifo_regs.msg_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha4011024);
     end
 
     // Pass down signals to next stage
@@ -542,6 +561,12 @@ module caliptra_fpga_realtime_regs (
                     logic load_next;
                 } value;
             } mci_generic_output_wires[2];
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } key;
+            } ocp_lock_key_release_reg[16];
         } interface_regs;
         struct {
             struct {
@@ -606,6 +631,28 @@ module caliptra_fpga_realtime_regs (
                     logic load_next;
                 } dbg_fifo_full;
             } dbg_fifo_status;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } out_data;
+            } msg_fifo_pop;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } in_data;
+            } msg_fifo_push;
+            struct {
+                struct {
+                    logic next;
+                    logic load_next;
+                } msg_fifo_empty;
+                struct {
+                    logic next;
+                    logic load_next;
+                } msg_fifo_full;
+            } msg_fifo_status;
         } fifo_regs;
     } field_combo_t;
     field_combo_t field_combo;
@@ -794,6 +841,11 @@ module caliptra_fpga_realtime_regs (
                     logic [31:0] value;
                 } value;
             } mci_generic_output_wires[2];
+            struct {
+                struct {
+                    logic [31:0] value;
+                } key;
+            } ocp_lock_key_release_reg[16];
         } interface_regs;
         struct {
             struct {
@@ -846,6 +898,24 @@ module caliptra_fpga_realtime_regs (
                     logic value;
                 } dbg_fifo_full;
             } dbg_fifo_status;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } out_data;
+            } msg_fifo_pop;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } in_data;
+            } msg_fifo_push;
+            struct {
+                struct {
+                    logic value;
+                } msg_fifo_empty;
+                struct {
+                    logic value;
+                } msg_fifo_full;
+            } msg_fifo_status;
         } fifo_regs;
     } field_storage_t;
     field_storage_t field_storage;
@@ -1882,6 +1952,30 @@ module caliptra_fpga_realtime_regs (
         end
         assign hwif_out.interface_regs.mci_generic_output_wires[i0].value.value = field_storage.interface_regs.mci_generic_output_wires[i0].value.value;
     end
+    for(genvar i0=0; i0<16; i0++) begin
+        // Field: caliptra_fpga_realtime_regs.interface_regs.ocp_lock_key_release_reg[].key
+        always_comb begin
+            automatic logic [31:0] next_c;
+            automatic logic load_next_c;
+            next_c = field_storage.interface_regs.ocp_lock_key_release_reg[i0].key.value;
+            load_next_c = '0;
+            if(decoded_reg_strb.interface_regs.ocp_lock_key_release_reg[i0] && decoded_req_is_wr) begin // SW write
+                next_c = (field_storage.interface_regs.ocp_lock_key_release_reg[i0].key.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+                load_next_c = '1;
+            end
+            field_combo.interface_regs.ocp_lock_key_release_reg[i0].key.next = next_c;
+            field_combo.interface_regs.ocp_lock_key_release_reg[i0].key.load_next = load_next_c;
+        end
+        always_ff @(posedge clk) begin
+            if(rst) begin
+                field_storage.interface_regs.ocp_lock_key_release_reg[i0].key.value <= 32'h0;
+            end else begin
+                if(field_combo.interface_regs.ocp_lock_key_release_reg[i0].key.load_next) begin
+                    field_storage.interface_regs.ocp_lock_key_release_reg[i0].key.value <= field_combo.interface_regs.ocp_lock_key_release_reg[i0].key.next;
+                end
+            end
+        end
+    end
     // Field: caliptra_fpga_realtime_regs.fifo_regs.log_fifo_data.next_char
     always_comb begin
         automatic logic [7:0] next_c;
@@ -2162,6 +2256,100 @@ module caliptra_fpga_realtime_regs (
         end
     end
     assign hwif_out.fifo_regs.dbg_fifo_status.dbg_fifo_full.value = field_storage.fifo_regs.dbg_fifo_status.dbg_fifo_full.value;
+    // Field: caliptra_fpga_realtime_regs.fifo_regs.msg_fifo_pop.out_data
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.fifo_regs.msg_fifo_pop.out_data.value;
+        load_next_c = '0;
+        
+        // HW Write
+        next_c = hwif_in.fifo_regs.msg_fifo_pop.out_data.next;
+        load_next_c = '1;
+        field_combo.fifo_regs.msg_fifo_pop.out_data.next = next_c;
+        field_combo.fifo_regs.msg_fifo_pop.out_data.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.fifo_regs.msg_fifo_pop.out_data.value <= 32'h0;
+        end else begin
+            if(field_combo.fifo_regs.msg_fifo_pop.out_data.load_next) begin
+                field_storage.fifo_regs.msg_fifo_pop.out_data.value <= field_combo.fifo_regs.msg_fifo_pop.out_data.next;
+            end
+        end
+    end
+    assign hwif_out.fifo_regs.msg_fifo_pop.out_data.value = field_storage.fifo_regs.msg_fifo_pop.out_data.value;
+    assign hwif_out.fifo_regs.msg_fifo_pop.out_data.rd_swacc = decoded_reg_strb.fifo_regs.msg_fifo_pop && !decoded_req_is_wr;
+    // Field: caliptra_fpga_realtime_regs.fifo_regs.msg_fifo_push.in_data
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.fifo_regs.msg_fifo_push.in_data.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.fifo_regs.msg_fifo_push && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.fifo_regs.msg_fifo_push.in_data.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            load_next_c = '1;
+        end
+        field_combo.fifo_regs.msg_fifo_push.in_data.next = next_c;
+        field_combo.fifo_regs.msg_fifo_push.in_data.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.fifo_regs.msg_fifo_push.in_data.value <= 32'h0;
+        end else begin
+            if(field_combo.fifo_regs.msg_fifo_push.in_data.load_next) begin
+                field_storage.fifo_regs.msg_fifo_push.in_data.value <= field_combo.fifo_regs.msg_fifo_push.in_data.next;
+            end
+        end
+    end
+    assign hwif_out.fifo_regs.msg_fifo_push.in_data.value = field_storage.fifo_regs.msg_fifo_push.in_data.value;
+    assign hwif_out.fifo_regs.msg_fifo_push.in_data.wr_swacc = decoded_reg_strb.fifo_regs.msg_fifo_push && decoded_req_is_wr;
+    // Field: caliptra_fpga_realtime_regs.fifo_regs.msg_fifo_status.msg_fifo_empty
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.fifo_regs.msg_fifo_status.msg_fifo_empty.value;
+        load_next_c = '0;
+        
+        // HW Write
+        next_c = hwif_in.fifo_regs.msg_fifo_status.msg_fifo_empty.next;
+        load_next_c = '1;
+        field_combo.fifo_regs.msg_fifo_status.msg_fifo_empty.next = next_c;
+        field_combo.fifo_regs.msg_fifo_status.msg_fifo_empty.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.fifo_regs.msg_fifo_status.msg_fifo_empty.value <= 1'h0;
+        end else begin
+            if(field_combo.fifo_regs.msg_fifo_status.msg_fifo_empty.load_next) begin
+                field_storage.fifo_regs.msg_fifo_status.msg_fifo_empty.value <= field_combo.fifo_regs.msg_fifo_status.msg_fifo_empty.next;
+            end
+        end
+    end
+    assign hwif_out.fifo_regs.msg_fifo_status.msg_fifo_empty.value = field_storage.fifo_regs.msg_fifo_status.msg_fifo_empty.value;
+    // Field: caliptra_fpga_realtime_regs.fifo_regs.msg_fifo_status.msg_fifo_full
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.fifo_regs.msg_fifo_status.msg_fifo_full.value;
+        load_next_c = '0;
+        
+        // HW Write
+        next_c = hwif_in.fifo_regs.msg_fifo_status.msg_fifo_full.next;
+        load_next_c = '1;
+        field_combo.fifo_regs.msg_fifo_status.msg_fifo_full.next = next_c;
+        field_combo.fifo_regs.msg_fifo_status.msg_fifo_full.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.fifo_regs.msg_fifo_status.msg_fifo_full.value <= 1'h0;
+        end else begin
+            if(field_combo.fifo_regs.msg_fifo_status.msg_fifo_full.load_next) begin
+                field_storage.fifo_regs.msg_fifo_status.msg_fifo_full.value <= field_combo.fifo_regs.msg_fifo_status.msg_fifo_full.next;
+            end
+        end
+    end
+    assign hwif_out.fifo_regs.msg_fifo_status.msg_fifo_full.value = field_storage.fifo_regs.msg_fifo_status.msg_fifo_full.value;
 
     //--------------------------------------------------------------------------
     // Write response
@@ -2179,7 +2367,7 @@ module caliptra_fpga_realtime_regs (
     logic [31:0] readback_data;
 
     // Assign readback values to a flattened array
-    logic [31:0] readback_array[81];
+    logic [31:0] readback_array[100];
     assign readback_array[0][31:0] = (decoded_reg_strb.interface_regs.fpga_magic && !decoded_req_is_wr) ? 32'h52545043 : '0;
     assign readback_array[1][31:0] = (decoded_reg_strb.interface_regs.fpga_version && !decoded_req_is_wr) ? field_storage.interface_regs.fpga_version.fpga_version.value : '0;
     assign readback_array[2][0:0] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.cptra_pwrgood.value : '0;
@@ -2246,22 +2434,30 @@ module caliptra_fpga_realtime_regs (
     for(genvar i0=0; i0<2; i0++) begin
         assign readback_array[i0 * 1 + 72][31:0] = (decoded_reg_strb.interface_regs.mci_generic_output_wires[i0] && !decoded_req_is_wr) ? field_storage.interface_regs.mci_generic_output_wires[i0].value.value : '0;
     end
-    assign readback_array[74][7:0] = (decoded_reg_strb.fifo_regs.log_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_data.next_char.value : '0;
-    assign readback_array[74][8:8] = (decoded_reg_strb.fifo_regs.log_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_data.char_valid.value : '0;
-    assign readback_array[74][31:9] = '0;
-    assign readback_array[75][0:0] = (decoded_reg_strb.fifo_regs.log_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_status.log_fifo_empty.value : '0;
-    assign readback_array[75][1:1] = (decoded_reg_strb.fifo_regs.log_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_status.log_fifo_full.value : '0;
-    assign readback_array[75][31:2] = '0;
-    assign readback_array[76][31:0] = (decoded_reg_strb.fifo_regs.itrng_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_data.itrng_data.value : '0;
-    assign readback_array[77][0:0] = (decoded_reg_strb.fifo_regs.itrng_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_status.itrng_fifo_empty.value : '0;
-    assign readback_array[77][1:1] = (decoded_reg_strb.fifo_regs.itrng_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_status.itrng_fifo_full.value : '0;
-    assign readback_array[77][2:2] = (decoded_reg_strb.fifo_regs.itrng_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_status.itrng_fifo_reset.value : '0;
-    assign readback_array[77][31:3] = '0;
-    assign readback_array[78][31:0] = (decoded_reg_strb.fifo_regs.dbg_fifo_pop && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_pop.out_data.value : '0;
-    assign readback_array[79][31:0] = (decoded_reg_strb.fifo_regs.dbg_fifo_push && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_push.in_data.value : '0;
-    assign readback_array[80][0:0] = (decoded_reg_strb.fifo_regs.dbg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_status.dbg_fifo_empty.value : '0;
-    assign readback_array[80][1:1] = (decoded_reg_strb.fifo_regs.dbg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_status.dbg_fifo_full.value : '0;
-    assign readback_array[80][31:2] = '0;
+    for(genvar i0=0; i0<16; i0++) begin
+        assign readback_array[i0 * 1 + 74][31:0] = (decoded_reg_strb.interface_regs.ocp_lock_key_release_reg[i0] && !decoded_req_is_wr) ? field_storage.interface_regs.ocp_lock_key_release_reg[i0].key.value : '0;
+    end
+    assign readback_array[90][7:0] = (decoded_reg_strb.fifo_regs.log_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_data.next_char.value : '0;
+    assign readback_array[90][8:8] = (decoded_reg_strb.fifo_regs.log_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_data.char_valid.value : '0;
+    assign readback_array[90][31:9] = '0;
+    assign readback_array[91][0:0] = (decoded_reg_strb.fifo_regs.log_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_status.log_fifo_empty.value : '0;
+    assign readback_array[91][1:1] = (decoded_reg_strb.fifo_regs.log_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.log_fifo_status.log_fifo_full.value : '0;
+    assign readback_array[91][31:2] = '0;
+    assign readback_array[92][31:0] = (decoded_reg_strb.fifo_regs.itrng_fifo_data && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_data.itrng_data.value : '0;
+    assign readback_array[93][0:0] = (decoded_reg_strb.fifo_regs.itrng_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_status.itrng_fifo_empty.value : '0;
+    assign readback_array[93][1:1] = (decoded_reg_strb.fifo_regs.itrng_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_status.itrng_fifo_full.value : '0;
+    assign readback_array[93][2:2] = (decoded_reg_strb.fifo_regs.itrng_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.itrng_fifo_status.itrng_fifo_reset.value : '0;
+    assign readback_array[93][31:3] = '0;
+    assign readback_array[94][31:0] = (decoded_reg_strb.fifo_regs.dbg_fifo_pop && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_pop.out_data.value : '0;
+    assign readback_array[95][31:0] = (decoded_reg_strb.fifo_regs.dbg_fifo_push && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_push.in_data.value : '0;
+    assign readback_array[96][0:0] = (decoded_reg_strb.fifo_regs.dbg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_status.dbg_fifo_empty.value : '0;
+    assign readback_array[96][1:1] = (decoded_reg_strb.fifo_regs.dbg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.dbg_fifo_status.dbg_fifo_full.value : '0;
+    assign readback_array[96][31:2] = '0;
+    assign readback_array[97][31:0] = (decoded_reg_strb.fifo_regs.msg_fifo_pop && !decoded_req_is_wr) ? field_storage.fifo_regs.msg_fifo_pop.out_data.value : '0;
+    assign readback_array[98][31:0] = (decoded_reg_strb.fifo_regs.msg_fifo_push && !decoded_req_is_wr) ? field_storage.fifo_regs.msg_fifo_push.in_data.value : '0;
+    assign readback_array[99][0:0] = (decoded_reg_strb.fifo_regs.msg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.msg_fifo_status.msg_fifo_empty.value : '0;
+    assign readback_array[99][1:1] = (decoded_reg_strb.fifo_regs.msg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.msg_fifo_status.msg_fifo_full.value : '0;
+    assign readback_array[99][31:2] = '0;
 
     // Reduce the array
     always_comb begin
@@ -2269,7 +2465,7 @@ module caliptra_fpga_realtime_regs (
         readback_done = decoded_req & ~decoded_req_is_wr;
         readback_err = '0;
         readback_data_var = '0;
-        for(int i=0; i<81; i++) readback_data_var |= readback_array[i];
+        for(int i=0; i<100; i++) readback_data_var |= readback_array[i];
         readback_data = readback_data_var;
     end
 
