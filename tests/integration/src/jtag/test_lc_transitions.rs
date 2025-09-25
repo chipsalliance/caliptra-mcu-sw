@@ -4,11 +4,11 @@
 mod test {
     use std::path::PathBuf;
 
+    use caliptra_hw_model::lcc::LcCtrlStatus;
     use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
-    use caliptra_hw_model::Fuses;
-    use caliptra_hw_model::DEFAULT_LIFECYCLE_RAW_TOKEN;
+    use caliptra_hw_model::{Fuses, DEFAULT_LIFECYCLE_RAW_TOKEN};
     use mcu_builder::FirmwareBinaries;
-    use mcu_hw_model::lcc::{lc_token_to_words, lc_transition, read_lc_state};
+    use mcu_hw_model::lcc::{lc_token_to_words, lc_transition, read_lc_state, LccUtilError};
     use mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel};
     use mcu_rom_common::LifecycleControllerState;
 
@@ -129,5 +129,45 @@ mod test {
             println!("LC state after reset: {}", lc_state);
             assert_eq!(lc_state, lc_states[i + 1]);
         }
+    }
+
+    #[test]
+    fn test_prod_rma_unlock() {
+        let mut model = ss_setup(Some(LifecycleControllerState::Prod));
+
+        // Connect to LCC JTAG TAP via OpenOCD.
+        let jtag_params = JtagParams {
+            openocd: PathBuf::from("openocd"),
+            adapter_speed_khz: 1000,
+            log_stdio: true,
+        };
+        let mut tap = model
+            .jtag_tap_connect(&jtag_params, JtagTap::LccTap)
+            .expect("Failed to connect to the LCC JTAG TAP.");
+
+        // Read the LC state.
+        let lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
+        println!("Initial LC state: {}", lc_state);
+        assert_eq!(lc_state, LifecycleControllerState::Prod);
+
+        // Perform the RMA LC transition operation.
+        // TODO(caliptra-mcu-sw/issues/454): expect a failure until the PPD pin
+        // is exposed to the FPGA model to enable testing RMA transitions.
+        let result = lc_transition(
+            &mut *tap,
+            LifecycleControllerState::Rma,
+            Some(lc_token_to_words(&DEFAULT_LIFECYCLE_RAW_TOKEN.0)),
+        );
+        let err = result.unwrap_err();
+        let lcc_err = err.downcast_ref::<LccUtilError>().unwrap();
+        let status = match lcc_err {
+            LccUtilError::StatusErrors(status) => status,
+            _ => panic!("Expected LccUtilError::StatusErrors, but got {:?}", lcc_err),
+        };
+
+        assert_eq!(
+            *status,
+            LcCtrlStatus::FLASH_RMA_ERROR | LcCtrlStatus::INITIALIZED
+        );
     }
 }
