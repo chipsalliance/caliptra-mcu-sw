@@ -38,8 +38,8 @@ regfile interface_regs {
         field { sw=rw; hw=r; desc = "RSVD in SS"; } cptra_obf_uds_seed_vld[2:2] = 1'b0;
         field { sw=rw; hw=r; desc = "RSVD in SS"; } cptra_obf_field_entropy_vld[3:3] = 1'b0;
 
-        field { sw=rw; hw=r; desc = "RSVD in SS"; } ss_debug_locked[4:4] = 1'b0;
-        field { sw=rw; hw=r; desc = "RSVD in SS"; } ss_device_lifecycle[6:5] = 2'b0;
+        field { sw=rw; hw=r; desc = "RSVD in SS"; } debug_locked[4:4] = 1'b0;
+        field { sw=rw; hw=r; desc = "RSVD in SS"; } device_lifecycle[6:5] = 2'b0;
         field { sw=rw; hw=r; } bootfsm_brkpoint[7:7] = 1'b1;
         field { sw=rw; hw=r; desc = "Scan mode for Caliptra Core"; } scan_mode[8:8] = 1'b0;
 
@@ -228,6 +228,10 @@ regfile interface_regs {
     reg {
         field { sw=rw; hw=r; desc = "RSVD in core"; } cptra_ss_mcu_ext_int[31:3] = 29'b0;
     } cptra_ss_mcu_ext_int;
+
+    reg {
+        field { sw=rw; hw=na; } key[32] = 32'h0;
+    } ocp_lock_key_release_reg[16] @ 0x200;
 };
 
 regfile fifo_regs {
@@ -263,6 +267,19 @@ regfile fifo_regs {
         field { sw=r; hw=rw; desc = "RSVD in core"; } dbg_fifo_empty = 1'b0;
         field { sw=r; hw=rw; desc = "RSVD in core"; } dbg_fifo_full = 1'b0;
     } dbg_fifo_status;
+    
+    reg {
+        field { sw=r; hw=rw; rd_swacc=true; desc = "RSVD in core"; } out_data[32] = 32'b0;
+    } msg_fifo_pop;
+
+    reg {
+        field { sw=rw; hw=r; wr_swacc=true; desc = "RSVD in core"; } in_data[32] = 32'b0;
+    } msg_fifo_push;
+
+    reg {
+        field { sw=r; hw=rw; desc = "RSVD in core"; } msg_fifo_empty = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in core"; } msg_fifo_full = 1'b0;
+    } msg_fifo_status;
 };
 
 addrmap caliptra_fpga_realtime_regs {

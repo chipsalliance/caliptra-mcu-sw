@@ -5,6 +5,7 @@ package caliptra_fpga_realtime_regs_pkg;
 
     localparam CALIPTRA_FPGA_REALTIME_REGS_DATA_WIDTH = 32;
     localparam CALIPTRA_FPGA_REALTIME_REGS_MIN_ADDR_WIDTH = 32;
+    localparam CALIPTRA_FPGA_REALTIME_REGS_SIZE = 'ha4011028;
 
     typedef struct {
         logic [31:0] next;
@@ -186,11 +187,34 @@ package caliptra_fpga_realtime_regs_pkg;
     } fifo_regs__dbg_fifo_status__in_t;
 
     typedef struct {
+        logic [31:0] next;
+    } fifo_regs__msg_fifo_pop__out_data__in_t;
+
+    typedef struct {
+        fifo_regs__msg_fifo_pop__out_data__in_t out_data;
+    } fifo_regs__msg_fifo_pop__in_t;
+
+    typedef struct {
+        logic next;
+    } fifo_regs__msg_fifo_status__msg_fifo_empty__in_t;
+
+    typedef struct {
+        logic next;
+    } fifo_regs__msg_fifo_status__msg_fifo_full__in_t;
+
+    typedef struct {
+        fifo_regs__msg_fifo_status__msg_fifo_empty__in_t msg_fifo_empty;
+        fifo_regs__msg_fifo_status__msg_fifo_full__in_t msg_fifo_full;
+    } fifo_regs__msg_fifo_status__in_t;
+
+    typedef struct {
         fifo_regs__log_fifo_data__in_t log_fifo_data;
         fifo_regs__log_fifo_status__in_t log_fifo_status;
         fifo_regs__itrng_fifo_status__in_t itrng_fifo_status;
         fifo_regs__dbg_fifo_pop__in_t dbg_fifo_pop;
         fifo_regs__dbg_fifo_status__in_t dbg_fifo_status;
+        fifo_regs__msg_fifo_pop__in_t msg_fifo_pop;
+        fifo_regs__msg_fifo_status__in_t msg_fifo_status;
     } fifo_regs__in_t;
 
     typedef struct {
@@ -232,11 +256,11 @@ package caliptra_fpga_realtime_regs_pkg;
 
     typedef struct {
         logic value;
-    } interface_regs__control__ss_debug_locked__out_t;
+    } interface_regs__control__debug_locked__out_t;
 
     typedef struct {
         logic [1:0] value;
-    } interface_regs__control__ss_device_lifecycle__out_t;
+    } interface_regs__control__device_lifecycle__out_t;
 
     typedef struct {
         logic value;
@@ -275,8 +299,8 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__control__cptra_ss_rst_b__out_t cptra_ss_rst_b;
         interface_regs__control__cptra_obf_uds_seed_vld__out_t cptra_obf_uds_seed_vld;
         interface_regs__control__cptra_obf_field_entropy_vld__out_t cptra_obf_field_entropy_vld;
-        interface_regs__control__ss_debug_locked__out_t ss_debug_locked;
-        interface_regs__control__ss_device_lifecycle__out_t ss_device_lifecycle;
+        interface_regs__control__debug_locked__out_t debug_locked;
+        interface_regs__control__device_lifecycle__out_t device_lifecycle;
         interface_regs__control__bootfsm_brkpoint__out_t bootfsm_brkpoint;
         interface_regs__control__scan_mode__out_t scan_mode;
         interface_regs__control__ss_debug_intent__out_t ss_debug_intent;
@@ -682,6 +706,37 @@ package caliptra_fpga_realtime_regs_pkg;
     } fifo_regs__dbg_fifo_status__out_t;
 
     typedef struct {
+        logic [31:0] value;
+        logic rd_swacc;
+    } fifo_regs__msg_fifo_pop__out_data__out_t;
+
+    typedef struct {
+        fifo_regs__msg_fifo_pop__out_data__out_t out_data;
+    } fifo_regs__msg_fifo_pop__out_t;
+
+    typedef struct {
+        logic [31:0] value;
+        logic wr_swacc;
+    } fifo_regs__msg_fifo_push__in_data__out_t;
+
+    typedef struct {
+        fifo_regs__msg_fifo_push__in_data__out_t in_data;
+    } fifo_regs__msg_fifo_push__out_t;
+
+    typedef struct {
+        logic value;
+    } fifo_regs__msg_fifo_status__msg_fifo_empty__out_t;
+
+    typedef struct {
+        logic value;
+    } fifo_regs__msg_fifo_status__msg_fifo_full__out_t;
+
+    typedef struct {
+        fifo_regs__msg_fifo_status__msg_fifo_empty__out_t msg_fifo_empty;
+        fifo_regs__msg_fifo_status__msg_fifo_full__out_t msg_fifo_full;
+    } fifo_regs__msg_fifo_status__out_t;
+
+    typedef struct {
         fifo_regs__log_fifo_data__out_t log_fifo_data;
         fifo_regs__log_fifo_status__out_t log_fifo_status;
         fifo_regs__itrng_fifo_data__out_t itrng_fifo_data;
@@ -689,6 +744,9 @@ package caliptra_fpga_realtime_regs_pkg;
         fifo_regs__dbg_fifo_pop__out_t dbg_fifo_pop;
         fifo_regs__dbg_fifo_push__out_t dbg_fifo_push;
         fifo_regs__dbg_fifo_status__out_t dbg_fifo_status;
+        fifo_regs__msg_fifo_pop__out_t msg_fifo_pop;
+        fifo_regs__msg_fifo_push__out_t msg_fifo_push;
+        fifo_regs__msg_fifo_status__out_t msg_fifo_status;
     } fifo_regs__out_t;
 
     typedef struct {

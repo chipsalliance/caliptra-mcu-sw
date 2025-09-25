@@ -53,4 +53,5 @@ pub unsafe fn main() {
 #[no_mangle]
 pub extern "C" fn main() {
     // no-op on x86 just to keep the build clean
+    println!("nop");
 }
