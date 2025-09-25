@@ -631,12 +631,28 @@ mod tests {
     use super::*;
     use mcu_builder::firmware;
 
+    fn platform() -> &'static str {
+        if cfg!(feature = "fpga_realtime") {
+            "fpga"
+        } else {
+            "emulator"
+        }
+    }
+
     #[test]
     pub fn test_mailbox_execute() {
-        let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
-        let mcu_rom = binaries
-            .test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)
+        let mcu_rom = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+            binaries
+                .test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)
+                .unwrap()
+        } else {
+            let rom_file = mcu_builder::test_rom_build(
+                Some(platform()),
+                &firmware::hw_model_tests::MAILBOX_RESPONDER,
+            )
             .unwrap();
+            std::fs::read(&rom_file).unwrap()
+        };
 
         let mut model = new(
             InitParams {

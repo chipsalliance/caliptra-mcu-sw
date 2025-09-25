@@ -36,7 +36,7 @@ mod test_caliptra_certs;
 #[cfg(feature = "test-log-flash-usermode")]
 mod test_logging_flash;
 
-#[cfg(feature = "test-mci")]
+#[cfg(any(feature = "test-mci", feature = "test-warm-reset"))]
 mod test_mci;
 
 #[cfg(feature = "test-mcu-mbox-usermode")]
@@ -202,6 +202,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_crypto::test_caliptra_ecdh().await;
         test_caliptra_crypto::test_caliptra_hmac().await;
         test_caliptra_crypto::test_caliptra_aes_gcm_cipher().await;
+        test_caliptra_crypto::test_caliptra_ecdsa().await;
         romtime::test_exit(0);
     }
 
@@ -253,6 +254,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_mbox_sram::test_mem_reg_read_write().await;
         romtime::test_exit(0);
     }
+    #[cfg(feature = "test-warm-reset")]
+    {
+        test_mci::test_mci_warm_reset().await;
+        romtime::test_exit(0);
+    }
+
     writeln!(console_writer, "app finished").unwrap();
 }
 

@@ -12,7 +12,7 @@ mod test_soc_boot;
 mod test {
     use caliptra_hw_model::BootParams;
     use caliptra_image_types::FwVerificationPqcKeyType;
-    use mcu_builder::{CaliptraBuilder, ImageCfg, TARGET};
+    use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg, TARGET};
     use mcu_config::McuMemoryMap;
     use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
     use mcu_image_header::McuImageHeader;
@@ -70,7 +70,6 @@ mod test {
     }
 
     fn compile_rom(feature: &str) -> PathBuf {
-        // TODO: use environment firmware binaries
         let output: PathBuf = mcu_builder::rom_build(Some(platform()), feature)
             .expect("ROM build failed")
             .into();
@@ -78,12 +77,16 @@ mod test {
         output
     }
 
-    pub fn compile_runtime(feature: &str, example_app: bool) -> PathBuf {
-        // TODO: use environment firmware binaries
-        let output = target_binary(&format!("runtime-{}-{}.bin", feature, platform()));
+    pub fn compile_runtime(feature: Option<&str>, example_app: bool) -> PathBuf {
+        let mut features = vec![];
+        if let Some(feature) = feature {
+            features.push(feature);
+        }
+        let feature = feature.map(|f| format!("-{f}")).unwrap_or_default();
+        let output = target_binary(&format!("runtime{}-{}.bin", feature, platform()));
         let output_name = format!("{}", output.display());
         mcu_builder::runtime_build_with_apps_cached(
-            &[feature],
+            &features,
             Some(&output_name),
             example_app,
             Some(platform()),
@@ -99,32 +102,108 @@ mod test {
         output
     }
 
-    pub fn start_runtime_hw_model(
-        rom_path: PathBuf,
-        runtime_path: PathBuf,
-        i3c_port: Option<u16>,
-    ) -> DefaultHwModel {
-        // TODO: use FirmwareBinaries for all binaries to make FPGA easier
-        let mut caliptra_builder = CaliptraBuilder::new(
+    struct TestBinaries {
+        vendor_pk_hash_u8: Vec<u8>,
+        caliptra_rom: Vec<u8>,
+        caliptra_fw: Vec<u8>,
+        mcu_rom: Vec<u8>,
+        soc_manifest: Vec<u8>,
+        mcu_runtime: Vec<u8>,
+    }
+
+    fn prebuilt_binaries(
+        feature: Option<&str>,
+        binaries: &'static FirmwareBinaries,
+    ) -> TestBinaries {
+        let mut test_binaries = TestBinaries {
+            vendor_pk_hash_u8: binaries
+                .vendor_pk_hash()
+                .expect("Failed to get Vendor PK hash")
+                .to_vec(),
+            caliptra_rom: binaries.caliptra_rom.clone(),
+            caliptra_fw: binaries.caliptra_fw.clone(),
+            mcu_rom: binaries.mcu_rom.clone(),
+            soc_manifest: binaries.soc_manifest.clone(),
+            mcu_runtime: binaries.mcu_runtime.clone(),
+        };
+
+        // check for prebuilt binaries for our test feature
+        if let Some(feature) = feature {
+            let err = format!(
+                "Failed to get MCU firmware and manifest for feature {}",
+                feature
+            );
+            test_binaries.soc_manifest = binaries.test_soc_manifest(feature).expect(&err).clone();
+            test_binaries.mcu_runtime = binaries.test_runtime(feature).expect(&err).clone();
+        }
+
+        test_binaries
+    }
+
+    fn build_test_binaries(feature: Option<&str>) -> TestBinaries {
+        let mcu_runtime = compile_runtime(feature, false);
+        let mut builder = CaliptraBuilder::new(
             cfg!(feature = "fpga_realtime"),
             None,
             None,
             None,
             None,
-            Some(runtime_path.clone()),
+            Some(mcu_runtime.clone()),
             None,
             None,
             None,
         );
+        let caliptra_rom = std::fs::read(
+            builder
+                .get_caliptra_rom()
+                .expect("Failed to build Caliptra ROM"),
+        )
+        .unwrap();
 
-        // let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
-        let caliptra_rom = std::fs::read(caliptra_builder.get_caliptra_rom().unwrap()).unwrap();
-        let mcu_rom = std::fs::read(rom_path).unwrap();
-        let caliptra_fw = std::fs::read(caliptra_builder.get_caliptra_fw().unwrap()).unwrap();
-        let soc_manifest = std::fs::read(caliptra_builder.get_soc_manifest().unwrap()).unwrap();
-        let mcu_runtime = std::fs::read(runtime_path).unwrap();
-        let vendor_pk_hash_u8 = hex::decode(caliptra_builder.get_vendor_pk_hash().unwrap())
+        let caliptra_fw = std::fs::read(
+            builder
+                .get_caliptra_fw()
+                .expect("Failed to build Caliptra ROM"),
+        )
+        .unwrap();
+
+        let mcu_rom = std::fs::read(&*ROM).unwrap();
+        let soc_manifest = std::fs::read(
+            builder
+                .get_soc_manifest(None)
+                .expect("Failed to build SoC manifest"),
+        )
+        .unwrap();
+        let vendor_pk_hash_u8 = hex::decode(builder.get_vendor_pk_hash().unwrap())
             .expect("Invalid hex string for vendor_pk_hash");
+        let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
+
+        TestBinaries {
+            vendor_pk_hash_u8,
+            caliptra_rom,
+            caliptra_fw,
+            mcu_rom,
+            soc_manifest,
+            mcu_runtime,
+        }
+    }
+
+    pub fn start_runtime_hw_model(feature: Option<&str>, i3c_port: Option<u16>) -> DefaultHwModel {
+        let TestBinaries {
+            vendor_pk_hash_u8,
+            caliptra_rom,
+            caliptra_fw,
+            mcu_rom,
+            soc_manifest,
+            mcu_runtime,
+        } = match FirmwareBinaries::from_env() {
+            Ok(binaries) => prebuilt_binaries(feature, binaries),
+            _ => {
+                println!("Could not find prebuilt firmware binaries, building firmware...");
+                build_test_binaries(feature)
+            }
+        };
+
         let vendor_pk_hash: Vec<u32> = vendor_pk_hash_u8
             .chunks(4)
             .map(|chunk| {
@@ -135,6 +214,7 @@ mod test {
             .collect();
         let vendor_pk_hash: [u32; 12] = vendor_pk_hash.as_slice().try_into().unwrap();
 
+        // TODO: read the PQC type
         mcu_hw_model::new(
             InitParams {
                 caliptra_rom: &caliptra_rom,
@@ -310,7 +390,7 @@ mod test {
             cargo_run_args.push("--caliptra-firmware");
             cargo_run_args.push(caliptra_fw.to_str().unwrap());
             let soc_manifest = caliptra_builder
-                .get_soc_manifest()
+                .get_soc_manifest(None)
                 .expect("Failed to build SoC manifest");
             cargo_run_args.push("--soc-manifest");
             cargo_run_args.push(soc_manifest.to_str().unwrap());
@@ -384,7 +464,7 @@ mod test {
 
         println!("Compiling test firmware {}", feature);
         let feature = feature.replace("_", "-");
-        let test_runtime = compile_runtime(&feature, example_app);
+        let test_runtime = compile_runtime(Some(&feature), example_app);
         let i3c_port = "65534".to_string();
         let test = run_runtime(
             &feature,
@@ -478,6 +558,8 @@ mod test {
     run_test!(test_mcu_mbox_usermode, example_app);
     run_test!(test_mbox_sram, example_app);
 
+    run_test!(test_warm_reset, example_app);
+
     /// This tests a full active mode boot run through with Caliptra, including
     /// loading MCU's firmware from Caliptra over the recovery interface.
     #[test]
@@ -487,7 +569,7 @@ mod test {
 
         let feature = "test-exit-immediately".to_string();
         println!("Compiling test firmware {}", &feature);
-        let test_runtime = compile_runtime(&feature, false);
+        let test_runtime = compile_runtime(Some(&feature), false);
         let i3c_port = "65534".to_string();
         let test = run_runtime(
             &feature,
@@ -519,7 +601,7 @@ mod test {
 
         let feature = "test-mcu-rom-flash-access".to_string();
         println!("Compiling test firmware {}", &feature);
-        let test_runtime = compile_runtime(&feature, false);
+        let test_runtime = compile_runtime(Some(&feature), false);
         let i3c_port = "65534".to_string();
         let test = run_runtime(
             &feature,

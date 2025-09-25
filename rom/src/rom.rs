@@ -23,6 +23,7 @@ use crate::LifecycleControllerState;
 use crate::LifecycleHashedTokens;
 use crate::LifecycleToken;
 use crate::RomEnv;
+use crate::WarmBoot;
 use core::fmt::Write;
 use registers_generated::fuses::Fuses;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
@@ -312,9 +313,8 @@ pub fn rom_start(params: RomParameters) {
             ColdBoot::run(&mut env, params);
         }
         McuResetReason::WarmReset => {
-            // TODO: Implement warm reset flow
-            romtime::println!("[mcu-rom] TODO: Warm reset flow not implemented");
-            fatal_error(0x1001); // Error code for unimplemented warm reset
+            romtime::println!("[mcu-rom] Warm reset detected");
+            WarmBoot::run(&mut env, params);
         }
         McuResetReason::FirmwareBootUpdate => {
             // TODO: Implement firmware boot update flow

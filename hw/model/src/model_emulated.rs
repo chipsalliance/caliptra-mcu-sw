@@ -680,7 +680,7 @@ mod test {
             .expect("Could not get vendor PK hash");
         println!("Vendor PK hash: {:x?}", vendor_pk_hash);
         let vendor_pk_hash = hex::decode(vendor_pk_hash).unwrap().try_into().unwrap();
-        let soc_manifest = caliptra_builder.get_soc_manifest().unwrap();
+        let soc_manifest = caliptra_builder.get_soc_manifest(None).unwrap();
 
         let mcu_rom = std::fs::read(mcu_rom).unwrap();
         let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
