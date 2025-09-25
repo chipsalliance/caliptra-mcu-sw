@@ -9,6 +9,7 @@ use caliptra_api_types::Fuses;
 use caliptra_emu_bus::{Bus, BusError, BusMmio, Event};
 use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
+use caliptra_hw_model::fpga_regs::{FifoData, FifoStatus};
 use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap, OpenOcdJtagTap};
 use caliptra_hw_model::{
     DeviceLifecycle, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem, Output,
@@ -58,6 +59,7 @@ pub struct ModelFpgaRealtime {
     i3c_handle: Option<JoinHandle<()>>,
     i3c_tx: Option<mpsc::Sender<I3cBusResponse>>,
     i3c_next_private_read_len: Option<u16>,
+    printed_ocp_lock_key_release: bool,
 }
 
 impl ModelFpgaRealtime {
@@ -270,12 +272,65 @@ impl ModelFpgaRealtime {
             std::thread::yield_now();
         }
     }
+
+    fn handle_msg_fifo(&mut self) {
+        loop {
+            if self
+                .base
+                .wrapper
+                .fifo_regs()
+                .msg_fifo_status
+                .is_set(FifoStatus::Empty)
+            {
+                break;
+            }
+            let data = self.base.wrapper.fifo_regs().msg_fifo_data_pop.extract();
+            if data.is_set(FifoData::CharValid) {
+                println!("FPGA MSG FIFO: {:02x}", data.read(FifoData::NextChar) as u8);
+            }
+            let key_parts: Vec<String> = self
+                .base
+                .wrapper
+                .regs()
+                .ocp_lock_key_release
+                .iter()
+                .map(|r| format!("{:08x}", r.get()))
+                .collect();
+            println!("FPGA OCP Lock Key Release: {}", key_parts.join(""));
+        }
+    }
+
+    fn handle_ocp_lock_key_release(&mut self) {
+        if !self.printed_ocp_lock_key_release {
+            if self
+                .base
+                .wrapper
+                .regs()
+                .ocp_lock_key_release
+                .iter()
+                .any(|r| r.get() != 0)
+            {
+                let key_parts: Vec<String> = self
+                    .base
+                    .wrapper
+                    .regs()
+                    .ocp_lock_key_release
+                    .iter()
+                    .map(|r| format!("{:08x}", r.get()))
+                    .collect();
+                println!("FPGA OCP Lock Key Release: {}", key_parts.join(""));
+                self.printed_ocp_lock_key_release = true;
+            }
+        }
+    }
 }
 
 impl McuHwModel for ModelFpgaRealtime {
     fn step(&mut self) {
         self.base.step();
         self.handle_i3c();
+        self.handle_msg_fifo();
+        self.handle_ocp_lock_key_release();
     }
 
     fn new_unbooted(params: InitParams) -> Result<Self>
@@ -375,6 +430,7 @@ impl McuHwModel for ModelFpgaRealtime {
             i3c_handle,
             i3c_tx,
             i3c_next_private_read_len: None,
+            printed_ocp_lock_key_release: false,
         };
 
         Ok(m)

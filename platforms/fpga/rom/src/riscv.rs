@@ -49,6 +49,29 @@ pub extern "C" fn rom_entry() -> ! {
 
     romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
 
+    romtime::println!("[mcu-rom] Writing to message FIFO");
+    const MSG_FIFO: *mut u32 = 0xa401_1020 as *mut u32;
+    for i in 0..13 {
+        unsafe { core::ptr::write_volatile(MSG_FIFO, i | 0x100) };
+    }
+
+    const OCP_LOCK_KEY_RELEASE: *mut u32 = 0xa401_0200 as *mut u32;
+    for i in 0..16 {
+        romtime::println!(
+            "[mcu-rom] Writing to OCP LOCK key release {:08x}: {:08x}",
+            unsafe { OCP_LOCK_KEY_RELEASE.offset(i) as usize },
+            i as u32 + 100
+        );
+        unsafe { core::ptr::write_volatile(OCP_LOCK_KEY_RELEASE.offset(i), i as u32 + 100) };
+    }
+    for i in 0..16 {
+        romtime::println!(
+            "[mcu-rom] Reading from OCP LOCK key release {:08x}: {:08x}",
+            unsafe { OCP_LOCK_KEY_RELEASE.offset(i) as usize },
+            unsafe { core::ptr::read_volatile(OCP_LOCK_KEY_RELEASE.offset(i)) }
+        );
+    }
+
     // This token is fixed in the FPGA RTL and is specified in LE order.
     let unlock_token: LifecycleToken = 0xF12A5911421748A2ADFC9693EF1FADEAu128.to_le_bytes().into();
 
