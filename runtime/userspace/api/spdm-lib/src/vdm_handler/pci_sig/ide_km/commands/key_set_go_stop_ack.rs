@@ -35,7 +35,7 @@ pub(crate) async fn handle_key_set_go_stop(
                 key_set_go_stop.port_index,
             )
             .await
-            .map_err(VdmError::IdeKmDriver)?;
+            .map_err(VdmError::Ide)?;
     } else {
         ide_km_driver
             .key_set_stop(
@@ -44,7 +44,7 @@ pub(crate) async fn handle_key_set_go_stop(
                 key_set_go_stop.port_index,
             )
             .await
-            .map_err(VdmError::IdeKmDriver)?;
+            .map_err(VdmError::Ide)?;
     }
 
     // Generate KEY_GO_STOP_ACK response

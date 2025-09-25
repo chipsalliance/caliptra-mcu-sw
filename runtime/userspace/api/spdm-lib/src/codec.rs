@@ -291,17 +291,28 @@ impl<'a> MessageBuf<'a> {
         Ok(&mut self.buffer[self.data..self.data + len])
     }
 
+    pub fn tailroom(&self) -> usize {
+        self.buffer.len().saturating_sub(self.tail)
+    }
+
     /// Returns the total capacity of the message buffer
     pub fn capacity(&self) -> usize {
         self.buffer.len()
     }
 
-    /// Resets the message buffer
+    /// Resets the entire message buffer
     pub fn reset(&mut self) {
         self.buffer.fill(0);
         self.data = 0;
         self.tail = 0;
         self.head = 0;
+    }
+
+    /// Reset the payload portion of the message buffer
+    /// This keeps the headspace intact
+    pub fn reset_payload(&mut self) {
+        self.tail = self.head;
+        self.data = self.head;
     }
 
     /// Returns the message buffer up to the specified data offset.
