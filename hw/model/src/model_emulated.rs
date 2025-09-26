@@ -43,7 +43,7 @@ use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
 use mcu_rom_common::LifecycleControllerState;
-use mcu_rom_common::McuRomBootStatus;
+use mcu_rom_common::McuBootMilestones;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
 use registers_generated::fuses;
@@ -421,7 +421,9 @@ impl McuHwModel for ModelEmulated {
         self.cpu_enabled.set(true);
         self.step_until(|hw| {
             hw.cycle_count() >= BOOT_CYCLES
-                || hw.mci_flow_status() == u32::from(McuRomBootStatus::ColdBootFlowComplete)
+                || hw
+                    .mci_boot_milestones()
+                    .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
         });
         use std::io::Write;
         let mut w = std::io::Sink::default();
@@ -429,10 +431,9 @@ impl McuHwModel for ModelEmulated {
             w.write_all(self.output().take(usize::MAX).as_bytes())
                 .unwrap();
         }
-        assert_eq!(
-            u32::from(McuRomBootStatus::ColdBootFlowComplete),
-            self.mci_flow_status()
-        );
+        assert!(self
+            .mci_boot_milestones()
+            .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE));
         MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         Ok(())
     }
@@ -522,17 +523,6 @@ impl McuHwModel for ModelEmulated {
 
     fn save_otp_memory(&self, _path: &Path) -> Result<()> {
         unimplemented!()
-    }
-
-    fn mci_flow_status(&mut self) -> u32 {
-        self.cpu
-            .bus
-            .bus
-            .mci_periph
-            .as_mut()
-            .unwrap()
-            .periph
-            .read_mci_reg_fw_flow_status()
     }
 
     fn mcu_manager(&mut self) -> impl McuManager {
@@ -638,8 +628,7 @@ impl Drop for ModelEmulated {
 
 #[cfg(test)]
 mod test {
-    use mcu_rom_common::McuRomBootStatus;
-
+    use super::*;
     use crate::{InitParams, McuHwModel, ModelEmulated};
 
     #[test]
@@ -708,9 +697,8 @@ mod test {
             w.write_all(model.output().take(usize::MAX).as_bytes())
                 .unwrap();
         }
-        assert_eq!(
-            u32::from(McuRomBootStatus::FuseWriteComplete),
-            model.mci_flow_status()
-        );
+        assert!(model
+            .mci_boot_milestones()
+            .contains(McuBootMilestones::CPTRA_FUSES_WRITTEN));
     }
 }

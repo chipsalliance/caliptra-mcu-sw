@@ -22,6 +22,7 @@ use crate::ImageVerifier;
 use crate::LifecycleControllerState;
 use crate::LifecycleHashedTokens;
 use crate::LifecycleToken;
+use crate::McuBootMilestones;
 use crate::RomEnv;
 use crate::WarmBoot;
 use core::fmt::Write;
@@ -282,6 +283,7 @@ pub fn rom_start(params: RomParameters) {
 
     // Create local references for printing
     let mci = &env.mci;
+    mci.set_flow_milestone(McuBootMilestones::ROM_STARTED.into());
 
     romtime::println!(
         "[mcu-rom] Device lifecycle: {}",
