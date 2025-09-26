@@ -31,8 +31,10 @@ mod recovery;
 
 // Boot flow modules
 mod cold_boot;
+mod fw_boot;
 mod warm_boot;
 pub use cold_boot::ColdBoot;
+pub use fw_boot::FwBoot;
 pub use warm_boot::WarmBoot;
 
 mod fw_hitless_update;
