@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::ValueEnum;
 use mcu_builder::AllBuildArgs;
 
@@ -17,6 +17,8 @@ pub enum Configuration {
     Subsystem,
     /// Running Core tests on a subsystem FPGA. The tests are sourced from caliptra-sw.
     CoreOnSubsystem,
+    /// Testing `caliptra-sw` in `core` mode.
+    Core,
 }
 
 pub enum CommandExecutor {
@@ -24,6 +26,8 @@ pub enum CommandExecutor {
     Subsystem(Subsystem),
     /// Runs commands for a core on subsystem FPGA.
     CoreOnSubsystem(CoreOnSubsystem),
+    /// Runs commands for a FPGA.
+    Core(Core),
 }
 
 impl From<Configuration> for CommandExecutor {
@@ -33,6 +37,7 @@ impl From<Configuration> for CommandExecutor {
             Configuration::CoreOnSubsystem => {
                 CommandExecutor::CoreOnSubsystem(CoreOnSubsystem::default())
             }
+            Configuration::Core => CommandExecutor::Core(Core::default()),
         }
     }
 }
@@ -42,14 +47,17 @@ impl<'a> Configuration {
         match self {
             Self::Subsystem => cache_function("subsystem")?,
             Self::CoreOnSubsystem => cache_function("core-on-subsystem")?,
+            Self::Core => cache_function("core")?,
         }
         Ok(())
     }
 
     pub fn from_cache(cache_contents: &'a str) -> Result<Self> {
         match cache_contents {
+            "subsystem" => Ok(Configuration::Subsystem),
             "core-on-subsystem" => Ok(Configuration::CoreOnSubsystem),
-            _ => Ok(Configuration::Subsystem),
+            "core" => Ok(Configuration::Core),
+            _ => bail!("FPGA is not bootstrapped. Need to run `xtask fpga bootstrap`"),
         }
     }
 
@@ -69,6 +77,7 @@ impl<'a> ActionHandler<'a> for CommandExecutor {
         match self {
             Self::Subsystem(sub) => sub.bootstrap(),
             Self::CoreOnSubsystem(core) => core.bootstrap(),
+            Self::Core(core) => core.bootstrap(),
         }
     }
 
@@ -76,6 +85,7 @@ impl<'a> ActionHandler<'a> for CommandExecutor {
         match self {
             Self::Subsystem(sub) => sub.build(args),
             Self::CoreOnSubsystem(core) => core.build(args),
+            Self::Core(core) => core.build(args),
         }
     }
 
@@ -83,6 +93,7 @@ impl<'a> ActionHandler<'a> for CommandExecutor {
         match self {
             Self::Subsystem(sub) => sub.build_test(args),
             Self::CoreOnSubsystem(core) => core.build_test(args),
+            Self::Core(core) => core.build_test(args),
         }
     }
 
@@ -90,6 +101,7 @@ impl<'a> ActionHandler<'a> for CommandExecutor {
         match self {
             Self::Subsystem(sub) => sub.test(args)?,
             Self::CoreOnSubsystem(core) => core.test(args)?,
+            Self::Core(core) => core.test(args)?,
         }
         Ok(())
     }
@@ -100,6 +112,7 @@ impl CommandExecutor {
         match self {
             Self::Subsystem(sub) => sub.set_target_host(target_host),
             Self::CoreOnSubsystem(core) => core.set_target_host(target_host),
+            Self::Core(core) => core.set_target_host(target_host),
         };
         self
     }
@@ -177,7 +190,7 @@ impl<'a> ActionHandler<'a> for Subsystem {
 }
 
 #[derive(Clone, Default, Debug)]
-/// Implements FPGA actions for a Core FPGA.
+/// Implements FPGA actions for a Core on Subsystem FPGA.
 pub struct CoreOnSubsystem {
     target_host: Option<String>,
 }
@@ -193,7 +206,7 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         // TODO(clundin): Consider overriding branch command
         let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=main-2.x --depth=1";
         let target_host = self.target_host.as_deref();
-        run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-mcu-sw repo")?;
+        run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-sw repo")?;
         Ok(())
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
@@ -250,6 +263,88 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         };
 
         let prelude = "CPTRA_MCU_ROM=/home/runner/mcu-rom-fpga.bin CPTRA_UIO_NUM=0 CALIPTRA_PREBUILT_FW_DIR=/tmp/caliptra-test-firmware/caliptra-test-firmware CALIPTRA_IMAGE_NO_GIT_REVISION=1";
+        run_test_suite(
+            "caliptra-sw",
+            prelude,
+            test_filter,
+            to,
+            self.target_host.as_deref(),
+        )?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Default, Debug)]
+/// Implements FPGA actions for a Core FPGA.
+pub struct Core {
+    target_host: Option<String>,
+}
+
+impl Core {
+    fn set_target_host(&mut self, target_host: Option<&str>) {
+        self.target_host = target_host.map(|f| f.to_owned());
+    }
+}
+
+impl<'a> ActionHandler<'a> for Core {
+    fn bootstrap(&self) -> Result<()> {
+        let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=main-2.x --depth=1";
+        let target_host = self.target_host.as_deref();
+        run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-sw repo")?;
+        Ok(())
+    }
+    fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
+        run_command(
+            None,
+            "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
+        )?;
+        let caliptra_sw = args
+            .caliptra_sw
+            .expect("need to set `caliptra-sw` when in core mode");
+        run_command(
+                        None,
+                        &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display()),
+                    )?;
+        if let Some(target_host) = &self.target_host {
+            rsync_file(
+                target_host,
+                "/tmp/caliptra-test-firmware",
+                "/tmp/caliptra-test-firmware",
+                false,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
+        let caliptra_sw = args
+            .caliptra_sw
+            .expect("caliptra-sw path is required for Core On Subsystem mode");
+        let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
+
+        let mut base_cmd = build_base_docker_command(Some(caliptra_sw))?;
+        base_cmd.arg(
+                format!("(cd /{} && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_realtime,itrng --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
+            , base_name));
+        base_cmd.status().context("failed to cross compile tests")?;
+        if let Some(target_host) = &self.target_host {
+            rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
+                .context("failed to copy tests to fpga")?;
+        }
+        Ok(())
+    }
+
+    fn test(&self, args: &'a TestArgs) -> Result<()> {
+        let default_test_filter = String::from("package(caliptra-drivers)");
+        let test_filter = args.test_filter.as_ref().unwrap_or(&default_test_filter);
+
+        let to = if *args.test_output {
+            "--no-capture"
+        } else {
+            "--test-threads=1"
+        };
+
+        let prelude = "CPTRA_UIO_NUM=0 CALIPTRA_PREBUILT_FW_DIR=/tmp/caliptra-test-firmware/caliptra-test-firmware CALIPTRA_IMAGE_NO_GIT_REVISION=1";
         run_test_suite(
             "caliptra-sw",
             prelude,
