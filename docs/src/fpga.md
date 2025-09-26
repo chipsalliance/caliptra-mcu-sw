@@ -1,8 +1,8 @@
 # Testing with an FPGA
 
-## Pre Requisites
+## Prerequisites
 
-### Host System 
+### Host System
 
 The machine that is used for development and cross compilation should have:
 
@@ -11,7 +11,9 @@ The machine that is used for development and cross compilation should have:
 - rsync
 - git
 
-### FPGA System 
+If you want to compile tests locally and run them on the FPGA, then it is recommended you also install [cross-rs](https://github.com/cross-rs/cross).
+
+### FPGA System
 
 The FPGA should have the following installed:
 
@@ -117,6 +119,52 @@ You can build firmware binaries (ROM, runtime, manifest, etc.) using a combinati
 The `all-build` command will build Caliptra ROM, Caliptra firmware bundle, MCU ROM, MCU runtime, and the SoC manifest and package them all together in a ZIP file, which the `fpga-run` xtask can run.
 
 These commands can be run on any host. It is not recommended to run them on the FPGA host as it is very slow (the build can take over an hour the first time); instead it is better to run the command on a different host and use `scp` or `rsync` to copy the ZIP in.
+
+## Cross-compiling xtask-fpga
+
+You can cross-compile the `xtask` (FPGA version) binary locally.
+I recommend using a script, `cross.sh`, to make this slightly easier, with the following contents:
+
+```
+#!/usr/bin/env bash
+# Licensed under the Apache-2.0 license
+#
+export TARGET=aarch64-unknown-linux-gnu
+export CARGO_BUILD_TARGET="${TARGET}"
+export CARGO_TARGET_DIR=target/build/"${CARGO_BUILD_TARGET}"
+cross "${@}"
+```
+
+Then you can cross-compile with:
+
+```
+./cross.sh build -p xtask --release --bin xtask --features fpga_realtime --target=aarch64-unknown-linux-gnu
+```
+
+You can then copy `target/build/aarch64-unknown-linux-gnu/aarch64-unknown-linux-gnu/release/xtask` to the FPGA to run.
+
+You will still probably need to have the `calipta-mcu-sw` git repository checked out on the FPGA in order to compile the kernel modules.
+
+## Cross-compiling tests
+
+On your local machine, compile the test firmware with separate binaries for the particular test you want to run as a feature:
+
+```
+cargo xtask all-build --platform fpga --runtime-features test-mctp-loopback --separate-runtimes
+```
+
+You can cross compile the integration test binaries using cross-rs by running:
+
+```
+./cross.sh rustc --tests -p tests-integration --features fpga_realtime --target=aarch64-unknown-linux-gnu -- --emit link='target/tests-integration-fpga'
+```
+
+You can then copy `target/tests-integration-fpga` and `target/all-fw.zip` to the FPGA host and run them, on the FPGA host, with:
+
+```
+# on the FPGA host
+CPTRA_FIRMWARE_BUNDLE=$(realpath all-fw.zip) ./tests-integration-fpga --test test_mctp_loopback --nocapture
+```
 
 ## Running ROM and firmware
 

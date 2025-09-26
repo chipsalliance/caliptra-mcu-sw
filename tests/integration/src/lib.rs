@@ -5,6 +5,7 @@ mod i3c_socket;
 mod jtag;
 mod test_firmware_update;
 mod test_mctp_capsule_loopback;
+mod test_mctp_spdm_responder_conformance;
 mod test_pldm_fw_update;
 mod test_soc_boot;
 
@@ -550,7 +551,6 @@ mod test {
     // run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);
-    run_test!(test_mctp_spdm_responder_conformance, nightly);
     run_test!(test_doe_spdm_responder_conformance, nightly);
     run_test!(test_mci, example_app);
     run_test!(test_mcu_mbox);

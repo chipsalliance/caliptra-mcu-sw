@@ -49,6 +49,7 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
         )
         .unwrap();
     }
+    #[cfg(feature = "doe")]
     if let Err(e) = spawner.spawn(spdm_doe_responder()) {
         writeln!(
             console_writer,
