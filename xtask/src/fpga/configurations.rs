@@ -121,8 +121,7 @@ impl<'a> ActionHandler<'a> for Subsystem {
     fn bootstrap(&self) -> Result<()> {
         let bootstrap_cmd= "[ -d caliptra-mcu-sw ] || git clone https://github.com/chipsalliance/caliptra-mcu-sw --branch=main --depth=1";
         let target_host = self.target_host.as_deref();
-        run_command(target_host, bootstrap_cmd, false)
-            .context("failed to clone caliptra-mcu-sw repo")?;
+        run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-mcu-sw repo")?;
         Ok(())
     }
 
@@ -194,15 +193,13 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         // TODO(clundin): Consider overriding branch command
         let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=main-2.x --depth=1";
         let target_host = self.target_host.as_deref();
-        run_command(target_host, bootstrap_cmd, false)
-            .context("failed to clone caliptra-mcu-sw repo")?;
+        run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-mcu-sw repo")?;
         Ok(())
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
         run_command(
             None,
             "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
-            false,
         )?;
         let caliptra_sw = args
             .caliptra_sw
@@ -210,7 +207,6 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         run_command(
                         None,
                         &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display()),
-                        false,
                     )?;
         let rom_path = mcu_builder::rom_build(Some("fpga"), "core_test")?;
         if let Some(target_host) = &self.target_host {

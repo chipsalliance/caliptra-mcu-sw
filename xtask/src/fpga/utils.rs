@@ -44,8 +44,15 @@ pub fn check_fpga_dependencies(target_host: Option<&str>) -> Result<()> {
 }
 
 fn check_dependencies(target_host: Option<&str>, tools: &[(&str, &str)]) -> Result<()> {
-    for (command_str, error_msg) in tools {
-        if run_command(target_host, command_str, true).is_err() {
+    for (command, error_msg) in tools {
+        if run_command_extended(RunCommandArgs {
+            target_host,
+            command,
+            output: Output::Silence,
+            ..Default::default()
+        })
+        .is_err()
+        {
             let error_msg = error_msg.to_string();
             bail!(error_msg);
         }
@@ -78,64 +85,93 @@ pub fn rsync_file(target_host: &str, file: &str, dest_file: &str, from_fpga: boo
 }
 
 /// Runs a command over SSH if `target_host` is `Some`. Otherwise runs command on current machine.
+/// Captures output of command and returns it as a string
 pub fn run_command_with_output(target_host: Option<&str>, command: &str) -> Result<String> {
-    // TODO(clundin): Refactor to share code with `run_command`
-
-    let output = {
-        if let Some(target_host) = target_host {
-            Command::new("ssh")
-                .current_dir(&*PROJECT_ROOT)
-                .args([target_host, "-t", command])
-                .output()
-        } else {
-            Command::new("sh")
-                .current_dir(&*PROJECT_ROOT)
-                .args(["-c", command])
-                .output()
-        }
-    }?;
-
-    Ok(String::from_utf8(output.stdout)?)
+    let res = run_command_extended(RunCommandArgs {
+        target_host,
+        command,
+        output: Output::Capture,
+    })?;
+    if let Some(output) = res {
+        Ok(output)
+    } else {
+        bail!("Missing command output for command: '{command}'")
+    }
 }
 
 /// Runs a command over SSH if `target_host` is `Some`. Otherwise runs command on current machine.
-pub fn run_command(target_host: Option<&str>, command: &str, silence_output: bool) -> Result<()> {
-    let (stdout, stderr) = if silence_output {
-        (Stdio::null(), Stdio::null())
+pub fn run_command(target_host: Option<&str>, command: &str) -> Result<()> {
+    let _ = run_command_extended(RunCommandArgs {
+        target_host,
+        command,
+        ..Default::default()
+    })?;
+    Ok(())
+}
+
+#[derive(Default, PartialEq)]
+enum Output {
+    Silence,
+    Capture,
+    #[default]
+    Inherit,
+}
+
+#[derive(Default)]
+pub struct RunCommandArgs<'a> {
+    target_host: Option<&'a str>,
+    command: &'a str,
+    output: Output,
+}
+
+/// Runs a command over SSH if `target_host` is `Some`. Otherwise runs command on current machine.
+/// Set `silence_output` to true to avoid outputting command logs.
+pub fn run_command_extended(args: RunCommandArgs) -> Result<Option<String>> {
+    let mut command = if let Some(target_host) = args.target_host {
+        if args.output != Output::Silence {
+            println!("[FPGA] Running command: {}", args.command);
+        }
+        let mut cmd = Command::new("ssh");
+        cmd.current_dir(&*PROJECT_ROOT)
+            .args([target_host, "-t", args.command]);
+        cmd
     } else {
-        (Stdio::inherit(), Stdio::inherit())
+        if args.output != Output::Silence {
+            println!("[HOST] Running command: {}", args.command);
+        }
+        let mut cmd = Command::new("sh");
+        cmd.current_dir(&*PROJECT_ROOT).args(["-c", args.command]);
+        cmd
     };
-    if let Some(target_host) = target_host {
-        if !silence_output {
-            println!("[FPGA] Running command: {command}");
+
+    match args.output {
+        Output::Capture => {
+            let output = command.output()?;
+            Ok(Some(String::from_utf8(output.stdout)?))
         }
-        let status = Command::new("ssh")
-            .current_dir(&*PROJECT_ROOT)
-            .args([target_host, "-t", command])
-            .stdin(Stdio::inherit())
-            .stdout(stdout)
-            .stderr(stderr)
-            .status()?;
-        if !status.success() {
-            bail!("\"{command}\" failed to run on FPGA over ssh");
+        Output::Silence => {
+            let status = command
+                .stdout(Stdio::null())
+                .stdin(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
+            if !status.success() {
+                bail!("Failed to run command");
+            }
+            Ok(None)
         }
-    } else {
-        if !silence_output {
-            println!("[HOST] Running command: {command}");
-        }
-        let status = Command::new("sh")
-            .current_dir(&*PROJECT_ROOT)
-            .args(["-c", command])
-            .stdin(Stdio::inherit())
-            .stdout(stdout)
-            .stderr(stderr)
-            .status()?;
-        if !status.success() {
-            bail!("Failed to run command");
+        Output::Inherit => {
+            let status = command
+                .stdout(Stdio::inherit())
+                .stdin(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .status()?;
+            if !status.success() {
+                bail!("Failed to run command");
+            }
+            Ok(None)
         }
     }
-
-    Ok(())
 }
 
 /// create a base docker command
@@ -187,7 +223,7 @@ pub fn run_test_suite(
     );
     // Run test suite.
     // Ignore error so we still copy the logs.
-    let _ = run_command(target_host, test_command.as_str(), false);
+    let _ = run_command(target_host, test_command.as_str());
     if let Some(target_host) = target_host {
         println!("Copying test log from FPGA to junit.xml");
         rsync_file(target_host, "/tmp/junit.xml", ".", true)?;

@@ -127,7 +127,6 @@ pub fn fpga_install_kernel_modules(target_host: Option<&str>) -> Result<()> {
     run_command(
         target_host,
         "(cd caliptra-mcu-sw/hw/fpga/kernel-modules && make)",
-        false,
     )?;
 
     // TODO(clundin): Need to test this, the Ubuntu FPGA is in a bad state and seems to not be able
@@ -135,7 +134,6 @@ pub fn fpga_install_kernel_modules(target_host: Option<&str>) -> Result<()> {
     run_command(
         target_host,
         "sudo insmod caliptra-mcu-sw/hw/fpga/kernel-modules/io_module.ko",
-        false,
     )?;
 
     fix_permissions(target_host)?;
@@ -158,7 +156,6 @@ fn disable_cpu_idle(cpu: usize, target_host: Option<&str>) -> Result<()> {
         &format!(
             "sudo bash -c \"echo 1 > /sys/devices/system/cpu/cpu{cpu}/cpuidle/state1/disable\""
         ),
-        false,
     )?;
     let state = run_command_with_output(
         target_host,
@@ -171,8 +168,8 @@ fn disable_cpu_idle(cpu: usize, target_host: Option<&str>) -> Result<()> {
 }
 
 fn fix_permissions(target_host: Option<&str>) -> Result<()> {
-    run_command(target_host, "sudo chmod 666 /dev/uio0", false)?;
-    run_command(target_host, "sudo chmod 666 /dev/uio1", false)?;
+    run_command(target_host, "sudo chmod 666 /dev/uio0")?;
+    run_command(target_host, "sudo chmod 666 /dev/uio1")?;
     Ok(())
 }
 
@@ -233,7 +230,6 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                 run_command(
                     target_host,
                     &format!("echo \"{config_marker}\" > /dev/shm/fpga-config"),
-                    false,
                 )
             };
 
@@ -252,11 +248,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             is_module_loaded("io_module", target_host.as_deref())?;
 
             // Clear old test logs
-            run_command(
-                target_host.as_deref(),
-                "(sudo rm /tmp/junit.xml || true)",
-                false,
-            )?;
+            run_command(target_host.as_deref(), "(sudo rm /tmp/junit.xml || true)")?;
 
             let config = Configuration::from_cmd(target_host.as_deref())?;
             config
