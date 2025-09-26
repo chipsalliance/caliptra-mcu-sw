@@ -54,7 +54,7 @@ impl<'a> Configuration {
     }
 
     pub fn from_cmd(target_host: Option<&str>) -> Result<Self> {
-        let cache_contents = run_command_with_output(target_host, "cat /tmp/fpga-config")?;
+        let cache_contents = run_command_with_output(target_host, "cat /dev/shm/fpga-config")?;
         let cache_contents = cache_contents.trim_end();
         Self::from_cache(cache_contents)
     }
@@ -121,7 +121,8 @@ impl<'a> ActionHandler<'a> for Subsystem {
     fn bootstrap(&self) -> Result<()> {
         let bootstrap_cmd= "[ -d caliptra-mcu-sw ] || git clone https://github.com/chipsalliance/caliptra-mcu-sw --branch=main --depth=1";
         let target_host = self.target_host.as_deref();
-        run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-mcu-sw repo")?;
+        run_command(target_host, bootstrap_cmd, false)
+            .context("failed to clone caliptra-mcu-sw repo")?;
         Ok(())
     }
 
@@ -145,9 +146,10 @@ impl<'a> ActionHandler<'a> for Subsystem {
         base_cmd.arg(
                 "(cd /work-dir && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_realtime --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
             );
-        base_cmd.status()?;
+        base_cmd.status().context("failed to cross compile tests")?;
         if let Some(target_host) = &self.target_host {
-            rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)?;
+            rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
+                .context("failed to copy tests to fpga")?;
         }
         Ok(())
     }
@@ -192,20 +194,23 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         // TODO(clundin): Consider overriding branch command
         let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=main-2.x --depth=1";
         let target_host = self.target_host.as_deref();
-        run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-mcu-sw repo")?;
+        run_command(target_host, bootstrap_cmd, false)
+            .context("failed to clone caliptra-mcu-sw repo")?;
         Ok(())
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
         run_command(
             None,
             "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
+            false,
         )?;
         let caliptra_sw = args
             .caliptra_sw
             .expect("need to set `caliptra-sw` when in core-on-subsystem mode");
         run_command(
                         None,
-                        &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display())
+                        &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display()),
+                        false,
                     )?;
         let rom_path = mcu_builder::rom_build(Some("fpga"), "core_test")?;
         if let Some(target_host) = &self.target_host {
@@ -228,9 +233,10 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         base_cmd.arg(
                 format!("(cd /{} && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_subsystem,itrng --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
             , caliptra_sw.display()));
-        base_cmd.status()?;
+        base_cmd.status().context("failed to cross compile tests")?;
         if let Some(target_host) = &self.target_host {
-            rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)?;
+            rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
+                .context("failed to copy tests to fpga")?;
         }
         Ok(())
     }
