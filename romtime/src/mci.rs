@@ -14,7 +14,7 @@ pub enum McuResetReason {
     WarmReset,
 
     /// Firmware Boot Update - First firmware update after MCI reset
-    FirmwareBootUpdate,
+    FirmwareBootReset,
 
     /// Firmware Hitless Update - Second or later firmware update
     FirmwareHitlessUpdate,
@@ -127,7 +127,7 @@ impl Mci {
         match (warm_reset, fw_boot_upd, fw_hitless_upd) {
             (false, false, false) => McuResetReason::ColdBoot,
             (true, false, false) => McuResetReason::WarmReset,
-            (false, true, false) => McuResetReason::FirmwareBootUpdate,
+            (false, true, false) => McuResetReason::FirmwareBootReset,
             (false, false, true) => McuResetReason::FirmwareHitlessUpdate,
             _ => McuResetReason::Invalid,
         }
@@ -145,7 +145,7 @@ impl Mci {
 
     /// Check if this is a firmware boot update reset
     pub fn is_fw_boot_update_reset(&self) -> bool {
-        self.reset_reason_enum() == McuResetReason::FirmwareBootUpdate
+        self.reset_reason_enum() == McuResetReason::FirmwareBootReset
     }
 
     /// Check if this is a firmware hitless update reset
