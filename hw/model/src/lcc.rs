@@ -47,7 +47,7 @@ pub fn lc_token_to_words(bytes: &[u8; 16]) -> [u32; 4] {
 /// Read the LC state.
 pub fn read_lc_state(tap: &mut OpenOcdJtagTap) -> Result<LifecycleControllerState> {
     // Check the LCC is initialized and ready.
-    let lcc_status = tap.read_lc_ctrl_reg(&LcCtrlReg::Status)?;
+    let lcc_status = tap.read_reg(&LcCtrlReg::Status)?;
     if LcCtrlStatus::from_bits_truncate(lcc_status)
         != LcCtrlStatus::INITIALIZED | LcCtrlStatus::READY
     {
@@ -55,7 +55,7 @@ pub fn read_lc_state(tap: &mut OpenOcdJtagTap) -> Result<LifecycleControllerStat
     }
 
     // Read the state register.
-    let lc_state = LifecycleControllerState::from(tap.read_lc_ctrl_reg(&LcCtrlReg::LcState)?);
+    let lc_state = LifecycleControllerState::from(tap.read_reg(&LcCtrlReg::LcState)?);
 
     Ok(lc_state)
 }
@@ -67,7 +67,7 @@ pub fn lc_transition(
     token: Option<[u32; 4]>,
 ) -> Result<LifecycleControllerState> {
     // Check the LCC is initialized and ready.
-    let lcc_status = tap.read_lc_ctrl_reg(&LcCtrlReg::Status)?;
+    let lcc_status = tap.read_reg(&LcCtrlReg::Status)?;
     if LcCtrlStatus::from_bits_truncate(lcc_status)
         != LcCtrlStatus::INITIALIZED | LcCtrlStatus::READY
     {
@@ -76,17 +76,17 @@ pub fn lc_transition(
 
     // Attempt to claim the LC transition mutex if it has not been claimed yet.
     const MULTI_TRUE: u32 = 0x96;
-    if tap.read_lc_ctrl_reg(&LcCtrlReg::ClaimTransitionIf)? == MULTI_TRUE {
+    if tap.read_reg(&LcCtrlReg::ClaimTransitionIf)? == MULTI_TRUE {
         bail!(LccUtilError::MutexAlreadyClaimed);
     }
-    tap.write_lc_ctrl_reg(&LcCtrlReg::ClaimTransitionIf, MULTI_TRUE)?;
-    let mutex_val = tap.read_lc_ctrl_reg(&LcCtrlReg::ClaimTransitionIf)?;
+    tap.write_reg(&LcCtrlReg::ClaimTransitionIf, MULTI_TRUE)?;
+    let mutex_val = tap.read_reg(&LcCtrlReg::ClaimTransitionIf)?;
     if mutex_val != MULTI_TRUE {
         bail!(LccUtilError::FailedToClaimMutex(mutex_val));
     }
 
     // Program the target LC state.
-    tap.write_lc_ctrl_reg(
+    tap.write_reg(
         &LcCtrlReg::TransitionTarget,
         Lifecycle::calc_lc_state_mnemonic(target_lc_state),
     )?;
@@ -101,12 +101,12 @@ pub fn lc_transition(
         ];
 
         for (reg, value) in iter::zip(token_regs, token_words) {
-            tap.write_lc_ctrl_reg(reg, value)?;
+            tap.write_reg(reg, value)?;
         }
     }
 
     // Start the LC transition and wait for completion.
-    tap.write_lc_ctrl_reg(&LcCtrlReg::TransitionCmd, LcCtrlTransitionCmd::START.bits())?;
+    tap.write_reg(&LcCtrlReg::TransitionCmd, LcCtrlTransitionCmd::START.bits())?;
     wait_for_status(
         tap,
         Duration::from_secs(3),
@@ -116,7 +116,7 @@ pub fn lc_transition(
 
     // Check we have entered the post transition state.
     let post_transition_lc_state =
-        LifecycleControllerState::from(tap.read_lc_ctrl_reg(&LcCtrlReg::LcState)?);
+        LifecycleControllerState::from(tap.read_reg(&LcCtrlReg::LcState)?);
     if post_transition_lc_state != LifecycleControllerState::PostTransition {
         bail!(LccUtilError::BadPostTransitionState(
             post_transition_lc_state.to_string()
@@ -133,7 +133,7 @@ fn wait_for_status(
     // Wait for LC controller to be ready.
     poll_until(timeout, Duration::from_millis(50), || {
         let polled_status = match tap.tap() {
-            JtagTap::LccTap => tap.read_lc_ctrl_reg(&LcCtrlReg::Status).unwrap(),
+            JtagTap::LccTap => tap.read_reg(&LcCtrlReg::Status).unwrap(),
             JtagTap::CaliptraCoreTap => bail!(LccUtilError::Unimplemented),
             JtagTap::CaliptraMcuTap => bail!(LccUtilError::Unimplemented),
             JtagTap::NoTap => bail!(LccUtilError::Unimplemented),
