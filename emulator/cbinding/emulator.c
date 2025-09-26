@@ -14,13 +14,13 @@ Abstract:
 Build Instructions:
 
     This file is built automatically by the xtask system:
-    
+
     For debug build:
     cargo xtask emulator-cbinding build-emulator
-    
+
     For release build:
     cargo xtask emulator-cbinding build-emulator --release
-    
+
     Build artifacts are organized in:
     <PROJECT_ROOT>/target/<debug|release>/emulator_cbinding/
     - libemulator_cbinding.a (static library)
@@ -43,13 +43,13 @@ Build Instructions:
     #include <io.h>
     #include <malloc.h>
     #define STDIN_FILENO 0
-    
+
     // Windows doesn't have getopt, so we'll use a simplified version
     char *optarg = NULL;
     int optind = 1;
     int opterr = 1;
     int optopt = 0;
-    
+
     // Windows getopt_long structures and constants
     struct option {
         const char *name;
@@ -57,24 +57,24 @@ Build Instructions:
         int *flag;
         int val;
     };
-    
+
     #define no_argument 0
     #define required_argument 1
     #define optional_argument 2
-    
+
     int getopt(int argc, char * const argv[], const char *optstring);
-    int getopt_long(int argc, char * const argv[], const char *optstring, 
+    int getopt_long(int argc, char * const argv[], const char *optstring,
                    const struct option *longopts, int *longindex);
-    
+
     // Windows signal handling
     #include <signal.h>
-    
+
     // Windows equivalent of aligned_alloc
     #define aligned_alloc(alignment, size) _aligned_malloc(size, alignment)
-    
+
     // Windows POSIX function mappings
     #define read _read
-    
+
 #else
     #include <unistd.h>
     #include <signal.h>
@@ -131,14 +131,14 @@ int getopt(int argc, char * const argv[], const char *optstring) {
 }
 
 // Windows implementation of getopt_long
-int getopt_long(int argc, char * const argv[], const char *optstring, 
+int getopt_long(int argc, char * const argv[], const char *optstring,
                const struct option *longopts, int *longindex) {
     static int sp = 1;
     int c;
     char *cp;
-    
+
     if (longindex) *longindex = -1;
-    
+
     if (sp == 1) {
         if (optind >= argc || argv[optind][0] != '-' || argv[optind][1] == '\0')
             return -1;
@@ -150,13 +150,13 @@ int getopt_long(int argc, char * const argv[], const char *optstring,
             char *long_name = argv[optind] + 2;
             char *equals_pos = strchr(long_name, '=');
             int name_len = equals_pos ? (int)(equals_pos - long_name) : (int)strlen(long_name);
-            
+
             // Find matching long option
             for (int i = 0; longopts[i].name; i++) {
-                if (strncmp(longopts[i].name, long_name, name_len) == 0 && 
+                if (strncmp(longopts[i].name, long_name, name_len) == 0 &&
                     strlen(longopts[i].name) == name_len) {
                     if (longindex) *longindex = i;
-                    
+
                     if (longopts[i].has_arg == required_argument) {
                         if (equals_pos) {
                             optarg = equals_pos + 1;
@@ -177,18 +177,18 @@ int getopt_long(int argc, char * const argv[], const char *optstring,
                         optarg = NULL;
                         optind++;
                     }
-                    
+
                     return longopts[i].val;
                 }
             }
-            
+
             if (opterr)
                 fprintf(stderr, "unrecognized option '--%.*s'\n", name_len, long_name);
             optind++;
             return '?';
         }
     }
-    
+
     // Short option - use regular getopt logic
     optopt = c = argv[optind][sp];
     if (c == ':' || (cp = strchr(optstring, c)) == NULL) {
@@ -235,7 +235,7 @@ int kbhit_available() {
     return _kbhit();
 }
 
-// Windows version of getch 
+// Windows version of getch
 int getch_char() {
     return _getch();
 }
@@ -246,12 +246,12 @@ int getch_char() {
 int kbhit_available() {
     fd_set read_fds;
     struct timeval timeout;
-    
+
     FD_ZERO(&read_fds);
     FD_SET(STDIN_FILENO, &read_fds);
     timeout.tv_sec = 0;
     timeout.tv_usec = 0;
-    
+
     return select(STDIN_FILENO + 1, &read_fds, NULL, NULL, &timeout) > 0;
 }
 
@@ -279,16 +279,16 @@ void free_run(struct CEmulator* emulator);
 // Function to enable raw terminal mode for immediate character input
 void enable_raw_mode() {
     if (terminal_raw_mode) return;
-    
+
 #ifdef _WIN32
     HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
     if (hStdin == INVALID_HANDLE_VALUE) return;
-    
+
     if (!GetConsoleMode(hStdin, &original_console_mode)) return;
-    
+
     DWORD new_mode = original_console_mode;
     new_mode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
-    
+
     if (SetConsoleMode(hStdin, new_mode)) {
         terminal_raw_mode = 1;
     }
@@ -296,7 +296,7 @@ void enable_raw_mode() {
     if (tcgetattr(STDIN_FILENO, &original_termios) == -1) {
         return; // Not a terminal
     }
-    
+
     struct termios raw = original_termios;
     // Disable echo and canonical mode, but keep output processing for proper newlines
     raw.c_lflag &= ~(ECHO | ECHOE | ECHOK | ECHONL | ICANON | ISIG | IEXTEN);
@@ -304,7 +304,7 @@ void enable_raw_mode() {
     // Keep OPOST enabled for proper output formatting (newline handling)
     raw.c_cc[VMIN] = 0;  // Non-blocking read
     raw.c_cc[VTIME] = 0; // No timeout
-    
+
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == 0) {
         terminal_raw_mode = 1;
     }
@@ -341,10 +341,10 @@ void signal_handler(int sig) {
         case SIGQUIT: sig_name = "SIGQUIT"; break;
 #endif
     }
-    
+
     printf("\nReceived %s, requesting exit...\n", sig_name);
     disable_raw_mode(); // Restore terminal
-    
+
     if (sig == SIGINT) {
         emulator_trigger_exit();
     } else {
@@ -424,10 +424,10 @@ void print_usage(const char* program_name) {
 void free_run(struct CEmulator* emulator) {
     printf("Running emulator in normal mode...\n");
     printf("Console input enabled - type characters to send to UART RX\n");
-    
+
     // Enable raw terminal mode for immediate character input
     enable_raw_mode();
-    
+
     // Buffer for UART output (streaming mode)
     const size_t uart_buffer_size = 1024;
     char* uart_buffer = malloc(uart_buffer_size);
@@ -436,9 +436,9 @@ void free_run(struct CEmulator* emulator) {
         disable_raw_mode();
         return;
     }
-    
+
     printf("Allocated UART buffer: %zu bytes\n", uart_buffer_size);
-    
+
     int step_count = 0;
     while (1) {
         // Check for console input and send to UART RX if available
@@ -457,7 +457,7 @@ void free_run(struct CEmulator* emulator) {
                 } else if (input_char == 127) { // Backspace
                     input_char = 8; // Convert to ASCII backspace
                 }
-                
+
                 // Try to send character to UART RX
                 if (emulator_uart_rx_ready(emulator)) {
                     emulator_send_uart_char(emulator, input_char);
@@ -465,9 +465,9 @@ void free_run(struct CEmulator* emulator) {
                 }
             }
         }
-        
+
         enum CStepAction action = emulator_step(emulator);
-        
+
         // Check for UART output (streaming mode)
         int uart_len = emulator_get_uart_output_streaming(emulator, uart_buffer, uart_buffer_size);
         if (uart_len > 0) {
@@ -475,7 +475,7 @@ void free_run(struct CEmulator* emulator) {
             fprintf(stderr, "%.*s", uart_len, uart_buffer);
             fflush(stderr);
         }
-        
+
         switch (action) {
             case Continue:
                 step_count++;
@@ -484,19 +484,19 @@ void free_run(struct CEmulator* emulator) {
                     usleep(100); // 0.1ms sleep every 1000 steps
                 }
                 break;
-                
+
             case Break:
                 printf("\nEmulator hit breakpoint after %d steps\n", step_count);
                 disable_raw_mode();
                 free(uart_buffer);
                 return;
-                
+
             case ExitSuccess:
                 printf("\nEmulator finished successfully after %d steps\n", step_count);
                 disable_raw_mode();
                 free(uart_buffer);
                 return;
-                
+
             case ExitFailure:
                 printf("\nEmulator exited with failure after %d steps\n", step_count);
                 disable_raw_mode();
@@ -504,7 +504,7 @@ void free_run(struct CEmulator* emulator) {
                 return;
         }
     }
-    
+
     disable_raw_mode();
     free(uart_buffer);
 }
@@ -548,8 +548,6 @@ int main(int argc, char *argv[]) {
         .uart_size = -1,
         .ctrl_offset = -1,
         .ctrl_size = -1,
-        .spi_offset = -1,
-        .spi_size = -1,
         .sram_offset = -1,
         .sram_size = -1,
         .pic_offset = -1,
@@ -632,7 +630,7 @@ int main(int argc, char *argv[]) {
 
     int c;
     int option_index = 0;
-    
+
     while ((c = getopt_long(argc, argv, "r:f:o:g:l:thV", long_options, &option_index)) != -1) {
         switch (c) {
             case 'r':
@@ -688,7 +686,7 @@ int main(int argc, char *argv[]) {
                 break;
             case 139: // --hw-revision
                 // Parse semver format like "2.0.0"
-                if (sscanf(optarg, "%u.%u.%u", &config.hw_revision_major, 
+                if (sscanf(optarg, "%u.%u.%u", &config.hw_revision_major,
                           &config.hw_revision_minor, &config.hw_revision_patch) != 3) {
                     fprintf(stderr, "Invalid hw-revision format. Expected format: major.minor.patch\n");
                     return 1;
@@ -817,14 +815,14 @@ int main(int argc, char *argv[]) {
     signal(SIGHUP, signal_handler);   // Hangup
     signal(SIGQUIT, signal_handler);  // Quit signal
 #endif
-    
+
     // Register cleanup function to run on normal exit
     atexit(cleanup_on_exit);
 
     // Get memory requirements and allocate
     size_t emulator_size = emulator_get_size();
     size_t emulator_alignment = emulator_get_alignment();
-    
+
     void* memory = aligned_alloc(emulator_alignment, emulator_size);
     if (!memory) {
         fprintf(stderr, "Failed to allocate memory: %s\n", strerror(errno));
@@ -851,11 +849,11 @@ int main(int argc, char *argv[]) {
     // Check if we're in GDB mode
     if (emulator_is_gdb_mode(global_emulator)) {
         unsigned int port = emulator_get_gdb_port(global_emulator);
-        
+
         // Traditional blocking GDB mode
         printf("GDB server available on port %u\n", port);
         printf("Connect with: gdb -ex 'target remote :%u'\n", port);
-        
+
         // Start GDB server (blocking)
         printf("Starting GDB server (this will block until GDB disconnects)\n");
         enum EmulatorError gdb_result = emulator_run_gdb_server(global_emulator);
@@ -885,7 +883,7 @@ int main(int argc, char *argv[]) {
 #else
     free(memory);
 #endif
-    
+
     printf("Emulator cleaned up\n");
     return 0;
 }
