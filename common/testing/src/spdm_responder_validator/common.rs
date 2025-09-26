@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use crate::tests::spdm_responder_validator::transport::Transport;
-use mcu_testing_common::MCU_RUNNING;
+use crate::spdm_responder_validator::transport::Transport;
+use crate::MCU_RUNNING;
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::TcpStream;
@@ -16,7 +16,7 @@ pub const SOCKET_SPDM_COMMAND_STOP: u32 = 0xFFFE;
 pub const SOCKET_SPDM_COMMAND_TEST: u32 = 0xDEAD;
 pub const SOCKET_HEADER_LEN: usize = 12;
 
-pub(crate) static SERVER_LISTENING: AtomicBool = AtomicBool::new(false);
+pub static SERVER_LISTENING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Copy, Clone, Default, FromBytes, IntoBytes, Immutable)]
 pub struct SpdmSocketHeader {

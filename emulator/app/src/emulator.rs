@@ -565,24 +565,13 @@ impl Emulator {
                 spdm_loopback_tests,
                 None,
             );
-        } else if cfg!(feature = "test-mctp-spdm-responder-conformance") {
-            if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
-                println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
-                exit(0);
-            }
-            i3c_controller_join_handle = Some(i3c_controller.start());
-            crate::tests::spdm_responder_validator::mctp::run_mctp_spdm_conformance_test(
-                cli.i3c_port.unwrap(),
-                i3c.get_dynamic_address().unwrap(),
-                std::time::Duration::from_secs(9000), // timeout in seconds
-            );
         } else if cfg!(feature = "test-doe-spdm-responder-conformance") {
             if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
                 println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
                 exit(0);
             }
             let (test_rx, test_tx) = doe_mbox_fsm.start();
-            crate::tests::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
+            mcu_testing_common::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
                 test_tx,
                 test_rx,
                 std::time::Duration::from_secs(9000), // timeout in seconds

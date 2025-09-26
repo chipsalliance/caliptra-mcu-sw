@@ -92,17 +92,11 @@ pub(crate) async fn async_main() {
         .spawn(spdm::spdm_task(EXECUTOR.get().spawner()))
         .unwrap();
 
-    EXECUTOR
-        .get()
-        .spawner()
-        .spawn(image_loader::image_loading_task())
-        .unwrap();
-
-    EXECUTOR
-        .get()
-        .spawner()
-        .spawn(mcu_mbox::mcu_mbox_task())
-        .unwrap();
+    // EXECUTOR
+    //     .get()
+    //     .spawner()
+    //     .spawn(image_loader::image_loading_task())
+    //     .unwrap();
 
     loop {
         EXECUTOR.get().poll();

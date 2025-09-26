@@ -139,7 +139,7 @@ impl MctpUtil {
                 I3cControllerState::Start => {
                     // Add some delay before sending the first packet.
                     // The MCU might need some time to boot up and be ready to receive the request.
-                    sleep_emulator_ticks(5_000_000);
+                    //sleep_emulator_ticks(5_000_000);
                     i3c_state = I3cControllerState::SendPrivateWrite;
                 }
 
