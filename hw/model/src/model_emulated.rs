@@ -423,7 +423,7 @@ impl McuHwModel for ModelEmulated {
             hw.cycle_count() >= BOOT_CYCLES
                 || hw
                     .mci_boot_milestones()
-                    .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
+                    .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
         });
         use std::io::Write;
         let mut w = std::io::Sink::default();
@@ -433,7 +433,7 @@ impl McuHwModel for ModelEmulated {
         }
         assert!(self
             .mci_boot_milestones()
-            .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE));
+            .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
         MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         Ok(())
     }
