@@ -81,6 +81,7 @@ anyhow = "1.0.97"
 arrayvec = { version = "0.7.4", default-features = false }
 async-trait = "0.1.87"
 bitfield = "0.14.0"
+bitflags = "2.4.0"
 bit-vec = "0.6.3"
 cargo_metadata = "0.20.0"
 cbindgen = "0.24"

@@ -2832,6 +2832,7 @@ name = "mcu-rom-common"
 version = "0.1.0"
 dependencies = [
  "bitfield",
+ "bitflags 2.9.4",
  "caliptra-api",
  "flash-image",
  "mcu-config",
@@ -4137,6 +4138,8 @@ version = "0.1.0"
 name = "tests-integration"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "caliptra-api-types",
  "caliptra-hw-model",
  "caliptra-hw-model-types",
  "caliptra-image-types",
