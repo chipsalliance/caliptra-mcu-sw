@@ -44,4 +44,6 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 
 #[cfg(not(target_arch = "riscv32"))]
 #[no_mangle]
-pub extern "C" fn main() {}
+pub extern "C" fn main() {
+    println!("nop");
+}

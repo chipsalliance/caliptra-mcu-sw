@@ -10,7 +10,7 @@ static MCU_MBOX_MUTEX: Mutex<CriticalSectionRawMutex, u32> = Mutex::new(0);
 pub type CmdCode = u32;
 
 /// Represents the current status of the MCU mailbox.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MbxCmdStatus {
     /// The command is still being processed.
     Busy,

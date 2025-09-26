@@ -14,7 +14,10 @@ Abstract:
 
 #![allow(clippy::empty_loop)]
 
-use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
+use crate::{
+    fatal_error, BootFlow, McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters,
+    MCU_MEMORY_MAP,
+};
 use caliptra_api::SocManager;
 use core::fmt::Write;
 
@@ -22,14 +25,21 @@ pub struct WarmBoot {}
 
 impl BootFlow for WarmBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
+        env.mci
+            .set_flow_checkpoint(McuRomBootStatus::WarmResetFlowStarted.into());
         romtime::println!("[mcu-rom] Starting warm boot flow");
 
+        let soc = &env.soc;
+        let mci = &env.mci;
+        let soc_manager = &mut env.soc_manager;
+
         romtime::println!("[mcu-rom] Clearing Caliptra mailbox lock from previous session");
-        env.soc_manager.soc_mbox().dlen().write(|_| 32);
-        env.soc_manager
-            .soc_mbox()
-            .execute()
-            .write(|w| w.execute(false));
+        soc_manager.soc_mbox().dlen().write(|_| 32);
+        soc_manager.soc_mbox().execute().write(|w| w.execute(false));
+
+        romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
+        soc.wait_for_firmware_ready(mci);
+        romtime::println!("[mcu-rom] Firmware is ready");
 
         // Check that the firmware was actually loaded before jumping to it
         let firmware_ptr = unsafe {
@@ -43,6 +53,7 @@ impl BootFlow for WarmBoot {
 
         // Jump to firmware
         romtime::println!("[mcu-rom] Jumping to firmware");
+        mci.set_flow_milestone(McuBootMilestones::WARM_RESET_FLOW_COMPLETE.into());
 
         #[cfg(target_arch = "riscv32")]
         unsafe {

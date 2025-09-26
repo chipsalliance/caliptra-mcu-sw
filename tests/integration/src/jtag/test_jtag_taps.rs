@@ -39,7 +39,7 @@ mod test {
             .jtag_tap_connect(&jtag_params, JtagTap::LccTap)
             .expect("Failed to connect to the LCC JTAG TAP.");
         let lcc_status = tap
-            .read_lc_ctrl_reg(&LcCtrlReg::Status)
+            .read_reg(&LcCtrlReg::Status)
             .expect("Failed to read LCC STATUS register.");
         assert_eq!(
             LcCtrlStatus::from_bits_truncate(lcc_status),

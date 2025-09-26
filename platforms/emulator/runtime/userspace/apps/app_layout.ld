@@ -163,7 +163,7 @@ SECTIONS {
     .bss ALIGN(4) (NOLOAD) : {
         /* .sbss is the RISC-V small data section */
         *(.sbss .bss.*)
-    } > RAM AT > FLASH
+    } > RAM
 
     _heap_start = ADDR(.bss) + SIZEOF(.bss);  /* Used by rt_header */
 
