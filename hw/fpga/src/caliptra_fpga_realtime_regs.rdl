@@ -35,25 +35,33 @@ regfile interface_regs {
         field { sw=rw; hw=r; } cptra_pwrgood[0:0] = 1'b0;
         field { sw=rw; hw=r; } cptra_ss_rst_b[1:1] = 1'b0;
 
-        field { sw=rw; hw=r; } cptra_obf_uds_seed_vld[2:2] = 1'b0;
-        field { sw=rw; hw=r; } cptra_obf_field_entropy_vld[3:3] = 1'b0;
+        field { sw=rw; hw=r; desc = "RSVD in SS"; } cptra_obf_uds_seed_vld[2:2] = 1'b0;
+        field { sw=rw; hw=r; desc = "RSVD in SS"; } cptra_obf_field_entropy_vld[3:3] = 1'b0;
 
-        field { sw=rw; hw=r; } bootfsm_brkpoint[6:6] = 1'b0;
-        field { sw=rw; hw=r; } ss_debug_intent[7:7] = 1'b0;
-        field { sw=rw; hw=r; } i3c_axi_user_id_filtering[8:8] = 1'b0;
-        field { sw=rw; hw=r; singlepulse=true; } trigger_axi_reset[31:31] = 1'b0;
+        field { sw=rw; hw=r; desc = "RSVD in SS"; } debug_locked[4:4] = 1'b0;
+        field { sw=rw; hw=r; desc = "RSVD in SS"; } device_lifecycle[6:5] = 2'b0;
+        field { sw=rw; hw=r; } bootfsm_brkpoint[7:7] = 1'b1;
+        field { sw=rw; hw=r; desc = "Scan mode for Caliptra Core"; } scan_mode[8:8] = 1'b0;
+
+        field { sw=rw; hw=r; desc = "RSVD in core"; } ss_debug_intent[16:16] = 1'b0;
+        field { sw=rw; hw=r; desc = "RSVD in core"; } i3c_axi_user_id_filtering[17:17] = 1'b0;
+        field { sw=rw; hw=r; desc = "RSVD in core"; } ocp_lock_en[18:18] = 1'b1;
+        field { sw=rw; hw=r; desc = "RSVD in core"; } lc_Allow_RMA_or_SCRAP_on_PPD[19:19] = 1'b0;
+        field { sw=rw; hw=r; desc = "RSVD in core"; } FIPS_ZEROIZATION_PPD[20:20] = 1'b0;
+
+        field { sw=rw; hw=r; singlepulse=true; desc = "RSVD in core"; } trigger_axi_reset[31:31] = 1'b0;
     } control;
 
     reg {
-        field { sw=r; hw=rw; } cptra_error_fatal = 1'b0;
-        field { sw=r; hw=rw; } cptra_error_non_fatal = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } cptra_error_fatal = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } cptra_error_non_fatal = 1'b0;
 
-        field { sw=r; hw=rw; } ready_for_fuses = 1'b0;
-        field { sw=r; hw=rw; } ready_for_fw_push = 1'b0;
-        field { sw=r; hw=rw; } ready_for_runtime = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } ready_for_fuses = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } ready_for_mb_processing = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } ready_for_runtime = 1'b0;
 
-        field { sw=r; hw=rw; } mailbox_data_avail = 1'b0;
-        field { sw=r; hw=rw; } mailbox_flow_done = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } mailbox_data_avail = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } mailbox_flow_done = 1'b0;
     } status;
 
     reg {
@@ -165,9 +173,9 @@ regfile interface_regs {
         } mcu_reset_vector[32] = 32'b0;
     } mcu_reset_vector;
     reg {
-        field { sw=r; hw=rw; } mci_error_fatal = 1'b0;
-        field { sw=r; hw=rw; } mci_error_non_fatal = 1'b0;
-    } mci_error;
+        field { sw=r; hw=rw; desc = "RSVD in core"; } ss_all_error_fatal = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in core"; } ss_all_error_non_fatal = 1'b0;
+    } ss_all_error;
     reg {
         field { sw=rw; hw=r; } mcu_no_rom_config = 1'b0;
         field { sw=rw; hw=r; } cptra_ss_mci_boot_seq_brkpoint_i = 1'b0;
@@ -206,6 +214,22 @@ regfile interface_regs {
     } mci_generic_output_wires[2];
 
     reg {
+        field { sw=r; hw=rw; desc = "RSVD in core"; } ss_key_release_base_addr[32] = 32'b0;
+    } ss_key_release_base_addr;
+
+    reg {
+        field { sw=r; hw=rw; desc = "RSVD in core"; } ss_key_release_key_size[16] = 32'b0;
+    } ss_key_release_key_size;
+
+    reg {
+        field { sw=r; hw=rw; desc = "RSVD in core"; } ss_external_staging_area_base_addr[32] = 32'b0;
+    } ss_external_staging_area_base_addr;
+
+    reg {
+        field { sw=rw; hw=r; desc = "RSVD in core"; } cptra_ss_mcu_ext_int[31:3] = 29'b0;
+    } cptra_ss_mcu_ext_int;
+
+    reg {
         field { sw=rw; hw=na; } key[32] = 32'h0;
     } ocp_lock_key_release_reg[16] @ 0x200;
 };
@@ -232,29 +256,29 @@ regfile fifo_regs {
     } itrng_fifo_status;
     
     reg {
-        field { sw=r; hw=rw; rd_swacc=true; } out_data[32] = 32'b0;
+        field { sw=r; hw=rw; rd_swacc=true; desc = "RSVD in core"; } out_data[32] = 32'b0;
     } dbg_fifo_pop;
 
     reg {
-        field { sw=rw; hw=r; wr_swacc=true; } in_data[32] = 32'b0;
+        field { sw=rw; hw=r; wr_swacc=true; desc = "RSVD in core"; } in_data[32] = 32'b0;
     } dbg_fifo_push;
 
     reg {
-        field { sw=r; hw=rw; } dbg_fifo_empty = 1'b0;
-        field { sw=r; hw=rw; } dbg_fifo_full = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in core"; } dbg_fifo_empty = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in core"; } dbg_fifo_full = 1'b0;
     } dbg_fifo_status;
     
     reg {
-        field { sw=r; hw=rw; rd_swacc=true; } out_data[32] = 32'b0;
+        field { sw=r; hw=rw; rd_swacc=true; desc = "RSVD in core"; } out_data[32] = 32'b0;
     } msg_fifo_pop;
 
     reg {
-        field { sw=rw; hw=r; wr_swacc=true; } in_data[32] = 32'b0;
+        field { sw=rw; hw=r; wr_swacc=true; desc = "RSVD in core"; } in_data[32] = 32'b0;
     } msg_fifo_push;
 
     reg {
-        field { sw=r; hw=rw; } msg_fifo_empty = 1'b0;
-        field { sw=r; hw=rw; } msg_fifo_full = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in core"; } msg_fifo_empty = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in core"; } msg_fifo_full = 1'b0;
     } msg_fifo_status;
 };
 
