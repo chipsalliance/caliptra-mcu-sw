@@ -4,45 +4,34 @@ use anyhow::{anyhow, bail, Result};
 use caliptra_hw_model::BootParams;
 use caliptra_image_gen::to_hw_format;
 use caliptra_image_types::FwVerificationPqcKeyType;
-use clap::{Subcommand, ValueEnum};
-use mcu_builder::{AllBuildArgs, FirmwareBinaries, PROJECT_ROOT};
+use clap::Subcommand;
+use configurations::Configuration;
+use mcu_builder::FirmwareBinaries;
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
 use mcu_rom_common::LifecycleControllerState;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::str::FromStr;
+use utils::{run_command, run_command_with_output};
 
-/// The FPGA configuration mode
-#[derive(Clone, ValueEnum, Debug)]
-pub enum Configuration {
-    /// Testing FPGA in Subsystem mode. For example running tests in caliptra-mcu-sw.
-    Subsystem,
-    /// Running Core tests on a subsystem FPGA. The tests are sourced from caliptra-sw.
-    CoreOnSubsystem,
+mod configurations;
+
+mod utils;
+
+struct BuildArgs<'a> {
+    caliptra_sw: Option<&'a Path>,
 }
-
-impl<'a> Configuration {
-    fn cache(&'a self, cache_function: impl FnOnce(&'a str) -> Result<()>) -> Result<()> {
-        match self {
-            Self::Subsystem => cache_function("subsystem")?,
-            Self::CoreOnSubsystem => cache_function("core-on-subsystem")?,
-        }
-
-        Ok(())
-    }
-
-    fn from_cache(cache_contents: &'a str) -> Result<Self> {
-        match cache_contents {
-            "core-on-subsystem" => Ok(Configuration::CoreOnSubsystem),
-            _ => Ok(Configuration::Subsystem),
-        }
-    }
-
-    fn from_cmd(target_host: Option<&str>) -> Result<Self> {
-        let cache_contents = run_command_with_output(target_host, "cat /tmp/fpga-config")?;
-        let cache_contents = cache_contents.trim_end();
-        Self::from_cache(&cache_contents)
-    }
+struct BuildTestArgs<'a> {
+    caliptra_sw: Option<&'a Path>,
+}
+struct TestArgs<'a> {
+    test_filter: &'a Option<String>,
+    test_output: &'a bool,
+}
+trait ActionHandler<'a> {
+    fn bootstrap(&self) -> Result<()>;
+    fn build(&self, args: &'a BuildArgs<'a>) -> Result<()>;
+    fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()>;
+    fn test(&self, args: &'a TestArgs) -> Result<()>;
 }
 
 #[derive(Subcommand)]
@@ -127,78 +116,6 @@ pub(crate) enum Fpga {
     },
 }
 
-// Copies a file to FPGA over rsync to the FPGA home folder.
-fn rsync_file(target_host: &str, file: &str, dest_file: &str, from_fpga: bool) -> Result<()> {
-    // TODO(clundin): We assume are files are dropped in the root / home folder. May want to find a
-    // put things in their own directory.
-    let copy = if from_fpga {
-        format!("{target_host}:{file}")
-    } else {
-        format!("{target_host}:{dest_file}")
-    };
-    let args = if from_fpga {
-        ["-avxz", &copy, "."]
-    } else {
-        ["-avxz", file, &copy]
-    };
-    let status = Command::new("rsync")
-        .current_dir(&*PROJECT_ROOT)
-        .args(args)
-        .status()?;
-    if !status.success() {
-        bail!("failed rsync file: {file} to {target_host}");
-    }
-    Ok(())
-}
-
-/// Runs a command over SSH if `target_host` is `Some`. Otherwise runs command on current machine.
-fn run_command_with_output(target_host: Option<&str>, command: &str) -> Result<String> {
-    // TODO(clundin): Refactor to share code with `run_command`
-
-    let output = {
-        if let Some(target_host) = target_host {
-            Command::new("ssh")
-                .current_dir(&*PROJECT_ROOT)
-                .args([target_host, "-t", command])
-                .output()
-        } else {
-            Command::new("sh")
-                .current_dir(&*PROJECT_ROOT)
-                .args(["-c", command])
-                .output()
-        }
-    }?;
-
-    Ok(String::from_utf8(output.stdout)?)
-}
-
-/// Runs a command over SSH if `target_host` is `Some`. Otherwise runs command on current machine.
-fn run_command(target_host: Option<&str>, command: &str) -> Result<()> {
-    if let Some(target_host) = target_host {
-        println!("[FPGA HOST] Running command: {command}");
-        let status = Command::new("ssh")
-            .current_dir(&*PROJECT_ROOT)
-            .args([target_host, "-t", command])
-            .stdin(Stdio::inherit())
-            .status()?;
-        if !status.success() {
-            bail!("\"{command}\" failed to run on FPGA over ssh");
-        }
-    } else {
-        println!("Running command: {command}");
-        let status = Command::new("sh")
-            .current_dir(&*PROJECT_ROOT)
-            .args(["-c", command])
-            .stdin(Stdio::inherit())
-            .status()?;
-        if !status.success() {
-            bail!("Failed to run command");
-        }
-    }
-
-    Ok(())
-}
-
 pub fn fpga_install_kernel_modules(target_host: Option<&str>) -> Result<()> {
     disable_all_cpus_idle(target_host)?;
 
@@ -269,106 +186,25 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
         } => {
             println!("Building FPGA firmware");
             let config = Configuration::from_cmd(target_host.as_deref())?;
-            // TODO(clundin): Maybe use a trait instead of a bunch of match statements.
-            match config {
-                Configuration::Subsystem => {
-                    // TODO(clundin): Modify `mcu_builder::all_build` to return the zip instead of writing it?
-                    // TODO(clundin): Place FPGA xtask artifacts in a specific folder?
-                    let args = AllBuildArgs {
-                        output: Some("all-fw.zip"),
-                        platform: Some("fpga"),
-                        ..Default::default()
-                    };
-                    mcu_builder::all_build(args)?;
-
-                    // We want to copy the zip to the FPGA if `target_host` is specified.
-                    if let Some(target_host) = target_host {
-                        rsync_file(&target_host, "all-fw.zip", ".", false)?;
-                    }
-                }
-                Configuration::CoreOnSubsystem => {
-                    run_command(
-                        None,
-                        "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
-                    )?;
-                    let caliptra_sw = caliptra_sw
-                        .as_deref()
-                        .expect("need to set `caliptra-sw` when in core-on-subsystem mode");
-                    run_command(
-                        None,
-                        &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display())
-                    )?;
-                    let rom_path = mcu_builder::rom_build(Some("fpga"), "core_test")?;
-                    if let Some(target_host) = target_host {
-                        rsync_file(
-                            target_host,
-                            "/tmp/caliptra-test-firmware",
-                            "/tmp/caliptra-test-firmware",
-                            false,
-                        )?;
-                        rsync_file(target_host, &rom_path, "mcu-rom-fpga.bin", false)?;
-                    }
-                }
-            }
+            config
+                .executor()
+                .set_target_host(target_host.as_deref())
+                .build(&BuildArgs {
+                    caliptra_sw: caliptra_sw.as_deref(),
+                })?;
         }
         Fpga::BuildTest {
             target_host,
             caliptra_sw,
         } => {
-            println!("Building FPGA test");
-            // Build test binaries in a docker container
-            let home = std::env::var("HOME").unwrap();
-            let project_root = PROJECT_ROOT.clone();
-            let project_root = project_root.display();
-
-            // TODO(clundin): Clean this docker command up.
-            let mut cmd = Command::new("docker");
-            cmd.current_dir(&*PROJECT_ROOT).args([
-                "run",
-                "--rm",
-                "-e",
-                "\"TERM=xterm-256color\"",
-                &format!("-v{project_root}:/work-dir"),
-                "-w/work-dir",
-                &format!("-v{home}/.cargo/registry:/root/.cargo/registry"),
-                &format!("-v{home}/.cargo/git:/root/.cargo/git"),
-            ]);
-
-            // Add optional path to the caliptra-sw directory
-            let basename = if let Some(caliptra_sw) = caliptra_sw {
-                let basename = caliptra_sw.file_name().unwrap().to_str().unwrap();
-                let caliptra_sw = std::fs::canonicalize(&caliptra_sw)?;
-                cmd.arg(&format!("-v{}:/{basename}", caliptra_sw.display()));
-                basename
-            } else {
-                ""
-            };
-
+            println!("Building FPGA tests");
             let config = Configuration::from_cmd(target_host.as_deref())?;
-
-            cmd.arg("ghcr.io/chipsalliance/caliptra-build-image:latest")
-                .arg("/bin/bash")
-                .arg("-c");
-
-            // Assumes you are using `../caliptra-sw` as your crate path in Cargo.toml
-            // TODO(clundin): Clean this up...
-            let (features, work_dir) = match config {
-                Configuration::Subsystem => ("fpga_realtime", "/work-dir".to_string()),
-                Configuration::CoreOnSubsystem => {
-                    if caliptra_sw.is_none() {
-                        bail!("have to set `caliptra-sw` flag when using core-on-subsystem");
-                    }
-
-                    ("fpga_subsystem,itrng", format!("/{basename}"))
-                }
-            };
-
-            cmd.arg(format!("(cd /{work_dir} && echo 'Cross compiling tests' && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features={features} --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/ )"));
-            cmd.status()?;
-
-            if let Some(target_host) = target_host {
-                rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)?;
-            }
+            config
+                .executor()
+                .set_target_host(target_host.as_deref())
+                .build_test(&BuildTestArgs {
+                    caliptra_sw: caliptra_sw.as_deref(),
+                })?;
         }
         Fpga::Bootstrap {
             target_host,
@@ -376,29 +212,27 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
         } => {
             println!("Bootstrapping FPGA");
             println!("configuration: {:?}", configuration);
-            let hostname = run_command_with_output(target_host.as_deref(), "hostname")?;
+
+            let target_host = target_host.as_deref();
+            let hostname = run_command_with_output(target_host, "hostname")?;
 
             // skip this step for CI images. Kernel modules are already installed.
             if hostname.trim_end() != "caliptra-fpga" {
-                fpga_install_kernel_modules(target_host.as_deref())?;
+                fpga_install_kernel_modules(target_host)?;
             }
 
             let cache_function = |config_marker| {
                 run_command(
-                    target_host.as_deref(),
+                    target_host,
                     &format!("echo \"{config_marker}\" > /tmp/fpga-config"),
                 )
             };
 
-            // Need to clone repo to run tests.
-            match configuration {
-                Configuration::Subsystem => run_command(target_host.as_deref(), "[ -d caliptra-mcu-sw ] || git clone https://github.com/chipsalliance/caliptra-mcu-sw --branch=main --depth=1").expect("failed to clone caliptra-mcu-sw repo"),
-                Configuration::CoreOnSubsystem => run_command(target_host.as_deref(), "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=main-2.x --depth=1").expect("failed to clone caliptra-mcu-sw repo"),
-            }
-
+            configuration.cache(cache_function)?;
             configuration
-                .cache(cache_function)
-                .expect("failed to cache fpga configuration");
+                .executor()
+                .set_target_host(target_host)
+                .bootstrap()?;
         }
         Fpga::Test {
             target_host,
@@ -407,47 +241,18 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
         } => {
             println!("Running test suite on FPGA");
             is_module_loaded("io_module", target_host.as_deref())?;
+
             // Clear old test logs
             run_command(target_host.as_deref(), "(sudo rm /tmp/junit.xml || true)")?;
+
             let config = Configuration::from_cmd(target_host.as_deref())?;
-            let tf = match (test_filter, &config) {
-                (Some(tf), _) => tf,
-                (_, Configuration::Subsystem) => {
-                    "package(mcu-hw-model) - test(model_emulated::test::test_new_unbooted)"
-                }
-                (_, Configuration::CoreOnSubsystem) => "package(caliptra-drivers)",
-            };
-
-            let to = if *test_output {
-                "--no-capture"
-            } else {
-                "--test-threads=1"
-            };
-
-            let (prelude, test_dir) = match config {
-                Configuration::Subsystem => ("CPTRA_FIRMWARE_BUNDLE=$HOME/all-fw.zip", "caliptra-mcu-sw"),
-                Configuration::CoreOnSubsystem => {
-                    ("CPTRA_MCU_ROM=/home/runner/mcu-rom-fpga.bin CPTRA_UIO_NUM=0 CALIPTRA_PREBUILT_FW_DIR=/tmp/caliptra-test-firmware/caliptra-test-firmware CALIPTRA_IMAGE_NO_GIT_REVISION=1", "caliptra-sw")
-                }
-            };
-
-            let test_command = format!(
-                "(cd {test_dir} && \
-                sudo {prelude} \
-                cargo-nextest nextest run \
-                --workspace-remap=. --archive-file $HOME/caliptra-test-binaries.tar.zst \
-                {to} --no-fail-fast --profile=nightly \
-                -E \"{tf}\")"
-            );
-
-            // Run test suite.
-            // Ignore error so we still copy the logs.
-            let _ = run_command(target_host.as_deref(), test_command.as_str());
-
-            if let Some(target_host) = target_host {
-                println!("Copying test log from FPGA to junit.xml");
-                rsync_file(target_host, "/tmp/junit.xml", ".", true)?;
-            }
+            config
+                .executor()
+                .set_target_host(target_host.as_deref())
+                .test(&TestArgs {
+                    test_filter,
+                    test_output,
+                })?;
         }
         _ => todo!("implement this command"),
     }

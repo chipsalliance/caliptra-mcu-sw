@@ -1,8 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::mctp::base_protocol::{
-    MCTPHeader, MessageType, MCTP_HDR_SIZE, MCTP_TAG_MASK, MCTP_TAG_OWNER,
-};
+use crate::mctp::base_protocol::{MCTPHeader, MessageType, MCTP_TAG_MASK, MCTP_TAG_OWNER};
 use core::fmt::Write;
 use kernel::collections::list::{ListLink, ListNode};
 use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
@@ -88,11 +86,7 @@ impl<'a> MCTPRxState<'a> {
     ///
     /// # Returns
     /// True if the next packet belongs to the current message, false otherwise.
-    pub fn is_next_packet(
-        &self,
-        mctp_hdr: &MCTPHeader<[u8; MCTP_HDR_SIZE]>,
-        pkt_payload_len: usize,
-    ) -> bool {
+    pub fn is_next_packet(&self, mctp_hdr: MCTPHeader, pkt_payload_len: usize) -> bool {
         self.msg_terminus
             .map(|msg_terminus| {
                 // Check if the received packet belongs to the current message
@@ -118,12 +112,7 @@ impl<'a> MCTPRxState<'a> {
     /// # Arguments
     /// 'mctp_hdr' - The MCTP header of the received packet.
     /// 'pkt_payload' - The payload of the received packet.
-    pub fn receive_next(
-        &self,
-        mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>,
-        pkt_payload: &[u8],
-        recv_time: u32,
-    ) {
+    pub fn receive_next(&self, mctp_hdr: MCTPHeader, pkt_payload: &[u8], recv_time: u32) {
         if let Some(mut msg_terminus) = self.msg_terminus.take() {
             let offset = msg_terminus.msg_size;
             let end_offset = offset + pkt_payload.len();
@@ -194,7 +183,7 @@ impl<'a> MCTPRxState<'a> {
     /// 'pkt_payload' - The payload of the received packet.
     pub fn start_receive(
         &self,
-        mctp_hdr: MCTPHeader<[u8; MCTP_HDR_SIZE]>,
+        mctp_hdr: MCTPHeader,
         msg_type: MessageType,
         pkt_payload: &[u8],
         recv_time: u32,

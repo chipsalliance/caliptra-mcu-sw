@@ -35,6 +35,7 @@ rv32i.workspace = true
 
 [features]
 default = []
+debug = []
 test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []

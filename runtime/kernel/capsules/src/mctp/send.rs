@@ -11,7 +11,6 @@ use kernel::utilities::cells::{MapCell, OptionalCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
 use romtime::println;
-use zerocopy::IntoBytes;
 
 /// The trait that provides an interface to send the MCTP messages to MCTP kernel stack.
 pub trait MCTPSender<'a> {
@@ -167,7 +166,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MCTPTxState<'a, A, M> {
                     self.tag_owner.get() as u8,
                     self.msg_tag.get(),
                 );
-                pkt_buf[0..MCTP_HDR_SIZE].copy_from_slice(mctp_hdr.as_bytes());
+                pkt_buf[0..MCTP_HDR_SIZE].copy_from_slice(&mctp_hdr.0.to_le_bytes());
                 pkt_buf[MCTP_HDR_SIZE..MCTP_HDR_SIZE + copy_len]
                     .copy_from_slice(&msg_payload[offset..offset + copy_len]);
                 self.offset.set(offset + copy_len);
