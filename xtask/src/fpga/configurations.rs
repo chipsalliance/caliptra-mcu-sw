@@ -148,7 +148,8 @@ impl<'a> ActionHandler<'a> for Subsystem {
             );
         base_cmd.status().context("failed to cross compile tests")?;
         if let Some(target_host) = &self.target_host {
-            rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false).context("failed to copy tests to fpga")?;
+            rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
+                .context("failed to copy tests to fpga")?;
         }
         Ok(())
     }
@@ -234,7 +235,8 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
             , caliptra_sw.display()));
         base_cmd.status().context("failed to cross compile tests")?;
         if let Some(target_host) = &self.target_host {
-            rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false).context("failed to copy tests to fpga")?;
+            rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
+                .context("failed to copy tests to fpga")?;
         }
         Ok(())
     }
