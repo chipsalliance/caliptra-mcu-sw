@@ -960,7 +960,7 @@ impl Emulator {
     ) -> Self {
         // read from the console in a separate thread to prevent blocking
         let stdin_uart_clone = stdin_uart.clone();
-        std::thread::spawn(move || read_console(stdin_uart_clone));
+        //std::thread::spawn(move || read_console(stdin_uart_clone));
 
         let timer = Timer::new(&mcu_cpu.clock.clone());
         let trace_file = trace_path.map(|path| File::create(path).unwrap());

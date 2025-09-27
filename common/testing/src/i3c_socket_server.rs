@@ -75,7 +75,7 @@ pub fn handle_i3c_socket_loop(
     while running.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, addr)) => {
-                println!("Accepting I3C socket connection from {:?}", addr);
+                //println!("Accepting I3C socket connection from {:?}", addr);
                 handle_i3c_socket_connection(
                     running,
                     stream,
@@ -141,7 +141,7 @@ fn handle_i3c_socket_connection(
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
             Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
-                println!("handle_i3c_socket_connection: Connection reset by client");
+                //println!("handle_i3c_socket_connection: Connection reset by client");
                 break;
             }
             Err(e) => panic!("Error reading message from socket: {}", e),

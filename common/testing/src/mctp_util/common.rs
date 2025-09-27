@@ -155,7 +155,7 @@ impl MctpUtil {
                         i3c_state = I3cControllerState::ReceivePrivateRead;
                     } else {
                         retry -= 1;
-                        println!("MCTP_UTIL: IBI not received. Retrying {}...", retry);
+                        //println!("MCTP_UTIL: IBI not received. Retrying {}...", retry);
                         i3c_state = I3cControllerState::SendPrivateWrite;
                     }
                 }
@@ -317,10 +317,10 @@ impl MctpUtil {
                         sleep_emulator_ticks(100_000);
                         retry -= 1;
                         if retry == 0 {
-                            println!(
-                                "MCTP_UTIL: IBI not received. Exiting after {} retries...",
-                                retry_count
-                            );
+                            // println!(
+                            //     "MCTP_UTIL: IBI not received. Exiting after {} retries...",
+                            //     retry_count
+                            // );
                             pkts.clear();
                             break;
                         }
@@ -494,11 +494,11 @@ mod tests {
 
         let packets = mctp.packetize(&msg_buf);
         if packets.len() != expected_packets {
-            println!(
-                "MCTP_UTIL: Expected {} packets, but got {}",
-                expected_packets,
-                packets.len()
-            );
+            // println!(
+            //     "MCTP_UTIL: Expected {} packets, but got {}",
+            //     expected_packets,
+            //     packets.len()
+            // );
             return false;
         }
         let message_identifier = MessageIdentifier {
@@ -509,7 +509,7 @@ mod tests {
         };
         let assembled_msg = mctp.assemble(packets, &message_identifier);
         if assembled_msg != msg_buf {
-            println!("MCTP_UTIL: Assembled message does not match original message");
+            //println!("MCTP_UTIL: Assembled message does not match original message");
             return false;
         }
         true

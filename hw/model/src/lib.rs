@@ -319,7 +319,8 @@ pub trait McuHwModel {
     fn ready_for_fw(&self) -> bool;
 
     fn step_until_exit_success(&mut self) -> std::io::Result<()> {
-        self.copy_output_until_exit_success(std::io::Sink::default())
+        let sink = &self.output().sink().clone();
+        self.copy_output_until_exit_success(sink)
     }
 
     fn mcu_manager(&mut self) -> impl McuManager;

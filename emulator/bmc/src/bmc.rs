@@ -2,6 +2,8 @@
 
 use crate::recovery;
 use caliptra_emu_bus::{Device, Event, EventData, RecoveryCommandCode};
+use caliptra_emu_periph::output;
+use std::fmt::Write;
 use std::sync::mpsc;
 
 pub struct Bmc {
@@ -73,11 +75,13 @@ impl Bmc {
 
         self.recovery_step();
         if prev_state != *self.recovery_state_machine.state() {
-            println!(
+            writeln!(
+                output(),
                 "[emulator bmc recovery] Recovery state transition: {:?} -> {:?}",
                 prev_state,
                 self.recovery_state_machine.state()
-            );
+            )
+            .unwrap();
         }
     }
 
@@ -114,7 +118,7 @@ impl Bmc {
                             .recovery_state_machine
                             .process_event(recovery::Events::ProtCap(prot_cap));
                     } else {
-                        println!("Invalid ProtCap payload (should be at least 15 bytes); ignoring message");
+                        writeln!(output(), "Invalid ProtCap payload (should be at least 15 bytes); ignoring message").unwrap();
                     }
                 }
                 RecoveryCommandCode::DeviceStatus => {
@@ -125,7 +129,7 @@ impl Bmc {
                             .recovery_state_machine
                             .process_event(recovery::Events::DeviceStatus(device_status));
                     } else {
-                        println!("Invalid DeviceStatus payload (should be at least 4 bytes); ignoring message");
+                        writeln!(output(), "Invalid DeviceStatus payload (should be at least 4 bytes); ignoring message").unwrap();
                     }
                 }
                 RecoveryCommandCode::RecoveryStatus => {
@@ -136,7 +140,7 @@ impl Bmc {
                             .recovery_state_machine
                             .process_event(recovery::Events::RecoveryStatus(recovery_status));
                     } else {
-                        println!("Invalid RecoveryStatus payload (should be at least 2 bytes); ignoring message");
+                        writeln!(output(), "Invalid RecoveryStatus payload (should be at least 2 bytes); ignoring message").unwrap();
                     }
                 }
                 _ => todo!(),

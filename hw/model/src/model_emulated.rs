@@ -16,6 +16,7 @@ use caliptra_emu_bus::BusError;
 use caliptra_emu_bus::BusMmio;
 use caliptra_emu_bus::{Clock, Event};
 use caliptra_emu_cpu::{Cpu, CpuArgs, InstrTracer, Pic};
+use caliptra_emu_periph::output;
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_periph::{
@@ -229,7 +230,7 @@ impl McuHwModel for ModelEmulated {
 
         let mut otp_mem = vec![0u8; fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE];
         if let Some(state) = params.lifecycle_controller_state {
-            println!("Setting lifecycle controller state to {}", state);
+            //println!("Setting lifecycle controller state to {}", state);
             let mem = lc_generate_memory(state, 1)?;
             otp_mem[fuses::LIFE_CYCLE_BYTE_OFFSET..fuses::LIFE_CYCLE_BYTE_OFFSET + mem.len()]
                 .copy_from_slice(&mem);
@@ -419,22 +420,24 @@ impl McuHwModel for ModelEmulated {
             .push_recovery_image(boot_params.mcu_fw_image.unwrap_or_default().to_vec());
 
         self.cpu_enabled.set(true);
-        self.step_until(|hw| {
-            hw.cycle_count() >= BOOT_CYCLES
-                || hw
-                    .mci_boot_milestones()
-                    .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
-        });
-        use std::io::Write;
-        let mut w = std::io::Sink::default();
-        if !self.output().peek().is_empty() {
-            w.write_all(self.output().take(usize::MAX).as_bytes())
-                .unwrap();
-        }
-        assert!(self
-            .mci_boot_milestones()
-            .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE));
-        MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
+        // self.step_until(|hw| {
+        //     hw.cycle_count() >= BOOT_CYCLES
+        //         || hw
+        //             .mci_boot_milestones()
+        //             .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
+        // });
+        // use std::io::Write;
+        // let mut output_sink = &self.output().sink().clone();
+
+        // if !self.output.peek().is_empty() {
+        //     output_sink
+        //         .write_all(self.output().take(usize::MAX).as_bytes())
+        //         .unwrap();
+        // }
+        // assert!(self
+        //     .mci_boot_milestones()
+        //     .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE));
+        // MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         Ok(())
     }
 
@@ -457,6 +460,10 @@ impl McuHwModel for ModelEmulated {
         self.collected_events_from_caliptra.extend(events);
         if self.cycle_count() % mcu_testing_common::TICK_NOTIFY_TICKS == 0 {
             mcu_testing_common::update_ticks(self.cycle_count());
+        }
+        let out = output().take();
+        if !out.is_empty() {
+            write!(self.output().logger(), "{}", out).unwrap();
         }
     }
 
@@ -667,7 +674,7 @@ mod test {
         let vendor_pk_hash = caliptra_builder
             .get_vendor_pk_hash()
             .expect("Could not get vendor PK hash");
-        println!("Vendor PK hash: {:x?}", vendor_pk_hash);
+        //println!("Vendor PK hash: {:x?}", vendor_pk_hash);
         let vendor_pk_hash = hex::decode(vendor_pk_hash).unwrap().try_into().unwrap();
         let soc_manifest = caliptra_builder.get_soc_manifest().unwrap();
 

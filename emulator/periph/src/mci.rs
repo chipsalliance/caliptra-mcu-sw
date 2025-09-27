@@ -919,7 +919,7 @@ impl MciPeripheral for Mci {
 
         if self.timer.fired(&mut self.op_mcu_reset_request_action) {
             // Handle MCU reset request
-            println!("[MCI] TimerAction::UpdateReset");
+            //println!("[MCI] TimerAction::UpdateReset");
             self.timer.schedule_action_in(100, TimerAction::UpdateReset);
             self.op_wdt_timer2_expired_action = None;
             // Allow enough time for MCU to reset before asserting RESET_STATUS_MCU_RESET

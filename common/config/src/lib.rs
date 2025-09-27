@@ -206,7 +206,7 @@ impl McuMemoryMap {
                     (true, MemoryRegionType::MEMORY, MemoryRegionType::MMIO) => {
                         #[cfg(debug_assertions)]
                         {
-                            println!("MRAC WARNING: Region {} (0x{:x}000_0000) has both MEMORY and MMIO - choosing MMIO for safety", region_idx, region_idx);
+                            //println!("MRAC WARNING: Region {} (0x{:x}000_0000) has both MEMORY and MMIO - choosing MMIO for safety", region_idx, region_idx);
                         }
                         region_types[region_idx] = MemoryRegionType::MMIO;
                     }
@@ -214,7 +214,7 @@ impl McuMemoryMap {
                     (true, MemoryRegionType::MMIO, MemoryRegionType::MEMORY) => {
                         #[cfg(debug_assertions)]
                         {
-                            println!("MRAC WARNING: Region {} (0x{:x}000_0000) has both MMIO and MEMORY - keeping MMIO for safety", region_idx, region_idx);
+                            //println!("MRAC WARNING: Region {} (0x{:x}000_0000) has both MMIO and MEMORY - keeping MMIO for safety", region_idx, region_idx);
                         }
                         // Keep existing MMIO type
                     }

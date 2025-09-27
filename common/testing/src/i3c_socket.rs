@@ -231,16 +231,16 @@ impl BufferedStream {
         match packet.or_else(|| self.read_packet(target_addr)) {
             Some(Packet { data, .. }) => {
                 if data.is_empty() {
-                    println!("Received empty data packet");
+                    //println!("Received empty data packet");
                     return None;
                 }
                 let pec = calculate_crc8((target_addr << 1) | 1, &data[..data.len() - 1]);
                 if pec != data[data.len() - 1] {
-                    println!(
-                        "Received data with invalid CRC8: calclulated {:X} != received {:X}",
-                        pec,
-                        data[data.len() - 1]
-                    );
+                    // println!(
+                    //     "Received data with invalid CRC8: calclulated {:X} != received {:X}",
+                    //     pec,
+                    //     data[data.len() - 1]
+                    // );
                     return None;
                 }
                 Some(data[..data.len() - 1].to_vec())

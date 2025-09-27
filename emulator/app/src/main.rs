@@ -40,10 +40,10 @@ fn main() -> io::Result<()> {
 fn run(cli: EmulatorArgs, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     // exit cleanly on Ctrl-C so that we save any state.
     if io::stdout().is_terminal() {
-        ctrlc::set_handler(move || {
-            MCU_RUNNING.store(false, std::sync::atomic::Ordering::Relaxed);
-        })
-        .unwrap();
+        // ctrlc::set_handler(move || {
+        //     MCU_RUNNING.store(false, std::sync::atomic::Ordering::Relaxed);
+        // })
+        // .unwrap();
     }
 
     let uart_output = if capture_uart_output {

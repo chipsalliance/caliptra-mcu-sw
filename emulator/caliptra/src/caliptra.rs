@@ -17,10 +17,12 @@ use caliptra_emu_bus::Clock;
 use caliptra_emu_cpu::{Cpu, CpuArgs, Pic};
 use caliptra_emu_periph::soc_reg::DebugManufService;
 use caliptra_emu_periph::{
-    CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal, MailboxRequester,
-    Mci, ReadyForFwCb, SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
+    output, CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal,
+    MailboxRequester, Mci, ReadyForFwCb, SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
 };
 use caliptra_hw_model::BusMmio;
+use std::fmt::Write as _;
+use std::io::Write as _;
 use std::io::{self, ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::exit;
@@ -143,7 +145,7 @@ pub fn start_caliptra(
         tb_services_cb: TbServicesCb::new(move |val| match val {
             0x01 => exit(0xFF),
             0xFF => exit(0x00),
-            _ => print!("{}", val as char),
+            _ => write!(output(), "{}", val as char).unwrap(),
         }),
         ready_for_fw_cb,
         security_state,

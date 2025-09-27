@@ -14,8 +14,10 @@ Abstract:
 
 use caliptra_emu_bus::{Bus, BusError, Clock, Timer};
 use caliptra_emu_cpu::Irq;
+use caliptra_emu_periph::output;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use std::cell::{Cell, RefCell};
+use std::fmt::Write;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -145,13 +147,13 @@ impl Bus for Uart {
                 None => {
                     match value as u8 {
                         // normal ASCII
-                        0x02..=0x7f => eprint!("{}", value as u8 as char),
+                        0x02..=0x7f => write!(output(), "{}", value as u8 as char).unwrap(),
                         // UTF-8 multi-byte sequences
                         0x80..=0xf4 => {
                             self.char_buffer.update(|mut partial| {
                                 partial.push(value as u8);
                                 while let Some(c) = partial.next() {
-                                    eprint!("{}", c);
+                                    write!(output(), "{}", c).unwrap();
                                 }
                                 partial
                             });
