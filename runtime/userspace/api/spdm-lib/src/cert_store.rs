@@ -15,7 +15,7 @@ pub const MAX_CERT_SLOTS_SUPPORTED: u8 = 2;
 pub const SPDM_CERT_CHAIN_METADATA_LEN: u16 =
     size_of::<SpdmCertChainHeader>() as u16 + SHA384_HASH_SIZE as u16;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum CertStoreError {
     InitFailed,
     NotInitialized,

@@ -19,7 +19,7 @@ pub(crate) use key_schedule::{KeySchedule, KeyScheduleError, SessionKeyType};
 pub const MAX_NUM_SESSIONS: usize = 1;
 const MAX_SPDM_AEAD_ASSOCIATED_DATA_SIZE: usize = 16; // Size of the associated data for AEAD
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum SessionError {
     SessionsLimitReached,
     InvalidSessionId,

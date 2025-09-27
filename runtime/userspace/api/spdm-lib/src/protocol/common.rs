@@ -2,8 +2,12 @@
 
 use crate::codec::CommonCodec;
 use crate::error::{SpdmError, SpdmResult};
-use crate::protocol::{version::SpdmVersion, REQUESTER_CONTEXT_LEN, SPDM_CONTEXT_LEN};
+use crate::protocol::{version::SpdmVersion, SPDM_CONTEXT_LEN};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+pub const NONCE_LEN: usize = 32;
+
+pub const REQUESTER_CONTEXT_LEN: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum ReqRespCode {

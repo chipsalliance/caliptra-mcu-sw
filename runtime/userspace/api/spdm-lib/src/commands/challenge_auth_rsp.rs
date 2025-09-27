@@ -219,13 +219,12 @@ async fn encode_challenge_auth_rsp_base<'a>(
 
 pub(crate) async fn encode_measurement_summary_hash<'a>(
     ctx: &mut SpdmContext<'a>,
-    asym_algo: AsymAlgo,
     meas_summary_hash_type: u8,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<usize> {
     let mut meas_summary_hash = [0u8; SHA384_HASH_SIZE];
     ctx.measurements
-        .measurement_summary_hash(asym_algo, meas_summary_hash_type, &mut meas_summary_hash)
+        .measurement_summary_hash(meas_summary_hash_type, &mut meas_summary_hash)
         .await
         .map_err(|e| (false, CommandError::Measurement(e)))?;
 
@@ -267,8 +266,7 @@ async fn generate_challenge_auth_response<'a>(
 
     // Get the measurement summary hash
     if meas_summary_hash_type != 0 {
-        payload_len +=
-            encode_measurement_summary_hash(ctx, asym_algo, meas_summary_hash_type, rsp).await?;
+        payload_len += encode_measurement_summary_hash(ctx, meas_summary_hash_type, rsp).await?;
     }
 
     let opaque_data = OpaqueData::default();
