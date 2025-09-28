@@ -100,6 +100,12 @@ remove_files [ glob $caliptrartlDir/src/ecc/rtl/ecc_ram_tdp_file.sv ]
 # Replace caliptra_ss_top with version modified with faster I3C clocks
 remove_files [ glob $ssrtlDir/src/integration/rtl/caliptra_ss_top.sv ]
 
+# Set DONT_TOUCH to prevent https://github.com/chipsalliance/caliptra-ss/issues/682
+file copy [ glob $caliptrartlDir/src/caliptra_prim_generic/rtl/caliptra_prim_generic_flop.sv ] $outputDir/caliptra_prim_generic_flop.sv
+exec sed -i {s/module /(* DONT_TOUCH = "yes" *)\nmodule /g} $outputDir/caliptra_prim_generic_flop.sv
+remove_files [ glob $caliptrartlDir/src/caliptra_prim_generic/rtl/caliptra_prim_generic_flop.sv ]
+add_files $outputDir/caliptra_prim_generic_flop.sv
+
 # TODO: Should the RTL be changed? Copy aes_clp_wrapper.sv to apply workaround: https://github.com/chipsalliance/caliptra-rtl/issues/977
 file copy [ glob $caliptrartlDir/src/aes/rtl/aes_clp_wrapper.sv ] $outputDir/aes_clp_wrapper.sv
 exec sed -i {1i `include \"kv_macros.svh\"\n`include \"caliptra_reg_field_defines.svh\"} $outputDir/aes_clp_wrapper.sv
