@@ -13,6 +13,7 @@ caliptra-api-types.workspace = true
 anyhow.workspace = true
 cc.workspace = true
 caliptra-image-gen.workspace = true
+caliptra-emu-periph.workspace = true
 caliptra-image-types.workspace = true
 caliptra-hw-model.workspace = true
 clap.workspace = true

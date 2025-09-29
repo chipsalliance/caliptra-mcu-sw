@@ -29,11 +29,12 @@ use std::time::{Duration, Instant};
 const GAUGE1_COLOR: Color = tailwind::RED.c800;
 const CUSTOM_LABEL_COLOR: Color = tailwind::SLATE.c200;
 
-const FPGA: bool = false;
-type Model = ModelEmulated; //ModelFpgaRealtime;
+const FPGA: bool = true;
+type Model = ModelFpgaRealtime;
+// type Model = ModelEmulated;
 
-const SPDM_DEMO_ZIP: &'static str = "spdm-demo.zip";
-const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-emu.zip";
+const SPDM_DEMO_ZIP: &'static str = "spdm-demo-fpga.zip";
+const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-fpga.zip";
 
 const PAUSE_START_DEMO: Duration = Duration::from_secs(5);
 const PAUSE_BETWEEN_DEMOS: Duration = Duration::from_secs(10);
@@ -55,7 +56,13 @@ impl DemoType {
 
     fn max_cycles(self) -> u64 {
         match self {
-            DemoType::Spdm => 20_000_000,
+            DemoType::Spdm => {
+                if FPGA {
+                    800_000_000
+                } else {
+                    20_000_000
+                }
+            }
             DemoType::Mlkem => 1_000_000,
         }
     }
@@ -239,7 +246,9 @@ impl Demo {
 
         let mut model = self.model.as_ref().unwrap().borrow_mut();
 
-        for _ in 0..10_000 {
+        // The FPGA keeps running in real-time, so we don't need to step a bunch of times just to run the model.
+        let steps = if FPGA { 1 } else { 10_000 };
+        for _ in 0..steps {
             model.step();
         }
 
@@ -249,6 +258,13 @@ impl Demo {
             output_sink.write_all(model.output().take(usize::MAX).as_bytes())?;
             output_sink.flush()?;
         }
+
+        let s = caliptra_emu_periph::output().take();
+        if !s.is_empty() {
+            output_sink.write_all(s.as_bytes())?;
+            output_sink.flush()?;
+        }
+
         let max_cycles = self.current_demo().max_cycles();
         self.progress = (((model.cycle_count() * 100) / max_cycles) as u16)
             .min(100)
@@ -267,7 +283,7 @@ impl Demo {
 
     fn demo_tick(&mut self) -> Result<()> {
         match self.current_demo() {
-            DemoType::Spdm => self.spdm_demo_tick()?,
+            DemoType::Spdm => {} // self.spdm_demo_tick()?,
             DemoType::Mlkem => {}
         }
         Ok(())

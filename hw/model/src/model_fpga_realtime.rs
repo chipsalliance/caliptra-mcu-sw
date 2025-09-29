@@ -7,6 +7,7 @@ use anyhow::{bail, Result};
 use caliptra_api::SocManager;
 use caliptra_api_types::Fuses;
 use caliptra_emu_bus::{Bus, BusError, BusMmio, Event};
+use caliptra_emu_periph::output as eoutput;
 use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use caliptra_hw_model::fpga_regs::{FifoData, FifoStatus};
@@ -22,7 +23,8 @@ use mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
 use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
-use std::io::Write;
+use std::fmt::Write as _;
+use std::io::Write as _;
 use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
@@ -114,7 +116,7 @@ impl ModelFpgaRealtime {
             bail!("openocd socket is not open");
         };
 
-        socket.write_all("riscv.cpu riscv dmi_write 0x70 4\n".as_bytes())?;
+        //socket.write_all("riscv.cpu riscv dmi_write 0x70 4\n".as_bytes())?;
 
         self.openocd = Some(socket);
         Ok(())
@@ -125,7 +127,7 @@ impl ModelFpgaRealtime {
             bail!("openocd socket is not open");
         };
 
-        socket.write_all("riscv.cpu riscv dmi_write 0x61 1\n".as_bytes())?;
+        //socket.write_all("riscv.cpu riscv dmi_write 0x61 1\n".as_bytes())?;
 
         self.openocd = Some(socket);
         Ok(())
@@ -161,9 +163,12 @@ impl ModelFpgaRealtime {
                             }
                             match controller.write(&rx.cmd.data) {
                                 Ok(_) => {}
-                                Err(e) => {
-                                    println!("[hw-model-fpga] Error writing I3C data: {:?}", e)
-                                }
+                                Err(e) => writeln!(
+                                    eoutput(),
+                                    "[hw-model-fpga] Error writing I3C data: {:?}",
+                                    e
+                                )
+                                .unwrap(),
                             }
                             // add a delay after writing to not overwhelm the firmware buffers
                             std::thread::sleep(Duration::from_millis(5));
@@ -188,7 +193,11 @@ impl ModelFpgaRealtime {
                     // process each IBI in the buffer (each is 4 bytes)
                     for ibi in ibi.chunks(4) {
                         if ibi.len() < 4 || ibi[0] != MCTP_MDB {
-                            println!("Ignoring unexpected I3C IBI received: {:02x?}", ibi);
+                            writeln!(
+                                eoutput(),
+                                "Ignoring unexpected I3C IBI received: {:02x?}",
+                                ibi
+                            );
                             continue;
                         }
                         // forward the IBI
@@ -206,7 +215,7 @@ impl ModelFpgaRealtime {
                     }
                 }
                 Err(e) => {
-                    println!("Error receiving I3C IBI: {:?}", e);
+                    writeln!(eoutput(), "Error receiving I3C IBI: {:?}", e);
                 }
             }
         }
@@ -226,7 +235,7 @@ impl ModelFpgaRealtime {
                     .expect("Failed to forward I3C private read response to channel");
                 }
                 Err(e) => {
-                    println!("Error receiving I3C private read: {:?}", e);
+                    writeln!(eoutput(), "Error receiving I3C private read: {:?}", e);
                     // retry
                     self.i3c_next_private_read_len = Some(private_read_len);
                 }
@@ -286,7 +295,11 @@ impl ModelFpgaRealtime {
             }
             let data = self.base.wrapper.fifo_regs().msg_fifo_data_pop.extract();
             if data.is_set(FifoData::CharValid) {
-                println!("FPGA MSG FIFO: {:02x}", data.read(FifoData::NextChar) as u8);
+                writeln!(
+                    eoutput(),
+                    "FPGA MSG FIFO: {:02x}",
+                    data.read(FifoData::NextChar) as u8
+                );
             }
             let key_parts: Vec<String> = self
                 .base
@@ -296,7 +309,11 @@ impl ModelFpgaRealtime {
                 .iter()
                 .map(|r| format!("{:08x}", r.get()))
                 .collect();
-            println!("FPGA OCP Lock Key Release: {}", key_parts.join(""));
+            writeln!(
+                eoutput(),
+                "FPGA OCP Lock Key Release: {}",
+                key_parts.join("")
+            );
         }
     }
 
@@ -318,7 +335,11 @@ impl ModelFpgaRealtime {
                     .iter()
                     .map(|r| format!("{:08x}", r.get()))
                     .collect();
-                println!("FPGA OCP Lock Key Release: {}", key_parts.join(""));
+                writeln!(
+                    eoutput(),
+                    "FPGA OCP Lock Key Release: {}",
+                    key_parts.join("")
+                );
                 self.printed_ocp_lock_key_release = true;
             }
         }
@@ -328,16 +349,16 @@ impl ModelFpgaRealtime {
 impl McuHwModel for ModelFpgaRealtime {
     fn step(&mut self) {
         self.base.step();
-        self.handle_i3c();
-        self.handle_msg_fifo();
-        self.handle_ocp_lock_key_release();
+        //self.handle_i3c();
+        //self.handle_msg_fifo();
+        //self.handle_ocp_lock_key_release();
     }
 
     fn new_unbooted(params: InitParams) -> Result<Self>
     where
         Self: Sized,
     {
-        println!("ModelFpgaRealtime::new_unbooted");
+        writeln!(eoutput(), "ModelFpgaRealtime::new_unbooted");
 
         let security_state_unprovisioned = SecurityState::default();
         let security_state_manufacturing =
@@ -389,12 +410,13 @@ impl McuHwModel for ModelFpgaRealtime {
             mcu_rom: Some(params.mcu_rom),
             enable_mcu_uart_log: params.enable_mcu_uart_log,
         };
-        println!("Starting base model");
+        writeln!(eoutput(), "Starting base model").unwrap();
         let base = ModelFpgaSubsystem::new_unbooted(cptra_init)
             .map_err(|e| anyhow::anyhow!("Failed to initialized base model: {e}"))?;
 
         let (i3c_rx, i3c_tx) = if let Some(i3c_port) = params.i3c_port {
-            println!(
+            writeln!(
+                eoutput(),
                 "Starting I3C socket on port {} and connected to hardware",
                 i3c_port
             );
@@ -419,7 +441,7 @@ impl McuHwModel for ModelFpgaRealtime {
         };
 
         let stdin_uart_clone = base.stdin_uart.clone();
-        std::thread::spawn(move || Self::read_console(stdin_uart_clone));
+        //std::thread::spawn(move || Self::read_console(stdin_uart_clone));
 
         let m = Self {
             base,
@@ -451,31 +473,32 @@ impl McuHwModel for ModelFpgaRealtime {
             return Ok(());
         }
 
-        // wait until firmware is booted
-        const BOOT_CYCLES: u64 = 800_000_000;
-        self.step_until(|hw| {
-            hw.cycle_count() >= BOOT_CYCLES
-                || hw
-                    .mci_boot_milestones()
-                    .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
-        });
-        println!(
-            "Boot completed at cycle count {}, flow status {}",
-            self.cycle_count(),
-            u32::from(self.mci_flow_status())
-        );
-        assert!(self
-            .mci_boot_milestones()
-            .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE));
-        MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
-        // turn off recovery
-        self.base.recovery_started = false;
-        println!("Resetting I3C controller");
-        {
-            let ctrl = self.base.i3c_controller.controller.lock().unwrap();
-            ctrl.ready.set(false);
-        }
-        self.base.i3c_controller.configure();
+        // // wait until firmware is booted
+        // const BOOT_CYCLES: u64 = 800_000_000;
+        // self.step_until(|hw| {
+        //     hw.cycle_count() >= BOOT_CYCLES
+        //         || hw
+        //             .mci_boot_milestones()
+        //             .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
+        // });
+        // writeln!(
+        //     eoutput(),
+        //     "Boot completed at cycle count {}, flow status {}",
+        //     self.cycle_count(),
+        //     u32::from(self.mci_flow_status())
+        // );
+        // assert!(self
+        //     .mci_boot_milestones()
+        //     .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE));
+        // MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
+        // // turn off recovery
+        // self.base.recovery_started = false;
+        // writeln!(eoutput(), "Resetting I3C controller");
+        // {
+        //     let ctrl = self.base.i3c_controller.controller.lock().unwrap();
+        //     ctrl.ready.set(false);
+        // }
+        // self.base.i3c_controller.configure();
 
         Ok(())
     }
@@ -592,7 +615,7 @@ impl FpgaRealtimeBus<'_> {
                 0x7000_0000..0x7000_0140 => Some(self.otp_mmio.add((addr - 0x7000_0000) / 4)),
                 0x7000_0400..0x7000_048c => Some(self.lc_mmio.add((addr - 0x7000_0400) / 4)),
                 _ => {
-                    println!("Invalid FPGA address 0x{addr:x}");
+                    writeln!(eoutput(), "Invalid FPGA address 0x{addr:x}");
                     None
                 }
             }
@@ -605,7 +628,7 @@ impl Bus for FpgaRealtimeBus<'_> {
         if let Some(ptr) = self.ptr_for_addr(addr) {
             Ok(unsafe { ptr.read_volatile() })
         } else {
-            println!("Error LoadAccessFault");
+            writeln!(eoutput(), "Error LoadAccessFault");
             Err(BusError::LoadAccessFault)
         }
     }
@@ -717,7 +740,7 @@ mod tests {
         hw.step_until(|m| m.cycle_count() > 300_000_000);
 
         let send_i3c = |model: &mut DefaultHwModel| {
-            println!("Sending I3C MCTP GET_VERSION command");
+            writeln!(eoutput(), "Sending I3C MCTP GET_VERSION command");
 
             let dest_eid = 1;
             let source_eid = 2;
@@ -744,13 +767,14 @@ mod tests {
         };
 
         let recv_i3c = |model: &mut DefaultHwModel, len: u16| -> Vec<u8> {
-            println!(
+            writeln!(
+                eoutput(),
                 "Host: checking for I3C MCTP response start, asking for {}",
                 len
             );
             let resp = model.recv_i3c(len);
 
-            println!("Host: received I3C MCTP response: {:x?}", resp);
+            writeln!(eoutput(), "Host: received I3C MCTP response: {:x?}", resp);
             resp
         };
 
