@@ -420,10 +420,11 @@ impl McuHwModel for ModelFpgaRealtime {
                 "Starting I3C socket on port {} and connected to hardware",
                 i3c_port
             );
-            let (rx, tx) =
-                mcu_testing_common::i3c_socket_server::start_i3c_socket(&MCU_RUNNING, i3c_port);
+            // let (rx, tx) =
+            //     mcu_testing_common::i3c_socket_server::start_i3c_socket(&MCU_RUNNING, i3c_port);
 
-            (Some(rx), Some(tx))
+            //(Some(rx), Some(tx))
+            (None, None)
         } else {
             (None, None)
         };
