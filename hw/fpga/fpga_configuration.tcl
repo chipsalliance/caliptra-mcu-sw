@@ -3,6 +3,7 @@
 # Default settings:
 set BUILD FALSE
 set GUI   FALSE
+set OUTPUT_DIR caliptra_build
 set ITRNG TRUE
 set CG_EN FALSE
 set RTL_VERSION latest
@@ -32,7 +33,7 @@ if {[info exists VERSION] == 0} {
 
 # Create path variables
 set fpgaDir [file dirname [info script]]
-set outputDir $fpgaDir/caliptra_build
+set outputDir $fpgaDir/$OUTPUT_DIR
 set caliptrapackageDir $outputDir/caliptra_package
 
 # Clean and create output directory.
