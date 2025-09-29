@@ -35,6 +35,9 @@ type Model = ModelEmulated; //ModelFpgaRealtime;
 const SPDM_DEMO_ZIP: &'static str = "spdm-demo.zip";
 const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-emu.zip";
 
+const PAUSE_START_DEMO: Duration = Duration::from_secs(5);
+const PAUSE_BETWEEN_DEMOS: Duration = Duration::from_secs(10);
+
 #[derive(Clone, Copy, Debug)]
 enum DemoType {
     Spdm,
@@ -47,6 +50,13 @@ impl DemoType {
         match self {
             DemoType::Spdm => SPDM_DEMO_ZIP,
             DemoType::Mlkem => MLKEM_DEMO_ZIP,
+        }
+    }
+
+    fn max_cycles(self) -> u64 {
+        match self {
+            DemoType::Spdm => 20_000_000,
+            DemoType::Mlkem => 1_000_000,
         }
     }
 }
@@ -136,6 +146,7 @@ struct Demo {
     sent_vca: bool,
     demos: Vec<DemoType>,
     current_demo_idx: usize,
+    pause_until: Option<Instant>,
 }
 
 impl Demo {
@@ -151,6 +162,7 @@ impl Demo {
             sent_vca: false,
             demos: vec![DemoType::Spdm, DemoType::Mlkem],
             current_demo_idx: 0,
+            pause_until: None,
         }
     }
 
@@ -188,6 +200,7 @@ impl Demo {
             }
             'n' => {
                 self.next_demo = true;
+                self.pause_until = Some(Instant::now() + PAUSE_START_DEMO);
             }
             _ => {}
         }
@@ -198,6 +211,13 @@ impl Demo {
     }
 
     fn on_tick(&mut self) -> Result<()> {
+        if let Some(pause) = self.pause_until {
+            if Instant::now() < pause {
+                return Ok(());
+            }
+            self.pause_until = None;
+        }
+
         if self.next_demo {
             // TODO: drop current hw model
             // TODO: start next
@@ -211,59 +231,80 @@ impl Demo {
             self.model_started = true;
             self.model_start()?;
         }
-        if let Some(mut model) = self.model.as_ref().map(|m| m.borrow_mut()) {
-            let addr = model.i3c_address().unwrap();
-            for _ in 0..10_000 {
-                model.step();
-            }
 
-            let mut output_sink = &model.output().sink().clone();
-            // output_sink.write(b"\n")?;
-            if !model.output().peek().is_empty() {
-                output_sink.write_all(model.output().take(usize::MAX).as_bytes())?;
-                output_sink.flush()?;
-            }
-            const MAX_CYCLES: u64 = 20_000_000;
-            // TODO: why is there no ouput from cycle 50,000 to 1,000,000 or so?
-            self.progress = (((model.cycle_count() * 100) / MAX_CYCLES) as u16)
-                .min(100)
-                .max(0);
-            if model.cycle_count() >= MAX_CYCLES {
-                self.next_demo = true;
-            }
+        if self.model.is_none() {
+            self.progress = 0;
+            return Ok(());
+        }
 
-            if model.cycle_count() > 1_000_000 && self.i3c_socket.is_none() {
-                let addr = SocketAddr::from(([127, 0, 0, 1], 65534));
-                let stream = TcpStream::connect(addr).unwrap();
-                let stream = BufferedStream::new(stream);
-                self.i3c_socket = Some(stream);
-            }
+        let mut model = self.model.as_ref().unwrap().borrow_mut();
 
-            // handle I3C for SPDM
-            // TODO: move to state machine for SPDM test
-            if let Some(i3c_socket) = self.i3c_socket.as_mut() {
-                if model.cycle_count() >= 10_000_000 {
-                    if !self.sent_vca {
-                        self.sent_vca = true;
-                        i3c_socket.send_private_write(
-                            addr,
-                            vec![0x01, 0x00, 0x08, 0xc8, 0x05, 0x10, 0x84, 0x00, 0x00, 0xfe],
-                        );
-                    }
-                    // I3C send to MCU: [01, 00, 08, c8, 05, 10, 84, 00, 00, fe]
-                    // I3C recv from Caliptra: [01, 08, 00, c0, 05, 10, 04, 00, 00, 00, 02, 00, 12, 00, 13, 1e]
-                    if let Some(recv) = i3c_socket.receive_private_read(addr) {
-                        writeln!(
-                            model.output().logger(),
-                            "I3C recv from Caliptra: {:02x?}",
-                            recv
-                        )
-                        .unwrap();
-                    }
+        for _ in 0..10_000 {
+            model.step();
+        }
+
+        let mut output_sink = &model.output().sink().clone();
+        // output_sink.write(b"\n")?;
+        if !model.output().peek().is_empty() {
+            output_sink.write_all(model.output().take(usize::MAX).as_bytes())?;
+            output_sink.flush()?;
+        }
+        let max_cycles = self.current_demo().max_cycles();
+        self.progress = (((model.cycle_count() * 100) / max_cycles) as u16)
+            .min(100)
+            .max(0);
+        if model.cycle_count() >= max_cycles {
+            self.next_demo = true;
+            self.pause_until = Some(Instant::now() + PAUSE_BETWEEN_DEMOS);
+        }
+
+        drop(model);
+
+        self.demo_tick()?;
+
+        Ok(())
+    }
+
+    fn demo_tick(&mut self) -> Result<()> {
+        match self.current_demo() {
+            DemoType::Spdm => self.spdm_demo_tick()?,
+            DemoType::Mlkem => {}
+        }
+        Ok(())
+    }
+
+    fn spdm_demo_tick(&mut self) -> Result<()> {
+        let mut model = self.model.as_ref().unwrap().borrow_mut();
+        let addr = model.i3c_address().unwrap();
+
+        if model.cycle_count() > 1_000_000 && self.i3c_socket.is_none() {
+            let addr = SocketAddr::from(([127, 0, 0, 1], 65534));
+            let stream = TcpStream::connect(addr).unwrap();
+            let stream = BufferedStream::new(stream);
+            self.i3c_socket = Some(stream);
+        }
+
+        // handle I3C for SPDM
+        // TODO: move to state machine for SPDM test
+        if let Some(i3c_socket) = self.i3c_socket.as_mut() {
+            if model.cycle_count() >= 10_000_000 {
+                if !self.sent_vca {
+                    self.sent_vca = true;
+                    i3c_socket.send_private_write(
+                        addr,
+                        vec![0x01, 0x00, 0x08, 0xc8, 0x05, 0x10, 0x84, 0x00, 0x00, 0xfe],
+                    );
+                }
+                // I3C send to MCU: [01, 00, 08, c8, 05, 10, 84, 00, 00, fe]
+                // I3C recv from Caliptra: [01, 08, 00, c0, 05, 10, 04, 00, 00, 00, 02, 00, 12, 00, 13, 1e]
+                if let Some(recv) = i3c_socket.receive_private_read(addr) {
+                    writeln!(
+                        model.output().logger(),
+                        "I3C recv from Caliptra: {:02x?}",
+                        recv
+                    )?;
                 }
             }
-        } else {
-            self.progress = 0;
         }
         Ok(())
     }
@@ -333,10 +374,6 @@ impl Demo {
             .gauge_style(GAUGE1_COLOR)
             .percent(self.progress)
             .render(area, buf);
-    }
-
-    fn demo_tick(&mut self, model: &mut Model) -> Result<()> {
-        Ok(())
     }
 
     fn model_stop(&mut self) -> Result<()> {
