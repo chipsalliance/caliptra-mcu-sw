@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use crate::measurements::manifest::MeasurementManifest;
+use crate::measurements::ocp_eat::OcpEatManifest;
+use crate::measurements::pcr_quote::PcrQuoteManifest;
 use crate::protocol::*;
 use bitfield::bitfield;
 use libapi_caliptra::crypto::asym::AsymAlgo;
@@ -33,32 +34,36 @@ pub enum MeasurementChangeStatus {
     DetectedNoChange = 2,
 }
 
-pub(crate) enum SpdmMeasurements {
-    Manifest(MeasurementManifest),
+pub enum SpdmMeasurements<'a> {
+    PcrQuote(PcrQuoteManifest),
+    OcpEat(OcpEatManifest<'a>),
+    // Manifest(MeasurementManifest),
 }
 
-impl Default for SpdmMeasurements {
+impl Default for SpdmMeasurements<'_> {
     fn default() -> Self {
-        SpdmMeasurements::Manifest(MeasurementManifest::default())
+        SpdmMeasurements::PcrQuote(PcrQuoteManifest::default())
     }
 }
 
-impl SpdmMeasurements {
+impl SpdmMeasurements<'_> {
     pub(crate) fn set_nonce(&mut self, nonce: [u8; 32]) {
         match self {
-            SpdmMeasurements::Manifest(manifest) => manifest.set_nonce(nonce),
+            SpdmMeasurements::PcrQuote(pcr_quote) => pcr_quote.set_nonce(nonce),
+            SpdmMeasurements::OcpEat(ocp_eat) => ocp_eat.set_nonce(nonce),
         }
     }
 
     pub(crate) fn set_spdm_version(&mut self, version: SpdmVersion) {
-        match self {
-            SpdmMeasurements::Manifest(manifest) => manifest.set_spdm_version(version),
+        if let SpdmMeasurements::OcpEat(ocp_eat) = self {
+            ocp_eat.set_spdm_version(version);
         }
     }
 
     pub(crate) fn set_asym_algo(&mut self, asym_algo: AsymAlgo) {
         match self {
-            SpdmMeasurements::Manifest(manifest) => manifest.set_asym_algo(asym_algo),
+            SpdmMeasurements::PcrQuote(pcr_quote) => pcr_quote.set_asym_algo(asym_algo),
+            SpdmMeasurements::OcpEat(ocp_eat) => ocp_eat.set_asym_algo(asym_algo),
         }
     }
 
@@ -68,7 +73,8 @@ impl SpdmMeasurements {
     /// The total number of measurement blocks.
     pub(crate) fn total_measurement_count(&self) -> usize {
         match self {
-            SpdmMeasurements::Manifest(manifest) => manifest.total_measurement_count(),
+            SpdmMeasurements::PcrQuote(pcr_quote) => pcr_quote.total_measurement_count(),
+            SpdmMeasurements::OcpEat(ocp_eat) => ocp_eat.total_measurement_count(),
         }
     }
 
@@ -92,8 +98,13 @@ impl SpdmMeasurements {
         }
 
         match self {
-            SpdmMeasurements::Manifest(manifest) => {
-                manifest.measurement_block_size(index, raw_bit_stream).await
+            SpdmMeasurements::PcrQuote(pcr_quote) => {
+                pcr_quote
+                    .measurement_block_size(index, raw_bit_stream)
+                    .await
+            }
+            SpdmMeasurements::OcpEat(ocp_eat) => {
+                ocp_eat.measurement_block_size(index, raw_bit_stream).await
             }
         }
     }
@@ -116,8 +127,13 @@ impl SpdmMeasurements {
         measurement_chunk: &mut [u8],
     ) -> MeasurementsResult<usize> {
         match self {
-            SpdmMeasurements::Manifest(manifest) => {
-                manifest
+            SpdmMeasurements::PcrQuote(pcr_quote) => {
+                pcr_quote
+                    .measurement_block(index, raw_bit_stream, offset, measurement_chunk)
+                    .await
+            }
+            SpdmMeasurements::OcpEat(ocp_eat) => {
+                ocp_eat
                     .measurement_block(index, raw_bit_stream, offset, measurement_chunk)
                     .await
             }
@@ -141,8 +157,13 @@ impl SpdmMeasurements {
         hash: &mut [u8; SHA384_HASH_SIZE],
     ) -> MeasurementsResult<()> {
         match self {
-            SpdmMeasurements::Manifest(manifest) => {
-                manifest
+            SpdmMeasurements::PcrQuote(pcr_quote) => {
+                pcr_quote
+                    .measurement_summary_hash(measurement_summary_hash_type, hash)
+                    .await
+            }
+            SpdmMeasurements::OcpEat(ocp_eat) => {
+                ocp_eat
                     .measurement_summary_hash(measurement_summary_hash_type, hash)
                     .await
             }

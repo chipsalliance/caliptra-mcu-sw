@@ -394,7 +394,7 @@ fn create_mock_concise_evidence_structured() -> eat_encoder::ConciseEvidence<'st
     };
 
     static CONCISE_EVIDENCE_MAP: ConciseEvidenceMap<'static> = ConciseEvidenceMap {
-        ev_triples: EV_TRIPLES_MAP,
+        ev_triples: &EV_TRIPLES_MAP,
         evidence_id: None,
         profile: None,
     };

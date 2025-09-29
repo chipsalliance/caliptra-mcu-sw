@@ -4407,6 +4407,7 @@ dependencies = [
  "mcu-config-emulator",
  "mcu-mbox-common",
  "mcu-mbox-lib",
+ "ocp-eat",
  "pldm-common",
  "pldm-lib",
  "portable-atomic",

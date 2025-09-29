@@ -2,3 +2,5 @@
 
 pub mod common;
 pub mod manifest;
+pub mod ocp_eat;
+pub mod pcr_quote;

@@ -99,7 +99,7 @@ pub(crate) struct MeasurementsResponse {
 impl MeasurementsResponse {
     pub async fn get_chunk(
         &self,
-        measurements: &mut SpdmMeasurements,
+        measurements: &mut SpdmMeasurements<'_>,
         shared_transcript: &mut Transcript,
         cert_store: &dyn SpdmCertStore,
         offset: usize,
@@ -200,7 +200,7 @@ impl MeasurementsResponse {
 
     async fn response_fixed_fields(
         &self,
-        measurements: &mut SpdmMeasurements,
+        measurements: &mut SpdmMeasurements<'_>,
     ) -> CommandResult<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {
         let mut fixed_rsp_fields = [0u8; RESPONSE_FIXED_FIELDS_SIZE];
         let mut fixed_rsp_buf = MessageBuf::new(&mut fixed_rsp_fields);
@@ -213,7 +213,7 @@ impl MeasurementsResponse {
     async fn encode_response_fixed_fields(
         &self,
         buf: &mut MessageBuf<'_>,
-        measurements: &mut SpdmMeasurements,
+        measurements: &mut SpdmMeasurements<'_>,
     ) -> CommandResult<usize> {
         let measurement_record_size = measurements
             .measurement_block_size(self.meas_op, self.req_attr.raw_bitstream_requested() == 1)
@@ -371,7 +371,7 @@ impl MeasurementsResponse {
         Ok(signature.len())
     }
 
-    async fn response_size(&self, measurements: &mut SpdmMeasurements) -> CommandResult<usize> {
+    async fn response_size(&self, measurements: &mut SpdmMeasurements<'_>) -> CommandResult<usize> {
         // Calculate the size of the response based on the request attributes
         let mut rsp_size = RESPONSE_FIXED_FIELDS_SIZE;
 

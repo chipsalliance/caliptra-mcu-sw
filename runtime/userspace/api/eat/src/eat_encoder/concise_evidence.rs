@@ -164,7 +164,7 @@ pub struct EvTriplesMap<'a> {
 // Concise evidence map
 #[derive(Debug, Clone, Copy)]
 pub struct ConciseEvidenceMap<'a> {
-    pub ev_triples: EvTriplesMap<'a>, // key 0 (mandatory)
+    pub ev_triples: &'a EvTriplesMap<'a>, // key 0 (mandatory)
     pub evidence_id: Option<EvidenceIdTypeChoice<'a>>, // key 1
     pub profile: Option<ProfileTypeChoice<'a>>, // key 2
 }

@@ -3,6 +3,7 @@
 mod cert_store;
 mod device_cert_store;
 mod endorsement_certs;
+mod target_env_config;
 
 use core::fmt::Write;
 use device_cert_store::{initialize_cert_store, SharedCertStore};
@@ -11,12 +12,16 @@ use libsyscall_caliptra::doe;
 use libsyscall_caliptra::mctp;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
+use ocp_eat::EvTriplesMap;
 use spdm_lib::codec::MessageBuf;
 use spdm_lib::context::{SpdmContext, MAX_SPDM_RESPONDER_BUF_SIZE};
+use spdm_lib::measurements::common::SpdmMeasurements;
+use spdm_lib::measurements::ocp_eat::OcpEatManifest;
 use spdm_lib::protocol::*;
 use spdm_lib::transport::common::SpdmTransport;
 use spdm_lib::transport::doe::DoeTransport;
 use spdm_lib::transport::mctp::MctpTransport;
+use target_env_config::get_evidence_storage;
 
 // Caliptra supported SPDM and Secure SPDM versions
 const SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12, SpdmVersion::V13];
@@ -80,6 +85,21 @@ async fn spdm_mctp_responder() {
     // Create a wrapper for the global certificate store
     let shared_cert_store = SharedCertStore::new();
 
+    // // Get measurements from the static EV triples map
+    // let ev_triples_map = get_evidence_storage();
+    // let ocp_eat = OcpEatManifest::new(ev_triples_map);
+    // let measurements = SpdmMeasurements::OcpEat(ocp_eat);
+    // Create measurements with proper lifetime handling
+    let measurements = {
+        let ev_triples_map = get_evidence_storage();
+        // Cast the lifetime to match the function scope instead of 'static
+        let ev_triples_map: &mut EvTriplesMap<'_> = unsafe {
+            &mut *(ev_triples_map as *mut EvTriplesMap<'static> as *mut EvTriplesMap<'_>)
+        };
+        let ocp_eat = OcpEatManifest::new(ev_triples_map);
+        SpdmMeasurements::OcpEat(ocp_eat)
+    };
+
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
         SECURE_SPDM_VERSIONS,
@@ -87,6 +107,7 @@ async fn spdm_mctp_responder() {
         local_capabilities,
         local_algorithms,
         &shared_cert_store,
+        measurements,
         None,
     ) {
         Ok(ctx) => ctx,
@@ -147,6 +168,8 @@ async fn spdm_doe_responder() {
     // Create a wrapper for the global certificate store
     let shared_cert_store = SharedCertStore::new();
 
+    let measurements = SpdmMeasurements::default();
+
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
         SECURE_SPDM_VERSIONS,
@@ -154,6 +177,7 @@ async fn spdm_doe_responder() {
         local_capabilities,
         local_algorithms,
         &shared_cert_store,
+        measurements,
         None,
     ) {
         Ok(ctx) => ctx,

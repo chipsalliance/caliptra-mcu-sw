@@ -18,13 +18,7 @@ const MAX_HEADER_SIZE: usize = 256;
 const MAX_PAYLOAD_SIZE: usize = 1024;
 const MAX_SIG_CONTEXT_SIZE: usize = 2048;
 
-pub enum OcpEatType {
-    EatClaims,
-    EnvelopeCsr,
-}
-
 pub struct OcpEatCwt<'a> {
-    eat_type: OcpEatType,
     asym_algo: AsymAlgo,
     eat_nonce: &'a [u8],
     leaf_cert_label: &'a [u8; KEY_LABEL_SIZE],
@@ -33,14 +27,12 @@ pub struct OcpEatCwt<'a> {
 
 impl<'a> OcpEatCwt<'a> {
     pub fn new(
-        eat_type: OcpEatType,
         asym_algo: AsymAlgo,
         eat_nonce: &'a [u8],
         leaf_cert_label: &'a [u8; KEY_LABEL_SIZE],
         issuer: &'a str,
     ) -> CaliptraApiResult<OcpEatCwt<'a>> {
         Ok(OcpEatCwt {
-            eat_type,
             asym_algo,
             eat_nonce,
             leaf_cert_label,
@@ -48,44 +40,65 @@ impl<'a> OcpEatCwt<'a> {
         })
     }
 
-    pub async fn generate(&self, eat_buffer: &mut [u8]) -> CaliptraApiResult<usize> {
-        match self.eat_type {
-            OcpEatType::EatClaims => self.generate_evidence_claims(eat_buffer).await,
-            OcpEatType::EnvelopeCsr => unimplemented!("Envelope CSR not implemented"),
-        }
+    // pub async fn generate(&self, eat_buffer: &mut [u8]) -> CaliptraApiResult<usize> {
+    //     match self.eat_type {
+    //         OcpEatType::EatClaims => self.generate_evidence_claims(eat_buffer).await,
+    //         OcpEatType::EnvelopeCsr => unimplemented!("Envelope CSR not implemented"),
+    //     }
+    // }
+
+    // fn initialize_concise_evidence(&self, tagged: bool) -> ConciseEvidence {
+    //     let ev_triples_map = EvTriplesMap {
+    //         evidence_triples: None,
+    //         identity_triples: None,
+    //         dependency_triples: None,
+    //         membership_triples: None,
+    //         coswid_triples: None,
+    //         attest_key_triples: None,
+    //     };
+    //     let evidence_map = ConciseEvidenceMap {
+    //         ev_triples: ev_triples_map,
+    //         evidence_id: None,
+    //         profile: None,
+    //     };
+
+    //     let evidence_map = match tagged {
+    //         true => ConciseEvidence::Tagged(TaggedConciseEvidence {
+    //             concise_evidence: evidence_map,
+    //         }),
+    //         false => ConciseEvidence::Map(evidence_map),
+    //     };
+
+    //     evidence_map
+    // }
+
+    pub async fn generate_envelope_csr(
+        &mut self,
+        _eat_buffer: &mut [u8],
+    ) -> CaliptraApiResult<usize> {
+        unimplemented!("Envelope CSR not implemented");
     }
 
-    fn initialize_concise_evidence(&self, tagged: bool) -> ConciseEvidence {
-        let ev_triples_map = EvTriplesMap {
-            evidence_triples: None,
-            identity_triples: None,
-            dependency_triples: None,
-            membership_triples: None,
-            coswid_triples: None,
-            attest_key_triples: None,
-        };
+    pub async fn generate_evidence_claims(
+        &mut self,
+        ev_triples_map: &mut EvTriplesMap<'_>,
+        eat_buffer: &mut [u8],
+    ) -> CaliptraApiResult<usize> {
+        fill_evidence_triples_map(ev_triples_map).await?;
+
         let evidence_map = ConciseEvidenceMap {
             ev_triples: ev_triples_map,
             evidence_id: None,
             profile: None,
         };
 
-        let evidence_map = match tagged {
-            true => ConciseEvidence::Tagged(TaggedConciseEvidence {
-                concise_evidence: evidence_map,
-            }),
-            false => ConciseEvidence::Map(evidence_map),
-        };
-
-        evidence_map
-    }
-
-    async fn generate_evidence_claims(&self, eat_buffer: &mut [u8]) -> CaliptraApiResult<usize> {
         // Measurements - tagged concise evidence
-        let mut concise_evidence = self.initialize_concise_evidence(true);
+        let tagged_concise_evidence = ConciseEvidence::Tagged(TaggedConciseEvidence {
+            concise_evidence: evidence_map,
+        });
 
-        generate_concise_evidence(&mut concise_evidence).await?;
-        let measurement = MeasurementFormat::new(&concise_evidence);
+        // generate_concise_evidence(&mut tagged_concise_evidence).await?;
+        let measurement = MeasurementFormat::new(&tagged_concise_evidence);
         let measurements_array = [measurement];
 
         // cti - unique identifier for the token
