@@ -19,6 +19,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Gauge, Padding, Paragraph, Widget};
 use ratatui::Frame;
 use ratatui::Terminal;
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io::Write as _;
 use std::net::{SocketAddr, TcpStream};
@@ -30,6 +31,34 @@ const CUSTOM_LABEL_COLOR: Color = tailwind::SLATE.c200;
 
 const FPGA: bool = false;
 type Model = ModelEmulated; //ModelFpgaRealtime;
+
+const SPDM_DEMO_ZIP: &'static str = "spdm-demo.zip";
+const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-emu.zip";
+
+#[derive(Clone, Copy, Debug)]
+enum DemoType {
+    Spdm,
+    Mlkem,
+    // OcpLock
+}
+
+impl DemoType {
+    fn zip(self) -> &'static str {
+        match self {
+            DemoType::Spdm => SPDM_DEMO_ZIP,
+            DemoType::Mlkem => MLKEM_DEMO_ZIP,
+        }
+    }
+}
+
+impl std::fmt::Display for DemoType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DemoType::Spdm => write!(f, "SPDM"),
+            DemoType::Mlkem => write!(f, "MLKEM"),
+        }
+    }
+}
 
 pub(crate) fn demo() -> Result<()> {
     if FPGA {
@@ -100,11 +129,13 @@ struct Demo {
     console_buffer: Arc<RwLock<VecDeque<String>>>,
     progress: u16,
     should_quit: bool,
-    model: Option<Model>,
-    spdm_started: bool,
+    model: Option<RefCell<Model>>,
+    model_started: bool,
     next_demo: bool,
     i3c_socket: Option<BufferedStream>,
     sent_vca: bool,
+    demos: Vec<DemoType>,
+    current_demo_idx: usize,
 }
 
 impl Demo {
@@ -114,10 +145,12 @@ impl Demo {
             should_quit: false,
             progress: 0,
             model: None,
-            spdm_started: false,
+            model_started: false,
             next_demo: false,
             i3c_socket: None,
             sent_vca: false,
+            demos: vec![DemoType::Spdm, DemoType::Mlkem],
+            current_demo_idx: 0,
         }
     }
 
@@ -160,22 +193,35 @@ impl Demo {
         }
     }
 
+    fn current_demo(&self) -> DemoType {
+        self.demos[self.current_demo_idx]
+    }
+
     fn on_tick(&mut self) -> Result<()> {
-        if !self.spdm_started {
-            self.spdm_started = true;
-            self.spdm_start()?;
+        if self.next_demo {
+            // TODO: drop current hw model
+            // TODO: start next
+            self.model_stop()?;
+            self.next_demo = false;
+            self.model_started = false;
+            self.current_demo_idx = (self.current_demo_idx + 1) % self.demos.len();
         }
-        if let Some(model) = self.model.as_mut() {
+
+        if !self.model_started {
+            self.model_started = true;
+            self.model_start()?;
+        }
+        if let Some(mut model) = self.model.as_ref().map(|m| m.borrow_mut()) {
             let addr = model.i3c_address().unwrap();
-            for _ in 0..1000 {
+            for _ in 0..10_000 {
                 model.step();
             }
 
             let mut output_sink = &model.output().sink().clone();
+            // output_sink.write(b"\n")?;
             if !model.output().peek().is_empty() {
-                output_sink
-                    .write_all(model.output().take(usize::MAX).as_bytes())
-                    .unwrap();
+                output_sink.write_all(model.output().take(usize::MAX).as_bytes())?;
+                output_sink.flush()?;
             }
             const MAX_CYCLES: u64 = 20_000_000;
             // TODO: why is there no ouput from cycle 50,000 to 1,000,000 or so?
@@ -222,8 +268,8 @@ impl Demo {
         Ok(())
     }
 
-    fn spdm_start(&mut self) -> Result<()> {
-        let zip = Some(PROJECT_ROOT.join("spdm-demo.zip"));
+    fn model_start(&mut self) -> Result<()> {
+        let zip = Some(PROJECT_ROOT.join(self.current_demo().zip()));
         let binaries = FirmwareBinaries::read_from_zip(zip.as_ref().unwrap()).map_err(|err| {
             anyhow!(
                 "Could not find demo zip {:?}: {:?}",
@@ -237,7 +283,7 @@ impl Demo {
             buffer: self.console_buffer.clone(),
             last_line_terminated: true,
         };
-        writeln!(console, "Starting SPDM Demo...")?;
+        writeln!(console, "Starting demo: {}", self.current_demo())?;
 
         let init_params = InitParams {
             //let mut model = ModelFpgaRealtime::new_unbooted(InitParams {
@@ -271,7 +317,7 @@ impl Demo {
         })?;
         model.start_i3c_controller();
         let port = model.i3c_port().unwrap();
-        self.model = Some(model);
+        self.model = Some(RefCell::new(model));
 
         Ok(())
     }
@@ -287,6 +333,15 @@ impl Demo {
             .gauge_style(GAUGE1_COLOR)
             .percent(self.progress)
             .render(area, buf);
+    }
+
+    fn demo_tick(&mut self, model: &mut Model) -> Result<()> {
+        Ok(())
+    }
+
+    fn model_stop(&mut self) -> Result<()> {
+        drop(self.model.take());
+        Ok(())
     }
 }
 
