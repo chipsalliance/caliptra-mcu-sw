@@ -225,10 +225,12 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         let caliptra_sw = args
             .caliptra_sw
             .expect("caliptra-sw path is required for Core On Subsystem mode");
+        let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
+
         let mut base_cmd = build_base_docker_command(Some(caliptra_sw))?;
         base_cmd.arg(
                 format!("(cd /{} && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_subsystem,itrng --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
-            , caliptra_sw.display()));
+            , base_name));
         base_cmd.status().context("failed to cross compile tests")?;
         if let Some(target_host) = &self.target_host {
             rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
