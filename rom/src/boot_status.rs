@@ -78,8 +78,8 @@ pub enum McuRomBootStatus {
     ColdBootFlowComplete = BOOT_FLOW_BASE + 1,
     WarmResetFlowStarted = BOOT_FLOW_BASE + 2,
     WarmResetFlowComplete = BOOT_FLOW_BASE + 3,
-    FirmwareUpdateFlowStarted = BOOT_FLOW_BASE + 4,
-    FirmwareUpdateFlowComplete = BOOT_FLOW_BASE + 5,
+    FirmwareBootFlowStarted = BOOT_FLOW_BASE + 4,
+    FirmwareBootFlowComplete = BOOT_FLOW_BASE + 5,
     HitlessUpdateFlowStarted = BOOT_FLOW_BASE + 6,
     HitlessUpdateFlowComplete = BOOT_FLOW_BASE + 7,
 }
@@ -101,6 +101,8 @@ bitflags! {
         const RI_DOWNLOAD_COMPLETED         = 0b1 << 3;
         const FLASH_RECOVERY_FLOW_COMPLETED = 0b1 << 4;
         const COLD_BOOT_FLOW_COMPLETE       = 0b1 << 5;
+        const WARM_RESET_FLOW_COMPLETE      = 0b1 << 6;
+        const FIRMWARE_BOOT_FLOW_COMPLETE   = 0b1 << 7;
     }
 }
 

@@ -14,10 +14,6 @@ name = "ocp-eat"
 path = "src/main.rs"
 
 
-[profile.release]
-debug = true
-opt-level = 1
-
 [features]
 default = ["std", "crypto"]
 std = []

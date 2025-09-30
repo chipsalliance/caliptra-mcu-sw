@@ -4,42 +4,27 @@ Licensed under the Apache-2.0 license.
 
 File Name:
 
-    warm_boot.rs
+    fw_boot.rs
 
 Abstract:
 
-    Warm Boot Flow - Handles warm boot when MCU powers on
+    FW Boot Flow - Handles starting mutable firmware after a cold or warm reset
 
 --*/
-
-#![allow(clippy::empty_loop)]
 
 use crate::{
     fatal_error, BootFlow, McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters,
     MCU_MEMORY_MAP,
 };
-use caliptra_api::SocManager;
 use core::fmt::Write;
 
-pub struct WarmBoot {}
+pub struct FwBoot {}
 
-impl BootFlow for WarmBoot {
+impl BootFlow for FwBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
+        romtime::println!("[mcu-rom] Starting fw boot reset flow");
         env.mci
-            .set_flow_checkpoint(McuRomBootStatus::WarmResetFlowStarted.into());
-        romtime::println!("[mcu-rom] Starting warm boot flow");
-
-        let soc = &env.soc;
-        let mci = &env.mci;
-        let soc_manager = &mut env.soc_manager;
-
-        romtime::println!("[mcu-rom] Clearing Caliptra mailbox lock from previous session");
-        soc_manager.soc_mbox().dlen().write(|_| 32);
-        soc_manager.soc_mbox().execute().write(|w| w.execute(false));
-
-        romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
-        soc.wait_for_firmware_ready(mci);
-        romtime::println!("[mcu-rom] Firmware is ready");
+            .set_flow_checkpoint(McuRomBootStatus::FirmwareBootFlowStarted.into());
 
         // Check that the firmware was actually loaded before jumping to it
         let firmware_ptr = unsafe {
@@ -53,7 +38,8 @@ impl BootFlow for WarmBoot {
 
         // Jump to firmware
         romtime::println!("[mcu-rom] Jumping to firmware");
-        mci.set_flow_milestone(McuBootMilestones::WARM_RESET_FLOW_COMPLETE.into());
+        env.mci
+            .set_flow_milestone(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE.into());
 
         #[cfg(target_arch = "riscv32")]
         unsafe {

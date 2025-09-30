@@ -33,6 +33,8 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     if hw_revision >= semver::Version::new(2, 1, 0) && !features.contains(&"hw-2-1") {
         features.push("hw-2-1");
     }
+    // include debug features since this is interactive
+    features.push("debug");
     let rom_binary: PathBuf = rom_build(None, "")?.into();
     let tock_binary: PathBuf = runtime_build_with_apps_cached(
         &features,

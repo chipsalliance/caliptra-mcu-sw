@@ -8,8 +8,11 @@ The machine that is used for development and cross compilation should have:
 
 - Rust
 - Docker
+  - Pull the FPGA build image: `$ docker pull ghcr.io/chipsalliance/caliptra-build-image:latest` 
 - rsync
 - git
+
+**NOTE:** Setup rootless docker. Here are the steps [here](https://docs.docker.com/engine/security/rootless/). 
 
 ### FPGA System 
 
@@ -19,6 +22,8 @@ The FPGA should have the following installed:
 - git
 - make
 - gcc
+- [cargo-nextest](https://github.com/nextest-rs/nextest)
+  - `cargo-nextest` should be useable by the root user. Consider installing it to the system path `/usr/bin`.
 
 **Suggestion**: Download the latest FPGA Image from the Caliptra-SW main-2.x branch's FPGA Image build [job](https://github.com/chipsalliance/caliptra-sw/actions/workflows/fpga-image.yml?query=branch%3Amain-2.x). This ensures you are testing with the same system used in the FPGA CI.
 

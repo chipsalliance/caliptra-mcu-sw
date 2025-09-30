@@ -24,7 +24,7 @@ libtockasync.workspace = true
 mcu-config.workspace = true
 mcu-config-emulator.workspace = true
 mcu-mbox-lib.workspace = true
-mcu-mbox-common.workspace = true 
+mcu-mbox-common.workspace = true
 portable-atomic.workspace = true
 pldm-common.workspace = true
 pldm-lib.workspace = true
@@ -41,6 +41,7 @@ embedded-alloc.workspace = true
 
 [features]
 default = []
+debug = []
 hw-2-1 = []
 test-caliptra-certs = []
 test-caliptra-crypto = []

@@ -457,23 +457,12 @@ pub unsafe fn main() {
     romtime::println!("[mcu-runtime] Console initialized");
 
     // Create a process printer for panic.
-    let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
-        .finalize(components::process_printer_text_component_static!());
-    PROCESS_PRINTER = Some(process_printer);
-    romtime::println!("[mcu-runtime] ProcessPrinter initialized");
-
-    let process_console = components::process_console::ProcessConsoleComponent::new(
-        board_kernel,
-        uart_mux,
-        mux_alarm,
-        process_printer,
-        None,
-    )
-    .finalize(components::process_console_component_static!(
-        InternalTimers
-    ));
-    let _ = process_console.start();
-    romtime::println!("[mcu-runtime] ProcessConsole initialized");
+    if cfg!(feature = "debug") {
+        let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
+            .finalize(components::process_printer_text_component_static!());
+        PROCESS_PRINTER = Some(process_printer);
+        romtime::println!("[mcu-runtime] ProcessPrinter initialized");
+    }
 
     let mux_mctp = mcu_components::mux_mctp::MCTPMuxComponent::new(&peripherals.i3c, mux_alarm)
         .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding));

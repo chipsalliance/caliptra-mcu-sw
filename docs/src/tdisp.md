@@ -79,22 +79,33 @@ u8;
     pub reserved, _: 15, 5; // Bits 15:5 Reserved
 }
 
+/// TDI Status
+pub enum TdiStatus {
+    ConfigUnlocked = 0,
+    ConfigLocked = 1,
+    Run = 2,
+    Error = 3,
+    Reserved,
+}
+
 /// TDISP Driver trait that defines the interface for TDISP operations.
 /// This trait is intended to be implemented by a TDISP driver
 /// that interacts with the TDISP device.
 #[async_trait]
-pub trait TdispDriver {
+pub trait TdispDriver: Send + Sync {
     /// Gets the TDISP device capabilities.
     ///
     /// # Arguments
-    /// * `tsm_caps` - TSM capability flags
+    /// * `req_caps` - Requester (TSM) capability flags
+    /// * `resp_caps` - Responder (DSM) capability flags
     ///
     /// # Returns
-    /// `TdispResponderCapabilities` on success or an error on failure.
+    /// 0 on success or an error response code as per the TDISP specification on failure.
     async fn get_capabilities(
         &self,
-        tsm_caps: u32,
-    ) -> TdispDriverResult<TdispResponderCapabilities>;
+        req_caps: TdispReqCapabilities,
+        resp_caps: &mut TdispRespCapabilities,
+    ) -> TdispDriverResult<u32>;
 
     /// Lock Interface Request
     ///
@@ -110,6 +121,20 @@ pub trait TdispDriver {
         param: TdispLockInterfaceParam,
     ) -> TdispDriverResult<u32>;
 
+    /// Get the length of the device interface report.
+    ///
+    /// # Arguments
+    /// * `function_id` - Device Interface Function ID
+    /// * `intf_report_len` - Total device interface report length(output)
+    ///
+    /// # Returns
+    /// Length of the device interface report on success or an error response code.
+    async fn get_device_interface_report_len(
+        &self,
+        function_id: FunctionId,
+        intf_report_len: &mut u16,
+    ) -> TdispDriverResult<u32>;
+
     /// Get the device interface report.
     ///
     /// # Arguments
@@ -117,7 +142,6 @@ pub trait TdispDriver {
     /// * `offset` - Offset from the start of the report requested
     /// * `report` - report buffer slice to fill
     /// * `copied` - Length of the TDI report copied
-    /// * `remainder` - Remaining length of the TDI report
     ///
     ///
     /// # Returns
@@ -128,7 +152,6 @@ pub trait TdispDriver {
         offset: u16,
         report: &mut [u8],
         copied: &mut usize,
-        remainder: &mut usize,
     ) -> TdispDriverResult<u32>;
 
     /// Get the device interface state.
@@ -142,7 +165,7 @@ pub trait TdispDriver {
     async fn get_device_interface_state(
         &self,
         function_id: FunctionId,
-        tdi_state: &mut u8,
+        tdi_state: &mut TdiStatus,
     ) -> TdispDriverResult<u32>;
 
     /// Start the device interface.
