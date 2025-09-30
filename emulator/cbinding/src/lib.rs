@@ -152,6 +152,7 @@ pub struct CEmulatorConfig {
     pub hw_revision_major: c_uint,
     pub hw_revision_minor: c_uint,
     pub hw_revision_patch: c_uint,
+    pub flash_based_boot: c_uchar, // 0 = false, 1 = true (new)
 
     // Memory layout override parameters (-1 means use default)
     pub rom_offset: c_longlong,
@@ -296,6 +297,7 @@ pub unsafe extern "C" fn emulator_init(
             config.hw_revision_minor as u64,
             config.hw_revision_patch as u64,
         ),
+        flash_based_boot: config.flash_based_boot != 0,
         // Use provided offset and size override parameters (-1 means use default)
         rom_offset: convert_optional_offset_size(config.rom_offset),
         rom_size: convert_optional_offset_size(config.rom_size),
@@ -328,9 +330,17 @@ pub unsafe extern "C" fn emulator_init(
         otp_size: convert_optional_offset_size(config.otp_size),
         lc_offset: convert_optional_offset_size(config.lc_offset),
         lc_size: convert_optional_offset_size(config.lc_size),
+<<<<<<< HEAD
         fuse_soc_manifest_svn: None,
         fuse_soc_manifest_max_svn: None,
         fuse_vendor_hashes_prod_partition: None,
+=======
+        fuse_soc_manifest_svn: convert_optional_offset_size(config.fuse_soc_manifest_svn),
+        fuse_soc_manifest_max_svn: convert_optional_offset_size(config.fuse_soc_manifest_max_svn),
+        fuse_vendor_hashes_prod_partition: convert_optional_c_string(
+            config.fuse_vendor_hashes_prod_partition,
+        ),
+>>>>>>> 3e74f3a7 (Merged PR 145676: Flash Based Boot Argument)
     };
 
     // Convert C callbacks to Rust callbacks if provided
