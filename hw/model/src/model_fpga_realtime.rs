@@ -442,7 +442,6 @@ impl McuHwModel for ModelFpgaRealtime {
         };
 
         let stdin_uart_clone = base.stdin_uart.clone();
-        //std::thread::spawn(move || Self::read_console(stdin_uart_clone));
 
         let m = Self {
             base,

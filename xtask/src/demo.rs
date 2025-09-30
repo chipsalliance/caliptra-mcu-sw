@@ -29,12 +29,12 @@ use std::time::{Duration, Instant};
 const GAUGE1_COLOR: Color = tailwind::RED.c800;
 const CUSTOM_LABEL_COLOR: Color = tailwind::SLATE.c200;
 
-const FPGA: bool = false;
-//type Model = ModelFpgaRealtime;
-type Model = ModelEmulated;
+const FPGA: bool = true;
+type Model = ModelFpgaRealtime;
+// type Model = ModelEmulated;
 
-const SPDM_DEMO_ZIP: &'static str = "spdm-demo-emu.zip";
-const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-emu.zip";
+const SPDM_DEMO_ZIP: &'static str = "spdm-demo-fpga.zip";
+const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-fpga.zip";
 
 const PAUSE_START_DEMO: Duration = Duration::from_secs(5);
 const PAUSE_BETWEEN_DEMOS: Duration = Duration::from_secs(10);
@@ -169,6 +169,7 @@ struct Demo {
     current_demo_idx: usize,
     wait_for_next_demo_until: Option<Instant>,
     pause: bool,
+    ticks: u64,
 }
 
 impl Demo {
@@ -186,6 +187,7 @@ impl Demo {
             current_demo_idx: 0,
             wait_for_next_demo_until: None,
             pause: false,
+            ticks: 0,
         }
     }
 
@@ -237,6 +239,7 @@ impl Demo {
     }
 
     fn on_tick(&mut self) -> Result<()> {
+        self.ticks += 1;
         if let Some(wait_for_next_demo_until) = self.wait_for_next_demo_until {
             if Instant::now() < wait_for_next_demo_until {
                 return Ok(());
@@ -266,7 +269,7 @@ impl Demo {
         let mut model = self.model.as_ref().unwrap().borrow_mut();
 
         // The FPGA keeps running in real-time, so we don't need to step a bunch of times just to run the model.
-        let steps = if FPGA { 1 } else { 10_000 };
+        let steps = if FPGA { 100 } else { 10_000 };
 
         if self.pause && !FPGA {
             return Ok(());
@@ -282,13 +285,15 @@ impl Demo {
         }
 
         let mut output_sink = &model.output().sink().clone();
-        if matches!(self.current_demo(), DemoType::Mlkem) && model.cycle_count() < 500_000 {
+        //if matches!(self.current_demo(), DemoType::Mlkem) && model.cycle_count() < 500_000 {
+        if self.ticks % 2 == 0 {
             output_sink.write(b"\n")?;
         }
-        if !model.output().peek().is_empty() {
-            output_sink.write_all(model.output().take(usize::MAX).as_bytes())?;
-            output_sink.flush()?;
-        }
+        //}
+        // if !model.output().peek().is_empty() {
+        //     output_sink.write_all(model.output().take(usize::MAX).as_bytes())?;
+        //     output_sink.flush()?;
+        // }
 
         let s = caliptra_emu_periph::output().take();
         if !s.is_empty() {
@@ -374,7 +379,6 @@ impl Demo {
         writeln!(console, "Starting demo: {}", self.current_demo())?;
 
         let init_params = InitParams {
-            //let mut model = ModelFpgaRealtime::new_unbooted(InitParams {
             caliptra_rom: &binaries.caliptra_rom,
             caliptra_firmware: &binaries.caliptra_fw,
             mcu_rom: &binaries.mcu_rom,
@@ -408,7 +412,6 @@ impl Demo {
             ..Default::default()
         })?;
         model.start_i3c_controller();
-        let port = model.i3c_port().unwrap();
         self.model = Some(RefCell::new(model));
 
         Ok(())
