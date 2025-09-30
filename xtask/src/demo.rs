@@ -29,6 +29,8 @@ use std::time::{Duration, Instant};
 const GAUGE1_COLOR: Color = tailwind::RED.c800;
 const CUSTOM_LABEL_COLOR: Color = tailwind::SLATE.c200;
 
+const TERMINAL_LINES: usize = 30;
+
 const FPGA: bool = true;
 type Model = ModelFpgaRealtime;
 // type Model = ModelEmulated;
@@ -145,7 +147,7 @@ impl std::io::Write for Console {
         }
         let last = *buf.last().unwrap();
         self.last_line_terminated = last == 10 || last == 13;
-        while buffer.len() > 50 {
+        while buffer.len() > TERMINAL_LINES {
             buffer.pop_front();
         }
         Ok(buf.len())
@@ -286,9 +288,9 @@ impl Demo {
 
         let mut output_sink = &model.output().sink().clone();
         //if matches!(self.current_demo(), DemoType::Mlkem) && model.cycle_count() < 500_000 {
-        if self.ticks % 2 == 0 {
-            output_sink.write(b"\n")?;
-        }
+        // if self.ticks % 2 == 0 {
+        //     output_sink.write(b"\n")?;
+        // }
         //}
         // if !model.output().peek().is_empty() {
         //     output_sink.write_all(model.output().take(usize::MAX).as_bytes())?;
@@ -440,7 +442,12 @@ impl Widget for &mut Demo {
     #[expect(clippy::similar_names)]
     fn render(self, area: Rect, buf: &mut Buffer) {
         use Constraint::Length;
-        let layout = Layout::vertical([Length(2), Length(4), Length(30), Length(2)]);
+        let layout = Layout::vertical([
+            Length(2),
+            Length(4),
+            Length(TERMINAL_LINES as u16),
+            Length(2),
+        ]);
         let [header_area, gauge_area, console_area, footer_area] = layout.areas(area);
 
         render_header(self.current_demo().title(), header_area, buf);
