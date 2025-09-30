@@ -29,12 +29,12 @@ use std::time::{Duration, Instant};
 const GAUGE1_COLOR: Color = tailwind::RED.c800;
 const CUSTOM_LABEL_COLOR: Color = tailwind::SLATE.c200;
 
-const FPGA: bool = true;
-type Model = ModelFpgaRealtime;
-// type Model = ModelEmulated;
+const FPGA: bool = false;
+//type Model = ModelFpgaRealtime;
+type Model = ModelEmulated;
 
-const SPDM_DEMO_ZIP: &'static str = "spdm-demo-fpga.zip";
-const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-fpga.zip";
+const SPDM_DEMO_ZIP: &'static str = "spdm-demo-emu.zip";
+const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-emu.zip";
 
 const PAUSE_START_DEMO: Duration = Duration::from_secs(5);
 const PAUSE_BETWEEN_DEMOS: Duration = Duration::from_secs(10);
@@ -64,6 +64,13 @@ impl DemoType {
                 }
             }
             DemoType::Mlkem => 1_000_000,
+        }
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            DemoType::Spdm => "Caliptra FPGA Demos: SPDM",
+            DemoType::Mlkem => "Caliptra FPGA Demos: MLKEM",
         }
     }
 }
@@ -153,7 +160,8 @@ struct Demo {
     sent_vca: bool,
     demos: Vec<DemoType>,
     current_demo_idx: usize,
-    pause_until: Option<Instant>,
+    wait_for_next_demo_until: Option<Instant>,
+    pause: bool,
 }
 
 impl Demo {
@@ -169,7 +177,8 @@ impl Demo {
             sent_vca: false,
             demos: vec![DemoType::Spdm, DemoType::Mlkem],
             current_demo_idx: 0,
-            pause_until: None,
+            wait_for_next_demo_until: None,
+            pause: false,
         }
     }
 
@@ -207,7 +216,10 @@ impl Demo {
             }
             'n' => {
                 self.next_demo = true;
-                self.pause_until = Some(Instant::now() + PAUSE_START_DEMO);
+                self.wait_for_next_demo_until = Some(Instant::now() + PAUSE_START_DEMO);
+            }
+            ' ' => {
+                self.pause = !self.pause;
             }
             _ => {}
         }
@@ -218,11 +230,11 @@ impl Demo {
     }
 
     fn on_tick(&mut self) -> Result<()> {
-        if let Some(pause) = self.pause_until {
-            if Instant::now() < pause {
+        if let Some(wait_for_next_demo_until) = self.wait_for_next_demo_until {
+            if Instant::now() < wait_for_next_demo_until {
                 return Ok(());
             }
-            self.pause_until = None;
+            self.wait_for_next_demo_until = None;
         }
 
         if self.next_demo {
@@ -248,12 +260,24 @@ impl Demo {
 
         // The FPGA keeps running in real-time, so we don't need to step a bunch of times just to run the model.
         let steps = if FPGA { 1 } else { 10_000 };
+
+        if self.pause && !FPGA {
+            return Ok(());
+        }
+
+        // we still step for FPGA so that the log FIFO doesn't overflow
         for _ in 0..steps {
             model.step();
         }
 
+        if self.pause {
+            return Ok(());
+        }
+
         let mut output_sink = &model.output().sink().clone();
-        // output_sink.write(b"\n")?;
+        if matches!(self.current_demo(), DemoType::Mlkem) && model.cycle_count() < 500_000 {
+            output_sink.write(b"\n")?;
+        }
         if !model.output().peek().is_empty() {
             output_sink.write_all(model.output().take(usize::MAX).as_bytes())?;
             output_sink.flush()?;
@@ -271,7 +295,7 @@ impl Demo {
             .max(0);
         if model.cycle_count() >= max_cycles {
             self.next_demo = true;
-            self.pause_until = Some(Instant::now() + PAUSE_BETWEEN_DEMOS);
+            self.wait_for_next_demo_until = Some(Instant::now() + PAUSE_BETWEEN_DEMOS);
         }
 
         drop(model);
@@ -405,9 +429,18 @@ impl Widget for &mut Demo {
         let layout = Layout::vertical([Length(2), Length(4), Length(30), Length(2)]);
         let [header_area, gauge_area, console_area, footer_area] = layout.areas(area);
 
-        render_header(header_area, buf);
+        render_header(self.current_demo().title(), header_area, buf);
         render_console(console_area, &*self.console_buffer.read().unwrap(), buf);
-        render_footer(footer_area, buf);
+
+        let footer = if self.pause {
+            "Paused - Press Space to resume"
+        } else if self.next_demo {
+            "Starting next demo in a few seconds..."
+        } else {
+            "Press Space to pause, N for next demo, Q to quit"
+        };
+
+        render_footer(footer, footer_area, buf);
 
         self.render_gauge1(gauge_area, buf);
     }
@@ -430,16 +463,16 @@ fn title_block(title: &str) -> Block<'_> {
         .fg(CUSTOM_LABEL_COLOR)
 }
 
-fn render_header(area: Rect, buf: &mut Buffer) {
-    Paragraph::new("Caliptra FPGA Demos")
+fn render_header(title: &str, area: Rect, buf: &mut Buffer) {
+    Paragraph::new(title)
         .bold()
         .alignment(Alignment::Center)
         .fg(CUSTOM_LABEL_COLOR)
         .render(area, buf);
 }
 
-fn render_footer(area: Rect, buf: &mut Buffer) {
-    Paragraph::new("Press N for next demo, Q to quit")
+fn render_footer(text: &str, area: Rect, buf: &mut Buffer) {
+    Paragraph::new(text)
         .alignment(Alignment::Center)
         .fg(CUSTOM_LABEL_COLOR)
         .bold()
