@@ -349,9 +349,9 @@ impl ModelFpgaRealtime {
 impl McuHwModel for ModelFpgaRealtime {
     fn step(&mut self) {
         self.base.step();
-        //self.handle_i3c();
-        //self.handle_msg_fifo();
-        //self.handle_ocp_lock_key_release();
+        self.handle_i3c();
+        self.handle_msg_fifo();
+        self.handle_ocp_lock_key_release();
     }
 
     fn new_unbooted(params: InitParams) -> Result<Self>

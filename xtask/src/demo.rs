@@ -73,6 +73,13 @@ impl DemoType {
             DemoType::Mlkem => "Caliptra FPGA Demos: MLKEM",
         }
     }
+
+    fn needs_i3c(self) -> bool {
+        match self {
+            DemoType::Spdm => true,
+            DemoType::Mlkem => false,
+        }
+    }
 }
 
 impl std::fmt::Display for DemoType {
@@ -378,7 +385,11 @@ impl Demo {
             vendor_pk_hash: binaries.vendor_pk_hash(),
             enable_mcu_uart_log: true,
             log_writer: Box::new(console),
-            i3c_port: Some(65534),
+            i3c_port: if self.current_demo().needs_i3c() {
+                Some(65534)
+            } else {
+                None
+            },
             ..Default::default()
         };
         let mut model = Model::new_unbooted(init_params)?;
