@@ -1,17 +1,21 @@
 // Licensed under the Apache-2.0 license
 
 use crate::transport::McuMboxTransport;
+use caliptra_api::mailbox::{CommandId as CaliptraCommandId, MailboxReqHeader};
 use core::sync::atomic::{AtomicBool, Ordering};
 use external_cmds_common::{
     DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, UnifiedCommandHandler, MAX_UID_LEN,
 };
+use libsyscall_caliptra::mailbox::Mailbox;
 use libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
     DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, MailboxRespHeader,
-    MailboxRespHeaderVarSize, McuMailboxResp, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
+    MailboxRespHeaderVarSize, McuMailboxReq, McuMailboxResp, McuRequestVarSize, McuShaInitReq,
+    McuShaInitResp, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
 };
 use zerocopy::{FromBytes, IntoBytes};
+//use libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 
 pub enum MsgHandlerError {
     Transport,
@@ -25,6 +29,7 @@ pub enum MsgHandlerError {
 pub struct CmdInterface<'a> {
     transport: &'a mut McuMboxTransport,
     non_crypto_cmds_handler: &'a dyn UnifiedCommandHandler,
+    caliptra_mbox: libsyscall_caliptra::mailbox::Mailbox, // Handle crypto commands via caliptra mailbox
     busy: AtomicBool,
 }
 
@@ -36,6 +41,7 @@ impl<'a> CmdInterface<'a> {
         Self {
             transport,
             non_crypto_cmds_handler,
+            caliptra_mbox: Mailbox::new(),
             busy: AtomicBool::new(false),
         }
     }
@@ -86,6 +92,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_DEVICE_ID => self.handle_device_id(msg_buf, req_len).await,
             CommandId::MC_DEVICE_INFO => self.handle_device_info(msg_buf, req_len).await,
             // TODO: Add more command handlers
+            CommandId::MC_SHA_INIT => self.handle_sha_init(msg_buf, req_len).await,
             _ => Err(MsgHandlerError::UnsupportedCommand),
         };
 
@@ -280,5 +287,48 @@ impl<'a> CmdInterface<'a> {
         msg_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
         Ok((resp_bytes.len(), mbox_cmd_status))
+    }
+
+    // Handle SHA init command by calling caliptra mailbox api
+    async fn handle_sha_init(
+        &self,
+        msg_buf: &mut [u8],
+        req_len: usize,
+    ) -> Result<(usize, MbxCmdStatus), MsgHandlerError> {
+        // Decode the request in place
+        let req = McuShaInitReq::mut_from_bytes(&mut msg_buf[..req_len])
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        // Reset the header checksum to zero (in-place)
+        req.0.hdr = MailboxReqHeader::default();
+
+        // Map the command code to caliptra mailbox command code;
+        let cmd_code: u32 = CaliptraCommandId::CM_SHA_INIT.into();
+
+        // Populate the check sum for Caliptra mailbox request (different cmd_code, same payload structure)
+        let req_bytes = req
+            .as_bytes_partial_mut()
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+        self.caliptra_mbox
+            .populate_checksum(cmd_code, req_bytes)
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        // Prepare the response buffer using local buffer
+        let mut resp_bytes = [0u8; core::mem::size_of::<McuShaInitResp>()];
+
+        // Call Caliptra mailbox API execute_mailbox_cmd
+        let status = self
+            .caliptra_mbox
+            .execute(cmd_code, req_bytes, &mut resp_bytes)
+            .await;
+
+        // Caliptra mailbox response is the same as MCU mailbox response. Copy it to msg_buf
+        match status {
+            Ok(resp_len) => {
+                let _ = &mut msg_buf[..resp_len].copy_from_slice(&resp_bytes[..resp_len]);
+                return Ok((resp_len, MbxCmdStatus::Complete));
+            }
+            Err(_) => return Ok((0, MbxCmdStatus::Failure)),
+        }
     }
 }

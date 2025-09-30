@@ -3,13 +3,17 @@
 //! This module tests the MCU MBOX request/response interaction between the emulator and the device.
 //! The emulator sends out different MCU MBOX requests and expects a corresponding response for those requests.
 
-use emulator_mcu_mbox::mcu_mailbox_transport::{McuMailboxError, McuMailboxTransport};
+use emulator_mcu_mbox::mcu_mailbox_transport::{
+    McuMailboxError, McuMailboxResponse, McuMailboxTransport,
+};
 use mcu_mbox_common::messages::{
-    DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq, DeviceInfoResp,
-    FirmwareVersionReq, FirmwareVersionResp, MailboxReqHeader, MailboxRespHeader,
-    MailboxRespHeaderVarSize, McuMailboxReq, McuMailboxResp, DEVICE_CAPS_SIZE,
+    CmShaInitReq, CmShaInitResp, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp,
+    DeviceInfoReq, DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, MailboxReqHeader,
+    MailboxRespHeader, MailboxRespHeaderVarSize, McuMailboxReq, McuMailboxResp, McuShaInitReq,
+    McuShaInitResp, DEVICE_CAPS_SIZE,
 };
 use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+use sha2::{Digest, Sha384, Sha512};
 use std::process::exit;
 use std::sync::atomic::Ordering;
 use std::thread::sleep;
@@ -32,6 +36,23 @@ pub struct ExpectedMessagePair {
 }
 
 impl RequestResponseTest {
+    /// Utility function to process one mailbox message and get the actual response
+    fn process_message(
+        &mut self,
+        cmd: u32,
+        request: &[u8],
+    ) -> Result<McuMailboxResponse, McuMailboxError> {
+        self.mbox.execute(cmd, request)?;
+
+        loop {
+            match self.mbox.get_execute_response() {
+                Ok(resp) => return Ok(resp),
+                Err(McuMailboxError::Busy) => sleep(std::time::Duration::from_millis(100)),
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
     pub fn new(mbox: McuMailboxTransport) -> Self {
         let test_messages: Vec<ExpectedMessagePair> = Vec::new();
         Self {
@@ -60,6 +81,7 @@ impl RequestResponseTest {
         } else if cfg!(feature = "test-mcu-mbox-cmds") {
             println!("Running test-mcu-mbox-cmds test");
             self.add_basic_cmds_tests();
+            self.add_sha_tests();
         }
     }
 
@@ -74,28 +96,12 @@ impl RequestResponseTest {
     #[allow(clippy::result_unit_err)]
     fn test_send_receive(&mut self) -> Result<(), ()> {
         self.prep_test_messages();
-        for message_pair in &self.test_messages {
-            self.mbox
-                .execute(message_pair.cmd, &message_pair.request)
+        let test_messages = self.test_messages.clone();
+        for message_pair in &test_messages {
+            let actual_response = self
+                .process_message(message_pair.cmd, &message_pair.request)
                 .map_err(|_| ())?;
-            loop {
-                let response_int = self.mbox.get_execute_response();
-                match response_int {
-                    Ok(resp) => {
-                        assert_eq!(resp.data, message_pair.response);
-                        break;
-                    }
-                    Err(e) => match e {
-                        McuMailboxError::Busy => {
-                            sleep(std::time::Duration::from_millis(100));
-                        }
-                        _ => {
-                            println!("Unexpected error: {:?}", e);
-                            return Err(());
-                        }
-                    },
-                }
-            }
+            assert_eq!(actual_response.data, message_pair.response);
         }
         Ok(())
     }
@@ -248,5 +254,60 @@ impl RequestResponseTest {
             device_info_req.as_bytes().unwrap().to_vec(),
             device_info_resp.as_bytes().unwrap().to_vec(),
         );
+    }
+
+    /*
+       fn test_sha384_simple() {
+           let mut model = run_rt_test(RuntimeTestArgs::default());
+
+           model.step_until(|m| {
+               m.soc_ifc().cptra_boot_status().read() == u32::from(RtBootStatus::RtReadyForCommands)
+           });
+
+           let input_data = "a".repeat(129);
+           let input_data = input_data.as_bytes();
+
+           // Simple case
+           let mut req = CmShaInitReq {
+               hash_algorithm: 1, // SHA384
+               input_size: input_data.len() as u32,
+               ..Default::default()
+           };
+           req.input[..input_data.len()].copy_from_slice(input_data);
+
+           let mut init = MailboxReq::CmShaInit(req);
+           init.populate_chksum().unwrap();
+           let resp_bytes = model
+               .mailbox_execute(u32::from(CommandId::CM_SHA_INIT), init.as_bytes().unwrap())
+               .unwrap()
+               .expect("Should have gotten a context");
+           let resp = CmShaInitResp::ref_from_bytes(resp_bytes.as_slice()).unwrap();
+
+           let req = CmShaFinalReq {
+               context: resp.context,
+               ..Default::default()
+           };
+
+           let mut fin = MailboxReq::CmShaFinal(req);
+           fin.populate_chksum().unwrap();
+           let resp_bytes = model
+               .mailbox_execute(u32::from(CommandId::CM_SHA_FINAL), fin.as_bytes().unwrap())
+               .unwrap()
+               .expect("Should have gotten a context");
+
+           let mut expected_resp = CmShaFinalResp::default();
+           expected_resp.hdr.data_len = 48;
+
+           let mut hasher = Sha384::new();
+           hasher.update(input_data);
+           let expected_hash = hasher.finalize();
+           expected_resp.hash[..48].copy_from_slice(expected_hash.as_bytes());
+           populate_checksum(expected_resp.as_bytes_partial_mut().unwrap());
+           let expected_bytes = expected_resp.as_bytes_partial().unwrap();
+           assert_eq!(expected_bytes, resp_bytes);
+       }
+    */
+    fn add_sha_tests(&mut self) {
+        // Add simple SHA test tests like https://github.com/chipsalliance/caliptra-sw/blob/main-2.x/runtime/tests/runtime_integration_tests/test_cryptographic_mailbox.rs#L43
     }
 }

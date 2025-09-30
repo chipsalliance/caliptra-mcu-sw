@@ -1,6 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-pub use caliptra_api::mailbox::{MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize};
+use caliptra_api::mailbox::{CmShaFinalReq, CmShaFinalResp, CmShaUpdateReq, ResponseVarSize};
+pub use caliptra_api::mailbox::{
+    CmShaInitReq, CmShaInitResp, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
+};
 pub use caliptra_api::{calc_checksum, verify_checksum};
 use core::convert::From;
 use core::num::NonZeroU32;
@@ -26,6 +29,7 @@ impl McuMboxError {
     pub const MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE: McuMboxError = Self::new_const(0x0000_0001);
     pub const MCU_MBOX_RESPONSE_DATA_LEN_TOO_SHORT: McuMboxError = Self::new_const(0x0000_0002);
     pub const MCU_RUNTIME_INSUFFICIENT_MEMORY: McuMboxError = Self::new_const(0x0000_0003);
+    pub const MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE: McuMboxError = Self::new_const(0x0000_0004);
 }
 
 /// A trait implemented by request types. Describes the associated command ID
@@ -56,6 +60,9 @@ impl CommandId {
     pub const MC_DEVICE_INFO: Self = Self(0x4D44_494E); // "MDIN"
     pub const MC_GET_LOG: Self = Self(0x4D47_4C47); // "MGLG"
     pub const MC_CLEAR_LOG: Self = Self(0x4D43_4C47); // "MCLG"
+    pub const MC_SHA_INIT: Self = Self(0x4D43_5349); // "MCSI"
+    pub const MC_SHA_UPDATE: Self = Self(0x4D43_5355); // "MCSU"
+    pub const MC_SHA_FINAL: Self = Self(0x4D43_5346); // "MCSF"
 }
 
 impl From<u32> for CommandId {
@@ -80,6 +87,9 @@ pub enum McuMailboxReq {
     DeviceInfo(DeviceInfoReq),
     GetLog(GetLogReq),
     ClearLog(ClearLogReq),
+    ShaInit(McuShaInitReq),     // Add SHA init request
+    ShaUpdate(McuShaUpdateReq), // Add SHA update request
+    ShaFinal(McuShaFinalReq),   // Add SHA final request
 }
 
 impl McuMailboxReq {
@@ -91,6 +101,9 @@ impl McuMailboxReq {
             McuMailboxReq::DeviceInfo(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetLog(req) => Ok(req.as_bytes()),
             McuMailboxReq::ClearLog(req) => Ok(req.as_bytes()),
+            McuMailboxReq::ShaInit(req) => req.as_bytes_partial(),
+            McuMailboxReq::ShaUpdate(req) => req.as_bytes_partial(),
+            McuMailboxReq::ShaFinal(req) => req.as_bytes_partial(),
         }
     }
 
@@ -102,6 +115,9 @@ impl McuMailboxReq {
             McuMailboxReq::DeviceInfo(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetLog(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ClearLog(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::ShaInit(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::ShaUpdate(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::ShaFinal(req) => req.as_bytes_partial_mut(),
         }
     }
 
@@ -113,6 +129,9 @@ impl McuMailboxReq {
             McuMailboxReq::DeviceInfo(_) => CommandId::MC_DEVICE_INFO,
             McuMailboxReq::GetLog(_) => CommandId::MC_GET_LOG,
             McuMailboxReq::ClearLog(_) => CommandId::MC_CLEAR_LOG,
+            McuMailboxReq::ShaInit(_) => CommandId::MC_SHA_INIT,
+            McuMailboxReq::ShaUpdate(_) => CommandId::MC_SHA_UPDATE,
+            McuMailboxReq::ShaFinal(_) => CommandId::MC_SHA_FINAL,
         }
     }
 
@@ -147,6 +166,9 @@ pub enum McuMailboxResp {
     DeviceInfo(DeviceInfoResp),
     GetLog(GetLogResp),
     ClearLog(ClearLogResp),
+    ShaInit(McuShaInitResp),
+    ShaUpdate(McuShaInitResp),
+    ShaFinal(McuShaFinalResp),
 }
 
 /// A trait for responses with variable size data.
@@ -181,6 +203,34 @@ impl<T: McuResponseVarSize> Response for T {
     const MIN_SIZE: usize = core::mem::size_of::<MailboxRespHeaderVarSize>();
 }
 
+// Macro to implement McuResponseVarSize for tuple response wrappers
+macro_rules! impl_mcu_response_varsize {
+    ($wrapper:ty, $inner:ty) => {
+        impl McuResponseVarSize for $wrapper {
+            fn data(&self) -> McuMboxResult<&[u8]> {
+                self.0
+                    .data()
+                    .map_err(|_| McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE)
+            }
+            fn partial_len(&self) -> McuMboxResult<usize> {
+                self.0
+                    .partial_len()
+                    .map_err(|_| McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE)
+            }
+            fn as_bytes_partial(&self) -> McuMboxResult<&[u8]> {
+                self.0
+                    .as_bytes_partial()
+                    .map_err(|_| McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE)
+            }
+            fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]> {
+                self.0
+                    .as_bytes_partial_mut()
+                    .map_err(|_| McuMboxError::MCU_MBOX_RESPONSE_DATA_LEN_TOO_LARGE)
+            }
+        }
+    };
+}
+
 impl McuMailboxResp {
     pub fn as_bytes(&self) -> McuMboxResult<&[u8]> {
         match self {
@@ -191,6 +241,9 @@ impl McuMailboxResp {
             McuMailboxResp::DeviceInfo(resp) => resp.as_bytes_partial(),
             McuMailboxResp::GetLog(resp) => resp.as_bytes_partial(),
             McuMailboxResp::ClearLog(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::ShaInit(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::ShaUpdate(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::ShaFinal(resp) => resp.as_bytes_partial(),
         }
     }
 
@@ -203,6 +256,9 @@ impl McuMailboxResp {
             McuMailboxResp::DeviceInfo(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::GetLog(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::ClearLog(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::ShaInit(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::ShaUpdate(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::ShaFinal(resp) => resp.as_bytes_partial_mut(),
         }
     }
 
@@ -366,3 +422,66 @@ impl Request for ClearLogReq {
 #[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct ClearLogResp(MailboxRespHeader);
 impl Response for ClearLogResp {}
+
+pub trait McuRequestVarSize: IntoBytes + FromBytes + Immutable + KnownLayout {
+    fn as_bytes_partial(&self) -> McuMboxResult<&[u8]>;
+    fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]>;
+}
+
+// Macro to implement McuRequestVarSize for tuple wrappers
+macro_rules! impl_mcu_request_varsize {
+    ($wrapper:ty, $inner:ty) => {
+        impl McuRequestVarSize for $wrapper {
+            fn as_bytes_partial(&self) -> McuMboxResult<&[u8]> {
+                self.0
+                    .as_bytes_partial()
+                    .map_err(|_| McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+            }
+            fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]> {
+                self.0
+                    .as_bytes_partial_mut()
+                    .map_err(|_| McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+            }
+        }
+    };
+}
+
+// Create a wrapper for ShaInitReq. MCU mailbox sha init request is the same format of CmShaInitReq
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuShaInitReq(pub CmShaInitReq);
+
+impl Request for McuShaInitReq {
+    const ID: CommandId = CommandId::MC_SHA_INIT;
+    type Resp = McuShaInitResp;
+}
+impl_mcu_request_varsize!(McuShaInitReq, CmShaInitReq);
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuShaInitResp(pub CmShaInitResp);
+impl Response for McuShaInitResp {}
+
+// Add ShaUpdateReq and ShaFinalReq similar to McuShaInitReq if needed in the future
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct McuShaUpdateReq(pub CmShaUpdateReq);
+impl Request for McuShaUpdateReq {
+    const ID: CommandId = CommandId::MC_SHA_UPDATE;
+    type Resp = McuShaInitResp; // Same response as ShaInit
+}
+impl_mcu_request_varsize!(McuShaUpdateReq, CmShaUpdateReq);
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct McuShaFinalReq(pub CmShaFinalReq);
+impl Request for McuShaFinalReq {
+    const ID: CommandId = CommandId::MC_SHA_FINAL;
+    type Resp = McuShaFinalResp;
+}
+impl_mcu_request_varsize!(McuShaFinalReq, CmShaFinalReq);
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct McuShaFinalResp(pub CmShaFinalResp);
+impl_mcu_response_varsize!(McuShaFinalResp, CmShaFinalResp);
