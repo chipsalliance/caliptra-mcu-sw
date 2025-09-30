@@ -25,6 +25,7 @@ use std::io::Seek;
 use std::path::PathBuf;
 #[allow(unused_imports)] // Rust compiler doesn't like these
 use tock_registers::interfaces::{Readable, Writeable};
+use tock_registers::LocalRegisterCopy;
 
 /// OTP Digest constant default from caliptra-ss/src/fuse_ctrl/rtl/otp_ctrl_part_pkg.sv
 const DIGEST_CONST: u128 = 0xF98C48B1F93772844A22D4B78FE0266F;
@@ -170,12 +171,15 @@ impl Otp {
             partitions[..raw_memory.len()].copy_from_slice(&raw_memory);
         }
 
+        let mut status: LocalRegisterCopy<u32, OtpStatus::Register> = LocalRegisterCopy::new(0);
+        status.set(OtpStatus::DaiIdle::SET.value);
+
         let mut otp = Self {
             file,
             direct_access_address: 0,
             direct_access_buffer: 0,
             direct_access_cmd: 0u32.into(),
-            status: 0b100_0000_0000_0000_0000_0000u32.into(), // DAI idle state
+            status: u32::from(status).into(),
             calculate_digests_on_reset: HashSet::new(),
             timer: Timer::new(clock),
             partitions: vec![0u8; TOTAL_SIZE],
