@@ -8,6 +8,7 @@
 use core::fmt::Write;
 #[cfg(feature = "test-flash-usermode")]
 use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash};
+use libsyscall_caliptra::system::System;
 use libtock::alarm::*;
 use libtock_console::Console;
 use libtock_platform::{self as platform};
@@ -96,7 +97,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
                 console_writer,
                 "Alarm capsule not available, so cannot execute tests"
             );
-            romtime::test_exit(0);
+            System::exit(0);
         }
     };
 
@@ -180,7 +181,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         )
         .unwrap();
 
-        romtime::test_exit(0);
+        System::exit(0);
     }
     #[cfg(feature = "test-pldm-request-response")]
     {
@@ -192,7 +193,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_mailbox::test_caliptra_mailbox_bad_command().await;
         test_caliptra_mailbox::test_caliptra_mailbox_fail().await;
         test_caliptra_mailbox::test_caliptra_evidence().await;
-        romtime::test_exit(0);
+        System::exit(0);
     }
 
     #[cfg(feature = "test-caliptra-crypto")]
@@ -203,7 +204,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_crypto::test_caliptra_hmac().await;
         test_caliptra_crypto::test_caliptra_aes_gcm_cipher().await;
         test_caliptra_crypto::test_caliptra_ecdsa().await;
-        romtime::test_exit(0);
+        System::exit(0);
     }
 
     #[cfg(feature = "test-caliptra-certs")]
@@ -216,13 +217,13 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_certs::test_get_cert_chain().await;
         test_caliptra_certs::test_certify_key().await;
         test_caliptra_certs::test_sign_with_test_key().await;
-        romtime::test_exit(0);
+        System::exit(0);
     }
     #[cfg(feature = "test-dma")]
     {
         test_dma::test_dma_xfer_local_to_local().await;
         test_dma::test_dma_xfer_local_to_external().await;
-        romtime::test_exit(0);
+        System::exit(0);
     }
 
     #[cfg(feature = "test-log-flash-usermode")]
@@ -230,12 +231,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_logging_flash::test_logging_flash_simple().await;
         test_logging_flash::test_logging_flash_various_entries().await;
         test_logging_flash::test_logging_flash_invalid_inputs().await;
-        romtime::test_exit(0);
+        System::exit(0);
     }
     #[cfg(feature = "test-mci")]
     {
         test_mci::test_mci_read_write().await;
-        romtime::test_exit(0);
+        System::exit(0);
     }
 
     #[cfg(feature = "test-mcu-mbox-usermode")]
@@ -246,18 +247,18 @@ pub(crate) async fn async_main<S: Syscalls>() {
     #[cfg(any(feature = "test-mcu-svn-gt-fuse", feature = "test-mcu-svn-lt-fuse"))]
     {
         writeln!(console_writer, "MCU Image SVN check passed").unwrap();
-        romtime::test_exit(0);
+        System::exit(0);
     }
     #[cfg(feature = "test-mbox-sram")]
     {
         writeln!(console_writer, "Running MEM-REG read/write test").unwrap();
         test_mbox_sram::test_mem_reg_read_write().await;
-        romtime::test_exit(0);
+        System::exit(0);
     }
     #[cfg(feature = "test-warm-reset")]
     {
         test_mci::test_mci_fw_boot_reset().await;
-        romtime::test_exit(0);
+        System::exit(0);
     }
 
     writeln!(console_writer, "app finished").unwrap();

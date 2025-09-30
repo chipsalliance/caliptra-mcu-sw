@@ -29,7 +29,6 @@ mod test {
     use std::time::Duration;
     use uuid::Uuid;
 
-    #[cfg_attr(feature = "fpga_realtime", ignore)]
     #[test]
     fn test_fw_update_e2e() {
         let feature = "test-pldm-fw-update-e2e";
@@ -134,7 +133,7 @@ mod test {
             &self,
             expected_state: update_sm::States,
         ) -> Result<(), ()> {
-            let timeout = Duration::from_secs(30);
+            let timeout = Duration::from_secs(60);
             let start_time = std::time::Instant::now();
 
             while start_time.elapsed() < timeout {

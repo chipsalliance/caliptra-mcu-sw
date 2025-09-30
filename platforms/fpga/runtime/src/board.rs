@@ -19,6 +19,7 @@ use kernel::scheduler::cooperative::CooperativeSched;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
+use mcu_components::mbox_sram_component_static;
 use mcu_components::mctp_driver_component_static;
 use mcu_components::mctp_mux_component_static;
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
@@ -138,6 +139,12 @@ struct VeeR {
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
+    mci: &'static capsules_runtime::mci::Mci,
+    mcu_mbox1_staging_sram: &'static capsules_runtime::mbox_sram::MboxSram<
+        'static,
+        VirtualMuxAlarm<'static, InternalTimers<'static>>,
+    >,
+    system: &'static capsules_runtime::system::System<'static, FpgaExiter>,
     //dma: &'static capsules_emulator::dma::Dma<'static>,
 }
 
@@ -164,6 +171,11 @@ impl SyscallDriverLookup for VeeR {
             //     f(Some(self.recovery_image_par))
             // }
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
+            capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
+            capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
+                f(Some(self.mcu_mbox1_staging_sram))
+            }
+            capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
             //capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
             _ => f(None),
         }
@@ -504,6 +516,33 @@ pub unsafe fn main() {
     .finalize(mctp_driver_component_static!(InternalTimers));
     romtime::println!("[mcu-runtime] MCTP Caliptra driver component initialized");
 
+    let mci = mcu_components::mci::MciComponent::new(
+        board_kernel,
+        capsules_runtime::mci::DRIVER_NUM,
+        &peripherals.mci,
+    )
+    .finalize(kernel::static_buf!(capsules_runtime::mci::Mci));
+    romtime::println!("[mcu-runtime] MCI driver component initialized");
+
+    let mcu_mbox1_staging_sram = mcu_components::mbox_sram::MboxSramComponent::new(
+        peripherals.mci.registers.clone(),
+        board_kernel,
+        capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
+        core::slice::from_raw_parts_mut(
+            (MCU_MEMORY_MAP.mci_offset + mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET) as *mut u32,
+            4 * 1024, // Allocate 4KB
+        ),
+        mux_alarm,
+    )
+    .finalize(mbox_sram_component_static!(InternalTimers<'static>));
+    romtime::println!("[mcu-runtime] MCU Mbox1 SRAM component initialized");
+
+    #[allow(static_mut_refs)]
+    let system = mcu_components::system::SystemComponent::new(unsafe { &mut FPGA_EXITER })
+        .finalize(kernel::static_buf!(
+            capsules_runtime::system::System<'static, FpgaExiter>
+        ));
+
     peripherals.init();
     romtime::println!("[mcu-runtime] Peripherals initialized");
 
@@ -547,6 +586,9 @@ pub unsafe fn main() {
             //active_image_par,
             //recovery_image_par,
             mailbox,
+            mci,
+            mcu_mbox1_staging_sram,
+            system,
             //dma,
         }
     );
