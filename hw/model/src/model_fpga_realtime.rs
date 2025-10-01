@@ -156,6 +156,7 @@ impl ModelFpgaRealtime {
                             {
                                 std::thread::sleep(Duration::from_millis(1));
                             }
+                            println!("I3C send to MCU: {:02x?}", &rx.cmd.data);
                             match controller.write(&rx.cmd.data) {
                                 Ok(_) => {}
                                 Err(e) => {
@@ -212,6 +213,7 @@ impl ModelFpgaRealtime {
             match self.base.i3c_controller().read(private_read_len) {
                 Ok(data) => {
                     let data = data[0..private_read_len as usize].to_vec();
+                    println!("I3C recv from Caliptra: {:02x?}", data);
                     // forward the private read
                     let mut resp = ResponseDescriptor::default();
                     resp.set_data_length(data.len() as u16);
