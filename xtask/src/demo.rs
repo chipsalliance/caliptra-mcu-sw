@@ -29,7 +29,7 @@ use std::time::{Duration, Instant};
 const GAUGE1_COLOR: Color = tailwind::RED.c800;
 const CUSTOM_LABEL_COLOR: Color = tailwind::SLATE.c200;
 
-const TERMINAL_LINES: usize = 25;
+const TERMINAL_LINES: usize = 30;
 
 const FPGA: bool = true;
 type Model = ModelFpgaRealtime;
@@ -101,23 +101,27 @@ pub(crate) fn demo() -> Result<()> {
     }
 
     // setup terminal
-    enable_raw_mode()?;
     let stdout = std::io::stdout();
+    enable_raw_mode()?;
 
     let app_result = {
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
-        terminal.clear()?;
+        //terminal.clear()?;
+        crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen)?;
 
         // create app and run it
         let tick_rate = Duration::from_micros(1_000_000 / 60);
         let mut app = Demo::new();
         let app_result = app.run(&mut terminal, tick_rate);
+
         // restore terminal
-        disable_raw_mode()?;
+        crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen)?;
+        //terminal.clear()?;
         terminal.show_cursor()?;
         app_result
     };
+    disable_raw_mode()?;
 
     if let Err(err) = app_result {
         println!("{err:?}");
@@ -335,7 +339,7 @@ impl Demo {
             return Ok(());
         };
 
-        if model.cycle_count() > 1_000_000_000 && self.i3c_socket.is_none() {
+        if model.cycle_count() > 640_000_000 && self.i3c_socket.is_none() {
             let addr = SocketAddr::from(([127, 0, 0, 1], 65534));
             let stream = TcpStream::connect(addr).unwrap();
             let stream = BufferedStream::new(stream);
@@ -345,7 +349,7 @@ impl Demo {
         // handle I3C for SPDM
         // TODO: move to state machine for SPDM test
         if let Some(i3c_socket) = self.i3c_socket.as_mut() {
-            if model.cycle_count() >= 1_010_000_000 {
+            if model.cycle_count() >= 650_000_000 {
                 if !self.sent_vca {
                     self.sent_vca = true;
                     writeln!(model.output().logger(), "I3C send to MCU: VCA")?;
@@ -452,7 +456,7 @@ impl Widget for &mut Demo {
         let layout = Layout::vertical([
             Length(2),
             Length(4),
-            Length(TERMINAL_LINES as u16),
+            Length(TERMINAL_LINES as u16 + 4),
             Length(2),
         ]);
         let [header_area, gauge_area, console_area, footer_area] = layout.areas(area);
@@ -475,11 +479,14 @@ impl Widget for &mut Demo {
 }
 
 fn render_console(area: Rect, lines: &VecDeque<String>, buf: &mut Buffer) {
+    let console_border = Block::bordered().padding(Padding::uniform(1));
     let (a, b) = lines.as_slices();
     let mut text: Vec<String> = vec![];
     text.extend(a.iter().cloned());
     text.extend(b.iter().cloned());
-    Paragraph::new(text.join("\n")).render(area, buf);
+    Paragraph::new(text.join("\n"))
+        .block(console_border)
+        .render(area, buf);
 }
 
 fn title_block(title: &str) -> Block<'_> {
