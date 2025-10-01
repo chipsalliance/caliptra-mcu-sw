@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::McuMailbox0Internal;
 use caliptra_emu_bus::{ActionHandle, Clock, Ram, ReadWriteRegister, Timer};
 use caliptra_emu_cpu::Irq;
-use emulator_consts::RAM_ORG;
+use emulator_consts::{RAM_ORG, RAM_SIZE};
 use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use registers_generated::axicdma::bits::{AxicdmaBytesToTransfer, AxicdmaControl, AxicdmaStatus};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -34,25 +34,17 @@ pub enum DmaOpError {
     WriteError = 1,
 }
 
-const MCU_SRAM_END_ADDR: AxiAddr = AxiAddr {
-    lo: 0xffff_ffff,
-    hi: 0x1000_0000,
-};
+const MCU_SRAM_START_ADDR: u64 = RAM_ORG as u64;
+const MCU_SRAM_END_ADDR: u64 = (RAM_ORG + RAM_SIZE) as u64;
 
-const EXTERNAL_SRAM_END_ADDR: AxiAddr = AxiAddr {
-    lo: 0xffff_ffff,
-    hi: 0x2000_0000,
-};
+const EXTERNAL_SRAM_START_ADDR: u64 = 0xB00C_0000;
+const EXTERNAL_SRAM_END_ADDR: u64 = 0xB010_0000;
 
-const MCU_MBOX0_SRAM_END_ADDR: AxiAddr = AxiAddr {
-    lo: 0xffff_ffff,
-    hi: 0x3000_0000,
-};
+const MCU_MBOX0_SRAM_START_ADDR: u64 = 0xA840_0000;
+const MCU_MBOX0_SRAM_END_ADDR: u64 = 0xA860_0000;
 
-const MCU_MBOX1_SRAM_END_ADDR: AxiAddr = AxiAddr {
-    lo: 0xffff_ffff,
-    hi: 0x4000_0000,
-};
+const MCU_MBOX1_SRAM_START_ADDR: u64 = 0xA880_0000;
+const MCU_MBOX1_SRAM_END_ADDR: u64 = 0xA8A0_0000;
 
 pub struct AxiCDMA {
     // Register emulation
@@ -155,19 +147,21 @@ impl AxiCDMA {
     }
 
     fn get_axi_peripheral_type(addr: AxiAddr) -> Option<AXIPeripheral> {
-        match addr {
-            AxiAddr { hi, .. } if hi <= MCU_SRAM_END_ADDR.hi => Some(AXIPeripheral::McuSram),
-            AxiAddr { hi, .. } if hi <= EXTERNAL_SRAM_END_ADDR.hi => {
-                Some(AXIPeripheral::ExternalSram)
-            }
-            AxiAddr { hi, .. } if hi <= MCU_MBOX0_SRAM_END_ADDR.hi => {
-                Some(AXIPeripheral::McuMboxSram0)
-            }
-            AxiAddr { hi, .. } if hi <= MCU_MBOX1_SRAM_END_ADDR.hi => {
-                Some(AXIPeripheral::McuMboxSram1)
-            }
-            _ => None,
+        let addr = ((addr.hi as u64) << 32) | (addr.lo as u64);
+
+        if (MCU_SRAM_START_ADDR..MCU_SRAM_END_ADDR).contains(&addr) {
+            return Some(AXIPeripheral::McuSram);
         }
+        if (EXTERNAL_SRAM_START_ADDR..EXTERNAL_SRAM_END_ADDR).contains(&addr) {
+            return Some(AXIPeripheral::ExternalSram);
+        }
+        if (MCU_MBOX0_SRAM_START_ADDR..MCU_MBOX0_SRAM_END_ADDR).contains(&addr) {
+            return Some(AXIPeripheral::McuMboxSram0);
+        }
+        if (MCU_MBOX1_SRAM_START_ADDR..MCU_MBOX1_SRAM_END_ADDR).contains(&addr) {
+            return Some(AXIPeripheral::McuMboxSram1);
+        }
+        None
     }
 
     fn get_axi_ram(&self, peripheral: AXIPeripheral) -> Option<Rc<RefCell<Ram>>> {
@@ -184,9 +178,9 @@ impl AxiCDMA {
         let peripheral = peripheral.unwrap();
         match peripheral {
             AXIPeripheral::McuSram => Some(addr.lo - RAM_ORG),
-            AXIPeripheral::ExternalSram => Some(addr.lo),
-            AXIPeripheral::McuMboxSram0 => Some(addr.lo),
-            AXIPeripheral::McuMboxSram1 => Some(addr.lo),
+            AXIPeripheral::ExternalSram => Some(addr.lo - EXTERNAL_SRAM_START_ADDR as u32),
+            AXIPeripheral::McuMboxSram0 => Some(addr.lo - MCU_MBOX0_SRAM_START_ADDR as u32),
+            AXIPeripheral::McuMboxSram1 => Some(addr.lo - MCU_MBOX1_SRAM_START_ADDR as u32),
         }
     }
 
@@ -409,9 +403,6 @@ mod test {
     use registers_generated::axicdma::bits::{AxicdmaControl, AxicdmaStatus};
     use registers_generated::axicdma::AXICDMA_ADDR;
 
-    const MCU_SRAM_HI_OFFSET: u32 = 0x1000_0000;
-    const EXTERNAL_SRAM_HI_OFFSET: u32 = 0x2000_0000;
-
     const AXICDMA_CONTROL_OFFSET: u32 = 0x0;
     const AXICDMA_STATUS_OFFSET: u32 = 0x4;
     const AXICDMA_SRC_ADDR_OFFSET: u32 = 0x18;
@@ -528,11 +519,11 @@ mod test {
         // Setup the source and destination addresses
         let source_axi_addr = AxiAddr {
             lo: RAM_ORG,
-            hi: MCU_SRAM_HI_OFFSET,
+            hi: 0x0000_0000,
         };
         let dest_axi_addr = AxiAddr {
-            lo: 0x0000_0000,
-            hi: EXTERNAL_SRAM_HI_OFFSET,
+            lo: EXTERNAL_SRAM_START_ADDR as u32,
+            hi: 0x0000_0000,
         };
         let xfer_size = 0x1000;
 
@@ -602,7 +593,9 @@ mod test {
         );
 
         // Verify the data in the external sram
-        let start_offset = dest_axi_addr.lo as usize;
+        let start_offset = (((dest_axi_addr.hi as u64) << 32)
+            | (dest_axi_addr.lo as u64 - EXTERNAL_SRAM_START_ADDR))
+            as usize;
         let dest_data = dummy_external_sram.borrow_mut().data_mut()
             [start_offset..start_offset + xfer_size]
             .to_vec();

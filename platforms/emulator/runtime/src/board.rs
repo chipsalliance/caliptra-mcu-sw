@@ -644,7 +644,7 @@ pub unsafe fn main() {
         capsules_emulator::logging::driver::BUF_LEN
     ));
 
-    let dma = runtime_components::dma::DmaComponent::new(
+    let dma = mcu_components::dma::DmaComponent::new(
         &emulator_peripherals.dma,
         board_kernel,
         capsules_emulator::dma::DMA_CTRL_DRIVER_NUM,
