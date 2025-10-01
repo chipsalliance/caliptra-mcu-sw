@@ -1,9 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 #![allow(clippy::mut_from_ref)]
+#![allow(unused_imports)]
 
 use crate::{InitParams, McuHwModel, McuManager};
-use anyhow::{bail, Result};
+use anyhow::Result;
 use caliptra_api::SocManager;
 use caliptra_api_types::Fuses;
 use caliptra_emu_bus::{Bus, BusError, BusMmio, Event};
@@ -17,19 +18,17 @@ use caliptra_hw_model::{
     SecurityState, XI3CWrapper,
 };
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
-use crossterm::event::{KeyCode, KeyEvent};
-use mcu_rom_common::{LifecycleControllerState, McuBootMilestones};
+use mcu_rom_common::LifecycleControllerState;
 use mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
-use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
+use mcu_testing_common::MCU_RUNNING;
 use std::fmt::Write as _;
-use std::io::Write as _;
 use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc};
 use std::thread::JoinHandle;
 use std::time::Duration;
 use tock_registers::interfaces::{Readable, Writeable};
@@ -112,24 +111,24 @@ impl ModelFpgaRealtime {
     }
 
     pub fn set_uds_req(&mut self) -> Result<()> {
-        let Some(mut socket) = self.openocd.take() else {
-            bail!("openocd socket is not open");
-        };
+        // let Some(mut socket) = self.openocd.take() else {
+        //     bail!("openocd socket is not open");
+        // };
 
-        //socket.write_all("riscv.cpu riscv dmi_write 0x70 4\n".as_bytes())?;
+        // //socket.write_all("riscv.cpu riscv dmi_write 0x70 4\n".as_bytes())?;
 
-        self.openocd = Some(socket);
+        // self.openocd = Some(socket);
         Ok(())
     }
 
     pub fn set_bootfsm_go(&mut self) -> Result<()> {
-        let Some(mut socket) = self.openocd.take() else {
-            bail!("openocd socket is not open");
-        };
+        // let Some(mut socket) = self.openocd.take() else {
+        //     bail!("openocd socket is not open");
+        // };
 
-        //socket.write_all("riscv.cpu riscv dmi_write 0x61 1\n".as_bytes())?;
+        // //socket.write_all("riscv.cpu riscv dmi_write 0x61 1\n".as_bytes())?;
 
-        self.openocd = Some(socket);
+        // self.openocd = Some(socket);
         Ok(())
     }
 
@@ -198,7 +197,8 @@ impl ModelFpgaRealtime {
                                 eoutput(),
                                 "Ignoring unexpected I3C IBI received: {:02x?}",
                                 ibi
-                            ).unwrap();
+                            )
+                            .unwrap();
                             continue;
                         }
                         // forward the IBI
@@ -244,45 +244,6 @@ impl ModelFpgaRealtime {
         }
     }
 
-    fn read_console(stdin_uart: Arc<Mutex<Option<u8>>>) {
-        let mut buffer = vec![];
-        while MCU_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
-            if buffer.is_empty() {
-                match crossterm::event::read() {
-                    Ok(crossterm::event::Event::Key(KeyEvent {
-                        code: KeyCode::Char(ch),
-                        ..
-                    })) => {
-                        buffer.extend_from_slice(ch.to_string().as_bytes());
-                    }
-                    Ok(crossterm::event::Event::Key(KeyEvent {
-                        code: KeyCode::Enter,
-                        ..
-                    })) => {
-                        buffer.push(b'\n');
-                    }
-                    Ok(crossterm::event::Event::Key(KeyEvent {
-                        code: KeyCode::Backspace,
-                        ..
-                    })) => {
-                        if !buffer.is_empty() {
-                            buffer.pop();
-                        } else {
-                            buffer.push(8);
-                        }
-                    }
-                    _ => {} // ignore other keys
-                }
-            } else {
-                let mut stdin_uart = stdin_uart.lock().unwrap();
-                if stdin_uart.is_none() {
-                    *stdin_uart = Some(buffer.remove(0));
-                }
-            }
-            std::thread::yield_now();
-        }
-    }
-
     fn handle_msg_fifo(&mut self) {
         loop {
             if self
@@ -300,7 +261,8 @@ impl ModelFpgaRealtime {
                     eoutput(),
                     "FPGA MSG FIFO: {:02x}",
                     data.read(FifoData::NextChar) as u8
-                ).unwrap();
+                )
+                .unwrap();
             }
             let key_parts: Vec<String> = self
                 .base
@@ -314,7 +276,8 @@ impl ModelFpgaRealtime {
                 eoutput(),
                 "FPGA OCP Lock Key Release: {}",
                 key_parts.join("")
-            ).unwrap();
+            )
+            .unwrap();
         }
     }
 
@@ -340,7 +303,8 @@ impl ModelFpgaRealtime {
                     eoutput(),
                     "FPGA OCP Lock Key Release: {}",
                     key_parts.join("")
-                ).unwrap();
+                )
+                .unwrap();
                 self.printed_ocp_lock_key_release = true;
             }
         }
@@ -353,8 +317,6 @@ impl ModelFpgaRealtime {
         self.handle_ocp_lock_key_release();
         Ok(())
     }
-
-
 }
 
 impl McuHwModel for ModelFpgaRealtime {
@@ -430,7 +392,8 @@ impl McuHwModel for ModelFpgaRealtime {
                 eoutput(),
                 "Starting I3C socket on port {} and connected to hardware",
                 i3c_port
-            ).unwrap();
+            )
+            .unwrap();
             let (rx, tx) =
                 mcu_testing_common::i3c_socket_server::start_i3c_socket(&MCU_RUNNING, i3c_port);
 
@@ -450,8 +413,6 @@ impl McuHwModel for ModelFpgaRealtime {
         } else {
             None
         };
-
-        let stdin_uart_clone = base.stdin_uart.clone();
 
         let m = Self {
             base,

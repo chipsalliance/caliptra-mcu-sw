@@ -44,9 +44,8 @@ use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
 use mcu_rom_common::LifecycleControllerState;
-use mcu_rom_common::McuBootMilestones;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
-use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
+use mcu_testing_common::MCU_RUNNING;
 use registers_generated::fuses;
 use semver::Version;
 use std::cell::Cell;
@@ -62,7 +61,7 @@ use std::sync::mpsc;
 use std::thread::JoinHandle;
 
 const DEFAULT_AXI_PAUSER: u32 = 0xaaaa_aaaa;
-const BOOT_CYCLES: u64 = 25_000_000;
+const _BOOT_CYCLES: u64 = 25_000_000;
 
 /// Emulated model
 pub struct ModelEmulated {

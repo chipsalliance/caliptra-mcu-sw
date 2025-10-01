@@ -22,7 +22,6 @@ use caliptra_emu_periph::{
 };
 use caliptra_hw_model::BusMmio;
 use std::fmt::Write as _;
-use std::io::Write as _;
 use std::io::{self, ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::exit;

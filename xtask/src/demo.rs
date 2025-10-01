@@ -1,5 +1,7 @@
 // Licensed under the Apache-2.0 license
 
+#![allow(unused_imports)]
+
 use anyhow::{anyhow, Result};
 use caliptra_hw_model::BootParams;
 use caliptra_image_gen::to_hw_format;
@@ -41,6 +43,10 @@ const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-fpga.zip";
 const PAUSE_START_DEMO: Duration = Duration::from_secs(5);
 const PAUSE_BETWEEN_DEMOS: Duration = Duration::from_secs(10);
 
+const SPDM_BOOT_CYCLES: u64 = 300_000_000;
+
+const I3C_PORTS: [u16; 5] = [65530, 65531, 65532, 65533, 65534];
+
 #[derive(Clone, Copy, Debug)]
 enum DemoType {
     Spdm,
@@ -65,7 +71,13 @@ impl DemoType {
                     20_000_000
                 }
             }
-            DemoType::Mlkem => 1_000_000,
+            DemoType::Mlkem => {
+                if FPGA {
+                    20_000_000
+                } else {
+                    1_000_000
+                }
+            }
         }
     }
 
@@ -173,6 +185,7 @@ struct Demo {
     sent_vca: bool,
     demos: Vec<DemoType>,
     current_demo_idx: usize,
+    i3c_port_idx: usize,
     wait_for_next_demo_until: Option<Instant>,
     pause: bool,
     ticks: u64,
@@ -190,7 +203,8 @@ impl Demo {
             i3c_socket: None,
             sent_vca: false,
             demos: vec![DemoType::Spdm, DemoType::Mlkem],
-            current_demo_idx: 0,
+            current_demo_idx: 1,
+            i3c_port_idx: 0,
             wait_for_next_demo_until: None,
             pause: false,
             ticks: 0,
@@ -222,6 +236,10 @@ impl Demo {
                 return Ok(());
             }
         }
+    }
+
+    fn i3c_port(&self) -> u16 {
+        I3C_PORTS[self.i3c_port_idx % I3C_PORTS.len()]
     }
 
     pub fn on_key(&mut self, c: char) {
@@ -260,6 +278,7 @@ impl Demo {
             self.next_demo = false;
             self.model_started = false;
             self.current_demo_idx = (self.current_demo_idx + 1) % self.demos.len();
+            self.i3c_port_idx = (self.i3c_port_idx + 1) % I3C_PORTS.len();
         }
 
         if !self.model_started {
@@ -339,8 +358,8 @@ impl Demo {
             return Ok(());
         };
 
-        if model.cycle_count() > 640_000_000 && self.i3c_socket.is_none() {
-            let addr = SocketAddr::from(([127, 0, 0, 1], 65534));
+        if model.cycle_count() > SPDM_BOOT_CYCLES && self.i3c_socket.is_none() {
+            let addr = SocketAddr::from(([127, 0, 0, 1], self.i3c_port()));
             let stream = TcpStream::connect(addr).unwrap();
             let stream = BufferedStream::new(stream);
             self.i3c_socket = Some(stream);
@@ -349,7 +368,7 @@ impl Demo {
         // handle I3C for SPDM
         // TODO: move to state machine for SPDM test
         if let Some(i3c_socket) = self.i3c_socket.as_mut() {
-            if model.cycle_count() >= 650_000_000 {
+            if model.cycle_count() >= SPDM_BOOT_CYCLES + 1_000_000 {
                 if !self.sent_vca {
                     self.sent_vca = true;
                     writeln!(model.output().logger(), "I3C send to MCU: VCA")?;
@@ -403,7 +422,7 @@ impl Demo {
             enable_mcu_uart_log: true,
             log_writer: Box::new(console),
             i3c_port: if self.current_demo().needs_i3c() {
-                Some(65534)
+                Some(self.i3c_port())
             } else {
                 None
             },
@@ -445,6 +464,7 @@ impl Demo {
 
     fn model_stop(&mut self) -> Result<()> {
         drop(self.model.take());
+        caliptra_emu_periph::output().take();
         Ok(())
     }
 }
