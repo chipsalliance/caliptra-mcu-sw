@@ -387,7 +387,7 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::ColdBootFlowComplete.into());
         mci.set_flow_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
         mci.trigger_warm_reset();
-        romtime::println!("ERROR: Still running after reset request!");
+        romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
         fatal_error(8);
     }
 }
