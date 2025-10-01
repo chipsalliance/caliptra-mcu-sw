@@ -188,6 +188,7 @@ impl ModelFpgaRealtime {
         };
         // check if we need to read any I3C packets from Caliptra
         if self.base.i3c_controller().ibi_ready() {
+            writeln!(eoutput(), "I3C IBI ready").unwrap();
             match self.base.i3c_controller().ibi_recv(None) {
                 Ok(ibi) => {
                     // process each IBI in the buffer (each is 4 bytes)
@@ -197,7 +198,7 @@ impl ModelFpgaRealtime {
                                 eoutput(),
                                 "Ignoring unexpected I3C IBI received: {:02x?}",
                                 ibi
-                            );
+                            ).unwrap();
                             continue;
                         }
                         // forward the IBI
@@ -215,7 +216,7 @@ impl ModelFpgaRealtime {
                     }
                 }
                 Err(e) => {
-                    writeln!(eoutput(), "Error receiving I3C IBI: {:?}", e);
+                    writeln!(eoutput(), "Error receiving I3C IBI: {:?}", e).unwrap();
                 }
             }
         }
@@ -235,7 +236,7 @@ impl ModelFpgaRealtime {
                     .expect("Failed to forward I3C private read response to channel");
                 }
                 Err(e) => {
-                    writeln!(eoutput(), "Error receiving I3C private read: {:?}", e);
+                    writeln!(eoutput(), "Error receiving I3C private read: {:?}", e).unwrap();
                     // retry
                     self.i3c_next_private_read_len = Some(private_read_len);
                 }
@@ -299,7 +300,7 @@ impl ModelFpgaRealtime {
                     eoutput(),
                     "FPGA MSG FIFO: {:02x}",
                     data.read(FifoData::NextChar) as u8
-                );
+                ).unwrap();
             }
             let key_parts: Vec<String> = self
                 .base
@@ -313,7 +314,7 @@ impl ModelFpgaRealtime {
                 eoutput(),
                 "FPGA OCP Lock Key Release: {}",
                 key_parts.join("")
-            );
+            ).unwrap();
         }
     }
 
@@ -339,11 +340,21 @@ impl ModelFpgaRealtime {
                     eoutput(),
                     "FPGA OCP Lock Key Release: {}",
                     key_parts.join("")
-                );
+                ).unwrap();
                 self.printed_ocp_lock_key_release = true;
             }
         }
     }
+
+    pub fn maybe_step(&mut self) -> Result<()> {
+        self.base.maybe_step()?;
+        self.handle_i3c();
+        self.handle_msg_fifo();
+        self.handle_ocp_lock_key_release();
+        Ok(())
+    }
+
+
 }
 
 impl McuHwModel for ModelFpgaRealtime {
@@ -358,7 +369,7 @@ impl McuHwModel for ModelFpgaRealtime {
     where
         Self: Sized,
     {
-        writeln!(eoutput(), "ModelFpgaRealtime::new_unbooted");
+        writeln!(eoutput(), "ModelFpgaRealtime::new_unbooted")?;
 
         let security_state_unprovisioned = SecurityState::default();
         let security_state_manufacturing =
@@ -419,12 +430,11 @@ impl McuHwModel for ModelFpgaRealtime {
                 eoutput(),
                 "Starting I3C socket on port {} and connected to hardware",
                 i3c_port
-            );
-            // let (rx, tx) =
-            //     mcu_testing_common::i3c_socket_server::start_i3c_socket(&MCU_RUNNING, i3c_port);
+            ).unwrap();
+            let (rx, tx) =
+                mcu_testing_common::i3c_socket_server::start_i3c_socket(&MCU_RUNNING, i3c_port);
 
-            //(Some(rx), Some(tx))
-            (None, None)
+            (Some(rx), Some(tx))
         } else {
             (None, None)
         };
@@ -583,7 +593,7 @@ impl McuHwModel for ModelFpgaRealtime {
     }
 
     fn i3c_address(&self) -> Option<u8> {
-        Some(self.base.i3c_controller.get_primary_addr())
+        self.base.i3c_controller.get_primary_addr()
     }
 
     fn i3c_port(&self) -> Option<u16> {
@@ -615,7 +625,7 @@ impl FpgaRealtimeBus<'_> {
                 0x7000_0000..0x7000_0140 => Some(self.otp_mmio.add((addr - 0x7000_0000) / 4)),
                 0x7000_0400..0x7000_048c => Some(self.lc_mmio.add((addr - 0x7000_0400) / 4)),
                 _ => {
-                    writeln!(eoutput(), "Invalid FPGA address 0x{addr:x}");
+                    writeln!(eoutput(), "Invalid FPGA address 0x{addr:x}").unwrap();
                     None
                 }
             }
@@ -628,7 +638,7 @@ impl Bus for FpgaRealtimeBus<'_> {
         if let Some(ptr) = self.ptr_for_addr(addr) {
             Ok(unsafe { ptr.read_volatile() })
         } else {
-            writeln!(eoutput(), "Error LoadAccessFault");
+            writeln!(eoutput(), "Error LoadAccessFault").unwrap();
             Err(BusError::LoadAccessFault)
         }
     }

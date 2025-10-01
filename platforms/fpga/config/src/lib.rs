@@ -51,6 +51,6 @@ pub const FPGA_MCU_STRAPS: McuStraps = McuStraps {
     axi_user: 0x1,
     cptra_wdt_cfg0: 200_000_000,
     cptra_wdt_cfg1: 200_000_000,
-    mcu_wdt_cfg0: 800_000_000, // the FPGA is slower to boot
+    mcu_wdt_cfg0: 2_000_000_000, // the FPGA is slower to boot
     mcu_wdt_cfg1: 1,
 };

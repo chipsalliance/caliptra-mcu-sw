@@ -49,14 +49,14 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
         )
         .unwrap();
     }
-    if let Err(e) = spawner.spawn(spdm_doe_responder()) {
-        writeln!(
-            console_writer,
-            "SPDM_TASK: Failed to spawn spdm_doe_responder: {:?}",
-            e
-        )
-        .unwrap();
-    }
+    //if let Err(e) = spawner.spawn(spdm_doe_responder()) {
+    //    writeln!(
+    //        console_writer,
+    //        "SPDM_TASK: Failed to spawn spdm_doe_responder: {:?}",
+    //        e
+    //    )
+    //    .unwrap();
+    //}
 }
 
 #[embassy_executor::task]

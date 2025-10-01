@@ -29,7 +29,7 @@ use std::time::{Duration, Instant};
 const GAUGE1_COLOR: Color = tailwind::RED.c800;
 const CUSTOM_LABEL_COLOR: Color = tailwind::SLATE.c200;
 
-const TERMINAL_LINES: usize = 30;
+const TERMINAL_LINES: usize = 25;
 
 const FPGA: bool = true;
 type Model = ModelFpgaRealtime;
@@ -60,7 +60,7 @@ impl DemoType {
         match self {
             DemoType::Spdm => {
                 if FPGA {
-                    800_000_000
+                    1_500_000_000
                 } else {
                     20_000_000
                 }
@@ -279,7 +279,7 @@ impl Demo {
 
         // we still step for FPGA so that the log FIFO doesn't overflow
         for _ in 0..steps {
-            model.step();
+            model.maybe_step()?;
         }
 
         if self.pause {
@@ -321,7 +321,7 @@ impl Demo {
 
     fn demo_tick(&mut self) -> Result<()> {
         match self.current_demo() {
-            DemoType::Spdm => {} // self.spdm_demo_tick()?,
+            DemoType::Spdm => self.spdm_demo_tick()?,
             DemoType::Mlkem => {}
         }
         Ok(())
@@ -329,9 +329,13 @@ impl Demo {
 
     fn spdm_demo_tick(&mut self) -> Result<()> {
         let mut model = self.model.as_ref().unwrap().borrow_mut();
-        let addr = model.i3c_address().unwrap();
 
-        if model.cycle_count() > 1_000_000 && self.i3c_socket.is_none() {
+        // Wait until we have an I3C address.
+        let Some(addr) = model.i3c_address() else {
+            return Ok(());
+        };
+
+        if model.cycle_count() > 1_000_000_000 && self.i3c_socket.is_none() {
             let addr = SocketAddr::from(([127, 0, 0, 1], 65534));
             let stream = TcpStream::connect(addr).unwrap();
             let stream = BufferedStream::new(stream);
@@ -341,16 +345,19 @@ impl Demo {
         // handle I3C for SPDM
         // TODO: move to state machine for SPDM test
         if let Some(i3c_socket) = self.i3c_socket.as_mut() {
-            if model.cycle_count() >= 10_000_000 {
+            if model.cycle_count() >= 1_010_000_000 {
                 if !self.sent_vca {
                     self.sent_vca = true;
+                    writeln!(model.output().logger(), "I3C send to MCU: VCA")?;
                     i3c_socket.send_private_write(
                         addr,
                         vec![0x01, 0x00, 0x08, 0xc8, 0x05, 0x10, 0x84, 0x00, 0x00, 0xfe],
                     );
                 }
                 // I3C send to MCU: [01, 00, 08, c8, 05, 10, 84, 00, 00, fe]
-                // I3C recv from Caliptra: [01, 08, 00, c0, 05, 10, 04, 00, 00, 00, 02, 00, 12, 00, 13, 1e]
+                //
+                //
+                //                         [01, 08, 00, c0, 05, 10, 04, 00, 00, 00, 02, 00, 12, 00, 13]
                 if let Some(recv) = i3c_socket.receive_private_read(addr) {
                     writeln!(
                         model.output().logger(),
