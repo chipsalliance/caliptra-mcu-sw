@@ -361,7 +361,7 @@ impl McuHwModel for ModelFpgaRealtime {
             hw.cycle_count() >= BOOT_CYCLES
                 || hw
                     .mci_boot_milestones()
-                    .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
+                    .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
         });
         println!(
             "Boot completed at cycle count {}, flow status {}",
@@ -370,7 +370,7 @@ impl McuHwModel for ModelFpgaRealtime {
         );
         assert!(self
             .mci_boot_milestones()
-            .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE));
+            .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
         MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         // turn off recovery
         self.base.recovery_started = false;
