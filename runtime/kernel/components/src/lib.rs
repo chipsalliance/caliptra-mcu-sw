@@ -10,3 +10,4 @@ pub mod mctp_driver;
 pub mod mcu_mbox;
 pub mod mock_mctp;
 pub mod mux_mctp;
+pub mod system;

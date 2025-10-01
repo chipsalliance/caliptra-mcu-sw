@@ -8,6 +8,7 @@ use core::fmt::Write;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::signal::Signal;
+use libsyscall_caliptra::system::System;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
@@ -16,7 +17,7 @@ use libtock_platform::ErrorCode;
 pub async fn mcu_mbox_task() {
     match start_mcu_mbox_service().await {
         Ok(_) => {}
-        Err(_) => romtime::test_exit(1),
+        Err(_) => System::exit(1),
     }
 }
 

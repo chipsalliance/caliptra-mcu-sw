@@ -21,6 +21,7 @@ kernel.workspace = true
 mcu-components.workspace = true
 mcu-config.workspace = true
 mcu-config-fpga.workspace = true
+mcu-mbox-driver.workspace = true
 mcu-platforms-common.workspace = true
 mcu-tock-veer.workspace = true
 registers-generated.workspace = true

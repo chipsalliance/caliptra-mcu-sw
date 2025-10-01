@@ -16,6 +16,8 @@ use libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
 #[allow(unused)]
 use libsyscall_caliptra::flash::SpiFlash;
 use libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
+#[allow(unused)]
+use libsyscall_caliptra::system::System;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
 #[allow(unused)]
@@ -70,17 +72,22 @@ pub async fn image_loading_task() {
         feature = "test-pldm-fw-update-e2e",
     ))]
     {
-        mbox_sram.acquire_lock().unwrap();
+        // Release SRAM lock, in case previous session hasn't released it
+        // If MCU is not the lock owner, then this should be no-op
+        if mbox_sram.acquire_lock().is_err() {
+            mbox_sram.release_lock().unwrap();
+            mbox_sram.acquire_lock().unwrap();
+        }
         match image_loading(&EMULATED_DMA_MAPPING).await {
             Ok(_) => {}
-            Err(_) => romtime::test_exit(1),
+            Err(_) => System::exit(1),
         }
         mbox_sram.release_lock().unwrap();
         #[cfg(not(any(
             feature = "test-firmware-update-streaming",
             feature = "test-firmware-update-flash"
         )))]
-        romtime::test_exit(0);
+        System::exit(0);
     }
     // After image loading, proceed to firmware update if enabled
     #[cfg(any(
@@ -90,8 +97,8 @@ pub async fn image_loading_task() {
     {
         mbox_sram.acquire_lock().unwrap();
         match crate::firmware_update::firmware_update(&EMULATED_DMA_MAPPING).await {
-            Ok(_) => romtime::test_exit(0),
-            Err(_) => romtime::test_exit(1),
+            Ok(_) => System::exit(0),
+            Err(_) => System::exit(1),
         }
         // MBOX SRAM lock will be released after reboot
     }
@@ -200,11 +207,7 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
             )
             .unwrap();
         }
-        // Need to have an await here to let the PLDM service run
-        // otherwise it will be stopped immediately
-        // and the executor doesn't have a chance to run the tasks
-        let suspend_signal: Signal<CriticalSectionRawMutex, ()> = Signal::new();
-        suspend_signal.wait().await;
+        pldm_fdops_mock::FdOpsObject::wait_for_pldm_done().await;
     }
     Ok(())
 }
