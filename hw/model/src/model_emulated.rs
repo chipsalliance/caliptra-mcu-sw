@@ -546,6 +546,11 @@ impl McuHwModel for ModelEmulated {
     fn i3c_address(&self) -> Option<u8> {
         self.i3c_address
     }
+
+    fn warm_reset(&mut self) {
+        self.cpu.warm_reset();
+        self.step();
+    }
 }
 
 impl ModelEmulated {

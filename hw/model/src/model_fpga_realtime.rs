@@ -473,6 +473,11 @@ impl McuHwModel for ModelFpgaRealtime {
     fn mci_flow_status(&mut self) -> u32 {
         self.base.mci_flow_status()
     }
+
+    fn warm_reset(&mut self) {
+        todo!("Update caliptra-sw to allow calling warm reset with the FPGA");
+        // self.base.warm_reset()
+    }
 }
 
 pub struct FpgaRealtimeBus<'a> {
