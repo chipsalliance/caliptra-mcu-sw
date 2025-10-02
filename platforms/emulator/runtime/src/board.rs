@@ -153,6 +153,7 @@ struct VeeR {
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
+    system: &'static capsules_runtime::system::System<'static, EmulatorExiter>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -193,6 +194,7 @@ impl SyscallDriverLookup for VeeR {
             capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
                 f(Some(self.mcu_mbox1_staging_sram))
             }
+            capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
 
             _ => f(None),
         }
@@ -642,7 +644,7 @@ pub unsafe fn main() {
         capsules_emulator::logging::driver::BUF_LEN
     ));
 
-    let dma = runtime_components::dma::DmaComponent::new(
+    let dma = mcu_components::dma::DmaComponent::new(
         &emulator_peripherals.dma,
         board_kernel,
         capsules_emulator::dma::DMA_CTRL_DRIVER_NUM,
@@ -658,6 +660,11 @@ pub unsafe fn main() {
     .finalize(mcu_mbox_component_static!(
         mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>
     ));
+
+    #[allow(static_mut_refs)]
+    let system = mcu_components::system::SystemComponent::new(&mut EMULATOR_EXITER).finalize(
+        kernel::static_buf!(capsules_runtime::system::System<'static, EmulatorExiter>),
+    );
 
     // Need to enable all interrupts for Tock Kernel
     chip.enable_pic_interrupts();
@@ -704,6 +711,7 @@ pub unsafe fn main() {
             mci,
             mcu_mbox0,
             mcu_mbox1_staging_sram,
+            system,
         }
     );
 

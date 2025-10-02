@@ -7,7 +7,7 @@ use crate::{PROJECT_ROOT, TARGET};
 use anyhow::{bail, Result};
 use std::process::Command;
 
-pub const APPS: &[App] = &[
+pub const EMULATOR_APPS: &[App] = &[
     App {
         // Make sure this is the first app in the list
         name: "example-app",
@@ -18,6 +18,20 @@ pub const APPS: &[App] = &[
         name: "user-app",
         permissions: vec![],
         minimum_ram: 112 * 1024,
+    },
+];
+
+pub const FPGA_APPS: &[App] = &[
+    App {
+        // Make sure this is the first app in the list
+        name: "example-app",
+        permissions: vec![],
+        minimum_ram: 48 * 1024,
+    },
+    App {
+        name: "user-app",
+        permissions: vec![],
+        minimum_ram: 106 * 1024,
     },
 ];
 
@@ -57,7 +71,14 @@ pub fn apps_build_flat_tbf(
     let mut bin = vec![];
     let mut offset = start;
     let mut ram_start = ram_start;
-    for app in APPS.iter() {
+    let apps = match platform {
+        "emulator" => EMULATOR_APPS,
+        "fpga" => FPGA_APPS,
+        _ => {
+            bail!("Unknown platform: {}", platform);
+        }
+    };
+    for app in apps.iter() {
         if app.name == "example-app" && !example_app {
             continue;
         }

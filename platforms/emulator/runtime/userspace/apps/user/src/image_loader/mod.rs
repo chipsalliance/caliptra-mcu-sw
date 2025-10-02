@@ -16,6 +16,8 @@ use libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
 #[allow(unused)]
 use libsyscall_caliptra::flash::SpiFlash;
 use libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
+#[allow(unused)]
+use libsyscall_caliptra::system::System;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
 #[allow(unused)]
@@ -70,17 +72,22 @@ pub async fn image_loading_task() {
         feature = "test-pldm-fw-update-e2e",
     ))]
     {
-        mbox_sram.acquire_lock().unwrap();
+        // Release SRAM lock, in case previous session hasn't released it
+        // If MCU is not the lock owner, then this should be no-op
+        if mbox_sram.acquire_lock().is_err() {
+            mbox_sram.release_lock().unwrap();
+            mbox_sram.acquire_lock().unwrap();
+        }
         match image_loading(&EMULATED_DMA_MAPPING).await {
             Ok(_) => {}
-            Err(_) => romtime::test_exit(1),
+            Err(_) => System::exit(1),
         }
         mbox_sram.release_lock().unwrap();
         #[cfg(not(any(
             feature = "test-firmware-update-streaming",
             feature = "test-firmware-update-flash"
         )))]
-        romtime::test_exit(0);
+        System::exit(0);
     }
     // After image loading, proceed to firmware update if enabled
     #[cfg(any(
@@ -90,8 +97,8 @@ pub async fn image_loading_task() {
     {
         mbox_sram.acquire_lock().unwrap();
         match crate::firmware_update::firmware_update(&EMULATED_DMA_MAPPING).await {
-            Ok(_) => romtime::test_exit(0),
-            Err(_) => romtime::test_exit(1),
+            Ok(_) => System::exit(0),
+            Err(_) => System::exit(1),
         }
         // MBOX SRAM lock will be released after reboot
     }
@@ -200,11 +207,7 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
             )
             .unwrap();
         }
-        // Need to have an await here to let the PLDM service run
-        // otherwise it will be stopped immediately
-        // and the executor doesn't have a chance to run the tasks
-        let suspend_signal: Signal<CriticalSectionRawMutex, ()> = Signal::new();
-        suspend_signal.wait().await;
+        pldm_fdops_mock::FdOpsObject::wait_for_pldm_done().await;
     }
     Ok(())
 }
@@ -212,30 +215,11 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
 pub struct EmulatedDMAMap {}
 impl DMAMapping for EmulatedDMAMap {
     fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode> {
-        const MCU_SRAM_HI_OFFSET: u64 = 0x1000_0000;
-        // Convert a local address to an AXI address
-        Ok((MCU_SRAM_HI_OFFSET << 32) | (addr as u64))
+        Ok(addr as AXIAddr)
     }
 
     fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
-        const CALIPTRA_DMA_MCI_OFFSET: u64 = 0xAAAA_AAAA_0000_0000;
-        const CALIPTRA_MCU_MBOX_SRAM0_OFFSET: u64 = CALIPTRA_DMA_MCI_OFFSET + 0x40_0000;
-        const CALIPTRA_MCU_MBOX_SRAM1_OFFSET: u64 = CALIPTRA_DMA_MCI_OFFSET + 0x80_0000;
-
-        if (CALIPTRA_MCU_MBOX_SRAM0_OFFSET..(CALIPTRA_MCU_MBOX_SRAM0_OFFSET + 2 * 1024 * 1024))
-            .contains(&addr)
-        {
-            // MBOX0 SRAM region
-            return Ok(addr - CALIPTRA_MCU_MBOX_SRAM0_OFFSET + 0x3000_0000_0000_0000);
-        } else if (CALIPTRA_MCU_MBOX_SRAM1_OFFSET
-            ..(CALIPTRA_MCU_MBOX_SRAM1_OFFSET + 2 * 1024 * 1024))
-            .contains(&addr)
-        {
-            // MBOX1 SRAM region
-            return Ok(addr - CALIPTRA_MCU_MBOX_SRAM1_OFFSET + 0x4000_0000_0000_0000);
-        }
-
-        Err(ErrorCode::NoSupport)
+        Ok(addr as AXIAddr)
     }
 }
 

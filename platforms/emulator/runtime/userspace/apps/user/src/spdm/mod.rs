@@ -11,10 +11,13 @@ use libsyscall_caliptra::doe;
 use libsyscall_caliptra::mctp;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
+use libtock_platform::ErrorCode;
 use spdm_lib::codec::MessageBuf;
 use spdm_lib::context::{SpdmContext, MAX_SPDM_RESPONDER_BUF_SIZE};
+use spdm_lib::error::SpdmError;
 use spdm_lib::protocol::*;
 use spdm_lib::transport::common::SpdmTransport;
+use spdm_lib::transport::common::TransportError;
 use spdm_lib::transport::doe::DoeTransport;
 use spdm_lib::transport::mctp::MctpTransport;
 
@@ -174,6 +177,10 @@ async fn spdm_doe_responder() {
         match result {
             Ok(_) => {
                 writeln!(cw, "SPDM_DOE_RESPONDER: Process message successfully").unwrap();
+            }
+            Err(SpdmError::Transport(TransportError::DriverError(ErrorCode::NoDevice))) => {
+                writeln!(cw, "SPDM_DOE_RESPONDER: No DOE device, exiting task").unwrap();
+                break;
             }
             Err(e) => {
                 writeln!(cw, "SPDM_DOE_RESPONDER: Process message failed: {:?}", e).unwrap();

@@ -24,18 +24,6 @@ mod spdm;
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
-pub(crate) struct EmulatorExiter {}
-pub(crate) static mut EMULATOR_EXITER: EmulatorExiter = EmulatorExiter {};
-impl romtime::Exit for EmulatorExiter {
-    fn exit(&mut self, code: u32) {
-        // Safety: This is a safe memory address to write to for exiting the emulator.
-        unsafe {
-            // By writing to this address we can exit the emulator.
-            core::ptr::write_volatile(0x1000_2000 as *mut u32, code);
-        }
-    }
-}
-
 struct EmulatorWriter {}
 static mut EMULATOR_WRITER: EmulatorWriter = EmulatorWriter {};
 
@@ -77,8 +65,6 @@ fn main() {
 #[embassy_executor::task]
 async fn start() {
     unsafe {
-        #[allow(static_mut_refs)]
-        romtime::set_exiter(&mut EMULATOR_EXITER);
         #[allow(static_mut_refs)]
         romtime::set_printer(&mut EMULATOR_WRITER);
     }

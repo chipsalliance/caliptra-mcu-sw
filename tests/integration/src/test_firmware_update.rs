@@ -17,7 +17,7 @@ mod test {
     use std::env;
     use std::path::PathBuf;
 
-    const MCI_BASE_AXI_ADDRESS: u64 = 0xAAAAAAAA_00000000;
+    const MCI_BASE_AXI_ADDRESS: u64 = 0xA800_0000;
     const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
     const MCU_SRAM_OFFSET: u64 = 0xc0_0000;
 
@@ -451,7 +451,7 @@ mod test {
             "test-firmware-update-streaming"
         };
         // Set an arbitrary MCI base address
-        let mci_base: u64 = 0xAAAAAAAA_00000000;
+        let mci_base: u64 = 0xA800_0000;
         env::set_var(
             "CPTRA_EMULATOR_SS_MCI_OFFSET",
             format!("0x{:016x}", mci_base),
