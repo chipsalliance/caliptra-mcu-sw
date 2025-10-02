@@ -24,16 +24,47 @@ use mcu_testing_common::i3c::{
 };
 use mcu_testing_common::MCU_RUNNING;
 use std::fmt::Write as _;
+use std::fmt::Write;
 use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::RwLock;
 use std::sync::{mpsc, Arc};
 use std::thread::JoinHandle;
 use std::time::Duration;
 use tock_registers::interfaces::{Readable, Writeable};
 
 const DEFAULT_AXI_PAUSER: u32 = 0x1;
+
+use lazy_static::lazy_static;
+
+lazy_static! {
+    pub static ref GLOBAL_SIDE_OUTPUT: Arc<RwLock<Vec<u8>>> = Arc::new(RwLock::new(Vec::new()));
+}
+
+pub struct OutputWriter {}
+
+impl Write for OutputWriter {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        let mut output = GLOBAL_SIDE_OUTPUT.write().unwrap();
+        output.extend_from_slice(s.as_bytes());
+        Ok(())
+    }
+}
+
+impl OutputWriter {
+    pub fn take(&self) -> String {
+        let mut output = GLOBAL_SIDE_OUTPUT.write().unwrap();
+        let s = String::from_utf8_lossy(&output).to_string();
+        output.clear();
+        s
+    }
+}
+
+pub fn side_output() -> OutputWriter {
+    OutputWriter {}
+}
 
 struct CaliptraMmio {
     ptr: *mut u32,
@@ -258,26 +289,12 @@ impl ModelFpgaRealtime {
             let data = self.base.wrapper.fifo_regs().msg_fifo_data_pop.extract();
             if data.is_set(FifoData::CharValid) {
                 writeln!(
-                    eoutput(),
+                    side_output(),
                     "FPGA MSG FIFO: {:02x}",
                     data.read(FifoData::NextChar) as u8
                 )
                 .unwrap();
             }
-            let key_parts: Vec<String> = self
-                .base
-                .wrapper
-                .regs()
-                .ocp_lock_key_release
-                .iter()
-                .map(|r| format!("{:08x}", r.get().swap_bytes()))
-                .collect();
-            writeln!(
-                eoutput(),
-                "FPGA OCP Lock Key Release: {}",
-                key_parts.join("")
-            )
-            .unwrap();
         }
     }
 
@@ -300,8 +317,8 @@ impl ModelFpgaRealtime {
                     .map(|r| format!("{:08x}", r.get().swap_bytes()))
                     .collect();
                 writeln!(
-                    eoutput(),
-                    "FPGA OCP Lock Key Release: {}",
+                    side_output(),
+                    "OCP Lock Key Release: {}",
                     key_parts.join("")
                 )
                 .unwrap();

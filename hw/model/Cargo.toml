@@ -34,6 +34,7 @@ emulator-caliptra.workspace = true
 emulator-periph.workspace = true
 emulator-registers-generated.workspace = true
 hex.workspace = true
+lazy_static.workspace = true
 libc.workspace = true
 mcu-builder.workspace = true
 mcu-config-fpga = { workspace = true, optional = true }

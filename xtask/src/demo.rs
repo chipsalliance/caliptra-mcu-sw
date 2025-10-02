@@ -24,7 +24,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Gauge, Padding, Paragraph, Widget};
 use ratatui::Frame;
 use ratatui::Terminal;
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::collections::VecDeque;
 use std::io::Write as _;
 use std::net::{SocketAddr, TcpStream};
@@ -43,7 +43,7 @@ type Model = ModelFpgaRealtime;
 const SPDM_DEMO_ZIP: &'static str = "spdm-demo-fpga.zip";
 const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-fpga.zip";
 //const MLKEM_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
-// const OCPLOCK_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
+const OCPLOCK_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
 
 const PAUSE_START_DEMO: Duration = Duration::from_secs(5);
 const PAUSE_BETWEEN_DEMOS: Duration = Duration::from_secs(10);
@@ -62,7 +62,7 @@ enum DemoType {
 impl DemoType {
     fn zip(self) -> &'static str {
         match self {
-            DemoType::Spdm => SPDM_DEMO_ZIP,
+            DemoType::Spdm => OCPLOCK_DEMO_ZIP, // SPDM_DEMO_ZIP,
             DemoType::Mlkem => MLKEM_DEMO_ZIP,
         }
     }
@@ -157,6 +157,13 @@ struct Console {
     last_line_terminated: bool,
 }
 
+impl Console {
+    fn clear(&mut self) {
+        self.buffer.write().unwrap().clear();
+        self.last_line_terminated = true;
+    }
+}
+
 impl std::io::Write for Console {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         if buf.is_empty() {
@@ -186,7 +193,7 @@ impl std::io::Write for Console {
 
 struct Demo {
     console_buffer: Arc<RwLock<VecDeque<String>>>,
-    host_console_buffer: Arc<RwLock<VecDeque<String>>>,
+    host_console: RefCell<Console>,
     progress: u16,
     should_quit: bool,
     model: Option<RefCell<Model>>,
@@ -206,7 +213,10 @@ impl Demo {
     fn new() -> Self {
         Self {
             console_buffer: Arc::new(RwLock::new(VecDeque::new())),
-            host_console_buffer: Arc::new(RwLock::new(VecDeque::new())),
+            host_console: RefCell::new(Console {
+                buffer: Arc::new(RwLock::new(VecDeque::new())),
+                last_line_terminated: true,
+            }),
             should_quit: false,
             progress: 0,
             model: None,
@@ -223,6 +233,10 @@ impl Demo {
         }
     }
 
+    fn host_console(&self) -> RefMut<'_, Console> {
+        self.host_console.borrow_mut()
+    }
+
     fn run(
         &mut self,
         terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
@@ -230,9 +244,10 @@ impl Demo {
     ) -> Result<()> {
         let mut last_tick = Instant::now();
         {
-            let host_console = &mut *self.host_console_buffer.write().unwrap();
-            host_console.push_back(format!("Starting demo: {}", self.current_demo()));
+            let current_demo = self.current_demo();
+            writeln!(self.host_console(), "Starting demo: {}", current_demo)?;
         }
+
         loop {
             terminal.draw(|frame| self.render(frame))?;
 
@@ -296,9 +311,9 @@ impl Demo {
             self.current_demo_idx = (self.current_demo_idx + 1) % self.demos.len();
             self.i3c_port_idx = (self.i3c_port_idx + 1) % I3C_PORTS.len();
             self.console_buffer.write().unwrap().clear();
-            let host_console = &mut *self.host_console_buffer.write().unwrap();
-            host_console.clear();
-            host_console.push_back(format!("Starting demo: {}", self.current_demo()));
+            self.host_console().clear();
+            let current_demo = self.current_demo();
+            writeln!(self.host_console(), "Starting demo: {}", current_demo)?;
         }
 
         if !self.model_started {
@@ -344,6 +359,11 @@ impl Demo {
         if !s.is_empty() {
             output_sink.write_all(s.as_bytes())?;
             output_sink.flush()?;
+        }
+
+        let s = mcu_hw_model::model_fpga_realtime::side_output().take();
+        if !s.is_empty() {
+            self.host_console().write_all(s.as_bytes())?;
         }
 
         let max_cycles = self.current_demo().max_cycles();
@@ -511,7 +531,7 @@ impl Widget for &mut Demo {
         render_console(console_area, &*self.console_buffer.read().unwrap(), buf);
         render_host_console(
             host_console_area,
-            &*self.host_console_buffer.read().unwrap(),
+            &*(self.host_console().buffer.read().unwrap()),
             buf,
         );
 

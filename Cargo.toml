@@ -260,29 +260,29 @@ libtock_unittest = { path = "runtime/userspace/libtock/unittest" }
 # ureg = { path = "../caliptra-sw/ureg" }
 # dpe = { path = "../caliptra-sw/dpe/dpe", default-features = false, features = ["dpe_profile_p384_sha384"] }
 
-caliptra-api = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-api-types = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-auth-man-gen = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-auth-man-types = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-builder = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-emu-bus = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-emu-cpu = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-emu-derive = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-emu-periph = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-emu-types = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-error = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2", default-features = false }
-caliptra-hw-model = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-hw-model-types = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-image-crypto = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2", default-features = false, features = ["rustcrypto"] }
-caliptra-image-fake-keys = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-image-gen = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-image-types = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-registers = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-test = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-test-harness = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-caliptra-test-harness-types = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-ureg = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2" }
-dpe = { git = "git://192.168.38.69/caliptra-sw", rev = "7d132e2247c570534d382758ec7bde116d6177a2", default-features = false, features = ["dpe_profile_p384_sha384"] }
+caliptra-api = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-api-types = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-auth-man-gen = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-auth-man-types = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-builder = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-emu-bus = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-emu-cpu = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-emu-derive = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-emu-periph = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-emu-types = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-error = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7", default-features = false }
+caliptra-hw-model = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-hw-model-types = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-image-crypto = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7", default-features = false, features = ["rustcrypto"] }
+caliptra-image-fake-keys = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-image-gen = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-image-types = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-registers = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-test = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-test-harness = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+caliptra-test-harness-types = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+ureg = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7" }
+dpe = { git = "git://192.168.38.69/caliptra-sw", rev = "8bced5dd611bd8f975c0c0a01baee83e4a2a7df7", default-features = false, features = ["dpe_profile_p384_sha384"] }
 
 
 # tock dependencies; keep git revs in sync
