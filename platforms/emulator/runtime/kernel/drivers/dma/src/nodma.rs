@@ -125,9 +125,11 @@ impl<'a, A: Alarm<'a>> AlarmClient for NoDMA<'a, A> {
         if !*self.busy.borrow() {
             return;
         }
-        for offset in 0..(*self.btt.borrow() / 4) {
-            let src_ptr = self.src_addr.borrow().wrapping_add(offset * 4) as *const u32;
-            let dst_ptr = self.dest_addr.borrow().wrapping_add(offset * 4) as *mut u32;
+
+        // Transfer in bytes since src or dest may not be word aligned
+        for offset in 0..(*self.btt.borrow()) {
+            let src_ptr = self.src_addr.borrow().wrapping_add(offset) as *const u8;
+            let dst_ptr = self.dest_addr.borrow().wrapping_add(offset) as *mut u8;
             unsafe {
                 let value = core::ptr::read_volatile(src_ptr);
                 core::ptr::write_volatile(dst_ptr, value);
