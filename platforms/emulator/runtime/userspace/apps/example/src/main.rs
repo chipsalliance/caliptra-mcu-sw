@@ -204,7 +204,6 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_get_device_state::test_get_fw_info().await;
         test_get_device_state::test_get_image_info().await;
         System::exit(0);
-        romtime::test_exit(0);
     }
 
     #[cfg(feature = "test-caliptra-crypto")]
