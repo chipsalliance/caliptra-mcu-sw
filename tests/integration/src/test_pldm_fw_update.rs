@@ -166,12 +166,23 @@ mod test {
             // Initialize log level to info (only once)
             let _ = SimpleLogger::new().with_level(LevelFilter::Debug).init();
 
+            let pldm_fw_pkg = if let Ok(pldm_fw_pkg_path) = std::env::var("PLDM_FW_PKG") {
+                FirmwareManifest::decode_firmware_package(&pldm_fw_pkg_path, None).map_err(|e| {
+                    error!(
+                        "Failed to decode PLDM FW package from {}: {:?}",
+                        pldm_fw_pkg_path, e
+                    );
+                })?
+            } else {
+                PLDM_FW_PKG.clone()
+            };
+
             // Run the PLDM daemon
             self.daemon = Some(
                 PldmDaemon::run(
                     self.socket.clone(),
                     Options {
-                        pldm_fw_pkg: Some(PLDM_FW_PKG.clone()),
+                        pldm_fw_pkg: Some(pldm_fw_pkg),
                         discovery_sm_actions: discovery_sm::DefaultActions {},
                         update_sm_actions: update_sm::DefaultActions {},
                         fd_tid: 0x01,
