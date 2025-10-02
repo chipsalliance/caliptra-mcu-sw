@@ -284,6 +284,7 @@ impl McuHwModel for ModelFpgaRealtime {
             uds_granularity_64: !params.uds_granularity_32,
             prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs,
             debug_intent: params.debug_intent,
+            bootfsm_break: params.bootfsm_break,
             cptra_obf_key: params.cptra_obf_key,
             csr_hmac_key: params.csr_hmac_key,
             itrng_nibbles: params.itrng_nibbles,
