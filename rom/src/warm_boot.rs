@@ -14,8 +14,10 @@ Abstract:
 
 #![allow(clippy::empty_loop)]
 
-use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
-use crate::{McuBootMilestones, McuRomBootStatus};
+use crate::{
+    fatal_error, BootFlow, McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters,
+    MCU_MEMORY_MAP,
+};
 use core::fmt::Write;
 
 pub struct WarmBoot {}
@@ -52,6 +54,10 @@ impl BootFlow for WarmBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::FuseWriteComplete.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_FUSES_WRITTEN.into());
 
+        romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
+        soc.wait_for_firmware_ready(mci);
+        romtime::println!("[mcu-rom] Firmware is ready");
+
         // Check that the firmware was actually loaded before jumping to it
         let firmware_ptr = unsafe {
             (MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32) as *const u32
@@ -62,22 +68,12 @@ impl BootFlow for WarmBoot {
             fatal_error(1);
         }
 
-        // Jump to firmware
-        romtime::println!("[mcu-rom] Jumping to firmware");
+        // Reset so FirmwareBootReset can jump to firmware
+        romtime::println!("[mcu-rom] Resetting to boot firmware");
         mci.set_flow_checkpoint(McuRomBootStatus::WarmResetFlowComplete.into());
         mci.set_flow_milestone(McuBootMilestones::WARM_RESET_FLOW_COMPLETE.into());
-
-        #[cfg(target_arch = "riscv32")]
-        unsafe {
-            let firmware_entry = MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32;
-            core::arch::asm!(
-                "jr {0}",
-                in(reg) firmware_entry,
-                options(noreturn)
-            );
-        }
-
-        #[cfg(not(target_arch = "riscv32"))]
-        panic!("Attempting to jump to firmware on non-RISC-V platform");
+        mci.trigger_warm_reset();
+        romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
+        fatal_error(8);
     }
 }
