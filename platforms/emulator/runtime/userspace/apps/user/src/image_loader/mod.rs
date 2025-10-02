@@ -215,30 +215,11 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
 pub struct EmulatedDMAMap {}
 impl DMAMapping for EmulatedDMAMap {
     fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode> {
-        const MCU_SRAM_HI_OFFSET: u64 = 0x1000_0000;
-        // Convert a local address to an AXI address
-        Ok((MCU_SRAM_HI_OFFSET << 32) | (addr as u64))
+        Ok(addr as AXIAddr)
     }
 
     fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
-        const CALIPTRA_DMA_MCI_OFFSET: u64 = 0xAAAA_AAAA_0000_0000;
-        const CALIPTRA_MCU_MBOX_SRAM0_OFFSET: u64 = CALIPTRA_DMA_MCI_OFFSET + 0x40_0000;
-        const CALIPTRA_MCU_MBOX_SRAM1_OFFSET: u64 = CALIPTRA_DMA_MCI_OFFSET + 0x80_0000;
-
-        if (CALIPTRA_MCU_MBOX_SRAM0_OFFSET..(CALIPTRA_MCU_MBOX_SRAM0_OFFSET + 2 * 1024 * 1024))
-            .contains(&addr)
-        {
-            // MBOX0 SRAM region
-            return Ok(addr - CALIPTRA_MCU_MBOX_SRAM0_OFFSET + 0x3000_0000_0000_0000);
-        } else if (CALIPTRA_MCU_MBOX_SRAM1_OFFSET
-            ..(CALIPTRA_MCU_MBOX_SRAM1_OFFSET + 2 * 1024 * 1024))
-            .contains(&addr)
-        {
-            // MBOX1 SRAM region
-            return Ok(addr - CALIPTRA_MCU_MBOX_SRAM1_OFFSET + 0x4000_0000_0000_0000);
-        }
-
-        Err(ErrorCode::NoSupport)
+        Ok(addr as AXIAddr)
     }
 }
 

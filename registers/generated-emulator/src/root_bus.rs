@@ -55,7 +55,7 @@ impl Default for AutoRootBusOffsets {
             sha512_acc_size: 0xa14,
             soc_offset: 0xa003_0000,
             soc_size: 0x5e0,
-            axicdma_offset: 0xa408_4000,
+            axicdma_offset: 0xa408_1000,
             axicdma_size: 0x2c,
         }
     }

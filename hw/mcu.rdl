@@ -7,6 +7,6 @@ addrmap mcu {
     el2_pic_ctrl el2_pic_ctrl @ 0x6000_0000;
     flash_ctrl primary_flash_ctrl @ 0x2000_8000;
     flash_ctrl secondary_flash_ctrl @ 0x2000_8800;
-    axicdma axicdma @ 0xA4084000;
+    axicdma axicdma @ 0xa408_1000;
     doe_mbox doe_mbox @ 0x2F00_0000;
 };

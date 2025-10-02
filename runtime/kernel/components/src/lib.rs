@@ -2,6 +2,7 @@
 
 #![no_std]
 
+pub mod dma;
 pub mod doe;
 pub mod mailbox;
 pub mod mbox_sram;
