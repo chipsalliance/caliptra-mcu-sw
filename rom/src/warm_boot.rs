@@ -18,7 +18,6 @@ use crate::{
     fatal_error, BootFlow, McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters,
     MCU_MEMORY_MAP,
 };
-use caliptra_api::SocManager;
 use core::fmt::Write;
 
 pub struct WarmBoot {}
@@ -29,13 +28,31 @@ impl BootFlow for WarmBoot {
             .set_flow_checkpoint(McuRomBootStatus::WarmResetFlowStarted.into());
         romtime::println!("[mcu-rom] Starting warm boot flow");
 
-        let soc = &env.soc;
+        // Create local references to minimize code changes
         let mci = &env.mci;
-        let soc_manager = &mut env.soc_manager;
+        let soc = &env.soc;
 
-        romtime::println!("[mcu-rom] Clearing Caliptra mailbox lock from previous session");
-        soc_manager.soc_mbox().dlen().write(|_| 32);
-        soc_manager.soc_mbox().execute().write(|w| w.execute(false));
+        romtime::println!("[mcu-rom] Setting Caliptra boot go");
+        mci.caliptra_boot_go();
+        mci.set_flow_checkpoint(McuRomBootStatus::CaliptraBootGoAsserted.into());
+        mci.set_flow_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
+
+        romtime::println!(
+            "[mcu-rom] Waiting for Caliptra to be ready for fuses: {}",
+            soc.ready_for_fuses()
+        );
+        while !soc.ready_for_fuses() {}
+        mci.set_flow_checkpoint(McuRomBootStatus::CaliptraReadyForFuses.into());
+
+        // According to https://github.com/chipsalliance/caliptra-rtl/blob/main/docs/CaliptraIntegrationSpecification.md#fuses
+        // we still need to write the fuse write done bit even though fuses can't be changed on a
+        // warm reset.
+
+        romtime::println!("[mcu-rom] Setting Caliptra fuse write done");
+        soc.fuse_write_done();
+        while soc.ready_for_fuses() {}
+        mci.set_flow_checkpoint(McuRomBootStatus::FuseWriteComplete.into());
+        mci.set_flow_milestone(McuBootMilestones::CPTRA_FUSES_WRITTEN.into());
 
         romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
         soc.wait_for_firmware_ready(mci);
@@ -51,21 +68,12 @@ impl BootFlow for WarmBoot {
             fatal_error(1);
         }
 
-        // Jump to firmware
-        romtime::println!("[mcu-rom] Jumping to firmware");
+        // Reset so FirmwareBootReset can jump to firmware
+        romtime::println!("[mcu-rom] Resetting to boot firmware");
+        mci.set_flow_checkpoint(McuRomBootStatus::WarmResetFlowComplete.into());
         mci.set_flow_milestone(McuBootMilestones::WARM_RESET_FLOW_COMPLETE.into());
-
-        #[cfg(target_arch = "riscv32")]
-        unsafe {
-            let firmware_entry = MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32;
-            core::arch::asm!(
-                "jr {0}",
-                in(reg) firmware_entry,
-                options(noreturn)
-            );
-        }
-
-        #[cfg(not(target_arch = "riscv32"))]
-        panic!("Attempting to jump to firmware on non-RISC-V platform");
+        mci.trigger_warm_reset();
+        romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
+        fatal_error(8);
     }
 }

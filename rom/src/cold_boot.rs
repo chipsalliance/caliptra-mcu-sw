@@ -382,24 +382,12 @@ impl BootFlow for ColdBoot {
 
         i3c.disable_recovery();
 
-        // TODO: set reset_req
-
-        // Jump to firmware
-        romtime::println!("[mcu-rom] Jumping to firmware");
+        // Reset so FirmwareBootReset can jump to firmware
+        romtime::println!("[mcu-rom] Resetting to boot firmware");
         mci.set_flow_checkpoint(McuRomBootStatus::ColdBootFlowComplete.into());
         mci.set_flow_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
-
-        #[cfg(target_arch = "riscv32")]
-        unsafe {
-            let firmware_entry = MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32;
-            core::arch::asm!(
-                "jr {0}",
-                in(reg) firmware_entry,
-                options(noreturn)
-            );
-        }
-
-        #[cfg(not(target_arch = "riscv32"))]
-        panic!("Attempting to jump to firmware on non-RISC-V platform");
+        mci.trigger_warm_reset();
+        romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
+        fatal_error(8);
     }
 }
