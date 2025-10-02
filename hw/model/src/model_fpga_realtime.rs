@@ -296,6 +296,7 @@ impl McuHwModel for ModelFpgaRealtime {
             test_sram: None,
             mcu_rom: Some(params.mcu_rom),
             enable_mcu_uart_log: params.enable_mcu_uart_log,
+            bootfsm_break: false,
         };
         println!("Starting base model");
         let base = ModelFpgaSubsystem::new_unbooted(cptra_init)
@@ -476,8 +477,7 @@ impl McuHwModel for ModelFpgaRealtime {
     }
 
     fn warm_reset(&mut self) {
-        todo!("Update caliptra-sw to allow calling warm reset with the FPGA");
-        // self.base.warm_reset()
+        self.base.warm_reset()
     }
 }
 
