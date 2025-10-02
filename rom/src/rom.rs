@@ -168,6 +168,23 @@ impl Soc {
         }
         romtime::println!("");
 
+        romtime::println!("[mcu-fuse-write] Attempting to write OCP LOCK fuses");
+
+        // for i in 0..8 {
+        //     self.registers.fuse_hek_seed[i].set(0xABDE);
+        // }
+
+        // romtime::println!("[mcu-fuse-write] Writing key release fuses");
+        // self.registers.ss_key_release_size.set(0x40);
+
+        // let key_release_addr: u64 = 0xa401_0200;
+        // self.registers
+        //     .ss_key_release_base_addr_h
+        //     .set((key_release_addr >> 32) as u32);
+        // self.registers
+        //     .ss_key_release_base_addr_l
+        //     .set(key_release_addr as u32);
+
         // TODO: this seems to not exist any more
         // self.registers.fuse_key_manifest_pk_hash_mask[0].set(fuses.key_manifest_pk_hash_mask());
         // if fuses.owner_pk_hash().len() != self.registers.cptra_owner_pk_hash.len() {

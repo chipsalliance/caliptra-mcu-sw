@@ -10,7 +10,10 @@ use crossterm::event::{self, KeyCode};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use mcu_builder::{FirmwareBinaries, PROJECT_ROOT};
 use mcu_hw_model::{InitParams, McuHwModel, ModelEmulated, ModelFpgaRealtime};
+use mcu_rom_common::LifecycleControllerState;
 use mcu_testing_common::i3c_socket::BufferedStream;
+use nix::sched::CpuSet;
+use nix::unistd::Pid;
 use ratatui::backend::CrosstermBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
@@ -39,11 +42,13 @@ type Model = ModelFpgaRealtime;
 
 const SPDM_DEMO_ZIP: &'static str = "spdm-demo-fpga.zip";
 const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-fpga.zip";
+//const MLKEM_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
+// const OCPLOCK_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
 
 const PAUSE_START_DEMO: Duration = Duration::from_secs(5);
 const PAUSE_BETWEEN_DEMOS: Duration = Duration::from_secs(10);
 
-const SPDM_BOOT_CYCLES: u64 = 300_000_000;
+const SPDM_BOOT_CYCLES: u64 = 400_000_000;
 
 const I3C_PORTS: [u16; 5] = [65530, 65531, 65532, 65533, 65534];
 
@@ -66,7 +71,7 @@ impl DemoType {
         match self {
             DemoType::Spdm => {
                 if FPGA {
-                    1_500_000_000
+                    500_000_000
                 } else {
                     20_000_000
                 }
@@ -111,6 +116,11 @@ pub(crate) fn demo() -> Result<()> {
             crate::fpga::fpga_install_kernel_modules(None)?;
         }
     }
+
+    // Pin to CPU 0 for stability.
+    let mut cpu_set = CpuSet::new();
+    cpu_set.set(0)?;
+    nix::sched::sched_setaffinity(Pid::this(), &cpu_set)?;
 
     // setup terminal
     let stdout = std::io::stdout();
@@ -176,6 +186,7 @@ impl std::io::Write for Console {
 
 struct Demo {
     console_buffer: Arc<RwLock<VecDeque<String>>>,
+    host_console_buffer: Arc<RwLock<VecDeque<String>>>,
     progress: u16,
     should_quit: bool,
     model: Option<RefCell<Model>>,
@@ -195,6 +206,7 @@ impl Demo {
     fn new() -> Self {
         Self {
             console_buffer: Arc::new(RwLock::new(VecDeque::new())),
+            host_console_buffer: Arc::new(RwLock::new(VecDeque::new())),
             should_quit: false,
             progress: 0,
             model: None,
@@ -203,7 +215,7 @@ impl Demo {
             i3c_socket: None,
             sent_vca: false,
             demos: vec![DemoType::Spdm, DemoType::Mlkem],
-            current_demo_idx: 1,
+            current_demo_idx: 0,
             i3c_port_idx: 0,
             wait_for_next_demo_until: None,
             pause: false,
@@ -217,6 +229,10 @@ impl Demo {
         tick_rate: Duration,
     ) -> Result<()> {
         let mut last_tick = Instant::now();
+        {
+            let host_console = &mut *self.host_console_buffer.write().unwrap();
+            host_console.push_back(format!("Starting demo: {}", self.current_demo()));
+        }
         loop {
             terminal.draw(|frame| self.render(frame))?;
 
@@ -279,6 +295,10 @@ impl Demo {
             self.model_started = false;
             self.current_demo_idx = (self.current_demo_idx + 1) % self.demos.len();
             self.i3c_port_idx = (self.i3c_port_idx + 1) % I3C_PORTS.len();
+            self.console_buffer.write().unwrap().clear();
+            let host_console = &mut *self.host_console_buffer.write().unwrap();
+            host_console.clear();
+            host_console.push_back(format!("Starting demo: {}", self.current_demo()));
         }
 
         if !self.model_started {
@@ -359,6 +379,7 @@ impl Demo {
         };
 
         if model.cycle_count() > SPDM_BOOT_CYCLES && self.i3c_socket.is_none() {
+            writeln!(model.output().logger(), "Connecting to I3C socket")?;
             let addr = SocketAddr::from(([127, 0, 0, 1], self.i3c_port()));
             let stream = TcpStream::connect(addr).unwrap();
             let stream = BufferedStream::new(stream);
@@ -371,7 +392,7 @@ impl Demo {
             if model.cycle_count() >= SPDM_BOOT_CYCLES + 1_000_000 {
                 if !self.sent_vca {
                     self.sent_vca = true;
-                    writeln!(model.output().logger(), "I3C send to MCU: VCA")?;
+                    writeln!(model.output().logger(), "HOST: I3C send to MCU: VCA")?;
                     i3c_socket.send_private_write(
                         addr,
                         vec![0x01, 0x00, 0x08, 0xc8, 0x05, 0x10, 0x84, 0x00, 0x00, 0xfe],
@@ -384,7 +405,7 @@ impl Demo {
                 if let Some(recv) = i3c_socket.receive_private_read(addr) {
                     writeln!(
                         model.output().logger(),
-                        "I3C recv from Caliptra: {:02x?}",
+                        "HOST: I3C recv from Caliptra: {:02x?}",
                         recv
                     )?;
                 }
@@ -417,6 +438,7 @@ impl Demo {
             mcu_firmware: &binaries.mcu_runtime,
             soc_manifest: &binaries.soc_manifest,
             active_mode: true,
+            lifecycle_controller_state: Some(LifecycleControllerState::Prod),
             otp_memory: Some(&otp_memory),
             vendor_pk_hash: binaries.vendor_pk_hash(),
             enable_mcu_uart_log: true,
@@ -479,10 +501,19 @@ impl Widget for &mut Demo {
             Length(TERMINAL_LINES as u16 + 4),
             Length(2),
         ]);
-        let [header_area, gauge_area, console_area, footer_area] = layout.areas(area);
+        let [header_area, gauge_area, consoles_area, footer_area] = layout.areas(area);
+
+        let [console_area, host_console_area] =
+            Layout::horizontal([Constraint::Percentage(70), Constraint::Percentage(30)])
+                .areas(consoles_area);
 
         render_header(self.current_demo().title(), header_area, buf);
         render_console(console_area, &*self.console_buffer.read().unwrap(), buf);
+        render_host_console(
+            host_console_area,
+            &*self.host_console_buffer.read().unwrap(),
+            buf,
+        );
 
         let footer = if self.pause {
             "Paused - Press Space to resume"
@@ -496,6 +527,17 @@ impl Widget for &mut Demo {
 
         self.render_gauge1(gauge_area, buf);
     }
+}
+
+fn render_host_console(area: Rect, lines: &VecDeque<String>, buf: &mut Buffer) {
+    let console_border = Block::bordered().padding(Padding::uniform(1));
+    let (a, b) = lines.as_slices();
+    let mut text: Vec<String> = vec![];
+    text.extend(a.iter().cloned());
+    text.extend(b.iter().cloned());
+    Paragraph::new(text.join("\n"))
+        .block(console_border)
+        .render(area, buf);
 }
 
 fn render_console(area: Rect, lines: &VecDeque<String>, buf: &mut Buffer) {

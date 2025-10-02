@@ -27,6 +27,7 @@ mcu-config-fpga.workspace = true
 mcu-rom-common.workspace = true
 mcu-testing-common.workspace = true
 mcu-hw-model.workspace = true
+nix.workspace = true
 pldm-fw-pkg.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true

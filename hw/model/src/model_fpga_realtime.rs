@@ -270,7 +270,7 @@ impl ModelFpgaRealtime {
                 .regs()
                 .ocp_lock_key_release
                 .iter()
-                .map(|r| format!("{:08x}", r.get()))
+                .map(|r| format!("{:08x}", r.get().swap_bytes()))
                 .collect();
             writeln!(
                 eoutput(),
@@ -297,7 +297,7 @@ impl ModelFpgaRealtime {
                     .regs()
                     .ocp_lock_key_release
                     .iter()
-                    .map(|r| format!("{:08x}", r.get()))
+                    .map(|r| format!("{:08x}", r.get().swap_bytes()))
                     .collect();
                 writeln!(
                     eoutput(),
