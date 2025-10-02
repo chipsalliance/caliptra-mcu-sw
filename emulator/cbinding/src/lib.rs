@@ -736,6 +736,44 @@ pub unsafe extern "C" fn emulator_get_pc(emulator_memory: *mut CEmulator) -> c_u
     }
 }
 
+/// Start the I3C controller thread
+///
+/// This function starts the I3C controller's background thread that processes
+/// incoming commands and sends responses. Should be called after emulator_init
+/// if I3C functionality is needed.
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * Appropriate error code on failure
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+#[no_mangle]
+pub unsafe extern "C" fn emulator_start_i3c_controller(
+    emulator_memory: *mut CEmulator,
+) -> EmulatorError {
+    if emulator_memory.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &mut *emulator_ptr;
+
+    match &mut emulator_state.wrapper {
+        EmulatorWrapper::Normal(emulator) => {
+            emulator.i3c_controller.start();
+            EmulatorError::Success
+        }
+        EmulatorWrapper::Gdb(gdb_target) => {
+            gdb_target.emulator_mut().i3c_controller.start();
+            EmulatorError::Success
+        }
+    }
+}
+
 /// Trigger an exit request by setting EMULATOR_RUNNING to false
 /// This will cause any loops waiting on EMULATOR_RUNNING to exit
 ///
