@@ -6,7 +6,7 @@ use crate::measurements::common::{
 };
 use libapi_caliptra::crypto::asym::AsymAlgo;
 use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
-use libapi_caliptra::evidence::{Evidence, PCR_QUOTE_BUFFER_SIZE};
+use libapi_caliptra::evidence::pcr_quote::{PcrQuote, PCR_QUOTE_BUFFER_SIZE};
 use libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use zerocopy::IntoBytes;
 
@@ -131,7 +131,7 @@ impl FreeformManifest {
     async fn refresh_measurement_record(&mut self, asym_algo: AsymAlgo) -> MeasurementsResult<()> {
         let with_pqc_sig = asym_algo != AsymAlgo::EccP384;
         let measurement_record = &mut self.measurement_record;
-        let measurement_value_size = Evidence::pcr_quote_size(with_pqc_sig);
+        let measurement_value_size = PcrQuote::len(with_pqc_sig);
         measurement_record.fill(0);
         let metadata = DmtfMeasurementBlockMetadata::new(
             SPDM_MEASUREMENT_MANIFEST_INDEX,
@@ -147,7 +147,7 @@ impl FreeformManifest {
         let quote_slice =
             &mut measurement_record[METADATA_SIZE..METADATA_SIZE + PCR_QUOTE_BUFFER_SIZE];
 
-        let copied_len = Evidence::pcr_quote(quote_slice, with_pqc_sig)
+        let copied_len = PcrQuote::pcr_quote(quote_slice, with_pqc_sig)
             .await
             .map_err(MeasurementsError::CaliptraApi)?;
         if copied_len != measurement_value_size {
