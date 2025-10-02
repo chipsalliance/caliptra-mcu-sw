@@ -2,25 +2,29 @@
 
 use core::fmt::Write;
 use libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
-use romtime::{println, test_exit};
+use libsyscall_caliptra::system::System;
+use libsyscall_caliptra::DefaultSyscalls;
+use libtock_console::Console;
+use romtime::println;
 
-const MCU_SRAM_HI_OFFSET: u64 = 0x1000_0000;
-const EXTERNAL_SRAM_HI_OFFSET: u64 = 0x2000_0000;
-const TEST_EXTERNAL_SRAM_DEST_ADDRESS: u32 = 0x0000_0000;
+const MCU_SRAM_HI_OFFSET: u64 = 0x0000_0000;
+const TEST_EXTERNAL_SRAM_DEST_ADDRESS: u32 = 0xB00C_0000;
 
 fn local_ram_to_axi_address(addr: u32) -> u64 {
     // Convert a local address to an AXI address
-    (MCU_SRAM_HI_OFFSET << 32) | (addr as u64)
+    addr as u64
 }
 
 fn external_ram_to_axi_address(addr: u32) -> u64 {
-    // Convert a local address to an AXI address
-    (EXTERNAL_SRAM_HI_OFFSET << 32) | (addr as u64)
+    addr as u64
 }
 
 #[allow(unused)]
 pub(crate) async fn test_dma_xfer_local_to_local() {
-    println!("Starting test_dma_xfer_local_to_local");
+    writeln!(
+        Console::<DefaultSyscalls>::writer(),
+        "Starting test_dma_xfer_local_to_local"
+    );
 
     let dma_syscall: DMASyscall = DMASyscall::new();
 
@@ -39,16 +43,25 @@ pub(crate) async fn test_dma_xfer_local_to_local() {
     dma_syscall.xfer(&transaction).await.unwrap();
 
     if source_buffer == dest_buffer {
-        println!("Test test_dma_xfer_local_to_local passed");
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "Test test_dma_xfer_local_to_local passed"
+        );
     } else {
-        println!("Test test_dma_xfer_local_to_local failed");
-        test_exit(1);
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "Test test_dma_xfer_local_to_local failed"
+        );
+        System::exit(1);
     }
 }
 
 #[allow(unused)]
 pub(crate) async fn test_dma_xfer_local_to_external() {
-    println!("Starting test_dma_xfer_local_to_external");
+    writeln!(
+        Console::<DefaultSyscalls>::writer(),
+        "Starting test_dma_xfer_local_to_external"
+    );
 
     let dma_syscall: DMASyscall = DMASyscall::new();
 
@@ -74,9 +87,15 @@ pub(crate) async fn test_dma_xfer_local_to_external() {
     dma_syscall.xfer(&transaction).await.unwrap();
 
     if source_buffer == dest_buffer {
-        println!("Test test_dma_xfer_local_to_external passed");
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "Test test_dma_xfer_local_to_external passed"
+        );
     } else {
-        println!("Test test_dma_xfer_local_to_external failed");
-        test_exit(1);
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "Test test_dma_xfer_local_to_external failed"
+        );
+        System::exit(1);
     }
 }

@@ -145,7 +145,7 @@ struct VeeR {
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
     system: &'static capsules_runtime::system::System<'static, FpgaExiter>,
-    //dma: &'static capsules_emulator::dma::Dma<'static>,
+    dma: &'static capsules_emulator::dma::Dma<'static>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -176,7 +176,7 @@ impl SyscallDriverLookup for VeeR {
                 f(Some(self.mcu_mbox1_staging_sram))
             }
             capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
-            //capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
+            capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
             _ => f(None),
         }
     }
@@ -338,6 +338,28 @@ pub unsafe fn main() {
     platform_regions.push(PlatformRegion {
         start_addr: 0xa401_0000 as *const u8,
         size: 0x2000,
+        is_mmio: true,
+        user_accessible: true,
+        read: true,
+        write: true,
+        execute: false,
+    });
+
+    // AXICDMA
+    platform_regions.push(PlatformRegion {
+        start_addr: registers_generated::axicdma::AXICDMA_ADDR as *const u8,
+        size: 0x1000,
+        is_mmio: true,
+        user_accessible: false,
+        read: true,
+        write: true,
+        execute: false,
+    });
+
+    // Staging SRAM
+    platform_regions.push(PlatformRegion {
+        start_addr: 0xB00C0000 as *const u8,
+        size: 0x40000,
         is_mmio: true,
         user_accessible: true,
         read: true,
@@ -543,6 +565,13 @@ pub unsafe fn main() {
             capsules_runtime::system::System<'static, FpgaExiter>
         ));
 
+    let dma = mcu_components::dma::DmaComponent::new(
+        &fpga_peripherals.dma,
+        board_kernel,
+        capsules_emulator::dma::DMA_CTRL_DRIVER_NUM,
+    )
+    .finalize(kernel::static_buf!(capsules_emulator::dma::Dma<'static>));
+
     peripherals.init();
     romtime::println!("[mcu-runtime] Peripherals initialized");
 
@@ -589,7 +618,7 @@ pub unsafe fn main() {
             mci,
             mcu_mbox1_staging_sram,
             system,
-            //dma,
+            dma,
         }
     );
 

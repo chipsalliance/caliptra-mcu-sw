@@ -6,7 +6,9 @@
 
 use core::cell::RefCell;
 
-use crate::hil::{DMAClient, DMAError};
+use crate::hil::{DMAClient, DMAError, DMA};
+use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
@@ -16,25 +18,35 @@ use registers_generated::axicdma::{bits::*, regs::*, AXICDMA_ADDR};
 pub const DMA_CTRL_BASE: StaticRef<Axicdma> =
     unsafe { StaticRef::new(AXICDMA_ADDR as *const Axicdma) };
 
-pub struct AxiCDMA<'a> {
+pub struct AxiCDMA<'a, A: Alarm<'a>> {
     registers: StaticRef<Axicdma>,
     dma_client: OptionalCell<&'a dyn DMAClient>,
     btt: RefCell<u32>,
+    use_interrupt: bool,
+    alarm: VirtualMuxAlarm<'a, A>,
 }
 
-impl<'a> AxiCDMA<'a> {
-    pub fn new(base: StaticRef<Axicdma>) -> AxiCDMA<'a> {
+impl<'a, A: Alarm<'a>> AxiCDMA<'a, A> {
+    pub fn new(
+        base: StaticRef<Axicdma>,
+        use_interrupt: bool,
+        alarm: &'a MuxAlarm<'a, A>,
+    ) -> AxiCDMA<'a, A> {
         AxiCDMA {
             registers: base,
             dma_client: OptionalCell::empty(),
             btt: RefCell::new(0),
+            use_interrupt,
+            alarm: VirtualMuxAlarm::new(alarm),
         }
     }
 
-    pub fn init(&self) {
+    pub fn init(&'static self) {
         self.reset();
         self.clear_error_interrupt();
         self.clear_event_interrupt();
+        self.alarm.setup();
+        self.alarm.set_alarm_client(self);
     }
 
     fn enable_interrupts(&self) {
@@ -91,9 +103,15 @@ impl<'a> AxiCDMA<'a> {
             });
         }
     }
+
+    fn schedule_alarm(&self) {
+        let now = self.alarm.now();
+        let dt = A::Ticks::from(10000);
+        self.alarm.set_alarm(now, dt);
+    }
 }
 
-impl crate::hil::DMA for AxiCDMA<'_> {
+impl<'a, A: Alarm<'a>> crate::hil::DMA for AxiCDMA<'a, A> {
     fn configure_transfer(
         &self,
         byte_count: usize,
@@ -115,7 +133,9 @@ impl crate::hil::DMA for AxiCDMA<'_> {
             return Err(ErrorCode::BUSY);
         }
 
-        self.enable_interrupts();
+        if self.use_interrupt {
+            self.enable_interrupts();
+        }
 
         // Set the source and destination addresses
         self.registers
@@ -159,6 +179,10 @@ impl crate::hil::DMA for AxiCDMA<'_> {
         self.registers
             .axicdma_bytes_to_transfer
             .set(*self.btt.borrow());
+
+        if !self.use_interrupt {
+            self.schedule_alarm();
+        }
         Ok(())
     }
 
@@ -187,5 +211,27 @@ impl crate::hil::DMA for AxiCDMA<'_> {
 
     fn set_client(&self, client: &'static dyn DMAClient) {
         self.dma_client.set(client);
+    }
+}
+
+impl<'a, A: Alarm<'a>> AlarmClient for AxiCDMA<'a, A> {
+    fn alarm(&self) {
+        match self.poll_status() {
+            Ok(crate::hil::DMAStatus::TxnDone) => {
+                self.dma_client.map(move |client| {
+                    client.transfer_complete(crate::hil::DMAStatus::TxnDone);
+                });
+                self.disable_interrupts();
+            }
+            Ok(_) => {
+                self.schedule_alarm();
+            }
+            Err(_e) => {
+                self.dma_client.map(move |client| {
+                    client.transfer_error(DMAError::AxiWriteError);
+                });
+                self.disable_interrupts();
+            }
+        }
     }
 }
