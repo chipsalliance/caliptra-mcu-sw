@@ -142,9 +142,9 @@ impl BootFlow for ColdBoot {
         mci.set_flow_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
 
         // If testing Caliptra Core, hang here until the test signals it to continue.
-        if cfg!(feature = "core_test") {
-            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 30) == 0 {}
-        }
+        //if cfg!(feature = "core_test") {
+        while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 30) == 0 {}
+        //}
 
         lc.init().unwrap();
         mci.set_flow_checkpoint(McuRomBootStatus::LifecycleControllerInitialized.into());
