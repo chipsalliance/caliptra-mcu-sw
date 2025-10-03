@@ -105,5 +105,5 @@ jobs:
           export CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip"
           # TODO: remove this if we get larger GitHub runners
           cargo clean
-         cargo --config "$EXTRA_CARGO_CONFIG" xtask test --release
+          cargo --config "$EXTRA_CARGO_CONFIG" xtask test --release
           sccache --show-stats
