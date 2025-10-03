@@ -268,9 +268,11 @@ impl CaliptraBuilder {
 
     fn compile_caliptra_rom_uncached(fpga: bool) -> Result<PathBuf> {
         let rom_bytes = if fpga {
-            caliptra_builder::build_firmware_rom(&caliptra_builder::firmware::ROM_FPGA_WITH_UART)?
+            caliptra_builder::build_firmware_rom(
+                &caliptra_builder::firmware::ROM_FPGA_WITH_UART_SS,
+            )?
         } else {
-            caliptra_builder::rom_for_fw_integration_tests()?.to_vec()
+            caliptra_builder::ss_rom_for_fw_integration_tests()?.to_vec()
         };
         let path = target_dir().join("caliptra-rom.bin");
         std::fs::write(&path, rom_bytes)?;
