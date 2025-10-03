@@ -40,7 +40,7 @@ embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
 embedded-alloc.workspace = true
 
 [features]
-default = []
+default = ["test-pldm-fw-update-e2e"]
 debug = []
 hw-2-1 = []
 test-caliptra-certs = []

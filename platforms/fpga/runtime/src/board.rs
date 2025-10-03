@@ -274,6 +274,16 @@ pub fn exit_fpga(exit_code: u32) -> ! {
 /// Accesses memory, memory-mapped registers and CSRs.
 pub unsafe fn main() {
     print_to_console("[mcu-runtime] Hello from MCU runtime\n");
+
+    /*
+    // Disable WDT1 before running the loop
+    let mci: StaticRef<mci::regs::Mci> =
+        unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
+    let mci_wdt = romtime::Mci::new(mci);
+    mci_wdt.disable_wdt();
+    loop {}    
+    */
+    
     // only machine mode
     rv32i::configure_trap_handler();
 

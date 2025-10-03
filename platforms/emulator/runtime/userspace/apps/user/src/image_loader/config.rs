@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 #![cfg(any(
-    feature = "test-pldm-streaming-boot",
+    feature = "test-pldm-fw-update-e2e",
     feature = "test-flash-based-boot",
     feature = "test-firmware-update-flash",
 ))]

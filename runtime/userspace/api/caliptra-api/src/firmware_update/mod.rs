@@ -44,11 +44,12 @@ use crate::crypto::hash::{HashAlgoType, HashContext};
 const MAX_DMA_TRANSFER_SIZE: usize = 128;
 
 pub struct FirmwareUpdater<'a, D: DMAMapping> {
-    staging_memory: &'static dyn StagingMemory,
+    download_memory: &'static dyn StagingMemory,
     mailbox: Mailbox,
     params: &'a PldmFirmwareDeviceParams,
     dma_mapping: &'a D,
     spawner: Spawner,
+    use_download_as_staging : bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -59,17 +60,19 @@ pub struct PldmFirmwareDeviceParams {
 
 impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
     pub fn new(
-        staging_memory: &'static dyn StagingMemory,
+        download_memory: &'static dyn StagingMemory,
         params: &'a PldmFirmwareDeviceParams,
         dma_mapping: &'a D,
         spawner: Spawner,
+        use_download_as_staging : bool
     ) -> Self {
         Self {
-            staging_memory,
+            download_memory,
             mailbox: Mailbox::new(),
             params,
             dma_mapping,
             spawner,
+            use_download_as_staging,
         }
     }
 
@@ -79,7 +82,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             self.spawner,
             self.params.descriptors,
             self.params.fw_params,
-            self.staging_memory,
+            self.download_memory,
         )
         .await?;
 
@@ -121,7 +124,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         let mut current_header_offset = image_headers_offset;
         for _ in 0..num_images {
             let mut image_header = [0u8; core::mem::size_of::<ImageHeader>()];
-            self.staging_memory
+            self.download_memory
                 .read(current_header_offset, &mut image_header)
                 .await?;
             let (image_header, _) =
@@ -148,7 +151,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         }
         let offset = image_headers_offset + index * core::mem::size_of::<ImageHeader>();
         let mut image_header = [0u8; core::mem::size_of::<ImageHeader>()];
-        self.staging_memory.read(offset, &mut image_header).await?;
+        self.download_memory.read(offset, &mut image_header).await?;
         let (image_header, _) =
             ImageHeader::read_from_prefix(&image_header).map_err(|_| ErrorCode::Fail)?;
         image_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
@@ -159,7 +162,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
     async fn verify(&mut self) -> Result<FlashHeader, ErrorCode> {
         // Parse the downloaded firmware image
         let mut flash_header = [0u8; core::mem::size_of::<FlashHeader>()];
-        self.staging_memory
+        self.download_memory
             .read(0, &mut flash_header)
             .await
             .map_err(|_| ErrorCode::Fail)?;
@@ -235,7 +238,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
 
         // Read the entry count from staging memory
         let mut entry_count = [0u8; 4];
-        self.staging_memory
+        self.download_memory
             .read(entry_count_offset, &mut entry_count)
             .await?;
         let entry_count = u32::from_le_bytes(entry_count);
@@ -252,7 +255,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             {
                 return Err(ErrorCode::Fail);
             }
-            self.staging_memory
+            self.download_memory
                 .read(metadata_offset, &mut metadata_bytes)
                 .await?;
 
@@ -291,7 +294,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         let response_buffer = &mut [0u8; core::mem::size_of::<GetImageInfoResp>()];
 
         let mut payload_stream =
-            MailboxPayloadStream::new(self.staging_memory, image_offset, image_len);
+            MailboxPayloadStream::new(self.download_memory, image_offset, image_len);
 
         loop {
             let result = self
@@ -318,7 +321,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             manifest_size: len as u32,
         };
 
-        let mut payload_stream = MailboxPayloadStream::new(self.staging_memory, offset, len);
+        let mut payload_stream = MailboxPayloadStream::new(self.download_memory, offset, len);
 
         // Calculate the mailbox checksum
         let mut checksum = payload_stream.get_bytesum().await;
@@ -398,7 +401,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         while remaining_size > 0 {
             let transfer_size = remaining_size.min(MAX_DMA_TRANSFER_SIZE);
             let mut buffer = [0; MAX_DMA_TRANSFER_SIZE];
-            self.staging_memory
+            self.download_memory
                 .read(current_offset, &mut buffer[..transfer_size])
                 .await?;
 
@@ -435,7 +438,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         let mut total_bytes_read = 0;
         while total_bytes_read < len {
             let bytes_to_read = (len - total_bytes_read).min(MAX_CRYPTO_MBOX_DATA_SIZE / 2);
-            self.staging_memory
+            self.download_memory
                 .read(
                     image_offset + total_bytes_read,
                     &mut buffer[..bytes_to_read],
@@ -478,13 +481,21 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             .map_err(|_| ErrorCode::Fail)?;
 
         // Get the DMA staging address for the MCU
-        let staging_address = self
-            .get_dma_image_staging_address(MCU_RT_IDENTIFIER)
-            .await?;
+        let staging_address;
+        
+        if self.use_download_as_staging {
+            staging_address = self.download_memory.get_base_address() + mcu_image_offset as u64;
+        } else {
+            staging_address = self
+                .get_dma_image_staging_address(MCU_RT_IDENTIFIER)
+                .await?;
+            // Copy the firmware image to the MCU DMA staging area
+            self.copy_to_memory(staging_address, mcu_image_offset, mcu_image_len)
+                .await?;            
+        }
 
-        // Copy the firmware image to the MCU DMA staging area
-        self.copy_to_memory(staging_address, mcu_image_offset, mcu_image_len)
-            .await?;
+
+
 
         let mut req = ActivateFirmwareReq {
             hdr: MailboxReqHeader { chksum: 0 },
@@ -553,10 +564,11 @@ pub trait StagingMemory: core::fmt::Debug + Send + Sync {
     async fn write(&self, offset: usize, data: &[u8]) -> Result<(), ErrorCode>;
     async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode>;
     fn size(&self) -> usize;
+    fn get_base_address(&self) -> u64;
 }
 
 pub struct MailboxPayloadStream {
-    pub staging_memory: &'static dyn StagingMemory,
+    pub download_memory: &'static dyn StagingMemory,
     pub offset: usize,
     pub cursor: usize,
     pub len: usize,
@@ -564,12 +576,12 @@ pub struct MailboxPayloadStream {
 
 impl MailboxPayloadStream {
     pub fn new(
-        staging_memory: &'static dyn StagingMemory,
+        download_memory: &'static dyn StagingMemory,
         starting_offset: usize,
         len: usize,
     ) -> Self {
         Self {
-            staging_memory,
+            download_memory,
             offset: starting_offset,
             cursor: starting_offset,
             len,
@@ -608,7 +620,7 @@ impl PayloadStream for MailboxPayloadStream {
         }
 
         let bytes_to_read = (self.len - (self.cursor - self.offset)).min(buffer.len());
-        self.staging_memory
+        self.download_memory
             .read(self.cursor, buffer[..bytes_to_read].as_mut())
             .await
             .map_err(|_| ErrorCode::Fail)?;

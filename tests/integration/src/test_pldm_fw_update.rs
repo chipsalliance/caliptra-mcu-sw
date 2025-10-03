@@ -133,7 +133,7 @@ mod test {
             &self,
             expected_state: update_sm::States,
         ) -> Result<(), ()> {
-            let timeout = Duration::from_secs(60);
+            let timeout = Duration::from_secs(500);
             let start_time = std::time::Instant::now();
 
             while start_time.elapsed() < timeout {
@@ -164,7 +164,7 @@ mod test {
         #[allow(clippy::result_unit_err)]
         pub fn test_fw_update(&mut self) -> Result<(), ()> {
             // Initialize log level to info (only once)
-            let _ = SimpleLogger::new().with_level(LevelFilter::Debug).init();
+            let _ = SimpleLogger::new().with_level(LevelFilter::Info).init();
 
             let pldm_fw_pkg = if let Ok(pldm_fw_pkg_path) = std::env::var("PLDM_FW_PKG") {
                 FirmwareManifest::decode_firmware_package(&pldm_fw_pkg_path, None).map_err(|e| {

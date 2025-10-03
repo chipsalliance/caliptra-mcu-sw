@@ -11,9 +11,11 @@ use core::fmt::Write;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
+use libsyscall_caliptra::DefaultSyscalls;
+use libtock_console::Console;
 use libtockasync::TockExecutor;
 #[cfg(any(
-    feature = "test-firmware-update-streaming",
+    feature = "test-pldm-fw-update-e2e",
     feature = "test-firmware-update-flash"
 ))]
 mod firmware_update;
@@ -72,24 +74,27 @@ async fn start() {
 }
 
 pub(crate) async fn async_main() {
+    writeln!(Console::<DefaultSyscalls>::writer(), "USER_APP: Starting").unwrap();
+/*
+
     EXECUTOR
         .get()
         .spawner()
         .spawn(spdm::spdm_task(EXECUTOR.get().spawner()))
         .unwrap();
-
+*/
     EXECUTOR
         .get()
         .spawner()
         .spawn(image_loader::image_loading_task())
         .unwrap();
-
+/*
     EXECUTOR
         .get()
         .spawner()
         .spawn(mcu_mbox::mcu_mbox_task())
         .unwrap();
-
+*/
     loop {
         EXECUTOR.get().poll();
     }

@@ -3,7 +3,6 @@
 #[cfg(any(
     feature = "test-pldm-discovery",
     feature = "test-pldm-fw-update",
-    feature = "test-pldm-fw-update-e2e"
 ))]
 mod pldm_fdops_mock;
 
@@ -50,6 +49,7 @@ const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 
 #[embassy_executor::task]
 pub async fn image_loading_task() {
+    writeln!(Console::<DefaultSyscalls>::writer(), "IMAGE_LOADER_APP: Starting").unwrap();
     let mbox_sram = libsyscall_caliptra::mbox_sram::MboxSram::<DefaultSyscalls>::new(
         libsyscall_caliptra::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
     );
@@ -65,11 +65,9 @@ pub async fn image_loading_task() {
         mbox_sram.release_lock().unwrap();
     }
     #[cfg(any(
-        feature = "test-pldm-streaming-boot",
         feature = "test-flash-based-boot",
         feature = "test-pldm-discovery",
         feature = "test-pldm-fw-update",
-        feature = "test-pldm-fw-update-e2e",
     ))]
     {
         // Release SRAM lock, in case previous session hasn't released it
@@ -84,18 +82,22 @@ pub async fn image_loading_task() {
         }
         mbox_sram.release_lock().unwrap();
         #[cfg(not(any(
-            feature = "test-firmware-update-streaming",
+            feature = "test-pldm-fw-update-e2e",
             feature = "test-firmware-update-flash"
         )))]
         System::exit(0);
     }
     // After image loading, proceed to firmware update if enabled
     #[cfg(any(
-        feature = "test-firmware-update-streaming",
+        feature = "test-pldm-fw-update-e2e",
         feature = "test-firmware-update-flash"
     ))]
     {
-        mbox_sram.acquire_lock().unwrap();
+        writeln!(Console::<DefaultSyscalls>::writer(), "IMAGE_LOADER_APP: Proceeding to firmware update").unwrap();
+        if mbox_sram.acquire_lock().is_err() {
+            mbox_sram.release_lock().unwrap();
+            mbox_sram.acquire_lock().unwrap();
+        }
         match crate::firmware_update::firmware_update(&EMULATED_DMA_MAPPING).await {
             Ok(_) => System::exit(0),
             Err(_) => System::exit(1),
@@ -109,22 +111,6 @@ pub async fn image_loading_task() {
 async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     writeln!(console_writer, "IMAGE_LOADER_APP: Hello async world!").unwrap();
-    #[cfg(feature = "test-pldm-streaming-boot")]
-    {
-        let fw_params = PldmFirmwareDeviceParams {
-            descriptors: &config::streaming_boot_consts::DESCRIPTOR.get()[..],
-            fw_params: config::streaming_boot_consts::STREAMING_BOOT_FIRMWARE_PARAMS.get(),
-        };
-        let pldm_image_loader =
-            PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner(), dma_mapping);
-        pldm_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
-            .await?;
-        pldm_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2)
-            .await?;
-        pldm_image_loader.finalize().await?;
-    }
     #[cfg(any(
         feature = "test-flash-based-boot",
         feature = "test-firmware-update-flash",
@@ -186,11 +172,7 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
             .map_err(|_| ErrorCode::Fail)?;
     }
 
-    #[cfg(any(
-        feature = "test-pldm-discovery",
-        feature = "test-pldm-fw-update",
-        feature = "test-pldm-fw-update-e2e"
-    ))]
+    #[cfg(any(feature = "test-pldm-discovery", feature = "test-pldm-fw-update",))]
     {
         let fdops = pldm_fdops_mock::FdOpsObject::new();
         let mut pldm_service = PldmService::init(&fdops, EXECUTOR.get().spawner());
