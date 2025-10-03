@@ -103,6 +103,7 @@ jobs:
 
           export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
           export CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip"
+          # TODO: remove this if we get larger GitHub runners
           cargo clean
-          cargo --config "$EXTRA_CARGO_CONFIG" xtask test
+         cargo --config "$EXTRA_CARGO_CONFIG" xtask test --release
           sccache --show-stats
