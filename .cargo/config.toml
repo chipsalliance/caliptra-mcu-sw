@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [alias]
-xtask = "run --package xtask --"
+xtask = "run --package xtask --release --"
 xtask-fpga = "run --package xtask --features=fpga_realtime --"
 
 [target.riscv32imc-unknown-none-elf]
