@@ -16,6 +16,7 @@ Abstract:
 
 use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
+use crate::fw_boot::FwBoot;
 use crate::ColdBoot;
 use crate::FwHitlessUpdate;
 use crate::ImageVerifier;
@@ -27,10 +28,11 @@ use crate::RomEnv;
 use crate::WarmBoot;
 use core::fmt::Write;
 use registers_generated::fuses::Fuses;
+use registers_generated::mci;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use registers_generated::soc;
 use romtime::{HexWord, StaticRef};
-use tock_registers::interfaces::{Readable, Writeable};
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 // values in fuses
 const LMS_FUSE_VALUE: u8 = 1;
@@ -239,6 +241,38 @@ impl Soc {
     pub fn fuse_write_done(&self) {
         self.registers.cptra_fuse_wr_done.set(1);
     }
+
+    /// Waits for Caliptra to indicate MCU firmware is ready through the `NotifCptraMcuResetReqSts`
+    /// interrupt.
+    pub fn wait_for_firmware_ready(&self, mci: &romtime::Mci) {
+        let notif0 = &mci.registers.intr_block_rf_notif0_internal_intr_r;
+        // TODO(zhalvorsen): use interrupt instead of fw_exec_ctrl register when the emulator supports it
+        // Wait for a reset request from Caliptra
+        let mut steps = 0;
+        while !self.fw_ready() {
+            steps += 1;
+            if steps % 100_000 == 0 {
+                romtime::println!(
+                    "[mcu-rom] Still waiting for firmware ready signal from Caliptra (notif bit {} ready, fw exec ctrl {:08x}{:08x}{:08x}{:08x})",
+                    notif0.read(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts),
+                    self.registers.ss_generic_fw_exec_ctrl[0].get(),
+                    self.registers.ss_generic_fw_exec_ctrl[1].get(),
+                    self.registers.ss_generic_fw_exec_ctrl[2].get(),
+                    self.registers.ss_generic_fw_exec_ctrl[3].get(),
+
+                );
+            }
+            if self.cptra_fw_fatal_error() {
+                romtime::println!("[mcu-rom] Caliptra reported a fatal error");
+                fatal_error(6);
+            }
+        }
+        romtime::println!(
+            "[mcu-rom] Detected firmware ready signal from Caliptra, clearing interrupt"
+        );
+        // Clear the reset request interrupt
+        notif0.modify(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
+    }
 }
 
 #[derive(Default)]
@@ -296,9 +330,8 @@ pub fn rom_start(params: RomParameters) {
             WarmBoot::run(&mut env, params);
         }
         McuResetReason::FirmwareBootUpdate => {
-            // TODO: Implement firmware boot update flow
-            romtime::println!("[mcu-rom] TODO: Firmware boot update flow not implemented");
-            fatal_error(0x1002); // Error code for unimplemented firmware boot update
+            romtime::println!("[mcu-rom] Firmware boot reset detected");
+            FwBoot::run(&mut env, params);
         }
         McuResetReason::FirmwareHitlessUpdate => {
             romtime::println!("[mcu-rom] Starting firmware hitless update flow");

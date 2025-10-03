@@ -19,6 +19,7 @@ pub use boot_status::*;
 pub mod flash;
 pub use flash::*;
 mod fuses;
+mod fw_boot;
 pub use fuses::*;
 pub mod image_verifier;
 pub use image_verifier::ImageVerifier;
