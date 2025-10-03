@@ -2,7 +2,7 @@
 
 [alias]
 xtask = "run --package xtask --release --"
-xtask-fpga = "run --package xtask --features=fpga_realtime --"
+xtask-fpga = "run --package xtask --features=fpga_realtime --release --"
 
 [target.riscv32imc-unknown-none-elf]
 rustflags = [
