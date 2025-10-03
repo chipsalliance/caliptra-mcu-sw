@@ -1741,6 +1741,7 @@ dependencies = [
  "libtock_unittest",
  "libtockasync",
  "mcu-config-emulator",
+ "ocp-eat",
  "pldm-common",
  "portable-atomic",
  "romtime",
@@ -2358,6 +2359,7 @@ dependencies = [
  "libtock_runtime",
  "libtock_unittest",
  "libtockasync",
+ "ocp-eat",
  "pldm-common",
  "pldm-lib",
  "zerocopy",
@@ -3869,6 +3871,7 @@ dependencies = [
  "libsyscall-caliptra",
  "libtock_console",
  "libtock_platform",
+ "ocp-eat",
  "rand",
  "zerocopy",
 ]

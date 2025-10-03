@@ -25,6 +25,9 @@ mod test_caliptra_mailbox;
 #[cfg(feature = "test-caliptra-crypto")]
 mod test_caliptra_crypto;
 
+#[cfg(feature = "test-ocp-eat")]
+mod test_ocp_eat_cwt;
+
 #[cfg(feature = "test-dma")]
 mod test_dma;
 
@@ -205,6 +208,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_crypto::test_caliptra_aes_gcm_cipher().await;
         test_caliptra_crypto::test_caliptra_ecdsa().await;
         System::exit(0);
+    }
+
+    #[cfg(feature = "test-ocp-eat")]
+    {
+        test_ocp_eat_cwt::test_ocp_eat_cwt().await;
+        romtime::test_exit(0);
     }
 
     #[cfg(feature = "test-caliptra-certs")]
