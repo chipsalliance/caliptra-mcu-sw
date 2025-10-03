@@ -97,10 +97,11 @@ impl Mci {
         };
 
         // Directly schedule the machine timer interrupt
-        self.op_mtimecmp_due_action = Some(
-            self.timer
-                .schedule_action_in(delay, TimerAction::MachineTimerInterrupt),
-        );
+        // TODO: re-enable when rebased
+        //self.op_mtimecmp_due_action = Some(
+        //    self.timer
+        //        .schedule_action_in(delay, TimerAction::MachineTimerInterrupt),
+        //);
     }
 }
 
