@@ -3,10 +3,20 @@
 mod i3c_socket;
 #[cfg(feature = "fpga_realtime")]
 mod jtag;
+#[cfg(test)]
+mod rom;
 mod test_firmware_update;
 mod test_mctp_capsule_loopback;
 mod test_pldm_fw_update;
 mod test_soc_boot;
+
+pub fn platform() -> &'static str {
+    if cfg!(feature = "fpga_realtime") {
+        "fpga"
+    } else {
+        "emulator"
+    }
+}
 
 #[cfg(test)]
 mod test {
