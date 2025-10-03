@@ -153,8 +153,8 @@ impl<'a> ActionHandler<'a> for Subsystem {
         Ok(())
     }
 
-    fn build_test(&self, _args: &'a BuildTestArgs<'a>) -> Result<()> {
-        let mut base_cmd = build_base_docker_command(None::<String>)?;
+    fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
+        let mut base_cmd = build_base_docker_command(args.caliptra_sw)?;
         base_cmd.arg(
                 "(cd /work-dir && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_realtime --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
             );
