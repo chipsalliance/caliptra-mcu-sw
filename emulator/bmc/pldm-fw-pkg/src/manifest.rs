@@ -1421,7 +1421,9 @@ impl ComponentImageInformation {
         // Encode size (u32)
         let mut file_size = 0u32;
         if let Some(image_location) = &self.image_location {
-            file_size = image_location.len() as u32;
+            // get the size of the file at image_location
+            let metadata = std::fs::metadata(image_location)?;
+            file_size = metadata.len() as u32;
         } else if let Some(image_data) = &self.image_data {
             file_size = image_data.len() as u32;
         }
