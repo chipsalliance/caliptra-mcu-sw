@@ -322,6 +322,16 @@ pub unsafe fn main() {
         execute: false,
     });
 
+    platform_regions.push(PlatformRegion {
+        start_addr: 0xb00c_0000 as *const u8,
+        size: 0x4_0000,
+        is_mmio: true,
+        user_accessible: false,
+        read: true,
+        write: true,
+        execute: false,
+    });
+
     // User-accessible MMIO (FPGA peripherals and UART)
     platform_regions.push(PlatformRegion {
         start_addr: 0xa401_0000 as *const u8,
@@ -397,6 +407,14 @@ pub unsafe fn main() {
     hil::time::Alarm::set_alarm_client(virtual_alarm_user, alarm);
     romtime::println!("[mcu-runtime] Alarm initialized");
 
+    // TODO: put the staging SRAM in the memory map
+    let staging_sram = unsafe {
+        core::mem::transmute(core::slice::from_raw_parts_mut(
+            0xb00c_0000 as *mut u8,
+            0x40000,
+        ))
+    };
+
     let mailbox = mcu_components::mailbox::MailboxComponent::new(
         board_kernel,
         capsules_runtime::mailbox::DRIVER_NUM,
@@ -406,7 +424,9 @@ pub unsafe fn main() {
         InternalTimers<'static>,
         Some(MCU_MEMORY_MAP.soc_offset),
         Some(MCU_MEMORY_MAP.soc_offset),
-        Some(MCU_MEMORY_MAP.mbox_offset)
+        Some(MCU_MEMORY_MAP.mbox_offset),
+        staging_sram,
+        0xb00c_0000
     ));
     mailbox.alarm.set_alarm_client(mailbox);
     romtime::println!("[mcu-runtime] Mailbox initialized");

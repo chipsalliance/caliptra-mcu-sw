@@ -13,14 +13,14 @@ use romtime::CaliptraSoC;
 
 #[macro_export]
 macro_rules! mailbox_component_static {
-    ($A:ty, $b:expr, $c:expr, $d:expr) => {{
+    ($A:ty, $b:expr, $c:expr, $d:expr, $e:expr, $f:expr) => {{
         use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
         let alarm = kernel::static_buf!(VirtualMuxAlarm<'static, $A>);
         let caliptra_soc = kernel::static_buf!(CaliptraSoC);
         let mbox = kernel::static_buf!(
             capsules_runtime::mailbox::Mailbox<'static, VirtualMuxAlarm<'static, $A>>
         );
-        (alarm, mbox, caliptra_soc, $b, $c, $d)
+        (alarm, mbox, caliptra_soc, $b, $c, $d, $e, $f)
     }};
 }
 
@@ -52,6 +52,8 @@ impl<A: Alarm<'static>> Component for MailboxComponent<A> {
         Option<u32>,
         Option<u32>,
         Option<u32>,
+        &'static mut [u8],
+        u64,
     );
 
     type Output = &'static Mailbox<'static, VirtualMuxAlarm<'static, A>>;
@@ -73,6 +75,8 @@ impl<A: Alarm<'static>> Component for MailboxComponent<A> {
                     mux_alarm,
                     self.board_kernel.create_grant(self.driver_num, &grant_cap),
                     caliptra_soc,
+                    static_buffer.6,
+                    static_buffer.7,
                 ));
         mailbox
     }
