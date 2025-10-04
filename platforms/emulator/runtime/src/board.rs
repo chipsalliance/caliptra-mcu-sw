@@ -454,6 +454,14 @@ pub unsafe fn main() {
     );
     hil::time::Alarm::set_alarm_client(virtual_alarm_user, alarm);
 
+    // TODO: put the staging SRAM in the memory map
+    let staging_sram = unsafe {
+        core::mem::transmute(core::slice::from_raw_parts_mut(
+            (MCU_MEMORY_MAP.mci_offset + 0x400000) as *mut u8,
+            4 * 1024,
+        ))
+    };
+
     let mailbox = mcu_components::mailbox::MailboxComponent::new(
         board_kernel,
         capsules_runtime::mailbox::DRIVER_NUM,
@@ -463,7 +471,9 @@ pub unsafe fn main() {
         InternalTimers<'static>,
         Some(MCU_MEMORY_MAP.soc_offset),
         Some(MCU_MEMORY_MAP.soc_offset),
-        Some(MCU_MEMORY_MAP.mbox_offset)
+        Some(MCU_MEMORY_MAP.mbox_offset),
+        staging_sram,
+        (MCU_MEMORY_MAP.mci_offset + 0x400000) as u64
     ));
     mailbox.alarm.set_alarm_client(mailbox);
 

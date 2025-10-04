@@ -3,8 +3,13 @@
 //! This provides the mailbox capsule that calls the underlying mailbox driver to
 //! communicate with Caliptra.
 
+use caliptra_api::calc_checksum;
+use caliptra_api::mailbox::ExternalMailboxCmdReq;
+use caliptra_api::mailbox::Request;
 use caliptra_api::CaliptraApiError;
+use caliptra_api::SocManager;
 use core::cell::Cell;
+use core::mem::transmute;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::hil::time::{Alarm, AlarmClient};
 use kernel::processbuffer::{
@@ -12,8 +17,11 @@ use kernel::processbuffer::{
 };
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
+use kernel::utilities::StaticRef;
 use kernel::{debug, ErrorCode, ProcessId};
 use romtime::CaliptraSoC;
+use romtime::HexBytes;
+use zerocopy::{transmute, IntoBytes};
 
 /// The driver number for Caliptra mailbox commands.
 pub const DRIVER_NUM: usize = 0x8000_0009;
@@ -59,6 +67,12 @@ pub struct Mailbox<'a, A: Alarm<'a>> {
     current_app: OptionalCell<ProcessId>,
     resp_min_size: Cell<usize>,
     resp_size: Cell<usize>,
+    /// Slice wrapping the staging SRAM
+    staging_sram: &'static mut [u8],
+    /// AXI address of the staging SRAM
+    staging_sram_axi_addr: u64,
+    current_request_offset: Cell<usize>,
+    current_cmd: Cell<u32>,
 }
 
 impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
@@ -71,6 +85,8 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
         driver: &'static mut CaliptraSoC,
+        staging_sram: &'static mut [u8],
+        staging_sram_axi_addr: u64,
     ) -> Mailbox<'a, A> {
         Mailbox {
             alarm,
@@ -79,6 +95,10 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             current_app: OptionalCell::empty(),
             resp_min_size: Cell::new(0),
             resp_size: Cell::new(0),
+            staging_sram,
+            staging_sram_axi_addr,
+            current_request_offset: Cell::new(0),
+            current_cmd: Cell::new(0),
         }
     }
 
@@ -125,15 +145,22 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         self.current_app.set(processid);
 
         // App buffer contains the full payload
-        match driver.start_mailbox_req(
-            command,
+        app_buffer.copy_to_slice(unsafe {
+            // TODO: this is a hack because we can't easily share a mutable slice
+            core::slice::from_raw_parts_mut(
+                self.staging_sram.as_ptr() as *mut u8,
+                self.staging_sram.len().min(app_buffer.len()),
+            )
+        });
+
+        let buf: &[u8] = unsafe { core::mem::transmute(app_buffer) };
+        debug!(
+            "Execute start immediate command length {}",
             app_buffer.len(),
-            app_buffer.chunks(4).map(|chunk| {
-                let mut dest = [0u8; 4];
-                chunk.copy_to_slice(&mut dest);
-                u32::from_le_bytes(dest)
-            }),
-        ) {
+            //HexBytes(buf)
+        );
+
+        match driver.initiate_request(command, app_buffer.len(), self.staging_sram_axi_addr) {
             Ok(_) => {
                 self.schedule_alarm();
                 Ok(())
@@ -156,13 +183,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             return Err(ErrorCode::BUSY);
         }
         self.current_app.set(processid);
-        self.driver
-            .map(|driver| {
-                driver
-                    .initiate_request(command, payload_size)
-                    .map_err(|_| ErrorCode::FAIL)
-            })
-            .ok_or(ErrorCode::RESERVE)?
+        Ok(())
     }
 
     fn send_next_chunk(&self, processid: ProcessId) -> Result<(), ErrorCode> {
@@ -180,11 +201,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                 })
                 .and_then(|ro_buffer| {
                     ro_buffer
-                        .enter(|app_buffer| {
-                            self.driver
-                                .map(|driver| self.write_chunk(driver, app_buffer))
-                                .ok_or(ErrorCode::RESERVE)?
-                        })
+                        .enter(|app_buffer| self.write_chunk(app_buffer))
                         .map_err(|err| {
                             debug!("Error getting application buffer: {:?}", err);
                             ErrorCode::FAIL
@@ -199,23 +216,17 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         })?
     }
 
-    fn write_chunk(
-        &self,
-        driver: &mut CaliptraSoC,
-        app_buffer: &ReadableProcessSlice,
-    ) -> Result<(), ErrorCode> {
-        for chunk in app_buffer.chunks(4) {
-            if chunk.len() == 4 {
-                let mut buf = [0u8; 4];
-                chunk.copy_to_slice(&mut buf);
-                let data = u32::from_le_bytes(buf);
-                driver.write_data(data).map_err(|_| ErrorCode::FAIL)?;
-            } else {
-                // If the last chunk is not 4 bytes, we can't write it to the mailbox
-                debug!("Error: Incomplete data chunk in mailbox request");
-                return Err(ErrorCode::FAIL);
-            }
-        }
+    fn write_chunk(&self, app_buffer: &ReadableProcessSlice) -> Result<(), ErrorCode> {
+        let slice = unsafe {
+            // TODO: this is a hack because we can't easily share a mutable slice
+            core::slice::from_raw_parts_mut(
+                self.staging_sram.as_ptr() as *mut u8,
+                self.staging_sram.len(),
+            )
+        };
+        let offset = self.current_request_offset.get();
+        app_buffer.copy_to_slice(&mut slice[offset..offset + app_buffer.len()]);
+        self.current_request_offset.set(offset + app_buffer.len());
         Ok(())
     }
 
@@ -224,13 +235,23 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         if self.current_app.is_none() {
             return Err(ErrorCode::CANCEL);
         }
+        debug!(
+            "Execute command length {}",
+            self.current_request_offset.get()
+        );
         self.driver
-            .map(|driver| match driver.execute_command() {
-                Ok(()) => {
-                    self.schedule_alarm();
-                    Ok(())
+            .map(|driver| {
+                match driver.initiate_request(
+                    self.current_cmd.take(),
+                    self.current_request_offset.take(),
+                    self.staging_sram_axi_addr,
+                ) {
+                    Ok(()) => {
+                        self.schedule_alarm();
+                        Ok(())
+                    }
+                    Err(_) => Err(ErrorCode::FAIL),
                 }
-                Err(_) => Err(ErrorCode::FAIL),
             })
             .unwrap_or(Err(ErrorCode::FAIL))
     }
