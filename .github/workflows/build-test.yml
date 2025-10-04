@@ -24,7 +24,7 @@ jobs:
       SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b42a6e70ec4
 
       # Compiler warnings should fail to compile
-      EXTRA_CARGO_CONFIG: "target.'cfg(all())'.rustflags = [\"-Dwarnings\"]"
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
     steps:
       - name: Checkout repo
@@ -71,7 +71,8 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Check that Cargo.lock doesn't need to be updated
+      - name:
+          Check that Cargo.lock doesn't need to be updated
           # Note: this isn't the same as checking that Cargo.lock is up to date
           # (cargo update --locked), which makes sure that every package is the
           # latest published version. This is just ensuring that every
@@ -95,12 +96,13 @@ jobs:
 
       - name: Run all tests
         run: |
+          cargo clean
           # Build ROM and runtime binaries
           cargo xtask all-build --platform emulator \
             --runtime-features test-mctp-capsule-loopback \
             --separate-runtimes
 
-          export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
           export CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip"
+          # TODO: remove this if we get larger GitHub runners
           cargo --config "$EXTRA_CARGO_CONFIG" xtask test
           sccache --show-stats
