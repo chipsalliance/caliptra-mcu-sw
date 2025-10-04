@@ -17,7 +17,7 @@ async fn test_pcr_quote_with_pqc_signature() {
     println!("Starting PCR quote with PQC signature test");
     let mut pcr_quote = [0u8; PCR_QUOTE_BUFFER_SIZE];
 
-    match PcrQuote::pcr_quote(&mut pcr_quote, true).await {
+    match PcrQuote::pcr_quote(None, &mut pcr_quote, true).await {
         Ok(copy_len) if copy_len > 0 => {
             println!(
                 "PCR quote with PQC Signature[{}]: {:x?} ",
@@ -42,7 +42,7 @@ async fn test_pcr_quote_with_ecc_signature() {
     println!("Starting PCR quote with ECC signature test");
     let mut pcr_quote = [0u8; PCR_QUOTE_BUFFER_SIZE];
 
-    match PcrQuote::pcr_quote(&mut pcr_quote, false).await {
+    match PcrQuote::pcr_quote(None, &mut pcr_quote, false).await {
         Ok(copy_len) if copy_len > 0 => {
             println!(
                 "PCR quote with ECC Signature[{}]: {:x?}",
