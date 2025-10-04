@@ -22,6 +22,9 @@ mod test_pldm_request_response;
 
 mod test_caliptra_mailbox;
 
+#[cfg(feature = "test-get-device-state")]
+mod test_get_device_state;
+
 #[cfg(feature = "test-caliptra-crypto")]
 mod test_caliptra_crypto;
 
@@ -192,7 +195,14 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_mailbox::test_caliptra_mailbox().await;
         test_caliptra_mailbox::test_caliptra_mailbox_bad_command().await;
         test_caliptra_mailbox::test_caliptra_mailbox_fail().await;
-        test_caliptra_mailbox::test_caliptra_evidence().await;
+        System::exit(0);
+    }
+
+    #[cfg(feature = "test-get-device-state")]
+    {
+        test_get_device_state::test_get_pcr_quote().await;
+        test_get_device_state::test_get_fw_info().await;
+        test_get_device_state::test_get_image_info().await;
         System::exit(0);
     }
 
