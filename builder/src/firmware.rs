@@ -18,3 +18,5 @@ pub mod hw_model_tests {
 }
 
 pub const REGISTERED_FW: &[&FwId] = &[&hw_model_tests::MAILBOX_RESPONDER];
+
+pub const CPTRA_REGISTERED_FW: &[&FwId] = &[];
