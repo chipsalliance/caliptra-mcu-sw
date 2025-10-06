@@ -12,7 +12,7 @@ use spdm_lib::measurements::{
 
 pub const NUM_PCR_QUOTE_MEASUREMENTS: usize = 1;
 
-pub fn make_pcr_quote_components() -> (
+pub fn create_manifest_with_pcr_quote() -> (
     PcrQuoteManifest,
     [MeasurementValueInfo; NUM_PCR_QUOTE_MEASUREMENTS],
 ) {
