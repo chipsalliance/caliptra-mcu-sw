@@ -9,13 +9,6 @@ use core::mem::size_of;
 use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
 
-pub enum ComponentType {
-    Hw,
-    Rom,
-    Fmc,
-    Rt,
-}
-
 pub struct DeviceState;
 
 impl DeviceState {
@@ -71,7 +64,7 @@ impl DeviceState {
         Ok(resp)
     }
 
-    pub async fn fw_version(component_type: ComponentType) -> CaliptraApiResult<u32> {
+    pub async fn fw_version() -> CaliptraApiResult<(u32, u32, u32, u32)> {
         let mailbox = Mailbox::new();
         let mut req = MailboxReqHeader::default();
         let req_bytes = req.as_mut_bytes();
@@ -92,11 +85,11 @@ impl DeviceState {
         let resp = FipsVersionResp::ref_from_bytes(&rsp_bytes)
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
-        match component_type {
-            ComponentType::Hw => Ok(resp.fips_rev[0]),
-            ComponentType::Rom => Ok(resp.fips_rev[1] & 0x0000FFFF),
-            ComponentType::Fmc => Ok((resp.fips_rev[1] & 0xFFFF0000) >> 16),
-            ComponentType::Rt => Ok(resp.fips_rev[2]),
-        }
+        Ok((
+            resp.fips_rev[0],
+            resp.fips_rev[1] & 0x0000FFFF,
+            (resp.fips_rev[1] & 0xFFFF0000) >> 16,
+            resp.fips_rev[2],
+        ))
     }
 }

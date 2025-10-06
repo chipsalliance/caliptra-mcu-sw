@@ -126,36 +126,14 @@ pub async fn test_get_image_info() {
 
 pub async fn test_get_fw_version() {
     println!("==Starting get FW_VERSION test==");
-    let received_hw_rev = match DeviceState::fw_version(ComponentType::Hw).await {
-        Ok(version) => version,
-        Err(err) => {
-            println!("Failed to get the HW_VERSION. {:?}", err);
-            test_exit(1);
-        }
-    };
-    let received_rom_version = match DeviceState::fw_version(ComponentType::Rom).await {
-        Ok(version) => version,
-        Err(err) => {
-            println!("Failed to get the ROM_VERSION. {:?}", err);
-            test_exit(1);
-        }
-    };
-
-    let received_fmc_version = match DeviceState::fw_version(ComponentType::Fmc).await {
-        Ok(version) => version,
-        Err(err) => {
-            println!("Failed to get the FMC_VERSION. {:?}", err);
-            test_exit(1);
-        }
-    };
-
-    let received_rt_version = match DeviceState::fw_version(ComponentType::Rt).await {
-        Ok(version) => version,
-        Err(err) => {
-            println!("Failed to get the RT_VERSION. {:?}", err);
-            test_exit(1);
-        }
-    };
+    let (received_hw_rev, received_rom_version, received_fmc_version, received_rt_version) =
+        match DeviceState::fw_version().await {
+            Ok(version) => version,
+            Err(err) => {
+                println!("Failed to get the HW_VERSION. {:?}", err);
+                test_exit(1);
+            }
+        };
 
     println!(
         "HW_REV: {:x}, ROM_VERSION: {:x}, FMC_VERSION: {:x}, RT_VERSION: {:x}",
