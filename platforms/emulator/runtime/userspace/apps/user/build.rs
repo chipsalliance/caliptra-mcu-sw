@@ -52,6 +52,7 @@ pub const VENDOR: &str = "UNKNOWN";
 pub const MODEL: &str = "UNKNOWN";
 pub const NUM_FW_COMPONENTS: usize = 0;
 pub const FW_IDS: [u32; 0] = [];
+pub const FW_ID_STRS: [&str; 0] = [];
 "#;
         fs::write(&dest, stub).expect("Failed to write stub soc_env_config.rs");
         println!("cargo:warning=soc_env_config.rs missing at {}; emitted stub (set FW_COMPONENTS_STRICT=1 to make this a build error)", src_file.display());
