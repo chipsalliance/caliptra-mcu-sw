@@ -1,5 +1,15 @@
 // Licensed under the Apache-2.0 license
 
+/// Measurement block to hold the Freeform/Structured manifest data has the
+/// following structure:
+/// _______________________________________________________________________________________________________
+/// | - index: SPDM_MEASUREMENT_MANIFEST_INDEX                                                             |
+/// | - MeasurementSpecification: 01h (DMTF)                                                               |
+/// |           - DMTFSpecMeasurementValueType[6:0]: 04h (Freeform Manifest) / 0x0A (Structured Manifest)  |
+/// |           - DMTFSpecMeasurementValueType[7]  : 1b  (raw bit-stream)                                  |
+/// | - MeasurementSize: 2 bytes (size of manifest in DMTF measurement specification format)               |
+/// | - MeasurementBlock: measurement block (manifest in DMTF measurement specification format)            |
+/// _______________________________________________________________________________________________________|
 extern crate alloc;
 
 use crate::protocol::*;
@@ -450,19 +460,6 @@ impl<'a> SpdmMeasurements<'a> {
             meas_value_type,
             meas_value_size,
         )?;
-
-        // let metadata = DmtfMeasurementBlockMetadata::new(
-        //     meas_info.meas_index,
-        //     meas_value_size as u16,
-        //     meas_info.is_dgst,
-        //     meas_value_type,
-        // )
-        // .ok_or(MeasurementsError::InvalidIndex)?;
-
-        // self.measurement_record.data[offset..offset + MEAS_BLOCK_METADATA_SIZE]
-        //     .copy_from_slice(metadata.as_bytes());
-
-        // self.measurement_record.length += MEAS_BLOCK_METADATA_SIZE + meas_value_size;
 
         // Set current_index/valid so is_valid() reflects the freshly filled record.
         // - For single-block fetches (append == false) mark the record valid for that index so future calls can reuse.

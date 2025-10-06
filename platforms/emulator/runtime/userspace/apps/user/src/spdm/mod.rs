@@ -86,7 +86,7 @@ async fn spdm_mctp_responder() {
     let shared_cert_store = SharedCertStore::new();
 
     let (mut device_pcr_quote, meas_value_info) =
-        device_measurements::pcr_quote::make_pcr_quote_components();
+        device_measurements::pcr_quote::create_manifest_with_pcr_quote();
     let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_pcr_quote);
 
     let mut ctx = match SpdmContext::new(
@@ -158,7 +158,7 @@ async fn spdm_doe_responder() {
     let shared_cert_store = SharedCertStore::new();
 
     let (mut device_pcr_quote, meas_value_info) =
-        device_measurements::pcr_quote::make_pcr_quote_components();
+        device_measurements::pcr_quote::create_manifest_with_pcr_quote();
     let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_pcr_quote);
 
     let mut ctx = match SpdmContext::new(
