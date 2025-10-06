@@ -62,7 +62,7 @@ enum DemoType {
 impl DemoType {
     fn zip(self) -> &'static str {
         match self {
-            DemoType::Spdm => OCPLOCK_DEMO_ZIP, // SPDM_DEMO_ZIP,
+            DemoType::Spdm => SPDM_DEMO_ZIP,
             DemoType::Mlkem => MLKEM_DEMO_ZIP,
         }
     }
@@ -191,6 +191,34 @@ impl std::io::Write for Console {
     }
 }
 
+enum SpdmDemoState {
+    SendGetVersion,
+    SendGetCapabilities,
+    SendGetDigests,
+    Done,
+}
+
+const GET_VERSION: [u8; 4] = [0x10, 0x84, 0x00, 0x00];
+const GET_CAPABILITIES: [u8; 20] = [
+    0x13, 0xE1, 0x00, 0x00, 0x00, // header
+    0,    // ct exponent
+    0, 0, // ext flags
+    0xC6, 0x73, 0, 0, // flags
+    0, 0x12, 0, 0, // data transfer size
+    0, 0x12, 0, 0, // max SPDM msg size,
+];
+const GET_DIGESTS: [u8; 4] = [0x13, 0x81, 00, 00];
+const GET_MEASUREMENTS_HEADER: [u8; 4] = [0x13, 0xe0, 1, 0xff];
+const GET_MEASUREMENTS_FOOTER: [u8; 9] = [0u8; 9];
+
+const MCTP_HEADER: [u8; 5] = [
+    1,    // version 1
+    0,    // destination eid
+    8,    // source eid
+    0xc8, // som + eom + sequence + tag owner
+    5,    // message type = SPDM
+];
+
 struct Demo {
     console_buffer: Arc<RwLock<VecDeque<String>>>,
     host_console: RefCell<Console>,
@@ -200,13 +228,13 @@ struct Demo {
     model_started: bool,
     next_demo: bool,
     i3c_socket: Option<BufferedStream>,
-    sent_vca: bool,
     demos: Vec<DemoType>,
     current_demo_idx: usize,
     i3c_port_idx: usize,
     wait_for_next_demo_until: Option<Instant>,
     pause: bool,
     ticks: u64,
+    spdm_demo_state: Option<SpdmDemoState>,
 }
 
 impl Demo {
@@ -223,13 +251,13 @@ impl Demo {
             model_started: false,
             next_demo: false,
             i3c_socket: None,
-            sent_vca: false,
             demos: vec![DemoType::Spdm, DemoType::Mlkem],
             current_demo_idx: 0,
             i3c_port_idx: 0,
             wait_for_next_demo_until: None,
             pause: false,
             ticks: 0,
+            spdm_demo_state: None,
         }
     }
 
@@ -295,6 +323,9 @@ impl Demo {
 
     fn on_tick(&mut self) -> Result<()> {
         self.ticks += 1;
+        if self.pause {
+            return Ok(());
+        }
         if let Some(wait_for_next_demo_until) = self.wait_for_next_demo_until {
             if Instant::now() < wait_for_next_demo_until {
                 return Ok(());
@@ -306,6 +337,7 @@ impl Demo {
             // TODO: drop current hw model
             // TODO: start next
             self.model_stop()?;
+            self.spdm_demo_state = None;
             self.next_demo = false;
             self.model_started = false;
             self.current_demo_idx = (self.current_demo_idx + 1) % self.demos.len();
@@ -405,32 +437,36 @@ impl Demo {
             let stream = BufferedStream::new(stream);
             self.i3c_socket = Some(stream);
         }
+        if model.cycle_count() < SPDM_BOOT_CYCLES + 1_000_000 {
+            return Ok(());
+        }
+        let i3c_socket = self.i3c_socket.as_mut().unwrap();
+
+        if self.spdm_demo_state.is_none() {
+            // send a version
+            let mut packet = vec![];
+            packet.extend_from_slice(&MCTP_HEADER);
+            packet.extend_from_slice(&GET_VERSION);
+            // I3C send to MCU: [01, 00, 08, c8, 05, 10, 84, 00, 00, fe]
+            //
+            //
+            //                   [01, 08, 00, c0, 05, 10, 04, 00, 00, 00, 02, 00, 12, 00, 13]
+            i3c_socket.send_private_write(addr, packet);
+            writeln!(model.output().logger(), "HOST: I3C send to MCU: VCA")?;
+            self.spdm_demo_state = Some(SpdmDemoState::SendGetVersion);
+            return Ok(());
+        }
 
         // handle I3C for SPDM
-        // TODO: move to state machine for SPDM test
-        if let Some(i3c_socket) = self.i3c_socket.as_mut() {
-            if model.cycle_count() >= SPDM_BOOT_CYCLES + 1_000_000 {
-                if !self.sent_vca {
-                    self.sent_vca = true;
-                    writeln!(model.output().logger(), "HOST: I3C send to MCU: VCA")?;
-                    i3c_socket.send_private_write(
-                        addr,
-                        vec![0x01, 0x00, 0x08, 0xc8, 0x05, 0x10, 0x84, 0x00, 0x00, 0xfe],
-                    );
-                }
-                // I3C send to MCU: [01, 00, 08, c8, 05, 10, 84, 00, 00, fe]
-                //
-                //
-                //                         [01, 08, 00, c0, 05, 10, 04, 00, 00, 00, 02, 00, 12, 00, 13]
-                if let Some(recv) = i3c_socket.receive_private_read(addr) {
-                    writeln!(
-                        model.output().logger(),
-                        "HOST: I3C recv from Caliptra: {:02x?}",
-                        recv
-                    )?;
-                }
-            }
+        if let Some(recv) = i3c_socket.receive_private_read(addr) {
+            writeln!(
+                model.output().logger(),
+                "HOST: I3C recv from Caliptra: {:02x?}",
+                recv
+            )?;
         }
+
+        // TODO: move to state machine for SPDM test
         Ok(())
     }
 
