@@ -201,8 +201,10 @@ pub(crate) async fn async_main<S: Syscalls>() {
     #[cfg(feature = "test-get-device-state")]
     {
         test_get_device_state::test_get_pcr_quote().await;
+        test_get_device_state::test_get_pcrs().await;
         test_get_device_state::test_get_fw_info().await;
         test_get_device_state::test_get_image_info().await;
+        test_get_device_state::test_get_fw_version().await;
         System::exit(0);
     }
 
