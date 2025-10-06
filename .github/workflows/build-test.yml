@@ -102,6 +102,10 @@ jobs:
             --runtime-features test-mctp-capsule-loopback \
             --separate-runtimes
 
+          # The rustc incremental compilation is optimized for a dev loop w/ code edits.
+          # The CI uses sccache to speed up compilation (which already does not work with incremental compilation).
+          # Disable incremental testing to reduce disk usage
+          export CARGO_PROFILE_TEST_INCREMENTAL=false
           export CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip"
           # TODO: remove this if we get larger GitHub runners
           cargo --config "$EXTRA_CARGO_CONFIG" xtask test
