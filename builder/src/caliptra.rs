@@ -243,7 +243,8 @@ impl CaliptraBuilder {
         let model = &self.model;
         let num_fw_components = metadata.len();
         let fw_ids: Vec<u32> = metadata.iter().map(|m| m.fw_id).collect();
-        // fw_ids.sort_unstable(); // Keep deterministic ordering even if metadata order changes upstream.
+        // NOTE: If ordering matters beyond insertion order, sort here.
+        // fw_ids.sort_unstable();
         let mut s = String::new();
         s.push_str("// Licensed under the Apache-2.0 license\n");
         s.push_str("// AUTO-GENERATED FILE. DO NOT EDIT.\n");
@@ -256,12 +257,24 @@ impl CaliptraBuilder {
         ));
         s.push_str("// Alias for code wanting a semantic name focused on IDs specifically.\n");
         s.push_str("pub const NUM_FW_IDS: usize = NUM_FW_COMPONENTS;\n");
+        // Emit two parallel arrays:
+        // 1. Numeric FW IDs (u32) for code needing arithmetic / comparisons.
+        // 2. String FW IDs (hex) for display / protocols wanting string OIDs.
         s.push_str("pub const FW_IDS: [u32; NUM_FW_COMPONENTS] = [");
         for (i, fw_id) in fw_ids.iter().enumerate() {
             if i > 0 {
                 s.push_str(", ");
             }
-            s.push_str(&fw_id.to_string());
+            s.push_str(&format!("0x{:08X}", fw_id));
+        }
+        s.push_str("];\n");
+
+        s.push_str("pub const FW_ID_STRS: [&str; NUM_FW_COMPONENTS] = [");
+        for (i, fw_id) in fw_ids.iter().enumerate() {
+            if i > 0 {
+                s.push_str(", ");
+            }
+            s.push_str(&format!("\"0x{:08X}\"", fw_id));
         }
         s.push_str("];\n");
         s
