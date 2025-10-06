@@ -40,6 +40,8 @@ pub fn create(soc_images: &[ImageCfg], mcu_image: &ImageCfg, output: &str) -> Re
         Some(soc_images.to_vec()),
         Some(mcu_image.clone()),
         None,
+        None,
+        None,
     );
     let path = builder.get_soc_manifest(None)?;
     std::fs::copy(&path, output)?;

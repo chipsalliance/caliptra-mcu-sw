@@ -152,6 +152,8 @@ mod test {
             None,
             None,
             None,
+            None,
+            None,
         );
         let caliptra_rom = std::fs::read(
             builder
@@ -364,6 +366,8 @@ mod test {
                 None,
                 Some(runtime_path.clone()),
                 soc_images,
+                None,
+                None,
                 None,
                 None,
             )
