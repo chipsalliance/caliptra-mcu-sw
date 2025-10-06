@@ -117,8 +117,8 @@ impl McuRootBus {
         let pic = args.pic;
         let rom = Rom::new(std::mem::take(&mut args.rom));
         let uart_irq = pic.register_irq(Self::UART_NOTIF_IRQ);
-        let ram = Ram::new(vec![0; RAM_SIZE as usize]);
-        let rom_sram = Ram::new(vec![0; ROM_DEDICATED_RAM_SIZE as usize]);
+        let ram = Ram::new(vec![0; args.offsets.ram_size as usize]);
+        let rom_sram = Ram::new(vec![0; args.offsets.rom_dedicated_ram_size as usize]);
         let external_test_sram = Ram::new(vec![0; EXTERNAL_TEST_SRAM_SIZE as usize]);
         let direct_read_flash = Ram::new(vec![0; DIRECT_READ_FLASH_SIZE as usize]);
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
