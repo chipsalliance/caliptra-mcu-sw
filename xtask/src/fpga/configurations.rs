@@ -90,6 +90,9 @@ impl<'a> ActionHandler<'a> for CommandExecutor {
     }
 
     fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
+        // Delete the file if it exists. Sometimes the docker build fails silently. This will force
+        // the rsync to fail in those cases.
+        let _ = std::fs::remove_file("caliptra-test-binaries.tar.zst");
         match self {
             Self::Subsystem(sub) => sub.build_test(args),
             Self::CoreOnSubsystem(core) => core.build_test(args),
@@ -153,8 +156,8 @@ impl<'a> ActionHandler<'a> for Subsystem {
         Ok(())
     }
 
-    fn build_test(&self, _args: &'a BuildTestArgs<'a>) -> Result<()> {
-        let mut base_cmd = build_base_docker_command(None::<String>)?;
+    fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
+        let mut base_cmd = build_base_docker_command(args.caliptra_sw)?;
         base_cmd.arg(
                 "(cd /work-dir && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_realtime --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
             );
