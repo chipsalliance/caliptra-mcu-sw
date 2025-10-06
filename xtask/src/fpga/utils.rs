@@ -1,9 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Result};
+use cargo_metadata::MetadataCommand;
 
 use std::{
-    path::Path,
+    path::PathBuf,
     process::{Command, Stdio},
 };
 
@@ -175,9 +176,7 @@ pub fn run_command_extended(args: RunCommandArgs) -> Result<Option<String>> {
 }
 
 /// create a base docker command
-///
-/// `caliptra_sw`: Optional path to `caliptra-sw`
-pub fn build_base_docker_command(caliptra_sw: Option<impl AsRef<Path>>) -> Result<Command> {
+pub fn build_base_docker_command() -> Result<Command> {
     let home = std::env::var("HOME").unwrap();
     let project_root = PROJECT_ROOT.clone();
     let project_root = project_root.display();
@@ -194,9 +193,9 @@ pub fn build_base_docker_command(caliptra_sw: Option<impl AsRef<Path>>) -> Resul
         &format!("-v{home}/.cargo/registry:/root/.cargo/registry"),
         &format!("-v{home}/.cargo/git:/root/.cargo/git"),
     ]);
-    if let Some(caliptra_sw) = caliptra_sw {
-        let caliptra_path = caliptra_sw.as_ref().canonicalize()?;
-        let basename = caliptra_sw.as_ref().file_name().unwrap().to_str().unwrap();
+    if let Some(caliptra_sw) = caliptra_sw_workspace_root() {
+        let caliptra_path = caliptra_sw.canonicalize()?;
+        let basename = caliptra_sw.file_name().unwrap().to_str().unwrap();
         let display = caliptra_path.display();
         cmd.arg(format!("-v{display}:/{basename}"));
     }
@@ -229,4 +228,41 @@ pub fn run_test_suite(
         rsync_file(target_host, "/tmp/junit.xml", ".", true)?;
     }
     Ok(())
+}
+
+/// Checks if any caliptra_sw dependencies are a local path.
+///
+/// If so, returns the Path to the caliptra_sw workspace root.
+pub fn caliptra_sw_workspace_root() -> Option<PathBuf> {
+    let metadata = MetadataCommand::new().exec().unwrap();
+
+    // Look at the workspace dependencies for xtask and find a caliptra-sw crate.
+    // Check if the crate contains a path, that indicates that caliptra-sw is local.
+    //
+    // We have to look at workspace, otherwise `path` may not be set (opposed to looking at the
+    // local xtask dependencies).
+    let caliptra_path = metadata
+        .workspace_packages()
+        .iter()
+        .find(|p| p.name.as_ref() == "xtask")
+        .and_then(|xtask| {
+            xtask
+                .dependencies
+                .iter()
+                .find(|p| p.name == "caliptra-api-types")
+        })
+        .and_then(|caliptra_package| caliptra_package.path.clone());
+
+    match caliptra_path {
+        Some(path) => {
+            // This code should search for the caliptra_sw Cargo.toml, for now hard code the folder
+            // structure.
+            let path = path
+                .ancestors()
+                .nth(2)
+                .expect("caliptra-api-types should be nested two directories in caliptra-sw");
+            Some(path.into())
+        }
+        _ => None,
+    }
 }

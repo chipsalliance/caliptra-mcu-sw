@@ -9,6 +9,7 @@ use configurations::Configuration;
 use mcu_builder::FirmwareBinaries;
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
 use mcu_rom_common::LifecycleControllerState;
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use utils::{
@@ -19,11 +20,16 @@ mod configurations;
 
 mod utils;
 
+#[derive(Default)]
 struct BuildArgs<'a> {
-    caliptra_sw: Option<&'a Path>,
+    // Marker type to preserve lifetime until arguments get re-introduced.
+    _marker: PhantomData<&'a Path>,
 }
+
+#[derive(Default)]
 struct BuildTestArgs<'a> {
-    caliptra_sw: Option<&'a Path>,
+    // Marker type to preserve lifetime until arguments get re-introduced.
+    _marker: PhantomData<&'a Path>,
 }
 struct TestArgs<'a> {
     test_filter: &'a Option<String>,
@@ -90,19 +96,12 @@ pub(crate) enum Fpga {
         /// When set copy firmware to `target_host`
         #[arg(long)]
         target_host: Option<String>,
-
-        /// Local caliptra-sw path. Used in conjunction with the Cargo.toml change.
-        #[arg(long)]
-        caliptra_sw: Option<PathBuf>,
     },
     /// Build FPGA test binaries
     BuildTest {
         /// When copy test binaries to `target_host`
         #[arg(long)]
         target_host: Option<String>,
-        /// Local caliptra-sw path. Used in conjunction with the Cargo.toml change.
-        #[arg(long)]
-        caliptra_sw: Option<PathBuf>,
     },
     /// Run FPGA tests
     Test {
@@ -183,31 +182,21 @@ fn is_module_loaded(module: &str, target_host: Option<&str>) -> Result<bool> {
 pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
     check_host_dependencies()?;
     match args {
-        Fpga::Build {
-            target_host,
-            caliptra_sw,
-        } => {
+        Fpga::Build { target_host } => {
             println!("Building FPGA firmware");
             let config = Configuration::from_cmd(target_host.as_deref())?;
             config
                 .executor()
                 .set_target_host(target_host.as_deref())
-                .build(&BuildArgs {
-                    caliptra_sw: caliptra_sw.as_deref(),
-                })?;
+                .build(&BuildArgs::default())?;
         }
-        Fpga::BuildTest {
-            target_host,
-            caliptra_sw,
-        } => {
+        Fpga::BuildTest { target_host } => {
             println!("Building FPGA tests");
             let config = Configuration::from_cmd(target_host.as_deref())?;
             config
                 .executor()
                 .set_target_host(target_host.as_deref())
-                .build_test(&BuildTestArgs {
-                    caliptra_sw: caliptra_sw.as_deref(),
-                })?;
+                .build_test(&BuildTestArgs::default())?;
         }
         Fpga::Bootstrap {
             target_host,
