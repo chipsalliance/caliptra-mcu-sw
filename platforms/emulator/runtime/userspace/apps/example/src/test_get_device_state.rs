@@ -1,7 +1,8 @@
 // Licensed under the Apache-2.0 license
 use caliptra_api::mailbox::{FwInfoResp, GetImageInfoResp};
 use core::fmt::Write;
-use libapi_caliptra::evidence::device_state::DeviceState;
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use libapi_caliptra::evidence::device_state::*;
 use libapi_caliptra::evidence::pcr_quote::{PcrQuote, PCR_QUOTE_BUFFER_SIZE};
 use romtime::{println, test_exit};
 
@@ -63,6 +64,33 @@ async fn test_pcr_quote_with_ecc_signature() {
     println!("PCR Quote ECC signature test success");
 }
 
+pub async fn test_get_pcrs() {
+    println!("==Starting get PCRs test==");
+    let mut pcr = [0u8; SHA384_HASH_SIZE]; // SHA384 hash size
+    for i in 0..32 {
+        match PcrQuote::get_pcr(i, &mut pcr).await {
+            Ok(()) => {
+                println!("PCR[{}]: {:x?}", i, &pcr);
+            }
+            Err(err) => {
+                println!("Failed to get PCR[{}]: {:?}", i, err);
+                test_exit(1);
+            }
+        }
+    }
+
+    match PcrQuote::get_pcr(32, &mut pcr).await {
+        Ok(()) => {
+            println!("Failed! Should not get PCR[32]");
+            test_exit(1);
+        }
+        Err(_) => {
+            println!("Successfully detected invalid PCR index 32\n");
+        }
+    }
+    println!("==Get PCRs test success==");
+}
+
 pub async fn test_get_fw_info() {
     println!("==Starting get FW_INFO test==");
     let fw_info = match DeviceState::fw_info().await {
@@ -94,4 +122,44 @@ pub async fn test_get_image_info() {
         mcu_fw_id, mcu_image_info
     );
     println!("==Get IMAGE_INFO test success==");
+}
+
+pub async fn test_get_fw_version() {
+    println!("==Starting get FW_VERSION test==");
+    let received_hw_rev = match DeviceState::fw_version(ComponentType::Hw).await {
+        Ok(version) => version,
+        Err(err) => {
+            println!("Failed to get the HW_VERSION. {:?}", err);
+            test_exit(1);
+        }
+    };
+    let received_rom_version = match DeviceState::fw_version(ComponentType::Rom).await {
+        Ok(version) => version,
+        Err(err) => {
+            println!("Failed to get the ROM_VERSION. {:?}", err);
+            test_exit(1);
+        }
+    };
+
+    let received_fmc_version = match DeviceState::fw_version(ComponentType::Fmc).await {
+        Ok(version) => version,
+        Err(err) => {
+            println!("Failed to get the FMC_VERSION. {:?}", err);
+            test_exit(1);
+        }
+    };
+
+    let received_rt_version = match DeviceState::fw_version(ComponentType::Rt).await {
+        Ok(version) => version,
+        Err(err) => {
+            println!("Failed to get the RT_VERSION. {:?}", err);
+            test_exit(1);
+        }
+    };
+
+    println!(
+        "HW_REV: {:x}, ROM_VERSION: {:x}, FMC_VERSION: {:x}, RT_VERSION: {:x}",
+        received_hw_rev, received_rom_version, received_fmc_version, received_rt_version
+    );
+    println!("==Get FW_VERSION test success==");
 }

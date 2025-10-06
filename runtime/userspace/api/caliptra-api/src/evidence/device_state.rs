@@ -3,11 +3,18 @@
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::execute_mailbox_cmd;
 use caliptra_api::mailbox::{
-    CommandId, FwInfoResp, GetImageInfoReq, GetImageInfoResp, MailboxReqHeader,
+    CommandId, FipsVersionResp, FwInfoResp, GetImageInfoReq, GetImageInfoResp, MailboxReqHeader,
 };
 use core::mem::size_of;
 use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
+
+pub enum ComponentType {
+    Hw,
+    Rom,
+    Fmc,
+    Rt,
+}
 
 pub struct DeviceState;
 
@@ -62,5 +69,34 @@ impl DeviceState {
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
         Ok(resp)
+    }
+
+    pub async fn fw_version(component_type: ComponentType) -> CaliptraApiResult<u32> {
+        let mailbox = Mailbox::new();
+        let mut req = MailboxReqHeader::default();
+        let req_bytes = req.as_mut_bytes();
+
+        let mut rsp_bytes = [0u8; size_of::<FipsVersionResp>()];
+
+        let size = execute_mailbox_cmd(
+            &mailbox,
+            u32::from(CommandId::VERSION),
+            req_bytes,
+            &mut rsp_bytes,
+        )
+        .await?;
+        if size != size_of::<FipsVersionResp>() {
+            return Err(CaliptraApiError::InvalidResponse);
+        }
+
+        let resp = FipsVersionResp::ref_from_bytes(&rsp_bytes)
+            .map_err(|_| CaliptraApiError::InvalidResponse)?;
+
+        match component_type {
+            ComponentType::Hw => Ok(resp.fips_rev[0]),
+            ComponentType::Rom => Ok(resp.fips_rev[1] & 0x0000FFFF),
+            ComponentType::Fmc => Ok((resp.fips_rev[1] & 0xFFFF0000) >> 16),
+            ComponentType::Rt => Ok(resp.fips_rev[2]),
+        }
     }
 }
