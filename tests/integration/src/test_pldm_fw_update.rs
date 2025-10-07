@@ -55,6 +55,36 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+
+    #[test]
+    fn test_soc_streaming_boot() {
+        let feature = "test-pldm-streaming-boot";
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let feature = feature.replace("_", "-");
+        let mut hw = start_runtime_hw_model(Some(&feature), Some(65534));
+
+        hw.start_i3c_controller();
+
+        let pldm_transport =
+            MctpTransport::new(hw.i3c_port().unwrap(), hw.i3c_address().unwrap().into());
+        let pldm_socket = pldm_transport
+            .create_socket(EndpointId(8), EndpointId(0))
+            .unwrap();
+        PldmFwUpdateTest::run(pldm_socket);
+
+        println!("[xs debug]Starting test pldm streaming boot");
+
+        let test = finish_runtime_hw_model(&mut hw);
+
+        assert_eq!(0, test);
+
+        // force the compiler to keep the lock
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+
     pub const DEVICE_UUID: [u8; 16] = [
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
         0x10,

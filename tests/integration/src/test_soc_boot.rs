@@ -784,8 +784,8 @@ mod test {
         test_soc_boot(true);
     }
 
-    #[test]
-    fn test_streaming_soc_boot() {
-        test_soc_boot(false);
-    }
+    //#[test]
+    //fn test_streaming_soc_boot() {
+    //    test_soc_boot(false);
+    //}
 }
