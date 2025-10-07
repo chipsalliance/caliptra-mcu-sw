@@ -23,6 +23,7 @@ libtock_runtime.workspace = true
 pldm-common.workspace = true
 pldm-lib.workspace = true
 zerocopy.workspace = true
+ocp-eat.workspace = true
 
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]

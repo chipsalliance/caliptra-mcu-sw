@@ -19,6 +19,7 @@ use libtockasync::TockExecutor;
 mod firmware_update;
 mod image_loader;
 mod mcu_mbox;
+mod soc_env;
 mod spdm;
 
 #[cfg(target_arch = "riscv32")]

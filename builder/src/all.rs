@@ -228,6 +228,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         None,
         None,
         None,
+        None,
+        None,
     );
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_fw = caliptra_builder.get_caliptra_fw()?;
@@ -260,6 +262,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             None,
             Some(vendor_pk_hash.clone()),
             Some(feature_runtime_file.path().to_path_buf()),
+            None,
+            None,
             None,
             None,
             None,

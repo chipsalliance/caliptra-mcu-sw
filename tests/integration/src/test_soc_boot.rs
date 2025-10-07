@@ -672,6 +672,8 @@ mod test {
             Some(soc_images.clone()),
             None,
             None,
+            None,
+            None,
         );
 
         // Build Caliptra firmware
