@@ -581,11 +581,11 @@ impl Demo {
                 let mut measurements = vec![];
                 self.buffered_packets.reverse();
                 let initial = self.buffered_packets.pop().unwrap();
-                // remove MCTP + SPDM header and PEC
-                measurements.extend_from_slice(&initial[5 + 8..initial.len() - 1]);
+                // remove MCTP + SPDM header
+                measurements.extend_from_slice(&initial[5 + 8..]);
                 while let Some(pkt) = self.buffered_packets.pop() {
-                    // remove MCTP header and PEC
-                    measurements.extend_from_slice(&pkt[5..pkt.len() - 1]);
+                    // remove MCTP header
+                    measurements.extend_from_slice(&pkt[4..]);
                 }
                 writeln!(
                     model.output().logger(),
