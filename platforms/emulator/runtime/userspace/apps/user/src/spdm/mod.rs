@@ -182,9 +182,7 @@ async fn spdm_doe_responder() {
     loop {
         let result = ctx.process_message(&mut msg_buffer).await;
         match result {
-            Ok(_) => {
-                writeln!(cw, "SPDM_DOE_RESPONDER: Process message successfully").unwrap();
-            }
+            Ok(_) => {}
             Err(e) => {
                 writeln!(cw, "SPDM_DOE_RESPONDER: Process message failed: {:?}", e).unwrap();
             }

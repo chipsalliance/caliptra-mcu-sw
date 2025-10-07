@@ -106,15 +106,6 @@ impl<'a> SpdmContext<'a> {
         // Process message
         match self.handle_request(msg_buf).await {
             Ok(()) => {
-                let mut cw = Console::<DefaultSyscalls>::writer();
-                writeln!(
-                    cw,
-                    "SPDM_MCTP_RESPONDER: Process message sending response {} {}",
-                    msg_buf.data_len(),
-                    msg_buf.msg_len()
-                )
-                .unwrap();
-
                 self.send_response(msg_buf, secure).await?;
             }
             Err((rsp, command_error)) => {
@@ -200,19 +191,7 @@ impl<'a> SpdmContext<'a> {
     }
 
     async fn send_response(&mut self, resp: &mut MessageBuf<'a>, secure: bool) -> SpdmResult<()> {
-        let mut cw = Console::<DefaultSyscalls>::writer();
-        writeln!(
-            cw,
-            "SPDM_MCTP_RESPONDER: Sending secure response of size (about to say)"
-        )
-        .unwrap();
         if secure {
-            writeln!(
-                cw,
-                "SPDM_MCTP_RESPONDER: Sending secure response of size: {}",
-                resp.data_len()
-            )
-            .unwrap();
             let mut secure_message = [0u8; MAX_SPDM_RESPONDER_BUF_SIZE];
             let mut secure_message_buf = MessageBuf::new(&mut secure_message);
             let app_data_len = resp.data_len();
@@ -230,12 +209,6 @@ impl<'a> SpdmContext<'a> {
                 .map_err(SpdmError::Transport)
         } else {
             // Send response without encryption
-            writeln!(
-                cw,
-                "SPDM_MCTP_RESPONDER: Sending response of size: {}",
-                resp.data_len()
-            )
-            .unwrap();
             self.transport
                 .send_response(resp, secure)
                 .await
