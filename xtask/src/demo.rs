@@ -610,6 +610,8 @@ impl Demo {
                 let mut host_console = self.host_console.borrow_mut();
 
                 let measurement_record = measurements[4..4 + record_len].to_vec();
+                // remove DMTF header
+                let eat_token = measurement_record[3..].to_vec();
 
                 // validate the nonce
                 let returned_nonce = measurements[4 + record_len..4 + record_len + 32].to_vec();
@@ -619,7 +621,7 @@ impl Demo {
                     format!("Nonce: {:02x?}", &returned_nonce),
                 )?;
 
-                self.eat_token = Some(measurement_record);
+                self.eat_token = Some(eat_token);
 
                 std::fs::write("/tmp/eat_token.cbor", &self.eat_token.as_ref().unwrap())?;
                 writeln!(
