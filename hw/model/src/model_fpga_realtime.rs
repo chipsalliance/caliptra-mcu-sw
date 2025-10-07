@@ -23,6 +23,7 @@ use mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
 use mcu_testing_common::MCU_RUNNING;
+use std::collections::VecDeque;
 use std::fmt::Write as _;
 use std::fmt::Write;
 use std::marker::PhantomData;
@@ -90,7 +91,7 @@ pub struct ModelFpgaRealtime {
     i3c_port: Option<u16>,
     i3c_handle: Option<JoinHandle<()>>,
     i3c_tx: Option<mpsc::Sender<I3cBusResponse>>,
-    i3c_next_private_read_len: Option<u16>,
+    i3c_next_private_read_len: VecDeque<u16>,
     printed_ocp_lock_key_release: bool,
 }
 
@@ -217,31 +218,9 @@ impl ModelFpgaRealtime {
             return;
         };
 
-        // check if we should do attempt a private read
-        if let Some(private_read_len) = self.i3c_next_private_read_len.take() {
-            match self.base.i3c_controller().read(private_read_len) {
-                Ok(data) => {
-                    //writeln!(eoutput(), "Got I3C private read of len {}", data.len()).unwrap();
-                    let data = data[0..private_read_len as usize].to_vec();
-                    // forward the private read
-                    let mut resp = ResponseDescriptor::default();
-                    resp.set_data_length(data.len() as u16);
-                    tx.send(I3cBusResponse {
-                        addr: self.i3c_address().unwrap_or_default().into(),
-                        ibi: None,
-                        resp: I3cTcriResponseXfer { resp, data },
-                    })
-                    .expect("Failed to forward I3C private read response to channel");
-                }
-                Err(e) => {
-                    writeln!(eoutput(), "Error receiving I3C private read: {:?}", e).unwrap();
-                    // retry
-                    self.i3c_next_private_read_len = Some(private_read_len);
-                }
-            }
-        } else if self.base.i3c_controller().ibi_ready() {
+        if self.base.i3c_controller().ibi_ready() {
             // check if we need to read any I3C packets from Caliptra
-            //writeln!(eoutput(), "I3C IBI ready").unwrap();
+            writeln!(eoutput(), "I3C IBI ready").unwrap();
             match self.base.i3c_controller().ibi_recv(None) {
                 Ok(ibi) => {
                     // process each IBI in the buffer (each is 4 bytes)
@@ -265,18 +244,47 @@ impl ModelFpgaRealtime {
                             },
                         })
                         .expect("Failed to forward I3C IBI response to channel");
-                        self.i3c_next_private_read_len =
-                            Some(u16::from_be_bytes(ibi[1..3].try_into().unwrap()));
-                        // writeln!(
-                        //     eoutput(),
-                        //     "Expected I3C packet of len {}",
-                        //     self.i3c_next_private_read_len.unwrap()
-                        // )
-                        // .unwrap();
+                        self.i3c_next_private_read_len
+                            .push_back(u16::from_be_bytes(ibi[1..3].try_into().unwrap()));
+                        writeln!(
+                            eoutput(),
+                            "Expected I3C packet of len {}",
+                            self.i3c_next_private_read_len.back().unwrap()
+                        )
+                        .unwrap();
                     }
                 }
                 Err(e) => {
                     writeln!(eoutput(), "Error receiving I3C IBI: {:?}", e).unwrap();
+                }
+            }
+        }
+        // check if we should do attempt a private read
+        if !self.i3c_next_private_read_len.is_empty() {
+            let private_read_len = self.i3c_next_private_read_len.pop_front().unwrap();
+            match self.base.i3c_controller().read(private_read_len) {
+                Ok(data) => {
+                    writeln!(eoutput(), "Got I3C private read of len {}", data.len()).unwrap();
+                    let data = data[0..private_read_len as usize].to_vec();
+                    // forward the private read
+                    let mut resp = ResponseDescriptor::default();
+                    resp.set_data_length(data.len() as u16);
+                    tx.send(I3cBusResponse {
+                        addr: self.i3c_address().unwrap_or_default().into(),
+                        ibi: None,
+                        resp: I3cTcriResponseXfer { resp, data },
+                    })
+                    .expect("Failed to forward I3C private read response to channel");
+                }
+                Err(e) => {
+                    writeln!(
+                        eoutput(),
+                        "Error receiving I3C private read: {:?}; will retry",
+                        e
+                    )
+                    .unwrap();
+                    // retry
+                    self.i3c_next_private_read_len.push_front(private_read_len);
                 }
             }
         }
@@ -446,7 +454,7 @@ impl McuHwModel for ModelFpgaRealtime {
             i3c_port: params.i3c_port,
             i3c_handle,
             i3c_tx,
-            i3c_next_private_read_len: None,
+            i3c_next_private_read_len: VecDeque::new(),
             printed_ocp_lock_key_release: false,
         };
 

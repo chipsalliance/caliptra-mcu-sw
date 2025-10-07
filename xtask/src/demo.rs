@@ -48,7 +48,7 @@ const OCPLOCK_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
 const PAUSE_START_DEMO: Duration = Duration::from_secs(5);
 const PAUSE_BETWEEN_DEMOS: Duration = Duration::from_secs(10);
 
-const SPDM_BOOT_CYCLES: u64 = 500_000_000;
+const SPDM_BOOT_CYCLES: u64 = 425_000_000;
 
 const I3C_PORTS: [u16; 5] = [65530, 65531, 65532, 65533, 65534];
 
@@ -71,7 +71,7 @@ impl DemoType {
         match self {
             DemoType::Spdm => {
                 if FPGA {
-                    800_000_000
+                    10_000_000_000
                 } else {
                     200_000_000
                 }
@@ -572,7 +572,7 @@ impl Demo {
                     model.output().logger(),
                     "HOST: I3C send to MCU: GET_MEASUREMENTS"
                 )?;
-                self.expect_packets = 6;
+                self.expect_packets = 32;
             }
             SpdmDemoState::SentGetMeasurements => {
                 let mut measurements = vec![];
