@@ -5,6 +5,7 @@ mod device_cert_store;
 mod device_measurements;
 mod endorsement_certs;
 
+use crate::spdm::device_measurements::ocp_eat::init_target_env_claims;
 use core::fmt::Write;
 use device_cert_store::{initialize_cert_store, SharedCertStore};
 use embassy_executor::Spawner;
@@ -46,6 +47,9 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
         return;
     }
 
+    // initialize target environment for claims
+    init_target_env_claims();
+
     if let Err(e) = spawner.spawn(spdm_mctp_responder()) {
         writeln!(
             console_writer,
@@ -85,9 +89,10 @@ async fn spdm_mctp_responder() {
     // Create a wrapper for the global certificate store
     let shared_cert_store = SharedCertStore::new();
 
-    let (mut device_pcr_quote, meas_value_info) =
-        device_measurements::pcr_quote::create_manifest_with_pcr_quote();
-    let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_pcr_quote);
+    // Measurements in OCP EAT format
+    let (mut device_ocp_eat, meas_value_info) =
+        device_measurements::ocp_eat::create_manifest_with_ocp_eat();
+    let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_ocp_eat);
 
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
@@ -157,6 +162,7 @@ async fn spdm_doe_responder() {
     // Create a wrapper for the global certificate store
     let shared_cert_store = SharedCertStore::new();
 
+    // Measurements in PCR Quote format
     let (mut device_pcr_quote, meas_value_info) =
         device_measurements::pcr_quote::create_manifest_with_pcr_quote();
     let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_pcr_quote);
