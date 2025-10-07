@@ -36,6 +36,7 @@ Abstract:
 use crate::i3c::{DynamicI3cAddress, ReguDataTransferCommand};
 use crate::i3c_socket_server::{IncomingHeader, OutgoingHeader, CRC8_SMBUS};
 use crate::{wait_for_runtime_start, MCU_RUNNING};
+use caliptra_emu_periph::output;
 use std::collections::VecDeque;
 use std::fmt::Write as _;
 use std::io::{ErrorKind, Read, Write as _};
@@ -164,12 +165,14 @@ impl BufferedStream {
                 let header: OutgoingHeader = transmute!(out_header_bytes);
                 let desc = header.response_descriptor;
                 let data_len = desc.data_length() as usize;
-                writeln!(
-                    caliptra_emu_periph::output(),
-                    "Receiving I3C packet len {}",
-                    data_len
-                )
-                .unwrap();
+                if data_len != 0 {
+                    writeln!(
+                        caliptra_emu_periph::output(),
+                        "Receiving I3C packet len {}",
+                        data_len
+                    )
+                    .unwrap();
+                }
                 let mut data = vec![0u8; data_len];
                 self.stream.set_nonblocking(false).unwrap();
                 self.stream
@@ -179,6 +182,13 @@ impl BufferedStream {
                 if header.from_addr == target_addr {
                     Some(Packet { header, data })
                 } else {
+                    writeln!(
+                        caliptra_emu_periph::output(),
+                        "Dropping because addrs {:x} {:x}",
+                        header.from_addr,
+                        target_addr
+                    )
+                    .unwrap();
                     None
                 }
             }
@@ -245,17 +255,17 @@ impl BufferedStream {
         match packet.or_else(|| self.read_packet(target_addr)) {
             Some(Packet { data, .. }) => {
                 if data.is_empty() {
-                    writeln!(caliptra_emu_periph::output(), "Received empty packet",).unwrap();
-
+                    //writeln!(caliptra_emu_periph::output(), "Received empty packet",).unwrap();
                     return None;
                 }
                 let pec = calculate_crc8((target_addr << 1) | 1, &data[..data.len() - 1]);
                 if pec != data[data.len() - 1] {
-                    // println!(
-                    //     "Received data with invalid CRC8: calclulated {:X} != received {:X}",
-                    //     pec,
-                    //     data[data.len() - 1]
-                    // );
+                    writeln!(
+                        output(),
+                        "Received data with invalid CRC8: calclulated {:02x} != received {:02x}",
+                        pec,
+                        data[data.len() - 1]
+                    );
                     return None;
                 }
                 Some(data[..data.len() - 1].to_vec())
