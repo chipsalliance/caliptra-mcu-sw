@@ -477,8 +477,7 @@ impl McuHwModel for ModelFpgaRealtime {
     }
 
     fn warm_reset(&mut self) {
-        todo!("Update caliptra-sw to allow calling warm reset with the FPGA");
-        // self.base.warm_reset()
+        self.base.warm_reset()
     }
 }
 
