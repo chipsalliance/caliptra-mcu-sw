@@ -267,6 +267,8 @@ struct Demo {
     expect_packets: usize,
     got_packets: usize,
     buffered_packets: Vec<Vec<u8>>,
+    expected_nonce: Option<Vec<u8>>,
+    eat_token: Option<Vec<u8>>,
 }
 
 impl Demo {
@@ -293,6 +295,8 @@ impl Demo {
             expect_packets: 0,
             got_packets: 0,
             buffered_packets: vec![],
+            expected_nonce: None,
+            eat_token: None,
         }
     }
 
@@ -373,6 +377,7 @@ impl Demo {
             // TODO: start next
             self.model_stop()?;
             self.spdm_demo_state = None;
+            self.expected_nonce = None;
             self.next_demo = false;
             self.model_started = false;
             self.current_demo_idx = (self.current_demo_idx + 1) % self.demos.len();
@@ -479,15 +484,15 @@ impl Demo {
 
         if self.spdm_demo_state.is_none() {
             // send a version
+            writeln!(self.host_console.borrow_mut(), "Requesting EAT")?;
             let mut packet = vec![];
             packet.extend_from_slice(&MCTP_HEADER);
             packet.extend_from_slice(&GET_VERSION);
-            // I3C send to MCU: [01, 00, 08, c8, 05, 10, 84, 00, 00, fe]
-            //
-            //
-            //                   [01, 08, 00, c0, 05, 10, 04, 00, 00, 00, 02, 00, 12, 00, 13]
             i3c_socket.send_private_write(addr, packet);
-            writeln!(model.output().logger(), "HOST: I3C send to MCU: VCA")?;
+            writeln!(
+                model.output().logger(),
+                "HOST: I3C send to MCU: GET_VERSION"
+            )?;
             self.spdm_demo_state = Some(SpdmDemoState::SentGetVersion);
             self.expect_packets = 1;
             self.got_packets = 0;
@@ -563,8 +568,9 @@ impl Demo {
                 packet.extend_from_slice(&MCTP_HEADER);
                 packet.extend_from_slice(&GET_MEASUREMENTS_HEADER);
                 let mut nonce = [0u8; 32];
-                nonce[..8].copy_from_slice(&model.cycle_count().to_be_bytes());
+                nonce[..8].copy_from_slice(&model.cycle_count().to_le_bytes());
                 packet.extend_from_slice(&nonce);
+                self.expected_nonce = Some(nonce.to_vec());
                 packet.extend_from_slice(&GET_MEASUREMENTS_FOOTER);
                 i3c_socket.send_private_write(addr, packet);
                 self.spdm_demo_state = Some(SpdmDemoState::SentGetMeasurements);
@@ -589,13 +595,50 @@ impl Demo {
                     "Measurements packets: {:02x?}",
                     measurements
                 )?;
-                // validate the nonce
-                let measurement_len = u16::from_be_bytes(initial[11..13].try_into().unwrap());
+                let measurement_len =
+                    u16::from_le_bytes(initial[5 + 5..5 + 5 + 2].try_into().unwrap()) as usize;
+
+                let record_len =
+                    u16::from_le_bytes(measurements[2..4].try_into().unwrap()) as usize;
                 writeln!(
                     model.output().logger(),
-                    "Measurement length = {}, expected length = {}",
+                    "Measurement length = {}, expected length = {}, record len = {}",
                     measurements.len(),
-                    measurement_len
+                    measurement_len,
+                    record_len
+                )?;
+
+                let mut host_console = self.host_console.borrow_mut();
+
+                // validate the nonce
+                let returned_nonce = measurements[4 + record_len..4 + record_len + 32].to_vec();
+                writeln!(
+                    host_console,
+                    "{}",
+                    format!(
+                        "Validating nonce, expected: {:02x?}",
+                        self.expected_nonce.as_ref().unwrap(),
+                    ),
+                )?;
+                writeln!(
+                    host_console,
+                    "{}",
+                    format!("Validating nonce, returned: {:02x?}", &returned_nonce),
+                )?;
+
+                if self.expected_nonce.as_ref().unwrap() == &returned_nonce {
+                    writeln!(host_console, "Nonce matches")?;
+                } else {
+                    writeln!(host_console, "Nonce does *NOT* match!")?;
+                }
+                self.eat_token = Some(measurements[4..4 + record_len].to_vec());
+                writeln!(
+                    host_console,
+                    "{}",
+                    format!(
+                        "Raw EAT token: {:02x?}...",
+                        &self.eat_token.as_ref().unwrap()[..16]
+                    )
                 )?;
 
                 self.spdm_demo_state = Some(SpdmDemoState::Done);
@@ -698,7 +741,7 @@ impl Widget for &mut Demo {
         let [header_area, gauge_area, consoles_area, footer_area] = layout.areas(area);
 
         let [console_area, host_console_area] =
-            Layout::horizontal([Constraint::Percentage(70), Constraint::Percentage(30)])
+            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .areas(consoles_area);
 
         render_header(self.current_demo().title(), header_area, buf);

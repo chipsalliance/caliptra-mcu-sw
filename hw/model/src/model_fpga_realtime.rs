@@ -214,53 +214,65 @@ impl ModelFpgaRealtime {
 
     fn handle_i3c(&mut self) {
         const MCTP_MDB: u8 = 0xae;
-        let Some(tx) = self.i3c_tx.as_ref() else {
-            return;
-        };
+        {
+            let Some(tx) = self.i3c_tx.as_ref() else {
+                return;
+            };
 
-        if self.base.i3c_controller().ibi_ready() {
-            // check if we need to read any I3C packets from Caliptra
-            writeln!(eoutput(), "I3C IBI ready").unwrap();
-            match self.base.i3c_controller().ibi_recv(None) {
-                Ok(ibi) => {
-                    // process each IBI in the buffer (each is 4 bytes)
-                    for ibi in ibi.chunks(4) {
-                        if ibi.len() < 4 || ibi[0] != MCTP_MDB {
+            if self.base.i3c_controller().ibi_ready() {
+                // check if we need to read any I3C packets from Caliptra
+                writeln!(eoutput(), "I3C IBI ready").unwrap();
+                match self.base.i3c_controller().ibi_recv(None) {
+                    Ok(ibi) => {
+                        // process each IBI in the buffer (each is 4 bytes)
+                        for ibi in ibi.chunks(4) {
+                            if ibi.len() < 4 || ibi[0] != MCTP_MDB {
+                                writeln!(
+                                    eoutput(),
+                                    "Ignoring unexpected I3C IBI received: {:02x?}",
+                                    ibi
+                                )
+                                .unwrap();
+                                continue;
+                            }
+                            // forward the IBI
+                            tx.send(I3cBusResponse {
+                                addr: self.i3c_address().unwrap_or_default().into(),
+                                ibi: Some(MCTP_MDB),
+                                resp: I3cTcriResponseXfer {
+                                    resp: ResponseDescriptor::default(),
+                                    data: vec![],
+                                },
+                            })
+                            .expect("Failed to forward I3C IBI response to channel");
+                            self.i3c_next_private_read_len
+                                .push_back(u16::from_be_bytes(ibi[1..3].try_into().unwrap()));
                             writeln!(
                                 eoutput(),
-                                "Ignoring unexpected I3C IBI received: {:02x?}",
-                                ibi
+                                "Expected I3C packet of len {}",
+                                self.i3c_next_private_read_len.back().unwrap()
                             )
                             .unwrap();
-                            continue;
                         }
-                        // forward the IBI
-                        tx.send(I3cBusResponse {
-                            addr: self.i3c_address().unwrap_or_default().into(),
-                            ibi: Some(MCTP_MDB),
-                            resp: I3cTcriResponseXfer {
-                                resp: ResponseDescriptor::default(),
-                                data: vec![],
-                            },
-                        })
-                        .expect("Failed to forward I3C IBI response to channel");
-                        self.i3c_next_private_read_len
-                            .push_back(u16::from_be_bytes(ibi[1..3].try_into().unwrap()));
-                        writeln!(
-                            eoutput(),
-                            "Expected I3C packet of len {}",
-                            self.i3c_next_private_read_len.back().unwrap()
-                        )
-                        .unwrap();
                     }
-                }
-                Err(e) => {
-                    writeln!(eoutput(), "Error receiving I3C IBI: {:?}", e).unwrap();
+                    Err(e) => {
+                        writeln!(eoutput(), "Error receiving I3C IBI: {:?}", e).unwrap();
+                    }
                 }
             }
         }
+
         // check if we should do attempt a private read
-        if !self.i3c_next_private_read_len.is_empty() {
+        while !self.i3c_next_private_read_len.is_empty() {
+            // // unclear why, but it helps if we give the I3C time to read the full packet
+            // // 256 bytes = 2048 bits * 9/8 @ 12.5 Mbps = 184.32 us
+            // // 184.32 us @ 20 MHz = 3686.4 cycles
+            // // Wait a little extra to be safe.
+            // let start = self.cycle_count();
+            // while self.cycle_count() - start < 4_000 {
+            //     std::thread::sleep(Duration::from_micros(1));
+            // }
+            let tx = self.i3c_tx.as_ref().unwrap();
             let private_read_len = self.i3c_next_private_read_len.pop_front().unwrap();
             match self.base.i3c_controller().read(private_read_len) {
                 Ok(data) => {
