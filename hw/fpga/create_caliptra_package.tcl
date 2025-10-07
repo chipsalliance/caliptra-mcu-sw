@@ -106,6 +106,12 @@ exec sed -i {s/module /(* DONT_TOUCH = "yes" *)\nmodule /g} $outputDir/caliptra_
 remove_files [ glob $caliptrartlDir/src/caliptra_prim_generic/rtl/caliptra_prim_generic_flop.sv ]
 add_files $outputDir/caliptra_prim_generic_flop.sv
 
+# Set DONT_TOUCH to prevent https://github.com/chipsalliance/caliptra-ss/issues/778
+file copy [ glob $ssrtlDir/src/fuse_ctrl/rtl/otp_ctrl.sv ] $outputDir/otp_ctrl.sv
+exec sed -i {s/logic \[NumAgents-1:0\]        part_otp_arb_req/(* keep = "true" *) logic [NumAgents-1:0]        part_otp_arb_req/g} $outputDir/otp_ctrl.sv
+remove_files [ glob $ssrtlDir/src/fuse_ctrl/rtl/otp_ctrl.sv ]
+add_files $outputDir/otp_ctrl.sv
+
 # Mark all Verilog sources as SystemVerilog because some of them have SystemVerilog syntax.
 set_property file_type SystemVerilog [get_files *.v]
 
