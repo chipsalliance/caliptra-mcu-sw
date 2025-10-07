@@ -735,16 +735,7 @@ pub unsafe fn main() {
         debug!("{:?}", err);
     });
 
-    #[cfg(any(
-        feature = "test-flash-ctrl-read-write-page",
-        feature = "test-flash-ctrl-erase-page",
-        feature = "test-flash-storage-read-write",
-        feature = "test-flash-storage-erase",
-        feature = "test-log-flash-linear",
-        feature = "test-log-flash-circular",
-        feature = "test-mcu-mbox",
-        feature = "test-mcu-mbox-soc-requester-loopback",
-    ))]
+    // for tests useage
     {
         PLATFORM = Some(veer);
         MAIN_CAP = Some(&create_capability!(capabilities::MainLoopCapability));
@@ -801,6 +792,13 @@ pub unsafe fn main() {
         debug!("Executing test-mcu-mbox-soc-requester-loopback");
         crate::tests::mcu_mbox_driver_loopback_test::test_mcu_mbox_soc_requester_loopback();
         None
+    } else if cfg!(feature = "test-mm-flash-ctrl") {
+        debug!("[xs debug]Executing test-mm-flash-ctrl");
+        crate::tests::mm_flash_ctrl_test::test_flash_ctrl_erase_page();
+        crate::tests::mm_flash_ctrl_test::test_flash_ctrl_read_write_page();
+        crate::tests::mm_flash_storage_test::test_flash_storage_erase();
+        crate::tests::mm_flash_storage_test::test_flash_storage_read_write();
+        Some(0)
     } else {
         None
     };

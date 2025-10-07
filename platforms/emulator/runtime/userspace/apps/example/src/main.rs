@@ -271,6 +271,17 @@ pub(crate) async fn async_main<S: Syscalls>() {
         System::exit(0);
     }
 
+    #[cfg(feature = "test-mm-flash-ctrl")]
+    {
+        writeln!(
+            console_writer,
+            "[xs debug]PLACEHOLDER Running mm_flash_ctrl test"
+        )
+        .unwrap();
+
+        System::exit(0);
+    }
+
     writeln!(console_writer, "app finished").unwrap();
 }
 

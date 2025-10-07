@@ -7,5 +7,6 @@ pub mod doe_util;
 pub mod emulator_mcu_mailbox_test;
 pub mod mctp_ctrl_cmd;
 pub mod mctp_user_loopback;
+pub mod mm_flash_ctrl_test;
 pub mod pldm_request_response_test;
-pub mod spdm_responder_validator;
+pub mod spdm_responder_validator; // mcu mailbox based flash controller test

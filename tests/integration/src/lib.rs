@@ -562,6 +562,8 @@ mod test {
 
     run_test!(test_warm_reset, example_app);
 
+    run_test!(test_mm_flash_ctrl);
+
     /// This tests a full active mode boot run through with Caliptra, including
     /// loading MCU's firmware from Caliptra over the recovery interface.
     #[test]

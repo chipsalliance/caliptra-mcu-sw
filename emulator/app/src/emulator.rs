@@ -734,6 +734,7 @@ impl Emulator {
             feature = "test-mcu-mbox-soc-requester-loopback",
             feature = "test-mcu-mbox-usermode",
             feature = "test-mcu-mbox-cmds",
+            feature = "test-mm-flash-ctrl",
         ))]
         let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
         let mci = Mci::new(
@@ -851,6 +852,12 @@ impl Emulator {
             let transport = McuMailboxTransport::new(ext_mcu_mailbox0);
             let test = crate::tests::emulator_mcu_mailbox_test::RequestResponseTest::new(transport);
             test.run();
+        }
+
+        #[cfg(feature = "test-mm-flash-ctrl")]
+        {
+            const SOC_AGENT_ID: u32 = 0x1;
+            crate::tests::mm_flash_ctrl_test::run_mm_flash_ctrl_task(ext_mcu_mailbox0, None, None);
         }
 
         if cli.streaming_boot.is_some() {

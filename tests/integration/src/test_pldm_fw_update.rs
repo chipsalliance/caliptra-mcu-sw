@@ -55,7 +55,6 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-
     #[test]
     fn test_soc_streaming_boot() {
         let feature = "test-pldm-streaming-boot";
@@ -83,7 +82,6 @@ mod test {
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
-
 
     pub const DEVICE_UUID: [u8; 16] = [
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
