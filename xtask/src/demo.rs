@@ -40,7 +40,7 @@ const FPGA: bool = true;
 type Model = ModelFpgaRealtime;
 // type Model = ModelEmulated;
 
-const SPDM_DEMO_ZIP: &'static str = "spdm-demo-fpga.zip";
+const SPDM_DEMO_ZIP: &'static str = "spdm-demo-fpga-2.1.zip";
 const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-fpga.zip";
 //const MLKEM_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
 const OCPLOCK_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
@@ -71,7 +71,7 @@ impl DemoType {
         match self {
             DemoType::Spdm => {
                 if FPGA {
-                    500_000_000
+                    800_000_000
                 } else {
                     20_000_000
                 }
@@ -138,7 +138,7 @@ pub(crate) fn demo() -> Result<()> {
         let app_result = app.run(&mut terminal, tick_rate);
 
         // restore terminal
-        crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen)?;
+        //crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen)?;
         //terminal.clear()?;
         terminal.show_cursor()?;
         app_result
@@ -191,10 +191,13 @@ impl std::io::Write for Console {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SpdmDemoState {
-    SendGetVersion,
-    SendGetCapabilities,
-    SendGetDigests,
+    SentGetVersion,
+    SentGetCapabilities,
+    SentNegotiateAlgorithms,
+    SentGetDigests,
+    SentGetMeasurements,
     Done,
 }
 
@@ -208,6 +211,28 @@ const GET_CAPABILITIES: [u8; 20] = [
     0, 0x12, 0, 0, // max SPDM msg size,
 ];
 const GET_DIGESTS: [u8; 4] = [0x13, 0x81, 00, 00];
+// const NEGOTIATE_ALGORITHMS: [u8; _] = [0x13, 0xe3,
+// 1, // number of structs
+// 0,
+// 16, 0, // length of entire request message
+// 0, // measurement spec bit mask
+// 0, // other params bit mask
+// 0x80, 0, 0, 0, // P-384
+// 0x01, 0, 0, 0, // SHA-384
+// 0, 0, 0, 0, // PQC
+// 0, 0, 0, 0, 0, 0, 0, 0, // reserved
+// 0, // ext asym count
+// 0, // ext hash count
+// 0, // reserved
+// 0, // measurement extension log bit mask
+// 4, // ReqBaseAsymAlg
+// 0x
+// ]
+const NEGOTIATE_ALGORITMS: [u8; 48] = [
+    0x13, 0xE3, 0x04, 0x00, 0x30, 0x00, 0x01, 0x02, 0xFF, 0x0F, 0x00, 0x00, 0x7F, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x02, 0x20, 0x7F, 0x00, 0x03, 0x20, 0x0F, 0x00, 0x04, 0x20, 0xFF, 0x0F, 0x05, 0x20, 0x01, 0x00,
+];
 const GET_MEASUREMENTS_HEADER: [u8; 4] = [0x13, 0xe0, 1, 0xff];
 const GET_MEASUREMENTS_FOOTER: [u8; 9] = [0u8; 9];
 
@@ -235,6 +260,9 @@ struct Demo {
     pause: bool,
     ticks: u64,
     spdm_demo_state: Option<SpdmDemoState>,
+    expect_packets: usize,
+    got_packets: usize,
+    buffered_packets: Vec<Vec<u8>>,
 }
 
 impl Demo {
@@ -258,6 +286,9 @@ impl Demo {
             pause: false,
             ticks: 0,
             spdm_demo_state: None,
+            expect_packets: 0,
+            got_packets: 0,
+            buffered_packets: vec![],
         }
     }
 
@@ -453,20 +484,123 @@ impl Demo {
             //                   [01, 08, 00, c0, 05, 10, 04, 00, 00, 00, 02, 00, 12, 00, 13]
             i3c_socket.send_private_write(addr, packet);
             writeln!(model.output().logger(), "HOST: I3C send to MCU: VCA")?;
-            self.spdm_demo_state = Some(SpdmDemoState::SendGetVersion);
+            self.spdm_demo_state = Some(SpdmDemoState::SentGetVersion);
+            self.expect_packets = 1;
+            self.got_packets = 0;
+            self.buffered_packets.clear();
             return Ok(());
         }
 
         // handle I3C for SPDM
-        if let Some(recv) = i3c_socket.receive_private_read(addr) {
-            writeln!(
-                model.output().logger(),
-                "HOST: I3C recv from Caliptra: {:02x?}",
-                recv
-            )?;
+        let Some(recv) = i3c_socket.receive_private_read(addr) else {
+            return Ok(());
+        };
+
+        self.got_packets += 1;
+
+        writeln!(
+            model.output().logger(),
+            "HOST: I3C recv from Caliptra (got={}/{}) (len={}): {:02x?}",
+            self.got_packets,
+            self.expect_packets,
+            recv.len(),
+            recv
+        )?;
+
+        self.buffered_packets.push(recv.clone());
+
+        if self.got_packets < self.expect_packets {
+            return Ok(());
         }
 
-        // TODO: move to state machine for SPDM test
+        self.expect_packets = 1;
+        self.got_packets = 0;
+
+        match self.spdm_demo_state.unwrap() {
+            SpdmDemoState::SentGetVersion => {
+                // got a version response, send capabilities
+                let mut packet = vec![];
+                packet.extend_from_slice(&MCTP_HEADER);
+                packet.extend_from_slice(&GET_CAPABILITIES);
+                i3c_socket.send_private_write(addr, packet);
+                writeln!(
+                    model.output().logger(),
+                    "HOST: I3C send to MCU: GET_CAPABILITIES"
+                )?;
+                self.spdm_demo_state = Some(SpdmDemoState::SentGetCapabilities);
+            }
+            SpdmDemoState::SentGetCapabilities => {
+                // got capabilities, send negotiate algorithms
+                let mut packet = vec![];
+                packet.extend_from_slice(&MCTP_HEADER);
+                packet.extend_from_slice(&NEGOTIATE_ALGORITMS);
+                i3c_socket.send_private_write(addr, packet);
+                writeln!(
+                    model.output().logger(),
+                    "HOST: I3C send to MCU: NEGOTIATE_ALGORITHMS"
+                )?;
+                self.spdm_demo_state = Some(SpdmDemoState::SentNegotiateAlgorithms);
+            }
+            SpdmDemoState::SentNegotiateAlgorithms => {
+                // got algorithms response, send get digests
+                let mut packet = vec![];
+                packet.extend_from_slice(&MCTP_HEADER);
+                packet.extend_from_slice(&GET_DIGESTS);
+                i3c_socket.send_private_write(addr, packet);
+                writeln!(
+                    model.output().logger(),
+                    "HOST: I3C send to MCU: GET_DIGESTS"
+                )?;
+                self.spdm_demo_state = Some(SpdmDemoState::SentGetDigests);
+            }
+            SpdmDemoState::SentGetDigests => {
+                // got a digests response, send get measurements
+                let mut packet = vec![];
+                packet.extend_from_slice(&MCTP_HEADER);
+                packet.extend_from_slice(&GET_MEASUREMENTS_HEADER);
+                let mut nonce = [0u8; 32];
+                nonce[..8].copy_from_slice(&model.cycle_count().to_be_bytes());
+                packet.extend_from_slice(&nonce);
+                packet.extend_from_slice(&GET_MEASUREMENTS_FOOTER);
+                i3c_socket.send_private_write(addr, packet);
+                self.spdm_demo_state = Some(SpdmDemoState::SentGetMeasurements);
+                writeln!(
+                    model.output().logger(),
+                    "HOST: I3C send to MCU: GET_MEASUREMENTS"
+                )?;
+                self.expect_packets = 6;
+            }
+            SpdmDemoState::SentGetMeasurements => {
+                let mut measurements = vec![];
+                self.buffered_packets.reverse();
+                let initial = self.buffered_packets.pop().unwrap();
+                // remove MCTP + SPDM header and PEC
+                measurements.extend_from_slice(&initial[5 + 8..initial.len() - 1]);
+                while let Some(pkt) = self.buffered_packets.pop() {
+                    // remove MCTP header and PEC
+                    measurements.extend_from_slice(&pkt[5..pkt.len() - 1]);
+                }
+                writeln!(
+                    model.output().logger(),
+                    "Measurements packets: {:02x?}",
+                    measurements
+                )?;
+                // validate the nonce
+                let measurement_len = u16::from_be_bytes(initial[11..13].try_into().unwrap());
+                writeln!(
+                    model.output().logger(),
+                    "Measurement length = {}, expected length = {}",
+                    measurements.len(),
+                    measurement_len
+                )?;
+
+                self.spdm_demo_state = Some(SpdmDemoState::Done);
+            }
+            SpdmDemoState::Done => {
+                writeln!(model.output().logger(), "SPDM demo complete!")?;
+            }
+        }
+        self.buffered_packets.clear();
         Ok(())
     }
 
