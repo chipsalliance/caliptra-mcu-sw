@@ -636,6 +636,12 @@ impl Otp {
 
     pub fn read_fuses(&self) -> Result<Fuses, McuError> {
         let mut fuses = Fuses::default();
+        romtime::println!("[mcu-rom-otp] Reading SW tests unlock partition");
+        self.read_data(
+            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
+            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
+            &mut fuses.sw_test_unlock_partition,
+        )?;
         romtime::println!("[mcu-rom-otp] Reading SW manufacturer partition");
         self.read_data(
             fuses::SW_MANUF_PARTITION_BYTE_OFFSET,

@@ -259,7 +259,21 @@ impl Soc {
         self.registers
             .fuse_soc_stepping_id
             .write(soc::bits::FuseSocSteppingId::SocSteppingId.val(soc_stepping_id));
-        // TODO: debug unlock / rma token?
+
+        if size_of_val(fuses.cptra_ss_manuf_debug_unlock_token())
+            != size_of_val(&self.registers.fuse_manuf_dbg_unlock_token)
+        {
+            romtime::println!("[mcu-fuse-write] SS manuf debug unlock token length mismatch");
+            fatal_error(1);
+        }
+        for i in 0..fuses.cptra_ss_manuf_debug_unlock_token().len() / 4 {
+            let word = u32::from_le_bytes(
+                fuses.cptra_ss_manuf_debug_unlock_token()[i * 4..i * 4 + 4]
+                    .try_into()
+                    .unwrap(),
+            );
+            self.registers.fuse_manuf_dbg_unlock_token[i].set(word);
+        }
     }
 
     pub fn fuse_write_done(&self) {
