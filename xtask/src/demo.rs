@@ -48,7 +48,7 @@ const OCPLOCK_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
 const PAUSE_START_DEMO: Duration = Duration::from_secs(5);
 const PAUSE_BETWEEN_DEMOS: Duration = Duration::from_secs(10);
 
-const SPDM_BOOT_CYCLES: u64 = 400_000_000;
+const SPDM_BOOT_CYCLES: u64 = 500_000_000;
 
 const I3C_PORTS: [u16; 5] = [65530, 65531, 65532, 65533, 65534];
 
@@ -73,14 +73,14 @@ impl DemoType {
                 if FPGA {
                     800_000_000
                 } else {
-                    20_000_000
+                    200_000_000
                 }
             }
             DemoType::Mlkem => {
                 if FPGA {
-                    20_000_000
+                    100_000_000
                 } else {
-                    1_000_000
+                    100_000_000
                 }
             }
         }
@@ -136,6 +136,10 @@ pub(crate) fn demo() -> Result<()> {
         let tick_rate = Duration::from_micros(1_000_000 / 60);
         let mut app = Demo::new();
         let app_result = app.run(&mut terminal, tick_rate);
+        if app_result.is_err() {
+            std::thread::sleep(Duration::from_millis(10000));
+            println!("Error: {:?}", app_result);
+        }
 
         // restore terminal
         //crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen)?;
