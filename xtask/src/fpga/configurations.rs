@@ -299,7 +299,7 @@ impl<'a> ActionHandler<'a> for Core {
             "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
         )?;
         let caliptra_sw = caliptra_sw_workspace_root()
-            .expect("core-on-subsystem only supported when using a local copy of caliptra-sw");
+            .expect("core only supported when using a local copy of caliptra-sw");
         run_command(
                         None,
                         &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display()),
