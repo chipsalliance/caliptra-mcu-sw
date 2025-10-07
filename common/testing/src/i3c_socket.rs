@@ -165,14 +165,14 @@ impl BufferedStream {
                 let header: OutgoingHeader = transmute!(out_header_bytes);
                 let desc = header.response_descriptor;
                 let data_len = desc.data_length() as usize;
-                if data_len != 0 {
-                    writeln!(
-                        caliptra_emu_periph::output(),
-                        "Receiving I3C packet len {}",
-                        data_len
-                    )
-                    .unwrap();
-                }
+                // if data_len != 0 {
+                //     writeln!(
+                //         caliptra_emu_periph::output(),
+                //         "Receiving I3C packet len {}",
+                //         data_len
+                //     )
+                //     .unwrap();
+                // }
                 let mut data = vec![0u8; data_len];
                 self.stream.set_nonblocking(false).unwrap();
                 self.stream
@@ -265,7 +265,8 @@ impl BufferedStream {
                         "Received data with invalid CRC8: calclulated {:02x} != received {:02x}",
                         pec,
                         data[data.len() - 1]
-                    );
+                    )
+                    .unwrap();
                     return None;
                 }
                 Some(data[..data.len() - 1].to_vec())

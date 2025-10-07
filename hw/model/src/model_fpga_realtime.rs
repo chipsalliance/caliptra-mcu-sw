@@ -221,7 +221,6 @@ impl ModelFpgaRealtime {
 
             if self.base.i3c_controller().ibi_ready() {
                 // check if we need to read any I3C packets from Caliptra
-                writeln!(eoutput(), "I3C IBI ready").unwrap();
                 match self.base.i3c_controller().ibi_recv(None) {
                     Ok(ibi) => {
                         // process each IBI in the buffer (each is 4 bytes)
@@ -247,12 +246,6 @@ impl ModelFpgaRealtime {
                             .expect("Failed to forward I3C IBI response to channel");
                             self.i3c_next_private_read_len
                                 .push_back(u16::from_be_bytes(ibi[1..3].try_into().unwrap()));
-                            writeln!(
-                                eoutput(),
-                                "Expected I3C packet of len {}",
-                                self.i3c_next_private_read_len.back().unwrap()
-                            )
-                            .unwrap();
                         }
                     }
                     Err(e) => {
@@ -264,19 +257,10 @@ impl ModelFpgaRealtime {
 
         // check if we should do attempt a private read
         while !self.i3c_next_private_read_len.is_empty() {
-            // // unclear why, but it helps if we give the I3C time to read the full packet
-            // // 256 bytes = 2048 bits * 9/8 @ 12.5 Mbps = 184.32 us
-            // // 184.32 us @ 20 MHz = 3686.4 cycles
-            // // Wait a little extra to be safe.
-            // let start = self.cycle_count();
-            // while self.cycle_count() - start < 4_000 {
-            //     std::thread::sleep(Duration::from_micros(1));
-            // }
             let tx = self.i3c_tx.as_ref().unwrap();
             let private_read_len = self.i3c_next_private_read_len.pop_front().unwrap();
             match self.base.i3c_controller().read(private_read_len) {
                 Ok(data) => {
-                    writeln!(eoutput(), "Got I3C private read of len {}", data.len()).unwrap();
                     let data = data[0..private_read_len as usize].to_vec();
                     // forward the private read
                     let mut resp = ResponseDescriptor::default();

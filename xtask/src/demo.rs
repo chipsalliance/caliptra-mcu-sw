@@ -40,6 +40,10 @@ const FPGA: bool = true;
 type Model = ModelFpgaRealtime;
 // type Model = ModelEmulated;
 
+const DECODE_PY: &str = include_str!("decode.py");
+const SIGNATURE_ANALYSIS_PY: &str = include_str!("signature_analysis.py");
+const SIGNATURE_VALIDATION_PY: &str = include_str!("signature_validation.py");
+
 const SPDM_DEMO_ZIP: &'static str = "spdm-demo-fpga-2.1.zip";
 const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-fpga.zip";
 //const MLKEM_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
@@ -116,6 +120,10 @@ pub(crate) fn demo() -> Result<()> {
             crate::fpga::fpga_install_kernel_modules(None)?;
         }
     }
+
+    std::fs::write("/tmp/decode.py", DECODE_PY)?;
+    std::fs::write("/tmp/signature_analysis.py", SIGNATURE_ANALYSIS_PY)?;
+    std::fs::write("/tmp/signature_validation.py", SIGNATURE_VALIDATION_PY)?;
 
     // Pin to CPU 0 for stability.
     let mut cpu_set = CpuSet::new();
@@ -267,7 +275,6 @@ struct Demo {
     expect_packets: usize,
     got_packets: usize,
     buffered_packets: Vec<Vec<u8>>,
-    eat_token: Option<Vec<u8>>,
 }
 
 impl Demo {
@@ -294,7 +301,6 @@ impl Demo {
             expect_packets: 0,
             got_packets: 0,
             buffered_packets: vec![],
-            eat_token: None,
         }
     }
 
@@ -377,7 +383,6 @@ impl Demo {
             self.spdm_demo_state = None;
             self.next_demo = false;
             self.model_started = false;
-            self.eat_token = None;
             self.current_demo_idx = (self.current_demo_idx + 1) % self.demos.len();
             self.i3c_port_idx = (self.i3c_port_idx + 1) % I3C_PORTS.len();
             self.console_buffer.write().unwrap().clear();
@@ -505,14 +510,14 @@ impl Demo {
 
         self.got_packets += 1;
 
-        writeln!(
-            model.output().logger(),
-            "HOST: I3C recv from Caliptra (got={}/{}) (len={}): {:02x?}",
-            self.got_packets,
-            self.expect_packets,
-            recv.len(),
-            recv
-        )?;
+        // writeln!(
+        //     model.output().logger(),
+        //     "HOST: I3C recv from Caliptra (got={}/{}) (len={}): {:02x?}",
+        //     self.got_packets,
+        //     self.expect_packets,
+        //     recv.len(),
+        //     recv
+        // )?;
 
         self.buffered_packets.push(recv.clone());
 
@@ -621,19 +626,34 @@ impl Demo {
                     format!("Nonce: {:02x?}", &returned_nonce),
                 )?;
 
-                self.eat_token = Some(eat_token);
-
-                std::fs::write("/tmp/eat_token.cbor", &self.eat_token.as_ref().unwrap())?;
+                std::fs::write("/tmp/eat_token.cbor", &eat_token)?;
                 writeln!(
                     host_console,
                     "{}",
-                    format!(
-                        "Raw EAT token: {:02x?}...",
-                        &self.eat_token.as_ref().unwrap()[..16]
-                    )
+                    format!("Raw EAT token: {:02x?}...", &eat_token[..16])
                 )?;
 
-                // TODO: validate EAT
+                // Decode the EAT token using Python
+                let output = std::process::Command::new("venv/bin/python")
+                    .arg("/tmp/decode.py")
+                    .arg("/tmp/eat_token.cbor")
+                    .output();
+
+                match output {
+                    Ok(output) => {
+                        if output.status.success() {
+                            let decoded = String::from_utf8_lossy(&output.stdout);
+                            writeln!(host_console, "{}", format!("Decoded EAT: {}", decoded))?;
+                        } else {
+                            let error = String::from_utf8_lossy(&output.stderr);
+                            writeln!(host_console, "Decode error: {}", error)?;
+                        }
+                    }
+                    Err(e) => {
+                        writeln!(host_console, "Failed to run decoder: {}", e)?;
+                    }
+                }
+
                 self.spdm_demo_state = Some(SpdmDemoState::Done);
             }
             SpdmDemoState::Done => {
