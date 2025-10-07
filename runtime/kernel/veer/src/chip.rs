@@ -47,6 +47,8 @@ pub struct VeeRDefaultPeripherals<'a> {
     pub i3c: i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
     pub mci: romtime::Mci,
     pub mcu_mbox0: mcu_mbox_driver::McuMailbox<'a, InternalTimers<'a>>,
+    // Add mbox-based flash controller driver for OCP demo
+    pub mm_flash_ctrl: flash_driver::mm_flash_ctrl::MailboxFlashCtrl<'a>,
     pub additional_interrupt_handler: &'static dyn InterruptService,
 }
 
@@ -70,6 +72,7 @@ impl<'a> VeeRDefaultPeripherals<'a> {
                 memory_map.mci_offset + mcu_mbox_driver::MCU_MBOX0_SRAM_OFFSET,
                 alarm,
             ),
+            mm_flash_ctrl: flash_driver::mm_flash_ctrl::MailboxFlashCtrl::new(mci),
             additional_interrupt_handler,
         }
     }
@@ -77,6 +80,8 @@ impl<'a> VeeRDefaultPeripherals<'a> {
     pub fn init(&'static self) {
         self.i3c.init();
         self.mcu_mbox0.init();
+        self.mm_flash_ctrl.init();
+        kernel::deferred_call::DeferredCallClient::register(&self.mm_flash_ctrl);
     }
 }
 

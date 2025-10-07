@@ -2931,6 +2931,7 @@ dependencies = [
  "capsules-runtime",
  "capsules-system",
  "components",
+ "flash-driver",
  "i3c-driver",
  "kernel",
  "mcu-config",
