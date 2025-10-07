@@ -135,18 +135,12 @@ impl PcrQuote {
         Ok(resp)
     }
 
-    pub async fn get_pcr(
-        pcr_index: usize,
-        pcr: &mut [u8; SHA384_HASH_SIZE],
-    ) -> CaliptraApiResult<()> {
-        if pcr_index >= 32 {
-            Err(CaliptraApiError::InvalidArgument("Invalid index"))?;
-        }
-
+    pub async fn get_pcrs() -> CaliptraApiResult<[[u8; SHA384_HASH_SIZE]; 32]> {
         let resp = Self::get_quote_ecc384_resp(None).await?;
+        let mut pcrs = [[0u8; SHA384_HASH_SIZE]; 32];
+        // Copy all PCRs from the response
+        pcrs.copy_from_slice(&resp.pcrs);
 
-        pcr.copy_from_slice(&resp.pcrs[pcr_index]);
-
-        Ok(())
+        Ok(pcrs)
     }
 }

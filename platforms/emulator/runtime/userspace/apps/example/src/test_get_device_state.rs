@@ -66,27 +66,15 @@ async fn test_pcr_quote_with_ecc_signature() {
 
 pub async fn test_get_pcrs() {
     println!("==Starting get PCRs test==");
-    let mut pcr = [0u8; SHA384_HASH_SIZE]; // SHA384 hash size
-    for i in 0..32 {
-        match PcrQuote::get_pcr(i, &mut pcr).await {
-            Ok(()) => {
-                println!("PCR[{}]: {:x?}", i, &pcr);
-            }
-            Err(err) => {
-                println!("Failed to get PCR[{}]: {:?}", i, err);
-                test_exit(1);
-            }
-        }
-    }
-
-    match PcrQuote::get_pcr(32, &mut pcr).await {
-        Ok(()) => {
-            println!("Failed! Should not get PCR[32]");
+    let pcrs = match PcrQuote::get_pcrs().await {
+        Ok(pcrs) => pcrs,
+        Err(err) => {
+            println!("Failed to get the PCRs. {:?}", err);
             test_exit(1);
         }
-        Err(_) => {
-            println!("Successfully detected invalid PCR index 32\n");
-        }
+    };
+    for (i, pcr) in pcrs.iter().enumerate() {
+        println!("PCR[{}]: {:02x?}", i, pcr);
     }
     println!("==Get PCRs test success==");
 }
