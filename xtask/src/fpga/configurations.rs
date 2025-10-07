@@ -6,7 +6,7 @@ use mcu_builder::AllBuildArgs;
 
 use super::{
     run_command, run_command_with_output,
-    utils::{build_base_docker_command, rsync_file, run_test_suite},
+    utils::{build_base_docker_command, caliptra_sw_workspace_root, rsync_file, run_test_suite},
     ActionHandler, BuildArgs, BuildTestArgs, TestArgs,
 };
 
@@ -156,8 +156,8 @@ impl<'a> ActionHandler<'a> for Subsystem {
         Ok(())
     }
 
-    fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
-        let mut base_cmd = build_base_docker_command(args.caliptra_sw)?;
+    fn build_test(&self, _args: &'a BuildTestArgs<'a>) -> Result<()> {
+        let mut base_cmd = build_base_docker_command()?;
         base_cmd.arg(
                 "(cd /work-dir && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_realtime --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
             );
@@ -212,14 +212,13 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-sw repo")?;
         Ok(())
     }
-    fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
+    fn build(&self, _args: &'a BuildArgs<'a>) -> Result<()> {
         run_command(
             None,
             "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
         )?;
-        let caliptra_sw = args
-            .caliptra_sw
-            .expect("need to set `caliptra-sw` when in core-on-subsystem mode");
+        let caliptra_sw = caliptra_sw_workspace_root()
+            .expect("core-on-subsystem only supported when using a local copy of caliptra-sw");
         run_command(
                         None,
                         &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display()),
@@ -237,13 +236,11 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         Ok(())
     }
 
-    fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
-        let caliptra_sw = args
-            .caliptra_sw
-            .expect("caliptra-sw path is required for Core On Subsystem mode");
+    fn build_test(&self, _args: &'a BuildTestArgs<'a>) -> Result<()> {
+        let caliptra_sw = caliptra_sw_workspace_root()
+            .expect("core-on-subsystem only supported when using a local copy of caliptra-sw");
         let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
-
-        let mut base_cmd = build_base_docker_command(Some(caliptra_sw))?;
+        let mut base_cmd = build_base_docker_command()?;
         base_cmd.arg(
                 format!("(cd /{} && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_subsystem,itrng --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
             , base_name));
@@ -296,14 +293,13 @@ impl<'a> ActionHandler<'a> for Core {
         run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-sw repo")?;
         Ok(())
     }
-    fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
+    fn build(&self, _args: &'a BuildArgs<'a>) -> Result<()> {
         run_command(
             None,
             "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
         )?;
-        let caliptra_sw = args
-            .caliptra_sw
-            .expect("need to set `caliptra-sw` when in core mode");
+        let caliptra_sw = caliptra_sw_workspace_root()
+            .expect("core only supported when using a local copy of caliptra-sw");
         run_command(
                         None,
                         &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display()),
@@ -319,13 +315,12 @@ impl<'a> ActionHandler<'a> for Core {
         Ok(())
     }
 
-    fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
-        let caliptra_sw = args
-            .caliptra_sw
-            .expect("caliptra-sw path is required for Core On Subsystem mode");
+    fn build_test(&self, _args: &'a BuildTestArgs<'a>) -> Result<()> {
+        let caliptra_sw = caliptra_sw_workspace_root()
+            .expect("core only supported when using a local copy of caliptra-sw");
         let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
 
-        let mut base_cmd = build_base_docker_command(Some(caliptra_sw))?;
+        let mut base_cmd = build_base_docker_command()?;
         base_cmd.arg(
                 format!("(cd /{} && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_realtime,itrng --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
             , base_name));

@@ -4927,6 +4927,7 @@ dependencies = [
  "caliptra-hw-model",
  "caliptra-image-gen",
  "caliptra-image-types",
+ "cargo_metadata",
  "cc",
  "clap 4.5.48",
  "clap-num",
