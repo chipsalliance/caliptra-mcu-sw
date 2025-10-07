@@ -37,7 +37,8 @@ use crate::i3c::{DynamicI3cAddress, ReguDataTransferCommand};
 use crate::i3c_socket_server::{IncomingHeader, OutgoingHeader, CRC8_SMBUS};
 use crate::{wait_for_runtime_start, MCU_RUNNING};
 use std::collections::VecDeque;
-use std::io::{ErrorKind, Read, Write};
+use std::fmt::Write as _;
+use std::io::{ErrorKind, Read, Write as _};
 use std::net::{SocketAddr, TcpStream};
 use std::process::exit;
 use std::sync::atomic::Ordering;
@@ -163,6 +164,12 @@ impl BufferedStream {
                 let header: OutgoingHeader = transmute!(out_header_bytes);
                 let desc = header.response_descriptor;
                 let data_len = desc.data_length() as usize;
+                writeln!(
+                    caliptra_emu_periph::output(),
+                    "Receiving I3C packet len {}",
+                    data_len
+                )
+                .unwrap();
                 let mut data = vec![0u8; data_len];
                 self.stream.set_nonblocking(false).unwrap();
                 self.stream
@@ -225,13 +232,21 @@ impl BufferedStream {
             if read.header.from_addr == target_addr {
                 packet = Some(read);
                 break;
+            } else {
+                writeln!(
+                    caliptra_emu_periph::output(),
+                    "Received packet from unexpected address {:X}",
+                    read.header.from_addr
+                )
+                .unwrap();
             }
         }
 
         match packet.or_else(|| self.read_packet(target_addr)) {
             Some(Packet { data, .. }) => {
                 if data.is_empty() {
-                    //println!("Received empty data packet");
+                    writeln!(caliptra_emu_periph::output(), "Received empty packet",).unwrap();
+
                     return None;
                 }
                 let pec = calculate_crc8((target_addr << 1) | 1, &data[..data.len() - 1]);

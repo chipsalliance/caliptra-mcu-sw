@@ -12,6 +12,7 @@ crc.workspace = true
 pldm-common.workspace = true
 pldm-ua.workspace = true
 zerocopy.workspace = true
+caliptra-emu-periph.workspace = true
 
 [dev-dependencies]
 hex.workspace = true

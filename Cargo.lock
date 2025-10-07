@@ -3037,6 +3037,7 @@ name = "mcu-testing-common"
 version = "0.1.0"
 dependencies = [
  "bitfield",
+ "caliptra-emu-periph",
  "crc",
  "hex",
  "pldm-common",

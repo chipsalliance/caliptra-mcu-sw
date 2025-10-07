@@ -267,7 +267,6 @@ struct Demo {
     expect_packets: usize,
     got_packets: usize,
     buffered_packets: Vec<Vec<u8>>,
-    expected_nonce: Option<Vec<u8>>,
     eat_token: Option<Vec<u8>>,
 }
 
@@ -295,7 +294,6 @@ impl Demo {
             expect_packets: 0,
             got_packets: 0,
             buffered_packets: vec![],
-            expected_nonce: None,
             eat_token: None,
         }
     }
@@ -377,9 +375,9 @@ impl Demo {
             // TODO: start next
             self.model_stop()?;
             self.spdm_demo_state = None;
-            self.expected_nonce = None;
             self.next_demo = false;
             self.model_started = false;
+            self.eat_token = None;
             self.current_demo_idx = (self.current_demo_idx + 1) % self.demos.len();
             self.i3c_port_idx = (self.i3c_port_idx + 1) % I3C_PORTS.len();
             self.console_buffer.write().unwrap().clear();
@@ -570,7 +568,6 @@ impl Demo {
                 let mut nonce = [0u8; 32];
                 nonce[..8].copy_from_slice(&model.cycle_count().to_le_bytes());
                 packet.extend_from_slice(&nonce);
-                self.expected_nonce = Some(nonce.to_vec());
                 packet.extend_from_slice(&GET_MEASUREMENTS_FOOTER);
                 i3c_socket.send_private_write(addr, packet);
                 self.spdm_demo_state = Some(SpdmDemoState::SentGetMeasurements);
@@ -608,30 +605,23 @@ impl Demo {
                     record_len
                 )?;
 
+                std::fs::write("/tmp/measurements.bin", &measurements)?;
+
                 let mut host_console = self.host_console.borrow_mut();
+
+                let measurement_record = measurements[4..4 + record_len].to_vec();
 
                 // validate the nonce
                 let returned_nonce = measurements[4 + record_len..4 + record_len + 32].to_vec();
                 writeln!(
                     host_console,
                     "{}",
-                    format!(
-                        "Validating nonce, expected: {:02x?}",
-                        self.expected_nonce.as_ref().unwrap(),
-                    ),
-                )?;
-                writeln!(
-                    host_console,
-                    "{}",
-                    format!("Validating nonce, returned: {:02x?}", &returned_nonce),
+                    format!("Nonce: {:02x?}", &returned_nonce),
                 )?;
 
-                if self.expected_nonce.as_ref().unwrap() == &returned_nonce {
-                    writeln!(host_console, "Nonce matches")?;
-                } else {
-                    writeln!(host_console, "Nonce does *NOT* match!")?;
-                }
-                self.eat_token = Some(measurements[4..4 + record_len].to_vec());
+                self.eat_token = Some(measurement_record);
+
+                std::fs::write("/tmp/eat_token.cbor", &self.eat_token.as_ref().unwrap())?;
                 writeln!(
                     host_console,
                     "{}",
@@ -641,6 +631,7 @@ impl Demo {
                     )
                 )?;
 
+                // TODO: validate EAT
                 self.spdm_demo_state = Some(SpdmDemoState::Done);
             }
             SpdmDemoState::Done => {
