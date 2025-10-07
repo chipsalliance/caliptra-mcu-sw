@@ -252,15 +252,15 @@ impl Soc {
         while !self.fw_ready() {
             steps += 1;
             if steps % 100_000 == 0 {
-                romtime::println!(
-                    "[mcu-rom] Still waiting for firmware ready signal from Caliptra (notif bit {} ready, fw exec ctrl {:08x}{:08x}{:08x}{:08x})",
-                    notif0.read(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts),
-                    self.registers.ss_generic_fw_exec_ctrl[0].get(),
-                    self.registers.ss_generic_fw_exec_ctrl[1].get(),
-                    self.registers.ss_generic_fw_exec_ctrl[2].get(),
-                    self.registers.ss_generic_fw_exec_ctrl[3].get(),
+                // romtime::println!(
+                //     "[mcu-rom] Still waiting for firmware ready signal from Caliptra (notif bit {} ready, fw exec ctrl {:08x}{:08x}{:08x}{:08x})",
+                //     notif0.read(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts),
+                //     self.registers.ss_generic_fw_exec_ctrl[0].get(),
+                //     self.registers.ss_generic_fw_exec_ctrl[1].get(),
+                //     self.registers.ss_generic_fw_exec_ctrl[2].get(),
+                //     self.registers.ss_generic_fw_exec_ctrl[3].get(),
 
-                );
+                // );
             }
             if self.cptra_fw_fatal_error() {
                 romtime::println!("[mcu-rom] Caliptra reported a fatal error");

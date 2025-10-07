@@ -20,3 +20,4 @@ romtime.workspace = true
 tock-registers.workspace = true
 ureg.workspace = true
 zerocopy.workspace = true
+rv32i.workspace = true

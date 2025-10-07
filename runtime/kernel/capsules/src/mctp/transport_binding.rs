@@ -147,6 +147,18 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
                     let pec = MCTPI3CBinding::compute_pec(addr, tx_buffer, len);
                     tx_buffer[len] = pec;
 
+                    println!(
+                        "MCTPI3CBinding: Transmitting {} bytes to address {:02x} with PEC {:02x}",
+                        len + 1,
+                        addr >> 1,
+                        pec
+                    );
+
+                    // HACK: slow down a little for FPGA
+                    for _ in 0..1000 {
+                        rv32i::support::nop();
+                    }
+
                     match self.i3c_target.transmit_read(tx_buffer, len + 1) {
                         Ok(_) => {}
                         Err((e, tx_buffer)) => {
