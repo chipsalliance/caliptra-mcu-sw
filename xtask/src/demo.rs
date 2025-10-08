@@ -12,6 +12,7 @@ use mcu_builder::{FirmwareBinaries, PROJECT_ROOT};
 use mcu_hw_model::{InitParams, McuHwModel, ModelEmulated, ModelFpgaRealtime};
 use mcu_rom_common::LifecycleControllerState;
 use mcu_testing_common::i3c_socket::BufferedStream;
+use mcu_testing_common::mctp_transport::MctpTransport;
 use ml_kem::{kem, MlKem1024Params};
 use ml_kem::{
     kem::{Decapsulate, DecapsulationKey, Encapsulate, EncapsulationKey},
@@ -19,6 +20,8 @@ use ml_kem::{
 };
 use nix::sched::CpuSet;
 use nix::unistd::Pid;
+use pldm_ua::transport::EndpointId;
+use pldm_ua::transport::PldmTransport;
 use rand::thread_rng;
 use ratatui::backend::CrosstermBackend;
 use ratatui::buffer::Buffer;
@@ -50,6 +53,7 @@ const DECODE_PY: &str = include_str!("decode.py");
 const SIGNATURE_ANALYSIS_PY: &str = include_str!("signature_analysis.py");
 const SIGNATURE_VALIDATION_PY: &str = include_str!("signature_validation.py");
 
+const PLDM_DEMO_ZIP: &'static str = "pldm-demo-fpga.zip";
 const SPDM_DEMO_ZIP: &'static str = "spdm-demo-fpga-2.1.zip";
 const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-fpga.zip";
 const OCPLOCK_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
@@ -63,6 +67,7 @@ const I3C_PORTS: [u16; 5] = [65530, 65531, 65532, 65533, 65534];
 
 #[derive(Clone, Copy, Debug)]
 enum DemoType {
+    Pldm,
     Spdm,
     Mlkem,
     OcpLock,
@@ -71,6 +76,7 @@ enum DemoType {
 impl DemoType {
     fn zip(self) -> &'static str {
         match self {
+            DemoType::Pldm => PLDM_DEMO_ZIP,
             DemoType::Spdm => SPDM_DEMO_ZIP,
             DemoType::Mlkem => MLKEM_DEMO_ZIP,
             DemoType::OcpLock => OCPLOCK_DEMO_ZIP,
@@ -79,6 +85,13 @@ impl DemoType {
 
     fn max_cycles(self) -> u64 {
         match self {
+            DemoType::Pldm => {
+                if FPGA {
+                    100_000_000_000
+                } else {
+                    100_000_000_000
+                }
+            }
             DemoType::Spdm => {
                 if FPGA {
                     1_800_000_000
@@ -105,6 +118,7 @@ impl DemoType {
 
     fn title(self) -> &'static str {
         match self {
+            DemoType::Pldm => "Caliptra FPGA Demos: PLDM",
             DemoType::Spdm => "Caliptra FPGA Demos: SPDM",
             DemoType::Mlkem => "Caliptra FPGA Demos: MLKEM",
             DemoType::OcpLock => "Caliptra FPGA Demos: OCP LOCK",
@@ -113,6 +127,7 @@ impl DemoType {
 
     fn needs_i3c(self) -> bool {
         match self {
+            DemoType::Pldm => true,
             DemoType::Spdm => true,
             DemoType::Mlkem => false,
             DemoType::OcpLock => false,
@@ -123,6 +138,7 @@ impl DemoType {
 impl std::fmt::Display for DemoType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            DemoType::Pldm => write!(f, "PLDM"),
             DemoType::Spdm => write!(f, "SPDM"),
             DemoType::Mlkem => write!(f, "MLKEM"),
             DemoType::OcpLock => write!(f, "OCP LOCK"),
@@ -310,7 +326,12 @@ impl Demo {
             model_started: false,
             next_demo: false,
             i3c_socket: None,
-            demos: vec![DemoType::OcpLock, DemoType::Mlkem, DemoType::Spdm],
+            demos: vec![
+                DemoType::Pldm,
+                DemoType::OcpLock,
+                DemoType::Mlkem,
+                DemoType::Spdm,
+            ],
             current_demo_idx: 0,
             i3c_port_idx: 0,
             wait_for_next_demo_until: None,
@@ -491,10 +512,51 @@ impl Demo {
 
     fn demo_tick(&mut self) -> Result<()> {
         match self.current_demo() {
+            DemoType::Pldm => self.pldm_demo_tick()?,
             DemoType::Spdm => self.spdm_demo_tick()?,
             DemoType::Mlkem => self.mlkem_demo_tick()?,
             DemoType::OcpLock => self.ocplock_demo_tick()?,
         }
+        Ok(())
+    }
+
+    fn pldm_demo_tick(&mut self) -> Result<()> {
+        let mut model = self.model.as_ref().unwrap().borrow_mut();
+
+        // Wait until we have an I3C address.
+        let Some(addr) = model.i3c_address() else {
+            return Ok(());
+        };
+
+        let flow_status = model.mci_flow_status();
+        if flow_status & 0xffff < 386 {
+            // don't even try if we have not booted to runtime
+            return Ok(());
+        }
+
+        if model.cycle_count() > SPDM_BOOT_CYCLES && self.i3c_socket.is_none() {
+            writeln!(
+                model.output().logger(),
+                "Connecting to I3C socket: {}",
+                flow_status
+            )?;
+            let addr = SocketAddr::from(([127, 0, 0, 1], self.i3c_port()));
+            let stream = TcpStream::connect(addr).unwrap();
+            let stream = BufferedStream::new(stream);
+            self.i3c_socket = Some(stream);
+        }
+        if model.cycle_count() < SPDM_BOOT_CYCLES + 1_000_000 {
+            return Ok(());
+        }
+        let i3c_socket = self.i3c_socket.as_mut().unwrap();
+
+        let pldm_transport = MctpTransport::new(self.i3c_port(), addr.into());
+        let pldm_socket = pldm_transport
+            .create_socket(EndpointId(8), EndpointId(0))
+            .unwrap();
+        // PldmFwUpdateTest::run(pldm_socket, debug_level);
+
+        // let test = finish_runtime_hw_model(&mut hw);
         Ok(())
     }
 
@@ -585,12 +647,6 @@ impl Demo {
         };
 
         let flow_status = model.mci_flow_status();
-        // writeln!(
-        //     self.host_console.borrow_mut(),
-        //     "{}",
-        //     format!("MCI flow status: {}", flow_status)
-        // )?;
-        // 308058
         if flow_status & 0xffff < 386 {
             // don't even try if we have not booted to runtime
             return Ok(());

@@ -85,11 +85,11 @@ async fn start() {
 }
 
 pub(crate) async fn async_main() {
-    EXECUTOR
-        .get()
-        .spawner()
-        .spawn(spdm::spdm_task(EXECUTOR.get().spawner()))
-        .unwrap();
+    // EXECUTOR
+    //     .get()
+    //     .spawner()
+    //     .spawn(spdm::spdm_task(EXECUTOR.get().spawner()))
+    //     .unwrap();
 
     EXECUTOR
         .get()

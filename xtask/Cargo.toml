@@ -30,6 +30,7 @@ mcu-hw-model.workspace = true
 ml-kem.workspace = true
 nix.workspace = true
 pldm-fw-pkg.workspace = true
+pldm-ua.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
 rand.workspace = true

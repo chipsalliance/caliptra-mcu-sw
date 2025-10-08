@@ -5191,6 +5191,7 @@ dependencies = [
  "ml-kem",
  "nix 0.26.4",
  "pldm-fw-pkg",
+ "pldm-ua",
  "proc-macro2",
  "quote",
  "rand",
