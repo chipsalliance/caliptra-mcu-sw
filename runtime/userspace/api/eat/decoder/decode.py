@@ -32,7 +32,8 @@ import sys
 import logging
 from signature_analysis import analyze_cose_signature, analyze_certificate_headers
 from signature_validation import validate_cose_signature
-from decode_json import extract_claims_to_dict, claims_to_json, extract_claims_to_json_only
+from decode_json import extract_claims_to_json_only
+from decode_eat_claims_json import parse_eat_claims_to_dict as structured_claims_parser
 
 def parse_cbor_header(data, offset=0):
     """Parse CBOR header to understand the structure"""
@@ -1220,16 +1221,20 @@ def parse_cose_payload(data, offset):
         
         # Also extract claims to dictionary and save as JSON
         print("\n=== Extracting Claims to JSON ===")
-        claims_dict = extract_claims_to_dict(payload, parse_cbor_header)
+        try:
+            claims_dict = structured_claims_parser(payload)
+        except Exception as e:
+            print(f"Structured claim parsing failed: {e}")
+            claims_dict = {}
         if claims_dict:
-            # Generate filename based on current time
-            import time
+            import time, json
             timestamp = int(time.time())
             json_filename = f"eat_claims_{timestamp}.json"
-            claims_to_json(claims_dict, json_filename)
-            print(f"Claims dictionary contains {len(claims_dict)} entries")
+            with open(json_filename, 'w') as jf:
+                json.dump(claims_dict, jf, indent=2)
+            print(f"Claims dictionary contains {len(claims_dict)} entries -> {json_filename}")
         else:
-            print("No claims extracted to dictionary")
+            print("No structured claims extracted")
     except Exception as e:
         print(f"Could not parse EAT claims: {e}")
         import traceback
