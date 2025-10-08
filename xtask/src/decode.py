@@ -104,7 +104,7 @@ def skip_cbor_tags(data):
 
         # Major type 6 is for tags
         if major_type == 6:
-            print(f"Found CBOR tag: {value}")
+            # print(f"Found CBOR tag: {value}")
             offset = new_offset
             continue
         else:
@@ -164,7 +164,8 @@ def parse_measurement_format(data, offset):
             return f"Expected array, got {array_info[0]}", offset
 
         count = array_info[1]
-        result = f"MeasurementFormat array ({count} elements):"
+        # result = f"MeasurementFormat array ({count} elements):"
+        result = ""
         current_offset = new_offset
 
         for i in range(count):
@@ -173,10 +174,10 @@ def parse_measurement_format(data, offset):
                 item_info, current_offset = parse_cbor_header_with_names(
                     data, current_offset
                 )
-                if item_info[0] == "positive_int":
-                    result += f"\n          content_type: {item_info[1]} (CoAP Content-Format)"
-                else:
-                    result += f"\n          content_type: {item_info}"
+                # if item_info[0] == "positive_int":
+                #     result += f"\n          content_type: {item_info[1]} (CoAP Content-Format)"
+                # else:
+                #     result += f"\n          content_type: {item_info}"
             elif i == 1:
                 # Second element: concise_evidence (byte string)
                 item_info, current_offset = parse_cbor_header_with_names(
@@ -185,16 +186,13 @@ def parse_measurement_format(data, offset):
                 if item_info[0] == "byte_string":
                     evidence_data = data[current_offset : current_offset + item_info[1]]
                     current_offset += item_info[1]
-                    result += f"\n          concise_evidence: byte_string ({item_info[1]} bytes)"
-
-                    # Show hex dump of first 32 bytes for debugging
-                    result += f"\n            Hex dump (first 32 bytes): {evidence_data[:32].hex()}"
+                    result += f"\n          Found concise_evidence ✅ ({item_info[1]} bytes): {evidence_data[:32].hex()}..."
 
                     # Parse the concise evidence (may be tagged with CBOR tag 571)
                     try:
                         evidence_result = parse_concise_evidence(evidence_data, 0)
-                        result += f"\n            ConciseEvidence:"
-                        result += f"\n              {evidence_result[0]}"
+                        # result += f"\n            ConciseEvidence:"
+                        result += f"\n{evidence_result[0]}"
                     except Exception as e:
                         result += f"\n            Failed to parse ConciseEvidence: {e}"
                 else:
@@ -206,7 +204,7 @@ def parse_measurement_format(data, offset):
                 )
                 result += f"\n          element_{i}: {item_info}"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing MeasurementFormat: {e}", offset
@@ -219,16 +217,16 @@ def parse_concise_evidence(data, offset):
         first_info, new_offset = parse_cbor_header_with_names(data, offset)
         if first_info[0] == "tag" and first_info[1] == 571:
             # This is tagged concise evidence
-            result = f"Tagged ConciseEvidence (CBOR tag 571):"
+            # result = f"Tagged ConciseEvidence (CBOR tag 571):"
             map_result = parse_concise_evidence_map(data, new_offset)
-            result += f"\n  {map_result[0]}"
-            return result, map_result[1]
+            result = f"{map_result[0]}"
+            return result.strip(), map_result[1]
         else:
             # This is untagged - parse directly as map
             result = f"Untagged ConciseEvidence:"
             map_result = parse_concise_evidence_map(data, offset)
-            result += f"\n  {map_result[0]}"
-            return result, map_result[1]
+            result += f"\n{map_result[0]}"
+            return result.strip(), map_result[1]
     except Exception as e:
         return f"Error parsing ConciseEvidence: {e}", offset
 
@@ -241,7 +239,8 @@ def parse_concise_evidence_map(data, offset):
             return f"Expected map, got {map_info[0]}", offset
 
         count = map_info[1]
-        result = f"ConciseEvidenceMap with {count} entries:"
+        okay = "✅" if count == 1 else "❌"
+        result = f"ConciseEvidenceMap with {count} entries {okay}"
         current_offset = new_offset
 
         for i in range(count):
@@ -253,31 +252,31 @@ def parse_concise_evidence_map(data, offset):
                 key = key_info[1]
 
                 if key == 0:  # environment
-                    result += f"\n        environment:"
+                    # result += f"\n        environment:"
                     env_result, current_offset = parse_environment_map(
                         data, current_offset
                     )
-                    result += f"\n          {env_result}"
+                    result += f"\n{env_result}"
                 elif key == 1:  # class
-                    result += f"\n        class:"
+                    # result += f"\n        class:"
                     class_result, current_offset = parse_class_map(data, current_offset)
-                    result += f"\n          {class_result}"
+                    result += f"\n{class_result}"
                 elif key == 2:  # measurements
-                    result += f"\n        measurements:"
+                    # result += f"\n        measurements:"
                     meas_result, current_offset = parse_evidence_measurements(
                         data, current_offset
                     )
-                    result += f"\n          {meas_result}"
+                    result += f"\n{meas_result}"
                 else:
                     # Parse generic value
                     value_info, current_offset = parse_cbor_header_with_names(
                         data, current_offset
                     )
-                    result += f"\n        key_{key}: {value_info}"
+                    result += f"\nkey_{key}: {value_info}"
             else:
-                result += f"\n        key_{key_info}: parsing error"
+                result += f"\nkey_{key_info}: parsing error"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing ConciseEvidenceMap: {e}", offset
@@ -291,7 +290,8 @@ def parse_evidence_measurements(data, offset):
             return f"Expected array, got {value_info[0]}", offset
 
         measurements_count = value_info[1]
-        result = f"array with {measurements_count} entries"
+        # result = f"array with {measurements_count} entries"
+        result = ""
 
         # Parse each measurement entry
         for j in range(measurements_count):
@@ -301,16 +301,16 @@ def parse_evidence_measurements(data, offset):
             if meas_info[0] == "array":
                 # Parse measurement record array
                 meas_array_count = meas_info[1]
-                result += f"\n          measurement_{j}: array with {meas_array_count} elements"
+                # result += f"\n          measurement_{j}: array with {meas_array_count} elements"
                 # Typically: [environment-map, [measurement-maps]]
                 for k in range(meas_array_count):
                     elem_info, current_offset = parse_cbor_header_with_names(
                         data, current_offset
                     )
                     if elem_info[0] == "map":
-                        result += (
-                            f"\n            [{k}]: map with {elem_info[1]} entries"
-                        )
+                        # result += (
+                        #     f"\n            [{k}]: map with {elem_info[1]} entries"
+                        # )
                         # Parse map entries
                         for m in range(elem_info[1]):
                             key_info, current_offset = parse_cbor_header_with_names(
@@ -321,21 +321,21 @@ def parse_evidence_measurements(data, offset):
                             )
                             result += f"\n              {key_info} -> {val_info}"
                     elif elem_info[0] == "array":
-                        result += (
-                            f"\n            [{k}]: array with {elem_info[1]} elements"
-                        )
+                        # result += (
+                        #     f"\n            [{k}]: array with {elem_info[1]} elements"
+                        # )
                         # Skip array contents for now to avoid infinite recursion
                         for _ in range(elem_info[1]):
                             skip_info, current_offset = parse_cbor_header_with_names(
                                 data, current_offset
                             )
-                            result += f"\n              array_item: {skip_info}"
-                    else:
-                        result += f"\n            [{k}]: {elem_info}"
+                            # result += f"\n              array_item: {skip_info}"
+                    # else:
+                    #     result += f"\n            [{k}]: {elem_info}"
             else:
                 result += f"\n          measurement_{j}: {meas_info}"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing evidence measurements: {e}", offset
@@ -349,15 +349,17 @@ def parse_class_array_entry(data, offset, class_index):
             return f"class_{class_index}: {class_info}", offset
 
         array_count = class_info[1]
-        result = f"class_{class_index}: array with {array_count} elements"
+        result = "" # f"class_{class_index}: array with {array_count} elements"
+
+        result = []
 
         for k in range(array_count):
             elem_result, current_offset = parse_class_array_element(
                 data, current_offset, k
             )
-            result += f"\n            {elem_result}"
+            result.append(f"{elem_result}")
 
-        return result, current_offset
+        return '\n'.join(result), current_offset
 
     except Exception as e:
         return f"Error parsing class array entry {class_index}: {e}", offset
@@ -372,29 +374,29 @@ def parse_class_array_element(data, offset, elem_index):
             map_result, current_offset = parse_nested_map(
                 data, current_offset, elem_info[1], elem_index
             )
-            return f"[{elem_index}]: {map_result}", current_offset
+            return f"\n{map_result}", current_offset
         elif elem_info[0] == "array":
             array_result, current_offset = parse_measurement_array(
                 data, current_offset, elem_info[1]
             )
-            return f"[{elem_index}]: {array_result}", current_offset
+            return f"{array_result}", current_offset
         elif elem_info[0] == "text_string":
             text_value = data[current_offset : current_offset + elem_info[1]].decode(
                 "utf-8", errors="ignore"
             )
             current_offset += elem_info[1]
-            return f"[{elem_index}]: '{text_value}'", current_offset
+            return f"'{text_value}'", current_offset
         elif elem_info[0] == "byte_string":
             bytes_value = data[current_offset : current_offset + elem_info[1]]
             current_offset += elem_info[1]
             return (
-                f"[{elem_index}]: bytes({elem_info[1]}) = {bytes_value.hex()}",
+                f"bytes({elem_info[1]}) = {bytes_value.hex()}",
                 current_offset,
             )
         elif elem_info[0] == "positive_int":
-            return f"[{elem_index}]: {elem_info[1]}", current_offset
+            return f"{elem_info[1]}", current_offset
         else:
-            return f"[{elem_index}]: {elem_info}", current_offset
+            return f"{elem_info}", current_offset
 
     except Exception as e:
         return f"Error parsing class array element {elem_index}: {e}", offset
@@ -403,7 +405,8 @@ def parse_class_array_element(data, offset, elem_index):
 def parse_nested_map(data, offset, map_count, context_index):
     """Parse nested maps within class arrays"""
     try:
-        result = f"map with {map_count} entries"
+        # result = f"map with {map_count} entries"
+        result = f""
         current_offset = offset
 
         for m in range(map_count):
@@ -430,7 +433,7 @@ def parse_nested_map(data, offset, map_count, context_index):
                 inner_map_result, current_offset = parse_class_map_fields(
                     data, current_offset, val_info[1]
                 )
-                result += f"\n              {key_value}: {inner_map_result}"
+                result += f"\n{inner_map_result}"
             elif val_info[0] == "text_string":
                 val_value = data[current_offset : current_offset + val_info[1]].decode(
                     "utf-8", errors="ignore"
@@ -446,7 +449,7 @@ def parse_nested_map(data, offset, map_count, context_index):
             else:
                 result += f"\n              {key_value}: {val_info}"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing nested map: {e}", offset
@@ -455,7 +458,8 @@ def parse_nested_map(data, offset, map_count, context_index):
 def parse_class_map_fields(data, offset, inner_map_count):
     """Parse ClassMap fields with meaningful names"""
     try:
-        result = f"map with {inner_map_count} entries"
+        # result = f"map with {inner_map_count} entries"
+        result = ""
         current_offset = offset
 
         for n in range(inner_map_count):
@@ -491,17 +495,17 @@ def parse_class_map_fields(data, offset, inner_map_count):
                     current_offset : current_offset + inner_val_info[1]
                 ].decode("utf-8", errors="replace")
                 current_offset += inner_val_info[1]
-                result += f"\n                {field_name}: '{inner_val_value}'"
+                result += f"\n{field_name}: '{inner_val_value}'"
             elif inner_val_info[0] == "byte_string":
                 inner_val_value = data[
                     current_offset : current_offset + inner_val_info[1]
                 ]
                 current_offset += inner_val_info[1]
                 result += (
-                    f"\n                {field_name}: bytes = {inner_val_value.hex()}"
+                    f"\n{field_name}: bytes = {inner_val_value.hex()}"
                 )
             elif inner_val_info[0] == "positive_int":
-                result += f"\n                {field_name}: {inner_val_info[1]}"
+                result += f"\n{field_name}: {inner_val_info[1]}"
             elif inner_val_info[0] == "tag":
                 # Handle CBOR tags (like tag 111 for class_id)
                 tag_num = inner_val_info[1]
@@ -513,13 +517,13 @@ def parse_class_map_fields(data, offset, inner_map_count):
                         current_offset : current_offset + tagged_content[1]
                     ].decode("utf-8", errors="replace")
                     current_offset += tagged_content[1]
-                    result += f"\n                {field_name}: '{tagged_value}' (tag {tag_num})"
+                    result += f"\n{field_name}: '{tagged_value}' (tag {tag_num})"
                 else:
-                    result += f"\n                {field_name}: tag({tag_num}) -> {tagged_content}"
+                    result += f"\n{field_name}: tag({tag_num}) -> {tagged_content}"
             else:
-                result += f"\n                {field_name}: {inner_val_info}"
+                result += f"\n{field_name}: {inner_val_info}"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing class map fields: {e}", offset
@@ -528,7 +532,8 @@ def parse_class_map_fields(data, offset, inner_map_count):
 def parse_measurement_array(data, offset, array_elem_count):
     """Parse measurement arrays within environment maps"""
     try:
-        result = f"array with {array_elem_count} elements"
+        # result = f"array with {array_elem_count} elements"
+        result = ""
         current_offset = offset
 
         for j in range(array_elem_count):
@@ -565,7 +570,7 @@ def parse_measurement_array(data, offset, array_elem_count):
             else:
                 result += f"\n              measurement_{j}: {measurement_info}"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing measurement array: {e}", offset
@@ -574,7 +579,8 @@ def parse_measurement_array(data, offset, array_elem_count):
 def parse_measurement_map_detailed(data, offset, meas_map_count, meas_index):
     """Parse detailed measurement map structure"""
     try:
-        result = f"measurement_{meas_index}: map with {meas_map_count} entries"
+        # result = f"measurement_{meas_index}: map with {meas_map_count} entries"
+        result = ""
         current_offset = offset
 
         for mm in range(meas_map_count):
@@ -625,11 +631,13 @@ def parse_measurement_map_detailed(data, offset, meas_map_count, meas_index):
                 current_offset += meas_val_info[1]
                 result += f"\n                {meas_key_name}: '{meas_val_str}'"
             elif meas_val_info[0] == "positive_int":
-                result += f"\n                {meas_key_name}: {meas_val_info[1]}"
+                # result += f"\n                {meas_key_name}: {meas_val_info[1]}"
+                pass
             else:
                 result += f"\n                {meas_key_name}: {meas_val_info}"
+                pass
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing measurement map {meas_index}: {e}", offset
@@ -638,7 +646,8 @@ def parse_measurement_map_detailed(data, offset, meas_map_count, meas_index):
 def parse_measurement_value_map(data, offset, mval_map_count, field_name):
     """Parse measurement value map with field details"""
     try:
-        result = f"{field_name}: map with {mval_map_count} entries"
+        # result = f"{field_name}: map with {mval_map_count} entries"
+        result = ""
         current_offset = offset
 
         for mv in range(mval_map_count):
@@ -681,31 +690,31 @@ def parse_measurement_value_map(data, offset, mval_map_count, field_name):
                     current_offset : current_offset + mv_val_info[1]
                 ].decode("utf-8", errors="replace")
                 current_offset += mv_val_info[1]
-                result += f"\n                  {mv_key_name}: '{mv_val_str}'"
+                result += f"\n{mv_key_name}: '{mv_val_str}'"
             elif mv_val_info[0] == "byte_string":
                 mv_val_bytes = data[current_offset : current_offset + mv_val_info[1]]
                 current_offset += mv_val_info[1]
                 result += (
-                    f"\n                  {mv_key_name}: bytes = {mv_val_bytes.hex()}"
+                    f"\n{mv_key_name}: bytes = {mv_val_bytes.hex()}"
                 )
             elif mv_val_info[0] == "positive_int":
-                result += f"\n                  {mv_key_name}: {mv_val_info[1]}"
+                result += f"\n{mv_key_name}: {mv_val_info[1]}"
             elif mv_val_info[0] == "array":
                 # Parse arrays like signer_id or integrity registers
                 array_result, current_offset = parse_measurement_value_array(
                     data, current_offset, mv_val_info[1], mv_key_name
                 )
-                result += f"\n                  {array_result}"
+                # result += f"\n                  {array_result}"
             elif mv_val_info[0] == "map" and mv_key_name == "integrity_registers":
                 # Parse integrity registers map
                 ir_result, current_offset = parse_integrity_registers_map(
                     data, current_offset, mv_val_info[1]
                 )
-                result += f"\n                  {ir_result}"
-            else:
-                result += f"\n                  {mv_key_name}: {mv_val_info}"
+                result += f"\n{ir_result}"
+            # else:
+            #     result += f"\n                  {mv_key_name}: {mv_val_info}"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing measurement value map: {e}", offset
@@ -714,7 +723,8 @@ def parse_measurement_value_map(data, offset, mval_map_count, field_name):
 def parse_measurement_value_array(data, offset, mv_array_count, field_name):
     """Parse arrays within measurement values (like signer_id)"""
     try:
-        result = f"{field_name}: array with {mv_array_count} elements"
+        # result = f"{field_name}: array with {mv_array_count} elements"
+        result = ""
         current_offset = offset
 
         for mvx in range(mv_array_count):
@@ -727,25 +737,25 @@ def parse_measurement_value_array(data, offset, mv_array_count, field_name):
                     "utf-8", errors="replace"
                 )
                 current_offset += mvx_info[1]
-                result += f"\n                    [{mvx}]: '{mvx_val}'"
+                result += f"\n[{mvx}]: '{mvx_val}'"
             elif mvx_info[0] == "byte_string":
                 mvx_bytes = data[current_offset : current_offset + mvx_info[1]]
                 current_offset += mvx_info[1]
-                result += f"\n                    [{mvx}]: bytes = {mvx_bytes.hex()}"
+                result += f"\n[{mvx}]: bytes = {mvx_bytes.hex()}"
             elif mvx_info[0] == "positive_int":
-                result += f"\n                    [{mvx}]: {mvx_info[1]}"
+                result += f"\n[{mvx}]: {mvx_info[1]}"
             elif mvx_info[0] == "negative_int":
-                result += f"\n                    [{mvx}]: {-mvx_info[1] - 1}"
+                result += f"\n[{mvx}]: {-mvx_info[1] - 1}"
             elif mvx_info[0] == "array":
                 # Parse nested arrays within signer_id
                 nested_result, current_offset = parse_nested_array_elements(
                     data, current_offset, mvx_info[1], mvx
                 )
-                result += f"\n                    {nested_result}"
+                result += f"\n{nested_result}"
             else:
-                result += f"\n                    [{mvx}]: {mvx_info}"
+                result += f"\n[{mvx}]: {mvx_info}"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing measurement value array: {e}", offset
@@ -754,7 +764,8 @@ def parse_measurement_value_array(data, offset, mv_array_count, field_name):
 def parse_nested_array_elements(data, offset, mvx_sub_count, parent_index):
     """Parse nested array elements within measurement arrays"""
     try:
-        result = f"[{parent_index}]: array with {mvx_sub_count} elements"
+        # result = f"[{parent_index}]: array with {mvx_sub_count} elements"
+        result = ""
         current_offset = offset
 
         for mvxs in range(mvx_sub_count):
@@ -763,23 +774,23 @@ def parse_nested_array_elements(data, offset, mvx_sub_count, parent_index):
             )
 
             if mvxs_info[0] == "negative_int":
-                result += f"\n                      [{mvxs}]: {-mvxs_info[1] - 1}"
+                result += f"\n[{mvxs}]: {-mvxs_info[1] - 1}"
             elif mvxs_info[0] == "byte_string":
                 mvxs_bytes = data[current_offset : current_offset + mvxs_info[1]]
                 current_offset += mvxs_info[1]
                 result += (
-                    f"\n                      [{mvxs}]: bytes = {mvxs_bytes.hex()}"
+                    f"\n[{mvxs}]: bytes = {mvxs_bytes.hex()}"
                 )
             elif mvxs_info[0] == "text_string":
                 mvxs_val = data[current_offset : current_offset + mvxs_info[1]].decode(
                     "utf-8", errors="replace"
                 )
                 current_offset += mvxs_info[1]
-                result += f"\n                      [{mvxs}]: '{mvxs_val}'"
+                result += f"\n[{mvxs}]: '{mvxs_val}'"
             else:
-                result += f"\n                      [{mvxs}]: {mvxs_info}"
+                result += f"\n[{mvxs}]: {mvxs_info}"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing nested array elements: {e}", offset
@@ -788,7 +799,8 @@ def parse_nested_array_elements(data, offset, mvx_sub_count, parent_index):
 def parse_integrity_registers_map(data, offset, ir_map_count):
     """Parse integrity registers map structure"""
     try:
-        result = f"integrity_registers: map with {ir_map_count} entries"
+        # result = f"integrity_registers: map with {ir_map_count} entries"
+        result = ""
         current_offset = offset
 
         for ir in range(ir_map_count):
@@ -811,7 +823,7 @@ def parse_integrity_registers_map(data, offset, ir_map_count):
             )
             if reg_val_info[0] == "array":
                 digest_count = reg_val_info[1]
-                result += f"\n                    {reg_id_name}: array with {digest_count} digests"
+                # result += f"\n                    {reg_id_name}: array with {digest_count} digests"
                 for dig in range(digest_count):
                     # Parse digest entry [alg_id, value]
                     digest_info, current_offset = parse_cbor_header_with_names(
@@ -821,13 +833,13 @@ def parse_integrity_registers_map(data, offset, ir_map_count):
                         digest_result, current_offset = parse_digest_entry(
                             data, current_offset, dig
                         )
-                        result += f"\n                      {digest_result}"
+                        result += f"\n{digest_result}"
                     else:
-                        result += f"\n                      digest_{dig}: {digest_info}"
+                        result += f"\ndigest_{dig}: {digest_info}"
             else:
-                result += f"\n                    {reg_id_name}: {reg_val_info}"
+                result += f"\n{reg_id_name}: {reg_val_info}"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing integrity registers map: {e}", offset
@@ -849,6 +861,8 @@ def parse_digest_entry(data, offset, digest_index):
                 alg_name = "SHA-512"
             else:
                 alg_name = f"alg_{alg_id}"
+        else:
+            alg_name = str(alg_info)
 
         # Parse digest value
         val_info, current_offset = parse_cbor_header_with_names(data, current_offset)
@@ -859,7 +873,7 @@ def parse_digest_entry(data, offset, digest_index):
         else:
             result = f"digest_{digest_index}: {alg_name} = {val_info}"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing digest entry {digest_index}: {e}", offset
@@ -868,7 +882,8 @@ def parse_digest_entry(data, offset, digest_index):
 def parse_nested_measurement_array(data, offset, meas_sub_array_count, meas_index):
     """Parse nested measurement arrays"""
     try:
-        result = f"measurement_{meas_index}: array with {meas_sub_array_count} elements"
+        # result = f"measurement_{meas_index}: array with {meas_sub_array_count} elements"
+        result = ""
         current_offset = offset
 
         for msub in range(meas_sub_array_count):
@@ -881,25 +896,25 @@ def parse_nested_measurement_array(data, offset, meas_sub_array_count, meas_inde
                     "utf-8", errors="replace"
                 )
                 current_offset += msub_info[1]
-                result += f"\n                [{msub}]: '{msub_val}'"
+                result += f"\n[{msub}]: '{msub_val}'"
             elif msub_info[0] == "byte_string":
                 msub_bytes = data[current_offset : current_offset + msub_info[1]]
                 current_offset += msub_info[1]
-                result += f"\n                [{msub}]: bytes = {msub_bytes.hex()}"
-            elif msub_info[0] == "positive_int":
-                result += f"\n                [{msub}]: {msub_info[1]}"
+                result += f"\n[{msub}]: bytes = {msub_bytes.hex()}"
+            # elif msub_info[0] == "positive_int":
+            #     result += f"\n                [{msub}]: {msub_info[1]}"
             elif msub_info[0] == "negative_int":
-                result += f"\n                [{msub}]: {-msub_info[1] - 1}"
+                result += f"\n[{msub}]: {-msub_info[1] - 1}"
             elif msub_info[0] == "map":
                 # Parse simple map structures
                 msub_map_result, current_offset = parse_simple_map(
                     data, current_offset, msub_info[1], msub
                 )
-                result += f"\n                {msub_map_result}"
-            else:
-                result += f"\n                [{msub}]: {msub_info}"
+                result += f"\n{msub_map_result}"
+            # else:
+            #     result += f"\n                [{msub}]: {msub_info}"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing nested measurement array: {e}", offset
@@ -908,7 +923,8 @@ def parse_nested_measurement_array(data, offset, meas_sub_array_count, meas_inde
 def parse_simple_map(data, offset, msub_map_count, elem_index):
     """Parse simple map structures within arrays"""
     try:
-        result = f"[{elem_index}]: map with {msub_map_count} entries"
+        # result = f"[{elem_index}]: map with {msub_map_count} entries"
+        result = ""
         current_offset = offset
 
         for msmap in range(msub_map_count):
@@ -935,11 +951,11 @@ def parse_simple_map(data, offset, msub_map_count, elem_index):
                     current_offset : current_offset + msmap_val_info[1]
                 ].decode("utf-8", errors="replace")
                 current_offset += msmap_val_info[1]
-                result += f"\n                  {msmap_key_name}: '{msmap_val}'"
+                result += f"\n{msmap_key_name}: '{msmap_val}'"
             else:
-                result += f"\n                  {msmap_key_name}: {msmap_val_info}"
+                result += f"\n{msmap_key_name}: {msmap_val_info}"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing simple map: {e}", offset
@@ -953,7 +969,8 @@ def parse_environment_map(data, offset):
             return f"Expected map, got {map_info[0]}", offset
 
         count = map_info[1]
-        result = f"EnvironmentMap with {count} entries:"
+        # result = f"EnvironmentMap with {count} entries:"
+        result = ""
         current_offset = new_offset
 
         for i in range(count):
@@ -971,25 +988,25 @@ def parse_environment_map(data, offset):
                     )
                     if value_info[0] == "array":
                         class_count = value_info[1]
-                        result += f"\n          class: array with {class_count} entries"
+                        # result += f"\nclass: array with {class_count} entries"
                         # Parse each class entry using modular functions
                         for j in range(class_count):
                             class_result, current_offset = parse_class_array_entry(
                                 data, current_offset, j
                             )
-                            result += f"\n            {class_result}"
+                            result += f"{class_result}"
                     else:
-                        result += f"\n          class: {value_info}"
+                        result += f"\nclass: {value_info}"
                 else:
                     # Parse generic value
                     value_info, current_offset = parse_cbor_header_with_names(
                         data, current_offset
                     )
-                    result += f"\n          key_{key}: {value_info}"
+                    result += f"\nkey_{key}: {value_info}"
             else:
-                result += f"\n          key_{key_info}: parsing error"
+                result += f"\nkey_{key_info}: parsing error"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing EnvironmentMap: {e}", offset
@@ -1020,17 +1037,17 @@ def parse_class_map(data, offset):
                 )
 
                 if key == 0:  # class_id
-                    result += f"\n          class_id: {value_info}"
+                    result += f"\nclass_id: {value_info}"
                 elif key == 1:  # vendor
-                    result += f"\n          vendor: {value_info}"
+                    result += f"\nvendor: {value_info}"
                 elif key == 2:  # model
-                    result += f"\n          model: {value_info}"
+                    result += f"\nmodel: {value_info}"
                 else:
-                    result += f"\n          key_{key}: {value_info}"
+                    result += f"\nkey_{key}: {value_info}"
             else:
-                result += f"\n          key_{key_info}: parsing error"
+                result += f"\nkey_{key_info}: parsing error"
 
-        return result, current_offset
+        return result.strip(), current_offset
 
     except Exception as e:
         return f"Error parsing ClassMap: {e}", offset
@@ -1039,9 +1056,9 @@ def parse_class_map(data, offset):
 def parse_measurements_array(data, offset, num_elements):
     """Parse measurements array"""
     try:
-        print(f"              measurements: array ({num_elements} elements)")
+        # print(f"              measurements: array ({num_elements} elements)")
         for elem_idx in range(num_elements):
-            print(f"                Measurement {elem_idx + 1}:")
+            # print(f"Measurement {elem_idx + 1}:")
             header, offset = parse_cbor_header(data, offset)
             if header:
                 offset = skip_cbor_value_simple(data, offset, header[0], header[1])
@@ -1122,7 +1139,7 @@ def parse_cose_protected_headers(data, offset):
     if header and header[0] == 2:  # Byte string
         protected_len = header[1]
         protected_headers = data[new_offset : new_offset + protected_len]
-        print(f"Protected headers ({protected_len} bytes): {protected_headers.hex()}")
+        # print(f"Protected headers ({protected_len} bytes): {protected_headers.hex()}")
         return new_offset + protected_len
     return offset
 
@@ -1133,7 +1150,7 @@ def parse_cose_protected_headers_with_data(data, offset):
     if header and header[0] == 2:  # Byte string
         protected_len = header[1]
         protected_headers = data[new_offset : new_offset + protected_len]
-        print(f"Protected headers ({protected_len} bytes): {protected_headers.hex()}")
+        # print(f"Protected headers ({protected_len} bytes): {protected_headers.hex()}")
         return new_offset + protected_len, protected_headers
     return offset, None
 
@@ -1143,7 +1160,7 @@ def parse_cose_unprotected_headers(data, offset):
     header, new_offset = parse_cbor_header(data, offset)
     if header and header[0] == 5:  # Map
         map_pairs = header[1]
-        print(f"Unprotected headers: map with {map_pairs} pairs")
+        # print(f"Unprotected headers: map with {map_pairs} pairs")
         # Parse the map content
         current_offset = new_offset
         for _ in range(map_pairs):  # key-value pairs
@@ -1159,7 +1176,7 @@ def parse_cose_unprotected_headers(data, offset):
                 value_data = data[current_offset : current_offset + value_header[1]]
                 current_offset += value_header[1]
 
-                print(f"  Key {key_value}: {len(value_data)} bytes")
+                #  print(f"  Key {key_value}: {len(value_data)} bytes")
                 # Check if this is a certificate (X5CHAIN)
                 if analyze_certificate_headers(key_value, value_data):
                     print(f"    Certificate analysis completed")
@@ -1179,7 +1196,7 @@ def parse_cose_unprotected_headers_with_data(data, offset):
 
     if header and header[0] == 5:  # Map
         map_pairs = header[1]
-        print(f"Unprotected headers: map with {map_pairs} pairs")
+        # print(f"Unprotected headers: map with {map_pairs} pairs")
         # Parse the map content
         current_offset = new_offset
         for _ in range(map_pairs):  # key-value pairs
@@ -1195,10 +1212,10 @@ def parse_cose_unprotected_headers_with_data(data, offset):
                 value_data = data[current_offset : current_offset + value_header[1]]
                 current_offset += value_header[1]
 
-                print(f"  Key {key_value}: {len(value_data)} bytes")
+                # print(f"  Key {key_value}: {len(value_data)} bytes")
                 # Check if this is a certificate (X5CHAIN)
                 if analyze_certificate_headers(key_value, value_data):
-                    print(f"    Certificate analysis completed")
+                    # print(f"    Certificate analysis completed")
                     if key_value == 33:  # X5CHAIN
                         certificate_data = value_data
                 else:
@@ -1219,16 +1236,16 @@ def parse_cose_signature(data, offset):
             signature = data[new_offset : new_offset + signature_len]
             print(f"Signature ({signature_len} bytes): {signature.hex()}")
             # Enhanced signature analysis
-            analyze_cose_signature(signature)
+            # analyze_cose_signature(signature)
             return new_offset + signature_len
     return offset
 
 
 def parse_eat_profile_claim(payload, claims_offset, value_info):
     """Parse EAT Profile claim (265) with CBOR tag"""
-    print(f"    Value: CBOR tag ({value_info})")
-    if value_info == 111:  # OID tag
-        print(f"      Tag type: OID (111)")
+    # print(f"    Value: CBOR tag ({value_info})")
+    # if value_info == 111:  # OID tag
+    #     print(f"      Tag type: OID (111)")
 
     # Parse the tagged value
     tag_value_header, new_offset = parse_cbor_header(payload, claims_offset)
@@ -1238,16 +1255,16 @@ def parse_eat_profile_claim(payload, claims_offset, value_info):
             profile_value = payload[new_offset : new_offset + profile_len].decode(
                 "utf-8"
             )
-            print(f"      EAT Profile OID: '{profile_value}'")
+            print(f"    EAT Profile OID: '{profile_value}'")
             return new_offset + profile_len
         elif tag_value_header[0] == 2:  # Byte string
             profile_len = tag_value_header[1]
             profile_bytes = payload[new_offset : new_offset + profile_len]
             profile_value = profile_bytes.decode("utf-8")
-            print(f"      EAT Profile OID: '{profile_value}'")
+            print(f"    EAT Profile OID: '{profile_value}'")
             return new_offset + profile_len
         else:
-            print(f"      Tagged value: {get_cbor_type_name(tag_value_header[0])}")
+            # print(f"      Tagged value: {get_cbor_type_name(tag_value_header[0])}")
             return skip_cbor_value_simple(
                 payload, new_offset, tag_value_header[0], tag_value_header[1]
             )
@@ -1263,9 +1280,9 @@ def parse_measurements_claim(payload, claims_offset, value_info):
 
     # Parse each measurement format in the array
     for meas_idx in range(value_info):
-        print(f"      Measurement {meas_idx + 1}:")
+        # print(f"      Measurement {meas_idx + 1}:")
         result, current_offset = parse_measurement_format(payload, current_offset)
-        print(f"        {result}")
+        print(f"      {result}")
 
     return current_offset
 
@@ -1284,10 +1301,10 @@ def parse_generic_claim_value(payload, claims_offset, value_type, value_info):
         print(f"    Value: text string = '{text_value}'")
         return claims_offset + value_info
     elif value_type == 0:  # Positive integer
-        print(f"    Value: positive integer = {value_info}")
+        # print(f"    Value: positive integer = {value_info}")
         return claims_offset
     elif value_type == 1:  # Negative integer
-        print(f"    Value: negative integer = {-value_info - 1}")
+        # print(f"    Value: negative integer = {-value_info - 1}")
         return claims_offset
     elif value_type == 4:  # Array (generic)
         print(f"    Value: array ({value_info} elements)")
@@ -1320,7 +1337,8 @@ def parse_eat_claims(payload):
         return
 
     num_claims = claims_header[1]
-    print(f"EAT claims: map with {num_claims} entries")
+    okay = "✅" if num_claims == 6 else "❌"
+    print(f"EAT claims: map with {num_claims} entries {okay}")
 
     # Parse each claim
     for i in range(num_claims):
@@ -1333,14 +1351,14 @@ def parse_eat_claims(payload):
         if key_header[0] == 0:  # Positive integer key
             key = key_header[1]
             claim_name = get_eat_claim_name(key)
-            print(f"  Claim {i+1}: {claim_name} (key={key})")
+            print(f"  Claim {i+1}: {claim_name} (key={key}): ")
         elif key_header[0] == 3:  # Text string key
             key_len = key_header[1]
             key = payload[claims_offset : claims_offset + key_len].decode("utf-8")
             claims_offset += key_len
-            print(f"  Claim {i+1}: '{key}' (string key)")
+            print(f"  Claim {i+1}: '{key}' (string key): ")
         else:
-            print(f"  Claim {i+1}: Key = unknown type {key_header[0]}")
+            print(f"  Claim {i+1}: Key = unknown type {key_header[0]}: ")
 
         # Parse value with special handling for specific claims
         value_header, new_offset = parse_cbor_header(payload, claims_offset)
@@ -1370,8 +1388,7 @@ def parse_cose_payload(data, offset):
 
     payload_len = header[1]
     payload = data[new_offset : new_offset + payload_len]
-    print(f"Payload ({payload_len} bytes)")
-    print(f"Payload first 64 bytes: {payload[:64].hex()}")
+    print(f"Payload ({payload_len} bytes): {payload[:16].hex()}...")
 
     # Try to parse payload as CBOR
     try:
@@ -1395,8 +1412,7 @@ def parse_cose_payload_with_data(data, offset):
 
     payload_len = header[1]
     payload = data[new_offset : new_offset + payload_len]
-    print(f"Payload ({payload_len} bytes)")
-    print(f"Payload first 64 bytes: {payload[:64].hex()}")
+    print(f"Payload ({payload_len} bytes): {payload[:16].hex()}...")
 
     # Try to parse payload as CBOR
     try:
@@ -1419,14 +1435,14 @@ def parse_cose_signature_with_data(data, offset):
             signature = data[new_offset : new_offset + signature_len]
             print(f"Signature ({signature_len} bytes): {signature.hex()}")
             # Enhanced signature analysis
-            analyze_cose_signature(signature)
+            # analyze_cose_signature(signature)
             return signature
     return None
 
 
 def parse_cose_sign1_structure(cose_data):
     """Parse the main COSE Sign1 structure"""
-    print("\n=== COSE Sign1 Structure Analysis ===")
+    # print("\n=== COSE Sign1 Structure Analysis ===")
     offset = 0
 
     # Parse the main array structure
@@ -1487,15 +1503,15 @@ def decode_eat_token(file_path):
         with open(file_path, "rb") as f:
             data = f.read()
 
-        print(f"File size: {len(data)} bytes")
-        print(f"First 16 bytes (hex): {data[:16].hex()}")
+        # print(f"File size: {len(data)} bytes")
+        # print(f"First 16 bytes (hex): {data[:16].hex()}")
 
         # Skip any CBOR tags to get to the COSE message
         cose_data = skip_cbor_tags(data)
 
-        if len(cose_data) != len(data):
-            print(f"Skipped {len(data) - len(cose_data)} bytes of CBOR tags")
-            print(f"COSE data first 16 bytes: {cose_data[:16].hex()}")
+        # if len(cose_data) != len(data):
+        #     print(f"Skipped {len(data) - len(cose_data)} bytes of CBOR tags")
+        #     print(f"COSE data first 16 bytes: {cose_data[:16].hex()}")
 
         # Parse the COSE Sign1 structure
         parse_cose_sign1_structure(cose_data)
@@ -1516,7 +1532,7 @@ def main():
         sys.exit(1)
 
     file_path = sys.argv[1]
-    print(f"=== Decoding {file_path} ===")
+    # print(f"=== Decoding {file_path} ===")
     decode_eat_token(file_path)
 
 

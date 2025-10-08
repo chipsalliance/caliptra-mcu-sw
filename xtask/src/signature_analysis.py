@@ -46,7 +46,7 @@ def analyze_certificate_headers(key_value, value_data):
             import struct
 
             cert_len = struct.unpack(">H", value_data[2:4])[0]
-            print(f"    X.509 certificate (declared length: {cert_len + 4} bytes)")
+            # print(f"    X.509 certificate (declared length: {cert_len + 4} bytes)")
 
             # Look for common certificate fields
             cert_str = value_data.hex()

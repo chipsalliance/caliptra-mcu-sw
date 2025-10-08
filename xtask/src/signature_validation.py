@@ -19,15 +19,15 @@ def validate_cose_signature(protected_headers, payload, signature, certificate):
         from cryptography.hazmat.primitives.asymmetric import ec
         import hashlib
 
-        print(f"\n--- COSE Sign1 Signature Validation ---")
+        # print(f"\n--- COSE Sign1 Signature Validation ---")
 
         # Try to parse the X.509 certificate
         try:
             cert = x509.load_der_x509_certificate(certificate)
             public_key = cert.public_key()
         except Exception as cert_error:
-            print(f"Certificate parsing failed: {cert_error}")
-            print(f"This appears to be a test/mock certificate")
+            # print(f"Certificate parsing failed: {cert_error}")
+            # print(f"This appears to be a test/mock certificate")
 
             # Try to extract public key directly from certificate structure
             # Look for the P-384 public key pattern in the certificate
@@ -47,7 +47,7 @@ def validate_cose_signature(protected_headers, payload, signature, certificate):
                         print(f"Note: Cannot validate signature with mock certificate")
                         return False
 
-            print(f"Could not extract valid public key from mock certificate")
+            # print(f"Could not extract valid public key from mock certificate")
             return False
 
         print(f"Certificate Subject: {cert.subject}")
