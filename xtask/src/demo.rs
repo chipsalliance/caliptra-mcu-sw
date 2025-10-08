@@ -52,7 +52,6 @@ const SIGNATURE_VALIDATION_PY: &str = include_str!("signature_validation.py");
 
 const SPDM_DEMO_ZIP: &'static str = "spdm-demo-fpga-2.1.zip";
 const MLKEM_DEMO_ZIP: &'static str = "mlkem-demo-fpga.zip";
-//const MLKEM_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
 const OCPLOCK_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
 
 const PAUSE_START_DEMO: Duration = Duration::from_secs(5);
@@ -66,7 +65,7 @@ const I3C_PORTS: [u16; 5] = [65530, 65531, 65532, 65533, 65534];
 enum DemoType {
     Spdm,
     Mlkem,
-    // OcpLock
+    OcpLock,
 }
 
 impl DemoType {
@@ -74,6 +73,7 @@ impl DemoType {
         match self {
             DemoType::Spdm => SPDM_DEMO_ZIP,
             DemoType::Mlkem => MLKEM_DEMO_ZIP,
+            DemoType::OcpLock => OCPLOCK_DEMO_ZIP,
         }
     }
 
@@ -93,6 +93,13 @@ impl DemoType {
                     100_000_000
                 }
             }
+            DemoType::OcpLock => {
+                if FPGA {
+                    100_000_000
+                } else {
+                    100_000_000
+                }
+            }
         }
     }
 
@@ -100,6 +107,7 @@ impl DemoType {
         match self {
             DemoType::Spdm => "Caliptra FPGA Demos: SPDM",
             DemoType::Mlkem => "Caliptra FPGA Demos: MLKEM",
+            DemoType::OcpLock => "Caliptra FPGA Demos: OCP LOCK",
         }
     }
 
@@ -107,6 +115,7 @@ impl DemoType {
         match self {
             DemoType::Spdm => true,
             DemoType::Mlkem => false,
+            DemoType::OcpLock => false,
         }
     }
 }
@@ -116,6 +125,7 @@ impl std::fmt::Display for DemoType {
         match self {
             DemoType::Spdm => write!(f, "SPDM"),
             DemoType::Mlkem => write!(f, "MLKEM"),
+            DemoType::OcpLock => write!(f, "OCP LOCK"),
         }
     }
 }
@@ -283,6 +293,7 @@ struct Demo {
     buffered_packets: Vec<Vec<u8>>,
     encaps_key: Vec<u8>,
     write_msg_fifo: VecDeque<u8>,
+    ocplock_key: Vec<u8>,
 }
 
 impl Demo {
@@ -299,7 +310,7 @@ impl Demo {
             model_started: false,
             next_demo: false,
             i3c_socket: None,
-            demos: vec![DemoType::Spdm, DemoType::Mlkem],
+            demos: vec![DemoType::OcpLock, DemoType::Mlkem, DemoType::Spdm],
             current_demo_idx: 0,
             i3c_port_idx: 0,
             wait_for_next_demo_until: None,
@@ -311,6 +322,7 @@ impl Demo {
             buffered_packets: vec![],
             encaps_key: vec![],
             write_msg_fifo: VecDeque::new(),
+            ocplock_key: vec![],
         }
     }
 
@@ -481,6 +493,25 @@ impl Demo {
         match self.current_demo() {
             DemoType::Spdm => self.spdm_demo_tick()?,
             DemoType::Mlkem => self.mlkem_demo_tick()?,
+            DemoType::OcpLock => self.ocplock_demo_tick()?,
+        }
+        Ok(())
+    }
+
+    fn ocplock_demo_tick(&mut self) -> Result<()> {
+        let mut model = self.model.as_ref().unwrap().borrow_mut();
+        if self.ocplock_key.len() < 256 {
+            if let Some(b) = model.read_msg_fifo() {
+                self.ocplock_key.push(b);
+            }
+        }
+        if self.ocplock_key.len() == 256 {
+            writeln!(
+                self.host_console.borrow_mut(),
+                "{}",
+                format!("OCP LOCK released MEK: {:02x?}...", &self.ocplock_key[..16])
+            )?;
+            self.ocplock_key.push(0); // prevent re-entry
         }
         Ok(())
     }
@@ -498,7 +529,7 @@ impl Demo {
             writeln!(
                 self.host_console.borrow_mut(),
                 "{}",
-                format!("Received encaps key: {:02x?}...", &self.encaps_key[1550..])
+                format!("Received encaps key: {:02x?}...", &self.encaps_key[..16])
             )?;
 
             let encaps_key: [u8; 1568] = self.encaps_key.as_slice().try_into().unwrap();
