@@ -57,7 +57,7 @@ const OCPLOCK_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
 const PAUSE_START_DEMO: Duration = Duration::from_secs(5);
 const PAUSE_BETWEEN_DEMOS: Duration = Duration::from_secs(10);
 
-const SPDM_BOOT_CYCLES: u64 = 425_000_000;
+const SPDM_BOOT_CYCLES: u64 = 700_000_000;
 
 const I3C_PORTS: [u16; 5] = [65530, 65531, 65532, 65533, 65534];
 
@@ -81,7 +81,7 @@ impl DemoType {
         match self {
             DemoType::Spdm => {
                 if FPGA {
-                    550_000_000
+                    1_800_000_000
                 } else {
                     200_000_000
                 }
@@ -579,13 +579,29 @@ impl Demo {
     fn spdm_demo_tick(&mut self) -> Result<()> {
         let mut model = self.model.as_ref().unwrap().borrow_mut();
 
+        let flow_status = model.mci_flow_status();
+        // writeln!(
+        //     self.host_console.borrow_mut(),
+        //     "{}",
+        //     format!("MCI flow status: {}", flow_status)
+        // )?;
+        // 308058
+        if flow_status & 0xffff < 386 {
+            // don't even try if we have not booted to runtime
+            return Ok(());
+        }
+
         // Wait until we have an I3C address.
         let Some(addr) = model.i3c_address() else {
             return Ok(());
         };
 
         if model.cycle_count() > SPDM_BOOT_CYCLES && self.i3c_socket.is_none() {
-            writeln!(model.output().logger(), "Connecting to I3C socket")?;
+            writeln!(
+                model.output().logger(),
+                "Connecting to I3C socket: {}",
+                flow_status
+            )?;
             let addr = SocketAddr::from(([127, 0, 0, 1], self.i3c_port()));
             let stream = TcpStream::connect(addr).unwrap();
             let stream = BufferedStream::new(stream);
@@ -598,7 +614,12 @@ impl Demo {
 
         if self.spdm_demo_state.is_none() {
             // send a version
-            writeln!(self.host_console.borrow_mut(), "Requesting EAT")?;
+            let cycle = model.cycle_count();
+            writeln!(
+                self.host_console.borrow_mut(),
+                "{}",
+                format!("Requesting EAT at cycle {}", cycle)
+            )?;
             let mut packet = vec![];
             packet.extend_from_slice(&MCTP_HEADER);
             packet.extend_from_slice(&GET_VERSION);
