@@ -29,8 +29,10 @@ Features:
 import os
 import struct
 import sys
+import logging
 from signature_analysis import analyze_cose_signature, analyze_certificate_headers
 from signature_validation import validate_cose_signature
+from decode_json import extract_claims_to_dict, claims_to_json, extract_claims_to_json_only
 
 def parse_cbor_header(data, offset=0):
     """Parse CBOR header to understand the structure"""
@@ -634,21 +636,52 @@ def parse_nested_array_elements(data, offset, mvx_sub_count, parent_index):
         result = f"[{parent_index}]: array with {mvx_sub_count} elements"
         current_offset = offset
         
-        for mvxs in range(mvx_sub_count):
-            mvxs_info, current_offset = parse_cbor_header_with_names(data, current_offset)
+        # Check if this looks like a digest entry (2 elements: algorithm + value)
+        if mvx_sub_count == 2:
+            # Parse algorithm ID (first element)
+            alg_info, current_offset = parse_cbor_header_with_names(data, current_offset)
+            alg_name = "unknown"
             
-            if mvxs_info[0] == 'negative_int':
-                result += f"\n                      [{mvxs}]: {-mvxs_info[1] - 1}"
-            elif mvxs_info[0] == 'byte_string':
-                mvxs_bytes = data[current_offset:current_offset + mvxs_info[1]]
-                current_offset += mvxs_info[1]
-                result += f"\n                      [{mvxs}]: bytes = {mvxs_bytes.hex()}"
-            elif mvxs_info[0] == 'text_string':
-                mvxs_val = data[current_offset:current_offset + mvxs_info[1]].decode('utf-8', errors='replace')
-                current_offset += mvxs_info[1]
-                result += f"\n                      [{mvxs}]: '{mvxs_val}'"
+            if alg_info[0] == 'positive_int':
+                alg_id = alg_info[1]
+                if alg_id == 1:
+                    alg_name = "SHA-256"
+                elif alg_id == 7:
+                    alg_name = "SHA-384"
+                elif alg_id == 8:
+                    alg_name = "SHA-512"
+                else:
+                    alg_name = f"alg_{alg_id}"
             else:
-                result += f"\n                      [{mvxs}]: {mvxs_info}"
+                alg_name = f"unknown_type_{alg_info[0]}"
+            
+            result += f"\n                      [0]: {alg_name}"
+            
+            # Parse digest value (second element)
+            val_info, current_offset = parse_cbor_header_with_names(data, current_offset)
+            if val_info[0] == 'byte_string':
+                val_bytes = data[current_offset:current_offset + val_info[1]]
+                current_offset += val_info[1]
+                result += f"\n                      [1]: {alg_name} digest = {val_bytes.hex()}"
+            else:
+                result += f"\n                      [1]: {val_info}"
+        else:
+            # Parse as generic array elements
+            for mvxs in range(mvx_sub_count):
+                mvxs_info, current_offset = parse_cbor_header_with_names(data, current_offset)
+                
+                if mvxs_info[0] == 'negative_int':
+                    result += f"\n                      [{mvxs}]: {-mvxs_info[1] - 1}"
+                elif mvxs_info[0] == 'byte_string':
+                    mvxs_bytes = data[current_offset:current_offset + mvxs_info[1]]
+                    current_offset += mvxs_info[1]
+                    result += f"\n                      [{mvxs}]: bytes = {mvxs_bytes.hex()}"
+                elif mvxs_info[0] == 'text_string':
+                    mvxs_val = data[current_offset:current_offset + mvxs_info[1]].decode('utf-8', errors='replace')
+                    current_offset += mvxs_info[1]
+                    result += f"\n                      [{mvxs}]: '{mvxs_val}'"
+                else:
+                    result += f"\n                      [{mvxs}]: {mvxs_info}"
         
         return result, current_offset
         
@@ -698,16 +731,19 @@ def parse_digest_entry(data, offset, digest_index):
         # Parse algorithm ID
         alg_info, current_offset = parse_cbor_header_with_names(data, offset)
         alg_name = "unknown"
-        if alg_info[0] == 'negative_int':
-            alg_id = -alg_info[1] - 1
-            if alg_id == -16:
+        if alg_info[0] == 'positive_int':
+            alg_id = alg_info[1]
+            if alg_id == 1:
                 alg_name = "SHA-256"
-            elif alg_id == -43:
+            elif alg_id == 7:
                 alg_name = "SHA-384"
-            elif alg_id == -44:
+            elif alg_id == 8:
                 alg_name = "SHA-512"
             else:
                 alg_name = f"alg_{alg_id}"
+        else:
+            alg_name = f"unknown_type_{alg_info[0]}"
+        
         
         # Parse digest value
         val_info, current_offset = parse_cbor_header_with_names(data, current_offset)
@@ -1181,6 +1217,19 @@ def parse_cose_payload(data, offset):
     # Try to parse payload as CBOR
     try:
         parse_eat_claims(payload)
+        
+        # Also extract claims to dictionary and save as JSON
+        print("\n=== Extracting Claims to JSON ===")
+        claims_dict = extract_claims_to_dict(payload, parse_cbor_header)
+        if claims_dict:
+            # Generate filename based on current time
+            import time
+            timestamp = int(time.time())
+            json_filename = f"eat_claims_{timestamp}.json"
+            claims_to_json(claims_dict, json_filename)
+            print(f"Claims dictionary contains {len(claims_dict)} entries")
+        else:
+            print("No claims extracted to dictionary")
     except Exception as e:
         print(f"Could not parse EAT claims: {e}")
         import traceback
@@ -1302,13 +1351,39 @@ def main():
     """Main function to decode EAT tokens from command line arguments"""
     
     if len(sys.argv) < 2:
-        print("Usage: python3 decode.py <eat_token_file>")
+        print("Usage: python3 decode.py <eat_token_file> [--json] [--verbose]")
         print("Example: python3 decode.py example_eat_token.cbor")
+        print("Example: python3 decode.py example_eat_token.cbor --json")
+        print("Example: python3 decode.py example_eat_token.cbor --json --verbose")
+        print("\nOptions:")
+        print("  --json      Extract claims to JSON only (skip detailed analysis)")
+        print("  --verbose   Show debug information during processing")
         sys.exit(1)
     
     file_path = sys.argv[1]
-    print(f"=== Decoding {file_path} ===")
-    decode_eat_token(file_path)
+    json_only = "--json" in sys.argv
+    verbose = "--verbose" in sys.argv
+    
+    # Configure logging based on verbose mode
+    if verbose:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)s: %(message)s',
+            force=True  # Override any existing configuration
+        )
+    else:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(message)s',
+            force=True
+        )
+    
+    if json_only:
+        print(f"=== JSON Export from {file_path} ===")
+        extract_claims_to_json_only(file_path, skip_cbor_tags, parse_cbor_header, verbose)
+    else:
+        print(f"=== Decoding {file_path} ===")
+        decode_eat_token(file_path)
 
 if __name__ == "__main__":
     main()
