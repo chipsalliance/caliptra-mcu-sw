@@ -2971,6 +2971,7 @@ dependencies = [
  "mcu-components",
  "mcu-config",
  "mcu-config-fpga",
+ "mcu-mbox-driver",
  "mcu-platforms-common",
  "mcu-tock-veer",
  "registers-generated",

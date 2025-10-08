@@ -11,3 +11,4 @@ pub mod mbox_sram;
 pub mod mci;
 pub mod mctp;
 pub mod mcu_mbox;
+pub mod system;

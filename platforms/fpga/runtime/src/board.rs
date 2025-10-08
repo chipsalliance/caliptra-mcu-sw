@@ -19,6 +19,7 @@ use kernel::scheduler::cooperative::CooperativeSched;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
+use mcu_components::mbox_sram_component_static;
 use mcu_components::mctp_driver_component_static;
 use mcu_components::mctp_mux_component_static;
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
