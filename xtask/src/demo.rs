@@ -241,7 +241,7 @@ pub(crate) fn demo() -> Result<()> {
 
         // create app and run it
         let tick_rate = Duration::from_micros(1_000_000 / 60);
-        let mut app = Demo::new();
+        let mut app = Demo::new(pldm_fw_pkg);
         let app_result = app.run(&mut terminal, tick_rate);
         if app_result.is_err() {
             std::thread::sleep(Duration::from_millis(10000));
@@ -377,10 +377,14 @@ struct Demo {
     encaps_key: Vec<u8>,
     write_msg_fifo: VecDeque<u8>,
     ocplock_key_printed: bool,
+    socket: Option<MctpPldmSocket>,
+    daemon:
+        Option<PldmDaemon<MctpPldmSocket, discovery_sm::DefaultActions, update_sm::DefaultActions>>,
+    pldm_fw_pkg: FirmwareManifest,
 }
 
 impl Demo {
-    fn new() -> Self {
+    fn new(pldm_fw_pkg: FirmwareManifest) -> Self {
         Self {
             console_buffer: Arc::new(RwLock::new(VecDeque::new())),
             host_console: RefCell::new(Console {
@@ -411,6 +415,9 @@ impl Demo {
             encaps_key: vec![],
             write_msg_fifo: VecDeque::new(),
             ocplock_key_printed: false,
+            pldm_fw_pkg,
+            daemon: None,
+            socket: None,
         }
     }
 
@@ -978,6 +985,81 @@ impl Demo {
         Ok(())
     }
 
+    #[allow(clippy::result_unit_err)]
+    pub fn pldm_wait_for_state_transition(
+        &self,
+        expected_state: update_sm::States,
+    ) -> Result<(), ()> {
+        let timeout = Duration::from_secs(500);
+        let start_time = std::time::Instant::now();
+
+        while start_time.elapsed() < timeout {
+            if let Some(daemon) = &self.daemon {
+                if daemon.get_update_sm_state() == expected_state {
+                    return Ok(());
+                }
+            } else {
+                error!("Daemon is not initialized");
+                return Err(());
+            }
+
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        if let Some(daemon) = &self.daemon {
+            if daemon.get_update_sm_state() != expected_state {
+                error!("Timed out waiting for state transition");
+                Err(())
+            } else {
+                Ok(())
+            }
+        } else {
+            error!("Daemon is not initialized");
+            Err(())
+        }
+    }
+
+    #[allow(clippy::result_unit_err)]
+    pub fn test_fw_update(&mut self, debug_level: LevelFilter) -> Result<(), ()> {
+        // Initialize log level to info (only once)
+        let _ = SimpleLogger::new().with_level(debug_level).init();
+
+        let pldm_fw_pkg = self.pldm_fw_pkg.clone();
+
+        // Run the PLDM daemon
+        self.daemon = Some(
+            PldmDaemon::run(
+                self.socket.as_mut().unwrap().clone(),
+                Options {
+                    pldm_fw_pkg: Some(pldm_fw_pkg),
+                    discovery_sm_actions: discovery_sm::DefaultActions {},
+                    update_sm_actions: update_sm::DefaultActions {},
+                    fd_tid: 0x01,
+                },
+            )
+            .map_err(|_| ())?,
+        );
+
+        // Modify the expected state to the one that the test will reach.
+        // Note that the UA state machine will not progress if it receives an unexpected response from the device.
+        let res = self.pldm_wait_for_state_transition(update_sm::States::Done);
+
+        self.daemon.as_mut().unwrap().stop();
+
+        res
+    }
+
+    pub fn run_pldm_test(&mut self, socket: MctpPldmSocket, debug_level: LevelFilter) {
+        // TODO: start this once
+        print!("Emulator: Running PLDM Loopback Test: ",);
+
+        self.socket = Some(socket);
+        if self.test_fw_update(debug_level).is_err() {
+            println!("Failed");
+        } else {
+            println!("Passed");
+        }
+    }
+
     fn render(&mut self, frame: &mut Frame) {
         frame.render_widget(self, frame.area());
     }
@@ -1081,105 +1163,4 @@ fn render_footer(text: &str, area: Rect, buf: &mut Buffer) {
         .fg(CUSTOM_LABEL_COLOR)
         .bold()
         .render(area, buf);
-}
-
-pub struct PldmFwUpdateTest {
-    socket: MctpPldmSocket,
-    daemon:
-        Option<PldmDaemon<MctpPldmSocket, discovery_sm::DefaultActions, update_sm::DefaultActions>>,
-}
-
-impl PldmFwUpdateTest {
-    fn new(socket: MctpPldmSocket) -> Self {
-        Self {
-            socket,
-            daemon: None,
-        }
-    }
-    #[allow(clippy::result_unit_err)]
-    pub fn wait_for_state_transition(&self, expected_state: update_sm::States) -> Result<(), ()> {
-        let timeout = Duration::from_secs(500);
-        let start_time = std::time::Instant::now();
-
-        while start_time.elapsed() < timeout {
-            if let Some(daemon) = &self.daemon {
-                if daemon.get_update_sm_state() == expected_state {
-                    return Ok(());
-                }
-            } else {
-                error!("Daemon is not initialized");
-                return Err(());
-            }
-
-            std::thread::sleep(Duration::from_millis(100));
-        }
-        if let Some(daemon) = &self.daemon {
-            if daemon.get_update_sm_state() != expected_state {
-                error!("Timed out waiting for state transition");
-                Err(())
-            } else {
-                Ok(())
-            }
-        } else {
-            error!("Daemon is not initialized");
-            Err(())
-        }
-    }
-
-    #[allow(clippy::result_unit_err)]
-    pub fn test_fw_update(&mut self, debug_level: LevelFilter) -> Result<(), ()> {
-        // Initialize log level to info (only once)
-        let _ = SimpleLogger::new().with_level(debug_level).init();
-
-        let pldm_fw_pkg = if let Ok(pldm_fw_pkg_path) = std::env::var("PLDM_FW_PKG") {
-            FirmwareManifest::decode_firmware_package(&pldm_fw_pkg_path, None).map_err(|e| {
-                error!(
-                    "Failed to decode PLDM FW package from {}: {:?}",
-                    pldm_fw_pkg_path, e
-                );
-            })?
-        } else {
-            PLDM_FW_PKG.clone()
-        };
-
-        // Run the PLDM daemon
-        self.daemon = Some(
-            PldmDaemon::run(
-                self.socket.clone(),
-                Options {
-                    pldm_fw_pkg: Some(pldm_fw_pkg),
-                    discovery_sm_actions: discovery_sm::DefaultActions {},
-                    update_sm_actions: update_sm::DefaultActions {},
-                    fd_tid: 0x01,
-                },
-            )
-            .map_err(|_| ())?,
-        );
-
-        // Modify the expected state to the one that the test will reach.
-        // Note that the UA state machine will not progress if it receives an unexpected response from the device.
-        let res = self.wait_for_state_transition(update_sm::States::Done);
-
-        self.daemon.as_mut().unwrap().stop();
-
-        res
-    }
-
-    pub fn run(socket: MctpPldmSocket, debug_level: LevelFilter) {
-        std::thread::spawn(move || {
-            wait_for_runtime_start();
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
-                exit(-1);
-            }
-            print!("Emulator: Running PLDM Loopback Test: ",);
-            let mut test = PldmFwUpdateTest::new(socket);
-            if test.test_fw_update(debug_level).is_err() {
-                println!("Failed");
-                exit(-1);
-            } else {
-                println!("Passed");
-            }
-            MCU_RUNNING.store(false, Ordering::Relaxed);
-        });
-    }
 }
