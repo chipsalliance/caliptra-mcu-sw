@@ -293,7 +293,7 @@ struct Demo {
     buffered_packets: Vec<Vec<u8>>,
     encaps_key: Vec<u8>,
     write_msg_fifo: VecDeque<u8>,
-    ocplock_key: Vec<u8>,
+    ocplock_key_printed: bool,
 }
 
 impl Demo {
@@ -322,7 +322,7 @@ impl Demo {
             buffered_packets: vec![],
             encaps_key: vec![],
             write_msg_fifo: VecDeque::new(),
-            ocplock_key: vec![],
+            ocplock_key_printed: false,
         }
     }
 
@@ -499,20 +499,32 @@ impl Demo {
     }
 
     fn ocplock_demo_tick(&mut self) -> Result<()> {
+        if self.ocplock_key_printed {
+            return Ok(());
+        }
         let mut model = self.model.as_ref().unwrap().borrow_mut();
-        if self.ocplock_key.len() < 256 {
-            if let Some(b) = model.read_msg_fifo() {
-                self.ocplock_key.push(b);
-            }
+        if model.ocp_lock_released_key().iter().all(|x| *x == 0) {
+            return Ok(());
         }
-        if self.ocplock_key.len() == 256 {
-            writeln!(
-                self.host_console.borrow_mut(),
-                "{}",
-                format!("OCP LOCK released MEK: {:02x?}...", &self.ocplock_key[..16])
-            )?;
-            self.ocplock_key.push(0); // prevent re-entry
+        self.ocplock_key_printed = true;
+        // ensure that the key has been full written
+        std::thread::sleep(Duration::from_micros(1));
+        let key = model.ocp_lock_released_key();
+        writeln!(
+            self.host_console.borrow_mut(),
+            "{}",
+            format!("OCP LOCK released MEK: {:02x?}...", &key[..16])
+        )?;
+        let mut expected = [0u8; 64];
+        for i in 0..64 {
+            expected[i] = i as u8;
         }
+        let result = if key == expected { "✅" } else { "❌" };
+        writeln!(
+            self.host_console.borrow_mut(),
+            "{}",
+            format!("OCP LOCK result: {}", result)
+        )?;
         Ok(())
     }
 
