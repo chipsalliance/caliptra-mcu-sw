@@ -7,6 +7,8 @@ use mcu_hw_model::McuHwModel;
 use mcu_hw_model::{new, Fuses, InitParams};
 use mcu_rom_common::McuBootMilestones;
 
+// TODO(zhalvorsen): Enable this test for emulator when it is supported
+#[cfg_attr(not(feature = "fpga_realtime"), ignore)]
 #[test]
 fn test_warm_reset_success() -> Result<()> {
     let binaries = mcu_builder::FirmwareBinaries::from_env()?;
