@@ -3,8 +3,9 @@
 //! This module tests the PLDM Firmware Update
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TEST_LOCK};
+
     use chrono::{TimeZone, Utc};
     use lazy_static::lazy_static;
     use log::{error, LevelFilter};
@@ -29,10 +30,7 @@ mod test {
     use std::time::Duration;
     use uuid::Uuid;
 
-    #[cfg_attr(feature = "fpga_realtime", ignore)]
-    #[test]
-    fn test_fw_update_e2e() {
-        let feature = "test-pldm-fw-update-e2e";
+    pub fn start_pldm_test(feature: &str, debug_level: LevelFilter) {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -46,7 +44,7 @@ mod test {
         let pldm_socket = pldm_transport
             .create_socket(EndpointId(8), EndpointId(0))
             .unwrap();
-        PldmFwUpdateTest::run(pldm_socket);
+        PldmFwUpdateTest::run(pldm_socket, debug_level);
 
         let test = finish_runtime_hw_model(&mut hw);
 
@@ -54,6 +52,11 @@ mod test {
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_fw_update_e2e() {
+        start_pldm_test("test-pldm-fw-update-e2e", LevelFilter::Debug);
     }
 
     pub const DEVICE_UUID: [u8; 16] = [
@@ -134,7 +137,11 @@ mod test {
             &self,
             expected_state: update_sm::States,
         ) -> Result<(), ()> {
+<<<<<<< HEAD
             let timeout = Duration::from_secs(30);
+=======
+            let timeout = Duration::from_secs(500);
+>>>>>>> c10ef697 (Firmware Update fixes and add HW model test for FW update and streaming boot)
             let start_time = std::time::Instant::now();
 
             while start_time.elapsed() < timeout {
@@ -163,9 +170,9 @@ mod test {
         }
 
         #[allow(clippy::result_unit_err)]
-        pub fn test_fw_update(&mut self) -> Result<(), ()> {
+        pub fn test_fw_update(&mut self, debug_level: LevelFilter) -> Result<(), ()> {
             // Initialize log level to info (only once)
-            let _ = SimpleLogger::new().with_level(LevelFilter::Debug).init();
+            let _ = SimpleLogger::new().with_level(debug_level).init();
 
             // Run the PLDM daemon
             self.daemon = Some(
@@ -190,7 +197,7 @@ mod test {
             res
         }
 
-        pub fn run(socket: MctpPldmSocket) {
+        pub fn run(socket: MctpPldmSocket, debug_level: LevelFilter) {
             std::thread::spawn(move || {
                 wait_for_runtime_start();
                 if !MCU_RUNNING.load(Ordering::Relaxed) {
@@ -198,7 +205,7 @@ mod test {
                 }
                 print!("Emulator: Running PLDM Loopback Test: ",);
                 let mut test = PldmFwUpdateTest::new(socket);
-                if test.test_fw_update().is_err() {
+                if test.test_fw_update(debug_level).is_err() {
                     println!("Failed");
                     exit(-1);
                 } else {

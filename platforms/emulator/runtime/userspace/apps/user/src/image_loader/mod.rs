@@ -88,7 +88,10 @@ pub async fn image_loading_task() {
         feature = "test-firmware-update-flash"
     ))]
     {
-        mbox_sram.acquire_lock().unwrap();
+        if mbox_sram.acquire_lock().is_err() {
+            mbox_sram.release_lock().unwrap();
+            mbox_sram.acquire_lock().unwrap();
+        }
         match crate::firmware_update::firmware_update(&EMULATED_DMA_MAPPING).await {
             Ok(_) => romtime::test_exit(0),
             Err(_) => romtime::test_exit(1),
