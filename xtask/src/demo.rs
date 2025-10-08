@@ -2,7 +2,7 @@
 
 #![allow(unused_imports)]
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use caliptra_hw_model::BootParams;
 use caliptra_image_gen::to_hw_format;
 use caliptra_image_types::FwVerificationPqcKeyType;
@@ -381,6 +381,7 @@ struct Demo {
     daemon:
         Option<PldmDaemon<MctpPldmSocket, discovery_sm::DefaultActions, update_sm::DefaultActions>>,
     pldm_fw_pkg: FirmwareManifest,
+    pldm_test_started: bool,
 }
 
 impl Demo {
@@ -418,6 +419,7 @@ impl Demo {
             pldm_fw_pkg,
             daemon: None,
             socket: None,
+            pldm_test_started: false,
         }
     }
 
@@ -504,6 +506,7 @@ impl Demo {
             self.spdm_demo_state = None;
             self.next_demo = false;
             self.model_started = false;
+            self.pldm_test_started = false;
             self.encaps_key.clear();
             self.write_msg_fifo.clear();
             self.current_demo_idx = (self.current_demo_idx + 1) % self.demos.len();
@@ -591,44 +594,6 @@ impl Demo {
             DemoType::Mlkem => self.mlkem_demo_tick()?,
             DemoType::OcpLock => self.ocplock_demo_tick()?,
         }
-        Ok(())
-    }
-
-    fn pldm_demo_tick(&mut self) -> Result<()> {
-        let mut model = self.model.as_ref().unwrap().borrow_mut();
-
-        // Wait until we have an I3C address.
-        let Some(addr) = model.i3c_address() else {
-            return Ok(());
-        };
-
-        let flow_status = model.mci_flow_status();
-        if flow_status & 0xffff < 386 {
-            // don't even try if we have not booted to runtime
-            return Ok(());
-        }
-
-        if model.cycle_count() > SPDM_BOOT_CYCLES && self.i3c_socket.is_none() {
-            writeln!(
-                model.output().logger(),
-                "Connecting to I3C socket: {}",
-                flow_status
-            )?;
-            let addr = SocketAddr::from(([127, 0, 0, 1], self.i3c_port()));
-            let stream = TcpStream::connect(addr).unwrap();
-            let stream = BufferedStream::new(stream);
-            self.i3c_socket = Some(stream);
-        }
-        if model.cycle_count() < SPDM_BOOT_CYCLES + 1_000_000 {
-            return Ok(());
-        }
-        let i3c_socket = self.i3c_socket.as_mut().unwrap();
-
-        let pldm_transport = MctpTransport::new(self.i3c_port(), addr.into());
-        let pldm_socket = pldm_transport
-            .create_socket(EndpointId(8), EndpointId(0))
-            .unwrap();
-        // PldmFwUpdateTest::run(pldm_socket, debug_level);
         Ok(())
     }
 
@@ -985,11 +950,97 @@ impl Demo {
         Ok(())
     }
 
-    #[allow(clippy::result_unit_err)]
-    pub fn pldm_wait_for_state_transition(
-        &self,
-        expected_state: update_sm::States,
-    ) -> Result<(), ()> {
+    fn pldm_demo_tick(&mut self) -> Result<()> {
+        let mut model = self.model.as_ref().unwrap().borrow_mut();
+
+        // Wait until we have an I3C address.
+        let Some(addr) = model.i3c_address() else {
+            return Ok(());
+        };
+
+        let flow_status = model.mci_flow_status();
+        if flow_status & 0xffff < 386 {
+            // don't even try if we have not booted to runtime
+            return Ok(());
+        }
+
+        if model.cycle_count() > SPDM_BOOT_CYCLES && self.i3c_socket.is_none() {
+            writeln!(
+                model.output().logger(),
+                "Connecting to I3C socket: {}",
+                flow_status
+            )?;
+            let addr = SocketAddr::from(([127, 0, 0, 1], self.i3c_port()));
+            let stream = TcpStream::connect(addr).unwrap();
+            let stream = BufferedStream::new(stream);
+            self.i3c_socket = Some(stream);
+        }
+
+        if model.cycle_count() < SPDM_BOOT_CYCLES + 1_000_000 {
+            return Ok(());
+        }
+
+        if !self.pldm_test_started {
+            writeln!(
+                self.host_console.borrow_mut(),
+                "Host: Running PLDM firmware update test"
+            );
+            self.pldm_test_started = true;
+
+            let i3c_socket = self.i3c_socket.as_mut().unwrap();
+
+            let pldm_transport = MctpTransport::new(self.i3c_port(), addr.into());
+            let pldm_socket = pldm_transport
+                .create_socket(EndpointId(8), EndpointId(0))
+                .unwrap();
+            self.socket = Some(pldm_socket);
+
+            let debug_level = LevelFilter::Debug;
+
+            // Initialize log level to info (only once)
+            WriteLogger::init(
+                debug_level,
+                Config::default(),
+                // TODO: make the console itself synchronize the newline
+                Console {
+                    buffer: self.console_buffer.clone(),
+                    last_line_terminated: true,
+                },
+            )
+            .unwrap();
+
+            let pldm_fw_pkg = self.pldm_fw_pkg.clone();
+
+            // Run the PLDM daemon
+            self.daemon = Some(
+                PldmDaemon::run(
+                    self.socket.as_mut().unwrap().clone(),
+                    Options {
+                        pldm_fw_pkg: Some(pldm_fw_pkg),
+                        discovery_sm_actions: discovery_sm::DefaultActions {},
+                        update_sm_actions: update_sm::DefaultActions {},
+                        fd_tid: 0x01,
+                    },
+                )
+                .map_err(|_| anyhow!("Failed to start PLDM daemon"))?,
+            );
+
+            // Modify the expected state to the one that the test will reach.
+            // Note that the UA state machine will not progress if it receives an unexpected response from the device.
+            let res = self.pldm_wait_for_state_transition(update_sm::States::Done);
+
+            self.daemon.as_mut().unwrap().stop();
+
+            if res.is_err() {
+                println!("Failed");
+            } else {
+                println!("Passed");
+            }
+        }
+        Ok(())
+    }
+
+    pub fn pldm_wait_for_state_transition(&self, expected_state: update_sm::States) -> Result<()> {
         let timeout = Duration::from_secs(500);
         let start_time = std::time::Instant::now();
 
@@ -999,73 +1050,19 @@ impl Demo {
                     return Ok(());
                 }
             } else {
-                error!("Daemon is not initialized");
-                return Err(());
+                bail!("Daemon is not initialized");
             }
 
             std::thread::sleep(Duration::from_millis(100));
         }
         if let Some(daemon) = &self.daemon {
             if daemon.get_update_sm_state() != expected_state {
-                error!("Timed out waiting for state transition");
-                Err(())
+                bail!("Timed out waiting for state transition");
             } else {
                 Ok(())
             }
         } else {
-            error!("Daemon is not initialized");
-            Err(())
-        }
-    }
-
-    #[allow(clippy::result_unit_err)]
-    pub fn test_fw_update(&mut self, debug_level: LevelFilter) -> Result<(), ()> {
-        // Initialize log level to info (only once)
-        WriteLogger::init(
-            debug_level,
-            Config::default(),
-            // TODO: make the console itself synchronize the newline
-            Console {
-                buffer: self.console_buffer.clone(),
-                last_line_terminated: true,
-            },
-        )
-        .unwrap();
-
-        let pldm_fw_pkg = self.pldm_fw_pkg.clone();
-
-        // Run the PLDM daemon
-        self.daemon = Some(
-            PldmDaemon::run(
-                self.socket.as_mut().unwrap().clone(),
-                Options {
-                    pldm_fw_pkg: Some(pldm_fw_pkg),
-                    discovery_sm_actions: discovery_sm::DefaultActions {},
-                    update_sm_actions: update_sm::DefaultActions {},
-                    fd_tid: 0x01,
-                },
-            )
-            .map_err(|_| ())?,
-        );
-
-        // Modify the expected state to the one that the test will reach.
-        // Note that the UA state machine will not progress if it receives an unexpected response from the device.
-        let res = self.pldm_wait_for_state_transition(update_sm::States::Done);
-
-        self.daemon.as_mut().unwrap().stop();
-
-        res
-    }
-
-    pub fn run_pldm_test(&mut self, socket: MctpPldmSocket, debug_level: LevelFilter) {
-        // TODO: start this once
-        print!("Emulator: Running PLDM Loopback Test: ",);
-
-        self.socket = Some(socket);
-        if self.test_fw_update(debug_level).is_err() {
-            println!("Failed");
-        } else {
-            println!("Passed");
+            bail!("Daemon is not initialized");
         }
     }
 
