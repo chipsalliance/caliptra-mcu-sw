@@ -3059,6 +3059,7 @@ dependencies = [
  "caliptra-emu-periph",
  "crc",
  "hex",
+ "log",
  "pldm-common",
  "pldm-ua",
  "rand",

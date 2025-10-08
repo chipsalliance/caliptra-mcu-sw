@@ -15,6 +15,7 @@ use mcu_hw_model::{InitParams, McuHwModel, ModelEmulated, ModelFpgaRealtime};
 use mcu_rom_common::LifecycleControllerState;
 use mcu_testing_common::i3c_socket::BufferedStream;
 use mcu_testing_common::mctp_transport::{MctpPldmSocket, MctpTransport};
+use mcu_testing_common::MCU_RUNTIME_STARTED;
 use ml_kem::{kem, MlKem1024Params};
 use ml_kem::{
     kem::{Decapsulate, DecapsulationKey, Encapsulate, EncapsulationKey},
@@ -49,6 +50,7 @@ use std::cell::{RefCell, RefMut};
 use std::collections::VecDeque;
 use std::io::{Read, Write as _};
 use std::net::{SocketAddr, TcpStream};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -968,6 +970,7 @@ impl Demo {
             // don't even try if we have not booted to runtime
             return Ok(());
         }
+        MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
 
         if model.cycle_count() < SPDM_BOOT_CYCLES + 1_000_000 {
             return Ok(());
@@ -976,7 +979,7 @@ impl Demo {
         if !self.pldm_test_started {
             writeln!(
                 self.host_console.borrow_mut(),
-                "Host: Running PLDM firmware update test"
+                "Running PLDM firmware update test"
             )?;
             self.pldm_test_started = true;
 
@@ -1017,6 +1020,8 @@ impl Demo {
             );
 
             self.pldm_start_time = Some(Instant::now());
+            writeln!(self.host_console.borrow_mut(), "Test started")?;
+
             return Ok(());
         }
 
@@ -1028,6 +1033,7 @@ impl Demo {
 
         let start_time = self.pldm_start_time.unwrap();
         if start_time.elapsed() > timeout {
+            self.next_demo = true;
             bail!("PLDM test timed out");
         }
 
@@ -1037,6 +1043,7 @@ impl Demo {
                 self.host_console.borrow_mut(),
                 "PLDM test completed successfully"
             )?;
+            self.next_demo = true;
         }
         Ok(())
     }

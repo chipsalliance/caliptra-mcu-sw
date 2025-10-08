@@ -50,6 +50,7 @@ fn send_request_helper<P: PldmCodec>(
     ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     message: &P,
 ) -> Result<(), ()> {
+    debug!("Sending request");
     let mut buffer = [0u8; MAX_PLDM_PAYLOAD_SIZE];
     let sz = message.encode(&mut buffer).map_err(|_| ())?;
     ctx.response_timer.cancel();

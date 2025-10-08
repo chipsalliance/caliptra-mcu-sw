@@ -404,6 +404,9 @@ impl ModelFpgaRealtime {
         self.handle_i3c();
         //self.handle_msg_fifo();
         self.handle_ocp_lock_key_release();
+        if self.cycle_count() % mcu_testing_common::TICK_NOTIFY_TICKS == 0 {
+            mcu_testing_common::update_ticks(self.cycle_count());
+        }
         Ok(())
     }
 }
@@ -414,6 +417,9 @@ impl McuHwModel for ModelFpgaRealtime {
         self.handle_i3c();
         //self.handle_msg_fifo();
         self.handle_ocp_lock_key_release();
+        if self.cycle_count() % mcu_testing_common::TICK_NOTIFY_TICKS == 0 {
+            mcu_testing_common::update_ticks(self.cycle_count());
+        }
     }
 
     fn new_unbooted(params: InitParams) -> Result<Self>

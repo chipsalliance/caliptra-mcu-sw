@@ -9,6 +9,7 @@ use crate::i3c::DynamicI3cAddress;
 use crate::i3c_socket::BufferedStream;
 use crate::mctp_util::common::MctpUtil;
 use core::time::Duration;
+use log::debug;
 use pldm_common::util::mctp_transport::{MctpCommonHeader, MCTP_PLDM_MSG_TYPE};
 use pldm_ua::transport::{
     EndpointId, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket,
@@ -59,12 +60,18 @@ impl PldmSocket for MctpPldmSocket {
             .map_err(|_| PldmTransportError::Disconnected)?;
         let (context_lock, cvar) = &*self.context;
         let context = &mut *context_lock.lock().unwrap();
+        debug!("State {:?}", context.state);
+
         if context.state == MctpPldmSocketState::Idle {
             /* If this is the first time we are sending a request,
              * we need to make sure that the responder is ready
              * so we wait for a response for the first message
              */
             mctp_util.new_req(self.msg_tag);
+            debug!(
+                "Sending first MCTP message with tag {} and waiting for responder",
+                self.msg_tag
+            );
             let response = mctp_util.wait_for_responder(
                 self.msg_tag,
                 mctp_payload.as_mut_slice(),
@@ -75,6 +82,7 @@ impl PldmSocket for MctpPldmSocket {
             context.state = MctpPldmSocketState::FirstResponse;
             cvar.notify_all();
         } else if payload[0] & 0x80 == 0x80 {
+            debug!("Sending MCTP message with tag {}", self.msg_tag);
             mctp_util.send_request(
                 self.msg_tag,
                 mctp_payload.as_mut_slice(),
@@ -86,6 +94,7 @@ impl PldmSocket for MctpPldmSocket {
             mctp_util.set_src_eid(self.dest.0);
             mctp_util.set_dest_eid(self.source.0);
             mctp_util.set_msg_tag(msg_tag & MCTP_TAG_MASK);
+            debug!("Sending MCTP response with tag {}", self.msg_tag);
             mctp_util.send_response(mctp_payload.as_mut_slice(), &mut stream, self.target_addr);
         }
 
