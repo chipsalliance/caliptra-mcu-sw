@@ -23,7 +23,7 @@ fn main() {
     unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
 
     let mut console_writer = Console::writer();
-    writeln!(console_writer, "Hello world! from SPDM main").unwrap();
+    writeln!(console_writer, "Hello world! from PLDM main").unwrap();
 
     libtockasync::start_async(crate::start());
 }

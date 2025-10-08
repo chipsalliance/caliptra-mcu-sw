@@ -60,8 +60,6 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         soc_images,
         None,
         None,
-        None,
-        None,
     );
 
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;

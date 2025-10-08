@@ -35,7 +35,7 @@ embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
 embedded-alloc.workspace = true
 
 [features]
-default = []
+default = ["test-firmware-update-streaming"]
 debug = []
 hw-2-1 = []
 test-caliptra-certs = []

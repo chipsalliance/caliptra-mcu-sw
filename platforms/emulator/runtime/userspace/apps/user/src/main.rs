@@ -89,21 +89,21 @@ async fn start() {
 pub(crate) async fn async_main() {
     // TODO: Debug spawning the SPDM task causes a hardfault in FPGA when firmware update is enabled
     // for now, disable the SPDM task if either FW update test is enabled
-    #[cfg(not(any(
-        feature = "test-firmware-update-streaming",
-        feature = "test-firmware-update-flash"
-    )))]
-    EXECUTOR
-        .get()
-        .spawner()
-        .spawn(spdm::spdm_task(EXECUTOR.get().spawner()))
-        .unwrap();
-
+    // #[cfg(not(any(
+    //     feature = "test-firmware-update-streaming",
+    //     feature = "test-firmware-update-flash"
+    // )))]
     // EXECUTOR
     //     .get()
     //     .spawner()
-    //     .spawn(image_loader::image_loading_task())
+    //     .spawn(spdm::spdm_task(EXECUTOR.get().spawner()))
     //     .unwrap();
+
+    EXECUTOR
+        .get()
+        .spawner()
+        .spawn(image_loader::image_loading_task())
+        .unwrap();
 
     loop {
         EXECUTOR.get().poll();
