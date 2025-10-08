@@ -44,7 +44,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Gauge, Padding, Paragraph, Widget};
 use ratatui::Frame;
 use ratatui::Terminal;
-use simple_logger::SimpleLogger;
+use simplelog::{Config, WriteLogger};
 use std::cell::{RefCell, RefMut};
 use std::collections::VecDeque;
 use std::io::{Read, Write as _};
@@ -1021,7 +1021,16 @@ impl Demo {
     #[allow(clippy::result_unit_err)]
     pub fn test_fw_update(&mut self, debug_level: LevelFilter) -> Result<(), ()> {
         // Initialize log level to info (only once)
-        let _ = SimpleLogger::new().with_level(debug_level).init();
+        WriteLogger::init(
+            debug_level,
+            Config::default(),
+            // TODO: make the console itself synchronize the newline
+            Console {
+                buffer: self.console_buffer.clone(),
+                last_line_terminated: true,
+            },
+        )
+        .unwrap();
 
         let pldm_fw_pkg = self.pldm_fw_pkg.clone();
 

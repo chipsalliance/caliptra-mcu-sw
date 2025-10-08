@@ -38,6 +38,7 @@ proc-macro2.workspace = true
 quote.workspace = true
 rand.workspace = true
 simple_logger.workspace = true
+simplelog.workspace = true
 registers-generator.workspace = true
 registers-systemrdl.workspace = true
 semver.workspace = true

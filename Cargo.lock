@@ -4053,6 +4053,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "simplelog"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16257adbfaef1ee58b1363bdc0664c9b8e1e30aed86049635fb5f147d065a9c0"
+dependencies = [
+ "log",
+ "termcolor",
+ "time",
+]
+
+[[package]]
 name = "siphasher"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5205,6 +5216,7 @@ dependencies = [
  "serde",
  "serde-hjson",
  "simple_logger",
+ "simplelog",
  "sudo",
  "tempfile",
  "toml 0.8.23",
