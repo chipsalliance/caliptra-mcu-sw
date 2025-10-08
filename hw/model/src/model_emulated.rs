@@ -554,7 +554,8 @@ impl McuHwModel for ModelEmulated {
 
     fn warm_reset(&mut self) {
         // Set the reset reason to warm reset
-        self.mcu_manager().mci().reset_reason().write(|_| (1 << 2).into());
+        self.mcu_manager()
+            .with_mci(|m| m.reset_reason().write(|_| (1 << 2).into()));
         self.cpu.warm_reset();
         self.caliptra_cpu.warm_reset();
         self.step();
