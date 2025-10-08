@@ -17,29 +17,65 @@ except ImportError:
     SIGNATURE_VALIDATION_AVAILABLE = False
     print("Warning: Signature validation not available (signature_validation module not found)")
 
+# Import certificate analysis functions
+try:
+    from signature_analysis import analyze_certificate_headers
+    CERTIFICATE_ANALYSIS_AVAILABLE = True
+except ImportError:
+    CERTIFICATE_ANALYSIS_AVAILABLE = False
+    print("Warning: Certificate analysis not available (signature_analysis module not found)")
+
 def get_clean_claim_name(key):
-    """Convert claim key to clean name"""
-    claim_names = {
-        1: "iss",
-        2: "sub", 
-        3: "aud",
-        4: "exp",
-        5: "nbf",
-        6: "iat",
-        7: "cti",
-        8: "cnf",
+    """Convert claim key to clean name using the same mapping as decode.py"""
+    # This is the exact same mapping from decode.py get_eat_claim_name()
+    eat_claims = {
+        # Standard CWT/EAT claims
+        1: "iss (Issuer)",
+        2: "sub (Subject)", 
+        3: "aud (Audience)",
+        4: "exp (Expiration Time)",
+        5: "nbf (Not Before)",
+        6: "iat (Issued At)",
+        7: "cti (CWT ID)",
+        8: "cnf (Confirmation)",
         10: "nonce",
-        11: "ueid",
-        258: "eat_nonce",
-        259: "ueid",
-        265: "location",
-        266: "eat_profile", 
-        267: "submods",
-        -75000: "measurements"
+        
+        # EAT-specific claims
+        256: "ueid (Universal Entity ID)",
+        257: "sueids (Semi-permanent UEIDs)",
+        258: "oemid (OEM ID)",
+        259: "hwmodel (Hardware Model)",
+        260: "hwversion (Hardware Version)",
+        261: "uptime (Uptime)",
+        262: "swversion (Software Version)",
+        263: "dbgstat (Debug Status)",
+        264: "location",
+        265: "eat_profile (EAT Profile)",
+        266: "profile (Profile)",
+        267: "bootcount (Boot Count)",
+        268: "bootseed (Boot Seed)",
+        269: "dloas (DLOA)",
+        273: "measurements (Evidence)",
+        
+        # Private/custom claims
+        -70001: "rim_locators (RIM Locators)",
+        -70002: "private_claim_1",
+        -70003: "private_claim_2", 
+        -70004: "private_claim_3",
+        -70005: "private_claim_4",
+        -70006: "private_claim_5",
     }
     
     if isinstance(key, int):
-        return claim_names.get(key, f"claim_{key}")
+        full_name = eat_claims.get(key, f"claim-{key}")
+        # Extract just the short name (before any parentheses)
+        if '(' in full_name:
+            short_name = full_name.split('(')[0].strip()
+        else:
+            short_name = full_name
+        
+        # Clean up the name for JSON keys
+        return short_name.replace(' ', '_').replace('-', '_').lower()
     elif isinstance(key, str):
         return key.replace(' ', '_').replace('-', '_').lower()
     else:
@@ -95,11 +131,56 @@ def extract_simple_claim_value_with_decoding(payload, offset, major_type, value,
             text_data = payload[offset:offset + value]
             offset += value
             try:
-                return text_data.decode('utf-8'), offset
+                decoded_text = text_data.decode('utf-8')
+                # Check if it's a hex-encoded string that should be decoded further
+                if len(decoded_text) > 6 and all(c in '0123456789abcdefABCDEF' for c in decoded_text):
+                    # This looks like a hex-encoded string, try to decode it
+                    try:
+                        if len(decoded_text) % 2 == 0:
+                            hex_bytes = bytes.fromhex(decoded_text)
+                            final_text = hex_bytes.decode('utf-8')
+                            return final_text, offset
+                    except (ValueError, UnicodeDecodeError):
+                        pass  # Not hex or not valid UTF-8, use original
+                return decoded_text, offset
             except UnicodeDecodeError:
                 return text_data.hex(), offset
         else:
             return None, offset
+    elif major_type == 6:  # CBOR tag
+        # Handle CBOR tags
+        logger.debug("Processing CBOR tag %d for claim %s", value, claim_key)
+        if value == 111:  # OID tag
+            logger.debug("Found OID tag (111), parsing tagged value...")
+            # Parse the tagged value
+            header, offset = parse_cbor_header_func(payload, offset)
+            if header:
+                logger.debug("Tagged value header: type=%d, value=%d", header[0], header[1])
+                tagged_value, offset = extract_simple_claim_value_with_decoding(
+                    payload, offset, header[0], header[1], claim_key, parse_cbor_header_func
+                )
+                logger.debug("Tagged value extracted: %s", tagged_value)
+                # For OID tag, check if it's hex-encoded and decode if needed
+                if isinstance(tagged_value, str) and len(tagged_value) > 6:
+                    if all(c in '0123456789abcdefABCDEF' for c in tagged_value):
+                        try:
+                            if len(tagged_value) % 2 == 0:
+                                hex_bytes = bytes.fromhex(tagged_value)
+                                decoded_oid = hex_bytes.decode('utf-8')
+                                logger.debug("Decoded OID: %s -> %s", tagged_value, decoded_oid)
+                                return decoded_oid, offset
+                        except (ValueError, UnicodeDecodeError) as e:
+                            logger.debug("Failed to decode OID hex: %s", e)
+                return tagged_value, offset
+        else:
+            # For other tags, parse the tagged value
+            header, offset = parse_cbor_header_func(payload, offset)
+            if header:
+                tagged_value, offset = extract_simple_claim_value_with_decoding(
+                    payload, offset, header[0], header[1], claim_key, parse_cbor_header_func
+                )
+                return tagged_value, offset
+        return value, offset
     elif major_type == 4:  # Array
         array_items = []
         for i in range(value):
@@ -113,7 +194,7 @@ def extract_simple_claim_value_with_decoding(payload, offset, major_type, value,
                 array_items.append(item_value)
         
         # Apply digest parsing for measurements
-        if claim_key in ["measurements", -75000]:
+        if claim_key in ["measurements", -75000, 273]:
             array_items = parse_nested_array_elements(array_items, parse_cbor_header_func)
         
         return array_items, offset
@@ -219,7 +300,7 @@ def extract_cose_components(cose_data, parse_cbor_header_func, verbose=False):
         logger.debug("COSE Sign1 array with %d elements", array_length)
         
         # Element 1: Protected headers (bstr)
-        logger.debug("Parsing element 1 (protected headers)")
+        logger.info("Parsing element 1 (protected headers)")
         header, offset = parse_cbor_header_func(cose_data, offset)
         protected_headers = None
         if header and header[0] == 2:  # Byte string
@@ -231,7 +312,7 @@ def extract_cose_components(cose_data, parse_cbor_header_func, verbose=False):
                 offset += header[1]
         
         # Element 2: Unprotected headers (map or empty) - extract certificate
-        logger.debug("Parsing element 2 (unprotected headers)")
+        logger.info("Parsing element 2 (unprotected headers)")
         header, offset = parse_cbor_header_func(cose_data, offset)
         certificate = None
         
@@ -243,23 +324,21 @@ def extract_cose_components(cose_data, parse_cbor_header_func, verbose=False):
                     break
                 # Parse key
                 key_header, offset = parse_cbor_header_func(cose_data, offset)
-                if key_header and key_header[0] == 0 and key_header[1] == 4:  # x5chain key
-                    # Parse value (should be array of certificates)
+                if key_header and key_header[0] == 0 and key_header[1] == 33:  # x5chain key (COSE key 33)
+                    # Parse value (certificate data as byte string)
                     value_header, offset = parse_cbor_header_func(cose_data, offset)
-                    if value_header and value_header[0] == 4:  # Array
-                        # Get first certificate
-                        cert_header, offset = parse_cbor_header_func(cose_data, offset)
-                        if cert_header and cert_header[0] == 2:  # Byte string
-                            certificate = cose_data[offset:offset+cert_header[1]]
-                            offset += cert_header[1]
-                            # Skip remaining certificates
-                            for _ in range(value_header[1] - 1):
-                                if offset >= len(cose_data):
-                                    break
-                                skip_header, offset = parse_cbor_header_func(cose_data, offset)
-                                if skip_header and skip_header[0] == 2:
-                                    offset += skip_header[1]
-                            break
+                    if value_header and value_header[0] == 2:  # Byte string (certificate data)
+                        cert_data = cose_data[offset:offset+value_header[1]]
+                        offset += value_header[1]
+                        logger.info("\tExtracted certificate in unprotected headers (key 33), size: %d bytes", len(cert_data))
+                        
+                        # Validate certificate using the same function as decode.py
+                        if CERTIFICATE_ANALYSIS_AVAILABLE and analyze_certificate_headers(33, cert_data):
+                            certificate = cert_data
+                            logger.info("\tFound a valid X509 certificate")
+                        else:
+                            logger.warning("Certificate validation failed or analysis not available")
+                        break
                 else:
                     # Skip this key-value pair
                     if key_header:
@@ -275,7 +354,7 @@ def extract_cose_components(cose_data, parse_cbor_header_func, verbose=False):
             pass  # Empty unprotected headers
         
         # Element 3: Payload (bstr)
-        logger.debug("Parsing element 3 (payload)")
+        logger.info("Parsing element 3 (payload)")
         header, offset = parse_cbor_header_func(cose_data, offset)
         payload = None
         if header and header[0] == 2:  # Byte string (expected)
@@ -298,7 +377,7 @@ def extract_cose_components(cose_data, parse_cbor_header_func, verbose=False):
             offset += payload_len
         
         # Element 4: Signature (bstr)
-        logger.debug("Parsing element 4 (signature)")
+        logger.info("Parsing element 4 (signature)")
         header, offset = parse_cbor_header_func(cose_data, offset)
         signature = None
         if header and header[0] == 2:  # Byte string
@@ -313,60 +392,58 @@ def extract_cose_components(cose_data, parse_cbor_header_func, verbose=False):
         return None, None, None, None
 
 def extract_claims_to_json_only(file_path, skip_cbor_tags_func, parse_cbor_header_func, verbose=False):
-    """Extract claims to JSON only, with signature verification"""
+    """Extract claims to JSON only, minimal output"""
     try:
         # Read the file
         with open(file_path, 'rb') as f:
             payload = f.read()
         
-        print(f"File size: {len(payload)} bytes")
+        if verbose:
+            print(f"File size: {len(payload)} bytes")
         
         # Skip CBOR tags and get COSE data
         logger.debug("About to skip CBOR tags...")
         cose_data = skip_cbor_tags_func(payload)
         logger.debug("COSE data size: %d bytes", len(cose_data))
         
-        # Extract all COSE components for signature verification
-        logger.debug("About to parse COSE structure and extract components...")
+        # Extract COSE components (certificate validation will show logs)
+        print("\n=== 1) Extract COSE components ===")
         protected_headers, certificate, eat_payload, signature = extract_cose_components(
-            cose_data, parse_cbor_header_func, verbose
+            cose_data, parse_cbor_header_func, verbose  # Pass verbose flag through
         )
         
         if eat_payload is None:
-            print("Error: Could not extract payload from COSE structure")
+            logger.error("Error: Could not extract payload from COSE structure")
             return
             
-        logger.debug("EAT payload size: %d bytes", len(eat_payload))
+        logger.info("EAT payload size: %d bytes", len(eat_payload))
         
-        # Attempt signature verification if components are available
+        # Attempt signature verification if components are available (always do validation, control output with verbose)
         signature_valid = False
         if SIGNATURE_VALIDATION_AVAILABLE and all(comp is not None for comp in [protected_headers, certificate, eat_payload, signature]):
             try:
-                print("\n=== COSE Sign1 Signature Verification ===\n")
-                signature_valid = validate_cose_signature(protected_headers, certificate, eat_payload, signature)
+                # Use the exact same parameter order as decode.py
+                signature_valid = validate_cose_signature(
+                    protected_headers,
+                    eat_payload,  # payload
+                    signature,
+                    certificate
+                )
                 if signature_valid:
-                    print("✓ Signature verification completed successfully")
+                    logger.debug("✓ Signature verification completed successfully")
                 else:
                     print("✗ Signature verification failed")
             except Exception as e:
-                print(f"✗ Signature verification error: {e}")
+                if verbose:
+                    print(f"✗ Signature verification error: {e}")
+                else:
+                    print("✗ Signature verification: ERROR")
+                logger.debug("Exception details: %s", e, exc_info=True)
         
         # Extract claims
-        logger.debug("About to extract claims...")
+        print("\n=== 4) Extract EAT Claims ===")
         claims_dict = extract_claims_to_dict(eat_payload, parse_cbor_header_func, verbose)
         logger.debug("Extracted %d claims", len(claims_dict))
-        
-        # Add signature verification result to claims
-        claims_dict["_signature_verification"] = {
-            "verified": signature_valid,
-            "verification_attempted": SIGNATURE_VALIDATION_AVAILABLE and all(comp is not None for comp in [protected_headers, certificate, eat_payload, signature]),
-            "components_available": {
-                "protected_headers": protected_headers is not None,
-                "certificate": certificate is not None,
-                "payload": eat_payload is not None,
-                "signature": signature is not None
-            }
-        }
         
         # Save to JSON file
         base_name = os.path.splitext(os.path.basename(file_path))[0]
@@ -375,23 +452,22 @@ def extract_claims_to_json_only(file_path, skip_cbor_tags_func, parse_cbor_heade
         with open(json_file, 'w') as f:
             f.write(claims_to_json(claims_dict))
         
-        print(f"Claims saved to {json_file}")
+        logger.info(f"Claims saved to {json_file}")
         
-        # Print summary
-        print(f"\nExtracted {len(claims_dict)} claims:")
+        # Print summary (always show in JSON mode)
+        logger.info(f"\nExtracted {len(claims_dict)} claims:")
         for key, value in claims_dict.items():
-            if key == "_signature_verification":
-                print(f"  {key}: dict with {len(value)} keys")
-            elif isinstance(value, str) and len(value) > 50:
-                print(f"  {key}: {value[:50]}...")
+            if isinstance(value, str) and len(value) > 50:
+                logger.info(f"  {key}: {value[:50]}...")
             elif isinstance(value, list):
-                print(f"  {key}: list with {len(value)} items")
+                logger.info(f"  {key}: list with {len(value)} items")
             else:
-                print(f"  {key}: {value}")
-        
-        print(f"\nJSON saved to: {json_file}")
-        
+                logger.info(f"  {key}: {value}")
+
+        logger.info(f"\nJSON saved to: {json_file}")
+
     except Exception as e:
         import traceback
         print(f"Error extracting claims to JSON: {e}")
-        traceback.print_exc()
+        if verbose:
+            traceback.print_exc()

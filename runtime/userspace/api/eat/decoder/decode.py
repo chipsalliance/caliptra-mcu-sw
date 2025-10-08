@@ -1379,7 +1379,7 @@ def main():
         )
     
     if json_only:
-        print(f"=== JSON Export from {file_path} ===")
+        print(f"=== Parsing EAT CWT from {file_path} ===")
         extract_claims_to_json_only(file_path, skip_cbor_tags, parse_cbor_header, verbose)
     else:
         print(f"=== Decoding {file_path} ===")
