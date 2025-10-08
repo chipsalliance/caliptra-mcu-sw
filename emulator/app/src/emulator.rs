@@ -736,6 +736,16 @@ impl Emulator {
             feature = "test-mcu-mbox-cmds",
         ))]
         let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
+        
+        // Start the imaginary flash controller thread
+        println!("Starting imaginary flash controller thread");
+        let ext_mcu_mailbox0_for_flash = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
+        emulator_mcu_mbox::mm_flash_ctrl::run_imaginary_flash_controller_thread(
+            ext_mcu_mailbox0_for_flash,
+            None,
+            None,
+        );
+        
         let mci = Mci::new(
             &clock.clone(),
             ext_mci,
