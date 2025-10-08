@@ -13,7 +13,9 @@ itrng = []
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow.workspace = true
 caliptra-api.workspace = true
+caliptra-builder.workspace = true
 caliptra-hw-model-types.workspace = true
 caliptra-hw-model.workspace = true
 caliptra-image-types.workspace = true
