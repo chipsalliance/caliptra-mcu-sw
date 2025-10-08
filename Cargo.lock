@@ -5177,6 +5177,7 @@ dependencies = [
  "caliptra-image-gen",
  "caliptra-image-types",
  "cc",
+ "chrono",
  "clap 4.5.47",
  "clap-num",
  "crc32fast",
@@ -5190,6 +5191,7 @@ dependencies = [
  "mcu-testing-common",
  "ml-kem",
  "nix 0.26.4",
+ "pldm-common",
  "pldm-fw-pkg",
  "pldm-ua",
  "proc-macro2",
@@ -5204,6 +5206,7 @@ dependencies = [
  "sudo",
  "tempfile",
  "toml 0.8.23",
+ "uuid",
  "walkdir",
  "zerocopy",
 ]

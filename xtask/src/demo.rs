@@ -6,6 +6,7 @@ use anyhow::{anyhow, Result};
 use caliptra_hw_model::BootParams;
 use caliptra_image_gen::to_hw_format;
 use caliptra_image_types::FwVerificationPqcKeyType;
+use chrono::{TimeZone, Utc};
 use crossterm::event::{self, KeyCode};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use mcu_builder::{FirmwareBinaries, PROJECT_ROOT};
@@ -20,6 +21,12 @@ use ml_kem::{
 };
 use nix::sched::CpuSet;
 use nix::unistd::Pid;
+use pldm_common::protocol::firmware_update::ComponentClassification;
+use pldm_fw_pkg::manifest::{
+    ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
+    PackageHeaderInformation, StringType,
+};
+use pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::transport::EndpointId;
 use pldm_ua::transport::PldmTransport;
 use rand::thread_rng;
@@ -39,6 +46,7 @@ use std::io::{Read, Write as _};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
+use uuid::Uuid;
 
 const GAUGE1_COLOR: Color = tailwind::RED.c800;
 const CUSTOM_LABEL_COLOR: Color = tailwind::SLATE.c200;
@@ -64,6 +72,10 @@ const PAUSE_BETWEEN_DEMOS: Duration = Duration::from_secs(10);
 const SPDM_BOOT_CYCLES: u64 = 700_000_000;
 
 const I3C_PORTS: [u16; 5] = [65530, 65531, 65532, 65533, 65534];
+
+pub const DEVICE_UUID: [u8; 16] = [
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+];
 
 #[derive(Clone, Copy, Debug)]
 enum DemoType {
@@ -156,6 +168,56 @@ pub(crate) fn demo() -> Result<()> {
     std::fs::write("/tmp/decode.py", DECODE_PY)?;
     std::fs::write("/tmp/signature_analysis.py", SIGNATURE_ANALYSIS_PY)?;
     std::fs::write("/tmp/signature_validation.py", SIGNATURE_VALIDATION_PY)?;
+
+    // Define the PLDM Firmware Package that the Update Agent will use
+    let pldm_fw_pkg = FirmwareManifest {
+        package_header_information: PackageHeaderInformation {
+            package_header_identifier: Uuid::parse_str("7B291C996DB64208801B02026E463C78").unwrap(),
+            package_header_format_revision: 1,
+            package_release_date_time: Utc.with_ymd_and_hms(2025, 3, 1, 0, 0, 0).unwrap(),
+            package_version_string_type: StringType::Utf8,
+            package_version_string: Some("1.2.0-release".to_string()),
+            package_header_size: 0, // This will be computed during encoding
+        },
+
+        firmware_device_id_records: vec![FirmwareDeviceIdRecord {
+            firmware_device_package_data: None,
+            device_update_option_flags: 0x0,
+            component_image_set_version_string_type: StringType::Utf8,
+            component_image_set_version_string: Some("1.2.0".to_string()),
+            applicable_components: Some(vec![0]),
+            // The descriptor should match the device's ID record found in runtime/apps/pldm/pldm-lib/src/config.rs
+            initial_descriptor: Descriptor {
+                descriptor_type: DescriptorType::Uuid,
+                descriptor_data: DEVICE_UUID.to_vec(),
+            },
+            additional_descriptors: None,
+            reference_manifest_data: None,
+        }],
+        downstream_device_id_records: None,
+        component_image_information: vec![ComponentImageInformation {
+            // Classification and identifier should match the device's component image information found in runtime/apps/pldm/pldm-lib/src/config.rs
+            classification: ComponentClassification::Firmware as u16,
+            identifier: 0x0001,
+
+            // Comparison stamp should be greater than the device's comparison stamp
+            comparison_stamp: Some(0x12345679),
+            options: 0x0,
+            requested_activation_method: 0x0002,
+            version_string_type: StringType::Utf8,
+            version_string: Some("soc-fw-1.2".to_string()),
+
+            // Define the firmware image binary data of size 256 bytes
+            // First 128 bytes are 0x55, next 128 bytes are 0xAA
+            size: 256,
+            image_data: {
+                let mut data = vec![0x55u8; 128];
+                data.extend(vec![0xAAu8; 128]);
+                Some(data)
+            },
+            ..Default::default()
+        }],
+    };
 
     // Pin to CPU 0 for stability.
     let mut cpu_set = CpuSet::new();
@@ -555,8 +617,6 @@ impl Demo {
             .create_socket(EndpointId(8), EndpointId(0))
             .unwrap();
         // PldmFwUpdateTest::run(pldm_socket, debug_level);
-
-        // let test = finish_runtime_hw_model(&mut hw);
         Ok(())
     }
 
@@ -1017,3 +1077,104 @@ fn render_footer(text: &str, area: Rect, buf: &mut Buffer) {
         .bold()
         .render(area, buf);
 }
+
+// pub struct PldmFwUpdateTest {
+//     socket: MctpPldmSocket,
+//     daemon:
+//         Option<PldmDaemon<MctpPldmSocket, discovery_sm::DefaultActions, update_sm::DefaultActions>>,
+// }
+
+// impl PldmFwUpdateTest {
+//     fn new(socket: MctpPldmSocket) -> Self {
+//         Self {
+//             socket,
+//             daemon: None,
+//         }
+//     }
+//     #[allow(clippy::result_unit_err)]
+//     pub fn wait_for_state_transition(&self, expected_state: update_sm::States) -> Result<(), ()> {
+//         let timeout = Duration::from_secs(500);
+//         let start_time = std::time::Instant::now();
+
+//         while start_time.elapsed() < timeout {
+//             if let Some(daemon) = &self.daemon {
+//                 if daemon.get_update_sm_state() == expected_state {
+//                     return Ok(());
+//                 }
+//             } else {
+//                 error!("Daemon is not initialized");
+//                 return Err(());
+//             }
+
+//             std::thread::sleep(Duration::from_millis(100));
+//         }
+//         if let Some(daemon) = &self.daemon {
+//             if daemon.get_update_sm_state() != expected_state {
+//                 error!("Timed out waiting for state transition");
+//                 Err(())
+//             } else {
+//                 Ok(())
+//             }
+//         } else {
+//             error!("Daemon is not initialized");
+//             Err(())
+//         }
+//     }
+
+//     #[allow(clippy::result_unit_err)]
+//     pub fn test_fw_update(&mut self, debug_level: LevelFilter) -> Result<(), ()> {
+//         // Initialize log level to info (only once)
+//         let _ = SimpleLogger::new().with_level(debug_level).init();
+
+//         let pldm_fw_pkg = if let Ok(pldm_fw_pkg_path) = std::env::var("PLDM_FW_PKG") {
+//             FirmwareManifest::decode_firmware_package(&pldm_fw_pkg_path, None).map_err(|e| {
+//                 error!(
+//                     "Failed to decode PLDM FW package from {}: {:?}",
+//                     pldm_fw_pkg_path, e
+//                 );
+//             })?
+//         } else {
+//             PLDM_FW_PKG.clone()
+//         };
+
+//         // Run the PLDM daemon
+//         self.daemon = Some(
+//             PldmDaemon::run(
+//                 self.socket.clone(),
+//                 Options {
+//                     pldm_fw_pkg: Some(pldm_fw_pkg),
+//                     discovery_sm_actions: discovery_sm::DefaultActions {},
+//                     update_sm_actions: update_sm::DefaultActions {},
+//                     fd_tid: 0x01,
+//                 },
+//             )
+//             .map_err(|_| ())?,
+//         );
+
+//         // Modify the expected state to the one that the test will reach.
+//         // Note that the UA state machine will not progress if it receives an unexpected response from the device.
+//         let res = self.wait_for_state_transition(update_sm::States::Done);
+
+//         self.daemon.as_mut().unwrap().stop();
+
+//         res
+//     }
+
+//     pub fn run(socket: MctpPldmSocket, debug_level: LevelFilter) {
+//         std::thread::spawn(move || {
+//             wait_for_runtime_start();
+//             if !MCU_RUNNING.load(Ordering::Relaxed) {
+//                 exit(-1);
+//             }
+//             print!("Emulator: Running PLDM Loopback Test: ",);
+//             let mut test = PldmFwUpdateTest::new(socket);
+//             if test.test_fw_update(debug_level).is_err() {
+//                 println!("Failed");
+//                 exit(-1);
+//             } else {
+//                 println!("Passed");
+//             }
+//             MCU_RUNNING.store(false, Ordering::Relaxed);
+//         });
+//     }
+// }
