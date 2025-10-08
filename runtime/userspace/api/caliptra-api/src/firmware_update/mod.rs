@@ -102,6 +102,9 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         pldm_client::pldm_set_verification_result(VerifyResult::VerifySuccess);
         pldm_client::pldm_wait(State::Apply).await?;
 
+        // Mark image as valid in staging memory
+        self.staging_memory.image_valid().await?;
+
         // Update Caliptra
         let result = self.update_caliptra(&flash_header).await;
         if result.is_err() {
@@ -111,6 +114,8 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         }
         pldm_client::pldm_set_apply_result(ApplyResult::ApplySuccess);
         pldm_client::pldm_wait(State::Activate).await?;
+
+        self.set_auth_manifest().await?;
 
         // Update MCU and reboot
         self.update_mcu(&flash_header).await?;
@@ -160,6 +165,66 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         image_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
 
         Ok(image_header)
+    }
+
+    async fn set_auth_manifest(&mut self) -> Result<(), ErrorCode> {
+        let mut flash_header = [0u8; core::mem::size_of::<FlashHeader>()];
+        self.staging_memory
+            .read(0, &mut flash_header)
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
+        let (flash_header, _) =
+            FlashHeader::read_from_prefix(&flash_header).map_err(|_| ErrorCode::Fail)?;
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Setting Manifest"
+        )
+        .unwrap();
+        let (manifest_offset, manifest_len) = self
+            .get_image_toc(
+                flash_header.image_count as usize,
+                flash_header.image_headers_offset as usize,
+                SOC_MANIFEST_IDENTIFIER,
+            )
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
+
+        let mut req = AuthManifestReqHeader {
+            chksum: 0,
+            manifest_size: manifest_len as u32,
+        };
+
+        let mut payload_stream =
+            MailboxPayloadStream::new(self.staging_memory, manifest_offset, manifest_len);
+
+        // Calculate the mailbox checksum
+        let mut checksum = payload_stream.get_bytesum().await;
+        for b in CommandId::SET_AUTH_MANIFEST.0.to_le_bytes().iter() {
+            checksum = checksum.wrapping_add(u32::from(*b));
+        }
+        for b in req.as_mut_bytes().iter() {
+            checksum = checksum.wrapping_add(u32::from(*b));
+        }
+        req.chksum = 0u32.wrapping_sub(checksum);
+
+        let response_buffer = &mut [0u8; core::mem::size_of::<MailboxRespHeader>()];
+        let header = req.as_mut_bytes();
+        loop {
+            let result = self
+                .mailbox
+                .execute_with_payload_stream(
+                    CommandId::SET_AUTH_MANIFEST.into(),
+                    Some(header),
+                    &mut payload_stream,
+                    response_buffer,
+                )
+                .await;
+            match result {
+                Ok(_) => return Ok(()),
+                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
+                Err(_) => return Err(ErrorCode::Fail),
+            }
+        }
     }
 
     async fn verify(&mut self) -> Result<FlashHeader, ErrorCode> {
@@ -596,6 +661,7 @@ pub struct PldmInstance<'a> {
 pub trait StagingMemory: core::fmt::Debug + Send + Sync {
     async fn write(&self, offset: usize, data: &[u8]) -> Result<(), ErrorCode>;
     async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode>;
+    async fn image_valid(&self) -> Result<(), ErrorCode>;
     fn size(&self) -> usize;
 }
 

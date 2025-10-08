@@ -97,7 +97,7 @@ jobs:
           cargo clean
           # Build ROM and runtime binaries
           cargo xtask all-build --platform emulator \
-            --runtime-features test-mctp-capsule-loopback \
+            --runtime-features "test-mctp-capsule-loopback,test-firmware-update-streaming,test-pldm-fw-update-e2e" \
             --separate-runtimes
 
           export CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip"
