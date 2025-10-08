@@ -91,18 +91,18 @@ jobs:
 
       - name: Run precheckin
         run: |
-          cargo --config "$EXTRA_CARGO_CONFIG" xtask precheckin
+          cargo --config "$EXTRA_CARGO_CONFIG" xtask precheckin --release
           sccache --show-stats
 
       - name: Run all tests
         run: |
           cargo clean
           # Build ROM and runtime binaries
-          cargo xtask all-build --platform emulator \
+          cargo xtask --release all-build --platform emulator \
             --runtime-features test-mctp-capsule-loopback \
             --separate-runtimes
 
           export CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip"
           # TODO: remove this if we get larger GitHub runners
-          cargo --config "$EXTRA_CARGO_CONFIG" xtask test
+          cargo --config "$EXTRA_CARGO_CONFIG" xtask --release test
           sccache --show-stats
