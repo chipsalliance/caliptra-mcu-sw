@@ -368,40 +368,42 @@ impl ModelFpgaRealtime {
             .collect()
     }
 
-    // fn handle_ocp_lock_key_release(&mut self) {
-    //     if !self.printed_ocp_lock_key_release {
-    //         if self
-    //             .base
-    //             .wrapper
-    //             .regs()
-    //             .ocp_lock_key_release
-    //             .iter()
-    //             .any(|r| r.get() != 0)
-    //         {
-    //             let key_parts: Vec<String> = self
-    //                 .base
-    //                 .wrapper
-    //                 .regs()
-    //                 .ocp_lock_key_release
-    //                 .iter()
-    //                 .map(|r| format!("{:08x}", r.get().swap_bytes()))
-    //                 .collect();
-    //             writeln!(
-    //                 side_output(),
-    //                 "OCP Lock Key Release: {}",
-    //                 key_parts.join("")
-    //             )
-    //             .unwrap();
-    //             self.printed_ocp_lock_key_release = true;
-    //         }
-    //     }
-    // }
+    fn handle_ocp_lock_key_release(&mut self) {
+        if !self.printed_ocp_lock_key_release {
+            if self
+                .base
+                .wrapper
+                .regs()
+                .ocp_lock_key_release
+                .iter()
+                .any(|r| r.get() != 0)
+            {
+                let key_parts: Vec<String> = self
+                    .base
+                    .wrapper
+                    .regs()
+                    .ocp_lock_key_release
+                    .iter()
+                    .map(|r| format!("{:08x}", r.get().swap_bytes()))
+                    .collect();
+
+                // unclear why, but keeping this function makes the system boot faster
+                writeln!(
+                    side_output(),
+                    "OCP Lock Key Release: {}",
+                    key_parts.join("")
+                )
+                .unwrap();
+                self.printed_ocp_lock_key_release = true;
+            }
+        }
+    }
 
     pub fn maybe_step(&mut self) -> Result<()> {
         self.base.maybe_step()?;
         self.handle_i3c();
         //self.handle_msg_fifo();
-        //self.handle_ocp_lock_key_release();
+        self.handle_ocp_lock_key_release();
         Ok(())
     }
 }
@@ -411,7 +413,7 @@ impl McuHwModel for ModelFpgaRealtime {
         self.base.step();
         self.handle_i3c();
         //self.handle_msg_fifo();
-        //self.handle_ocp_lock_key_release();
+        self.handle_ocp_lock_key_release();
     }
 
     fn new_unbooted(params: InitParams) -> Result<Self>

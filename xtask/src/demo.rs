@@ -579,6 +579,11 @@ impl Demo {
     fn spdm_demo_tick(&mut self) -> Result<()> {
         let mut model = self.model.as_ref().unwrap().borrow_mut();
 
+        // Wait until we have an I3C address.
+        let Some(addr) = model.i3c_address() else {
+            return Ok(());
+        };
+
         let flow_status = model.mci_flow_status();
         // writeln!(
         //     self.host_console.borrow_mut(),
@@ -590,11 +595,6 @@ impl Demo {
             // don't even try if we have not booted to runtime
             return Ok(());
         }
-
-        // Wait until we have an I3C address.
-        let Some(addr) = model.i3c_address() else {
-            return Ok(());
-        };
 
         if model.cycle_count() > SPDM_BOOT_CYCLES && self.i3c_socket.is_none() {
             writeln!(
