@@ -603,4 +603,12 @@ mod test {
     fn test_firmware_update() {
         test_firmware_update_common(true);
     }
+
+    #[test]
+    fn test_firmware_update_streaming() {
+        crate::test_pldm_fw_update::test::start_pldm_test(
+            "test_firmware_update_streaming",
+            log::LevelFilter::Info,
+        );
+    }
 }

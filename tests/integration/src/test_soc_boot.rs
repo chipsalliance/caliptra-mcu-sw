@@ -790,4 +790,12 @@ mod test {
     fn test_streaming_soc_boot() {
         test_soc_boot(false);
     }
+
+    #[test]
+    fn test_pldm_streaming_boot() {
+        crate::test_pldm_fw_update::test::start_pldm_test(
+            "test-pldm-streaming-boot",
+            log::LevelFilter::Debug,
+        );
+    }
 }
