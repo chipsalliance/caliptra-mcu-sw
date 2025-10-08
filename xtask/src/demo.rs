@@ -12,8 +12,14 @@ use mcu_builder::{FirmwareBinaries, PROJECT_ROOT};
 use mcu_hw_model::{InitParams, McuHwModel, ModelEmulated, ModelFpgaRealtime};
 use mcu_rom_common::LifecycleControllerState;
 use mcu_testing_common::i3c_socket::BufferedStream;
+use ml_kem::{kem, MlKem1024Params};
+use ml_kem::{
+    kem::{Decapsulate, DecapsulationKey, Encapsulate, EncapsulationKey},
+    EncodedSizeUser, KemCore,
+};
 use nix::sched::CpuSet;
 use nix::unistd::Pid;
+use rand::thread_rng;
 use ratatui::backend::CrosstermBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
@@ -26,7 +32,7 @@ use ratatui::Frame;
 use ratatui::Terminal;
 use std::cell::{RefCell, RefMut};
 use std::collections::VecDeque;
-use std::io::Write as _;
+use std::io::{Read, Write as _};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -75,7 +81,7 @@ impl DemoType {
         match self {
             DemoType::Spdm => {
                 if FPGA {
-                    10_000_000_000
+                    550_000_000
                 } else {
                     200_000_000
                 }
@@ -275,6 +281,8 @@ struct Demo {
     expect_packets: usize,
     got_packets: usize,
     buffered_packets: Vec<Vec<u8>>,
+    encaps_key: Vec<u8>,
+    write_msg_fifo: VecDeque<u8>,
 }
 
 impl Demo {
@@ -301,6 +309,8 @@ impl Demo {
             expect_packets: 0,
             got_packets: 0,
             buffered_packets: vec![],
+            encaps_key: vec![],
+            write_msg_fifo: VecDeque::new(),
         }
     }
 
@@ -316,7 +326,11 @@ impl Demo {
         let mut last_tick = Instant::now();
         {
             let current_demo = self.current_demo();
-            writeln!(self.host_console(), "Starting demo: {}", current_demo)?;
+            writeln!(
+                self.host_console(),
+                "{}",
+                format!("Starting demo: {}", current_demo)
+            )?;
         }
 
         loop {
@@ -383,12 +397,18 @@ impl Demo {
             self.spdm_demo_state = None;
             self.next_demo = false;
             self.model_started = false;
+            self.encaps_key.clear();
+            self.write_msg_fifo.clear();
             self.current_demo_idx = (self.current_demo_idx + 1) % self.demos.len();
             self.i3c_port_idx = (self.i3c_port_idx + 1) % I3C_PORTS.len();
             self.console_buffer.write().unwrap().clear();
             self.host_console().clear();
             let current_demo = self.current_demo();
-            writeln!(self.host_console(), "Starting demo: {}", current_demo)?;
+            writeln!(
+                self.host_console(),
+                "{}",
+                format!("Starting demo: {}", current_demo)
+            )?;
         }
 
         if !self.model_started {
@@ -460,7 +480,55 @@ impl Demo {
     fn demo_tick(&mut self) -> Result<()> {
         match self.current_demo() {
             DemoType::Spdm => self.spdm_demo_tick()?,
-            DemoType::Mlkem => {}
+            DemoType::Mlkem => self.mlkem_demo_tick()?,
+        }
+        Ok(())
+    }
+
+    fn mlkem_demo_tick(&mut self) -> Result<()> {
+        let mut model = self.model.as_ref().unwrap().borrow_mut();
+        while self.encaps_key.len() < 1568 {
+            if let Some(b) = model.read_msg_fifo() {
+                self.encaps_key.push(b);
+            } else {
+                break;
+            }
+        }
+        if self.encaps_key.len() == 1568 {
+            writeln!(
+                self.host_console.borrow_mut(),
+                "{}",
+                format!("Received encaps key: {:02x?}...", &self.encaps_key[1550..])
+            )?;
+
+            let encaps_key: [u8; 1568] = self.encaps_key.as_slice().try_into().unwrap();
+
+            let encaps_key =
+                EncapsulationKey::<MlKem1024Params>::from_bytes((&encaps_key).try_into().unwrap());
+
+            writeln!(self.host_console.borrow_mut(), "Encapsulating")?;
+            let mut rng = thread_rng();
+            let (ciphertext, shared_key) = encaps_key.encapsulate(&mut rng).unwrap();
+            writeln!(
+                self.host_console.borrow_mut(),
+                "{}",
+                format!("Ciphertext: {:02x?}...", &ciphertext[..16])
+            )?;
+            writeln!(
+                self.host_console.borrow_mut(),
+                "{}",
+                format!("Shared key: {:02x?}...", &shared_key[..16])
+            )?;
+
+            writeln!(self.host_console.borrow_mut(), "Sending to Caliptra")?;
+            self.write_msg_fifo.extend(&ciphertext);
+            self.encaps_key.push(0); // prevent re-entry
+        }
+
+        if !self.write_msg_fifo.is_empty() && model.msg_fifo_is_empty() {
+            for _ in 0..(self.write_msg_fifo.len().min(512)) {
+                model.write_msg_fifo(self.write_msg_fifo.pop_front().unwrap());
+            }
         }
         Ok(())
     }
@@ -679,7 +747,11 @@ impl Demo {
             buffer: self.console_buffer.clone(),
             last_line_terminated: true,
         };
-        writeln!(console, "Starting demo: {}", self.current_demo())?;
+        writeln!(
+            console,
+            "{}",
+            format!("Starting demo: {}", self.current_demo())
+        )?;
 
         let init_params = InitParams {
             caliptra_rom: &binaries.caliptra_rom,

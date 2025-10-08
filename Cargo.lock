@@ -2225,6 +2225,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hybrid-array"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2d35805454dc9f8662a98d6d61886ffe26bd465f5960e0e55345c70d5c0d2a9"
+dependencies = [
+ "typenum",
+]
+
+[[package]]
 name = "i3c-driver"
 version = "0.1.0"
 dependencies = [
@@ -2460,6 +2469,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ecc2af9a1119c51f12a14607e783cb977bde58bc069ff0c3da1095e635d70654"
 dependencies = [
  "cpufeatures",
+]
+
+[[package]]
+name = "kem"
+version = "0.3.0-pre.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b8645470337db67b01a7f966decf7d0bafedbae74147d33e641c67a91df239f"
+dependencies = [
+ "rand_core",
+ "zeroize",
 ]
 
 [[package]]
@@ -3110,6 +3129,18 @@ dependencies = [
  "log",
  "wasi 0.11.1+wasi-snapshot-preview1",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "ml-kem"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97befee0c869cb56f3118f49d0f9bb68c9e3f380dec23c1100aedc4ec3ba239a"
+dependencies = [
+ "hybrid-array",
+ "kem",
+ "rand_core",
+ "sha3",
 ]
 
 [[package]]
@@ -5157,10 +5188,12 @@ dependencies = [
  "mcu-hw-model",
  "mcu-rom-common",
  "mcu-testing-common",
+ "ml-kem",
  "nix 0.26.4",
  "pldm-fw-pkg",
  "proc-macro2",
  "quote",
+ "rand",
  "ratatui",
  "registers-generator",
  "registers-systemrdl",

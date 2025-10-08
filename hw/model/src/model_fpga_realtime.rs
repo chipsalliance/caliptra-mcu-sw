@@ -286,6 +286,55 @@ impl ModelFpgaRealtime {
         }
     }
 
+    pub fn read_msg_fifo(&mut self) -> Option<u8> {
+        if self
+            .base
+            .wrapper
+            .fifo_regs()
+            .msg_fifo_status
+            .is_set(FifoStatus::Empty)
+        {
+            return None;
+        }
+        let data = self.base.wrapper.fifo_regs().msg_fifo_data_pop.extract();
+        if data.is_set(FifoData::CharValid) {
+            Some(data.read(FifoData::NextChar) as u8)
+        } else {
+            None
+        }
+    }
+
+    pub fn write_msg_fifo(&mut self, data: u8) {
+        self.base
+            .wrapper
+            .fifo_regs()
+            .msg_fifo_data_push
+            .set((data as u32) | 0x100);
+    }
+
+    pub fn msg_fifo_is_empty(&mut self) -> bool {
+        self.base
+            .wrapper
+            .fifo_regs()
+            .msg_fifo_status
+            .is_set(FifoStatus::Empty)
+    }
+
+    fn clear_msg_fifo(&mut self) {
+        loop {
+            if self
+                .base
+                .wrapper
+                .fifo_regs()
+                .msg_fifo_status
+                .is_set(FifoStatus::Empty)
+            {
+                break;
+            }
+            let _ = self.base.wrapper.fifo_regs().msg_fifo_data_pop.get();
+        }
+    }
+
     fn handle_msg_fifo(&mut self) {
         loop {
             if self
@@ -341,7 +390,7 @@ impl ModelFpgaRealtime {
     pub fn maybe_step(&mut self) -> Result<()> {
         self.base.maybe_step()?;
         self.handle_i3c();
-        self.handle_msg_fifo();
+        //self.handle_msg_fifo();
         self.handle_ocp_lock_key_release();
         Ok(())
     }
@@ -351,7 +400,7 @@ impl McuHwModel for ModelFpgaRealtime {
     fn step(&mut self) {
         self.base.step();
         self.handle_i3c();
-        self.handle_msg_fifo();
+        //self.handle_msg_fifo();
         self.handle_ocp_lock_key_release();
     }
 
@@ -462,7 +511,7 @@ impl McuHwModel for ModelFpgaRealtime {
         Self: Sized,
     {
         let skip_recovery = boot_params.fw_image.is_none();
-
+        self.clear_msg_fifo();
         self.base
             .boot(boot_params)
             .map_err(|e| anyhow::anyhow!("Failed to boot: {e}"))?;
