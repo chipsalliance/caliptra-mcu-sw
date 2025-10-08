@@ -285,7 +285,9 @@ impl std::io::Write for Console {
             if buffer.is_empty() || self.last_line_terminated {
                 buffer.push_back(line.to_string());
             } else {
-                buffer.push_back(line.to_string());
+                let mut s = buffer.pop_back().unwrap_or_default();
+                s += line;
+                buffer.push_back(s);
             }
             self.last_line_terminated = false;
         }
@@ -382,6 +384,7 @@ struct Demo {
         Option<PldmDaemon<MctpPldmSocket, discovery_sm::DefaultActions, update_sm::DefaultActions>>,
     pldm_fw_pkg: FirmwareManifest,
     pldm_test_started: bool,
+    pldm_start_time: Option<Instant>,
 }
 
 impl Demo {
@@ -420,6 +423,7 @@ impl Demo {
             daemon: None,
             socket: None,
             pldm_test_started: false,
+            pldm_start_time: None,
         }
     }
 
@@ -507,6 +511,7 @@ impl Demo {
             self.next_demo = false;
             self.model_started = false;
             self.pldm_test_started = false;
+            self.pldm_start_time = None;
             self.encaps_key.clear();
             self.write_msg_fifo.clear();
             self.current_demo_idx = (self.current_demo_idx + 1) % self.demos.len();
@@ -964,18 +969,6 @@ impl Demo {
             return Ok(());
         }
 
-        if model.cycle_count() > SPDM_BOOT_CYCLES && self.i3c_socket.is_none() {
-            writeln!(
-                model.output().logger(),
-                "Connecting to I3C socket: {}",
-                flow_status
-            )?;
-            let addr = SocketAddr::from(([127, 0, 0, 1], self.i3c_port()));
-            let stream = TcpStream::connect(addr).unwrap();
-            let stream = BufferedStream::new(stream);
-            self.i3c_socket = Some(stream);
-        }
-
         if model.cycle_count() < SPDM_BOOT_CYCLES + 1_000_000 {
             return Ok(());
         }
@@ -984,10 +977,8 @@ impl Demo {
             writeln!(
                 self.host_console.borrow_mut(),
                 "Host: Running PLDM firmware update test"
-            );
+            )?;
             self.pldm_test_started = true;
-
-            let i3c_socket = self.i3c_socket.as_mut().unwrap();
 
             let pldm_transport = MctpTransport::new(self.i3c_port(), addr.into());
             let pldm_socket = pldm_transport
@@ -1025,45 +1016,29 @@ impl Demo {
                 .map_err(|_| anyhow!("Failed to start PLDM daemon"))?,
             );
 
-            // Modify the expected state to the one that the test will reach.
-            // Note that the UA state machine will not progress if it receives an unexpected response from the device.
-            let res = self.pldm_wait_for_state_transition(update_sm::States::Done);
+            self.pldm_start_time = Some(Instant::now());
+            return Ok(());
+        }
 
-            self.daemon.as_mut().unwrap().stop();
+        // test is started, wait for timeout
+        let timeout = Duration::from_secs(500);
+        // Modify the expected state to the one that the test will reach.
+        // Note that the UA state machine will not progress if it receives an unexpected response from the device.
+        let expected_state = update_sm::States::Done;
 
-            if res.is_err() {
-                println!("Failed");
-            } else {
-                println!("Passed");
-            }
+        let start_time = self.pldm_start_time.unwrap();
+        if start_time.elapsed() > timeout {
+            bail!("PLDM test timed out");
+        }
+
+        let daemon = self.daemon.as_ref().unwrap();
+        if daemon.get_update_sm_state() == expected_state {
+            writeln!(
+                self.host_console.borrow_mut(),
+                "PLDM test completed successfully"
+            )?;
         }
         Ok(())
-    }
-
-    pub fn pldm_wait_for_state_transition(&self, expected_state: update_sm::States) -> Result<()> {
-        let timeout = Duration::from_secs(500);
-        let start_time = std::time::Instant::now();
-
-        while start_time.elapsed() < timeout {
-            if let Some(daemon) = &self.daemon {
-                if daemon.get_update_sm_state() == expected_state {
-                    return Ok(());
-                }
-            } else {
-                bail!("Daemon is not initialized");
-            }
-
-            std::thread::sleep(Duration::from_millis(100));
-        }
-        if let Some(daemon) = &self.daemon {
-            if daemon.get_update_sm_state() != expected_state {
-                bail!("Timed out waiting for state transition");
-            } else {
-                Ok(())
-            }
-        } else {
-            bail!("Daemon is not initialized");
-        }
     }
 
     fn render(&mut self, frame: &mut Frame) {
