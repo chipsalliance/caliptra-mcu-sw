@@ -9,18 +9,17 @@ import logging
 # Set up logger for this module
 logger = logging.getLogger(__name__)
 
-# Import DICE extension parsing functions
+# Import OpenSSL-based DICE extension parsing functions
 try:
-    from dice_extension_parser import (
-        parse_dice_extension_data,
-        map_oid_to_extension_name,
-        is_dice_extension,
+    from openssl_dice_parser import (
+        parse_dice_extension_openssl,
+        format_dice_extension_openssl,
         get_tcg_dice_extension_names
     )
-    dice_parser_available = True
+    openssl_dice_parser_available = True
 except ImportError:
-    logger.warning("DICE extension parser module not available")
-    dice_parser_available = False
+    logger.warning("OpenSSL DICE extension parser module not available")
+    openssl_dice_parser_available = False
 
 def get_standard_extension_oids():
     """
@@ -45,7 +44,7 @@ def get_standard_extension_oids():
 
 def parse_der_extension_data(raw_data):
     """
-    Legacy wrapper for basic DER parsing - use dice_extension_parser module for DICE extensions
+    Basic DER parsing fallback for non-DICE extensions
     
     Args:
         raw_data (bytes): Raw DER-encoded extension data
@@ -54,38 +53,38 @@ def parse_der_extension_data(raw_data):
         dict: Parsed DER structure or None if parsing fails
     """
     # For non-DICE extensions, provide basic DER parsing
-    return {"parser": "basic_der", "raw_hex": raw_data.hex(), "note": "Use dice_extension_parser module for DICE extensions"}
+    return {"parser": "basic_der", "raw_hex": raw_data.hex(), "note": "Basic DER parsing - use OpenSSL DICE parser for DICE extensions"}
 
 def parse_tcb_info_extension(raw_data):
     """
-    Legacy wrapper - use dice_extension_parser.parse_dice_extension_data() instead
+    Parse TCB info extension using OpenSSL parser
     """
-    if dice_parser_available:
-        return parse_dice_extension_data("tcg-dice-MultiTcbInfo", raw_data)
+    if openssl_dice_parser_available:
+        return parse_dice_extension_openssl(raw_data, "tcg-dice-TcbInfo")
     else:
         return parse_der_extension_data(raw_data)
 
 def parse_ueid_extension(raw_data):
     """
-    Legacy wrapper - use dice_extension_parser.parse_dice_extension_data() instead
+    Parse UEID extension using OpenSSL parser
     """
-    if dice_parser_available:
-        return parse_dice_extension_data("tcg-dice-Ueid", raw_data)
+    if openssl_dice_parser_available:
+        return parse_dice_extension_openssl(raw_data, "tcg-dice-Ueid")
     else:
         return parse_der_extension_data(raw_data)
 
 def parse_manifest_uri_extension(raw_data):
     """
-    Legacy wrapper - use dice_extension_parser.parse_dice_extension_data() instead
+    Parse manifest URI extension using OpenSSL parser
     """
-    if dice_parser_available:
-        return parse_dice_extension_data("tcg-dice-endorsement-manifest-uri", raw_data)
+    if openssl_dice_parser_available:
+        return parse_dice_extension_openssl(raw_data, "tcg-dice-endorsement-manifest-uri")
     else:
         return parse_der_extension_data(raw_data)
 
 def parse_extension_data(ext_name, raw_data, decode_structure=False):
     """
-    Parse extension data based on extension type - now uses dice_extension_parser module
+    Parse extension data based on extension type - uses OpenSSL-based parser
     
     Args:
         ext_name (str): Extension name (e.g., "tcg-dice-MultiTcbInfo")
@@ -95,15 +94,19 @@ def parse_extension_data(ext_name, raw_data, decode_structure=False):
     Returns:
         dict: Parsed extension data or None if parsing fails
     """
-    if dice_parser_available and is_dice_extension(ext_name):
-        return parse_dice_extension_data(ext_name, raw_data, decode_structure)
-    else:
-        # Fallback for non-DICE extensions or when parser not available
-        return parse_der_extension_data(raw_data)
+    # Use OpenSSL-based parser for DICE extensions
+    if openssl_dice_parser_available and "tcg-dice" in ext_name.lower():
+        try:
+            return parse_dice_extension_openssl(raw_data, ext_name)
+        except Exception as openssl_err:
+            logger.debug(f"OpenSSL DICE parser failed: {openssl_err}")
+    
+    # Final fallback for non-DICE extensions or when parser not available
+    return parse_der_extension_data(raw_data)
 
 def get_extension_name(oid):
     """
-    Map extension OIDs to readable names - now uses dice_extension_parser module
+    Map extension OIDs to readable names - uses OpenSSL-based mapping
     
     Args:
         oid (str): The OID string (e.g., "2.23.133.5.4.5")
@@ -111,11 +114,17 @@ def get_extension_name(oid):
     Returns:
         str: Human-readable extension name with OID, or just OID if not recognized
     """
-    if dice_parser_available:
-        return map_oid_to_extension_name(oid)
-    else:
-        # Fallback mapping when parser not available
-        return f"OID:{oid}"
+    # Use OpenSSL-based parser mapping
+    if openssl_dice_parser_available:
+        try:
+            tcg_extensions = get_tcg_dice_extension_names()
+            if oid in tcg_extensions:
+                return f"{tcg_extensions[oid]} (OID:{oid})"
+        except Exception as openssl_err:
+            logger.debug(f"OpenSSL extension mapping failed: {openssl_err}")
+    
+    # Final fallback
+    return f"OID:{oid}"
 
 def format_asn1_time(asn1_time_str):
     """Convert ASN.1 time format to readable format"""
@@ -153,20 +162,28 @@ def validate_cose_signature(protected_headers, payload, signature, certificate):
         bool: True if signature is valid, False otherwise
     """
     try:
-        # Import required libraries
-        from cryptography import x509
-        from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import ec
+        # Import required libraries - prioritize OpenSSL
         import hashlib
         import cbor2
         
-        # Check OpenSSL availability
+        # Check OpenSSL availability (primary crypto library)
         try:
             from OpenSSL import crypto
             openssl_available = True
+            logger.debug("Using OpenSSL for cryptographic operations")
         except ImportError:
             openssl_available = False
-            logger.warning("Note: pyOpenSSL not available. Install with: pip install pyOpenSSL")
+            logger.error("ERROR: pyOpenSSL not available. Install with: pip install pyOpenSSL")
+            return False
+        
+        # Cryptography library only for fallback OID extraction (when OpenSSL fails)
+        cryptography_available = False
+        try:
+            from cryptography import x509
+            cryptography_available = True
+            logger.debug("Cryptography library available for OID fallback")
+        except ImportError:
+            logger.warning("Cryptography library not available - OID fallback disabled")
 
         # Initialize variables
         cert = None
@@ -272,16 +289,19 @@ def validate_cose_signature(protected_headers, payload, signature, certificate):
                     ext_count = openssl_cert.get_extension_count()
                     logger.info(f"Number of extensions: {ext_count}")
                     
-                    # Parse with cryptography library to get OIDs for UNDEF extensions
+                    # Parse with cryptography library ONLY as fallback for OID extraction
                     crypto_extension_oids = []
-                    try:
-                        from cryptography import x509
-                        crypto_cert = x509.load_der_x509_certificate(certificate)
-                        for crypto_ext in crypto_cert.extensions:
-                            oid_str = crypto_ext.oid.dotted_string
-                            crypto_extension_oids.append(oid_str)
-                    except Exception as crypto_parse_err:
-                        logger.debug(f"Could not parse extensions with cryptography library: {crypto_parse_err}")
+                    if cryptography_available:
+                        try:
+                            crypto_cert = x509.load_der_x509_certificate(certificate)
+                            for crypto_ext in crypto_cert.extensions:
+                                oid_str = crypto_ext.oid.dotted_string
+                                crypto_extension_oids.append(oid_str)
+                            logger.debug(f"Cryptography fallback extracted {len(crypto_extension_oids)} OIDs")
+                        except Exception as crypto_parse_err:
+                            logger.debug(f"Cryptography OID extraction failed: {crypto_parse_err}")
+                    else:
+                        logger.debug("Cryptography not available - using pattern matching only")
                     
                     # Track which crypto OIDs we've used (to map UNDEF extensions)
                     undef_oid_index = 0
@@ -335,18 +355,18 @@ def validate_cose_signature(protected_headers, payload, signature, certificate):
                                     if data_len > 200:  # Likely MultiTcbInfo (usually 300+ bytes)
                                         ext_name = "tcg-dice-MultiTcbInfo (OID:2.23.133.5.4.5)"
                                         oid_str = "2.23.133.5.4.5"
-                                        logger.info(f"  ✓ Pattern match: Extension {i} identified as MultiTcbInfo ({data_len} bytes)")
-                                        logger.debug(f"  → SUCCESS: Identified as MultiTcbInfo based on size ({data_len} bytes)")
+                                        logger.debug(f"  ✓ Pattern match: Extension {i} identified as MultiTcbInfo ({data_len} bytes)")
+                                        # logger.debug(f"  → SUCCESS: Identified as MultiTcbInfo based on size ({data_len} bytes)")
                                     elif 50 <= data_len <= 60:  # Likely UEID (usually ~52 bytes)
                                         ext_name = "tcg-dice-Ueid (OID:2.23.133.5.4.4)"
                                         oid_str = "2.23.133.5.4.4"
-                                        logger.info(f"  ✓ Pattern match: Extension {i} identified as UEID ({data_len} bytes)")
-                                        logger.debug(f"  → SUCCESS: Identified as UEID based on size ({data_len} bytes)")
+                                        logger.debug(f"  ✓ Pattern match: Extension {i} identified as UEID ({data_len} bytes)")
+                                        # logger.debug(f"  → SUCCESS: Identified as UEID based on size ({data_len} bytes)")
                                     elif 20 <= data_len <= 40:  # Could be TcbInfo or other
                                         ext_name = "tcg-dice-TcbInfo (OID:2.23.133.5.4.1)"
                                         oid_str = "2.23.133.5.4.1"
-                                        logger.info(f"  ✓ Pattern match: Extension {i} identified as TcbInfo ({data_len} bytes)")
-                                        logger.debug(f"  → SUCCESS: Identified as TcbInfo based on size ({data_len} bytes)")
+                                        logger.debug(f"  ✓ Pattern match: Extension {i} identified as TcbInfo ({data_len} bytes)")
+                                        # logger.debug(f"  → SUCCESS: Identified as TcbInfo based on size ({data_len} bytes)")
                                     else:
                                         logger.debug(f"  → Unknown TCG DICE extension pattern (size: {data_len} bytes)")
                                         # Still could be a TCG extension, just unknown type
@@ -595,185 +615,55 @@ def validate_cose_signature(protected_headers, payload, signature, certificate):
             message_hash = hasher.digest()
             logger.debug(f"Message hash ({len(message_hash)} bytes): {message_hash.hex()}")
             
-            # Convert OpenSSL public key to cryptography format for COSE verification
+            # Use OpenSSL for key operations, minimal cryptography for verification only
             try:
-                from OpenSSL import crypto
-                from cryptography.hazmat.primitives import serialization
-                
                 # Get the public key in DER format from OpenSSL
                 public_key_der = crypto.dump_publickey(crypto.FILETYPE_ASN1, openssl_public_key)
                 logger.debug(f"Extracted public key DER ({len(public_key_der)} bytes)")
                 
-                # Load the DER public key into cryptography format
-                crypto_public_key = serialization.load_der_public_key(public_key_der)
-                logger.debug(f"Successfully converted OpenSSL public key to cryptography format")
-                logger.debug(f"Cryptography public key type: {type(crypto_public_key).__name__}")
+                # Extract basic key information using OpenSSL
+                key_type = openssl_public_key.type()
+                key_bits = openssl_public_key.bits()
+                logger.info(f"Key type: {key_type}")
+                logger.info(f"Key bits: {key_bits}")
                 
-                # Verify it's an ECDSA key and get curve info
-                if isinstance(crypto_public_key, ec.EllipticCurvePublicKey):
-                    curve_name = crypto_public_key.curve.name
-                    logger.debug(f"Converted curve: {curve_name}")
-                    
-                    # Get public key coordinates for verification
-                    public_numbers = crypto_public_key.public_numbers()
-                    logger.info(f"Public Key X: {hex(public_numbers.x)}")
-                    logger.info(f"Public Key Y: {hex(public_numbers.y)}")
-                    
-                    # Now use the converted public key for COSE signature verification
-                    public_key = crypto_public_key  # Use converted key
-                    
-                else:
-                    logger.error(f"Converted key is not ECDSA: {type(crypto_public_key).__name__}")
-                    return False
-                    
-            except Exception as conversion_err:
-                logger.warning(f"Could not convert OpenSSL public key to cryptography format: {conversion_err}")
-                logger.info(f"Falling back to direct cryptography certificate loading...")
-                
-                # Fallback: Load certificate directly with cryptography
-                try:
-                    crypto_cert = x509.load_der_x509_certificate(certificate)
-                    crypto_public_key = crypto_cert.public_key()
-                    
-                    if isinstance(crypto_public_key, ec.EllipticCurvePublicKey):
-                        curve_name = crypto_public_key.curve.name
-                        logger.debug(f"Fallback - Curve: {curve_name}")
-                        public_key = crypto_public_key
-                    else:
-                        logger.error(f"Not an ECDSA key in cryptography format")
-                        return False
-                        
-                except Exception as crypto_fallback_err:
-                    logger.error(f"Both OpenSSL conversion and cryptography fallback failed")
-                    logger.error(f"Conversion error: {conversion_err}")
-                    logger.error(f"Fallback error: {crypto_fallback_err}")
-                    return False
-            # print("------------------------------")
-            logger.info(f"✓ Certificate successfully parsed and validated")
-            
-            # Now perform COSE signature verification with the converted/fallback public key
-            print("\n=== 3) COSE Sign1 Signature Verification ===")
-            logger.info(f"Using public key type: {type(public_key).__name__}")
-
-            if isinstance(public_key, ec.EllipticCurvePublicKey):
-                curve_name = public_key.curve.name
-                logger.info(f"Curve for verification: {curve_name}")
-                
-                # Create COSE Sign1 signature context (Sig_structure)
-                sig_structure = [
-                    "Signature1",
-                    protected_headers,
-                    b"",  # empty external AAD
-                    payload
-                ]
-                
-                # Encode the signature structure as CBOR
-                sig_context = cbor2.dumps(sig_structure)
-                logger.debug(f"Signature context length: {len(sig_context)} bytes")
-                logger.debug(f"Signature context (first 32 bytes): {sig_context[:32].hex()}")
-
-                # Hash the signature context (SHA-384 for P-384)
-                if curve_name == "secp384r1":
-                    hash_algorithm = hashes.SHA384()
-                    hasher = hashlib.sha384()
-                else:
-                    logger.warning(f"Unknown curve {curve_name}, assuming SHA-256")
-                    hash_algorithm = hashes.SHA256()
-                    hasher = hashlib.sha256()
-                    
-                hasher.update(sig_context)
-                message_hash = hasher.digest()
-                logger.debug(f"Message hash ({len(message_hash)} bytes): {message_hash.hex()}")
-                
-                # Verify the signature
-                try:
-                    logger.info(f"Signature format analysis:")
-                    logger.info(f"  Signature length: {len(signature)} bytes")
-                    logger.info(f"  Expected length for P-384: 96 bytes (48+48)")
-                    logger.debug(f"  Signature (hex): {signature.hex()}")
-
-                    # For P-384, COSE uses IEEE P1363 format: r (48 bytes) || s (48 bytes)
-                    if len(signature) == 96 and curve_name == "secp384r1":
-                        r_bytes = signature[:48]
-                        s_bytes = signature[48:]
-                        logger.debug(f"  r component (48 bytes): {r_bytes.hex()}")
-                        logger.debug(f"  s component (48 bytes): {s_bytes.hex()}")
-
-                        # Try direct IEEE P1363 format first
-                        try:
-                            public_key.verify(signature, sig_context, ec.ECDSA(hash_algorithm))
-                            logger.info(f"✓ SIGNATURE VALID: COSE signature verification successful (IEEE P1363 format)")
-                            return True
-                        except Exception as p1363_err:
-                            # Try converting to DER format
-                            try:
-                                from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
-                                
-                                # Convert r and s to integers
-                                r = int.from_bytes(r_bytes, 'big')
-                                s = int.from_bytes(s_bytes, 'big')
-                                # print(f"  r (int): {hex(r)}")
-                                # print(f"  s (int): {hex(s)}")
-                                
-                                # Encode as DER
-                                der_signature = encode_dss_signature(r, s)
-                                logger.info(f"  DER signature ({len(der_signature)} bytes): {der_signature.hex()}")
-                                
-                                # Try verification with DER format
-                                public_key.verify(der_signature, sig_context, ec.ECDSA(hash_algorithm))
-                                logger.info(f"✓ SIGNATURE VALID: COSE signature verification successful (DER format)")
-                                return True
-                                
-                            except Exception as der_err:
-                                logger.error(f"DER format conversion/verification failed: {der_err}")
-                    else:
-                        # Try direct verification for other cases
-                        public_key.verify(signature, sig_context, ec.ECDSA(hash_algorithm))
-                        logger.info(f"✓ SIGNATURE VALID: COSE signature verification successful")
-                        return True
-                        
-                except Exception as verify_error:
-                    logger.error(f"✗ SIGNATURE INVALID: {verify_error}")
-
-                    # Additional debugging: try verifying just the hash
+                # For P-384 ECDSA verification, we need cryptography but only for the verify step
+                verification_public_key = None
+                if cryptography_available:
                     try:
-                        logger.info(f"\nTrying hash-only verification:")
-                        # Some implementations sign the hash directly instead of the message
-                        if len(signature) == 96 and curve_name == "secp384r1":
-                            r_bytes = signature[:48]
-                            s_bytes = signature[48:]
-                            r = int.from_bytes(r_bytes, 'big')
-                            s = int.from_bytes(s_bytes, 'big')
-                            
-                            from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
-                            der_signature = encode_dss_signature(r, s)
-                            
-                            # Try verifying the pre-computed hash
-                            from cryptography.hazmat.primitives.asymmetric import ec
-                            from cryptography.hazmat.primitives import hashes
-                            public_key.verify(der_signature, message_hash, ec.ECDSA(ec.utils.Prehashed(hash_algorithm)))
-                            logger.info(f"✓ SIGNATURE VALID: Hash-only verification successful")
-                            return True
-                    except Exception as hash_verify_err:
-                        logger.error(f"Hash-only verification also failed: {hash_verify_err}")
-
-                    return False
-            else:
-                logger.error(f"ERROR: Final public key is not ECDSA: {type(public_key).__name__}")
-                return False
+                        from cryptography.hazmat.primitives import serialization
+                        verification_public_key = serialization.load_der_public_key(public_key_der)
+                        logger.debug(f"Loaded public key for verification: {type(verification_public_key).__name__}")
+                        
+                        # Extract and display key coordinates if available
+                        if hasattr(verification_public_key, 'public_numbers'):
+                            public_numbers = verification_public_key.public_numbers()
+                            logger.info(f"Public Key X: {hex(public_numbers.x)}")
+                            logger.info(f"Public Key Y: {hex(public_numbers.y)}")
+                    except Exception as load_err:
+                        logger.warning(f"Could not load public key with cryptography: {load_err}")
                 
-        elif hasattr(public_key, 'curve'):
-            # Cryptography public key
-            logger.info(f"Using Cryptography public key")
+                logger.info(f"✓ Certificate successfully parsed and validated")
+                
+            except Exception as key_err:
+                logger.error(f"Public key processing error: {key_err}")
+                return False
             
-            # Verify it's an ECDSA key
-            if not isinstance(public_key, ec.EllipticCurvePublicKey):
-                logger.error(f"ERROR: Expected ECDSA key, got {type(public_key).__name__}")
+            # Perform COSE signature verification using minimal cryptography
+            print("\n=== 3) COSE Sign1 Signature Verification ===")
+            
+            if not verification_public_key:
+                logger.error("No public key available for verification")
                 return False
                 
-            curve_name = public_key.curve.name
-            logger.info(f"Curve: {curve_name}")
+            logger.info(f"Using public key type: {type(verification_public_key).__name__}")
 
+            # Check if it's an ECDSA key and get curve info
+            curve_name = "unknown"
+            if hasattr(verification_public_key, 'curve'):
+                curve_name = verification_public_key.curve.name
+                logger.info(f"Curve for verification: {curve_name}")
+            
             # Create COSE Sign1 signature context (Sig_structure)
             sig_structure = [
                 "Signature1",
@@ -789,32 +679,79 @@ def validate_cose_signature(protected_headers, payload, signature, certificate):
 
             # Hash the signature context (SHA-384 for P-384)
             if curve_name == "secp384r1":
-                hash_algorithm = hashes.SHA384()
                 hasher = hashlib.sha384()
+                hash_algo_name = "SHA-384"
             else:
-                logger.warning(f"WARNING: Unknown curve {curve_name}, assuming SHA-256")
-                hash_algorithm = hashes.SHA256()
+                logger.warning(f"Unknown curve {curve_name}, assuming SHA-256")
                 hasher = hashlib.sha256()
+                hash_algo_name = "SHA-256"
                 
             hasher.update(sig_context)
             message_hash = hasher.digest()
             logger.debug(f"Message hash ({len(message_hash)} bytes): {message_hash.hex()}")
             
-            # Verify the signature
+            # Verify the signature using minimal cryptography imports
             try:
-                public_key.verify(signature, sig_context, ec.ECDSA(hash_algorithm))
-                logger.info(f"✓ SIGNATURE VALID: ECDSA signature verification successful")
-                return True
+                logger.info(f"Signature format analysis:")
+                logger.info(f"  Signature length: {len(signature)} bytes")
+                logger.info(f"  Expected length for P-384: 96 bytes (48+48)")
+                logger.debug(f"  Signature (hex): {signature.hex()}")
+
+                # For P-384, COSE uses IEEE P1363 format: r (48 bytes) || s (48 bytes)
+                if len(signature) == 96 and curve_name == "secp384r1":
+                    r_bytes = signature[:48]
+                    s_bytes = signature[48:]
+                    logger.debug(f"  r component (48 bytes): {r_bytes.hex()}")
+                    logger.debug(f"  s component (48 bytes): {s_bytes.hex()}")
+
+                    # Convert to DER format for cryptography verification
+                    if cryptography_available:
+                        try:
+                            from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
+                            from cryptography.hazmat.primitives.asymmetric import ec
+                            from cryptography.hazmat.primitives import hashes
+                            
+                            # Convert r and s to integers
+                            r = int.from_bytes(r_bytes, 'big')
+                            s = int.from_bytes(s_bytes, 'big')
+                            
+                            # Encode as DER
+                            der_signature = encode_dss_signature(r, s)
+                            logger.info(f"  DER signature ({len(der_signature)} bytes): {der_signature.hex()}")
+                            
+                            # Set up hash algorithm
+                            if curve_name == "secp384r1":
+                                hash_algorithm = hashes.SHA384()
+                            else:
+                                hash_algorithm = hashes.SHA256()
+                            
+                            # Try verification with DER format
+                            verification_public_key.verify(der_signature, sig_context, ec.ECDSA(hash_algorithm))
+                            logger.info(f"✓ SIGNATURE VALID: COSE signature verification successful (DER format)")
+                            return True
+                            
+                        except Exception as der_err:
+                            logger.error(f"Cryptography verification failed: {der_err}")
+                            return False
+                    else:
+                        logger.error("Cryptography library not available for signature verification")
+                        return False
+                else:
+                    logger.error(f"Unsupported signature format or curve: {len(signature)} bytes, {curve_name}")
+                    return False
+                        
             except Exception as verify_error:
-                logger.error(f"✗ SIGNATURE INVALID: {verify_error}")
+                logger.error(f"✗ SIGNATURE VERIFICATION ERROR: {verify_error}")
                 return False
+
         else:
-            logger.error(f"ERROR: Unknown public key type: {type(public_key)}")
+            logger.error("OpenSSL library not available - cannot proceed with signature validation")
             return False
             
-    except ImportError:
-        logger.error(f"Note: Required libraries not available for signature validation")
-        logger.error(f"Install with: pip install cryptography pyOpenSSL cbor2")
+    except ImportError as import_err:
+        logger.error(f"Required libraries not available: {import_err}")
+        logger.error(f"Install with: pip install pyOpenSSL cbor2")
+        logger.error(f"Optional (for OID fallback): pip install cryptography")
         return False
     except Exception as e:
         logger.error(f"Error during signature validation: {e}")
