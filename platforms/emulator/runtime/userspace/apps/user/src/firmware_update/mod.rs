@@ -37,8 +37,6 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
     writeln!(console_writer, "[FW Upd] Start").unwrap();
     #[cfg(feature = "test-firmware-update-streaming")]
     {
-        use libsyscall_caliptra::dma;
-
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
             fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
@@ -92,7 +90,7 @@ mod external_memory {
     use crate::image_loader::EMULATED_DMA_MAPPING;
 
     const DMA_TRANSFER_SIZE: usize = 512;
-    const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0x2000_0000_0000_0000;
+    const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0xB00C0000;
 
     pub static STAGING_MEMORY: embassy_sync::lazy_lock::LazyLock<ExternalRAM> =
         embassy_sync::lazy_lock::LazyLock::new(|| ExternalRAM::new(&EMULATED_DMA_MAPPING));
@@ -144,7 +142,7 @@ mod external_memory {
 
         fn size(&self) -> usize {
             // Return the size of the staging memory. Replace with actual value if needed.
-            1024 * 1024 // 1 MiB as an example
+            256 * 1024 // 256 KiB as an example
         }
     }
 
