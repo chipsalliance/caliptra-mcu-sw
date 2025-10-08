@@ -14,7 +14,9 @@ fn test_warm_reset_success() -> Result<()> {
         InitParams {
             caliptra_rom: &binaries.caliptra_rom,
             mcu_rom: &binaries.mcu_rom,
+            vendor_pk_hash: binaries.vendor_pk_hash(),
             active_mode: true,
+            vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
             ..Default::default()
         },
         BootParams {
