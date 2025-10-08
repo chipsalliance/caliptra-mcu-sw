@@ -15,6 +15,7 @@ itrng = []
 [dependencies]
 anyhow.workspace = true
 caliptra-api.workspace = true
+caliptra-api-types.workspace = true
 caliptra-builder.workspace = true
 caliptra-hw-model-types.workspace = true
 caliptra-hw-model.workspace = true
