@@ -401,9 +401,14 @@ impl ModelFpgaRealtime {
 
     pub fn maybe_step(&mut self) -> Result<()> {
         self.base.maybe_step()?;
-        self.handle_i3c();
-        //self.handle_msg_fifo();
-        self.handle_ocp_lock_key_release();
+        let flow_status = self.mci_flow_status();
+        if flow_status & 0xffff >= 386 {
+            for _ in 0..1000 {
+                self.handle_i3c();
+            }
+            //self.handle_msg_fifo();
+            self.handle_ocp_lock_key_release();
+        }
         if self.cycle_count() % mcu_testing_common::TICK_NOTIFY_TICKS == 0 {
             mcu_testing_common::update_ticks(self.cycle_count());
         }

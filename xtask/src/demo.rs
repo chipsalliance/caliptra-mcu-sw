@@ -21,6 +21,7 @@ use ml_kem::{
     kem::{Decapsulate, DecapsulationKey, Encapsulate, EncapsulationKey},
     EncodedSizeUser, KemCore,
 };
+use nix::libc::{sched_param, sched_setscheduler, sched_yield, SCHED_FIFO};
 use nix::sched::CpuSet;
 use nix::unistd::Pid;
 use pldm_common::protocol::firmware_update::ComponentClassification;
@@ -115,7 +116,7 @@ impl DemoType {
             }
             DemoType::Spdm => {
                 if FPGA {
-                    1_800_000_000
+                    3_000_000_000
                 } else {
                     200_000_000
                 }
@@ -187,6 +188,11 @@ pub(crate) fn demo() -> Result<()> {
     let mut cpu_set = CpuSet::new();
     cpu_set.set(0)?;
     nix::sched::sched_setaffinity(Pid::this(), &cpu_set)?;
+
+    // Set the current thread to SCHED_FIFO to avoid being pre-empted
+
+    let param = sched_param { sched_priority: 0 };
+    unsafe { sched_setscheduler(0, SCHED_FIFO, &param) };
 
     // setup terminal
     let stdout = std::io::stdout();
@@ -497,7 +503,8 @@ impl Demo {
         }
 
         // we still step for FPGA so that the log FIFO doesn't overflow
-        for _ in 0..steps {
+        const YIELD_EVERY: usize = 16;
+        for i in 0..steps {
             if let Err(err) = model.maybe_step() {
                 writeln!(
                     self.host_console.borrow_mut(),
@@ -509,6 +516,11 @@ impl Demo {
                 self.current_demo_idx = (self.current_demo_idx - 1) % self.demos.len();
                 return Ok(());
             }
+            // if i % YIELD_EVERY == 0 {
+            //     unsafe {
+            //         sched_yield();
+            //     }
+            // }
         }
 
         if self.pause {
