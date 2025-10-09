@@ -561,14 +561,15 @@ def parse_concise_evidence_bytes(data: bytes) -> Dict[str, Any]:
                             # digests (list of [alg_id, digest])
                             digests_raw = _fetch(dct, 2)
                             if isinstance(digests_raw, list):
-                                dig_map = {}
+                                dig_list = []
                                 for d in digests_raw:
                                     if isinstance(d, list) and len(d) >= 2:
                                         alg_id, hexdigest = d[0], d[1]
                                         alg_name = ALG_MAP.get(alg_id, f'alg_{alg_id}')
-                                        dig_map[alg_name] = hexdigest
-                                if dig_map:
-                                    mval_obj['digests'] = dig_map
+                                        alg_prefix = alg_name.replace('sha', 'sha-') if alg_name.startswith('sha') and '-' not in alg_name else alg_name
+                                        dig_list.append(f"{alg_prefix}:{hexdigest}")
+                                if dig_list:
+                                    mval_obj['digests'] = dig_list
                             # optional scalar / simple fields
                             add_field(3, 'flags')
                             add_field(4, 'raw_value')
@@ -583,16 +584,17 @@ def parse_concise_evidence_bytes(data: bytes) -> Dict[str, Any]:
                             # integrity-registers map (14)
                             integ_raw = _fetch(dct, 14)
                             if isinstance(integ_raw, dict):
-                                integ_map_out = {}
+                                integ_list = []
                                 for _, reg_list in integ_raw.items():
                                     if isinstance(reg_list, list):
                                         for d in reg_list:
                                             if isinstance(d, list) and len(d) >= 2:
                                                 alg_id, hexdigest = d[0], d[1]
                                                 alg_name = ALG_MAP.get(alg_id, f'alg_{alg_id}')
-                                                integ_map_out.setdefault(alg_name, []).append(hexdigest)
-                                if integ_map_out:
-                                    mval_obj['integrity_registers'] = integ_map_out
+                                                alg_prefix = alg_name.replace('sha', 'sha-') if alg_name.startswith('sha') and '-' not in alg_name else alg_name
+                                                integ_list.append(f"{alg_prefix}:{hexdigest}")
+                                if integ_list:
+                                    mval_obj['integrity_registers'] = integ_list
                             if mval_obj:
                                 meas_obj['mval'] = mval_obj
                         # Decide fallback: only if nothing recognized
