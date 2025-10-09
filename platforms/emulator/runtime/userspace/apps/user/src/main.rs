@@ -32,7 +32,7 @@ const FPGA_UART_OUTPUT: *mut u32 = 0xa401_1014 as *mut u32;
 pub(crate) struct EmulatorExiter {}
 pub(crate) static mut EMULATOR_EXITER: EmulatorExiter = EmulatorExiter {};
 impl romtime::Exit for EmulatorExiter {
-    fn exit(&mut self, code: u32) {
+    fn exit(&mut self, exit_code: u32) {
         // Safety: This is a safe memory address to write to for exiting the emulator.
         unsafe {
             // By writing to this address we can exit the emulator.

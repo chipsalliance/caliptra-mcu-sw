@@ -21,6 +21,7 @@ libtock_platform.workspace = true
 libtock_runtime.workspace = true
 libtock.workspace = true
 libtockasync.workspace = true
+kernel.workspace = true
 mcu-config.workspace = true
 mcu-config-emulator.workspace = true
 mcu-mbox-lib.workspace = true
