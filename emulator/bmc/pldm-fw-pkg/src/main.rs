@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match matches.subcommand() {
         Some(("encode", sub_matches)) => {
             let manifest_path = sub_matches.get_one::<String>("manifest").unwrap();
-            let output_path = sub_matches.get_one("file").unwrap();
+            let output_path = sub_matches.get_one::<String>("file").unwrap();
             let firmware_manifest: FirmwareManifest =
                 FirmwareManifest::parse_manifest_file(manifest_path)
                     .expect("Failed to parse the manifest file");
@@ -87,8 +87,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Encoded FirmwarePackage to binary file: {}", output_path);
         }
         Some(("decode", sub_matches)) => {
-            let package_path = sub_matches.get_one("package").unwrap();
-            let output_dir = sub_matches.get_one("dir").unwrap();
+            let package_path = sub_matches.get_one::<String>("package").unwrap();
+            let output_dir = sub_matches.get_one::<String>("dir").unwrap();
             FirmwareManifest::decode_firmware_package(package_path, Some(output_dir))
                 .expect("Failed to decode the firmware package");
             println!("Decoded FirmwarePackage to directory: {}", output_dir);
