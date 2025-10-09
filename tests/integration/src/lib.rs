@@ -7,6 +7,7 @@ mod test_firmware_update;
 mod test_mctp_capsule_loopback;
 mod test_pldm_fw_update;
 mod test_soc_boot;
+mod test_mcu_mbox;
 
 #[cfg(test)]
 mod test {

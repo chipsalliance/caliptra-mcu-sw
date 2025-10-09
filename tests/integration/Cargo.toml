@@ -33,7 +33,9 @@ mcu-testing-common.workspace = true
 pldm-common.workspace = true
 pldm-fw-pkg.workspace = true
 pldm-ua.workspace = true
+registers-generated.workspace = true
 simple_logger.workspace = true
+romtime.workspace = true
 tempfile.workspace = true
 uio = { workspace = true, optional = true }
 uuid.workspace = true
