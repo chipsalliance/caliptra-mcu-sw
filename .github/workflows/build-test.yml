@@ -11,7 +11,7 @@ on:
 
 jobs:
   build_and_test:
-    runs-on: ubuntu-24.04
+    runs-on: [e2-standard-8, big-disk]
 
     env:
       CARGO_INCREMENTAL: 0
@@ -21,7 +21,7 @@ jobs:
       # CPTRA_COVERAGE_PATH: /tmp
 
       # Change this to a new random value if you suspect the cache is corrupted
-      SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b42a6e70ec4
+      SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b63a6e70ec4
 
       # Compiler warnings should fail to compile
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
@@ -39,7 +39,7 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
+          sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git &&
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
       - name: Restore sccache binary
