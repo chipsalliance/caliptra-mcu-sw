@@ -413,7 +413,7 @@ impl FirmwareManifest {
         Ok(())
     }
 
-    pub fn generate_firmware_package(&self, output_file_path: &String) -> io::Result<()> {
+    pub fn generate_firmware_package(&self, output_file_path: &str) -> io::Result<()> {
         println!("Generating firmware package: {}", output_file_path);
         let file = File::create(output_file_path)?;
         let mut writer = BufWriter::new(file);
@@ -503,7 +503,7 @@ impl FirmwareManifest {
         Ok(())
     }
 
-    pub fn parse_manifest_file(file_path: &String) -> io::Result<Self> {
+    pub fn parse_manifest_file(file_path: &str) -> io::Result<Self> {
         let manifest_contents = fs::read_to_string(file_path).expect("Failed to read file");
         let manifest: FirmwareManifest = toml::de::from_str(&manifest_contents)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -514,8 +514,8 @@ impl FirmwareManifest {
     }
 
     pub fn decode_firmware_package(
-        fw_package_file_path: &String,
-        output_dir_path: Option<&String>,
+        fw_package_file_path: &str,
+        output_dir_path: Option<&str>,
     ) -> io::Result<Self> {
         if let Some(output_dir_path) = output_dir_path {
             match fs::metadata(output_dir_path) {

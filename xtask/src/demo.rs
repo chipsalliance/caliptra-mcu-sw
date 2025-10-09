@@ -50,6 +50,7 @@ use std::cell::{RefCell, RefMut};
 use std::collections::VecDeque;
 use std::io::{Read, Write as _};
 use std::net::{SocketAddr, TcpStream};
+use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -67,6 +68,7 @@ type Model = ModelFpgaRealtime;
 const DECODE_PY: &str = include_str!("decode.py");
 const SIGNATURE_ANALYSIS_PY: &str = include_str!("signature_analysis.py");
 const SIGNATURE_VALIDATION_PY: &str = include_str!("signature_validation.py");
+const PLDM_FW_PKG_BIN: &[u8] = include_bytes!("pldm_fw_pkg.bin");
 
 const PLDM_DEMO_ZIP: &'static str = "pldm-demo-fpga.zip";
 const SPDM_DEMO_ZIP: &'static str = "spdm-demo-fpga-2.1.zip";
@@ -175,56 +177,11 @@ pub(crate) fn demo() -> Result<()> {
     std::fs::write("/tmp/decode.py", DECODE_PY)?;
     std::fs::write("/tmp/signature_analysis.py", SIGNATURE_ANALYSIS_PY)?;
     std::fs::write("/tmp/signature_validation.py", SIGNATURE_VALIDATION_PY)?;
+    let path = "/tmp/pldm-fw-pkg.bin";
+    std::fs::write(path, PLDM_FW_PKG_BIN)?;
 
     // Define the PLDM Firmware Package that the Update Agent will use
-    let pldm_fw_pkg = FirmwareManifest {
-        package_header_information: PackageHeaderInformation {
-            package_header_identifier: Uuid::parse_str("7B291C996DB64208801B02026E463C78").unwrap(),
-            package_header_format_revision: 1,
-            package_release_date_time: Utc.with_ymd_and_hms(2025, 3, 1, 0, 0, 0).unwrap(),
-            package_version_string_type: StringType::Utf8,
-            package_version_string: Some("1.2.0-release".to_string()),
-            package_header_size: 0, // This will be computed during encoding
-        },
-
-        firmware_device_id_records: vec![FirmwareDeviceIdRecord {
-            firmware_device_package_data: None,
-            device_update_option_flags: 0x0,
-            component_image_set_version_string_type: StringType::Utf8,
-            component_image_set_version_string: Some("1.2.0".to_string()),
-            applicable_components: Some(vec![0]),
-            // The descriptor should match the device's ID record found in runtime/apps/pldm/pldm-lib/src/config.rs
-            initial_descriptor: Descriptor {
-                descriptor_type: DescriptorType::Uuid,
-                descriptor_data: DEVICE_UUID.to_vec(),
-            },
-            additional_descriptors: None,
-            reference_manifest_data: None,
-        }],
-        downstream_device_id_records: None,
-        component_image_information: vec![ComponentImageInformation {
-            // Classification and identifier should match the device's component image information found in runtime/apps/pldm/pldm-lib/src/config.rs
-            classification: ComponentClassification::Firmware as u16,
-            identifier: 0x0001,
-
-            // Comparison stamp should be greater than the device's comparison stamp
-            comparison_stamp: Some(0x12345679),
-            options: 0x0,
-            requested_activation_method: 0x0002,
-            version_string_type: StringType::Utf8,
-            version_string: Some("soc-fw-1.2".to_string()),
-
-            // Define the firmware image binary data of size 256 bytes
-            // First 128 bytes are 0x55, next 128 bytes are 0xAA
-            size: 256,
-            image_data: {
-                let mut data = vec![0x55u8; 128];
-                data.extend(vec![0xAAu8; 128]);
-                Some(data)
-            },
-            ..Default::default()
-        }],
-    };
+    let pldm_fw_pkg = FirmwareManifest::decode_firmware_package(path, None)?;
 
     // Pin to CPU 0 for stability.
     let mut cpu_set = CpuSet::new();
@@ -1119,7 +1076,7 @@ impl Demo {
                 Config::default(),
                 // TODO: make the console itself synchronize the newline
                 Console {
-                    buffer: self.console_buffer.clone(),
+                    buffer: self.host_console.borrow_mut().buffer.clone(),
                     last_line_terminated: true,
                 },
             )
