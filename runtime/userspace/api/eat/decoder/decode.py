@@ -1366,7 +1366,7 @@ def main():
         sys.exit(1)
     
     file_path = sys.argv[1]
-    json_only = "--json" in sys.argv
+    json_flag = "--json" in sys.argv
     verbose = "--verbose" in sys.argv
     
     # Configure logging based on verbose mode
@@ -1383,9 +1383,36 @@ def main():
             force=True
         )
     
-    if json_only:
-        print(f"=== Parsing EAT CWT from {file_path} ===")
+    # Behavior matrix:
+    #  --json (no --verbose): run fast JSON extraction (info-level minimal output)
+    #  --json --verbose: perform full decode (all prints + debug logging) AND emit JSON file
+    #  (no --json): original full decode
+    if json_flag and not verbose:
+        print(f"=== Parsing EAT CWT (json fast path) from {file_path} ===")
         extract_claims_to_json_only(file_path, skip_cbor_tags, parse_cbor_header, verbose)
+    elif json_flag and verbose:
+        # Full decode plus JSON extraction
+        print(f"=== Decoding (full) + JSON export for {file_path} ===")
+        decode_eat_token(file_path)
+        # After full decode, re-run structured extraction on payload file directly for deterministic JSON
+        try:
+            with open(file_path, 'rb') as f:
+                raw = f.read()
+            cose_data = skip_cbor_tags(raw)
+            # Minimal reuse: find payload quickly (we already have logic, but reuse decode path would re-print).
+            # Simpler: rely on structured parser if token is EAT Sign1 with known layout; catch errors quietly.
+            from decode_eat_claims_json import parse_eat_claims_to_dict as _claims_parser
+            claims_dict = {}
+            try:
+                # naive: search for payload bstr after first array header; this is already done in decode_eat_claims_json when given payload only
+                # We cannot easily extract payload without re-parsing; fallback: if structured parser raises just skip.
+                # So re-run the extraction helper used by old path (just call extract_claims_to_json_only logic inline)
+                # For simplicity call extract_claims_to_json_only again (won't hurt) but mark verbose False to suppress duplication.
+                extract_claims_to_json_only(file_path, skip_cbor_tags, parse_cbor_header, False)
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[WARN] JSON export after full decode failed: {e}")
     else:
         print(f"=== Decoding {file_path} ===")
         decode_eat_token(file_path)

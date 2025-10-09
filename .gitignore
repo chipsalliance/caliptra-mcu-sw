@@ -2,6 +2,8 @@
 *.cbor
 *.json
 *venv*
+*.der
+*.pem
 
 # By default, ignore Cargo.lock files in non-workspace directories.
 */**/Cargo.lock

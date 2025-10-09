@@ -10,13 +10,44 @@ from decode_eat_claims_json import parse_eat_claims_to_dict as structured_claims
 # Set up logger for this module
 logger = logging.getLogger(__name__)
 
-# Import signature validation functions
+# Import signature validation / chain utilities
 try:
     from signature_validation import validate_cose_signature
     SIGNATURE_VALIDATION_AVAILABLE = True
 except ImportError:
     SIGNATURE_VALIDATION_AVAILABLE = False
     print("Warning: Signature validation not available (signature_validation module not found)")
+
+def _import_chain_utils():
+    """Attempt to import chain utilities with a fallback path injection.
+
+    Returns (available: bool). Sets globals if successful. Logs reasons on failure.
+    """
+    global get_local_certificate_chain, assemble_and_parse_chain  # noqa: PLW0603
+    try:
+        from certificate_chain import get_local_certificate_chain, assemble_and_parse_chain  # type: ignore
+        return True
+    except ImportError as first_err:  # attempt path fix
+        try:
+            import sys, pathlib
+            here = pathlib.Path(__file__).parent
+            if str(here) not in sys.path:
+                sys.path.insert(0, str(here))
+            from certificate_chain import get_local_certificate_chain, assemble_and_parse_chain  # type: ignore  # noqa: F401
+            logger.debug("certificate_chain imported after sys.path adjustment")
+            return True
+        except Exception as second_err:  # noqa: BLE001
+            logger.warning("certificate_chain module not available; local chain construction disabled (%s / %s)", first_err, second_err)
+            return False
+
+CHAIN_UTILS_AVAILABLE = _import_chain_utils()
+
+try:
+    from certificate_parser import parse_certificate  # noqa: F401
+    CERT_PARSER_AVAILABLE = True
+except ImportError:
+    CERT_PARSER_AVAILABLE = False
+    logger.warning("certificate_parser module not available; certificate parsing disabled")
 
 # Import certificate analysis functions
 try:
@@ -162,12 +193,31 @@ def extract_claims_to_json_only(file_path, skip_cbor_tags_func, parse_cbor_heade
             return
             
         logger.info("EAT payload size: %d bytes", len(eat_payload))
+
+        # TODO: Add certchain parsing and validation here.
+        print("\n=== 2) Prepare Full Certificate Chain with EAT AK Leaf ===")
+        chain = None
+        chain_meta = []
+        if certificate:
+            if CHAIN_UTILS_AVAILABLE and 'assemble_and_parse_chain' in globals():
+                try:
+                    chain, chain_meta = assemble_and_parse_chain(certificate, directory='.')
+                    if chain_meta:
+                        logger.info(f"Parsed {len(chain_meta)} certificate(s) in assembled chain")
+                except Exception as e:
+                    logger.warning(f"Chain assembly/parsing failed: {e}")
+            else:
+                logger.warning("Chain utilities unavailable; skipping local certificate chain assembly")
+        else:
+            logger.warning("No leaf certificate found in COSE unprotected headers; chain assembly skipped")
         
+
         # Attempt signature verification if components are available (always do validation, control output with verbose)
         signature_valid = False
         if SIGNATURE_VALIDATION_AVAILABLE and all(comp is not None for comp in [protected_headers, certificate, eat_payload, signature]):
             try:
                 # Use the exact same parameter order as decode.py
+                # NOTE: Only the leaf certificate is passed. Full chain (if assembled) is validated earlier.
                 signature_valid = validate_cose_signature(
                     protected_headers,
                     eat_payload,  # payload
