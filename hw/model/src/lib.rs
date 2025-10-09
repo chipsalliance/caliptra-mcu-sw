@@ -36,6 +36,7 @@ mod model_emulated;
 mod model_fpga_realtime;
 mod otp_provision;
 mod vmem;
+pub mod mm_flash_ctrl;
 
 pub enum ShaAccMode {
     Sha384Stream,
