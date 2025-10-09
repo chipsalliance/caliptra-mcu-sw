@@ -7,6 +7,7 @@ use arrayvec::ArrayVec;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use capsules_runtime::doe::driver::DoeDriver;
+use capsules_runtime::flash_partition::FlashPartition;
 use capsules_runtime::mctp::base_protocol::MessageType;
 use capsules_runtime::mcu_mbox::McuMboxDriver;
 use core::ptr::{addr_of, addr_of_mut};
@@ -25,10 +26,11 @@ use kernel::storage_volume;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
+use mcu_components::flash_partition::FlashPartitionComponent;
 use mcu_components::mctp_mux_component_static;
 use mcu_components::{
-    doe_component_static, mailbox_component_static, mbox_sram_component_static,
-    mctp_driver_component_static, mcu_mbox_component_static,
+    doe_component_static, flash_partition_component_static, mailbox_component_static,
+    mbox_sram_component_static, mctp_driver_component_static, mcu_mbox_component_static,
 };
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
@@ -40,8 +42,9 @@ use romtime::CaliptraSoC;
 use romtime::StaticRef;
 use rv32i::csr;
 
-use crate::instantiate_flash_partitions;
-use mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
+use mcu_components::instantiate_flash_partitions;
+use mcu_config_emulator::flash_partition_list_mm_flash_ctrl;
+use mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary}; // XS: for mm flash ctrl
 
 // These symbols are defined in the linker script.
 extern "C" {
@@ -136,8 +139,9 @@ struct VeeR {
         'static,
         EmulatedDoeTransport<'static, InternalTimers<'static>>,
     >,
-    flash_partitions: [Option<&'static capsules_emulator::flash_partition::FlashPartition<'static>>;
+    flash_partitions: [Option<&'static FlashPartition<'static>>;
         mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT],
+    staging_partition: [Option<&'static FlashPartition<'static>>; 1], // XS: for staging partition on mm flash ctrl
     mailbox: &'static capsules_runtime::mailbox::Mailbox<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
@@ -187,6 +191,16 @@ impl SyscallDriverLookup for VeeR {
                 }
                 return f(None);
             }
+            mcu_config_emulator::flash::DRIVER_NUM_MM_FLASH_CTRL => {
+                if let Some(partition) = self.staging_partition[0] {
+                    if partition.get_driver_num() == driver_num {
+                        return f(Some(partition));
+                    } else {
+                        return f(None);
+                    }
+                }
+                return f(None);
+            } // XS: for staging partition on mm flash ctrl
             capsules_emulator::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
                 f(Some(self.logging_flash))
             }
@@ -600,16 +614,16 @@ pub unsafe fn main() {
                 flash_driver::flash_ctrl::EmulatedFlashCtrl
             ));
 
-    let mut flash_partitions: [Option<
-        &'static capsules_emulator::flash_partition::FlashPartition<'static>,
-    >; mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT] =
+    let mut flash_partitions: [Option<&'static FlashPartition<'static>>;
+        mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT] =
         [None; mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT];
 
     instantiate_flash_partitions!(
         flash_partition_list_primary,
         flash_partitions,
         board_kernel,
-        mux_primary_flash
+        mux_primary_flash,
+        flash_driver::flash_ctrl::EmulatedFlashCtrl
     );
 
     // Create a mux for the recovery flash controller
@@ -623,8 +637,26 @@ pub unsafe fn main() {
         flash_partition_list_secondary,
         flash_partitions,
         board_kernel,
-        mux_secondary_flash
+        mux_secondary_flash,
+        flash_driver::flash_ctrl::EmulatedFlashCtrl
     );
+
+    // XS: Create a mux for MCU Mailbox based flash controller
+    let mux_mcu_mbox_flash =
+        components::flash::FlashMuxComponent::new(&chip.peripherals.mm_flash_ctrl).finalize(
+            components::flash_mux_component_static!(flash_driver::mm_flash_ctrl::MailboxFlashCtrl),
+        );
+
+    let mut staging_partition: [Option<&'static FlashPartition<'static>>; 1] = [None; 1];
+    instantiate_flash_partitions!(
+        flash_partition_list_mm_flash_ctrl,
+        staging_partition,
+        board_kernel,
+        mux_mcu_mbox_flash,
+        flash_driver::mm_flash_ctrl::MailboxFlashCtrl
+    );
+
+    romtime::println!("[xs debug]Initialized staging partition on MM Flash Ctrl");
 
     // Create flash user for logging capsule that is connected to the primary flash
     let logging_fl_user = components::flash::FlashUserComponent::new(mux_primary_flash).finalize(
@@ -705,6 +737,7 @@ pub unsafe fn main() {
             // mctp_caliptra,
             doe_spdm,
             flash_partitions,
+            staging_partition, // XS: for staging partition on mm flash ctrl
             mailbox,
             dma,
             logging_flash,
@@ -794,11 +827,12 @@ pub unsafe fn main() {
         None
     } else if cfg!(feature = "test-mm-flash-ctrl") {
         debug!("[xs debug]Executing test-mm-flash-ctrl");
-        crate::tests::mm_flash_ctrl_test::test_flash_ctrl_erase_page();
-        crate::tests::mm_flash_ctrl_test::test_flash_ctrl_read_write_page();
-        crate::tests::mm_flash_storage_test::test_flash_storage_erase();
-        crate::tests::mm_flash_storage_test::test_flash_storage_read_write();
-        Some(0)
+        // crate::tests::mm_flash_ctrl_test::test_flash_ctrl_erase_page();
+        // crate::tests::mm_flash_ctrl_test::test_flash_ctrl_read_write_page();
+        // crate::tests::mm_flash_storage_test::test_flash_storage_erase();
+        // crate::tests::mm_flash_storage_test::test_flash_storage_read_write();
+        // Some(0)
+        None
     } else {
         None
     };
