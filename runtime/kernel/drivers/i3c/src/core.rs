@@ -17,8 +17,8 @@ use registers_generated::i3c::regs::I3c;
 use tock_registers::{register_bitfields, LocalRegisterCopy};
 
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
-pub const MAX_READ_WRITE_SIZE: usize = 250;
-const WRITE_DELAY_CYCLES: usize = 100;
+pub const MAX_READ_WRITE_SIZE: usize = 248;
+const WRITE_DELAY_CYCLES: usize = 200;
 
 register_bitfields! {
     u32,
