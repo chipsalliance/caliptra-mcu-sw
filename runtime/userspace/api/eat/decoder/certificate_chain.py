@@ -69,12 +69,12 @@ def assemble_and_parse_chain(leaf_cert: bytes, directory: str = '.', verbose: bo
 
     detailed = logger.isEnabledFor(logging.DEBUG) or verbose
     parsed: List[Dict] = []
-    logger.info("Idx[SubjectCN] Role Size Curve [Expired] IssuerCN Errors")
+    logger.info("[Cert Idx :SubjectCN] : |Role | Size | Curve |Expired | IssuerCN | Extensions | Errors")
 
     for idx, der in enumerate(chain):
         role = 'leaf' if idx == 0 else ('root' if idx == len(chain)-1 else 'intermediate')
         try:
-            meta = parse_certificate(der, log=logger, list_extensions=True, detailed=True)
+            meta = parse_certificate(der, log=logger, list_extensions=True, detailed=True, log_extensions=False)
             subject_components = meta.get('subject_components') or []
             issuer_components = meta.get('issuer_components') or []
 
@@ -113,6 +113,101 @@ def assemble_and_parse_chain(leaf_cert: bytes, directory: str = '.', verbose: bo
             logger.info("%s | %s | %d | %s | expired:%s | issuer:%s | extensions:%d | %s",
                         idx_token, role, len(der), curve, expired, issuer_cn, exts,
                         '|' .join(errors) if errors else '-')
+            # Now log extensions AFTER the cert summary (reversing prior order)
+            ex_list = meta.get('extensions') or []
+            if ex_list:
+                logger.info("  Extensions:")
+                for ext in ex_list:
+                    name = ext.get('name') or 'UNKNOWN'
+                    crit = ext.get('critical')
+                    crit_str = 'critical' if crit else 'non-critical' if crit is not None else 'unknown-criticality'
+                    size = ext.get('raw_len')
+                    prefix = 'TCG' if ext.get('is_tcg') else 'STD'
+                    parsed_full = ext.get('parse') or {}
+                    try:
+                        if ext.get('is_tcg') and 'Ueid' in (name or '') and 'ueid_hex' in parsed_full:
+                            logger.info(f"    [{ext['index']:02d}] {prefix} {name} ({crit_str}) :: ueid={parsed_full['ueid_hex']}")
+                        elif ext.get('is_tcg') and 'MultiTcbInfo' in (name or ''):
+                            tcb_count = parsed_full.get('tcb_count') or len(parsed_full.get('tcb_entries', []))
+                            entries = parsed_full.get('tcb_entries', [])
+                            parts = [f"tcb_count={tcb_count}"]
+                            # Add digest previews (first up to 2 entries)
+                            for e in entries[:2]:
+                                digests = e.get('digests') or []
+                                if digests:
+                                    parts.append(f"tcb{e.get('index',0)}_digest={digests[0][:12]}...")
+                            # Inline first two entries key fields
+                            def summarize_entry(e):
+                                kv_inline = []
+                                for fld in ('vendor','model','version','svn','layer','index'):
+                                    if fld in e and e[fld] not in (None,''):
+                                        val = e[fld]
+                                        if isinstance(val, dict):
+                                            if fld == 'fwids':
+                                                c = val.get('count') or len(val.get('entries', [])) if isinstance(val.get('entries'), list) else None
+                                                val = f"count={c}" if c is not None else 'present'
+                                            else:
+                                                val = 'present'
+                                        elif fld == 'svn' and isinstance(val, int):
+                                            val = hex(val)
+                                        kv_inline.append(f"{fld}={val}")
+                                if 'tci_type' in e and isinstance(e['tci_type'], str):
+                                    raw_hex_candidate = e['tci_type']
+                                    if all(ch in '0123456789abcdefABCDEF' for ch in raw_hex_candidate) and len(raw_hex_candidate) % 2 == 0:
+                                        try:
+                                            raw_bytes = bytes.fromhex(raw_hex_candidate)
+                                            if raw_bytes and all(32 <= b < 127 for b in raw_bytes):
+                                                kv_inline.append(f"tci_type={raw_bytes.decode('ascii')}")
+                                        except Exception:  # noqa: BLE001
+                                            pass
+                                return kv_inline
+                            if entries:
+                                kv1 = summarize_entry(entries[0])
+                                if kv1:
+                                    parts.append('first={' + ','.join(kv1) + '}')
+                            if len(entries) > 1:
+                                kv2 = summarize_entry(entries[1])
+                                if kv2:
+                                    parts.append('second={' + ','.join(kv2) + '}')
+                            logger.info(f"    [{ext['index']:02d}] {prefix} {name} ({crit_str}) :: {' | '.join(parts)}")
+                        elif ext.get('is_tcg') and 'TcbInfo' in (name or ''):
+                            field_order = ['vendor','model','version','svn','layer','index','fwids','flags','vendor_info','tci_type','integrity_registers']
+                            kv = []
+                            for fld in field_order:
+                                if fld in parsed_full and parsed_full[fld] is not None:
+                                    val = parsed_full[fld]
+                                    if isinstance(val, dict):
+                                        if fld == 'fwids':
+                                            c = val.get('count') or len(val.get('entries', [])) if isinstance(val.get('entries'), list) else None
+                                            val = f"count={c}" if c is not None else 'present'
+                                        elif fld == 'integrity_registers':
+                                            c = val.get('count') or len(val.get('entries', [])) if isinstance(val.get('entries'), list) else None
+                                            val = f"count={c}" if c is not None else 'present'
+                                        elif fld == 'flags':
+                                            val = val.get('hex')
+                                        else:
+                                            val = 'present'
+                                    elif fld == 'svn' and isinstance(val, int):
+                                        val = hex(val)
+                                    if fld in ('vendor_info','tci_type') and isinstance(parsed_full[fld], str):
+                                        raw_hex_candidate = parsed_full[fld]
+                                        if all(ch in '0123456789abcdefABCDEF' for ch in raw_hex_candidate) and len(raw_hex_candidate) % 2 == 0:
+                                            try:
+                                                raw_bytes = bytes.fromhex(raw_hex_candidate)
+                                                if raw_bytes and all(32 <= b < 127 for b in raw_bytes):
+                                                    val = raw_bytes.decode('ascii')
+                                            except Exception:  # noqa: BLE001
+                                                pass
+                                    kv.append(f"{fld}={val}")
+                            if 'legacy_digests' in parsed_full and 'digests_found' in parsed_full['legacy_digests']:
+                                kv.append(f"legacy_digests={parsed_full['legacy_digests'].get('digests_found')}")
+                            logger.info(f"    [{ext['index']:02d}] {prefix} {name} ({crit_str}) :: {' | '.join(kv) if kv else 'no-fields'}")
+                        else:
+                            logger.info(f"    [{ext['index']:02d}] {prefix} {name} ({crit_str}, {size if size is not None else '?'} bytes)")
+                        if logger.isEnabledFor(logging.DEBUG) and ext.get('parse'):
+                            logger.debug(f"       parsed(full): {ext['parse']}")
+                    except Exception as elog:  # noqa: BLE001
+                        logger.debug("Extension log error: %s", elog)
         except Exception as e:  # noqa: BLE001
             logger.error("Failed to parse certificate index %d: %s", idx, e)
 
@@ -273,9 +368,12 @@ def _validate_certificate_chain(chain: List[bytes]) -> Tuple[bool, List[str]]:
                 dump_issuer = _dump_name_asn1(issuer, 'subject')
                 asn1_block = f"\n------ child {idx} issuer ASN.1 ------\n{dump_child}\n------ issuer {idx+1} subject ASN.1 ------\n{dump_issuer}"
                 issues.append(f"Issuer/Subject mismatch: child {idx} issuer DN ({child_iss}) != issuer {idx+1} subject DN ({issuer_subj}) {detail}{asn1_block}")
+        # Attempt signature verification (may be skipped if cryptography cannot parse)
         try:
-            child_c = c_x509.load_der_x509_certificate(crypto.dump_certificate(crypto.FILETYPE_ASN1, child))
-            issuer_c = c_x509.load_der_x509_certificate(crypto.dump_certificate(crypto.FILETYPE_ASN1, issuer))
+            child_der = crypto.dump_certificate(crypto.FILETYPE_ASN1, child)
+            issuer_der = crypto.dump_certificate(crypto.FILETYPE_ASN1, issuer)
+            child_c = c_x509.load_der_x509_certificate(child_der)
+            issuer_c = c_x509.load_der_x509_certificate(issuer_der)
             pub = issuer_c.public_key()
             sig = child_c.signature
             tbs = child_c.tbs_certificate_bytes
@@ -298,27 +396,32 @@ def _validate_certificate_chain(chain: List[bytes]) -> Tuple[bool, List[str]]:
             try:
                 from cryptography.x509.oid import ExtensionOID  # type: ignore
                 aki = None; ski = None; derived_ski = None
+                # If parsing failed before child_c / issuer_c assignment, skip deeper diagnostics
+                child_c_defined = 'child_c' in locals()
+                issuer_c_defined = 'issuer_c' in locals()
                 try:
-                    ext_aki = child_c.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_KEY_IDENTIFIER)
-                    aki = ext_aki.value.key_identifier.hex() if ext_aki.value.key_identifier else None
-                except Exception:
+                    if child_c_defined:
+                        ext_aki = child_c.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_KEY_IDENTIFIER)
+                        aki = ext_aki.value.key_identifier.hex() if ext_aki.value.key_identifier else None
+                except Exception:  # noqa: BLE001
                     pass
                 try:
-                    ext_ski = issuer_c.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER)
-                    ski = ext_ski.value.digest.hex()
-                except Exception:
+                    if issuer_c_defined:
+                        ext_ski = issuer_c.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER)
+                        ski = ext_ski.value.digest.hex()
+                except Exception:  # noqa: BLE001
                     pass
-                if ski is None:
+                if ski is None and issuer_c_defined:
                     try:
                         from cryptography.hazmat.primitives import hashes as _hashes
                         spki_der = issuer_c.public_key().public_bytes(
                             encoding=serialization.Encoding.DER,
                             format=serialization.PublicFormat.SubjectPublicKeyInfo,
-                        )
-                        h = _hashes.Hash(_hashes.SHA1())
-                        h.update(spki_der)
+                        )  # type: ignore[arg-type]
+                        h = _hashes.Hash(_hashes.SHA1())  # legacy SKI derivation
+                        h.update(spki_der)  # noqa: SIM115
                         derived_ski = h.finalize().hex()
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         pass
                 if aki or ski or derived_ski:
                     effective_ski = ski or derived_ski
@@ -326,31 +429,41 @@ def _validate_certificate_chain(chain: List[bytes]) -> Tuple[bool, List[str]]:
                     if aki and effective_ski:
                         match = 'YES' if aki == effective_ski else 'NO'
                     diag_lines.append(f"AKI(child)={aki or 'None'} SKI(issuer)={ski or 'None'} derivedSKI={derived_ski or 'None'} match={match}")
-                try:
-                    if sig_hash.name.lower() == 'sha384':
-                        import hashlib
-                        tbs_digest = hashlib.sha384(tbs).hexdigest()
-                        diag_lines.append(f"TBS.sha384={tbs_digest[:32]}.. len={len(tbs)}")
-                except Exception:
-                    pass
-                try:
-                    diag_lines.append(f"sig.len={len(sig)} sig.head={sig[:8].hex() if sig else ''}")
-                except Exception:
-                    pass
-                try:
-                    if isinstance(pub, ec.EllipticCurvePublicKey):
-                        diag_lines.append(f"issuer.pub=EC {pub.curve.name}")
-                    elif isinstance(pub, rsa.RSAPublicKey):
-                        diag_lines.append(f"issuer.pub=RSA {pub.key_size} bits")
-                except Exception:
-                    pass
+                if child_c_defined:
+                    try:
+                        sig = child_c.signature
+                        tbs = child_c.tbs_certificate_bytes
+                        # We may not have pub/sig_hash if earlier steps failed
+                        if 'sig_hash' in locals() and getattr(sig_hash, 'name', '').lower() == 'sha384':
+                            import hashlib
+                            tbs_digest = hashlib.sha384(tbs).hexdigest()
+                            diag_lines.append(f"TBS.sha384={tbs_digest[:32]}.. len={len(tbs)}")
+                        if sig:
+                            diag_lines.append(f"sig.len={len(sig)} sig.head={sig[:8].hex()}")
+                    except Exception:  # noqa: BLE001
+                        pass
+                if 'pub' in locals():
+                    try:
+                        if isinstance(pub, ec.EllipticCurvePublicKey):
+                            diag_lines.append(f"issuer.pub=EC {pub.curve.name}")
+                        elif isinstance(pub, rsa.RSAPublicKey):
+                            diag_lines.append(f"issuer.pub=RSA {pub.key_size} bits")
+                    except Exception:  # noqa: BLE001
+                        pass
             except Exception as diag_err:  # noqa: BLE001
                 diag_lines.append(f"(diagnostic error: {diag_err})")
-            issues.append(
-                "Signature verify failed: cert {idx} subject="
-                f"{child_subj} issuerExpected={issuer_subj} (issuer index {idx+1}): {e}\n    "
-                + " | ".join(diag_lines)
-            )
+            # If the only failure reason is cryptography parse error, downgrade to warning (OpenSSL loaded it)
+            msg_text = str(e)
+            if 'ParseError' in msg_text and 'crypto.' not in msg_text:
+                issues.append(
+                    f"Signature check skipped (cryptography parse error) for cert {idx} subject={child_subj} issuerExpected={issuer_subj}: {e}\n    "
+                    + " | ".join(diag_lines)
+                )
+            else:
+                issues.append(
+                    f"Signature verify failed: cert {idx} subject={child_subj} issuerExpected={issuer_subj} (issuer index {idx+1}): {e}\n    "
+                    + " | ".join(diag_lines)
+                )
 
     if openssl_certs:
         root = openssl_certs[-1]

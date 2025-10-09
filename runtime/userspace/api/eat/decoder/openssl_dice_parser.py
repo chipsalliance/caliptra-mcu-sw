@@ -153,7 +153,8 @@ def parse_multi_tcb_info_openssl(data):
         offset = content_start
         tcb_index = 0
         
-        while offset < len(data) and tcb_index < 10:  # Limit to prevent infinite loops
+        MAX_ENTRIES = 16  # hard safety cap
+        while offset < len(data) and tcb_index < MAX_ENTRIES:  # Limit to prevent infinite loops / abuse
             if offset >= len(data):
                 break
                 
@@ -173,6 +174,25 @@ def parse_multi_tcb_info_openssl(data):
                 digest_info = extract_digest_from_tcb(tcb_content)
                 if digest_info:
                     tcb_entry.update(digest_info)
+
+                # Structured per-entry TcbInfo field parsing (re-use single parser on full inner SEQUENCE)
+                try:
+                    # Provide full inner SEQUENCE bytes to single-entry parser for rich fields
+                    parsed_inner = parse_tcb_info_openssl(data[offset:offset + inner_total_length])
+                    # Merge top-level known fields into the entry (avoid key collisions by prefixing if needed)
+                    FIELD_KEYS = ["vendor","model","version","svn","layer","index","fwids","flags","vendor_info","tci_type","integrity_registers","legacy_digests"]
+                    for k in FIELD_KEYS:
+                        if k in parsed_inner:
+                            # If collision with existing primitive key, namespace it
+                            if k in tcb_entry and not isinstance(tcb_entry[k], dict):
+                                tcb_entry[f"tcb_{k}"] = parsed_inner[k]
+                            else:
+                                tcb_entry[k] = parsed_inner[k]
+                    # Preserve parse errors if any
+                    if 'parse_error' in parsed_inner:
+                        tcb_entry['parse_error'] = parsed_inner['parse_error']
+                except Exception as inner_e:  # noqa: BLE001
+                    tcb_entry['parse_error'] = f"inner parse error: {inner_e}" 
                 
                 result["tcb_entries"].append(tcb_entry)
                 tcb_index += 1
@@ -182,6 +202,8 @@ def parse_multi_tcb_info_openssl(data):
                 offset += 1
         
         result["tcb_count"] = len(result["tcb_entries"])
+        if tcb_index == MAX_ENTRIES and offset < len(data):
+            result['truncated'] = True
         
     except Exception as e:
         result["parse_error"] = str(e)
@@ -245,21 +267,204 @@ def parse_tcb_info_openssl(data):
     Returns:
         dict: Parsed TcbInfo structure
     """
-    result = {}
-    
+    result = {"parsed": True}
+
+    # Helper readers ------------------------------------------------------
+    def read_length(buf, off):
+        if off >= len(buf):
+            raise ValueError("length past end")
+        b = buf[off]
+        off += 1
+        if b & 0x80 == 0:
+            return b, off
+        n = b & 0x7F
+        if n == 0 or off + n > len(buf):
+            raise ValueError("invalid long form length")
+        val = 0
+        for _ in range(n):
+            val = (val << 8) | buf[off]
+            off += 1
+        return val, off
+
+    def read_tlv(buf, off):
+        if off >= len(buf):
+            return None
+        tag_byte = buf[off]
+        off += 1
+        tag_class = (tag_byte & 0xC0) >> 6  # 0=univ,1=app,2=ctx,3=priv
+        constructed = bool(tag_byte & 0x20)
+        tag_num = tag_byte & 0x1F
+        if tag_num == 0x1F:
+            raise ValueError("high-tag-number form not expected")
+        length, off = read_length(buf, off)
+        end = off + length
+        if end > len(buf):
+            raise ValueError("TLV length exceeds buffer")
+        value = buf[off:end]
+        return {
+            'class': tag_class,
+            'constructed': constructed,
+            'tag': tag_num,
+            'value': value,
+            'start': off - (1 + (1 if length < 0x80 else 0)),
+            'length': length
+        }, end
+
     try:
-        # Similar to MultiTcbInfo but single entry
+        # Outer SEQUENCE
         if len(data) < 2 or data[0] != 0x30:
-            return result
-        
-        # Extract digest information
-        digest_info = extract_digest_from_tcb(data)
-        if digest_info:
-            result.update(digest_info)
-    
-    except Exception as e:
-        result["parse_error"] = str(e)
-    
+            return {"error": "Not a SEQUENCE"}
+        outer_len_info = parse_asn1_length_openssl(data[1:])
+        outer_len = outer_len_info['length']
+        content_off = 1 + outer_len_info['length_bytes']
+        end_outer = content_off + outer_len
+        if end_outer > len(data):
+            return {"error": "Outer length beyond buffer"}
+
+        cursor = content_off
+        fields = {}
+
+        # Mapping from context tag -> field name & type
+        TAG_MAP = {
+            0: ("vendor", "utf8"),
+            1: ("model", "utf8"),
+            2: ("version", "utf8"),
+            3: ("svn", "int"),
+            4: ("layer", "int"),
+            5: ("index", "int"),
+            6: ("fwids", "seq_fwid"),
+            7: ("flags", "bitstring"),
+            8: ("vendor_info", "octets"),
+            9: ("tci_type", "octets"),
+            10: ("integrity_registers", "seq_integrity"),
+        }
+
+        def parse_integer(raw_bytes):
+            # Minimal INTEGER decoder (two's complement). Expect <= 8 bytes for u64
+            if not raw_bytes:
+                return 0
+            # Remove leading 0x00 if present for positive value
+            rb = raw_bytes
+            if len(rb) > 1 and rb[0] == 0x00:
+                rb = rb[1:]
+            val = 0
+            for b in rb:
+                val = (val << 8) | b
+            return val
+
+        def parse_utf8(raw_bytes):
+            try:
+                return raw_bytes.decode('utf-8')
+            except Exception:
+                return raw_bytes.hex()
+
+        def parse_bitstring(raw_bytes):
+            if not raw_bytes:
+                return {"unused": 0, "hex": ""}
+            unused = raw_bytes[0]
+            bits = raw_bytes[1:]
+            return {"unused": unused, "hex": bits.hex()}
+
+        def parse_fwids(raw_bytes):
+            # Expect SEQUENCE OF FWID. Each FWID assumed SEQUENCE { algorithmOID, digest OCTET STRING }
+            entries = []
+            try:
+                off = 0
+                if off >= len(raw_bytes) or raw_bytes[off] != 0x30:
+                    return {"raw_hex": raw_bytes.hex(), "note": "fwids not a SEQUENCE"}
+                linfo = parse_asn1_length_openssl(raw_bytes[off+1:])
+                seq_len = linfo['length']
+                off = off + 1 + linfo['length_bytes']
+                end = off + seq_len
+                while off < end:
+                    if raw_bytes[off] != 0x30:
+                        break
+                    l2 = parse_asn1_length_openssl(raw_bytes[off+1:])
+                    inner_len = l2['length']
+                    inner_start = off + 1 + l2['length_bytes']
+                    inner_end = inner_start + inner_len
+                    comp = raw_bytes[inner_start:inner_end]
+                    # naive scan for OCTET STRING (0x04) digest of typical sizes (32,48)
+                    dig = None
+                    pos = 0
+                    while pos < len(comp):
+                        if comp[pos] == 0x04:
+                            ldig = parse_asn1_length_openssl(comp[pos+1:])
+                            dlen = ldig['length']
+                            dstart = pos + 1 + ldig['length_bytes']
+                            dbytes = comp[dstart:dstart+dlen]
+                            if dlen in (32, 48):
+                                dig = dbytes.hex()
+                                break
+                            pos = dstart + dlen
+                        else:
+                            pos += 1
+                    entries.append({"raw_hex": raw_bytes[off:inner_end].hex(), **({"digest": dig} if dig else {})})
+                    off = inner_end
+            except Exception as e:  # noqa: BLE001
+                return {"error": f"fwids parse error: {e}", "raw_hex": raw_bytes.hex()}
+            return {"count": len(entries), "entries": entries[:5]}
+
+        def parse_integrity(raw_bytes):
+            # Similar heuristic to fwids, but keep raw entries
+            entries = []
+            try:
+                off = 0
+                if off >= len(raw_bytes) or raw_bytes[off] != 0x30:
+                    return {"raw_hex": raw_bytes.hex(), "note": "integrity not a SEQUENCE"}
+                linfo = parse_asn1_length_openssl(raw_bytes[off+1:])
+                seq_len = linfo['length']
+                off = off + 1 + linfo['length_bytes']
+                end = off + seq_len
+                while off < end:
+                    if raw_bytes[off] != 0x30:
+                        break
+                    l2 = parse_asn1_length_openssl(raw_bytes[off+1:])
+                    inner_len = l2['length']
+                    inner_start = off + 1 + l2['length_bytes']
+                    inner_end = inner_start + inner_len
+                    entries.append({"raw_hex": raw_bytes[off:inner_end].hex()})
+                    off = inner_end
+            except Exception as e:  # noqa: BLE001
+                return {"error": f"integrity parse error: {e}", "raw_hex": raw_bytes.hex()}
+            return {"count": len(entries), "entries": entries[:5]}
+
+        while cursor < end_outer:
+            tlv, next_off = read_tlv(data, cursor)
+            if tlv is None:
+                break
+            cursor = next_off
+            if tlv['class'] != 2:  # context-specific only
+                continue
+            tag = tlv['tag']
+            if tag not in TAG_MAP:
+                continue
+            field_name, ftype = TAG_MAP[tag]
+            val_bytes = tlv['value']
+            try:
+                if ftype == 'utf8':
+                    fields[field_name] = parse_utf8(val_bytes)
+                elif ftype == 'int':
+                    fields[field_name] = parse_integer(val_bytes)
+                elif ftype == 'bitstring':
+                    fields[field_name] = parse_bitstring(val_bytes)
+                elif ftype == 'octets':
+                    fields[field_name] = val_bytes.hex()
+                elif ftype == 'seq_fwid':
+                    fields[field_name] = parse_fwids(val_bytes)
+                elif ftype == 'seq_integrity':
+                    fields[field_name] = parse_integrity(val_bytes)
+            except Exception as fe:  # noqa: BLE001
+                fields[field_name] = {"error": str(fe), "raw_hex": val_bytes.hex()}
+
+        result.update(fields)
+        # Add digest scan (legacy) if fwids absent
+        if 'fwids' not in result:
+            legacy = extract_digest_from_tcb(data)
+            if legacy:
+                result['legacy_digests'] = legacy
+    except Exception as e:  # noqa: BLE001
+        result['parse_error'] = str(e)
     return result
 
 def extract_digest_from_tcb(tcb_data):

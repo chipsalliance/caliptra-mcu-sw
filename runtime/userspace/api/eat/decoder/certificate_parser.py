@@ -186,7 +186,49 @@ def _extract_tcbinfo_sequences(raw: bytes):
     return entries
 
 
-def parse_certificate(certificate_der: bytes, *, log: logging.Logger | None = None, list_extensions: bool = True, detailed: bool = False) -> dict:
+def _compact_dice_parse(parse_dict: dict) -> dict:
+    """Return a simplified representation of a DICE extension parse structure.
+
+    We keep the original rich dict (caller stores it), but provide a
+    minimal subset used for human-friendly display/logging. This avoids
+    dumping low-level ASN.1 bookkeeping fields repeatedly.
+
+    Rules:
+      - For UEID: show just the UEID hex (and length if non-standard) -> {"ueid": <hex>}
+      - For (Multi)TcbInfo: show count of entries and total/raw size -> {"tcb_entries": N, "raw_len": bytes}
+      - Otherwise, if we have a generic fallback: keep raw_len and first 16 hex chars.
+    """
+    if not isinstance(parse_dict, dict):  # Defensive
+        return {"value": str(parse_dict)}
+
+    # UEID case
+    if 'ueid_hex' in parse_dict:
+        ueid_hex = parse_dict.get('ueid_hex')
+        ueid_len = parse_dict.get('ueid_length')
+        return {"ueid": ueid_hex, **({"len": ueid_len} if ueid_len not in (16, 17) else {})}
+
+    # TcbInfo / MultiTcbInfo heuristic: presence of tcb_entries list
+    if 'tcb_entries' in parse_dict and isinstance(parse_dict['tcb_entries'], list):
+        return {"tcb_entries": len(parse_dict['tcb_entries']),
+                "raw_len": parse_dict.get('asn1_length') or parse_dict.get('raw_length') or parse_dict.get('raw_len')}
+
+    # Basic DER fallback
+    if parse_dict.get('parser') == 'basic_der':
+        raw_hex = parse_dict.get('raw_hex', '')
+        return {"raw_hex_prefix": raw_hex[:32], "note": "basic"}
+
+    # Default: keep only a few salient keys if present
+    keep_keys = [k for k in ("raw_length", "asn1_type", "asn1_length") if k in parse_dict]
+    compact = {k: parse_dict[k] for k in keep_keys}
+    if not compact and 'raw_hex' in parse_dict:
+        compact['raw_hex_prefix'] = parse_dict['raw_hex'][:32]
+    if not compact:
+        # Fallback to original (already small?)
+        return parse_dict
+    return compact
+
+
+def parse_certificate(certificate_der: bytes, *, log: logging.Logger | None = None, list_extensions: bool = True, detailed: bool = True, log_extensions: bool = True) -> dict:
     """
     Parse a DER-encoded certificate returning a structured dict.
 
@@ -345,6 +387,11 @@ def parse_certificate(certificate_der: bytes, *, log: logging.Logger | None = No
                                     entry['parse']['tcb_entries'] = _extract_tcbinfo_sequences(raw)
                         except Exception as te:  # noqa: BLE001
                             entry['parse'].setdefault('tcb_info_note', f"tcb parsing fallback error: {te}")
+                        # Always attach a compact representation for display
+                        try:
+                            entry['parse_compact'] = _compact_dice_parse(entry['parse'])
+                        except Exception as ce:  # noqa: BLE001
+                            entry['parse_compact'] = {"error": f"compact failed: {ce}"}
                 except Exception as e:  # noqa: BLE001
                     entry['parse'] = {'error': f'extension access failed: {e}'}
                 result['extensions'].append(entry)
@@ -381,7 +428,7 @@ def parse_certificate(certificate_der: bytes, *, log: logging.Logger | None = No
     result['curve_name'] = curve_name
 
     # Emit extension summary if requested
-    if list_extensions and result['extensions']:
+    if log_extensions and list_extensions and result['extensions']:
         try:
             if detailed:
                 log.info("  Extensions:")
@@ -392,10 +439,74 @@ def parse_certificate(certificate_der: bytes, *, log: logging.Logger | None = No
                 size = ext.get('raw_len')
                 prefix = 'TCG' if ext.get('is_tcg') else 'STD'
                 if detailed:
-                    log.info(f"    [{ext['index']:02d}] {prefix} {name} ({crit_str}, {size if size is not None else '?'} bytes)")
-                # if detailed and ext.get('parse'):
-                    # Dump parsed fields at DEBUG to avoid overwhelming normal INFO stream
-                    # log.debug(f"       parsed: {ext['parse']}")
+                    # Specialized formatting for DICE extensions per user request
+                    parsed_full = ext.get('parse') or {}
+                    if ext.get('is_tcg') and 'Ueid' in (name or '') and 'ueid_hex' in parsed_full:
+                        # UEID: only show ueid=<hex>
+                        ueid_hex = parsed_full.get('ueid_hex')
+                        log.info(f"    [{ext['index']:02d}] {prefix} {name} ({crit_str}) :: ueid={ueid_hex}")
+                    elif ext.get('is_tcg') and 'MultiTcbInfo' in (name or ''):
+                        # MultiTcbInfo: show tcb_count and per-entry digest (first few)
+                        tcb_count = parsed_full.get('tcb_count') or len(parsed_full.get('tcb_entries', []))
+                        entries = parsed_full.get('tcb_entries', [])
+                        parts = [f"tcb_count={tcb_count}"]
+                        for e in entries[:3]:  # limit to first 3 entries inline
+                            digests = e.get('digests') or []
+                            if digests:
+                                parts.append(f"tcb{e.get('index', 0)}_digest={digests[0][:16]}...")
+                        log.info(f"    [{ext['index']:02d}] {prefix} {name} ({crit_str}) :: {' | '.join(parts)}")
+                    elif ext.get('is_tcg') and 'TcbInfo' in (name or ''):
+                        # Single TcbInfo: key:value pairs for main fields
+                        field_order = ['vendor','model','version','svn','layer','index','fwids','flags','vendor_info','tci_type','integrity_registers']
+                        kv = []
+                        for fld in field_order:
+                            if fld in parsed_full and parsed_full[fld] is not None:
+                                val = parsed_full[fld]
+                                if isinstance(val, dict):
+                                    # summarize dicts
+                                    if fld == 'fwids':
+                                        c = val.get('count') or len(val.get('entries', [])) if isinstance(val.get('entries'), list) else None
+                                        if c is not None:
+                                            val = f"count={c}"
+                                        else:
+                                            val = 'present'
+                                    elif fld == 'integrity_registers':
+                                        c = val.get('count') or len(val.get('entries', [])) if isinstance(val.get('entries'), list) else None
+                                        val = f"count={c}" if c is not None else 'present'
+                                    elif fld == 'flags':
+                                        val = val.get('hex')
+                                    else:
+                                        val = 'present'
+                                elif fld == 'svn' and isinstance(val, int):
+                                    # Display svn in hex form
+                                    val = hex(val)
+                                # Attempt to decode vendor_info / tci_type hex to ASCII if printable; always prefer ASCII form
+                                if fld in ('vendor_info','tci_type') and isinstance(parsed_full[fld], str):
+                                    raw_hex_candidate = parsed_full[fld]
+                                    if all(ch in '0123456789abcdefABCDEF' for ch in raw_hex_candidate) and len(raw_hex_candidate) % 2 == 0:
+                                        try:
+                                            raw_bytes = bytes.fromhex(raw_hex_candidate)
+                                            if raw_bytes and all(32 <= b < 127 for b in raw_bytes):
+                                                # Use ASCII string directly (no truncation per user request)
+                                                val = raw_bytes.decode('ascii')
+                                        except Exception:  # noqa: BLE001
+                                            pass
+                                elif isinstance(val, str) and len(val) > 40:
+                                    # Apply truncation only for non-special string fields
+                                    val = val[:37] + '...'
+                                kv.append(f"{fld}={val}")
+                        if 'legacy_digests' in parsed_full and 'digests_found' in parsed_full['legacy_digests']:
+                            kv.append(f"legacy_digests={parsed_full['legacy_digests'].get('digests_found')}")
+                        log.info(f"    [{ext['index']:02d}] {prefix} {name} ({crit_str}) :: {' | '.join(kv) if kv else 'no-fields'}")
+                    else:
+                        # Non-DICE or unrecognized: default simple line
+                        log.info(f"    [{ext['index']:02d}] {prefix} {name} ({crit_str}, {size if size is not None else '?'} bytes)")
+                if detailed and ext.get('parse') and not ext.get('parse_compact'):
+                    # Only dump full parsed dict at DEBUG if no compact version
+                    log.debug(f"       parsed: {ext['parse']}")
+                elif detailed and ext.get('parse'):
+                    # Still expose the rich dict at TRACE-like verbosity using DEBUG for now
+                    log.debug(f"       parsed(full): {ext['parse']}")
         except Exception:  # noqa: BLE001
             pass
 
