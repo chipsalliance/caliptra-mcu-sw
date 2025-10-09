@@ -76,7 +76,7 @@ const OCPLOCK_DEMO_ZIP: &'static str = "ocplock-demo-fpga.zip";
 const PAUSE_START_DEMO: Duration = Duration::from_secs(5);
 const PAUSE_BETWEEN_DEMOS: Duration = Duration::from_secs(10);
 
-const SPDM_BOOT_CYCLES: u64 = 700_000_000;
+const SPDM_BOOT_CYCLES: u64 = 500_000_000;
 
 const I3C_PORTS: [u16; 5] = [65530, 65531, 65532, 65533, 65534];
 
@@ -312,6 +312,8 @@ enum SpdmDemoState {
     SentGetCapabilities,
     SentNegotiateAlgorithms,
     SentGetDigests,
+    SentGetCertificatesLength,
+    SentGetCertificates,
     SentGetMeasurements,
     Done,
 }
@@ -326,28 +328,13 @@ const GET_CAPABILITIES: [u8; 20] = [
     0, 0x12, 0, 0, // max SPDM msg size,
 ];
 const GET_DIGESTS: [u8; 4] = [0x13, 0x81, 00, 00];
-// const NEGOTIATE_ALGORITHMS: [u8; _] = [0x13, 0xe3,
-// 1, // number of structs
-// 0,
-// 16, 0, // length of entire request message
-// 0, // measurement spec bit mask
-// 0, // other params bit mask
-// 0x80, 0, 0, 0, // P-384
-// 0x01, 0, 0, 0, // SHA-384
-// 0, 0, 0, 0, // PQC
-// 0, 0, 0, 0, 0, 0, 0, 0, // reserved
-// 0, // ext asym count
-// 0, // ext hash count
-// 0, // reserved
-// 0, // measurement extension log bit mask
-// 4, // ReqBaseAsymAlg
-// 0x
-// ]
 const NEGOTIATE_ALGORITMS: [u8; 48] = [
     0x13, 0xE3, 0x04, 0x00, 0x30, 0x00, 0x01, 0x02, 0xFF, 0x0F, 0x00, 0x00, 0x7F, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x02, 0x20, 0x7F, 0x00, 0x03, 0x20, 0x0F, 0x00, 0x04, 0x20, 0xFF, 0x0F, 0x05, 0x20, 0x01, 0x00,
 ];
+const GET_CERTIFICATES_LENGTH: [u8; 8] = [0x13, 0x82, 0, 1, 0, 0, 0, 0];
+const GET_CERTIFICATES_HEADER: [u8; 4] = [0x13, 0x82, 0, 0];
 const GET_MEASUREMENTS_HEADER: [u8; 4] = [0x13, 0xe0, 1, 0xff];
 const GET_MEASUREMENTS_FOOTER: [u8; 9] = [0u8; 9];
 
@@ -387,6 +374,8 @@ struct Demo {
     pldm_fw_pkg: FirmwareManifest,
     pldm_test_started: bool,
     pldm_start_time: Option<Instant>,
+    certificates: Option<Vec<u8>>,
+    certificates_len: Option<usize>,
 }
 
 impl Demo {
@@ -404,10 +393,10 @@ impl Demo {
             next_demo: false,
             i3c_socket: None,
             demos: vec![
+                DemoType::Spdm,
                 DemoType::Pldm,
                 DemoType::OcpLock,
                 DemoType::Mlkem,
-                DemoType::Spdm,
             ],
             current_demo_idx: 0,
             i3c_port_idx: 0,
@@ -426,6 +415,8 @@ impl Demo {
             socket: None,
             pldm_test_started: false,
             pldm_start_time: None,
+            certificates: None,
+            certificates_len: None,
         }
     }
 
@@ -514,6 +505,8 @@ impl Demo {
             self.model_started = false;
             self.pldm_test_started = false;
             self.pldm_start_time = None;
+            self.certificates = None;
+            self.certificates_len = None;
             self.encaps_key.clear();
             self.write_msg_fifo.clear();
             self.current_demo_idx = (self.current_demo_idx + 1) % self.demos.len();
@@ -742,14 +735,14 @@ impl Demo {
 
         self.got_packets += 1;
 
-        // writeln!(
-        //     model.output().logger(),
-        //     "HOST: I3C recv from Caliptra (got={}/{}) (len={}): {:02x?}",
-        //     self.got_packets,
-        //     self.expect_packets,
-        //     recv.len(),
-        //     recv
-        // )?;
+        writeln!(
+            model.output().logger(),
+            "HOST: I3C recv from Caliptra (got={}/{}) (len={}): {:02x?}",
+            self.got_packets,
+            self.expect_packets,
+            recv.len(),
+            recv
+        )?;
 
         self.buffered_packets.push(recv.clone());
 
@@ -798,21 +791,122 @@ impl Demo {
                 self.spdm_demo_state = Some(SpdmDemoState::SentGetDigests);
             }
             SpdmDemoState::SentGetDigests => {
-                // got a digests response, send get measurements
+                // got a digests response, send get certificates length
                 let mut packet = vec![];
                 packet.extend_from_slice(&MCTP_HEADER);
-                packet.extend_from_slice(&GET_MEASUREMENTS_HEADER);
-                let mut nonce = [0u8; 32];
-                nonce[..8].copy_from_slice(&model.cycle_count().to_le_bytes());
-                packet.extend_from_slice(&nonce);
-                packet.extend_from_slice(&GET_MEASUREMENTS_FOOTER);
+                packet.extend_from_slice(&GET_CERTIFICATES_LENGTH);
                 i3c_socket.send_private_write(addr, packet);
-                self.spdm_demo_state = Some(SpdmDemoState::SentGetMeasurements);
+                self.spdm_demo_state = Some(SpdmDemoState::SentGetCertificatesLength);
                 writeln!(
                     model.output().logger(),
-                    "HOST: I3C send to MCU: GET_MEASUREMENTS"
+                    "HOST: I3C send to MCU: GET_CERTIFICATES (length)"
                 )?;
-                self.expect_packets = 32;
+                self.buffered_packets.clear();
+            }
+            SpdmDemoState::SentGetCertificatesLength => {
+                let len_packet = self.buffered_packets.pop().unwrap();
+                let len_packet = &len_packet[5..]; // remove MCTP header
+                let l = u16::from_le_bytes(len_packet[6..8].try_into().unwrap()) as usize;
+
+                // got certs length, send get certificates
+                let mut packet = vec![];
+                packet.extend_from_slice(&MCTP_HEADER);
+                packet.extend_from_slice(&GET_CERTIFICATES_HEADER);
+                packet.push(0); // offset low byte
+                packet.push(0); // offset high byte
+                packet.push((l & 0xff) as u8); // length low byte
+                packet.push(((l >> 8) & 0xff) as u8); // length high byte
+                self.certificates_len = Some(l);
+                i3c_socket.send_private_write(addr, packet);
+                self.spdm_demo_state = Some(SpdmDemoState::SentGetCertificates);
+                self.expect_packets = 9;
+                writeln!(
+                    model.output().logger(),
+                    "HOST: certificates expected length = {}, packets = {}",
+                    l,
+                    self.expect_packets
+                )?;
+                writeln!(
+                    self.host_console.borrow_mut(),
+                    "HOST: I3C send to MCU: GET_CERTIFICATES offset {} len {}",
+                    0,
+                    l
+                )?;
+                self.buffered_packets.clear();
+                self.certificates = None;
+            }
+            SpdmDemoState::SentGetCertificates => {
+                let mut certificates = vec![];
+                self.buffered_packets.reverse();
+                let initial = self.buffered_packets.pop().unwrap();
+                // remove MCTP + SPDM header
+                certificates.extend_from_slice(&initial[5 + 8..]);
+                while let Some(pkt) = self.buffered_packets.pop() {
+                    // remove MCTP header
+                    certificates.extend_from_slice(&pkt[4..]);
+                }
+                match self.certificates.as_mut() {
+                    Some(c) => {
+                        c.extend_from_slice(&certificates);
+                    }
+                    None => {
+                        self.certificates = Some(certificates);
+                    }
+                }
+
+                let offset = self.certificates.as_ref().unwrap().len();
+                let l = self.certificates_len.unwrap().saturating_sub(offset);
+                if l == 0 {
+                    let certificates = self.certificates.take().unwrap();
+                    writeln!(
+                        model.output().logger(),
+                        "Certificates packets: {:02x?}",
+                        certificates
+                    )?;
+
+                    std::fs::write("/tmp/certificates.der", &certificates[2 + 2 + 48..])?;
+
+                    // got a certs response, send get measurements
+                    let mut packet = vec![];
+                    packet.extend_from_slice(&MCTP_HEADER);
+                    packet.extend_from_slice(&GET_MEASUREMENTS_HEADER);
+                    let mut nonce = [0u8; 32];
+                    nonce[..8].copy_from_slice(&model.cycle_count().to_le_bytes());
+                    packet.extend_from_slice(&nonce);
+                    packet.extend_from_slice(&GET_MEASUREMENTS_FOOTER);
+                    i3c_socket.send_private_write(addr, packet);
+                    self.spdm_demo_state = Some(SpdmDemoState::SentGetMeasurements);
+                    writeln!(
+                        model.output().logger(),
+                        "HOST: I3C send to MCU: GET_MEASUREMENTS"
+                    )?;
+                    self.expect_packets = 32;
+                    self.buffered_packets.clear();
+                } else {
+                    let mut packet = vec![];
+                    packet.extend_from_slice(&MCTP_HEADER);
+                    packet.extend_from_slice(&GET_CERTIFICATES_HEADER);
+                    packet.push(offset as u8); // offset low byte
+                    packet.push((offset >> 8) as u8); // offset high byte
+                    packet.push((l & 0xff) as u8); // length low byte
+                    packet.push(((l >> 8) & 0xff) as u8); // length high byte
+                    i3c_socket.send_private_write(addr, packet);
+                    self.spdm_demo_state = Some(SpdmDemoState::SentGetCertificates);
+                    self.expect_packets = if l < 500 { 7 } else { 9 };
+                    writeln!(
+                        model.output().logger(),
+                        "HOST: certificates expected length = {}, packets = {}",
+                        l,
+                        self.expect_packets
+                    )?;
+                    writeln!(
+                        self.host_console.borrow_mut(),
+                        "HOST: I3C send to MCU: GET_CERTIFICATES offset {} len {}",
+                        offset,
+                        l
+                    )?;
+                    self.buffered_packets.clear();
+                }
             }
             SpdmDemoState::SentGetMeasurements => {
                 let mut measurements = vec![];
