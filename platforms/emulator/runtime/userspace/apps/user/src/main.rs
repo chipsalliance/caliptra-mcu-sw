@@ -6,6 +6,7 @@
 #![allow(static_mut_refs)]
 
 use core::fmt::Write;
+use kernel::debug::IoWrite;
 
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -25,6 +26,9 @@ mod spdm;
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
+pub(crate) static mut WRITER: Writer = Writer {};
+const FPGA_UART_OUTPUT: *mut u32 = 0xa401_1014 as *mut u32;
+
 pub(crate) struct EmulatorExiter {}
 pub(crate) static mut EMULATOR_EXITER: EmulatorExiter = EmulatorExiter {};
 impl romtime::Exit for EmulatorExiter {
@@ -32,8 +36,32 @@ impl romtime::Exit for EmulatorExiter {
         // Safety: This is a safe memory address to write to for exiting the emulator.
         unsafe {
             // By writing to this address we can exit the emulator.
-            core::ptr::write_volatile(0x1000_2000 as *mut u32, code);
+            // core::ptr::write_volatile(0x1000_2000 as *mut u32, code);
+            let b = if exit_code == 0 { 0xff } else { 0x01 };
+            Writer {}.write(&[b]);
+            loop {}
         }
+    }
+}
+
+pub struct Writer {}
+
+impl Write for Writer {
+    fn write_str(&mut self, s: &str) -> ::core::fmt::Result {
+        self.write(s.as_bytes());
+        Ok(())
+    }
+}
+
+impl IoWrite for Writer {
+    fn write(&mut self, buf: &[u8]) -> usize {
+        for b in buf {
+            // Print to this address for FPGA output
+            unsafe {
+                core::ptr::write_volatile(FPGA_UART_OUTPUT, *b as u32 | 0x100);
+            }
+        }
+        buf.len()
     }
 }
 
@@ -87,12 +115,6 @@ async fn start() {
 }
 
 pub(crate) async fn async_main() {
-    // TODO: Debug spawning the SPDM task causes a hardfault in FPGA when firmware update is enabled
-    // for now, disable the SPDM task if either FW update test is enabled
-    // #[cfg(not(any(
-    //     feature = "test-firmware-update-streaming",
-    //     feature = "test-firmware-update-flash"
-    // )))]
     // EXECUTOR
     //     .get()
     //     .spawner()
