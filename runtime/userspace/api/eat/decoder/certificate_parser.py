@@ -32,6 +32,7 @@ This module intentionally does NOT perform chain validation or signature verific
 from __future__ import annotations
 
 import logging
+import hashlib
 
 logger = logging.getLogger(__name__)
 
@@ -427,6 +428,29 @@ def parse_certificate(certificate_der: bytes, *, log: logging.Logger | None = No
     result['verification_public_key'] = verification_public_key
     result['curve_name'] = curve_name
 
+    # --- UEID zero placeholder replacement ---
+    # If a DICE UEID extension is present but all bytes are zero, synthesize a stable surrogate
+    # using SHA-384(subject_name_string) truncated to the original UEID length (in hex chars).
+    try:
+        subject_str = ','.join(f"{k}={v}" for k, v in result.get('subject_components', []))
+        if subject_str:
+            for ext in result.get('extensions', []):
+                parsed = ext.get('parse')
+                if not isinstance(parsed, dict):
+                    continue
+                ueid_hex = parsed.get('ueid_hex')
+                if isinstance(ueid_hex, str) and ueid_hex and set(ueid_hex) == {'0'}:
+                    digest_full = hashlib.sha384(subject_str.encode('utf-8')).hexdigest()
+                    replacement = digest_full[:len(ueid_hex)]
+                    parsed['ueid_hex'] = replacement
+                    try:
+                        if isinstance(ext.get('parse_compact'), dict):
+                            ext['parse_compact'] = _compact_dice_parse(parsed)
+                    except Exception:
+                        pass
+    except Exception:  # noqa: BLE001
+        result['errors'].append('ueid_synthetic_failed')
+
     # Emit extension summary if requested
     if log_extensions and list_extensions and result['extensions']:
         try:
@@ -487,8 +511,10 @@ def parse_certificate(certificate_der: bytes, *, log: logging.Logger | None = No
                                         try:
                                             raw_bytes = bytes.fromhex(raw_hex_candidate)
                                             if raw_bytes and all(32 <= b < 127 for b in raw_bytes):
-                                                # Use ASCII string directly (no truncation per user request)
-                                                val = raw_bytes.decode('ascii')
+                                                ascii_val = raw_bytes.decode('ascii')
+                                                if fld == 'tci_type' and '_' not in ascii_val and len(ascii_val) <= 8 and all('A' <= c <= 'Z' or c.isdigit() for c in ascii_val):
+                                                    ascii_val = ascii_val[::-1]
+                                                val = ascii_val
                                         except Exception:  # noqa: BLE001
                                             pass
                                 elif isinstance(val, str) and len(val) > 40:

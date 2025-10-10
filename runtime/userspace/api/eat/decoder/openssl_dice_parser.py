@@ -445,7 +445,17 @@ def parse_tcb_info_openssl(data):
                 if ftype == 'utf8':
                     fields[field_name] = parse_utf8(val_bytes)
                 elif ftype == 'int':
-                    fields[field_name] = parse_integer(val_bytes)
+                    # Always interpret svn (and any int field) using full bytes, then for svn specifically
+                    # collapse to the last byte per simplified spec decision.
+                    intval = parse_integer(val_bytes)
+                    if field_name == 'svn':
+                        fields['svn_raw_hex'] = val_bytes.hex()
+                        if len(val_bytes) == 0:
+                            fields[field_name] = 0
+                        else:
+                            fields[field_name] = val_bytes[-1]
+                    else:
+                        fields[field_name] = intval
                 elif ftype == 'bitstring':
                     fields[field_name] = parse_bitstring(val_bytes)
                 elif ftype == 'octets':

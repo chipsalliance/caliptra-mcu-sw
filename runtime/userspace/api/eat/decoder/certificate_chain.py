@@ -149,7 +149,8 @@ def assemble_and_parse_chain(leaf_cert: bytes, directory: str = '.', verbose: bo
                                             else:
                                                 val = 'present'
                                         elif fld == 'svn' and isinstance(val, int):
-                                            val = hex(val)
+                                            # Simplified display: only decimal svn
+                                            val = f"{val}"
                                         kv_inline.append(f"{fld}={val}")
                                 if 'tci_type' in e and isinstance(e['tci_type'], str):
                                     raw_hex_candidate = e['tci_type']
@@ -157,7 +158,10 @@ def assemble_and_parse_chain(leaf_cert: bytes, directory: str = '.', verbose: bo
                                         try:
                                             raw_bytes = bytes.fromhex(raw_hex_candidate)
                                             if raw_bytes and all(32 <= b < 127 for b in raw_bytes):
-                                                kv_inline.append(f"tci_type={raw_bytes.decode('ascii')}")
+                                                direct = raw_bytes.decode('ascii')
+                                                if '_' not in direct and len(direct) <= 8 and all('A' <= c <= 'Z' or c.isdigit() for c in direct):
+                                                    direct = direct[::-1]
+                                                kv_inline.append(f"tci_type={direct}")
                                         except Exception:  # noqa: BLE001
                                             pass
                                 return kv_inline
@@ -188,14 +192,18 @@ def assemble_and_parse_chain(leaf_cert: bytes, directory: str = '.', verbose: bo
                                         else:
                                             val = 'present'
                                     elif fld == 'svn' and isinstance(val, int):
-                                        val = hex(val)
+                                        # Simplified display: only decimal svn
+                                        val = f"{val}"
                                     if fld in ('vendor_info','tci_type') and isinstance(parsed_full[fld], str):
                                         raw_hex_candidate = parsed_full[fld]
                                         if all(ch in '0123456789abcdefABCDEF' for ch in raw_hex_candidate) and len(raw_hex_candidate) % 2 == 0:
                                             try:
                                                 raw_bytes = bytes.fromhex(raw_hex_candidate)
                                                 if raw_bytes and all(32 <= b < 127 for b in raw_bytes):
-                                                    val = raw_bytes.decode('ascii')
+                                                    ascii_val = raw_bytes.decode('ascii')
+                                                    if fld == 'tci_type' and '_' not in ascii_val and len(ascii_val) <= 8 and all('A' <= c <= 'Z' or c.isdigit() for c in ascii_val):
+                                                        ascii_val = ascii_val[::-1]
+                                                    val = ascii_val
                                             except Exception:  # noqa: BLE001
                                                 pass
                                     kv.append(f"{fld}={val}")

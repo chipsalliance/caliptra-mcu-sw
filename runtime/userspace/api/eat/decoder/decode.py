@@ -30,6 +30,7 @@ import os
 import struct
 import sys
 import logging
+import json
 from signature_analysis import analyze_cose_signature, analyze_certificate_headers
 from signature_validation import validate_cose_signature
 from decode_json import extract_claims_to_json_only
@@ -1352,22 +1353,272 @@ def decode_eat_token(file_path):
         import traceback
         traceback.print_exc()
 
+def verify_claims(json_claims_path: str, expected_nonce: bytes | None, reference_triples_path: str | None) -> dict:
+    """Generic claims verification.
+
+    Parameters:
+      json_claims_path: Path to claims JSON produced by fast extraction.
+      expected_nonce: Raw expected nonce bytes (or None to skip nonce check).
+      reference_triples_path: Path to reference triples JSON (or None).
+
+    Behavior:
+      * Loads claims JSON once.
+      * If expected_nonce provided, locate 'nonce' claim and compare (hex or utf-8 heuristic).
+      * If reference_triples_path provided, load reference and compare digests/integrity using
+        decode_eat_claims_json.compare_claims_to_reference (which expects full claims dict format).
+    Returns True only if all requested verifications succeed.
+    """
+    ok = True
+    nonce_ok: bool | None = None
+    ref_ok: bool | None = None
+    try:
+        with open(json_claims_path, 'r') as jf:
+            claims = json.load(jf)
+    except Exception as e:  # noqa: BLE001
+        print(f"[CLAIMS] ERROR loading claims JSON '{json_claims_path}': {e}")
+        return False
+    print("\n=== 5) Verify Claims ===")
+    # --- Nonce verification ---
+    if expected_nonce is not None:
+        nonce_val = claims.get('nonce')
+        def _to_bytes(v):
+            if v is None:
+                return None
+            if isinstance(v, bytes):
+                return v
+            if isinstance(v, str):
+                s = v.strip()
+                if len(s) % 2 == 0 and s != '' and all(c in '0123456789abcdefABCDEF' for c in s):
+                    try:
+                        return bytes.fromhex(s)
+                    except Exception:  # noqa: BLE001
+                        pass
+                return s.encode('utf-8', 'ignore')
+            if isinstance(v, int):
+                if v == 0:
+                    return b'\x00'
+                out = []
+                x = v
+                while x:
+                    out.append(x & 0xFF)
+                    x >>= 8
+                return bytes(reversed(out))
+            return bytes(str(v), 'utf-8')
+        actual = _to_bytes(nonce_val)
+        if actual is None:
+            print('[CLAIMS] Nonce claim missing')
+            ok = False
+            nonce_ok = False
+        elif actual == expected_nonce:
+            print(f"[CLAIMS] Nonce OK ({actual.hex()})")
+            nonce_ok = True
+        else:
+            print(f"[CLAIMS] Nonce MISMATCH expected={expected_nonce.hex()} actual={actual.hex()} (len exp={len(expected_nonce)} act={len(actual)})")
+            ok = False
+            nonce_ok = False
+
+    # --- Reference triples comparison ---
+    if reference_triples_path:
+        try:
+            from decode_eat_claims_json import compare_claims_to_reference  # type: ignore
+        except Exception as e:  # noqa: BLE001
+            print(f"[REF] Unable to import comparison helper: {e}")
+            return {"overall_ok": False, "nonce_ok": nonce_ok, "reference_match": False}
+        try:
+            with open(reference_triples_path, 'r') as rf:
+                reference = json.load(rf)
+        except Exception as e:  # noqa: BLE001
+            print(f"[REF] Failed to load reference file '{reference_triples_path}': {e}")
+            return {"overall_ok": False, "nonce_ok": nonce_ok, "reference_match": False}
+        cmp_result = compare_claims_to_reference(claims, reference)
+        mismatches = cmp_result.get('mismatches') or []
+        if cmp_result.get('matches'):
+            print('[REF] Reference digest comparison: ALL MATCH')
+            ref_ok = True
+            # If user did not ask for full detail, emit a concise summary of matched components
+            ref_detail = globals().get('REFERENCE_DETAIL') or globals().get('VERBOSE_REFERENCE_DETAIL')
+            if not ref_detail:
+                try:
+                    ref_triples = reference.get('reference_triples', []) if isinstance(reference, dict) else []
+                    printed_header = False
+                    for t in ref_triples:
+                        cid = t.get('class_id')
+                        meas = t.get('measurements') or []
+                        if not printed_header:
+                            print('[REF] Matched components:')
+                            printed_header = True
+                        # Print per measurement first digest
+                        if not meas:
+                            print(f"    class_id={cid} (no measurements)")
+                            continue
+                        for m in meas:
+                            if not isinstance(m, dict):
+                                continue
+                            mkey = m.get('mkey')
+                            digests = m.get('digests') or []
+                            first_digest = digests[0] if digests else None
+                            # shorten digest for readability
+                            if isinstance(first_digest, str) and len(first_digest) > 24:
+                                short = first_digest[:24] + '...'
+                            else:
+                                short = first_digest
+                            print(f"    class_id={cid} mkey={mkey} digest={short}")
+                except Exception:
+                    pass
+        else:
+            print('[REF] Reference digest comparison: MISMATCHES found')
+            try:
+                print(json.dumps(mismatches, indent=2))
+            except Exception:  # noqa: BLE001
+                print(mismatches)
+            ok = False
+            ref_ok = False
+        # Optional detailed per-measurement status
+        ref_detail = globals().get('REFERENCE_DETAIL') or globals().get('VERBOSE_REFERENCE_DETAIL')
+        if ref_detail:
+            # Build quick lookup for mismatches by (class_id, mkey)
+            mismatch_index = {}
+            for m in mismatches:
+                cid = m.get('class_id')
+                mk = m.get('mkey')
+                key = (cid, mk)
+                mismatch_index.setdefault(key, []).append(m.get('issue'))
+            ref_triples = reference.get('reference_triples', []) if isinstance(reference, dict) else []
+            print('[REF] Detailed comparison:')
+            for t in ref_triples:
+                cid = t.get('class_id')
+                meas_list = t.get('measurements') or []
+                if not meas_list:
+                    line = f"  class_id={cid}: (no measurements in reference)"
+                    print(line)
+                    continue
+                print(f"  class_id={cid}:")
+                for m in meas_list:
+                    mk = m.get('mkey')
+                    digests = m.get('digests') or []
+                    first_digest = digests[0] if digests else None
+                    issues = mismatch_index.get((cid, mk))
+                    if issues:
+                        print(f"    mkey={mk} DIGEST={first_digest} -> FAIL ({'/'.join(issues)})")
+                    else:
+                        # Only mark success if comparison covered this measurement; if unmatched claim side could hide issues.
+                        status = 'OK' if ref_ok else 'OK*'  # OK* when overall failed but this one not listed
+                        print(f"    mkey={mk} DIGEST={first_digest} -> {status}")
+    return {"overall_ok": ok, "nonce_ok": nonce_ok, "reference_match": ref_ok}
+
 def main():
-    """Main function to decode EAT tokens from command line arguments"""
-    
+    """Main function to decode EAT tokens from command line arguments with optional nonce verification."""
+
     if len(sys.argv) < 2:
-        print("Usage: python3 decode.py <eat_token_file> [--json] [--verbose]")
-        print("Example: python3 decode.py example_eat_token.cbor")
-        print("Example: python3 decode.py example_eat_token.cbor --json")
-        print("Example: python3 decode.py example_eat_token.cbor --json --verbose")
-        print("\nOptions:")
-        print("  --json      Extract claims to JSON only (skip detailed analysis)")
-        print("  --verbose   Show debug information during processing")
+        print("Usage: python3 decode.py <eat_token_file> [options]\n")
+        print("Core:")
+        print("  --json                   Fast path: extract claims JSON (supports verification)")
+        print("  --verbose                Verbose structural decode (can combine with --json)")
+        print("  --nonce <hex|utf8>       Expected nonce (hex if even-length & hex chars, else UTF-8)")
+        print()
+        print("Reference / Comparison:")
+        print("  --emit-reference [FILE]  Emit reference triples (default <token>_reference.json if FILE omitted)")
+        print("  --reference <FILE>       Compare evidence digests to reference triples")
+        print("  --reference-mkeys <csv>  Only include specified mkeys when emitting reference (e.g. 0,1,0x2)")
+        print("  --print-reference        Also print generated reference JSON")
+        print("  --reference-detail       Print per-measurement comparison status (even when all match)")
+        print()
+        print("Verification Output Control:")
+        print("  --no-embed-verification  Do not embed verification summary into claims JSON")
+        print()
+        print("Examples:")
+        print("  python3 decode.py token.cbor --json --nonce deadbeef")
+        print("  python3 decode.py token.cbor --json --emit-reference")
+        print("  python3 decode.py token.cbor --json --emit-reference ref.json --print-reference")
+        print("  python3 decode.py token.cbor --json --reference ref.json --nonce 746573745f6e6f6e6365")
         sys.exit(1)
-    
-    file_path = sys.argv[1]
-    json_flag = "--json" in sys.argv
-    verbose = "--verbose" in sys.argv
+
+    # Basic arg parsing (preserve existing style without introducing argparse)
+    args = sys.argv[1:]
+    file_path = args[0]
+    json_flag = "--json" in args
+    verbose = "--verbose" in args
+    reference_detail = "--reference-detail" in args
+    # Expose to verify_claims via global
+    globals()['REFERENCE_DETAIL'] = reference_detail
+    if reference_detail and verbose:
+        globals()['VERBOSE_REFERENCE_DETAIL'] = True
+    expected_nonce_arg = None
+    if "--nonce" in args:
+        try:
+            idx = args.index("--nonce")
+            expected_nonce_arg = args[idx + 1]
+        except Exception:
+            print("ERROR: --nonce supplied without a value")
+            sys.exit(2)
+
+    def _normalize_nonce_input(val: str) -> bytes:
+        # If looks like hex (even length, hex chars only) treat as hex
+        hs = val.lower().strip()
+        if len(hs) % 2 == 0 and all(c in '0123456789abcdef' for c in hs):
+            try:
+                return bytes.fromhex(hs)
+            except Exception:
+                pass
+        # else interpret as utf-8 text
+        return val.encode('utf-8')
+
+    expected_nonce_bytes = _normalize_nonce_input(expected_nonce_arg) if expected_nonce_arg else None
+    emit_ref_path = None
+    if "--emit-reference" in args:
+        try:
+            idx_er = args.index("--emit-reference")
+            # If next arg absent or starts with '--', use default basename
+            if idx_er == len(args) - 1 or args[idx_er + 1].startswith('--'):
+                base = os.path.splitext(os.path.basename(file_path))[0]
+                emit_ref_path = f"{base}_reference.json"
+            else:
+                emit_ref_path = args[idx_er + 1]
+        except Exception:
+            base = os.path.splitext(os.path.basename(file_path))[0]
+            emit_ref_path = f"{base}_reference.json"
+    reference_path = None
+    if "--reference" in args:
+        try:
+            reference_path = args[args.index("--reference") + 1]
+        except Exception:
+            print("ERROR: --reference supplied without a file path")
+            sys.exit(2)
+    print_reference = "--print-reference" in args
+    mkey_filter_arg = None
+    if "--reference-mkeys" in args:
+        try:
+            mkey_filter_arg = args[args.index("--reference-mkeys") + 1]
+        except Exception:
+            print("ERROR: --reference-mkeys supplied without value (comma separated)")
+            sys.exit(2)
+    include_mkeys: set[int] | None = None
+    if mkey_filter_arg:
+        include_mkeys = set()
+        for part in mkey_filter_arg.split(','):
+            p = part.strip()
+            if not p:
+                continue
+            try:
+                if p.startswith('0x'):
+                    include_mkeys.add(int(p,16))
+                else:
+                    include_mkeys.add(int(p))
+            except Exception:
+                print(f"[REF] Ignoring invalid mkey '{p}'")
+    no_embed_verification = "--no-embed-verification" in args
+
+    # Color support
+    def _color(enabled: bool, text: str, fg: str):
+        if not enabled:
+            return text
+        colors = {
+            'red': '\u001b[31m', 'green': '\u001b[32m', 'yellow': '\u001b[33m',
+            'cyan': '\u001b[36m', 'magenta': '\u001b[35m'
+        }
+        reset = '\u001b[0m'
+        return f"{colors.get(fg,'')}{text}{reset}" if fg in colors else text
+    use_color = sys.stdout.isatty() and 'NO_COLOR' not in os.environ
     
     # Configure logging based on verbose mode
     if verbose:
@@ -1387,9 +1638,114 @@ def main():
     #  --json (no --verbose): run fast JSON extraction (info-level minimal output)
     #  --json --verbose: perform full decode (all prints + debug logging) AND emit JSON file
     #  (no --json): original full decode
+    def _post_parse_reference_ops(claims_file_path: str):
+        # If reference operations requested, re-parse structured claims and act
+        if not (emit_ref_path or reference_path):
+            return True
+        try:
+            from decode_eat_claims_json import parse_eat_claims_to_dict, build_reference_from_claims, compare_claims_to_reference
+        except Exception as e:
+            print(f"[REF] Unable to import reference helpers: {e}")
+            return False
+        try:
+            with open(claims_file_path,'rb') as f:
+                raw = f.read()
+            cose_data = skip_cbor_tags(raw)
+            # extract payload (reuse earlier approach)
+            off = 0
+            hdr, off = parse_cbor_header(cose_data, off)
+            if not hdr or hdr[0] != 4:
+                print('[REF] Not a COSE Sign1 array; cannot build reference')
+                return False
+            # skip protected
+            _, off = parse_cbor_header(cose_data, off)
+            # skip unprotected map generically
+            uh, off2 = parse_cbor_header(cose_data, off)
+            if uh and uh[0] == 5:
+                off = skip_cbor_value_simple(cose_data, off, uh[0], uh[1])
+            else:
+                off = off2
+            ph, offp = parse_cbor_header(cose_data, off)
+            if not ph or ph[0] != 2:
+                print('[REF] Payload not found for reference ops')
+                return False
+            plen = ph[1]
+            payload = cose_data[offp:offp+plen]
+            claims_dict = parse_eat_claims_to_dict(payload)
+            # Build & write reference if requested
+            if emit_ref_path:
+                ref_obj = build_reference_from_claims(claims_dict)
+                import json
+                with open(emit_ref_path,'w') as rf:
+                    json.dump(ref_obj, rf, indent=2)
+                print(f"[REF] Wrote reference triples to {emit_ref_path} ({len(ref_obj.get('reference_triples', []))} entries)")
+            if reference_path:
+                import json
+                try:
+                    with open(reference_path,'r') as rf:
+                        ref_loaded = json.load(rf)
+                except Exception as e:
+                    print(f"[REF] Failed to load reference file: {e}")
+                    return False
+                cmp_result = compare_claims_to_reference(claims_dict, ref_loaded)
+                if cmp_result.get('matches'):
+                    print('[REF] Reference digest comparison: ALL MATCH')
+                else:
+                    print('[REF] Reference digest comparison: MISMATCHES found')
+                    import json
+                    print(json.dumps(cmp_result.get('mismatches'), indent=2))
+                return cmp_result.get('matches')
+            return True
+        except Exception as e:
+            print(f"[REF] Error during reference operations: {e}")
+            return False
+
     if json_flag and not verbose:
         print(f"=== Parsing EAT CWT (json fast path) from {file_path} ===")
         extract_claims_to_json_only(file_path, skip_cbor_tags, parse_cbor_header, verbose)
+        # Determine generated JSON claims file path (naming mirrors extract_claims_to_json_only)
+        json_claims_path = f"{os.path.splitext(os.path.basename(file_path))[0]}_claims.json"
+
+        # If emit-reference requested, build from already saved claims JSON
+        ref_ok = True
+        if emit_ref_path:
+            try:
+                from decode_eat_claims_json import build_reference_from_claims  # type: ignore
+                with open(json_claims_path, 'r') as jf:
+                    _claims = json.load(jf)
+                ref_obj = build_reference_from_claims(_claims, include_mkeys)
+                with open(emit_ref_path, 'w') as rf:
+                    json.dump(ref_obj, rf, indent=2)
+                print(f"[REF] Wrote reference triples to {emit_ref_path} ({len(ref_obj.get('reference_triples', []))} entries)")
+                if print_reference:
+                    print("[REF] Reference JSON:")
+                    print(json.dumps(ref_obj, indent=2))
+            except Exception as e:  # noqa: BLE001
+                print(f"[REF] Failed to emit reference: {e}")
+                ref_ok = False
+
+        verify_result = verify_claims(json_claims_path, expected_nonce_bytes, reference_path)
+        if not no_embed_verification:
+            try:
+                with open(json_claims_path, 'r') as jf:
+                    claims_loaded = json.load(jf)
+                claims_loaded['verification'] = {
+                    'nonce_ok': verify_result.get('nonce_ok'),
+                    'reference_match': verify_result.get('reference_match'),
+                    'overall_ok': verify_result.get('overall_ok')
+                }
+                with open(json_claims_path, 'w') as jf:
+                    json.dump(claims_loaded, jf, indent=2)
+            except Exception as e:  # noqa: BLE001
+                print(f"[WARN] Unable to embed verification summary: {e}")
+        status_line = (
+            f"[STATUS] overall={'OK' if verify_result.get('overall_ok') else 'FAIL'} "
+            f"nonce={verify_result.get('nonce_ok')} ref={verify_result.get('reference_match')}"
+        )
+        print(_color(use_color, status_line, 'green' if verify_result.get('overall_ok') else 'red'))
+
+        if not (verify_result.get('overall_ok') and ref_ok):
+            sys.exit(3)
     elif json_flag and verbose:
         # Full decode plus JSON extraction
         print(f"=== Decoding (full) + JSON export for {file_path} ===")
@@ -1411,11 +1767,88 @@ def main():
                 extract_claims_to_json_only(file_path, skip_cbor_tags, parse_cbor_header, False)
             except Exception:
                 pass
+            # After full decode create JSON (fast extract) and then perform unified verification if requested
+            json_claims_path = f"{os.path.splitext(os.path.basename(file_path))[0]}_claims.json"
+            if emit_ref_path:
+                try:
+                    from decode_eat_claims_json import build_reference_from_claims  # type: ignore
+                    with open(json_claims_path, 'r') as jf:
+                        _claims = json.load(jf)
+                    ref_obj = build_reference_from_claims(_claims, include_mkeys)
+                    with open(emit_ref_path, 'w') as rf:
+                        json.dump(ref_obj, rf, indent=2)
+                    print(f"[REF] Wrote reference triples to {emit_ref_path} ({len(ref_obj.get('reference_triples', []))} entries)")
+                    if print_reference:
+                        print("[REF] Reference JSON:")
+                        print(json.dumps(ref_obj, indent=2))
+                except Exception as e:
+                    print(f"[REF] Failed to emit reference: {e}")
+            verify_result = verify_claims(json_claims_path, expected_nonce_bytes, reference_path)
+            if verify_result and not no_embed_verification:
+                try:
+                    with open(json_claims_path, 'r') as jf:
+                        claims_loaded = json.load(jf)
+                    claims_loaded['verification'] = {
+                        'nonce_ok': verify_result.get('nonce_ok'),
+                        'reference_match': verify_result.get('reference_match'),
+                        'overall_ok': verify_result.get('overall_ok')
+                    }
+                    with open(json_claims_path, 'w') as jf:
+                        json.dump(claims_loaded, jf, indent=2)
+                except Exception:
+                    pass
+            status_line = (
+                f"[STATUS] overall={'OK' if verify_result.get('overall_ok') else 'FAIL'} "
+                f"nonce={verify_result.get('nonce_ok')} ref={verify_result.get('reference_match')}"
+            )
+            print(_color(use_color, status_line, 'green' if verify_result.get('overall_ok') else 'red'))
+            if not verify_result.get('overall_ok'):
+                sys.exit(3)
         except Exception as e:
             print(f"[WARN] JSON export after full decode failed: {e}")
     else:
         print(f"=== Decoding {file_path} ===")
         decode_eat_token(file_path)
+        # Optional reference ops & verification (create JSON if needed)
+        if emit_ref_path or reference_path or expected_nonce_bytes is not None:
+            # Produce claims JSON via fast extractor
+            extract_claims_to_json_only(file_path, skip_cbor_tags, parse_cbor_header, False)
+            json_claims_path = f"{os.path.splitext(os.path.basename(file_path))[0]}_claims.json"
+            if emit_ref_path:
+                try:
+                    from decode_eat_claims_json import build_reference_from_claims  # type: ignore
+                    with open(json_claims_path, 'r') as jf:
+                        _claims = json.load(jf)
+                    ref_obj = build_reference_from_claims(_claims, include_mkeys)
+                    with open(emit_ref_path, 'w') as rf:
+                        json.dump(ref_obj, rf, indent=2)
+                    print(f"[REF] Wrote reference triples to {emit_ref_path} ({len(ref_obj.get('reference_triples', []))} entries)")
+                    if print_reference:
+                        print("[REF] Reference JSON:")
+                        print(json.dumps(ref_obj, indent=2))
+                except Exception as e:
+                    print(f"[REF] Failed to emit reference: {e}")
+            verify_result = verify_claims(json_claims_path, expected_nonce_bytes, reference_path)
+            if verify_result and not no_embed_verification:
+                try:
+                    with open(json_claims_path, 'r') as jf:
+                        claims_loaded = json.load(jf)
+                    claims_loaded['verification'] = {
+                        'nonce_ok': verify_result.get('nonce_ok'),
+                        'reference_match': verify_result.get('reference_match'),
+                        'overall_ok': verify_result.get('overall_ok')
+                    }
+                    with open(json_claims_path, 'w') as jf:
+                        json.dump(claims_loaded, jf, indent=2)
+                except Exception:
+                    pass
+            status_line = (
+                f"[STATUS] overall={'OK' if verify_result.get('overall_ok') else 'FAIL'} "
+                f"nonce={verify_result.get('nonce_ok')} ref={verify_result.get('reference_match')}"
+            )
+            print(_color(use_color, status_line, 'green' if verify_result.get('overall_ok') else 'red'))
+            if not verify_result.get('overall_ok'):
+                sys.exit(3)
 
 if __name__ == "__main__":
     main()
