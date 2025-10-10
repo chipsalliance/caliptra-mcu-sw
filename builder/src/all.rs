@@ -280,6 +280,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         soc_images.clone(),
         mcu_cfg.clone(),
         None,
+        None,
+        None,
     );
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_fw = caliptra_builder.get_caliptra_fw()?;
@@ -347,6 +349,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             Some(feature_runtime_file.path().to_path_buf()),
             soc_images.clone(),
             mcu_cfg.clone(),
+            None,
+            None,
             None,
         );
         let feature_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
