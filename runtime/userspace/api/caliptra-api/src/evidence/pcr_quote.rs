@@ -19,15 +19,19 @@ pub const PCR_QUOTE_BUFFER_SIZE: usize = MLDSA87_QUOTE_RSP_LEN;
 pub struct PcrQuote;
 
 impl PcrQuote {
-    pub async fn pcr_quote(buffer: &mut [u8], with_pqc_sig: bool) -> CaliptraApiResult<usize> {
+    pub async fn pcr_quote(
+        nonce: Option<&[u8]>,
+        buffer: &mut [u8],
+        with_pqc_sig: bool,
+    ) -> CaliptraApiResult<usize> {
         if with_pqc_sig {
-            Self::pcr_quote_mldsa(buffer).await
+            Self::pcr_quote_mldsa(nonce, buffer).await
         } else {
-            Self::pcr_quote_ecc384(buffer).await
+            Self::pcr_quote_ecc384(nonce, buffer).await
         }
     }
 
-    async fn pcr_quote_mldsa(buffer: &mut [u8]) -> CaliptraApiResult<usize> {
+    async fn pcr_quote_mldsa(nonce: Option<&[u8]>, buffer: &mut [u8]) -> CaliptraApiResult<usize> {
         let mailbox = Mailbox::new();
 
         if buffer.len() < MLDSA87_QUOTE_RSP_LEN {
@@ -39,8 +43,13 @@ impl PcrQuote {
             nonce: [0; 32],
         };
 
+        if let Some(nonce) = nonce {
+            req.nonce.copy_from_slice(nonce);
+        } else {
+            Rng::generate_random_number(&mut req.nonce).await?;
+        }
+
         let mut rsp_bytes = [0u8; size_of::<QuotePcrsMldsa87Resp>()];
-        Rng::generate_random_number(&mut req.nonce).await?;
         let req_bytes = req.as_mut_bytes();
         let size = execute_mailbox_cmd(
             &mailbox,
@@ -66,7 +75,7 @@ impl PcrQuote {
         Ok(MLDSA87_QUOTE_RSP_LEN)
     }
 
-    async fn pcr_quote_ecc384(buffer: &mut [u8]) -> CaliptraApiResult<usize> {
+    async fn pcr_quote_ecc384(nonce: Option<&[u8]>, buffer: &mut [u8]) -> CaliptraApiResult<usize> {
         let mailbox = Mailbox::new();
 
         if buffer.len() < ECC384_QUOTE_RSP_LEN {
@@ -77,7 +86,13 @@ impl PcrQuote {
             hdr: MailboxReqHeader::default(),
             nonce: [0; 32],
         };
-        Rng::generate_random_number(&mut req.nonce).await?;
+
+        if let Some(nonce) = nonce {
+            req.nonce.copy_from_slice(nonce);
+        } else {
+            Rng::generate_random_number(&mut req.nonce).await?;
+        }
+
         let req_bytes = req.as_mut_bytes();
         let mut resp_bytes = [0u8; size_of::<QuotePcrsEcc384Resp>()];
 

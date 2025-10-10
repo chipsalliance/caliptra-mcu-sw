@@ -3,7 +3,7 @@
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
-use crate::error::{CommandResult, SpdmError};
+use crate::error::{CommandError, CommandResult, SpdmError};
 use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
@@ -488,6 +488,12 @@ pub(crate) async fn handle_negotiate_algorithms<'a>(
     // Generate ALGORITHMS response
     ctx.prepare_response_buffer(req_payload)?;
     generate_algorithms_response(ctx, req_payload).await?;
+
+    // Set the negotiated asymmetric algorithm in the measurements module
+    let asym_algo = ctx
+        .negotiated_base_asym_algo()
+        .map_err(|_| (false, CommandError::UnsupportedAsymAlgo))?;
+    ctx.measurements.set_asym_algo(asym_algo);
 
     // Set the connection state to AlgorithmsNegotiated
     ctx.state
