@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use caliptra_api::mailbox::MailboxReqHeader;
 use core::{hint::black_box, marker::PhantomData};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+use libtock_console::Console;
 use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 

@@ -705,7 +705,6 @@ dependencies = [
  "caliptra-x509",
  "caliptra_common",
  "cfg-if",
- "crc",
  "crypto",
  "dpe",
  "memoffset 0.8.0",

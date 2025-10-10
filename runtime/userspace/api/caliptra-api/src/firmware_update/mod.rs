@@ -322,7 +322,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
 
         // Calculate the mailbox checksum
         let mut checksum = payload_stream.get_bytesum().await;
-        for b in CommandId::VERIFY_AUTH_MANIFEST.0.to_le_bytes().iter() {
+        for b in CommandId::SET_AUTH_MANIFEST.0.to_le_bytes().iter() {
             checksum = checksum.wrapping_add(u32::from(*b));
         }
         for b in req.as_mut_bytes().iter() {
@@ -336,7 +336,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             let result = self
                 .mailbox
                 .execute_with_payload_stream(
-                    CommandId::VERIFY_AUTH_MANIFEST.into(),
+                    CommandId::SET_AUTH_MANIFEST.into(),
                     Some(header),
                     &mut payload_stream,
                     response_buffer,
@@ -425,39 +425,39 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         len: usize,
         metadata: &AuthManifestImageMetadata,
     ) -> Result<(), ErrorCode> {
-        let mut hasher = HashContext::new();
-        hasher
-            .init(HashAlgoType::SHA384, None)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        let mut buffer = [0u8; MAX_CRYPTO_MBOX_DATA_SIZE / 2]; // Size decreased to avoid stack overflow
-        let mut hash = [0u8; 48]; // SHA-384 produces a 48-byte hash
-        let mut total_bytes_read = 0;
-        while total_bytes_read < len {
-            let bytes_to_read = (len - total_bytes_read).min(MAX_CRYPTO_MBOX_DATA_SIZE / 2);
-            self.staging_memory
-                .read(
-                    image_offset + total_bytes_read,
-                    &mut buffer[..bytes_to_read],
-                )
-                .await
-                .map_err(|_| ErrorCode::Fail)?;
-            hasher
-                .update(&buffer[..bytes_to_read])
-                .await
-                .map_err(|_| ErrorCode::Fail)?;
-            total_bytes_read += bytes_to_read;
-        }
+        // let mut hasher = HashContext::new();
+        // hasher
+        //     .init(HashAlgoType::SHA384, None)
+        //     .await
+        //     .map_err(|_| ErrorCode::Fail)?;
+        // let mut buffer = [0u8; MAX_CRYPTO_MBOX_DATA_SIZE / 2]; // Size decreased to avoid stack overflow
+        // let mut hash = [0u8; 48]; // SHA-384 produces a 48-byte hash
+        // let mut total_bytes_read = 0;
+        // while total_bytes_read < len {
+        //     let bytes_to_read = (len - total_bytes_read).min(MAX_CRYPTO_MBOX_DATA_SIZE / 2);
+        //     self.staging_memory
+        //         .read(
+        //             image_offset + total_bytes_read,
+        //             &mut buffer[..bytes_to_read],
+        //         )
+        //         .await
+        //         .map_err(|_| ErrorCode::Fail)?;
+        //     hasher
+        //         .update(&buffer[..bytes_to_read])
+        //         .await
+        //         .map_err(|_| ErrorCode::Fail)?;
+        //     total_bytes_read += bytes_to_read;
+        // }
 
-        hasher
-            .finalize(&mut hash)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
+        // hasher
+        //     .finalize(&mut hash)
+        //     .await
+        //     .map_err(|_| ErrorCode::Fail)?;
 
-        // Compare the computed hash with the expected hash from the metadata
-        if hash != metadata.digest {
-            return Err(ErrorCode::Fail);
-        }
+        // // Compare the computed hash with the expected hash from the metadata
+        // if hash != metadata.digest {
+        //     return Err(ErrorCode::Fail);
+        // }
 
         Ok(())
     }

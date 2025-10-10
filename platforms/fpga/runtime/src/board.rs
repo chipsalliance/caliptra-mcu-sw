@@ -430,11 +430,16 @@ pub unsafe fn main() {
     hil::time::Alarm::set_alarm_client(virtual_alarm_user, alarm);
     romtime::println!("[mcu-runtime] Alarm initialized");
 
+    let max_caliptra_fw_size = 111300;
+    let staging_size: usize = max_caliptra_fw_size;
+    let staging_base = 0xb00c_0000u64;
+    let staging_addr = staging_base + 256 * 1024 - staging_size as u64;
+
     // TODO: put the staging SRAM in the memory map
     let staging_sram = unsafe {
         core::mem::transmute(core::slice::from_raw_parts_mut(
-            (0xb00c_0000u32 + 111000u32) as *mut u8,
-            111000,
+            staging_addr as *mut u8,
+            staging_size,
         ))
     };
 
@@ -449,7 +454,7 @@ pub unsafe fn main() {
         Some(MCU_MEMORY_MAP.soc_offset),
         Some(MCU_MEMORY_MAP.mbox_offset),
         staging_sram,
-        (0xb00c_0000u64 + 111000u64) // 110 KB from the end
+        staging_addr
     ));
     mailbox.alarm.set_alarm_client(mailbox);
     romtime::println!("[mcu-runtime] Mailbox initialized");

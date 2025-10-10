@@ -190,6 +190,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         }
         self.current_app.set(processid);
         self.current_cmd.set(command);
+        self.current_request_offset.set(0);
         Ok(())
     }
 
@@ -232,6 +233,16 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             )
         };
         let offset = self.current_request_offset.get();
+        if offset + app_buffer.len() > self.staging_sram.len() {
+            debug!(
+                "Error: chunk too large for staging SRAM: {} > {}, offset = {}, app_buffer len = {}",
+                offset + app_buffer.len(),
+                self.staging_sram.len(),
+                offset,
+                app_buffer.len(),
+            );
+            return Err(ErrorCode::SIZE);
+        }
         app_buffer.copy_to_slice(&mut slice[offset..offset + app_buffer.len()]);
         self.current_request_offset.set(offset + app_buffer.len());
         Ok(())
@@ -248,28 +259,26 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             "Execute command {:08x} length {} at AXI addr {:x}",
             cmd, cmd_len, self.staging_sram_axi_addr,
         );
+
         // recalculate checksum
-        let checksum = caliptra_api::calc_checksum(cmd, &self.staging_sram[4..cmd_len]);
-        let slice = unsafe {
-            // TODO: this is a hack because we can't easily share a mutable slice
-            core::slice::from_raw_parts_mut(
-                self.staging_sram.as_ptr() as *mut u8,
-                self.staging_sram.len(),
-            )
-        };
-        slice[0..4].copy_from_slice(&checksum.to_le_bytes());
+        // firmware load does not have a checksum
+        const FIRMWARE_LOAD: u32 = 0x46574C44;
+        if cmd != FIRMWARE_LOAD {
+            let checksum = caliptra_api::calc_checksum(cmd, &self.staging_sram[4..cmd_len]);
+            let slice = unsafe {
+                // TODO: this is a hack because we can't easily share a mutable slice
+                core::slice::from_raw_parts_mut(
+                    self.staging_sram.as_ptr() as *mut u8,
+                    self.staging_sram.len(),
+                )
+            };
+            slice[0..4].copy_from_slice(&checksum.to_le_bytes());
+        }
 
         romtime::println!(
             "MCU first bytes {}",
             romtime::HexBytes(&self.staging_sram[..16])
         );
-        if cmd_len == 8 + 34456 {
-            let mut c = Crc::<u32, NoTable>::new(&crc::CRC_32_ISO_HDLC);
-            romtime::println!(
-                "MCU auth manifest crc32: {:08x}",
-                c.checksum(&self.staging_sram[8..cmd_len])
-            );
-        }
         self.driver
             .map(
                 |driver| match driver.initiate_request(cmd, cmd_len, self.staging_sram_axi_addr) {
@@ -339,7 +348,6 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                             }
                         }
                         Ok(Ok(len)) => {
-                            debug!("Caliptra mailbox success, len {}", len);
                             if let Err(err) =
                                 kernel_data.schedule_upcall(upcall::COMMAND_DONE, (len, 0, 0))
                             {
