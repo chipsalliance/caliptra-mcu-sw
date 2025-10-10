@@ -18,7 +18,7 @@ use tock_registers::{register_bitfields, LocalRegisterCopy};
 
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
 pub const MAX_READ_WRITE_SIZE: usize = 248;
-const WRITE_DELAY_CYCLES: usize = 200;
+const WRITE_DELAY_CYCLES: usize = 0;
 
 register_bitfields! {
     u32,

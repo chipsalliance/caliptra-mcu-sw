@@ -10,6 +10,8 @@ use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use core::cell::Cell;
 use core::mem::transmute;
+use crc::Crc;
+use crc::NoTable;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::hil::time::{Alarm, AlarmClient};
 use kernel::processbuffer::{
@@ -145,13 +147,17 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         self.current_app.set(processid);
 
         // App buffer contains the full payload
-        app_buffer.copy_to_slice(unsafe {
+        let staging_sram = unsafe {
             // TODO: this is a hack because we can't easily share a mutable slice
             core::slice::from_raw_parts_mut(
-                self.staging_sram.as_ptr() as *mut u8,
+                (self.staging_sram.as_ptr() as *mut u8),
                 self.staging_sram.len().min(app_buffer.len()),
             )
-        });
+        };
+        app_buffer.copy_to_slice(staging_sram);
+        // recalculate checksum
+        let checksum = caliptra_api::calc_checksum(command, &staging_sram[4..app_buffer.len()]);
+        staging_sram[0..4].copy_from_slice(&checksum.to_le_bytes());
 
         let buf: &[u8] = unsafe { core::mem::transmute(app_buffer) };
         debug!(
@@ -183,6 +189,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             return Err(ErrorCode::BUSY);
         }
         self.current_app.set(processid);
+        self.current_cmd.set(command);
         Ok(())
     }
 
@@ -235,24 +242,44 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         if self.current_app.is_none() {
             return Err(ErrorCode::CANCEL);
         }
+        let cmd = self.current_cmd.take();
+        let cmd_len = self.current_request_offset.get();
         debug!(
-            "Execute command length {}",
-            self.current_request_offset.get()
+            "Execute command {:08x} length {} at AXI addr {:x}",
+            cmd, cmd_len, self.staging_sram_axi_addr,
         );
+        // recalculate checksum
+        let checksum = caliptra_api::calc_checksum(cmd, &self.staging_sram[4..cmd_len]);
+        let slice = unsafe {
+            // TODO: this is a hack because we can't easily share a mutable slice
+            core::slice::from_raw_parts_mut(
+                self.staging_sram.as_ptr() as *mut u8,
+                self.staging_sram.len(),
+            )
+        };
+        slice[0..4].copy_from_slice(&checksum.to_le_bytes());
+
+        romtime::println!(
+            "MCU first bytes {}",
+            romtime::HexBytes(&self.staging_sram[..16])
+        );
+        if cmd_len == 8 + 34456 {
+            let mut c = Crc::<u32, NoTable>::new(&crc::CRC_32_ISO_HDLC);
+            romtime::println!(
+                "MCU auth manifest crc32: {:08x}",
+                c.checksum(&self.staging_sram[8..cmd_len])
+            );
+        }
         self.driver
-            .map(|driver| {
-                match driver.initiate_request(
-                    self.current_cmd.take(),
-                    self.current_request_offset.take(),
-                    self.staging_sram_axi_addr,
-                ) {
+            .map(
+                |driver| match driver.initiate_request(cmd, cmd_len, self.staging_sram_axi_addr) {
                     Ok(()) => {
                         self.schedule_alarm();
                         Ok(())
                     }
                     Err(_) => Err(ErrorCode::FAIL),
-                }
-            })
+                },
+            )
             .unwrap_or(Err(ErrorCode::FAIL))
     }
 
@@ -304,6 +331,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                                 CaliptraApiError::MailboxRespInvalidChecksum { .. } => 0xffff_ffff,
                                 _ => 0xffff_fffe,
                             };
+                            debug!("Caliptra error from mailbox: {:?}", err);
                             if let Err(err) = kernel_data
                                 .schedule_upcall(upcall::COMMAND_DONE, (0, err as usize, 0))
                             {
@@ -311,6 +339,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                             }
                         }
                         Ok(Ok(len)) => {
+                            debug!("Caliptra mailbox success, len {}", len);
                             if let Err(err) =
                                 kernel_data.schedule_upcall(upcall::COMMAND_DONE, (len, 0, 0))
                             {

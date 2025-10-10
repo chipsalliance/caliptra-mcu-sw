@@ -148,9 +148,9 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
                     tx_buffer[len] = pec;
 
                     // HACK: slow down a little for FPGA
-                    for _ in 0..1000 {
-                        rv32i::support::nop();
-                    }
+                    // for _ in 0..1000 {
+                    //     rv32i::support::nop();
+                    // }
 
                     match self.i3c_target.transmit_read(tx_buffer, len + 1) {
                         Ok(_) => {}

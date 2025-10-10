@@ -433,8 +433,8 @@ pub unsafe fn main() {
     // TODO: put the staging SRAM in the memory map
     let staging_sram = unsafe {
         core::mem::transmute(core::slice::from_raw_parts_mut(
-            0xb00e_4800 as *mut u8,
-            110 * 1024,
+            (0xb00c_0000u32 + 111000u32) as *mut u8,
+            111000,
         ))
     };
 
@@ -449,7 +449,7 @@ pub unsafe fn main() {
         Some(MCU_MEMORY_MAP.soc_offset),
         Some(MCU_MEMORY_MAP.mbox_offset),
         staging_sram,
-        0xb00e_4800 // 110 KB from the end
+        (0xb00c_0000u64 + 111000u64) // 110 KB from the end
     ));
     mailbox.alarm.set_alarm_client(mailbox);
     romtime::println!("[mcu-runtime] Mailbox initialized");

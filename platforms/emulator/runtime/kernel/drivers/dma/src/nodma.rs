@@ -126,13 +126,33 @@ impl<'a, A: Alarm<'a>> AlarmClient for NoDMA<'a, A> {
             return;
         }
 
-        // Transfer in bytes since src or dest may not be word aligned
-        for offset in 0..(*self.btt.borrow()) {
-            let src_ptr = self.src_addr.borrow().wrapping_add(offset) as *const u8;
-            let dst_ptr = self.dest_addr.borrow().wrapping_add(offset) as *mut u8;
-            unsafe {
-                let value = core::ptr::read_volatile(src_ptr);
-                core::ptr::write_volatile(dst_ptr, value);
+        let btt = *self.btt.borrow();
+        let src_addr = *self.src_addr.borrow();
+        let dest_addr = *self.dest_addr.borrow();
+        if btt & 0x3 == 0 && src_addr & 0x3 == 0 && dest_addr & 0x3 == 0 {
+            // If everything is word aligned, transfer in words
+            for offset in (0..btt).step_by(4) {
+                let src_ptr = (src_addr + offset) as *const u32;
+                let dst_ptr = (dest_addr + offset) as *mut u32;
+                unsafe {
+                    let value = core::ptr::read_volatile(src_ptr);
+                    core::ptr::write_volatile(dst_ptr, value);
+                }
+            }
+            *self.busy.borrow_mut() = false;
+            self.dma_client.map(move |client| {
+                client.transfer_complete(crate::hil::DMAStatus::TxnDone);
+            });
+            return;
+        } else {
+            // Transfer in bytes since src or dest may not be word aligned
+            for offset in 0..(*self.btt.borrow()) {
+                let src_ptr = self.src_addr.borrow().wrapping_add(offset) as *const u8;
+                let dst_ptr = self.dest_addr.borrow().wrapping_add(offset) as *mut u8;
+                unsafe {
+                    let value = core::ptr::read_volatile(src_ptr);
+                    core::ptr::write_volatile(dst_ptr, value);
+                }
             }
         }
 
