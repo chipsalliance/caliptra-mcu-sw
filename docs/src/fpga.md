@@ -105,8 +105,8 @@ The xtask workflow also supports running caliptra-sw tests on a subsystem FPGA.
 
 ```
 $ cargo xtask-fpga fpga bootstrap --target-host $SSH-FPGA-NAME --configuration core-on-subsystem # Run this only once per boot. Re-run bootstrap to change configurations
-$ cargo xtask-fpga fpga build --target-host $SSH-FPGA-NAME --caliptra-sw $CALIPTRA_SW_DIR # Build firmware. Re-run every time firmware changes. Must pass path to caliptra-sw repo. Cargo.toml must set the caliptra-sw dependencies to "../caliptra-sw".
-$ cargo xtask-fpga fpga build-test --target-host $SSH-FPGA-NAME --caliptra-sw $CALIPTRA_SW_DIR # Build test binaries. Re-run every time tests change. Must pass path to caliptra-sw repo. Cargo.toml must set the caliptra-sw dependencies to "../caliptra-sw".
+$ cargo xtask-fpga fpga build --target-host $SSH-FPGA-NAME  # Build firmware. Re-run every time firmware changes.
+$ cargo xtask-fpga fpga build-test --target-host $SSH-FPGA-NAME # Build test binaries. Re-run every time tests change.
 ```
 
 # Running on FPGA

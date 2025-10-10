@@ -3,10 +3,20 @@
 mod i3c_socket;
 #[cfg(feature = "fpga_realtime")]
 mod jtag;
+#[cfg(test)]
+mod rom;
 mod test_firmware_update;
 mod test_mctp_capsule_loopback;
 mod test_pldm_fw_update;
 mod test_soc_boot;
+
+pub fn platform() -> &'static str {
+    if cfg!(feature = "fpga_realtime") {
+        "fpga"
+    } else {
+        "emulator"
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -149,6 +159,8 @@ mod test {
             None,
             None,
             Some(mcu_runtime.clone()),
+            None,
+            None,
             None,
             None,
             None,
@@ -364,6 +376,8 @@ mod test {
                 None,
                 Some(runtime_path.clone()),
                 soc_images,
+                None,
+                None,
                 None,
                 None,
             )

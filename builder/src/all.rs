@@ -22,6 +22,8 @@ use zip::{
 };
 
 use crate::CaliptraBuilder;
+use crate::PROJECT_ROOT;
+use crate::TARGET;
 use crate::{firmware, ImageCfg};
 
 use std::{env::var, sync::OnceLock};
@@ -34,6 +36,7 @@ pub struct FirmwareBinaries {
     pub mcu_runtime: Vec<u8>,
     pub soc_manifest: Vec<u8>,
     pub test_roms: Vec<(String, Vec<u8>)>,
+    pub caliptra_test_roms: Vec<(String, Vec<u8>)>,
     pub test_soc_manifests: Vec<(String, Vec<u8>)>,
     pub test_runtimes: Vec<(String, Vec<u8>)>,
 }
@@ -92,6 +95,9 @@ impl FirmwareBinaries {
                 name if name.contains("mcu-test-rom") => {
                     binaries.test_roms.push((name.to_string(), data));
                 }
+                name if name.contains("cptra-test-rom") => {
+                    binaries.caliptra_test_roms.push((name.to_string(), data));
+                }
                 _ => continue,
             }
         }
@@ -110,6 +116,21 @@ impl FirmwareBinaries {
     pub fn test_rom(&self, fwid: &FwId) -> Result<Vec<u8>> {
         let expected_name = format!("mcu-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
         for (name, data) in self.test_roms.iter() {
+            if &expected_name == name {
+                return Ok(data.clone());
+            }
+        }
+        Err(anyhow::anyhow!(
+            "FwId not found. File name: {expected_name}, FwId: {:?}",
+            fwid
+        ))
+    }
+
+    pub fn caliptra_test_rom(&self, fwid: &FwId) -> Result<Vec<u8>> {
+        let expected_name = format!("cptra-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
+        println!("expected name: {expected_name}");
+        for (name, data) in self.caliptra_test_roms.iter() {
+            println!("checking: {name}");
             if &expected_name == name {
                 return Ok(data.clone());
             }
@@ -198,6 +219,21 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         test_roms.push((bin_path, filename));
     }
 
+    for fwid in firmware::CPTRA_REGISTERED_FW {
+        let filename = format!("cptra-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
+        if !used_filenames.insert(filename.clone()) {
+            panic!("Multiple fwids with filename {filename}")
+        }
+        let bin_path = PROJECT_ROOT
+            .join("target")
+            .join(TARGET)
+            .join("release")
+            .join(&filename);
+        let rom_bytes = caliptra_builder::build_firmware_rom(fwid)?;
+        std::fs::write(&bin_path, rom_bytes)?;
+        test_roms.push((bin_path, filename));
+    }
+
     if separate_runtimes && (runtime_features.is_none() || runtime_features.unwrap().is_empty()) {
         bail!("Must specify runtime features when building separate runtimes");
     }
@@ -243,6 +279,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         Some(mcu_runtime.into()),
         soc_images.clone(),
         mcu_cfg.clone(),
+        None,
+        None,
         None,
     );
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
@@ -311,6 +349,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             Some(feature_runtime_file.path().to_path_buf()),
             soc_images.clone(),
             mcu_cfg.clone(),
+            None,
+            None,
             None,
         );
         let feature_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
