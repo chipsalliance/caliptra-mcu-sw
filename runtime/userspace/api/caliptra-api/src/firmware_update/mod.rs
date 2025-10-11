@@ -103,11 +103,14 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             // Abort firmware update
             return Err(ErrorCode::Fail);
         }
-        pldm_client::pldm_set_apply_result(ApplyResult::ApplySuccess);
-        pldm_client::pldm_wait(State::Activate).await?;
 
+        self.set_auth_manifest().await?;
+        
         // Update MCU and reboot
         self.update_mcu(&flash_header).await?;
+
+        pldm_client::pldm_set_apply_result(ApplyResult::ApplySuccess);
+        pldm_client::pldm_wait(State::Activate).await?;        
 
         Ok(())
     }
@@ -154,6 +157,65 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         image_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
 
         Ok(image_header)
+    }
+
+    async fn set_auth_manifest(&mut self) -> Result<(), ErrorCode> {
+        let mut flash_header = [0u8; core::mem::size_of::<FlashHeader>()];
+        self.staging_memory
+            .read(0, &mut flash_header)
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
+        let (flash_header, _) =
+            FlashHeader::read_from_prefix(&flash_header).map_err(|_| ErrorCode::Fail)?;        
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Setting Manifest"
+        )
+        .unwrap();
+        let (manifest_offset, manifest_len) = self
+            .get_image_toc(
+                flash_header.image_count as usize,
+                flash_header.image_headers_offset as usize,
+                SOC_MANIFEST_IDENTIFIER,
+            )
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
+
+        let mut req = AuthManifestReqHeader {
+            chksum: 0,
+            manifest_size: manifest_len as u32,
+        };
+
+        let mut payload_stream = MailboxPayloadStream::new(self.staging_memory, manifest_offset, manifest_len);
+
+        // Calculate the mailbox checksum
+        let mut checksum = payload_stream.get_bytesum().await;
+        for b in CommandId::SET_AUTH_MANIFEST.0.to_le_bytes().iter() {
+            checksum = checksum.wrapping_add(u32::from(*b));
+        }
+        for b in req.as_mut_bytes().iter() {
+            checksum = checksum.wrapping_add(u32::from(*b));
+        }
+        req.chksum = 0u32.wrapping_sub(checksum);
+
+        let response_buffer = &mut [0u8; core::mem::size_of::<MailboxRespHeader>()];
+        let header = req.as_mut_bytes();
+        loop {
+            let result = self
+                .mailbox
+                .execute_with_payload_stream(
+                    CommandId::SET_AUTH_MANIFEST.into(),
+                    Some(header),
+                    &mut payload_stream,
+                    response_buffer,
+                )
+                .await;
+            match result {
+                Ok(_) => return Ok(()),
+                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
+                Err(_) => return Err(ErrorCode::Fail),
+            }
+        }
     }
 
     async fn verify(&mut self) -> Result<FlashHeader, ErrorCode> {
@@ -217,6 +279,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             )
             .await?;
         }
+        
         Ok(flash_header)
     }
 
@@ -282,6 +345,13 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             .await
             .map_err(|_| ErrorCode::Fail)?;
 
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Caliptra Image Offset: {:#X}, Length: {}",
+            image_offset,
+            image_len
+        ).unwrap();
+
         let mut req = MailboxReqHeader { chksum: 0 };
         let req_data = req.as_mut_bytes();
         self.mailbox
@@ -322,7 +392,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
 
         // Calculate the mailbox checksum
         let mut checksum = payload_stream.get_bytesum().await;
-        for b in CommandId::SET_AUTH_MANIFEST.0.to_le_bytes().iter() {
+        for b in CommandId::VERIFY_AUTH_MANIFEST.0.to_le_bytes().iter() {
             checksum = checksum.wrapping_add(u32::from(*b));
         }
         for b in req.as_mut_bytes().iter() {
@@ -336,7 +406,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             let result = self
                 .mailbox
                 .execute_with_payload_stream(
-                    CommandId::SET_AUTH_MANIFEST.into(),
+                    CommandId::VERIFY_AUTH_MANIFEST.into(),
                     Some(header),
                     &mut payload_stream,
                     response_buffer,
