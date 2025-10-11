@@ -137,11 +137,7 @@ pub mod test {
             &self,
             expected_state: update_sm::States,
         ) -> Result<(), ()> {
-<<<<<<< HEAD
-            let timeout = Duration::from_secs(30);
-=======
             let timeout = Duration::from_secs(500);
->>>>>>> c10ef697 (Firmware Update fixes and add HW model test for FW update and streaming boot)
             let start_time = std::time::Instant::now();
 
             while start_time.elapsed() < timeout {

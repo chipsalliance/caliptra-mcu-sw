@@ -1,8 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 mod i3c_socket;
-#[cfg(feature = "fpga_realtime")]
-mod jtag;
 mod test_firmware_update;
 mod test_mctp_capsule_loopback;
 mod test_mctp_spdm_responder_conformance;
@@ -150,8 +148,6 @@ mod test {
             None,
             None,
             Some(mcu_runtime.clone()),
-            None,
-            None,
             None,
             None,
             None,
@@ -367,8 +363,6 @@ mod test {
                 None,
                 Some(runtime_path.clone()),
                 soc_images,
-                None,
-                None,
                 None,
                 None,
             )

@@ -259,9 +259,9 @@ mod test {
             Some(update_soc_images.clone()),
             Some(mcu_cfg.clone()),
             None,
-            None,
-            None,
         );
+
+        
         let update_caliptra_fw = update_builder
             .get_caliptra_fw()
             .expect("Failed to build Caliptra firmware for update");
@@ -519,8 +519,6 @@ mod test {
             Some(test_runtime.clone()),
             Some(soc_images.clone()),
             Some(mcu_cfg.clone()),
-            None,
-            None,
             None,
         );
 
