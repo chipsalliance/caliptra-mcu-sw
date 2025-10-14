@@ -330,17 +330,11 @@ pub unsafe extern "C" fn emulator_init(
         otp_size: convert_optional_offset_size(config.otp_size),
         lc_offset: convert_optional_offset_size(config.lc_offset),
         lc_size: convert_optional_offset_size(config.lc_size),
-<<<<<<< HEAD
-        fuse_soc_manifest_svn: None,
-        fuse_soc_manifest_max_svn: None,
-        fuse_vendor_hashes_prod_partition: None,
-=======
         fuse_soc_manifest_svn: convert_optional_offset_size(config.fuse_soc_manifest_svn),
         fuse_soc_manifest_max_svn: convert_optional_offset_size(config.fuse_soc_manifest_max_svn),
         fuse_vendor_hashes_prod_partition: convert_optional_c_string(
             config.fuse_vendor_hashes_prod_partition,
         ),
->>>>>>> 3e74f3a7 (Merged PR 145676: Flash Based Boot Argument)
     };
 
     // Convert C callbacks to Rust callbacks if provided
