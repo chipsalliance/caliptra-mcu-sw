@@ -152,7 +152,7 @@ pub struct CEmulatorConfig {
     pub hw_revision_major: c_uint,
     pub hw_revision_minor: c_uint,
     pub hw_revision_patch: c_uint,
-    pub flash_based_boot: c_uchar, // 0 = false, 1 = true (new)
+    pub flash_based_boot: c_uchar,
 
     // Memory layout override parameters (-1 means use default)
     pub rom_offset: c_longlong,
@@ -186,6 +186,10 @@ pub struct CEmulatorConfig {
     pub otp_size: c_longlong,
     pub lc_offset: c_longlong,
     pub lc_size: c_longlong,
+
+    pub fuse_soc_manifest_svn: c_longlong,
+    pub fuse_soc_manifest_max_svn: c_longlong,
+    pub fuse_vendor_hashes_prod_partition: *const c_char, // Optional, can be null
 
     // External device callbacks (can be null)
     pub external_read_callback: *const std::ffi::c_void,
