@@ -1304,7 +1304,9 @@ pub unsafe extern "C" fn emulator_write_auto_root_bus(
         Ok(_) => EmulatorError::Success,
         Err(bus_error) => match bus_error {
             caliptra_emu_bus::BusError::StoreAccessFault => EmulatorError::BusStoreAccessFault,
-            caliptra_emu_bus::BusError::StoreAddrMisaligned => EmulatorError::BusStoreAddrMisaligned,
+            caliptra_emu_bus::BusError::StoreAddrMisaligned => {
+                EmulatorError::BusStoreAddrMisaligned
+            }
             _ => EmulatorError::InvalidArgs, // Fallback for other bus errors
         },
     }
