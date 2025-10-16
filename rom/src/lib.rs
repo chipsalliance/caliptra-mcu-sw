@@ -71,13 +71,13 @@ fn panic_is_possible() {
 #[cfg(target_arch = "riscv32")]
 fn rom_panic(_: &core::panic::PanicInfo) -> ! {
     panic_is_possible();
-    fatal_error(0);
+    fatal_error_raw(0);
 }
 
 #[inline(never)]
 #[allow(dead_code)]
 #[allow(clippy::empty_loop)]
-pub fn fatal_error(code: u32) -> ! {
+pub fn fatal_error_raw(code: u32) -> ! {
     #[allow(static_mut_refs)]
     if let Some(handler) = unsafe { FATAL_ERROR_HANDLER.as_mut() } {
         handler.fatal_error(code);
@@ -85,4 +85,10 @@ pub fn fatal_error(code: u32) -> ! {
         // If no handler is set, just loop forever
         loop {}
     }
+}
+
+#[inline(never)]
+#[allow(dead_code)]
+pub fn fatal_error(error: romtime::McuError) -> ! {
+    fatal_error_raw(error.into())
 }
