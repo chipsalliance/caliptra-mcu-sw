@@ -842,6 +842,23 @@ int main(int argc, char *argv[]) {
 #endif
         return 1;
     }
+    
+    // Start I3C controller if i3c_port was specified
+    // Note: This must be done after emulator_init
+    if (config.i3c_port != 0) {
+        printf("Starting I3C controller...\n");
+        result = emulator_start_i3c_controller((struct CEmulator*)memory);
+        if (result != Success) {
+            fprintf(stderr, "Failed to start I3C controller: %d\n", result);
+            emulator_destroy((struct CEmulator*)memory);
+#ifdef _WIN32
+            _aligned_free(memory);
+#else
+            free(memory);
+#endif
+            return 1;
+        }
+    }
 
     global_emulator = (struct CEmulator*)memory;
     printf("Emulator initialized successfully\n");

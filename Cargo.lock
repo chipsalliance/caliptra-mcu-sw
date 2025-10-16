@@ -1673,6 +1673,7 @@ dependencies = [
 name = "emulator-cbinding"
 version = "0.1.0"
 dependencies = [
+ "caliptra-emu-bus",
  "caliptra-emu-cpu",
  "caliptra-emu-types",
  "caliptra-image-types",
