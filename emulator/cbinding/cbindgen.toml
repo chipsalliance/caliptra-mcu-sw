@@ -55,6 +55,7 @@ include = [
     "emulator_is_gdb_mode",
     "emulator_get_gdb_port",
     "emulator_get_pc",
+    "emulator_start_i3c_controller",
     "emulator_trigger_exit",
     "example_external_read_callback",
     "example_external_write_callback",

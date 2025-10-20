@@ -58,7 +58,7 @@ impl Default for McuRootBusOffsets {
             ctrl_offset: 0x1000_2000,
             ctrl_size: 0x4,
             ram_offset: 0x4000_0000,
-            ram_size: 0x60000,
+            ram_size: RAM_SIZE,
             rom_dedicated_ram_offset: ROM_DEDICATED_RAM_ORG,
             rom_dedicated_ram_size: ROM_DEDICATED_RAM_SIZE,
             pic_offset: 0x6000_0000,
@@ -117,8 +117,8 @@ impl McuRootBus {
         let pic = args.pic;
         let rom = Rom::new(std::mem::take(&mut args.rom));
         let uart_irq = pic.register_irq(Self::UART_NOTIF_IRQ);
-        let ram = Ram::new(vec![0; RAM_SIZE as usize]);
-        let rom_sram = Ram::new(vec![0; ROM_DEDICATED_RAM_SIZE as usize]);
+        let ram = Ram::new(vec![0; args.offsets.ram_size as usize]);
+        let rom_sram = Ram::new(vec![0; args.offsets.rom_dedicated_ram_size as usize]);
         let external_test_sram = Ram::new(vec![0; EXTERNAL_TEST_SRAM_SIZE as usize]);
         let direct_read_flash = Ram::new(vec![0; DIRECT_READ_FLASH_SIZE as usize]);
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
@@ -314,7 +314,9 @@ impl Bus for McuRootBus {
         {
             let start = start_addr as usize;
             let len = len as usize;
-            if start >= RAM_SIZE as usize || start + len >= RAM_SIZE as usize {
+            if start >= self.offsets.ram_size as usize
+                || start + len >= self.offsets.ram_size as usize
+            {
                 println!(
                     "Ignoring invalid MCU RAM read from {}..{}",
                     start,
@@ -344,7 +346,9 @@ impl Bus for McuRootBus {
             (event.dest, event.event.clone())
         {
             let start = start_addr as usize;
-            if start >= RAM_SIZE as usize || start + data.len() >= RAM_SIZE as usize {
+            if start >= self.offsets.ram_size as usize
+                || start + data.len() >= self.offsets.ram_size as usize
+            {
                 println!(
                     "Ignoring invalid MCU RAM write to {}..{}",
                     start,
