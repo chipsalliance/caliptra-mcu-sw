@@ -7,9 +7,7 @@ use crate::commands::algorithms_rsp::selected_measurement_specification;
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
-use crate::measurements::common::{
-    MeasurementChangeStatus, MeasurementsError, SpdmMeasurements, SPDM_MAX_MEASUREMENT_RECORD_SIZE,
-};
+use crate::measurements::{MeasurementsError, SpdmMeasurements};
 use crate::protocol::*;
 use crate::session::{SessionInfo, SessionState};
 use crate::state::ConnectionState;
@@ -22,7 +20,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 const RESPONSE_FIXED_FIELDS_SIZE: usize = 8;
 const MAX_RESPONSE_VARIABLE_FIELDS_SIZE: usize =
-    NONCE_LEN + size_of::<u32>() + size_of::<RequesterContext>();
+    SPDM_NONCE_LEN + size_of::<u32>() + size_of::<RequesterContext>();
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
@@ -35,7 +33,7 @@ impl CommonCodec for GetMeasurementsReqCommon {}
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
 struct GetMeasurementsReqSignature {
-    requester_nonce: [u8; NONCE_LEN],
+    requester_nonce: [u8; SPDM_NONCE_LEN],
     slot_id: u8,
 }
 impl CommonCodec for GetMeasurementsReqSignature {}
@@ -99,7 +97,7 @@ pub(crate) struct MeasurementsResponse {
 impl MeasurementsResponse {
     pub async fn get_chunk(
         &self,
-        measurements: &mut SpdmMeasurements,
+        measurements: &mut SpdmMeasurements<'_>,
         shared_transcript: &mut Transcript,
         cert_store: &dyn SpdmCertStore,
         offset: usize,
@@ -120,7 +118,7 @@ impl MeasurementsResponse {
         let raw_bitstream_requested = self.req_attr.raw_bitstream_requested() == 1;
 
         let measurement_record_len = measurements
-            .measurement_block_size(self.asym_algo, self.meas_op, raw_bitstream_requested)
+            .measurement_block_size(self.meas_op, raw_bitstream_requested)
             .await
             .map_err(|e| (false, CommandError::Measurement(e)))?;
         // Fill the chunk buffer with the appropriate response sections
@@ -146,7 +144,6 @@ impl MeasurementsResponse {
             let bytes_to_copy = (measurement_record_len - meas_block_offset).min(rem_len);
             let bytes_filled = measurements
                 .measurement_block(
-                    self.asym_algo,
                     self.meas_op,
                     raw_bitstream_requested,
                     meas_block_offset,
@@ -201,7 +198,7 @@ impl MeasurementsResponse {
 
     async fn response_fixed_fields(
         &self,
-        measurements: &mut SpdmMeasurements,
+        measurements: &mut SpdmMeasurements<'_>,
     ) -> CommandResult<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {
         let mut fixed_rsp_fields = [0u8; RESPONSE_FIXED_FIELDS_SIZE];
         let mut fixed_rsp_buf = MessageBuf::new(&mut fixed_rsp_fields);
@@ -214,14 +211,10 @@ impl MeasurementsResponse {
     async fn encode_response_fixed_fields(
         &self,
         buf: &mut MessageBuf<'_>,
-        measurements: &mut SpdmMeasurements,
+        measurements: &mut SpdmMeasurements<'_>,
     ) -> CommandResult<usize> {
         let measurement_record_size = measurements
-            .measurement_block_size(
-                self.asym_algo,
-                self.meas_op,
-                self.req_attr.raw_bitstream_requested() == 1,
-            )
+            .measurement_block_size(self.meas_op, self.req_attr.raw_bitstream_requested() == 1)
             .await
             .map_err(|e| (false, CommandError::Measurement(e)))?;
         let total_measurement_count = measurements.total_measurement_count() as u8;
@@ -279,7 +272,7 @@ impl MeasurementsResponse {
         buf: &mut MessageBuf<'_>,
     ) -> CommandResult<usize> {
         // Encode the nonce
-        let mut nonce = [0u8; NONCE_LEN];
+        let mut nonce = [0u8; SPDM_NONCE_LEN];
         Rng::generate_random_number(&mut nonce)
             .await
             .map_err(|e| (false, CommandError::CaliptraApi(e)))?;
@@ -376,20 +369,20 @@ impl MeasurementsResponse {
         Ok(signature.len())
     }
 
-    async fn response_size(&self, measurements: &mut SpdmMeasurements) -> CommandResult<usize> {
+    async fn response_size(&self, measurements: &mut SpdmMeasurements<'_>) -> CommandResult<usize> {
         // Calculate the size of the response based on the request attributes
         let mut rsp_size = RESPONSE_FIXED_FIELDS_SIZE;
 
         if self.meas_op > 0 {
             // return the size of a measurement block or all measurement blocks
             rsp_size += measurements
-                .measurement_block_size(self.asym_algo, self.meas_op, false)
+                .measurement_block_size(self.meas_op, false)
                 .await
                 .map_err(|e| (false, CommandError::Measurement(e)))?;
         };
 
         // Nonce is always present
-        rsp_size += NONCE_LEN;
+        rsp_size += SPDM_NONCE_LEN;
 
         // Only length of opaque data length field(2 bytes). There's no opaque data in this response.
         rsp_size += size_of::<u16>();
@@ -441,6 +434,9 @@ async fn process_get_measurements<'a>(
             GetMeasurementsReqSignature::decode(req_payload).map_err(|_| {
                 ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
             })?;
+        // Set the nonce in the measurements module
+        ctx.measurements
+            .set_nonce(req_signature_fields.requester_nonce);
         Some(req_signature_fields.slot_id)
     };
 

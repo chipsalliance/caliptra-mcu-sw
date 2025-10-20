@@ -8,29 +8,26 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 pub const MCTP_CTRL_MSG_HEADER_LEN: usize = 3;
 
 bitfield! {
-    #[repr(C)]
-    #[derive(Clone, FromBytes, IntoBytes, Immutable)]
-    pub struct MCTPCtrlMsgHdr(MSB0 [u8]);
-    impl Debug;
+    pub struct MCTPCtrlMsgHdr(u32);
     u8;
-    pub ic, _: 0, 0;
-    pub msg_type, _: 7, 1;
-    pub rq, set_rq : 8, 8;
-    pub datagram, set_datagram: 9, 9;
-    rsvd, _: 10, 10;
-    pub instance_id, set_instance_id: 15, 11;
+    pub msg_type, _: 6, 0;
+    pub ic, _: 7, 7;
+    pub instance_id, set_instance_id: 12, 8;
+    rsvd, _: 13, 13;
+    pub datagram, set_datagram: 14, 14;
+    pub rq, set_rq : 15, 15;
     pub cmd, set_cmd: 23, 16;
 }
 
-impl Default for MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]> {
+impl Default for MCTPCtrlMsgHdr {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HEADER_LEN]> {
+impl MCTPCtrlMsgHdr {
     pub fn new() -> Self {
-        MCTPCtrlMsgHdr([0; MCTP_CTRL_MSG_HEADER_LEN])
+        MCTPCtrlMsgHdr(0)
     }
 
     pub fn prepare_header(&mut self, rq: u8, datagram: u8, instance_id: u8, cmd: u8) {

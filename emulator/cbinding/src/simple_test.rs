@@ -59,8 +59,6 @@ fn test_emulator_args_creation() {
         uart_size: None,
         ctrl_offset: None,
         ctrl_size: None,
-        spi_offset: None,
-        spi_size: None,
         sram_offset: None,
         sram_size: None,
         pic_offset: None,

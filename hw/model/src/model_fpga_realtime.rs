@@ -15,11 +15,11 @@ use caliptra_hw_model::{
     SecurityState, XI3CWrapper,
 };
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
-use mcu_rom_common::{LifecycleControllerState, McuRomBootStatus};
+use mcu_rom_common::{LifecycleControllerState, McuBootMilestones};
 use mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
-use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
+use mcu_testing_common::{update_ticks, MCU_RUNNING, MCU_RUNTIME_STARTED};
 use std::io::Write;
 use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
@@ -236,6 +236,7 @@ impl McuHwModel for ModelFpgaRealtime {
     fn step(&mut self) {
         self.base.step();
         self.handle_i3c();
+        update_ticks(self.cycle_count() / 100); // notify tests about current time, but reduce effective speed
     }
 
     fn new_unbooted(params: InitParams) -> Result<Self>
@@ -249,17 +250,19 @@ impl McuHwModel for ModelFpgaRealtime {
             *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Manufacturing);
         let security_state_prod =
             *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Production);
+        let security_state_raw =
+            *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Reserved2);
 
         let security_state = match params
             .lifecycle_controller_state
             .unwrap_or(LifecycleControllerState::Raw)
         {
+            LifecycleControllerState::Raw => security_state_raw,
             LifecycleControllerState::Prod | LifecycleControllerState::ProdEnd => {
                 security_state_prod
             }
             LifecycleControllerState::Dev => security_state_manufacturing,
-            LifecycleControllerState::Raw
-            | LifecycleControllerState::TestUnlocked0
+            LifecycleControllerState::TestUnlocked0
             | LifecycleControllerState::TestUnlocked1
             | LifecycleControllerState::TestUnlocked2
             | LifecycleControllerState::TestUnlocked3
@@ -281,6 +284,7 @@ impl McuHwModel for ModelFpgaRealtime {
             uds_granularity_64: !params.uds_granularity_32,
             prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs,
             debug_intent: params.debug_intent,
+            bootfsm_break: params.bootfsm_break,
             cptra_obf_key: params.cptra_obf_key,
             csr_hmac_key: params.csr_hmac_key,
             itrng_nibbles: params.itrng_nibbles,
@@ -356,17 +360,18 @@ impl McuHwModel for ModelFpgaRealtime {
         const BOOT_CYCLES: u64 = 800_000_000;
         self.step_until(|hw| {
             hw.cycle_count() >= BOOT_CYCLES
-                || hw.mci_flow_status() == u32::from(McuRomBootStatus::ColdBootFlowComplete)
+                || hw
+                    .mci_boot_milestones()
+                    .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
         });
         println!(
             "Boot completed at cycle count {}, flow status {}",
             self.cycle_count(),
             u32::from(self.mci_flow_status())
         );
-        assert_eq!(
-            u32::from(McuRomBootStatus::ColdBootFlowComplete),
-            self.mci_flow_status()
-        );
+        assert!(self
+            .mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
         MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         // turn off recovery
         self.base.recovery_started = false;
@@ -469,6 +474,10 @@ impl McuHwModel for ModelFpgaRealtime {
 
     fn mci_flow_status(&mut self) -> u32 {
         self.base.mci_flow_status()
+    }
+
+    fn warm_reset(&mut self) {
+        self.base.warm_reset()
     }
 }
 
@@ -586,7 +595,6 @@ impl Drop for ModelFpgaRealtime {
 mod tests {
     use super::*;
     use crate::new;
-    use std::time::Duration;
 
     #[ignore] // temporarily while we debug the FPGA tests
     #[cfg(feature = "fpga_realtime")]

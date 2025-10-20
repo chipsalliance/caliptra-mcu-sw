@@ -5,7 +5,9 @@ extern crate alloc;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use core::cell::RefCell;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::lazy_lock::LazyLock;
+use embassy_sync::signal::Signal;
 use pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::message::firmware_update::get_status::ProgressPercent;
@@ -60,6 +62,8 @@ static FIRMWARE_PARAMS: LazyLock<FirmwareParameters> = LazyLock::new(|| {
     )
 });
 
+static PLDM_DONE_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
 // This is the maximum time in seconds that UA will wait for self-activation. It is a test value for development.
 static TEST_SELF_ACTIVATION_MAX_TIME_IN_SECONDS: u16 = 20;
 
@@ -90,6 +94,9 @@ impl FdOpsObject {
             verify_ctx: RefCell::new(ProgressPercent::default()),
             apply_ctx: RefCell::new(ProgressPercent::default()),
         }
+    }
+    pub async fn wait_for_pldm_done() {
+        PLDM_DONE_SIGNAL.wait().await;
     }
 }
 
@@ -242,6 +249,7 @@ impl FdOps for FdOpsObject {
         if self_contained_activation == 1 {
             *estimated_time = TEST_SELF_ACTIVATION_MAX_TIME_IN_SECONDS;
         }
+        PLDM_DONE_SIGNAL.signal(());
         Ok(0) // PLDM completion code for success
     }
 

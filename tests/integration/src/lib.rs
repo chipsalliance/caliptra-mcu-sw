@@ -1,12 +1,24 @@
 // Licensed under the Apache-2.0 license
 
 mod i3c_socket;
-mod test_firmware_update;
 #[cfg(feature = "fpga_realtime")]
-mod test_jtag_taps;
+mod jtag;
+#[cfg(test)]
+mod rom;
+#[cfg(feature = "fpga_realtime")]
+mod test_axi_bypass;
+mod test_firmware_update;
 mod test_mctp_capsule_loopback;
 mod test_pldm_fw_update;
 mod test_soc_boot;
+
+pub fn platform() -> &'static str {
+    if cfg!(feature = "fpga_realtime") {
+        "fpga"
+    } else {
+        "emulator"
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -149,6 +161,8 @@ mod test {
             None,
             None,
             Some(mcu_runtime.clone()),
+            None,
+            None,
             None,
             None,
             None,
@@ -366,6 +380,8 @@ mod test {
                 soc_images,
                 None,
                 None,
+                None,
+                None,
             )
         };
 
@@ -535,6 +551,7 @@ mod test {
     run_test!(test_doe_transport_loopback, example_app);
     run_test!(test_doe_user_loopback, example_app);
     run_test!(test_doe_discovery, example_app);
+    run_test!(test_get_device_state, example_app);
     run_test!(test_i3c_simple);
     run_test!(test_i3c_constant_writes);
     run_test!(test_flash_ctrl_init);
@@ -556,6 +573,7 @@ mod test {
     run_test!(test_mcu_mbox);
     run_test!(test_mcu_mbox_soc_requester_loopback, example_app);
     run_test!(test_mcu_mbox_usermode, example_app);
+    run_test!(test_mcu_mbox_cmds);
     run_test!(test_mbox_sram, example_app);
 
     run_test!(test_warm_reset, example_app);

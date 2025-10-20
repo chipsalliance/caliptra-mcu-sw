@@ -15,6 +15,7 @@ use caliptra_emu_bus::Bus;
 use caliptra_emu_bus::BusError;
 use caliptra_emu_bus::BusMmio;
 use caliptra_emu_bus::{Clock, Event};
+use caliptra_emu_cpu::CpuOrgArgs;
 use caliptra_emu_cpu::{Cpu, CpuArgs, InstrTracer, Pic};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::SocToCaliptraBus;
@@ -43,7 +44,7 @@ use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
 use mcu_rom_common::LifecycleControllerState;
-use mcu_rom_common::McuRomBootStatus;
+use mcu_rom_common::McuBootMilestones;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
 use registers_generated::fuses;
@@ -360,9 +361,13 @@ impl McuHwModel for ModelEmulated {
             Some(Box::new(dma_ctrl)),
         );
 
-        let args = CpuArgs::default();
+        let args = CpuArgs {
+            org: CpuOrgArgs {
+                reset_vector: McuMemoryMap::default().rom_offset,
+                ..Default::default()
+            },
+        };
         let mut cpu = Cpu::new(BusLogger::new(auto_root_bus), clock, pic, args);
-        cpu.write_pc(McuMemoryMap::default().rom_offset);
 
         if let Some(stack_info) = params.stack_info {
             cpu.with_stack_info(stack_info);
@@ -421,7 +426,9 @@ impl McuHwModel for ModelEmulated {
         self.cpu_enabled.set(true);
         self.step_until(|hw| {
             hw.cycle_count() >= BOOT_CYCLES
-                || hw.mci_flow_status() == u32::from(McuRomBootStatus::ColdBootFlowComplete)
+                || hw
+                    .mci_boot_milestones()
+                    .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
         });
         use std::io::Write;
         let mut w = std::io::Sink::default();
@@ -429,10 +436,9 @@ impl McuHwModel for ModelEmulated {
             w.write_all(self.output().take(usize::MAX).as_bytes())
                 .unwrap();
         }
-        assert_eq!(
-            u32::from(McuRomBootStatus::ColdBootFlowComplete),
-            self.mci_flow_status()
-        );
+        assert!(self
+            .mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
         MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         Ok(())
     }
@@ -524,17 +530,6 @@ impl McuHwModel for ModelEmulated {
         unimplemented!()
     }
 
-    fn mci_flow_status(&mut self) -> u32 {
-        self.cpu
-            .bus
-            .bus
-            .mci_periph
-            .as_mut()
-            .unwrap()
-            .periph
-            .read_mci_reg_fw_flow_status()
-    }
-
     fn mcu_manager(&mut self) -> impl McuManager {
         self
     }
@@ -555,6 +550,11 @@ impl McuHwModel for ModelEmulated {
 
     fn i3c_address(&self) -> Option<u8> {
         self.i3c_address
+    }
+
+    fn warm_reset(&mut self) {
+        self.cpu.warm_reset();
+        self.step();
     }
 }
 
@@ -638,8 +638,7 @@ impl Drop for ModelEmulated {
 
 #[cfg(test)]
 mod test {
-    use mcu_rom_common::McuRomBootStatus;
-
+    use super::*;
     use crate::{InitParams, McuHwModel, ModelEmulated};
 
     #[test]
@@ -665,6 +664,8 @@ mod test {
             None,
             None,
             Some(mcu_rom.clone().into()),
+            None,
+            None,
             None,
             None,
             None,
@@ -708,9 +709,8 @@ mod test {
             w.write_all(model.output().take(usize::MAX).as_bytes())
                 .unwrap();
         }
-        assert_eq!(
-            u32::from(McuRomBootStatus::FuseWriteComplete),
-            model.mci_flow_status()
-        );
+        assert!(model
+            .mci_boot_milestones()
+            .contains(McuBootMilestones::CPTRA_FUSES_WRITTEN));
     }
 }

@@ -237,6 +237,10 @@ async fn process_get_capabilities<'a>(
     ctx.shared_transcript
         .set_spdm_version(ctx.state.connection_info.version_number());
 
+    let spdm_version = ctx.state.connection_info.version_number();
+    ctx.shared_transcript.set_spdm_version(spdm_version);
+    ctx.measurements.set_spdm_version(spdm_version);
+
     // Append GET_CAPABILITIES to the transcript VCA context
     ctx.append_message_to_transcript(req_payload, TranscriptContext::Vca, None)
         .await
