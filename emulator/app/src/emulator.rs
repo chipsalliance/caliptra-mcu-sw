@@ -113,7 +113,7 @@ pub struct EmulatorArgs {
     pub _no_stdin_uart: bool,
 
     /// Enable flash based boot (default false).
-    #[arg(short, long, default_value_t = false)]
+    #[arg(long, default_value_t = false)]
     pub flash_based_boot: bool,
 
     /// The ROM path for the Caliptra CPU.
