@@ -140,6 +140,10 @@ mod external_memory {
             self.dma_syscall.xfer(&transaction).await
         }
 
+        async fn image_valid(&self) -> Result<(), ErrorCode> {
+            Ok(())
+        }
+
         fn size(&self) -> usize {
             // Return the size of the staging memory. Replace with actual value if needed.
             256 * 1024 // 256 KiB as an example
@@ -163,10 +167,11 @@ mod flash_memory {
     use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
     use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash as FlashSyscall};
     use libtock_platform::ErrorCode;
-    use mcu_config::boot::{BootConfigAsync, PartitionStatus};
+    use mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
 
     pub struct ExternalFlash {
         flash_syscall: FlashSyscall,
+        download_partition: PartitionId,
     }
 
     impl ExternalFlash {
@@ -190,6 +195,7 @@ mod flash_memory {
 
             Ok(ExternalFlash {
                 flash_syscall: FlashSyscall::new(inactive_partition.driver_num),
+                download_partition: inactive_partition_id,
             })
         }
     }
@@ -202,6 +208,14 @@ mod flash_memory {
 
         async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode> {
             self.flash_syscall.read(offset, data.len(), data).await
+        }
+
+        async fn image_valid(&self) -> Result<(), ErrorCode> {
+            let mut boot_config = FlashBootConfig::new();
+            boot_config
+                .set_partition_status(self.download_partition, PartitionStatus::Valid)
+                .await
+                .map_err(|_| ErrorCode::Fail)
         }
 
         fn size(&self) -> usize {
