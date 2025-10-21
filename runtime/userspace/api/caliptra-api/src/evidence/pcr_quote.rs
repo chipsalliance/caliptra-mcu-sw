@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::crypto::hash::SHA384_HASH_SIZE;
 use crate::crypto::rng::Rng;
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::execute_mailbox_cmd;
@@ -76,11 +77,28 @@ impl PcrQuote {
     }
 
     async fn pcr_quote_ecc384(nonce: Option<&[u8]>, buffer: &mut [u8]) -> CaliptraApiResult<usize> {
-        let mailbox = Mailbox::new();
-
         if buffer.len() < ECC384_QUOTE_RSP_LEN {
             return Err(CaliptraApiError::InvalidArgument("Buffer too small"));
         }
+
+        let resp = Self::get_quote_ecc384_resp(nonce).await?;
+        let resp_bytes = resp.as_bytes();
+
+        buffer[..ECC384_QUOTE_RSP_LEN].copy_from_slice(
+            &resp_bytes[PCR_QUOTE_RSP_START..PCR_QUOTE_RSP_START + ECC384_QUOTE_RSP_LEN],
+        );
+        Ok(ECC384_QUOTE_RSP_LEN)
+    }
+
+    pub fn len(with_pqc_sig: bool) -> usize {
+        match with_pqc_sig {
+            true => MLDSA87_QUOTE_RSP_LEN,
+            false => ECC384_QUOTE_RSP_LEN,
+        }
+    }
+
+    async fn get_quote_ecc384_resp(nonce: Option<&[u8]>) -> CaliptraApiResult<QuotePcrsEcc384Resp> {
+        let mailbox = Mailbox::new();
 
         let mut req = QuotePcrsEcc384Req {
             hdr: MailboxReqHeader::default(),
@@ -107,23 +125,22 @@ impl PcrQuote {
             return Err(CaliptraApiError::InvalidResponse);
         }
 
-        let resp = QuotePcrsEcc384Resp::ref_from_bytes(&resp_bytes)
+        let resp = QuotePcrsEcc384Resp::read_from_bytes(&resp_bytes)
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
         if resp.nonce != req.nonce {
             Err(CaliptraApiError::InvalidResponse)?;
         }
 
-        buffer[..ECC384_QUOTE_RSP_LEN].copy_from_slice(
-            &resp_bytes[PCR_QUOTE_RSP_START..PCR_QUOTE_RSP_START + ECC384_QUOTE_RSP_LEN],
-        );
-        Ok(ECC384_QUOTE_RSP_LEN)
+        Ok(resp)
     }
 
-    pub fn len(with_pqc_sig: bool) -> usize {
-        match with_pqc_sig {
-            true => MLDSA87_QUOTE_RSP_LEN,
-            false => ECC384_QUOTE_RSP_LEN,
-        }
+    pub async fn get_pcrs() -> CaliptraApiResult<[[u8; SHA384_HASH_SIZE]; 32]> {
+        let resp = Self::get_quote_ecc384_resp(None).await?;
+        let mut pcrs = [[0u8; SHA384_HASH_SIZE]; 32];
+        // Copy all PCRs from the response
+        pcrs.copy_from_slice(&resp.pcrs);
+
+        Ok(pcrs)
     }
 }
