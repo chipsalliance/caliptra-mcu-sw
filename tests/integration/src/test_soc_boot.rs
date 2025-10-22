@@ -18,7 +18,7 @@ mod test {
     use std::path::PathBuf;
 
     // Set an arbitrary MCI base address
-    const MCI_BASE_AXI_ADDRESS: u64 = 0xAAAAAAAA_00000000;
+    const MCI_BASE_AXI_ADDRESS: u64 = 0xA800_0000;
 
     const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
 
@@ -670,6 +670,8 @@ mod test {
             None,
             Some(test_runtime.clone()),
             Some(soc_images.clone()),
+            None,
+            None,
             None,
             None,
         );

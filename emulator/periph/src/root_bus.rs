@@ -13,7 +13,7 @@ Abstract:
 --*/
 
 use crate::McuMailbox0Internal;
-use crate::{spi_host::SpiHost, EmuCtrl, Uart};
+use crate::{EmuCtrl, Uart};
 use caliptra_emu_bus::{Bus, BusError, Clock, Ram, Rom};
 use caliptra_emu_bus::{Device, Event, EventData};
 use caliptra_emu_cpu::{Irq, Pic, PicMmioRegisters};
@@ -37,8 +37,6 @@ pub struct McuRootBusOffsets {
     pub uart_size: u32,
     pub ctrl_offset: u32,
     pub ctrl_size: u32,
-    pub spi_offset: u32,
-    pub spi_size: u32,
     pub ram_offset: u32,
     pub ram_size: u32,
     pub rom_dedicated_ram_offset: u32,
@@ -59,10 +57,8 @@ impl Default for McuRootBusOffsets {
             uart_size: 0x100,
             ctrl_offset: 0x1000_2000,
             ctrl_size: 0x4,
-            spi_offset: 0x2000_0000,
-            spi_size: 0x40,
             ram_offset: 0x4000_0000,
-            ram_size: 0x60000,
+            ram_size: RAM_SIZE,
             rom_dedicated_ram_offset: ROM_DEDICATED_RAM_ORG,
             rom_dedicated_ram_size: ROM_DEDICATED_RAM_SIZE,
             pic_offset: 0x6000_0000,
@@ -92,7 +88,6 @@ pub struct McuRootBus {
     pub rom: Rom,
     pub uart: Uart,
     pub ctrl: EmuCtrl,
-    pub spi: SpiHost,
     pub ram: Rc<RefCell<Ram>>,
     pub rom_sram: Rc<RefCell<Ram>>,
     pub pic_regs: PicMmioRegisters,
@@ -122,8 +117,8 @@ impl McuRootBus {
         let pic = args.pic;
         let rom = Rom::new(std::mem::take(&mut args.rom));
         let uart_irq = pic.register_irq(Self::UART_NOTIF_IRQ);
-        let ram = Ram::new(vec![0; RAM_SIZE as usize]);
-        let rom_sram = Ram::new(vec![0; ROM_DEDICATED_RAM_SIZE as usize]);
+        let ram = Ram::new(vec![0; args.offsets.ram_size as usize]);
+        let rom_sram = Ram::new(vec![0; args.offsets.rom_dedicated_ram_size as usize]);
         let external_test_sram = Ram::new(vec![0; EXTERNAL_TEST_SRAM_SIZE as usize]);
         let direct_read_flash = Ram::new(vec![0; DIRECT_READ_FLASH_SIZE as usize]);
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
@@ -134,7 +129,6 @@ impl McuRootBus {
             rom,
             ram: Rc::new(RefCell::new(ram)),
             rom_sram: Rc::new(RefCell::new(rom_sram)),
-            spi: SpiHost::new(&clock.clone()),
             uart: Uart::new(args.uart_output, args.uart_rx, uart_irq, &clock.clone()),
             ctrl: EmuCtrl::new(),
             pic_regs: pic.mmio_regs(clock.clone()),
@@ -178,10 +172,6 @@ impl Bus for McuRootBus {
             && addr < self.offsets.ctrl_offset + self.offsets.ctrl_size
         {
             return self.ctrl.read(size, addr - self.offsets.ctrl_offset);
-        }
-        if addr >= self.offsets.spi_offset && addr < self.offsets.spi_offset + self.offsets.spi_size
-        {
-            return self.spi.read(size, addr - self.offsets.spi_offset);
         }
         if addr >= self.offsets.ram_offset && addr < self.offsets.ram_offset + self.offsets.ram_size
         {
@@ -235,10 +225,6 @@ impl Bus for McuRootBus {
         {
             return self.ctrl.write(size, addr - self.offsets.ctrl_offset, val);
         }
-        if addr >= self.offsets.spi_offset && addr < self.offsets.spi_offset + self.offsets.spi_size
-        {
-            return self.spi.write(size, addr - self.offsets.spi_offset, val);
-        }
         if addr >= self.offsets.ram_offset && addr < self.offsets.ram_offset + self.offsets.ram_size
         {
             return self
@@ -276,7 +262,6 @@ impl Bus for McuRootBus {
         self.rom.poll();
         self.uart.poll();
         self.ctrl.poll();
-        self.spi.poll();
         self.ram.borrow_mut().poll();
         self.rom_sram.borrow_mut().poll();
         self.pic_regs.poll();
@@ -288,7 +273,6 @@ impl Bus for McuRootBus {
         self.rom.warm_reset();
         self.uart.warm_reset();
         self.ctrl.warm_reset();
-        self.spi.warm_reset();
         self.ram.borrow_mut().warm_reset();
         self.rom_sram.borrow_mut().warm_reset();
         self.pic_regs.warm_reset();
@@ -300,7 +284,6 @@ impl Bus for McuRootBus {
         self.rom.update_reset();
         self.uart.update_reset();
         self.ctrl.update_reset();
-        self.spi.update_reset();
         self.ram.borrow_mut().update_reset();
         self.rom_sram.borrow_mut().update_reset();
         self.pic_regs.update_reset();
@@ -312,7 +295,6 @@ impl Bus for McuRootBus {
         self.rom.register_outgoing_events(sender.clone());
         self.uart.register_outgoing_events(sender.clone());
         self.ctrl.register_outgoing_events(sender.clone());
-        self.spi.register_outgoing_events(sender.clone());
         self.ram
             .borrow_mut()
             .register_outgoing_events(sender.clone());
@@ -324,7 +306,6 @@ impl Bus for McuRootBus {
         self.rom.incoming_event(event.clone());
         self.uart.incoming_event(event.clone());
         self.ctrl.incoming_event(event.clone());
-        self.spi.incoming_event(event.clone());
         self.ram.borrow_mut().incoming_event(event.clone());
         self.pic_regs.incoming_event(event.clone());
 
@@ -333,7 +314,9 @@ impl Bus for McuRootBus {
         {
             let start = start_addr as usize;
             let len = len as usize;
-            if start >= RAM_SIZE as usize || start + len >= RAM_SIZE as usize {
+            if start >= self.offsets.ram_size as usize
+                || start + len >= self.offsets.ram_size as usize
+            {
                 println!(
                     "Ignoring invalid MCU RAM read from {}..{}",
                     start,
@@ -363,7 +346,9 @@ impl Bus for McuRootBus {
             (event.dest, event.event.clone())
         {
             let start = start_addr as usize;
-            if start >= RAM_SIZE as usize || start + data.len() >= RAM_SIZE as usize {
+            if start >= self.offsets.ram_size as usize
+                || start + data.len() >= self.offsets.ram_size as usize
+            {
                 println!(
                     "Ignoring invalid MCU RAM write to {}..{}",
                     start,

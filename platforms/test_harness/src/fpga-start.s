@@ -43,14 +43,6 @@ _start:
     li a0, 0x50000000
     li a1, 16384
     add a1, a1, a0
-clear_dccm:
-    sw zero, 0(a0)
-    addi a0, a0, 4
-    bltu a0, a1, clear_dccm
-
-    li a0, 0xa8c00000
-    li a1, 393216
-    add a1, a1, a0
 clear_sram:
     sw zero, 0(a0)
     addi a0, a0, 4

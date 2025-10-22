@@ -25,8 +25,8 @@ pub(crate) async fn test_mci_read_write() {
 }
 
 #[allow(unused)]
-pub(crate) async fn test_mci_warm_reset() {
-    println!("Starting test_mci_warm_reset");
+pub(crate) async fn test_mci_fw_boot_reset() {
+    println!("Starting test_mci_fw_boot_reset");
 
     let mci: Mci = Mci::new();
 
@@ -34,11 +34,11 @@ pub(crate) async fn test_mci_warm_reset() {
     let reset_reason = mci.read(RESET_REASON, 0).unwrap();
     println!("Reset reason register: 0x{:08x}", reset_reason);
 
-    // Check if this is a warm reset (bit 2)
-    const WARM_RESET_BIT: u32 = 1 << 2;
+    // Check if this is a FW boot reset (bit 1)
+    const FW_BOOT_RESET_BIT: u32 = 1 << 1;
 
-    if reset_reason & WARM_RESET_BIT != 0 {
-        println!("Warm reset detected successfully!");
+    if reset_reason & FW_BOOT_RESET_BIT != 0 {
+        println!("FW boot reset detected successfully!");
         // Test passed - we assume this warm reset was triggered by our test
         // Note: Without persistent memory accessible from userspace, we can't
         // definitively prove this was our reset vs another warm reset
@@ -46,6 +46,8 @@ pub(crate) async fn test_mci_warm_reset() {
     } else {
         println!("Cold boot detected, triggering warm reset...");
 
+        // Set the reason to FW boot reset
+        let reset_reason = mci.write(RESET_REASON, 0, FW_BOOT_RESET_BIT).unwrap();
         // Trigger warm reset
         mci.trigger_warm_reset().unwrap();
 

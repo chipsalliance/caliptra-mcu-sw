@@ -172,13 +172,6 @@ pub struct EmulatorArgs {
     /// Override emulator control size
     #[arg(long, value_parser=maybe_hex::<u32>)]
     pub ctrl_size: Option<u32>,
-    /// Override SPI offset
-    #[arg(long, value_parser=maybe_hex::<u32>)]
-    pub spi_offset: Option<u32>,
-    /// Override SPI size
-    #[arg(long, value_parser=maybe_hex::<u32>)]
-    pub spi_size: Option<u32>,
-    /// Override SRAM offset
     #[arg(long, value_parser=maybe_hex::<u32>)]
     pub sram_offset: Option<u32>,
     /// Override SRAM size
@@ -388,12 +381,6 @@ impl Emulator {
         }
         if let Some(ctrl_size) = cli.ctrl_size {
             mcu_root_bus_offsets.ctrl_size = ctrl_size;
-        }
-        if let Some(spi_offset) = cli.spi_offset {
-            mcu_root_bus_offsets.spi_offset = spi_offset;
-        }
-        if let Some(spi_size) = cli.spi_size {
-            mcu_root_bus_offsets.spi_size = spi_size;
         }
         if let Some(pic_offset) = cli.pic_offset {
             mcu_root_bus_offsets.pic_offset = pic_offset;
@@ -745,7 +732,8 @@ impl Emulator {
         )?;
         #[cfg(any(
             feature = "test-mcu-mbox-soc-requester-loopback",
-            feature = "test-mcu-mbox-usermode"
+            feature = "test-mcu-mbox-usermode",
+            feature = "test-mcu-mbox-cmds",
         ))]
         let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
         let mci = Mci::new(
@@ -854,7 +842,8 @@ impl Emulator {
 
         #[cfg(any(
             feature = "test-mcu-mbox-soc-requester-loopback",
-            feature = "test-mcu-mbox-usermode"
+            feature = "test-mcu-mbox-usermode",
+            feature = "test-mcu-mbox-cmds",
         ))]
         {
             const SOC_AGENT_ID: u32 = 0x1;

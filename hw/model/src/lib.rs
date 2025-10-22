@@ -14,7 +14,9 @@ use caliptra_hw_model_types::{
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
 pub use mcu_mgr::McuManager;
-use mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
+use mcu_rom_common::{
+    LifecycleControllerState, LifecycleRawTokens, LifecycleToken, McuBootMilestones,
+};
 pub use model_emulated::ModelEmulated;
 use rand::{rngs::StdRng, SeedableRng};
 use sha2::Digest;
@@ -26,6 +28,8 @@ pub use vmem::read_otp_vmem_data;
 
 mod bus_logger;
 mod fpga_regs;
+#[cfg(feature = "fpga_realtime")]
+pub mod lcc;
 mod mcu_mgr;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
@@ -421,7 +425,16 @@ pub trait McuHwModel {
     fn events_to_caliptra(&mut self) -> mpsc::Sender<Event>;
 
     fn mci_flow_status(&mut self) -> u32 {
-        0
+        self.mcu_manager()
+            .with_mci(|mci| mci.fw_flow_status().read())
+    }
+
+    fn mci_boot_checkpoint(&mut self) -> u16 {
+        (self.mci_flow_status() & 0x0000_ffff) as u16
+    }
+
+    fn mci_boot_milestones(&mut self) -> McuBootMilestones {
+        McuBootMilestones::from((self.mci_flow_status() >> 16) as u16)
     }
 
     /// Executes `cmd` with request data `buf`. Returns `Ok(Some(_))` if
@@ -555,6 +568,8 @@ pub trait McuHwModel {
             Ok(Some(output))
         })
     }
+
+    fn warm_reset(&mut self);
 }
 
 #[ignore]
@@ -640,18 +655,15 @@ mod tests {
     }
 
     #[test]
-    pub fn test_mailbox_execute() {
+    pub fn test_mailbox_execute() -> Result<()> {
         let mcu_rom = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
-            binaries
-                .test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)
-                .unwrap()
+            binaries.test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)?
         } else {
             let rom_file = mcu_builder::test_rom_build(
                 Some(platform()),
                 &firmware::hw_model_tests::MAILBOX_RESPONDER,
-            )
-            .unwrap();
-            std::fs::read(&rom_file).unwrap()
+            )?;
+            std::fs::read(&rom_file)?
         };
 
         let mut model = new(
@@ -660,14 +672,53 @@ mod tests {
                 ..Default::default()
             },
             BootParams::default(),
-        )
-        .unwrap();
+        )?;
+
+        // Send command that echoes the command and input message
+        assert_eq!(
+            model.mailbox_execute(0x1000_0000, &[])?,
+            Some(vec![0x00, 0x00, 0x00, 0x10]),
+        );
+
         let message: [u8; 10] = [0x90, 0x5e, 0x1f, 0xad, 0x8b, 0x60, 0xb0, 0xbf, 0x1c, 0x7e];
 
         // Send command that echoes the command and input message
         assert_eq!(
-            model.mailbox_execute(0x1000_0000, &message).unwrap(),
+            model.mailbox_execute(0x1000_0000, &message)?,
             Some([[0x00, 0x00, 0x00, 0x10].as_slice(), &message].concat()),
         );
+
+        // Send command that echoes the command and input message that is word aligned
+        assert_eq!(
+            model.mailbox_execute(0x1000_0000, &message[..8])?,
+            Some(vec![
+                0x00, 0x00, 0x00, 0x10, 0x90, 0x5e, 0x1f, 0xad, 0x8b, 0x60, 0xb0, 0xbf
+            ]),
+        );
+
+        // Send command that returns 7 bytes of output
+        assert_eq!(
+            model.mailbox_execute(0x1000_1000, &[])?,
+            Some(vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd])
+        );
+
+        // Send command that returns 7 bytes of output, and doesn't consume input
+        assert_eq!(
+            model.mailbox_execute(0x1000_1000, &[42])?,
+            Some(vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd]),
+        );
+
+        // TODO(zhalvorsen): doorbell commands seem to be hanging the interrupt controller.
+        // Re-enable these when it is working correctly.
+
+        // // Send command that returns 0 bytes of output
+        // assert_eq!(model.mailbox_execute(0x1000_2000, &[])?, Some(vec![]));
+
+        // // Send command that returns success with no output
+        // assert_eq!(model.mailbox_execute(0x2000_0000, &[])?, None);
+
+        // Send command that returns failure
+        assert!(model.mailbox_execute(0x4000_0000, &message).is_err());
+        Ok(())
     }
 }

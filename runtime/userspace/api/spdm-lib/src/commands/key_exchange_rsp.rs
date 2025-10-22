@@ -327,13 +327,9 @@ async fn generate_key_exchange_response<'a>(
 
     // Get the measurement summary hash
     if key_exch_rsp_ctx.meas_summary_hash_type != 0 {
-        payload_len += encode_measurement_summary_hash(
-            ctx,
-            asym_algo,
-            key_exch_rsp_ctx.meas_summary_hash_type,
-            rsp,
-        )
-        .await?;
+        payload_len +=
+            encode_measurement_summary_hash(ctx, key_exch_rsp_ctx.meas_summary_hash_type, rsp)
+                .await?;
     }
 
     let opaque_data = sm_selected_version_opaque_data(key_exch_rsp_ctx.selected_sm_version)

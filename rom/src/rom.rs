@@ -17,18 +17,22 @@ Abstract:
 use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
 use crate::ColdBoot;
+use crate::FwBoot;
 use crate::FwHitlessUpdate;
 use crate::ImageVerifier;
 use crate::LifecycleControllerState;
 use crate::LifecycleHashedTokens;
 use crate::LifecycleToken;
+use crate::McuBootMilestones;
 use crate::RomEnv;
 use crate::WarmBoot;
 use core::fmt::Write;
 use registers_generated::fuses::Fuses;
+use registers_generated::mci;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use registers_generated::soc;
 use romtime::{HexWord, StaticRef};
+use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
 
 // values in fuses
@@ -255,11 +259,41 @@ impl Soc {
         self.registers
             .fuse_soc_stepping_id
             .write(soc::bits::FuseSocSteppingId::SocSteppingId.val(soc_stepping_id));
-        // TODO: debug unlock / rma token?
+
+        if size_of_val(fuses.cptra_ss_manuf_debug_unlock_token())
+            != size_of_val(&self.registers.fuse_manuf_dbg_unlock_token)
+        {
+            romtime::println!("[mcu-fuse-write] SS manuf debug unlock token length mismatch");
+            fatal_error(1);
+        }
+        for i in 0..fuses.cptra_ss_manuf_debug_unlock_token().len() / 4 {
+            let word = u32::from_le_bytes(
+                fuses.cptra_ss_manuf_debug_unlock_token()[i * 4..i * 4 + 4]
+                    .try_into()
+                    .unwrap(),
+            );
+            self.registers.fuse_manuf_dbg_unlock_token[i].set(word);
+        }
     }
 
     pub fn fuse_write_done(&self) {
         self.registers.cptra_fuse_wr_done.set(1);
+    }
+
+    /// Waits for Caliptra to indicate MCU firmware is ready through the `NotifCptraMcuResetReqSts`
+    /// interrupt.
+    pub fn wait_for_firmware_ready(&self, mci: &romtime::Mci) {
+        let notif0 = &mci.registers.intr_block_rf_notif0_internal_intr_r;
+        // TODO(zhalvorsen): use interrupt instead of fw_exec_ctrl register when the emulator supports it
+        // Wait for a reset request from Caliptra
+        while !self.fw_ready() {
+            if self.cptra_fw_fatal_error() {
+                romtime::println!("[mcu-rom] Caliptra reported a fatal error");
+                fatal_error(6);
+            }
+        }
+        // Clear the reset request interrupt
+        notif0.modify(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
     }
 }
 
@@ -282,6 +316,7 @@ pub fn rom_start(params: RomParameters) {
 
     // Create local references for printing
     let mci = &env.mci;
+    mci.set_flow_milestone(McuBootMilestones::ROM_STARTED.into());
 
     romtime::println!(
         "[mcu-rom] Device lifecycle: {}",
@@ -316,10 +351,9 @@ pub fn rom_start(params: RomParameters) {
             romtime::println!("[mcu-rom] Warm reset detected");
             WarmBoot::run(&mut env, params);
         }
-        McuResetReason::FirmwareBootUpdate => {
-            // TODO: Implement firmware boot update flow
-            romtime::println!("[mcu-rom] TODO: Firmware boot update flow not implemented");
-            fatal_error(0x1002); // Error code for unimplemented firmware boot update
+        McuResetReason::FirmwareBootReset => {
+            romtime::println!("[mcu-rom] Firmware boot reset detected");
+            FwBoot::run(&mut env, params);
         }
         McuResetReason::FirmwareHitlessUpdate => {
             romtime::println!("[mcu-rom] Starting firmware hitless update flow");

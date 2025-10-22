@@ -33,6 +33,11 @@ riscv-csr.workspace = true
 rv32i.workspace = true
 
 [[bin]]
+name = "hitless_update_flow"
+path = "hitless_update_flow.rs"
+required-features = ["riscv"]
+
+[[bin]]
 name = "mailbox_responder"
 path = "mailbox_responder.rs"
 required-features = ["riscv"]

@@ -14,7 +14,7 @@ pub enum McuResetReason {
     WarmReset,
 
     /// Firmware Boot Update - First firmware update after MCI reset
-    FirmwareBootUpdate,
+    FirmwareBootReset,
 
     /// Firmware Hitless Update - Second or later firmware update
     FirmwareHitlessUpdate,
@@ -53,6 +53,26 @@ impl Mci {
 
     pub fn flow_status(&self) -> u32 {
         self.registers.mci_reg_fw_flow_status.get()
+    }
+
+    /// Overwrite current checkpoint, but not the milestone
+    pub fn set_flow_checkpoint(&self, checkpoint: u16) {
+        let milestone = u32::from(self.flow_milestone()) << 16;
+        self.set_flow_status(milestone | u32::from(checkpoint));
+    }
+
+    pub fn flow_checkpoint(&self) -> u16 {
+        (self.flow_status() & 0x0000_ffff) as u16
+    }
+
+    /// Union of current milestones with incoming milestones
+    pub fn set_flow_milestone(&self, milestone: u16) {
+        let milestone = u32::from(milestone) << 16;
+        self.set_flow_status(milestone | self.flow_status());
+    }
+
+    pub fn flow_milestone(&self) -> u16 {
+        (self.flow_status() >> 16) as u16
     }
 
     pub fn hw_flow_status(&self) -> u32 {
@@ -107,7 +127,7 @@ impl Mci {
         match (warm_reset, fw_boot_upd, fw_hitless_upd) {
             (false, false, false) => McuResetReason::ColdBoot,
             (true, false, false) => McuResetReason::WarmReset,
-            (false, true, false) => McuResetReason::FirmwareBootUpdate,
+            (false, true, false) => McuResetReason::FirmwareBootReset,
             (false, false, true) => McuResetReason::FirmwareHitlessUpdate,
             _ => McuResetReason::Invalid,
         }
@@ -125,7 +145,7 @@ impl Mci {
 
     /// Check if this is a firmware boot update reset
     pub fn is_fw_boot_update_reset(&self) -> bool {
-        self.reset_reason_enum() == McuResetReason::FirmwareBootUpdate
+        self.reset_reason_enum() == McuResetReason::FirmwareBootReset
     }
 
     /// Check if this is a firmware hitless update reset
