@@ -31,6 +31,7 @@ use registers_generated::fuses::Fuses;
 use registers_generated::mci;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use registers_generated::soc;
+use romtime::McuError;
 use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
@@ -158,7 +159,7 @@ impl Soc {
         if fuses.cptra_core_vendor_pk_hash_0().len() != self.registers.fuse_vendor_pk_hash.len() * 4
         {
             romtime::println!("[mcu-fuse-write] Key manifest PK hash length mismatch");
-            fatal_error(1);
+            fatal_error(McuError::SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
         }
         for i in 0..fuses.cptra_core_vendor_pk_hash_0().len() / 4 {
             let word = u32::from_le_bytes(
@@ -203,7 +204,7 @@ impl Soc {
         //romtime::println!("");
         if fuses.cptra_core_runtime_svn().len() != self.registers.fuse_runtime_svn.len() * 4 {
             romtime::println!("[mcu-fuse-write] Runtime SVN length mismatch");
-            fatal_error(1);
+            fatal_error(McuError::SOC_RT_SVN_LEN_MISMATCH);
         }
         for i in 0..fuses.cptra_core_runtime_svn().len() / 4 {
             let word = u32::from_le_bytes(
@@ -219,7 +220,7 @@ impl Soc {
             != self.registers.fuse_soc_manifest_svn.len() * 4
         {
             romtime::println!("[mcu-fuse-write] SoC Manifest SVN length mismatch");
-            fatal_error(1);
+            fatal_error(McuError::SOC_MANIFEST_SVN_LEN_MISMATCH);
         }
         for i in 0..fuses.cptra_core_soc_manifest_svn().len() / 4 {
             let word = u32::from_le_bytes(
@@ -264,7 +265,7 @@ impl Soc {
             != size_of_val(&self.registers.fuse_manuf_dbg_unlock_token)
         {
             romtime::println!("[mcu-fuse-write] SS manuf debug unlock token length mismatch");
-            fatal_error(1);
+            fatal_error(McuError::SOC_MANUF_DEBUG_UNLOCK_TOKEN_LEN_MISMATCH);
         }
         for i in 0..fuses.cptra_ss_manuf_debug_unlock_token().len() / 4 {
             let word = u32::from_le_bytes(
@@ -289,7 +290,7 @@ impl Soc {
         while !self.fw_ready() {
             if self.cptra_fw_fatal_error() {
                 romtime::println!("[mcu-rom] Caliptra reported a fatal error");
-                fatal_error(6);
+                fatal_error(McuError::SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
             }
         }
         // Clear the reset request interrupt
@@ -361,7 +362,7 @@ pub fn rom_start(params: RomParameters) {
         }
         McuResetReason::Invalid => {
             romtime::println!("[mcu-rom] Invalid reset reason: multiple bits set");
-            fatal_error(0x1004); // Error code for invalid reset reason
+            fatal_error(McuError::ROM_INVALID_RESET_REASON);
         }
     }
 }

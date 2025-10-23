@@ -31,7 +31,7 @@ use mcu_config_emulator::flash::{
     PARTITION_TABLE,
 };
 use mcu_rom_common::flash::flash_partition::FlashPartition;
-use mcu_rom_common::{fatal_error, RomParameters};
+use mcu_rom_common::{fatal_error_raw, RomParameters};
 use romtime::HexWord;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -71,7 +71,7 @@ pub extern "C" fn rom_entry() -> ! {
             PARTITION_TABLE.size,
         )
         .map_err(|_| {
-            fatal_error(1);
+            fatal_error_raw(1);
         })
         .ok()
         .unwrap();
@@ -80,7 +80,7 @@ pub extern "C" fn rom_entry() -> ! {
         let active_partition = boot_cfg
             .get_active_partition()
             .map_err(|_| {
-                fatal_error(1);
+                fatal_error_raw(1);
             })
             .ok()
             .unwrap();
@@ -92,7 +92,7 @@ pub extern "C" fn rom_entry() -> ! {
             IMAGE_A_PARTITION.size,
         )
         .map_err(|_| {
-            fatal_error(1);
+            fatal_error_raw(1);
         })
         .ok()
         .unwrap();
@@ -103,7 +103,7 @@ pub extern "C" fn rom_entry() -> ! {
             IMAGE_B_PARTITION.size,
         )
         .map_err(|_| {
-            fatal_error(1);
+            fatal_error_raw(1);
         })
         .ok()
         .unwrap();
@@ -117,7 +117,7 @@ pub extern "C" fn rom_entry() -> ! {
                 romtime::println!("[mcu-rom] Booting from Partition B");
                 partition_b
             }
-            _ => fatal_error(1),
+            _ => fatal_error_raw(1),
         };
 
         mcu_rom_common::rom_start(RomParameters {

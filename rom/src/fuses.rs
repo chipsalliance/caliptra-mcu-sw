@@ -4,7 +4,7 @@ use core::fmt::Write;
 use registers_generated::fuses::Fuses;
 use registers_generated::otp_ctrl;
 use registers_generated::{fuses, lc_ctrl};
-use romtime::{HexBytes, HexWord, McuError, StaticRef};
+use romtime::{HexBytes, HexWord, McuError, McuResult, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
 use crate::fatal_error;
@@ -231,7 +231,7 @@ impl Lifecycle {
         Lifecycle { registers }
     }
 
-    pub fn init(&self) -> Result<(), McuError> {
+    pub fn init(&self) -> McuResult<()> {
         romtime::println!("[mcu-lcc] Initializing Lifecycle controller...");
         while !self.registers.status.is_set(lc_ctrl::bits::Status::Ready) {}
         while !self
@@ -270,7 +270,7 @@ impl Lifecycle {
         &self,
         state: LifecycleControllerState,
         token: &LifecycleToken,
-    ) -> Result<(), McuError> {
+    ) -> McuResult<()> {
         romtime::println!(
             "[mcu-rom-lcc] Transitioning Lifecycle state... to {}",
             u8::from(state)
@@ -332,35 +332,35 @@ impl Lifecycle {
             }
             if status.is_set(lc_ctrl::bits::Status::TransitionError) {
                 romtime::println!("[mcu-rom-lcc] Transition error detected.");
-                fatal_error(10);
+                fatal_error(McuError::LC_TRANSITION_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::TokenError) {
                 romtime::println!("[mcu-rom-lcc] Token error detected.");
-                fatal_error(10);
+                fatal_error(McuError::LC_TOKEN_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::OtpError) {
                 romtime::println!("[mcu-rom-lcc] OTP error detected.");
-                fatal_error(10);
+                fatal_error(McuError::LC_OTP_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::FlashRmaError) {
                 romtime::println!("[mcu-rom-lcc] FLASH RMA error detected.");
-                fatal_error(10);
+                fatal_error(McuError::LC_FLASH_RMA_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::TransitionCountError) {
                 romtime::println!("[mcu-rom-lcc] Transition count error detected.");
-                fatal_error(10);
+                fatal_error(McuError::LC_TRANSITION_COUNT_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::StateError) {
                 romtime::println!("[mcu-rom-lcc] State error detected.");
-                fatal_error(10);
+                fatal_error(McuError::LC_STATE_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::BusIntegError) {
                 romtime::println!("[mcu-rom-lcc] Bus integrity error detected.");
-                fatal_error(10);
+                fatal_error(McuError::LC_BUS_INTEG_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::OtpPartitionError) {
                 romtime::println!("[mcu-rom-lcc] OTP partition error detected.");
-                fatal_error(10);
+                fatal_error(McuError::LC_OTP_PARTITION_ERROR);
             }
         }
 
@@ -394,14 +394,14 @@ impl Otp {
         self.registers.vendor_pk_hash_volatile_lock.set(1);
     }
 
-    pub fn init(&self) -> Result<(), McuError> {
+    pub fn init(&self) -> McuResult<()> {
         romtime::println!("[mcu-rom-otp] Initializing OTP controller...");
         if self.registers.otp_status.get() & OTP_STATUS_ERROR_MASK != 0 {
             romtime::println!(
                 "[mcu-rom-otp] OTP error: {}",
                 self.registers.otp_status.get()
             );
-            return Err(McuError::FusesError);
+            return Err(McuError::OTP_INIT_STATUS_ERROR);
         }
 
         // OTP DAI status should be idle
@@ -411,7 +411,7 @@ impl Otp {
             .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
         {
             romtime::println!("[mcu-rom-otp] OTP not idle");
-            return Err(McuError::FusesError);
+            return Err(McuError::OTP_INIT_NOT_IDLE);
         }
 
         // Enable periodic background checks
@@ -443,9 +443,9 @@ impl Otp {
         self.registers.otp_status.get()
     }
 
-    fn read_data(&self, addr: usize, len: usize, data: &mut [u8]) -> Result<(), McuError> {
+    fn read_data(&self, addr: usize, len: usize, data: &mut [u8]) -> McuResult<()> {
         if data.len() < len || len % 4 != 0 {
-            return Err(McuError::InvalidDataError);
+            return Err(McuError::OTP_INVALID_DATA_ERROR);
         }
         for (i, chunk) in data[..len].chunks_exact_mut(4).enumerate() {
             let word = self.read_word(addr / 4 + i)?;
@@ -457,7 +457,7 @@ impl Otp {
 
     /// Reads a word from the OTP controller.
     /// word_addr is in words
-    pub fn read_word(&self, word_addr: usize) -> Result<u32, McuError> {
+    pub fn read_word(&self, word_addr: usize) -> McuResult<u32> {
         // OTP DAI status should be idle
         while !self
             .registers
@@ -480,14 +480,14 @@ impl Otp {
 
         if let Some(err) = self.check_error() {
             romtime::println!("Error reading fuses: {}", HexWord(err));
-            return Err(McuError::FusesError);
+            return Err(McuError::OTP_READ_ERROR);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
     }
 
     /// Write a dword to the OTP controller.
     /// word_addr is in words
-    pub fn write_dword(&self, dword_addr: usize, data: u64) -> Result<u32, McuError> {
+    pub fn write_dword(&self, dword_addr: usize, data: u64) -> McuResult<u32> {
         // OTP DAI status should be idle
         while !self
             .registers
@@ -521,14 +521,14 @@ impl Otp {
         if let Some(err) = self.check_error() {
             romtime::println!("Error writing fuses: {}", HexWord(err));
             self.print_errors();
-            return Err(McuError::FusesError);
+            return Err(McuError::OTP_WRITE_DWORD_ERROR);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
     }
 
     /// Write a word to the OTP controller.
     /// word_addr is in words
-    pub fn write_word(&self, word_addr: usize, data: u32) -> Result<u32, McuError> {
+    pub fn write_word(&self, word_addr: usize, data: u32) -> McuResult<u32> {
         // OTP DAI status should be idle
         while !self
             .registers
@@ -555,14 +555,14 @@ impl Otp {
         if let Some(err) = self.check_error() {
             romtime::println!("[mcu-rom] Error writing fuses: {}", HexWord(err));
             self.print_errors();
-            return Err(McuError::FusesError);
+            return Err(McuError::OTP_WRITE_WORD_ERROR);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
     }
 
     /// Finalize a partition
     /// word_addr is in words
-    pub fn finalize_digest(&self, partition_base_addr: usize) -> Result<(), McuError> {
+    pub fn finalize_digest(&self, partition_base_addr: usize) -> McuResult<()> {
         romtime::println!(
             "[mcu-rom] Finalizing partition at base address: {}",
             HexWord(partition_base_addr as u32)
@@ -591,7 +591,7 @@ impl Otp {
         if let Some(err) = self.check_error() {
             romtime::println!("[mcu-rom] Error writing digest: {}", HexWord(err));
             self.print_errors();
-            return Err(McuError::FusesError);
+            return Err(McuError::OTP_FINALIZE_DIGEST_ERROR);
         }
         Ok(())
     }
@@ -634,7 +634,7 @@ impl Otp {
         }
     }
 
-    pub fn read_fuses(&self) -> Result<Fuses, McuError> {
+    pub fn read_fuses(&self) -> McuResult<Fuses> {
         let mut fuses = Fuses::default();
         romtime::println!("[mcu-rom-otp] Reading SW tests unlock partition");
         self.read_data(
@@ -688,10 +688,7 @@ impl Otp {
         Ok(fuses)
     }
 
-    pub(crate) fn burn_lifecycle_tokens(
-        &self,
-        tokens: &LifecycleHashedTokens,
-    ) -> Result<(), McuError> {
+    pub(crate) fn burn_lifecycle_tokens(&self, tokens: &LifecycleHashedTokens) -> McuResult<()> {
         for (i, tokeni) in tokens.test_unlock.iter().enumerate() {
             romtime::println!(
                 "[mcu-rom-otp] Burning test_unlock{} token: {}",
@@ -730,11 +727,7 @@ impl Otp {
         Ok(())
     }
 
-    fn burn_lifecycle_token(
-        &self,
-        addr: usize,
-        token: &LifecycleHashedToken,
-    ) -> Result<(), McuError> {
+    fn burn_lifecycle_token(&self, addr: usize, token: &LifecycleHashedToken) -> McuResult<()> {
         let dword = u64::from_le_bytes(token.0[..8].try_into().unwrap());
         self.write_dword(addr / 8, dword)?;
 

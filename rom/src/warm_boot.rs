@@ -14,6 +14,8 @@ Abstract:
 
 #![allow(clippy::empty_loop)]
 
+use romtime::McuError;
+
 use crate::{
     fatal_error, BootFlow, McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters,
     MCU_MEMORY_MAP,
@@ -65,7 +67,7 @@ impl BootFlow for WarmBoot {
         // Safety: this address is valid
         if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
             romtime::println!("Invalid firmware detected; halting");
-            fatal_error(1);
+            fatal_error(McuError::WARM_BOOT_INVALID_FIRMWARE);
         }
 
         // Reset so FirmwareBootReset can jump to firmware
@@ -74,6 +76,6 @@ impl BootFlow for WarmBoot {
         mci.set_flow_milestone(McuBootMilestones::WARM_RESET_FLOW_COMPLETE.into());
         mci.trigger_warm_reset();
         romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
-        fatal_error(8);
+        fatal_error(McuError::WARM_BOOT_RESET_ERROR);
     }
 }
