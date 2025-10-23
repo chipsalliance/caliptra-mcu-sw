@@ -18,6 +18,7 @@ members = [
     "emulator/compliance-test",
     "emulator/consts",
     "emulator/periph",
+    "error",
     "hw/model",
     "hw/model/test-fw",
     "registers/generated-emulator",
@@ -179,6 +180,7 @@ mcu-components = { path = "runtime/kernel/components" }
 mcu-config = { path = "common/config" }
 mcu-config-emulator = { path = "platforms/emulator/config" }
 mcu-config-fpga = { path = "platforms/fpga/config" }
+mcu-error = { path = "error" }
 mcu-hw-model = { path = "hw/model" }
 mcu-hw-model-test-fw = { path = "hw/model/test-fw" }
 mcu-image-header = { path = "platforms/emulator/mcu-image-header" }

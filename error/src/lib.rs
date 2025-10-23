@@ -1,4 +1,7 @@
 // Licensed under the Apache-2.0 license
+
+#![cfg_attr(target_arch = "riscv32", no_std)]
+
 use core::convert::From;
 use core::num::{NonZeroU32, TryFromIntError};
 
