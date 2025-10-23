@@ -11,9 +11,10 @@ Abstract:
     C bindings for the Caliptra MCU Emulator.
 
 --*/
-
+use caliptra_emu_bus::Bus;
+use caliptra_emu_cpu::xreg_file::XReg;
 use caliptra_emu_cpu::StepAction;
-use caliptra_emu_types::RvSize;
+use caliptra_emu_types::{RvAddr, RvSize};
 use emulator::{gdb, Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback};
 use mcu_testing_common::MCU_RUNNING;
 use std::ffi::CStr;
@@ -45,6 +46,10 @@ pub enum EmulatorError {
     InitializationFailed = -2,
     NullPointer = -3,
     InvalidEmulator = -4,
+    BusLoadAccessFault = -5,
+    BusStoreAccessFault = -6,
+    BusLoadAddrMisaligned = -7,
+    BusStoreAddrMisaligned = -8,
 }
 
 /// Step action results for C API
@@ -731,6 +736,44 @@ pub unsafe extern "C" fn emulator_get_pc(emulator_memory: *mut CEmulator) -> c_u
     }
 }
 
+/// Start the I3C controller thread
+///
+/// This function starts the I3C controller's background thread that processes
+/// incoming commands and sends responses. Should be called after emulator_init
+/// if I3C functionality is needed.
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * Appropriate error code on failure
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+#[no_mangle]
+pub unsafe extern "C" fn emulator_start_i3c_controller(
+    emulator_memory: *mut CEmulator,
+) -> EmulatorError {
+    if emulator_memory.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &mut *emulator_ptr;
+
+    match &mut emulator_state.wrapper {
+        EmulatorWrapper::Normal(emulator) => {
+            emulator.i3c_controller.start();
+            EmulatorError::Success
+        }
+        EmulatorWrapper::Gdb(gdb_target) => {
+            gdb_target.emulator_mut().i3c_controller.start();
+            EmulatorError::Success
+        }
+    }
+}
+
 /// Trigger an exit request by setting EMULATOR_RUNNING to false
 /// This will cause any loops waiting on EMULATOR_RUNNING to exit
 ///
@@ -803,6 +846,293 @@ pub unsafe extern "C" fn example_external_write_callback(
 
 // Helper functions
 
+/// Read a general purpose register (X0-X31)
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+/// * `reg_num` - Register number (0-31)
+/// * `value` - Pointer to store the register value
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * Appropriate error code on failure
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+/// * `value` must be a valid pointer to a u32
+#[no_mangle]
+pub unsafe extern "C" fn emulator_read_xreg(
+    emulator_memory: *mut CEmulator,
+    reg_num: c_uint,
+    value: *mut c_uint,
+) -> EmulatorError {
+    if emulator_memory.is_null() || value.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    if reg_num > 31 {
+        return EmulatorError::InvalidArgs;
+    }
+
+    let state = &mut *(emulator_memory as *mut CEmulatorState);
+
+    let result = match &state.wrapper {
+        EmulatorWrapper::Normal(emulator) => {
+            let xreg = XReg::from(reg_num);
+            emulator.mcu_cpu.read_xreg(xreg)
+        }
+        EmulatorWrapper::Gdb(gdb_target) => {
+            let xreg = XReg::from(reg_num);
+            gdb_target.emulator().mcu_cpu.read_xreg(xreg)
+        }
+    };
+
+    match result {
+        Ok(val) => {
+            *value = val;
+            EmulatorError::Success
+        }
+        Err(_) => EmulatorError::InvalidArgs,
+    }
+}
+
+/// Write a general purpose register (X0-X31)
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+/// * `reg_num` - Register number (0-31)
+/// * `value` - Value to write to the register
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * Appropriate error code on failure
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+#[no_mangle]
+pub unsafe extern "C" fn emulator_write_xreg(
+    emulator_memory: *mut CEmulator,
+    reg_num: c_uint,
+    value: c_uint,
+) -> EmulatorError {
+    if emulator_memory.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    if reg_num > 31 {
+        return EmulatorError::InvalidArgs;
+    }
+
+    let state = &mut *(emulator_memory as *mut CEmulatorState);
+
+    let result = match &mut state.wrapper {
+        EmulatorWrapper::Normal(emulator) => {
+            let xreg = XReg::from(reg_num);
+            emulator.mcu_cpu.write_xreg(xreg, value)
+        }
+        EmulatorWrapper::Gdb(gdb_target) => {
+            let xreg = XReg::from(reg_num);
+            gdb_target.emulator_mut().mcu_cpu.write_xreg(xreg, value)
+        }
+    };
+
+    match result {
+        Ok(_) => EmulatorError::Success,
+        Err(_) => EmulatorError::InvalidArgs,
+    }
+}
+
+/// Read a Control and Status Register (CSR)
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+/// * `csr_addr` - CSR address (e.g., 0x300 for MSTATUS)
+/// * `value` - Pointer to store the CSR value
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * Appropriate error code on failure
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+/// * `value` must be a valid pointer to a u32
+#[no_mangle]
+pub unsafe extern "C" fn emulator_read_csr(
+    emulator_memory: *mut CEmulator,
+    csr_addr: c_uint,
+    value: *mut c_uint,
+) -> EmulatorError {
+    if emulator_memory.is_null() || value.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    let state = &mut *(emulator_memory as *mut CEmulatorState);
+
+    let result = match &state.wrapper {
+        EmulatorWrapper::Normal(emulator) => emulator.mcu_cpu.read_csr_machine(csr_addr as RvAddr),
+        EmulatorWrapper::Gdb(gdb_target) => gdb_target
+            .emulator()
+            .mcu_cpu
+            .read_csr_machine(csr_addr as RvAddr),
+    };
+
+    match result {
+        Ok(val) => {
+            *value = val;
+            EmulatorError::Success
+        }
+        Err(_) => EmulatorError::InvalidArgs,
+    }
+}
+
+/// Write a Control and Status Register (CSR)
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+/// * `csr_addr` - CSR address (e.g., 0x300 for MSTATUS)
+/// * `value` - Value to write to the CSR
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * Appropriate error code on failure
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+#[no_mangle]
+pub unsafe extern "C" fn emulator_write_csr(
+    emulator_memory: *mut CEmulator,
+    csr_addr: c_uint,
+    value: c_uint,
+) -> EmulatorError {
+    if emulator_memory.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    let state = &mut *(emulator_memory as *mut CEmulatorState);
+
+    let result = match &mut state.wrapper {
+        EmulatorWrapper::Normal(emulator) => emulator
+            .mcu_cpu
+            .write_csr_machine(csr_addr as RvAddr, value),
+        EmulatorWrapper::Gdb(gdb_target) => gdb_target
+            .emulator_mut()
+            .mcu_cpu
+            .write_csr_machine(csr_addr as RvAddr, value),
+    };
+
+    match result {
+        Ok(_) => EmulatorError::Success,
+        Err(_) => EmulatorError::InvalidArgs,
+    }
+}
+
+/// Read the program counter (PC)
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+/// * `value` - Pointer to store the PC value
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * Appropriate error code on failure
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+/// * `value` must be a valid pointer to a u32
+#[no_mangle]
+pub unsafe extern "C" fn emulator_read_pc(
+    emulator_memory: *mut CEmulator,
+    value: *mut c_uint,
+) -> EmulatorError {
+    if emulator_memory.is_null() || value.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    let state = &mut *(emulator_memory as *mut CEmulatorState);
+
+    let pc = match &state.wrapper {
+        EmulatorWrapper::Normal(emulator) => emulator.mcu_cpu.read_pc(),
+        EmulatorWrapper::Gdb(gdb_target) => gdb_target.emulator().mcu_cpu.read_pc(),
+    };
+
+    *value = pc;
+    EmulatorError::Success
+}
+
+/// Write the program counter (PC)
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+/// * `value` - Value to write to the PC
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * Appropriate error code on failure
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+#[no_mangle]
+pub unsafe extern "C" fn emulator_write_pc(
+    emulator_memory: *mut CEmulator,
+    value: c_uint,
+) -> EmulatorError {
+    if emulator_memory.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    let state = &mut *(emulator_memory as *mut CEmulatorState);
+
+    match &mut state.wrapper {
+        EmulatorWrapper::Normal(emulator) => emulator.mcu_cpu.write_pc(value),
+        EmulatorWrapper::Gdb(gdb_target) => gdb_target.emulator_mut().mcu_cpu.write_pc(value),
+    };
+
+    EmulatorError::Success
+}
+
+/// Set an external interrupt level
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+/// * `irq_num` - IRQ number to set (0-31)
+/// * `is_high` - 1 to set interrupt high, 0 to set interrupt low
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * Appropriate error code on failure
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+#[no_mangle]
+pub unsafe extern "C" fn emulator_set_external_interrupt(
+    emulator_memory: *mut CEmulator,
+    irq_num: c_uint,
+    is_high: c_uchar,
+) -> EmulatorError {
+    if emulator_memory.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    if irq_num > 31 {
+        return EmulatorError::InvalidArgs;
+    }
+
+    let state = &mut *(emulator_memory as *mut CEmulatorState);
+
+    // Use the PIC to set the external interrupt level
+    // We need to register an IRQ and then set its level
+    let pic: &std::rc::Rc<caliptra_emu_cpu::Pic> = match &mut state.wrapper {
+        EmulatorWrapper::Normal(emulator) => &emulator.pic,
+        EmulatorWrapper::Gdb(gdb_target) => &gdb_target.emulator().pic,
+    };
+
+    // Register the IRQ and set its level
+    let irq = pic.register_irq(irq_num as u8);
+    irq.set_level(is_high != 0);
+
+    EmulatorError::Success
+}
+
 unsafe fn convert_c_string(c_str: *const c_char) -> Result<String, std::str::Utf8Error> {
     if c_str.is_null() {
         return Ok(String::new());
@@ -867,6 +1197,118 @@ pub(crate) fn convert_optional_offset_size(value: c_longlong) -> Option<u32> {
         } else {
             Some(value as u32)
         }
+    }
+}
+
+/// Read from the auto_root_bus at the specified address
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+/// * `size` - Size of the read operation (1, 2, or 4 bytes)
+/// * `addr` - Address to read from
+/// * `value` - Pointer to store the read value
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * Appropriate error code on failure
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+/// * `value` must be a valid pointer to a u32
+#[no_mangle]
+pub unsafe extern "C" fn emulator_read_auto_root_bus(
+    emulator_memory: *mut CEmulator,
+    size: c_uint,
+    addr: c_uint,
+    value: *mut c_uint,
+) -> EmulatorError {
+    if emulator_memory.is_null() || value.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    let state = &mut *(emulator_memory as *mut CEmulatorState);
+
+    // Convert size to RvSize
+    let rv_size = match size {
+        1 => caliptra_emu_types::RvSize::Byte,
+        2 => caliptra_emu_types::RvSize::HalfWord,
+        4 => caliptra_emu_types::RvSize::Word,
+        _ => return EmulatorError::InvalidArgs,
+    };
+
+    let result = match &mut state.wrapper {
+        EmulatorWrapper::Normal(emulator) => emulator.mcu_cpu.bus.read(rv_size, addr),
+        EmulatorWrapper::Gdb(gdb_target) => {
+            gdb_target.emulator_mut().mcu_cpu.bus.read(rv_size, addr)
+        }
+    };
+
+    match result {
+        Ok(val) => {
+            *value = val;
+            EmulatorError::Success
+        }
+        Err(bus_error) => match bus_error {
+            caliptra_emu_bus::BusError::LoadAccessFault => EmulatorError::BusLoadAccessFault,
+            caliptra_emu_bus::BusError::LoadAddrMisaligned => EmulatorError::BusLoadAddrMisaligned,
+            _ => EmulatorError::InvalidArgs, // Fallback for other bus errors
+        },
+    }
+}
+
+/// Write to the auto_root_bus at the specified address
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+/// * `size` - Size of the write operation (1, 2, or 4 bytes)
+/// * `addr` - Address to write to
+/// * `value` - Value to write
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * Appropriate error code on failure
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+#[no_mangle]
+pub unsafe extern "C" fn emulator_write_auto_root_bus(
+    emulator_memory: *mut CEmulator,
+    size: c_uint,
+    addr: c_uint,
+    value: c_uint,
+) -> EmulatorError {
+    if emulator_memory.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    let state = &mut *(emulator_memory as *mut CEmulatorState);
+
+    // Convert size to RvSize
+    let rv_size = match size {
+        1 => caliptra_emu_types::RvSize::Byte,
+        2 => caliptra_emu_types::RvSize::HalfWord,
+        4 => caliptra_emu_types::RvSize::Word,
+        _ => return EmulatorError::InvalidArgs,
+    };
+
+    let result = match &mut state.wrapper {
+        EmulatorWrapper::Normal(emulator) => emulator.mcu_cpu.bus.write(rv_size, addr, value),
+        EmulatorWrapper::Gdb(gdb_target) => gdb_target
+            .emulator_mut()
+            .mcu_cpu
+            .bus
+            .write(rv_size, addr, value),
+    };
+
+    match result {
+        Ok(_) => EmulatorError::Success,
+        Err(bus_error) => match bus_error {
+            caliptra_emu_bus::BusError::StoreAccessFault => EmulatorError::BusStoreAccessFault,
+            caliptra_emu_bus::BusError::StoreAddrMisaligned => {
+                EmulatorError::BusStoreAddrMisaligned
+            }
+            _ => EmulatorError::InvalidArgs, // Fallback for other bus errors
+        },
     }
 }
 

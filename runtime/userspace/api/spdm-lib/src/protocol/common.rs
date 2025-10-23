@@ -5,6 +5,8 @@ use crate::error::{SpdmError, SpdmResult};
 use crate::protocol::{version::SpdmVersion, REQUESTER_CONTEXT_LEN, SPDM_CONTEXT_LEN};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
+pub const SPDM_NONCE_LEN: usize = 32;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum ReqRespCode {
     GetVersion = 0x84,

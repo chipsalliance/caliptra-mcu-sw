@@ -4,7 +4,7 @@ use crate::cert_store::CertStoreError;
 use crate::chunk_ctx::ChunkError;
 use crate::codec::CodecError;
 use crate::commands::error_rsp::ErrorCode;
-use crate::measurements::common::MeasurementsError;
+use crate::measurements::MeasurementsError;
 use crate::protocol::opaque_data::OpaqueDataError;
 use crate::protocol::SignCtxError;
 use crate::session::SessionError;
@@ -39,6 +39,7 @@ pub enum CommandError {
     BufferTooSmall,
     Codec(CodecError),
     ErrorCode(ErrorCode),
+    UnsupportedAsymAlgo,
     UnsupportedRequest,
     UnsupportedLargeResponse,
     SignCtx(SignCtxError),
