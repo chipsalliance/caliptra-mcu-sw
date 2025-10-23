@@ -153,7 +153,7 @@ impl Soc {
         if size_of_val(fuses.cptra_core_fmc_key_manifest_svn())
             != size_of_val(&self.registers.fuse_fmc_key_manifest_svn)
         {
-            fatal_error(McuError::SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
+            fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
         }
         self.registers
             .fuse_fmc_key_manifest_svn
@@ -171,14 +171,14 @@ impl Soc {
         if size_of_val(fuses.cptra_core_vendor_pk_hash_0())
             != size_of_val(&self.registers.fuse_vendor_pk_hash)
         {
-            fatal_error(McuError::SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
+            fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
         }
         for i in 0..fuses.cptra_core_vendor_pk_hash_0().len() / 4 {
             let word = u32::from_le_bytes(
                 fuses.cptra_core_vendor_pk_hash_0()[i * 4..i * 4 + 4]
                     .try_into()
                     .unwrap_or_else(|_| {
-                        fatal_error(McuError::SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
+                        fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
                     }),
             );
             romtime::print!("{}", HexWord(word));
@@ -190,13 +190,13 @@ impl Soc {
         if size_of_val(fuses.cptra_core_runtime_svn())
             != size_of_val(&self.registers.fuse_runtime_svn)
         {
-            fatal_error(McuError::SOC_RT_SVN_LEN_MISMATCH);
+            fatal_error(McuError::ROM_SOC_RT_SVN_LEN_MISMATCH);
         }
         for i in 0..fuses.cptra_core_runtime_svn().len() / 4 {
             let word = u32::from_le_bytes(
                 fuses.cptra_core_runtime_svn()[i * 4..i * 4 + 4]
                     .try_into()
-                    .unwrap_or_else(|_| fatal_error(McuError::SOC_RT_SVN_LEN_MISMATCH)),
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_RT_SVN_LEN_MISMATCH)),
             );
             self.registers.fuse_runtime_svn[i].set(word);
         }
@@ -205,13 +205,13 @@ impl Soc {
         if size_of_val(fuses.cptra_core_soc_manifest_svn())
             != size_of_val(&self.registers.fuse_soc_manifest_svn)
         {
-            fatal_error(McuError::SOC_MANIFEST_SVN_LEN_MISMATCH);
+            fatal_error(McuError::ROM_SOC_MANIFEST_SVN_LEN_MISMATCH);
         }
         for i in 0..fuses.cptra_core_soc_manifest_svn().len() / 4 {
             let word = u32::from_le_bytes(
                 fuses.cptra_core_soc_manifest_svn()[i * 4..i * 4 + 4]
                     .try_into()
-                    .unwrap_or_else(|_| fatal_error(McuError::SOC_MANIFEST_SVN_LEN_MISMATCH)),
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_MANIFEST_SVN_LEN_MISMATCH)),
             );
             self.registers.fuse_soc_manifest_svn[i].set(word);
         }
@@ -234,14 +234,14 @@ impl Soc {
         if size_of_val(fuses.cptra_ss_manuf_debug_unlock_token())
             != size_of_val(&self.registers.fuse_manuf_dbg_unlock_token)
         {
-            fatal_error(McuError::SOC_MANUF_DEBUG_UNLOCK_TOKEN_LEN_MISMATCH);
+            fatal_error(McuError::ROM_SOC_MANUF_DEBUG_UNLOCK_TOKEN_LEN_MISMATCH);
         }
         for i in 0..fuses.cptra_ss_manuf_debug_unlock_token().len() / 4 {
             let word = u32::from_le_bytes(
                 fuses.cptra_ss_manuf_debug_unlock_token()[i * 4..i * 4 + 4]
                     .try_into()
                     .unwrap_or_else(|_| {
-                        fatal_error(McuError::SOC_MANUF_DEBUG_UNLOCK_TOKEN_LEN_MISMATCH)
+                        fatal_error(McuError::ROM_SOC_MANUF_DEBUG_UNLOCK_TOKEN_LEN_MISMATCH)
                     }),
             );
             self.registers.fuse_manuf_dbg_unlock_token[i].set(word);
@@ -257,12 +257,12 @@ impl Soc {
         if size_of_val(fuses.cptra_core_soc_stepping_id())
             != size_of_val(&self.registers.fuse_soc_stepping_id)
         {
-            fatal_error(McuError::SOC_STEPPING_ID_LEN_MISMATCH);
+            fatal_error(McuError::ROM_SOC_STEPPING_ID_LEN_MISMATCH);
         }
         let soc_stepping_id = u16::from_le_bytes(
             fuses.cptra_core_soc_stepping_id()[0..2]
                 .try_into()
-                .unwrap_or_else(|_| fatal_error(McuError::SOC_STEPPING_ID_LEN_MISMATCH)),
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_STEPPING_ID_LEN_MISMATCH)),
         ) as u32;
         self.registers
             .fuse_soc_stepping_id
@@ -272,13 +272,15 @@ impl Soc {
         if size_of_val(fuses.cptra_core_anti_rollback_disable())
             != size_of_val(&self.registers.fuse_anti_rollback_disable)
         {
-            fatal_error(McuError::SOC_ANTI_ROLLBACK_DISABLE_LEN_MISMATCH);
+            fatal_error(McuError::ROM_SOC_ANTI_ROLLBACK_DISABLE_LEN_MISMATCH);
         }
         let anti_rollback_disable = u32::from_le_bytes(
             fuses
                 .cptra_core_anti_rollback_disable()
                 .try_into()
-                .unwrap_or_else(|_| fatal_error(McuError::SOC_ANTI_ROLLBACK_DISABLE_LEN_MISMATCH)),
+                .unwrap_or_else(|_| {
+                    fatal_error(McuError::ROM_SOC_ANTI_ROLLBACK_DISABLE_LEN_MISMATCH)
+                }),
         );
         self.registers
             .fuse_anti_rollback_disable
@@ -288,13 +290,15 @@ impl Soc {
         if size_of_val(fuses.cptra_core_idevid_cert_idevid_attr())
             != size_of_val(&self.registers.fuse_idevid_cert_attr)
         {
-            fatal_error(McuError::SOC_IDEVID_CERT_ATTR_LEN_MISMATCH);
+            fatal_error(McuError::ROM_SOC_IDEVID_CERT_ATTR_LEN_MISMATCH);
         }
         for i in 0..self.registers.fuse_idevid_cert_attr.len() {
             let word = u32::from_le_bytes(
                 fuses.cptra_core_idevid_cert_idevid_attr()[i * 4..i * 4 + 4]
                     .try_into()
-                    .unwrap_or_else(|_| fatal_error(McuError::SOC_IDEVID_CERT_ATTR_LEN_MISMATCH)),
+                    .unwrap_or_else(|_| {
+                        fatal_error(McuError::ROM_SOC_IDEVID_CERT_ATTR_LEN_MISMATCH)
+                    }),
             );
             self.registers.fuse_idevid_cert_attr[i].set(word);
         }
@@ -303,14 +307,14 @@ impl Soc {
         if size_of_val(fuses.cptra_core_idevid_manuf_hsm_identifier())
             != size_of_val(&self.registers.fuse_idevid_manuf_hsm_id)
         {
-            fatal_error(McuError::SOC_IDEVID_MANUF_HSM_ID_LEN_MISMATCH);
+            fatal_error(McuError::ROM_SOC_IDEVID_MANUF_HSM_ID_LEN_MISMATCH);
         }
         for i in 0..self.registers.fuse_idevid_manuf_hsm_id.len() {
             let word = u32::from_le_bytes(
                 fuses.cptra_core_idevid_manuf_hsm_identifier()[i * 4..i * 4 + 4]
                     .try_into()
                     .unwrap_or_else(|_| {
-                        fatal_error(McuError::SOC_IDEVID_MANUF_HSM_ID_LEN_MISMATCH)
+                        fatal_error(McuError::ROM_SOC_IDEVID_MANUF_HSM_ID_LEN_MISMATCH)
                     }),
             );
             self.registers.fuse_idevid_manuf_hsm_id[i].set(word);
@@ -334,26 +338,26 @@ impl Soc {
             let end = start + 48;
             if let Some(slice) = prod_dbg_unlock_pks_hashes.get_mut(start..end) {
                 if slice.len() != fuse_slice.len() {
-                    fatal_error(McuError::SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH);
+                    fatal_error(McuError::ROM_SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH);
                 }
                 slice.copy_from_slice(fuse_slice);
             } else {
                 // This is unreachable as prod_dbg_unlock_pks_hashes is 384 bytes.
-                fatal_error(McuError::SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH);
+                fatal_error(McuError::ROM_SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH);
             }
         }
         // Copy the single public key hashes buffer to the MCI CSRs.
         if size_of_val(&prod_dbg_unlock_pks_hashes)
             != size_of_val(&mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg)
         {
-            fatal_error(McuError::SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH)
+            fatal_error(McuError::ROM_SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH)
         }
         for i in 0..mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg.len() {
             let word = u32::from_le_bytes(
                 prod_dbg_unlock_pks_hashes[i * 4..i * 4 + 4]
                     .try_into()
                     .unwrap_or_else(|_| {
-                        fatal_error(McuError::SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH)
+                        fatal_error(McuError::ROM_SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH)
                     }),
             );
             mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg[i].set(word);
@@ -373,7 +377,7 @@ impl Soc {
         while !self.fw_ready() {
             if self.cptra_fw_fatal_error() {
                 romtime::println!("[mcu-rom] Caliptra reported a fatal error");
-                fatal_error(McuError::SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
+                fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
             }
         }
         // Clear the reset request interrupt
@@ -445,7 +449,7 @@ pub fn rom_start(params: RomParameters) {
         }
         McuResetReason::Invalid => {
             romtime::println!("[mcu-rom] Invalid reset reason: multiple bits set");
-            fatal_error(McuError::ROM_INVALID_RESET_REASON);
+            fatal_error(McuError::ROM_ROM_INVALID_RESET_REASON);
         }
     }
 }

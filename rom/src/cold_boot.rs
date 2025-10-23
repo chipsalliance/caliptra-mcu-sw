@@ -70,7 +70,7 @@ impl ColdBoot {
                         romtime::println!("[mcu-rom] Error sending mailbox command");
                     }
                 }
-                fatal_error(McuError::COLD_BOOT_FIELD_ENTROPY_PROG_START);
+                fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_START);
             }
             if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
                 match err {
@@ -84,7 +84,7 @@ impl ColdBoot {
                         romtime::println!("[mcu-rom] Error finishing mailbox command");
                     }
                 }
-                fatal_error(McuError::COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
+                fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
             };
 
             // Set status for each partition completion
@@ -267,7 +267,7 @@ impl BootFlow for ColdBoot {
         while !soc.ready_for_mbox() {
             if soc.cptra_fw_fatal_error() {
                 romtime::println!("[mcu-rom] Caliptra reported a fatal error");
-                fatal_error(McuError::COLD_BOOT_CALIPTRA_FATAL_ERROR_BEFORE_MB_READY);
+                fatal_error(McuError::ROM_COLD_BOOT_CALIPTRA_FATAL_ERROR_BEFORE_MB_READY);
             }
         }
 
@@ -287,7 +287,7 @@ impl BootFlow for ColdBoot {
                     romtime::println!("[mcu-rom] Error sending mailbox command: {:?}", err);
                 }
             }
-            fatal_error(McuError::COLD_BOOT_START_RI_DOWNLOAD_ERROR);
+            fatal_error(McuError::ROM_COLD_BOOT_START_RI_DOWNLOAD_ERROR);
         }
         mci.set_flow_checkpoint(McuRomBootStatus::RiDownloadFirmwareCommandSent.into());
 
@@ -309,7 +309,7 @@ impl BootFlow for ColdBoot {
                     romtime::println!("[mcu-rom] Error finishing mailbox command");
                 }
             }
-            fatal_error(McuError::COLD_BOOT_FINISH_RI_DOWNLOAD_ERROR);
+            fatal_error(McuError::ROM_COLD_BOOT_FINISH_RI_DOWNLOAD_ERROR);
         };
         mci.set_flow_checkpoint(McuRomBootStatus::RiDownloadFirmwareComplete.into());
         mci.set_flow_milestone(McuBootMilestones::RI_DOWNLOAD_COMPLETED.into());
@@ -321,7 +321,7 @@ impl BootFlow for ColdBoot {
                 mci.set_flow_checkpoint(McuRomBootStatus::FlashRecoveryFlowStarted.into());
 
                 crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
-                    .map_err(|_| fatal_error(McuError::COLD_BOOT_LOAD_IMAGE_ERROR))
+                    .map_err(|_| fatal_error(McuError::ROM_COLD_BOOT_LOAD_IMAGE_ERROR))
                     .unwrap();
 
                 romtime::println!("[mcu-rom] Flash Recovery flow complete");
@@ -346,7 +346,7 @@ impl BootFlow for ColdBoot {
             romtime::println!("[mcu-rom] Verifying firmware header");
             if !image_verifier.verify_header(header, &fuses) {
                 romtime::println!("Firmware header verification failed; halting");
-                fatal_error(McuError::COLD_BOOT_HEADER_VERIFY_ERROR);
+                fatal_error(McuError::ROM_COLD_BOOT_HEADER_VERIFY_ERROR);
             }
         }
 
@@ -357,7 +357,7 @@ impl BootFlow for ColdBoot {
         // Safety: this address is valid
         if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
             romtime::println!("Invalid firmware detected; halting");
-            fatal_error(McuError::COLD_BOOT_INVALID_FIRMWARE);
+            fatal_error(McuError::ROM_COLD_BOOT_INVALID_FIRMWARE);
         }
         romtime::println!("[mcu-rom] Firmware load detected");
         mci.set_flow_checkpoint(McuRomBootStatus::FirmwareValidationComplete.into());
@@ -388,6 +388,6 @@ impl BootFlow for ColdBoot {
         mci.set_flow_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
         mci.trigger_warm_reset();
         romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
-        fatal_error(McuError::COLD_BOOT_RESET_ERROR);
+        fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
     }
 }
