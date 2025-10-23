@@ -2709,6 +2709,7 @@ dependencies = [
  "mcu-config",
  "mcu-config-emulator",
  "mcu-config-fpga",
+ "mcu-error",
  "mcu-rom-common",
  "mcu-test-harness",
  "registers-generated",

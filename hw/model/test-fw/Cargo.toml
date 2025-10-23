@@ -22,6 +22,7 @@ caliptra-registers.workspace = true
 mcu-config.workspace = true
 mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true
+mcu-error.workspace = true
 mcu-rom-common.workspace = true
 mcu-test-harness.workspace = true
 registers-generated.workspace = true

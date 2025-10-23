@@ -6,9 +6,10 @@
 #![no_main]
 #![no_std]
 
+use mcu_error::McuError;
 use mcu_rom_common::{fatal_error, fatal_error_raw, McuBootMilestones, RomEnv};
 use registers_generated::mci;
-use romtime::{McuError, McuResetReason};
+use romtime::McuResetReason;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 // Needed to bring in startup code
