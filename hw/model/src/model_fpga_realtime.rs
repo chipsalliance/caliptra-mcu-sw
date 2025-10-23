@@ -19,7 +19,7 @@ use mcu_rom_common::{LifecycleControllerState, McuBootMilestones};
 use mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
-use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
+use mcu_testing_common::{update_ticks, MCU_RUNNING, MCU_RUNTIME_STARTED};
 use std::io::Write;
 use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
@@ -236,6 +236,7 @@ impl McuHwModel for ModelFpgaRealtime {
     fn step(&mut self) {
         self.base.step();
         self.handle_i3c();
+        update_ticks(self.cycle_count() / 100); // notify tests about current time, but reduce effective speed
     }
 
     fn new_unbooted(params: InitParams) -> Result<Self>
@@ -283,6 +284,7 @@ impl McuHwModel for ModelFpgaRealtime {
             uds_granularity_64: !params.uds_granularity_32,
             prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs,
             debug_intent: params.debug_intent,
+            bootfsm_break: params.bootfsm_break,
             cptra_obf_key: params.cptra_obf_key,
             csr_hmac_key: params.csr_hmac_key,
             itrng_nibbles: params.itrng_nibbles,
@@ -360,7 +362,7 @@ impl McuHwModel for ModelFpgaRealtime {
             hw.cycle_count() >= BOOT_CYCLES
                 || hw
                     .mci_boot_milestones()
-                    .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
+                    .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
         });
         println!(
             "Boot completed at cycle count {}, flow status {}",
@@ -369,7 +371,7 @@ impl McuHwModel for ModelFpgaRealtime {
         );
         assert!(self
             .mci_boot_milestones()
-            .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE));
+            .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
         MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         // turn off recovery
         self.base.recovery_started = false;
@@ -472,6 +474,10 @@ impl McuHwModel for ModelFpgaRealtime {
 
     fn mci_flow_status(&mut self) -> u32 {
         self.base.mci_flow_status()
+    }
+
+    fn warm_reset(&mut self) {
+        self.base.warm_reset()
     }
 }
 

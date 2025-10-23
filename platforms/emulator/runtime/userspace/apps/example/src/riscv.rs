@@ -37,26 +37,12 @@ pub(crate) fn print_to_console(buf: &str) {
     }
 }
 
-pub(crate) struct EmulatorExiter {}
-pub(crate) static mut EMULATOR_EXITER: EmulatorExiter = EmulatorExiter {};
-impl romtime::Exit for EmulatorExiter {
-    fn exit(&mut self, code: u32) {
-        // Safety: This is a safe memory address to write to for exiting the emulator.
-        unsafe {
-            // By writing to this address we can exit the emulator.
-            core::ptr::write_volatile(0x1000_2000 as *mut u32, code);
-        }
-    }
-}
-
 fn main() {
     // TODO: remove this when the emulator-specific pieces are moved to
     // platform/emulator/runtime
     unsafe {
         #[allow(static_mut_refs)]
         romtime::set_printer(&mut EMULATOR_WRITER);
-        #[allow(static_mut_refs)]
-        romtime::set_exiter(&mut EMULATOR_EXITER);
     }
 
     // setup the global allocator for futures

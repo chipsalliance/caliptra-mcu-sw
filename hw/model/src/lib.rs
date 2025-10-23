@@ -568,6 +568,8 @@ pub trait McuHwModel {
             Ok(Some(output))
         })
     }
+
+    fn warm_reset(&mut self);
 }
 
 #[ignore]

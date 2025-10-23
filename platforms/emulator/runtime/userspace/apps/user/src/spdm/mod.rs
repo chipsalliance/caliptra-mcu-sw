@@ -2,6 +2,7 @@
 
 mod cert_store;
 mod device_cert_store;
+mod device_measurements;
 mod endorsement_certs;
 
 use core::fmt::Write;
@@ -11,10 +12,14 @@ use libsyscall_caliptra::doe;
 use libsyscall_caliptra::mctp;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
+use libtock_platform::ErrorCode;
 use spdm_lib::codec::MessageBuf;
 use spdm_lib::context::{SpdmContext, MAX_SPDM_RESPONDER_BUF_SIZE};
+use spdm_lib::error::SpdmError;
+use spdm_lib::measurements::SpdmMeasurements;
 use spdm_lib::protocol::*;
 use spdm_lib::transport::common::SpdmTransport;
+use spdm_lib::transport::common::TransportError;
 use spdm_lib::transport::doe::DoeTransport;
 use spdm_lib::transport::mctp::MctpTransport;
 
@@ -80,6 +85,10 @@ async fn spdm_mctp_responder() {
     // Create a wrapper for the global certificate store
     let shared_cert_store = SharedCertStore::new();
 
+    let (mut device_pcr_quote, meas_value_info) =
+        device_measurements::pcr_quote::create_manifest_with_pcr_quote();
+    let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_pcr_quote);
+
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
         SECURE_SPDM_VERSIONS,
@@ -87,6 +96,7 @@ async fn spdm_mctp_responder() {
         local_capabilities,
         local_algorithms,
         &shared_cert_store,
+        device_measurements,
         None,
     ) {
         Ok(ctx) => ctx,
@@ -147,6 +157,10 @@ async fn spdm_doe_responder() {
     // Create a wrapper for the global certificate store
     let shared_cert_store = SharedCertStore::new();
 
+    let (mut device_pcr_quote, meas_value_info) =
+        device_measurements::pcr_quote::create_manifest_with_pcr_quote();
+    let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_pcr_quote);
+
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
         SECURE_SPDM_VERSIONS,
@@ -154,6 +168,7 @@ async fn spdm_doe_responder() {
         local_capabilities,
         local_algorithms,
         &shared_cert_store,
+        device_measurements,
         None,
     ) {
         Ok(ctx) => ctx,
@@ -174,6 +189,10 @@ async fn spdm_doe_responder() {
         match result {
             Ok(_) => {
                 writeln!(cw, "SPDM_DOE_RESPONDER: Process message successfully").unwrap();
+            }
+            Err(SpdmError::Transport(TransportError::DriverError(ErrorCode::NoDevice))) => {
+                writeln!(cw, "SPDM_DOE_RESPONDER: No DOE device, exiting task").unwrap();
+                break;
             }
             Err(e) => {
                 writeln!(cw, "SPDM_DOE_RESPONDER: Process message failed: {:?}", e).unwrap();

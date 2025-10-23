@@ -6,6 +6,7 @@ use core::panic;
 use mcu_builder::ImageCfg;
 use std::path::PathBuf;
 
+mod auth_manifest;
 mod cargo_lock;
 mod clippy;
 mod deps;
@@ -24,6 +25,8 @@ mod test;
 
 #[cfg(feature = "fpga_realtime")]
 use fpga::Fpga;
+
+use auth_manifest::AuthManifestCommands;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -74,8 +77,8 @@ enum Commands {
         #[arg(long)]
         streaming_boot: Option<PathBuf>,
 
-        /// List of SoC images with format: <path>,<load_addr>,<image_id>
-        /// Example: --soc_image image1.bin,0x80000000,2
+        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>
+        /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
         soc_images: Option<Vec<ImageCfg>>,
 
@@ -156,6 +159,26 @@ enum Commands {
 
         #[arg(long, default_value_t = false)]
         separate_runtimes: bool,
+
+        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>
+        /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2
+        #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
+        soc_images: Option<Vec<ImageCfg>>,
+
+        // MCU configuration to include in the SoC manifest
+        // format: mcu,<load_addr>,<staging_addr>,<image_id>,<exec_bit>
+        // Example: --mcu_cfg mcu,0x10000000,0x10000000,1,1
+        #[arg(
+            long = "mcu_cfg",
+            value_name = "MCU_CFG",
+            num_args = 1,
+            required = false
+        )]
+        mcu_cfg: Option<ImageCfg>,
+
+        /// Path to the PLDM manifest TOML file
+        #[arg(short, long, value_name = "MANIFEST", required = false)]
+        pldm_manifest: Option<String>,
     },
     /// Commands related to flash images
     FlashImage {
@@ -251,6 +274,11 @@ enum Commands {
         #[command(subcommand)]
         subcommand: EmulatorCbindingCommands,
     },
+    /// Auth Manifest generation and parsing
+    AuthManifest {
+        #[command(subcommand)]
+        subcommand: AuthManifestCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -269,8 +297,8 @@ enum FlashImageCommands {
         #[arg(long, value_name = "MCU_RUNTIME", required = true)]
         mcu_runtime: Option<String>,
 
-        /// List of SoC images with format: <path>,<load_addr>,<image_id>
-        /// Example: --soc_image /tmp/a.bin,0x80000000,2
+        /// List of SoC images
+        /// Example: --soc-images /tmp/a.bin --soc-images /tmp/b.bin
         #[arg(long, value_name = "SOC_IMAGE", num_args=1.., required = false)]
         soc_images: Option<Vec<String>>,
 
@@ -354,6 +382,9 @@ fn main() {
             rom_features,
             runtime_features,
             separate_runtimes,
+            soc_images,
+            mcu_cfg,
+            pldm_manifest,
         } => mcu_builder::all_build(mcu_builder::AllBuildArgs {
             output: output.as_deref(),
             platform: platform.as_deref(),
@@ -363,6 +394,9 @@ fn main() {
             rom_features: rom_features.as_deref(),
             runtime_features: runtime_features.as_deref(),
             separate_runtimes: *separate_runtimes,
+            soc_images: soc_images.clone(),
+            mcu_cfg: mcu_cfg.clone(),
+            pldm_manifest: pldm_manifest.as_deref(),
         }),
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),
         Commands::RuntimeBuild {
@@ -454,6 +488,13 @@ fn main() {
                 emulator_cbinding::build_emulator(*release)
             }
             EmulatorCbindingCommands::Clean { release } => emulator_cbinding::clean(*release),
+        },
+        Commands::AuthManifest { subcommand } => match subcommand {
+            AuthManifestCommands::Create {
+                images,
+                mcu_image,
+                output,
+            } => auth_manifest::create(images, mcu_image, output),
         },
     };
     result.unwrap_or_else(|e| {

@@ -5,7 +5,7 @@ use registers_generated::i3c::bits::{
     DeviceStatus0, HcControl, IndirectFifoCtrl0, QueueThldCtrl, RingHeadersSectionOffset,
     StbyCrCapabilities, StbyCrControl, StbyCrDeviceAddr, StbyCrVirtDeviceAddr, TtiQueueThldCtrl,
 };
-use romtime::{HexWord, StaticRef};
+use romtime::{HexWord, McuError, StaticRef};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 use crate::fatal_error;
@@ -40,7 +40,7 @@ impl I3c {
             .read(RingHeadersSectionOffset::SectionOffset);
         if rhso != 0 {
             romtime::println!("[mcu-rom-i3c] RING_HEADERS_SECTION_OFFSET is not 0");
-            fatal_error(0x101);
+            fatal_error(McuError::I3C_CONFIG_RING_HEADER_ERROR);
         }
 
         // initialize timing registers
@@ -116,7 +116,7 @@ impl I3c {
             .is_set(StbyCrCapabilities::TargetXactSupport)
         {
             romtime::println!("[mcu-rom-i3c] I3C target transaction support is not enabled");
-            fatal_error(0x102)
+            fatal_error(McuError::I3C_CONFIG_STDBY_CTRL_MODE_ERROR)
         }
 
         // program a static address

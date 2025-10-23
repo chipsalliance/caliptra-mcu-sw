@@ -25,7 +25,7 @@ fn run() -> ! {
 
     // This is used to tell the hardware model it is ready to start testing
     mci.set_flow_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
-    mci.set_flow_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
+    mci.set_flow_milestone(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE.into());
 
     let mut replay_buf_len = 0;
     let mut replay_buf = [0u32; 2048];
