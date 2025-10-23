@@ -14,13 +14,12 @@ Abstract:
 
 #![allow(clippy::empty_loop)]
 
-use romtime::McuError;
-
 use crate::{
     fatal_error, BootFlow, McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters,
     MCU_MEMORY_MAP,
 };
 use core::fmt::Write;
+use mcu_error::McuError;
 
 pub struct WarmBoot {}
 

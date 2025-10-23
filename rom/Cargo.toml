@@ -12,6 +12,7 @@ bitflags.workspace = true
 caliptra-api.workspace = true
 flash-image.workspace = true
 mcu-config.workspace = true
+mcu-error.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true
 smlang.workspace = true

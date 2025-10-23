@@ -17,7 +17,7 @@ use crate::{
     MCU_MEMORY_MAP,
 };
 use core::fmt::Write;
-use romtime::McuError;
+use mcu_error::McuError;
 
 pub struct FwBoot {}
 

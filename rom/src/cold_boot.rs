@@ -20,7 +20,8 @@ use caliptra_api::mailbox::{CommandId, FeProgReq, MailboxReqHeader};
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use core::fmt::Write;
-use romtime::{CaliptraSoC, HexWord, McuError};
+use mcu_error::McuError;
+use romtime::{CaliptraSoC, HexWord};
 use tock_registers::interfaces::Readable;
 use zerocopy::{transmute, IntoBytes};
 

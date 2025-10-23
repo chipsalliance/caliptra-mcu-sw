@@ -1,11 +1,12 @@
 // Licensed under the Apache-2.0 license
 
+use mcu_error::McuError;
 use registers_generated::i3c;
 use registers_generated::i3c::bits::{
     DeviceStatus0, HcControl, IndirectFifoCtrl0, QueueThldCtrl, RingHeadersSectionOffset,
     StbyCrCapabilities, StbyCrControl, StbyCrDeviceAddr, StbyCrVirtDeviceAddr, TtiQueueThldCtrl,
 };
-use romtime::{HexWord, McuError, StaticRef};
+use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 use crate::fatal_error;

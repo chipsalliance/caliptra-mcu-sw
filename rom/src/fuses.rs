@@ -1,10 +1,11 @@
 // Licensed under the Apache-2.0 license
 
 use core::fmt::Write;
+use mcu_error::{McuError, McuResult};
 use registers_generated::fuses::Fuses;
 use registers_generated::otp_ctrl;
 use registers_generated::{fuses, lc_ctrl};
-use romtime::{HexBytes, HexWord, McuError, McuResult, StaticRef};
+use romtime::{HexBytes, HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
 use crate::fatal_error;

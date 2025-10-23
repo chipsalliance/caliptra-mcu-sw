@@ -19,7 +19,8 @@ use crate::MCU_MEMORY_MAP;
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters};
 use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
 use core::fmt::Write;
-use romtime::{HexWord, McuError};
+use mcu_error::McuError;
+use romtime::HexWord;
 
 pub struct FwHitlessUpdate {}
 

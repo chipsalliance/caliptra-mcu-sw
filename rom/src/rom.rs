@@ -27,11 +27,12 @@ use crate::McuBootMilestones;
 use crate::RomEnv;
 use crate::WarmBoot;
 use core::fmt::Write;
+use mcu_error::McuError;
 use registers_generated::fuses::Fuses;
 use registers_generated::mci;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use registers_generated::soc;
-use romtime::{HexWord, McuError, StaticRef};
+use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
 

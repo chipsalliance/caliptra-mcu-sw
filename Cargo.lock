@@ -2794,6 +2794,7 @@ dependencies = [
  "caliptra-api",
  "flash-image",
  "mcu-config",
+ "mcu-error",
  "registers-generated",
  "riscv-csr",
  "romtime",
