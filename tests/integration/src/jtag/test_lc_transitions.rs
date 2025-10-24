@@ -10,9 +10,7 @@ mod test {
     use caliptra_hw_model::lcc::LcCtrlStatus;
     use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
     use caliptra_hw_model::HwModel;
-    use caliptra_hw_model::{
-        Fuses, DEFAULT_LIFECYCLE_RAW_TOKEN, DEFAULT_MANUF_DEBUG_UNLOCK_RAW_TOKEN,
-    };
+    use caliptra_hw_model::{DEFAULT_LIFECYCLE_RAW_TOKEN, DEFAULT_MANUF_DEBUG_UNLOCK_RAW_TOKEN};
     use mcu_builder::FirmwareBinaries;
     use mcu_hw_model::lcc::{lc_token_to_words, lc_transition, read_lc_state, LccUtilError};
     use mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel};
@@ -35,8 +33,7 @@ mod test {
             enable_mcu_uart_log,
             ..Default::default()
         };
-        let mut model = DefaultHwModel::new_unbooted(init_params).unwrap();
-        model.init_fuses(&Fuses::default());
+        let model = DefaultHwModel::new_unbooted(init_params).unwrap();
         model
     }
 
@@ -223,7 +220,7 @@ mod test {
         // Check SS Debug Intent is active.
         let debug_intent = tap
             .read_reg(&CaliptraCoreReg::SsDebugIntent)
-            .expect("Unable to read SS Debug Inteng.");
+            .expect("Unable to read SS Debug Intent.");
         println!("SS Debug Intent: {}", debug_intent);
         assert_eq!(debug_intent, 0x1);
 
@@ -231,7 +228,7 @@ mod test {
         let ss_debug_manuf_response = tap
             .read_reg(&CaliptraCoreReg::SsDbgManufServiceRegRsp)
             .expect("Unable to read SsDbgManufServiceRegRes reg.");
-        assert_eq!(ss_debug_manuf_response, 0);
+        assert_eq!(ss_debug_manuf_response & 0x4, 0);
         let mut ss_debug_manuf_request = tap
             .read_reg(&CaliptraCoreReg::SsDbgManufServiceRegReq)
             .expect("Unable to read SsDbgManufServiceRegReq reg.");

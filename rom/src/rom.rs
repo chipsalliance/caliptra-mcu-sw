@@ -31,8 +31,7 @@ use registers_generated::fuses::Fuses;
 use registers_generated::mci;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use registers_generated::soc;
-use romtime::McuError;
-use romtime::{HexWord, StaticRef};
+use romtime::{HexWord, McuError, StaticRef};
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -125,9 +124,10 @@ impl Soc {
         self.registers.ss_caliptra_dma_axi_user.set(value);
     }
 
-    pub fn populate_fuses(&self, fuses: &Fuses, field_entropy: bool) {
+    pub fn populate_fuses(&self, fuses: &Fuses, mci: &romtime::Mci, field_entropy: bool) {
         // secret fuses are populated by a hardware state machine, so we can skip those
 
+        // Field Entropy.
         let offset = if field_entropy {
             registers_generated::fuses::SECRET_PROD_PARTITION_0_BYTE_OFFSET
         } else {
@@ -140,6 +140,7 @@ impl Soc {
         self.registers.ss_uds_seed_base_addr_l.set(offset as u32);
         self.registers.ss_uds_seed_base_addr_h.set(0);
 
+        // PQC Key Type.
         let pqc_type = match fuses.cptra_core_pqc_key_type_0()[0] & 1 {
             MLDSA_FUSE_VALUE => MLDSA_CALIPTRA_VALUE,
             LMS_FUSE_VALUE => LMS_CALIPTRA_VALUE,
@@ -148,24 +149,37 @@ impl Soc {
         self.registers.fuse_pqc_key_type.set(pqc_type as u32);
         romtime::println!("[mcu-fuse-write] Setting vendor PQC type to {}", pqc_type);
 
-        // TODO: vendor-specific fuses when those are supported
+        // FMC Key Manifest SVN.
+        if size_of_val(fuses.cptra_core_fmc_key_manifest_svn())
+            != size_of_val(&self.registers.fuse_fmc_key_manifest_svn)
+        {
+            fatal_error(McuError::SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
+        }
         self.registers
             .fuse_fmc_key_manifest_svn
             .set(u32::from_le_bytes(
-                fuses.cptra_core_fmc_key_manifest_svn().try_into().unwrap(),
+                fuses
+                    .cptra_core_fmc_key_manifest_svn()
+                    .try_into()
+                    .unwrap_or_else(|_| {
+                        fatal_error(McuError::SOC_FMC_KEY_MANIFEST_SVN_LEN_MISMATCH)
+                    }),
             ));
 
+        // Vendor PK Hash.
         romtime::print!("[mcu-fuse-write] Writing fuse key vendor PK hash: ");
-        if fuses.cptra_core_vendor_pk_hash_0().len() != self.registers.fuse_vendor_pk_hash.len() * 4
+        if size_of_val(fuses.cptra_core_vendor_pk_hash_0())
+            != size_of_val(&self.registers.fuse_vendor_pk_hash)
         {
-            romtime::println!("[mcu-fuse-write] Key manifest PK hash length mismatch");
             fatal_error(McuError::SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
         }
         for i in 0..fuses.cptra_core_vendor_pk_hash_0().len() / 4 {
             let word = u32::from_le_bytes(
                 fuses.cptra_core_vendor_pk_hash_0()[i * 4..i * 4 + 4]
                     .try_into()
-                    .unwrap(),
+                    .unwrap_or_else(|_| {
+                        fatal_error(McuError::SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
+                    }),
             );
             romtime::print!("{}", HexWord(word));
             self.registers.fuse_vendor_pk_hash[i].set(word);
@@ -195,85 +209,177 @@ impl Soc {
         romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
         romtime::println!("");
 
-        // TODO: this seems to not exist any more
-        // self.registers.fuse_key_manifest_pk_hash_mask[0].set(fuses.key_manifest_pk_hash_mask());
-        // if fuses.owner_pk_hash().len() != self.registers.cptra_owner_pk_hash.len() {
-        //     romtime::println!("[mcu-fuse-write] Owner PK hash length mismatch");
-        //     fatal_error();
-        // }
-        //romtime::println!("");
-        if fuses.cptra_core_runtime_svn().len() != self.registers.fuse_runtime_svn.len() * 4 {
-            romtime::println!("[mcu-fuse-write] Runtime SVN length mismatch");
+        // Runtime SVN.
+        if size_of_val(fuses.cptra_core_runtime_svn())
+            != size_of_val(&self.registers.fuse_runtime_svn)
+        {
             fatal_error(McuError::SOC_RT_SVN_LEN_MISMATCH);
         }
         for i in 0..fuses.cptra_core_runtime_svn().len() / 4 {
             let word = u32::from_le_bytes(
                 fuses.cptra_core_runtime_svn()[i * 4..i * 4 + 4]
                     .try_into()
-                    .unwrap(),
+                    .unwrap_or_else(|_| fatal_error(McuError::SOC_RT_SVN_LEN_MISMATCH)),
             );
             self.registers.fuse_runtime_svn[i].set(word);
         }
 
-        // Set SoC Manifest SVN
-        if fuses.cptra_core_soc_manifest_svn().len()
-            != self.registers.fuse_soc_manifest_svn.len() * 4
+        // SoC Manifest SVN.
+        if size_of_val(fuses.cptra_core_soc_manifest_svn())
+            != size_of_val(&self.registers.fuse_soc_manifest_svn)
         {
-            romtime::println!("[mcu-fuse-write] SoC Manifest SVN length mismatch");
             fatal_error(McuError::SOC_MANIFEST_SVN_LEN_MISMATCH);
         }
         for i in 0..fuses.cptra_core_soc_manifest_svn().len() / 4 {
             let word = u32::from_le_bytes(
                 fuses.cptra_core_soc_manifest_svn()[i * 4..i * 4 + 4]
                     .try_into()
-                    .unwrap(),
+                    .unwrap_or_else(|_| fatal_error(McuError::SOC_MANIFEST_SVN_LEN_MISMATCH)),
             );
             self.registers.fuse_soc_manifest_svn[i].set(word);
         }
 
-        // Set SoC Manifest Max SVN
-        let word = u32::from_le_bytes(fuses.cptra_core_soc_manifest_max_svn().try_into().unwrap());
+        // SoC Manifest Max SVN.
+        if size_of_val(fuses.cptra_core_soc_manifest_max_svn())
+            != size_of_val(&self.registers.fuse_soc_manifest_max_svn)
+        {
+            fatal_error(McuError::SOC_MANIFEST_MAX_SVN_LEN_MISMATCH);
+        }
+        let word = u32::from_le_bytes(
+            fuses
+                .cptra_core_soc_manifest_max_svn()
+                .try_into()
+                .unwrap_or_else(|_| fatal_error(McuError::SOC_MANIFEST_MAX_SVN_LEN_MISMATCH)),
+        );
         self.registers.fuse_soc_manifest_max_svn.set(word);
 
-        // TODO
-        // self.registers
-        //     .fuse_anti_rollback_disable
-        //     .set(fuses.anti_rollback_disable());
-        // TODO: fix these
-        // for i in 0..self.registers.fuse_idevid_cert_attr.len() {
-        //     self.registers.fuse_idevid_cert_attr[i].set(fuses.cptra_core_idevid_cert_idevid_attr()[i]);
-        // }
-        // for i in 0..self.registers.fuse_idevid_manuf_hsm_id.len() {
-        //     self.registers.fuse_idevid_manuf_hsm_id[i].set(fuses.idevid_manuf_hsm_id()[i]);
-        // }
-        // TODO: read the lifecycle partition from the lifecycle controller
-        // self.registers
-        //     .fuse_life_cycle
-        //     .write(soc::bits::FuseLifeCycle::LifeCycle.val(..));
-        // self.registers.fuse_lms_revocation.set(u32::from_le_bytes(
-        //     fuses.cptra_core_lms_revocation_0().try_into().unwrap(),
-        // ));
-        // TODO
-        //self.registers.fuse_mldsa_revocation.set(fuses.mldsa_revocation());
-        let soc_stepping_id =
-            u16::from_le_bytes(fuses.cptra_core_soc_stepping_id()[0..2].try_into().unwrap()) as u32;
-        self.registers
-            .fuse_soc_stepping_id
-            .write(soc::bits::FuseSocSteppingId::SocSteppingId.val(soc_stepping_id));
-
+        // Manuf Debug Unlock Token
         if size_of_val(fuses.cptra_ss_manuf_debug_unlock_token())
             != size_of_val(&self.registers.fuse_manuf_dbg_unlock_token)
         {
-            romtime::println!("[mcu-fuse-write] SS manuf debug unlock token length mismatch");
             fatal_error(McuError::SOC_MANUF_DEBUG_UNLOCK_TOKEN_LEN_MISMATCH);
         }
         for i in 0..fuses.cptra_ss_manuf_debug_unlock_token().len() / 4 {
             let word = u32::from_le_bytes(
                 fuses.cptra_ss_manuf_debug_unlock_token()[i * 4..i * 4 + 4]
                     .try_into()
-                    .unwrap(),
+                    .unwrap_or_else(|_| {
+                        fatal_error(McuError::SOC_MANUF_DEBUG_UNLOCK_TOKEN_LEN_MISMATCH)
+                    }),
             );
             self.registers.fuse_manuf_dbg_unlock_token[i].set(word);
+        }
+
+        // TODO: vendor-specific fuses when those are supported
+        // TODO: load ECC Revocation CSRs.
+        // TODO: load LMS Revocation CSRs.
+        // TODO: load MLDSA Revocation CSRs.
+        // TODO: load HEK Seed CSRs.
+
+        // SoC Stepping ID (only 16-bits are relevant).
+        if size_of_val(fuses.cptra_core_soc_stepping_id())
+            != size_of_val(&self.registers.fuse_soc_stepping_id)
+        {
+            fatal_error(McuError::SOC_STEPPING_ID_LEN_MISMATCH);
+        }
+        let soc_stepping_id = u16::from_le_bytes(
+            fuses.cptra_core_soc_stepping_id()[0..2]
+                .try_into()
+                .unwrap_or_else(|_| fatal_error(McuError::SOC_STEPPING_ID_LEN_MISMATCH)),
+        ) as u32;
+        self.registers
+            .fuse_soc_stepping_id
+            .write(soc::bits::FuseSocSteppingId::SocSteppingId.val(soc_stepping_id));
+
+        // Anti Rollback Disable.
+        if size_of_val(fuses.cptra_core_anti_rollback_disable())
+            != size_of_val(&self.registers.fuse_anti_rollback_disable)
+        {
+            fatal_error(McuError::SOC_ANTI_ROLLBACK_DISABLE_LEN_MISMATCH);
+        }
+        let anti_rollback_disable = u32::from_le_bytes(
+            fuses
+                .cptra_core_anti_rollback_disable()
+                .try_into()
+                .unwrap_or_else(|_| fatal_error(McuError::SOC_ANTI_ROLLBACK_DISABLE_LEN_MISMATCH)),
+        );
+        self.registers
+            .fuse_anti_rollback_disable
+            .write(soc::bits::FuseAntiRollbackDisable::Dis.val(anti_rollback_disable));
+
+        // IDevID Cert Attr.
+        if size_of_val(fuses.cptra_core_idevid_cert_idevid_attr())
+            != size_of_val(&self.registers.fuse_idevid_cert_attr)
+        {
+            fatal_error(McuError::SOC_IDEVID_CERT_ATTR_LEN_MISMATCH);
+        }
+        for i in 0..self.registers.fuse_idevid_cert_attr.len() {
+            let word = u32::from_le_bytes(
+                fuses.cptra_core_idevid_cert_idevid_attr()[i * 4..i * 4 + 4]
+                    .try_into()
+                    .unwrap_or_else(|_| fatal_error(McuError::SOC_IDEVID_CERT_ATTR_LEN_MISMATCH)),
+            );
+            self.registers.fuse_idevid_cert_attr[i].set(word);
+        }
+
+        // IDevID Manuf HSM ID.
+        if size_of_val(fuses.cptra_core_idevid_manuf_hsm_identifier())
+            != size_of_val(&self.registers.fuse_idevid_manuf_hsm_id)
+        {
+            fatal_error(McuError::SOC_IDEVID_MANUF_HSM_ID_LEN_MISMATCH);
+        }
+        for i in 0..self.registers.fuse_idevid_manuf_hsm_id.len() {
+            let word = u32::from_le_bytes(
+                fuses.cptra_core_idevid_manuf_hsm_identifier()[i * 4..i * 4 + 4]
+                    .try_into()
+                    .unwrap_or_else(|_| {
+                        fatal_error(McuError::SOC_IDEVID_MANUF_HSM_ID_LEN_MISMATCH)
+                    }),
+            );
+            self.registers.fuse_idevid_manuf_hsm_id[i].set(word);
+        }
+
+        // Prod Debug Unlock Public Key Hashes.
+        // Copy all 8 prod debug unlock public key hashes into a single buffer.
+        let mut prod_dbg_unlock_pks_hashes = [0u8; 384];
+        let fuse_slices = [
+            &fuses.cptra_ss_prod_debug_unlock_pks_0(),
+            &fuses.cptra_ss_prod_debug_unlock_pks_1(),
+            &fuses.cptra_ss_prod_debug_unlock_pks_2(),
+            &fuses.cptra_ss_prod_debug_unlock_pks_3(),
+            &fuses.cptra_ss_prod_debug_unlock_pks_4(),
+            &fuses.cptra_ss_prod_debug_unlock_pks_5(),
+            &fuses.cptra_ss_prod_debug_unlock_pks_6(),
+            &fuses.cptra_ss_prod_debug_unlock_pks_7(),
+        ];
+        for (i, fuse_slice) in fuse_slices.iter().enumerate() {
+            let start = i * 48;
+            let end = start + 48;
+            if let Some(slice) = prod_dbg_unlock_pks_hashes.get_mut(start..end) {
+                if slice.len() != fuse_slice.len() {
+                    fatal_error(McuError::SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH);
+                }
+                slice.copy_from_slice(fuse_slice);
+            } else {
+                // This is unreachable as prod_dbg_unlock_pks_hashes is 384 bytes.
+                fatal_error(McuError::SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH);
+            }
+        }
+        // Copy the single public key hashes buffer to the MCI CSRs.
+        if size_of_val(&prod_dbg_unlock_pks_hashes)
+            != size_of_val(&mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg)
+        {
+            fatal_error(McuError::SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH)
+        }
+        for i in 0..mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg.len() {
+            let word = u32::from_le_bytes(
+                prod_dbg_unlock_pks_hashes[i * 4..i * 4 + 4]
+                    .try_into()
+                    .unwrap_or_else(|_| {
+                        fatal_error(McuError::SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH)
+                    }),
+            );
+            mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg[i].set(word);
         }
     }
 

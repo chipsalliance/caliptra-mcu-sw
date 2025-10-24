@@ -164,28 +164,63 @@ impl McuError {
             "I3C config standby controller mode error"
         ),
         (
-            SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH,
+            SOC_FMC_KEY_MANIFEST_SVN_LEN_MISMATCH,
             0x5_0000,
+            "SOC FMC key manifest SVN length mismatch"
+        ),
+        (
+            SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH,
+            0x5_0001,
             "SOC key manifest PK hash length mismatch"
         ),
         (
             SOC_RT_SVN_LEN_MISMATCH,
-            0x5_0001,
+            0x5_0002,
             "Runtime SVN length mismatch"
         ),
         (
             SOC_MANIFEST_SVN_LEN_MISMATCH,
-            0x5_0002,
+            0x5_0003,
             "SOC Manifest SVN length mismatch"
         ),
         (
+            SOC_MANIFEST_MAX_SVN_LEN_MISMATCH,
+            0x5_0004,
+            "SOC Manifest Max SVN length mismatch"
+        ),
+        (
             SOC_MANUF_DEBUG_UNLOCK_TOKEN_LEN_MISMATCH,
-            0x5_0003,
+            0x5_0005,
             "SOC manuf debug unlock token length mismatch"
         ),
         (
+            SOC_STEPPING_ID_LEN_MISMATCH,
+            0x5_0006,
+            "SOC stepping ID length mismatch"
+        ),
+        (
+            SOC_ANTI_ROLLBACK_DISABLE_LEN_MISMATCH,
+            0x5_0007,
+            "SOC stepping ID length mismatch"
+        ),
+        (
+            SOC_IDEVID_CERT_ATTR_LEN_MISMATCH,
+            0x5_0008,
+            "SOC IDevID Cert Attr length mismatch"
+        ),
+        (
+            SOC_IDEVID_MANUF_HSM_ID_LEN_MISMATCH,
+            0x5_0009,
+            "SOC IDevID Manuf HSM ID length mismatch"
+        ),
+        (
+            SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH,
+            0x5_000A,
+            "SOC Prod Debug Unlock PKS Hash length mismatch"
+        ),
+        (
             SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY,
-            0x5_0004,
+            0x5_000B,
             "SOC Caliptra fatal error before firmware ready"
         ),
     ];
