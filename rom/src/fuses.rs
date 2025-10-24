@@ -1,10 +1,11 @@
 // Licensed under the Apache-2.0 license
 
 use core::fmt::Write;
+use mcu_error::{McuError, McuResult};
 use registers_generated::fuses::Fuses;
 use registers_generated::otp_ctrl;
 use registers_generated::{fuses, lc_ctrl};
-use romtime::{HexBytes, HexWord, McuError, McuResult, StaticRef};
+use romtime::{HexBytes, HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
 use crate::fatal_error;
@@ -332,35 +333,35 @@ impl Lifecycle {
             }
             if status.is_set(lc_ctrl::bits::Status::TransitionError) {
                 romtime::println!("[mcu-rom-lcc] Transition error detected.");
-                fatal_error(McuError::LC_TRANSITION_ERROR);
+                fatal_error(McuError::ROM_LC_TRANSITION_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::TokenError) {
                 romtime::println!("[mcu-rom-lcc] Token error detected.");
-                fatal_error(McuError::LC_TOKEN_ERROR);
+                fatal_error(McuError::ROM_LC_TOKEN_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::OtpError) {
                 romtime::println!("[mcu-rom-lcc] OTP error detected.");
-                fatal_error(McuError::LC_OTP_ERROR);
+                fatal_error(McuError::ROM_LC_OTP_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::FlashRmaError) {
                 romtime::println!("[mcu-rom-lcc] FLASH RMA error detected.");
-                fatal_error(McuError::LC_FLASH_RMA_ERROR);
+                fatal_error(McuError::ROM_LC_FLASH_RMA_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::TransitionCountError) {
                 romtime::println!("[mcu-rom-lcc] Transition count error detected.");
-                fatal_error(McuError::LC_TRANSITION_COUNT_ERROR);
+                fatal_error(McuError::ROM_LC_TRANSITION_COUNT_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::StateError) {
                 romtime::println!("[mcu-rom-lcc] State error detected.");
-                fatal_error(McuError::LC_STATE_ERROR);
+                fatal_error(McuError::ROM_LC_STATE_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::BusIntegError) {
                 romtime::println!("[mcu-rom-lcc] Bus integrity error detected.");
-                fatal_error(McuError::LC_BUS_INTEG_ERROR);
+                fatal_error(McuError::ROM_LC_BUS_INTEG_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::OtpPartitionError) {
                 romtime::println!("[mcu-rom-lcc] OTP partition error detected.");
-                fatal_error(McuError::LC_OTP_PARTITION_ERROR);
+                fatal_error(McuError::ROM_LC_OTP_PARTITION_ERROR);
             }
         }
 
@@ -401,7 +402,7 @@ impl Otp {
                 "[mcu-rom-otp] OTP error: {}",
                 self.registers.otp_status.get()
             );
-            return Err(McuError::OTP_INIT_STATUS_ERROR);
+            return Err(McuError::ROM_OTP_INIT_STATUS_ERROR);
         }
 
         // OTP DAI status should be idle
@@ -411,7 +412,7 @@ impl Otp {
             .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
         {
             romtime::println!("[mcu-rom-otp] OTP not idle");
-            return Err(McuError::OTP_INIT_NOT_IDLE);
+            return Err(McuError::ROM_OTP_INIT_NOT_IDLE);
         }
 
         // Enable periodic background checks
@@ -445,7 +446,7 @@ impl Otp {
 
     fn read_data(&self, addr: usize, len: usize, data: &mut [u8]) -> McuResult<()> {
         if data.len() < len || len % 4 != 0 {
-            return Err(McuError::OTP_INVALID_DATA_ERROR);
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
         }
         for (i, chunk) in data[..len].chunks_exact_mut(4).enumerate() {
             let word = self.read_word(addr / 4 + i)?;
@@ -480,7 +481,7 @@ impl Otp {
 
         if let Some(err) = self.check_error() {
             romtime::println!("Error reading fuses: {}", HexWord(err));
-            return Err(McuError::OTP_READ_ERROR);
+            return Err(McuError::ROM_OTP_READ_ERROR);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
     }
@@ -521,7 +522,7 @@ impl Otp {
         if let Some(err) = self.check_error() {
             romtime::println!("Error writing fuses: {}", HexWord(err));
             self.print_errors();
-            return Err(McuError::OTP_WRITE_DWORD_ERROR);
+            return Err(McuError::ROM_OTP_WRITE_DWORD_ERROR);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
     }
@@ -555,7 +556,7 @@ impl Otp {
         if let Some(err) = self.check_error() {
             romtime::println!("[mcu-rom] Error writing fuses: {}", HexWord(err));
             self.print_errors();
-            return Err(McuError::OTP_WRITE_WORD_ERROR);
+            return Err(McuError::ROM_OTP_WRITE_WORD_ERROR);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
     }
@@ -591,7 +592,7 @@ impl Otp {
         if let Some(err) = self.check_error() {
             romtime::println!("[mcu-rom] Error writing digest: {}", HexWord(err));
             self.print_errors();
-            return Err(McuError::OTP_FINALIZE_DIGEST_ERROR);
+            return Err(McuError::ROM_OTP_FINALIZE_DIGEST_ERROR);
         }
         Ok(())
     }

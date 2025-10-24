@@ -6,9 +6,10 @@
 #![no_main]
 #![no_std]
 
+use mcu_error::McuError;
 use mcu_rom_common::{fatal_error, fatal_error_raw, McuBootMilestones, RomEnv};
 use registers_generated::mci;
-use romtime::{McuError, McuResetReason};
+use romtime::McuResetReason;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 // Needed to bring in startup code
@@ -21,7 +22,7 @@ fn wait_for_firmware_ready(mci: &romtime::Mci, cptra: &mcu_rom_common::Soc) {
     while !notif0.is_set(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts) {
         if cptra.cptra_fw_fatal_error() {
             romtime::println!("[mcu-rom] Caliptra reported a fatal error");
-            fatal_error(McuError::COLD_BOOT_CALIPTRA_FATAL_ERROR_BEFORE_MB_READY);
+            fatal_error(McuError::ROM_COLD_BOOT_CALIPTRA_FATAL_ERROR_BEFORE_MB_READY);
         }
     }
     // Clear the reset request interrupt
@@ -97,7 +98,7 @@ fn run() -> ! {
         }
         reason => {
             romtime::println!("[mcu-rom] Invalid reset reason {reason:?}");
-            fatal_error(McuError::ROM_INVALID_RESET_REASON);
+            fatal_error(McuError::ROM_ROM_INVALID_RESET_REASON);
         }
     }
 }

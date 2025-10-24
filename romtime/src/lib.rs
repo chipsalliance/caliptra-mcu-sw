@@ -4,8 +4,6 @@
 #![allow(static_mut_refs)]
 #![cfg_attr(target_arch = "riscv32", feature(riscv_ext_intrinsics))]
 
-mod error;
-pub use error::*;
 mod mci;
 pub use mci::*;
 mod soc_manager;

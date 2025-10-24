@@ -89,6 +89,6 @@ pub fn fatal_error_raw(code: u32) -> ! {
 
 #[inline(never)]
 #[allow(dead_code)]
-pub fn fatal_error(error: romtime::McuError) -> ! {
+pub fn fatal_error(error: mcu_error::McuError) -> ! {
     fatal_error_raw(error.into())
 }

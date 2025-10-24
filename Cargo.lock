@@ -2651,6 +2651,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-error"
+version = "0.1.0"
+
+[[package]]
 name = "mcu-hw-model"
 version = "0.1.0"
 dependencies = [
@@ -2705,6 +2709,7 @@ dependencies = [
  "mcu-config",
  "mcu-config-emulator",
  "mcu-config-fpga",
+ "mcu-error",
  "mcu-rom-common",
  "mcu-test-harness",
  "registers-generated",
@@ -2790,6 +2795,7 @@ dependencies = [
  "caliptra-api",
  "flash-image",
  "mcu-config",
+ "mcu-error",
  "registers-generated",
  "riscv-csr",
  "romtime",
