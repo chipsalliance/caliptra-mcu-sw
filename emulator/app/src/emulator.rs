@@ -112,6 +112,10 @@ pub struct EmulatorArgs {
     #[arg(long = "stdin-uart", overrides_with = "stdin_uart")]
     pub _no_stdin_uart: bool,
 
+    /// Enable flash based boot (default false).
+    #[arg(long, default_value_t = false)]
+    pub flash_based_boot: bool,
+
     /// The ROM path for the Caliptra CPU.
     #[arg(long)]
     pub caliptra_rom: PathBuf,
@@ -291,6 +295,12 @@ impl Emulator {
         external_read_callback: Option<ExternalReadCallback>,
         external_write_callback: Option<ExternalWriteCallback>,
     ) -> std::io::Result<Self> {
+        #[cfg(feature = "test-flash-based-boot")]
+        let is_flash_based_boot = true;
+
+        #[cfg(not(feature = "test-flash-based-boot"))]
+        let is_flash_based_boot = cli.flash_based_boot;
+
         let args_rom = &cli.rom;
         let args_log_dir = &cli.log_dir.unwrap_or_else(|| PathBuf::from("/tmp"));
 
@@ -311,15 +321,7 @@ impl Emulator {
             None
         };
 
-        let use_mcu_recovery_interface;
-        #[cfg(feature = "test-flash-based-boot")]
-        {
-            use_mcu_recovery_interface = true;
-        }
-        #[cfg(not(feature = "test-flash-based-boot"))]
-        {
-            use_mcu_recovery_interface = false;
-        }
+        let use_mcu_recovery_interface = is_flash_based_boot;
 
         let (mut caliptra_cpu, soc_to_caliptra, ext_mci) = start_caliptra(&StartCaliptraArgs {
             rom: BytesOrPath::Path(cli.caliptra_rom),
@@ -800,8 +802,7 @@ impl Emulator {
         cpu.register_events();
 
         let mut bmc;
-        #[cfg(feature = "test-flash-based-boot")]
-        {
+        if is_flash_based_boot {
             println!("Emulator is using MCU recovery interface");
             bmc = None;
             let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
@@ -817,9 +818,7 @@ impl Emulator {
                     mcu_event_sender,
                     mcu_event_receiver,
                 );
-        }
-        #[cfg(not(feature = "test-flash-based-boot"))]
-        {
+        } else {
             let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
             let (mcu_event_sender, mcu_event_reciever) = cpu.register_events();
             // prepare the BMC recovery interface emulator
