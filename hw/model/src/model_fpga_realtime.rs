@@ -295,7 +295,12 @@ impl McuHwModel for ModelFpgaRealtime {
             stack_info: params.stack_info,
             soc_user: MailboxRequester::SocUser(DEFAULT_AXI_PAUSER),
             test_sram: None,
-            ss_init_params: Default::default(),
+            ss_init_params: caliptra_hw_model::SubsystemInitParams {
+                mcu_rom: Some(params.mcu_rom),
+                enable_mcu_uart_log: true,
+                num_prod_dbg_unlock_pk_hashes: 0,
+                prod_dbg_unlock_pk_hashes_offset: 0,
+            },
         };
         println!("Starting base model");
         let base = ModelFpgaSubsystem::new_unbooted(cptra_init)
