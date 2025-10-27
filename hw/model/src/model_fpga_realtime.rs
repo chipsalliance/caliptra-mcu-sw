@@ -295,8 +295,7 @@ impl McuHwModel for ModelFpgaRealtime {
             stack_info: params.stack_info,
             soc_user: MailboxRequester::SocUser(DEFAULT_AXI_PAUSER),
             test_sram: None,
-            mcu_rom: Some(params.mcu_rom),
-            enable_mcu_uart_log: params.enable_mcu_uart_log,
+            ss_init_params: Default::default(),
         };
         println!("Starting base model");
         let base = ModelFpgaSubsystem::new_unbooted(cptra_init)
