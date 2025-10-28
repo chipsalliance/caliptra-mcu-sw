@@ -175,7 +175,7 @@ impl Otp {
             direct_access_address: 0,
             direct_access_buffer: 0,
             direct_access_cmd: 0u32.into(),
-            status: 0b100_0000_0000_0000_0000_0000u32.into(), // DAI idle state
+            status: OtpStatus::DaiIdle::SET.value.into(),
             calculate_digests_on_reset: HashSet::new(),
             timer: Timer::new(clock),
             partitions: vec![0u8; TOTAL_SIZE],
