@@ -1,6 +1,6 @@
 # Device Measurements
 
-## SoC Manifest and MCU RT measurements
+## MCU RT measurements
 
 
 ### Image Loading Flow
