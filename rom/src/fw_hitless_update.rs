@@ -19,7 +19,8 @@ use crate::MCU_MEMORY_MAP;
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters};
 use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
 use core::fmt::Write;
-use romtime::{HexWord, McuError};
+use mcu_error::McuError;
+use romtime::HexWord;
 
 pub struct FwHitlessUpdate {}
 
@@ -47,7 +48,7 @@ impl BootFlow for FwHitlessUpdate {
                     romtime::println!("[mcu-rom] Error finishing mailbox command");
                 }
             }
-            fatal_error(McuError::FW_HITLESS_UPDATE_CLEAR_MB_ERROR);
+            fatal_error(McuError::ROM_FW_HITLESS_UPDATE_CLEAR_MB_ERROR);
         };
 
         while !soc.fw_ready() {}

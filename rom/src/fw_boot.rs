@@ -17,7 +17,7 @@ use crate::{
     MCU_MEMORY_MAP,
 };
 use core::fmt::Write;
-use romtime::McuError;
+use mcu_error::McuError;
 
 pub struct FwBoot {}
 
@@ -34,7 +34,7 @@ impl BootFlow for FwBoot {
         // Safety: this address is valid
         if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
             romtime::println!("Invalid firmware detected; halting");
-            fatal_error(McuError::FW_BOOT_INVALID_FIRMWARE);
+            fatal_error(McuError::ROM_FW_BOOT_INVALID_FIRMWARE);
         }
 
         // Jump to firmware
