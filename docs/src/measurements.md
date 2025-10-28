@@ -2,47 +2,8 @@
 
 ## SoC Manifest and MCU RT measurements
 
-### Image Loading Flow
-```mermaid
-sequenceDiagram
-    participant Caliptra ROM
-    participant Caliptra RT
-    participant Recovery I/F
-    %% participant DPE
-    participant MCU ROM
-    participant MCU RT
-    Note over Caliptra ROM: Running Caliptra ROM
-    Note over MCU ROM: Running MCU ROM in Cold boot
-    MCU ROM ->> MCU ROM: Configure AXI users, <br/> Populate fuses and <br/> Wait for Caliptra ROM to be ready for mbox
-    MCU ROM ->> Caliptra ROM: Send RI_DOWNLOAD_FIRMWARE command
-    MCU ROM ->>+ MCU ROM: Wait for Caliptra to indicate <br/> MCU RT Firmware Ready..
-    Recovery I/F -->> Caliptra ROM: Download Caliptra Image from Recovery I/F and boot to Caliptra RT
-    %% rect rgba(18, 181, 187, 1)
-    Note over Caliptra RT: Run Reset flow in Caliptra RT (Cold reset)
-        rect rgba(187, 133, 18, 1)
-        Caliptra RT ->> Caliptra RT: Initialize DPE
-        Note over Caliptra RT: Creates a Default Context tree in PL0 locality. <br/> `RTJM (Root) -> MBVP measurement(active default context)`
-        end
-    Recovery I/F -->> Caliptra RT: Download SOC Manifest to mailbox SRAM.
-    note over Caliptra RT: Verify and Set Soc Manifest
-    Recovery I/F -->> Caliptra RT: Download MCU RT Image to MCU SRAM.
-    note over Caliptra RT: Authorize MCU RT image (match digest against SOC Manifest entry)
-    Caliptra RT ->> Caliptra RT: Set MCI Reset reason to FWBOOT. <br/> Set MCU FW Ready bit in SOC_IFC register
-    %% end
-    MCU ROM ->>- MCU ROM: Caliptra indicates MCU RT Firmware Ready
-    MCU ROM ->>+ MCU ROM: Wait for Caliptra to listen for RT mailbox commands..
-    Caliptra RT ->> Caliptra RT: Listen for Mailbox commands..
-    MCU ROM ->>- MCU ROM: Caliptra is ready for mailbox commands
-    MCU ROM ->> MCU ROM: Disable I3C recovery interface
-    MCU ROM ->> MCU ROM: Trigger Warm reset to boot MCU RT from SRAM
-    MCU ROM ->>+ MCU ROM: Boots with reset reason FWBOOT.
-    note over MCU ROM : FWBOOT flow runs...
-    MCU ROM ->> MCU ROM: Get the MCU RT entry point (SRAM OFFSET + MCU image header size)
-    MCU ROM ->> MCU RT: Jump to MCU RT entry point
-    Note over MCU RT: MCU RT executes from MCU SRAM...
-```
 
-### Image Loading Flow Detailed
+### Image Loading Flow
 ```mermaid
 sequenceDiagram
     participant Caliptra ROM
