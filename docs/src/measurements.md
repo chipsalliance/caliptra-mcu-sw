@@ -49,22 +49,6 @@ sequenceDiagram
 
 ### MCU hitless Update Flow
 ```mermaid
-%%{init: {
-  'theme':'base', 
-  'themeVariables': {
-    'loopTextColor': '#000000',
-    'labelBoxBkgColor': '#050303ff',
-    'labelBoxBorderColor': '#000000',
-    'labelTextColor': '#000000',
-    'altSectionBkgColor': '#160d0dff',
-    'c0': '#000000',
-    'c1': '#000000',
-    'c2': '#000000',
-    'c4': '#000000',
-    'signalColor': '#000000',
-    'signalTextColor': '#000000'
-  }
-}}%%
 sequenceDiagram
     participant MCU ROM
     participant MCU RT
