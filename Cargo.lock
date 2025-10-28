@@ -1610,7 +1610,6 @@ dependencies = [
  "caliptra-emu-bus",
  "caliptra-emu-cpu",
  "caliptra-emu-periph",
- "caliptra-hw-model",
  "caliptra-registers",
  "clap 4.5.48",
  "ctrlc",
