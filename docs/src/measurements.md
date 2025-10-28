@@ -11,7 +11,7 @@ sequenceDiagram
     participant MCU ROM
     participant MCU RT
     Note over MCU ROM: Running MCU ROM in Cold boot
-    MCU ROM --> Caliptra ROM: Deassert MCI_REG.CPTRA_BOOT_GO signal
+    MCU ROM --> Caliptra ROM: Assert MCI_REG.CPTRA_BOOT_GO signal
     Note over Caliptra ROM: Caliptra ROM is running, DICE flows...
     Note over Caliptra ROM: Ready for FW download via Recovery I/F
     Note over MCU ROM: Initialize peripherals <br/> Configure AXI users, <br/> Populate fuses.
@@ -19,7 +19,7 @@ sequenceDiagram
     MCU ROM ->> Caliptra ROM: Send RI_DOWNLOAD_FIRMWARE command
     MCU ROM -->>+ MCU ROM: Wait for Caliptra to indicate <br/> MCU RT Firmware Ready..
     Note over Caliptra ROM: Download Caliptra Image from Recovery I/F <br/>and boot to Caliptra RT
-    rect rgba(144, 223, 226, 1)
+    rect rgba(65, 156, 29, 1)
     Note over Caliptra RT: Run Reset flow in Caliptra RT<br/>(Cold reset)
     Note over Caliptra RT: Initialize DPE. <br/> Creates a Default Context tree <br/> in PL0 locality. <br/> `RTJM (Root) -> MBVP (active default ctx)`
     Note over Caliptra RT: Download SOC Manifest from RI to mailbox SRAM.<br/> Verify and Set Soc Manifest
@@ -35,7 +35,7 @@ sequenceDiagram
     MCU ROM -->>+ MCU ROM: Wait for Caliptra to listen for RT mailbox commands..
     Note over Caliptra RT: Listen for Mailbox commands..
     MCU ROM -->>- MCU ROM: Caliptra is ready for mailbox commands
-    rect rgba(206, 234, 235, 1)
+    rect rgba(65, 156, 29, 1)
         Note over MCU ROM: Trigger Warm reset to <br/> boot MCU RT from SRAM
         Note over MCU ROM: Boots with reset reason FWBOOT.
         note over MCU ROM: FWBOOT flow runs...
@@ -50,9 +50,10 @@ sequenceDiagram
 ### MCU hitless Update Flow
 ```mermaid
 sequenceDiagram
+    participant Caliptra ROM
+    participant Caliptra RT
     participant MCU ROM
     participant MCU RT
-    participant Caliptra RT
     NOTE over MCU RT: PLDM firmware update flow..
     MCU RT ->> MCU RT: MCU RT downloads the image containing SoC Manifest and the corresponding MCU or SoC firmware.
     rect rgba(206, 234, 235, 1)
