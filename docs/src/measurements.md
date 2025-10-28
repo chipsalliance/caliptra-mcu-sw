@@ -61,12 +61,13 @@ sequenceDiagram
         rect rgba(65, 156, 29, 1)
             note over MCU RT: Verify and Authenticate Caliptra FW
             MCU RT ->> Caliptra RT: Issue FIRMWARE_VERIFY mailbox command to Caliptra RT.
-            Caliptra RT ->> Caliptra RT: VERIFY_SUCCESS
+            Caliptra RT ->> MCU RT: VERIFY_SUCCESS
         end
         rect rgba(65, 156, 29, 1)
             note over MCU RT: Verify and Authenticate the SoC Manifest
             MCU RT ->> Caliptra RT: Read the SoC Manifest, issue VERIFY_AUTH_MANIFEST mailbox command to Caliptra RT.
             Caliptra RT ->> Caliptra RT: Authenticate SoC manifest using keys available in the Caliptra Image Manifest.
+            Caliptra RT ->> MCU RT: AUTH_SUCCESS
         end
         loop MCU RT or SoC firmware component
             MCU RT ->> MCU RT: match digest locally.
