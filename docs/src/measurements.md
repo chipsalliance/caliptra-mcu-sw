@@ -75,9 +75,9 @@ sequenceDiagram
     end
 
     rect rgba(206, 234, 235, 1)
-        note over MCU RT: STAGE: APPLY
+        note over MCU RT: STAGE: ACTIVATE
         rect rgba(65, 156, 29, 1)
-            Note over MCU RT: Apply the Caliptra FW update
+            Note over MCU RT: Activate the Caliptra FW update
             MCU RT ->>+ Caliptra RT: Update Caliptra FW with FIRMWARE_LOAD command<br/> and wait for Caliptra Core to boot with new FW.
             note over Caliptra ROM: Caliptra ROM handles<br/> impactless update flow and boots new Caliptra RT firmware.
             note over Caliptra RT: Run UpdateReset flow in Caliptra RT.
