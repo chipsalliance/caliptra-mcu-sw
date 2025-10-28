@@ -2,7 +2,7 @@
 
 ## SoC Manifest and MCU RT measurements
 
-<!-- ### Image Loading Flow
+### Image Loading Flow
 ```mermaid
 sequenceDiagram
     participant Caliptra ROM
@@ -40,7 +40,7 @@ sequenceDiagram
     MCU ROM ->> MCU ROM: Get the MCU RT entry point (SRAM OFFSET + MCU image header size)
     MCU ROM ->> MCU RT: Jump to MCU RT entry point
     Note over MCU RT: MCU RT executes from MCU SRAM...
-``` -->
+```
 
 ### Image Loading Flow Detailed
 ```mermaid
@@ -88,6 +88,9 @@ sequenceDiagram
     MCU ROM ->> MCU RT: Jump to MCU RT entry point
     Note over MCU RT: MCU RT executes from MCU SRAM...
 ```
+
+
+
 
 ### MCU hitless Update Flow
 ```mermaid
