@@ -37,8 +37,6 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
     writeln!(console_writer, "[FW Upd] Start").unwrap();
     #[cfg(feature = "test-firmware-update-streaming")]
     {
-        use libsyscall_caliptra::dma;
-
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
             fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
@@ -92,7 +90,7 @@ mod external_memory {
     use crate::image_loader::EMULATED_DMA_MAPPING;
 
     const DMA_TRANSFER_SIZE: usize = 512;
-    const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0x2000_0000_0000_0000;
+    const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0xB00C0000;
 
     pub static STAGING_MEMORY: embassy_sync::lazy_lock::LazyLock<ExternalRAM> =
         embassy_sync::lazy_lock::LazyLock::new(|| ExternalRAM::new(&EMULATED_DMA_MAPPING));
@@ -142,9 +140,13 @@ mod external_memory {
             self.dma_syscall.xfer(&transaction).await
         }
 
+        async fn image_valid(&self) -> Result<(), ErrorCode> {
+            Ok(())
+        }
+
         fn size(&self) -> usize {
             // Return the size of the staging memory. Replace with actual value if needed.
-            1024 * 1024 // 1 MiB as an example
+            256 * 1024 // 256 KiB as an example
         }
     }
 
@@ -165,10 +167,11 @@ mod flash_memory {
     use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
     use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash as FlashSyscall};
     use libtock_platform::ErrorCode;
-    use mcu_config::boot::{BootConfigAsync, PartitionStatus};
+    use mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
 
     pub struct ExternalFlash {
         flash_syscall: FlashSyscall,
+        download_partition: PartitionId,
     }
 
     impl ExternalFlash {
@@ -192,6 +195,7 @@ mod flash_memory {
 
             Ok(ExternalFlash {
                 flash_syscall: FlashSyscall::new(inactive_partition.driver_num),
+                download_partition: inactive_partition_id,
             })
         }
     }
@@ -204,6 +208,14 @@ mod flash_memory {
 
         async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode> {
             self.flash_syscall.read(offset, data.len(), data).await
+        }
+
+        async fn image_valid(&self) -> Result<(), ErrorCode> {
+            let mut boot_config = FlashBootConfig::new();
+            boot_config
+                .set_partition_status(self.download_partition, PartitionStatus::Valid)
+                .await
+                .map_err(|_| ErrorCode::Fail)
         }
 
         fn size(&self) -> usize {
