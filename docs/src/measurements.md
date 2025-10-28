@@ -53,14 +53,14 @@ sequenceDiagram
   'theme':'base', 
   'themeVariables': {
     'loopTextColor': '#000000',
-    'labelBoxBkgColor': '#ffffff',
+    'labelBoxBkgColor': '#050303ff',
     'labelBoxBorderColor': '#000000',
     'labelTextColor': '#000000',
-    'altSectionBkgColor': '#ffffff',
+    'altSectionBkgColor': '#160d0dff',
     'c0': '#000000',
     'c1': '#000000',
     'c2': '#000000',
-    'c3': '#000000',
+    'c4': '#000000',
     'signalColor': '#000000',
     'signalTextColor': '#000000'
   }
@@ -116,23 +116,47 @@ sequenceDiagram
             note over MCU RT: Copy MCU firmware image to staging area.
             MCU RT ->> Caliptra RT: Update MCU using `ACTIVATE_FIRMWARE` command.
             note over Caliptra RT: Set the MCU reset reason to FW_HITLESS_UPDATE.
-            note over Caliptra RT: Trigger Reset of MCU INTR_TRIG_R register.
+            note over Caliptra RT: Requests MCU to reset itself <br/> by setting notif_cptra_mcu_reset_req_sts bit <br/> in notif0_internal_intr_r register
         end
-        Caliptra RT -->> Caliptra RT: Wait for MCU to clear interrrupt
-        note over MCU RT: MCU writes RESET_REQUEST register to reset the MCU
+        Caliptra RT -->> Caliptra RT: Wait for MCU to clear notif_cptra_mcu_reset_req_sts bit.
         rect rgba(65, 156, 29, 1)
-            note over MCU ROM: MCU ROM boots with reset reason FirmwareHitlessUpdate
-            note over MCU ROM: Clears the interrupt
+            note over MCU RT: RESET_REQUEST.mcu_req in MCI to request a reset.
+        end
+        rect rgba(65, 156, 29, 1)
+            note over MCU ROM: MCU ROM boots with reset reason FW_HITLESS_UPDATE
+            note over MCU ROM: Clears the interrupt bit notif_cptra_mcu_reset_req_sts <br/> in notif0_internal_intr_r register
         end
         MCU ROM -->> MCU ROM: Wait for FW_EXEC_CTRL[2] to be cleared.
 
-        note over Caliptra RT: Clears FW_EXEC_CTRL[2]. <br/> This trigger interrupt to MCU.
-        note over MCU ROM: MCU ROM handles the interrupt and clears it.
-        Caliptra RT -->> Caliptra RT: Wait for MCU to clear interrupt.
-        note over Caliptra RT: Copy MCU RT firmware from staging area to MCU SRAM.
-        note over Caliptra RT: Set FW_EXEC_CTRL[2] to 1 to indicate firmware is ready to execute.
-        note over MCU ROM: Jump to MCU RT firmware start address.
-        note over MCU RT: MCU RT firmware starts executing...
+        rect rgba(65, 156, 29, 1)
+            note over Caliptra RT: MCU cleared the interrupt.
+            note over Caliptra RT: Clears FW_EXEC_CTRL[2]. <br/> This triggers interrupt to MCU.
+        END
+        Caliptra RT -->> Caliptra RT: Wait for MCU to clear bit notif_cptra_mcu_reset_req_sts in notif0_internal_intr_r register
+        rect rgba(65, 156, 29, 1)
+            note over MCU ROM: MCU ROM handles the interrupt and clears<br/> notif_cptra_mcu_reset_req_sts bit.
+        end
+
+        MCU ROM -->> MCU ROM: Wait for FW_EXEC_CTRL[2] to be set (indicates MCU RT is ready in SRAM).
+
+        rect rgba(65, 156, 29, 1)
+            note over Caliptra RT: MCU cleared the interrupt.
+            note over Caliptra RT: Copy MCU RT firmware from staging area to MCU SRAM.
+            note over Caliptra RT: Authenticate MCU RT firmware at the load address.
+            rect rgba(187, 133, 18, 1)
+                note over Caliptra RT: Update MCU RT journey measurement
+            end
+            note over Caliptra RT: Set FW_EXEC_CTRL[2] to 1 to indicate firmware is ready to execute.
+        end
+
+        rect rgba(65, 156, 29, 1)
+            note over MCU ROM: MCU RT firmware is ready to execute.
+            note over MCU ROM: Jump to MCU RT firmware start address.
+        end
+
+        rect rgba(65, 156, 29, 1)
+            note over MCU RT: MCU RT firmware starts executing...
+        end
 
     end
 ```
