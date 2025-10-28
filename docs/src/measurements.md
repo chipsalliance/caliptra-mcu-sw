@@ -30,10 +30,8 @@ sequenceDiagram
         end
         Note over Caliptra RT: Download SOC Manifest from R to mailbox SRAM.<br/> Verify and Set Soc Manifest
         %% end
-        rect rgba(196, 231, 231, 1)
         Note over Caliptra RT: Download MCU RT Image to MCU SRAM.
         note over Caliptra RT: Authorize MCU RT image <br/> (match digest against SOC Manifest entry)
-        end
     Note over Caliptra RT: Set MCI_REG.RESET_REASON to FWBOOT. 
     Note over Caliptra RT: Set MCU FW Ready bit in SOC_IFC register
     end
