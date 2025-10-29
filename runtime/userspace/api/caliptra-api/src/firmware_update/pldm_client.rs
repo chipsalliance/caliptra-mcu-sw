@@ -81,6 +81,13 @@ pub async fn pldm_wait(wait_state: State) -> Result<(), ErrorCode> {
     Ok(())
 }
 
+pub fn pldm_total_component_size() -> usize {
+    DOWNLOAD_CTX.lock(|ctx| {
+        let ctx = ctx.borrow();
+        ctx.total_length
+    })
+}
+
 pub fn pldm_set_verification_result(verify_result: VerifyResult) {
     DOWNLOAD_CTX.lock(|ctx| {
         let mut ctx = ctx.borrow_mut();

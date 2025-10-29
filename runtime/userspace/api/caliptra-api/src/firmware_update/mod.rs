@@ -5,6 +5,7 @@ mod pldm_client;
 mod pldm_context;
 mod pldm_fdops;
 
+use crate::firmware_update::pldm_client::pldm_total_component_size;
 use crate::firmware_update::pldm_context::State;
 use crate::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use alloc::boxed::Box;
@@ -97,7 +98,8 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         pldm_client::pldm_wait(State::Apply).await?;
 
         // Mark image as valid in staging memory
-        self.staging_memory.image_valid().await?;
+        let img_len = pldm_total_component_size();
+        self.staging_memory.image_valid(img_len).await?;
 
         // Update Caliptra
         let result = self.update_caliptra(&flash_header).await;
@@ -617,7 +619,7 @@ pub struct PldmInstance<'a> {
 pub trait StagingMemory: core::fmt::Debug + Send + Sync {
     async fn write(&self, offset: usize, data: &[u8]) -> Result<(), ErrorCode>;
     async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode>;
-    async fn image_valid(&self) -> Result<(), ErrorCode>;
+    async fn image_valid(&self, img_sz: usize) -> Result<(), ErrorCode>;
     fn size(&self) -> usize;
 }
 
