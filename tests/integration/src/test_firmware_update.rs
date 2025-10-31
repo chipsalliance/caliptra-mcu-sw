@@ -358,6 +358,35 @@ mod test {
         assert_ne!(0, test);
     }
 
+    fn test_invalid_caliptra_image(opts: &TestOptions) {
+        let mut opts = opts.clone();
+
+        // Create an invalid Caliptra Image
+        let invalid_caliptra_fw_path = tempfile::NamedTempFile::new()
+            .expect("Failed to create temp file")
+            .path()
+            .to_path_buf();
+        std::fs::write(
+            &invalid_caliptra_fw_path,
+            [0xde, 0xad, 0xbe, 0xef].repeat(1024),
+        )
+        .expect("Failed to write invalid caliptra fw");
+
+        let (_, update_flash_image_path) = create_flash_image(
+            Some(invalid_caliptra_fw_path),
+            opts.update_soc_manifest.clone(),
+            opts.update_runtime_firmware.clone(),
+            None,
+            0,
+            opts.update_soc_images_paths.clone(),
+        );
+
+        opts.update_flash_image_path = Some(update_flash_image_path);
+        let opts = fast_update_options(&opts);
+        let test = run_runtime_with_options(&opts);
+        assert_ne!(0, test);
+    }
+
     fn test_invalid_manifest(opts: &TestOptions) {
         let mut opts = opts.clone();
 
@@ -591,6 +620,7 @@ mod test {
 
         run_test!(test_successful_update, &pass_options.clone());
         run_test!(test_successful_fast_update, &pass_options.clone());
+        run_test!(test_invalid_caliptra_image, &pass_options.clone());
         run_test!(test_missing_caliptra_image, &pass_options.clone());
         run_test!(test_invalid_manifest, &pass_options.clone());
         run_test!(test_invalid_mcu_image, &pass_options.clone());
