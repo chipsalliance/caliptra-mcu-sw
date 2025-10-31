@@ -23,7 +23,6 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
 ### Cold Boot Flow
 
 1. Check the MCI `RESET_REASON` register for MCU status (it should be in cold boot mode)
-1. Program and lock PMP registers
 1. Initialize I3C registers according to the [initialization sequence](https://chipsalliance.github.io/i3c-core/initialization.html).
 1. Initialize I3C recovery interface [initialization sequence](https://chipsalliance.github.io/i3c-core/recovery_flow.html).
 1. Anything SoC-specific can happen here
@@ -51,7 +50,6 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
 ```mermaid
 sequenceDiagram
     note right of mcu: check reset reason
-    note right of mcu: program and lock PMP
     note right of mcu: initialize I3C
     note right of mcu: initialize recovery interface
     note right of mcu: SoC-specific init
@@ -74,17 +72,101 @@ sequenceDiagram
 
 The main Caliptra ROM and runtime will continue executing and push the MCU runtime firmware to its SRAM, set the MCI register stating that the firmware is ready, and reset the MCU.
 
-### Firmware Update Flow
+### Firmware Boot Flow
 
-1. Check the MCI `RESET_REASON` register for MCU status (it should be in firmware update mode)
-1. Program and lock PMP registers
-1. Anything SoC-specific can happen here
-    1. Do stash if required
-1. Jump to runtime firmware
+This flow is used to boot the MCU into the MCU Runtime Firmware following either a cold or warm reset. It ensures that the runtime firmware is properly loaded and ready for execution.
+
+1. Check the MCI `RESET_REASON` register for MCU status (it should be in firmware boot reset mode `FirmwareBootReset`)
+1. Set flow checkpoint to indicate firmware boot flow has started
+1. Validate that firmware was actually loaded by checking the firmware entry point is not zero
+1. Set flow milestone to indicate firmware boot flow completion
+1. Jump directly to runtime firmware at the configured SRAM offset
+
+```mermaid
+sequenceDiagram
+    note right of mcu: check reset reason (FirmwareBootReset)
+    note right of mcu: set flow checkpoint
+    note right of mcu: validate firmware at entry point
+    alt firmware valid
+        note right of mcu: set completion milestone
+        note right of mcu: jump to runtime firmware
+    else firmware invalid
+        note right of mcu: fatal error - halt
+    end
+```
+
+
+### Hitless Firmware Update Flow
+
+Hitless Update Flow is triggered when MCU runtime FW requests an update of the MCU FW by sending the `ACTIVATE_FIRMWARE` mailbox command to Caliptra. Upon receiving the mailbox command, Caliptra will initialize the MCU reset sequence causing the MCU to boot to ROM and run the Hitless Firmware Update Flow.
+
+1. Check the MCI `RESET_REASON` register for reset status (it should be in hitless firmware update mode `FirmwareHitlessUpdate`).
+1. Enable the `notif_cptra_mcu_reset_req_sts` interrupt.
+1. Check if firmware is already available by reading the interrupt status
+1. Clear `notif_cptra_mcu_reset_req_sts` interrupt status
+1. If firmware is available:
+    1. Wait for Caliptra to clear FW_EXEC_CTRL[2]. This will be indicated when `notif_cptra_mcu_reset_req_sts` interrupt status bit is set
+    1. Clear the `notif_cptra_mcu_reset_req_sts` interrupt. This triggers Caliptra to copy MCU FW from the staging area to MCU SRAM.
+1. Wait for Caliptra to set FW_EXEC_CTRL[2].
+1. Release Caliptra mailbox. Hitless Update is triggered by a mailbox command from MCU to Caliptra which causes it to reboot to ROM, therefore the mailbox needs to be released after the update is complete.
+1. Jump to runtime firmware at the configured SRAM offset
+
+```mermaid
+sequenceDiagram
+    note right of mcu: check reset reason (FirmwareHitlessUpdate)
+    note right of mcu: enable reset request interrupt
+    mcu->>mci: check if firmware already available
+    mcu->>mci: clear reset request interrupt status
+    alt firmware already available
+        loop wait for Caliptra to clear FW_EXEC_CTRL[2]
+            mcu->>mci: check reset request status
+        end
+        mcu->>mci: clear reset request interrupt (triggers FW copy)
+    end
+    loop wait for Caliptra to set FW_EXEC_CTRL[2]
+        mcu->>caliptra: check fw_ready status
+    end
+    mcu->>caliptra: release mailbox (finish response)
+    loop verify firmware ready
+        mcu->>caliptra: check fw_ready status
+    end
+    note right of mcu: jump to runtime firmware
+```
+
 
 ### Warm Reset Flow
 
-This is currently the same as the firmware update flow.
+Warm Reset Flow occurs when the subsystem reset is toggled while `powergood` is maintained high. This is allowed when MCU and Caliptra already loaded their respective mutable firmware, prior to the warm reset. MCU and Caliptra FW will not be reloaded in this flow.
+
+1. Check the MCI `RESET_REASON` register for reset status (it should be in warm reset mode `WarmReset`)
+1. Assert Caliptra boot go signal to bring Caliptra out of reset.
+1. Wait for Caliptra to be ready for fuses (even though fuses won't be rewritten)
+1. Signal fuse write done to Caliptra to complete the fuse handshake protocol
+1. Wait for Caliptra to deassert ready for fuses state
+1. Wait for Caliptra to indicate that MCU firmware is ready in SRAM
+1. Validate that firmware was actually loaded by checking the firmware entry point is not zero
+1. Set flow checkpoint and milestone to indicate warm reset flow completion
+1. Trigger a warm reset to transition to `FirmwareBootReset` flow which will jump to the firmware
+
+```mermaid
+sequenceDiagram
+    note right of mcu: check reset reason (WarmReset)
+    note right of mcu: set flow checkpoint
+    mcu->>caliptra: assert boot go signal
+    loop wait for ready for fuses
+        mcu->>caliptra: check ready for fuses status
+    end
+    mcu->>caliptra: signal fuse write done
+    loop wait for NOT ready for fuses
+        mcu->>caliptra: check ready for fuses status
+    end
+    loop wait for firmware ready
+        mcu->>caliptra: check firmware ready status
+    end
+    note right of mcu: validate firmware at entry point
+    note right of mcu: set completion milestone
+    mcu->>mci: trigger warm reset (to FirmwareBootReset)
+```
 
 ### Failures
 
