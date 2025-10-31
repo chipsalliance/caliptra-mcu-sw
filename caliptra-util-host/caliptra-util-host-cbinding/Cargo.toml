@@ -1,0 +1,18 @@
+[package]
+name = "caliptra-util-host-cbinding"
+version = "0.1.0"
+edition = "2021"
+description = "C bindings for Caliptra Utility Host Library"
+license = "Apache-2.0"
+authors = ["Caliptra Team"]
+
+[dependencies]
+caliptra-util-host-core = { path = "../caliptra-util-host-core", features = ["async"] }
+libc = "0.2"
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros"] }
+
+[build-dependencies]
+cbindgen = "0.24"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]

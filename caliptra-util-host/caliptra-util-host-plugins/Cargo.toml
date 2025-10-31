@@ -1,0 +1,22 @@
+[package]
+name = "caliptra-util-host-plugins"
+version = "0.1.0"
+edition = "2021"
+description = "Plugin system extensions for Caliptra Utility Host Library"
+license = "Apache-2.0"
+authors = ["Caliptra Team"]
+
+[dependencies]
+caliptra-util-host-core = { path = "../caliptra-util-host-core", features = ["async"] }
+libloading = { version = "0.8", optional = true }
+async-trait = "0.1"
+uuid = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+thiserror = "1.0"
+libc = "0.2"
+
+[features]
+default = []
+dynamic-loading = ["libloading"]

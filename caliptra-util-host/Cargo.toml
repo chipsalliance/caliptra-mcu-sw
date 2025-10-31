@@ -1,0 +1,35 @@
+[package]
+name = "caliptra-util-host"
+version = "0.1.0"
+edition = "2021"
+description = "Caliptra Utility Host Library - A flexible framework for communicating with Caliptra devices"
+license = "Apache-2.0"
+authors = ["Caliptra Team"]
+
+[workspace]
+members = [
+    "caliptra-osal",
+    "caliptra-command-types",
+    "caliptra-commands",
+    "caliptra-core",
+    "caliptra-session",
+    "caliptra-transport",
+    "caliptra-util-host-core",
+    "caliptra-util-host-cbinding", 
+    "caliptra-util-host-plugins",
+    "caliptra-util-host-transports",
+    "tests",
+    "examples/basic-usage"
+]
+
+[dependencies]
+caliptra-util-host-core = { path = "caliptra-util-host-core" }
+caliptra-util-host-cbinding = { path = "caliptra-util-host-cbinding", optional = true }
+
+[features]
+default = []
+cbinding = ["caliptra-util-host-cbinding"]
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic-usage/src/main.rs"

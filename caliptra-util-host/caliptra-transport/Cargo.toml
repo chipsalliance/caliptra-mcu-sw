@@ -1,0 +1,10 @@
+[package]
+name = "caliptra-transport"
+version = "0.1.0"
+edition = "2021"
+description = "Transport layer for Caliptra Utility Host Library"
+license = "Apache-2.0"
+authors = ["Caliptra Team"]
+
+[dependencies]
+# No dependencies - pure trait definition

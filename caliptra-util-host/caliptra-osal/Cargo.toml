@@ -1,0 +1,22 @@
+[package]
+name = "caliptra-osal"
+version = "0.1.0"
+edition = "2021"
+description = "OS Abstraction Layer for Caliptra Utility Host Library"
+license = "Apache-2.0"
+authors = ["Caliptra Team"]
+
+[dependencies]
+# Core dependencies that work in no_std
+nb = "1.0"
+
+[features]
+default = ["std"]
+std = ["libc", "windows-sys"]
+alloc = []
+
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.48", optional = true, features = ["Win32_Foundation", "Win32_System_Threading"] }

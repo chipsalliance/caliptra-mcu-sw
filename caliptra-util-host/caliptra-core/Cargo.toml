@@ -1,0 +1,14 @@
+[package]
+name = "caliptra-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core execution layer for Caliptra Utility Host Library"
+license = "Apache-2.0"
+authors = ["Caliptra Team"]
+
+[dependencies]
+caliptra-osal = { path = "../caliptra-osal" }
+caliptra-command-types = { path = "../caliptra-command-types", default-features = false }
+caliptra-commands = { path = "../caliptra-commands", default-features = false }
+caliptra-session = { path = "../caliptra-session", default-features = false }
+caliptra-transport = { path = "../caliptra-transport", default-features = false }

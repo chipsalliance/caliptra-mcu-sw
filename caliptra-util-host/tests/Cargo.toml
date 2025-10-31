@@ -1,0 +1,15 @@
+[package]
+name = "caliptra-util-host-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# New modular architecture dependencies
+caliptra-session = { path = "../caliptra-session" }
+caliptra-transport = { path = "../caliptra-transport" }
+caliptra-commands = { path = "../caliptra-commands" }
+caliptra-command-types = { path = "../caliptra-command-types" }
+
+[[test]]
+name = "integration_tests"
+path = "integration_tests.rs"

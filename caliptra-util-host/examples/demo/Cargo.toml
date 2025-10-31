@@ -1,0 +1,9 @@
+[package]
+name = "session_transport_demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+caliptra-transport = { path = "caliptra-transport" }
+caliptra-session = { path = "caliptra-session" }
+caliptra-command-types = { path = "caliptra-command-types" }

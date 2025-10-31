@@ -1,0 +1,10 @@
+[package]
+name = "caliptra-command-types"
+version = "0.1.0"
+edition = "2021"
+description = "Shared command types and definitions for Caliptra Utility Host Library"
+license = "Apache-2.0"
+authors = ["Caliptra Team"]
+
+[dependencies]
+zerocopy = { version = "0.7", features = ["derive"] }

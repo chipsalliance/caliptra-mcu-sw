@@ -1,0 +1,13 @@
+[package]
+name = "caliptra-session"
+version = "0.1.0"
+edition = "2021"
+description = "Session management for Caliptra Utility Host Library"
+license = "Apache-2.0"
+authors = ["Caliptra Team"]
+
+[dependencies]
+caliptra-osal = { path = "../caliptra-osal" }
+caliptra-transport = { path = "../caliptra-transport" }
+caliptra-commands = { path = "../caliptra-commands" }
+caliptra-command-types = { path = "../caliptra-command-types" }

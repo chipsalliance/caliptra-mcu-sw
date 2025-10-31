@@ -1,0 +1,23 @@
+[package]
+name = "caliptra-util-host-transports"
+version = "0.1.0"
+edition = "2021"
+description = "Additional transport implementations for Caliptra Utility Host Library"
+license = "Apache-2.0"
+authors = ["Caliptra Team"]
+
+[dependencies]
+caliptra-util-host-core = { path = "../caliptra-util-host-core", features = ["async"] }
+tokio = { version = "1.0", features = ["net", "rt", "time", "io-util", "sync"] }
+async-trait = "0.1"
+log = "0.4"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[features]
+default = ["tcp"]
+tcp = []
+libpldm-bridge = []
+libspdm-bridge = []
+mock = []

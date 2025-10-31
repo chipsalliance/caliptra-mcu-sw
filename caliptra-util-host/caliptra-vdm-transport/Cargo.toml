@@ -1,0 +1,16 @@
+[package]
+name = "caliptra-vdm-transport"
+version = "0.1.0"
+edition = "2021"
+description = "VDM (Vendor Defined Message) transport for Caliptra external mailbox"
+license = "Apache-2.0"
+
+[dependencies]
+caliptra-osal = { path = "../caliptra-osal", features = ["alloc"] }
+caliptra-commands = { path = "../caliptra-commands", features = ["alloc"] }
+caliptra-core = { path = "../caliptra-core", features = ["alloc"] }
+
+[features]
+default = ["std"]
+std = ["caliptra-osal/std", "caliptra-commands/std", "caliptra-core/std"]
+alloc = ["caliptra-osal/alloc", "caliptra-commands/alloc", "caliptra-core/alloc"]
