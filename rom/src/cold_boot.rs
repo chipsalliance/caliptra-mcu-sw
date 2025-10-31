@@ -19,6 +19,7 @@ use crate::{fatal_error, BootFlow, McuBootMilestones, RomEnv, RomParameters, MCU
 use caliptra_api::mailbox::{CommandId, FeProgReq, MailboxReqHeader};
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
+use caliptra_drivers::okref;
 use core::fmt::Write;
 use mcu_error::McuError;
 use romtime::{CaliptraSoC, HexWord};
@@ -195,7 +196,9 @@ impl BootFlow for ColdBoot {
         }
 
         romtime::println!("[mcu-rom] Reading fuses");
-        let fuses = match otp.read_fuses() {
+        let fuses_result = otp.read_fuses();
+        let fuses_result = okref(&fuses_result);
+        let fuses = match fuses_result {
             Ok(fuses) => {
                 mci.set_flow_checkpoint(McuRomBootStatus::FusesReadFromOtp.into());
                 fuses
@@ -250,7 +253,7 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         romtime::println!("[mcu-rom] Populating fuses");
-        soc.populate_fuses(&fuses, mci, params.program_field_entropy.iter().any(|x| *x));
+        soc.populate_fuses(fuses, mci, params.program_field_entropy.iter().any(|x| *x));
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
         romtime::println!("[mcu-rom] Setting Caliptra fuse write done");
@@ -345,7 +348,7 @@ impl BootFlow for ColdBoot {
             };
 
             romtime::println!("[mcu-rom] Verifying firmware header");
-            if !image_verifier.verify_header(header, &fuses) {
+            if !image_verifier.verify_header(header, fuses) {
                 romtime::println!("Firmware header verification failed; halting");
                 fatal_error(McuError::ROM_COLD_BOOT_HEADER_VERIFY_ERROR);
             }
