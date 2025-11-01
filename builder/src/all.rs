@@ -259,7 +259,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let mcu_runtime = &crate::runtime_build_with_apps_cached(
         &base_runtime_features,
         Some(base_runtime_path),
-        false,
+        true,
         Some(platform),
         Some(memory_map),
         use_dccm_for_stack,
@@ -330,7 +330,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         crate::runtime_build_with_apps_cached(
             &[feature],
             Some(&feature_runtime_path),
-            false,
+            true,
             Some(platform),
             Some(memory_map),
             use_dccm_for_stack,

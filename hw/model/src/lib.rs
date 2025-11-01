@@ -35,6 +35,7 @@ pub mod jtag;
 #[cfg(feature = "fpga_realtime")]
 pub mod lcc;
 mod mcu_mgr;
+pub mod mm_flash_ctrl;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
 mod model_fpga_realtime;

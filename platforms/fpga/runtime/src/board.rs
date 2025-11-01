@@ -32,6 +32,12 @@ use romtime::CaliptraSoC;
 use romtime::StaticRef;
 use rv32i::csr;
 
+// For fake flash controller
+use capsules_core::virtualizers::virtual_flash;
+use capsules_runtime::flash_partition::FlashPartition;
+use mcu_components::{flash_partition_component_static, instantiate_flash_partitions};
+use mcu_config_emulator::flash_partition_list_mm_flash_ctrl;
+
 // These symbols are defined in the linker script.
 extern "C" {
     /// Beginning of the ROM region containing app images.
@@ -135,6 +141,7 @@ struct VeeR {
     mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     // active_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
     // recovery_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
+    staging_partition: [Option<&'static FlashPartition<'static>>; 1], // XS: for staging partition on mm flash ctrl
     mailbox: &'static capsules_runtime::mailbox::Mailbox<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
@@ -170,6 +177,17 @@ impl SyscallDriverLookup for VeeR {
             // capsules_runtime::flash_partition::RECOVERY_IMAGE_PAR_DRIVER_NUM => {
             //     f(Some(self.recovery_image_par))
             // }
+            // XS: for staging partition on mm flash ctrl
+            mcu_config_emulator::flash::DRIVER_NUM_MM_FLASH_CTRL => {
+                if let Some(partition) = self.staging_partition[0] {
+                    if partition.get_driver_num() == driver_num {
+                        return f(Some(partition));
+                    } else {
+                        return f(None);
+                    }
+                }
+                return f(None);
+            }
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
             capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
@@ -559,6 +577,22 @@ pub unsafe fn main() {
     .finalize(mbox_sram_component_static!(InternalTimers<'static>));
     romtime::println!("[mcu-runtime] MCU Mbox1 SRAM component initialized");
 
+    // XS: Create a mux for MCU Mailbox based flash controller
+    let mux_mcu_mbox_flash =
+        components::flash::FlashMuxComponent::new(&chip.peripherals.mm_flash_ctrl).finalize(
+            components::flash_mux_component_static!(flash_driver::mm_flash_ctrl::MailboxFlashCtrl),
+        );
+
+    let mut staging_partition: [Option<&'static FlashPartition<'static>>; 1] = [None; 1];
+    instantiate_flash_partitions!(
+        flash_partition_list_mm_flash_ctrl,
+        staging_partition,
+        board_kernel,
+        mux_mcu_mbox_flash,
+        flash_driver::mm_flash_ctrl::MailboxFlashCtrl
+    );
+    romtime::println!("[xs debug]Initialized staging partition on MM Flash Ctrl");
+
     #[allow(static_mut_refs)]
     let system = mcu_components::system::SystemComponent::new(unsafe { &mut FPGA_EXITER })
         .finalize(kernel::static_buf!(
@@ -614,6 +648,7 @@ pub unsafe fn main() {
             mctp_caliptra,
             //active_image_par,
             //recovery_image_par,
+            staging_partition,
             mailbox,
             mci,
             mcu_mbox1_staging_sram,

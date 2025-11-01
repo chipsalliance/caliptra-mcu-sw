@@ -9,6 +9,8 @@ pub const FLASH_PARTITIONS_COUNT: usize = 3; // Number of flash partitions
 pub const DRIVER_NUM_START: usize = 0x8000_0006; // Base driver number for flash partitions
 pub const DRIVER_NUM_END: usize = 0x8000_0008; // End driver number for flash partitions
 
+pub const DRIVER_NUM_MM_FLASH_CTRL: usize = 0x8000_0012; // Driver number for mcu mailbox based flash controller
+
 pub const BLOCK_SIZE: usize = 64 * 1024; // Block size for flash partitions
 
 pub const PARTITION_TABLE: FlashPartition = FlashPartition {
@@ -32,6 +34,13 @@ pub const IMAGE_B_PARTITION: FlashPartition = FlashPartition {
     driver_num: 0x8000_0007,
 };
 
+pub const STAGING_PARTITION: FlashPartition = FlashPartition {
+    name: "staging_par",
+    offset: 0x0000_0000,
+    size: (BLOCK_SIZE * 0x200),
+    driver_num: DRIVER_NUM_MM_FLASH_CTRL as u32,
+};
+
 #[macro_export]
 macro_rules! flash_partition_list_primary {
     ($macro:ident) => {{
@@ -44,6 +53,13 @@ macro_rules! flash_partition_list_primary {
 macro_rules! flash_partition_list_secondary {
     ($macro:ident) => {{
         $macro!(2, image_b, IMAGE_B_PARTITION);
+    }};
+}
+
+#[macro_export]
+macro_rules! flash_partition_list_mm_flash_ctrl {
+    ($macro:ident) => {{
+        $macro!(0, staging_par, STAGING_PARTITION);
     }};
 }
 

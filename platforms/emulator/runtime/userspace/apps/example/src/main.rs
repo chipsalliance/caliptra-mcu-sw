@@ -6,7 +6,8 @@
 #![allow(static_mut_refs)]
 
 use core::fmt::Write;
-#[cfg(feature = "test-flash-usermode")]
+//#[cfg(feature = "test-flash-usermode")]
+//#[cfg(any(feature = "test-flash-usermode", feature = "test-mm-flash-ctrl"))]
 use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash};
 use libsyscall_caliptra::system::System;
 use libtock::alarm::*;
@@ -86,6 +87,7 @@ async fn start() {
 #[allow(unreachable_code)]
 pub(crate) async fn async_main<S: Syscalls>() {
     let mut console_writer = Console::<S>::writer();
+    writeln!(console_writer, "[xs debug]example_app: entering",).unwrap();
     writeln!(
         console_writer,
         "Timer frequency: {}",
@@ -273,7 +275,48 @@ pub(crate) async fn async_main<S: Syscalls>() {
         System::exit(0);
     }
 
-    writeln!(console_writer, "app finished").unwrap();
+    //#[cfg(feature = "test-mm-flash-ctrl")]
+    {
+        use mcu_config_emulator::flash::STAGING_PARTITION;
+
+        writeln!(
+            console_writer,
+            "[xs debug]Running mm_flash_ctrl user mode test"
+        )
+        .unwrap();
+
+        let mut user_r_buf: [u8; flash_test::BUF_LEN] = [0u8; flash_test::BUF_LEN];
+        // Fill the write buffer with a pattern
+        let user_w_buf: [u8; flash_test::BUF_LEN] = {
+            let mut buf = [0u8; flash_test::BUF_LEN];
+            for i in 0..buf.len() {
+                buf.fill((i % 256) as u8);
+            }
+            buf
+        };
+
+        let mut test_cfg_1 = flash_test::FlashTestConfig {
+            drv_num: STAGING_PARTITION.driver_num,
+            expected_capacity: flash_test::EXPECTED_CAPACITY,
+            expected_chunk_size: flash_test::EXPECTED_CHUNK_SIZE,
+            e_offset: STAGING_PARTITION.offset,
+            e_len: flash_test::BUF_LEN,
+            w_offset: STAGING_PARTITION.offset + 20,
+            p_offset: STAGING_PARTITION.offset,
+            w_len: 1000,
+            w_buf: &user_w_buf,
+            r_buf: &mut user_r_buf,
+        };
+        flash_test::simple_test(&mut test_cfg_1).await;
+        writeln!(
+            console_writer,
+            "flash usermode test on staging partition succeeds"
+        )
+        .unwrap();
+        System::exit(0);
+    }
+
+    writeln!(console_writer, "[xs debug]example_app finished").unwrap();
 }
 
 #[allow(dead_code)]
@@ -301,7 +344,7 @@ async fn test_mctp_loopback() {
     }
 }
 
-#[cfg(feature = "test-flash-usermode")]
+//#[cfg(any(feature = "test-flash-usermode", feature = "test-mm-flash-ctrl"))]
 pub mod flash_test {
     use super::*;
     pub const BUF_LEN: usize = 1024;
