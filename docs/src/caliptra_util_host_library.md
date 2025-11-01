@@ -244,7 +244,10 @@ caliptra_error_t caliptra_session_get_option(caliptra_session_t* session, calipt
 
 // Generic command IDs (protocol-agnostic)
 typedef enum {
-    // Device Information Commands (0x0000 - 0x00FF)
+    // Caliptra FIPS self test command
+    CALIPTRA_CMD_FIPS_SELF_TEST = 0x0000,
+
+    // Device Information Commands (0x0001 - 0x00FF)
     CALIPTRA_CMD_GET_FIRMWARE_VERSION    = 0x0001,
     CALIPTRA_CMD_GET_DEVICE_CAPABILITIES = 0x0002,
     CALIPTRA_CMD_GET_DEVICE_ID          = 0x0003,
@@ -519,17 +522,27 @@ flowchart TD
    These use platform mechanisms (`dlopen`/`dlsym` on Linux, `LoadLibrary` on Windows) to load plugins at runtime.
 
 3. **Dynamic Registration**
-   Plugins use registration APIs to add new features:
 
-   ```c
-   caliptra_error_t caliptra_command_register(const caliptra_command_desc_t* desc);
-   caliptra_error_t caliptra_transport_register(const caliptra_transport_impl_t* impl);
-   caliptra_error_t caliptra_register_protocol_handler(
-       caliptra_protocol_type_t protocol_type,
-       const caliptra_protocol_handler_t* handler
-   );
-   ```
-   The library maintains internal registries of available commands, transports, and protocol handlers.
+Plugins use registration and unregistration APIs to add or remove features:
+
+```c
+// Register new features
+caliptra_error_t caliptra_command_register(const caliptra_command_desc_t* desc);
+caliptra_error_t caliptra_transport_register(const caliptra_transport_impl_t* impl);
+caliptra_error_t caliptra_register_protocol_handler(
+    caliptra_protocol_type_t protocol_type,
+    const caliptra_protocol_handler_t* handler
+);
+
+// Unregister features when plugin is unloaded
+caliptra_error_t caliptra_command_unregister(const char* command_name);
+caliptra_error_t caliptra_transport_unregister(const char* transport_name);
+caliptra_error_t caliptra_unregister_protocol_handler(
+    caliptra_protocol_type_t protocol_type
+);
+```
+
+The library maintains internal registries of available commands, transports, and protocol handlers. When a plugin is unloaded, it should call the appropriate unregister functions to cleanly remove its features and release resources.
 
 4. **Discovery and Usage**
    Applications can enumerate available commands and transports at runtime:
