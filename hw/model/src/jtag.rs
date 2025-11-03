@@ -9,7 +9,7 @@ use caliptra_hw_model::jtag::CaliptraCoreReg;
 use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
 
 use anyhow::{Context, Result};
-use zerocopy::IntoBytes;
+use zerocopy::FromBytes;
 
 /// Wait for Caliptra Core mailbox response over JTAG TAP.
 ///
@@ -42,10 +42,10 @@ pub fn jtag_acquire_caliptra_mailbox_lock(tap: &mut OpenOcdJtagTap) -> Result<()
 pub fn jtag_send_caliptra_mailbox_cmd(
     tap: &mut OpenOcdJtagTap,
     cmd: CommandId,
-    payload: &[u32],
+    payload: &[u8],
 ) -> Result<()> {
     let _ = jtag_acquire_caliptra_mailbox_lock(tap)?;
-    let checksum = calc_checksum(cmd.0, &payload.as_bytes());
+    let checksum = calc_checksum(cmd.0, payload);
 
     // Write: cmd, length, checksum, payload, execute.
     tap.write_reg(&CaliptraCoreReg::MboxCmd, cmd.0)
@@ -53,12 +53,13 @@ pub fn jtag_send_caliptra_mailbox_cmd(
     tap.write_reg(
         &CaliptraCoreReg::MboxDlen,
         // Add 4-bytes to the payload to account for the checksum.
-        (payload.len() * 4 + 4).try_into().unwrap(),
+        (payload.len() + 4).try_into().unwrap(),
     )
     .context("Unable to write MboxDlen reg.")?;
     tap.write_reg(&CaliptraCoreReg::MboxDin, checksum)
         .context("Unable to write checksum to MboxDin register.")?;
-    for word in payload {
+    let word_payload = <[u32]>::ref_from_bytes(payload).unwrap();
+    for word in word_payload {
         tap.write_reg(&CaliptraCoreReg::MboxDin, *word)
             .context("Unable to write to MboxDin register.")?;
     }

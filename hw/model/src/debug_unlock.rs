@@ -31,7 +31,7 @@ pub fn prod_debug_unlock_send_request(tap: &mut OpenOcdJtagTap, debug_level: u32
     jtag_send_caliptra_mailbox_cmd(
         tap,
         CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_REQ,
-        &request_payload,
+        &request_payload.as_bytes(),
     )?;
     Ok(())
 }
@@ -61,7 +61,7 @@ pub fn prod_debug_unlock_send_token(
     jtag_send_caliptra_mailbox_cmd(
         tap,
         CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN,
-        &token_payload,
+        &token_payload.as_bytes(),
     )?;
 
     Ok(())
