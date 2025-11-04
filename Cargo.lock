@@ -2818,6 +2818,7 @@ dependencies = [
  "mcu-builder",
  "mcu-config",
  "mcu-config-emulator",
+ "mcu-error",
  "mcu-image-header",
  "mcu-rom-common",
  "registers-generated",

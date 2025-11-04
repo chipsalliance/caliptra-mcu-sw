@@ -45,6 +45,11 @@ impl McuError {
         }
     }
 
+    /// Create an MCU error; intended to be used by vendors for vendor specific errors
+    pub const fn new_vendor(val: u32) -> Self {
+        Self(NonZeroU32::new(0xf000_0000 | val).unwrap())
+    }
+
     // Use the macro to define all error constants
     define_error_constants![
         (
