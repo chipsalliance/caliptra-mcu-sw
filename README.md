@@ -53,6 +53,14 @@ For firmware, 2.1 features can be enabled using the `hw-2-1` feature flag when s
 
 The specification is published [here](https://chipsalliance.github.io/caliptra-mcu-sw/).
 
+To build the documentation locally, you need to install `mdbook`:
+
+```shell
+cargo install mdbook
+cargo install mdbook-mermaid
+cargo install mdbook-plantuml --no-default-features
+```
+
 ## Platforms
 
 The MCU can be built for different platforms (e.g., our emulator or for a specific SoC or FPGA).

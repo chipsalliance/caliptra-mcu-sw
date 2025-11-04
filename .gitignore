@@ -43,3 +43,6 @@ cross-target/
 
 # Test logs
 **/junit.xml
+
+docs/src/mdbook-plantuml-img
+docs/*.jar

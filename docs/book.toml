@@ -12,6 +12,10 @@ title = "Caliptra MCU Firmware Documentation"
 [preprocessor.mermaid]
 command = "mdbook-mermaid"
 
+[preprocessor.plantuml]
+plantuml-cmd = "java -jar ./plantuml-asl-1.2025.7.jar"
+
+
 [output]
 
 [output.html]
