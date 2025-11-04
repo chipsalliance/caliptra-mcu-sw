@@ -7,6 +7,7 @@
 
 use crate::chip::TIMER_FREQUENCY_HZ;
 use core::cell::Cell;
+use core::num::NonZero;
 use kernel::hil::time::{self, Alarm, ConvertTicks, Frequency, Ticks, Ticks64, Time};
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -206,13 +207,13 @@ impl<'a> time::Alarm<'a> for InternalTimers<'a> {
 }
 
 impl kernel::platform::scheduler_timer::SchedulerTimer for InternalTimers<'_> {
-    fn start(&self, us: u32) {
+    fn start(&self, us: NonZero<u32>) {
         let now = self.now();
-        let tics = self.ticks_from_us(us);
+        let tics = self.ticks_from_us(us.get());
         self.set_alarm(now, tics);
     }
 
-    fn get_remaining_us(&self) -> Option<u32> {
+    fn get_remaining_us(&self) -> Option<NonZero<u32>> {
         // We need to convert from native ticks to us, multiplication could overflow in 32-bit
         // arithmetic. So we convert to 64-bit.
         let diff = self.get_alarm().wrapping_sub(self.now()).into_u64();
@@ -229,7 +230,10 @@ impl kernel::platform::scheduler_timer::SchedulerTimer for InternalTimers<'_> {
             None
         } else {
             let hertz = <Self as Time>::Frequency::frequency() as u64;
-            Some(((diff * 1_000_000) / hertz) as u32)
+            Some(
+                NonZero::new(((diff * 1_000_000) / hertz) as u32)
+                    .unwrap_or(NonZero::new(1).unwrap()),
+            )
         }
     }
 

@@ -199,8 +199,8 @@ pub fn runtime_build_no_apps_uncached(
         "--verbose".into(),
         format!("--target={}", TARGET),
         format!("--package {}", bin),
-        "-Z build-std=core,compiler_builtins".into(),
-        "-Z build-std-features=core/optimize_for_size".into(),
+        // "-Z build-std=core,compiler_builtins".into(),
+        // "-Z build-std-features=core/optimize_for_size".into(),
     ]
     .join(" ");
 
