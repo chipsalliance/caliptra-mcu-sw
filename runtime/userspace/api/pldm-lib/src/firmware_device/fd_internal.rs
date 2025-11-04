@@ -232,7 +232,11 @@ impl FdInternal {
         if requested_offset > comp_image_size
             || requested_offset
                 .checked_add(requested_length)
-                .is_none_or(|sum| sum > comp_image_size + PLDM_FWUP_MAX_PADDING_SIZE as u32)
+                .is_none_or(|requested_end| {
+                    comp_image_size
+                        .checked_add(PLDM_FWUP_MAX_PADDING_SIZE as u32)
+                        .is_some_and(|allowed_end| requested_end > allowed_end)
+                })
         {
             return None;
         }
