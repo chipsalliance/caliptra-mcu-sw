@@ -407,7 +407,12 @@ fn emu_make_peripheral_trait(
             if register.can_read() {
                 if register.is_array() {
                     fn_tokens.extend(quote! {
-                        fn #read_name(&mut self, _index: usize) -> caliptra_emu_types::RvData { 0 }
+                        fn #read_name(&mut self, index: usize) -> caliptra_emu_types::RvData {
+                            if let Some(generated) = self.generated() {
+                                return generated.#read_name(index);
+                            }
+                            0
+                        }
                     });
                     impl_tokens.extend(quote! {
                         fn #read_name(&mut self, index: usize) -> caliptra_emu_types::RvData {
@@ -416,7 +421,12 @@ fn emu_make_peripheral_trait(
                     });
                 } else {
                     fn_tokens.extend(quote! {
-                        fn #read_name(&mut self) -> caliptra_emu_types::RvData { 0 }
+                        fn #read_name(&mut self) -> caliptra_emu_types::RvData {
+                            if let Some(generated) = self.generated() {
+                                return generated.#read_name();
+                            }
+                            0
+                        }
                     });
                     impl_tokens.extend(quote! {
                         fn #read_name(&mut self) -> caliptra_emu_types::RvData {
@@ -428,7 +438,11 @@ fn emu_make_peripheral_trait(
             if register.can_write() {
                 if register.is_array() {
                     fn_tokens.extend(quote! {
-                        fn #write_name(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
+                        fn #write_name(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+                            if let Some(generated) = self.generated() {
+                                generated.#write_name(val, index);
+                            }
+                        }
                     });
                     let target_expr = quote! { self.#state_ident[index] };
                     let write_logic =
@@ -440,7 +454,11 @@ fn emu_make_peripheral_trait(
                     });
                 } else {
                     fn_tokens.extend(quote! {
-                        fn #write_name(&mut self, _val: caliptra_emu_types::RvData) {}
+                        fn #write_name(&mut self, val: caliptra_emu_types::RvData) {
+                            if let Some(generated) = self.generated() {
+                                generated.#write_name(val);
+                            }
+                        }
                     });
                     let target_expr = quote! { self.#state_ident };
                     let write_logic =
@@ -473,7 +491,10 @@ fn emu_make_peripheral_trait(
             if register.can_read() {
                 if register.is_array() {
                     fn_tokens.extend(quote! {
-                        fn #read_name(&mut self, _index: usize) -> #fulltyn {
+                        fn #read_name(&mut self, index: usize) -> #fulltyn {
+                            if let Some(generated) = self.generated() {
+                                return generated.#read_name(index);
+                            }
                             caliptra_emu_bus::ReadWriteRegister :: new(0)
                         }
                     });
@@ -485,6 +506,9 @@ fn emu_make_peripheral_trait(
                 } else {
                     fn_tokens.extend(quote! {
                         fn #read_name(&mut self) -> #fulltyn {
+                            if let Some(generated) = self.generated() {
+                                return generated.#read_name();
+                            }
                             caliptra_emu_bus::ReadWriteRegister :: new(0)
                         }
                     });
@@ -498,7 +522,11 @@ fn emu_make_peripheral_trait(
             if register.can_write() {
                 if register.is_array() {
                     fn_tokens.extend(quote! {
-                        fn #write_name(&mut self, _val: #fulltyn, _index: usize) {}
+                        fn #write_name(&mut self, val: #fulltyn, index: usize) {
+                            if let Some(generated) = self.generated() {
+                                generated.#write_name(val, index);
+                            }
+                        }
                     });
                     let target_expr = quote! { self.#state_ident[index] };
                     let write_logic = make_register_write_logic(
@@ -513,7 +541,11 @@ fn emu_make_peripheral_trait(
                     });
                 } else {
                     fn_tokens.extend(quote! {
-                        fn #write_name(&mut self, _val: #fulltyn) {}
+                        fn #write_name(&mut self, val: #fulltyn) {
+                            if let Some(generated) = self.generated() {
+                                generated.#write_name(val);
+                            }
+                        }
                     });
                     let target_expr = quote! { self.#state_ident };
                     let write_logic = make_register_write_logic(
@@ -547,6 +579,9 @@ fn emu_make_peripheral_trait(
             fn poll(&mut self) {}
             fn warm_reset(&mut self) {}
             fn update_reset(&mut self) {}
+            fn generated(&mut self) -> Option<&mut #generated_struct> {
+                None
+            }
             #fn_tokens
         }
     });
@@ -576,6 +611,9 @@ fn emu_make_peripheral_trait(
         }
 
         impl #periph for #generated_struct {
+            fn generated(&mut self) -> Option<&mut #generated_struct> {
+                Some(self)
+            }
             fn warm_reset(&mut self) {
                 self.reset_state();
             }
