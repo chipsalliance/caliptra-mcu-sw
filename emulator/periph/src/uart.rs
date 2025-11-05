@@ -232,13 +232,13 @@ mod test {
         let mut p = PartialUtf8::new();
         p.push(0x20);
         assert!(p.next() == Some(' '));
-        assert!(p.next() == None);
+        assert!(p.next().is_none());
 
         for ch in 0..0x7f {
             // all ASCII characters are single byte
             p.push(ch);
             assert!(p.next() == Some(ch as char));
-            assert!(p.next() == None);
+            assert!(p.next().is_none());
         }
 
         // 2-byte UTF-8 character

@@ -376,7 +376,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
 
         match GetImageInfoResp::ref_from_bytes(response_buffer) {
             Ok(resp) => {
-                let caliptra_axi_addr = (resp.image_staging_address_high as u64) << 32
+                let caliptra_axi_addr = ((resp.image_staging_address_high as u64) << 32)
                     | resp.image_staging_address_low as u64;
                 self.dma_mapping.cptra_axi_to_mcu_axi(caliptra_axi_addr)
             }

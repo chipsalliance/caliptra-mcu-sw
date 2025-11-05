@@ -63,7 +63,7 @@ impl SessionManager {
 
     pub fn generate_session_id(&mut self, requester_session_id: u16) -> (u32, u16) {
         let rsp_session_id = self.cur_responder_session_id;
-        let session_id = u32::from(rsp_session_id) << 16 | u32::from(requester_session_id);
+        let session_id = (u32::from(rsp_session_id) << 16) | u32::from(requester_session_id);
         self.cur_responder_session_id = self.cur_responder_session_id.wrapping_add(1);
         (session_id, rsp_session_id)
     }
