@@ -14,7 +14,6 @@ caliptra-emu-cpu.workspace = true
 caliptra-emu-periph.workspace = true
 caliptra-emu-types.workspace = true
 caliptra-image-types.workspace = true
-caliptra-test.workspace = true
 chrono.workspace = true
 clap.workspace = true
 clap-num.workspace = true
@@ -53,6 +52,9 @@ tempfile.workspace = true
 tock-registers.workspace = true
 uuid.workspace = true
 zerocopy.workspace = true
+
+[dev-dependencies]
+caliptra-test.workspace = true
 
 [[bin]]
 name = "emulator"

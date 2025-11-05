@@ -6,7 +6,6 @@ mod test {
 
     use caliptra_hw_model::lcc::{LcCtrlReg, LcCtrlStatus};
     use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
-    use caliptra_hw_model::Fuses;
     use mcu_builder::FirmwareBinaries;
     use mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel};
     use mcu_rom_common::LifecycleControllerState;
@@ -26,7 +25,6 @@ mod test {
         let mut model = DefaultHwModel::new_unbooted(init_params).unwrap();
 
         // Initialize fuses and bring subsystem out of reset.
-        model.init_fuses(&Fuses::default());
         model.set_subsystem_reset(false);
 
         // Connect to LCC JTAG TAP via OpenOCD.

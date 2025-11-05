@@ -61,7 +61,7 @@ jobs:
     - name: Install Sail
       run: |
         opam init -a -y && \
-        opam install -y sail && \
+        opam install -y sail.0.19.1 && \
         echo "$HOME/.opam/default/bin" >> "$GITHUB_PATH"
     - name: Build Sail RISC-V
       working-directory: sail-riscv

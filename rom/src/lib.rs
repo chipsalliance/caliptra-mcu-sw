@@ -77,7 +77,7 @@ fn rom_panic(_: &core::panic::PanicInfo) -> ! {
 #[inline(never)]
 #[allow(dead_code)]
 #[allow(clippy::empty_loop)]
-pub fn fatal_error_raw(code: u32) -> ! {
+fn fatal_error_raw(code: u32) -> ! {
     #[allow(static_mut_refs)]
     if let Some(handler) = unsafe { FATAL_ERROR_HANDLER.as_mut() } {
         handler.fatal_error(code);
@@ -89,6 +89,6 @@ pub fn fatal_error_raw(code: u32) -> ! {
 
 #[inline(never)]
 #[allow(dead_code)]
-pub fn fatal_error(error: romtime::McuError) -> ! {
+pub fn fatal_error(error: mcu_error::McuError) -> ! {
     fatal_error_raw(error.into())
 }

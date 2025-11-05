@@ -14,6 +14,7 @@ mcu-config-emulator.workspace = true
 bitfield.workspace = true
 mcu-config.workspace = true
 mcu-config-emulator.workspace = true
+mcu-error.workspace = true
 mcu-image-header.workspace = true
 mcu-rom-common.workspace = true
 registers-generated.workspace = true

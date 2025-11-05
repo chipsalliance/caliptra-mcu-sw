@@ -6,7 +6,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-fpga_realtime = ["mcu-hw-model/fpga_realtime"]
+fpga_realtime = [
+	"mcu-hw-model/fpga_realtime",
+	"dep:caliptra-hw-model",
+	"dep:mcu-hw-model",
+]
 
 [dependencies]
 caliptra-api-types.workspace = true
@@ -15,7 +19,7 @@ cargo_metadata.workspace = true
 cc.workspace = true
 caliptra-image-gen.workspace = true
 caliptra-image-types.workspace = true
-caliptra-hw-model.workspace = true
+caliptra-hw-model = { workspace = true, optional = true }
 clap.workspace = true
 clap-num.workspace = true
 crc32fast.workspace = true
@@ -24,7 +28,7 @@ mcu-builder.workspace = true
 mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true
 mcu-rom-common.workspace = true
-mcu-hw-model.workspace = true
+mcu-hw-model = { workspace = true, optional = true }
 pldm-fw-pkg.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true

@@ -230,8 +230,13 @@ impl FdInternal {
 
         let comp_image_size = inner.update_comp.comp_image_size.unwrap_or(0);
         if requested_offset > comp_image_size
-            || requested_offset + requested_length
-                > comp_image_size + PLDM_FWUP_MAX_PADDING_SIZE as u32
+            || requested_offset
+                .checked_add(requested_length)
+                .is_none_or(|requested_end| {
+                    comp_image_size
+                        .checked_add(PLDM_FWUP_MAX_PADDING_SIZE as u32)
+                        .is_some_and(|allowed_end| requested_end > allowed_end)
+                })
         {
             return None;
         }

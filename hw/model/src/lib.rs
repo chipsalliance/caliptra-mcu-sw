@@ -27,7 +27,11 @@ use std::sync::mpsc;
 pub use vmem::read_otp_vmem_data;
 
 mod bus_logger;
+#[cfg(feature = "fpga_realtime")]
+pub mod debug_unlock;
 mod fpga_regs;
+#[cfg(feature = "fpga_realtime")]
+pub mod jtag;
 #[cfg(feature = "fpga_realtime")]
 pub mod lcc;
 mod mcu_mgr;
@@ -143,6 +147,14 @@ pub struct InitParams<'a> {
     // ECC384 and MLDSA87 keypairs
     pub prod_dbg_unlock_keypairs: Vec<(&'a [u8; 96], &'a [u8; 2592])>,
 
+    // Number of public key hashes for production debug unlock levels.
+    // Note: does not have to match number of keypairs in prod_dbg_unlock_keypairs above if default
+    // OTP settings are used.
+    pub num_prod_dbg_unlock_pk_hashes: u32,
+
+    // Offset of public key hashes in PROD_DEBUG_UNLOCK_PK_HASH_REG register bank for production debug unlock.
+    pub prod_dbg_unlock_pk_hashes_offset: u32,
+
     pub bootfsm_break: bool,
 
     pub debug_intent: bool,
@@ -225,6 +237,10 @@ impl Default for InitParams<'_> {
             uds_program_req: false,
             active_mode: false,
             prod_dbg_unlock_keypairs: Default::default(),
+            num_prod_dbg_unlock_pk_hashes: 8,
+            // Must match offset of `mci_reg_prod_debug_unlock_pk_hash_reg` in
+            // `registers/generated-firmware/src/mci.rs`.
+            prod_dbg_unlock_pk_hashes_offset: 0x480,
             debug_intent: false,
             cptra_obf_key: DEFAULT_CPTRA_OBF_KEY,
             itrng_nibbles,
