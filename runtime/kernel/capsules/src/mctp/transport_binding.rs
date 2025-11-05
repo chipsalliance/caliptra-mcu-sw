@@ -140,7 +140,7 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
         }
 
         // Tx is a read operation from the I3C controller. Set the R/W bit at LSB to 1.
-        let addr = self.device_address.get() << 1 | 0x01;
+        let addr = (self.device_address.get() << 1) | 0x01;
         match self.tx_buffer.take() {
             Some(tx_buffer) => {
                 if tx_buffer.len() > len + 1 {
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_pec_for_resp() {
-        let dev_addr = 0x10 << 1 | 0x01;
+        let dev_addr = (0x10 << 1) | 0x01;
         // header version 0x01, src EID 0x00, dest EID 0x08, som = 1, eom = 1, pkt_seq = 0, tag_owner = 0, msg_tag = 1
         let mctp_hdr = [0x01, 0x00, 0x08, 0xC1];
         // (IC, control message type) = 0x00, Response packet (0x00), set EID command = 0x01

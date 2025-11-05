@@ -148,13 +148,12 @@ impl Bus for Uart {
                         0x02..=0x7f => eprint!("{}", value as u8 as char),
                         // UTF-8 multi-byte sequences
                         0x80..=0xf4 => {
-                            self.char_buffer.update(|mut partial| {
-                                partial.push(value as u8);
-                                while let Some(c) = partial.next() {
-                                    eprint!("{}", c);
-                                }
-                                partial
-                            });
+                            let mut partial = self.char_buffer.take();
+                            partial.push(value as u8);
+                            while let Some(c) = partial.next() {
+                                eprint!("{}", c);
+                            }
+                            self.char_buffer.set(partial);
                         }
                         _ => (), // ignore test result characters
                     }
@@ -233,13 +232,13 @@ mod test {
         let mut p = PartialUtf8::new();
         p.push(0x20);
         assert!(p.next() == Some(' '));
-        assert!(p.next() == None);
+        assert!(p.next().is_none());
 
         for ch in 0..0x7f {
             // all ASCII characters are single byte
             p.push(ch);
             assert!(p.next() == Some(ch as char));
-            assert!(p.next() == None);
+            assert!(p.next().is_none());
         }
 
         // 2-byte UTF-8 character

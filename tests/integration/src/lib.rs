@@ -453,12 +453,9 @@ mod test {
 
             let fuse_vendor_hashes_prod_partition_str;
             if let Some(fuse_vendor_hashes_prod_partition) = fuse_vendor_hashes_prod_partition {
-                let hex_string: String = fuse_vendor_hashes_prod_partition
-                    .iter()
-                    .map(|b| format!("{:02x}", b))
-                    .collect();
                 cargo_run_args.push("--fuse-vendor-hashes-prod-partition");
-                fuse_vendor_hashes_prod_partition_str = hex_string;
+                fuse_vendor_hashes_prod_partition_str =
+                    hex::encode(fuse_vendor_hashes_prod_partition);
                 cargo_run_args.push(fuse_vendor_hashes_prod_partition_str.as_str());
             }
 

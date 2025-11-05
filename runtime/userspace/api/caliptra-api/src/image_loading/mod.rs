@@ -220,7 +220,7 @@ async fn get_image_load_address(
     match GetImageInfoResp::ref_from_bytes(response_buffer) {
         Ok(resp) => {
             let caliptra_axi_addr =
-                (resp.image_load_address_high as u64) << 32 | resp.image_load_address_low as u64;
+                ((resp.image_load_address_high as u64) << 32) | resp.image_load_address_low as u64;
 
             dma_mapping
                 .cptra_axi_to_mcu_axi(caliptra_axi_addr)

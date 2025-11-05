@@ -204,7 +204,7 @@ impl MciPeripheral for Mci {
         let en = ReadWriteRegister::<u32, WdtTimer1En::Register>::new(val.reg.get());
         if en.reg.is_set(WdtTimer1En::Timer1En) {
             let timer_period: u64 =
-                (self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32
+                ((self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[0] as u64;
 
             self.op_wdt_timer1_expired_action = Some(self.timer.schedule_poll_in(timer_period));
@@ -232,7 +232,7 @@ impl MciPeripheral for Mci {
             self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
             let timer_period: u64 =
-                (self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32
+                ((self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[0] as u64;
 
             self.op_wdt_timer1_expired_action = Some(self.timer.schedule_poll_in(timer_period));
@@ -261,7 +261,7 @@ impl MciPeripheral for Mci {
         );
         if en.reg.is_set(WdtTimer2En::Timer2En) {
             let timer_period: u64 =
-                (self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32
+                ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
             self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
@@ -287,7 +287,7 @@ impl MciPeripheral for Mci {
             self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
             let timer_period: u64 =
-                (self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32
+                ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
             self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
@@ -949,7 +949,7 @@ impl MciPeripheral for Mci {
                     .modify(Error0IntrT::ErrorWdtTimer2TimeoutSts::CLEAR);
 
                 let timer_period: u64 =
-                    (self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32
+                    ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                         | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
                 self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
