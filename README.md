@@ -59,6 +59,14 @@ To build the documentation locally, you need to install `mdbook`:
 cargo install mdbook
 cargo install mdbook-mermaid
 cargo install mdbook-plantuml --no-default-features
+wget https://github.com/plantuml/plantuml/releases/download/v1.2025.7/plantuml-asl-1.2025.7.jar -O docs/plantuml-asl-1.2025.7.jar
+```
+
+Then you can build the docs with:
+
+```shell
+cd docs
+mdbook serve --open
 ```
 
 ## Platforms
