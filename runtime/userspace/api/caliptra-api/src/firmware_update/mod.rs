@@ -57,6 +57,12 @@ pub struct PldmFirmwareDeviceParams {
     pub fw_params: &'static FirmwareParameters,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CaliptraFwAction {
+    Verify = 1,
+    Load = 2,
+}
+
 impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
     pub fn new(
         staging_memory: &'static dyn StagingMemory,
@@ -181,8 +187,12 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             )
             .await
             .map_err(|_| ErrorCode::Fail)?;
-        self.verify_or_load_caliptra(cptra_image_offset, cptra_image_len, true)
-            .await?;
+        self.process_caliptra_fw(
+            cptra_image_offset,
+            cptra_image_len,
+            CaliptraFwAction::Verify,
+        )
+        .await?;
 
         // Verify the new Auth Manifest
         writeln!(
@@ -284,16 +294,15 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         Err(ErrorCode::Fail)
     }
 
-    async fn verify_or_load_caliptra(
+    async fn process_caliptra_fw(
         &mut self,
         image_offset: usize,
         image_len: usize,
-        verify_only: bool,
+        action: CaliptraFwAction,
     ) -> Result<(), ErrorCode> {
-        let cmd: u32 = if verify_only {
-            CommandId::FIRMWARE_VERIFY.into()
-        } else {
-            CommandId::FIRMWARE_LOAD.into()
+        let cmd: u32 = match action {
+            CaliptraFwAction::Verify => CommandId::FIRMWARE_VERIFY.into(),
+            CaliptraFwAction::Load => CommandId::FIRMWARE_LOAD.into(),
         };
 
         let response_buffer = &mut [0u8; core::mem::size_of::<FirmwareVerifyResp>()];
@@ -312,7 +321,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
                 Err(_) => return Err(ErrorCode::Fail),
             }
         }
-        if verify_only {
+        if action == CaliptraFwAction::Verify {
             let resp =
                 FirmwareVerifyResp::ref_from_bytes(response_buffer).map_err(|_| ErrorCode::Fail)?;
             writeln!(
@@ -342,7 +351,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             .await
             .map_err(|_| ErrorCode::Fail)?;
 
-        self.verify_or_load_caliptra(image_offset, image_len, false)
+        self.process_caliptra_fw(image_offset, image_len, CaliptraFwAction::Load)
             .await?;
         self.wait_caliptra_rt_execution().await
     }
