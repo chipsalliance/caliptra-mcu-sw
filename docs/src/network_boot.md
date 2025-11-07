@@ -2,24 +2,20 @@
 
 ## Overview
 
-This document outlines the design for a lightweight network boot utility for the Caliptra subsystem, similar to PXE boot functionality. The system will enable devices to download firmware images over the network and load them into Caliptra client devices via the OCP Recovery Interface within a ROM environment.
+This document outlines the design for a lightweight network boot utility for the Caliptra subsystem, similar to PXE boot functionality. The system enables the Caliptra SS to download firmware images over the network through a dedicated Network Boot Coprocessor within a ROM environment.
 
-The network boot utility acts as an intermediary between remote image servers and Caliptra devices, handling network communications and interfacing with Caliptra through the standardized OCP (Open Compute Project) Recovery Interface protocol.
+The network boot coprocessor acts as an intermediary between remote image servers and the Caliptra SS, handling network communications including DHCP configuration, TFTP server discovery, and firmware image downloads. The system supports downloading multiple firmware components including Caliptra FMC+RT images, SoC manifests, and MCU runtime images through a firmware ID-based mapping system.
 
 ## System Architecture
 
 ```mermaid
 flowchart LR
-    A["Image Server<br/>───────────<br/>• Image Store<br/>• DHCP<br/>HTTP(s)/TFTP/NFS/iSCSI server<br/>"]
-    B["Network Boot Library<br/>───────────────<br/>Network Stack<br/>• DHCP<br/>HTTP(s)/TFTP/NFS/iSCSI client<br/>•iPXE network interface"]
-    C["Boot Application<br/>───────────────<br/>iPXE Interface<br/>OCP interface"]
-    D["OCP Recovery Interface"]
-    E["Caliptra Device<br/>─────────────<br/>• Boot Loader<br/>• Image Validation<br/>"]
+    A["Image Server<br/>───────────<br/>• Image Store<br/>• DHCP<br/>• TFTP server<br/>• Config File"]
+    B["Network Boot Coprocessor<br/>───────────────<br/>Network Stack<br/>• DHCP<br/>• TFTP client<br/>• FW ID Mapping"]
+    C["Caliptra SS<br/>─────────────<br/>• MCU<br/>• Caliptra Core"]
     
     A <--> B
     B <--> C
-    C <--> D
-    D <--> E
 ```
 
 ## System Boot Process Flow
@@ -29,197 +25,140 @@ The following diagram illustrates the high-level flow of the network boot proces
 ```mermaid
 sequenceDiagram
     participant IS as Image Server
-    participant NBL as Network Boot Library
-    participant BA as Boot Application
-    participant OCP as OCP Recovery Interface
-    participant CD as Caliptra Device
+    participant NBC as Network Boot Coprocessor
+    participant CS as Caliptra SS
 
-    Note over BA: System Initialization
-    BA->>NBL: Initialize network stack
-    NBL->>IS: DHCP Discovery
-    IS-->>NBL: DHCP Offer (IP + Boot Server)
-    NBL->>IS: Protocol negotiation (TFTP/HTTP/HTTPS)
-    IS-->>NBL: Supported protocols & capabilities
-    NBL-->>BA: Network ready + Server info
-
-    Note over BA: Boot Process Ready
-    BA->>OCP: Listen for OCP image requests
+    Note over CS: System Initialization
+    CS->>NBC: Start network boot discovery
     
-    Note over CD: Device Boot Request
-    CD->>OCP: OCP Recovery: Request firmware image
-    OCP->>BA: Forward image request
+    Note over NBC: Network Discovery
+    NBC->>IS: DHCP Discovery
+    IS-->>NBC: DHCP Offer (IP + Boot Server)
+    NBC->>IS: TFTP server discovery
+    IS-->>NBC: TFTP server ready
+    NBC->>IS: TFTP GET config file
+    IS-->>NBC: Config file (FW ID mappings)
+    NBC->>NBC: Store FW ID to filename mappings
+    NBC-->>CS: Network boot available
     
-    Note over BA: Image Translation & Download
-    BA->>BA: Translate OCP request to iPXE command
-    BA->>NBL: iPXE: Download image request
-    NBL->>IS: Protocol request (TFTP GET / HTTP GET)
-    
-    loop Image Transfer
-        IS-->>NBL: Image chunk
-        NBL-->>BA: Image data
-        BA->>OCP: Forward image chunk
-        OCP->>CD: Deliver chunk to device
-        CD-->>OCP: Chunk ACK
-        OCP-->>BA: Transfer status
+    Note over CS: Firmware Download Requests
+    CS->>NBC: download_image(firmware_id=0) # Caliptra FMC+RT
+    NBC->>IS: TFTP GET mapped filename
+    loop Image Transfer - Caliptra FMC+RT
+        IS-->>NBC: Image chunk
+        NBC-->>CS: Forward image chunk
+        CS-->>NBC: Chunk ACK
     end
     
-    Note over CD: Image Validation & Boot
-    CD->>CD: Validate image integrity
-    CD->>CD: Boot from received image
-    CD-->>OCP: Boot complete status
-    OCP-->>BA: Operation complete
+    CS->>NBC: download_image(firmware_id=1) # SoC Manifest
+    NBC->>IS: TFTP GET mapped filename
+    loop Image Transfer - SoC Manifest
+        IS-->>NBC: Image chunk
+        NBC-->>CS: Forward image chunk
+        CS-->>NBC: Chunk ACK
+    end
+    
+    CS->>NBC: download_image(firmware_id=2) # MCU RT Image
+    NBC->>IS: TFTP GET mapped filename
+    loop Image Transfer - MCU RT
+        IS-->>NBC: Image chunk
+        NBC-->>CS: Forward image chunk
+        CS-->>NBC: Chunk ACK
+    end
+    
+    Note over CS: Image Processing & Boot
+    CS->>CS: Validate and load all images
+    CS->>CS: Boot system with downloaded images
 ```
 
-## Protocol Support Design Options
+## Protocol Support
 
-The network boot utility needs to decide which protocols to support for image transfer. Each protocol has different advantages and trade-offs for the Caliptra ROM environment:
+The network boot coprocessor supports a minimal set of protocols optimized for the Caliptra ROM environment:
+
+### DHCP (Dynamic Host Configuration Protocol)
+- **Purpose**: Automatic network configuration
+- **Advantages**: 
+  - Standard network configuration protocol
+  - Minimal overhead for basic IP assignment
+  - Simple UDP-based protocol
+- **Implementation**: Client-side DHCP for IP address, gateway, and boot server discovery
 
 ### TFTP (Trivial File Transfer Protocol)
-**Should we support TFTP?** 
-- ✅ **Advantages**: 
-  - Basic support in network boot
+- **Purpose**: Lightweight file transfer for firmware images
+- **Advantages**: 
   - Extremely lightweight - minimal overhead perfect for ROM environments
   - Simple UDP-based protocol - easy to implement securely
-    - Small code footprint (~5-10KB implementation)
-- ❌ **Disadvantages**:
-  - No built-in authentication or encryption
-  - Limited error recovery mechanisms
-  - No resume capability for interrupted transfers
+  - Small code footprint (~5-10KB implementation)
+  - Standard protocol for network boot scenarios
+- **Implementation**: Client-side TFTP for firmware image download
+## Network Boot Coprocessor Interface Design
 
-### HTTP (HyperText Transfer Protocol)
-**Should we support HTTP?**
-- ✅ **Advantages**:
-  - Universal protocol - works with any web server infrastructure
-  - Excellent debugging and monitoring tools available
-  - Support for range requests (partial downloads/resume)
-  - Flexible authentication mechanisms (Basic, Digest, OAuth)
-  - Standardized status codes and error handling
-- ❌ **Disadvantages**:
-  - Larger protocol overhead - more complex than TFTP
-  - Requires TCP implementation (more memory usage)
-  - Plain HTTP lacks encryption (security concern)
-  - More complex parsing required
+The Network Boot Coprocessor provides a simple interface for the Caliptra SS to request firmware images over the network.
 
-### HTTPS (HTTP Secure)
-**Should we support HTTPS?**
-- ✅ **Advantages**:
-  - HTTP + Security
-- ❌ **Disadvantages**:
-  - Significant memory overhead for TLS stack (~50-100KB)
-  - CPU overhead for encryption/decryption operations
-  - Certificate management complexity in ROM environment
-  - Larger code footprint may exceed ROM constraints
+### Core Functions
 
-### FTP (File Transfer Protocol)
-**Should we support FTP?**
-- ✅ **Advantages**:
-  - Mature protocol with extensive server support
-  - Efficient binary file transfer capabilities
-  - Built-in authentication mechanisms
-  - Directory listing and file management features
-- ❌ **Disadvantages**:
-  - Complex dual-connection protocol (control + data channels)
-  - Large protocol overhead inappropriate for ROM environment
-  - Security issues with plaintext authentication
-  - Firewall complications due to dynamic port usage
+The Network Boot Coprocessor implements the following core functions:
 
-### NFS (Network File System)
-**Should we support NFS?**
-- ✅ **Advantages**:
-  - Transparent file system access - appears as local storage
-- ❌ **Disadvantages**:
-  - Extremely complex protocol stack (RPC, XDR, Mount protocol)
-  - Large memory footprint incompatible with ROM constraints
-  - Stateful connections problematic for boot scenarios
+#### Network Discovery
+- **DHCP Configuration**: Automatically configure network interface using DHCP
+- **Server Discovery**: Identify TFTP server for firmware image downloads
+- **Configuration Download**: Download firmware ID to filename mapping configuration
+- **Mapping Storage**: Store firmware ID mappings for subsequent image requests
 
-### iSCSI (Internet Small Computer Systems Interface)
-**Should we support iSCSI?**
+#### Image Transfer
+- **Firmware ID Resolution**: Map firmware IDs to actual filenames using stored configuration
+- **TFTP Download**: Download firmware images from TFTP server using resolved filenames
+- **Data Streaming**: Stream image data directly to Caliptra SS
 
-The iSCSI protocol is used for connecting storage attached networks. It provides mutual authentication using the CHAP protocol. It typically runs on a TCP transport.
+#### Supported Firmware IDs
+- **ID 0**: Caliptra FMC+RT image
+- **ID 1**: SoC Manifest
+- **ID 2**: MCU RT image
 
-- ✅ **Advantages**:
-  - Enterprise storage integration capabilities
-  - Supports advanced features like snapshots and cloning
-- ❌ **Disadvantages**:
-  - Extremely complex protocol requiring SCSI command set knowledge
-  - Large memory requirements for connection state management
-
-### Protocol Recommendation Matrix
-
-| Protocol | ROM Suitability | Security | Implementation Complexity | Infrastructure Support | Recommended |
-|----------|----------------|----------|--------------------------|----------------------|-------------|
-| **TFTP** | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **Primary** |
-| **HTTP** | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **Secondary** |
-| **HTTPS** | ⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ | ⚠️ **Optional** |
-| **FTP** | ⭐ | ⭐⭐ | ⭐ | ⭐⭐⭐ | ❌ **Not Recommended** |
-| **NFS** | ⭐ | ⭐⭐ | ⭐ | ⭐⭐⭐ | ❌ **Not Recommended** |
-| **iSCSI** | ⭐ | ⭐⭐⭐ | ⭐ | ⭐⭐ | ❌ **Not Recommended** |
-
-## iPXE Interface Design
-
-### Why iPXE Interface?
-
-The iPXE interface serves as a abstraction layer between the Boot Application and the Network Boot Library. This design choice provides several key advantages:
-
-**Standardization**: iPXE defines a well-established set of network boot commands that are widely understood and documented. By implementing an iPXE-compatible interface, we leverage existing knowledge and tooling from the network boot ecosystem.
-
-**Abstraction**: The iPXE interface abstracts the complexity of different network protocols (TFTP, HTTP, HTTPS) behind a uniform command set. This allows the Boot Application to focus on OCP protocol translation without needing to understand the intricacies of each network protocol.
-
-**Flexibility**: iPXE's command structure supports multiple protocols and boot scenarios, providing flexibility for future enhancements and different deployment environments.
-
-### iPXE Command Set Integration
-
-Based on the [iPXE command reference](https://ipxe.org/cmd), the following core commands will be implemented:
-
-#### Network Configuration Commands
-- **`dhcp`**: Automatically configure network interface using DHCP
-- **`ifconfig`**: Manual network interface configuration
-- **`route`**: Configure network routing tables
-
-#### File Transfer Commands  
-- **`imgfetch`**: Download image files from remote servers
-- **`imgload`**: Load downloaded images into memory
-- **`imgexec`**: Execute loaded images (adapted for Caliptra delivery)
-
-#### Protocol-Specific Commands
-- **`chain`**: Load and execute remote boot files via HTTP/HTTPS
-- **`sanboot`**: Boot from SAN devices (adapted for network storage)
-
-#### Utility Commands
-- **`echo`**: Display messages for debugging
-- **`sleep`**: Introduce delays in boot sequences
-- **`exit`**: Terminate boot process
-
-### iPXE Interface Implementation
+### Network Boot Coprocessor Interface
 
 ```rust
-/// iPXE-compatible interface for network boot operations
-pub trait iPxeInterface {
+/// Network Boot Coprocessor interface for Caliptra SS
+pub trait NetworkBootCoprocessor {
     type Error;
     
-    /// Configure network interface via DHCP
-    fn dhcp(&mut self, interface: Option<&str>) -> Result<NetworkConfig, Self::Error>;
+    /// Start network boot discovery process
+    /// This will perform DHCP, discover TFTP server, and download configuration
+    fn start_network_boot_discovery(&mut self) -> Result<NetworkBootStatus, Self::Error>;
     
-    /// Fetch image from remote server
-    fn imgfetch(&mut self, url: &str, name: Option<&str>) -> Result<ImageHandle, Self::Error>;
+    /// Download firmware image by ID
+    fn download_image(&mut self, firmware_id: FirmwareId) -> Result<ImageStream, Self::Error>;
     
-    /// Load fetched image into memory
-    fn imgload(&mut self, handle: ImageHandle) -> Result<LoadedImage, Self::Error>;
-    
-    /// Execute/deliver loaded image (to Caliptra via OCP)
-    fn imgexec(&mut self, image: LoadedImage) -> Result<(), Self::Error>;
-    
-    /// Chain boot from remote location
-    fn chain(&mut self, url: &str) -> Result<(), Self::Error>;
-    
-    /// Configure network interface manually
-    fn ifconfig(&mut self, interface: &str, config: &NetworkConfig) -> Result<(), Self::Error>;
-    
-    /// Display diagnostic information
-    fn echo(&self, message: &str);
-    
-    /// Sleep for specified duration
-    fn sleep(&mut self, seconds: u32) -> Result<(), Self::Error>;
+    /// Get network status and configuration
+    fn get_network_status(&self) -> Result<NetworkStatus, Self::Error>;
+}
+
+/// Firmware ID enumeration
+#[derive(Debug, Clone, Copy)]
+pub enum FirmwareId {
+    /// Caliptra FMC+RT image
+    CaliptraFmcRt = 0,
+    /// SoC Manifest
+    SocManifest = 1,
+    /// MCU RT image
+    McuRt = 2,
+}
+
+/// Network boot discovery status
+#[derive(Debug)]
+pub struct NetworkBootStatus {
+    pub network_ready: bool,
+    pub tftp_server_discovered: bool,
+    pub config_downloaded: bool,
+    pub firmware_mappings: FirmwareMappings,
+}
+
+/// Firmware ID to filename mappings
+#[derive(Debug, Clone)]
+pub struct FirmwareMappings {
+    pub caliptra_fmc_rt: String,
+    pub soc_manifest: String,
+    pub mcu_rt: String,
 }
 
 /// Network configuration structure
@@ -228,147 +167,153 @@ pub struct NetworkConfig {
     pub ip_address: IpAddr,
     pub netmask: IpAddr, 
     pub gateway: Option<IpAddr>,
-    pub dns_servers: Vec<IpAddr>,
+    pub tftp_server: IpAddr,
 }
 
-/// Handle to a fetched image
+/// Network status information
 #[derive(Debug)]
-pub struct ImageHandle {
-    pub name: String,
-    pub url: String,
-    pub size: Option<u64>,
-    pub protocol: Protocol,
+pub struct NetworkStatus {
+    pub connected: bool,
+    pub config: Option<NetworkConfig>,
+    pub server_reachable: bool,
 }
 
-/// Loaded image ready for execution
-#[derive(Debug)]
-pub struct LoadedImage {
-    pub handle: ImageHandle,
-    pub data: Vec<u8>,
-    pub checksum: Option<[u8; 32]>,
-}
-
-/// Supported protocols
-#[derive(Debug, Clone)]
-pub enum Protocol {
-    Tftp,
-    Http,
-    Https,
-    Custom(String),
+/// Streaming interface for image data
+pub trait ImageStream {
+    /// Read next chunk of image data
+    fn read_chunk(&mut self, buffer: &mut [u8]) -> Result<usize, Error>;
+    
+    /// Get total image size if known
+    fn total_size(&self) -> Option<u64>;
+    
+    /// Check if stream is complete
+    fn is_complete(&self) -> bool;
 }
 ```
 
-### Integration Benefits
+### Usage Example
 
-**Boot Application Perspective**: The Boot Application can use familiar iPXE commands to request network operations without understanding protocol details:
 ```rust
-// Example: Boot Application handling OCP request
-fn handle_ocp_image_request(&mut self, image_id: &str) -> Result<(), Error> {
-    // Translate OCP request to iPXE commands
-    let url = format!("tftp://192.168.1.100/{}", image_id);
+// Example: Caliptra SS network boot process
+fn perform_network_boot(&mut self) -> Result<(), Error> {
+    // 1. Start network boot discovery
+    let boot_status = self.network_boot.start_network_boot_discovery()?;
     
-    let handle = self.ipxe.imgfetch(&url, Some(image_id))?;
-    let image = self.ipxe.imgload(handle)?;
+    if !boot_status.network_ready || !boot_status.config_downloaded {
+        return Err(Error::NetworkBootNotAvailable);
+    }
     
-    // imgexec will deliver to Caliptra via OCP interface
-    self.ipxe.imgexec(image)?;
+    // 2. Download Caliptra FMC+RT image
+    let mut caliptra_stream = self.network_boot.download_image(FirmwareId::CaliptraFmcRt)?;
+    self.load_image_stream(caliptra_stream, ImageDestination::CaliptraCore)?;
     
+    // 3. Download SoC Manifest
+    let mut manifest_stream = self.network_boot.download_image(FirmwareId::SocManifest)?;
+    self.load_image_stream(manifest_stream, ImageDestination::SocManifest)?;
+    
+    // 4. Download MCU RT image
+    let mut mcu_stream = self.network_boot.download_image(FirmwareId::McuRt)?;
+    self.load_image_stream(mcu_stream, ImageDestination::McuRuntime)?;
+    
+    // 5. Validate and boot all images
+    self.validate_and_boot_images()?;
+    
+    Ok(())
+}
+
+fn load_image_stream(&mut self, mut stream: ImageStream, dest: ImageDestination) -> Result<(), Error> {
+    let mut buffer = [0u8; 4096];
+    while !stream.is_complete() {
+        let bytes_read = stream.read_chunk(&mut buffer)?;
+        if bytes_read > 0 {
+            self.write_image_chunk(dest, &buffer[..bytes_read])?;
+        }
+    }
     Ok(())
 }
 ```
 
-**Network Boot Library Perspective**: The library implements iPXE commands by translating them to appropriate network protocol operations, handling all the low-level protocol complexity internally.
+### Configuration File Format
 
-**Maintainability**: Changes to network protocols or implementations only require updates to the Network Boot Library, while the Boot Application interface remains stable.
+The network boot coprocessor downloads a configuration file that maps firmware IDs to filenames:
 
-**Testing & Debugging**: iPXE's well-known commands enable easier testing and debugging, as network administrators can understand and trace the boot process using familiar terminology.
+```json
+{
+    "firmware_mappings": {
+        "0": "caliptra-fmc-rt-v1.2.3.bin",
+        "1": "soc-manifest-v2.1.0.bin", 
+        "2": "mcu-runtime-v3.0.1.bin"
+    }
+}
+```
 
-## Network Stack Design Options
+## Network Stack Implementation
 
-For the Network Boot Library implementation, we need to choose a network stack that can handle the required protocols while meeting the constraints of a ROM environment. Here are the two primary options:
+For the Network Boot Coprocessor implementation, we need a minimal network stack that supports DHCP and TFTP while meeting the constraints of a ROM environment.
 
 ### Option 1: lwIP (Lightweight IP) with Rust Bindings
 
 **Repository**: https://git.savannah.nongnu.org/cgit/lwip.git (upstream C)  
 **Rust Bindings**: https://github.com/embassy-rs/lwip (Embassy lwIP bindings)  
-**Alternative Bindings**: https://github.com/datdenkikniet/lwip-rs  
 
 **Description**: Mature, lightweight TCP/IP stack originally written in C with Rust FFI bindings.
 
 **Advantages**:
-- ✅ **Comprehensive Protocol Support**: Built-in support for HTTP, HTTPS, TFTP, FTP, and other protocols
-- ✅ **Mature and Battle-Tested**: Currently used by u-boot
+- ✅ **Built-in DHCP and TFTP Support**: Native support for required protocols
+- ✅ **Mature and Battle-Tested**: Currently used by u-boot and other embedded systems
+- ✅ **Minimal Configuration**: Can be configured for UDP-only operation
 
 **Disadvantages**:
 - ❌ **C Language Security Risks**: Inherits buffer overflow and memory safety vulnerabilities from C
 - ❌ **FFI Complexity**: Rust-C interop adds complexity and potential for safety violations
 
-**Protocol Support**:
-- ✅ HTTP/HTTPS client and server
-- ✅ TFTP client and server
-- ✅ FTP client support
+**Required Protocol Support**:
 - ✅ DHCP client
-- ✅ DNS resolution
-- ✅ TCP/UDP sockets
-- ✅ iSCSI (via extensions)
-- ✅ NFS (via extensions)
+- ✅ TFTP client
+- ✅ UDP sockets
 
-### Option 2: smoltcp + Protocol Libraries
+### Option 2: smoltcp + Custom TFTP
 
 **Core**: https://github.com/smoltcp-rs/smoltcp (0BSD License)  
-**HTTP Library**: https://github.com/algesten/ureq (MIT/Apache-2.0)  
-**TLS Library**: https://github.com/rustls/rustls (Apache-2.0/ISC/MIT)  
-**TFTP Library**: Custom implementation on UDP
+**TFTP**: Custom implementation on UDP
 
-**Description**: Pure Rust network stack with additional protocol libraries for complete functionality.
+**Description**: Pure Rust network stack with custom TFTP implementation for minimal footprint.
 
 **Advantages**:
 - ✅ **Memory Safety**: Pure Rust eliminates entire classes of security vulnerabilities
 - ✅ **ROM Optimized**: Minimal footprint with only required features included
-- ✅ **Modular Design**: Include only needed protocols to minimize code size
+- ✅ **Modular Design**: Include only DHCP and TFTP to minimize code size
 - ✅ **No FFI Overhead**: Native Rust performance without C interop costs
 - ✅ **Strong Type Safety**: Compile-time prevention of many networking bugs
-- ✅ **Excellent Licensing**: 0BSD core with permissive supporting libraries
+- ✅ **Excellent Licensing**: 0BSD license is very permissive
 
 **Disadvantages**:
-- ❌ **Protocol Gap**: Requires additional libraries or custom implementations for some protocols
-- ❌ **Integration Complexity**: Need to integrate multiple crates for full functionality
-- ❌ **Less Battle-Tested**: Newer ecosystem with less production deployment history
-- ❌ **Custom TFTP Implementation**: Must implement TFTP protocol on top of UDP
-- ❌ **Limited HTTP Features**: May need custom HTTP implementation for advanced features
+- ❌ **Custom TFTP Implementation**: Must implement TFTP protocol from scratch
+- ❌ **Less Battle-Tested**: Newer ecosystem compared to lwIP
 
-**Protocol Support**:
-- ✅ TCP/UDP sockets (smoltcp)
-- ✅ DHCP client (smoltcp)
-- ✅ DNS resolution (smoltcp)
-- ✅ HTTP client (ureq + smoltcp)
-- ✅ HTTPS client (ureq + rustls + smoltcp)
+**Required Protocol Support**:
+- ✅ UDP sockets (smoltcp)
+- ✅ DHCP client (smoltcp) 
 - ⚠️ TFTP (custom implementation required)
-- ❌ FTP (not readily available)
-- ❌ iSCSI (not available)
-- ❌ NFS (not available)
-
 
 ### Recommended Approach
 
-**For Production Caliptra System**: **smoltcp + Protocol Libraries**
+**For Production Caliptra System**: **smoltcp + Custom TFTP**
 
 **Rationale**:
 - **Security First**: Memory safety is critical for Root of Trust systems
-- **ROM Constraints**: Modular design allows precise size control
-- **Future-Proof**: Pure Rust ecosystem provides better long-term maintainability
-- **Custom Protocol Support**: Easier to implement Caliptra-specific optimizations
+- **ROM Constraints**: Minimal footprint with only DHCP and TFTP support
+- **Simplicity**: Reduced complexity with only essential protocols
+- **Control**: Custom TFTP implementation allows Caliptra-specific optimizations
 
 **Implementation Strategy**:
-1. **Phase 1**: Implement core networking with smoltcp (TCP, UDP, DHCP)
-2. **Phase 2**: Add HTTP support using ureq for web-based image servers
-3. **Phase 3**: Implement custom TFTP client for PXE compatibility
-4. **Phase 4**: Add HTTPS support with rustls for secure image transfer
+1. **Phase 1**: Implement core UDP networking with smoltcp
+2. **Phase 2**: Add DHCP client functionality  
+3. **Phase 3**: Implement lightweight TFTP client for firmware downloads
 
-**Protocol Priority**:
-1. **UDP + Custom Protocol**: Primary method for lightweight, fast boot
-2. **TFTP**: Secondary for PXE infrastructure compatibility  
-3. **HTTP**: Tertiary for web server integration
-4. **HTTPS**: Optional for high-security environments
+**Protocol Implementation Order**:
+1. **UDP Sockets**: Foundation for all network communication
+2. **DHCP Client**: Automatic network configuration
+3. **TFTP Client**: Firmware image download capability
 
 
