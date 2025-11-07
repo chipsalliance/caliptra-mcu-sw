@@ -325,14 +325,14 @@ impl Soc {
         // Copy all 8 prod debug unlock public key hashes into a single buffer.
         let mut prod_dbg_unlock_pks_hashes = [0u8; 384];
         let fuse_slices = [
-            &fuses.cptra_ss_prod_debug_unlock_pks_0(),
-            &fuses.cptra_ss_prod_debug_unlock_pks_1(),
-            &fuses.cptra_ss_prod_debug_unlock_pks_2(),
-            &fuses.cptra_ss_prod_debug_unlock_pks_3(),
-            &fuses.cptra_ss_prod_debug_unlock_pks_4(),
-            &fuses.cptra_ss_prod_debug_unlock_pks_5(),
-            &fuses.cptra_ss_prod_debug_unlock_pks_6(),
-            &fuses.cptra_ss_prod_debug_unlock_pks_7(),
+            fuses.cptra_ss_prod_debug_unlock_pks_0(),
+            fuses.cptra_ss_prod_debug_unlock_pks_1(),
+            fuses.cptra_ss_prod_debug_unlock_pks_2(),
+            fuses.cptra_ss_prod_debug_unlock_pks_3(),
+            fuses.cptra_ss_prod_debug_unlock_pks_4(),
+            fuses.cptra_ss_prod_debug_unlock_pks_5(),
+            fuses.cptra_ss_prod_debug_unlock_pks_6(),
+            fuses.cptra_ss_prod_debug_unlock_pks_7(),
         ];
         for (i, fuse_slice) in fuse_slices.iter().enumerate() {
             let start = i * 48;

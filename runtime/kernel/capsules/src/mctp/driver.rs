@@ -435,7 +435,7 @@ impl<'a> MCTPDriver<'a> {
                         };
 
                         let msg_info =
-                            (buffered_msg.op_context.peer_eid as usize) << 16 | (buffered_msg.msg_type as usize) << 8 | (buffered_msg.op_context.msg_tag as usize);
+                            ((buffered_msg.op_context.peer_eid as usize) << 16) | ((buffered_msg.msg_type as usize) << 8) | (buffered_msg.op_context.msg_tag as usize);
 
                         if let Err(e) = kernel_data.schedule_upcall(
                                 subscribe_num,
@@ -604,7 +604,7 @@ impl MCTPTxClient for MCTPDriver<'_> {
             }
 
             app.pending_tx = None;
-            let msg_info = (msg_type as usize) << 8 | ((msg_tag & MCTP_TAG_MASK) as usize);
+            let msg_info = ((msg_type as usize) << 8) | ((msg_tag & MCTP_TAG_MASK) as usize);
             up_calls
                 .schedule_upcall(
                     upcall::MESSAGE_TRANSMITTED,
@@ -685,7 +685,7 @@ impl MCTPRxClient for MCTPDriver<'_> {
                 };
 
                 let msg_info =
-                    (src_eid as usize) << 16 | (msg_type as usize) << 8 | (msg_tag as usize);
+                    ((src_eid as usize) << 16) | ((msg_type as usize) << 8) | (msg_tag as usize);
                 if let Err(e) = kernel_data
                     .schedule_upcall(subscribe_num, (msg_len, recv_time as usize, msg_info))
                 {

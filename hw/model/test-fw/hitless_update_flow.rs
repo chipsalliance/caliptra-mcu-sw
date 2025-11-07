@@ -7,7 +7,7 @@
 #![no_std]
 
 use mcu_error::McuError;
-use mcu_rom_common::{fatal_error, fatal_error_raw, McuBootMilestones, RomEnv};
+use mcu_rom_common::{fatal_error, McuBootMilestones, RomEnv};
 use registers_generated::mci;
 use romtime::McuResetReason;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -54,7 +54,7 @@ fn cold_boot(env: &mut RomEnv) -> ! {
             "Expected 0xBFOR, got 0x{:08x}",
             mci.registers.mcu_sram[0].get()
         );
-        fatal_error_raw(1);
+        fatal_error(HitlessUpdateError::InvalidBeforeValue.into());
     }
 
     // Notify Caliptra to continue
@@ -78,7 +78,7 @@ fn hitless_update(env: &mut RomEnv) -> ! {
             "Expected AFTR, got 0x{:08x}",
             mci.registers.mcu_sram[0].get()
         );
-        fatal_error_raw(2);
+        fatal_error(HitlessUpdateError::InvalidAfterValue.into());
     }
     mci.set_flow_milestone(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE.into());
     loop {}
@@ -107,4 +107,15 @@ fn run() -> ! {
 pub extern "C" fn main() {
     mcu_test_harness::set_printer();
     run();
+}
+
+enum HitlessUpdateError {
+    InvalidBeforeValue,
+    InvalidAfterValue,
+}
+
+impl From<HitlessUpdateError> for mcu_error::McuError {
+    fn from(err: HitlessUpdateError) -> Self {
+        McuError::new_vendor(err as u32)
+    }
 }

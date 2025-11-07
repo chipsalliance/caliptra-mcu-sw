@@ -4569,8 +4569,8 @@ fn decode_inst_opcode_compressed_0(isa: RvIsa, inst: u64) -> Option<&'static RvO
 }
 
 fn decode_inst_opcode_compressed_1(isa: RvIsa, inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 13 & 7 {
-        0 => Some(match inst >> 2 & 0x7ff {
+    match (inst >> 13) & 7 {
+        0 => Some(match (inst >> 2) & 0x7ff {
             0 => &RV_OPCODE_DATA_cnop,
             _ => &RV_OPCODE_DATA_caddi,
         }),
@@ -4580,15 +4580,15 @@ fn decode_inst_opcode_compressed_1(isa: RvIsa, inst: u64) -> Option<&'static RvO
             &RV_OPCODE_DATA_caddiw
         }),
         2 => Some(&RV_OPCODE_DATA_cli),
-        3 => Some(match inst >> 7 & 0x1f {
+        3 => Some(match (inst >> 7) & 0x1f {
             2 => &RV_OPCODE_DATA_caddi16sp,
             _ => &RV_OPCODE_DATA_clui,
         }),
-        4 => match inst >> 10 & 3 {
+        4 => match (inst >> 10) & 3 {
             0 => Some(&RV_OPCODE_DATA_csrli),
             1 => Some(&RV_OPCODE_DATA_csrai),
             2 => Some(&RV_OPCODE_DATA_candi),
-            3 => match inst >> 10 & 4 | inst >> 5 & 3 {
+            3 => match (inst >> 10) & 4 | (inst >> 5) & 3 {
                 0 => Some(&RV_OPCODE_DATA_csub),
                 1 => Some(&RV_OPCODE_DATA_cxor),
                 2 => Some(&RV_OPCODE_DATA_cor),
@@ -4607,7 +4607,7 @@ fn decode_inst_opcode_compressed_1(isa: RvIsa, inst: u64) -> Option<&'static RvO
 }
 
 fn decode_inst_opcode_compressed_2(isa: RvIsa, inst: u64) -> Option<&'static RvOpcodeData> {
-    Some(match inst >> 13 & 7 {
+    Some(match (inst >> 13) & 7 {
         0 => &RV_OPCODE_DATA_cslli,
         1 => {
             if isa == RvIsa::Rv128 {
@@ -4624,13 +4624,13 @@ fn decode_inst_opcode_compressed_2(isa: RvIsa, inst: u64) -> Option<&'static RvO
                 &RV_OPCODE_DATA_cldsp
             }
         }
-        4 => match inst >> 12 & 1 {
-            0 => match inst >> 2 & 0x1f {
+        4 => match (inst >> 12) & 1 {
+            0 => match (inst >> 2) & 0x1f {
                 0 => &RV_OPCODE_DATA_cjr,
                 _ => &RV_OPCODE_DATA_cmv,
             },
-            1 => match inst >> 2 & 0x1f {
-                0 => match inst >> 7 & 0x1f {
+            1 => match (inst >> 2) & 0x1f {
+                0 => match (inst >> 7) & 0x1f {
                     0 => &RV_OPCODE_DATA_cebreak,
                     _ => &RV_OPCODE_DATA_cjalr,
                 },
@@ -4658,7 +4658,7 @@ fn decode_inst_opcode_compressed_2(isa: RvIsa, inst: u64) -> Option<&'static RvO
 }
 
 fn decode_inst_opcode_load(inst: u64) -> Option<&'static RvOpcodeData> {
-    Some(match inst >> 12 & 7 {
+    Some(match (inst >> 12) & 7 {
         0 => &RV_OPCODE_DATA_lb,
         1 => &RV_OPCODE_DATA_lh,
         2 => &RV_OPCODE_DATA_lw,
@@ -4672,7 +4672,7 @@ fn decode_inst_opcode_load(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_load_fp(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 12 & 7 {
+    match (inst >> 12) & 7 {
         2 => Some(&RV_OPCODE_DATA_flw),
         3 => Some(&RV_OPCODE_DATA_FLD),
         4 => Some(&RV_OPCODE_DATA_flq),
@@ -4681,7 +4681,7 @@ fn decode_inst_opcode_load_fp(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_misc_mem(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 12 & 7 {
+    match (inst >> 12) & 7 {
         0 => Some(&RV_OPCODE_DATA_fence),
         1 => Some(&RV_OPCODE_DATA_fencei),
         2 => Some(&RV_OPCODE_DATA_lq),
@@ -4690,10 +4690,10 @@ fn decode_inst_opcode_misc_mem(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_op_imm(isa: RvIsa, inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 12 & 7 {
+    match (inst >> 12) & 7 {
         0 => Some(&RV_OPCODE_DATA_addi),
         1 => {
-            if inst >> 27 & 0x1f == 0 {
+            if (inst >> 27) & 0x1f == 0 {
                 Some(&RV_OPCODE_DATA_slli)
             } else if inst >> 20 == 0x600 {
                 Some(&RV_OPCODE_DATA_clz)
@@ -4738,7 +4738,7 @@ fn decode_inst_opcode_op_imm(isa: RvIsa, inst: u64) -> Option<&'static RvOpcodeD
             } else if isa == RvIsa::Rv64 && inst >> 26 == 0x18 {
                 Some(&RV_OPCODE_DATA_rori64)
             } else {
-                match inst >> 27 & 0x1f {
+                match (inst >> 27) & 0x1f {
                     0 => Some(&RV_OPCODE_DATA_srli),
                     8 => Some(&RV_OPCODE_DATA_srai),
                     9 => Some(&RV_OPCODE_DATA_bexti),
@@ -4753,12 +4753,12 @@ fn decode_inst_opcode_op_imm(isa: RvIsa, inst: u64) -> Option<&'static RvOpcodeD
 }
 
 fn decode_inst_opcode_op_imm_32(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 12 & 7 {
+    match (inst >> 12) & 7 {
         0 => Some(&RV_OPCODE_DATA_addiw),
         1 => {
-            if inst >> 26 & 0x3f == 2 {
+            if (inst >> 26) & 0x3f == 2 {
                 Some(&RV_OPCODE_DATA_slliuw)
-            } else if inst >> 25 & 0x7f == 0 {
+            } else if (inst >> 25) & 0x7f == 0 {
                 Some(&RV_OPCODE_DATA_slliw)
             } else if inst >> 20 == 0x600 {
                 Some(&RV_OPCODE_DATA_clzw)
@@ -4770,7 +4770,7 @@ fn decode_inst_opcode_op_imm_32(inst: u64) -> Option<&'static RvOpcodeData> {
                 None
             }
         }
-        5 => match inst >> 25 & 0x7f {
+        5 => match (inst >> 25) & 0x7f {
             0 => Some(&RV_OPCODE_DATA_srliw),
             32 => Some(&RV_OPCODE_DATA_sraiw),
             48 => Some(&RV_OPCODE_DATA_roriw),
@@ -4781,7 +4781,7 @@ fn decode_inst_opcode_op_imm_32(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_store(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 12 & 7 {
+    match (inst >> 12) & 7 {
         0 => Some(&RV_OPCODE_DATA_sb),
         1 => Some(&RV_OPCODE_DATA_sh),
         2 => Some(&RV_OPCODE_DATA_sw),
@@ -4792,7 +4792,7 @@ fn decode_inst_opcode_store(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_store_fp(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 12 & 7 {
+    match (inst >> 12) & 7 {
         2 => Some(&RV_OPCODE_DATA_fsw),
         3 => Some(&RV_OPCODE_DATA_fsd),
         4 => Some(&RV_OPCODE_DATA_fsq),
@@ -4801,7 +4801,7 @@ fn decode_inst_opcode_store_fp(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_amo(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 24 & 0xf8 | inst >> 12 & 7 {
+    match (inst >> 24) & 0xf8 | (inst >> 12) & 7 {
         2 => Some(&RV_OPCODE_DATA_amoaddw),
         3 => Some(&RV_OPCODE_DATA_amoaddd),
         4 => Some(&RV_OPCODE_DATA_amoaddq),
@@ -4809,21 +4809,21 @@ fn decode_inst_opcode_amo(inst: u64) -> Option<&'static RvOpcodeData> {
         11 => Some(&RV_OPCODE_DATA_amoswapd),
         12 => Some(&RV_OPCODE_DATA_amoswapq),
         18 => {
-            if inst >> 20 & 0x1f == 0 {
+            if (inst >> 20) & 0x1f == 0 {
                 Some(&RV_OPCODE_DATA_lrw)
             } else {
                 None
             }
         }
         19 => {
-            if inst >> 20 & 0x1f == 0 {
+            if (inst >> 20) & 0x1f == 0 {
                 Some(&RV_OPCODE_DATA_lrd)
             } else {
                 None
             }
         }
         20 => {
-            if inst >> 20 & 0x1f == 0 {
+            if (inst >> 20) & 0x1f == 0 {
                 Some(&RV_OPCODE_DATA_lrq)
             } else {
                 None
@@ -4858,7 +4858,7 @@ fn decode_inst_opcode_amo(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_op(isa: RvIsa, inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 22 & 0x3f8 | inst >> 12 & 7 {
+    match (inst >> 22) & 0x3f8 | (inst >> 12) & 7 {
         0 => Some(&RV_OPCODE_DATA_add),
         1 => Some(&RV_OPCODE_DATA_sll),
         2 => Some(&RV_OPCODE_DATA_slt),
@@ -4902,7 +4902,7 @@ fn decode_inst_opcode_op(isa: RvIsa, inst: u64) -> Option<&'static RvOpcodeData>
 }
 
 fn decode_inst_opcode_op_32_14(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 22 & 0x3f8 | inst >> 12 & 7 {
+    match (inst >> 22) & 0x3f8 | (inst >> 12) & 7 {
         0 => Some(&RV_OPCODE_DATA_addw),
         1 => Some(&RV_OPCODE_DATA_sllw),
         5 => Some(&RV_OPCODE_DATA_srlw),
@@ -4925,7 +4925,7 @@ fn decode_inst_opcode_op_32_14(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_madd(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 25 & 3 {
+    match (inst >> 25) & 3 {
         0 => Some(&RV_OPCODE_DATA_fmadds),
         1 => Some(&RV_OPCODE_DATA_fmaddd),
         3 => Some(&RV_OPCODE_DATA_fmaddq),
@@ -4934,7 +4934,7 @@ fn decode_inst_opcode_madd(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_msub(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 25 & 3 {
+    match (inst >> 25) & 3 {
         0 => Some(&RV_OPCODE_DATA_fmsubs),
         1 => Some(&RV_OPCODE_DATA_fmsubd),
         3 => Some(&RV_OPCODE_DATA_fmsubq),
@@ -4943,7 +4943,7 @@ fn decode_inst_opcode_msub(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_nmsub(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 25 & 3 {
+    match (inst >> 25) & 3 {
         0 => Some(&RV_OPCODE_DATA_fnmsubs),
         1 => Some(&RV_OPCODE_DATA_fnmsubd),
         3 => Some(&RV_OPCODE_DATA_fnmsubq),
@@ -4952,7 +4952,7 @@ fn decode_inst_opcode_nmsub(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_nmadd(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 25 & 3 {
+    match (inst >> 25) & 3 {
         0 => Some(&RV_OPCODE_DATA_fnmadds),
         1 => Some(&RV_OPCODE_DATA_fnmaddd),
         3 => Some(&RV_OPCODE_DATA_fnmaddq),
@@ -4961,7 +4961,7 @@ fn decode_inst_opcode_nmadd(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_op_fp(inst: u64) -> Option<&'static RvOpcodeData> {
-    match (inst >> 25 & 0x7f, inst >> 20 & 0x1f, inst >> 12 & 7) {
+    match ((inst >> 25) & 0x7f, (inst >> 20) & 0x1f, (inst >> 12) & 7) {
         (0, _, _) => Some(&RV_OPCODE_DATA_fadds),
         (1, _, _) => Some(&RV_OPCODE_DATA_faddd),
         (3, _, _) => Some(&RV_OPCODE_DATA_faddq),
@@ -5031,37 +5031,37 @@ fn decode_inst_opcode_op_fp(inst: u64) -> Option<&'static RvOpcodeData> {
         (107, 1, _) => Some(&RV_OPCODE_DATA_fcvtqwu),
         (107, 2, _) => Some(&RV_OPCODE_DATA_fcvtql),
         (107, 3, _) => Some(&RV_OPCODE_DATA_fcvtqlu),
-        (112, _, _) => match inst >> 17 & 0xf8 | inst >> 12 & 7 {
+        (112, _, _) => match (inst >> 17) & 0xf8 | (inst >> 12) & 7 {
             0 => Some(&RV_OPCODE_DATA_fmvxs),
             1 => Some(&RV_OPCODE_DATA_fclasss),
             _ => None,
         },
-        (113, _, _) => match inst >> 17 & 0xf8 | inst >> 12 & 7 {
+        (113, _, _) => match (inst >> 17) & 0xf8 | (inst >> 12) & 7 {
             0 => Some(&RV_OPCODE_DATA_fmvxd),
             1 => Some(&RV_OPCODE_DATA_fclassd),
             _ => None,
         },
-        (115, _, _) => match inst >> 17 & 0xf8 | inst >> 12 & 7 {
+        (115, _, _) => match (inst >> 17) & 0xf8 | (inst >> 12) & 7 {
             0 => Some(&RV_OPCODE_DATA_fmvxq),
             1 => Some(&RV_OPCODE_DATA_fclassq),
             _ => None,
         },
         (120, _, _) => {
-            if inst >> 17 & 0xf8 | inst >> 12 & 7 == 0 {
+            if (inst >> 17) & 0xf8 | (inst >> 12) & 7 == 0 {
                 Some(&RV_OPCODE_DATA_fmvsx)
             } else {
                 None
             }
         }
         (121, _, _) => {
-            if inst >> 17 & 0xf8 | inst >> 12 & 7 == 0 {
+            if (inst >> 17) & 0xf8 | (inst >> 12) & 7 == 0 {
                 Some(&RV_OPCODE_DATA_fmvdx)
             } else {
                 None
             }
         }
         (123, _, _) => {
-            if inst >> 17 & 0xf8 | inst >> 12 & 7 == 0 {
+            if (inst >> 17) & 0xf8 | (inst >> 12) & 7 == 0 {
                 Some(&RV_OPCODE_DATA_fmvqx)
             } else {
                 None
@@ -5072,16 +5072,16 @@ fn decode_inst_opcode_op_fp(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_custom2_rv128(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 12 & 7 {
+    match (inst >> 12) & 7 {
         0 => Some(&RV_OPCODE_DATA_addid),
         1 => {
-            if inst >> 26 & 0x3f == 0 {
+            if (inst >> 26) & 0x3f == 0 {
                 Some(&RV_OPCODE_DATA_sllid)
             } else {
                 None
             }
         }
-        5 => match inst >> 26 & 0x3f {
+        5 => match (inst >> 26) & 0x3f {
             0 => Some(&RV_OPCODE_DATA_srlid),
             16 => Some(&RV_OPCODE_DATA_sraid),
             _ => None,
@@ -5091,7 +5091,7 @@ fn decode_inst_opcode_custom2_rv128(inst: u64) -> Option<&'static RvOpcodeData> 
 }
 
 fn decode_inst_opcode_branch(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 12 & 7 {
+    match (inst >> 12) & 7 {
         0 => Some(&RV_OPCODE_DATA_beq),
         1 => Some(&RV_OPCODE_DATA_bne),
         4 => Some(&RV_OPCODE_DATA_blt),
@@ -5103,7 +5103,7 @@ fn decode_inst_opcode_branch(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_jalr(inst: u64) -> Option<&'static RvOpcodeData> {
-    if inst >> 12 & 7 == 0 {
+    if (inst >> 12) & 7 == 0 {
         Some(&RV_OPCODE_DATA_jalr)
     } else {
         None
@@ -5111,17 +5111,17 @@ fn decode_inst_opcode_jalr(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_system(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 12 & 7 {
-        0 => match inst >> 20 & 0xfe0 | inst >> 7 & 0x1f {
-            0 => match inst >> 15 & 0x3ff {
+    match (inst >> 12) & 7 {
+        0 => match (inst >> 20) & 0xfe0 | (inst >> 7) & 0x1f {
+            0 => match (inst >> 15) & 0x3ff {
                 0 => Some(&RV_OPCODE_DATA_ecall),
                 32 => Some(&RV_OPCODE_DATA_ebreak),
                 64 => Some(&RV_OPCODE_DATA_uret),
                 _ => None,
             },
-            256 => match inst >> 20 & 0x1f {
+            256 => match (inst >> 20) & 0x1f {
                 2 => {
-                    if inst >> 15 & 0x1f == 0 {
+                    if (inst >> 15) & 0x1f == 0 {
                         Some(&RV_OPCODE_DATA_sret)
                     } else {
                         None
@@ -5129,7 +5129,7 @@ fn decode_inst_opcode_system(inst: u64) -> Option<&'static RvOpcodeData> {
                 }
                 4 => Some(&RV_OPCODE_DATA_sfencevm),
                 5 => {
-                    if inst >> 15 & 0x1f == 0 {
+                    if (inst >> 15) & 0x1f == 0 {
                         Some(&RV_OPCODE_DATA_wfi)
                     } else {
                         None
@@ -5139,21 +5139,21 @@ fn decode_inst_opcode_system(inst: u64) -> Option<&'static RvOpcodeData> {
             },
             288 => Some(&RV_OPCODE_DATA_sfencevma),
             512 => {
-                if inst >> 15 & 0x3ff == 64 {
+                if (inst >> 15) & 0x3ff == 64 {
                     Some(&RV_OPCODE_DATA_hret)
                 } else {
                     None
                 }
             }
             768 => {
-                if inst >> 15 & 0x3ff == 64 {
+                if (inst >> 15) & 0x3ff == 64 {
                     Some(&RV_OPCODE_DATA_mret)
                 } else {
                     None
                 }
             }
             1952 => {
-                if inst >> 15 & 0x3ff == 576 {
+                if (inst >> 15) & 0x3ff == 576 {
                     Some(&RV_OPCODE_DATA_dret)
                 } else {
                     None
@@ -5172,7 +5172,7 @@ fn decode_inst_opcode_system(inst: u64) -> Option<&'static RvOpcodeData> {
 }
 
 fn decode_inst_opcode_custom3_rv128(inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 22 & 0x3f8 | inst >> 12 & 7 {
+    match (inst >> 22) & 0x3f8 | (inst >> 12) & 7 {
         0 => Some(&RV_OPCODE_DATA_addd),
         1 => Some(&RV_OPCODE_DATA_slld),
         5 => Some(&RV_OPCODE_DATA_srld),
@@ -5188,7 +5188,7 @@ fn decode_inst_opcode_custom3_rv128(inst: u64) -> Option<&'static RvOpcodeData> 
 }
 
 fn decode_inst_opcode_uncompressed(isa: RvIsa, inst: u64) -> Option<&'static RvOpcodeData> {
-    match inst >> 2 & 0x1f {
+    match (inst >> 2) & 0x1f {
         0 => decode_inst_opcode_load(inst),
         1 => decode_inst_opcode_load_fp(inst),
         3 => decode_inst_opcode_misc_mem(inst),
@@ -5313,83 +5313,83 @@ fn operand_imm20(inst: RvInst) -> i32 {
 fn operand_jimm20(inst: RvInst) -> i32 {
     ((((inst as i64) << 32 >> 63) << 20) as u64
         | ((inst << 33 >> 54) << 1)
-        | (inst << 43 >> 63) << 11
-        | (inst << 44 >> 56) << 12) as i32
+        | ((inst << 43 >> 63) << 11)
+        | ((inst << 44 >> 56) << 12)) as i32
 }
 fn operand_simm12(inst: RvInst) -> i32 {
-    ((((inst as i64) << 32 >> 57) << 5) as u64 | inst << 52 >> 59) as i32
+    ((((inst as i64) << 32 >> 57) << 5) as u64 | (inst << 52 >> 59)) as i32
 }
 fn operand_sbimm12(inst: RvInst) -> i32 {
     ((((inst as i64) << 32 >> 63) << 12) as u64
-        | (inst << 33 >> 58) << 5
-        | (inst << 52 >> 60) << 1
-        | (inst << 56 >> 63) << 11) as i32
+        | ((inst << 33 >> 58) << 5)
+        | ((inst << 52 >> 60) << 1)
+        | ((inst << 56 >> 63) << 11)) as i32
 }
 fn operand_cimmsh6(inst: RvInst) -> u32 {
-    ((inst << 51 >> 63) << 5 | inst << 57 >> 59) as u32
+    (((inst << 51 >> 63) << 5) | (inst << 57 >> 59)) as u32
 }
 fn operand_cimmi(inst: RvInst) -> i32 {
-    ((((inst as i64) << 51 >> 63) << 5) as u64 | inst << 57 >> 59) as i32
+    ((((inst as i64) << 51 >> 63) << 5) as u64 | (inst << 57 >> 59)) as i32
 }
 fn operand_cimmui(inst: RvInst) -> i32 {
-    ((((inst as i64) << 51 >> 63) << 17) as u64 | (inst << 57 >> 59) << 12) as i32
+    ((((inst as i64) << 51 >> 63) << 17) as u64 | ((inst << 57 >> 59) << 12)) as i32
 }
 fn operand_cimmlwsp(inst: RvInst) -> u32 {
-    ((inst << 51 >> 63) << 5 | (inst << 57 >> 61) << 2 | (inst << 60 >> 62) << 6) as u32
+    (((inst << 51 >> 63) << 5) | ((inst << 57 >> 61) << 2) | ((inst << 60 >> 62) << 6)) as u32
 }
 fn operand_cimmldsp(inst: RvInst) -> u32 {
-    ((inst << 51 >> 63) << 5 | (inst << 57 >> 62) << 3 | (inst << 59 >> 61) << 6) as u32
+    (((inst << 51 >> 63) << 5) | ((inst << 57 >> 62) << 3) | ((inst << 59 >> 61) << 6)) as u32
 }
 fn operand_cimmlqsp(inst: RvInst) -> u32 {
-    ((inst << 51 >> 63) << 5 | (inst << 57 >> 63) << 4 | (inst << 58 >> 60) << 6) as u32
+    (((inst << 51 >> 63) << 5) | ((inst << 57 >> 63) << 4) | ((inst << 58 >> 60) << 6)) as u32
 }
 fn operand_cimm16sp(inst: RvInst) -> i32 {
     ((((inst as i64) << 51 >> 63) << 9) as u64
-        | (inst << 57 >> 63) << 4
-        | (inst << 58 >> 63) << 6
-        | (inst << 59 >> 62) << 7
-        | (inst << 61 >> 63) << 5) as i32
+        | ((inst << 57 >> 63) << 4)
+        | ((inst << 58 >> 63) << 6)
+        | ((inst << 59 >> 62) << 7)
+        | ((inst << 61 >> 63) << 5)) as i32
 }
 fn operand_cimmj(inst: RvInst) -> i32 {
     ((((inst as i64) << 51 >> 63) << 11) as u64
-        | (inst << 52 >> 63) << 4
-        | (inst << 53 >> 62) << 8
-        | (inst << 55 >> 63) << 10
-        | (inst << 56 >> 63) << 6
-        | (inst << 57 >> 63) << 7
-        | (inst << 58 >> 61) << 1
-        | (inst << 61 >> 63) << 5) as i32
+        | ((inst << 52 >> 63) << 4)
+        | ((inst << 53 >> 62) << 8)
+        | ((inst << 55 >> 63) << 10)
+        | ((inst << 56 >> 63) << 6)
+        | ((inst << 57 >> 63) << 7)
+        | ((inst << 58 >> 61) << 1)
+        | ((inst << 61 >> 63) << 5)) as i32
 }
 fn operand_cimmb(inst: RvInst) -> i32 {
     ((((inst as i64) << 51 >> 63) << 8) as u64
-        | (inst << 52 >> 62) << 3
-        | (inst << 57 >> 62) << 6
-        | (inst << 59 >> 62) << 1
-        | (inst << 61 >> 63) << 5) as i32
+        | ((inst << 52 >> 62) << 3)
+        | ((inst << 57 >> 62) << 6)
+        | ((inst << 59 >> 62) << 1)
+        | ((inst << 61 >> 63) << 5)) as i32
 }
 fn operand_cimmswsp(inst: RvInst) -> u32 {
-    ((inst << 51 >> 60) << 2 | (inst << 55 >> 62) << 6) as u32
+    (((inst << 51 >> 60) << 2) | ((inst << 55 >> 62) << 6)) as u32
 }
 fn operand_cimmsdsp(inst: RvInst) -> u32 {
-    ((inst << 51 >> 61) << 3 | (inst << 54 >> 61) << 6) as u32
+    (((inst << 51 >> 61) << 3) | ((inst << 54 >> 61) << 6)) as u32
 }
 fn operand_cimmsqsp(inst: RvInst) -> u32 {
-    ((inst << 51 >> 62) << 4 | (inst << 53 >> 60) << 6) as u32
+    (((inst << 51 >> 62) << 4) | ((inst << 53 >> 60) << 6)) as u32
 }
 fn operand_cimm4spn(inst: RvInst) -> u32 {
-    ((inst << 51 >> 62) << 4
-        | (inst << 53 >> 60) << 6
-        | (inst << 57 >> 63) << 2
-        | (inst << 58 >> 63) << 3) as u32
+    (((inst << 51 >> 62) << 4)
+        | ((inst << 53 >> 60) << 6)
+        | ((inst << 57 >> 63) << 2)
+        | ((inst << 58 >> 63) << 3)) as u32
 }
 fn operand_cimmw(inst: RvInst) -> u32 {
-    ((inst << 51 >> 61) << 3 | (inst << 57 >> 63) << 2 | (inst << 58 >> 63) << 6) as u32
+    (((inst << 51 >> 61) << 3) | ((inst << 57 >> 63) << 2) | ((inst << 58 >> 63) << 6)) as u32
 }
 fn operand_cimmd(inst: RvInst) -> u32 {
-    ((inst << 51 >> 61) << 3 | (inst << 57 >> 62) << 6) as u32
+    (((inst << 51 >> 61) << 3) | ((inst << 57 >> 62) << 6)) as u32
 }
 fn operand_cimmq(inst: RvInst) -> u32 {
-    ((inst << 51 >> 62) << 4 | (inst << 53 >> 63) << 8 | (inst << 57 >> 62) << 6) as u32
+    (((inst << 51 >> 62) << 4) | ((inst << 53 >> 63) << 8) | ((inst << 57 >> 62) << 6)) as u32
 }
 
 fn decode_inst_operands(dec: &mut RvDecode) {

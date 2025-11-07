@@ -10,6 +10,7 @@ edition.workspace = true
 bitfield.workspace = true
 bitflags.workspace = true
 caliptra-api.workspace = true
+caliptra-drivers.workspace = true
 flash-image.workspace = true
 mcu-config.workspace = true
 mcu-error.workspace = true

@@ -130,9 +130,9 @@ impl PldmVersion {
         };
         let alpha_bcd = self.alpha; // Alpha is directly used as it's already in the correct format or 0x00 if not present
 
-        (major_bcd as u32) << 24
-            | (minor_bcd as u32) << 16
-            | (update_bcd as u32) << 8
+        ((major_bcd as u32) << 24)
+            | ((minor_bcd as u32) << 16)
+            | ((update_bcd as u32) << 8)
             | alpha_bcd as u32
     }
 

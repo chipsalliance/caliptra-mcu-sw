@@ -184,23 +184,11 @@ pub fn runtime_build_no_apps_uncached(
         OBJCOPY_FLAGS
     );
 
-    // Add flags since we are compiling on nightly.
-    //
-    // - `-Z build-std=core,compiler_builtins`: Build the std library from source
-    //   using our optimization settings. This leads to significantly smaller binary
-    //   sizes, and makes debugging easier since debug information for the core
-    //   library is included in the resulting .elf file. See
-    //   https://github.com/tock/tock/pull/2847 for more details.
-    // - `optimize_for_size`: Sets a feature flag in the core library that aims to
-    //   produce smaller implementations for certain algorithms. See
-    //   https://github.com/rust-lang/rust/pull/125011 for more details.
     let bin = format!("mcu-runtime-{}", platform);
     let cargo_flags_tock = [
         "--verbose".into(),
         format!("--target={}", TARGET),
         format!("--package {}", bin),
-        "-Z build-std=core,compiler_builtins".into(),
-        "-Z build-std-features=core/optimize_for_size".into(),
     ]
     .join(" ");
 
