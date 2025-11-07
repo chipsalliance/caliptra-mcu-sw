@@ -107,6 +107,10 @@ impl Mci {
 }
 
 impl MciPeripheral for Mci {
+    fn generated(&mut self) -> Option<&mut MciGenerated> {
+        Some(&mut self.generated)
+    }
+
     fn read_mci_reg_fw_flow_status(&mut self) -> caliptra_emu_types::RvData {
         self.ext_mci_regs.regs.borrow().flow_status
     }
