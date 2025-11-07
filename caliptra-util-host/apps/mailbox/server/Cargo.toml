@@ -11,9 +11,9 @@ name = "caliptra-mailbox-server"
 path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
 caliptra-util-host-command-types.workspace = true
-clap = { version = "4.0", features = ["derive"] }
-anyhow = "1.0"
+clap.workspace = true
 zerocopy.workspace = true
 
 [lib]
