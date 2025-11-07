@@ -2,7 +2,6 @@
 
 use crate::vdm_handler::pci_sig::tdisp::protocol::*;
 
-pub(crate) const START_INTERFACE_NONCE_SIZE: usize = 32;
 pub(crate) const MAX_TDISP_INTERFACES: usize = 64;
 
 pub(crate) struct TdispState {

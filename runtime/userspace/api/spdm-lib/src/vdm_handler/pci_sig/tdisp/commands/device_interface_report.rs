@@ -60,7 +60,6 @@ pub(crate) async fn handle_get_device_interface_report(
     let avail_buf_size = rsp_buf.tailroom() as u16;
     let remainder_len = intf_report_len.saturating_sub(req.offset);
     let portion_len = remainder_len.min(req.length).min(avail_buf_size);
-
     let rsp_hdr = GetDeviceIntfReportRespHdr {
         portion_length: portion_len,
         remainder_length: remainder_len.saturating_sub(portion_len),
@@ -89,7 +88,8 @@ pub(crate) async fn handle_get_device_interface_report(
             if copied != portion_len as usize {
                 return error_response!(TdispError::Unspecified);
             }
-            let len = rsp_hdr_len + portion_len as usize;
+            rsp_buf.pull_data(copied).map_err(VdmError::Codec)?;
+            let len = rsp_hdr_len + copied;
             rsp_buf.push_data(len).map_err(VdmError::Codec)?;
             Ok(TdispCmdResult::Response(len))
         }

@@ -13,6 +13,7 @@ pub const IDE_STREAM_KEY_SIZE_DW: usize = 8;
 pub const IDE_STREAM_IV_SIZE_DW: usize = 2;
 pub const MAX_SELECTIVE_IDE_ADDR_ASSOC_BLOCK_COUNT: usize = 15;
 
+#[derive(Debug)]
 pub enum IdeKmCommand {
     Query = 0x00,
     QueryResp = 0x01,

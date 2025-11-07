@@ -5,6 +5,9 @@ mod device_cert_store;
 mod device_measurements;
 mod endorsement_certs;
 
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+mod integration_example;
+
 use core::fmt::Write;
 use device_cert_store::{initialize_cert_store, SharedCertStore};
 use embassy_executor::Spawner;
@@ -97,7 +100,7 @@ async fn spdm_mctp_responder() {
         local_algorithms,
         &shared_cert_store,
         device_measurements,
-        None,
+        None, // VDM handlers are not supported for MCTP transport in this configuration
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
@@ -161,6 +164,47 @@ async fn spdm_doe_responder() {
         device_measurements::pcr_quote::create_manifest_with_pcr_quote();
     let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_pcr_quote);
 
+    // Create test drivers and VDM handlers locally for integration testing
+    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+    let (mut tdisp_driver, mut ide_km_driver) =
+        integration_example::vdm_handlers::create_test_pci_sig_drivers();
+
+    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+    let mut tdisp_responder = spdm_lib::vdm_handler::pci_sig::tdisp::TdispResponder::new(
+        integration_example::vdm_handlers::tdisp_driver::SUPPORTED_TDISP_VERSIONS,
+        &mut tdisp_driver,
+    );
+
+    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+    let mut ide_km_responder =
+        spdm_lib::vdm_handler::pci_sig::ide_km::IdeKmResponder::new(&mut ide_km_driver);
+
+    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+    let protocol_handlers: [Option<&mut (dyn spdm_lib::vdm_handler::VdmProtocolHandler + Sync)>;
+        2] = [
+        tdisp_responder
+            .as_mut()
+            .map(|r| r as &mut (dyn spdm_lib::vdm_handler::VdmProtocolHandler + Sync)),
+        Some(&mut ide_km_responder as &mut (dyn spdm_lib::vdm_handler::VdmProtocolHandler + Sync)),
+    ];
+
+    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+    let mut pci_sig_handler = spdm_lib::vdm_handler::pci_sig::PciSigCmdHandler::new(
+        0x0001, // TEST_PCI_SIG_VENDOR_ID
+        protocol_handlers,
+    );
+
+    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+    let mut handlers_array: [&mut dyn spdm_lib::vdm_handler::VdmHandler; 1] =
+        [&mut pci_sig_handler as &mut dyn spdm_lib::vdm_handler::VdmHandler];
+
+    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+    let vdm_handlers: Option<&mut [&mut dyn spdm_lib::vdm_handler::VdmHandler]> =
+        Some(&mut handlers_array);
+
+    #[cfg(not(feature = "test-doe-spdm-tdisp-ide-validator"))]
+    let vdm_handlers: Option<&mut [&mut dyn spdm_lib::vdm_handler::VdmHandler]> = None;
+
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
         SECURE_SPDM_VERSIONS,
@@ -169,7 +213,7 @@ async fn spdm_doe_responder() {
         local_algorithms,
         &shared_cert_store,
         device_measurements,
-        None,
+        vdm_handlers,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {

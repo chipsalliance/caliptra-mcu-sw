@@ -338,6 +338,10 @@ impl<'a> MessageBuf<'a> {
     pub fn msg_len(&self) -> usize {
         self.tail
     }
+
+    pub fn header_offset(&self) -> usize {
+        self.head
+    }
 }
 
 #[cfg(test)]

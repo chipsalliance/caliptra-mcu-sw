@@ -149,3 +149,27 @@ jobs:
             echo "Test suite had failures."
             exit 1
           fi
+
+      - name: Checkout CCC spdm-rs repository
+        uses: actions/checkout@v4
+        with:
+          repository: parvathib/spdm-rs
+          ref: pbhogaraju/custom_v0.4.2
+          path: spdm-rs
+          submodules: recursive
+
+      - name: Prepare, build spdm-rs, and copy test keys
+        working-directory: spdm-rs
+        run: |
+          git submodule update --init --recursive
+          sh_script/pre-build.sh
+          cargo build
+          cp -r test_key target/debug/
+          ls -l target/debug/test_key/ecp384/
+
+      - name: Run CCC spdm-requester-emu tests for TDISP+IDE
+        run: |
+          export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-rs/target/debug/
+          cargo xtask all-build
+          cargo t -p tests-integration -- --test test_doe_spdm_tdisp_ide_validator --nocapture --include-ignored
+          sccache --show-stats

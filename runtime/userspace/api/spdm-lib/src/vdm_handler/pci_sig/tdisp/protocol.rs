@@ -1,9 +1,11 @@
 // Licensed under the Apache-2.0 license
 
-use crate::codec::CommonCodec;
+use crate::codec::{CommonCodec, DataKind};
 use crate::vdm_handler::{VdmError, VdmResult};
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+pub const START_INTERFACE_NONCE_SIZE: usize = 32;
 
 #[derive(Debug, PartialEq)]
 pub enum TdispVersion {
@@ -30,6 +32,7 @@ impl TdispVersion {
 }
 
 /// TdispCommand represents the request/response code for TDISP messages.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TdispCommand {
     /// Request to get the TDISP version.
     GetTdispVersion = 0x81,
@@ -104,7 +107,7 @@ impl TdispCommand {
             TdispCommand::LockInterface => size_of::<TdispLockInterfaceParam>(),
             TdispCommand::GetDeviceInterfaceReport => size_of::<GetDeviceIntfReportReq>(),
             TdispCommand::GetDeviceInterfaceState => 0,
-            TdispCommand::StartInterfaceRequest => 0,
+            TdispCommand::StartInterfaceRequest => START_INTERFACE_NONCE_SIZE,
             TdispCommand::StopInterfaceRequest => 0,
             TdispCommand::BindP2PStreamRequest => 0,
             TdispCommand::UnbindP2PStreamRequest => 0,
@@ -209,7 +212,9 @@ pub struct TdispMessageHeader {
     pub interface_id: InterfaceId,
 }
 
-impl CommonCodec for TdispMessageHeader {}
+impl CommonCodec for TdispMessageHeader {
+    const DATA_KIND: DataKind = DataKind::Header;
+}
 
 impl TdispMessageHeader {
     pub fn new(version: u8, message_type: TdispCommand, interface_id: InterfaceId) -> Self {
@@ -230,7 +235,7 @@ pub struct TdispReqCapabilities {
 
 impl CommonCodec for TdispReqCapabilities {}
 
-#[derive(FromBytes, IntoBytes, Immutable, Default)]
+#[derive(FromBytes, IntoBytes, Immutable, Default, Clone, Copy)]
 #[repr(C)]
 pub struct TdispRespCapabilities {
     dsm_capabilities: u32,
@@ -243,6 +248,27 @@ pub struct TdispRespCapabilities {
 }
 
 impl CommonCodec for TdispRespCapabilities {}
+
+impl TdispRespCapabilities {
+    pub fn new(
+        dsm_capabilities: u32,
+        req_msgs_supported: [u8; 16],
+        lock_interface_flags_supported: u16,
+        dev_addr_width: u8,
+        num_req_this: u8,
+        num_req_all: u8,
+    ) -> Self {
+        Self {
+            dsm_capabilities,
+            req_msgs_supported,
+            lock_interface_flags_supported,
+            reserved: [0; 3],
+            dev_addr_width,
+            num_req_this,
+            num_req_all,
+        }
+    }
+}
 
 bitfield! {
 #[derive(FromBytes, IntoBytes, Immutable, Default)]
@@ -279,7 +305,7 @@ pub struct GetDeviceIntfReportReq {
 
 impl CommonCodec for GetDeviceIntfReportReq {}
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TdiStatus {
     ConfigUnlocked = 0,
     ConfigLocked = 1,
@@ -298,4 +324,50 @@ impl From<u8> for TdiStatus {
             _ => TdiStatus::Reserved,
         }
     }
+}
+
+#[derive(FromBytes, IntoBytes, Immutable, Default)]
+#[repr(C, packed)]
+pub struct TdiReportStructureBase {
+    pub interface_info: InterfaceInfo,
+    pub msi_x_message_control: u16,
+    pub lnr_control: u16,
+    pub tph_control: u32,
+}
+
+bitfield! {
+    #[derive(FromBytes, IntoBytes, Immutable, Default, Copy, Clone, PartialEq)]
+    #[repr(C)]
+    pub struct InterfaceInfo(u16);
+    impl Debug;
+    u8;
+    pub fw_updates_permitted, set_fw_updates_permitted: 0, 0; // Bit 0 Firmware Updates Permitted
+    pub dma_requests_without_pasid, set_dma_requests_without_pasid: 1, 1; // Bit 1- TDI generates DMA Requests Without PASID
+    pub dma_requests_with_pasid, set_dma_requests_with_pasid: 2, 2; // Bit 2- TDI generates DMA Requests With PASID
+    pub ats_supported_enabled, set_ats_supported_enabled: 3, 3; // Bit 3- ATS Supported and enabled for the TDI
+    pub prs_supported_enabled, set_prs_supported_enabled: 4, 4; // Bit 4- PRS Supported and enabled for the TDI
+    reserved, _: 15, 5; // Bits 15:5 Reserved
+}
+
+#[derive(FromBytes, IntoBytes, Immutable, Default)]
+pub struct TdispMmioRange {
+    pub first_page_with_offset_added: u64,
+    pub number_of_pages: u32,
+    pub range_attributes: MmioRangeAttribute,
+}
+
+impl CommonCodec for TdispMmioRange {}
+
+bitfield! {
+    #[derive(FromBytes, IntoBytes, Immutable, Default, Copy, Clone, PartialEq)]
+    #[repr(C)]
+    pub struct MmioRangeAttribute(u32);
+    impl Debug;
+    u8;
+    pub msix_table, set_msix_table: 0, 0; // Bit 0 : if the range maps MSI-X Table
+    pub msix_pba, set_msix_pba: 1, 1; // Bit 1 : if the range maps MSI-X PBA
+    pub non_tee_memory, set_non_tee_memory: 2, 2; // Bit 2 : if range is Non-TEE Memory
+    pub mem_attr_updatable, set_mem_attr_updatable: 3, 3; // Bit 3 : if attributes of this range is updatable
+    reserved, _: 15, 4; // Bits 15:4 Reserved
+    range_id, set_range_id: 31, 16; // Bits 31:16 Range ID
 }
