@@ -109,7 +109,7 @@ jobs:
           path: |
             test.log
             caliptra_spdm_validator.pcap
-            spdm_device_validator_output.txt
+            spdm-emu/build/bin/spdm_device_validator_output.txt
 
       - name: Display SPDM Validator test results on MCTP transport
         run: |
@@ -137,7 +137,7 @@ jobs:
           path: |
             test.log
             caliptra_spdm_validator.pcap
-            spdm_device_validator_output.txt
+            spdm-emu/build/bin/spdm_device_validator_output.txt
 
       - name: Display SPDM Validator test results for DOE transport
         run: |
@@ -173,3 +173,15 @@ jobs:
           cargo xtask all-build
           cargo t -p tests-integration -- --test test_doe_spdm_tdisp_ide_validator --nocapture --include-ignored
           sccache --show-stats
+
+      - name: Display CCC spdm-requester-emu test results for TDISP+IDE
+        run: |
+          cat $GITHUB_WORKSPACE/spdm-rs/target/debug/tdisp_ide_validator_output.txt
+
+      - name: Upload CCC spdm-requester-emu test results for TDISP+IDE
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spdm-tdisp-ide-validator-test-results
+          path: |
+            spdm-rs/target/debug/tdisp_ide_validator_output.txt
