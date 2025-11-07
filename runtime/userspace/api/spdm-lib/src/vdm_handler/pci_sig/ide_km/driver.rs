@@ -277,7 +277,7 @@ mod tests {
         }
 
         async fn key_prog(
-            &self,
+            &mut self,
             _stream_id: u8,
             _key_info: KeyInfo,
             _port_index: u8,
@@ -289,7 +289,7 @@ mod tests {
         }
 
         async fn key_set_go(
-            &self,
+            &mut self,
             _stream_id: u8,
             key_info: KeyInfo,
             _port_index: u8,
@@ -299,7 +299,7 @@ mod tests {
         }
 
         async fn key_set_stop(
-            &self,
+            &mut self,
             _stream_id: u8,
             key_info: KeyInfo,
             _port_index: u8,
