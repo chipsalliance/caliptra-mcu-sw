@@ -1,4 +1,5 @@
 /target*/
+test_key
 
 # By default, ignore Cargo.lock files in non-workspace directories.
 */**/Cargo.lock
