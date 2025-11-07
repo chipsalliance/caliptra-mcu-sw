@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Caliptra Command Types
 //!
 //! Shared command definitions, types, and traits for Caliptra Utility Host Library

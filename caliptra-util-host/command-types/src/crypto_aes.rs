@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! AES and Symmetric Crypto Commands
 //!
 //! Command structures for AES operations

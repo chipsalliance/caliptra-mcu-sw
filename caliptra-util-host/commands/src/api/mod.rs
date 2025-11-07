@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! High-level API functions for Caliptra commands
 //!
 //! This module provides transport-agnostic, easy-to-use functions for interacting

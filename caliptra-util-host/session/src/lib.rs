@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Session Management
 //!
 //! Handles device sessions, connection state, and resource management

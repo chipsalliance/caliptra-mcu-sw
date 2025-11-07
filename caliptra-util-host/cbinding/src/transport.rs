@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Transport abstraction layer for Caliptra C bindings
 //!
 //! This module implements the transport abstraction layer as defined in the design document.

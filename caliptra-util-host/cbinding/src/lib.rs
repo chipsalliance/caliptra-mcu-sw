@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Caliptra Utility Host Library C Bindings
 //!
 //! This library provides C-compatible wrapper functions for the actual caliptra-util-host library.

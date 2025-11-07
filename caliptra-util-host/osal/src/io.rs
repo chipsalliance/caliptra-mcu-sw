@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! IO abstraction for sync and async operations
 
 use crate::error::{OsalError, OsalResult};

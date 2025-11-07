@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use caliptra_util_host_transport::{MailboxDriver, MailboxError};
 use std::net::{SocketAddr, UdpSocket};
 

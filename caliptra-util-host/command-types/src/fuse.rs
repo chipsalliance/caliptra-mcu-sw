@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Fuse Commands
 //!
 //! Command structures for fuse operations

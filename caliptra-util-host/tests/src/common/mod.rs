@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Common test utilities and mock implementations
 //! 
 //! This module provides shared test infrastructure including mock mailbox

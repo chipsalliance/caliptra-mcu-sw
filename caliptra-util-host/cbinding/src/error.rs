@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Error handling for Caliptra C bindings
 //!
 //! This module provides error types that align with the documented API design.

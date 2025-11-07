@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>

@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Integration tests for GetDeviceId command
 //! 
 //! These tests focus on the GetDeviceId command functionality using the 

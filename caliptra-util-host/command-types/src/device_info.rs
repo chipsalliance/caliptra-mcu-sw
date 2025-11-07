@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Device Information Commands
 //!
 //! Command structures for device identification and capabilities

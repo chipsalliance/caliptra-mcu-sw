@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>

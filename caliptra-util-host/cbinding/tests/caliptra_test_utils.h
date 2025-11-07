@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 #ifndef CALIPTRA_TEST_UTILS_H
 #define CALIPTRA_TEST_UTILS_H
 

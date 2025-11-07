@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Transport error types
 
 use caliptra_util_host_osal::OsalError;

@@ -1,3 +1,5 @@
+# Licensed under the Apache-2.0 license
+
 # Build script for the entire Caliptra Utility Host Library project
 
 #!/bin/bash

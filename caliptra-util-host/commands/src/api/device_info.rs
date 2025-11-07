@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Device information API functions
 //!
 //! High-level functions for retrieving device information from Caliptra.

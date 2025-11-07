@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! OS Abstraction Layer (OSAL) for Caliptra Utility Host Library
 //!
 //! This layer provides a uniform interface for OS-specific functionality,

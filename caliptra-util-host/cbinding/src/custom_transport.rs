@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Custom transport support for C-defined transports
 
 use std::ffi::c_void;

@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 #include "caliptra_test_utils.h"
 #include <stdlib.h>
 #include <string.h>

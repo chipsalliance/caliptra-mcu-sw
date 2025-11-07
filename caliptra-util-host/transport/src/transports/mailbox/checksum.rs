@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Checksum calculation utilities for VDM transport
 //!
 //! This module provides checksum calculation functions for external mailbox commands.

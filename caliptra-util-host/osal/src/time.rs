@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Time and timer abstraction
 
 use crate::error::OsalResult;

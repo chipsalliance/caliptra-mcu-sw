@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! C-compatible type definitions
 
 use caliptra_util_host_command_types::device_info::GetDeviceIdResponse;

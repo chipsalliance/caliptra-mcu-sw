@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Thread abstraction
 
 use crate::error::{OsalError, OsalResult};

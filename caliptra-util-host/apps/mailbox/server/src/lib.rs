@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Caliptra Mailbox Server Library
 //!
 //! This library provides a synchronous UDP server that receives raw command bytes

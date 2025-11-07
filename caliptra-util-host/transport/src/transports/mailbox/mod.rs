@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Mailbox Transport Module
 //!
 //! This module provides mailbox transport implementation with external mailbox protocol support.

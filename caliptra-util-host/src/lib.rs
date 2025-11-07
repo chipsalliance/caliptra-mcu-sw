@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Caliptra Utility Host Library
 //!
 //! A robust library for communicating with Caliptra devices using the Mailbox transport protocol.

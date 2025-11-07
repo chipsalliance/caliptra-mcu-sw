@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Mock transport implementations for testing
 //!
 //! This module contains mock transport implementations used only for testing.

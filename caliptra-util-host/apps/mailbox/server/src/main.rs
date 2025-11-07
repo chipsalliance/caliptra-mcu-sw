@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Caliptra Mailbox Server Binary
 //!
 //! A simple server that receives raw command bytes and echoes them back

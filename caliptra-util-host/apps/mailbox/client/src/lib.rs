@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Caliptra Mailbox Client Library
 //!
 //! This library provides communication with Caliptra devices using the Mailbox transport

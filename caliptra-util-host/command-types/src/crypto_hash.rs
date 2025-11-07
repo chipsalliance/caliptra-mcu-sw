@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Cryptographic Hash Commands
 //!
 //! Command structures for SHA and HMAC operations

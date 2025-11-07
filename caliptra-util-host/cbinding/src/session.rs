@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Session management C bindings
 
 use std::boxed::Box;

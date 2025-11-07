@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Asymmetric Crypto Commands
 //!
 //! Command structures for ECDSA, ECDH, LMS operations

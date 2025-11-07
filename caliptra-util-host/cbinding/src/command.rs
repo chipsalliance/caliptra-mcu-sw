@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! C-compatible command implementations
 //!
 //! This module contains C-exportable wrapper functions for Caliptra commands.

@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Command Packing and Unpacking
 //!
 //! Zerocopy-based serialization and deserialization of command arguments

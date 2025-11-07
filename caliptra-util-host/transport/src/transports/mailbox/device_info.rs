@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Device information commands for mailbox transport
 //!
 //! This module provides command definitions and implementations for device information

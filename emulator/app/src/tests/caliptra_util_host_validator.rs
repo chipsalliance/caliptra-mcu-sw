@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 use std::net::SocketAddr;
 use std::process::exit;
 use std::sync::atomic::Ordering;

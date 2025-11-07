@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Common traits and macros for mailbox command processing
 //!
 //! This module contains generic traits and macros that can be used by all command types

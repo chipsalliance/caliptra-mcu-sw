@@ -1,3 +1,5 @@
+// Licensed under the Apache-2.0 license
+
 //! Integration tests for Caliptra Utility Host Library
 //! 
 //! These tests focus on general integration scenarios using the modular architecture.
