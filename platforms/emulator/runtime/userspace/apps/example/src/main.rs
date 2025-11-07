@@ -147,7 +147,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
         let mut test_cfg_1 = flash_test::FlashTestConfig {
             drv_num: IMAGE_A_PARTITION.driver_num,
-            expected_capacity: flash_test::EXPECTED_CAPACITY,
+            expected_capacity: FlashCapacity(IMAGE_A_PARTITION.size as u32),
             expected_chunk_size: flash_test::EXPECTED_CHUNK_SIZE,
             e_offset: IMAGE_A_PARTITION.offset,
             e_len: flash_test::BUF_LEN,
@@ -166,7 +166,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
         let mut test_cfg_2 = flash_test::FlashTestConfig {
             drv_num: IMAGE_B_PARTITION.driver_num,
-            expected_capacity: flash_test::EXPECTED_CAPACITY,
+            expected_capacity: FlashCapacity(IMAGE_B_PARTITION.size as u32),
             expected_chunk_size: flash_test::EXPECTED_CHUNK_SIZE,
             e_offset: IMAGE_B_PARTITION.offset,
             e_len: flash_test::BUF_LEN,
@@ -304,7 +304,6 @@ async fn test_mctp_loopback() {
 pub mod flash_test {
     use super::*;
     pub const BUF_LEN: usize = 1024;
-    pub const EXPECTED_CAPACITY: FlashCapacity = FlashCapacity(0x200_0000);
     pub const EXPECTED_CHUNK_SIZE: usize = 512;
 
     pub struct FlashTestConfig<'a> {
