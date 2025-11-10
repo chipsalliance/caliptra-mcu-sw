@@ -2,7 +2,6 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![cfg_attr(target_arch = "riscv32", no_main)]
-#![feature(impl_trait_in_assoc_type)]
 #![allow(static_mut_refs)]
 
 use core::fmt::Write;

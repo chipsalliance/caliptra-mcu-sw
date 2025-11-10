@@ -9,7 +9,7 @@ pub(crate) fn cargo_lock() -> Result<()> {
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
         .args(["tree", "--locked"])
-        .env("RUSTFLAGS", "-Cpanic=abort -Zpanic_abort_tests")
+        .env("RUSTFLAGS", "-Cpanic=abort")
         .stdout(std::process::Stdio::null())
         .status()?;
 

@@ -71,7 +71,7 @@ pub extern "C" fn rom_entry() -> ! {
             PARTITION_TABLE.size,
         )
         .map_err(|_| {
-            fatal_error(1);
+            fatal_error(EmulatorError::InitFlashPartitionDriver.into());
         })
         .ok()
         .unwrap();
@@ -80,7 +80,7 @@ pub extern "C" fn rom_entry() -> ! {
         let active_partition = boot_cfg
             .get_active_partition()
             .map_err(|_| {
-                fatal_error(1);
+                fatal_error(EmulatorError::InitBootCfg.into());
             })
             .ok()
             .unwrap();
@@ -92,7 +92,7 @@ pub extern "C" fn rom_entry() -> ! {
             IMAGE_A_PARTITION.size,
         )
         .map_err(|_| {
-            fatal_error(1);
+            fatal_error(EmulatorError::InitFlashPartitionA.into());
         })
         .ok()
         .unwrap();
@@ -103,7 +103,7 @@ pub extern "C" fn rom_entry() -> ! {
             IMAGE_B_PARTITION.size,
         )
         .map_err(|_| {
-            fatal_error(1);
+            fatal_error(EmulatorError::InitFlashPartitionB.into());
         })
         .ok()
         .unwrap();
@@ -117,7 +117,7 @@ pub extern "C" fn rom_entry() -> ! {
                 romtime::println!("[mcu-rom] Booting from Partition B");
                 partition_b
             }
-            _ => fatal_error(1),
+            _ => fatal_error(EmulatorError::InvalidPartitionId.into()),
         };
 
         mcu_rom_common::rom_start(RomParameters {
@@ -183,5 +183,19 @@ fn exit_rom() -> ! {
             jr a3",
                 options(noreturn),
         }
+    }
+}
+
+enum EmulatorError {
+    InitFlashPartitionDriver,
+    InitBootCfg,
+    InitFlashPartitionA,
+    InitFlashPartitionB,
+    InvalidPartitionId,
+}
+
+impl From<EmulatorError> for mcu_error::McuError {
+    fn from(err: EmulatorError) -> Self {
+        Self::new_vendor(err as u32)
     }
 }

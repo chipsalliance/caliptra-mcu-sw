@@ -266,7 +266,7 @@ impl crate::fake::SyscallDriver for Ieee802154Phy {
             command::GET_TX_PWR => command_return::success_u32(self.tx_power.get() as i32 as u32),
             command::SET_LONG_ADDR => {
                 self.addr_long
-                    .set(argument0 as u64 | (argument1 as u64) << 32);
+                    .set(argument0 as u64 | ((argument1 as u64) << 32));
                 command_return::success()
             }
             command::GET_LONG_ADDR => command_return::success_u64(self.addr_long.get()),

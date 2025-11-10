@@ -20,3 +20,4 @@
     - [Logging](./logging.md)
     - [In-Field Fuse Programming](./fuses.md)
 - [Running with an FPGA](./fpga.md)
+- [Caliptra Utility Host Library](./caliptra_util_host_library.md)

@@ -12,7 +12,7 @@ use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap, OpenOcdJtagTap};
 use caliptra_hw_model::{
     DeviceLifecycle, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem, Output,
-    SecurityState, XI3CWrapper,
+    SecurityState, SubsystemInitParams, XI3CWrapper,
 };
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
 use mcu_rom_common::{LifecycleControllerState, McuBootMilestones};
@@ -295,8 +295,12 @@ impl McuHwModel for ModelFpgaRealtime {
             stack_info: params.stack_info,
             soc_user: MailboxRequester::SocUser(DEFAULT_AXI_PAUSER),
             test_sram: None,
-            mcu_rom: Some(params.mcu_rom),
-            enable_mcu_uart_log: params.enable_mcu_uart_log,
+            ss_init_params: SubsystemInitParams {
+                mcu_rom: Some(params.mcu_rom),
+                enable_mcu_uart_log: params.enable_mcu_uart_log,
+                num_prod_dbg_unlock_pk_hashes: params.num_prod_dbg_unlock_pk_hashes,
+                prod_dbg_unlock_pk_hashes_offset: params.prod_dbg_unlock_pk_hashes_offset,
+            },
         };
         println!("Starting base model");
         let base = ModelFpgaSubsystem::new_unbooted(cptra_init)
