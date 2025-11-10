@@ -110,7 +110,14 @@ struct VersionField {
     buf: ArrayString<MAX_SEMVER_LEN>,
 }
 
-// Example async function to populate all FW measurement maps
+/// Generates all EAT claims and encodes them as a CBOR array into the provided buffer.
+///
+/// # Arguments
+/// * `claims_buf` - Mutable buffer to write the CBOR-encoded EAT claims into.
+/// * `nonce` - Nonce value to include in the EAT.
+///
+/// # Returns
+/// Returns number of bytes written on success, or an error if claim generation or encoding fails.
 pub async fn generate_claims(claims_buf: &mut [u8], nonce: &[u8]) -> MeasurementsResult<usize> {
     // version, svn, digests, integrity registers applicable to FW target envs
     // digests, raw values applicable to HW target envs
