@@ -309,6 +309,7 @@ async fn fill_fw_config_info(
     journey_digests[AUTHMAN_MEASUREMENT_INDEX][..].copy_from_slice(&pcrs[RT_FW_JOURNEY_PCR_INDEX]);
 
     // Populate for SOC FW components next
+    #[allow(clippy::reversed_empty_ranges)]
     for i in 0..NUM_SOC_FW_COMPONENTS {
         let _image_info = DeviceState::image_info(SOC_FW_IDS[i])
             .await
