@@ -1,0 +1,80 @@
+
+sequenceDiagram
+    participant BMC
+    participant RecoveryIF as Recovery Interface (I3C)
+    participant MCU_ROM as MCU ROM
+    participant Caliptra_ROM as Caliptra Core (ROM)
+    participant Caliptra_FW as Caliptra Core (RT FW)
+
+    %% Step 1: Pre-init by MCU ROM
+    MCU_ROM->>RecoveryIF: Initialize PROT_CAP, DEVICE_STATUS, DEVICE_ID, HW_STATUS
+    MCU_ROM->>Caliptra_ROM: Assert Caliptra pwrgood, deassert Caliptra reset
+    MCU_ROM->>Caliptra_ROM: Wait for ready_for_fuses from Caliptra
+
+    %% Step 2: Caliptra reads fuses and signals readiness
+    Caliptra_ROM->>MCU_ROM: Assert ready_for_fuses
+    MCU_ROM->>Caliptra_ROM: Populate additional fuses (if required), read own fuses
+    MCU_ROM->>Caliptra_ROM: Write "fuse done" to Caliptra
+
+    %% Step 3: Caliptra starts boot and streams FW
+    Caliptra_ROM->>RecoveryIF: Set PROT_CAP, DEVICE_STATUS, RECOVERY_STATUS ("Awaiting Recovery Image", image_index=0)
+    Caliptra_ROM->>RecoveryIF: Prepare I3C streaming boot for Caliptra FW
+    BMC->>RecoveryIF: INDIRECT_FIFO_CTRL.write (CMS=0x0, Reset=1, Caliptra FW image size)
+
+    loop For each 256B chunk of Caliptra FW
+        BMC->>RecoveryIF: INDIRECT_FIFO_DATA.write (Caliptra FW chunk)
+        RecoveryIF-->>Caliptra_ROM: Assert payload_available
+        Caliptra_ROM->>RecoveryIF: Read data chunk (via DMA)
+    end
+
+    %% Step 4: FW image reception complete
+    alt Last chunk received
+        Caliptra_ROM->>RecoveryIF: Set DEVICE_STATUS to "Recovery Pending (waiting for activation)"
+    end
+    BMC->>RecoveryIF: RECOVERY_CTRL.activate (set byte2=0xF, image_activated)
+
+    %% Step 5: Caliptra ROM authenticates FW and transitions to RT FW
+    RecoveryIF-->>Caliptra_ROM: Assert image_activated
+    Caliptra_ROM->>Caliptra_ROM: Verify, measure, activate FW image
+    Caliptra_ROM->>RecoveryIF: Clear image_activated, update RECOVERY_STATUS/DEVICE_STATUS
+    Caliptra_ROM->>Caliptra_FW: Switch execution to RT firmware
+
+    %% Step 6: Next image - SoC Manifest (handled by Caliptra RT FW)
+    Caliptra_FW->>RecoveryIF: Update RECOVERY_STATUS (index=1, "Awaiting Recovery Image")
+    BMC->>RecoveryIF: INDIRECT_FIFO_CTRL.write (SoC manifest image size)
+    loop For each chunk of SoC manifest
+        BMC->>RecoveryIF: INDIRECT_FIFO_DATA.write (Manifest chunk)
+        RecoveryIF-->>Caliptra_FW: Assert payload_available
+        Caliptra_FW->>RecoveryIF: Read data chunk
+    end
+    BMC->>RecoveryIF: RECOVERY_CTRL.activate (activate manifest)
+
+    RecoveryIF-->>Caliptra_FW: Assert image_activated
+    Caliptra_FW->>Caliptra_FW: Authenticate, measure SoC manifest, stash results
+    Caliptra_FW->>RecoveryIF: Clear image_activated, update RECOVERY_STATUS/DEVICE_STATUS
+
+    %% Step 7: MCU FW image
+    Caliptra_FW->>RecoveryIF: Update RECOVERY_STATUS (index=2, "Awaiting Recovery Image")
+    BMC->>RecoveryIF: INDIRECT_FIFO_CTRL.write (MCU FW image size)
+    loop For each chunk of MCU FW
+        BMC->>RecoveryIF: INDIRECT_FIFO_DATA.write (MCU FW chunk)
+        RecoveryIF-->>Caliptra_FW: Assert payload_available
+        Caliptra_FW->>RecoveryIF: Read data chunk
+    end
+    BMC->>RecoveryIF: RECOVERY_CTRL.activate (activate MCU FW)
+
+    RecoveryIF-->>Caliptra_FW: Assert image_activated
+    Caliptra_FW->>Caliptra_FW: Authenticate and measure MCU FW
+    Caliptra_FW->>Caliptra_FW: Use SOC manifest-provided MCU SRAM address (write MCU FW into aperture)
+    Caliptra_FW->>RecoveryIF: Clear image_activated, update RECOVERY_STATUS/DEVICE_STATUS
+
+    %% Step 8: MCU ROM polls for MCU FW valid, jumps to execute
+    MCU_ROM->>Caliptra_FW: Poll status breadcrumb for valid MCU FW
+    alt MCU FW authorized
+        Caliptra_FW->>MCU_ROM: Signal execution ready
+        MCU_ROM->>MCU_ROM: Jump to and execute MCU FW
+    else MCU FW not authorized
+        Caliptra_FW->>MCU_ROM: Error status/no execution
+    end
+
+    %% Step 9: Flow repeats for further FW images, MCU RT FW activates MCTP enumeration, PLDM T5, SoC downstream FW, etc.

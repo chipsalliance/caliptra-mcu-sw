@@ -1,0 +1,46 @@
+
+sequenceDiagram
+    participant Recovery_IF
+    participant MCU_ROM
+    participant Flash
+
+    %% --- Initialization ---
+    MCU_ROM->>Recovery_IF: Set RecIntfCfg to AXI_DIRECT
+
+    %% --- For each image ---
+    loop For each image (CaliptraFMC+RT, SoC Manifest, MCU Runtime)
+        %% --- Status and Preparation ---
+        MCU_ROM->>Recovery_IF: Read ProtCap2
+        MCU_ROM->>Recovery_IF: Read DeviceStatus0
+        alt Device needs recovery
+            MCU_ROM->>Recovery_IF: Read RecoveryStatus
+            MCU_ROM->>MCU_ROM: Extract recovery_image_index
+            MCU_ROM->>MCU_ROM: Map index to image ID
+            MCU_ROM->>Flash: get_flash_image_info(image_id)
+            Flash-->>MCU_ROM: Return (flash_offset, image_size)
+            MCU_ROM->>Recovery_IF: Set IndirectFifoCtrl1 (image_size / 4)
+
+            %% --- Transfer Loop ---
+            loop Transfer image data
+                MCU_ROM->>Flash: Read 4 bytes at (flash_offset + transfer_offset)
+                Flash-->>MCU_ROM: Return 4 bytes
+                MCU_ROM->>Recovery_IF: Write 4 bytes to tti_tx_data_port
+                MCU_ROM->>MCU_ROM: Increment transfer_offset by 4
+            end
+
+            %% --- Activation ---
+            MCU_ROM->>Recovery_IF: Read DeviceStatus0
+            MCU_ROM->>Recovery_IF: Write ACTIVATE_RECOVERY_IMAGE_CMD to RecoveryCtrl
+            MCU_ROM->>Recovery_IF: Read RecoveryStatus
+            alt Recovery status is awaiting image
+                MCU_ROM->>Recovery_IF: Read DeviceStatus0
+            else Recovery success
+                MCU_ROM->>MCU_ROM: Finish recovery for this image
+            end
+        else Device healthy
+            MCU_ROM->>MCU_ROM: Skip recovery for this image
+        end
+    end
+
+    %% --- Cleanup ---
+    MCU_ROM->>Recovery_IF: Set RecIntfCfg to USE_I3C

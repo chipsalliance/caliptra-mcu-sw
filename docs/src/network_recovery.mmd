@@ -1,0 +1,41 @@
+sequenceDiagram
+    participant Caliptra Recovery I/F
+    participant MCU ROM
+    participant Network Boot CoProcessor
+    participant Image Server
+
+    %% --- Initialization ---
+    Note over MCU ROM: SoC initializaton
+    Note over MCU ROM,Image Server: Prepare network recovery
+    MCU ROM->>Network Boot CoProcessor: Initiate network boot
+
+    %% --- Network Discovery ---
+    Network Boot CoProcessor->>Image Server: DHCP Discovery
+    Image Server-->>Network Boot CoProcessor: DHCP Offer
+    Network Boot CoProcessor->>Image Server: TFTP server discovery
+    Image Server-->>Network Boot CoProcessor: TFTP server ready
+    Network Boot CoProcessor->>Image Server: TFTP GET config file
+    Image Server-->>Network Boot CoProcessor: Config file (FW ID mappings)
+    Network Boot CoProcessor->>MCU ROM: Network boot available
+
+    Note over Caliptra Recovery I/F,Image Server:Download recovery images from network and push to Caliptra Recovery I/F
+
+    %% --- Image Transfer Loop ---
+    loop For each image id<br>(0: Caliptra Core FW, 1: SOC Manifest, 2: MCU Runtime)
+        MCU ROM->>Caliptra Recovery I/F: Polling for recovery readiness
+        Caliptra Recovery I/F-->>MCU ROM: Awaiting recover image id = {0, 1, 2)
+        MCU ROM->>Network Boot CoProcessor: Request image info (id)
+        Network Boot CoProcessor-->>MCU ROM: Image info (size, metadata)
+        MCU ROM->>Caliptra Recovery I/F: Set image size to control register (INDIRECT_FIFO_CTRL.write)
+        MCU ROM->>Network Boot CoProcessor: Request image download (id)
+        Network Boot CoProcessor->>Image Server: TFTP GET image
+        loop Image transfer by chunk
+            Image Server-->>Network Boot CoProcessor: Image chunk
+            Network Boot CoProcessor-->>MCU ROM: Forward image chunk
+            MCU ROM->>Caliptra Recovery I/F: Write chunk
+            MCU ROM->>Network Boot CoProcessor: Chunk ACK
+        end
+    end
+
+    %% --- Finalization ---
+    MCU ROM->>Caliptra Recovery I/F: Finalize recovery
