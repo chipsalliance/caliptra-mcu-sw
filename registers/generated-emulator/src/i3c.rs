@@ -3702,34 +3702,34 @@ impl I3cPeripheral for I3cGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_interrupt_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x400_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x200_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x7_8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x7_8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        let bits_to_clear_0 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        let bits_to_clear_1 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_1;
+        let bits_to_clear_2 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_2;
+        let bits_to_clear_3 = write_val & (0x7_8000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_3;
+        let bits_to_clear_4 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_4;
+        let bits_to_clear_5 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_5;
+        let bits_to_clear_6 = write_val & (0x800 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_6;
+        let bits_to_clear_7 = write_val & (0x400 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_7;
+        let bits_to_clear_8 = write_val & (0x200 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_8;
+        let bits_to_clear_9 = write_val & (0x100 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_9;
+        let bits_to_clear_10 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_10;
+        let bits_to_clear_11 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_11;
+        let bits_to_clear_12 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_12;
+        let bits_to_clear_13 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_13;
         self.i3c_ec_tti_interrupt_status = new_val;
     }
     fn read_i3c_ec_tti_interrupt_enable(
@@ -4768,6 +4768,7 @@ impl caliptra_emu_bus::Bus for I3cBus {
                 self.periph.write_dct(val, (addr as usize - 0x800) / 4);
                 Ok(())
             }
+            0..4 => Ok(()),
             4..8 => {
                 self.periph
                     .write_i3c_base_hc_control(caliptra_emu_bus::ReadWriteRegister::new(val));
@@ -4779,11 +4780,13 @@ impl caliptra_emu_bus::Bus for I3cBus {
                 );
                 Ok(())
             }
+            0xc..0x10 => Ok(()),
             0x10..0x14 => {
                 self.periph
                     .write_i3c_base_reset_control(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0x14..0x18 => Ok(()),
             0x20..0x24 => {
                 self.periph
                     .write_i3c_base_intr_status(caliptra_emu_bus::ReadWriteRegister::new(val));
@@ -4806,12 +4809,17 @@ impl caliptra_emu_bus::Bus for I3cBus {
                     .write_i3c_base_intr_force(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0x30..0x34 => Ok(()),
             0x34..0x38 => {
                 self.periph.write_i3c_base_dct_section_offset(
                     caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
+            0x38..0x3c => Ok(()),
+            0x3c..0x40 => Ok(()),
+            0x40..0x44 => Ok(()),
+            0x4c..0x50 => Ok(()),
             0x58..0x5c => {
                 self.periph
                     .write_i3c_base_ibi_notify_ctrl(caliptra_emu_bus::ReadWriteRegister::new(val));
@@ -4833,14 +4841,17 @@ impl caliptra_emu_bus::Bus for I3cBus {
                     .write_i3c_base_dev_ctx_base_hi(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0x68..0x6c => Ok(()),
             0x80..0x84 => {
                 self.periph.write_piocontrol_command_port(val);
                 Ok(())
             }
+            0x84..0x88 => Ok(()),
             0x88..0x8c => {
                 self.periph.write_piocontrol_tx_data_port(val);
                 Ok(())
             }
+            0x8c..0x90 => Ok(()),
             0x90..0x94 => {
                 self.periph.write_piocontrol_queue_thld_ctrl(
                     caliptra_emu_bus::ReadWriteRegister::new(val),
@@ -4853,6 +4864,8 @@ impl caliptra_emu_bus::Bus for I3cBus {
                 );
                 Ok(())
             }
+            0x98..0x9c => Ok(()),
+            0x9c..0xa0 => Ok(()),
             0xa0..0xa4 => {
                 self.periph.write_piocontrol_pio_intr_status(
                     caliptra_emu_bus::ReadWriteRegister::new(val),
@@ -4881,6 +4894,9 @@ impl caliptra_emu_bus::Bus for I3cBus {
                     .write_piocontrol_pio_control(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0x100..0x104 => Ok(()),
+            0x104..0x108 => Ok(()),
+            0x108..0x10c => Ok(()),
             0x10c..0x110 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_prot_cap_2(
                     caliptra_emu_bus::ReadWriteRegister::new(val),
@@ -4919,6 +4935,7 @@ impl caliptra_emu_bus::Bus for I3cBus {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_device_id_5(val);
                 Ok(())
             }
+            0x12c..0x130 => Ok(()),
             0x130..0x134 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_device_status_0(
                     caliptra_emu_bus::ReadWriteRegister::new(val),
@@ -4967,6 +4984,14 @@ impl caliptra_emu_bus::Bus for I3cBus {
                     .write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(val);
                 Ok(())
             }
+            0x150..0x154 => Ok(()),
+            0x154..0x158 => Ok(()),
+            0x158..0x15c => Ok(()),
+            0x15c..0x160 => Ok(()),
+            0x160..0x164 => Ok(()),
+            0x164..0x168 => Ok(()),
+            0x168..0x16c => Ok(()),
+            0x180..0x184 => Ok(()),
             0x184..0x188 => {
                 self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_control(
                     caliptra_emu_bus::ReadWriteRegister::new(val),
@@ -4980,6 +5005,7 @@ impl caliptra_emu_bus::Bus for I3cBus {
                     );
                 Ok(())
             }
+            0x18c..0x190 => Ok(()),
             0x190..0x194 => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char(
@@ -5055,11 +5081,13 @@ impl caliptra_emu_bus::Bus for I3cBus {
                 self.periph.write_i3c_ec_stdby_ctrl_mode_rsvd_3(val);
                 Ok(())
             }
+            0x1c0..0x1c4 => Ok(()),
             0x1c4..0x1c8 => {
                 self.periph
                     .write_i3c_ec_tti_control(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0x1c8..0x1cc => Ok(()),
             0x1cc..0x1d0 => {
                 self.periph.write_i3c_ec_tti_tti_reset_control(
                     caliptra_emu_bus::ReadWriteRegister::new(val),
@@ -5084,6 +5112,8 @@ impl caliptra_emu_bus::Bus for I3cBus {
                 );
                 Ok(())
             }
+            0x1dc..0x1e0 => Ok(()),
+            0x1e0..0x1e4 => Ok(()),
             0x1e4..0x1e8 => {
                 self.periph.write_i3c_ec_tti_tx_desc_queue_port(val);
                 Ok(())
@@ -5096,6 +5126,8 @@ impl caliptra_emu_bus::Bus for I3cBus {
                 self.periph.write_i3c_ec_tti_tti_ibi_port(val);
                 Ok(())
             }
+            0x1f0..0x1f4 => Ok(()),
+            0x1f4..0x1f8 => Ok(()),
             0x1f8..0x1fc => {
                 self.periph.write_i3c_ec_tti_tti_queue_thld_ctrl(
                     caliptra_emu_bus::ReadWriteRegister::new(val),
@@ -5108,6 +5140,7 @@ impl caliptra_emu_bus::Bus for I3cBus {
                 );
                 Ok(())
             }
+            0x200..0x204 => Ok(()),
             0x204..0x208 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_soc_mgmt_control(val);
                 Ok(())
@@ -5223,6 +5256,8 @@ impl caliptra_emu_bus::Bus for I3cBus {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_idle_reg(val);
                 Ok(())
             }
+            0x260..0x264 => Ok(()),
+            0x264..0x268 => Ok(()),
             _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }

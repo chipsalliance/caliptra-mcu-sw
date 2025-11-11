@@ -708,6 +708,23 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
     let mut read_tokens = TokenStream::new();
     let mut write_tokens = TokenStream::new();
     let registers = flatten_registers(0, String::new(), &block);
+    let mut ranges_with_writer: HashSet<(u64, u64)> = HashSet::new();
+    registers.iter().for_each(|(offset, _, r)| {
+        let start = offset + r.offset;
+        let end = start + r.ty.width.in_bytes() * r.array_dimensions.iter().product::<u64>();
+        let has_writer = if has_single_32_bit_field(&r.ty) {
+            r.ty.fields
+                .first()
+                .map(|f| f.ty.can_write())
+                .unwrap_or(false)
+        } else {
+            r.can_write()
+        };
+        if has_writer {
+            ranges_with_writer.insert((start, end));
+        }
+    });
+    let mut emitted_write_ranges: HashSet<(u64, u64)> = HashSet::new();
     registers.iter().for_each(|(offset, base_name, r)| {
         // skip as this register is not defined yet
         if r.name == "MCU_CLK_GATING_EN" {
@@ -731,15 +748,16 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
             "{}",
             format!("write_{}{}", base_name, base_field).replace("__", "_"),
         );
-        let a = hex_literal(offset + r.offset);
-        let b = hex_literal(
-            offset + r.offset + r.ty.width.in_bytes() * r.array_dimensions.iter().product::<u64>(),
-        );
+        let start = offset + r.offset;
+        let end =
+            start + r.ty.width.in_bytes() * r.array_dimensions.iter().product::<u64>();
+        let a = hex_literal(start);
+        let b = hex_literal(end);
         assert_eq!(r.ty.width, RegisterWidth::_32);
         if has_single_32_bit_field(&r.ty) {
             if r.ty.fields[0].ty.can_read() {
                 if r.is_array() {
-                    if offset + r.offset == 0 {
+                    if start == 0 {
                         read_tokens.extend(quote! {
                             #a..#b => Ok(self.periph.#read_name(addr as usize / 4)),
                         });
@@ -755,30 +773,36 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
                 }
             }
             if r.ty.fields[0].ty.can_write() {
-                if r.is_array() {
-                    if offset + r.offset == 0 {
+                if emitted_write_ranges.insert((start, end)) {
+                    if r.is_array() {
+                        if start == 0 {
+                            write_tokens.extend(quote! {
+                                #a..#b => {
+                                    self.periph.#write_name(val, addr as usize / 4);
+                                    Ok(())
+                                }
+                            });
+                        } else {
+                            write_tokens.extend(quote! {
+                                #a..#b => {
+                                    self.periph.#write_name(val, (addr as usize - #a) / 4);
+                                    Ok(())
+                                }
+                            });
+                        }
+                    } else {
                         write_tokens.extend(quote! {
                             #a..#b => {
-                                self.periph.#write_name(val, addr as usize / 4);
-                                Ok(())
-                            }
-                        });
-                    } else {
-                       write_tokens.extend(quote! {
-                            #a..#b => {
-                                self.periph.#write_name(val, (addr as usize - #a) / 4);
+                                self.periph.#write_name(val);
                                 Ok(())
                             }
                         });
                     }
-                } else {
-                    write_tokens.extend(quote! {
-                        #a..#b => {
-                            self.periph.#write_name(val);
-                            Ok(())
-                        }
-                    });
                 }
+            } else if r.can_read() && !ranges_with_writer.contains(&(start, end)) {
+                write_tokens.extend(quote! {
+                    #a..#b => Ok(()),
+                });
             }
         } else {
             if r.can_read() {
@@ -799,30 +823,36 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
                 }
             }
             if r.can_write() {
-                if r.is_array() {
-                    if offset + r.offset == 0 {
-                        write_tokens.extend(quote! {
-                            #a..#b => {
-                                self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val), addr as usize / 4);
-                                Ok(())
-                            }
-                        });
+                if emitted_write_ranges.insert((start, end)) {
+                    if r.is_array() {
+                        if start == 0 {
+                            write_tokens.extend(quote! {
+                                #a..#b => {
+                                    self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val), addr as usize / 4);
+                                    Ok(())
+                                }
+                            });
+                        } else {
+                            write_tokens.extend(quote! {
+                                #a..#b => {
+                                    self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val), (addr as usize - #a) / 4);
+                                    Ok(())
+                                }
+                            });
+                        }
                     } else {
                         write_tokens.extend(quote! {
                             #a..#b => {
-                                self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val), (addr as usize - #a) / 4);
+                                self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val));
                                 Ok(())
                             }
                         });
                     }
-                } else {
-                    write_tokens.extend(quote! {
-                        #a..#b => {
-                            self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val));
-                            Ok(())
-                        }
-                    });
                 }
+            } else if r.can_read() && !ranges_with_writer.contains(&(start, end)) {
+                write_tokens.extend(quote! {
+                    #a..#b => Ok(()),
+                });
             }
         }
     });

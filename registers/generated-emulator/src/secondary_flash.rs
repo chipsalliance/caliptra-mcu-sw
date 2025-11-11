@@ -411,6 +411,7 @@ impl caliptra_emu_bus::Bus for SecondaryFlashBus {
                     .write_op_status(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0x1c..0x20 => Ok(()),
             _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }

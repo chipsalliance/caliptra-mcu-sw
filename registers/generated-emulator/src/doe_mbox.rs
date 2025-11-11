@@ -254,6 +254,7 @@ impl caliptra_emu_bus::Bus for DoeMboxBus {
             return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
+            0..4 => Ok(()),
             4..8 => {
                 self.periph.write_doe_mbox_dlen(val);
                 Ok(())

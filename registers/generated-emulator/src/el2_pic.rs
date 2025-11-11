@@ -353,6 +353,7 @@ impl caliptra_emu_bus::Bus for El2PicBus {
                 );
                 Ok(())
             }
+            0x1000..0x1400 => Ok(()),
             0x2000..0x2400 => {
                 self.periph.write_meie(
                     caliptra_emu_bus::ReadWriteRegister::new(val),

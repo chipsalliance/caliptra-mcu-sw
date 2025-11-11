@@ -4946,12 +4946,12 @@ impl MciPeripheral for MciGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mci_reg_hw_error_fatal;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
+        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_1;
+        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_2;
         self.mci_reg_hw_error_fatal = new_val;
     }
     fn read_mci_reg_agg_error_fatal(
@@ -4972,70 +4972,70 @@ impl MciPeripheral for MciGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mci_reg_agg_error_fatal;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x10_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x20_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x40_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x80_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x100_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x200_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x400_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x800_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
+        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_1;
+        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_2;
+        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_3;
+        let bits_to_clear_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_4;
+        let bits_to_clear_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_5;
+        let bits_to_clear_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_6;
+        let bits_to_clear_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_7;
+        let bits_to_clear_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_8;
+        let bits_to_clear_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_9;
+        let bits_to_clear_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_10;
+        let bits_to_clear_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_11;
+        let bits_to_clear_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_12;
+        let bits_to_clear_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_13;
+        let bits_to_clear_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_14;
+        let bits_to_clear_15 = write_val & (0x8000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_15;
+        let bits_to_clear_16 = write_val & (0x1_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_16;
+        let bits_to_clear_17 = write_val & (0x2_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_17;
+        let bits_to_clear_18 = write_val & (0x4_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_18;
+        let bits_to_clear_19 = write_val & (0x8_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_19;
+        let bits_to_clear_20 = write_val & (0x10_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_20;
+        let bits_to_clear_21 = write_val & (0x20_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_21;
+        let bits_to_clear_22 = write_val & (0x40_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_22;
+        let bits_to_clear_23 = write_val & (0x80_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_23;
+        let bits_to_clear_24 = write_val & (0x100_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_24;
+        let bits_to_clear_25 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_25;
+        let bits_to_clear_26 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_26;
+        let bits_to_clear_27 = write_val & (0x800_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_27;
+        let bits_to_clear_28 = write_val & (0x1000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_28;
+        let bits_to_clear_29 = write_val & (0x2000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_29;
+        let bits_to_clear_30 = write_val & (0x4000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_30;
+        let bits_to_clear_31 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_31;
         self.mci_reg_agg_error_fatal = new_val;
     }
     fn read_mci_reg_hw_error_non_fatal(
@@ -5056,10 +5056,10 @@ impl MciPeripheral for MciGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mci_reg_hw_error_non_fatal;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
+        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_1;
         self.mci_reg_hw_error_non_fatal = new_val;
     }
     fn read_mci_reg_agg_error_non_fatal(
@@ -5080,70 +5080,70 @@ impl MciPeripheral for MciGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mci_reg_agg_error_non_fatal;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x10_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x20_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x40_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x80_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x100_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x200_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x400_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x800_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
+        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_1;
+        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_2;
+        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_3;
+        let bits_to_clear_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_4;
+        let bits_to_clear_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_5;
+        let bits_to_clear_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_6;
+        let bits_to_clear_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_7;
+        let bits_to_clear_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_8;
+        let bits_to_clear_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_9;
+        let bits_to_clear_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_10;
+        let bits_to_clear_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_11;
+        let bits_to_clear_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_12;
+        let bits_to_clear_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_13;
+        let bits_to_clear_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_14;
+        let bits_to_clear_15 = write_val & (0x8000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_15;
+        let bits_to_clear_16 = write_val & (0x1_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_16;
+        let bits_to_clear_17 = write_val & (0x2_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_17;
+        let bits_to_clear_18 = write_val & (0x4_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_18;
+        let bits_to_clear_19 = write_val & (0x8_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_19;
+        let bits_to_clear_20 = write_val & (0x10_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_20;
+        let bits_to_clear_21 = write_val & (0x20_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_21;
+        let bits_to_clear_22 = write_val & (0x40_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_22;
+        let bits_to_clear_23 = write_val & (0x80_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_23;
+        let bits_to_clear_24 = write_val & (0x100_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_24;
+        let bits_to_clear_25 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_25;
+        let bits_to_clear_26 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_26;
+        let bits_to_clear_27 = write_val & (0x800_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_27;
+        let bits_to_clear_28 = write_val & (0x1000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_28;
+        let bits_to_clear_29 = write_val & (0x2000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_29;
+        let bits_to_clear_30 = write_val & (0x4000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_30;
+        let bits_to_clear_31 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_31;
         self.mci_reg_agg_error_non_fatal = new_val;
     }
     fn read_mci_reg_fw_error_fatal(&mut self) -> caliptra_emu_types::RvData {
@@ -6285,18 +6285,18 @@ impl MciPeripheral for MciGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error0_internal_intr_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
+        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_1;
+        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_2;
+        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_3;
+        let bits_to_clear_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_4;
+        let bits_to_clear_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_5;
         self.mci_reg_intr_block_rf_error0_internal_intr_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error1_internal_intr_r(
@@ -6317,70 +6317,70 @@ impl MciPeripheral for MciGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error1_internal_intr_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x10_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x20_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x40_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x80_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x100_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x200_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x400_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x800_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
+        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_1;
+        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_2;
+        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_3;
+        let bits_to_clear_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_4;
+        let bits_to_clear_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_5;
+        let bits_to_clear_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_6;
+        let bits_to_clear_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_7;
+        let bits_to_clear_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_8;
+        let bits_to_clear_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_9;
+        let bits_to_clear_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_10;
+        let bits_to_clear_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_11;
+        let bits_to_clear_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_12;
+        let bits_to_clear_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_13;
+        let bits_to_clear_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_14;
+        let bits_to_clear_15 = write_val & (0x8000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_15;
+        let bits_to_clear_16 = write_val & (0x1_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_16;
+        let bits_to_clear_17 = write_val & (0x2_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_17;
+        let bits_to_clear_18 = write_val & (0x4_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_18;
+        let bits_to_clear_19 = write_val & (0x8_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_19;
+        let bits_to_clear_20 = write_val & (0x10_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_20;
+        let bits_to_clear_21 = write_val & (0x20_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_21;
+        let bits_to_clear_22 = write_val & (0x40_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_22;
+        let bits_to_clear_23 = write_val & (0x80_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_23;
+        let bits_to_clear_24 = write_val & (0x100_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_24;
+        let bits_to_clear_25 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_25;
+        let bits_to_clear_26 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_26;
+        let bits_to_clear_27 = write_val & (0x800_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_27;
+        let bits_to_clear_28 = write_val & (0x1000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_28;
+        let bits_to_clear_29 = write_val & (0x2000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_29;
+        let bits_to_clear_30 = write_val & (0x4000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_30;
+        let bits_to_clear_31 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_31;
         self.mci_reg_intr_block_rf_error1_internal_intr_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif0_internal_intr_r(
@@ -6401,36 +6401,36 @@ impl MciPeripheral for MciGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif0_internal_intr_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
+        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_1;
+        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_2;
+        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_3;
+        let bits_to_clear_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_4;
+        let bits_to_clear_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_5;
+        let bits_to_clear_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_6;
+        let bits_to_clear_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_7;
+        let bits_to_clear_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_8;
+        let bits_to_clear_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_9;
+        let bits_to_clear_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_10;
+        let bits_to_clear_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_11;
+        let bits_to_clear_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_12;
+        let bits_to_clear_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_13;
+        let bits_to_clear_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_14;
         self.mci_reg_intr_block_rf_notif0_internal_intr_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif1_internal_intr_r(
@@ -6451,70 +6451,70 @@ impl MciPeripheral for MciGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif1_internal_intr_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x10_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x20_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x40_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x80_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x100_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x200_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x400_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x800_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
+        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_1;
+        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_2;
+        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_3;
+        let bits_to_clear_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_4;
+        let bits_to_clear_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_5;
+        let bits_to_clear_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_6;
+        let bits_to_clear_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_7;
+        let bits_to_clear_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_8;
+        let bits_to_clear_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_9;
+        let bits_to_clear_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_10;
+        let bits_to_clear_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_11;
+        let bits_to_clear_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_12;
+        let bits_to_clear_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_13;
+        let bits_to_clear_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_14;
+        let bits_to_clear_15 = write_val & (0x8000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_15;
+        let bits_to_clear_16 = write_val & (0x1_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_16;
+        let bits_to_clear_17 = write_val & (0x2_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_17;
+        let bits_to_clear_18 = write_val & (0x4_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_18;
+        let bits_to_clear_19 = write_val & (0x8_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_19;
+        let bits_to_clear_20 = write_val & (0x10_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_20;
+        let bits_to_clear_21 = write_val & (0x20_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_21;
+        let bits_to_clear_22 = write_val & (0x40_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_22;
+        let bits_to_clear_23 = write_val & (0x80_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_23;
+        let bits_to_clear_24 = write_val & (0x100_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_24;
+        let bits_to_clear_25 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_25;
+        let bits_to_clear_26 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_26;
+        let bits_to_clear_27 = write_val & (0x800_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_27;
+        let bits_to_clear_28 = write_val & (0x1000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_28;
+        let bits_to_clear_29 = write_val & (0x2000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_29;
+        let bits_to_clear_30 = write_val & (0x4000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_30;
+        let bits_to_clear_31 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_31;
         self.mci_reg_intr_block_rf_notif1_internal_intr_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error0_intr_trig_r(
@@ -6535,18 +6535,18 @@ impl MciPeripheral for MciGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error0_intr_trig_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
+        let bits_to_set_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_0;
+        let bits_to_set_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_1;
+        let bits_to_set_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_2;
+        let bits_to_set_3 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_3;
+        let bits_to_set_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_4;
+        let bits_to_set_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_5;
         self.mci_reg_intr_block_rf_error0_intr_trig_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error1_intr_trig_r(
@@ -6567,70 +6567,70 @@ impl MciPeripheral for MciGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error1_intr_trig_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x10_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x20_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x40_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x80_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x100_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x200_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x400_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x800_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
+        let bits_to_set_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_0;
+        let bits_to_set_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_1;
+        let bits_to_set_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_2;
+        let bits_to_set_3 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_3;
+        let bits_to_set_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_4;
+        let bits_to_set_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_5;
+        let bits_to_set_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_6;
+        let bits_to_set_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_7;
+        let bits_to_set_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_8;
+        let bits_to_set_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_9;
+        let bits_to_set_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_10;
+        let bits_to_set_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_11;
+        let bits_to_set_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_12;
+        let bits_to_set_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_13;
+        let bits_to_set_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_14;
+        let bits_to_set_15 = write_val & (0x8000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_15;
+        let bits_to_set_16 = write_val & (0x1_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_16;
+        let bits_to_set_17 = write_val & (0x2_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_17;
+        let bits_to_set_18 = write_val & (0x4_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_18;
+        let bits_to_set_19 = write_val & (0x8_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_19;
+        let bits_to_set_20 = write_val & (0x10_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_20;
+        let bits_to_set_21 = write_val & (0x20_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_21;
+        let bits_to_set_22 = write_val & (0x40_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_22;
+        let bits_to_set_23 = write_val & (0x80_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_23;
+        let bits_to_set_24 = write_val & (0x100_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_24;
+        let bits_to_set_25 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_25;
+        let bits_to_set_26 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_26;
+        let bits_to_set_27 = write_val & (0x800_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_27;
+        let bits_to_set_28 = write_val & (0x1000_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_28;
+        let bits_to_set_29 = write_val & (0x2000_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_29;
+        let bits_to_set_30 = write_val & (0x4000_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_30;
+        let bits_to_set_31 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_31;
         self.mci_reg_intr_block_rf_error1_intr_trig_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif0_intr_trig_r(
@@ -6651,36 +6651,36 @@ impl MciPeripheral for MciGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif0_intr_trig_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
+        let bits_to_set_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_0;
+        let bits_to_set_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_1;
+        let bits_to_set_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_2;
+        let bits_to_set_3 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_3;
+        let bits_to_set_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_4;
+        let bits_to_set_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_5;
+        let bits_to_set_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_6;
+        let bits_to_set_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_7;
+        let bits_to_set_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_8;
+        let bits_to_set_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_9;
+        let bits_to_set_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_10;
+        let bits_to_set_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_11;
+        let bits_to_set_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_12;
+        let bits_to_set_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_13;
+        let bits_to_set_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_14;
         self.mci_reg_intr_block_rf_notif0_intr_trig_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif1_intr_trig_r(
@@ -6701,70 +6701,70 @@ impl MciPeripheral for MciGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif1_intr_trig_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x10_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x20_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x40_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x80_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x100_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x200_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x400_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x800_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
+        let bits_to_set_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_0;
+        let bits_to_set_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_1;
+        let bits_to_set_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_2;
+        let bits_to_set_3 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_3;
+        let bits_to_set_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_4;
+        let bits_to_set_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_5;
+        let bits_to_set_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_6;
+        let bits_to_set_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_7;
+        let bits_to_set_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_8;
+        let bits_to_set_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_9;
+        let bits_to_set_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_10;
+        let bits_to_set_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_11;
+        let bits_to_set_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_12;
+        let bits_to_set_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_13;
+        let bits_to_set_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_14;
+        let bits_to_set_15 = write_val & (0x8000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_15;
+        let bits_to_set_16 = write_val & (0x1_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_16;
+        let bits_to_set_17 = write_val & (0x2_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_17;
+        let bits_to_set_18 = write_val & (0x4_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_18;
+        let bits_to_set_19 = write_val & (0x8_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_19;
+        let bits_to_set_20 = write_val & (0x10_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_20;
+        let bits_to_set_21 = write_val & (0x20_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_21;
+        let bits_to_set_22 = write_val & (0x40_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_22;
+        let bits_to_set_23 = write_val & (0x80_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_23;
+        let bits_to_set_24 = write_val & (0x100_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_24;
+        let bits_to_set_25 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_25;
+        let bits_to_set_26 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_26;
+        let bits_to_set_27 = write_val & (0x800_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_27;
+        let bits_to_set_28 = write_val & (0x1000_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_28;
+        let bits_to_set_29 = write_val & (0x2000_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_29;
+        let bits_to_set_30 = write_val & (0x4000_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_30;
+        let bits_to_set_31 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_31;
         self.mci_reg_intr_block_rf_notif1_intr_trig_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_internal_intr_count_r(
@@ -10448,20 +10448,30 @@ impl caliptra_emu_bus::Bus for MciBus {
                     .write_mci_reg_cap_lock(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0xc..0x10 => Ok(()),
             0x10..0x18 => {
                 self.periph
                     .write_mci_reg_fw_rev_id(val, (addr as usize - 0x10) / 4);
                 Ok(())
             }
+            0x18..0x1c => Ok(()),
+            0x1c..0x20 => Ok(()),
+            0x20..0x24 => Ok(()),
+            0x24..0x28 => Ok(()),
+            0x28..0x2c => Ok(()),
+            0x2c..0x30 => Ok(()),
             0x30..0x34 => {
                 self.periph.write_mci_reg_fw_flow_status(val);
                 Ok(())
             }
+            0x34..0x38 => Ok(()),
             0x38..0x3c => {
                 self.periph
                     .write_mci_reg_reset_reason(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0x3c..0x40 => Ok(()),
+            0x40..0x44 => Ok(()),
             0x50..0x54 => {
                 self.periph
                     .write_mci_reg_hw_error_fatal(caliptra_emu_bus::ReadWriteRegister::new(val));
@@ -10568,6 +10578,7 @@ impl caliptra_emu_bus::Bus for MciBus {
                     .write_mci_reg_wdt_timer2_timeout_period(val, (addr as usize - 0xc8) / 4);
                 Ok(())
             }
+            0xd0..0xd4 => Ok(()),
             0xd4..0xdc => {
                 self.periph
                     .write_mci_reg_wdt_cfg(val, (addr as usize - 0xd4) / 4);
@@ -10665,6 +10676,7 @@ impl caliptra_emu_bus::Bus for MciBus {
                 self.periph.write_mci_reg_fc_fips_zerozation(val);
                 Ok(())
             }
+            0x400..0x408 => Ok(()),
             0x408..0x410 => {
                 self.periph
                     .write_mci_reg_generic_output_wires(val, (addr as usize - 0x408) / 4);
@@ -10678,6 +10690,7 @@ impl caliptra_emu_bus::Bus for MciBus {
                 self.periph.write_mci_reg_debug_out(val);
                 Ok(())
             }
+            0x418..0x41c => Ok(()),
             0x440..0x444 => {
                 self.periph.write_mci_reg_ss_config_done_sticky(
                     caliptra_emu_bus::ReadWriteRegister::new(val),
@@ -10724,6 +10737,8 @@ impl caliptra_emu_bus::Bus for MciBus {
                 );
                 Ok(())
             }
+            0x1014..0x1018 => Ok(()),
+            0x1018..0x101c => Ok(()),
             0x101c..0x1020 => {
                 self.periph
                     .write_mci_reg_intr_block_rf_error0_internal_intr_r(
@@ -11201,6 +11216,95 @@ impl caliptra_emu_bus::Bus for MciBus {
                     .write_mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r(val);
                 Ok(())
             }
+            0x1300..0x1304 => Ok(()),
+            0x1304..0x1308 => Ok(()),
+            0x1308..0x130c => Ok(()),
+            0x130c..0x1310 => Ok(()),
+            0x1310..0x1314 => Ok(()),
+            0x1314..0x1318 => Ok(()),
+            0x1318..0x131c => Ok(()),
+            0x131c..0x1320 => Ok(()),
+            0x1320..0x1324 => Ok(()),
+            0x1324..0x1328 => Ok(()),
+            0x1328..0x132c => Ok(()),
+            0x132c..0x1330 => Ok(()),
+            0x1330..0x1334 => Ok(()),
+            0x1334..0x1338 => Ok(()),
+            0x1338..0x133c => Ok(()),
+            0x133c..0x1340 => Ok(()),
+            0x1340..0x1344 => Ok(()),
+            0x1344..0x1348 => Ok(()),
+            0x1348..0x134c => Ok(()),
+            0x134c..0x1350 => Ok(()),
+            0x1350..0x1354 => Ok(()),
+            0x1354..0x1358 => Ok(()),
+            0x1358..0x135c => Ok(()),
+            0x135c..0x1360 => Ok(()),
+            0x1360..0x1364 => Ok(()),
+            0x1364..0x1368 => Ok(()),
+            0x1368..0x136c => Ok(()),
+            0x136c..0x1370 => Ok(()),
+            0x1370..0x1374 => Ok(()),
+            0x1374..0x1378 => Ok(()),
+            0x1378..0x137c => Ok(()),
+            0x137c..0x1380 => Ok(()),
+            0x1380..0x1384 => Ok(()),
+            0x1384..0x1388 => Ok(()),
+            0x1388..0x138c => Ok(()),
+            0x138c..0x1390 => Ok(()),
+            0x1390..0x1394 => Ok(()),
+            0x1394..0x1398 => Ok(()),
+            0x1398..0x139c => Ok(()),
+            0x139c..0x13a0 => Ok(()),
+            0x13a0..0x13a4 => Ok(()),
+            0x13a4..0x13a8 => Ok(()),
+            0x13a8..0x13ac => Ok(()),
+            0x13ac..0x13b0 => Ok(()),
+            0x13b0..0x13b4 => Ok(()),
+            0x13b4..0x13b8 => Ok(()),
+            0x13b8..0x13bc => Ok(()),
+            0x13bc..0x13c0 => Ok(()),
+            0x13c0..0x13c4 => Ok(()),
+            0x13c4..0x13c8 => Ok(()),
+            0x13c8..0x13cc => Ok(()),
+            0x13cc..0x13d0 => Ok(()),
+            0x13d0..0x13d4 => Ok(()),
+            0x13d4..0x13d8 => Ok(()),
+            0x13d8..0x13dc => Ok(()),
+            0x13dc..0x13e0 => Ok(()),
+            0x13e0..0x13e4 => Ok(()),
+            0x13e4..0x13e8 => Ok(()),
+            0x13e8..0x13ec => Ok(()),
+            0x13ec..0x13f0 => Ok(()),
+            0x13f0..0x13f4 => Ok(()),
+            0x13f4..0x13f8 => Ok(()),
+            0x13f8..0x13fc => Ok(()),
+            0x13fc..0x1400 => Ok(()),
+            0x1400..0x1404 => Ok(()),
+            0x1404..0x1408 => Ok(()),
+            0x1408..0x140c => Ok(()),
+            0x140c..0x1410 => Ok(()),
+            0x1410..0x1414 => Ok(()),
+            0x1414..0x1418 => Ok(()),
+            0x1418..0x141c => Ok(()),
+            0x141c..0x1420 => Ok(()),
+            0x1420..0x1424 => Ok(()),
+            0x1424..0x1428 => Ok(()),
+            0x1428..0x142c => Ok(()),
+            0x142c..0x1430 => Ok(()),
+            0x1430..0x1434 => Ok(()),
+            0x1434..0x1438 => Ok(()),
+            0x1438..0x143c => Ok(()),
+            0x143c..0x1440 => Ok(()),
+            0x1440..0x1444 => Ok(()),
+            0x1444..0x1448 => Ok(()),
+            0x1448..0x144c => Ok(()),
+            0x144c..0x1450 => Ok(()),
+            0x1450..0x1454 => Ok(()),
+            0x1_0000..0x1_0004 => Ok(()),
+            0x1_0004..0x1_0008 => Ok(()),
+            0x1_0008..0x1_000c => Ok(()),
+            0x1_000c..0x1_0010 => Ok(()),
             0x1_0010..0x1_0014 => {
                 self.periph.write_mcu_trace_buffer_csr_read_ptr(val);
                 Ok(())
@@ -11210,6 +11314,8 @@ impl caliptra_emu_bus::Bus for MciBus {
                     .write_mcu_mbox0_csr_mbox_sram(val, (addr as usize - 0x40_0000) / 4);
                 Ok(())
             }
+            0x60_0000..0x60_0004 => Ok(()),
+            0x60_0004..0x60_0008 => Ok(()),
             0x60_0008..0x60_000c => {
                 self.periph.write_mcu_mbox0_csr_mbox_target_user(val);
                 Ok(())
@@ -11246,11 +11352,14 @@ impl caliptra_emu_bus::Bus for MciBus {
                 );
                 Ok(())
             }
+            0x60_0024..0x60_0028 => Ok(()),
             0x80_0000..0xa0_0000 => {
                 self.periph
                     .write_mcu_mbox1_csr_mbox_sram(val, (addr as usize - 0x80_0000) / 4);
                 Ok(())
             }
+            0xa0_0000..0xa0_0004 => Ok(()),
+            0xa0_0004..0xa0_0008 => Ok(()),
             0xa0_0008..0xa0_000c => {
                 self.periph.write_mcu_mbox1_csr_mbox_target_user(val);
                 Ok(())
@@ -11287,6 +11396,7 @@ impl caliptra_emu_bus::Bus for MciBus {
                 );
                 Ok(())
             }
+            0xa0_0024..0xa0_0028 => Ok(()),
             _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }

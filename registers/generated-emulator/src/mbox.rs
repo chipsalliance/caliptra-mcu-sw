@@ -400,6 +400,8 @@ impl caliptra_emu_bus::Bus for MboxBus {
             return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
+            0..4 => Ok(()),
+            4..8 => Ok(()),
             8..0xc => {
                 self.periph.write_mbox_cmd(val);
                 Ok(())

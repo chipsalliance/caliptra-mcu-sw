@@ -1433,14 +1433,14 @@ impl SocPeripheral for SocGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_hw_error_fatal;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
+        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_1;
+        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_2;
+        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_3;
         self.cptra_hw_error_fatal = new_val;
     }
     fn read_cptra_hw_error_non_fatal(
@@ -1461,12 +1461,12 @@ impl SocPeripheral for SocGenerated {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_hw_error_non_fatal;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
+        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_1;
+        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_2;
         self.cptra_hw_error_non_fatal = new_val;
     }
     fn read_cptra_fw_error_fatal(&mut self) -> caliptra_emu_types::RvData {
@@ -2906,6 +2906,8 @@ impl caliptra_emu_bus::Bus for SocBus {
                     .write_cptra_flow_status(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0x40..0x44 => Ok(()),
+            0x44..0x48 => Ok(()),
             0x48..0x5c => {
                 self.periph
                     .write_cptra_mbox_valid_axi_user(val, (addr as usize - 0x48) / 4);
@@ -2965,16 +2967,19 @@ impl caliptra_emu_bus::Bus for SocBus {
                     .write_cptra_clk_gating_en(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0xc4..0xcc => Ok(()),
             0xcc..0xd4 => {
                 self.periph
                     .write_cptra_generic_output_wires(val, (addr as usize - 0xcc) / 4);
                 Ok(())
             }
+            0xd4..0xd8 => Ok(()),
             0xd8..0xe0 => {
                 self.periph
                     .write_cptra_fw_rev_id(val, (addr as usize - 0xd8) / 4);
                 Ok(())
             }
+            0xe0..0xe4 => Ok(()),
             0xe4..0xe8 => {
                 self.periph
                     .write_cptra_wdt_timer1_en(caliptra_emu_bus::ReadWriteRegister::new(val));
@@ -3193,6 +3198,7 @@ impl caliptra_emu_bus::Bus for SocBus {
                     .write_ss_num_of_prod_debug_unlock_auth_pk_hashes(val);
                 Ok(())
             }
+            0x530..0x534 => Ok(()),
             0x534..0x538 => {
                 self.periph.write_ss_caliptra_dma_axi_user(val);
                 Ok(())

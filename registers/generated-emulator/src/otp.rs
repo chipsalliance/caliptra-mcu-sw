@@ -2236,6 +2236,7 @@ impl caliptra_emu_bus::Bus for OtpBus {
                     .write_alert_test(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0x10..0x14 => Ok(()),
             0x5c..0x60 => {
                 self.periph
                     .write_direct_access_regwen(caliptra_emu_bus::ReadWriteRegister::new(val));
@@ -2360,6 +2361,25 @@ impl caliptra_emu_bus::Bus for OtpBus {
                     .write_csr6(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0x13c..0x140 => Ok(()),
+            0x14..0x18 => Ok(()),
+            0x18..0x1c => Ok(()),
+            0x1c..0x20 => Ok(()),
+            0x20..0x24 => Ok(()),
+            0x24..0x28 => Ok(()),
+            0x28..0x2c => Ok(()),
+            0x2c..0x30 => Ok(()),
+            0x30..0x34 => Ok(()),
+            0x34..0x38 => Ok(()),
+            0x38..0x3c => Ok(()),
+            0x3c..0x40 => Ok(()),
+            0x40..0x44 => Ok(()),
+            0x44..0x48 => Ok(()),
+            0x48..0x4c => Ok(()),
+            0x4c..0x50 => Ok(()),
+            0x50..0x54 => Ok(()),
+            0x54..0x58 => Ok(()),
+            0x58..0x5c => Ok(()),
             0x68..0x6c => {
                 self.periph.write_dai_wdata_rf_direct_access_wdata_0(val);
                 Ok(())
@@ -2368,6 +2388,36 @@ impl caliptra_emu_bus::Bus for OtpBus {
                 self.periph.write_dai_wdata_rf_direct_access_wdata_1(val);
                 Ok(())
             }
+            0x70..0x74 => Ok(()),
+            0x74..0x78 => Ok(()),
+            0xb0..0xb4 => Ok(()),
+            0xb4..0xb8 => Ok(()),
+            0xb8..0xbc => Ok(()),
+            0xbc..0xc0 => Ok(()),
+            0xc0..0xc4 => Ok(()),
+            0xc4..0xc8 => Ok(()),
+            0xc8..0xcc => Ok(()),
+            0xcc..0xd0 => Ok(()),
+            0xd0..0xd4 => Ok(()),
+            0xd4..0xd8 => Ok(()),
+            0xd8..0xdc => Ok(()),
+            0xdc..0xe0 => Ok(()),
+            0xe0..0xe4 => Ok(()),
+            0xe4..0xe8 => Ok(()),
+            0xe8..0xec => Ok(()),
+            0xec..0xf0 => Ok(()),
+            0xf0..0xf4 => Ok(()),
+            0xf4..0xf8 => Ok(()),
+            0xf8..0xfc => Ok(()),
+            0xfc..0x100 => Ok(()),
+            0x100..0x104 => Ok(()),
+            0x104..0x108 => Ok(()),
+            0x108..0x10c => Ok(()),
+            0x10c..0x110 => Ok(()),
+            0x110..0x114 => Ok(()),
+            0x114..0x118 => Ok(()),
+            0x118..0x11c => Ok(()),
+            0x11c..0x120 => Ok(()),
             _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }

@@ -844,6 +844,7 @@ impl caliptra_emu_bus::Bus for LcBus {
                     .write_alert_test(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            4..8 => Ok(()),
             8..0xc => {
                 self.periph.write_claim_transition_if_regwen(
                     caliptra_emu_bus::ReadWriteRegister::new(val),
@@ -855,6 +856,7 @@ impl caliptra_emu_bus::Bus for LcBus {
                     .write_claim_transition_if(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0x10..0x14 => Ok(()),
             0x14..0x18 => {
                 self.periph
                     .write_transition_cmd(caliptra_emu_bus::ReadWriteRegister::new(val));
@@ -890,6 +892,28 @@ impl caliptra_emu_bus::Bus for LcBus {
                 self.periph.write_otp_vendor_test_ctrl(val);
                 Ok(())
             }
+            0x34..0x38 => Ok(()),
+            0x38..0x3c => Ok(()),
+            0x3c..0x40 => Ok(()),
+            0x40..0x44 => Ok(()),
+            0x44..0x48 => Ok(()),
+            0x48..0x4c => Ok(()),
+            0x4c..0x50 => Ok(()),
+            0x50..0x54 => Ok(()),
+            0x54..0x58 => Ok(()),
+            0x58..0x5c => Ok(()),
+            0x5c..0x60 => Ok(()),
+            0x60..0x64 => Ok(()),
+            0x64..0x68 => Ok(()),
+            0x68..0x6c => Ok(()),
+            0x6c..0x70 => Ok(()),
+            0x70..0x74 => Ok(()),
+            0x74..0x78 => Ok(()),
+            0x78..0x7c => Ok(()),
+            0x7c..0x80 => Ok(()),
+            0x80..0x84 => Ok(()),
+            0x84..0x88 => Ok(()),
+            0x88..0x8c => Ok(()),
             _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
