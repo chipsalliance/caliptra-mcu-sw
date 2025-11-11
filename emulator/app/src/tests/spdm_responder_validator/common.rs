@@ -258,12 +258,14 @@ pub fn execute_spdm_tee_io_validator(transport: &'static str) {
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             println!("spdm_tee_io_validator exited with status: {:?}", status);
-                            break;
+                            std::process::exit(-1);
+                            // break;
                         }
                         Ok(None) => {}
                         Err(e) => {
                             println!("Error: {:?}", e);
-                            break;
+                            std::process::exit(-1);
+                            // break;
                         }
                     }
                     std::thread::sleep(std::time::Duration::from_millis(100));
