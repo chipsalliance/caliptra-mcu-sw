@@ -5,7 +5,7 @@ use mcu_builder::PROJECT_ROOT;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use registers_generator::{
-    camel_case, has_single_32_bit_field, hex_const, snake_case, Register, RegisterBlock,
+    camel_case, has_single_32_bit_field, hex_const, snake_case, FieldType, Register, RegisterBlock,
     RegisterBlockInstance, RegisterWidth, ValidatedRegisterBlock,
 };
 use registers_systemrdl::ParentScope;
@@ -349,59 +349,130 @@ fn emu_make_peripheral_trait(
 ) -> Result<TokenStream> {
     let base = camel_ident(block.name.as_str());
     let periph = format_ident!("{}Peripheral", base);
+    let generated_struct = format_ident!("{}Generated", base);
     let mut fn_tokens = TokenStream::new();
+    let mut struct_fields = TokenStream::new();
+    let mut struct_defaults = TokenStream::new();
+    let mut impl_tokens = TokenStream::new();
+    let mut state_field_names = HashSet::new();
 
     let registers = flatten_registers(0, String::new(), &block);
-    registers.iter().for_each(|(_, base_name, r)| {
-        // skip as this register is not defined yet
-        if r.name == "MCU_CLK_GATING_EN" {
-            return;
+    for (_, base_name, reg_rc) in registers.iter() {
+        if reg_rc.name == "MCU_CLK_GATING_EN" {
+            continue;
         }
-        // skip these are they are just for discovery
-        if r.name == "TERMINATION_EXTCAP_HEADER" {
-            return;
+        if reg_rc.name == "TERMINATION_EXTCAP_HEADER" {
+            continue;
         }
-        let ty = r.ty.as_ref().clone();
-        let base_field = snake_ident(r.name.as_str());
-        let base_name = if base_name.is_empty() {
-            base_name.clone()
+        if !reg_rc.can_read() && !reg_rc.can_write() {
+            continue;
+        }
+
+        let register = reg_rc.as_ref();
+        let base_prefix = if base_name.is_empty() {
+            String::new()
         } else {
-            format!("{}_", snake_ident(base_name.as_str()))
+            format!("{}_", snake_case(base_name.as_str()))
         };
-        let read_name = format_ident!(
-            "{}",
-            format!("read_{}{}", base_name, base_field).replace("__", "_")
-        );
-        let write_name = format_ident!(
-            "{}",
-            format!("write_{}{}", base_name, base_field).replace("__", "_"),
-        );
-        if has_single_32_bit_field(&r.ty) {
-            if r.can_read() {
-                if r.is_array() {
+        let reg_snake = snake_case(register.name.as_str());
+        let method_suffix = format!("{base_prefix}{reg_snake}").replace("__", "_");
+        let read_name = format_ident!("read_{}", method_suffix);
+        let write_name = format_ident!("write_{}", method_suffix);
+        let state_ident = format_ident!("{}", method_suffix);
+
+        if state_field_names.insert(method_suffix.clone()) {
+            let default_literal = hex_literal(register.default_val);
+            if register.is_array() {
+                let len = register.array_dimensions.iter().product::<u64>() as usize;
+                let len_literal = Literal::usize_unsuffixed(len);
+                struct_fields.extend(quote! {
+                    #state_ident: Vec<caliptra_emu_types::RvData>,
+                });
+                struct_defaults.extend(quote! {
+                    #state_ident: vec![#default_literal as caliptra_emu_types::RvData; #len_literal],
+                });
+            } else {
+                struct_fields.extend(quote! {
+                    #state_ident: caliptra_emu_types::RvData,
+                });
+                struct_defaults.extend(quote! {
+                    #state_ident: #default_literal as caliptra_emu_types::RvData,
+                });
+            }
+        }
+
+        let is_simple = has_single_32_bit_field(&register.ty);
+
+        if is_simple {
+            if register.can_read() {
+                if register.is_array() {
                     fn_tokens.extend(quote! {
-                        fn #read_name(&mut self, _index: usize) -> caliptra_emu_types::RvData { 0 }
+                        fn #read_name(&mut self, index: usize) -> caliptra_emu_types::RvData {
+                            if let Some(generated) = self.generated() {
+                                return generated.#read_name(index);
+                            }
+                            0
+                        }
+                    });
+                    impl_tokens.extend(quote! {
+                        fn #read_name(&mut self, index: usize) -> caliptra_emu_types::RvData {
+                            self.#state_ident[index]
+                        }
                     });
                 } else {
                     fn_tokens.extend(quote! {
-                        fn #read_name(&mut self) -> caliptra_emu_types::RvData { 0 }
+                        fn #read_name(&mut self) -> caliptra_emu_types::RvData {
+                            if let Some(generated) = self.generated() {
+                                return generated.#read_name();
+                            }
+                            0
+                        }
+                    });
+                    impl_tokens.extend(quote! {
+                        fn #read_name(&mut self) -> caliptra_emu_types::RvData {
+                            self.#state_ident
+                        }
                     });
                 }
             }
-            if r.can_write() {
-                if r.is_array() {
+            if register.can_write() {
+                if register.is_array() {
                     fn_tokens.extend(quote! {
-                        fn #write_name(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
+                        fn #write_name(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+                            if let Some(generated) = self.generated() {
+                                generated.#write_name(val, index);
+                            }
+                        }
+                    });
+                    let target_expr = quote! { self.#state_ident[index] };
+                    let write_logic =
+                        make_register_write_logic(register, target_expr.clone(), quote! { val });
+                    impl_tokens.extend(quote! {
+                        fn #write_name(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+                            #write_logic
+                        }
                     });
                 } else {
                     fn_tokens.extend(quote! {
-                        fn #write_name(&mut self, _val: caliptra_emu_types::RvData) {}
+                        fn #write_name(&mut self, val: caliptra_emu_types::RvData) {
+                            if let Some(generated) = self.generated() {
+                                generated.#write_name(val);
+                            }
+                        }
+                    });
+                    let target_expr = quote! { self.#state_ident };
+                    let write_logic =
+                        make_register_write_logic(register, target_expr.clone(), quote! { val });
+                    impl_tokens.extend(quote! {
+                        fn #write_name(&mut self, val: caliptra_emu_types::RvData) {
+                            #write_logic
+                        }
                     });
                 }
             }
         } else {
             if register_types_to_crates
-                .get(ty.name.as_ref().unwrap())
+                .get(register.ty.name.as_ref().unwrap())
                 .is_none()
             {
                 let mut i: Vec<_> = register_types_to_crates.keys().collect();
@@ -410,41 +481,88 @@ fn emu_make_peripheral_trait(
             let rcrate = format_ident!(
                 "{}",
                 register_types_to_crates
-                    .get(ty.name.as_ref().unwrap())
+                    .get(register.ty.name.as_ref().unwrap())
                     .unwrap()
             );
-            let tyn = camel_ident(ty.name.as_ref().unwrap());
+            let tyn = camel_ident(register.ty.name.as_ref().unwrap());
             let read_val = quote! { registers_generated :: #rcrate :: bits :: #tyn :: Register };
-            let prim = format_ident!("{}", ty.width.rust_primitive_name());
+            let prim = format_ident!("{}", register.ty.width.rust_primitive_name());
             let fulltyn = quote! { caliptra_emu_bus::ReadWriteRegister::<#prim, #read_val> };
-            if r.can_read() {
-                if r.is_array() {
+            if register.can_read() {
+                if register.is_array() {
                     fn_tokens.extend(quote! {
-                        fn #read_name(&mut self, _index: usize) -> #fulltyn {
+                        fn #read_name(&mut self, index: usize) -> #fulltyn {
+                            if let Some(generated) = self.generated() {
+                                return generated.#read_name(index);
+                            }
                             caliptra_emu_bus::ReadWriteRegister :: new(0)
+                        }
+                    });
+                    impl_tokens.extend(quote! {
+                        fn #read_name(&mut self, index: usize) -> #fulltyn {
+                            caliptra_emu_bus::ReadWriteRegister::new(self.#state_ident[index])
                         }
                     });
                 } else {
                     fn_tokens.extend(quote! {
                         fn #read_name(&mut self) -> #fulltyn {
+                            if let Some(generated) = self.generated() {
+                                return generated.#read_name();
+                            }
                             caliptra_emu_bus::ReadWriteRegister :: new(0)
+                        }
+                    });
+                    impl_tokens.extend(quote! {
+                        fn #read_name(&mut self) -> #fulltyn {
+                            caliptra_emu_bus::ReadWriteRegister::new(self.#state_ident)
                         }
                     });
                 }
             }
-            if r.can_write() {
-                if r.is_array() {
+            if register.can_write() {
+                if register.is_array() {
                     fn_tokens.extend(quote! {
-                        fn #write_name(&mut self, _val: #fulltyn, _index: usize) {}
+                        fn #write_name(&mut self, val: #fulltyn, index: usize) {
+                            if let Some(generated) = self.generated() {
+                                generated.#write_name(val, index);
+                            }
+                        }
+                    });
+                    let target_expr = quote! { self.#state_ident[index] };
+                    let write_logic = make_register_write_logic(
+                        register,
+                        target_expr.clone(),
+                        quote! { val.reg.get() },
+                    );
+                    impl_tokens.extend(quote! {
+                        fn #write_name(&mut self, val: #fulltyn, index: usize) {
+                            #write_logic
+                        }
                     });
                 } else {
                     fn_tokens.extend(quote! {
-                        fn #write_name(&mut self, _val: #fulltyn) {}
+                        fn #write_name(&mut self, val: #fulltyn) {
+                            if let Some(generated) = self.generated() {
+                                generated.#write_name(val);
+                            }
+                        }
+                    });
+                    let target_expr = quote! { self.#state_ident };
+                    let write_logic = make_register_write_logic(
+                        register,
+                        target_expr.clone(),
+                        quote! { val.reg.get() },
+                    );
+                    impl_tokens.extend(quote! {
+                        fn #write_name(&mut self, val: #fulltyn) {
+                            #write_logic
+                        }
                     });
                 }
             }
         }
-    });
+    }
+
     let mut tokens = TokenStream::new();
     tokens.extend(quote! {
         pub trait #periph {
@@ -461,9 +579,53 @@ fn emu_make_peripheral_trait(
             fn poll(&mut self) {}
             fn warm_reset(&mut self) {}
             fn update_reset(&mut self) {}
+            fn generated(&mut self) -> Option<&mut #generated_struct> {
+                None
+            }
             #fn_tokens
         }
     });
+
+    tokens.extend(quote! {
+        #[derive(Clone, Debug)]
+        pub struct #generated_struct {
+            #struct_fields
+        }
+
+        impl Default for #generated_struct {
+            fn default() -> Self {
+                Self {
+                    #struct_defaults
+                }
+            }
+        }
+
+        impl #generated_struct {
+            pub fn new() -> Self {
+                Self::default()
+            }
+
+            fn reset_state(&mut self) {
+                *self = Self::default();
+            }
+        }
+
+        impl #periph for #generated_struct {
+            fn generated(&mut self) -> Option<&mut #generated_struct> {
+                Some(self)
+            }
+            fn warm_reset(&mut self) {
+                self.reset_state();
+            }
+
+            fn update_reset(&mut self) {
+                self.reset_state();
+            }
+
+            #impl_tokens
+        }
+    });
+
     Ok(tokens)
 }
 
@@ -475,6 +637,69 @@ fn snake_ident(s: &str) -> Ident {
     format_ident!("{}", snake_case(s))
 }
 
+fn make_register_write_logic(
+    register: &Register,
+    target_expr: TokenStream,
+    write_val_expr: TokenStream,
+) -> TokenStream {
+    let mut tokens = TokenStream::new();
+    tokens.extend(quote! {
+        let write_val = (#write_val_expr) as caliptra_emu_types::RvData;
+    });
+
+    if register.ty.fields.is_empty() {
+        tokens.extend(quote! {
+            let new_val = write_val;
+            #target_expr = new_val;
+        });
+        return tokens;
+    }
+
+    let current_ident = format_ident!("current_val");
+    tokens.extend(quote! {
+        let #current_ident = #target_expr;
+        let mut new_val = #current_ident;
+    });
+
+    for (idx, field) in register.ty.fields.iter().enumerate() {
+        let mask_literal = hex_literal(field.mask());
+        let mask_expr = quote! { (#mask_literal as caliptra_emu_types::RvData) };
+        match field.ty {
+            FieldType::RO => {}
+            FieldType::RW | FieldType::WO | FieldType::WRC => {
+                tokens.extend(quote! {
+                    new_val = (new_val & !#mask_expr) | (write_val & #mask_expr);
+                });
+            }
+            FieldType::WC => {
+                tokens.extend(quote! {
+                    new_val &= !#mask_expr;
+                });
+            }
+            FieldType::W1C => {
+                let bits_ident = format_ident!("bits_to_clear_{idx}");
+                tokens.extend(quote! {
+                    let #bits_ident = write_val & #mask_expr;
+                    new_val &= !#bits_ident;
+                });
+            }
+            FieldType::W1S => {
+                let bits_ident = format_ident!("bits_to_set_{idx}");
+                tokens.extend(quote! {
+                    let #bits_ident = write_val & #mask_expr;
+                    new_val |= #bits_ident;
+                });
+            }
+        }
+    }
+
+    tokens.extend(quote! {
+        #target_expr = new_val;
+    });
+
+    tokens
+}
+
 /// Make a peripheral Bus implementation that can be hooked up to a root bus.
 fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
     let base = camel_ident(block.name.as_str());
@@ -483,6 +708,23 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
     let mut read_tokens = TokenStream::new();
     let mut write_tokens = TokenStream::new();
     let registers = flatten_registers(0, String::new(), &block);
+    let mut ranges_with_writer: HashSet<(u64, u64)> = HashSet::new();
+    registers.iter().for_each(|(offset, _, r)| {
+        let start = offset + r.offset;
+        let end = start + r.ty.width.in_bytes() * r.array_dimensions.iter().product::<u64>();
+        let has_writer = if has_single_32_bit_field(&r.ty) {
+            r.ty.fields
+                .first()
+                .map(|f| f.ty.can_write())
+                .unwrap_or(false)
+        } else {
+            r.can_write()
+        };
+        if has_writer {
+            ranges_with_writer.insert((start, end));
+        }
+    });
+    let mut emitted_write_ranges: HashSet<(u64, u64)> = HashSet::new();
     registers.iter().for_each(|(offset, base_name, r)| {
         // skip as this register is not defined yet
         if r.name == "MCU_CLK_GATING_EN" {
@@ -506,15 +748,16 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
             "{}",
             format!("write_{}{}", base_name, base_field).replace("__", "_"),
         );
-        let a = hex_literal(offset + r.offset);
-        let b = hex_literal(
-            offset + r.offset + r.ty.width.in_bytes() * r.array_dimensions.iter().product::<u64>(),
-        );
+        let start = offset + r.offset;
+        let end =
+            start + r.ty.width.in_bytes() * r.array_dimensions.iter().product::<u64>();
+        let a = hex_literal(start);
+        let b = hex_literal(end);
         assert_eq!(r.ty.width, RegisterWidth::_32);
         if has_single_32_bit_field(&r.ty) {
             if r.ty.fields[0].ty.can_read() {
                 if r.is_array() {
-                    if offset + r.offset == 0 {
+                    if start == 0 {
                         read_tokens.extend(quote! {
                             #a..#b => Ok(self.periph.#read_name(addr as usize / 4)),
                         });
@@ -530,30 +773,36 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
                 }
             }
             if r.ty.fields[0].ty.can_write() {
-                if r.is_array() {
-                    if offset + r.offset == 0 {
+                if emitted_write_ranges.insert((start, end)) {
+                    if r.is_array() {
+                        if start == 0 {
+                            write_tokens.extend(quote! {
+                                #a..#b => {
+                                    self.periph.#write_name(val, addr as usize / 4);
+                                    Ok(())
+                                }
+                            });
+                        } else {
+                            write_tokens.extend(quote! {
+                                #a..#b => {
+                                    self.periph.#write_name(val, (addr as usize - #a) / 4);
+                                    Ok(())
+                                }
+                            });
+                        }
+                    } else {
                         write_tokens.extend(quote! {
                             #a..#b => {
-                                self.periph.#write_name(val, addr as usize / 4);
-                                Ok(())
-                            }
-                        });
-                    } else {
-                       write_tokens.extend(quote! {
-                            #a..#b => {
-                                self.periph.#write_name(val, (addr as usize - #a) / 4);
+                                self.periph.#write_name(val);
                                 Ok(())
                             }
                         });
                     }
-                } else {
-                    write_tokens.extend(quote! {
-                        #a..#b => {
-                            self.periph.#write_name(val);
-                            Ok(())
-                        }
-                    });
                 }
+            } else if r.can_read() && !ranges_with_writer.contains(&(start, end)) {
+                write_tokens.extend(quote! {
+                    #a..#b => Ok(()),
+                });
             }
         } else {
             if r.can_read() {
@@ -574,30 +823,36 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
                 }
             }
             if r.can_write() {
-                if r.is_array() {
-                    if offset + r.offset == 0 {
-                        write_tokens.extend(quote! {
-                            #a..#b => {
-                                self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val), addr as usize / 4);
-                                Ok(())
-                            }
-                        });
+                if emitted_write_ranges.insert((start, end)) {
+                    if r.is_array() {
+                        if start == 0 {
+                            write_tokens.extend(quote! {
+                                #a..#b => {
+                                    self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val), addr as usize / 4);
+                                    Ok(())
+                                }
+                            });
+                        } else {
+                            write_tokens.extend(quote! {
+                                #a..#b => {
+                                    self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val), (addr as usize - #a) / 4);
+                                    Ok(())
+                                }
+                            });
+                        }
                     } else {
                         write_tokens.extend(quote! {
                             #a..#b => {
-                                self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val), (addr as usize - #a) / 4);
+                                self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val));
                                 Ok(())
                             }
                         });
                     }
-                } else {
-                    write_tokens.extend(quote! {
-                        #a..#b => {
-                            self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val));
-                            Ok(())
-                        }
-                    });
                 }
+            } else if r.can_read() && !ranges_with_writer.contains(&(start, end)) {
+                write_tokens.extend(quote! {
+                    #a..#b => Ok(()),
+                });
             }
         }
     });

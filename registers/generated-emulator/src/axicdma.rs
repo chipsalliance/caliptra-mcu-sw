@@ -18,21 +18,30 @@ pub trait AxicdmaPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
+    fn generated(&mut self) -> Option<&mut AxicdmaGenerated> {
+        None
+    }
     fn read_axicdma_control(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::axicdma::bits::AxicdmaControl::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_axicdma_control();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_axicdma_control(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::axicdma::bits::AxicdmaControl::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_axicdma_control(val);
+        }
     }
     fn read_axicdma_status(
         &mut self,
@@ -40,47 +49,251 @@ pub trait AxicdmaPeripheral {
         u32,
         registers_generated::axicdma::bits::AxicdmaStatus::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_axicdma_status();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_axicdma_status(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::axicdma::bits::AxicdmaStatus::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_axicdma_status(val);
+        }
     }
     fn read_axicdma_src_addr(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_axicdma_src_addr();
+        }
         0
     }
-    fn write_axicdma_src_addr(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_axicdma_src_addr(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_axicdma_src_addr(val);
+        }
+    }
     fn read_axicdma_src_addr_msb(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_axicdma_src_addr_msb();
+        }
         0
     }
-    fn write_axicdma_src_addr_msb(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_axicdma_src_addr_msb(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_axicdma_src_addr_msb(val);
+        }
+    }
     fn read_axicdma_dst_addr(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_axicdma_dst_addr();
+        }
         0
     }
-    fn write_axicdma_dst_addr(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_axicdma_dst_addr(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_axicdma_dst_addr(val);
+        }
+    }
     fn read_axicdma_dst_addr_msb(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_axicdma_dst_addr_msb();
+        }
         0
     }
-    fn write_axicdma_dst_addr_msb(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_axicdma_dst_addr_msb(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_axicdma_dst_addr_msb(val);
+        }
+    }
     fn read_axicdma_bytes_to_transfer(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_axicdma_bytes_to_transfer();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_axicdma_bytes_to_transfer(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_axicdma_bytes_to_transfer(val);
+        }
+    }
+}
+#[derive(Clone, Debug)]
+pub struct AxicdmaGenerated {
+    axicdma_control: caliptra_emu_types::RvData,
+    axicdma_status: caliptra_emu_types::RvData,
+    axicdma_src_addr: caliptra_emu_types::RvData,
+    axicdma_src_addr_msb: caliptra_emu_types::RvData,
+    axicdma_dst_addr: caliptra_emu_types::RvData,
+    axicdma_dst_addr_msb: caliptra_emu_types::RvData,
+    axicdma_bytes_to_transfer: caliptra_emu_types::RvData,
+}
+impl Default for AxicdmaGenerated {
+    fn default() -> Self {
+        Self {
+            axicdma_control: 0 as caliptra_emu_types::RvData,
+            axicdma_status: 0 as caliptra_emu_types::RvData,
+            axicdma_src_addr: 0 as caliptra_emu_types::RvData,
+            axicdma_src_addr_msb: 0 as caliptra_emu_types::RvData,
+            axicdma_dst_addr: 0 as caliptra_emu_types::RvData,
+            axicdma_dst_addr_msb: 0 as caliptra_emu_types::RvData,
+            axicdma_bytes_to_transfer: 0 as caliptra_emu_types::RvData,
+        }
+    }
+}
+impl AxicdmaGenerated {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    fn reset_state(&mut self) {
+        *self = Self::default();
+    }
+}
+impl AxicdmaPeripheral for AxicdmaGenerated {
+    fn generated(&mut self) -> Option<&mut AxicdmaGenerated> {
+        Some(self)
+    }
+    fn warm_reset(&mut self) {
+        self.reset_state();
+    }
+    fn update_reset(&mut self) {
+        self.reset_state();
+    }
+    fn read_axicdma_control(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::axicdma::bits::AxicdmaControl::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.axicdma_control)
+    }
+    fn write_axicdma_control(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::axicdma::bits::AxicdmaControl::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.axicdma_control;
+        let mut new_val = current_val;
+        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_emu_types::RvData));
+        self.axicdma_control = new_val;
+    }
+    fn read_axicdma_status(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::axicdma::bits::AxicdmaStatus::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.axicdma_status)
+    }
+    fn write_axicdma_status(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::axicdma::bits::AxicdmaStatus::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.axicdma_status;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_emu_types::RvData));
+        self.axicdma_status = new_val;
+    }
+    fn read_axicdma_src_addr(&mut self) -> caliptra_emu_types::RvData {
+        self.axicdma_src_addr
+    }
+    fn write_axicdma_src_addr(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.axicdma_src_addr;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.axicdma_src_addr = new_val;
+    }
+    fn read_axicdma_src_addr_msb(&mut self) -> caliptra_emu_types::RvData {
+        self.axicdma_src_addr_msb
+    }
+    fn write_axicdma_src_addr_msb(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.axicdma_src_addr_msb;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.axicdma_src_addr_msb = new_val;
+    }
+    fn read_axicdma_dst_addr(&mut self) -> caliptra_emu_types::RvData {
+        self.axicdma_dst_addr
+    }
+    fn write_axicdma_dst_addr(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.axicdma_dst_addr;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.axicdma_dst_addr = new_val;
+    }
+    fn read_axicdma_dst_addr_msb(&mut self) -> caliptra_emu_types::RvData {
+        self.axicdma_dst_addr_msb
+    }
+    fn write_axicdma_dst_addr_msb(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.axicdma_dst_addr_msb;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.axicdma_dst_addr_msb = new_val;
+    }
+    fn read_axicdma_bytes_to_transfer(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.axicdma_bytes_to_transfer)
+    }
+    fn write_axicdma_bytes_to_transfer(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.axicdma_bytes_to_transfer;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xff_ffff as caliptra_emu_types::RvData));
+        self.axicdma_bytes_to_transfer = new_val;
     }
 }
 pub struct AxicdmaBus {

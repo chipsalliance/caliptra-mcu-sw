@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_cpu::Irq;
-use emulator_registers_generated::doe_mbox::DoeMboxPeripheral;
+use emulator_registers_generated::doe_mbox::{DoeMboxGenerated, DoeMboxPeripheral};
 use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
 use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{Readable, Writeable};
@@ -10,6 +10,7 @@ pub struct DummyDoeMbox {
     timer: Timer,
     event_irq: Irq,
     periph: DoeMboxPeriph,
+    generated: DoeMboxGenerated,
 }
 
 struct PollScheduler {
@@ -41,11 +42,16 @@ impl DummyDoeMbox {
             timer,
             event_irq,
             periph,
+            generated: DoeMboxGenerated::default(),
         }
     }
 }
 
 impl DoeMboxPeripheral for DummyDoeMbox {
+    fn generated(&mut self) -> Option<&mut DoeMboxGenerated> {
+        Some(&mut self.generated)
+    }
+
     fn poll(&mut self) {
         let irq_status = self.periph.inner.lock().unwrap().check_interrupts();
         self.event_irq.set_level(irq_status);

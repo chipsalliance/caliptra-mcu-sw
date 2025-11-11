@@ -18,21 +18,30 @@ pub trait SecondaryFlashPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
+    fn generated(&mut self) -> Option<&mut SecondaryFlashGenerated> {
+        None
+    }
     fn read_fl_interrupt_state(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_fl_interrupt_state();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_fl_interrupt_state(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_fl_interrupt_state(val);
+        }
     }
     fn read_fl_interrupt_enable(
         &mut self,
@@ -40,43 +49,76 @@ pub trait SecondaryFlashPeripheral {
         u32,
         registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_fl_interrupt_enable();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_fl_interrupt_enable(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_fl_interrupt_enable(val);
+        }
     }
     fn read_page_size(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_page_size();
+        }
         0
     }
-    fn write_page_size(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_page_size(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_page_size(val);
+        }
+    }
     fn read_page_num(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_page_num();
+        }
         0
     }
-    fn write_page_num(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_page_num(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_page_num(val);
+        }
+    }
     fn read_page_addr(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_page_addr();
+        }
         0
     }
-    fn write_page_addr(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_page_addr(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_page_addr(val);
+        }
+    }
     fn read_fl_control(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::primary_flash_ctrl::bits::FlControl::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_fl_control();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_fl_control(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::primary_flash_ctrl::bits::FlControl::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_fl_control(val);
+        }
     }
     fn read_op_status(
         &mut self,
@@ -84,15 +126,21 @@ pub trait SecondaryFlashPeripheral {
         u32,
         registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_op_status();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_op_status(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_op_status(val);
+        }
     }
     fn read_ctrl_regwen(
         &mut self,
@@ -100,7 +148,191 @@ pub trait SecondaryFlashPeripheral {
         u32,
         registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_ctrl_regwen();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
+    }
+}
+#[derive(Clone, Debug)]
+pub struct SecondaryFlashGenerated {
+    fl_interrupt_state: caliptra_emu_types::RvData,
+    fl_interrupt_enable: caliptra_emu_types::RvData,
+    page_size: caliptra_emu_types::RvData,
+    page_num: caliptra_emu_types::RvData,
+    page_addr: caliptra_emu_types::RvData,
+    fl_control: caliptra_emu_types::RvData,
+    op_status: caliptra_emu_types::RvData,
+    ctrl_regwen: caliptra_emu_types::RvData,
+}
+impl Default for SecondaryFlashGenerated {
+    fn default() -> Self {
+        Self {
+            fl_interrupt_state: 0 as caliptra_emu_types::RvData,
+            fl_interrupt_enable: 0 as caliptra_emu_types::RvData,
+            page_size: 0 as caliptra_emu_types::RvData,
+            page_num: 0 as caliptra_emu_types::RvData,
+            page_addr: 0 as caliptra_emu_types::RvData,
+            fl_control: 0 as caliptra_emu_types::RvData,
+            op_status: 0 as caliptra_emu_types::RvData,
+            ctrl_regwen: 0 as caliptra_emu_types::RvData,
+        }
+    }
+}
+impl SecondaryFlashGenerated {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    fn reset_state(&mut self) {
+        *self = Self::default();
+    }
+}
+impl SecondaryFlashPeripheral for SecondaryFlashGenerated {
+    fn generated(&mut self) -> Option<&mut SecondaryFlashGenerated> {
+        Some(self)
+    }
+    fn warm_reset(&mut self) {
+        self.reset_state();
+    }
+    fn update_reset(&mut self) {
+        self.reset_state();
+    }
+    fn read_fl_interrupt_state(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.fl_interrupt_state)
+    }
+    fn write_fl_interrupt_state(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.fl_interrupt_state;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_emu_types::RvData));
+        self.fl_interrupt_state = new_val;
+    }
+    fn read_fl_interrupt_enable(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.fl_interrupt_enable)
+    }
+    fn write_fl_interrupt_enable(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.fl_interrupt_enable;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_emu_types::RvData));
+        self.fl_interrupt_enable = new_val;
+    }
+    fn read_page_size(&mut self) -> caliptra_emu_types::RvData {
+        self.page_size
+    }
+    fn write_page_size(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.page_size;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.page_size = new_val;
+    }
+    fn read_page_num(&mut self) -> caliptra_emu_types::RvData {
+        self.page_num
+    }
+    fn write_page_num(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.page_num;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.page_num = new_val;
+    }
+    fn read_page_addr(&mut self) -> caliptra_emu_types::RvData {
+        self.page_addr
+    }
+    fn write_page_addr(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.page_addr;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.page_addr = new_val;
+    }
+    fn read_fl_control(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::primary_flash_ctrl::bits::FlControl::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.fl_control)
+    }
+    fn write_fl_control(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::primary_flash_ctrl::bits::FlControl::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.fl_control;
+        let mut new_val = current_val;
+        new_val = (new_val & !(6 as caliptra_emu_types::RvData))
+            | (write_val & (6 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.fl_control = new_val;
+    }
+    fn read_op_status(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.op_status)
+    }
+    fn write_op_status(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.op_status;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xe as caliptra_emu_types::RvData))
+            | (write_val & (0xe as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.op_status = new_val;
+    }
+    fn read_ctrl_regwen(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.ctrl_regwen)
     }
 }
 pub struct SecondaryFlashBus {
@@ -179,6 +411,7 @@ impl caliptra_emu_bus::Bus for SecondaryFlashBus {
                     .write_op_status(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0x1c..0x20 => Ok(()),
             _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }

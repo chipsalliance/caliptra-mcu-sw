@@ -18,23 +18,35 @@ pub trait Sha512AccPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
+    fn generated(&mut self) -> Option<&mut Sha512AccGenerated> {
+        None
+    }
     fn read_lock(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::Lock::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_lock();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_lock(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::Lock::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_lock(val);
+        }
     }
     fn read_user(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_user();
+        }
         0
     }
     fn read_mode(
@@ -43,43 +55,76 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::Mode::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_mode();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mode(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::Mode::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_mode(val);
+        }
     }
     fn read_start_address(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_start_address();
+        }
         0
     }
-    fn write_start_address(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_start_address(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_start_address(val);
+        }
+    }
     fn read_dlen(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_dlen();
+        }
         0
     }
-    fn write_dlen(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_dlen(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_dlen(val);
+        }
+    }
     fn read_datain(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_datain();
+        }
         0
     }
-    fn write_datain(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_datain(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_datain(val);
+        }
+    }
     fn read_execute(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::sha512_acc::bits::Execute::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_execute();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_execute(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::Execute::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_execute(val);
+        }
     }
     fn read_status(
         &mut self,
@@ -87,9 +132,15 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::lc_ctrl::bits::Status::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_status();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_digest(&mut self, _index: usize) -> caliptra_emu_types::RvData {
+    fn read_digest(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_digest(index);
+        }
         0
     }
     fn read_control(
@@ -98,15 +149,21 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::Control::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_control();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_control(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::Control::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_control(val);
+        }
     }
     fn read_intr_block_rf_global_intr_en_r(
         &mut self,
@@ -114,15 +171,21 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_global_intr_en_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_global_intr_en_r(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_intr_block_rf_global_intr_en_r(val);
+        }
     }
     fn read_intr_block_rf_error_intr_en_r(
         &mut self,
@@ -130,15 +193,21 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_error_intr_en_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_error_intr_en_r(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_intr_block_rf_error_intr_en_r(val);
+        }
     }
     fn read_intr_block_rf_notif_intr_en_r(
         &mut self,
@@ -146,15 +215,21 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_notif_intr_en_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_notif_intr_en_r(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_intr_block_rf_notif_intr_en_r(val);
+        }
     }
     fn read_intr_block_rf_error_global_intr_r(
         &mut self,
@@ -162,6 +237,9 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::GlobalIntrT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_error_global_intr_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_notif_global_intr_r(
@@ -170,6 +248,9 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::GlobalIntrT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_notif_global_intr_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_error_internal_intr_r(
@@ -178,15 +259,21 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::ErrorIntrT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_error_internal_intr_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_error_internal_intr_r(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::ErrorIntrT::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_intr_block_rf_error_internal_intr_r(val);
+        }
     }
     fn read_intr_block_rf_notif_internal_intr_r(
         &mut self,
@@ -194,15 +281,21 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::NotifIntrT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_notif_internal_intr_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_notif_internal_intr_r(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::NotifIntrT::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_intr_block_rf_notif_internal_intr_r(val);
+        }
     }
     fn read_intr_block_rf_error_intr_trig_r(
         &mut self,
@@ -210,15 +303,21 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_error_intr_trig_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_error_intr_trig_r(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_intr_block_rf_error_intr_trig_r(val);
+        }
     }
     fn read_intr_block_rf_notif_intr_trig_r(
         &mut self,
@@ -226,39 +325,76 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_notif_intr_trig_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_intr_block_rf_notif_intr_trig_r(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_intr_block_rf_notif_intr_trig_r(val);
+        }
     }
     fn read_intr_block_rf_error0_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_error0_intr_count_r();
+        }
         0
     }
-    fn write_intr_block_rf_error0_intr_count_r(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_intr_block_rf_error0_intr_count_r(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_intr_block_rf_error0_intr_count_r(val);
+        }
+    }
     fn read_intr_block_rf_error1_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_error1_intr_count_r();
+        }
         0
     }
-    fn write_intr_block_rf_error1_intr_count_r(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_intr_block_rf_error1_intr_count_r(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_intr_block_rf_error1_intr_count_r(val);
+        }
+    }
     fn read_intr_block_rf_error2_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_error2_intr_count_r();
+        }
         0
     }
-    fn write_intr_block_rf_error2_intr_count_r(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_intr_block_rf_error2_intr_count_r(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_intr_block_rf_error2_intr_count_r(val);
+        }
+    }
     fn read_intr_block_rf_error3_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_error3_intr_count_r();
+        }
         0
     }
-    fn write_intr_block_rf_error3_intr_count_r(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_intr_block_rf_error3_intr_count_r(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_intr_block_rf_error3_intr_count_r(val);
+        }
+    }
     fn read_intr_block_rf_notif_cmd_done_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_notif_cmd_done_intr_count_r();
+        }
         0
     }
-    fn write_intr_block_rf_notif_cmd_done_intr_count_r(
-        &mut self,
-        _val: caliptra_emu_types::RvData,
-    ) {
+    fn write_intr_block_rf_notif_cmd_done_intr_count_r(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_intr_block_rf_notif_cmd_done_intr_count_r(val);
+        }
     }
     fn read_intr_block_rf_error0_intr_count_incr_r(
         &mut self,
@@ -266,6 +402,9 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_error0_intr_count_incr_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_error1_intr_count_incr_r(
@@ -274,6 +413,9 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_error1_intr_count_incr_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_error2_intr_count_incr_r(
@@ -282,6 +424,9 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_error2_intr_count_incr_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_error3_intr_count_incr_r(
@@ -290,6 +435,9 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_error3_intr_count_incr_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_intr_block_rf_notif_cmd_done_intr_count_incr_r(
@@ -298,7 +446,520 @@ pub trait Sha512AccPeripheral {
         u32,
         registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_intr_block_rf_notif_cmd_done_intr_count_incr_r();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
+    }
+}
+#[derive(Clone, Debug)]
+pub struct Sha512AccGenerated {
+    lock: caliptra_emu_types::RvData,
+    user: caliptra_emu_types::RvData,
+    mode: caliptra_emu_types::RvData,
+    start_address: caliptra_emu_types::RvData,
+    dlen: caliptra_emu_types::RvData,
+    datain: caliptra_emu_types::RvData,
+    execute: caliptra_emu_types::RvData,
+    status: caliptra_emu_types::RvData,
+    digest: Vec<caliptra_emu_types::RvData>,
+    control: caliptra_emu_types::RvData,
+    intr_block_rf_global_intr_en_r: caliptra_emu_types::RvData,
+    intr_block_rf_error_intr_en_r: caliptra_emu_types::RvData,
+    intr_block_rf_notif_intr_en_r: caliptra_emu_types::RvData,
+    intr_block_rf_error_global_intr_r: caliptra_emu_types::RvData,
+    intr_block_rf_notif_global_intr_r: caliptra_emu_types::RvData,
+    intr_block_rf_error_internal_intr_r: caliptra_emu_types::RvData,
+    intr_block_rf_notif_internal_intr_r: caliptra_emu_types::RvData,
+    intr_block_rf_error_intr_trig_r: caliptra_emu_types::RvData,
+    intr_block_rf_notif_intr_trig_r: caliptra_emu_types::RvData,
+    intr_block_rf_error0_intr_count_r: caliptra_emu_types::RvData,
+    intr_block_rf_error1_intr_count_r: caliptra_emu_types::RvData,
+    intr_block_rf_error2_intr_count_r: caliptra_emu_types::RvData,
+    intr_block_rf_error3_intr_count_r: caliptra_emu_types::RvData,
+    intr_block_rf_notif_cmd_done_intr_count_r: caliptra_emu_types::RvData,
+    intr_block_rf_error0_intr_count_incr_r: caliptra_emu_types::RvData,
+    intr_block_rf_error1_intr_count_incr_r: caliptra_emu_types::RvData,
+    intr_block_rf_error2_intr_count_incr_r: caliptra_emu_types::RvData,
+    intr_block_rf_error3_intr_count_incr_r: caliptra_emu_types::RvData,
+    intr_block_rf_notif_cmd_done_intr_count_incr_r: caliptra_emu_types::RvData,
+}
+impl Default for Sha512AccGenerated {
+    fn default() -> Self {
+        Self {
+            lock: 1 as caliptra_emu_types::RvData,
+            user: 0 as caliptra_emu_types::RvData,
+            mode: 0 as caliptra_emu_types::RvData,
+            start_address: 0 as caliptra_emu_types::RvData,
+            dlen: 0 as caliptra_emu_types::RvData,
+            datain: 0 as caliptra_emu_types::RvData,
+            execute: 0 as caliptra_emu_types::RvData,
+            status: 0 as caliptra_emu_types::RvData,
+            digest: vec![0 as caliptra_emu_types::RvData; 16],
+            control: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_global_intr_en_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_error_intr_en_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_notif_intr_en_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_error_global_intr_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_notif_global_intr_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_error_internal_intr_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_notif_internal_intr_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_error_intr_trig_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_notif_intr_trig_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_error0_intr_count_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_error1_intr_count_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_error2_intr_count_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_error3_intr_count_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_notif_cmd_done_intr_count_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_error0_intr_count_incr_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_error1_intr_count_incr_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_error2_intr_count_incr_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_error3_intr_count_incr_r: 0 as caliptra_emu_types::RvData,
+            intr_block_rf_notif_cmd_done_intr_count_incr_r: 0 as caliptra_emu_types::RvData,
+        }
+    }
+}
+impl Sha512AccGenerated {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    fn reset_state(&mut self) {
+        *self = Self::default();
+    }
+}
+impl Sha512AccPeripheral for Sha512AccGenerated {
+    fn generated(&mut self) -> Option<&mut Sha512AccGenerated> {
+        Some(self)
+    }
+    fn warm_reset(&mut self) {
+        self.reset_state();
+    }
+    fn update_reset(&mut self) {
+        self.reset_state();
+    }
+    fn read_lock(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::Lock::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.lock)
+    }
+    fn write_lock(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::sha512_acc::bits::Lock::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.lock;
+        let mut new_val = current_val;
+        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        self.lock = new_val;
+    }
+    fn read_user(&mut self) -> caliptra_emu_types::RvData {
+        self.user
+    }
+    fn read_mode(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::Mode::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.mode)
+    }
+    fn write_mode(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::sha512_acc::bits::Mode::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.mode;
+        let mut new_val = current_val;
+        new_val = (new_val & !(3 as caliptra_emu_types::RvData))
+            | (write_val & (3 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_emu_types::RvData));
+        self.mode = new_val;
+    }
+    fn read_start_address(&mut self) -> caliptra_emu_types::RvData {
+        self.start_address
+    }
+    fn write_start_address(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.start_address;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.start_address = new_val;
+    }
+    fn read_dlen(&mut self) -> caliptra_emu_types::RvData {
+        self.dlen
+    }
+    fn write_dlen(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.dlen;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.dlen = new_val;
+    }
+    fn read_datain(&mut self) -> caliptra_emu_types::RvData {
+        self.datain
+    }
+    fn write_datain(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.datain;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.datain = new_val;
+    }
+    fn read_execute(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::Execute::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.execute)
+    }
+    fn write_execute(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::sha512_acc::bits::Execute::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.execute;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.execute = new_val;
+    }
+    fn read_status(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::lc_ctrl::bits::Status::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.status)
+    }
+    fn read_digest(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        self.digest[index]
+    }
+    fn read_control(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::Control::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.control)
+    }
+    fn write_control(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::sha512_acc::bits::Control::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.control;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.control = new_val;
+    }
+    fn read_intr_block_rf_global_intr_en_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.intr_block_rf_global_intr_en_r)
+    }
+    fn write_intr_block_rf_global_intr_en_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.intr_block_rf_global_intr_en_r;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_emu_types::RvData));
+        self.intr_block_rf_global_intr_en_r = new_val;
+    }
+    fn read_intr_block_rf_error_intr_en_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.intr_block_rf_error_intr_en_r)
+    }
+    fn write_intr_block_rf_error_intr_en_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.intr_block_rf_error_intr_en_r;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_emu_types::RvData));
+        self.intr_block_rf_error_intr_en_r = new_val;
+    }
+    fn read_intr_block_rf_notif_intr_en_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.intr_block_rf_notif_intr_en_r)
+    }
+    fn write_intr_block_rf_notif_intr_en_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.intr_block_rf_notif_intr_en_r;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.intr_block_rf_notif_intr_en_r = new_val;
+    }
+    fn read_intr_block_rf_error_global_intr_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::GlobalIntrT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.intr_block_rf_error_global_intr_r)
+    }
+    fn read_intr_block_rf_notif_global_intr_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::GlobalIntrT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.intr_block_rf_notif_global_intr_r)
+    }
+    fn read_intr_block_rf_error_internal_intr_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::ErrorIntrT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.intr_block_rf_error_internal_intr_r)
+    }
+    fn write_intr_block_rf_error_internal_intr_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::sha512_acc::bits::ErrorIntrT::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.intr_block_rf_error_internal_intr_r;
+        let mut new_val = current_val;
+        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_1;
+        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_2;
+        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_3;
+        self.intr_block_rf_error_internal_intr_r = new_val;
+    }
+    fn read_intr_block_rf_notif_internal_intr_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::NotifIntrT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.intr_block_rf_notif_internal_intr_r)
+    }
+    fn write_intr_block_rf_notif_internal_intr_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::sha512_acc::bits::NotifIntrT::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.intr_block_rf_notif_internal_intr_r;
+        let mut new_val = current_val;
+        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val &= !bits_to_clear_0;
+        self.intr_block_rf_notif_internal_intr_r = new_val;
+    }
+    fn read_intr_block_rf_error_intr_trig_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.intr_block_rf_error_intr_trig_r)
+    }
+    fn write_intr_block_rf_error_intr_trig_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.intr_block_rf_error_intr_trig_r;
+        let mut new_val = current_val;
+        let bits_to_set_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_0;
+        let bits_to_set_1 = write_val & (2 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_1;
+        let bits_to_set_2 = write_val & (4 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_2;
+        let bits_to_set_3 = write_val & (8 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_3;
+        self.intr_block_rf_error_intr_trig_r = new_val;
+    }
+    fn read_intr_block_rf_notif_intr_trig_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.intr_block_rf_notif_intr_trig_r)
+    }
+    fn write_intr_block_rf_notif_intr_trig_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.intr_block_rf_notif_intr_trig_r;
+        let mut new_val = current_val;
+        let bits_to_set_0 = write_val & (1 as caliptra_emu_types::RvData);
+        new_val |= bits_to_set_0;
+        self.intr_block_rf_notif_intr_trig_r = new_val;
+    }
+    fn read_intr_block_rf_error0_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
+        self.intr_block_rf_error0_intr_count_r
+    }
+    fn write_intr_block_rf_error0_intr_count_r(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.intr_block_rf_error0_intr_count_r;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.intr_block_rf_error0_intr_count_r = new_val;
+    }
+    fn read_intr_block_rf_error1_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
+        self.intr_block_rf_error1_intr_count_r
+    }
+    fn write_intr_block_rf_error1_intr_count_r(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.intr_block_rf_error1_intr_count_r;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.intr_block_rf_error1_intr_count_r = new_val;
+    }
+    fn read_intr_block_rf_error2_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
+        self.intr_block_rf_error2_intr_count_r
+    }
+    fn write_intr_block_rf_error2_intr_count_r(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.intr_block_rf_error2_intr_count_r;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.intr_block_rf_error2_intr_count_r = new_val;
+    }
+    fn read_intr_block_rf_error3_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
+        self.intr_block_rf_error3_intr_count_r
+    }
+    fn write_intr_block_rf_error3_intr_count_r(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.intr_block_rf_error3_intr_count_r;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.intr_block_rf_error3_intr_count_r = new_val;
+    }
+    fn read_intr_block_rf_notif_cmd_done_intr_count_r(&mut self) -> caliptra_emu_types::RvData {
+        self.intr_block_rf_notif_cmd_done_intr_count_r
+    }
+    fn write_intr_block_rf_notif_cmd_done_intr_count_r(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.intr_block_rf_notif_cmd_done_intr_count_r;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.intr_block_rf_notif_cmd_done_intr_count_r = new_val;
+    }
+    fn read_intr_block_rf_error0_intr_count_incr_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.intr_block_rf_error0_intr_count_incr_r)
+    }
+    fn read_intr_block_rf_error1_intr_count_incr_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.intr_block_rf_error1_intr_count_incr_r)
+    }
+    fn read_intr_block_rf_error2_intr_count_incr_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.intr_block_rf_error2_intr_count_incr_r)
+    }
+    fn read_intr_block_rf_error3_intr_count_incr_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.intr_block_rf_error3_intr_count_incr_r)
+    }
+    fn read_intr_block_rf_notif_cmd_done_intr_count_incr_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(
+            self.intr_block_rf_notif_cmd_done_intr_count_incr_r,
+        )
     }
 }
 pub struct Sha512AccBus {
@@ -426,6 +1087,7 @@ impl caliptra_emu_bus::Bus for Sha512AccBus {
                     .write_lock(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            4..8 => Ok(()),
             8..0xc => {
                 self.periph
                     .write_mode(caliptra_emu_bus::ReadWriteRegister::new(val));
@@ -448,6 +1110,8 @@ impl caliptra_emu_bus::Bus for Sha512AccBus {
                     .write_execute(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
+            0x1c..0x20 => Ok(()),
+            0x20..0x60 => Ok(()),
             0x60..0x64 => {
                 self.periph
                     .write_control(caliptra_emu_bus::ReadWriteRegister::new(val));
@@ -471,6 +1135,8 @@ impl caliptra_emu_bus::Bus for Sha512AccBus {
                 );
                 Ok(())
             }
+            0x80c..0x810 => Ok(()),
+            0x810..0x814 => Ok(()),
             0x814..0x818 => {
                 self.periph.write_intr_block_rf_error_internal_intr_r(
                     caliptra_emu_bus::ReadWriteRegister::new(val),
@@ -516,6 +1182,11 @@ impl caliptra_emu_bus::Bus for Sha512AccBus {
                     .write_intr_block_rf_notif_cmd_done_intr_count_r(val);
                 Ok(())
             }
+            0xa00..0xa04 => Ok(()),
+            0xa04..0xa08 => Ok(()),
+            0xa08..0xa0c => Ok(()),
+            0xa0c..0xa10 => Ok(()),
+            0xa10..0xa14 => Ok(()),
             _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
