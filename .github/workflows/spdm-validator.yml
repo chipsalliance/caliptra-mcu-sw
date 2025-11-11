@@ -164,7 +164,11 @@ jobs:
           git submodule update --init --recursive
           sh_script/pre-build.sh
           cargo build
+          echo "Check if the target binary is available"
+          ls -l target/debug
+          echo "Copy test keys to target/debug"
           cp -r test_key target/debug/
+          echo "Check test keys"
           ls -l target/debug/test_key/ecp384/
 
       - name: Run CCC spdm-requester-emu tests for TDISP+IDE
