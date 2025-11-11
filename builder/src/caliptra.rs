@@ -491,8 +491,8 @@ impl CaliptraBuilder {
             });
 
         let gen_config: AuthManifestGeneratorConfig = AuthManifestGeneratorConfig {
-            vendor_fw_key_info,
-            vendor_man_key_info,
+            vendor_fw_key_info: Some(vendor_fw_key_info),
+            vendor_man_key_info: Some(vendor_man_key_info),
             owner_fw_key_info,
             owner_man_key_info,
             image_metadata_list,

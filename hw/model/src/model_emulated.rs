@@ -530,6 +530,10 @@ impl McuHwModel for ModelEmulated {
         unimplemented!()
     }
 
+    fn read_otp_memory(&self) -> Vec<u8> {
+        unimplemented!()
+    }
+
     fn mcu_manager(&mut self) -> impl McuManager {
         self
     }
