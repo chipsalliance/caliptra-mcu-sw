@@ -312,6 +312,7 @@ pub trait McuHwModel {
         Self: Sized;
 
     fn save_otp_memory(&self, path: &Path) -> Result<()>;
+    fn read_otp_memory(&self) -> Vec<u8>;
 
     /// The type name of this model
     fn type_name(&self) -> &'static str;

@@ -40,6 +40,7 @@ p384.workspace = true
 pldm-common.workspace = true
 pldm-fw-pkg.workspace = true
 pldm-ua.workspace = true
+registers-generated.workspace = true
 sha2.workspace = true
 simple_logger.workspace = true
 tempfile.workspace = true
