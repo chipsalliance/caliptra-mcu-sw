@@ -1,0 +1,27 @@
+# Licensed under the Apache-2.0 license
+
+language = "C"
+cpp_compat = true
+style = "both"
+
+[parse]
+parse_deps = true
+include = ["caliptra-cbinding"]
+
+[export]
+include = [
+    "CaliptraError",
+    "CaliptraTransport"
+]
+
+[fn]
+rename_args = "GeckoCase"
+
+[struct]
+rename_fields = "GeckoCase"
+
+[enum]
+rename_variants = "GeckoCase"
+
+[macro_expansion]
+bitflags = true

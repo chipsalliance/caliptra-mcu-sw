@@ -1,0 +1,17 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-util-host-transport"
+version.workspace = true
+edition.workspace = true
+description = "Transport layer for Caliptra Utility Host Library"
+
+[dependencies]
+caliptra-util-host-osal.workspace = true
+caliptra-util-host-command-types.workspace = true
+zerocopy.workspace = true
+
+[features]
+default = ["alloc"]
+alloc = []
+std = ["alloc"]
