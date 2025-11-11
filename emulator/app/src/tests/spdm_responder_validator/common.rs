@@ -401,5 +401,6 @@ where
     configure(&mut cmd);
     cmd.stdout(Stdio::from(output_file))
         .stderr(Stdio::from(output_file_clone))
+        .current_dir(&dir_path)
         .spawn()
 }
