@@ -92,8 +92,6 @@ TBD
 - Disable DOT while maintaining ownership (DOT_DISABLE)
 - Unlock and release ownership (DOT_UNLOCK)
 
-**MCU (Microcontroller Unit)**: Microcontroller component within Caliptra that executes ROM, FMC, and RT firmware.
-
 **ODD STATE**: Locked/Disabled state (fuse value % 2 == 1) where ownership is cryptographically bound to the silicon via DOT_BLOB.
 
 **Ownership_RAM**: Volatile memory (e.g., FLOP-based register or SRAM) that stores the current CAK and LAK during runtime. Cleared on power cycle. Also stores desired DOT_FUSE_ARRAY state for pending transitions.
@@ -1301,7 +1299,7 @@ Recovery Mode
 ### Security Properties
 
 1. **Silicon Binding**
-   - DOT_ROOT_KEY is unique per device
+   - DOT_ROOT_KEY is unique per device, for Caliptra 2.0/2.1, it is up to the integrator to decide how to form this per-device unique key.
    - DOT_BLOBs cannot be authenticated / used between devices of the same model
    - Each device requires its own unique DOT_BLOB
 
