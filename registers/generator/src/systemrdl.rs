@@ -211,6 +211,15 @@ fn translate_field(iref: systemrdl::InstanceRef) -> Result<RegisterField, Error>
     let inst = iref.instance;
 
     let access_ty: AccessType = get_property_opt(&inst.scope, "sw")?.unwrap_or_default();
+    let mut field_type = translate_access_type(access_ty).map_err(wrap_err)?;
+
+    if let Some(true) = get_property_opt::<bool>(&inst.scope, "woclr")? {
+        field_type = FieldType::W1C;
+    } else if let Some(true) = get_property_opt::<bool>(&inst.scope, "woset")? {
+        field_type = FieldType::W1S;
+    } else if let Some(true) = get_property_opt::<bool>(&inst.scope, "wclr")? {
+        field_type = FieldType::WC;
+    }
 
     let enum_type =
         if let Ok(Some(systemrdl::EnumReference(eref))) = inst.scope.property_val_opt("encode") {
@@ -230,7 +239,7 @@ fn translate_field(iref: systemrdl::InstanceRef) -> Result<RegisterField, Error>
         .unwrap_or_default();
     let result = RegisterField {
         name: inst.name.clone(),
-        ty: translate_access_type(access_ty).map_err(wrap_err)?,
+        ty: field_type,
         default_val: inst.reset.map(|b| b.val()).unwrap_or_default(),
         comment: unpad_description(&description),
         enum_type,
