@@ -2,6 +2,7 @@
 
 - [MCU Specification](./mcu.md)
 - [Reference ROM Specification](./rom.md)
+    - [Device Ownership Transfer](./dot.md)
 - [Runtime Specification](./runtime.md)
     - [PLDM Package](./pldm_package.md)
     - [Flash Layout](./flash_layout.md)
