@@ -20,8 +20,10 @@ pub const MCTP_BROADCAST_EID: u8 = 0xFF;
 
 pub const MCTP_BASELINE_TRANSMISSION_UNIT: usize = 64;
 
+pub const MCTP_NUM_MSG_TYPES_SUPPORTED: usize = 5;
+
 bitfield! {
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Default)]
     pub struct MCTPHeader(u32);
     u8;
     pub hdr_version, set_hdr_version: 3, 0;
@@ -35,20 +37,9 @@ bitfield! {
     pub som, set_som: 31, 31;
 }
 
-impl Default for MCTPHeader {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl MCTPHeader {
-    pub fn new() -> Self {
-        MCTPHeader(0)
-    }
-
     #[allow(clippy::too_many_arguments)]
-    pub fn prepare_header(
-        &mut self,
+    pub fn new(
         dest_eid: u8,
         src_eid: u8,
         som: u8,
@@ -56,15 +47,17 @@ impl MCTPHeader {
         pkt_seq: u8,
         tag_owner: u8,
         msg_tag: u8,
-    ) {
-        self.set_hdr_version(1);
-        self.set_dest_eid(dest_eid);
-        self.set_src_eid(src_eid);
-        self.set_som(som);
-        self.set_eom(eom);
-        self.set_pkt_seq(pkt_seq);
-        self.set_tag_owner(tag_owner);
-        self.set_msg_tag(msg_tag);
+    ) -> Self {
+        let mut header = MCTPHeader(0);
+        header.set_hdr_version(1);
+        header.set_dest_eid(dest_eid);
+        header.set_src_eid(src_eid);
+        header.set_som(som);
+        header.set_eom(eom);
+        header.set_pkt_seq(pkt_seq);
+        header.set_tag_owner(tag_owner);
+        header.set_msg_tag(msg_tag);
+        header
     }
 
     pub fn next_pkt_seq(&self) -> u8 {
@@ -101,6 +94,18 @@ impl From<u8> for MessageType {
     }
 }
 
+impl MessageType {
+    pub fn supported() -> [MessageType; MCTP_NUM_MSG_TYPES_SUPPORTED] {
+        [
+            MessageType::MctpControl,
+            MessageType::Pldm,
+            MessageType::Spdm,
+            MessageType::SecureSpdm,
+            MessageType::Caliptra,
+        ]
+    }
+}
+
 pub fn valid_eid(eid: u8) -> bool {
     eid != MCTP_BROADCAST_EID && !(1..7).contains(&eid)
 }
@@ -115,8 +120,7 @@ mod tests {
 
     #[test]
     fn test_mctp_header() {
-        let mut header = MCTPHeader::new();
-        header.prepare_header(0x10, 0x08, 1, 1, 0, 0, 0);
+        let header = MCTPHeader::new(0x10, 0x08, 1, 1, 0, 0, 0);
         assert_eq!(header.hdr_version(), 1);
         assert_eq!(header.dest_eid(), 0x10);
         assert_eq!(header.src_eid(), 0x08);

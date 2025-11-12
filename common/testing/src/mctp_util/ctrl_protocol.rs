@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::mctp_util::base_protocol::MctpMsgType;
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -36,6 +37,28 @@ pub fn get_eid_resp_bytes(cc: CmdCompletionCode, eid: u8) -> Vec<u8> {
     resp_bytes.to_vec()
 }
 
+pub fn get_version_support_resp_bytes(cc: u8, entries: Option<&[VersionEntry]>) -> Vec<u8> {
+    let mut resp_bytes = Vec::new();
+    resp_bytes.push(cc); // completion code
+    if let Some(entries) = entries {
+        resp_bytes.push(entries.len() as u8); // Number of version entries
+        for entry in entries {
+            resp_bytes.extend_from_slice(&entry.to_u32().to_le_bytes());
+        }
+    }
+    resp_bytes
+}
+
+pub fn generate_msg_type_support_resp_bytes(cc: u8, supported_types: &[MctpMsgType]) -> Vec<u8> {
+    let mut resp_bytes = Vec::new();
+    resp_bytes.push(cc); // completion code
+    resp_bytes.push(supported_types.len() as u8); // Number of supported message types
+    for msg_type in supported_types {
+        resp_bytes.push(*msg_type as u8);
+    }
+    resp_bytes
+}
+
 bitfield! {
     #[repr(C)]
     #[derive(Clone, FromBytes, IntoBytes, Immutable)]
@@ -65,6 +88,7 @@ impl MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HDR_SIZE]> {
 pub enum MCTPCtrlCmd {
     SetEID = 1,
     GetEID = 2,
+    GetMctpVersionSupport = 4,
     GetMsgTypeSupport = 5,
     Unsupported,
 }
@@ -74,6 +98,7 @@ impl From<u8> for MCTPCtrlCmd {
         match val {
             1 => MCTPCtrlCmd::SetEID,
             2 => MCTPCtrlCmd::GetEID,
+            4 => MCTPCtrlCmd::GetMctpVersionSupport,
             5 => MCTPCtrlCmd::GetMsgTypeSupport,
             _ => MCTPCtrlCmd::Unsupported,
         }
@@ -219,5 +244,53 @@ impl From<u8> for EIDType {
             3 => EIDType::StaticNonMatching,
             _ => unreachable!("value should be 0, 1, 2, or 3"),
         }
+    }
+}
+
+pub enum VersionSupportMessageType {
+    MctpBase = 0xFF,
+    MctpControlProtocol = 0x00,
+    VendorDefined = 0x7E,
+    Unspecified = 0x7F,
+}
+
+// For MCTP version entries, typically represented as:
+// 0xF1F1F000 would be:
+// - Major: 0xF1 (241 or version 1 in MCTP encoding)
+// - Minor: 0xF1 (241 or version 1 in MCTP encoding)
+// - Update: 0xF0 (240 or patch level in MCTP encoding)
+// - Alpha: 0x00 (0 = not alpha/beta)
+
+pub struct VersionEntry {
+    pub major: u8,  // 0xF1
+    pub minor: u8,  // 0xF1
+    pub update: u8, // 0xF0
+    pub alpha: u8,  // 0x00
+}
+
+impl VersionEntry {
+    pub fn new(major: u8, minor: u8, update: u8, alpha: u8) -> Self {
+        Self {
+            major,
+            minor,
+            update,
+            alpha,
+        }
+    }
+
+    pub fn from_u32(value: u32) -> Self {
+        Self {
+            major: ((value >> 24) & 0xFF) as u8,
+            minor: ((value >> 16) & 0xFF) as u8,
+            update: ((value >> 8) & 0xFF) as u8,
+            alpha: (value & 0xFF) as u8,
+        }
+    }
+
+    pub fn to_u32(&self) -> u32 {
+        ((self.major as u32) << 24)
+            | ((self.minor as u32) << 16)
+            | ((self.update as u32) << 8)
+            | (self.alpha as u32)
     }
 }

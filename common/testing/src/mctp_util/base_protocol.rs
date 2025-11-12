@@ -8,7 +8,7 @@ pub const MCTP_MSG_HDR_SIZE: usize = 1;
 
 pub const LOCAL_TEST_ENDPOINT_EID: u8 = 0x08;
 
-#[allow(dead_code)]
+#[derive(Debug, Clone, Copy)]
 pub enum MctpMsgType {
     Ctrl = 0x0,
     Pldm = 0x1,

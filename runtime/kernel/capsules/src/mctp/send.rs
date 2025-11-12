@@ -156,8 +156,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MCTPTxState<'a, A, M> {
                 };
                 let copy_len = max_payload_len.min(remaining_len);
 
-                let mut mctp_hdr = MCTPHeader::new();
-                mctp_hdr.prepare_header(
+                let mctp_hdr = MCTPHeader::new(
                     self.dest_eid.get(),
                     src_eid,
                     som,
