@@ -13,7 +13,7 @@ const HEAP_SIZE: usize = 0x3000;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-stack_size! {0x9200}
+stack_size! {0xa000}
 set_main! {main}
 
 fn main() {

@@ -16,6 +16,7 @@ use crate::dis;
 use crate::doe_mbox_fsm;
 use crate::elf;
 use crate::tests;
+use crate::tests::spdm_responder_validator::SpdmTestType;
 use caliptra_emu_bus::{Bus, Clock, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
@@ -563,6 +564,7 @@ impl Emulator {
             crate::tests::spdm_responder_validator::mctp::run_mctp_spdm_conformance_test(
                 cli.i3c_port.unwrap(),
                 i3c.get_dynamic_address().unwrap(),
+                SpdmTestType::SpdmResponderConformance,
                 std::time::Duration::from_secs(9000), // timeout in seconds
             );
         } else if cfg!(feature = "test-doe-spdm-responder-conformance") {
@@ -574,6 +576,19 @@ impl Emulator {
             crate::tests::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
                 test_tx,
                 test_rx,
+                SpdmTestType::SpdmResponderConformance,
+                std::time::Duration::from_secs(9000), // timeout in seconds
+            );
+        } else if cfg!(feature = "test-doe-spdm-tdisp-ide-validator") {
+            if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
+                println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
+                exit(0);
+            }
+            let (test_rx, test_tx) = doe_mbox_fsm.start();
+            crate::tests::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
+                test_tx,
+                test_rx,
+                SpdmTestType::SpdmTeeIoValidator,
                 std::time::Duration::from_secs(9000), // timeout in seconds
             );
         }

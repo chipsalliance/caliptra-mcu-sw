@@ -29,7 +29,7 @@ impl CommonCodec for KeyData {}
 async fn process_key_prog(
     req_buf: &mut MessageBuf<'_>,
     key_prog: &KeyProg,
-    ide_km_driver: &dyn IdeDriver,
+    ide_km_driver: &mut dyn IdeDriver,
 ) -> VdmResult<u8> {
     let key_data = KeyData::decode(req_buf).map_err(VdmError::Codec)?;
 
@@ -48,7 +48,7 @@ async fn process_key_prog(
 pub(crate) async fn handle_key_prog(
     req_buf: &mut MessageBuf<'_>,
     rsp_buf: &mut MessageBuf<'_>,
-    ide_km_driver: &dyn crate::vdm_handler::pci_sig::ide_km::driver::IdeDriver,
+    ide_km_driver: &mut dyn IdeDriver,
 ) -> VdmResult<usize> {
     let mut key_prog = KeyProg::decode(req_buf).map_err(VdmError::Codec)?;
     // Process KEY_PROG request
@@ -64,5 +64,7 @@ pub(crate) async fn handle_key_prog(
     key_prog.status = status;
 
     len += key_prog.encode(rsp_buf).map_err(VdmError::Codec)?;
+
+    rsp_buf.push_data(len).map_err(VdmError::Codec)?;
     Ok(len)
 }
