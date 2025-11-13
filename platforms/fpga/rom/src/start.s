@@ -34,19 +34,7 @@ _start:
     lui     t0, %hi(MRAC_VALUE)
     addi    t0, t0, %lo(MRAC_VALUE)
     csrw    0x7c0, t0
-    li t0, 0xaaaaaaaa
-    csrrw t0, 0x7c0, t0
     fence.i
-
-    # the FPGA does not clear RAM on reset, so we do it here
-    # TODO: get addresses from ld script
-    li a0, 0x50000000
-    li a1, 16384
-    add a1, a1, a0
-clear_sram:
-    sw zero, 0(a0)
-    addi a0, a0, 4
-    bltu a0, a1, clear_sram
 
     # Copy BSS
     la t0, BSS_START
