@@ -95,36 +95,30 @@ jobs:
           popd
 
       - name: Run SPDM validator tests on MCTP transport
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
-          export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
           cargo xtask all-build
           cargo t -p tests-integration -- --test test_mctp_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
 
-      - name: Upload logs and traces for MCTP transport
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: spdm-mctp-validator-test-results
-          path: |
-            test.log
-            caliptra_spdm_validator.pcap
-            spdm_device_validator_output.txt
-
       - name: Display SPDM Validator test results on MCTP transport
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
-          cat $GITHUB_WORKSPACE/test.log
+          cat $SPDM_VALIDATOR_DIR/test.log
 
       - name: Check for test failures on MCTP transport
         run: |
-          if grep -E 'test suite \(.*\) - pass: [0-9]+, fail: [1-9][0-9]*' $GITHUB_WORKSPACE/test.log; then
+          if grep -E 'test suite \(.*\) - pass: [0-9]+, fail: [1-9][0-9]*' $SPDM_VALIDATOR_DIR/test.log; then
             echo "Test suite had failures."
             exit 1
           fi
 
       - name: Run SPDM validator tests on DOE transport
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
-          export SPDM_VALIDATOR_DIR=$GITHUB_WORKSPACE/spdm-emu/build/bin
           cargo xtask all-build
           cargo t -p tests-integration -- --test test_doe_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
@@ -132,20 +126,67 @@ jobs:
       - name: Upload logs and traces for DOE transport
         if: always()
         uses: actions/upload-artifact@v4
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:
           name: spdm-doe-validator-test-results
           path: |
-            test.log
-            caliptra_spdm_validator.pcap
-            spdm_device_validator_output.txt
+            ${{ env.SPDM_VALIDATOR_DIR }}/test.log
+            ${{ env.SPDM_VALIDATOR_DIR }}/caliptra_spdm_validator.pcap
+            ${{ env.SPDM_VALIDATOR_DIR }}/spdm_device_validator_output.txt
 
       - name: Display SPDM Validator test results for DOE transport
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
-          cat $GITHUB_WORKSPACE/test.log
+          cat $SPDM_VALIDATOR_DIR/test.log
 
       - name: Check for test failures on DOE transport
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
-          if grep -E 'test suite \(.*\) - pass: [0-9]+, fail: [1-9][0-9]*' $GITHUB_WORKSPACE/test.log; then
+          if grep -E 'test suite \(.*\) - pass: [0-9]+, fail: [1-9][0-9]*' $SPDM_VALIDATOR_DIR/test.log; then
             echo "Test suite had failures."
             exit 1
           fi
+
+      - name: Checkout CCC spdm-rs repository
+        uses: actions/checkout@v4
+        with:
+          repository: parvathib/spdm-rs
+          ref: pbhogaraju/custom_v0.4.2
+          path: spdm-rs
+          submodules: recursive
+
+      - name: Prepare, build spdm-rs, and copy test keys
+        working-directory: spdm-rs
+        run: |
+          git submodule update --init --recursive
+          sh_script/pre-build.sh
+          cargo build
+          cp -r test_key target/debug/
+          ls -l target/debug/test_key/ecp384/
+
+      - name: Run CCC spdm-requester-emu tests for TDISP+IDE
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
+        run: |
+          cargo xtask all-build
+          cargo t -p tests-integration -- --test test_doe_spdm_tdisp_ide_validator --nocapture --include-ignored
+          sccache --show-stats
+
+      - name: Display CCC spdm-requester-emu test results for TDISP+IDE
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
+        run: |
+          cat $SPDM_VALIDATOR_DIR/tdisp_ide_validator_output.txt
+
+      - name: Upload CCC spdm-requester-emu test results for TDISP+IDE
+        if: always()
+        uses: actions/upload-artifact@v4
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
+        with:
+          name: spdm-tdisp-ide-validator-test-results
+          path: |
+            ${{ env.SPDM_VALIDATOR_DIR }}/tdisp_ide_validator_output.txt

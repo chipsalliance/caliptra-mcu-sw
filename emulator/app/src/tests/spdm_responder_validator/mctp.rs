@@ -1,11 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use crate::tests::spdm_responder_validator::common::{
-    execute_spdm_validator, SpdmValidatorRunner, SERVER_LISTENING,
+    execute_spdm_responder_validator, SpdmValidatorRunner, SERVER_LISTENING,
 };
 use crate::tests::spdm_responder_validator::transport::{
     Transport, MAX_CMD_TIMEOUT_SECONDS, SOCKET_TRANSPORT_TYPE_MCTP,
 };
+use crate::tests::spdm_responder_validator::SpdmTestType;
 use mcu_testing_common::i3c::DynamicI3cAddress;
 use mcu_testing_common::i3c_socket::BufferedStream;
 use mcu_testing_common::mctp_util::common::MctpUtil;
@@ -149,6 +150,7 @@ impl Transport for MctpTransport {
 pub fn run_mctp_spdm_conformance_test(
     port: u16,
     target_addr: DynamicI3cAddress,
+    _test_type: SpdmTestType,
     test_timeout_seconds: Duration,
 ) {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -191,5 +193,5 @@ pub fn run_mctp_spdm_conformance_test(
         }
     });
 
-    execute_spdm_validator("MCTP");
+    execute_spdm_responder_validator("MCTP");
 }

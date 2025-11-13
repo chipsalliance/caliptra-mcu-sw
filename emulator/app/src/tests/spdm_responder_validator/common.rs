@@ -5,7 +5,7 @@ use mcu_testing_common::MCU_RUNNING;
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::TcpStream;
-use std::path::Path;
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes};
@@ -245,7 +245,39 @@ impl SpdmValidatorRunner {
     }
 }
 
-pub fn execute_spdm_validator(transport: &'static str) {
+pub fn execute_spdm_tee_io_validator(transport: &'static str) {
+    std::thread::spawn(move || {
+        println!("Starting spdm_tee_io_validator process. Waiting for SPDM listener to start...");
+        while !SERVER_LISTENING.load(Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+
+        match start_spdm_tee_io_validator(transport, None, true) {
+            Ok(mut child) => {
+                while MCU_RUNNING.load(Ordering::Relaxed) {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            println!("spdm_tee_io_validator exited with status: {:?}", status);
+                            break;
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            println!("Error: {:?}", e);
+                            break;
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                let _ = child.kill();
+            }
+            Err(e) => {
+                println!("Error: {:?} Failed to spawn spdm_tee_io_validator!!", e);
+            }
+        }
+    });
+}
+
+pub fn execute_spdm_responder_validator(transport: &'static str) {
     std::thread::spawn(move || {
         println!(
             "Starting spdm_device_validator_sample process. Waiting for SPDM listener to start..."
@@ -254,7 +286,7 @@ pub fn execute_spdm_validator(transport: &'static str) {
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
 
-        match start_spdm_device_validator(transport) {
+        match start_spdm_responder_validator(transport) {
             Ok(mut child) => {
                 while MCU_RUNNING.load(Ordering::Relaxed) {
                     match child.try_wait() {
@@ -285,43 +317,88 @@ pub fn execute_spdm_validator(transport: &'static str) {
     });
 }
 
-pub fn start_spdm_device_validator(transport: &'static str) -> io::Result<Child> {
-    let spdm_validator_dir = std::env::var("SPDM_VALIDATOR_DIR");
-    let dir_path = match spdm_validator_dir {
+pub fn start_spdm_responder_validator(transport: &'static str) -> io::Result<Child> {
+    spawn_validator_binary(
+        "spdm_device_validator_sample",
+        "spdm_device_validator_output.txt",
+        |cmd| {
+            println!(
+                "Starting spdm_device_validator_sample process with transport: {}",
+                transport
+            );
+            cmd.arg("--trans")
+                .arg(transport)
+                .arg("--pcap")
+                .arg("caliptra_spdm_validator.pcap");
+        },
+    )
+}
+
+pub fn start_spdm_tee_io_validator(
+    _transport: &'static str,
+    features: Option<&[&str]>,
+    no_default_features: bool,
+) -> io::Result<Child> {
+    // Default features if none provided
+    let default_features = ["spdm-ring", "hashed-transcript-data", "async-executor"];
+    let features_to_use = features.unwrap_or(&default_features);
+    let features_str = features_to_use.join(",");
+    spawn_validator_binary(
+        "spdm-requester-emu",
+        "tdisp_ide_validator_output.txt",
+        |cmd| {
+            if no_default_features {
+                cmd.arg("--no-default-features");
+            }
+            cmd.arg("--features").arg(&features_str);
+            println!(
+                "Starting spdm-requester-emu process with{} default features, features: {}",
+                if no_default_features { "out" } else { "" },
+                features_str
+            );
+        },
+    )
+}
+
+fn validator_dir() -> io::Result<PathBuf> {
+    match std::env::var("SPDM_VALIDATOR_DIR") {
         Ok(dir) => {
             println!("SPDM_VALIDATOR_DIR: {}", dir);
-            Path::new(&dir).to_path_buf()
+            Ok(PathBuf::from(dir))
         }
-        Err(_e) => {
+        Err(_) => Err(ErrorKind::NotFound.into()),
+    }
+}
+
+fn spawn_validator_binary<F>(binary: &str, log_file: &str, configure: F) -> io::Result<Child>
+where
+    F: FnOnce(&mut Command),
+{
+    let dir_path = match validator_dir() {
+        Ok(p) => p,
+        Err(e) => {
             println!(
-                "SPDM_VALIDATOR_DIR is not set. The spdm_device_validator_sample can't be found"
+                "SPDM_VALIDATOR_DIR is not set. The {} can't be found (env missing)",
+                binary
             );
-            return Err(ErrorKind::NotFound.into());
+            return Err(e);
         }
     };
 
-    let utility_path = dir_path.join("spdm_device_validator_sample");
+    let utility_path = dir_path.join(binary);
     if !utility_path.exists() {
-        println!("spdm_device_validator_sample not found in the path");
+        println!("{} not found in the path", binary);
         return Err(ErrorKind::NotFound.into());
     }
 
-    let log_file_path = dir_path.join("spdm_device_validator_output.txt");
-
+    let log_file_path = dir_path.join(log_file);
     let output_file = File::create(log_file_path)?;
     let output_file_clone = output_file.try_clone()?;
 
-    println!(
-        "Starting spdm_device_validator_sample process with transport: {}",
-        transport
-    );
-
-    Command::new(utility_path)
-        .arg("--trans")
-        .arg(transport)
-        .arg("--pcap")
-        .arg("caliptra_spdm_validator.pcap")
-        .stdout(Stdio::from(output_file))
+    let mut cmd = Command::new(utility_path);
+    configure(&mut cmd);
+    cmd.stdout(Stdio::from(output_file))
         .stderr(Stdio::from(output_file_clone))
+        .current_dir(&dir_path)
         .spawn()
 }

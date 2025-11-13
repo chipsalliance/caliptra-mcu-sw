@@ -4,3 +4,8 @@ mod common;
 pub mod doe;
 pub mod mctp;
 mod transport;
+
+pub enum SpdmTestType {
+    SpdmResponderConformance,
+    SpdmTeeIoValidator,
+}

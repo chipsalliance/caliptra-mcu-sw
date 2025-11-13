@@ -2,9 +2,11 @@
 
 use crate::tests::doe_util::common::DoeUtil;
 use crate::tests::spdm_responder_validator::common::{
-    execute_spdm_validator, SpdmValidatorRunner, SERVER_LISTENING,
+    execute_spdm_responder_validator, execute_spdm_tee_io_validator, SpdmValidatorRunner,
+    SERVER_LISTENING,
 };
 use crate::tests::spdm_responder_validator::transport::{Transport, SOCKET_TRANSPORT_TYPE_PCI_DOE};
+use crate::tests::spdm_responder_validator::SpdmTestType;
 use mcu_testing_common::{sleep_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
 use std::net::TcpListener;
 use std::process::exit;
@@ -108,6 +110,7 @@ impl Transport for DoeTransport {
 pub fn run_doe_spdm_conformance_test(
     tx: Sender<Vec<u8>>,
     rx: Receiver<Vec<u8>>,
+    test_type: SpdmTestType,
     test_timeout_seconds: Duration,
 ) {
     let transport = DoeTransport::new(tx, rx, 1);
@@ -152,5 +155,8 @@ pub fn run_doe_spdm_conformance_test(
         }
     });
 
-    execute_spdm_validator("PCI_DOE");
+    match test_type {
+        SpdmTestType::SpdmResponderConformance => execute_spdm_responder_validator("PCI_DOE"),
+        SpdmTestType::SpdmTeeIoValidator => execute_spdm_tee_io_validator("PCI_DOE"),
+    }
 }

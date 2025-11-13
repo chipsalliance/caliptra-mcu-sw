@@ -91,7 +91,7 @@ pub trait IdeDriver: Send + Sync {
     /// - `03h`: Unsupported value in other fields
     /// - `04h`: Unspecified Failure
     async fn key_prog(
-        &self,
+        &mut self,
         stream_id: u8,
         key_info: KeyInfo,
         port_index: u8,
@@ -110,7 +110,7 @@ pub trait IdeDriver: Send + Sync {
     /// A result containing the updated `KeyInfo` after starting the key set, or an
     /// error if the operation fails.
     async fn key_set_go(
-        &self,
+        &mut self,
         stream_id: u8,
         key_info: KeyInfo,
         port_index: u8,
@@ -127,7 +127,7 @@ pub trait IdeDriver: Send + Sync {
     /// A result containing the updated `KeyInfo` after stopping the key set, or an error
     /// if the operation fails.
     async fn key_set_stop(
-        &self,
+        &mut self,
         stream_id: u8,
         key_info: KeyInfo,
         port_index: u8,
@@ -277,7 +277,7 @@ mod tests {
         }
 
         async fn key_prog(
-            &self,
+            &mut self,
             _stream_id: u8,
             _key_info: KeyInfo,
             _port_index: u8,
@@ -289,7 +289,7 @@ mod tests {
         }
 
         async fn key_set_go(
-            &self,
+            &mut self,
             _stream_id: u8,
             key_info: KeyInfo,
             _port_index: u8,
@@ -299,7 +299,7 @@ mod tests {
         }
 
         async fn key_set_stop(
-            &self,
+            &mut self,
             _stream_id: u8,
             key_info: KeyInfo,
             _port_index: u8,

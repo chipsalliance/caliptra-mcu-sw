@@ -3,7 +3,6 @@
 use crate::codec::{encode_u8_slice, Codec, MessageBuf};
 use crate::error_response;
 use crate::vdm_handler::pci_sig::tdisp::protocol::*;
-use crate::vdm_handler::pci_sig::tdisp::state::START_INTERFACE_NONCE_SIZE;
 use crate::vdm_handler::pci_sig::tdisp::{TdispCmdResult, TdispResponder};
 use crate::vdm_handler::{VdmError, VdmResult};
 use libapi_caliptra::crypto::rng::Rng;
