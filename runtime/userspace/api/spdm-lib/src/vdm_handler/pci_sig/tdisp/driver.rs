@@ -61,7 +61,7 @@ pub trait TdispDriver: Send + Sync {
     /// # Returns
     /// 0 on success or an error response code as per the TDISP specification on failure.
     async fn lock_interface(
-        &self,
+        &mut self,
         function_id: FunctionId,
         param: TdispLockInterfaceParam,
     ) -> TdispDriverResult<u32>;
@@ -120,7 +120,7 @@ pub trait TdispDriver: Send + Sync {
     ///
     /// # Returns
     /// 0 on success or an error response code as per the TDISP specification on failure.
-    async fn start_interface(&self, function_id: FunctionId) -> TdispDriverResult<u32>;
+    async fn start_interface(&mut self, function_id: FunctionId) -> TdispDriverResult<u32>;
 
     /// Stop the device interface.
     ///
@@ -129,5 +129,5 @@ pub trait TdispDriver: Send + Sync {
     ///
     /// # Returns
     /// 0 on success or an error response code as per the TDISP specification on failure.
-    async fn stop_interface(&self, function_id: FunctionId) -> TdispDriverResult<u32>;
+    async fn stop_interface(&mut self, function_id: FunctionId) -> TdispDriverResult<u32>;
 }

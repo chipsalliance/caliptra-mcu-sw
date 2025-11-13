@@ -451,6 +451,10 @@ impl McuHwModel for ModelFpgaRealtime {
         Ok(std::fs::write(path, s.as_bytes())?)
     }
 
+    fn read_otp_memory(&self) -> Vec<u8> {
+        self.base.otp_slice().to_vec()
+    }
+
     fn mcu_manager(&mut self) -> impl McuManager {
         self
     }

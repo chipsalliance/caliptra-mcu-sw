@@ -1,4 +1,5 @@
 /target*/
+test_key
 
 # By default, ignore Cargo.lock files in non-workspace directories.
 */**/Cargo.lock
@@ -43,3 +44,6 @@ cross-target/
 
 # Test logs
 **/junit.xml
+
+docs/src/mdbook-plantuml-img
+docs/*.jar

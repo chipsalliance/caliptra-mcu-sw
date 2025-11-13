@@ -12,7 +12,7 @@ use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_bus::{Device, Event, EventData};
 use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
-use emulator_registers_generated::i3c::I3cPeripheral;
+use emulator_registers_generated::i3c::{I3cGenerated, I3cPeripheral};
 use mcu_testing_common::i3c::{
     DynamicI3cAddress, I3cTcriCommand, I3cTcriResponseXfer, IbiDescriptor, ResponseDescriptor,
 };
@@ -81,6 +81,7 @@ pub struct I3c {
     interrupt_status: ReadWriteRegister<u32, InterruptStatus::Register>,
     interrupt_enable: ReadWriteRegister<u32, InterruptEnable::Register>,
     ibi_status: Option<u32>,
+    generated: I3cGenerated,
 
     events_to_caliptra: Option<mpsc::Sender<Event>>,
     events_from_caliptra: Option<mpsc::Receiver<Event>>,
@@ -133,6 +134,7 @@ impl I3c {
             interrupt_status: ReadWriteRegister::new(0),
             interrupt_enable: ReadWriteRegister::new(0),
             ibi_status: None,
+            generated: I3cGenerated::default(),
             events_to_caliptra: None,
             events_from_caliptra: None,
             events_to_mcu: None,
@@ -487,6 +489,10 @@ impl I3c {
 }
 
 impl I3cPeripheral for I3c {
+    fn generated(&mut self) -> Option<&mut I3cGenerated> {
+        Some(&mut self.generated)
+    }
+
     fn register_event_channels(
         &mut self,
         events_to_caliptra: mpsc::Sender<Event>,

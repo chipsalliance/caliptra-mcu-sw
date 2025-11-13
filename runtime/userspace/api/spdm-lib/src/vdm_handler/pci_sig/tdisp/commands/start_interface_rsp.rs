@@ -3,7 +3,6 @@
 use crate::codec::{decode_u8_slice, MessageBuf};
 use crate::error_response;
 use crate::vdm_handler::pci_sig::tdisp::protocol::*;
-use crate::vdm_handler::pci_sig::tdisp::state::START_INTERFACE_NONCE_SIZE;
 use crate::vdm_handler::pci_sig::tdisp::{TdispCmdResult, TdispResponder};
 use crate::vdm_handler::{VdmError, VdmResult};
 use constant_time_eq::constant_time_eq;

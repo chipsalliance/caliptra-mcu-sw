@@ -5,7 +5,9 @@ extern crate alloc;
 use crate::codec::{Codec, MessageBuf};
 use crate::vdm_handler::pci_sig::ide_km::driver::IdeDriver;
 use crate::vdm_handler::pci_sig::ide_km::protocol::{IdeKmCommand, IdeKmHdr};
-use crate::vdm_handler::{VdmError, VdmProtocolMatcher, VdmResponder, VdmResult};
+use crate::vdm_handler::{
+    VdmError, VdmProtocolHandler, VdmProtocolMatcher, VdmResponder, VdmResult,
+};
 use alloc::boxed::Box;
 use async_trait::async_trait;
 
@@ -16,11 +18,11 @@ pub mod protocol;
 const IDE_KM_PROTOCOL_ID: u8 = 0x00;
 
 pub struct IdeKmResponder<'a> {
-    ide_km_driver: &'a dyn IdeDriver,
+    ide_km_driver: &'a mut dyn IdeDriver,
 }
 
 impl<'a> IdeKmResponder<'a> {
-    pub fn new(ide_km_driver: &'a dyn IdeDriver) -> Self {
+    pub fn new(ide_km_driver: &'a mut dyn IdeDriver) -> Self {
         IdeKmResponder { ide_km_driver }
     }
 }
@@ -63,3 +65,5 @@ impl VdmResponder for IdeKmResponder<'_> {
         }
     }
 }
+
+impl VdmProtocolHandler for IdeKmResponder<'_> {}

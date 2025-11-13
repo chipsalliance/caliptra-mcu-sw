@@ -44,8 +44,10 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
     * `MANUF_DEBUG_UNLOCK_TOKEN`: 128 bits
 1. Write fuse data to Caliptra SoC interface fuse registers.
 1. Poll on Caliptra `FLOW_STATUS` registers for Caliptra to deassert the Ready for Fuses state.
-1. Clear the watchdog timer
+1. Handle [device ownership transfer](./dot.md).
+1. Send the `RI_DOWNLOAD_FIRMWARE` command to Caliptra to start the firmware loading process.
 1. Wait for reset to trigger firmware update flow.
+1. Clear the watchdog timer.
 
 ```mermaid
 sequenceDiagram

@@ -11,7 +11,9 @@ use crate::vdm_handler::pci_sig::tdisp::commands::{
 use crate::vdm_handler::pci_sig::tdisp::driver::TdispDriver;
 use crate::vdm_handler::pci_sig::tdisp::protocol::*;
 use crate::vdm_handler::pci_sig::tdisp::state::TdispState;
-use crate::vdm_handler::{VdmError, VdmProtocolMatcher, VdmResponder, VdmResult};
+use crate::vdm_handler::{
+    VdmError, VdmProtocolHandler, VdmProtocolMatcher, VdmResponder, VdmResult,
+};
 use alloc::boxed::Box;
 use async_trait::async_trait;
 
@@ -42,14 +44,14 @@ macro_rules! error_response {
 
 pub struct TdispResponder<'a> {
     supported_versions: &'a [TdispVersion],
-    driver: &'a dyn TdispDriver,
+    driver: &'a mut dyn TdispDriver,
     state: TdispState,
 }
 
 impl<'a> TdispResponder<'a> {
     pub fn new(
         supported_versions: &'a [TdispVersion],
-        driver: &'a dyn TdispDriver,
+        driver: &'a mut dyn TdispDriver,
     ) -> Option<Self> {
         if supported_versions.is_empty() {
             return None;
@@ -139,7 +141,7 @@ impl VdmResponder for TdispResponder<'_> {
                     .await?
             }
             TdispCommand::StartInterfaceRequest => {
-                start_interface_rsp::handle_start_interface_request(self, &req_hdr, rsp_buf).await?
+                start_interface_rsp::handle_start_interface_request(self, &req_hdr, req_buf).await?
             }
             TdispCommand::StopInterfaceRequest => {
                 stop_interface_rsp::handle_stop_interface_request(self, &req_hdr).await?
@@ -175,3 +177,5 @@ impl VdmResponder for TdispResponder<'_> {
         Ok(len)
     }
 }
+
+impl VdmProtocolHandler for TdispResponder<'_> {}

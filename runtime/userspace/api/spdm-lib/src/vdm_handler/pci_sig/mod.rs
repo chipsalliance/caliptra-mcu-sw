@@ -5,7 +5,7 @@ extern crate alloc;
 use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
 use crate::protocol::*;
 use crate::vdm_handler::{
-    VdmError, VdmProtocolHandler, VdmRegistryMatcher, VdmResponder, VdmResult,
+    VdmError, VdmHandler, VdmProtocolHandler, VdmRegistryMatcher, VdmResponder, VdmResult,
 };
 use alloc::boxed::Box;
 use async_trait::async_trait;
@@ -80,3 +80,5 @@ impl VdmResponder for PciSigCmdHandler<'_> {
         Err(VdmError::UnsupportedProtocol)
     }
 }
+
+impl VdmHandler for PciSigCmdHandler<'_> {}

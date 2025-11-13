@@ -18,46 +18,89 @@ pub trait MboxPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
+    fn generated(&mut self) -> Option<&mut MboxGenerated> {
+        None
+    }
     fn read_mbox_lock(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
     {
+        if let Some(generated) = self.generated() {
+            return generated.read_mbox_lock();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mbox_user(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_mbox_user();
+        }
         0
     }
     fn read_mbox_cmd(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_mbox_cmd();
+        }
         0
     }
-    fn write_mbox_cmd(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mbox_cmd(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_mbox_cmd(val);
+        }
+    }
     fn read_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_mbox_dlen();
+        }
         0
     }
-    fn write_mbox_dlen(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_mbox_dlen(val);
+        }
+    }
     fn read_mbox_datain(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_mbox_datain();
+        }
         0
     }
-    fn write_mbox_datain(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mbox_datain(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_mbox_datain(val);
+        }
+    }
     fn read_mbox_dataout(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_mbox_dataout();
+        }
         0
     }
-    fn write_mbox_dataout(&mut self, _val: caliptra_emu_types::RvData) {}
+    fn write_mbox_dataout(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_mbox_dataout(val);
+        }
+    }
     fn read_mbox_execute(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mbox::bits::MboxExecute::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_mbox_execute();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mbox_execute(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxExecute::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_mbox_execute(val);
+        }
     }
     fn read_mbox_status(
         &mut self,
@@ -65,15 +108,21 @@ pub trait MboxPeripheral {
         u32,
         registers_generated::mbox::bits::MboxStatus::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_mbox_status();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mbox_status(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxStatus::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_mbox_status(val);
+        }
     }
     fn read_mbox_unlock(
         &mut self,
@@ -81,29 +130,228 @@ pub trait MboxPeripheral {
         u32,
         registers_generated::mbox::bits::MboxUnlock::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_mbox_unlock();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mbox_unlock(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxUnlock::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_mbox_unlock(val);
+        }
     }
     fn read_tap_mode(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::TapMode::Register>
     {
+        if let Some(generated) = self.generated() {
+            return generated.read_tap_mode();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_tap_mode(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::TapMode::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_tap_mode(val);
+        }
+    }
+}
+#[derive(Clone, Debug)]
+pub struct MboxGenerated {
+    mbox_lock: caliptra_emu_types::RvData,
+    mbox_user: caliptra_emu_types::RvData,
+    mbox_cmd: caliptra_emu_types::RvData,
+    mbox_dlen: caliptra_emu_types::RvData,
+    mbox_datain: caliptra_emu_types::RvData,
+    mbox_dataout: caliptra_emu_types::RvData,
+    mbox_execute: caliptra_emu_types::RvData,
+    mbox_status: caliptra_emu_types::RvData,
+    mbox_unlock: caliptra_emu_types::RvData,
+    tap_mode: caliptra_emu_types::RvData,
+}
+impl Default for MboxGenerated {
+    fn default() -> Self {
+        Self {
+            mbox_lock: 0 as caliptra_emu_types::RvData,
+            mbox_user: 0 as caliptra_emu_types::RvData,
+            mbox_cmd: 0 as caliptra_emu_types::RvData,
+            mbox_dlen: 0 as caliptra_emu_types::RvData,
+            mbox_datain: 0 as caliptra_emu_types::RvData,
+            mbox_dataout: 0 as caliptra_emu_types::RvData,
+            mbox_execute: 0 as caliptra_emu_types::RvData,
+            mbox_status: 0 as caliptra_emu_types::RvData,
+            mbox_unlock: 0 as caliptra_emu_types::RvData,
+            tap_mode: 0 as caliptra_emu_types::RvData,
+        }
+    }
+}
+impl MboxGenerated {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    fn reset_state(&mut self) {
+        *self = Self::default();
+    }
+}
+impl MboxPeripheral for MboxGenerated {
+    fn generated(&mut self) -> Option<&mut MboxGenerated> {
+        Some(self)
+    }
+    fn warm_reset(&mut self) {
+        self.reset_state();
+    }
+    fn update_reset(&mut self) {
+        self.reset_state();
+    }
+    fn read_mbox_lock(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    {
+        caliptra_emu_bus::ReadWriteRegister::new(self.mbox_lock)
+    }
+    fn read_mbox_user(&mut self) -> caliptra_emu_types::RvData {
+        self.mbox_user
+    }
+    fn read_mbox_cmd(&mut self) -> caliptra_emu_types::RvData {
+        self.mbox_cmd
+    }
+    fn write_mbox_cmd(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.mbox_cmd;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.mbox_cmd = new_val;
+    }
+    fn read_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+        self.mbox_dlen
+    }
+    fn write_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.mbox_dlen;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.mbox_dlen = new_val;
+    }
+    fn read_mbox_datain(&mut self) -> caliptra_emu_types::RvData {
+        self.mbox_datain
+    }
+    fn write_mbox_datain(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.mbox_datain;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.mbox_datain = new_val;
+    }
+    fn read_mbox_dataout(&mut self) -> caliptra_emu_types::RvData {
+        self.mbox_dataout
+    }
+    fn write_mbox_dataout(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.mbox_dataout;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.mbox_dataout = new_val;
+    }
+    fn read_mbox_execute(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::MboxExecute::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.mbox_execute)
+    }
+    fn write_mbox_execute(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mbox::bits::MboxExecute::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.mbox_execute;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.mbox_execute = new_val;
+    }
+    fn read_mbox_status(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::MboxStatus::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.mbox_status)
+    }
+    fn write_mbox_status(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mbox::bits::MboxStatus::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.mbox_status;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xf as caliptra_emu_types::RvData))
+            | (write_val & (0xf as caliptra_emu_types::RvData));
+        self.mbox_status = new_val;
+    }
+    fn read_mbox_unlock(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::MboxUnlock::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.mbox_unlock)
+    }
+    fn write_mbox_unlock(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mbox::bits::MboxUnlock::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.mbox_unlock;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.mbox_unlock = new_val;
+    }
+    fn read_tap_mode(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::TapMode::Register>
+    {
+        caliptra_emu_bus::ReadWriteRegister::new(self.tap_mode)
+    }
+    fn write_tap_mode(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mbox::bits::TapMode::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.tap_mode;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.tap_mode = new_val;
     }
 }
 pub struct MboxBus {
@@ -152,6 +400,8 @@ impl caliptra_emu_bus::Bus for MboxBus {
             return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
+            0..4 => Ok(()),
+            4..8 => Ok(()),
             8..0xc => {
                 self.periph.write_mbox_cmd(val);
                 Ok(())
