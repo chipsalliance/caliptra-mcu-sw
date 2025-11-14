@@ -4,10 +4,10 @@ mod cert_store;
 mod device_cert_store;
 mod device_measurements;
 mod endorsement_certs;
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 mod integration_example;
 
 use crate::spdm::device_measurements::ocp_eat::init_target_env_claims;
-#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 use core::fmt::Write;
 use device_cert_store::{initialize_cert_store, SharedCertStore};
 use embassy_executor::Spawner;
@@ -92,9 +92,17 @@ async fn spdm_mctp_responder() {
     let shared_cert_store = SharedCertStore::new();
 
     // Measurements in OCP EAT format
+    // #[cfg(feature = "test-mctp-spdm-responder-conformance")]
     let (mut device_ocp_eat, meas_value_info) =
         device_measurements::ocp_eat::create_manifest_with_ocp_eat();
+    // #[cfg(feature = "test-mctp-spdm-responder-conformance")]
     let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_ocp_eat);
+
+    // #[cfg(not(feature = "test-mctp-spdm-responder-conformance"))]
+    // let (mut device_pcr_quote, meas_value_info) =
+    //     device_measurements::pcr_quote::create_manifest_with_pcr_quote();
+    // #[cfg(not(feature = "test-mctp-spdm-responder-conformance"))]
+    // let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_pcr_quote);
 
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
