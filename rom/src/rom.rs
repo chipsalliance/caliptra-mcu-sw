@@ -255,7 +255,9 @@ impl Soc {
             fuses
                 .cptra_core_ecc_revocation_0()
                 .try_into()
-                .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)),
+                .unwrap_or_else(|_| {
+                    fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
+                }),
         );
         self.registers
             .fuse_ecc_revocation
@@ -267,7 +269,9 @@ impl Soc {
             fuses
                 .cptra_core_lms_revocation_0()
                 .try_into()
-                .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)),
+                .unwrap_or_else(|_| {
+                    fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
+                }),
         );
         self.registers
             .fuse_lms_revocation
@@ -278,7 +282,9 @@ impl Soc {
             fuses
                 .cptra_core_mldsa_revocation_0()
                 .try_into()
-                .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)),
+                .unwrap_or_else(|_| {
+                    fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
+                }),
         );
         self.registers
             .fuse_mldsa_revocation
