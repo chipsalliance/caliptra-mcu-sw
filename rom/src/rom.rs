@@ -249,9 +249,58 @@ impl Soc {
         }
 
         // TODO: vendor-specific fuses when those are supported
-        // TODO: load ECC Revocation CSRs.
-        // TODO: load LMS Revocation CSRs.
-        // TODO: load MLDSA Revocation CSRs.
+        // Load Owner ECC/LMS/MLDSA revocation CSRs.
+        // ECC Revocation.
+        let vendor_ecc_revocation = u32::from_le_bytes(
+            fuses
+                .cptra_core_ecc_revocation_0()
+                .try_into()
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)),
+        );
+        self.registers
+            .fuse_ecc_revocation
+            .set(vendor_ecc_revocation);
+
+        // LMS Revocation.
+
+        let vendor_lms_revocation = u32::from_le_bytes(
+            fuses
+                .cptra_core_lms_revocation_0()
+                .try_into()
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)),
+        );
+        self.registers
+            .fuse_lms_revocation
+            .set(vendor_lms_revocation);
+
+        // MLDSA Revocation.
+        let vendor_mldsa_revocation = u32::from_le_bytes(
+            fuses
+                .cptra_core_mldsa_revocation_0()
+                .try_into()
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)),
+        );
+        self.registers
+            .fuse_mldsa_revocation
+            .set(vendor_mldsa_revocation);
+
+        // Owner PK Hash.
+        if size_of_val(fuses.cptra_ss_owner_pk_hash())
+            != size_of_val(&self.registers.cptra_owner_pk_hash)
+        {
+            fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
+        }
+        for i in 0..self.registers.cptra_owner_pk_hash.len() {
+            let word = u32::from_le_bytes(
+                fuses.cptra_ss_owner_pk_hash()[i * 4..i * 4 + 4]
+                    .try_into()
+                    .unwrap_or_else(|_| {
+                        fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
+                    }),
+            );
+            self.registers.cptra_owner_pk_hash[i].set(word);
+        }
+
         // TODO: load HEK Seed CSRs.
 
         // SoC Stepping ID (only 16-bits are relevant).
