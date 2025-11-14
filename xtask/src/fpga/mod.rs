@@ -22,6 +22,7 @@ mod utils;
 
 #[derive(Default)]
 struct BuildArgs<'a> {
+    mcu: bool,
     // Marker type to preserve lifetime until arguments get re-introduced.
     _marker: PhantomData<&'a Path>,
 }
@@ -96,6 +97,10 @@ pub(crate) enum Fpga {
         /// When set copy firmware to `target_host`
         #[arg(long)]
         target_host: Option<String>,
+
+        /// Only Build MCU binaries
+        #[arg(long, default_value_t = false)]
+        mcu: bool,
     },
     /// Build FPGA test binaries
     BuildTest {
@@ -182,13 +187,16 @@ fn is_module_loaded(module: &str, target_host: Option<&str>) -> Result<bool> {
 pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
     check_host_dependencies()?;
     match args {
-        Fpga::Build { target_host } => {
+        Fpga::Build { target_host, mcu } => {
             println!("Building FPGA firmware");
             let config = Configuration::from_cmd(target_host.as_deref())?;
             config
                 .executor()
                 .set_target_host(target_host.as_deref())
-                .build(&BuildArgs::default())?;
+                .build(&BuildArgs {
+                    mcu: *mcu,
+                    ..Default::default()
+                })?;
         }
         Fpga::BuildTest { target_host } => {
             println!("Building FPGA tests");
