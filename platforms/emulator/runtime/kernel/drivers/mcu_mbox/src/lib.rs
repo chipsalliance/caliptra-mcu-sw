@@ -123,6 +123,8 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
             if let Some(buf) = self.data_buf.take() {
                 // It is expected that the client will call restore_rx_buffer().
                 client.request_received(command, buf, dlen);
+                // Set state to RespFinishPending so that failure status can be set directly, bypassing send_done.
+                self.state.set(McuMboxState::RespFinishPending);
             } else {
                 panic!("MCU_MBOX_DRIVER: No data buffer available for incoming request.");
             }
