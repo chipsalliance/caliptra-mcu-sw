@@ -7,9 +7,6 @@ Device Ownership Transfer (DOT) is a security mechanism implemented in Caliptra 
 Reference: [OCP Device Ownership Transfer specification](TBD).
 
 ## Table of Contents
-1. [Fuses](#fuses)
-1. [DOT Blob](#dot-blob)
-1. [ROM Cold Boot Flow](#rom-cold-boot-flow)
 1. [Diagrams](#diagrams)
 1. [Glossary](#glossary)
 1. [DOT Modes](#dot-modes)
@@ -22,28 +19,6 @@ Reference: [OCP Device Ownership Transfer specification](TBD).
 1. [Recovery Mechanisms](#recovery-mechanisms)
 1. [Security Considerations](#security-considerations)
 
-
-## Fuses
-
-A part may have many owners over its lifetime, but we have only a limited amount of fuse space to burn keys for owners.
-
-TBD
-
-## DOT Blob
-
-Per-device data.
-
-TBD
-
-## ROM Cold Boot Flow
-
-During the cold boot flow, we read fuses from OTP, including any vendor key hashes, owner key hashes, revocation bits, and DOT information.
-
-We also read the DOT blob.
-
-During cold boot, after Caliptra ROM is running, we verify the DOT blob.
-
-TBD
 
 ## Diagrams
 

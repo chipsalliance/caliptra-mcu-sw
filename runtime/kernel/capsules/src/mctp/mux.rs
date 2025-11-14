@@ -110,29 +110,26 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
 
     fn interpret_packet(&self, packet: &[u8]) -> (MCTPHeader, Option<MessageType>, usize) {
         let mut msg_type = None;
-        let mut mctp_header = MCTPHeader::new();
-        let mut payload_offset = 0;
 
         if packet.len() < MCTP_HDR_SIZE {
-            return (mctp_header, msg_type, payload_offset);
+            return (MCTPHeader::default(), None, 0);
         }
 
-        mctp_header = MCTPHeader(u32::from_le_bytes(
-            packet[0..MCTP_HDR_SIZE].try_into().unwrap(),
+        let mctp_header = MCTPHeader(u32::from_le_bytes(
+            packet[0..MCTP_HDR_SIZE].try_into().unwrap_or([0u8; 4]),
         ));
 
         if mctp_header.hdr_version() != 1 {
-            return (mctp_header, msg_type, payload_offset);
+            return (MCTPHeader::default(), None, 0);
         }
 
         if mctp_header.som() == 1 {
             if packet.len() < MCTP_HDR_SIZE + 1 {
-                return (mctp_header, msg_type, payload_offset);
+                return (MCTPHeader::default(), None, 0);
             }
             msg_type = Some((packet[MCTP_HDR_SIZE] & 0x7F).into());
         }
-        payload_offset = MCTP_HDR_SIZE;
-        (mctp_header, msg_type, payload_offset)
+        (mctp_header, msg_type, MCTP_HDR_SIZE)
     }
 
     fn fill_mctp_ctrl_hdr_resp(
@@ -178,8 +175,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
             return Err(ErrorCode::INVAL);
         }
 
-        let mut mctp_hdr_resp = MCTPHeader::new();
-        mctp_hdr_resp.prepare_header(
+        let mctp_hdr_resp = MCTPHeader::new(
             mctp_hdr.src_eid(),
             mctp_hdr.dest_eid(),
             1,
@@ -234,7 +230,8 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
                     MCTPCtrlCmd::GetVersionSupport => mctp_ctrl_cmd
                         .process_get_version_support(req_buf, &mut resp_buf[msg_payload_start..]),
 
-                    MCTPCtrlCmd::GetMsgTypeSupport => return Err(ErrorCode::NOSUPPORT),
+                    MCTPCtrlCmd::GetMsgTypeSupport => mctp_ctrl_cmd
+                        .process_get_msg_type_support(req_buf, &mut resp_buf[msg_payload_start..]),
                     _ => return Err(ErrorCode::NOSUPPORT),
                 };
 
