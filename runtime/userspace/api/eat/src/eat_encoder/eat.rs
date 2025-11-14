@@ -5,7 +5,7 @@ use super::cbor::CborEncoder;
 use super::concise_evidence::ConciseEvidence;
 
 // Error type for EAT operations
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum EatError {
     BufferTooSmall,
     InvalidData,
@@ -121,7 +121,7 @@ impl CborEncoder<'_> {
         self.encode_array_header(2)?; // [content_type, content_format]
         self.encode_uint(format.content_type as u64)?;
 
-        const MAX_EVIDENCE_SIZE: usize = 4096;
+        const MAX_EVIDENCE_SIZE: usize = 1024;
         let mut evidence_buffer = [0u8; MAX_EVIDENCE_SIZE];
         let mut evidence_encoder = CborEncoder::new(&mut evidence_buffer);
 

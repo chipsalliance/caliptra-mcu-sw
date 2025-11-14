@@ -20,3 +20,8 @@ pub const NUM_DEFAULT_FW_COMPONENTS: usize = 3;
 const CALIPTRA_FW_FMC_OID: &str = "FMC_INFO"; //TODO: This should be a registered OID
 const CALIPTRA_FW_RT_OID: &str = "RT_INFO"; // TODO: This should be a registered OID
 const CALIPTRA_FW_AUTH_MAN_ID: &str = "SOC_MANIFEST";
+pub const DEFAULT_FW_IDS: [&str; NUM_DEFAULT_FW_COMPONENTS] = [
+    CALIPTRA_FW_FMC_OID,
+    CALIPTRA_FW_RT_OID,
+    CALIPTRA_FW_AUTH_MAN_ID,
+];
