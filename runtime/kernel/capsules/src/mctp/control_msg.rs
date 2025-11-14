@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::mctp::base_protocol::valid_eid;
+use crate::mctp::base_protocol::{valid_eid, MessageType, MCTP_NUM_MSG_TYPES_SUPPORTED};
 use bitfield::bitfield;
 use kernel::ErrorCode;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -8,6 +8,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 pub const MCTP_CTRL_MSG_HEADER_LEN: usize = 3;
 
 bitfield! {
+    #[derive(Default)]
     pub struct MCTPCtrlMsgHdr(u32);
     u8;
     pub msg_type, _: 6, 0;
@@ -19,15 +20,9 @@ bitfield! {
     pub cmd, set_cmd: 23, 16;
 }
 
-impl Default for MCTPCtrlMsgHdr {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl MCTPCtrlMsgHdr {
     pub fn new() -> Self {
-        MCTPCtrlMsgHdr(0)
+        Self::default()
     }
 
     pub fn prepare_header(&mut self, rq: u8, datagram: u8, instance_id: u8, cmd: u8) {
@@ -39,11 +34,11 @@ impl MCTPCtrlMsgHdr {
 }
 
 pub enum MCTPCtrlCmd {
-    SetEID,
-    GetEID,
-    GetMsgTypeSupport,
-    GetVersionSupport,
-    Unsupported,
+    SetEID = 1,
+    GetEID = 2,
+    GetMsgTypeSupport = 5,
+    GetVersionSupport = 4,
+    Unsupported = 0xFF,
 }
 
 impl From<u8> for MCTPCtrlCmd {
@@ -59,22 +54,12 @@ impl From<u8> for MCTPCtrlCmd {
 }
 
 impl MCTPCtrlCmd {
-    pub fn to_u8(&self) -> u8 {
-        match self {
-            MCTPCtrlCmd::SetEID => 2,
-            MCTPCtrlCmd::GetEID => 0,
-            MCTPCtrlCmd::GetVersionSupport => 0,
-            MCTPCtrlCmd::GetMsgTypeSupport => 0,
-            MCTPCtrlCmd::Unsupported => 0xFF,
-        }
-    }
-
     pub fn req_data_len(&self) -> usize {
         match self {
             MCTPCtrlCmd::SetEID => 2,
             MCTPCtrlCmd::GetEID => 0,
             MCTPCtrlCmd::GetVersionSupport => 1,
-            MCTPCtrlCmd::GetMsgTypeSupport => 5,
+            MCTPCtrlCmd::GetMsgTypeSupport => 0,
             MCTPCtrlCmd::Unsupported => 0,
         }
     }
@@ -84,7 +69,7 @@ impl MCTPCtrlCmd {
             MCTPCtrlCmd::SetEID => 4,
             MCTPCtrlCmd::GetEID => 4,
             MCTPCtrlCmd::GetVersionSupport => 18, // 2 bytes header + 4 entries * 4 bytes each
-            MCTPCtrlCmd::GetMsgTypeSupport => 1,
+            MCTPCtrlCmd::GetMsgTypeSupport => 2 + MCTP_NUM_MSG_TYPES_SUPPORTED, // 1 byte for completion code + 1 byte for count + supported message types
             MCTPCtrlCmd::Unsupported => 0,
         }
     }
@@ -229,6 +214,24 @@ impl MCTPCtrlCmd {
                     .map_err(|_| ErrorCode::FAIL)?;
             }
         }
+        Ok(())
+    }
+
+    pub fn process_get_msg_type_support(
+        &self,
+        _req: &[u8],
+        rsp_buf: &mut [u8],
+    ) -> Result<(), ErrorCode> {
+        if rsp_buf.len() < self.resp_data_len() {
+            return Err(ErrorCode::NOMEM);
+        }
+        rsp_buf[0] = 0x00; // Completion code: Success
+        let supported_msg_types = MessageType::supported();
+        rsp_buf[1] = supported_msg_types.len() as u8;
+        for (i, msg_type) in supported_msg_types.iter().enumerate() {
+            rsp_buf[2 + i] = *msg_type as u8;
+        }
+
         Ok(())
     }
 }
@@ -473,13 +476,13 @@ mod tests {
     #[test]
     fn test_ctrl_msg_hdr() {
         let mut msg_hdr = MCTPCtrlMsgHdr::new();
-        msg_hdr.prepare_header(0, 0, 0, MCTPCtrlCmd::SetEID.to_u8());
+        msg_hdr.prepare_header(0, 0, 0, MCTPCtrlCmd::SetEID as u8);
         assert_eq!(msg_hdr.ic(), 0);
         assert_eq!(msg_hdr.msg_type(), MessageType::MctpControl as u8);
         assert_eq!(msg_hdr.rq(), 0);
         assert_eq!(msg_hdr.datagram(), 0);
         assert_eq!(msg_hdr.instance_id(), 0);
-        assert_eq!(msg_hdr.cmd(), MCTPCtrlCmd::SetEID.to_u8());
+        assert_eq!(msg_hdr.cmd(), MCTPCtrlCmd::SetEID as u8);
     }
 
     #[test]
@@ -610,5 +613,20 @@ mod tests {
             GetVersionSupportHeaderResp::read_from_bytes(&rsp_buf[..2]).unwrap();
         assert_eq!(header.completion_code, 0x80); // Unsupported
         assert_eq!(header.entry_counter, 0);
+    }
+
+    #[test]
+    fn test_get_msg_type_support() {
+        let rsp_buf = &mut [0; 2 + MCTP_NUM_MSG_TYPES_SUPPORTED];
+        MCTPCtrlCmd::GetMsgTypeSupport
+            .process_get_msg_type_support(&[], rsp_buf)
+            .unwrap();
+
+        assert_eq!(rsp_buf[0], 0x00); // Completion code: Success
+        let supported_msg_types_count = rsp_buf[1] as usize;
+        assert_eq!(supported_msg_types_count, MessageType::supported().len());
+        for i in 0..supported_msg_types_count {
+            assert_eq!(rsp_buf[2 + i], MessageType::supported()[i] as u8);
+        }
     }
 }

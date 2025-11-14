@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use mcu_testing_common::i3c_socket::{BufferedStream, MctpTestState, MctpTransportTest};
-use mcu_testing_common::mctp_util::base_protocol::{MCTPMsgHdr, MCTP_MSG_HDR_SIZE};
+use mcu_testing_common::mctp_util::base_protocol::{MCTPMsgHdr, MctpMsgType, MCTP_MSG_HDR_SIZE};
 use mcu_testing_common::mctp_util::common::MctpUtil;
 use mcu_testing_common::mctp_util::ctrl_protocol::*;
 use mcu_testing_common::MCU_RUNNING;
@@ -30,6 +30,11 @@ pub(crate) enum MCTPCtrlCmdTests {
     SetEIDBroadcastFail,
     SetEIDInvalidFail,
     GetEID,
+    GetMctpVersionSupportMctpBase,
+    GetMctpVersionSupportMctpControlProtocol,
+    GetMctpVersionSupportUnspecified,
+    GetMctpVersionSupportUnsupported,
+    GetMsgTypeSupport,
 }
 
 impl MCTPCtrlCmdTests {
@@ -63,6 +68,21 @@ impl MCTPCtrlCmdTests {
             MCTPCtrlCmdTests::SetEIDBroadcastFail => set_eid_req_bytes(SetEIDOp::SetEID, 0xFF),
             MCTPCtrlCmdTests::SetEIDInvalidFail => set_eid_req_bytes(SetEIDOp::SetEID, 0x1),
             MCTPCtrlCmdTests::GetEID => {
+                vec![]
+            }
+            MCTPCtrlCmdTests::GetMctpVersionSupportMctpBase => {
+                vec![0xFF]
+            }
+            MCTPCtrlCmdTests::GetMctpVersionSupportMctpControlProtocol => {
+                vec![0x00]
+            }
+            MCTPCtrlCmdTests::GetMctpVersionSupportUnspecified => {
+                vec![0x7E]
+            }
+            MCTPCtrlCmdTests::GetMctpVersionSupportUnsupported => {
+                vec![0x01]
+            }
+            MCTPCtrlCmdTests::GetMsgTypeSupport => {
                 vec![]
             }
         };
@@ -110,6 +130,35 @@ impl MCTPCtrlCmdTests {
             MCTPCtrlCmdTests::GetEID => {
                 get_eid_resp_bytes(CmdCompletionCode::Success, TEST_TARGET_EID + 1)
             }
+            MCTPCtrlCmdTests::GetMctpVersionSupportMctpBase
+            | MCTPCtrlCmdTests::GetMctpVersionSupportMctpControlProtocol => {
+                // 1.0.0 (major version 1, minor version 0, update 0 alpha 0)
+                let version1 = VersionEntry::from_u32(0xF1F0F000);
+                // 1.1.0 (major version 1, minor version 1, update 0 alpha 0)
+                let version2 = VersionEntry::from_u32(0xF1F1F000);
+                // 1.2.0 (major version 1, minor version 2, update 0 alpha 0)
+                let version3 = VersionEntry::from_u32(0xF1F2F000);
+                // 1.3.3 (major version 1, minor version 3, update 3 alpha 0)
+                let version4 = VersionEntry::from_u32(0xF1F3F300);
+                get_version_support_resp_bytes(
+                    CmdCompletionCode::Success as u8,
+                    Some(&[version1, version2, version3, version4]),
+                )
+            }
+            MCTPCtrlCmdTests::GetMctpVersionSupportUnspecified
+            | MCTPCtrlCmdTests::GetMctpVersionSupportUnsupported => {
+                get_version_support_resp_bytes(0x80, None)
+            }
+            MCTPCtrlCmdTests::GetMsgTypeSupport => {
+                let msg_types = [
+                    MctpMsgType::Ctrl,
+                    MctpMsgType::Pldm,
+                    MctpMsgType::Spdm,
+                    MctpMsgType::SecureSpdm,
+                    MctpMsgType::Caliptra,
+                ];
+                generate_msg_type_support_resp_bytes(CmdCompletionCode::Success as u8, &msg_types)
+            }
         };
 
         MCTPCtrlCmdTests::generate_msg((mctp_common_msg_hdr, mctp_ctrl_msg_hdr, resp_data))
@@ -133,15 +182,8 @@ impl MCTPCtrlCmdTests {
         pkt
     }
 
-    fn name(&self) -> &str {
-        match self {
-            MCTPCtrlCmdTests::SetEID => "SetEID",
-            MCTPCtrlCmdTests::SetEIDForce => "SetEIDForce",
-            MCTPCtrlCmdTests::SetEIDNullFail => "SetEIDNullFail",
-            MCTPCtrlCmdTests::SetEIDBroadcastFail => "SetEIDBroadcastFail",
-            MCTPCtrlCmdTests::SetEIDInvalidFail => "SetEIDInvalidFail",
-            MCTPCtrlCmdTests::GetEID => "GetEID",
-        }
+    fn name(&self) -> String {
+        format!("{:?}", self) // Uses the Debug implementation
     }
 
     fn cmd(&self) -> u8 {
@@ -152,6 +194,13 @@ impl MCTPCtrlCmdTests {
             | MCTPCtrlCmdTests::SetEIDBroadcastFail
             | MCTPCtrlCmdTests::SetEIDInvalidFail => MCTPCtrlCmd::SetEID as u8,
             MCTPCtrlCmdTests::GetEID => MCTPCtrlCmd::GetEID as u8,
+            MCTPCtrlCmdTests::GetMctpVersionSupportMctpBase
+            | MCTPCtrlCmdTests::GetMctpVersionSupportMctpControlProtocol
+            | MCTPCtrlCmdTests::GetMctpVersionSupportUnspecified
+            | MCTPCtrlCmdTests::GetMctpVersionSupportUnsupported => {
+                MCTPCtrlCmd::GetMctpVersionSupport as u8
+            }
+            MCTPCtrlCmdTests::GetMsgTypeSupport => MCTPCtrlCmd::GetMsgTypeSupport as u8,
         }
     }
 }
@@ -168,9 +217,9 @@ struct Test {
 }
 
 impl Test {
-    fn new(name: &str, req_msg: Vec<u8>, resp_msg: Vec<u8>, msg_tag: u8) -> Self {
+    fn new(name: String, req_msg: Vec<u8>, resp_msg: Vec<u8>, msg_tag: u8) -> Self {
         Self {
-            name: name.to_string(),
+            name,
             test_state: MctpTestState::Start,
             req_msg,
             resp_msg,
