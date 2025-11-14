@@ -1,18 +1,25 @@
 // Licensed under the Apache-2.0 license
 
 use crate::transport::McuMboxTransport;
+use caliptra_api::mailbox::{CommandId as CaliptraCommandId, MailboxReqHeader};
 use core::sync::atomic::{AtomicBool, Ordering};
 use external_cmds_common::{
     DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, UnifiedCommandHandler, MAX_UID_LEN,
 };
+use libapi_caliptra::mailbox_api::execute_mailbox_cmd;
+use libsyscall_caliptra::mailbox::Mailbox;
 use libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
     DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, MailboxRespHeader,
-    MailboxRespHeaderVarSize, McuMailboxResp, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
+    MailboxRespHeaderVarSize, McuCmDeleteReq, McuCmDeleteResp, McuCmImportReq, McuCmImportResp,
+    McuCmStatusReq, McuCmStatusResp, McuMailboxResp, McuRandomGenerateReq, McuRandomGenerateResp,
+    McuRandomStirReq, McuRandomStirResp, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
+    McuShaInitResp, McuShaUpdateReq, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
 };
 use zerocopy::{FromBytes, IntoBytes};
 
+#[derive(Debug)]
 pub enum MsgHandlerError {
     Transport,
     McuMboxCommon,
@@ -25,6 +32,7 @@ pub enum MsgHandlerError {
 pub struct CmdInterface<'a> {
     transport: &'a mut McuMboxTransport,
     non_crypto_cmds_handler: &'a dyn UnifiedCommandHandler,
+    caliptra_mbox: libsyscall_caliptra::mailbox::Mailbox, // Handle crypto commands via caliptra mailbox
     busy: AtomicBool,
 }
 
@@ -36,6 +44,7 @@ impl<'a> CmdInterface<'a> {
         Self {
             transport,
             non_crypto_cmds_handler,
+            caliptra_mbox: Mailbox::new(),
             busy: AtomicBool::new(false),
         }
     }
@@ -54,11 +63,13 @@ impl<'a> CmdInterface<'a> {
         // Process the request and prepare the response.
         let (resp_len, status) = self.process_request(msg_buf, cmd_id, req_len).await?;
 
-        // Send the response back via the transport.
-        self.transport
-            .send_response(&msg_buf[..resp_len])
-            .await
-            .map_err(|_| MsgHandlerError::Transport)?;
+        // Send the response if the command completed successfully.
+        if status == MbxCmdStatus::Complete {
+            self.transport
+                .send_response(&msg_buf[..resp_len])
+                .await
+                .map_err(|_| MsgHandlerError::Transport)?;
+        }
 
         // Finalize the response as the last step of handling the message.
         self.transport
@@ -85,7 +96,87 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_DEVICE_CAPABILITIES => self.handle_device_caps(msg_buf, req_len).await,
             CommandId::MC_DEVICE_ID => self.handle_device_id(msg_buf, req_len).await,
             CommandId::MC_DEVICE_INFO => self.handle_device_info(msg_buf, req_len).await,
-            // TODO: Add more command handlers
+            CommandId::MC_SHA_INIT => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuShaInitResp>()];
+                self.handle_crypto_passthrough::<McuShaInitReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_SHA_INIT.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_SHA_UPDATE => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuShaInitResp>()];
+                self.handle_crypto_passthrough::<McuShaUpdateReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_SHA_UPDATE.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_SHA_FINAL => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuShaFinalResp>()];
+                self.handle_crypto_passthrough::<McuShaFinalReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_SHA_FINAL.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_IMPORT => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuCmImportResp>()];
+                self.handle_crypto_passthrough::<McuCmImportReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_IMPORT.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_DELETE => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuCmDeleteResp>()];
+                self.handle_crypto_passthrough::<McuCmDeleteReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_DELETE.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_CM_STATUS => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuCmStatusResp>()];
+                self.handle_crypto_passthrough::<McuCmStatusReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_STATUS.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_RANDOM_GENERATE => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuRandomGenerateResp>()];
+                self.handle_crypto_passthrough::<McuRandomGenerateReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_RANDOM_GENERATE.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_RANDOM_STIR => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuRandomStirResp>()];
+                self.handle_crypto_passthrough::<McuRandomStirReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_RANDOM_STIR.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            // TODO: add more command handlers.
             _ => Err(MsgHandlerError::UnsupportedCommand),
         };
 
@@ -280,5 +371,39 @@ impl<'a> CmdInterface<'a> {
         msg_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
         Ok((resp_bytes.len(), mbox_cmd_status))
+    }
+
+    pub async fn handle_crypto_passthrough<T: Default + IntoBytes + FromBytes>(
+        &self,
+        msg_buf: &mut [u8],
+        req_len: usize,
+        caliptra_cmd_code: u32,
+        resp_buf: &mut [u8],
+    ) -> Result<(usize, MbxCmdStatus), MsgHandlerError> {
+        if req_len > core::mem::size_of::<T>() {
+            return Err(MsgHandlerError::InvalidParams);
+        }
+        let mut req = T::default();
+        req.as_mut_bytes()[..req_len].copy_from_slice(&msg_buf[..req_len]);
+
+        // Clear the header checksum field because it was computed for the MCU mailbox CmdID and payload.
+        req.as_mut_bytes()[..core::mem::size_of::<MailboxReqHeader>()].fill(0);
+
+        // Invoke Caliptra mailbox API
+        let status = execute_mailbox_cmd(
+            &self.caliptra_mbox,
+            caliptra_cmd_code,
+            req.as_mut_bytes(),
+            resp_buf,
+        )
+        .await;
+
+        match status {
+            Ok(resp_len) => {
+                msg_buf[..resp_len].copy_from_slice(&resp_buf[..resp_len]);
+                Ok((resp_len, MbxCmdStatus::Complete))
+            }
+            Err(_) => Ok((0, MbxCmdStatus::Failure)),
+        }
     }
 }

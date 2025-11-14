@@ -178,7 +178,7 @@ pub(crate) struct CertificateChainResp {
     pub certificate_chain: [u8; MAX_CERT_CHUNK_SIZE],
 }
 
-pub(crate) async fn execute_mailbox_cmd(
+pub async fn execute_mailbox_cmd(
     mailbox: &Mailbox,
     cmd: u32,
     req_bytes: &mut [u8],
