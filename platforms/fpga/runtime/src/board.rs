@@ -686,6 +686,12 @@ pub unsafe fn main() {
     let mci_wdt = romtime::Mci::new(mci);
     mci_wdt.disable_wdt();
 
+    // Enable MCI Interrupts
+    mci.intr_block_rf_global_intr_en_r
+        .modify(mci::bits::GlobalIntrEnT::NotifEn::SET + mci::bits::GlobalIntrEnT::ErrorEn::SET);
+    mci.intr_block_rf_notif0_intr_en_r
+        .modify(mci::bits::Notif0IntrEnT::NotifCptraMcuResetReqEn::SET);
+
     board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
 }
 
