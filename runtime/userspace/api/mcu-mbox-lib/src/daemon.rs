@@ -2,9 +2,12 @@
 
 use crate::cmd_interface::CmdInterface;
 use crate::transport::McuMboxTransport;
+use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
 use external_cmds_common::UnifiedCommandHandler;
+use libsyscall_caliptra::DefaultSyscalls;
+use libtock_console::Console;
 
 const MAX_MCU_MBOX_MSG_SIZE: usize = 2048; // Adjust as needed
 
@@ -81,6 +84,14 @@ pub async fn mcu_mbox_responder(
 ) {
     let mut msg_buffer = [0; MAX_MCU_MBOX_MSG_SIZE];
     while running.load(Ordering::SeqCst) {
-        let _ = cmd_interface.handle_responder_msg(&mut msg_buffer).await;
+        if let Err(e) = cmd_interface.handle_responder_msg(&mut msg_buffer).await {
+            // Debug print on error
+            writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "mcu_mbox_responder error: {:?}",
+                e
+            )
+            .unwrap();
+        }
     }
 }
