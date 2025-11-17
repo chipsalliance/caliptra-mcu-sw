@@ -262,11 +262,6 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::FuseWriteComplete.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_FUSES_WRITTEN.into());
 
-        // If testing Caliptra Core, hang here until the test signals it to continue.
-        if cfg!(feature = "core_test") {
-            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 31) == 0 {}
-        }
-
         romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for mbox",);
         while !soc.ready_for_mbox() {
             if soc.cptra_fw_fatal_error() {
@@ -277,6 +272,11 @@ impl BootFlow for ColdBoot {
 
         romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraReadyForMailbox.into());
+
+        // If testing Caliptra Core, hang here until the test signals it to continue.
+        if cfg!(feature = "core_test") {
+            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 31) == 0 {}
+        }
 
         // tell Caliptra to download firmware from the recovery interface
         romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command",);
