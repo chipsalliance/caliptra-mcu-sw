@@ -279,7 +279,7 @@ mod test {
         hw_revision: Option<String>,
         fuse_soc_manifest_svn: Option<u8>,
         fuse_soc_manifest_max_svn: Option<u8>,
-        fuse_vendor_hashes_prod_partition: Option<Vec<u8>>,
+        fuse_vendor_test_partition: Option<Vec<u8>>,
     ) -> i32 {
         let mut cargo_run_args = vec![
             "run",
@@ -449,12 +449,11 @@ mod test {
                 cargo_run_args.push(soc_manifest_max_svn_str.as_str());
             }
 
-            let fuse_vendor_hashes_prod_partition_str;
-            if let Some(fuse_vendor_hashes_prod_partition) = fuse_vendor_hashes_prod_partition {
-                cargo_run_args.push("--fuse-vendor-hashes-prod-partition");
-                fuse_vendor_hashes_prod_partition_str =
-                    hex::encode(fuse_vendor_hashes_prod_partition);
-                cargo_run_args.push(fuse_vendor_hashes_prod_partition_str.as_str());
+            let fuse_vendor_test_partition_str;
+            if let Some(fuse_vendor_test_partition) = fuse_vendor_test_partition {
+                cargo_run_args.push("--fuse-vendor-test-partition");
+                fuse_vendor_test_partition_str = hex::encode(fuse_vendor_test_partition);
+                cargo_run_args.push(fuse_vendor_test_partition_str.as_str());
             }
 
             println!("Running test firmware {}", feature.replace("_", "-"));

@@ -251,14 +251,8 @@ impl Soc {
         // TODO: vendor-specific fuses when those are supported
         // Load Owner ECC/LMS/MLDSA revocation CSRs.
         // ECC Revocation.
-        let vendor_ecc_revocation = u32::from_le_bytes(
-            fuses
-                .cptra_core_ecc_revocation_0()
-                .try_into()
-                .unwrap_or_else(|_| {
-                    fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
-                }),
-        );
+        let vendor_ecc_revocation =
+            u32::from_le_bytes(fuses.cptra_core_ecc_revocation_0().try_into().unwrap());
         self.registers
             .fuse_ecc_revocation
             .set(vendor_ecc_revocation);
@@ -291,20 +285,27 @@ impl Soc {
             .set(vendor_mldsa_revocation);
 
         // Owner PK Hash.
-        if size_of_val(fuses.cptra_ss_owner_pk_hash())
-            != size_of_val(&self.registers.cptra_owner_pk_hash)
-        {
-            fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
-        }
-        for i in 0..self.registers.cptra_owner_pk_hash.len() {
-            let word = u32::from_le_bytes(
-                fuses.cptra_ss_owner_pk_hash()[i * 4..i * 4 + 4]
-                    .try_into()
-                    .unwrap_or_else(|_| {
-                        fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
-                    }),
-            );
-            self.registers.cptra_owner_pk_hash[i].set(word);
+        // TBD: Device Ownership Transfer
+        if !fuses.cptra_ss_owner_pk_hash().iter().all(|&x| x == 0) {
+            romtime::print!("[mcu-fuse-write] Writing fuse key owner PK hash: ");
+
+            if size_of_val(fuses.cptra_ss_owner_pk_hash())
+                != size_of_val(&self.registers.cptra_owner_pk_hash)
+            {
+                fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
+            }
+            for i in 0..self.registers.cptra_owner_pk_hash.len() {
+                let word = u32::from_le_bytes(
+                    fuses.cptra_ss_owner_pk_hash()[i * 4..i * 4 + 4]
+                        .try_into()
+                        .unwrap_or_else(|_| {
+                            fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
+                        }),
+                );
+                romtime::print!("{}", HexWord(word));
+                self.registers.cptra_owner_pk_hash[i].set(word);
+            }
+            romtime::println!("");
         }
 
         // TODO: load HEK Seed CSRs.
