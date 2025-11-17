@@ -278,6 +278,12 @@ impl BootFlow for ColdBoot {
         romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraReadyForMailbox.into());
 
+        // If testing Caliptra Core, hang here until the test signals it to continue.
+        if cfg!(feature = "core_test") {
+            romtime::println!("[mcu-rom] Waiting at added entry point");
+            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 29) == 0 {}
+        }
+
         // tell Caliptra to download firmware from the recovery interface
         romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command",);
         if let Err(err) =
