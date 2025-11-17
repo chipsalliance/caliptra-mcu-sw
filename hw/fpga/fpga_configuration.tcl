@@ -3,6 +3,7 @@
 # Default settings:
 set BUILD FALSE
 set GUI   FALSE
+set OUTPUT_DIR caliptra_build
 set ITRNG TRUE
 set CG_EN FALSE
 set RTL_VERSION latest
@@ -32,7 +33,7 @@ if {[info exists VERSION] == 0} {
 
 # Create path variables
 set fpgaDir [file dirname [info script]]
-set outputDir $fpgaDir/caliptra_build
+set outputDir $fpgaDir/$OUTPUT_DIR
 set caliptrapackageDir $outputDir/caliptra_package
 
 # Clean and create output directory.
@@ -157,7 +158,7 @@ set axi_subordinates(ID) 0
 
 #                        src_block          src_port address    size       dst                                   addrseg name               debug  clock
 register_axi_subordinate axi_interconnect_0 M00_AXI  0xA4100000 0x00100000 caliptra_package_top_0/S_AXI_CALIPTRA reg0    S_AXI_CALIPTRA     TRUE   "/ps_0/pl0_ref_clk"
-register_axi_subordinate axi_interconnect_0 M01_AXI  0xA4030000 0x00002000 caliptra_package_top_0/S_AXI_I3C      reg0    S_AXI_I3C          TRUE   "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M01_AXI  0xA4030000 0x00002000 caliptra_package_top_0/S_AXI_I3C      reg0    S_AXI_I3C          TRUE   "/ps_0/pl1_ref_clk"
 register_axi_subordinate axi_interconnect_0 M02_AXI  0xA4040000 0x00002000 caliptra_package_top_0/S_AXI_LCC      reg0    S_AXI_LCC          FALSE  "/ps_0/pl0_ref_clk"
 register_axi_subordinate axi_interconnect_0 M03_AXI  0xA8000000 0x01000000 caliptra_package_top_0/S_AXI_MCI      reg0    S_AXI_MCI          TRUE   "/ps_0/pl0_ref_clk"
 register_axi_subordinate axi_interconnect_0 M04_AXI  0xB0040000 0x00020000 caliptra_package_top_0/S_AXI_MCU_ROM  reg0    S_AXI_MCU_ROM      TRUE   "/ps_0/pl0_ref_clk"
@@ -196,6 +197,7 @@ set_property -dict [list \
   CONFIG.CMD_RESP_FIFO_DEPTH {64} \
   CONFIG.WR_FIFO_PROG_FULL_THRESHOLD {125} \
   CONFIG.WR_RD_FIFO_DEPTH {128} \
+  CONFIG.RW_TIMEOUT {10000} \
   ] [get_bd_cells xilinx_i3c_0]
 
 # Add memory for Staging SRAM
@@ -474,8 +476,8 @@ if {$BUILD} {
       # Lock the NoC path segments and save the solution for later builds.
       set_property lock true [get_noc_net_routes -of [get_noc_logical_paths -filter {initial_boot == 1}]]
       write_noc_solution -file $fpgaDir/saved_noc_solution.ncr
-      file copy -force $outputDir/caliptra_fpga_project.runs/impl_1/caliptra_fpga_project_bd_wrapper_routed.dcp $fpgaDir/segmented_golden_routed.dcp
-      puts stderr "Replace file in GCS bucket: [exec realpath $fpgaDir/segmented_golden_routed.dcp]"
+      file copy -force $outputDir/caliptra_fpga_project.runs/impl_1/caliptra_fpga_project_bd_wrapper_routed.dcp $fpgaDir/fpga_2px_golden_routed.dcp
+      puts stderr "Replace file in GCS bucket: [exec realpath $fpgaDir/fpga_2px_golden_routed.dcp]"
     } else {
       # Verify that the NoC Solutions are identical and the PLD images are compatible.
       exec curl -s -O "https://storage.googleapis.com/caliptra-github-ci-bitstreams/scratch/fpga_2px_golden_routed.dcp"

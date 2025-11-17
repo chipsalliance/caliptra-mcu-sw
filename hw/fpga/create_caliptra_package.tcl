@@ -21,6 +21,8 @@ lappend VERILOG_OPTIONS I3C_USE_AXI
 lappend VERILOG_OPTIONS AXI_ID_WIDTH=19 AXI_USER_WIDTH=32 AXI_DATA_WIDTH=32 AXI_ADDR_WIDTH=32
 # Might be removed in newer RTL? TLUL has compilation failure
 lappend VERILOG_OPTIONS CALIPTRA_AXI_ID_WIDTH=19 CALIPTRA_AXI_USER_WIDTH=32
+# Try using xilinx primitives
+lappend VERILOG_OPTIONS CALIPTRA_PRIM_DEFAULT_IMPL=caliptra_prim_pkg::ImplXilinx
 
 set_property verilog_define $VERILOG_OPTIONS [current_fileset]
 puts "\n\nVERILOG DEFINES: [get_property verilog_define [current_fileset]]"
@@ -100,11 +102,11 @@ remove_files [ glob $caliptrartlDir/src/ecc/rtl/ecc_ram_tdp_file.sv ]
 # Replace caliptra_ss_top with version modified with faster I3C clocks
 remove_files [ glob $ssrtlDir/src/integration/rtl/caliptra_ss_top.sv ]
 
-# Set DONT_TOUCH to prevent https://github.com/chipsalliance/caliptra-ss/issues/682
-file copy [ glob $caliptrartlDir/src/caliptra_prim_generic/rtl/caliptra_prim_generic_flop.sv ] $outputDir/caliptra_prim_generic_flop.sv
-exec sed -i {s/module /(* DONT_TOUCH = "yes" *)\nmodule /g} $outputDir/caliptra_prim_generic_flop.sv
-remove_files [ glob $caliptrartlDir/src/caliptra_prim_generic/rtl/caliptra_prim_generic_flop.sv ]
-add_files $outputDir/caliptra_prim_generic_flop.sv
+# Add missing include
+file copy [ glob $caliptrartlDir/src/ahb_lite_bus/rtl/ahb_lite_address_decoder.sv ] $outputDir/ahb_lite_address_decoder.sv
+exec sed -i {1i `include \"config_defines.svh\"} $outputDir/ahb_lite_address_decoder.sv
+remove_files [ glob $caliptrartlDir/src/ahb_lite_bus/rtl/ahb_lite_address_decoder.sv ]
+add_files $outputDir/ahb_lite_address_decoder.sv
 
 # Mark all Verilog sources as SystemVerilog because some of them have SystemVerilog syntax.
 set_property file_type SystemVerilog [get_files *.v]

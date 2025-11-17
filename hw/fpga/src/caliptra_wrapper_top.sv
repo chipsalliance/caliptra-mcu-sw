@@ -1732,6 +1732,13 @@ mcu_rom (
     assign S_AXI_LCC_RLAST   = cptra_ss_lc_axi_rd_rsp_o.rlast;
     assign S_AXI_LCC_RVALID  = cptra_ss_lc_axi_rd_rsp_o.rvalid;
 
+    lc_ctrl_state_pkg::lc_token_t cptra_ss_raw_unlock_token_hashed_i;
+    assign cptra_ss_raw_unlock_token_hashed_i =
+        {hwif_out.interface_regs.cptra_ss_raw_unlock_token_hash[3].value.value,
+         hwif_out.interface_regs.cptra_ss_raw_unlock_token_hash[2].value.value,
+         hwif_out.interface_regs.cptra_ss_raw_unlock_token_hash[1].value.value,
+         hwif_out.interface_regs.cptra_ss_raw_unlock_token_hash[0].value.value};
+
     // Fuse/OTP Controller AXI
     //input
     axi_struct_pkg::axi_wr_req_t cptra_ss_otp_core_axi_wr_req_i;
@@ -2046,6 +2053,8 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_lc_axi_rd_req_i,
     .cptra_ss_lc_axi_rd_rsp_o,
 
+    .cptra_ss_raw_unlock_token_hashed_i,
+
     // Caliptra SS FC / OTP Controller AXI Sub Interface
     .cptra_ss_otp_core_axi_wr_req_i,
     .cptra_ss_otp_core_axi_wr_rsp_o,
@@ -2077,7 +2086,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     // Caliptra Memory Export Interface
     // Caliptra Core, ICCM and DCCM interface
     .cptra_ss_cptra_core_el2_mem_export(el2_mem_export.veer_sram_src),
-    .abr_memory_export(abr_memory_export.req),
+    .abr_memory_export_req(abr_memory_export.req),
 
     // SRAM interface for mbox
     // Caliptra SS mailbox sram interface
@@ -2121,8 +2130,8 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_mcu_mbox1_sram_req_if,
     .cptra_ss_mcu0_el2_mem_export,
 
-    .cptra_ss_mci_generic_input_wires_i({hwif_out.interface_regs.mci_generic_input_wires[0].value.value, hwif_out.interface_regs.mci_generic_input_wires[1].value.value}),
-    .cptra_ss_mci_generic_output_wires_o({hwif_in.interface_regs.mci_generic_output_wires[0].value.next, hwif_in.interface_regs.mci_generic_output_wires[1].value.next}),
+    .cptra_ss_mci_generic_input_wires_i({hwif_out.interface_regs.mci_generic_input_wires[1].value.value, hwif_out.interface_regs.mci_generic_input_wires[0].value.value}),
+    .cptra_ss_mci_generic_output_wires_o({hwif_in.interface_regs.mci_generic_output_wires[1].value.next, hwif_in.interface_regs.mci_generic_output_wires[0].value.next}),
 
     .cptra_ss_strap_mcu_reset_vector_i(hwif_out.interface_regs.mcu_reset_vector.mcu_reset_vector.value),
     .cptra_ss_mcu_no_rom_config_i(hwif_out.interface_regs.mcu_config.mcu_no_rom_config.value),
@@ -2149,9 +2158,9 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_strap_recovery_ifc_base_addr_i (64'hA4030100), // I3C controller SecFwRecoveryIf
     .cptra_ss_strap_otp_fc_base_addr_i       (64'hA4060000),
     .cptra_ss_strap_uds_seed_base_addr_i     ({32'h00000000, hwif_out.interface_regs.uds_seed_base_addr.uds_seed_base_addr.value}),
-    .cptra_ss_strap_ss_key_release_base_addr_i({32'h00000000, hwif_out.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.value}),
-    .cptra_ss_strap_ss_key_release_key_size_i(hwif_out.interface_regs.ss_key_release_key_size.ss_key_release_key_size.value),
-    .cptra_ss_strap_ss_external_staging_area_base_addr_i({32'h00000000, hwif_out.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.value}),
+    .cptra_ss_strap_key_release_base_addr_i({32'h00000000, hwif_out.interface_regs.ss_key_release_base_addr.ss_key_release_base_addr.value}),
+    .cptra_ss_strap_key_release_key_size_i(hwif_out.interface_regs.ss_key_release_key_size.ss_key_release_key_size.value),
+    .cptra_ss_strap_external_staging_area_base_addr_i({32'h00000000, hwif_out.interface_regs.ss_external_staging_area_base_addr.ss_external_staging_area_base_addr.value}),
     .cptra_ss_strap_prod_debug_unlock_auth_pk_hash_reg_bank_offset_i(hwif_out.interface_regs.prod_debug_unlock_auth_pk_hash_reg_bank_offset.prod_debug_unlock_auth_pk_hash_reg_bank_offset.value),
     .cptra_ss_strap_num_of_prod_debug_unlock_auth_pk_hashes_i(hwif_out.interface_regs.num_of_prod_debug_unlock_auth_pk_hashes.num_of_prod_debug_unlock_auth_pk_hashes.value),
     .cptra_ss_strap_caliptra_dma_axi_user_i(hwif_out.interface_regs.dma_axi_user.dma_axi_user.value),
@@ -2160,7 +2169,7 @@ caliptra_ss_top caliptra_ss_top_0 (
     .cptra_ss_strap_generic_2_i(32'h0),
     .cptra_ss_strap_generic_3_i(32'h0),
     .cptra_ss_debug_intent_i(hwif_out.interface_regs.control.ss_debug_intent.value),            // Debug intent signal
-    .cptra_ss_ocp_lock_en_i(hwif_out.interface_regs.control.ocp_lock_en.value),
+    .cptra_ss_strap_ocp_lock_en_i(hwif_out.interface_regs.control.ocp_lock_en.value),
 
     // TODO: Connect
     /*output logic        */ .cptra_ss_dbg_manuf_enable_o(),
@@ -2200,7 +2209,8 @@ caliptra_ss_top caliptra_ss_top_0 (
 
     .cptra_i3c_axi_user_id_filtering_enable_i(hwif_out.interface_regs.control.i3c_axi_user_id_filtering.value),
 
-    .cptra_ss_cptra_core_generic_input_wires_i({hwif_out.interface_regs.generic_input_wires[0].value.value, hwif_out.interface_regs.generic_input_wires[1].value.value}),
+    .cptra_ss_cptra_core_generic_input_wires_i({hwif_out.interface_regs.generic_input_wires[1].value.value, hwif_out.interface_regs.generic_input_wires[0].value.value}),
+    .cptra_ss_cptra_core_generic_output_wires_o({hwif_in.interface_regs.generic_output_wires[1].value.next, hwif_in.interface_regs.generic_output_wires[0].value.next}),
     .cptra_ss_cptra_core_scan_mode_i(hwif_out.interface_regs.control.scan_mode.value),
     .cptra_error_fatal(),
     .cptra_error_non_fatal()
