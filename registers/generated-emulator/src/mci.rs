@@ -884,6 +884,17 @@ pub trait MciPeripheral {
             generated.write_mci_reg_fc_fips_zerozation(val);
         }
     }
+    fn read_mci_reg_fc_fips_zerozation_sts(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::FcFipsZerozationSts::Register,
+    > {
+        if let Some(generated) = self.generated() {
+            return generated.read_mci_reg_fc_fips_zerozation_sts();
+        }
+        caliptra_emu_bus::ReadWriteRegister::new(0)
+    }
     fn read_mci_reg_generic_input_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_generic_input_wires(index);
@@ -4087,6 +4098,7 @@ pub struct MciGenerated {
     mci_reg_soc_hw_debug_en: Vec<caliptra_emu_types::RvData>,
     mci_reg_soc_prod_debug_state: Vec<caliptra_emu_types::RvData>,
     mci_reg_fc_fips_zerozation: caliptra_emu_types::RvData,
+    mci_reg_fc_fips_zerozation_sts: caliptra_emu_types::RvData,
     mci_reg_generic_input_wires: Vec<caliptra_emu_types::RvData>,
     mci_reg_generic_output_wires: Vec<caliptra_emu_types::RvData>,
     mci_reg_debug_in: caliptra_emu_types::RvData,
@@ -4371,6 +4383,7 @@ impl Default for MciGenerated {
             mci_reg_soc_hw_debug_en: vec![0 as caliptra_emu_types::RvData; 2],
             mci_reg_soc_prod_debug_state: vec![0 as caliptra_emu_types::RvData; 2],
             mci_reg_fc_fips_zerozation: 0 as caliptra_emu_types::RvData,
+            mci_reg_fc_fips_zerozation_sts: 0 as caliptra_emu_types::RvData,
             mci_reg_generic_input_wires: vec![0 as caliptra_emu_types::RvData; 2],
             mci_reg_generic_output_wires: vec![0 as caliptra_emu_types::RvData; 2],
             mci_reg_debug_in: 0 as caliptra_emu_types::RvData,
@@ -5866,6 +5879,14 @@ impl MciPeripheral for MciGenerated {
         new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
             | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
         self.mci_reg_fc_fips_zerozation = new_val;
+    }
+    fn read_mci_reg_fc_fips_zerozation_sts(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::FcFipsZerozationSts::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_fc_fips_zerozation_sts)
     }
     fn read_mci_reg_generic_input_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
         self.mci_reg_generic_input_wires[index]
@@ -10679,6 +10700,7 @@ impl caliptra_emu_bus::Bus for MciBus {
                 self.periph.write_mci_reg_fc_fips_zerozation(val);
                 Ok(())
             }
+            0x31c..0x320 => Ok(()),
             0x400..0x408 => Ok(()),
             0x408..0x410 => {
                 self.periph

@@ -986,10 +986,17 @@ pub trait SocPeripheral {
             generated.write_fuse_soc_manifest_max_svn(val);
         }
     }
-    fn read_fuse_hek_seed(&mut self, _index: usize) -> caliptra_emu_types::RvData {
+    fn read_fuse_hek_seed(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_fuse_hek_seed(index);
+        }
         0
     }
-    fn write_fuse_hek_seed(&mut self, _val: caliptra_emu_types::RvData, _index: usize) {}
+    fn write_fuse_hek_seed(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if let Some(generated) = self.generated() {
+            generated.write_fuse_hek_seed(val, index);
+        }
+    }
     fn read_ss_caliptra_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
         if let Some(generated) = self.generated() {
             return generated.read_ss_caliptra_base_addr_l();
@@ -1152,26 +1159,113 @@ pub trait SocPeripheral {
             generated.write_ss_caliptra_dma_axi_user(val);
         }
     }
+    fn read_ss_external_staging_area_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_ss_external_staging_area_base_addr_l();
+        }
+        0
+    }
+    fn write_ss_external_staging_area_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_ss_external_staging_area_base_addr_l(val);
+        }
+    }
+    fn read_ss_external_staging_area_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_ss_external_staging_area_base_addr_h();
+        }
+        0
+    }
+    fn write_ss_external_staging_area_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_ss_external_staging_area_base_addr_h(val);
+        }
+    }
+    fn read_ss_key_release_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_ss_key_release_base_addr_l();
+        }
+        0
+    }
+    fn write_ss_key_release_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_ss_key_release_base_addr_l(val);
+        }
+    }
+    fn read_ss_key_release_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_ss_key_release_base_addr_h();
+        }
+        0
+    }
+    fn write_ss_key_release_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_ss_key_release_base_addr_h(val);
+        }
+    }
+    fn read_ss_key_release_size(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::soc::bits::SsKeyReleaseSize::Register,
+    > {
+        if let Some(generated) = self.generated() {
+            return generated.read_ss_key_release_size();
+        }
+        caliptra_emu_bus::ReadWriteRegister::new(0)
+    }
+    fn write_ss_key_release_size(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::soc::bits::SsKeyReleaseSize::Register,
+        >,
+    ) {
+        if let Some(generated) = self.generated() {
+            generated.write_ss_key_release_size(val);
+        }
+    }
+    fn read_ss_ocp_lock_ctrl(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::soc::bits::SsOcpLockCtrl::Register,
+    > {
+        if let Some(generated) = self.generated() {
+            return generated.read_ss_ocp_lock_ctrl();
+        }
+        caliptra_emu_bus::ReadWriteRegister::new(0)
+    }
+    fn write_ss_ocp_lock_ctrl(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::soc::bits::SsOcpLockCtrl::Register,
+        >,
+    ) {
+        if let Some(generated) = self.generated() {
+            generated.write_ss_ocp_lock_ctrl(val);
+        }
+    }
     fn read_ss_strap_generic(&mut self, index: usize) -> caliptra_emu_types::RvData {
         if let Some(generated) = self.generated() {
             return generated.read_ss_strap_generic(index);
         }
         0
     }
-    fn read_ss_dbg_manuf_service_reg_req(
     fn write_ss_strap_generic(&mut self, val: caliptra_emu_types::RvData, index: usize) {
         if let Some(generated) = self.generated() {
             generated.write_ss_strap_generic(val, index);
         }
     }
-    fn read_ss_dbg_manuf_service_reg_req(
+    fn read_ss_dbg_service_reg_req(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::SsDbgServiceRegReq::Register,
     > {
         if let Some(generated) = self.generated() {
-            return generated.read_ss_dbg_manuf_service_reg_req();
+            return generated.read_ss_dbg_service_reg_req();
         }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
@@ -1183,7 +1277,7 @@ pub trait SocPeripheral {
         >,
     ) {
         if let Some(generated) = self.generated() {
-            generated.write_ss_dbg_manuf_service_reg_req(val);
+            generated.write_ss_dbg_service_reg_req(val);
         }
     }
     fn read_ss_dbg_service_reg_rsp(
@@ -1193,7 +1287,7 @@ pub trait SocPeripheral {
         registers_generated::soc::bits::SsDbgServiceRegRsp::Register,
     > {
         if let Some(generated) = self.generated() {
-            return generated.read_ss_dbg_manuf_service_reg_rsp();
+            return generated.read_ss_dbg_service_reg_rsp();
         }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
@@ -1205,7 +1299,7 @@ pub trait SocPeripheral {
         >,
     ) {
         if let Some(generated) = self.generated() {
-            generated.write_ss_dbg_manuf_service_reg_rsp(val);
+            generated.write_ss_dbg_service_reg_rsp(val);
         }
     }
     fn read_ss_soc_dbg_unlock_level(&mut self, index: usize) -> caliptra_emu_types::RvData {
@@ -1295,6 +1389,7 @@ pub struct SocGenerated {
     fuse_pqc_key_type: caliptra_emu_types::RvData,
     fuse_soc_manifest_svn: Vec<caliptra_emu_types::RvData>,
     fuse_soc_manifest_max_svn: caliptra_emu_types::RvData,
+    fuse_hek_seed: Vec<caliptra_emu_types::RvData>,
     ss_caliptra_base_addr_l: caliptra_emu_types::RvData,
     ss_caliptra_base_addr_h: caliptra_emu_types::RvData,
     ss_mci_base_addr_l: caliptra_emu_types::RvData,
@@ -1309,9 +1404,15 @@ pub struct SocGenerated {
     ss_num_of_prod_debug_unlock_auth_pk_hashes: caliptra_emu_types::RvData,
     ss_debug_intent: caliptra_emu_types::RvData,
     ss_caliptra_dma_axi_user: caliptra_emu_types::RvData,
+    ss_external_staging_area_base_addr_l: caliptra_emu_types::RvData,
+    ss_external_staging_area_base_addr_h: caliptra_emu_types::RvData,
+    ss_key_release_base_addr_l: caliptra_emu_types::RvData,
+    ss_key_release_base_addr_h: caliptra_emu_types::RvData,
+    ss_key_release_size: caliptra_emu_types::RvData,
+    ss_ocp_lock_ctrl: caliptra_emu_types::RvData,
     ss_strap_generic: Vec<caliptra_emu_types::RvData>,
-    ss_dbg_manuf_service_reg_req: caliptra_emu_types::RvData,
-    ss_dbg_manuf_service_reg_rsp: caliptra_emu_types::RvData,
+    ss_dbg_service_reg_req: caliptra_emu_types::RvData,
+    ss_dbg_service_reg_rsp: caliptra_emu_types::RvData,
     ss_soc_dbg_unlock_level: Vec<caliptra_emu_types::RvData>,
     ss_generic_fw_exec_ctrl: Vec<caliptra_emu_types::RvData>,
 }
@@ -1343,7 +1444,7 @@ impl Default for SocGenerated {
             cptra_clk_gating_en: 0 as caliptra_emu_types::RvData,
             cptra_generic_input_wires: vec![0 as caliptra_emu_types::RvData; 2],
             cptra_generic_output_wires: vec![0 as caliptra_emu_types::RvData; 2],
-            cptra_hw_rev_id: 0x102 as caliptra_emu_types::RvData,
+            cptra_hw_rev_id: 0x12 as caliptra_emu_types::RvData,
             cptra_fw_rev_id: vec![0 as caliptra_emu_types::RvData; 2],
             cptra_hw_config: 0 as caliptra_emu_types::RvData,
             cptra_wdt_timer1_en: 0 as caliptra_emu_types::RvData,
@@ -1380,6 +1481,7 @@ impl Default for SocGenerated {
             fuse_pqc_key_type: 0 as caliptra_emu_types::RvData,
             fuse_soc_manifest_svn: vec![0 as caliptra_emu_types::RvData; 4],
             fuse_soc_manifest_max_svn: 0 as caliptra_emu_types::RvData,
+            fuse_hek_seed: vec![0 as caliptra_emu_types::RvData; 8],
             ss_caliptra_base_addr_l: 0 as caliptra_emu_types::RvData,
             ss_caliptra_base_addr_h: 0 as caliptra_emu_types::RvData,
             ss_mci_base_addr_l: 0 as caliptra_emu_types::RvData,
@@ -1394,9 +1496,15 @@ impl Default for SocGenerated {
             ss_num_of_prod_debug_unlock_auth_pk_hashes: 8 as caliptra_emu_types::RvData,
             ss_debug_intent: 0 as caliptra_emu_types::RvData,
             ss_caliptra_dma_axi_user: 0 as caliptra_emu_types::RvData,
+            ss_external_staging_area_base_addr_l: 0 as caliptra_emu_types::RvData,
+            ss_external_staging_area_base_addr_h: 0 as caliptra_emu_types::RvData,
+            ss_key_release_base_addr_l: 0 as caliptra_emu_types::RvData,
+            ss_key_release_base_addr_h: 0 as caliptra_emu_types::RvData,
+            ss_key_release_size: 0 as caliptra_emu_types::RvData,
+            ss_ocp_lock_ctrl: 0 as caliptra_emu_types::RvData,
             ss_strap_generic: vec![0 as caliptra_emu_types::RvData; 4],
-            ss_dbg_manuf_service_reg_req: 0 as caliptra_emu_types::RvData,
-            ss_dbg_manuf_service_reg_rsp: 0 as caliptra_emu_types::RvData,
+            ss_dbg_service_reg_req: 0 as caliptra_emu_types::RvData,
+            ss_dbg_service_reg_rsp: 0 as caliptra_emu_types::RvData,
             ss_soc_dbg_unlock_level: vec![0 as caliptra_emu_types::RvData; 2],
             ss_generic_fw_exec_ctrl: vec![0 as caliptra_emu_types::RvData; 4],
         }
@@ -2402,6 +2510,17 @@ impl SocPeripheral for SocGenerated {
             | (write_val & (0xff as caliptra_emu_types::RvData));
         self.fuse_soc_manifest_max_svn = new_val;
     }
+    fn read_fuse_hek_seed(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        self.fuse_hek_seed[index]
+    }
+    fn write_fuse_hek_seed(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.fuse_hek_seed[index];
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.fuse_hek_seed[index] = new_val;
+    }
     fn read_ss_caliptra_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
         self.ss_caliptra_base_addr_l
     }
@@ -2561,6 +2680,94 @@ impl SocPeripheral for SocGenerated {
             | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
         self.ss_caliptra_dma_axi_user = new_val;
     }
+    fn read_ss_external_staging_area_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        self.ss_external_staging_area_base_addr_l
+    }
+    fn write_ss_external_staging_area_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.ss_external_staging_area_base_addr_l;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.ss_external_staging_area_base_addr_l = new_val;
+    }
+    fn read_ss_external_staging_area_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        self.ss_external_staging_area_base_addr_h
+    }
+    fn write_ss_external_staging_area_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.ss_external_staging_area_base_addr_h;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.ss_external_staging_area_base_addr_h = new_val;
+    }
+    fn read_ss_key_release_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        self.ss_key_release_base_addr_l
+    }
+    fn write_ss_key_release_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.ss_key_release_base_addr_l;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.ss_key_release_base_addr_l = new_val;
+    }
+    fn read_ss_key_release_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        self.ss_key_release_base_addr_h
+    }
+    fn write_ss_key_release_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.ss_key_release_base_addr_h;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.ss_key_release_base_addr_h = new_val;
+    }
+    fn read_ss_key_release_size(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::soc::bits::SsKeyReleaseSize::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.ss_key_release_size)
+    }
+    fn write_ss_key_release_size(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::soc::bits::SsKeyReleaseSize::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.ss_key_release_size;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff as caliptra_emu_types::RvData));
+        self.ss_key_release_size = new_val;
+    }
+    fn read_ss_ocp_lock_ctrl(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::soc::bits::SsOcpLockCtrl::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.ss_ocp_lock_ctrl)
+    }
+    fn write_ss_ocp_lock_ctrl(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::soc::bits::SsOcpLockCtrl::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.ss_ocp_lock_ctrl;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.ss_ocp_lock_ctrl = new_val;
+    }
     fn read_ss_strap_generic(&mut self, index: usize) -> caliptra_emu_types::RvData {
         self.ss_strap_generic[index]
     }
@@ -2572,23 +2779,23 @@ impl SocPeripheral for SocGenerated {
             | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
         self.ss_strap_generic[index] = new_val;
     }
-    fn read_ss_dbg_manuf_service_reg_req(
+    fn read_ss_dbg_service_reg_req(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
+        registers_generated::soc::bits::SsDbgServiceRegReq::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.ss_dbg_manuf_service_reg_req)
+        caliptra_emu_bus::ReadWriteRegister::new(self.ss_dbg_service_reg_req)
     }
-    fn write_ss_dbg_manuf_service_reg_req(
+    fn write_ss_dbg_service_reg_req(
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
+            registers_generated::soc::bits::SsDbgServiceRegReq::Register,
         >,
     ) {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
-        let current_val = self.ss_dbg_manuf_service_reg_req;
+        let current_val = self.ss_dbg_service_reg_req;
         let mut new_val = current_val;
         new_val = (new_val & !(1 as caliptra_emu_types::RvData))
             | (write_val & (1 as caliptra_emu_types::RvData));
@@ -2596,25 +2803,25 @@ impl SocPeripheral for SocGenerated {
             | (write_val & (2 as caliptra_emu_types::RvData));
         new_val = (new_val & !(4 as caliptra_emu_types::RvData))
             | (write_val & (4 as caliptra_emu_types::RvData));
-        self.ss_dbg_manuf_service_reg_req = new_val;
+        self.ss_dbg_service_reg_req = new_val;
     }
-    fn read_ss_dbg_manuf_service_reg_rsp(
+    fn read_ss_dbg_service_reg_rsp(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
+        registers_generated::soc::bits::SsDbgServiceRegRsp::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.ss_dbg_manuf_service_reg_rsp)
+        caliptra_emu_bus::ReadWriteRegister::new(self.ss_dbg_service_reg_rsp)
     }
-    fn write_ss_dbg_manuf_service_reg_rsp(
+    fn write_ss_dbg_service_reg_rsp(
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
+            registers_generated::soc::bits::SsDbgServiceRegRsp::Register,
         >,
     ) {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
-        let current_val = self.ss_dbg_manuf_service_reg_rsp;
+        let current_val = self.ss_dbg_service_reg_rsp;
         let mut new_val = current_val;
         new_val = (new_val & !(1 as caliptra_emu_types::RvData))
             | (write_val & (1 as caliptra_emu_types::RvData));
@@ -2636,7 +2843,7 @@ impl SocPeripheral for SocGenerated {
             | (write_val & (0x100 as caliptra_emu_types::RvData));
         new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
             | (write_val & (0x200 as caliptra_emu_types::RvData));
-        self.ss_dbg_manuf_service_reg_rsp = new_val;
+        self.ss_dbg_service_reg_rsp = new_val;
     }
     fn read_ss_soc_dbg_unlock_level(&mut self, index: usize) -> caliptra_emu_types::RvData {
         self.ss_soc_dbg_unlock_level[index]
