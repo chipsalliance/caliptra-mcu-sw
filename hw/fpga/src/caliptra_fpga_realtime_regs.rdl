@@ -230,6 +230,13 @@ regfile interface_regs {
     } cptra_ss_mcu_ext_int;
 
     reg {
+        default sw=rw;
+        default hw=r;
+
+        field {} value[32] = 32'b0;
+    } cptra_ss_raw_unlock_token_hash[4];
+
+    reg {
         field { sw=rw; hw=na; } key[32] = 32'h0;
     } ocp_lock_key_release_reg[16] @ 0x200;
 };
