@@ -86,7 +86,9 @@ impl AesGcm {
 
         self.context = Some(init_resp.context);
         self.encrypt = true;
-        Ok(init_resp.iv)
+        let iv = Aes256GcmIv::read_from_bytes(init_resp.iv.as_bytes())
+            .map_err(|_| CaliptraApiError::InvalidResponse)?;
+        Ok(iv)
     }
 
     /// Initializes the SPDM AES-GCM encryption/decryption context.
@@ -302,7 +304,9 @@ impl AesGcm {
 
         self.reset();
 
-        Ok((encryptdata_size, final_hdr.tag))
+        let tag = Aes256GcmTag::read_from_bytes(final_hdr.tag.as_bytes())
+            .map_err(|_| CaliptraApiError::AesGcmInvalidDataLength)?;
+        Ok((encryptdata_size, tag))
     }
 
     /// Initializes the AES-GCM decryption context.
@@ -326,6 +330,8 @@ impl AesGcm {
             Err(CaliptraApiError::AesGcmInvalidAadLength)?;
         }
 
+        let iv = <[u32; 3]>::read_from_bytes(iv.as_bytes())
+            .map_err(|_| CaliptraApiError::AesGcmInvalidAadLength)?;
         let mut req = CmAesGcmDecryptInitReq {
             hdr: MailboxReqHeader::default(),
             cmk,
@@ -353,7 +359,9 @@ impl AesGcm {
 
         self.context = Some(init_resp.context);
         self.encrypt = false;
-        Ok(init_resp.iv)
+        let iv = Aes256GcmIv::read_from_bytes(init_resp.iv.as_bytes())
+            .map_err(|_| CaliptraApiError::InvalidResponse)?;
+        Ok(iv)
     }
 
     /// Decrypts the given ciphertext using AES-256-GCM in an update operation.
