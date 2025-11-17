@@ -633,4 +633,16 @@ mod test {
     fn test_firmware_update() {
         test_firmware_update_common(true);
     }
+
+    #[test]
+    fn test_firmware_update_streaming() {
+        if env::var("PLDM_FW_PKG").is_err() {
+            println!("Skipping test_firmware_update_streaming as PLDM_FW_PKG is not set");
+            return;
+        }
+        crate::test_pldm_fw_update::test::start_pldm_test(
+            "test_firmware_update_streaming",
+            log::LevelFilter::Info,
+        );
+    }
 }
