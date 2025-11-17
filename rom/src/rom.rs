@@ -435,6 +435,37 @@ impl Soc {
             );
             mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg[i].set(word);
         }
+
+        // OCP LOCK Fuses.
+        romtime::println!("[mcu-fuse-write] Attempting to write OCP LOCK fuses");
+        for (idx, word) in fuses
+            .cptra_ss_lock_hek_prod_0_ratchet_seed()
+            .chunks_exact(4)
+            .enumerate()
+        {
+            let word = u32::from_le_bytes(word.try_into().unwrap());
+            self.registers.fuse_hek_seed[idx].set(word);
+        }
+
+        // Key release is always 64 bytes currently
+        self.registers.ss_key_release_size.set(64);
+
+        // TODO(clundin): We should pass this from OTP or similar so we can configure in
+        // caliptra-sw tests.
+        if cfg!(feature = "core_test") {
+            let mci_base_addr: u64 = self.registers.ss_mci_base_addr_l.get() as u64
+                + ((self.registers.ss_mci_base_addr_h.get() as u64) << 32);
+            let mcu_sram_addr: u64 = 0xc0_0000 + mci_base_addr;
+            self.registers
+                .ss_key_release_base_addr_h
+                .set((mcu_sram_addr >> 32) as u32);
+            self.registers
+                .ss_key_release_base_addr_l
+                .set(mcu_sram_addr as u32);
+        }
+
+        romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
+        romtime::println!("");
     }
 
     pub fn set_axi_users(&self, users: AxiUsers) {

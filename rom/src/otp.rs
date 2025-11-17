@@ -326,6 +326,48 @@ impl Otp {
             fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
             &mut fuses.vendor_revocations_prod_partition,
         )?;
+        romtime::println!("[mcu-rom-otp] Reading OCP LOCK HEK seeds");
+        self.read_data(
+            fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET,
+            fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE,
+            &mut fuses.cptra_ss_lock_hek_prod_0,
+        )?;
+        self.read_data(
+            fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_OFFSET,
+            fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_SIZE,
+            &mut fuses.cptra_ss_lock_hek_prod_1,
+        )?;
+        self.read_data(
+            fuses::CPTRA_SS_LOCK_HEK_PROD_2_BYTE_OFFSET,
+            fuses::CPTRA_SS_LOCK_HEK_PROD_2_BYTE_SIZE,
+            &mut fuses.cptra_ss_lock_hek_prod_2,
+        )?;
+        self.read_data(
+            fuses::CPTRA_SS_LOCK_HEK_PROD_3_BYTE_OFFSET,
+            fuses::CPTRA_SS_LOCK_HEK_PROD_3_BYTE_SIZE,
+            &mut fuses.cptra_ss_lock_hek_prod_3,
+        )?;
+        self.read_data(
+            fuses::CPTRA_SS_LOCK_HEK_PROD_4_BYTE_OFFSET,
+            fuses::CPTRA_SS_LOCK_HEK_PROD_4_BYTE_SIZE,
+            &mut fuses.cptra_ss_lock_hek_prod_4,
+        )?;
+        self.read_data(
+            fuses::CPTRA_SS_LOCK_HEK_PROD_5_BYTE_OFFSET,
+            fuses::CPTRA_SS_LOCK_HEK_PROD_5_BYTE_SIZE,
+            &mut fuses.cptra_ss_lock_hek_prod_5,
+        )?;
+        self.read_data(
+            fuses::CPTRA_SS_LOCK_HEK_PROD_6_BYTE_OFFSET,
+            fuses::CPTRA_SS_LOCK_HEK_PROD_6_BYTE_SIZE,
+            &mut fuses.cptra_ss_lock_hek_prod_6,
+        )?;
+        self.read_data(
+            fuses::CPTRA_SS_LOCK_HEK_PROD_7_BYTE_OFFSET,
+            fuses::CPTRA_SS_LOCK_HEK_PROD_7_BYTE_SIZE,
+            &mut fuses.cptra_ss_lock_hek_prod_7,
+        )?;
+
         // romtime::println!("[mcu-rom-otp] Reading vendor non-secret production partition");
         // self.read_data(
         //     fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
