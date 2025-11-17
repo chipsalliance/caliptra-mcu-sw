@@ -390,15 +390,21 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd0ReadLock::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_0_read_lock();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_ss_lock_hek_prod_0_read_lock(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd0ReadLock::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_cptra_ss_lock_hek_prod_0_read_lock(val);
+        }
     }
     fn read_cptra_ss_lock_hek_prod_1_read_lock(
         &mut self,
@@ -406,15 +412,21 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd1ReadLock::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_1_read_lock();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_ss_lock_hek_prod_1_read_lock(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd1ReadLock::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_cptra_ss_lock_hek_prod_1_read_lock(val);
+        }
     }
     fn read_cptra_ss_lock_hek_prod_2_read_lock(
         &mut self,
@@ -422,15 +434,21 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd2ReadLock::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_2_read_lock();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_ss_lock_hek_prod_2_read_lock(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd2ReadLock::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_cptra_ss_lock_hek_prod_2_read_lock(val);
+        }
     }
     fn read_cptra_ss_lock_hek_prod_3_read_lock(
         &mut self,
@@ -438,15 +456,21 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd3ReadLock::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_3_read_lock();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_ss_lock_hek_prod_3_read_lock(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd3ReadLock::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_cptra_ss_lock_hek_prod_3_read_lock(val);
+        }
     }
     fn read_cptra_ss_lock_hek_prod_4_read_lock(
         &mut self,
@@ -454,15 +478,21 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd4ReadLock::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_4_read_lock();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_ss_lock_hek_prod_4_read_lock(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd4ReadLock::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_cptra_ss_lock_hek_prod_4_read_lock(val);
+        }
     }
     fn read_cptra_ss_lock_hek_prod_5_read_lock(
         &mut self,
@@ -470,15 +500,21 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd5ReadLock::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_5_read_lock();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_ss_lock_hek_prod_5_read_lock(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd5ReadLock::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_cptra_ss_lock_hek_prod_5_read_lock(val);
+        }
     }
     fn read_cptra_ss_lock_hek_prod_6_read_lock(
         &mut self,
@@ -486,15 +522,21 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd6ReadLock::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_6_read_lock();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_ss_lock_hek_prod_6_read_lock(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd6ReadLock::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_cptra_ss_lock_hek_prod_6_read_lock(val);
+        }
     }
     fn read_cptra_ss_lock_hek_prod_7_read_lock(
         &mut self,
@@ -502,15 +544,21 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd7ReadLock::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_7_read_lock();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_ss_lock_hek_prod_7_read_lock(
         &mut self,
-        _val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd7ReadLock::Register,
         >,
     ) {
+        if let Some(generated) = self.generated() {
+            generated.write_cptra_ss_lock_hek_prod_7_read_lock(val);
+        }
     }
     fn read_vendor_pk_hash_volatile_lock(&mut self) -> caliptra_emu_types::RvData {
         if let Some(generated) = self.generated() {
@@ -521,6 +569,17 @@ pub trait OtpPeripheral {
     fn write_vendor_pk_hash_volatile_lock(&mut self, val: caliptra_emu_types::RvData) {
         if let Some(generated) = self.generated() {
             generated.write_vendor_pk_hash_volatile_lock(val);
+        }
+    }
+    fn read_ratchet_seed_volatile_lock(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_ratchet_seed_volatile_lock();
+        }
+        0
+    }
+    fn write_ratchet_seed_volatile_lock(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_ratchet_seed_volatile_lock(val);
         }
     }
     fn read_csr0(
@@ -876,6 +935,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_err_code_rf_err_code_18();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_19(
@@ -884,6 +946,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_err_code_rf_err_code_19();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_20(
@@ -892,6 +957,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_err_code_rf_err_code_20();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_21(
@@ -900,6 +968,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_err_code_rf_err_code_21();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_22(
@@ -908,6 +979,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_err_code_rf_err_code_22();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_23(
@@ -916,6 +990,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_err_code_rf_err_code_23();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_24(
@@ -924,6 +1001,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_err_code_rf_err_code_24();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_25(
@@ -932,6 +1012,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if let Some(generated) = self.generated() {
+            return generated.read_err_code_rf_err_code_25();
+        }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> caliptra_emu_types::RvData {
@@ -1149,51 +1232,99 @@ pub trait OtpPeripheral {
         0
     }
     fn read_cptra_ss_lock_hek_prod_0_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_0_digest_digest_0();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_0_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_0_digest_digest_1();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_1_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_1_digest_digest_0();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_1_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_1_digest_digest_1();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_2_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_2_digest_digest_0();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_2_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_2_digest_digest_1();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_3_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_3_digest_digest_0();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_3_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_3_digest_digest_1();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_4_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_4_digest_digest_0();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_4_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_4_digest_digest_1();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_5_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_5_digest_digest_0();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_5_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_5_digest_digest_1();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_6_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_6_digest_digest_0();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_6_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_6_digest_digest_1();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_7_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_7_digest_digest_0();
+        }
         0
     }
     fn read_cptra_ss_lock_hek_prod_7_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if let Some(generated) = self.generated() {
+            return generated.read_cptra_ss_lock_hek_prod_7_digest_digest_1();
+        }
         0
     }
 }
@@ -1220,7 +1351,16 @@ pub struct OtpGenerated {
     vendor_hashes_prod_partition_read_lock: caliptra_emu_types::RvData,
     vendor_revocations_prod_partition_read_lock: caliptra_emu_types::RvData,
     vendor_non_secret_prod_partition_read_lock: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_0_read_lock: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_1_read_lock: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_2_read_lock: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_3_read_lock: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_4_read_lock: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_5_read_lock: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_6_read_lock: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_7_read_lock: caliptra_emu_types::RvData,
     vendor_pk_hash_volatile_lock: caliptra_emu_types::RvData,
+    ratchet_seed_volatile_lock: caliptra_emu_types::RvData,
     csr0: caliptra_emu_types::RvData,
     csr1: caliptra_emu_types::RvData,
     csr2: caliptra_emu_types::RvData,
@@ -1247,6 +1387,14 @@ pub struct OtpGenerated {
     err_code_rf_err_code_15: caliptra_emu_types::RvData,
     err_code_rf_err_code_16: caliptra_emu_types::RvData,
     err_code_rf_err_code_17: caliptra_emu_types::RvData,
+    err_code_rf_err_code_18: caliptra_emu_types::RvData,
+    err_code_rf_err_code_19: caliptra_emu_types::RvData,
+    err_code_rf_err_code_20: caliptra_emu_types::RvData,
+    err_code_rf_err_code_21: caliptra_emu_types::RvData,
+    err_code_rf_err_code_22: caliptra_emu_types::RvData,
+    err_code_rf_err_code_23: caliptra_emu_types::RvData,
+    err_code_rf_err_code_24: caliptra_emu_types::RvData,
+    err_code_rf_err_code_25: caliptra_emu_types::RvData,
     dai_wdata_rf_direct_access_wdata_0: caliptra_emu_types::RvData,
     dai_wdata_rf_direct_access_wdata_1: caliptra_emu_types::RvData,
     dai_rdata_rf_direct_access_rdata_0: caliptra_emu_types::RvData,
@@ -1279,6 +1427,22 @@ pub struct OtpGenerated {
     vendor_secret_prod_partition_digest_digest_1: caliptra_emu_types::RvData,
     vendor_non_secret_prod_partition_digest_digest_0: caliptra_emu_types::RvData,
     vendor_non_secret_prod_partition_digest_digest_1: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_0_digest_digest_0: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_0_digest_digest_1: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_1_digest_digest_0: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_1_digest_digest_1: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_2_digest_digest_0: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_2_digest_digest_1: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_3_digest_digest_0: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_3_digest_digest_1: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_4_digest_digest_0: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_4_digest_digest_1: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_5_digest_digest_0: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_5_digest_digest_1: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_6_digest_digest_0: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_6_digest_digest_1: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_7_digest_digest_0: caliptra_emu_types::RvData,
+    cptra_ss_lock_hek_prod_7_digest_digest_1: caliptra_emu_types::RvData,
 }
 impl Default for OtpGenerated {
     fn default() -> Self {
@@ -1304,7 +1468,16 @@ impl Default for OtpGenerated {
             vendor_hashes_prod_partition_read_lock: 0 as caliptra_emu_types::RvData,
             vendor_revocations_prod_partition_read_lock: 0 as caliptra_emu_types::RvData,
             vendor_non_secret_prod_partition_read_lock: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_0_read_lock: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_1_read_lock: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_2_read_lock: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_3_read_lock: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_4_read_lock: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_5_read_lock: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_6_read_lock: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_7_read_lock: 0 as caliptra_emu_types::RvData,
             vendor_pk_hash_volatile_lock: 0 as caliptra_emu_types::RvData,
+            ratchet_seed_volatile_lock: 0 as caliptra_emu_types::RvData,
             csr0: 0 as caliptra_emu_types::RvData,
             csr1: 0 as caliptra_emu_types::RvData,
             csr2: 0 as caliptra_emu_types::RvData,
@@ -1331,6 +1504,14 @@ impl Default for OtpGenerated {
             err_code_rf_err_code_15: 0 as caliptra_emu_types::RvData,
             err_code_rf_err_code_16: 0 as caliptra_emu_types::RvData,
             err_code_rf_err_code_17: 0 as caliptra_emu_types::RvData,
+            err_code_rf_err_code_18: 0 as caliptra_emu_types::RvData,
+            err_code_rf_err_code_19: 0 as caliptra_emu_types::RvData,
+            err_code_rf_err_code_20: 0 as caliptra_emu_types::RvData,
+            err_code_rf_err_code_21: 0 as caliptra_emu_types::RvData,
+            err_code_rf_err_code_22: 0 as caliptra_emu_types::RvData,
+            err_code_rf_err_code_23: 0 as caliptra_emu_types::RvData,
+            err_code_rf_err_code_24: 0 as caliptra_emu_types::RvData,
+            err_code_rf_err_code_25: 0 as caliptra_emu_types::RvData,
             dai_wdata_rf_direct_access_wdata_0: 0 as caliptra_emu_types::RvData,
             dai_wdata_rf_direct_access_wdata_1: 0 as caliptra_emu_types::RvData,
             dai_rdata_rf_direct_access_rdata_0: 0 as caliptra_emu_types::RvData,
@@ -1363,6 +1544,22 @@ impl Default for OtpGenerated {
             vendor_secret_prod_partition_digest_digest_1: 0 as caliptra_emu_types::RvData,
             vendor_non_secret_prod_partition_digest_digest_0: 0 as caliptra_emu_types::RvData,
             vendor_non_secret_prod_partition_digest_digest_1: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_0_digest_digest_0: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_0_digest_digest_1: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_1_digest_digest_0: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_1_digest_digest_1: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_2_digest_digest_0: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_2_digest_digest_1: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_3_digest_digest_0: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_3_digest_digest_1: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_4_digest_digest_0: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_4_digest_digest_1: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_5_digest_digest_0: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_5_digest_digest_1: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_6_digest_digest_0: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_6_digest_digest_1: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_7_digest_digest_0: 0 as caliptra_emu_types::RvData,
+            cptra_ss_lock_hek_prod_7_digest_digest_1: 0 as caliptra_emu_types::RvData,
         }
     }
 }
@@ -1779,6 +1976,182 @@ impl OtpPeripheral for OtpGenerated {
             | (write_val & (1 as caliptra_emu_types::RvData));
         self.vendor_non_secret_prod_partition_read_lock = new_val;
     }
+    fn read_cptra_ss_lock_hek_prod_0_read_lock(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::CptraSsLockHekProd0ReadLock::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_0_read_lock)
+    }
+    fn write_cptra_ss_lock_hek_prod_0_read_lock(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::otp_ctrl::bits::CptraSsLockHekProd0ReadLock::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.cptra_ss_lock_hek_prod_0_read_lock;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.cptra_ss_lock_hek_prod_0_read_lock = new_val;
+    }
+    fn read_cptra_ss_lock_hek_prod_1_read_lock(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::CptraSsLockHekProd1ReadLock::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_1_read_lock)
+    }
+    fn write_cptra_ss_lock_hek_prod_1_read_lock(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::otp_ctrl::bits::CptraSsLockHekProd1ReadLock::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.cptra_ss_lock_hek_prod_1_read_lock;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.cptra_ss_lock_hek_prod_1_read_lock = new_val;
+    }
+    fn read_cptra_ss_lock_hek_prod_2_read_lock(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::CptraSsLockHekProd2ReadLock::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_2_read_lock)
+    }
+    fn write_cptra_ss_lock_hek_prod_2_read_lock(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::otp_ctrl::bits::CptraSsLockHekProd2ReadLock::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.cptra_ss_lock_hek_prod_2_read_lock;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.cptra_ss_lock_hek_prod_2_read_lock = new_val;
+    }
+    fn read_cptra_ss_lock_hek_prod_3_read_lock(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::CptraSsLockHekProd3ReadLock::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_3_read_lock)
+    }
+    fn write_cptra_ss_lock_hek_prod_3_read_lock(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::otp_ctrl::bits::CptraSsLockHekProd3ReadLock::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.cptra_ss_lock_hek_prod_3_read_lock;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.cptra_ss_lock_hek_prod_3_read_lock = new_val;
+    }
+    fn read_cptra_ss_lock_hek_prod_4_read_lock(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::CptraSsLockHekProd4ReadLock::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_4_read_lock)
+    }
+    fn write_cptra_ss_lock_hek_prod_4_read_lock(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::otp_ctrl::bits::CptraSsLockHekProd4ReadLock::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.cptra_ss_lock_hek_prod_4_read_lock;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.cptra_ss_lock_hek_prod_4_read_lock = new_val;
+    }
+    fn read_cptra_ss_lock_hek_prod_5_read_lock(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::CptraSsLockHekProd5ReadLock::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_5_read_lock)
+    }
+    fn write_cptra_ss_lock_hek_prod_5_read_lock(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::otp_ctrl::bits::CptraSsLockHekProd5ReadLock::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.cptra_ss_lock_hek_prod_5_read_lock;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.cptra_ss_lock_hek_prod_5_read_lock = new_val;
+    }
+    fn read_cptra_ss_lock_hek_prod_6_read_lock(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::CptraSsLockHekProd6ReadLock::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_6_read_lock)
+    }
+    fn write_cptra_ss_lock_hek_prod_6_read_lock(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::otp_ctrl::bits::CptraSsLockHekProd6ReadLock::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.cptra_ss_lock_hek_prod_6_read_lock;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.cptra_ss_lock_hek_prod_6_read_lock = new_val;
+    }
+    fn read_cptra_ss_lock_hek_prod_7_read_lock(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::CptraSsLockHekProd7ReadLock::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_7_read_lock)
+    }
+    fn write_cptra_ss_lock_hek_prod_7_read_lock(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::otp_ctrl::bits::CptraSsLockHekProd7ReadLock::Register,
+        >,
+    ) {
+        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let current_val = self.cptra_ss_lock_hek_prod_7_read_lock;
+        let mut new_val = current_val;
+        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_emu_types::RvData));
+        self.cptra_ss_lock_hek_prod_7_read_lock = new_val;
+    }
     fn read_vendor_pk_hash_volatile_lock(&mut self) -> caliptra_emu_types::RvData {
         self.vendor_pk_hash_volatile_lock
     }
@@ -1789,6 +2162,17 @@ impl OtpPeripheral for OtpGenerated {
         new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
             | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
         self.vendor_pk_hash_volatile_lock = new_val;
+    }
+    fn read_ratchet_seed_volatile_lock(&mut self) -> caliptra_emu_types::RvData {
+        self.ratchet_seed_volatile_lock
+    }
+    fn write_ratchet_seed_volatile_lock(&mut self, val: caliptra_emu_types::RvData) {
+        let write_val = (val) as caliptra_emu_types::RvData;
+        let current_val = self.ratchet_seed_volatile_lock;
+        let mut new_val = current_val;
+        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        self.ratchet_seed_volatile_lock = new_val;
     }
     fn read_csr0(
         &mut self,
@@ -2116,6 +2500,70 @@ impl OtpPeripheral for OtpGenerated {
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_17)
     }
+    fn read_err_code_rf_err_code_18(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_18)
+    }
+    fn read_err_code_rf_err_code_19(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_19)
+    }
+    fn read_err_code_rf_err_code_20(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_20)
+    }
+    fn read_err_code_rf_err_code_21(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_21)
+    }
+    fn read_err_code_rf_err_code_22(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_22)
+    }
+    fn read_err_code_rf_err_code_23(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_23)
+    }
+    fn read_err_code_rf_err_code_24(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_24)
+    }
+    fn read_err_code_rf_err_code_25(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_25)
+    }
     fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> caliptra_emu_types::RvData {
         self.dai_wdata_rf_direct_access_wdata_0
     }
@@ -2239,6 +2687,54 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         self.vendor_non_secret_prod_partition_digest_digest_1
+    }
+    fn read_cptra_ss_lock_hek_prod_0_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_0_digest_digest_0
+    }
+    fn read_cptra_ss_lock_hek_prod_0_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_0_digest_digest_1
+    }
+    fn read_cptra_ss_lock_hek_prod_1_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_1_digest_digest_0
+    }
+    fn read_cptra_ss_lock_hek_prod_1_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_1_digest_digest_1
+    }
+    fn read_cptra_ss_lock_hek_prod_2_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_2_digest_digest_0
+    }
+    fn read_cptra_ss_lock_hek_prod_2_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_2_digest_digest_1
+    }
+    fn read_cptra_ss_lock_hek_prod_3_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_3_digest_digest_0
+    }
+    fn read_cptra_ss_lock_hek_prod_3_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_3_digest_digest_1
+    }
+    fn read_cptra_ss_lock_hek_prod_4_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_4_digest_digest_0
+    }
+    fn read_cptra_ss_lock_hek_prod_4_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_4_digest_digest_1
+    }
+    fn read_cptra_ss_lock_hek_prod_5_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_5_digest_digest_0
+    }
+    fn read_cptra_ss_lock_hek_prod_5_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_5_digest_digest_1
+    }
+    fn read_cptra_ss_lock_hek_prod_6_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_6_digest_digest_0
+    }
+    fn read_cptra_ss_lock_hek_prod_6_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_6_digest_digest_1
+    }
+    fn read_cptra_ss_lock_hek_prod_7_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_7_digest_digest_0
+    }
+    fn read_cptra_ss_lock_hek_prod_7_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        self.cptra_ss_lock_hek_prod_7_digest_digest_1
     }
 }
 pub struct OtpBus {
@@ -2566,7 +3062,7 @@ impl caliptra_emu_bus::Bus for OtpBus {
                 Ok(())
             }
             0x10..0x14 => Ok(()),
-            0x5c..0x60 => {
+            0x7c..0x80 => {
                 self.periph
                     .write_direct_access_regwen(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
@@ -2742,8 +3238,7 @@ impl caliptra_emu_bus::Bus for OtpBus {
                     .write_csr6(caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
-            0x88..0x8c => {
-            0x13c..0x140 => Ok(()),
+            0x1c0..0x1c4 => Ok(()),
             0x14..0x18 => Ok(()),
             0x18..0x1c => Ok(()),
             0x1c..0x20 => Ok(()),
@@ -2762,7 +3257,15 @@ impl caliptra_emu_bus::Bus for OtpBus {
             0x50..0x54 => Ok(()),
             0x54..0x58 => Ok(()),
             0x58..0x5c => Ok(()),
-            0x68..0x6c => {
+            0x5c..0x60 => Ok(()),
+            0x60..0x64 => Ok(()),
+            0x64..0x68 => Ok(()),
+            0x68..0x6c => Ok(()),
+            0x6c..0x70 => Ok(()),
+            0x70..0x74 => Ok(()),
+            0x74..0x78 => Ok(()),
+            0x78..0x7c => Ok(()),
+            0x88..0x8c => {
                 self.periph.write_dai_wdata_rf_direct_access_wdata_0(val);
                 Ok(())
             }
@@ -2770,25 +3273,8 @@ impl caliptra_emu_bus::Bus for OtpBus {
                 self.periph.write_dai_wdata_rf_direct_access_wdata_1(val);
                 Ok(())
             }
-            0x70..0x74 => Ok(()),
-            0x74..0x78 => Ok(()),
-            0xb0..0xb4 => Ok(()),
-            0xb4..0xb8 => Ok(()),
-            0xb8..0xbc => Ok(()),
-            0xbc..0xc0 => Ok(()),
-            0xc0..0xc4 => Ok(()),
-            0xc4..0xc8 => Ok(()),
-            0xc8..0xcc => Ok(()),
-            0xcc..0xd0 => Ok(()),
-            0xd0..0xd4 => Ok(()),
-            0xd4..0xd8 => Ok(()),
-            0xd8..0xdc => Ok(()),
-            0xdc..0xe0 => Ok(()),
-            0xe0..0xe4 => Ok(()),
-            0xe4..0xe8 => Ok(()),
-            0xe8..0xec => Ok(()),
-            0xec..0xf0 => Ok(()),
-            0xf0..0xf4 => Ok(()),
+            0x90..0x94 => Ok(()),
+            0x94..0x98 => Ok(()),
             0xf4..0xf8 => Ok(()),
             0xf8..0xfc => Ok(()),
             0xfc..0x100 => Ok(()),
@@ -2800,6 +3286,39 @@ impl caliptra_emu_bus::Bus for OtpBus {
             0x114..0x118 => Ok(()),
             0x118..0x11c => Ok(()),
             0x11c..0x120 => Ok(()),
+            0x120..0x124 => Ok(()),
+            0x124..0x128 => Ok(()),
+            0x128..0x12c => Ok(()),
+            0x12c..0x130 => Ok(()),
+            0x130..0x134 => Ok(()),
+            0x134..0x138 => Ok(()),
+            0x138..0x13c => Ok(()),
+            0x13c..0x140 => Ok(()),
+            0x140..0x144 => Ok(()),
+            0x144..0x148 => Ok(()),
+            0x148..0x14c => Ok(()),
+            0x14c..0x150 => Ok(()),
+            0x150..0x154 => Ok(()),
+            0x154..0x158 => Ok(()),
+            0x158..0x15c => Ok(()),
+            0x15c..0x160 => Ok(()),
+            0x160..0x164 => Ok(()),
+            0x164..0x168 => Ok(()),
+            0x168..0x16c => Ok(()),
+            0x16c..0x170 => Ok(()),
+            0x170..0x174 => Ok(()),
+            0x174..0x178 => Ok(()),
+            0x178..0x17c => Ok(()),
+            0x17c..0x180 => Ok(()),
+            0x180..0x184 => Ok(()),
+            0x184..0x188 => Ok(()),
+            0x188..0x18c => Ok(()),
+            0x18c..0x190 => Ok(()),
+            0x190..0x194 => Ok(()),
+            0x194..0x198 => Ok(()),
+            0x198..0x19c => Ok(()),
+            0x19c..0x1a0 => Ok(()),
+            0x1a0..0x1a4 => Ok(()),
             _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
