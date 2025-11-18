@@ -196,6 +196,7 @@ pub struct CEmulatorConfig {
     pub fuse_soc_manifest_svn: c_longlong,
     pub fuse_soc_manifest_max_svn: c_longlong,
     pub fuse_vendor_hashes_prod_partition: *const c_char, // Optional, can be null
+    pub fuse_vendor_test_partition: *const c_char,        // Optional, can be null
 
     // External device callbacks (can be null)
     pub external_read_callback: *const std::ffi::c_void,
@@ -346,6 +347,7 @@ pub unsafe extern "C" fn emulator_init(
         fuse_vendor_hashes_prod_partition: convert_optional_c_string(
             config.fuse_vendor_hashes_prod_partition,
         ),
+        fuse_vendor_test_partition: convert_optional_c_string(config.fuse_vendor_test_partition),
     };
 
     // Convert C callbacks to Rust callbacks if provided
