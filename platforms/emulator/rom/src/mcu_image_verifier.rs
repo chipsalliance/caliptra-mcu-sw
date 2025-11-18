@@ -12,6 +12,7 @@ pub struct McuImageVerifier;
 
 impl ImageVerifier for McuImageVerifier {
     fn verify_header(&self, _header: &[u8], _fuses: &Fuses) -> bool {
+        // TODO: make this unconditional and use proper fuses for it instead of test fuses
         #[cfg(any(feature = "test-mcu-svn-gt-fuse", feature = "test-mcu-svn-lt-fuse"))]
         {
             let Ok((header, _)) = McuImageHeader::ref_from_prefix(_header) else {
@@ -21,7 +22,7 @@ impl ImageVerifier for McuImageVerifier {
 
             let mut fuse_vendor_svn: u16 = 0;
             // Use the first 128 bits of vendor test partition as SVN
-            for byte in _fuses.vendor_hashes_prod_partition[..16].iter() {
+            for byte in _fuses.vendor_test_partition[..16].iter() {
                 // Count contiguous 1's in the byte
                 let mut count = 0;
                 for bit in 0..8 {
